@@ -158,10 +158,16 @@ def handle_info(loader, args):
 
 
 def handle_remove(loader, args):
-    success = loader.remove_video(args.video_id, delete_file=args.delete_file)
-    if success:
-        action = "and file deleted" if args.delete_file else ""
-        print(f"✓ Video {args.video_id} removed from tracking {action}")
+    result = loader.remove_video(args.video_id, delete_file=args.delete_file)
+    
+    if result['video_removed_from_tracker']:
+        print(f"✓ Video {args.video_id} removed from tracking")
+        
+        if args.delete_file:
+            if result['file_deleted']:
+                print("✓ Associated file deleted successfully")
+            elif result['deletion_error']:
+                print(f"⚠ Warning: {result['deletion_error']}")
     else:
         print(f"Video {args.video_id} not found in tracking database")
 

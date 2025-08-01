@@ -82,7 +82,7 @@ uv run python main.py <youtube-url> -l en es -o output.txt --raw
 3. **src/dastill/config.py**: Configuration management system that:
    - Stores user preferences in `~/.dastill/config.json`
    - Manages storage paths, language preferences, and markdown formatting options
-   - Creates sensible defaults on first run
+   - Creates sensible defaults on first run (transcripts stored in `~/dAstIll-transcripts/` by default)
 
 4. **src/dastill/video_tracker.py**: Video tracking database that:
    - Maintains a JSON database of processed videos to prevent redundant downloads
@@ -90,7 +90,7 @@ uv run python main.py <youtube-url> -l en es -o output.txt --raw
    - Provides statistics and management functions
 
 5. **src/dastill/markdown_storage.py**: Markdown file storage system that:
-   - Saves transcripts as formatted markdown files with metadata
+   - Saves transcripts as formatted markdown files with metadata in `~/dAstIll-transcripts/` by default
    - Organizes files by date (optional) 
    - Sanitizes filenames and handles file naming conflicts
    - Includes video information, URLs, and processing timestamps

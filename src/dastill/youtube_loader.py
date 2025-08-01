@@ -1,6 +1,6 @@
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api.formatters import TextFormatter
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 import re
 from urllib.parse import urlparse, parse_qs
 from .config import Config
@@ -36,7 +36,7 @@ class YouTubeTranscriptLoader:
         
         return None
     
-    def load_transcript(self, video_url_or_id: str, languages: List[str] = None, force: bool = False, save_markdown: bool = True) -> Dict[str, any]:
+    def load_transcript(self, video_url_or_id: str, languages: List[str] = None, force: bool = False, save_markdown: bool = True) -> Dict[str, Any]:
         if languages is None:
             languages = self.config.get('transcript.default_languages', ['en'])
         
@@ -115,7 +115,7 @@ class YouTubeTranscriptLoader:
         
         return text
     
-    def save_transcript(self, transcript_data: Dict[str, any], filepath: str):
+    def save_transcript(self, transcript_data: Dict[str, Any], filepath: str):
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(f"Video ID: {transcript_data['video_id']}\n")
             f.write(f"Language: {transcript_data['language']}\n")
@@ -134,11 +134,28 @@ class YouTubeTranscriptLoader:
     
     def remove_video(self, video_id: str, delete_file: bool = False):
         video_info = self.tracker.get_video_info(video_id)
+        file_deleted = False
+        deletion_error = None
+        
         if video_info and delete_file and video_info.get('file_path'):
             import os
+            file_path = video_info['file_path']
             try:
-                os.remove(video_info['file_path'])
-            except OSError:
-                pass
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    file_deleted = True
+                else:
+                    deletion_error = f"File not found: {file_path}"
+            except OSError as e:
+                deletion_error = f"Failed to delete file {file_path}: {str(e)}"
         
-        return self.tracker.remove_video(video_id)
+        tracker_result = self.tracker.remove_video(video_id)
+        
+        # Return comprehensive result information
+        result = {
+            'video_removed_from_tracker': tracker_result,
+            'file_deleted': file_deleted,
+            'deletion_error': deletion_error
+        }
+        
+        return result

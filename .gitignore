@@ -153,6 +153,11 @@ ehthumbs.db
 # uv
 .venv/
 
-# Transcripts output directory
+# dAstIll - Transcript files and user data
 transcripts/
+dAstIll-transcripts/
 *.transcript.txt
+# User configuration and data directories  
+.dastill/
+# Temporary files
+*.tmp

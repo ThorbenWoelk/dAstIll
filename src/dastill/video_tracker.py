@@ -1,8 +1,16 @@
 import json
 import os
+import tempfile
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional, Any
+
+# Import fcntl only on Unix systems
+try:
+    import fcntl
+    HAS_FCNTL = True
+except ImportError:
+    HAS_FCNTL = False
 
 
 class VideoTracker:
@@ -19,8 +27,27 @@ class VideoTracker:
             return {}
     
     def _save_database(self):
-        with open(self.database_path, 'w', encoding='utf-8') as f:
-            json.dump(self.videos, f, indent=2, default=str)
+        """Save database with atomic write and file locking to prevent race conditions."""
+        # Use atomic write with temporary file to prevent corruption
+        temp_path = self.database_path.with_suffix('.tmp')
+        
+        try:
+            with open(temp_path, 'w', encoding='utf-8') as f:
+                # Lock the file to prevent concurrent writes (Unix only)
+                if HAS_FCNTL:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                json.dump(self.videos, f, indent=2, default=str)
+                f.flush()
+                os.fsync(f.fileno())  # Ensure data is written to disk
+            
+            # Atomic rename - this is atomic on most filesystems
+            temp_path.replace(self.database_path)
+            
+        except Exception as e:
+            # Clean up temp file if something went wrong
+            if temp_path.exists():
+                temp_path.unlink()
+            raise IOError(f"Failed to save video database: {str(e)}")
     
     def is_video_processed(self, video_id: str) -> bool:
         return video_id in self.videos
