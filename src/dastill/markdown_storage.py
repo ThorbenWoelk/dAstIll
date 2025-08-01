@@ -45,14 +45,24 @@ class MarkdownStorage:
     def save_transcript(self, transcript_data: Dict[str, Any], summary: str = None) -> str:
         video_id = transcript_data['video_id']
         title = transcript_data.get('title', '')
-        file_path = self._get_storage_path(video_id, title)
         
-        markdown_content = self._format_as_markdown(transcript_data, summary)
-        
-        with open(file_path, 'w', encoding='utf-8') as f:
-            f.write(markdown_content)
-        
-        return str(file_path)
+        try:
+            file_path = self._get_storage_path(video_id, title)
+            markdown_content = self._format_as_markdown(transcript_data, summary)
+            
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(markdown_content)
+                f.flush()  # Ensure data is written to disk
+                os.fsync(f.fileno())
+            
+            return str(file_path)
+            
+        except PermissionError as e:
+            raise IOError(f"Permission denied writing to {file_path}: {str(e)}")
+        except OSError as e:
+            raise IOError(f"Failed to write transcript file {file_path}: {str(e)}")
+        except Exception as e:
+            raise IOError(f"Unexpected error saving transcript: {str(e)}")
     
     def _format_as_markdown(self, transcript_data: Dict[str, Any], summary: str = None) -> str:
         video_id = transcript_data['video_id']
@@ -91,13 +101,23 @@ class MarkdownStorage:
         return content
     
     def load_transcript(self, video_id: str) -> Optional[str]:
-        for path in self.base_path.rglob(f"{video_id}_*.md"):
-            with open(path, 'r', encoding='utf-8') as f:
-                return f.read()
+        patterns = [f"{video_id}_*.md", f"{video_id}.md"]
         
-        for path in self.base_path.rglob(f"{video_id}.md"):
-            with open(path, 'r', encoding='utf-8') as f:
-                return f.read()
+        for pattern in patterns:
+            try:
+                for path in self.base_path.rglob(pattern):
+                    try:
+                        with open(path, 'r', encoding='utf-8') as f:
+                            return f.read()
+                    except PermissionError as e:
+                        raise IOError(f"Permission denied reading {path}: {str(e)}")
+                    except UnicodeDecodeError as e:
+                        raise IOError(f"Failed to decode file {path}: {str(e)}")
+                    except OSError as e:
+                        raise IOError(f"Failed to read transcript file {path}: {str(e)}")
+            except Exception as e:
+                # Log the error but continue searching
+                continue
         
         return None
     

@@ -3,6 +3,13 @@ import json
 from pathlib import Path
 from typing import Dict, Any
 
+# Import fcntl only on Unix systems
+try:
+    import fcntl
+    HAS_FCNTL = True
+except ImportError:
+    HAS_FCNTL = False
+
 
 class Config:
     def __init__(self, config_path: str = None):
@@ -21,9 +28,13 @@ class Config:
             return self._create_default_config()
     
     def _create_default_config(self) -> Dict[str, Any]:
+        # Use a user-friendly location for transcripts (not hidden)
+        home_dir = Path.home()
+        transcripts_dir = home_dir / "dAstIll-transcripts"
+        
         default_config = {
             "storage": {
-                "base_path": str(self.config_dir / "transcripts"),
+                "base_path": str(transcripts_dir),
                 "organize_by_date": True,
                 "markdown_format": True
             },
@@ -38,8 +49,7 @@ class Config:
         }
         
         self.config_dir.mkdir(parents=True, exist_ok=True)
-        with open(self.config_path, 'w', encoding='utf-8') as f:
-            json.dump(default_config, f, indent=2)
+        self._save_config_data(default_config)
         
         return default_config
     
@@ -63,5 +73,26 @@ class Config:
         self._save_config()
     
     def _save_config(self):
-        with open(self.config_path, 'w', encoding='utf-8') as f:
-            json.dump(self.config, f, indent=2)
+        self._save_config_data(self.config)
+    
+    def _save_config_data(self, config_data: Dict[str, Any]):
+        """Save config with atomic write and file locking to prevent race conditions."""
+        temp_path = self.config_path.with_suffix('.tmp')
+        
+        try:
+            with open(temp_path, 'w', encoding='utf-8') as f:
+                # Lock the file to prevent concurrent writes (Unix only)
+                if HAS_FCNTL:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                json.dump(config_data, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())  # Ensure data is written to disk
+            
+            # Atomic rename - this is atomic on most filesystems
+            temp_path.replace(self.config_path)
+            
+        except Exception as e:
+            # Clean up temp file if something went wrong
+            if temp_path.exists():
+                temp_path.unlink()
+            raise IOError(f"Failed to save configuration: {str(e)}")
