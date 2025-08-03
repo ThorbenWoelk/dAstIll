@@ -2,7 +2,7 @@ import unittest
 import tempfile
 import os
 from unittest.mock import Mock, patch
-from src.dastill.transcript_loader import YouTubeTranscriptLoader
+from src.transcript_loader import YouTubeTranscriptLoader
 
 
 class TestIntegration(unittest.TestCase):
@@ -17,7 +17,7 @@ class TestIntegration(unittest.TestCase):
         import shutil
         shutil.rmtree(self.temp_dir, ignore_errors=True)
     
-    @patch('src.dastill.transcript_loader.YouTubeTranscriptApi')
+    @patch('src.transcript_loader.YouTubeTranscriptApi')
     def test_complete_transcript_workflow(self, mock_api_class):
         """Test complete workflow from URL to saved markdown file."""
         # Setup mock API
@@ -80,7 +80,7 @@ class TestIntegration(unittest.TestCase):
             self.assertTrue(result2['already_exists'])
             self.assertEqual(result2['video_id'], 'dQw4w9WgXcQ')
     
-    @patch('src.dastill.transcript_loader.YouTubeTranscriptApi')
+    @patch('src.transcript_loader.YouTubeTranscriptApi')
     def test_fallback_to_generated_transcript(self, mock_api_class):
         """Test fallback to auto-generated transcript when manual is not available."""
         mock_api = Mock()
@@ -189,7 +189,7 @@ class TestIntegration(unittest.TestCase):
         
         self.assertIn('Could not extract video ID', str(context.exception))
     
-    @patch('src.dastill.transcript_loader.YouTubeTranscriptApi')
+    @patch('src.transcript_loader.YouTubeTranscriptApi')
     def test_language_preference_handling(self, mock_api_class):
         """Test language preference handling in transcript loading."""
         mock_api = Mock()
