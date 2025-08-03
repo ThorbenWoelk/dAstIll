@@ -103,8 +103,7 @@ class TestYouTubeTranscriptLoader:
         # API should not be called
         mock_api.assert_not_called()
     
-    @patch('src.transcript_loader.YouTubeTranscriptApi')
-    def test_load_transcript_force_reload(self, mock_api):
+    def test_load_transcript_force_reload(self):
         """Test force reloading transcript even when it exists."""
         video_id = "test12345678"
         
@@ -112,7 +111,7 @@ class TestYouTubeTranscriptLoader:
         self.loader.manager.add_to_be_downloaded(video_id, "test_channel")
         self.loader.manager.mark_downloaded(video_id, "old content", "test_channel")
         
-        # Mock API response
+        # Mock the API instance directly
         mock_transcript = MagicMock()
         mock_transcript.language = "en"
         mock_transcript.is_generated = False
@@ -122,7 +121,14 @@ class TestYouTubeTranscriptLoader:
         
         mock_transcript_list = MagicMock()
         mock_transcript_list.find_transcript.return_value = mock_transcript
-        mock_api.return_value.list.return_value = mock_transcript_list
+        
+        # Replace the API instance with a mock
+        self.loader.api = MagicMock()
+        self.loader.api.list.return_value = mock_transcript_list
+        
+        # Mock the formatter to avoid dependency on youtube_transcript_api formatter
+        self.loader.formatter = MagicMock()
+        self.loader.formatter.format_transcript.return_value = "Hello world"
         
         # Load with force=True
         result = self.loader.load_transcript(video_id, force=True, channel="new_channel")
@@ -134,7 +140,7 @@ class TestYouTubeTranscriptLoader:
         assert 'Hello world' in result['cleaned_text']
         
         # API should be called
-        mock_api.return_value.list.assert_called_with(video_id)
+        self.loader.api.list.assert_called_with(video_id)
     
     def test_get_video_info_exists(self):
         """Test getting video info for existing video."""

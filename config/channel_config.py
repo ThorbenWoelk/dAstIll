@@ -221,9 +221,11 @@ class ChannelConfigManager:
 
     def set_check_interval(self, interval: int):
         """Set the check interval in seconds."""
-        if interval >= 60:  # Minimum 1 minute
+        if 60 <= interval <= 86400:  # Minimum 1 minute, maximum 24 hours
             self.global_config.check_interval = interval
             self.save_configuration()
+        else:
+            raise ValueError(f"Check interval must be between 60 and 86400 seconds (got {interval})")
 
     def list_channels(self, enabled_only: bool = False) -> list[ChannelConfig]:
         """List all channels, optionally filtering to enabled only."""

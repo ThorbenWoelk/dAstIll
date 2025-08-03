@@ -81,8 +81,11 @@ The application uses a four-status file-based system:
 
 ### Testing Requirements
 - Write comprehensive tests for new functionality
-- Use mocking for external dependencies (RSS feeds, file system)
+- **NEVER hit external APIs in tests**: All external dependencies (YouTube API, RSS feeds, HTTP requests) must be mocked
+- Use mocking for external dependencies (RSS feeds, file system, API calls)
 - Ensure tests are isolated and don't depend on external state
+- Tests must be deterministic and not dependent on network conditions
+- If a test needs to call real APIs, it doesn't belong in the test suite - remove it
 - **ALWAYS run tests before pushing**: `uv run python -m pytest` must pass before `git push`
 
 ### Security Considerations
@@ -155,8 +158,27 @@ The application uses a four-status file-based system:
 
 ## Testing Strategy
 
-- Unit tests for individual modules
-- Integration tests for CLI commands
-- Mock external dependencies (RSS feeds, file system)
-- Test error conditions and edge cases
-- Maintain high coverage for new functionality
+### Core Testing Principles
+- **Zero external dependencies**: Never hit real APIs, RSS feeds, or external services
+- **Deterministic results**: Tests must pass consistently regardless of network/system state
+- **Fast execution**: Tests should run quickly without network delays
+- **Isolated testing**: Each test should be completely independent
+
+### Testing Patterns
+- **Unit tests**: Test individual modules with all dependencies mocked
+- **Integration tests**: Test component interactions without external calls
+- **Mock everything external**: YouTube API, RSS feeds, HTTP requests, file system operations
+- **Use realistic test data**: Test with valid video IDs, channel handles, but never call real APIs
+- **Test error conditions**: Network failures, invalid responses, edge cases
+
+### What NOT to Test
+- Real API responses (these change and cause flaky tests)
+- Network connectivity or external service availability
+- Rate limiting or API quotas
+- Real file system operations (use temp directories)
+
+### Mocking Guidelines
+- Mock at the service boundary (e.g., `self.loader.api = MagicMock()`)
+- Provide realistic mock data that matches API response formats
+- Test both success and failure scenarios with mocks
+- Ensure mocks are properly isolated between tests
