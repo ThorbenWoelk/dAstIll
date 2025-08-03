@@ -156,8 +156,14 @@ class TestChannelConfig(unittest.TestCase):
         self.config_manager.set_check_interval(600)
         self.assertEqual(self.config_manager.global_config.check_interval, 600)
         
-        # Invalid interval (too small) should be rejected
-        self.config_manager.set_check_interval(30)
+        # Invalid interval (too small) should raise ValueError
+        with self.assertRaises(ValueError):
+            self.config_manager.set_check_interval(30)
+        self.assertEqual(self.config_manager.global_config.check_interval, 600)  # Should remain unchanged
+        
+        # Invalid interval (too large) should also raise ValueError
+        with self.assertRaises(ValueError):
+            self.config_manager.set_check_interval(90000)  # > 24 hours
         self.assertEqual(self.config_manager.global_config.check_interval, 600)  # Should remain unchanged
     
     def test_get_stats(self):

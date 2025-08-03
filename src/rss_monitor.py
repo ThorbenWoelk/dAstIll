@@ -1,6 +1,7 @@
 """RSS-based YouTube channel monitoring without API keys."""
 
 import re
+import time
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from typing import Any
@@ -34,14 +35,35 @@ class RSSChannelMonitor:
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         })
 
+    def _request_with_backoff(self, url: str, max_retries: int = 3, initial_delay: float = 1.0) -> requests.Response | None:
+        """Make HTTP request with exponential backoff on failure."""
+        for attempt in range(max_retries):
+            try:
+                response = self.session.get(url, timeout=10)
+                if response.status_code == 200:
+                    return response
+                elif response.status_code in [429, 500, 502, 503, 504]:  # Retry on server errors
+                    if attempt < max_retries - 1:  # Don't sleep on last attempt
+                        delay = initial_delay * (2 ** attempt)  # Exponential backoff
+                        time.sleep(delay)
+                        continue
+                return response  # Return non-retryable response
+            except (requests.RequestException, requests.Timeout):
+                if attempt < max_retries - 1:  # Don't sleep on last attempt
+                    delay = initial_delay * (2 ** attempt)  # Exponential backoff
+                    time.sleep(delay)
+                    continue
+                return None  # All retries failed
+        return None
+
     def get_latest_videos(self, channel_id: str, limit: int = 10) -> list[VideoInfo]:
         """Get latest videos from a channel using RSS feed."""
         try:
             rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
-            response = self.session.get(rss_url, timeout=10)
+            response = self._request_with_backoff(rss_url)
 
-            if response.status_code != 200:
-                print(f"RSS feed error for {channel_id}: HTTP {response.status_code}")
+            if not response or response.status_code != 200:
+                # HTTP error or network failure - return empty list and let caller handle
                 return []
 
             root = ET.fromstring(response.content)
@@ -64,13 +86,13 @@ class RSSChannelMonitor:
                         url=f"https://www.youtube.com/watch?v={video_id}"
                     ))
                 except AttributeError as e:
-                    print(f"Error parsing RSS entry: {e}")
+                    # Skip malformed entries and continue
                     continue
 
             return videos
 
         except Exception as e:
-            print(f"Error fetching RSS for {channel_id}: {e}")
+            # Network or parsing error - return empty list
             return []
 
     def resolve_channel_id(self, handle: str) -> str | None:
@@ -78,22 +100,22 @@ class RSSChannelMonitor:
         try:
             # Clean the handle
             clean_handle = handle.replace('@', '')
-            channel_url = f"https://www.youtube.com/@{clean_handle}"
-
-            response = self.session.get(channel_url, timeout=10)
-            if response.status_code != 200:
-                # Try alternative URL format
-                channel_url = f"https://www.youtube.com/c/{clean_handle}"
-                response = self.session.get(channel_url, timeout=10)
-
-                if response.status_code != 200:
-                    # Try user URL format
-                    channel_url = f"https://www.youtube.com/user/{clean_handle}"
-                    response = self.session.get(channel_url, timeout=10)
-
-                    if response.status_code != 200:
-                        print(f"Failed to access channel page for {handle}: {response.status_code}")
-                        return None
+            
+            # Try different URL formats with exponential backoff
+            url_patterns = [
+                f"https://www.youtube.com/@{clean_handle}",
+                f"https://www.youtube.com/c/{clean_handle}",
+                f"https://www.youtube.com/user/{clean_handle}"
+            ]
+            
+            response = None
+            for url in url_patterns:
+                response = self._request_with_backoff(url)
+                if response and response.status_code == 200:
+                    break
+            
+            if not response or response.status_code != 200:
+                return None
 
             content = response.text
 
@@ -112,22 +134,21 @@ class RSSChannelMonitor:
                 match = re.search(pattern, content)
                 if match:
                     channel_id = match.group(1)
-                    print(f"✅ Resolved {handle} → {channel_id}")
                     return channel_id
 
-            print(f"❌ Could not find channel ID for {handle}")
+            # Could not find channel ID - return None for caller to handle
             return None
 
         except Exception as e:
-            print(f"Error resolving channel ID for {handle}: {e}")
+            # Network or parsing error - return None for caller to handle
             return None
 
     def test_rss_feed(self, channel_id: str) -> bool:
         """Test if RSS feed is accessible for a channel."""
         try:
             rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
-            response = self.session.get(rss_url, timeout=5)
-            return response.status_code == 200
+            response = self._request_with_backoff(rss_url, max_retries=2, initial_delay=0.5)
+            return response is not None and response.status_code == 200
         except Exception:
             return False
 
