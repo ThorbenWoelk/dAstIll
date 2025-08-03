@@ -34,12 +34,8 @@ class Config:
         
         default_config = {
             "storage": {
-                "base_path": str(transcripts_dir),
-                "organize_by_date": True,
+                "base_path": str(home_dir / "Documents/totos-vault/AI Memory/youtube library"),
                 "markdown_format": True
-            },
-            "tracking": {
-                "database_path": str(self.config_dir / "videos.json")
             },
             "transcript": {
                 "default_languages": ["en"],
