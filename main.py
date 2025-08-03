@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import sys
-from src.dastill.stateless_loader import StatelessYouTubeTranscriptLoader
+from src.dastill.transcript_loader import YouTubeTranscriptLoader
 
 
 def main():
@@ -76,7 +76,7 @@ def main():
     if args.command is None:
         args.command = 'download'
     
-    loader = StatelessYouTubeTranscriptLoader()
+    loader = YouTubeTranscriptLoader()
     
     try:
         if args.command == 'download':

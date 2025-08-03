@@ -5,20 +5,20 @@ import re
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 from .config import Config
-from .stateless_manager import StatelessVideoManager
-from .stateless_storage import StatelessMarkdownStorage
+from .file_manager import VideoFileManager
+from .transcript_formatter import TranscriptFormatter
 
 
-class StatelessYouTubeTranscriptLoader:
+class YouTubeTranscriptLoader:
     def __init__(self, config_path: str = None):
         self.formatter = TextFormatter()
         self.api = YouTubeTranscriptApi()
         self.config = Config(config_path)
         
-        # Initialize stateless manager and storage
+        # Initialize file manager and formatter
         base_path = self.config.get('storage.base_path')
-        self.manager = StatelessVideoManager(base_path)
-        self.storage = StatelessMarkdownStorage(base_path)
+        self.manager = VideoFileManager(base_path)
+        self.storage = TranscriptFormatter(base_path)
     
     def _extract_video_id(self, url: str) -> Optional[str]:
         """Extract video ID from YouTube URL."""
