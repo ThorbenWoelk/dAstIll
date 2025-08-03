@@ -95,12 +95,12 @@ uv run python main.py <youtube-url> -l en es -o output.txt --raw
 
 1. **main.py**: Enhanced CLI entry point with subcommands for downloading, listing, managing videos, and configuration.
 
-2. **src/dastill/stateless_loader.py**: Core module containing `StatelessYouTubeTranscriptLoader` class that:
+2. **src/dastill/transcript_loader.py**: Core module containing `YouTubeTranscriptLoader` class that:
    - Extracts video IDs from various YouTube URL formats
    - Fetches transcripts using youtube-transcript-api
    - Processes transcripts with cleaning (removes timestamps, music symbols, excessive whitespace)
    - Handles multiple language preferences with fallback to auto-generated transcripts
-   - Operates statelessly using file system for status tracking
+   - Uses file system for status tracking (no JSON database)
    - Provides both raw and cleaned transcript outputs
 
 3. **src/dastill/config.py**: Configuration management system that:
@@ -108,7 +108,7 @@ uv run python main.py <youtube-url> -l en es -o output.txt --raw
    - Manages storage base path and formatting options
    - Creates sensible defaults on first run
 
-4. **src/dastill/stateless_manager.py**: Stateless video management system that:
+4. **src/dastill/file_manager.py**: Video file management system (`VideoFileManager` class) that:
    - Uses file system as single source of truth for video status
    - Manages four status levels based on file location:
      - `not_downloaded`: No file exists
@@ -117,9 +117,9 @@ uv run python main.py <youtube-url> -l en es -o output.txt --raw
      - `processed`: Final location in `/[channel-name]/` folders
    - Provides status detection, file movement, and statistics
 
-5. **src/dastill/stateless_storage.py**: Markdown formatting utilities that:
+5. **src/dastill/transcript_formatter.py**: Markdown formatting utilities (`TranscriptFormatter` class) that:
    - Formats transcript data as markdown with metadata
-   - Handles filename sanitization and generation
+   - Handles filename sanitization and generation with security validation
    - Supports channel-specific file organization
 
 ### Key Design Patterns
@@ -136,7 +136,7 @@ uv run python main.py <youtube-url> -l en es -o output.txt --raw
 
 #### Download Flow
 1. CLI parses command and arguments (including optional `--channel`)
-2. StatelessLoader checks file system for existing video (unless `--force`)
+2. YouTubeTranscriptLoader checks file system for existing video (unless `--force`)
 3. If not processed, fetches transcript via API
 4. Cleans and formats transcript text
 5. Saves to `/downloaded/` folder with channel info in filename
