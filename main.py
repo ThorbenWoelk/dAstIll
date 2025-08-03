@@ -117,17 +117,18 @@ def handle_download(loader, args):
     
     if transcript_data.get('already_exists'):
         print(f"✓ Video already processed!")
-        print(f"Video ID: {transcript_data['video_id']}")
-        print(f"Language: {transcript_data['language']}")
-        print(f"Auto-generated: {transcript_data['is_generated']}")
+        print(f"Video ID: {transcript_data.get('video_id', 'N/A')}")
+        print(f"Language: {transcript_data.get('language', 'N/A')}")
+        print(f"Auto-generated: {transcript_data.get('is_generated', 'N/A')}")
         print(f"File: {transcript_data.get('file_path', 'N/A')}")
-        print(f"Processed: {transcript_data.get('processed_at', 'N/A')}")
+        print(f"Status: {transcript_data.get('status', 'N/A')}")
+        print(f"Channel: {transcript_data.get('channel', 'N/A')}")
         return
     
     print(f"✓ Transcript loaded successfully!")
-    print(f"Video ID: {transcript_data['video_id']}")
-    print(f"Language: {transcript_data['language']}")
-    print(f"Auto-generated: {transcript_data['is_generated']}")
+    print(f"Video ID: {transcript_data.get('video_id', 'N/A')}")
+    print(f"Language: {transcript_data.get('language', 'N/A')}")
+    print(f"Auto-generated: {transcript_data.get('is_generated', 'N/A')}")
     
     if transcript_data.get('file_path'):
         print(f"Saved to: {transcript_data['file_path']}")
@@ -178,11 +179,15 @@ def handle_info(loader, args):
         return
     
     print(f"Video Information:")
-    print(f"ID: {info['video_id']}")
-    print(f"Language: {info.get('language', 'unknown')}")
-    print(f"Auto-generated: {info.get('is_generated', 'unknown')}")
-    print(f"Processed: {info.get('processed_at', 'unknown')}")
+    print(f"ID: {info.get('video_id', 'N/A')}")
+    print(f"Status: {info.get('status', 'unknown')}")
+    print(f"Channel: {info.get('channel', 'unknown')}")
     print(f"File: {info.get('file_path', 'N/A')}")
+    
+    # Note: In stateless mode, language/generation info is only available 
+    # when reading from actual transcript files, not from file system metadata
+    print(f"Language: {info.get('language', 'Check file for details')}")
+    print(f"Auto-generated: {info.get('is_generated', 'Check file for details')}")
     
     metadata = info.get('metadata', {})
     if metadata:
@@ -193,16 +198,20 @@ def handle_info(loader, args):
 def handle_remove(loader, args):
     result = loader.remove_video(args.video_id, delete_file=args.delete_file)
     
-    if result['video_removed_from_tracker']:
-        print(f"✓ Video {args.video_id} removed from tracking")
+    if result['found']:
+        print(f"✓ Video {args.video_id} found (status: {result.get('previous_status', 'unknown')})")
         
         if args.delete_file:
             if result['file_deleted']:
                 print("✓ Associated file deleted successfully")
-            elif result['deletion_error']:
-                print(f"⚠ Warning: {result['deletion_error']}")
+            elif result['error']:
+                print(f"⚠ Warning: {result['error']}")
+            else:
+                print("⚠ File deletion was requested but not performed")
+        else:
+            print("Note: File was not deleted (use --delete-file to remove file)")
     else:
-        print(f"Video {args.video_id} not found in tracking database")
+        print(f"Video {args.video_id} not found")
 
 
 def handle_config(loader, args):
