@@ -1,7 +1,7 @@
-import os
 import json
+import os
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any
 
 # Import fcntl only on Unix systems
 try:
@@ -15,27 +15,32 @@ class Config:
     def __init__(self, config_path: str = None):
         if config_path is None:
             config_path = os.path.expanduser("~/.dastill/config.json")
-        
+
         self.config_path = Path(config_path)
         self.config_dir = self.config_path.parent
         self.config = self._load_config()
-    
-    def _load_config(self) -> Dict[str, Any]:
+
+    def _load_config(self) -> dict[str, Any]:
         if self.config_path.exists():
-            with open(self.config_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
+            try:
+                with open(self.config_path, encoding='utf-8') as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, OSError):
+                # If config is corrupted or unreadable, fall back to defaults
+                return self._create_default_config()
         else:
             return self._create_default_config()
-    
-    def _create_default_config(self) -> Dict[str, Any]:
+
+    def _create_default_config(self) -> dict[str, Any]:
         # Use a user-friendly location for transcripts (not hidden)
         home_dir = Path.home()
         transcripts_dir = home_dir / "dAstIll-transcripts"
-        
+
         default_config = {
             "storage": {
                 "base_path": str(home_dir / "Documents/totos-vault/AI Memory/youtube library"),
-                "markdown_format": True
+                "markdown_format": True,
+                "organize_by_date": True
             },
             "transcript": {
                 "default_languages": ["en"],
@@ -43,12 +48,12 @@ class Config:
                 "clean_transcript": True
             }
         }
-        
+
         self.config_dir.mkdir(parents=True, exist_ok=True)
         self._save_config_data(default_config)
-        
+
         return default_config
-    
+
     def get(self, key: str, default=None):
         keys = key.split('.')
         value = self.config
@@ -57,7 +62,7 @@ class Config:
             if not isinstance(value, dict) and k != keys[-1]:
                 return default
         return value if value != {} else default
-    
+
     def set(self, key: str, value: Any):
         keys = key.split('.')
         config = self.config
@@ -67,14 +72,14 @@ class Config:
             config = config[k]
         config[keys[-1]] = value
         self._save_config()
-    
+
     def _save_config(self):
         self._save_config_data(self.config)
-    
-    def _save_config_data(self, config_data: Dict[str, Any]):
+
+    def _save_config_data(self, config_data: dict[str, Any]):
         """Save config with atomic write and file locking to prevent race conditions."""
         temp_path = self.config_path.with_suffix('.tmp')
-        
+
         try:
             with open(temp_path, 'w', encoding='utf-8') as f:
                 # Lock the file to prevent concurrent writes (Unix only)
@@ -83,12 +88,12 @@ class Config:
                 json.dump(config_data, f, indent=2)
                 f.flush()
                 os.fsync(f.fileno())  # Ensure data is written to disk
-            
+
             # Atomic rename - this is atomic on most filesystems
             temp_path.replace(self.config_path)
-            
+
         except Exception as e:
             # Clean up temp file if something went wrong
             if temp_path.exists():
                 temp_path.unlink()
-            raise IOError(f"Failed to save configuration: {str(e)}")
+            raise OSError(f"Failed to save configuration: {str(e)}")
