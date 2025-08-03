@@ -8,7 +8,7 @@ import shutil
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-from src.dastill.transcript_loader import YouTubeTranscriptLoader
+from src.transcript_loader import YouTubeTranscriptLoader
 
 
 class TestYouTubeTranscriptLoader:
@@ -18,7 +18,7 @@ class TestYouTubeTranscriptLoader:
         self.temp_dir = tempfile.mkdtemp()
         
         # Mock config to use our temp directory
-        with patch('src.dastill.transcript_loader.Config') as mock_config:
+        with patch('src.transcript_loader.Config') as mock_config:
             mock_config.return_value.get.side_effect = lambda key, default=None: {
                 'storage.base_path': self.temp_dir,
                 'storage.markdown_format': True,
@@ -82,7 +82,7 @@ class TestYouTubeTranscriptLoader:
         cleaned = self.loader.clean_transcript(raw_text)
         assert cleaned == "Hello world More text"
     
-    @patch('src.dastill.transcript_loader.YouTubeTranscriptApi')
+    @patch('src.transcript_loader.YouTubeTranscriptApi')
     def test_load_transcript_already_exists(self, mock_api):
         """Test loading transcript when video already exists."""
         video_id = "test12345678"
@@ -103,8 +103,7 @@ class TestYouTubeTranscriptLoader:
         # API should not be called
         mock_api.assert_not_called()
     
-    @patch('src.dastill.transcript_loader.YouTubeTranscriptApi')
-    def test_load_transcript_force_reload(self, mock_api):
+    def test_load_transcript_force_reload(self):
         """Test force reloading transcript even when it exists."""
         video_id = "test12345678"
         
@@ -112,7 +111,7 @@ class TestYouTubeTranscriptLoader:
         self.loader.manager.add_to_be_downloaded(video_id, "test_channel")
         self.loader.manager.mark_downloaded(video_id, "old content", "test_channel")
         
-        # Mock API response
+        # Mock the API instance directly
         mock_transcript = MagicMock()
         mock_transcript.language = "en"
         mock_transcript.is_generated = False
@@ -122,7 +121,14 @@ class TestYouTubeTranscriptLoader:
         
         mock_transcript_list = MagicMock()
         mock_transcript_list.find_transcript.return_value = mock_transcript
-        mock_api.return_value.list.return_value = mock_transcript_list
+        
+        # Replace the API instance with a mock
+        self.loader.api = MagicMock()
+        self.loader.api.list.return_value = mock_transcript_list
+        
+        # Mock the formatter to avoid dependency on youtube_transcript_api formatter
+        self.loader.formatter = MagicMock()
+        self.loader.formatter.format_transcript.return_value = "Hello world"
         
         # Load with force=True
         result = self.loader.load_transcript(video_id, force=True, channel="new_channel")
@@ -134,7 +140,7 @@ class TestYouTubeTranscriptLoader:
         assert 'Hello world' in result['cleaned_text']
         
         # API should be called
-        mock_api.return_value.list.assert_called_with(video_id)
+        self.loader.api.list.assert_called_with(video_id)
     
     def test_get_video_info_exists(self):
         """Test getting video info for existing video."""
@@ -213,24 +219,24 @@ class TestYouTubeTranscriptLoader:
     
     def test_list_processed_videos(self):
         """Test listing all processed videos."""
-        # Add videos in different statuses
-        self.loader.manager.add_to_be_downloaded("video1", "channel1")
-        self.loader.manager.add_to_be_downloaded("video2", "channel2")
-        self.loader.manager.mark_downloaded("video2", "content", "channel2")
+        # Add videos in different statuses (using realistic 11-character video IDs)
+        self.loader.manager.add_to_be_downloaded("test1234567", "channel1")
+        self.loader.manager.add_to_be_downloaded("test2345678", "channel2")
+        self.loader.manager.mark_downloaded("test2345678", "content", "channel2")
         
         videos = self.loader.list_processed_videos()
         
         assert len(videos) == 2
         video_ids = [v['video_id'] for v in videos]
-        assert "video1" in video_ids
-        assert "video2" in video_ids
+        assert "test1234567" in video_ids
+        assert "test2345678" in video_ids
     
     def test_get_stats(self):
         """Test getting statistics."""
-        # Add some videos
-        self.loader.manager.add_to_be_downloaded("video1", "channel1")
-        self.loader.manager.add_to_be_downloaded("video2", "channel2")
-        self.loader.manager.mark_downloaded("video2", "content", "channel2")
+        # Add some videos (using realistic 11-character video IDs)
+        self.loader.manager.add_to_be_downloaded("test1234567", "channel1")
+        self.loader.manager.add_to_be_downloaded("test2345678", "channel2")
+        self.loader.manager.mark_downloaded("test2345678", "content", "channel2")
         
         stats = self.loader.get_stats()
         

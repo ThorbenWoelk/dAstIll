@@ -1,165 +1,184 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code and other AI agents when working on this repository.
 
-## Project Overview
+## Project Context
 
-dAstIll is a Python command-line tool for downloading and processing YouTube video transcripts using the `youtube-transcript-api` library. The project uses `uv` as its package manager and operates as a stateless application using the file system as the single source of truth for video status.
+dAstIll is a Python CLI tool for YouTube transcript management with automatic channel monitoring. It uses a stateless file-based architecture where the file system serves as the single source of truth for video status.
 
-## Development Commands
+## Development Environment
 
-### Setup and Dependencies
+### Package Manager and Dependencies
+- Uses `uv` as package manager (not pip/poetry)
+- Run commands with: `uv run python main.py <args>`
+- Install dependencies: `uv sync`
+
+### Testing
+- Use pytest: `uv run python -m pytest`
+- Tests are in `/tests/` directory
+- Aim for high test coverage on new functionality
+
+### Code Architecture Principles
+- **Stateless Design**: File system is single source of truth, no JSON databases
+- **Separation of Concerns**: Each module handles specific functionality
+- **Configuration-Driven**: Behavior controlled through config files
+- **Security-First**: Input sanitization and path traversal protection
+
+## Key Development Commands
+
 ```bash
-# Install dependencies using uv
-uv sync
+# Development workflow
+uv sync                                    # Install dependencies
+uv run python main.py <command>          # Run application
+uv run python -m pytest                  # Run tests
+uv run python -m pytest tests/test_*.py -v  # Run specific tests
 
-# Run the application
-uv run python main.py <youtube-url>
-
-# Run with specific options
-uv run python main.py <youtube-url> -l en es -o output.txt --raw
+# Application testing
+./main.py download <youtube-url>          # Test transcript download
+./main.py channel add "Test" "@test"     # Test channel monitoring
+./main.py monitor status                 # Check monitoring state
 ```
 
-### Running the Application
+## File System Architecture
 
-#### Download Command (Default)
-```bash
-# Basic usage - downloads and saves as markdown
-./main.py <youtube-url-or-id>
-./main.py download <youtube-url-or-id>
+The application uses a four-status file-based system:
 
-# With channel specification for organized processing
-./main.py <youtube-url> --channel "tina huang"
-
-# With language preference
-./main.py <youtube-url> -l de en
-
-# Save to custom file (in addition to markdown storage)
-./main.py <youtube-url> -o transcript.txt
-
-# Get raw transcript (without cleaning)
-./main.py <youtube-url> --raw
-
-# Force re-download even if already processed
-./main.py <youtube-url> --force
-
-# Disable markdown storage
-./main.py <youtube-url> --no-markdown
-```
-
-#### Management Commands
-```bash
-# List all processed videos
-./main.py list
-
-# Show statistics
-./main.py list --stats
-
-# Get info for specific video
-./main.py info <video-id>
-
-# Remove video from tracking
-./main.py remove <video-id>
-
-# Remove and delete file
-./main.py remove <video-id> --delete-file
-
-# Show current configuration
-./main.py config
-```
-
-#### Video Status Management Commands
-```bash
-# Add videos to download queue
-./main.py add <video-id1> <video-id2> --channel "tina huang"
-
-# Show video queue and status overview
-./main.py queue
-
-# Show videos by specific status
-./main.py queue --status downloaded
-./main.py queue --status processed
-./main.py queue --status to_be_downloaded
-
-# Update video status manually
-./main.py status <video-id> processed
-
-# Process videos (move from downloaded to processed with channel organization)
-./main.py process <video-id1> <video-id2>
-./main.py process <video-id> --channel "tina huang"
-```
-
-## Architecture
-
-### Core Components
-
-1. **main.py**: Enhanced CLI entry point with subcommands for downloading, listing, managing videos, and configuration.
-
-2. **src/dastill/transcript_loader.py**: Core module containing `YouTubeTranscriptLoader` class that:
-   - Extracts video IDs from various YouTube URL formats
-   - Fetches transcripts using youtube-transcript-api
-   - Processes transcripts with cleaning (removes timestamps, music symbols, excessive whitespace)
-   - Handles multiple language preferences with fallback to auto-generated transcripts
-   - Uses file system for status tracking (no JSON database)
-   - Provides both raw and cleaned transcript outputs
-
-3. **src/dastill/config.py**: Configuration management system that:
-   - Stores user preferences in `~/.dastill/config.json`
-   - Manages storage base path and formatting options
-   - Creates sensible defaults on first run
-
-4. **src/dastill/file_manager.py**: Video file management system (`VideoFileManager` class) that:
-   - Uses file system as single source of truth for video status
-   - Manages four status levels based on file location:
-     - `not_downloaded`: No file exists
-     - `to_be_downloaded`: Empty placeholder in `/to_be_downloaded/`
-     - `downloaded`: Transcript content in `/downloaded/`
-     - `processed`: Final location in `/[channel-name]/` folders
-   - Provides status detection, file movement, and statistics
-
-5. **src/dastill/transcript_formatter.py**: Markdown formatting utilities (`TranscriptFormatter` class) that:
-   - Formats transcript data as markdown with metadata
-   - Handles filename sanitization and generation with security validation
-   - Supports channel-specific file organization
-
-### Key Design Patterns
-
-- **Stateless Architecture**: File system is the single source of truth, no JSON database
-- **Separation of Concerns**: Each module handles a specific aspect (API, storage, management, config)
-- **Configuration-Driven**: User preferences control behavior without code changes
-- **File-Based Status**: Video status determined by file location and existence
-- **Channel Organization**: Processed files automatically organized by channel
-- **Backward Compatibility**: Legacy command-line usage still works
-- **No Data Inconsistency**: Eliminates JSON-file system sync issues
-
-### Data Flow
-
-#### Download Flow
-1. CLI parses command and arguments (including optional `--channel`)
-2. YouTubeTranscriptLoader checks file system for existing video (unless `--force`)
-3. If not processed, fetches transcript via API
-4. Cleans and formats transcript text
-5. Saves to `/downloaded/` folder with channel info in filename
-6. Optionally saves to custom output file
-
-#### Processing Flow
-1. User runs `process` command with video IDs
-2. System moves files from `/downloaded/` to `/[channel-name]/` folder
-3. File location change automatically updates status to `processed`
-4. Files end up in channel-specific folders for easy Obsidian organization
-
-#### Four-Status System (Stateless)
-- **not_downloaded**: No file exists anywhere
-- **to_be_downloaded**: Empty placeholder file exists in `/to_be_downloaded/`
-- **downloaded**: Transcript content exists in `/downloaded/`, ready for AI processing  
-- **processed**: File exists in `/[channel-name]/` folder (e.g., `/tina huang/`)
-
-#### Directory Structure
 ```
 /base_path/
-├── to_be_downloaded/          # Empty placeholder files
-├── downloaded/                # Downloaded transcripts awaiting processing
-├── tina huang/               # Processed Tina Huang videos
-├── unknown/                  # Processed videos with unknown channel
-└── [other channels]/         # Other channel-specific folders
+├── to_be_downloaded/    # Empty placeholder files (queued)
+├── downloaded/          # Downloaded transcripts awaiting processing
+├── [channel-name]/      # Processed transcripts organized by channel
+└── unknown/             # Processed videos with unknown channel
+
+~/.dastill/
+├── config.json         # Main application configuration
+└── channels.json       # Channel monitoring configuration
 ```
+
+## Core Modules
+
+1. **main.py**: CLI interface with subcommands
+2. **transcript_loader.py**: Core transcript fetching and processing
+3. **file_manager.py**: Stateless video file management
+4. **transcript_formatter.py**: Markdown formatting and file organization
+5. **config.py**: Configuration management
+6. **rss_monitor.py**: RSS-based channel monitoring (no API keys)
+7. **channel_config.py**: Channel monitoring configuration
+8. **monitoring_service.py**: Orchestrates automatic video detection and processing
+
+## Development Rules
+
+### Task Management
+- **Primary task source**: Always check `todo.md` for current tasks and priorities
+- This is the central place where development tasks are tracked
+- **todo.md format**: Pure task list - each line is a task, completed tasks are REMOVED (not marked as done)
+- No boilerplate, status sections, or explanatory text in todo.md - only actionable tasks
+
+### File Management
+- NEVER create files unless absolutely necessary for the goal
+- ALWAYS prefer editing existing files over creating new ones
+- Follow the existing stateless architecture patterns
+
+### Testing Requirements
+- Write comprehensive tests for new functionality
+- **NEVER hit external APIs in tests**: All external dependencies (YouTube API, RSS feeds, HTTP requests) must be mocked
+- Use mocking for external dependencies (RSS feeds, file system, API calls)
+- Ensure tests are isolated and don't depend on external state
+- Tests must be deterministic and not dependent on network conditions
+- If a test needs to call real APIs, it doesn't belong in the test suite - remove it
+- **ALWAYS run tests before pushing**: `uv run python -m pytest` must pass before `git push`
+
+### Security Considerations
+- Sanitize all user inputs, especially file paths and channel names
+- Prevent path traversal attacks in file operations
+- Validate video IDs and channel handles before processing
+
+### Code Style
+- Follow existing patterns in the codebase
+- Use type hints consistently
+- Handle exceptions gracefully with user-friendly error messages
+
+## Documentation Rules
+
+### README.md (Primary Documentation)
+- README.md is the authoritative documentation for users and developers
+- Always update README.md when adding new features or changing behavior
+- Include comprehensive usage examples and architecture overview
+
+### CLAUDE.md (AI Agent Guidance)
+- This file is specifically for AI agents working on the codebase
+- Focus on development rules, architecture context, and workflow guidance
+- Do not duplicate user-facing documentation from README.md
+
+### Documentation Style
+- **Avoid temporal language** that becomes outdated:
+  - ❌ "NEW feature", "Recently added", "Latest update"
+  - ✅ "Feature", "The application includes", "Available functionality"
+- Write for long-term validity until features actually change
+- Never reference issue numbers or PRs in user documentation
+
+## Common Development Patterns
+
+### Adding New CLI Commands
+1. Add argument parser in `main.py`
+2. Create handler function following existing pattern
+3. Update README.md with usage examples
+4. Add comprehensive tests
+
+### Extending File Operations
+1. Use `VideoFileManager` for all file status operations
+2. Follow four-status system: not_downloaded → to_be_downloaded → downloaded → processed
+3. Sanitize all file paths and names
+4. Update tests to cover new file operations
+
+### Adding Monitoring Features
+1. Use `ChannelConfigManager` for configuration
+2. Extend `MonitoringService` for new monitoring logic
+3. Use callback patterns for event handling
+4. Test with mocked RSS feeds and file operations
+
+## Integration Points
+
+### External Dependencies
+- YouTube Transcript API: For fetching transcripts
+- RSS Feeds: For channel monitoring (no API key required)
+- File System: Primary data storage (stateless design)
+
+### Configuration System
+- Main config: `~/.dastill/config.json`
+- Channel config: `~/.dastill/channels.json`
+- Both use atomic writes for safety
+
+## Common Pitfalls to Avoid
+
+1. **Don't introduce JSON databases** - use file system for state
+2. **Don't require API keys** - use RSS feeds for monitoring
+3. **Don't skip input sanitization** - especially for file paths
+4. **Don't forget to update README.md** - it's the primary documentation
+
+## Testing Strategy
+
+### Core Testing Principles
+- **Zero external dependencies**: Never hit real APIs, RSS feeds, or external services
+- **Deterministic results**: Tests must pass consistently regardless of network/system state
+- **Fast execution**: Tests should run quickly without network delays
+- **Isolated testing**: Each test should be completely independent
+
+### Testing Patterns
+- **Unit tests**: Test individual modules with all dependencies mocked
+- **Integration tests**: Test component interactions without external calls
+- **Mock everything external**: YouTube API, RSS feeds, HTTP requests, file system operations
+- **Use realistic test data**: Test with valid video IDs, channel handles, but never call real APIs
+- **Test error conditions**: Network failures, invalid responses, edge cases
+
+### What NOT to Test
+- Real API responses (these change and cause flaky tests)
+- Network connectivity or external service availability
+- Rate limiting or API quotas
+- Real file system operations (use temp directories)
+
+### Mocking Guidelines
+- Mock at the service boundary (e.g., `self.loader.api = MagicMock()`)
+- Provide realistic mock data that matches API response formats
+- Test both success and failure scenarios with mocks
+- Ensure mocks are properly isolated between tests

@@ -8,7 +8,7 @@ import shutil
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-from src.dastill.file_manager import VideoFileManager
+from src.file_manager import VideoFileManager
 
 
 class TestVideoFileManager:
