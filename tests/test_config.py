@@ -3,7 +3,7 @@ import tempfile
 import os
 import json
 from pathlib import Path
-from src.dastill.config import Config
+from config.config import Config
 
 
 class TestConfig(unittest.TestCase):
