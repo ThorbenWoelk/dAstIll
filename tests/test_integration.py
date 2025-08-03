@@ -11,6 +11,12 @@ class TestIntegration(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.mkdtemp()
         self.config_path = os.path.join(self.temp_dir, 'config.json')
+        
+        # Create config with temp directory as base path
+        from config.config import Config
+        config = Config(self.config_path)
+        config.set('storage.base_path', self.temp_dir)
+        
         self.loader = YouTubeTranscriptLoader(self.config_path)
     
     def tearDown(self):
@@ -130,29 +136,24 @@ class TestIntegration(unittest.TestCase):
     
     def test_video_management_workflow(self):
         """Test complete video management workflow."""
-        # Add some test videos to tracker manually
+        # Add some test videos using the new stateless file-based system
         test_videos = [
             {
-                'video_id': 'video1',
-                'language': 'en',
-                'is_generated': False,
-                'title': 'Test Video 1'
+                'video_id': 'test1234567',
+                'channel': 'test_channel1'
             },
             {
-                'video_id': 'video2',
-                'language': 'de',
-                'is_generated': True,
-                'title': 'Test Video 2'
+                'video_id': 'test2345678', 
+                'channel': 'test_channel2'
             }
         ]
         
-        # Create test files
+        # Add videos using the new file manager API
         for video in test_videos:
-            file_path = os.path.join(self.temp_dir, f"{video['video_id']}.md")
-            with open(file_path, 'w') as f:
-                f.write(f"Content for {video['video_id']}")
-            
-            self.loader.tracker.add_video(video['video_id'], video, file_path)
+            # Add to be downloaded first
+            self.loader.manager.add_to_be_downloaded(video['video_id'], video['channel'])
+            # Mark as downloaded with content
+            self.loader.manager.mark_downloaded(video['video_id'], f"Content for {video['video_id']}", video['channel'])
         
         # Test listing videos
         videos = self.loader.list_processed_videos()
@@ -160,26 +161,28 @@ class TestIntegration(unittest.TestCase):
         
         # Test getting stats
         stats = self.loader.get_stats()
-        self.assertEqual(stats['total_videos'], 2)
-        self.assertEqual(stats['auto_generated_count'], 1)
-        self.assertEqual(stats['manual_transcript_count'], 1)
+        self.assertEqual(stats['total'], 2)
+        self.assertEqual(stats['downloaded'], 2)
+        self.assertEqual(stats['to_be_downloaded'], 0)
+        self.assertEqual(stats['processed'], 0)
         
         # Test getting video info
-        info = self.loader.get_video_info('video1')
-        self.assertEqual(info['video_id'], 'video1')
-        self.assertEqual(info['language'], 'en')
+        info = self.loader.get_video_info('test1234567')
+        self.assertEqual(info['video_id'], 'test1234567')
+        self.assertEqual(info['status'], 'downloaded')
         
         # Test removing video with file deletion
-        result = self.loader.remove_video('video1', delete_file=True)
-        self.assertTrue(result['video_removed_from_tracker'])
+        result = self.loader.manager.remove_video('test1234567', delete_file=True)
+        self.assertTrue(result['found'])
         self.assertTrue(result['file_deleted'])
         
         # Verify video was removed
-        self.assertFalse(self.loader.tracker.is_video_processed('video1'))
+        status, _ = self.loader.manager.get_video_status('test1234567')
+        self.assertEqual(status, 'not_downloaded')
         
         # Test removing non-existent video
-        result = self.loader.remove_video('nonexistent')
-        self.assertFalse(result['video_removed_from_tracker'])
+        result = self.loader.manager.remove_video('nonexistent123')
+        self.assertFalse(result['found'])
     
     def test_error_handling_integration(self):
         """Test error handling in integrated scenarios."""

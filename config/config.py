@@ -22,8 +22,12 @@ class Config:
 
     def _load_config(self) -> dict[str, Any]:
         if self.config_path.exists():
-            with open(self.config_path, encoding='utf-8') as f:
-                return json.load(f)
+            try:
+                with open(self.config_path, encoding='utf-8') as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, OSError):
+                # If config is corrupted or unreadable, fall back to defaults
+                return self._create_default_config()
         else:
             return self._create_default_config()
 
@@ -35,7 +39,8 @@ class Config:
         default_config = {
             "storage": {
                 "base_path": str(home_dir / "Documents/totos-vault/AI Memory/youtube library"),
-                "markdown_format": True
+                "markdown_format": True,
+                "organize_by_date": True
             },
             "transcript": {
                 "default_languages": ["en"],

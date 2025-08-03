@@ -213,24 +213,24 @@ class TestYouTubeTranscriptLoader:
     
     def test_list_processed_videos(self):
         """Test listing all processed videos."""
-        # Add videos in different statuses
-        self.loader.manager.add_to_be_downloaded("video1", "channel1")
-        self.loader.manager.add_to_be_downloaded("video2", "channel2")
-        self.loader.manager.mark_downloaded("video2", "content", "channel2")
+        # Add videos in different statuses (using realistic 11-character video IDs)
+        self.loader.manager.add_to_be_downloaded("test1234567", "channel1")
+        self.loader.manager.add_to_be_downloaded("test2345678", "channel2")
+        self.loader.manager.mark_downloaded("test2345678", "content", "channel2")
         
         videos = self.loader.list_processed_videos()
         
         assert len(videos) == 2
         video_ids = [v['video_id'] for v in videos]
-        assert "video1" in video_ids
-        assert "video2" in video_ids
+        assert "test1234567" in video_ids
+        assert "test2345678" in video_ids
     
     def test_get_stats(self):
         """Test getting statistics."""
-        # Add some videos
-        self.loader.manager.add_to_be_downloaded("video1", "channel1")
-        self.loader.manager.add_to_be_downloaded("video2", "channel2")
-        self.loader.manager.mark_downloaded("video2", "content", "channel2")
+        # Add some videos (using realistic 11-character video IDs)
+        self.loader.manager.add_to_be_downloaded("test1234567", "channel1")
+        self.loader.manager.add_to_be_downloaded("test2345678", "channel2")
+        self.loader.manager.mark_downloaded("test2345678", "content", "channel2")
         
         stats = self.loader.get_stats()
         
