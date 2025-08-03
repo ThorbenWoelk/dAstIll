@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-dAstIll is a Python command-line tool for downloading and processing YouTube video transcripts using the `youtube-transcript-api` library. The project uses `uv` as its package manager.
+dAstIll is a Python command-line tool for downloading and processing YouTube video transcripts using the `youtube-transcript-api` library. The project uses `uv` as its package manager and operates as a stateless application using the file system as the single source of truth for video status.
 
 ## Development Commands
 
@@ -27,6 +27,9 @@ uv run python main.py <youtube-url> -l en es -o output.txt --raw
 # Basic usage - downloads and saves as markdown
 ./main.py <youtube-url-or-id>
 ./main.py download <youtube-url-or-id>
+
+# With channel specification for organized processing
+./main.py <youtube-url> --channel "tina huang"
 
 # With language preference
 ./main.py <youtube-url> -l de en
@@ -65,51 +68,98 @@ uv run python main.py <youtube-url> -l en es -o output.txt --raw
 ./main.py config
 ```
 
+#### Video Status Management Commands
+```bash
+# Add videos to download queue
+./main.py add <video-id1> <video-id2> --channel "tina huang"
+
+# Show video queue and status overview
+./main.py queue
+
+# Show videos by specific status
+./main.py queue --status downloaded
+./main.py queue --status processed
+./main.py queue --status to_be_downloaded
+
+# Update video status manually
+./main.py status <video-id> processed
+
+# Process videos (move from downloaded to processed with channel organization)
+./main.py process <video-id1> <video-id2>
+./main.py process <video-id> --channel "tina huang"
+```
+
 ## Architecture
 
 ### Core Components
 
 1. **main.py**: Enhanced CLI entry point with subcommands for downloading, listing, managing videos, and configuration.
 
-2. **src/dastill/youtube_loader.py**: Core module containing `YouTubeTranscriptLoader` class that:
+2. **src/dastill/stateless_loader.py**: Core module containing `StatelessYouTubeTranscriptLoader` class that:
    - Extracts video IDs from various YouTube URL formats
    - Fetches transcripts using youtube-transcript-api
    - Processes transcripts with cleaning (removes timestamps, music symbols, excessive whitespace)
    - Handles multiple language preferences with fallback to auto-generated transcripts
-   - Integrates with video tracking and markdown storage systems
+   - Operates statelessly using file system for status tracking
    - Provides both raw and cleaned transcript outputs
 
 3. **src/dastill/config.py**: Configuration management system that:
    - Stores user preferences in `~/.dastill/config.json`
-   - Manages storage paths, language preferences, and markdown formatting options
-   - Creates sensible defaults on first run (transcripts stored in `~/dAstIll-transcripts/` by default)
+   - Manages storage base path and formatting options
+   - Creates sensible defaults on first run
 
-4. **src/dastill/video_tracker.py**: Video tracking database that:
-   - Maintains a JSON database of processed videos to prevent redundant downloads
-   - Tracks metadata like language, generation status, file paths, and processing dates
-   - Provides statistics and management functions
+4. **src/dastill/stateless_manager.py**: Stateless video management system that:
+   - Uses file system as single source of truth for video status
+   - Manages four status levels based on file location:
+     - `not_downloaded`: No file exists
+     - `to_be_downloaded`: Empty placeholder in `/to_be_downloaded/`
+     - `downloaded`: Transcript content in `/downloaded/`
+     - `processed`: Final location in `/[channel-name]/` folders
+   - Provides status detection, file movement, and statistics
 
-5. **src/dastill/markdown_storage.py**: Markdown file storage system that:
-   - Saves transcripts as formatted markdown files with metadata in `~/dAstIll-transcripts/` by default
-   - Organizes files by date (optional) 
-   - Sanitizes filenames and handles file naming conflicts
-   - Includes video information, URLs, and processing timestamps
+5. **src/dastill/stateless_storage.py**: Markdown formatting utilities that:
+   - Formats transcript data as markdown with metadata
+   - Handles filename sanitization and generation
+   - Supports channel-specific file organization
 
 ### Key Design Patterns
 
-- **Separation of Concerns**: Each module handles a specific aspect (API, storage, tracking, config)
+- **Stateless Architecture**: File system is the single source of truth, no JSON database
+- **Separation of Concerns**: Each module handles a specific aspect (API, storage, management, config)
 - **Configuration-Driven**: User preferences control behavior without code changes
-- **Deduplication**: Video tracking prevents redundant API calls and storage
-- **Flexible Storage**: Multiple output formats supported (raw text, markdown, custom files)
+- **File-Based Status**: Video status determined by file location and existence
+- **Channel Organization**: Processed files automatically organized by channel
 - **Backward Compatibility**: Legacy command-line usage still works
-- **Extensible**: Easy to add new storage formats or metadata fields
+- **No Data Inconsistency**: Eliminates JSON-file system sync issues
 
 ### Data Flow
 
-1. CLI parses command and arguments
-2. YouTubeTranscriptLoader checks if video already processed (unless `--force`)
+#### Download Flow
+1. CLI parses command and arguments (including optional `--channel`)
+2. StatelessLoader checks file system for existing video (unless `--force`)
 3. If not processed, fetches transcript via API
 4. Cleans and formats transcript text
-5. Saves to markdown storage (unless `--no-markdown`)
-6. Updates video tracking database
-7. Optionally saves to custom output file
+5. Saves to `/downloaded/` folder with channel info in filename
+6. Optionally saves to custom output file
+
+#### Processing Flow
+1. User runs `process` command with video IDs
+2. System moves files from `/downloaded/` to `/[channel-name]/` folder
+3. File location change automatically updates status to `processed`
+4. Files end up in channel-specific folders for easy Obsidian organization
+
+#### Four-Status System (Stateless)
+- **not_downloaded**: No file exists anywhere
+- **to_be_downloaded**: Empty placeholder file exists in `/to_be_downloaded/`
+- **downloaded**: Transcript content exists in `/downloaded/`, ready for AI processing  
+- **processed**: File exists in `/[channel-name]/` folder (e.g., `/tina huang/`)
+
+#### Directory Structure
+```
+/base_path/
+├── to_be_downloaded/          # Empty placeholder files
+├── downloaded/                # Downloaded transcripts awaiting processing
+├── tina huang/               # Processed Tina Huang videos
+├── unknown/                  # Processed videos with unknown channel
+└── [other channels]/         # Other channel-specific folders
+```

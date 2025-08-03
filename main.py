@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import sys
-from src.dastill.youtube_loader import YouTubeTranscriptLoader
+from src.dastill.stateless_loader import StatelessYouTubeTranscriptLoader
 
 
 def main():
@@ -22,6 +22,8 @@ def main():
                         help='Force download even if video already processed')
     download_parser.add_argument('--no-markdown', action='store_true', 
                         help='Disable markdown storage')
+    download_parser.add_argument('--channel', default='unknown',
+                        help='Channel name for organizing processed files (default: unknown)')
     
     # List command
     list_parser = subparsers.add_parser('list', help='List processed videos')
@@ -40,8 +42,31 @@ def main():
     # Config command
     config_parser = subparsers.add_parser('config', help='Show current configuration')
     
+    # Add command - Add video IDs to be downloaded later
+    add_parser = subparsers.add_parser('add', help='Add video IDs to be downloaded later')
+    add_parser.add_argument('video_ids', nargs='+', help='Video IDs or URLs to add')
+    add_parser.add_argument('--title', help='Optional title for the video')
+    add_parser.add_argument('--channel', default='unknown',
+                           help='Channel name for organizing processed files (default: unknown)')
+    
+    # Status command - Update video status
+    status_parser = subparsers.add_parser('status', help='Update video status')
+    status_parser.add_argument('video_id', help='Video ID to update')
+    status_parser.add_argument('new_status', choices=['to_be_downloaded', 'downloaded', 'processed'], 
+                              help='New status for the video')
+    
+    # Process command - Move videos from downloaded to processed
+    process_parser = subparsers.add_parser('process', help='Mark videos as processed')
+    process_parser.add_argument('video_ids', nargs='+', help='Video IDs to mark as processed')
+    process_parser.add_argument('--channel', help='Override channel name for processed files')
+    
+    # Queue command - Show videos in different statuses
+    queue_parser = subparsers.add_parser('queue', help='Show videos by status')
+    queue_parser.add_argument('--status', choices=['to_be_downloaded', 'downloaded', 'processed'], 
+                             help='Filter by specific status')
+    
     # Handle legacy usage (no subcommand)
-    if len(sys.argv) > 1 and not any(sys.argv[1] == cmd for cmd in ['download', 'list', 'info', 'remove', 'config']):
+    if len(sys.argv) > 1 and not any(sys.argv[1] == cmd for cmd in ['download', 'list', 'info', 'remove', 'config', 'add', 'status', 'process', 'queue']):
         # Insert 'download' as the first argument for backward compatibility
         sys.argv.insert(1, 'download')
     
@@ -51,7 +76,7 @@ def main():
     if args.command is None:
         args.command = 'download'
     
-    loader = YouTubeTranscriptLoader()
+    loader = StatelessYouTubeTranscriptLoader()
     
     try:
         if args.command == 'download':
@@ -64,6 +89,14 @@ def main():
             handle_remove(loader, args)
         elif args.command == 'config':
             handle_config(loader, args)
+        elif args.command == 'add':
+            handle_add(loader, args)
+        elif args.command == 'status':
+            handle_status(loader, args)
+        elif args.command == 'process':
+            handle_process(loader, args)
+        elif args.command == 'queue':
+            handle_queue(loader, args)
     
     except Exception as e:
         print(f"Error: {str(e)}", file=sys.stderr)
@@ -78,7 +111,8 @@ def handle_download(loader, args):
         args.url, 
         args.languages, 
         force=args.force, 
-        save_markdown=save_markdown
+        save_markdown=save_markdown,
+        channel=args.channel
     )
     
     if transcript_data.get('already_exists'):
@@ -115,26 +149,25 @@ def handle_list(loader, args):
     if args.stats:
         stats = loader.get_stats()
         print("Statistics:")
-        print(f"Total videos: {stats['total_videos']}")
-        print(f"Auto-generated: {stats['auto_generated_count']}")
-        print(f"Manual transcripts: {stats['manual_transcript_count']}")
-        print("\nLanguages:")
-        for lang, count in stats['languages'].items():
-            print(f"  {lang}: {count}")
+        print(f"Total videos: {stats['total']}")
+        print(f"To be downloaded: {stats['to_be_downloaded']}")
+        print(f"Downloaded: {stats['downloaded']}")
+        print(f"Processed: {stats['processed']}")
+        print(f"\nChannels: {stats['channels']}")
     else:
         videos = loader.list_processed_videos()
         if not videos:
-            print("No videos processed yet.")
+            print("No videos found.")
             return
         
-        print(f"Processed videos ({len(videos)}):")
+        print(f"All videos ({len(videos)}):")
         print("-" * 80)
         for video in videos:
             print(f"ID: {video['video_id']}")
-            print(f"Language: {video.get('language', 'unknown')}")
-            print(f"Generated: {video.get('is_generated', 'unknown')}")
-            print(f"Processed: {video.get('processed_at', 'unknown')}")
-            print(f"File: {video.get('file_path', 'N/A')}")
+            print(f"Status: {video['status']}")
+            print(f"Channel: {video['channel']}")
+            if video.get('file_path'):
+                print(f"File: {video['file_path']}")
             print("-" * 40)
 
 
@@ -186,6 +219,92 @@ def handle_config(loader, args):
                 print("  " * indent + f"{key}: {value}")
     
     print_dict(config)
+
+
+def handle_add(loader, args):
+    added_count = 0
+    
+    for video_input in args.video_ids:
+        # Extract video ID from URL if needed
+        video_id = loader._extract_video_id(video_input) if 'youtube.com' in video_input or 'youtu.be' in video_input else video_input
+        
+        if loader.add_to_be_downloaded(video_id, args.channel):
+            print(f"✓ Added {video_id} to download queue (channel: {args.channel})")
+            added_count += 1
+        else:
+            print(f"⚠ Video {video_id} already in system")
+    
+    print(f"\nAdded {added_count} new video(s) to download queue")
+
+
+def handle_status(loader, args):
+    video_id = loader._extract_video_id(args.video_id) if 'youtube.com' in args.video_id or 'youtu.be' in args.video_id else args.video_id
+    
+    current_status, file_path = loader.manager.get_video_status(video_id)
+    
+    if current_status == 'not_downloaded':
+        print(f"Video {video_id} not found")
+        return
+    
+    print(f"Current status of {video_id}: {current_status}")
+    print(f"Note: In stateless mode, status changes are done by moving files between folders:")
+    print(f"  - to_be_downloaded: /to_be_downloaded/")
+    print(f"  - downloaded: /downloaded/") 
+    print(f"  - processed: /[channel-name]/")
+    print(f"Use the 'process' command to move from downloaded to processed.")
+    
+    if file_path:
+        print(f"Current file: {file_path}")
+
+
+def handle_process(loader, args):
+    processed_count = 0
+    
+    for video_input in args.video_ids:
+        video_id = loader._extract_video_id(video_input) if 'youtube.com' in video_input or 'youtu.be' in video_input else video_input
+        
+        try:
+            success, result = loader.process_video(video_id, args.channel)
+            if success:
+                print(f"✓ Processed {video_id}")
+                print(f"  File moved to: {result}")
+                processed_count += 1
+            else:
+                print(f"⚠ {result}")
+        except Exception as e:
+            print(f"Error processing {video_id}: {str(e)}")
+    
+    print(f"\nProcessed {processed_count} video(s)")
+
+
+def handle_queue(loader, args):
+    if args.status:
+        videos = loader.manager.list_videos_by_status(args.status)
+        print(f"Videos with status '{args.status}' ({len(videos)}):")
+    else:
+        # Show all statuses
+        stats = loader.get_stats()
+        print("Video Queue Overview:")
+        print(f"Total videos: {stats['total']}")
+        print(f"  to_be_downloaded: {stats['to_be_downloaded']}")
+        print(f"  downloaded: {stats['downloaded']}")
+        print(f"  processed: {stats['processed']}")
+        print(f"\nChannels: {stats['channels']}")
+        print("\nAll videos:")
+        videos = loader.list_processed_videos()
+    
+    if not videos:
+        print("No videos found.")
+        return
+    
+    print("-" * 80)
+    for video in videos:
+        print(f"ID: {video['video_id']}")
+        print(f"Status: {video['status']}")
+        print(f"Channel: {video['channel']}")
+        if video.get('file_path'):
+            print(f"File: {video['file_path']}")
+        print("-" * 40)
 
 
 if __name__ == "__main__":
