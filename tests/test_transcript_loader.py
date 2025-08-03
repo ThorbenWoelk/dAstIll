@@ -8,7 +8,7 @@ import shutil
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-from src.dastill.transcript_loader import YouTubeTranscriptLoader
+from src.transcript_loader import YouTubeTranscriptLoader
 
 
 class TestYouTubeTranscriptLoader:
@@ -18,7 +18,7 @@ class TestYouTubeTranscriptLoader:
         self.temp_dir = tempfile.mkdtemp()
         
         # Mock config to use our temp directory
-        with patch('src.dastill.transcript_loader.Config') as mock_config:
+        with patch('src.transcript_loader.Config') as mock_config:
             mock_config.return_value.get.side_effect = lambda key, default=None: {
                 'storage.base_path': self.temp_dir,
                 'storage.markdown_format': True,
@@ -82,7 +82,7 @@ class TestYouTubeTranscriptLoader:
         cleaned = self.loader.clean_transcript(raw_text)
         assert cleaned == "Hello world More text"
     
-    @patch('src.dastill.transcript_loader.YouTubeTranscriptApi')
+    @patch('src.transcript_loader.YouTubeTranscriptApi')
     def test_load_transcript_already_exists(self, mock_api):
         """Test loading transcript when video already exists."""
         video_id = "test12345678"
@@ -103,7 +103,7 @@ class TestYouTubeTranscriptLoader:
         # API should not be called
         mock_api.assert_not_called()
     
-    @patch('src.dastill.transcript_loader.YouTubeTranscriptApi')
+    @patch('src.transcript_loader.YouTubeTranscriptApi')
     def test_load_transcript_force_reload(self, mock_api):
         """Test force reloading transcript even when it exists."""
         video_id = "test12345678"
