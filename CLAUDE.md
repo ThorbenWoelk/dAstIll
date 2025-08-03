@@ -71,7 +71,8 @@ The application uses a four-status file-based system:
 ### Task Management
 - **Primary task source**: Always check `todo.md` for current tasks and priorities
 - This is the central place where development tasks are tracked
-- Update todo.md when completing tasks or discovering new ones
+- **todo.md format**: Pure task list - each line is a task, completed tasks are REMOVED (not marked as done)
+- No boilerplate, status sections, or explanatory text in todo.md - only actionable tasks
 
 ### File Management
 - NEVER create files unless absolutely necessary for the goal
@@ -82,6 +83,7 @@ The application uses a four-status file-based system:
 - Write comprehensive tests for new functionality
 - Use mocking for external dependencies (RSS feeds, file system)
 - Ensure tests are isolated and don't depend on external state
+- **ALWAYS run tests before pushing**: `uv run python -m pytest` must pass before `git push`
 
 ### Security Considerations
 - Sanitize all user inputs, especially file paths and channel names
