@@ -5,10 +5,17 @@ from typing import Dict, Any, Optional
 
 
 class MarkdownStorage:
-    def __init__(self, base_path: str, organize_by_date: bool = True):
+    def __init__(self, base_path: str, organize_by_date: bool = True, 
+                 downloaded_path: str = None, processed_path: str = None):
         self.base_path = Path(base_path)
+        self.downloaded_path = Path(downloaded_path) if downloaded_path else self.base_path
+        self.processed_path = Path(processed_path) if processed_path else self.base_path
         self.organize_by_date = organize_by_date
+        
+        # Create all paths if they don't exist
         self.base_path.mkdir(parents=True, exist_ok=True)
+        self.downloaded_path.mkdir(parents=True, exist_ok=True)
+        self.processed_path.mkdir(parents=True, exist_ok=True)
     
     def _generate_filename(self, video_id: str, title: str = "") -> str:
         safe_title = self._sanitize_filename(title)
@@ -31,23 +38,35 @@ class MarkdownStorage:
         
         return filename
     
-    def _get_storage_path(self, video_id: str, title: str = "") -> Path:
-        if self.organize_by_date:
-            date_folder = datetime.now().strftime("%Y-%m")
-            storage_path = self.base_path / date_folder
+    def _get_storage_path(self, video_id: str, title: str = "", status: str = "downloaded", channel: str = "unknown") -> Path:
+        # Choose base path based on status
+        if status == "downloaded":
+            base = self.downloaded_path
+        elif status == "processed":
+            base = self.processed_path
         else:
-            storage_path = self.base_path
+            base = self.base_path
+        
+        # For processed files, organize by channel; for downloaded, keep them in status folder
+        if status == "processed":
+            storage_path = base / channel
+        else:
+            if self.organize_by_date:
+                date_folder = datetime.now().strftime("%Y-%m")
+                storage_path = base / date_folder
+            else:
+                storage_path = base
         
         storage_path.mkdir(parents=True, exist_ok=True)
         filename = self._generate_filename(video_id, title)
         return storage_path / filename
     
-    def save_transcript(self, transcript_data: Dict[str, Any], summary: str = None) -> str:
+    def save_transcript(self, transcript_data: Dict[str, Any], summary: str = None, status: str = "downloaded", channel: str = "unknown") -> str:
         video_id = transcript_data['video_id']
         title = transcript_data.get('title', '')
         
         try:
-            file_path = self._get_storage_path(video_id, title)
+            file_path = self._get_storage_path(video_id, title, status, channel)
             markdown_content = self._format_as_markdown(transcript_data, summary)
             
             with open(file_path, 'w', encoding='utf-8') as f:
@@ -123,3 +142,55 @@ class MarkdownStorage:
     
     def file_exists(self, video_id: str) -> bool:
         return any(self.base_path.rglob(f"{video_id}_*.md")) or any(self.base_path.rglob(f"{video_id}.md"))
+    
+    def move_file(self, video_id: str, from_status: str, to_status: str, title: str = "", channel: str = "unknown") -> Optional[str]:
+        """Move a transcript file from one status path to another."""
+        # Find the existing file
+        from_base = self._get_base_path_for_status(from_status)
+        patterns = [f"{video_id}_*.md", f"{video_id}.md"]
+        
+        source_file = None
+        for pattern in patterns:
+            matches = list(from_base.rglob(pattern))
+            if matches:
+                source_file = matches[0]
+                break
+        
+        if not source_file:
+            return None
+        
+        # Generate destination path
+        dest_path = self._get_storage_path(video_id, title or source_file.stem.split('_', 1)[-1], to_status, channel)
+        
+        try:
+            # Read the content
+            with open(source_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # Write to new location
+            with open(dest_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+                f.flush()
+                os.fsync(f.fileno())
+            
+            # Remove the old file
+            source_file.unlink()
+            
+            # Clean up empty date folders
+            parent = source_file.parent
+            if parent != from_base and not any(parent.iterdir()):
+                parent.rmdir()
+            
+            return str(dest_path)
+            
+        except Exception as e:
+            raise IOError(f"Failed to move file from {source_file} to {dest_path}: {str(e)}")
+    
+    def _get_base_path_for_status(self, status: str) -> Path:
+        """Get the base path for a given status."""
+        if status == "downloaded":
+            return self.downloaded_path
+        elif status == "processed":
+            return self.processed_path
+        else:
+            return self.base_path
