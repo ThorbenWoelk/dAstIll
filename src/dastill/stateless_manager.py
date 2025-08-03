@@ -15,12 +15,46 @@ class StatelessVideoManager:
         self.downloaded_path.mkdir(parents=True, exist_ok=True)
         (self.base_path / "unknown").mkdir(parents=True, exist_ok=True)
     
+    def _sanitize_channel_name(self, channel: str) -> str:
+        """Sanitize channel name to prevent path traversal and invalid chars."""
+        if not channel or channel.strip() == "":
+            return "unknown"
+        
+        # Remove path traversal attempts
+        channel = channel.replace("..", "").replace("/", "").replace("\\", "")
+        
+        # Remove invalid filesystem characters
+        invalid_chars = '<>:"|?*'
+        for char in invalid_chars:
+            channel = channel.replace(char, "")
+        
+        # Limit length and strip whitespace
+        channel = channel.strip()[:100]  # Max 100 chars
+        
+        # If empty after sanitization, use unknown
+        return channel if channel else "unknown"
+    
+    def _sanitize_video_id(self, video_id: str) -> str:
+        """Sanitize video ID to contain only valid characters."""
+        if not video_id:
+            raise ValueError("Video ID cannot be empty")
+        
+        # YouTube video IDs should only contain alphanumeric, dash, underscore
+        import re
+        sanitized = re.sub(r'[^a-zA-Z0-9_-]', '', video_id)
+        
+        if not sanitized:
+            raise ValueError(f"Invalid video ID: {video_id}")
+        
+        return sanitized
+    
     def get_video_status(self, video_id: str) -> Tuple[str, Optional[str]]:
         """
         Get the current status of a video based on file system.
         Returns (status, file_path) where status is one of:
         'not_downloaded', 'to_be_downloaded', 'downloaded', 'processed'
         """
+        video_id = self._sanitize_video_id(video_id)
         # Check for processed files in channel folders
         for channel_dir in self.base_path.iterdir():
             if channel_dir.is_dir() and channel_dir.name not in ['to_be_downloaded', 'downloaded']:
@@ -45,6 +79,9 @@ class StatelessVideoManager:
     
     def add_to_be_downloaded(self, video_id: str, channel: str = 'unknown') -> bool:
         """Create an empty placeholder file for a video to be downloaded."""
+        video_id = self._sanitize_video_id(video_id)
+        channel = self._sanitize_channel_name(channel)
+        
         status, _ = self.get_video_status(video_id)
         if status != 'not_downloaded':
             return False
@@ -62,6 +99,9 @@ class StatelessVideoManager:
     
     def mark_downloaded(self, video_id: str, transcript_content: str, channel: str = 'unknown') -> Optional[str]:
         """Move from to_be_downloaded to downloaded and write actual content."""
+        video_id = self._sanitize_video_id(video_id)
+        channel = self._sanitize_channel_name(channel)
+        
         status, current_path = self.get_video_status(video_id)
         
         if status == 'to_be_downloaded':
@@ -82,6 +122,9 @@ class StatelessVideoManager:
     
     def mark_processed(self, video_id: str, channel: str = 'unknown') -> Optional[str]:
         """Move from downloaded to channel folder."""
+        video_id = self._sanitize_video_id(video_id)
+        channel = self._sanitize_channel_name(channel)
+        
         status, current_path = self.get_video_status(video_id)
         
         if status != 'downloaded':
@@ -108,14 +151,30 @@ class StatelessVideoManager:
             with open(current_path, 'r', encoding='utf-8') as f:
                 content = f.read()
             
-            # Write to channel folder
-            with open(new_path, 'w', encoding='utf-8') as f:
-                f.write(content)
-            
-            # Remove from downloaded folder
-            current_file.unlink()
-            
-            return str(new_path)
+            # Use atomic operation: write to temp file first, then move
+            import tempfile
+            temp_file = None
+            try:
+                # Create temporary file in the target directory
+                with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', 
+                                               dir=channel_path, delete=False) as temp_file:
+                    temp_file.write(content)
+                    temp_file_path = temp_file.name
+                
+                # Atomically move temp file to final location
+                import shutil
+                shutil.move(temp_file_path, new_path)
+                
+                # Only remove original file after successful move
+                current_file.unlink()
+                
+                return str(new_path)
+            except Exception as e:
+                # Clean up temp file if it exists
+                if temp_file and os.path.exists(temp_file.name):
+                    os.unlink(temp_file.name)
+                raise e
+                
         except Exception:
             return None
     
@@ -212,20 +271,34 @@ class StatelessVideoManager:
         }
     
     def _extract_video_id_from_filename(self, filename: str) -> str:
-        """Extract video ID from filename (first 11 characters typically for YouTube IDs)."""
+        """Extract video ID from filename using multiple patterns."""
         # Remove .md extension
         name_part = filename[:-3]
         
-        # YouTube video IDs are typically 11 characters
-        # Look for common patterns
-        if len(name_part) >= 11:
-            # Try to find video ID at start of filename
-            potential_id = name_part[:11]
+        # Pattern 1: videoId_channel.md or videoId.md (our standard format)
+        parts = name_part.split('_')
+        if len(parts) >= 1:
+            potential_id = parts[0]
             if self._is_valid_video_id(potential_id):
                 return potential_id
         
-        # Fallback: take everything before first underscore, or whole name
-        parts = name_part.split('_')
+        # Pattern 2: Look for 11-character sequences that could be video IDs
+        # This handles cases where filename might have different patterns
+        import re
+        video_id_pattern = r'[a-zA-Z0-9_-]{11}'
+        matches = re.findall(video_id_pattern, name_part)
+        for match in matches:
+            if self._is_valid_video_id(match):
+                return match
+        
+        # Pattern 3: If filename contains dots or other separators
+        for separator in ['_', '-', '.', ' ']:
+            parts = name_part.split(separator)
+            for part in parts:
+                if self._is_valid_video_id(part):
+                    return part
+        
+        # Fallback: return first part or whole name
         return parts[0] if parts else name_part
     
     def _is_valid_video_id(self, video_id: str) -> bool:
