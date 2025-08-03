@@ -8,16 +8,16 @@ import shutil
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-from src.dastill.stateless_manager import StatelessVideoManager
+from src.dastill.file_manager import VideoFileManager
 
 
-class TestStatelessVideoManager:
+class TestVideoFileManager:
     
     def setup_method(self):
         """Setup test environment with temporary directory."""
         self.temp_dir = tempfile.mkdtemp()
         self.base_path = Path(self.temp_dir)
-        self.manager = StatelessVideoManager(str(self.base_path))
+        self.manager = VideoFileManager(str(self.base_path))
     
     def teardown_method(self):
         """Clean up temporary directory."""

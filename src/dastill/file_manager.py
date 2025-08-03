@@ -4,7 +4,7 @@ from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime
 
 
-class StatelessVideoManager:
+class VideoFileManager:
     def __init__(self, base_path: str):
         self.base_path = Path(base_path)
         self.to_be_downloaded_path = self.base_path / "to_be_downloaded"

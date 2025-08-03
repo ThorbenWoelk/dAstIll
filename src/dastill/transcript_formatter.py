@@ -4,9 +4,28 @@ from datetime import datetime
 from typing import Dict, Any
 
 
-class StatelessMarkdownStorage:
+class TranscriptFormatter:
     def __init__(self, base_path: str):
         self.base_path = Path(base_path)
+    
+    def _sanitize_channel_name(self, channel: str) -> str:
+        """Sanitize channel name to prevent path traversal and invalid chars."""
+        if not channel or channel.strip() == "":
+            return "unknown"
+        
+        # Remove path traversal attempts
+        channel = channel.replace("..", "").replace("/", "").replace("\\", "")
+        
+        # Remove invalid filesystem characters
+        invalid_chars = '<>:"|?*'
+        for char in invalid_chars:
+            channel = channel.replace(char, "")
+        
+        # Limit length and strip whitespace
+        channel = channel.strip()[:100]  # Max 100 chars
+        
+        # If empty after sanitization, use unknown
+        return channel if channel else "unknown"
     
     def format_transcript_content(self, transcript_data: Dict[str, Any], summary: str = None) -> str:
         """Format transcript data as markdown content."""
@@ -64,11 +83,12 @@ class StatelessMarkdownStorage:
     def _generate_filename(self, video_id: str, title: str = "", channel: str = "unknown") -> str:
         """Generate a safe filename for the transcript."""
         safe_title = self._sanitize_filename(title)
+        safe_channel = self._sanitize_channel_name(channel)
         
-        if channel != "unknown":
+        if safe_channel != "unknown":
             if safe_title:
-                return f"{video_id}_{channel}_{safe_title}.md"
-            return f"{video_id}_{channel}.md"
+                return f"{video_id}_{safe_channel}_{safe_title}.md"
+            return f"{video_id}_{safe_channel}.md"
         else:
             if safe_title:
                 return f"{video_id}_{safe_title}.md"
