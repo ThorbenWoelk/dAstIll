@@ -15,7 +15,12 @@ except ImportError:
 class Config:
     def __init__(self, config_path: str = None):
         if config_path is None:
-            config_path = os.path.expanduser("~/.dastill/config.json")
+            # Check environment variable first, then fallback to local config
+            config_dir = os.getenv(
+                "DASTILL_CONFIG_DIR", os.path.join(os.getcwd(), "data", "config")
+            )
+            os.makedirs(config_dir, exist_ok=True)
+            config_path = os.path.join(config_dir, "config.json")
 
         self.config_path = Path(config_path)
         self.config_dir = self.config_path.parent

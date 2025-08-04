@@ -9,7 +9,7 @@ from typing import Any
 from config.channel_config import ChannelConfig, ChannelConfigManager
 
 from .rss_monitor import RSSChannelMonitor, VideoInfo
-from .transcript_loader import YouTubeTranscriptLoader
+from .transcript_loader import RateLimitError, YouTubeTranscriptLoader
 
 
 class ChannelMonitoringService:
@@ -146,6 +146,11 @@ class ChannelMonitoringService:
         for channel in enabled_channels:
             try:
                 self._check_channel(channel)
+            except RateLimitError:
+                # Rate limit already handled in _process_new_video
+                # Skip remaining channels and wait for next cycle
+                self._log_status("⏭️ Skipping remaining channels due to rate limit")
+                break
             except Exception as e:
                 self._log_error(f"Error checking channel {channel.handle}", e)
 
@@ -231,6 +236,14 @@ class ChannelMonitoringService:
             if self.on_video_processed:
                 self.on_video_processed(video, channel, transcript_data)
 
+        except RateLimitError as e:
+            self._log_error(f"Rate limit hit while processing {video.title}", e)
+            self._log_status("⏸️ Rate limit detected. Sleeping for 3 hours...")
+            # Sleep for 3 hours (10800 seconds)
+            time.sleep(10800)
+            self._log_status("🔄 Resuming after rate limit sleep...")
+            # Re-raise to let the monitoring loop handle it
+            raise
         except Exception as e:
             self._log_error(f"Error processing video {video.title}", e)
 

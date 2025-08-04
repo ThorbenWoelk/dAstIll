@@ -161,6 +161,38 @@ def main():
         help="Automatically process to final location (default: False)",
     )
 
+    # Subscribe to channel
+    subscribe_parser = channel_subparsers.add_parser(
+        "subscribe", help="Subscribe to a channel and download recent videos"
+    )
+    subscribe_parser.add_argument("name", help="Channel display name")
+    subscribe_parser.add_argument("handle", help="Channel handle (e.g., @username)")
+    subscribe_parser.add_argument("channel_id", help="YouTube channel ID (required)")
+    subscribe_parser.add_argument(
+        "--languages",
+        nargs="+",
+        default=["en"],
+        help="Preferred transcript languages (default: en)",
+    )
+    subscribe_parser.add_argument(
+        "--auto-download",
+        action="store_true",
+        default=True,
+        help="Automatically download new videos (default: True)",
+    )
+    subscribe_parser.add_argument(
+        "--auto-process",
+        action="store_true",
+        default=False,
+        help="Automatically process to final location (default: False)",
+    )
+    subscribe_parser.add_argument(
+        "--recent-count",
+        type=int,
+        default=15,
+        help="Number of recent videos to download (default: 15, max: 20)",
+    )
+
     # List channels
     list_channels_parser = channel_subparsers.add_parser(
         "list", help="List configured channels"
@@ -647,6 +679,89 @@ def handle_channel(args):
             print(f"✅ Channel {args.handle} {status}")
         else:
             print(f"❌ Channel {args.handle} not found")
+
+    elif args.channel_action == "subscribe":
+        # First add the channel
+        success = config_manager.add_channel(
+            name=args.name,
+            handle=args.handle,
+            channel_id=args.channel_id,
+            languages=args.languages,
+            auto_download=args.auto_download,
+            auto_process=args.auto_process,
+        )
+
+        if not success:
+            print(f"❌ Channel {args.handle} already exists")
+            return
+
+        print(f"✅ Added channel: {args.name} ({args.handle})")
+        print(f"   Languages: {', '.join(args.languages)}")
+        print(f"   Auto-download: {args.auto_download}")
+        print(f"   Auto-process: {args.auto_process}")
+
+        # Download recent videos
+        recent_count = min(args.recent_count, 20)  # Cap at 20
+        print(f"\n📥 Downloading recent {recent_count} videos...")
+
+        # Use RSS monitor to get recent videos
+        from src.rss_monitor import RSSChannelMonitor
+        from src.transcript_loader import RateLimitError, YouTubeTranscriptLoader
+
+        rss_monitor = RSSChannelMonitor()
+
+        videos = rss_monitor.get_latest_videos(args.channel_id, limit=recent_count)
+
+        if not videos:
+            print("⚠️ Could not fetch recent videos from RSS feed")
+            return
+
+        # Download each video's transcript
+        loader = YouTubeTranscriptLoader()
+        downloaded_count = 0
+
+        for i, video in enumerate(videos, 1):
+            print(f"\n[{i}/{len(videos)}] Processing: {video.title}")
+
+            try:
+                result = loader.load_transcript(
+                    video.url,
+                    languages=args.languages,
+                    force=False,
+                    save_markdown=True,
+                    channel=args.name,
+                )
+
+                if result.get("already_exists"):
+                    print("   ✓ Already downloaded")
+                else:
+                    print("   ✅ Downloaded successfully")
+                    downloaded_count += 1
+
+                    # Auto-process if enabled
+                    if args.auto_process:
+                        success, process_result = loader.process_video(
+                            video.video_id, args.name
+                        )
+                        if success:
+                            print(f"   ⚡ Auto-processed to: {process_result}")
+
+            except RateLimitError as e:
+                print(f"   ⚠️ Rate limit hit: {str(e)}")
+                print("   ⏸️ Stopping here to avoid further rate limiting.")
+                print(
+                    "   💡 The monitoring service will handle rate limits by sleeping 3 hours."
+                )
+                break
+            except Exception as e:
+                print(f"   ❌ Error: {str(e)}")
+
+        # Update the last video ID to prevent re-downloading on next monitor check
+        if videos:
+            config_manager.update_last_video_id(args.handle, videos[0].video_id)
+
+        print(f"\n✅ Subscription complete! Downloaded {downloaded_count} new videos.")
+        print("🔄 Future videos will be monitored automatically.")
 
 
 def handle_settings(args):
