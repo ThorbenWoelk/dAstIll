@@ -13,7 +13,7 @@ def mock_channel_config():
     return {
         "name": "Test Channel",
         "handle": "@testchannel",
-        "channel_id": "UC123456789",
+        "channel_id": "UC1234567890123456789012",
         "languages": ["en"],
         "auto_download": True,
         "auto_process": False,
@@ -29,7 +29,7 @@ def mock_videos():
             title="Test Video 1",
             published="2024-01-01T00:00:00",
             channel_name="Test Channel",
-            channel_id="UC123456789",
+            channel_id="UC1234567890123456789012",
             url="https://www.youtube.com/watch?v=video1",
         ),
         VideoInfo(
@@ -37,7 +37,7 @@ def mock_videos():
             title="Test Video 2",
             published="2024-01-02T00:00:00",
             channel_name="Test Channel",
-            channel_id="UC123456789",
+            channel_id="UC1234567890123456789012",
             url="https://www.youtube.com/watch?v=video2",
         ),
         VideoInfo(
@@ -45,7 +45,7 @@ def mock_videos():
             title="Test Video 3",
             published="2024-01-03T00:00:00",
             channel_name="Test Channel",
-            channel_id="UC123456789",
+            channel_id="UC1234567890123456789012",
             url="https://www.youtube.com/watch?v=video3",
         ),
     ]
@@ -169,14 +169,20 @@ class TestChannelSubscription:
         # Verify no further actions were taken
         mock_config_manager.update_last_video_id.assert_not_called()
 
+    @patch("main.RSSChannelMonitor")
+    @patch("main.YouTubeTranscriptLoader")
+    @patch("main.validate_channel_id")
+    @patch("main.check_disk_space")
+    @patch("main.Config")
     @patch("main.ChannelConfigManager")
-    @patch("src.rss_monitor.RSSChannelMonitor")
-    @patch("src.transcript_loader.YouTubeTranscriptLoader")
     def test_subscribe_with_auto_process(
         self,
+        mock_config_class,
+        mock_main_config_class,
+        mock_disk_space,
+        mock_validate_channel,
         mock_loader_class,
         mock_rss_class,
-        mock_config_class,
         mock_channel_config,
         mock_videos,
     ):
@@ -185,6 +191,17 @@ class TestChannelSubscription:
         mock_config_manager = MagicMock()
         mock_config_class.return_value = mock_config_manager
         mock_config_manager.add_channel.return_value = True
+
+        # Mock Config class for main.py
+        mock_main_config = MagicMock()
+        mock_main_config_class.return_value = mock_main_config
+        mock_main_config.get.return_value = 20  # max_recent_videos
+
+        # Mock disk space check
+        mock_disk_space.return_value = True
+
+        # Mock channel validation
+        mock_validate_channel.return_value = True
 
         mock_rss_monitor = MagicMock()
         mock_rss_class.return_value = mock_rss_monitor
@@ -218,16 +235,36 @@ class TestChannelSubscription:
             "video1", mock_channel_config["name"]
         )
 
+    @patch("main.RSSChannelMonitor")
+    @patch("main.validate_channel_id")
+    @patch("main.check_disk_space")
+    @patch("main.Config")
     @patch("main.ChannelConfigManager")
-    @patch("src.rss_monitor.RSSChannelMonitor")
     def test_subscribe_no_videos_available(
-        self, mock_rss_class, mock_config_class, mock_channel_config
+        self,
+        mock_config_class,
+        mock_main_config_class,
+        mock_disk_space,
+        mock_validate_channel,
+        mock_rss_class,
+        mock_channel_config,
     ):
         """Test subscription when RSS feed returns no videos."""
         # Setup mocks
         mock_config_manager = MagicMock()
         mock_config_class.return_value = mock_config_manager
         mock_config_manager.add_channel.return_value = True
+
+        # Mock Config class for main.py
+        mock_main_config = MagicMock()
+        mock_main_config_class.return_value = mock_main_config
+        mock_main_config.get.return_value = 20  # max_recent_videos
+
+        # Mock disk space check
+        mock_disk_space.return_value = True
+
+        # Mock channel validation
+        mock_validate_channel.return_value = True
 
         mock_rss_monitor = MagicMock()
         mock_rss_class.return_value = mock_rss_monitor
@@ -267,14 +304,20 @@ class TestChannelSubscription:
         # Verify no video processing occurred
         mock_config_manager.update_last_video_id.assert_not_called()
 
+    @patch("main.RSSChannelMonitor")
+    @patch("main.YouTubeTranscriptLoader")
+    @patch("main.validate_channel_id")
+    @patch("main.check_disk_space")
+    @patch("main.Config")
     @patch("main.ChannelConfigManager")
-    @patch("src.rss_monitor.RSSChannelMonitor")
-    @patch("src.transcript_loader.YouTubeTranscriptLoader")
     def test_subscribe_handles_download_errors(
         self,
+        mock_config_class,
+        mock_main_config_class,
+        mock_disk_space,
+        mock_validate_channel,
         mock_loader_class,
         mock_rss_class,
-        mock_config_class,
         mock_channel_config,
         mock_videos,
     ):
@@ -283,6 +326,17 @@ class TestChannelSubscription:
         mock_config_manager = MagicMock()
         mock_config_class.return_value = mock_config_manager
         mock_config_manager.add_channel.return_value = True
+
+        # Mock Config class for main.py
+        mock_main_config = MagicMock()
+        mock_main_config_class.return_value = mock_main_config
+        mock_main_config.get.return_value = 20  # max_recent_videos
+
+        # Mock disk space check
+        mock_disk_space.return_value = True
+
+        # Mock channel validation
+        mock_validate_channel.return_value = True
 
         mock_rss_monitor = MagicMock()
         mock_rss_class.return_value = mock_rss_monitor
@@ -330,17 +384,38 @@ class TestChannelSubscription:
             mock_channel_config["handle"], "video1"
         )
 
+    @patch("main.RSSChannelMonitor")
+    @patch("main.YouTubeTranscriptLoader")
+    @patch("main.validate_channel_id")
+    @patch("main.check_disk_space")
+    @patch("main.Config")
     @patch("main.ChannelConfigManager")
-    @patch("src.rss_monitor.RSSChannelMonitor")
-    @patch("src.transcript_loader.YouTubeTranscriptLoader")
     def test_subscribe_respects_recent_count_limit(
-        self, mock_loader_class, mock_rss_class, mock_config_class, mock_channel_config
+        self,
+        mock_config_class,
+        mock_main_config_class,
+        mock_disk_space,
+        mock_validate_channel,
+        mock_loader_class,
+        mock_rss_class,
+        mock_channel_config,
     ):
         """Test subscription respects the recent count limit."""
         # Setup mocks
         mock_config_manager = MagicMock()
         mock_config_class.return_value = mock_config_manager
         mock_config_manager.add_channel.return_value = True
+
+        # Mock Config class for main.py
+        mock_main_config = MagicMock()
+        mock_main_config_class.return_value = mock_main_config
+        mock_main_config.get.return_value = 20  # max_recent_videos
+
+        # Mock disk space check
+        mock_disk_space.return_value = True
+
+        # Mock channel validation
+        mock_validate_channel.return_value = True
 
         mock_rss_monitor = MagicMock()
         mock_rss_class.return_value = mock_rss_monitor
@@ -356,7 +431,7 @@ class TestChannelSubscription:
                 title=f"Test Video {i}",
                 published=f"2024-01-{i:02d}T00:00:00",
                 channel_name="Test Channel",
-                channel_id="UC123456789",
+                channel_id="UC1234567890123456789012",
                 url=f"https://www.youtube.com/watch?v=video{i}",
             )
             for i in range(1, 31)

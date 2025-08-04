@@ -25,6 +25,7 @@ class ChannelMonitoringService:
         # Monitoring state
         self.running = False
         self.monitor_thread = None
+        self.shutdown_event = threading.Event()
 
         # Event callbacks
         self.on_new_video: Callable[[VideoInfo, ChannelConfig], None] | None = None
@@ -119,6 +120,7 @@ class ChannelMonitoringService:
             return
 
         self.running = False
+        self.shutdown_event.set()  # Signal shutdown to interruptible sleep
         if self.monitor_thread:
             self.monitor_thread.join(timeout=10)
         self._log_status("⏹️ Monitoring stopped")
@@ -239,8 +241,10 @@ class ChannelMonitoringService:
         except RateLimitError as e:
             self._log_error(f"Rate limit hit while processing {video.title}", e)
             self._log_status("⏸️ Rate limit detected. Sleeping for 3 hours...")
-            # Sleep for 3 hours (10800 seconds)
-            time.sleep(10800)
+            # Sleep for 3 hours (10800 seconds) with interruptible sleep
+            if self.shutdown_event.wait(10800):
+                self._log_status("🛑 Shutdown requested during rate limit sleep")
+                return
             self._log_status("🔄 Resuming after rate limit sleep...")
             # Re-raise to let the monitoring loop handle it
             raise
