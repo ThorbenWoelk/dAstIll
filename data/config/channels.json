@@ -2,7 +2,7 @@
   "monitoring": {
     "enabled": true,
     "check_interval": 120,
-    "max_videos_per_check": 5,
+    "max_videos_per_check": 15,
     "notifications": {
       "enabled": true,
       "console": true,
@@ -29,6 +29,20 @@
       "handle": "@HealthyGamerGG",
       "channel_id": "UClHVl2N3jPEbkNJVx-ItQIQ",
       "last_video_id": "l5X7OyMr0UY",
+      "monitoring": {
+        "languages": [
+          "en"
+        ],
+        "enabled": true,
+        "auto_download": true,
+        "auto_process": false
+      }
+    },
+    "@MikeIsraetelMakingProgress": {
+      "name": "Mike Israetel",
+      "handle": "@MikeIsraetelMakingProgress",
+      "channel_id": "UCDVIL4MTfsNY_Qu7AXxYUCw",
+      "last_video_id": "Cz3dNOUbMTw",
       "monitoring": {
         "languages": [
           "en"

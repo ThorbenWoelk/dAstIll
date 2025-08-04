@@ -165,7 +165,9 @@ def main():
     # Process command - Move videos from downloaded to processed
     process_parser = subparsers.add_parser("process", help="Mark videos as processed")
     process_parser.add_argument(
-        "video_ids", nargs="+", help="Video IDs to mark as processed"
+        "video_ids",
+        nargs="*",
+        help="Video IDs to mark as processed (if empty, processes all downloaded videos)",
     )
     process_parser.add_argument(
         "--channel", help="Override channel name for processed files"
@@ -265,7 +267,7 @@ def main():
         "--recent-count",
         type=int,
         default=15,
-        help="Number of recent videos to download (default: 15, max: 20)",
+        help="Number of recent videos to download (default: 15, max: 15 due to RSS feed limit)",
     )
 
     # List channels
@@ -314,10 +316,32 @@ def main():
 
     args = parser.parse_args()
 
-    # Require explicit command
+    # Default to monitoring mode if no command provided
     if args.command is None:
-        parser.print_help()
-        sys.exit(1)
+        print("🚀 Starting dAstIll monitoring service...", flush=True)
+        print("Use 'python main.py --help' to see available CLI commands", flush=True)
+
+        # Start monitoring service directly
+        global monitoring_service
+        monitoring_service = ChannelMonitoringService()
+
+        # Setup signal handlers for graceful shutdown
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+
+        if monitoring_service.start_monitoring():
+            print("✅ Monitoring started. Press Ctrl+C to stop.", flush=True)
+            try:
+                # Keep the main thread alive
+                while monitoring_service.running:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                print("\n🔄 Stopping monitoring...")
+                monitoring_service.stop_monitoring()
+        else:
+            print("❌ Failed to start monitoring")
+            sys.exit(1)
+        return
 
     loader = YouTubeTranscriptLoader()
 
@@ -530,7 +554,19 @@ def handle_status(loader, args):
 def handle_process(loader, args):
     processed_count = 0
 
-    for video_input in args.video_ids:
+    # If no video IDs provided, process all downloaded videos
+    if not args.video_ids:
+        downloaded_videos = loader.manager.list_videos_by_status("downloaded")
+        if not downloaded_videos:
+            print("No videos found in downloaded folder.")
+            return
+
+        print(f"Processing all {len(downloaded_videos)} downloaded videos...")
+        video_ids_to_process = [video["video_id"] for video in downloaded_videos]
+    else:
+        video_ids_to_process = args.video_ids
+
+    for video_input in video_ids_to_process:
         video_id = (
             loader._extract_video_id(video_input)
             if "youtube.com" in video_input or "youtu.be" in video_input
@@ -791,10 +827,10 @@ def handle_channel(args):
         print(f"   Auto-download: {args.auto_download}")
         print(f"   Auto-process: {args.auto_process}")
 
-        # Download recent videos
+        # Download recent videos (RSS feeds are limited to ~15 videos)
         config = Config()
-        max_videos = config.get("monitoring.max_recent_videos", 20)
-        recent_count = min(args.recent_count, max_videos)
+        max_videos = config.get("monitoring.max_recent_videos", 15)
+        recent_count = min(args.recent_count, max_videos, 15)  # RSS feed limit
         print(f"\n📥 Downloading recent {recent_count} videos...")
 
         # Check available disk space (estimate ~2MB per transcript)
