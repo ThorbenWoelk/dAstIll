@@ -43,9 +43,7 @@ class Config:
 
         default_config = {
             "storage": {
-                "base_path": str(
-                    home_dir / "Documents/totos-vault/AI Memory/youtube library"
-                ),
+                "base_path": str(home_dir / "Documents" / "dAstIll" / "transcripts"),
                 "markdown_format": True,
                 "organize_by_date": True,
             },
@@ -53,6 +51,9 @@ class Config:
                 "default_languages": ["en"],
                 "include_metadata": True,
                 "clean_transcript": True,
+            },
+            "monitoring": {
+                "max_recent_videos": 20,
             },
         }
 
