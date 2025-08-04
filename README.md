@@ -19,11 +19,35 @@ A Python command-line tool for downloading, organizing, and managing YouTube vid
 - **Background Monitoring**: Continuous monitoring with configurable check intervals
 - **Zero Cost**: Completely free using YouTube's public RSS feeds
 
+## Quick Start (Docker)
+
+For the complete automated workflow:
+
+```bash
+# 1. Clone and setup
+git clone <repository-url>
+cd dAstIll
+uv sync
+
+# 2. Subscribe to channels
+uv run python main.py channel subscribe "Tina Huang" "@TinaHuang1" UC2UXDak6o7rBm23k3Vv5dww
+uv run python main.py channel subscribe "HealthyGamerGG" "@HealthyGamerGG" UClHVl2N3jPEbkNJVx-ItQIQ
+
+# 3. Start the monitoring service
+docker-compose up -d
+
+# 4. Monitor logs (optional)
+docker-compose logs -f dastill-monitor
+```
+
+The service will now automatically monitor both channels, download new videos every 2 minutes, and handle rate limits gracefully.
+
 ## Installation
 
 ### Prerequisites
 - Python 3.13+
 - uv package manager
+- Docker & Docker Compose (for automated monitoring)
 
 ### Setup
 ```bash
@@ -118,6 +142,9 @@ uv run python main.py remove VIDEO_ID --delete-file
 # List configured channels
 uv run python main.py channel list --enabled-only
 
+# Subscribe to a channel (adds channel and downloads recent videos)
+uv run python main.py channel subscribe "Channel Name" "@channelhandle" CHANNEL_ID --recent-count 15
+
 # Enable/disable specific channels
 uv run python main.py channel toggle "@channelhandle" --disable
 
@@ -207,6 +234,39 @@ Channel monitoring is configured in `~/.dastill/channels.json`:
 
 ## Workflow Integration
 
+### Recommended Docker Workflow
+
+**Complete Setup Process:**
+
+1. **Subscribe to channels** using CLI commands:
+   ```bash
+   uv run python main.py channel subscribe "Channel Name" "@handle" CHANNEL_ID --recent-count 15
+   ```
+
+2. **Deploy the monitoring service** with Docker Compose:
+   ```bash
+   docker-compose up -d
+   ```
+
+3. **Service automatically**:
+   - Starts monitoring immediately on container startup
+   - Checks subscribed channels every 2 minutes for new videos
+   - Downloads new video transcripts automatically
+   - Handles rate limits with 3-hour sleep periods
+   - Restarts automatically if the container fails
+
+4. **Monitor the service**:
+   ```bash
+   # View logs
+   docker-compose logs -f dastill-monitor
+   
+   # Check status
+   docker-compose exec dastill-monitor uv run python main.py monitor status
+   
+   # Stop service
+   docker-compose down
+   ```
+
 ### Manual Processing Workflow
 1. **Download transcripts** using dAstIll for single videos or manual processing
 2. **Process with AI tools** like Claude Code for summarization and analysis
@@ -218,6 +278,13 @@ Channel monitoring is configured in `~/.dastill/channels.json`:
 3. **Start monitoring** - dAstIll automatically processes new videos
 4. **Use AI tools** to process the organized transcript library
 
+### Rate Limit Handling
+When the YouTube API rate limit is reached:
+- The service automatically detects rate limit errors
+- Sleeps for 3 hours before resuming
+- Logs the event clearly in Docker logs
+- Continues monitoring after the sleep period
+
 ### Example Processing Workflow
 ```bash
 # Setup automated monitoring (provide channel ID manually)
@@ -228,6 +295,86 @@ uv run python main.py settings enable && uv run python main.py monitor start
 # Later, use Claude Code to process the organized transcripts
 claude-code "Please summarize all new transcripts in the 'ai research channel' folder"
 ```
+
+## Docker Deployment
+
+dAstIll can be deployed as a long-running Docker service for continuous channel monitoring:
+
+### Quick Start with Docker Compose
+
+```bash
+# Build and start the monitoring service
+docker-compose up -d
+
+# View logs
+docker-compose logs -f dastill-monitor
+
+# Stop the service
+docker-compose down
+```
+
+### Docker Configuration
+
+The service includes:
+- **Automatic monitoring**: Continuously checks subscribed channels for new videos
+- **Volume mounts**: Persistent storage for videos and configuration
+- **Health checks**: Ensures service reliability
+- **Restart policy**: Automatically recovers from failures
+- **Rate limit handling**: Automatically sleeps for 3 hours when hitting YouTube API limits
+
+```yaml
+services:
+  dastill-monitor:
+    build: .
+    volumes:
+      - ./data:/data              # Video storage
+      - ./config:/root/.dastill   # Configuration
+    environment:
+      - DASTILL_BASE_PATH=/data
+    restart: unless-stopped
+```
+
+### Running CLI Commands in Docker
+
+```bash
+# Subscribe to a channel using Docker
+docker-compose run --rm dastill-cli channel subscribe "Tech Channel" "@techchannel" UC123456789
+
+# Check monitoring status
+docker-compose run --rm dastill-cli monitor status
+```
+
+## Channel Subscriptions
+
+The subscription feature allows you to quickly onboard new channels by downloading their recent videos:
+
+### Subscribe to a Channel
+
+```bash
+# Subscribe and download the latest 15 videos (default)
+uv run python main.py channel subscribe "Channel Name" "@handle" CHANNEL_ID
+
+# Subscribe with custom video count (max 20)
+uv run python main.py channel subscribe "Channel Name" "@handle" CHANNEL_ID --recent-count 20
+
+# Subscribe with auto-processing enabled
+uv run python main.py channel subscribe "Channel Name" "@handle" CHANNEL_ID --auto-process
+```
+
+### Subscription Process
+
+1. **Adds the channel** to your monitoring configuration
+2. **Downloads recent videos** from the RSS feed (up to 20)
+3. **Sets up monitoring** for future videos
+4. **Updates tracking** to prevent re-downloading
+
+### Finding Channel IDs
+
+To subscribe to a channel, you need its YouTube channel ID:
+1. Visit the channel's YouTube page
+2. View page source (Ctrl+U / Cmd+U)
+3. Search for "channelId" or "UC" followed by alphanumeric characters
+4. The channel ID typically starts with "UC" and is 24 characters long
 
 ## Architecture
 

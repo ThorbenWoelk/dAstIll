@@ -116,6 +116,13 @@ class YouTubeTranscriptLoader:
             return transcript_data
 
         except Exception as e:
+            # Check if it's a rate limit error
+            error_msg = str(e).lower()
+            if any(
+                term in error_msg
+                for term in ["rate limit", "too many requests", "quota", "429"]
+            ):
+                raise RateLimitError(f"Rate limit hit: {str(e)}") from e
             raise Exception(f"Failed to load transcript: {str(e)}") from e
 
     def clean_transcript(self, text: str) -> str:
@@ -195,3 +202,9 @@ class YouTubeTranscriptLoader:
             return True, new_path
         else:
             return False, f"Failed to process {video_id}"
+
+
+class RateLimitError(Exception):
+    """Raised when YouTube API rate limit is hit."""
+
+    pass
