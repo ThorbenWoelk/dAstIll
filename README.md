@@ -1,22 +1,17 @@
-# dAstIll - YouTube Transcript Loader & Channel Monitor
+# dAstIll - YouTube Transcript Loader
 
-A Python command-line tool for downloading, organizing, and managing YouTube video transcripts with automatic channel monitoring capabilities. dAstIll uses a stateless file-based architecture and RSS feeds to provide a complete transcript management solution without requiring API keys.
+A Python app and command-line tool for downloading, organizing, and managing YouTube video transcripts. Subscribe to recent videos of your favorite channels. No API keys needed. 
 
 ## Features
 
 ### Core Transcript Processing
-- **Smart Deduplication**: File-based status tracking prevents redundant downloads
 - **Markdown Storage**: Saves transcripts as organized markdown files with metadata
 - **Channel Organization**: Automatic file organization by YouTube channel
-- **Multiple Output Formats**: Raw transcript, cleaned text, and custom file outputs
 - **Language Support**: Multi-language transcript preference with fallback to auto-generated
-- **Stateless Architecture**: File system as single source of truth, no JSON databases
 
 ### Automatic Channel Monitoring
 - **RSS-Based Monitoring**: Monitor YouTube channels without API keys or quotas
-- **Automatic Processing**: Auto-download and process new videos as they're published
-- **Configurable Workflows**: Set per-channel auto-download and auto-process preferences
-- **Background Monitoring**: Continuous monitoring with configurable check intervals
+- **Subscription**: Auto-download and process new videos as they're published
 - **Zero Cost**: Completely free using YouTube's public RSS feeds
 
 ## Quick Start (Docker)
@@ -42,51 +37,19 @@ docker-compose logs -f dastill-monitor
 
 The service will now automatically monitor both channels, download new videos every 2 minutes, and handle rate limits gracefully.
 
-## Installation
-
-### Prerequisites
-- Python 3.13+
-- uv package manager
-- Docker & Docker Compose (for automated monitoring)
-
-### Setup
-```bash
-git clone <repository-url>
-cd dAstIll
-uv sync
-```
-
-## Usage
 
 ### Quick Start: Manual Transcript Download
 ```bash
 # Download a transcript (saves as markdown automatically)
-uv run python main.py https://www.youtube.com/watch?v=VIDEO_ID
+uv run python main.py download https://www.youtube.com/watch?v=VIDEO_ID
 
-# Or use the explicit download command
+# Specify channel name for organization
 uv run python main.py download https://www.youtube.com/watch?v=VIDEO_ID --channel "Channel Name"
-```
-
-### Channel Monitoring Setup
-```bash
-# Add channels to monitor (channel ID required - see section below)
-uv run python main.py channel add "Tina Huang" "@TinaHuang1" UC2UXDak6o7rBm23k3Vv5dww --auto-download --auto-process
-uv run python main.py channel add "Tech Channel" "@techhandle" UCTechChannelID123 --languages en de
-
-# Enable global monitoring and set check interval
-uv run python main.py settings enable
-uv run python main.py settings interval 300  # Check every 5 minutes
-
-# Start monitoring (runs continuously until stopped)
-uv run python main.py monitor start
-
-# Check monitoring status
-uv run python main.py monitor status
 ```
 
 ### Finding YouTube Channel IDs
 
-Since automatic channel ID resolution is unreliable, you need to provide channel IDs manually:
+Currently, you need to provide channel IDs manually:
 
 1. **Via RSS Feed**: Visit `https://www.youtube.com/feeds/videos.xml?channel_id=CHANNEL_ID` and try different channel IDs from the channel's page source
 2. **Via URL**: Check the channel's page source for `channel_id` or `externalId` fields
@@ -128,7 +91,9 @@ uv run python main.py queue --status processed
 uv run python main.py info VIDEO_ID
 
 # Process videos (move from downloaded to channel folders)
-uv run python main.py process VIDEO_ID1 VIDEO_ID2 --channel "Channel Name"
+uv run python main.py process                                # Process all downloaded videos
+uv run python main.py process VIDEO_ID1 VIDEO_ID2            # Process specific videos
+uv run python main.py process --channel "Channel Name"       # Process all with channel override
 
 # Add videos to download queue
 uv run python main.py add VIDEO_ID1 VIDEO_ID2 --channel "Channel Name"
@@ -327,21 +292,21 @@ services:
   dastill-monitor:
     build: .
     volumes:
-      - ./data:/data              # Video storage
-      - ./config:/root/.dastill   # Configuration
+      - ./data:/data              # Video storage and configuration
     environment:
       - DASTILL_BASE_PATH=/data
+      - DASTILL_CONFIG_DIR=/data/config
     restart: unless-stopped
 ```
 
 ### Running CLI Commands in Docker
 
 ```bash
-# Subscribe to a channel using Docker
-docker-compose run --rm dastill-cli channel subscribe "Tech Channel" "@techchannel" UC123456789
+# Subscribe to a channel using Docker (requires cli profile)
+docker-compose --profile cli run --rm dastill-cli channel subscribe "Tech Channel" "@techchannel" UC123456789
 
 # Check monitoring status
-docker-compose run --rm dastill-cli monitor status
+docker-compose --profile cli run --rm dastill-cli monitor status
 ```
 
 ## Channel Subscriptions
@@ -351,11 +316,11 @@ The subscription feature allows you to quickly onboard new channels by downloadi
 ### Subscribe to a Channel
 
 ```bash
-# Subscribe and download the latest 15 videos (default)
+# Subscribe and download the latest 15 videos (default and RSS feed maximum)
 uv run python main.py channel subscribe "Channel Name" "@handle" CHANNEL_ID
 
-# Subscribe with custom video count (max 20)
-uv run python main.py channel subscribe "Channel Name" "@handle" CHANNEL_ID --recent-count 20
+# Subscribe with custom video count (max 15 due to RSS feed limit)
+uv run python main.py channel subscribe "Channel Name" "@handle" CHANNEL_ID --recent-count 15
 
 # Subscribe with auto-processing enabled
 uv run python main.py channel subscribe "Channel Name" "@handle" CHANNEL_ID --auto-process

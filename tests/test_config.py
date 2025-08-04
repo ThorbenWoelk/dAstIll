@@ -122,6 +122,36 @@ class TestConfig(unittest.TestCase):
                 # Restore permissions for cleanup
                 os.chmod(self.temp_dir, 0o755)
 
+    def test_config_validation_max_recent_videos(self):
+        """Test validation of monitoring.max_recent_videos config value."""
+        config = Config(self.config_path)
+
+        # Valid values should work
+        config.set("monitoring.max_recent_videos", 1)
+        self.assertEqual(config.get("monitoring.max_recent_videos"), 1)
+
+        config.set("monitoring.max_recent_videos", 10)
+        self.assertEqual(config.get("monitoring.max_recent_videos"), 10)
+
+        config.set("monitoring.max_recent_videos", 20)
+        self.assertEqual(config.get("monitoring.max_recent_videos"), 20)
+
+        # Invalid values should raise ValueError
+        with self.assertRaises(ValueError):
+            config.set("monitoring.max_recent_videos", 0)
+
+        with self.assertRaises(ValueError):
+            config.set("monitoring.max_recent_videos", 21)
+
+        with self.assertRaises(ValueError):
+            config.set("monitoring.max_recent_videos", -1)
+
+        with self.assertRaises(ValueError):
+            config.set("monitoring.max_recent_videos", "not_a_number")
+
+        with self.assertRaises(ValueError):
+            config.set("monitoring.max_recent_videos", 50.5)
+
 
 if __name__ == "__main__":
     unittest.main()

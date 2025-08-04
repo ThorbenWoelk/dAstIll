@@ -43,9 +43,7 @@ class Config:
 
         default_config = {
             "storage": {
-                "base_path": str(
-                    home_dir / "Documents/totos-vault/AI Memory/youtube library"
-                ),
+                "base_path": str(home_dir / "Documents" / "dAstIll" / "transcripts"),
                 "markdown_format": True,
                 "organize_by_date": True,
             },
@@ -53,6 +51,9 @@ class Config:
                 "default_languages": ["en"],
                 "include_metadata": True,
                 "clean_transcript": True,
+            },
+            "monitoring": {
+                "max_recent_videos": 20,
             },
         }
 
@@ -71,6 +72,9 @@ class Config:
         return value if value != {} else default
 
     def set(self, key: str, value: Any):
+        # Validate specific config values
+        self._validate_config_value(key, value)
+
         keys = key.split(".")
         config = self.config
         for k in keys[:-1]:
@@ -79,6 +83,14 @@ class Config:
             config = config[k]
         config[keys[-1]] = value
         self._save_config()
+
+    def _validate_config_value(self, key: str, value: Any):
+        """Validate specific configuration values for security and correctness."""
+        if key == "monitoring.max_recent_videos":
+            if not isinstance(value, int) or value < 1 or value > 20:
+                raise ValueError(
+                    f"monitoring.max_recent_videos must be an integer between 1-20 (RSS feed limit), got: {value}"
+                )
 
     def _save_config(self):
         self._save_config_data(self.config)

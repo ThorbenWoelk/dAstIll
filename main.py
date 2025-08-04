@@ -1,12 +1,88 @@
 #!/usr/bin/env python3
 import argparse
+import re
+import shutil
 import signal
 import sys
 import time
 
 from config.channel_config import ChannelConfigManager
+from config.config import Config
 from src.monitoring_service import ChannelMonitoringService
-from src.transcript_loader import YouTubeTranscriptLoader
+from src.rss_monitor import RSSChannelMonitor
+from src.transcript_loader import RateLimitError, YouTubeTranscriptLoader
+
+
+def check_disk_space(path: str, required_mb: int = 100) -> bool:
+    """Check if there's enough disk space for downloads."""
+    try:
+        _, _, free_bytes = shutil.disk_usage(path)
+        free_mb = free_bytes / (1024 * 1024)
+        return free_mb >= required_mb
+    except Exception as e:
+        # If we can't check disk space, warn but allow operation to continue
+        print(
+            f"⚠️ Warning: Could not check disk space ({str(e)}). Proceeding with download."
+        )
+        print("   💡 Monitor disk usage manually to avoid out-of-space errors.")
+        return True
+
+
+def validate_channel_id(channel_id: str) -> bool:
+    """Validate YouTube channel ID format."""
+    if not channel_id:
+        return False
+
+    # Check for Windows reserved names (case-insensitive)
+    reserved_names = {
+        "CON",
+        "PRN",
+        "AUX",
+        "NUL",
+        "COM1",
+        "COM2",
+        "COM3",
+        "COM4",
+        "COM5",
+        "COM6",
+        "COM7",
+        "COM8",
+        "COM9",
+        "LPT1",
+        "LPT2",
+        "LPT3",
+        "LPT4",
+        "LPT5",
+        "LPT6",
+        "LPT7",
+        "LPT8",
+        "LPT9",
+    }
+    if channel_id.upper() in reserved_names:
+        return False
+
+    # YouTube channel IDs start with UC and are 24 characters long
+    if len(channel_id) == 24 and channel_id.startswith("UC"):
+        # Standard channel ID format - only alphanumeric, underscore, hyphen
+        return re.match(r"^UC[a-zA-Z0-9_-]{22}$", channel_id) is not None
+
+    # Legacy username or custom channel name - check for UC prefix conflicts first
+    if channel_id.startswith("UC"):
+        # If it starts with UC but isn't 24 chars, reject it to avoid confusion
+        return False
+
+    # Single character names (just alphanumeric)
+    if len(channel_id) == 1:
+        return channel_id.isalnum()
+
+    # Multi-character legacy names (3-30 chars for security, but not 24 chars to avoid UC confusion)
+    if 3 <= len(channel_id) <= 30 and len(channel_id) != 24:
+        # Legacy username or custom channel name - strict for file system safety
+        # Only allow alphanumeric and underscore - no periods to prevent hidden files
+        if re.match(r"^[a-zA-Z0-9][a-zA-Z0-9_]*[a-zA-Z0-9]$", channel_id):
+            return True
+
+    return False
 
 
 def main():
@@ -90,7 +166,9 @@ def main():
     # Process command - Move videos from downloaded to processed
     process_parser = subparsers.add_parser("process", help="Mark videos as processed")
     process_parser.add_argument(
-        "video_ids", nargs="+", help="Video IDs to mark as processed"
+        "video_ids",
+        nargs="*",
+        help="Video IDs to mark as processed (if empty, processes all downloaded videos)",
     )
     process_parser.add_argument(
         "--channel", help="Override channel name for processed files"
@@ -190,7 +268,7 @@ def main():
         "--recent-count",
         type=int,
         default=15,
-        help="Number of recent videos to download (default: 15, max: 20)",
+        help="Number of recent videos to download (default: 15, max: 15 due to RSS feed limit)",
     )
 
     # List channels
@@ -239,10 +317,32 @@ def main():
 
     args = parser.parse_args()
 
-    # Require explicit command
+    # Default to monitoring mode if no command provided
     if args.command is None:
-        parser.print_help()
-        sys.exit(1)
+        print("🚀 Starting dAstIll monitoring service...", flush=True)
+        print("Use 'python main.py --help' to see available CLI commands", flush=True)
+
+        # Start monitoring service directly
+        global monitoring_service
+        monitoring_service = ChannelMonitoringService()
+
+        # Setup signal handlers for graceful shutdown
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+
+        if monitoring_service.start_monitoring():
+            print("✅ Monitoring started. Press Ctrl+C to stop.", flush=True)
+            try:
+                # Keep the main thread alive
+                while monitoring_service.running:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                print("\n🔄 Stopping monitoring...")
+                monitoring_service.stop_monitoring()
+        else:
+            print("❌ Failed to start monitoring")
+            sys.exit(1)
+        return
 
     loader = YouTubeTranscriptLoader()
 
@@ -455,7 +555,19 @@ def handle_status(loader, args):
 def handle_process(loader, args):
     processed_count = 0
 
-    for video_input in args.video_ids:
+    # If no video IDs provided, process all downloaded videos
+    if not args.video_ids:
+        downloaded_videos = loader.manager.list_videos_by_status("downloaded")
+        if not downloaded_videos:
+            print("No videos found in downloaded folder.")
+            return
+
+        print(f"Processing all {len(downloaded_videos)} downloaded videos...")
+        video_ids_to_process = [video["video_id"] for video in downloaded_videos]
+    else:
+        video_ids_to_process = args.video_ids
+
+    for video_input in video_ids_to_process:
         video_id = (
             loader._extract_video_id(video_input)
             if "youtube.com" in video_input or "youtu.be" in video_input
@@ -614,6 +726,14 @@ def handle_channel(args):
     config_manager = ChannelConfigManager()
 
     if args.channel_action == "add":
+        # Validate channel ID format
+        if not validate_channel_id(args.channel_id):
+            print(f"❌ Invalid channel ID format: {args.channel_id}")
+            print(
+                "Channel ID should be 24 characters starting with 'UC' or a valid username"
+            )
+            return
+
         success = config_manager.add_channel(
             name=args.name,
             handle=args.handle,
@@ -681,6 +801,14 @@ def handle_channel(args):
             print(f"❌ Channel {args.handle} not found")
 
     elif args.channel_action == "subscribe":
+        # Validate channel ID format
+        if not validate_channel_id(args.channel_id):
+            print(f"❌ Invalid channel ID format: {args.channel_id}")
+            print(
+                "Channel ID should be 24 characters starting with 'UC' or a valid username"
+            )
+            return
+
         # First add the channel
         success = config_manager.add_channel(
             name=args.name,
@@ -700,28 +828,47 @@ def handle_channel(args):
         print(f"   Auto-download: {args.auto_download}")
         print(f"   Auto-process: {args.auto_process}")
 
-        # Download recent videos
-        recent_count = min(args.recent_count, 20)  # Cap at 20
+        # Download recent videos (RSS feeds are limited to ~20 videos)
+        config = Config()
+        max_videos = config.get("monitoring.max_recent_videos", 15)
+        recent_count = min(args.recent_count, max_videos)  # Respect config limit
         print(f"\n📥 Downloading recent {recent_count} videos...")
 
-        # Use RSS monitor to get recent videos
-        from src.rss_monitor import RSSChannelMonitor
-        from src.transcript_loader import RateLimitError, YouTubeTranscriptLoader
+        # Check available disk space (estimate ~2MB per transcript)
+        estimated_space_mb = recent_count * 2
+        config_storage = config.get("storage.base_path", ".")
+        if not check_disk_space(config_storage, estimated_space_mb):
+            print(f"⚠️ Insufficient disk space for {recent_count} videos")
+            print(f"   Estimated space needed: {estimated_space_mb}MB")
+            print("   Please free up disk space and try again")
+            return
 
+        # Use RSS monitor to get recent videos
         rss_monitor = RSSChannelMonitor()
 
         videos = rss_monitor.get_latest_videos(args.channel_id, limit=recent_count)
 
         if not videos:
             print("⚠️ Could not fetch recent videos from RSS feed")
+            print("   This could be due to:")
+            print("   - Invalid channel ID")
+            print("   - Network connectivity issues")
+            print("   - Temporary YouTube API limitations")
+            print(
+                "   The RSS monitor already includes retry logic with exponential backoff"
+            )
             return
 
         # Download each video's transcript
         loader = YouTubeTranscriptLoader()
         downloaded_count = 0
+        successful_videos = []
+        last_attempted_video = None
+        rate_limit_hit = False
 
         for i, video in enumerate(videos, 1):
             print(f"\n[{i}/{len(videos)}] Processing: {video.title}")
+            last_attempted_video = video  # Track the last video we attempted to process
 
             try:
                 result = loader.load_transcript(
@@ -734,9 +881,11 @@ def handle_channel(args):
 
                 if result.get("already_exists"):
                     print("   ✓ Already downloaded")
+                    successful_videos.append(video)
                 else:
                     print("   ✅ Downloaded successfully")
                     downloaded_count += 1
+                    successful_videos.append(video)
 
                     # Auto-process if enabled
                     if args.auto_process:
@@ -752,13 +901,31 @@ def handle_channel(args):
                 print(
                     "   💡 The monitoring service will handle rate limits by sleeping 3 hours."
                 )
+                rate_limit_hit = True
                 break
             except Exception as e:
                 print(f"   ❌ Error: {str(e)}")
+                # Continue processing other videos even if one fails
 
-        # Update the last video ID to prevent re-downloading on next monitor check
-        if videos:
-            config_manager.update_last_video_id(args.handle, videos[0].video_id)
+        # Update last_video_id based on processing results
+        if successful_videos and not rate_limit_hit:
+            # All videos processed successfully - update to most recent successful
+            last_successful_video = successful_videos[0]
+            config_manager.update_last_video_id(
+                args.handle, last_successful_video.video_id
+            )
+        elif successful_videos and rate_limit_hit:
+            # Rate limit hit - update to last attempted video to ensure retry of failed video
+            if last_attempted_video:
+                config_manager.update_last_video_id(
+                    args.handle, last_attempted_video.video_id
+                )
+                print(f"   📌 Will retry from: {last_attempted_video.title}")
+        elif rate_limit_hit and videos:
+            # Rate limit hit immediately - don't update last_video_id
+            print(
+                "   ⚠️ No videos processed due to immediate rate limit - will retry next time"
+            )
 
         print(f"\n✅ Subscription complete! Downloaded {downloaded_count} new videos.")
         print("🔄 Future videos will be monitored automatically.")
