@@ -1,7 +1,6 @@
 """YouTube channel monitoring service using RSS feeds."""
 
 import threading
-import time
 from collections.abc import Callable
 from datetime import datetime
 from typing import Any
@@ -25,6 +24,7 @@ class ChannelMonitoringService:
         # Monitoring state
         self.running = False
         self.monitor_thread = None
+        self.shutdown_event = threading.Event()
 
         # Event callbacks
         self.on_new_video: Callable[[VideoInfo, ChannelConfig], None] | None = None
@@ -96,6 +96,10 @@ class ChannelMonitoringService:
             )
             return False
 
+        # Perform startup backfill for all channels
+        self._log_status("🔄 Performing startup backfill for all channels...")
+        self._startup_backfill(enabled_channels)
+
         self.running = True
         self.monitor_thread = threading.Thread(
             target=self._monitoring_loop, daemon=True
@@ -119,6 +123,7 @@ class ChannelMonitoringService:
             return
 
         self.running = False
+        self.shutdown_event.set()  # Signal shutdown to interruptible sleep
         if self.monitor_thread:
             self.monitor_thread.join(timeout=10)
         self._log_status("⏹️ Monitoring stopped")
@@ -126,14 +131,61 @@ class ChannelMonitoringService:
     def _monitoring_loop(self):
         """Main monitoring loop that runs in a separate thread."""
         self._log_status("🔄 Monitoring loop started")
+        check_count = 0
 
         while self.running:
             try:
                 self._check_all_channels()
-                time.sleep(self.config_manager.global_config.check_interval)
+                check_count += 1
+
+                # Periodic memory cleanup every 10 checks to prevent memory leaks
+                if check_count % 10 == 0:
+                    self._cleanup_memory()
+
+                # Use interruptible sleep instead of time.sleep
+                if self.shutdown_event.wait(
+                    self.config_manager.global_config.check_interval
+                ):
+                    self._log_status("🛑 Shutdown requested during sleep")
+                    break
             except Exception as e:
                 self._log_error("Error in monitoring loop", e)
-                time.sleep(60)  # Wait a minute before retrying on error
+                # Use interruptible sleep for error wait as well
+                if self.shutdown_event.wait(
+                    60
+                ):  # Wait a minute before retrying on error
+                    self._log_status("🛑 Shutdown requested during error recovery")
+                    break
+
+    def _cleanup_memory(self):
+        """Periodic memory cleanup to prevent leaks in long-running service."""
+        try:
+            # Clear RSS monitor session to prevent connection pooling buildup
+            if hasattr(self.rss_monitor, "session"):
+                self.rss_monitor.session.close()
+                # Recreate session for future requests
+                import requests
+
+                self.rss_monitor.session = requests.Session()
+                self.rss_monitor.session.headers.update(
+                    {
+                        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                        "Accept-Language": "en-US,en;q=0.5",
+                        "Accept-Encoding": "gzip, deflate, br",
+                        "DNT": "1",
+                        "Connection": "keep-alive",
+                        "Upgrade-Insecure-Requests": "1",
+                    }
+                )
+
+            # Force garbage collection
+            import gc
+
+            gc.collect()
+
+        except Exception as e:
+            self._log_error("Error during memory cleanup", e)
 
     def _check_all_channels(self):
         """Check all enabled channels for new videos."""
@@ -200,6 +252,106 @@ class ChannelMonitoringService:
             if channel.monitoring.auto_download:
                 self._process_new_video(video, channel)
 
+    def _startup_backfill(self, channels: list[ChannelConfig]):
+        """Download historical videos from RSS feeds on startup."""
+        for channel in channels:
+            if not channel.channel_id or not channel.monitoring.auto_download:
+                continue
+
+            try:
+                self._log_status(f"🔍 Checking backfill for {channel.name}...")
+
+                # Get maximum available videos from RSS feed (up to 15)
+                max_videos = min(
+                    self.config_manager.global_config.max_videos_per_check, 15
+                )
+                videos = self.rss_monitor.get_latest_videos(
+                    channel.channel_id, limit=max_videos
+                )
+
+                if not videos:
+                    self._log_status(
+                        f"   No videos found in RSS feed for {channel.name}"
+                    )
+                    continue
+
+                backfill_count = 0
+                processed_videos = []
+
+                # Process videos in chronological order (oldest first)
+                for video in reversed(videos):
+                    try:
+                        # Check if video already exists
+                        status, _ = self.transcript_loader.manager.get_video_status(
+                            video.video_id
+                        )
+                        if status != "not_downloaded":
+                            continue  # Skip if already downloaded/processed
+
+                        self._log_status(f"📥 Backfilling: {video.title}")
+
+                        # Download the transcript
+                        transcript_data = self.transcript_loader.load_transcript(
+                            video.url,
+                            languages=channel.monitoring.languages,
+                            force=False,
+                            save_markdown=True,
+                            channel=channel.name,
+                        )
+
+                        if not transcript_data.get("already_exists"):
+                            backfill_count += 1
+                            processed_videos.append(video)
+
+                            # Auto-process to final location if enabled
+                            if channel.monitoring.auto_process:
+                                try:
+                                    success, result = (
+                                        self.transcript_loader.process_video(
+                                            video.video_id, channel.name
+                                        )
+                                    )
+                                    if success:
+                                        self._log_status(
+                                            f"   ✅ Auto-processed: {result}"
+                                        )
+                                except Exception as e:
+                                    self._log_error(
+                                        f"Auto-process error for {video.video_id}", e
+                                    )
+
+                    except RateLimitError as e:
+                        self._log_error(
+                            f"Rate limit hit during backfill for {video.title}", e
+                        )
+                        self._log_status(
+                            "⏸️ Rate limit detected during backfill. Continuing with other channels..."
+                        )
+                        break  # Stop backfill for this channel, continue with others
+                    except Exception as e:
+                        self._log_error(f"Error during backfill for {video.title}", e)
+                        continue  # Continue with next video
+
+                # Update last_video_id to most recent video if we processed any
+                if processed_videos or videos:
+                    latest_video = videos[0]  # First video is most recent
+                    self.config_manager.update_last_video_id(
+                        channel.handle, latest_video.video_id
+                    )
+                    self._log_status(
+                        f"   Updated last_video_id to: {latest_video.video_id}"
+                    )
+
+                if backfill_count > 0:
+                    self._log_status(
+                        f"✅ Backfilled {backfill_count} videos for {channel.name}"
+                    )
+                else:
+                    self._log_status(f"   No new videos to backfill for {channel.name}")
+
+            except Exception as e:
+                self._log_error(f"Error during backfill for {channel.name}", e)
+
     def _process_new_video(self, video: VideoInfo, channel: ChannelConfig):
         """Process a new video by downloading its transcript."""
         try:
@@ -239,8 +391,10 @@ class ChannelMonitoringService:
         except RateLimitError as e:
             self._log_error(f"Rate limit hit while processing {video.title}", e)
             self._log_status("⏸️ Rate limit detected. Sleeping for 3 hours...")
-            # Sleep for 3 hours (10800 seconds)
-            time.sleep(10800)
+            # Sleep for 3 hours (10800 seconds) with interruptible sleep
+            if self.shutdown_event.wait(10800):
+                self._log_status("🛑 Shutdown requested during rate limit sleep")
+                return
             self._log_status("🔄 Resuming after rate limit sleep...")
             # Re-raise to let the monitoring loop handle it
             raise
