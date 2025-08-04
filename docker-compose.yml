@@ -1,0 +1,36 @@
+services:
+  dastill-monitor:
+    build: .
+    container_name: dastill-monitor
+    volumes:
+      # Mount data directory for video storage and configuration
+      - ./data:/data
+    environment:
+      # Base path for video storage
+      - DASTILL_BASE_PATH=/data
+      # Configuration directory
+      - DASTILL_CONFIG_DIR=/data/config
+      # Optional: Override check interval (default is from config)
+      # - DASTILL_CHECK_INTERVAL=300
+    restart: unless-stopped
+    # Health check to ensure service is running
+    healthcheck:
+      test: ["CMD", "pgrep", "python"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Optional: Add a second service for one-time operations
+  dastill-cli:
+    build: .
+    container_name: dastill-cli
+    volumes:
+      - ./data:/data
+    environment:
+      - DASTILL_BASE_PATH=/data
+      - DASTILL_CONFIG_DIR=/data/config
+    # Override entrypoint for CLI usage
+    entrypoint: ["uv", "run", "python", "main.py"]
+    # This service doesn't run by default
+    profiles: ["cli"]
