@@ -1,12 +1,44 @@
 #!/usr/bin/env python3
 import argparse
+import re
+import shutil
 import signal
 import sys
 import time
 
 from config.channel_config import ChannelConfigManager
+from config.config import Config
 from src.monitoring_service import ChannelMonitoringService
-from src.transcript_loader import YouTubeTranscriptLoader
+from src.rss_monitor import RSSChannelMonitor
+from src.transcript_loader import RateLimitError, YouTubeTranscriptLoader
+
+
+def check_disk_space(path: str, required_mb: int = 100) -> bool:
+    """Check if there's enough disk space for downloads."""
+    try:
+        _, _, free_bytes = shutil.disk_usage(path)
+        free_mb = free_bytes / (1024 * 1024)
+        return free_mb >= required_mb
+    except Exception:
+        # If we can't check disk space, assume it's available
+        return True
+
+
+def validate_channel_id(channel_id: str) -> bool:
+    """Validate YouTube channel ID format."""
+    if not channel_id:
+        return False
+
+    # YouTube channel IDs start with UC and are 24 characters long
+    # Or can be legacy usernames/custom names (more flexible)
+    if len(channel_id) == 24 and channel_id.startswith("UC"):
+        # Standard channel ID format
+        return re.match(r"^UC[a-zA-Z0-9_-]{22}$", channel_id) is not None
+    elif 1 <= len(channel_id) <= 100:
+        # Legacy username or custom channel name
+        return re.match(r"^[a-zA-Z0-9_.-]+$", channel_id) is not None
+
+    return False
 
 
 def main():
@@ -614,6 +646,14 @@ def handle_channel(args):
     config_manager = ChannelConfigManager()
 
     if args.channel_action == "add":
+        # Validate channel ID format
+        if not validate_channel_id(args.channel_id):
+            print(f"❌ Invalid channel ID format: {args.channel_id}")
+            print(
+                "Channel ID should be 24 characters starting with 'UC' or a valid username"
+            )
+            return
+
         success = config_manager.add_channel(
             name=args.name,
             handle=args.handle,
@@ -681,6 +721,14 @@ def handle_channel(args):
             print(f"❌ Channel {args.handle} not found")
 
     elif args.channel_action == "subscribe":
+        # Validate channel ID format
+        if not validate_channel_id(args.channel_id):
+            print(f"❌ Invalid channel ID format: {args.channel_id}")
+            print(
+                "Channel ID should be 24 characters starting with 'UC' or a valid username"
+            )
+            return
+
         # First add the channel
         success = config_manager.add_channel(
             name=args.name,
@@ -701,19 +749,34 @@ def handle_channel(args):
         print(f"   Auto-process: {args.auto_process}")
 
         # Download recent videos
-        recent_count = min(args.recent_count, 20)  # Cap at 20
+        config = Config()
+        max_videos = config.get("monitoring.max_recent_videos", 20)
+        recent_count = min(args.recent_count, max_videos)
         print(f"\n📥 Downloading recent {recent_count} videos...")
 
-        # Use RSS monitor to get recent videos
-        from src.rss_monitor import RSSChannelMonitor
-        from src.transcript_loader import RateLimitError, YouTubeTranscriptLoader
+        # Check available disk space (estimate ~2MB per transcript)
+        estimated_space_mb = recent_count * 2
+        config_storage = config.get("storage.base_path", ".")
+        if not check_disk_space(config_storage, estimated_space_mb):
+            print(f"⚠️ Insufficient disk space for {recent_count} videos")
+            print(f"   Estimated space needed: {estimated_space_mb}MB")
+            print("   Please free up disk space and try again")
+            return
 
+        # Use RSS monitor to get recent videos
         rss_monitor = RSSChannelMonitor()
 
         videos = rss_monitor.get_latest_videos(args.channel_id, limit=recent_count)
 
         if not videos:
             print("⚠️ Could not fetch recent videos from RSS feed")
+            print("   This could be due to:")
+            print("   - Invalid channel ID")
+            print("   - Network connectivity issues")
+            print("   - Temporary YouTube API limitations")
+            print(
+                "   The RSS monitor already includes retry logic with exponential backoff"
+            )
             return
 
         # Download each video's transcript
