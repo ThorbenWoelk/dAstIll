@@ -149,6 +149,26 @@ The application uses a four-status file-based system:
 - Channel config: `~/.dastill/channels.json`
 - Both use atomic writes for safety
 
+## AI Agent Integration
+
+### Transcript Processing Workflow
+The application has a two-phase processing system:
+1. **Technical Processing**: The CLI application downloads transcripts and organizes them by channel
+2. **Educational Processing**: External AI agents (specifically the transcript-education-curator) analyze and summarize the content
+
+### Professor Agent Role
+- The `transcript-education-curator` agent acts as the "professor" for the application
+- It processes raw transcripts that have been moved to channel folders after the `process` command
+- Transforms verbose transcripts into structured educational summaries with key concepts and insights
+- This educational processing is separate from the technical file management handled by the CLI
+
+### Processing Flow
+```
+YouTube URL → download → downloaded/ → process → [channel-name]/ → AI agent processing
+```
+
+The CLI handles the first part (download, organize), while AI agents handle the educational analysis.
+
 ## Common Pitfalls to Avoid
 
 1. **Don't introduce JSON databases** - use file system for state
