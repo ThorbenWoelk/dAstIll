@@ -1,7 +1,6 @@
 """YouTube channel monitoring service using RSS feeds."""
 
 import threading
-import time
 from collections.abc import Callable
 from datetime import datetime
 from typing import Any
@@ -97,6 +96,10 @@ class ChannelMonitoringService:
             )
             return False
 
+        # Perform startup backfill for all channels
+        self._log_status("🔄 Performing startup backfill for all channels...")
+        self._startup_backfill(enabled_channels)
+
         self.running = True
         self.monitor_thread = threading.Thread(
             target=self._monitoring_loop, daemon=True
@@ -132,10 +135,20 @@ class ChannelMonitoringService:
         while self.running:
             try:
                 self._check_all_channels()
-                time.sleep(self.config_manager.global_config.check_interval)
+                # Use interruptible sleep instead of time.sleep
+                if self.shutdown_event.wait(
+                    self.config_manager.global_config.check_interval
+                ):
+                    self._log_status("🛑 Shutdown requested during sleep")
+                    break
             except Exception as e:
                 self._log_error("Error in monitoring loop", e)
-                time.sleep(60)  # Wait a minute before retrying on error
+                # Use interruptible sleep for error wait as well
+                if self.shutdown_event.wait(
+                    60
+                ):  # Wait a minute before retrying on error
+                    self._log_status("🛑 Shutdown requested during error recovery")
+                    break
 
     def _check_all_channels(self):
         """Check all enabled channels for new videos."""
@@ -201,6 +214,106 @@ class ChannelMonitoringService:
             # Automatically process if enabled
             if channel.monitoring.auto_download:
                 self._process_new_video(video, channel)
+
+    def _startup_backfill(self, channels: list[ChannelConfig]):
+        """Download historical videos from RSS feeds on startup."""
+        for channel in channels:
+            if not channel.channel_id or not channel.monitoring.auto_download:
+                continue
+
+            try:
+                self._log_status(f"🔍 Checking backfill for {channel.name}...")
+
+                # Get maximum available videos from RSS feed (up to 15)
+                max_videos = min(
+                    self.config_manager.global_config.max_videos_per_check, 15
+                )
+                videos = self.rss_monitor.get_latest_videos(
+                    channel.channel_id, limit=max_videos
+                )
+
+                if not videos:
+                    self._log_status(
+                        f"   No videos found in RSS feed for {channel.name}"
+                    )
+                    continue
+
+                backfill_count = 0
+                processed_videos = []
+
+                # Process videos in chronological order (oldest first)
+                for video in reversed(videos):
+                    try:
+                        # Check if video already exists
+                        status, _ = self.transcript_loader.manager.get_video_status(
+                            video.video_id
+                        )
+                        if status != "not_downloaded":
+                            continue  # Skip if already downloaded/processed
+
+                        self._log_status(f"📥 Backfilling: {video.title}")
+
+                        # Download the transcript
+                        transcript_data = self.transcript_loader.load_transcript(
+                            video.url,
+                            languages=channel.monitoring.languages,
+                            force=False,
+                            save_markdown=True,
+                            channel=channel.name,
+                        )
+
+                        if not transcript_data.get("already_exists"):
+                            backfill_count += 1
+                            processed_videos.append(video)
+
+                            # Auto-process to final location if enabled
+                            if channel.monitoring.auto_process:
+                                try:
+                                    success, result = (
+                                        self.transcript_loader.process_video(
+                                            video.video_id, channel.name
+                                        )
+                                    )
+                                    if success:
+                                        self._log_status(
+                                            f"   ✅ Auto-processed: {result}"
+                                        )
+                                except Exception as e:
+                                    self._log_error(
+                                        f"Auto-process error for {video.video_id}", e
+                                    )
+
+                    except RateLimitError as e:
+                        self._log_error(
+                            f"Rate limit hit during backfill for {video.title}", e
+                        )
+                        self._log_status(
+                            "⏸️ Rate limit detected during backfill. Continuing with other channels..."
+                        )
+                        break  # Stop backfill for this channel, continue with others
+                    except Exception as e:
+                        self._log_error(f"Error during backfill for {video.title}", e)
+                        continue  # Continue with next video
+
+                # Update last_video_id to most recent video if we processed any
+                if processed_videos or videos:
+                    latest_video = videos[0]  # First video is most recent
+                    self.config_manager.update_last_video_id(
+                        channel.handle, latest_video.video_id
+                    )
+                    self._log_status(
+                        f"   Updated last_video_id to: {latest_video.video_id}"
+                    )
+
+                if backfill_count > 0:
+                    self._log_status(
+                        f"✅ Backfilled {backfill_count} videos for {channel.name}"
+                    )
+                else:
+                    self._log_status(f"   No new videos to backfill for {channel.name}")
+
+            except Exception as e:
+                self._log_error(f"Error during backfill for {channel.name}", e)
 
     def _process_new_video(self, video: VideoInfo, channel: ChannelConfig):
         """Process a new video by downloading its transcript."""
