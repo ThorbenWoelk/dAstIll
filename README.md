@@ -45,20 +45,33 @@ uv run python main.py download https://www.youtube.com/watch?v=VIDEO_ID --channe
 
 ### Channel Monitoring Setup
 ```bash
-# Add channels to monitor
-uv run python main.py channel add "Tina Huang" "@TinaHuang1" --auto-download --auto-process
-uv run python main.py channel add "Tech Channel" "@techhandle" --languages en de
+# Add channels to monitor (channel ID required - see section below)
+uv run python main.py channel add "Tina Huang" "@TinaHuang1" UC2UXDak6o7rBm23k3Vv5dww --auto-download --auto-process
+uv run python main.py channel add "Tech Channel" "@techhandle" UCTechChannelID123 --languages en de
 
 # Enable global monitoring and set check interval
 uv run python main.py settings enable
 uv run python main.py settings interval 300  # Check every 5 minutes
 
 # Start monitoring (runs continuously until stopped)
-uv run python main.py monitor start --setup
+uv run python main.py monitor start
 
 # Check monitoring status
 uv run python main.py monitor status
 ```
+
+### Finding YouTube Channel IDs
+
+Since automatic channel ID resolution is unreliable, you need to provide channel IDs manually:
+
+1. **Via RSS Feed**: Visit `https://www.youtube.com/feeds/videos.xml?channel_id=CHANNEL_ID` and try different channel IDs from the channel's page source
+2. **Via URL**: Check the channel's page source for `channel_id` or `externalId` fields
+3. **Via Third-party Tools**: Use online YouTube channel ID lookup tools
+
+Example for finding @TinaHuang1's channel ID:
+- Visit https://www.youtube.com/@TinaHuang1
+- Test RSS feed: https://www.youtube.com/feeds/videos.xml?channel_id=UC2UXDak6o7rBm23k3Vv5dww
+- If the RSS feed works, the channel ID is valid
 
 ### Download Options
 ```bash
@@ -207,8 +220,8 @@ Channel monitoring is configured in `~/.dastill/channels.json`:
 
 ### Example Processing Workflow
 ```bash
-# Setup automated monitoring
-uv run python main.py channel add "AI Research Channel" "@ai-research" --auto-download --auto-process
+# Setup automated monitoring (provide channel ID manually)
+uv run python main.py channel add "AI Research Channel" "@ai-research" UCAIResearchChannelID123 --auto-download --auto-process
 uv run python main.py settings enable && uv run python main.py monitor start
 
 # Monitor automatically downloads and organizes new videos
@@ -242,11 +255,11 @@ claude-code "Please summarize all new transcripts in the 'ai research channel' f
 
 The monitoring system uses a three-layer architecture:
 
-1. **RSS Monitor**: Fetches YouTube RSS feeds and resolves channel IDs
+1. **RSS Monitor**: Fetches YouTube RSS feeds using manually provided channel IDs
 2. **Channel Config Manager**: Manages monitored channels and their settings
 3. **Monitoring Service**: Orchestrates automatic video detection and processing
 
-This design ensures reliable, scalable monitoring without API dependencies.
+This design ensures reliable, scalable monitoring without API dependencies. Channel IDs must be provided manually due to YouTube's bot detection measures.
 
 ## Dependencies
 
