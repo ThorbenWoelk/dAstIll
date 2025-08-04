@@ -40,27 +40,37 @@ jobs:
           # Optional: Specify model (defaults to Claude Sonnet 4, uncomment for Claude Opus 4)
           # model: "claude-opus-4-20250514"
           
-          # Direct prompt for automated review (no @claude mention needed)
           direct_prompt: |
-            Please review this pull request and provide feedback on:
-            - Code quality and best practices
-            - Potential bugs or issues
-            - Performance considerations
-            - Security concerns
-            - Test coverage
+            Review this PR critically. Focus on problems that matter:
             
-            Be constructive and helpful in your feedback.
+            **Does this change make sense?**
+            - Is it solving the right problem in the right way?
+            - Does it fit the application's philosophy from CLAUDE.md and README.md?
+            - Is the approach unnecessarily complex or clever?
+            - Does it break existing patterns without good reason?
+            
+            **What could go wrong?**
+            - Security vulnerabilities or unsafe input handling
+            - Potential system failures or data corruption
+            - Performance problems under load
+            - Breaking changes that will cause issues
+            - Missing type hints on public interfaces
+            - Improper exception handling patterns
+            - Race conditions or resource leaks
+            - Untested critical code paths
+            
+            **Is the code maintainable?**
+            - Clear intent and readable logic flow
+            - Appropriate abstractions and separation of concerns
+            - Adequate test coverage for critical functionality 
+            - Will future developers understand this?
+            - Tests hitting external APIs (should be mocked)
+            
+            Skip positive feedback and style nitpicks.
+            Be concise and focus on real problems.
 
           # Optional: Use sticky comments to make Claude reuse the same comment on subsequent pushes to the same PR
           # use_sticky_comment: true
-          
-          # Optional: Customize review based on file types
-          # direct_prompt: |
-          #   Review this PR focusing on:
-          #   - For TypeScript files: Type safety and proper interface usage
-          #   - For API endpoints: Security, input validation, and error handling
-          #   - For React components: Performance, accessibility, and best practices
-          #   - For tests: Coverage, edge cases, and test quality
           
           # Optional: Different prompts for different authors
           # direct_prompt: |
