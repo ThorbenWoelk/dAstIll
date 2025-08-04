@@ -130,18 +130,18 @@ class TestConfig(unittest.TestCase):
         config.set("monitoring.max_recent_videos", 1)
         self.assertEqual(config.get("monitoring.max_recent_videos"), 1)
 
-        config.set("monitoring.max_recent_videos", 50)
-        self.assertEqual(config.get("monitoring.max_recent_videos"), 50)
+        config.set("monitoring.max_recent_videos", 10)
+        self.assertEqual(config.get("monitoring.max_recent_videos"), 10)
 
-        config.set("monitoring.max_recent_videos", 100)
-        self.assertEqual(config.get("monitoring.max_recent_videos"), 100)
+        config.set("monitoring.max_recent_videos", 20)
+        self.assertEqual(config.get("monitoring.max_recent_videos"), 20)
 
         # Invalid values should raise ValueError
         with self.assertRaises(ValueError):
             config.set("monitoring.max_recent_videos", 0)
 
         with self.assertRaises(ValueError):
-            config.set("monitoring.max_recent_videos", 101)
+            config.set("monitoring.max_recent_videos", 21)
 
         with self.assertRaises(ValueError):
             config.set("monitoring.max_recent_videos", -1)

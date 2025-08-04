@@ -471,7 +471,7 @@ class TestChannelSubscription:
 
         handle_channel(args)
 
-        # Verify RSS was queried with limit of 15 (capped due to RSS feed limit)
+        # Verify RSS was queried with limit of 20 (respects config max_recent_videos)
         mock_rss_monitor.get_latest_videos.assert_called_once_with(
-            mock_channel_config["channel_id"], limit=15
+            mock_channel_config["channel_id"], limit=20
         )
