@@ -19,8 +19,12 @@ def check_disk_space(path: str, required_mb: int = 100) -> bool:
         _, _, free_bytes = shutil.disk_usage(path)
         free_mb = free_bytes / (1024 * 1024)
         return free_mb >= required_mb
-    except Exception:
-        # If we can't check disk space, assume it's available
+    except Exception as e:
+        # If we can't check disk space, warn but allow operation to continue
+        print(
+            f"⚠️ Warning: Could not check disk space ({str(e)}). Proceeding with download."
+        )
+        print("   💡 Monitor disk usage manually to avoid out-of-space errors.")
         return True
 
 
@@ -73,13 +77,10 @@ def validate_channel_id(channel_id: str) -> bool:
 
     # Multi-character legacy names (3-30 chars for security, but not 24 chars to avoid UC confusion)
     if 3 <= len(channel_id) <= 30 and len(channel_id) != 24:
-        # Legacy username or custom channel name - more restrictive for file system safety
-        # Exclude characters that could be problematic in file paths
-        # Allow only alphanumeric, underscore, and single periods (not consecutive)
-        if re.match(r"^[a-zA-Z0-9][a-zA-Z0-9_.]*[a-zA-Z0-9]$", channel_id):
-            # Ensure no consecutive periods or path traversal attempts
-            if ".." not in channel_id and not channel_id.startswith("."):
-                return True
+        # Legacy username or custom channel name - strict for file system safety
+        # Only allow alphanumeric and underscore - no periods to prevent hidden files
+        if re.match(r"^[a-zA-Z0-9][a-zA-Z0-9_]*[a-zA-Z0-9]$", channel_id):
+            return True
 
     return False
 
@@ -827,10 +828,10 @@ def handle_channel(args):
         print(f"   Auto-download: {args.auto_download}")
         print(f"   Auto-process: {args.auto_process}")
 
-        # Download recent videos (RSS feeds are limited to ~15 videos)
+        # Download recent videos (RSS feeds are limited to ~20 videos)
         config = Config()
         max_videos = config.get("monitoring.max_recent_videos", 15)
-        recent_count = min(args.recent_count, max_videos, 15)  # RSS feed limit
+        recent_count = min(args.recent_count, max_videos)  # Respect config limit
         print(f"\n📥 Downloading recent {recent_count} videos...")
 
         # Check available disk space (estimate ~2MB per transcript)
@@ -862,10 +863,12 @@ def handle_channel(args):
         loader = YouTubeTranscriptLoader()
         downloaded_count = 0
         successful_videos = []
+        last_attempted_video = None
         rate_limit_hit = False
 
         for i, video in enumerate(videos, 1):
             print(f"\n[{i}/{len(videos)}] Processing: {video.title}")
+            last_attempted_video = video  # Track the last video we attempted to process
 
             try:
                 result = loader.load_transcript(
@@ -904,18 +907,22 @@ def handle_channel(args):
                 print(f"   ❌ Error: {str(e)}")
                 # Continue processing other videos even if one fails
 
-        # Update the last video ID only if we processed videos successfully
-        # Use the most recent successfully processed video to avoid skipping failed ones
-        if successful_videos:
-            # If rate limit was hit, only update to the last successful video
-            # If all completed, update to the most recent (first in list)
+        # Update last_video_id based on processing results
+        if successful_videos and not rate_limit_hit:
+            # All videos processed successfully - update to most recent successful
             last_successful_video = successful_videos[0]
             config_manager.update_last_video_id(
                 args.handle, last_successful_video.video_id
             )
+        elif successful_videos and rate_limit_hit:
+            # Rate limit hit - update to last attempted video to ensure retry of failed video
+            if last_attempted_video:
+                config_manager.update_last_video_id(
+                    args.handle, last_attempted_video.video_id
+                )
+                print(f"   📌 Will retry from: {last_attempted_video.title}")
         elif rate_limit_hit and videos:
-            # If rate limit hit immediately, don't update last_video_id
-            # This ensures we retry these videos next time
+            # Rate limit hit immediately - don't update last_video_id
             print(
                 "   ⚠️ No videos processed due to immediate rate limit - will retry next time"
             )
