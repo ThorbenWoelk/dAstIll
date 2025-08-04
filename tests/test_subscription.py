@@ -54,14 +54,20 @@ def mock_videos():
 class TestChannelSubscription:
     """Test channel subscription functionality."""
 
+    @patch("main.RSSChannelMonitor")
+    @patch("main.YouTubeTranscriptLoader")
+    @patch("main.validate_channel_id")
+    @patch("main.check_disk_space")
+    @patch("main.Config")
     @patch("main.ChannelConfigManager")
-    @patch("src.rss_monitor.RSSChannelMonitor")
-    @patch("src.transcript_loader.YouTubeTranscriptLoader")
     def test_subscribe_new_channel_success(
         self,
+        mock_config_class,
+        mock_main_config_class,
+        mock_disk_space,
+        mock_validate_channel,
         mock_loader_class,
         mock_rss_class,
-        mock_config_class,
         mock_channel_config,
         mock_videos,
     ):
@@ -70,6 +76,17 @@ class TestChannelSubscription:
         mock_config_manager = MagicMock()
         mock_config_class.return_value = mock_config_manager
         mock_config_manager.add_channel.return_value = True
+
+        # Mock Config class for main.py
+        mock_main_config = MagicMock()
+        mock_main_config_class.return_value = mock_main_config
+        mock_main_config.get.return_value = 20  # max_recent_videos
+
+        # Mock disk space check
+        mock_disk_space.return_value = True
+
+        # Mock channel validation
+        mock_validate_channel.return_value = True
 
         mock_rss_monitor = MagicMock()
         mock_rss_class.return_value = mock_rss_monitor
@@ -121,7 +138,7 @@ class TestChannelSubscription:
                 channel=mock_channel_config["name"],
             )
 
-        # Verify last video ID was updated
+        # Verify last video ID was updated (most recent successful video)
         mock_config_manager.update_last_video_id.assert_called_once_with(
             mock_channel_config["handle"], "video1"
         )
