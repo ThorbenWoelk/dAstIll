@@ -10,6 +10,7 @@ from typing import Any
 @dataclass
 class MonitoringSettings:
     """Settings for transcript monitoring."""
+
     languages: list[str] = None
     enabled: bool = True
     auto_download: bool = True
@@ -23,6 +24,7 @@ class MonitoringSettings:
 @dataclass
 class ChannelConfig:
     """Configuration for a monitored channel."""
+
     name: str
     handle: str
     channel_id: str | None = None
@@ -37,6 +39,7 @@ class ChannelConfig:
 @dataclass
 class GlobalMonitoringConfig:
     """Global monitoring configuration."""
+
     enabled: bool = False
     check_interval: int = 300  # seconds
     max_videos_per_check: int = 5
@@ -44,11 +47,7 @@ class GlobalMonitoringConfig:
 
     def __post_init__(self):
         if self.notifications is None:
-            self.notifications = {
-                "enabled": True,
-                "console": True,
-                "log_file": True
-            }
+            self.notifications = {"enabled": True, "console": True, "log_file": True}
 
 
 class ChannelConfigManager:
@@ -74,27 +73,27 @@ class ChannelConfigManager:
             return
 
         try:
-            with open(self.channels_file, encoding='utf-8') as f:
+            with open(self.channels_file, encoding="utf-8") as f:
                 data = json.load(f)
 
             # Load global config
-            global_data = data.get('monitoring', {})
+            global_data = data.get("monitoring", {})
             self.global_config = GlobalMonitoringConfig(**global_data)
 
             # Load channels
-            channels_data = data.get('channels', {})
+            channels_data = data.get("channels", {})
             self.channels = {}
 
             for handle, channel_data in channels_data.items():
-                monitoring_data = channel_data.get('monitoring', {})
+                monitoring_data = channel_data.get("monitoring", {})
                 monitoring = MonitoringSettings(**monitoring_data)
 
                 channel = ChannelConfig(
-                    name=channel_data['name'],
+                    name=channel_data["name"],
                     handle=handle,
-                    channel_id=channel_data.get('channel_id'),
-                    last_video_id=channel_data.get('last_video_id'),
-                    monitoring=monitoring
+                    channel_id=channel_data.get("channel_id"),
+                    last_video_id=channel_data.get("last_video_id"),
+                    monitoring=monitoring,
                 )
                 self.channels[handle] = channel
 
@@ -111,17 +110,14 @@ class ChannelConfigManager:
     def save_configuration(self):
         """Save current configuration to file."""
         try:
-            data = {
-                'monitoring': asdict(self.global_config),
-                'channels': {}
-            }
+            data = {"monitoring": asdict(self.global_config), "channels": {}}
 
             for handle, channel in self.channels.items():
-                data['channels'][handle] = asdict(channel)
+                data["channels"][handle] = asdict(channel)
 
             # Atomic write for safety
-            temp_file = self.channels_file.with_suffix('.tmp')
-            with open(temp_file, 'w', encoding='utf-8') as f:
+            temp_file = self.channels_file.with_suffix(".tmp")
+            with open(temp_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
 
             temp_file.replace(self.channels_file)
@@ -132,28 +128,25 @@ class ChannelConfigManager:
     def add_channel(self, name: str, handle: str, **kwargs) -> bool:
         """Add a new channel to monitor."""
         # Normalize handle format
-        if not handle.startswith('@'):
-            handle = '@' + handle
+        if not handle.startswith("@"):
+            handle = "@" + handle
 
         if handle in self.channels:
             return False  # Channel already exists
 
         # Create monitoring settings
         monitoring_kwargs = {}
-        if 'languages' in kwargs:
-            monitoring_kwargs['languages'] = kwargs.pop('languages')
-        if 'auto_download' in kwargs:
-            monitoring_kwargs['auto_download'] = kwargs.pop('auto_download')
-        if 'auto_process' in kwargs:
-            monitoring_kwargs['auto_process'] = kwargs.pop('auto_process')
+        if "languages" in kwargs:
+            monitoring_kwargs["languages"] = kwargs.pop("languages")
+        if "auto_download" in kwargs:
+            monitoring_kwargs["auto_download"] = kwargs.pop("auto_download")
+        if "auto_process" in kwargs:
+            monitoring_kwargs["auto_process"] = kwargs.pop("auto_process")
 
         monitoring = MonitoringSettings(**monitoring_kwargs)
 
         channel = ChannelConfig(
-            name=name,
-            handle=handle,
-            monitoring=monitoring,
-            **kwargs
+            name=name, handle=handle, monitoring=monitoring, **kwargs
         )
 
         self.channels[handle] = channel
@@ -162,8 +155,8 @@ class ChannelConfigManager:
 
     def remove_channel(self, handle: str) -> bool:
         """Remove a channel from monitoring."""
-        if not handle.startswith('@'):
-            handle = '@' + handle
+        if not handle.startswith("@"):
+            handle = "@" + handle
 
         if handle in self.channels:
             del self.channels[handle]
@@ -173,8 +166,8 @@ class ChannelConfigManager:
 
     def get_channel(self, handle: str) -> ChannelConfig | None:
         """Get channel configuration by handle."""
-        if not handle.startswith('@'):
-            handle = '@' + handle
+        if not handle.startswith("@"):
+            handle = "@" + handle
         return self.channels.get(handle)
 
     def get_enabled_channels(self) -> list[ChannelConfig]:
@@ -183,8 +176,8 @@ class ChannelConfigManager:
 
     def update_channel_id(self, handle: str, channel_id: str) -> bool:
         """Update the channel ID for a handle."""
-        if not handle.startswith('@'):
-            handle = '@' + handle
+        if not handle.startswith("@"):
+            handle = "@" + handle
 
         if handle in self.channels:
             self.channels[handle].channel_id = channel_id
@@ -194,8 +187,8 @@ class ChannelConfigManager:
 
     def update_last_video_id(self, handle: str, video_id: str) -> bool:
         """Update the last processed video ID for a channel."""
-        if not handle.startswith('@'):
-            handle = '@' + handle
+        if not handle.startswith("@"):
+            handle = "@" + handle
 
         if handle in self.channels:
             self.channels[handle].last_video_id = video_id
@@ -205,8 +198,8 @@ class ChannelConfigManager:
 
     def enable_channel(self, handle: str, enabled: bool = True) -> bool:
         """Enable or disable monitoring for a channel."""
-        if not handle.startswith('@'):
-            handle = '@' + handle
+        if not handle.startswith("@"):
+            handle = "@" + handle
 
         if handle in self.channels:
             self.channels[handle].monitoring.enabled = enabled
@@ -225,7 +218,9 @@ class ChannelConfigManager:
             self.global_config.check_interval = interval
             self.save_configuration()
         else:
-            raise ValueError(f"Check interval must be between 60 and 86400 seconds (got {interval})")
+            raise ValueError(
+                f"Check interval must be between 60 and 86400 seconds (got {interval})"
+            )
 
     def list_channels(self, enabled_only: bool = False) -> list[ChannelConfig]:
         """List all channels, optionally filtering to enabled only."""
@@ -240,13 +235,15 @@ class ChannelConfigManager:
         enabled_channels = len(self.get_enabled_channels())
 
         channels_with_ids = len([ch for ch in self.channels.values() if ch.channel_id])
-        channels_with_last_video = len([ch for ch in self.channels.values() if ch.last_video_id])
+        channels_with_last_video = len(
+            [ch for ch in self.channels.values() if ch.last_video_id]
+        )
 
         return {
-            'total_channels': total_channels,
-            'enabled_channels': enabled_channels,
-            'channels_with_ids': channels_with_ids,
-            'channels_with_last_video': channels_with_last_video,
-            'global_monitoring_enabled': self.global_config.enabled,
-            'check_interval': self.global_config.check_interval
+            "total_channels": total_channels,
+            "enabled_channels": enabled_channels,
+            "channels_with_ids": channels_with_ids,
+            "channels_with_last_video": channels_with_last_video,
+            "global_monitoring_enabled": self.global_config.enabled,
+            "check_interval": self.global_config.check_interval,
         }
