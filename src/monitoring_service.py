@@ -28,37 +28,11 @@ class ChannelMonitoringService:
 
         # Event callbacks
         self.on_new_video: Callable[[VideoInfo, ChannelConfig], None] | None = None
-        self.on_video_processed: Callable[[VideoInfo, ChannelConfig, dict], None] | None = None
+        self.on_video_processed: (
+            Callable[[VideoInfo, ChannelConfig, dict], None] | None
+        ) = None
         self.on_error: Callable[[str, Exception], None] | None = None
         self.on_status: Callable[[str], None] | None = None
-
-    def setup_channels(self, force_resolve: bool = False) -> bool:
-        """Resolve missing channel IDs for all enabled channels."""
-        updated = False
-        enabled_channels = self.config_manager.get_enabled_channels()
-
-        if not enabled_channels:
-            self._log_status("No enabled channels configured")
-            return True
-
-        for channel in enabled_channels:
-            if not channel.channel_id or force_resolve:
-                self._log_status(f"Resolving channel ID for {channel.handle}...")
-
-                channel_id = self.rss_monitor.resolve_channel_id(channel.handle)
-                if channel_id:
-                    self.config_manager.update_channel_id(channel.handle, channel_id)
-                    channel.channel_id = channel_id  # Update local copy
-                    updated = True
-                    self._log_status(f"✅ Resolved {channel.handle} → {channel_id}")
-                else:
-                    self._log_error(f"Failed to resolve channel ID for {channel.handle}", None)
-                    return False
-
-        if updated:
-            self._log_status("Channel setup completed")
-
-        return True
 
     def test_configuration(self) -> bool:
         """Test monitoring configuration and RSS connectivity."""
@@ -75,7 +49,8 @@ class ChannelMonitoringService:
             self._log_status(f"Testing {channel.name} ({channel.handle})...")
 
             if not channel.channel_id:
-                self._log_status("   ⚠️ No channel ID - will resolve during setup")
+                self._log_status("   ❌ Missing channel ID - please add manually")
+                all_good = False
                 continue
 
             # Test RSS feed
@@ -105,31 +80,36 @@ class ChannelMonitoringService:
             self._log_status("Global monitoring is disabled")
             return False
 
-        # Setup channels (resolve missing channel IDs)
-        if not self.setup_channels():
-            self._log_error("Failed to setup channels", None)
-            return False
-
         enabled_channels = self.config_manager.get_enabled_channels()
         if not enabled_channels:
             self._log_status("No enabled channels to monitor")
             return False
 
-        # Verify all enabled channels have channel IDs
+        # Verify all enabled channels have channel IDs (now required manually)
         missing_ids = [ch for ch in enabled_channels if not ch.channel_id]
         if missing_ids:
             handles = [ch.handle for ch in missing_ids]
-            self._log_error(f"Cannot resolve channel IDs for: {handles}", None)
+            self._log_error(f"Missing channel IDs for: {handles}", None)
+            self._log_error(
+                "Please provide channel IDs manually using the 'channel add' command",
+                None,
+            )
             return False
 
         self.running = True
-        self.monitor_thread = threading.Thread(target=self._monitoring_loop, daemon=True)
+        self.monitor_thread = threading.Thread(
+            target=self._monitoring_loop, daemon=True
+        )
         self.monitor_thread.start()
 
-        self._log_status(f"✅ Started RSS monitoring for {len(enabled_channels)} channels")
+        self._log_status(
+            f"✅ Started RSS monitoring for {len(enabled_channels)} channels"
+        )
         for ch in enabled_channels:
             self._log_status(f"   - {ch.name} ({ch.handle})")
-        self._log_status(f"Check interval: {self.config_manager.global_config.check_interval} seconds")
+        self._log_status(
+            f"Check interval: {self.config_manager.global_config.check_interval} seconds"
+        )
 
         return True
 
@@ -159,7 +139,9 @@ class ChannelMonitoringService:
         """Check all enabled channels for new videos."""
         enabled_channels = self.config_manager.get_enabled_channels()
 
-        self._log_status(f"🔍 Checking {len(enabled_channels)} channels for new videos...")
+        self._log_status(
+            f"🔍 Checking {len(enabled_channels)} channels for new videos..."
+        )
 
         for channel in enabled_channels:
             try:
@@ -174,7 +156,9 @@ class ChannelMonitoringService:
 
         # Get latest videos from RSS
         max_videos = self.config_manager.global_config.max_videos_per_check
-        videos = self.rss_monitor.get_latest_videos(channel.channel_id, limit=max_videos)
+        videos = self.rss_monitor.get_latest_videos(
+            channel.channel_id, limit=max_videos
+        )
 
         if not videos:
             return
@@ -222,10 +206,10 @@ class ChannelMonitoringService:
                 languages=channel.monitoring.languages,
                 force=False,  # Don't reprocess if already exists
                 save_markdown=True,
-                channel=channel.name
+                channel=channel.name,
             )
 
-            if transcript_data.get('already_exists'):
+            if transcript_data.get("already_exists"):
                 self._log_status(f"✓ Video already processed: {video.title}")
             else:
                 self._log_status(f"✅ Transcript downloaded: {video.title}")
@@ -234,8 +218,7 @@ class ChannelMonitoringService:
                 if channel.monitoring.auto_process:
                     try:
                         success, result = self.transcript_loader.process_video(
-                            video.video_id,
-                            channel.name
+                            video.video_id, channel.name
                         )
                         if success:
                             self._log_status(f"✅ Video auto-processed: {result}")
@@ -262,7 +245,10 @@ class ChannelMonitoringService:
             enabled_channels = self.config_manager.get_enabled_channels()
 
             if not enabled_channels:
-                return {"status": "no_channels", "message": "No enabled channels configured"}
+                return {
+                    "status": "no_channels",
+                    "message": "No enabled channels configured",
+                }
 
             results = {}
             for channel in enabled_channels:
@@ -318,8 +304,8 @@ class ChannelMonitoringService:
                     "has_channel_id": bool(ch.channel_id),
                     "last_video_id": ch.last_video_id,
                     "auto_download": ch.monitoring.auto_download,
-                    "auto_process": ch.monitoring.auto_process
+                    "auto_process": ch.monitoring.auto_process,
                 }
                 for ch in self.config_manager.list_channels()
-            ]
+            ],
         }

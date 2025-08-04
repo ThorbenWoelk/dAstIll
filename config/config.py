@@ -6,6 +6,7 @@ from typing import Any
 # Import fcntl only on Unix systems
 try:
     import fcntl
+
     HAS_FCNTL = True
 except ImportError:
     HAS_FCNTL = False
@@ -23,7 +24,7 @@ class Config:
     def _load_config(self) -> dict[str, Any]:
         if self.config_path.exists():
             try:
-                with open(self.config_path, encoding='utf-8') as f:
+                with open(self.config_path, encoding="utf-8") as f:
                     return json.load(f)
             except (json.JSONDecodeError, OSError):
                 # If config is corrupted or unreadable, fall back to defaults
@@ -34,19 +35,20 @@ class Config:
     def _create_default_config(self) -> dict[str, Any]:
         # Use a user-friendly location for transcripts (not hidden)
         home_dir = Path.home()
-        transcripts_dir = home_dir / "dAstIll-transcripts"
 
         default_config = {
             "storage": {
-                "base_path": str(home_dir / "Documents/totos-vault/AI Memory/youtube library"),
+                "base_path": str(
+                    home_dir / "Documents/totos-vault/AI Memory/youtube library"
+                ),
                 "markdown_format": True,
-                "organize_by_date": True
+                "organize_by_date": True,
             },
             "transcript": {
                 "default_languages": ["en"],
                 "include_metadata": True,
-                "clean_transcript": True
-            }
+                "clean_transcript": True,
+            },
         }
 
         self.config_dir.mkdir(parents=True, exist_ok=True)
@@ -55,7 +57,7 @@ class Config:
         return default_config
 
     def get(self, key: str, default=None):
-        keys = key.split('.')
+        keys = key.split(".")
         value = self.config
         for k in keys:
             value = value.get(k, {})
@@ -64,7 +66,7 @@ class Config:
         return value if value != {} else default
 
     def set(self, key: str, value: Any):
-        keys = key.split('.')
+        keys = key.split(".")
         config = self.config
         for k in keys[:-1]:
             if k not in config:
@@ -78,10 +80,10 @@ class Config:
 
     def _save_config_data(self, config_data: dict[str, Any]):
         """Save config with atomic write and file locking to prevent race conditions."""
-        temp_path = self.config_path.with_suffix('.tmp')
+        temp_path = self.config_path.with_suffix(".tmp")
 
         try:
-            with open(temp_path, 'w', encoding='utf-8') as f:
+            with open(temp_path, "w", encoding="utf-8") as f:
                 # Lock the file to prevent concurrent writes (Unix only)
                 if HAS_FCNTL:
                     fcntl.flock(f.fileno(), fcntl.LOCK_EX)
@@ -96,4 +98,4 @@ class Config:
             # Clean up temp file if something went wrong
             if temp_path.exists():
                 temp_path.unlink()
-            raise OSError(f"Failed to save configuration: {str(e)}")
+            raise OSError(f"Failed to save configuration: {str(e)}") from e
