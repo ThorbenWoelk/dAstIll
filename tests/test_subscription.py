@@ -464,14 +464,14 @@ class TestChannelSubscription:
         args.languages = mock_channel_config["languages"]
         args.auto_download = mock_channel_config["auto_download"]
         args.auto_process = mock_channel_config["auto_process"]
-        args.recent_count = 25  # Request more than 20
+        args.recent_count = 25  # Request more than 15
 
         # Import and run the handler
         from main import handle_channel
 
         handle_channel(args)
 
-        # Verify RSS was queried with limit of 20 (capped)
+        # Verify RSS was queried with limit of 15 (capped due to RSS feed limit)
         mock_rss_monitor.get_latest_videos.assert_called_once_with(
-            mock_channel_config["channel_id"], limit=20
+            mock_channel_config["channel_id"], limit=15
         )

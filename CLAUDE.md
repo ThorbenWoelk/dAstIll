@@ -164,10 +164,16 @@ The application has a two-phase processing system:
 
 ### Processing Flow
 ```
-YouTube URL → download → downloaded/ → process → [channel-name]/ → AI agent processing
+YouTube URL → download → downloaded/ → AI agent processing → process → [channel-name]/
 ```
 
-The CLI handles the first part (download, organize), while AI agents handle the educational analysis.
+**IMPORTANT WORKFLOW STEP**: After using the transcript-education-curator agent (professor) to summarize transcripts in the `downloaded/` folder, you MUST use the dAstIll app's `process` command to move the files to their proper channel folders:
+
+```bash
+uv run python main.py process
+```
+
+This ensures the enhanced transcripts are properly organized by channel in the file system architecture.
 
 ## Common Pitfalls to Avoid
 

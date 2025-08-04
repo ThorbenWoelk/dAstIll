@@ -33,6 +33,8 @@ RUN mkdir -p /data/to_be_downloaded /data/downloaded /data/unknown /data/config
 ENV DASTILL_BASE_PATH=/data
 ENV DASTILL_CONFIG_DIR=/data/config
 ENV PYTHONPATH=/app
+# Ensure Python output is unbuffered for real-time logs
+ENV PYTHONUNBUFFERED=1
 
-# Default command for monitoring service
-CMD ["uv", "run", "python", "main.py", "monitor", "start"]
+# Default command starts monitoring service
+CMD ["uv", "run", "python", "main.py"]
