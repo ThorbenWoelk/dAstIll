@@ -29,14 +29,57 @@ def validate_channel_id(channel_id: str) -> bool:
     if not channel_id:
         return False
 
+    # Check for Windows reserved names (case-insensitive)
+    reserved_names = {
+        "CON",
+        "PRN",
+        "AUX",
+        "NUL",
+        "COM1",
+        "COM2",
+        "COM3",
+        "COM4",
+        "COM5",
+        "COM6",
+        "COM7",
+        "COM8",
+        "COM9",
+        "LPT1",
+        "LPT2",
+        "LPT3",
+        "LPT4",
+        "LPT5",
+        "LPT6",
+        "LPT7",
+        "LPT8",
+        "LPT9",
+    }
+    if channel_id.upper() in reserved_names:
+        return False
+
     # YouTube channel IDs start with UC and are 24 characters long
-    # Or can be legacy usernames/custom names (more flexible)
     if len(channel_id) == 24 and channel_id.startswith("UC"):
-        # Standard channel ID format
+        # Standard channel ID format - only alphanumeric, underscore, hyphen
         return re.match(r"^UC[a-zA-Z0-9_-]{22}$", channel_id) is not None
-    elif 1 <= len(channel_id) <= 100:
-        # Legacy username or custom channel name
-        return re.match(r"^[a-zA-Z0-9_.-]+$", channel_id) is not None
+
+    # Legacy username or custom channel name - check for UC prefix conflicts first
+    if channel_id.startswith("UC"):
+        # If it starts with UC but isn't 24 chars, reject it to avoid confusion
+        return False
+
+    # Single character names (just alphanumeric)
+    if len(channel_id) == 1:
+        return channel_id.isalnum()
+
+    # Multi-character legacy names (3-30 chars for security, but not 24 chars to avoid UC confusion)
+    if 3 <= len(channel_id) <= 30 and len(channel_id) != 24:
+        # Legacy username or custom channel name - more restrictive for file system safety
+        # Exclude characters that could be problematic in file paths
+        # Allow only alphanumeric, underscore, and single periods (not consecutive)
+        if re.match(r"^[a-zA-Z0-9][a-zA-Z0-9_.]*[a-zA-Z0-9]$", channel_id):
+            # Ensure no consecutive periods or path traversal attempts
+            if ".." not in channel_id and not channel_id.startswith("."):
+                return True
 
     return False
 
@@ -782,6 +825,8 @@ def handle_channel(args):
         # Download each video's transcript
         loader = YouTubeTranscriptLoader()
         downloaded_count = 0
+        successful_videos = []
+        rate_limit_hit = False
 
         for i, video in enumerate(videos, 1):
             print(f"\n[{i}/{len(videos)}] Processing: {video.title}")
@@ -797,9 +842,11 @@ def handle_channel(args):
 
                 if result.get("already_exists"):
                     print("   ✓ Already downloaded")
+                    successful_videos.append(video)
                 else:
                     print("   ✅ Downloaded successfully")
                     downloaded_count += 1
+                    successful_videos.append(video)
 
                     # Auto-process if enabled
                     if args.auto_process:
@@ -815,13 +862,27 @@ def handle_channel(args):
                 print(
                     "   💡 The monitoring service will handle rate limits by sleeping 3 hours."
                 )
+                rate_limit_hit = True
                 break
             except Exception as e:
                 print(f"   ❌ Error: {str(e)}")
+                # Continue processing other videos even if one fails
 
-        # Update the last video ID to prevent re-downloading on next monitor check
-        if videos:
-            config_manager.update_last_video_id(args.handle, videos[0].video_id)
+        # Update the last video ID only if we processed videos successfully
+        # Use the most recent successfully processed video to avoid skipping failed ones
+        if successful_videos:
+            # If rate limit was hit, only update to the last successful video
+            # If all completed, update to the most recent (first in list)
+            last_successful_video = successful_videos[0]
+            config_manager.update_last_video_id(
+                args.handle, last_successful_video.video_id
+            )
+        elif rate_limit_hit and videos:
+            # If rate limit hit immediately, don't update last_video_id
+            # This ensures we retry these videos next time
+            print(
+                "   ⚠️ No videos processed due to immediate rate limit - will retry next time"
+            )
 
         print(f"\n✅ Subscription complete! Downloaded {downloaded_count} new videos.")
         print("🔄 Future videos will be monitored automatically.")
