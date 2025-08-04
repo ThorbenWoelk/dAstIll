@@ -87,9 +87,9 @@ class Config:
     def _validate_config_value(self, key: str, value: Any):
         """Validate specific configuration values for security and correctness."""
         if key == "monitoring.max_recent_videos":
-            if not isinstance(value, int) or value < 1 or value > 100:
+            if not isinstance(value, int) or value < 1 or value > 20:
                 raise ValueError(
-                    f"monitoring.max_recent_videos must be an integer between 1-100, got: {value}"
+                    f"monitoring.max_recent_videos must be an integer between 1-20 (RSS feed limit), got: {value}"
                 )
 
     def _save_config(self):

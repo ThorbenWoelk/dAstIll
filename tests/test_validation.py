@@ -30,12 +30,10 @@ class TestChannelIdValidation:
             "TestChannel",
             "user123",
             "channel_name",
-            "test.channel",
             "MyChannel123",
             "user_123_test",
             "a1b2c3",
             "X",  # Single character
-            "Channel.Name.Test",
         ]
 
         for name in valid_names:
@@ -54,6 +52,8 @@ class TestChannelIdValidation:
             "../../../etc/passwd",  # Path traversal attempt
             "test..channel",  # Consecutive periods
             ".hidden",  # Starting with period
+            "test.channel",  # Single period (security risk for hidden files)
+            "Channel.Name.Test",  # Multiple periods (security risk)
             "test/channel",  # Forward slash
             "test\\channel",  # Backslash
             "test channel",  # Space

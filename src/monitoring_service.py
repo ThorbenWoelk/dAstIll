@@ -131,10 +131,17 @@ class ChannelMonitoringService:
     def _monitoring_loop(self):
         """Main monitoring loop that runs in a separate thread."""
         self._log_status("🔄 Monitoring loop started")
+        check_count = 0
 
         while self.running:
             try:
                 self._check_all_channels()
+                check_count += 1
+
+                # Periodic memory cleanup every 10 checks to prevent memory leaks
+                if check_count % 10 == 0:
+                    self._cleanup_memory()
+
                 # Use interruptible sleep instead of time.sleep
                 if self.shutdown_event.wait(
                     self.config_manager.global_config.check_interval
@@ -149,6 +156,36 @@ class ChannelMonitoringService:
                 ):  # Wait a minute before retrying on error
                     self._log_status("🛑 Shutdown requested during error recovery")
                     break
+
+    def _cleanup_memory(self):
+        """Periodic memory cleanup to prevent leaks in long-running service."""
+        try:
+            # Clear RSS monitor session to prevent connection pooling buildup
+            if hasattr(self.rss_monitor, "session"):
+                self.rss_monitor.session.close()
+                # Recreate session for future requests
+                import requests
+
+                self.rss_monitor.session = requests.Session()
+                self.rss_monitor.session.headers.update(
+                    {
+                        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                        "Accept-Language": "en-US,en;q=0.5",
+                        "Accept-Encoding": "gzip, deflate, br",
+                        "DNT": "1",
+                        "Connection": "keep-alive",
+                        "Upgrade-Insecure-Requests": "1",
+                    }
+                )
+
+            # Force garbage collection
+            import gc
+
+            gc.collect()
+
+        except Exception as e:
+            self._log_error("Error during memory cleanup", e)
 
     def _check_all_channels(self):
         """Check all enabled channels for new videos."""
