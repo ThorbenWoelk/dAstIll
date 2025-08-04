@@ -55,7 +55,10 @@ class ChannelConfigManager:
 
     def __init__(self, config_dir: str | None = None):
         if config_dir is None:
-            config_dir = os.path.expanduser("~/.dastill")
+            # Check environment variable first, then fallback to local config
+            config_dir = os.getenv(
+                "DASTILL_CONFIG_DIR", os.path.join(os.getcwd(), "data", "config")
+            )
 
         self.config_dir = Path(config_dir)
         self.channels_file = self.config_dir / "channels.json"

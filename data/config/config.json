@@ -1,0 +1,13 @@
+{
+  "storage": {
+    "base_path": "/Users/thorben.woelk/Documents/totos-vault/AI Memory/youtube library",
+    "markdown_format": true
+  },
+  "transcript": {
+    "default_languages": [
+      "en"
+    ],
+    "include_metadata": true,
+    "clean_transcript": true
+  }
+}
