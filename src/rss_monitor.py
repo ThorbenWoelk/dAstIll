@@ -1,5 +1,6 @@
 """RSS-based YouTube channel monitoring without API keys."""
 
+import logging
 import re
 import time
 import xml.etree.ElementTree as ET
@@ -7,6 +8,9 @@ from dataclasses import dataclass
 from typing import Any
 
 import requests
+
+# Set up logger for pattern success tracking
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -202,28 +206,42 @@ class RSSChannelMonitor:
             content = response.text
 
             # Try multiple patterns to extract channel ID
-            # Pattern 1: meta tag with itemprop="channelId"
-            channel_id_match = re.search(
-                r'<meta\s+itemprop="channelId"\s+content="([^"]+)"', content
+            patterns = [
+                (
+                    "meta_tag",
+                    r'<meta\s+itemprop="channelId"\s+content="([^"]+)"',
+                    "meta tag with itemprop='channelId'",
+                ),
+                (
+                    "external_id",
+                    r'"externalId"\s*:\s*"([^"]+)"',
+                    "externalId in JSON data",
+                ),
+                (
+                    "browse_id",
+                    r'"browseId"\s*:\s*"(UC[^"]+)"',
+                    "browseId in ytInitialData",
+                ),
+                (
+                    "channel_id_alt",
+                    r'"channelId"\s*:\s*"(UC[^"]+)"',
+                    "channelId in various contexts",
+                ),
+            ]
+
+            for pattern_name, pattern, description in patterns:
+                match = re.search(pattern, content)
+                if match:
+                    channel_id = match.group(1)
+                    logger.debug(
+                        f"Channel ID resolved using {pattern_name} pattern ({description}) for handle {handle}: {channel_id}"
+                    )
+                    return channel_id
+
+            # Log pattern failure for monitoring
+            logger.warning(
+                f"All channel ID patterns failed for handle {handle}. YouTube may have changed their HTML structure."
             )
-            if channel_id_match:
-                return channel_id_match.group(1)
-
-            # Pattern 2: externalId in JSON-LD or page data
-            external_id_match = re.search(r'"externalId"\s*:\s*"([^"]+)"', content)
-            if external_id_match:
-                return external_id_match.group(1)
-
-            # Pattern 3: browseId in ytInitialData
-            browse_id_match = re.search(r'"browseId"\s*:\s*"(UC[^"]+)"', content)
-            if browse_id_match:
-                return browse_id_match.group(1)
-
-            # Pattern 4: channelId in various contexts
-            channel_id_alt_match = re.search(r'"channelId"\s*:\s*"(UC[^"]+)"', content)
-            if channel_id_alt_match:
-                return channel_id_alt_match.group(1)
-
             return None
 
         except Exception:

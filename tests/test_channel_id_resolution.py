@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from main import validate_handle_format
 from src.rss_monitor import RSSChannelMonitor
 
 
@@ -280,3 +281,63 @@ class TestChannelIDResolution:
             ):
                 channel_id = monitor.resolve_channel_id_from_handle("@channel")
                 assert channel_id is None
+
+
+class TestHandleValidation:
+    """Test the shared handle validation function."""
+
+    def test_validate_handle_format_valid_handles(self):
+        """Test that valid handles pass validation."""
+        valid_handles = [
+            "@channel",
+            "channel",
+            "@channel123",
+            "channel_name",
+            "channel-name",
+            "@Channel_123-test",
+        ]
+
+        for handle in valid_handles:
+            is_valid, error_message = validate_handle_format(handle)
+            assert is_valid, f"Should accept valid handle: {handle}"
+            assert error_message == "", (
+                f"Should have no error message for valid handle: {handle}"
+            )
+
+    def test_validate_handle_format_invalid_handles(self):
+        """Test that invalid handles are rejected."""
+        invalid_handles = [
+            "",  # empty
+            None,  # None
+            "@",  # @ only
+            "   ",  # whitespace only
+            "@channel!",  # special character
+            "@channel@test",  # multiple @
+            "@channel space",  # space
+            "@channel/path",  # slash
+            123,  # non-string
+        ]
+
+        for handle in invalid_handles:
+            is_valid, error_message = validate_handle_format(handle)
+            assert not is_valid, f"Should reject invalid handle: {repr(handle)}"
+            assert error_message != "", (
+                f"Should have error message for invalid handle: {repr(handle)}"
+            )
+
+    def test_validate_handle_format_error_messages(self):
+        """Test that appropriate error messages are returned."""
+        # Empty handle
+        is_valid, error_message = validate_handle_format("")
+        assert not is_valid
+        assert "empty" in error_message.lower()
+
+        # None handle
+        is_valid, error_message = validate_handle_format(None)
+        assert not is_valid
+        assert "empty" in error_message.lower()
+
+        # Invalid characters
+        is_valid, error_message = validate_handle_format("@channel!")
+        assert not is_valid
+        assert "letters, numbers, underscores, and dashes" in error_message

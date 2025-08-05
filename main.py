@@ -28,6 +28,35 @@ def check_disk_space(path: str, required_mb: int = 100) -> bool:
         return True
 
 
+def validate_handle_format(handle: str) -> tuple[bool, str]:
+    """Validate YouTube channel handle format.
+
+    Args:
+        handle: Channel handle to validate
+
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    import string
+
+    if not handle or not isinstance(handle, str):
+        return False, "Handle cannot be empty"
+
+    clean_handle = handle.strip().lstrip("@")
+    allowed_chars = string.ascii_letters + string.digits + "_-"
+
+    if not clean_handle:
+        return False, "Handle cannot be empty after removing @ symbol"
+
+    if not all(c in allowed_chars for c in clean_handle):
+        return (
+            False,
+            "Handles can only contain letters, numbers, underscores, and dashes",
+        )
+
+    return True, ""
+
+
 def validate_channel_id(channel_id: str) -> bool:
     """Validate YouTube channel ID format."""
     if not channel_id:
@@ -741,16 +770,10 @@ def handle_channel(args):
             monitor = RSSChannelMonitor()
 
             # Validate handle format first
-            import string
-
-            clean_handle = args.handle.strip().lstrip("@")
-            allowed_chars = string.ascii_letters + string.digits + "_-"
-
-            if not clean_handle or not all(c in allowed_chars for c in clean_handle):
+            is_valid, error_message = validate_handle_format(args.handle)
+            if not is_valid:
                 print(f"❌ Invalid handle format: {args.handle}")
-                print(
-                    "Handles can only contain letters, numbers, underscores, and dashes."
-                )
+                print(error_message)
                 print("Example: @channelname or channelname")
                 return
 
@@ -859,16 +882,10 @@ def handle_channel(args):
             monitor = RSSChannelMonitor()
 
             # Validate handle format first
-            import string
-
-            clean_handle = args.handle.strip().lstrip("@")
-            allowed_chars = string.ascii_letters + string.digits + "_-"
-
-            if not clean_handle or not all(c in allowed_chars for c in clean_handle):
+            is_valid, error_message = validate_handle_format(args.handle)
+            if not is_valid:
                 print(f"❌ Invalid handle format: {args.handle}")
-                print(
-                    "Handles can only contain letters, numbers, underscores, and dashes."
-                )
+                print(error_message)
                 print("Example: @channelname or channelname")
                 return
 
