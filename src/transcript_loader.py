@@ -1,4 +1,5 @@
 import re
+import time
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -6,10 +7,17 @@ from urllib.parse import parse_qs, urlparse
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api.formatters import TextFormatter
 
+from config.channel_config import ChannelConfigManager
 from config.config import Config
 
 from .file_manager import VideoFileManager
 from .transcript_formatter import TranscriptFormatter
+
+
+class RateLimitError(Exception):
+    """Exception raised when rate limiting is detected."""
+
+    pass
 
 
 class YouTubeTranscriptLoader:
@@ -17,11 +25,15 @@ class YouTubeTranscriptLoader:
         self.formatter = TextFormatter()
         self.api = YouTubeTranscriptApi()
         self.config = Config(config_path)
+        self.channel_config = ChannelConfigManager()
 
         # Initialize file manager and formatter
         base_path = self.config.get("storage.base_path")
         self.manager = VideoFileManager(base_path)
         self.storage = TranscriptFormatter(base_path)
+
+        # Track last API request time for rate limiting
+        self._last_api_request_time = 0
 
     def _extract_video_id(self, url: str) -> str | None:
         """Extract video ID from YouTube URL."""
@@ -37,6 +49,38 @@ class YouTubeTranscriptLoader:
             return parsed.path[1:]
 
         return None
+
+    def _apply_rate_limiting(self, is_bulk_operation: bool = False):
+        """Apply rate limiting before making API requests."""
+        try:
+            # Get rate limiting configuration
+            rate_config = self.channel_config.global_config.rate_limiting
+            if hasattr(rate_config, "api_request_delay"):
+                api_delay = rate_config.api_request_delay
+                bulk_delay = (
+                    rate_config.bulk_operation_delay if is_bulk_operation else 0
+                )
+            else:
+                # Fallback to default values if config doesn't exist
+                api_delay = 2.0
+                bulk_delay = 5.0 if is_bulk_operation else 0
+        except (AttributeError, TypeError):
+            # Fallback to default values if configuration is not available
+            api_delay = 2.0
+            bulk_delay = 5.0 if is_bulk_operation else 0
+
+        # Calculate required delay
+        required_delay = api_delay + bulk_delay
+        current_time = time.time()
+        time_since_last_request = current_time - self._last_api_request_time
+
+        if time_since_last_request < required_delay:
+            sleep_time = required_delay - time_since_last_request
+            print(f"⏳ Rate limiting: sleeping for {sleep_time:.1f} seconds...")
+            time.sleep(sleep_time)
+
+        # Update last request time
+        self._last_api_request_time = time.time()
 
     def load_transcript(
         self,
@@ -77,6 +121,9 @@ class YouTubeTranscriptLoader:
             }
 
         try:
+            # Apply rate limiting before API request
+            self._apply_rate_limiting()
+
             # Fetch transcript from YouTube API
             transcript_list = self.api.list(video_id)
 
@@ -116,14 +163,42 @@ class YouTubeTranscriptLoader:
             return transcript_data
 
         except Exception as e:
-            # Check if it's a rate limit error
-            error_msg = str(e).lower()
-            if any(
-                term in error_msg
-                for term in ["rate limit", "too many requests", "quota", "429"]
-            ):
+            # Check if it's a rate limit error using better detection
+            if self._is_rate_limit_error(e):
                 raise RateLimitError(f"Rate limit hit: {str(e)}") from e
             raise Exception(f"Failed to load transcript: {str(e)}") from e
+
+    def _is_rate_limit_error(self, exception: Exception) -> bool:
+        """Detect if an exception is due to rate limiting."""
+        error_msg = str(exception).lower()
+
+        # Check for YouTube-specific rate limiting indicators
+        youtube_rate_limit_indicators = [
+            "too many requests",
+            "quota exceeded",
+            "rate limit",
+            "blocked by youtube",
+            "ip has been blocked",
+            "requests from your ip",
+            "cloud provider",
+            "requestblocked",
+            "ipblocked",
+        ]
+
+        # Check for HTTP status codes (in case they're mentioned in error messages)
+        http_rate_limit_codes = ["429", "403", "400"]
+
+        # Check for YouTube transcript API specific errors
+        transcript_api_errors = [
+            "could not retrieve a transcript",
+            "youtube is blocking requests",
+        ]
+
+        return (
+            any(indicator in error_msg for indicator in youtube_rate_limit_indicators)
+            or any(code in error_msg for code in http_rate_limit_codes)
+            or any(api_error in error_msg for api_error in transcript_api_errors)
+        )
 
     def clean_transcript(self, text: str) -> str:
         """Clean transcript text by removing timestamps and music symbols."""
@@ -202,9 +277,3 @@ class YouTubeTranscriptLoader:
             return True, new_path
         else:
             return False, f"Failed to process {video_id}"
-
-
-class RateLimitError(Exception):
-    """Raised when YouTube API rate limit is hit."""
-
-    pass
