@@ -168,11 +168,30 @@ class RSSChannelMonitor:
         Returns:
             Channel ID if found, None otherwise
         """
+        # Input validation - ensure handle is safe
+        if not handle or not isinstance(handle, str):
+            return None
+
+        # Remove any leading/trailing whitespace
+        handle = handle.strip()
+
+        # Validate handle format - only allow alphanumeric, underscore, dash, and @
+        # This prevents URL injection and other malicious inputs
+        import string
+
+        allowed_chars = string.ascii_letters + string.digits + "_-@"
+        if not all(c in allowed_chars for c in handle):
+            return None
+
         # Ensure handle starts with @
         if not handle.startswith("@"):
             handle = f"@{handle}"
 
-        # Construct channel URL
+        # Additional validation: handle should have reasonable length
+        if len(handle) < 2 or len(handle) > 50:  # @ + at least 1 char, max 50 total
+            return None
+
+        # Construct channel URL with validated handle
         channel_url = f"https://www.youtube.com/{handle}"
 
         try:

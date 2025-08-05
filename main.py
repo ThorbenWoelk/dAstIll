@@ -739,12 +739,43 @@ def handle_channel(args):
         if not channel_id:
             print(f"🔍 Resolving channel ID for handle: {args.handle}")
             monitor = RSSChannelMonitor()
-            channel_id = monitor.resolve_channel_id_from_handle(args.handle)
-            if not channel_id:
-                print(f"❌ Could not resolve channel ID for handle: {args.handle}")
-                print("Please provide the channel ID manually or check the handle.")
+
+            # Validate handle format first
+            import string
+
+            clean_handle = args.handle.strip().lstrip("@")
+            allowed_chars = string.ascii_letters + string.digits + "_-"
+
+            if not clean_handle or not all(c in allowed_chars for c in clean_handle):
+                print(f"❌ Invalid handle format: {args.handle}")
+                print(
+                    "Handles can only contain letters, numbers, underscores, and dashes."
+                )
+                print("Example: @channelname or channelname")
                 return
-            print(f"✅ Resolved channel ID: {channel_id}")
+
+            try:
+                channel_id = monitor.resolve_channel_id_from_handle(args.handle)
+                if not channel_id:
+                    print(f"❌ Could not resolve channel ID for handle: {args.handle}")
+                    print("\nPossible reasons:")
+                    print("  • The channel handle might be incorrect")
+                    print("  • The channel might not exist")
+                    print("  • YouTube might be blocking automated requests")
+                    print("\nYou can manually find the channel ID by:")
+                    print("  1. Visit the channel page on YouTube")
+                    print("  2. View page source (right-click → View Page Source)")
+                    print('  3. Search for "channelId" or "externalId"')
+                    print("  4. The ID will be a string starting with 'UC'")
+                    print(
+                        f'\nThen run: channel add "{args.name}" "{args.handle}" CHANNEL_ID'
+                    )
+                    return
+                print(f"✅ Resolved channel ID: {channel_id}")
+            except Exception as e:
+                print(f"❌ Error resolving channel ID: {str(e)}")
+                print("Please check your internet connection and try again.")
+                return
 
         # Validate channel ID format
         if not validate_channel_id(channel_id):
@@ -826,12 +857,43 @@ def handle_channel(args):
         if not channel_id:
             print(f"🔍 Resolving channel ID for handle: {args.handle}")
             monitor = RSSChannelMonitor()
-            channel_id = monitor.resolve_channel_id_from_handle(args.handle)
-            if not channel_id:
-                print(f"❌ Could not resolve channel ID for handle: {args.handle}")
-                print("Please provide the channel ID manually or check the handle.")
+
+            # Validate handle format first
+            import string
+
+            clean_handle = args.handle.strip().lstrip("@")
+            allowed_chars = string.ascii_letters + string.digits + "_-"
+
+            if not clean_handle or not all(c in allowed_chars for c in clean_handle):
+                print(f"❌ Invalid handle format: {args.handle}")
+                print(
+                    "Handles can only contain letters, numbers, underscores, and dashes."
+                )
+                print("Example: @channelname or channelname")
                 return
-            print(f"✅ Resolved channel ID: {channel_id}")
+
+            try:
+                channel_id = monitor.resolve_channel_id_from_handle(args.handle)
+                if not channel_id:
+                    print(f"❌ Could not resolve channel ID for handle: {args.handle}")
+                    print("\nPossible reasons:")
+                    print("  • The channel handle might be incorrect")
+                    print("  • The channel might not exist")
+                    print("  • YouTube might be blocking automated requests")
+                    print("\nYou can manually find the channel ID by:")
+                    print("  1. Visit the channel page on YouTube")
+                    print("  2. View page source (right-click → View Page Source)")
+                    print('  3. Search for "channelId" or "externalId"')
+                    print("  4. The ID will be a string starting with 'UC'")
+                    print(
+                        f'\nThen run: channel subscribe "{args.name}" "{args.handle}" CHANNEL_ID'
+                    )
+                    return
+                print(f"✅ Resolved channel ID: {channel_id}")
+            except Exception as e:
+                print(f"❌ Error resolving channel ID: {str(e)}")
+                print("Please check your internet connection and try again.")
+                return
 
         # Validate channel ID format
         if not validate_channel_id(channel_id):

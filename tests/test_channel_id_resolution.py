@@ -104,3 +104,179 @@ class TestChannelIDResolution:
         ):
             channel_id = monitor.resolve_channel_id_from_handle("@error")
             assert channel_id is None
+
+    def test_resolve_channel_id_malicious_input(self, monitor):
+        """Test security - malicious input handling."""
+        malicious_inputs = [
+            "../../../etc/passwd",
+            "@channel/../../../",
+            "@channel%2F..%2F..",
+            "@channel<script>alert()</script>",
+            "@channel'; DROP TABLE users; --",
+            "@channel\n\rSet-Cookie: evil=true",
+            "https://evil.com/@channel",
+            "@channel?param=value",
+            "@channel#fragment",
+            "@channel&param=value",
+            "@channel|command",
+            "@channel;command",
+            "@channel`command`",
+            "@channel$(command)",
+            "@channel${variable}",
+        ]
+
+        for malicious_input in malicious_inputs:
+            channel_id = monitor.resolve_channel_id_from_handle(malicious_input)
+            assert channel_id is None, (
+                f"Should reject malicious input: {malicious_input}"
+            )
+
+    def test_resolve_channel_id_special_characters(self, monitor):
+        """Test that special characters are properly rejected."""
+        invalid_handles = [
+            "@channel!",
+            "@channel@",
+            "@channel#",
+            "@channel$",
+            "@channel%",
+            "@channel^",
+            "@channel&",
+            "@channel*",
+            "@channel(",
+            "@channel)",
+            "@channel+",
+            "@channel=",
+            "@channel[",
+            "@channel]",
+            "@channel{",
+            "@channel}",
+            "@channel|",
+            "@channel\\",
+            "@channel:",
+            "@channel;",
+            '@channel"',
+            "@channel'",
+            "@channel<",
+            "@channel>",
+            "@channel,",
+            "@channel.",
+            "@channel?",
+            "@channel/",
+            "@channel~",
+            "@channel`",
+            "@channel ",  # with space
+            "@ channel",  # space after @
+            "",  # empty
+            " ",  # whitespace only
+            "@",  # @ only
+        ]
+
+        for invalid_handle in invalid_handles:
+            channel_id = monitor.resolve_channel_id_from_handle(invalid_handle)
+            assert channel_id is None, (
+                f"Should reject invalid handle: {repr(invalid_handle)}"
+            )
+
+    def test_resolve_channel_id_valid_characters(self, monitor):
+        """Test that valid handles with allowed characters work."""
+        valid_handles = [
+            "@channel",
+            "@channel123",
+            "@channel_name",
+            "@channel-name",
+            "@Channel_123-test",
+            "channel",  # without @
+            "channel_123",
+            "channel-name",
+            "CHANNEL",
+            "123channel",
+        ]
+
+        # Mock successful response
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.text = '<meta itemprop="channelId" content="UCtest123">'
+
+        for valid_handle in valid_handles:
+            with patch.object(
+                monitor, "_request_with_backoff", return_value=mock_response
+            ):
+                channel_id = monitor.resolve_channel_id_from_handle(valid_handle)
+                assert channel_id == "UCtest123", (
+                    f"Should accept valid handle: {valid_handle}"
+                )
+
+    def test_resolve_channel_id_length_limits(self, monitor):
+        """Test handle length validation."""
+        # Too short
+        assert monitor.resolve_channel_id_from_handle("") is None
+        assert monitor.resolve_channel_id_from_handle("@") is None
+
+        # Too long (more than 50 characters)
+        long_handle = "@" + "a" * 50
+        assert monitor.resolve_channel_id_from_handle(long_handle) is None
+
+        # Valid length
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.text = '<meta itemprop="channelId" content="UCtest123">'
+
+        # Minimum valid length (@ + 1 char)
+        with patch.object(monitor, "_request_with_backoff", return_value=mock_response):
+            channel_id = monitor.resolve_channel_id_from_handle("@a")
+            assert channel_id == "UCtest123"
+
+        # Normal length
+        valid_handle = "@" + "a" * 20  # reasonable length
+        with patch.object(monitor, "_request_with_backoff", return_value=mock_response):
+            channel_id = monitor.resolve_channel_id_from_handle(valid_handle)
+            assert channel_id == "UCtest123"
+
+    def test_resolve_channel_id_none_input(self, monitor):
+        """Test None input handling."""
+        assert monitor.resolve_channel_id_from_handle(None) is None
+
+    def test_resolve_channel_id_non_string_input(self, monitor):
+        """Test non-string input handling."""
+        assert monitor.resolve_channel_id_from_handle(123) is None
+        assert monitor.resolve_channel_id_from_handle([]) is None
+        assert monitor.resolve_channel_id_from_handle({}) is None
+
+    def test_resolve_channel_id_whitespace_handling(self, monitor):
+        """Test that whitespace is properly handled."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.text = '<meta itemprop="channelId" content="UCtest123">'
+
+        # Handle with leading/trailing whitespace should be trimmed
+        with patch.object(
+            monitor, "_request_with_backoff", return_value=mock_response
+        ) as mock_request:
+            channel_id = monitor.resolve_channel_id_from_handle("  @channel  ")
+            assert channel_id == "UCtest123"
+            # Verify the URL was called with trimmed handle
+            mock_request.assert_called_with("https://www.youtube.com/@channel")
+
+    def test_resolve_channel_id_malformed_html_response(self, monitor):
+        """Test handling of malformed HTML responses."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+
+        # Various malformed responses
+        malformed_responses = [
+            "",  # Empty response
+            "Not HTML at all",  # Plain text
+            "<html>",  # Unclosed HTML
+            '{"json": "not html"}',  # JSON instead of HTML
+            "<meta itemprop='channelId' content=>",  # Malformed meta tag
+            "<meta itemprop=channelId content=UCtest>",  # Missing quotes
+            None,  # None response
+        ]
+
+        for response_text in malformed_responses:
+            mock_response.text = response_text
+            with patch.object(
+                monitor, "_request_with_backoff", return_value=mock_response
+            ):
+                channel_id = monitor.resolve_channel_id_from_handle("@channel")
+                assert channel_id is None
