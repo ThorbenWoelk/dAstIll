@@ -1,56 +1,18 @@
 {
   "monitoring": {
-    "enabled": true,
-    "check_interval": 120,
-    "max_videos_per_check": 15,
+    "enabled": false,
+    "check_interval": 300,
+    "max_videos_per_check": 5,
+    "rate_limiting": {
+      "api_request_delay": 2.0,
+      "bulk_operation_delay": 5.0,
+      "recovery_hours": 3
+    },
     "notifications": {
       "enabled": true,
       "console": true,
       "log_file": true
     }
   },
-  "channels": {
-    "@TinaHuang1": {
-      "name": "Tina Huang",
-      "handle": "@TinaHuang1",
-      "channel_id": "UC2UXDak6o7rBm23k3Vv5dww",
-      "last_video_id": "jLuwLJBQkIs",
-      "monitoring": {
-        "languages": [
-          "en"
-        ],
-        "enabled": true,
-        "auto_download": true,
-        "auto_process": false
-      }
-    },
-    "@HealthyGamerGG": {
-      "name": "HealthyGamerGG",
-      "handle": "@HealthyGamerGG",
-      "channel_id": "UClHVl2N3jPEbkNJVx-ItQIQ",
-      "last_video_id": "l5X7OyMr0UY",
-      "monitoring": {
-        "languages": [
-          "en"
-        ],
-        "enabled": true,
-        "auto_download": true,
-        "auto_process": false
-      }
-    },
-    "@MikeIsraetelMakingProgress": {
-      "name": "Mike Israetel",
-      "handle": "@MikeIsraetelMakingProgress",
-      "channel_id": "UCDVIL4MTfsNY_Qu7AXxYUCw",
-      "last_video_id": "Cz3dNOUbMTw",
-      "monitoring": {
-        "languages": [
-          "en"
-        ],
-        "enabled": true,
-        "auto_download": true,
-        "auto_process": false
-      }
-    }
-  }
+  "channels": {}
 }
