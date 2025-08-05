@@ -26,6 +26,8 @@ class TestMonitoringService(unittest.TestCase):
             "language": "en",
         }
         self.service.transcript_loader.process_video.return_value = (True, "processed")
+        # Mock the config to return a valid path for VideoFileManager
+        self.service.transcript_loader.config.get.return_value = self.temp_dir
 
     def tearDown(self):
         """Clean up."""

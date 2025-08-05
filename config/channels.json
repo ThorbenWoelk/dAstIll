@@ -2,7 +2,6 @@
   "monitoring": {
     "enabled": true,
     "check_interval": 120,
-    "max_videos_per_check": 5,
     "rate_limiting": {
       "api_request_delay": 2.0,
       "bulk_operation_delay": 5.0,

@@ -51,7 +51,6 @@ class GlobalMonitoringConfig:
 
     enabled: bool = False
     check_interval: int = 300  # seconds
-    max_videos_per_check: int = 5
     rate_limiting: RateLimitingConfig = None
     notifications: dict[str, Any] = None
 
@@ -69,7 +68,7 @@ class ChannelConfigManager:
         if config_dir is None:
             # Check environment variable first, then fallback to local config
             config_dir = os.getenv(
-                "DASTILL_CONFIG_DIR", os.path.join(os.getcwd(), "data", "config")
+                "DASTILL_CONFIG_DIR", os.path.join(os.getcwd(), "config", "local")
             )
 
         self.config_dir = Path(config_dir)
