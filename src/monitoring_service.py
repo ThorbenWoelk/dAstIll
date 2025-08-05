@@ -403,9 +403,11 @@ class ChannelMonitoringService:
         if not channel.channel_id:
             return
 
-        # Get latest videos from RSS
-        # Get all available videos from RSS feed
-        videos = self.rss_monitor.get_latest_videos(channel.channel_id)
+        # Get latest videos from RSS with configured limit
+        max_videos = self.config_manager.global_config.max_videos_per_check
+        videos = self.rss_monitor.get_latest_videos(
+            channel.channel_id, limit=max_videos
+        )
 
         if not videos:
             return
@@ -477,8 +479,22 @@ class ChannelMonitoringService:
         retry_suffix = " (retry)" if is_retry else ""
         self._log_status(f"🔍 Checking backfill for {channel.name}{retry_suffix}...")
 
-        # Get all available videos from RSS feed
-        videos = self.rss_monitor.get_latest_videos(channel.channel_id)
+        # Get videos for backfill with enhanced limit for comprehensive coverage
+        # Use 2x the normal limit for backfill to get more historical content, but still bounded
+        max_videos = self.config_manager.global_config.max_videos_per_check
+        backfill_limit = (
+            None if max_videos is None else max_videos * 2
+        )  # Enhanced but bounded
+
+        # Memory-aware processing: Warn if processing large number of videos
+        if backfill_limit is None or (backfill_limit and backfill_limit > 200):
+            self._log_status(
+                f"⚠️  Processing large video set for {channel.name} - monitoring memory usage"
+            )
+
+        videos = self.rss_monitor.get_latest_videos(
+            channel.channel_id, limit=backfill_limit
+        )
 
         if not videos:
             self._log_status(f"   No videos found in RSS feed for {channel.name}")

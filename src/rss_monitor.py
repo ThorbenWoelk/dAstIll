@@ -77,8 +77,16 @@ class RSSChannelMonitor:
                 return None  # All retries failed
         return None
 
-    def get_latest_videos(self, channel_id: str, limit: int = None) -> list[VideoInfo]:
-        """Get latest videos from a channel using RSS feed. If limit is None, returns all available videos."""
+    def get_latest_videos(
+        self, channel_id: str, limit: int | None = 50
+    ) -> list[VideoInfo]:
+        """Get latest videos from a channel using RSS feed.
+
+        Args:
+            channel_id: YouTube channel ID
+            limit: Maximum number of videos to return. If None, returns all available videos.
+                  Default is 50 to balance comprehensiveness with resource usage.
+        """
         try:
             rss_url = (
                 f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"

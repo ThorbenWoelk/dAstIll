@@ -51,6 +51,9 @@ class GlobalMonitoringConfig:
 
     enabled: bool = False
     check_interval: int = 300  # seconds
+    max_videos_per_check: int = (
+        50  # Reasonable default, can be overridden with None for unlimited
+    )
     rate_limiting: RateLimitingConfig = None
     notifications: dict[str, Any] = None
 
