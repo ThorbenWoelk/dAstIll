@@ -5,9 +5,11 @@ import shutil
 import signal
 import sys
 import time
+from pathlib import Path
 
 from config.channel_config import ChannelConfigManager
 from config.config import Config
+from src.claude_integration import ClaudeCodeIntegration
 from src.monitoring_service import ChannelMonitoringService
 from src.rss_monitor import RSSChannelMonitor
 from src.transcript_loader import RateLimitError, YouTubeTranscriptLoader
@@ -171,6 +173,9 @@ def main():
     # Config command
     subparsers.add_parser("config", help="Show current configuration")
 
+    # AI processing status command
+    subparsers.add_parser("ai-status", help="Check Claude Code integration status")
+
     # Add command - Add video IDs to be downloaded later
     add_parser = subparsers.add_parser(
         "add", help="Add video IDs to be downloaded later"
@@ -201,6 +206,11 @@ def main():
     )
     process_parser.add_argument(
         "--channel", help="Override channel name for processed files"
+    )
+    process_parser.add_argument(
+        "--with-ai",
+        action="store_true",
+        help="Process transcripts with Claude Code AI before organizing",
     )
 
     # Queue command - Show videos in different statuses
@@ -352,6 +362,16 @@ def main():
         "seconds", type=int, help="Check interval in seconds (minimum: 60)"
     )
 
+    # Set max videos limit
+    limit_parser = settings_subparsers.add_parser(
+        "limit", help="Set maximum videos per check"
+    )
+    limit_parser.add_argument(
+        "count",
+        type=str,
+        help="Maximum videos per check (number or 'unlimited' for no limit)",
+    )
+
     args = parser.parse_args()
 
     # Default to monitoring mode if no command provided
@@ -394,6 +414,8 @@ def main():
             handle_remove(loader, args)
         elif args.command == "config":
             handle_config(loader, args)
+        elif args.command == "ai-status":
+            handle_ai_status(args)
         elif args.command == "add":
             handle_add(loader, args)
         elif args.command == "status":
@@ -543,6 +565,33 @@ def handle_config(loader, args):
     print_dict(config)
 
 
+def handle_ai_status(args):
+    """Handle AI processing status command."""
+    claude_integration = ClaudeCodeIntegration()
+    status = claude_integration.get_status()
+
+    print("Claude Code Integration Status:")
+    print("=" * 50)
+
+    if status["available"]:
+        print("✅ Claude Code CLI: Available")
+        print(f"   Path: {status['claude_path']}")
+
+        if status["authenticated"]:
+            print("✅ Authentication: Successful")
+        else:
+            print("❌ Authentication: Failed")
+
+        print(f"   Status: {status['message']}")
+    else:
+        print("❌ Claude Code CLI: Not Available")
+        print(f"   Message: {status['message']}")
+        print("\nTo enable AI processing:")
+        print("1. Install Claude Code: Visit https://claude.ai/code")
+        print("2. Run: claude setup-token")
+        print("3. Verify with: dastill ai-status")
+
+
 def handle_add(loader, args):
     added_count = 0
 
@@ -591,6 +640,25 @@ def handle_status(loader, args):
 
 def handle_process(loader, args):
     processed_count = 0
+    claude_integration = None
+
+    # Initialize Claude Code integration if --with-ai flag is provided
+    with_ai_flag = getattr(args, "with_ai", False)
+    if with_ai_flag:
+        claude_integration = ClaudeCodeIntegration()
+        if not claude_integration.is_available():
+            print(
+                "❌ Claude Code integration not available. Use 'dastill ai-status' to check."
+            )
+            print("Processing without AI...")
+        else:
+            is_auth, auth_msg = claude_integration.check_authentication()
+            if not is_auth:
+                print(f"❌ Claude Code authentication failed: {auth_msg}")
+                print("Processing without AI...")
+                claude_integration = None
+            else:
+                print("✅ Claude Code integration ready. Processing with AI...")
 
     # If no video IDs provided, process all downloaded videos
     if not args.video_ids:
@@ -612,6 +680,32 @@ def handle_process(loader, args):
         )
 
         try:
+            # AI processing step if enabled
+            if claude_integration:
+                # Get the file path for the downloaded video
+                status, file_path = loader.manager.get_video_status(video_id)
+                if status == "downloaded" and file_path:
+                    print(f"🤖 Processing {video_id} with AI...")
+                    ai_success, ai_message, ai_content = (
+                        claude_integration.process_transcript(Path(file_path))
+                    )
+
+                    if ai_success and ai_content:
+                        # Update the file with AI-processed content
+                        if claude_integration.update_transcript_file(
+                            Path(file_path), ai_content
+                        ):
+                            print(f"✓ AI processing complete for {video_id}")
+                        else:
+                            print(
+                                f"⚠ Failed to update file with AI content for {video_id}"
+                            )
+                    else:
+                        print(f"⚠ AI processing failed for {video_id}: {ai_message}")
+                else:
+                    print(f"⚠ Cannot find downloaded file for {video_id}")
+
+            # Regular processing step
             success, result = loader.process_video(video_id, args.channel)
             if success:
                 print(f"✓ Processed {video_id}")
@@ -1067,6 +1161,27 @@ def handle_settings(args):
 
         config_manager.set_check_interval(args.seconds)
         print(f"✅ Check interval set to {args.seconds} seconds")
+
+    elif args.settings_action == "limit":
+        if args.count.lower() == "unlimited":
+            config_manager.global_config.max_videos_per_check = None
+            config_manager.save_configuration()
+            print("✅ Video processing limit set to unlimited")
+            print(
+                "⚠️  Warning: Unlimited processing may consume more memory and API quota"
+            )
+        else:
+            try:
+                count = int(args.count)
+                if count < 1:
+                    print("❌ Video limit must be at least 1")
+                    return
+                config_manager.global_config.max_videos_per_check = count
+                config_manager.save_configuration()
+                print(f"✅ Video processing limit set to {count} videos per check")
+            except ValueError:
+                print("❌ Invalid limit value. Use a number or 'unlimited'")
+                return
 
 
 if __name__ == "__main__":
