@@ -2,7 +2,13 @@
   "monitoring": {
     "enabled": true,
     "check_interval": 120,
-    "max_videos_per_check": 15,
+    "max_videos_per_check": 5,
+    "rate_limiting": {
+      "api_request_delay": 2.0,
+      "bulk_operation_delay": 5.0,
+      "max_retries": 3,
+      "backoff_multiplier": 2.0
+    },
     "notifications": {
       "enabled": true,
       "console": true,
@@ -28,7 +34,7 @@
       "name": "HealthyGamerGG",
       "handle": "@HealthyGamerGG",
       "channel_id": "UClHVl2N3jPEbkNJVx-ItQIQ",
-      "last_video_id": "l5X7OyMr0UY",
+      "last_video_id": "RELVWno3Ulc",
       "monitoring": {
         "languages": [
           "en"
@@ -38,11 +44,81 @@
         "auto_process": false
       }
     },
-    "@MikeIsraetelMakingProgress": {
-      "name": "Mike Israetel",
-      "handle": "@MikeIsraetelMakingProgress",
-      "channel_id": "UCDVIL4MTfsNY_Qu7AXxYUCw",
-      "last_video_id": "Cz3dNOUbMTw",
+    "@TheDiaryOfACEO": {
+      "name": "The Diary Of A CEO",
+      "handle": "@TheDiaryOfACEO",
+      "channel_id": "UCdoOtZm0SeCW_cNMq9Z5_Aw",
+      "last_video_id": null,
+      "monitoring": {
+        "languages": [
+          "en"
+        ],
+        "enabled": true,
+        "auto_download": true,
+        "auto_process": false
+      }
+    },
+    "@GoobieAndDoobie": {
+      "name": "Goobie and Doobie",
+      "handle": "@GoobieAndDoobie",
+      "channel_id": "UCdgJAjcfDTOX8U70SYC9Kkg",
+      "last_video_id": null,
+      "monitoring": {
+        "languages": [
+          "en"
+        ],
+        "enabled": true,
+        "auto_download": true,
+        "auto_process": false
+      }
+    },
+    "@CosmicSkeptic": {
+      "name": "CosmicSkeptic",
+      "handle": "@CosmicSkeptic",
+      "channel_id": "UC7kCArRmBUcI-vgtXN4_dVw",
+      "last_video_id": null,
+      "monitoring": {
+        "languages": [
+          "en"
+        ],
+        "enabled": true,
+        "auto_download": true,
+        "auto_process": false
+      }
+    },
+    "@RayFernando1337": {
+      "name": "Ray Fernando",
+      "handle": "@RayFernando1337",
+      "channel_id": "UCw4VKHFmTK6EXH9CKU-FvGQ",
+      "last_video_id": null,
+      "monitoring": {
+        "languages": [
+          "en"
+        ],
+        "enabled": true,
+        "auto_download": true,
+        "auto_process": false
+      }
+    },
+    "@NateBJones": {
+      "name": "Nate Jones",
+      "handle": "@NateBJones",
+      "channel_id": "UCYbK_tjZ2OrIZFBvU6CCMiA",
+      "last_video_id": "UR5TvKmeVhY",
+      "monitoring": {
+        "languages": [
+          "en"
+        ],
+        "enabled": true,
+        "auto_download": true,
+        "auto_process": false
+      }
+    },
+    "@3blue1brown": {
+      "name": "3Blue1Brown",
+      "handle": "@3blue1brown",
+      "channel_id": "UCYO_jab_esuFRV4b17AJtAw",
+      "last_video_id": "iv-5mZ_9CPY",
       "monitoring": {
         "languages": [
           "en"

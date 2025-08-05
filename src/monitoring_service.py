@@ -2,7 +2,7 @@
 
 import threading
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from config.channel_config import ChannelConfig, ChannelConfigManager
@@ -25,6 +25,10 @@ class ChannelMonitoringService:
         self.running = False
         self.monitor_thread = None
         self.shutdown_event = threading.Event()
+
+        # Rate limit recovery state
+        self.rate_limit_recovery_until = None
+        self.incomplete_backfills = set()  # Track channels that need backfill retry
 
         # Event callbacks
         self.on_new_video: Callable[[VideoInfo, ChannelConfig], None] | None = None
@@ -135,6 +139,10 @@ class ChannelMonitoringService:
 
         while self.running:
             try:
+                # Check if we've recovered from rate limiting and retry backfills
+                self._check_rate_limit_recovery()
+
+                # Normal channel monitoring
                 self._check_all_channels()
                 check_count += 1
 
@@ -156,6 +164,50 @@ class ChannelMonitoringService:
                 ):  # Wait a minute before retrying on error
                     self._log_status("🛑 Shutdown requested during error recovery")
                     break
+
+    def _check_rate_limit_recovery(self):
+        """Check if we've recovered from rate limiting and retry incomplete backfills."""
+        current_time = datetime.now()
+
+        # If we're still in rate limit recovery period, skip
+        if (
+            self.rate_limit_recovery_until
+            and current_time < self.rate_limit_recovery_until
+        ):
+            return
+
+        # If we have incomplete backfills and we've recovered, retry them
+        if self.incomplete_backfills and self.rate_limit_recovery_until:
+            self._log_status(
+                "🔄 Rate limit recovery complete - retrying incomplete backfills..."
+            )
+            self.rate_limit_recovery_until = None
+
+            # Get channels that need backfill retry
+            retry_channels = []
+            for channel in self.config_manager.get_enabled_channels():
+                if channel.handle in self.incomplete_backfills:
+                    retry_channels.append(channel)
+
+            if retry_channels:
+                self._retry_backfill(retry_channels)
+                self.incomplete_backfills.clear()
+
+    def _retry_backfill(self, channels: list[ChannelConfig]):
+        """Retry backfill for channels that were interrupted by rate limiting."""
+        self._log_status(f"🔄 Retrying backfill for {len(channels)} channels...")
+
+        for channel in channels:
+            try:
+                self._backfill_channel(channel, is_retry=True)
+            except RateLimitError:
+                # If we hit rate limit again during retry, mark for next retry
+                self._log_status("⏸️ Rate limit hit again during backfill retry")
+                self._handle_rate_limit_error()
+                self.incomplete_backfills.add(channel.handle)
+                break  # Stop retrying other channels
+            except Exception as e:
+                self._log_error(f"Error during backfill retry for {channel.name}", e)
 
     def _cleanup_memory(self):
         """Periodic memory cleanup to prevent leaks in long-running service."""
@@ -191,22 +243,35 @@ class ChannelMonitoringService:
         """Check all enabled channels for new videos."""
         enabled_channels = self.config_manager.get_enabled_channels()
 
-        self._log_status(
-            f"🔍 Checking {len(enabled_channels)} channels for new videos..."
+        # During rate limit recovery, still check RSS but don't download transcripts
+        in_recovery = (
+            self.rate_limit_recovery_until
+            and datetime.now() < self.rate_limit_recovery_until
         )
+
+        if in_recovery:
+            recovery_time_left = self.rate_limit_recovery_until - datetime.now()
+            hours_left = recovery_time_left.total_seconds() / 3600
+            self._log_status(
+                f"⏸️ In rate limit recovery - {hours_left:.1f}h remaining (RSS only)"
+            )
+        else:
+            self._log_status(
+                f"🔍 Checking {len(enabled_channels)} channels for new videos..."
+            )
 
         for channel in enabled_channels:
             try:
-                self._check_channel(channel)
+                self._check_channel(channel, download_transcripts=not in_recovery)
             except RateLimitError:
-                # Rate limit already handled in _process_new_video
+                # Rate limit handled in _process_new_video or _handle_rate_limit_error
                 # Skip remaining channels and wait for next cycle
                 self._log_status("⏭️ Skipping remaining channels due to rate limit")
                 break
             except Exception as e:
                 self._log_error(f"Error checking channel {channel.handle}", e)
 
-    def _check_channel(self, channel: ChannelConfig):
+    def _check_channel(self, channel: ChannelConfig, download_transcripts: bool = True):
         """Check a single channel for new videos."""
         if not channel.channel_id:
             return
@@ -239,7 +304,14 @@ class ChannelMonitoringService:
 
         # Process new videos (oldest first to maintain chronological order)
         for video in reversed(new_videos):
-            self._log_status(f"🎥 New video detected: {video.title} ({channel.name})")
+            if download_transcripts:
+                self._log_status(
+                    f"🎥 New video detected: {video.title} ({channel.name})"
+                )
+            else:
+                self._log_status(
+                    f"🎥 New video detected (recovery mode): {video.title} ({channel.name})"
+                )
 
             # Update last video ID immediately to avoid reprocessing
             self.config_manager.update_last_video_id(channel.handle, video.video_id)
@@ -248,8 +320,8 @@ class ChannelMonitoringService:
             if self.on_new_video:
                 self.on_new_video(video, channel)
 
-            # Automatically process if enabled
-            if channel.monitoring.auto_download:
+            # Automatically process if enabled and not in recovery mode
+            if channel.monitoring.auto_download and download_transcripts:
                 self._process_new_video(video, channel)
 
     def _startup_backfill(self, channels: list[ChannelConfig]):
@@ -259,98 +331,108 @@ class ChannelMonitoringService:
                 continue
 
             try:
-                self._log_status(f"🔍 Checking backfill for {channel.name}...")
-
-                # Get maximum available videos from RSS feed (up to 15)
-                max_videos = min(
-                    self.config_manager.global_config.max_videos_per_check, 15
-                )
-                videos = self.rss_monitor.get_latest_videos(
-                    channel.channel_id, limit=max_videos
-                )
-
-                if not videos:
-                    self._log_status(
-                        f"   No videos found in RSS feed for {channel.name}"
-                    )
-                    continue
-
-                backfill_count = 0
-                processed_videos = []
-
-                # Process videos in chronological order (oldest first)
-                for video in reversed(videos):
-                    try:
-                        # Check if video already exists
-                        status, _ = self.transcript_loader.manager.get_video_status(
-                            video.video_id
-                        )
-                        if status != "not_downloaded":
-                            continue  # Skip if already downloaded/processed
-
-                        self._log_status(f"📥 Backfilling: {video.title}")
-
-                        # Download the transcript
-                        transcript_data = self.transcript_loader.load_transcript(
-                            video.url,
-                            languages=channel.monitoring.languages,
-                            force=False,
-                            save_markdown=True,
-                            channel=channel.name,
-                        )
-
-                        if not transcript_data.get("already_exists"):
-                            backfill_count += 1
-                            processed_videos.append(video)
-
-                            # Auto-process to final location if enabled
-                            if channel.monitoring.auto_process:
-                                try:
-                                    success, result = (
-                                        self.transcript_loader.process_video(
-                                            video.video_id, channel.name
-                                        )
-                                    )
-                                    if success:
-                                        self._log_status(
-                                            f"   ✅ Auto-processed: {result}"
-                                        )
-                                except Exception as e:
-                                    self._log_error(
-                                        f"Auto-process error for {video.video_id}", e
-                                    )
-
-                    except RateLimitError as e:
-                        self._log_error(
-                            f"Rate limit hit during backfill for {video.title}", e
-                        )
-                        self._log_status(
-                            "⏸️ Rate limit detected during backfill. Continuing with other channels..."
-                        )
-                        break  # Stop backfill for this channel, continue with others
-                    except Exception as e:
-                        self._log_error(f"Error during backfill for {video.title}", e)
-                        continue  # Continue with next video
-
-                # Update last_video_id to most recent video if we processed any
-                if processed_videos or videos:
-                    latest_video = videos[0]  # First video is most recent
-                    self.config_manager.update_last_video_id(
-                        channel.handle, latest_video.video_id
-                    )
-                    self._log_status(
-                        f"   Updated last_video_id to: {latest_video.video_id}"
-                    )
-
-                if backfill_count > 0:
-                    self._log_status(
-                        f"✅ Backfilled {backfill_count} videos for {channel.name}"
-                    )
-                else:
-                    self._log_status(f"   No new videos to backfill for {channel.name}")
-
+                self._backfill_channel(channel, is_retry=False)
+            except RateLimitError:
+                # Mark this channel for retry later
+                self.incomplete_backfills.add(channel.handle)
+                self._handle_rate_limit_error()
+                break  # Stop backfill for remaining channels
             except Exception as e:
                 self._log_error(f"Error during backfill for {channel.name}", e)
+
+    def _backfill_channel(self, channel: ChannelConfig, is_retry: bool = False):
+        """Download historical videos for a single channel."""
+        retry_suffix = " (retry)" if is_retry else ""
+        self._log_status(f"🔍 Checking backfill for {channel.name}{retry_suffix}...")
+
+        # Get maximum available videos from RSS feed (up to 15)
+        max_videos = min(self.config_manager.global_config.max_videos_per_check, 15)
+        videos = self.rss_monitor.get_latest_videos(
+            channel.channel_id, limit=max_videos
+        )
+
+        if not videos:
+            self._log_status(f"   No videos found in RSS feed for {channel.name}")
+            return
+
+        backfill_count = 0
+        processed_videos = []
+
+        # Process videos in chronological order (oldest first)
+        for video in reversed(videos):
+            try:
+                # Check if video already exists
+                status, _ = self.transcript_loader.manager.get_video_status(
+                    video.video_id
+                )
+                if status != "not_downloaded":
+                    continue  # Skip if already downloaded/processed
+
+                self._log_status(f"📥 Backfilling: {video.title}")
+
+                # Download the transcript
+                transcript_data = self.transcript_loader.load_transcript(
+                    video.url,
+                    languages=channel.monitoring.languages,
+                    force=False,
+                    save_markdown=True,
+                    channel=channel.name,
+                )
+
+                if not transcript_data.get("already_exists"):
+                    backfill_count += 1
+                    processed_videos.append(video)
+
+                    # Auto-process to final location if enabled
+                    if channel.monitoring.auto_process:
+                        try:
+                            success, result = self.transcript_loader.process_video(
+                                video.video_id, channel.name
+                            )
+                            if success:
+                                self._log_status(f"   ✅ Auto-processed: {result}")
+                        except Exception as e:
+                            self._log_error(
+                                f"Auto-process error for {video.video_id}", e
+                            )
+
+            except RateLimitError as e:
+                self._log_error(f"Rate limit hit during backfill for {video.title}", e)
+                self._log_status("⏸️ Rate limit detected during backfill...")
+                # Mark channel for retry and re-raise to stop backfilling
+                self.incomplete_backfills.add(channel.handle)
+                raise
+            except Exception as e:
+                self._log_error(f"Error during backfill for {video.title}", e)
+                continue  # Continue with next video
+
+        # Update last_video_id to most recent video if we processed any
+        if processed_videos or videos:
+            latest_video = videos[0]  # First video is most recent
+            self.config_manager.update_last_video_id(
+                channel.handle, latest_video.video_id
+            )
+            self._log_status(f"   Updated last_video_id to: {latest_video.video_id}")
+
+        if backfill_count > 0:
+            self._log_status(
+                f"✅ Backfilled {backfill_count} videos for {channel.name}"
+            )
+        else:
+            self._log_status(f"   No new videos to backfill for {channel.name}")
+
+    def _handle_rate_limit_error(self):
+        """Handle rate limit error by setting recovery time."""
+        recovery_hours = 3
+        self.rate_limit_recovery_until = datetime.now() + timedelta(
+            hours=recovery_hours
+        )
+        self._log_status(
+            f"⏸️ Rate limit recovery set until {self.rate_limit_recovery_until.strftime('%Y-%m-%d %H:%M:%S')}"
+        )
+        self._log_status(
+            f"🔄 Will retry incomplete backfills in {recovery_hours} hours..."
+        )
 
     def _process_new_video(self, video: VideoInfo, channel: ChannelConfig):
         """Process a new video by downloading its transcript."""
@@ -390,12 +472,7 @@ class ChannelMonitoringService:
 
         except RateLimitError as e:
             self._log_error(f"Rate limit hit while processing {video.title}", e)
-            self._log_status("⏸️ Rate limit detected. Sleeping for 3 hours...")
-            # Sleep for 3 hours (10800 seconds) with interruptible sleep
-            if self.shutdown_event.wait(10800):
-                self._log_status("🛑 Shutdown requested during rate limit sleep")
-                return
-            self._log_status("🔄 Resuming after rate limit sleep...")
+            self._handle_rate_limit_error()
             # Re-raise to let the monitoring loop handle it
             raise
         except Exception as e:
@@ -420,7 +497,7 @@ class ChannelMonitoringService:
             results = {}
             for channel in enabled_channels:
                 try:
-                    self._check_channel(channel)
+                    self._check_channel(channel, download_transcripts=True)
                     results[channel.handle] = {"status": "success"}
                 except Exception as e:
                     results[channel.handle] = {"status": "error", "error": str(e)}
