@@ -14,6 +14,12 @@ from .file_manager import VideoFileManager
 from .transcript_formatter import TranscriptFormatter
 
 
+class RateLimitError(Exception):
+    """Exception raised when rate limiting is detected."""
+
+    pass
+
+
 class YouTubeTranscriptLoader:
     def __init__(self, config_path: str = None):
         self.formatter = TextFormatter()
@@ -157,14 +163,42 @@ class YouTubeTranscriptLoader:
             return transcript_data
 
         except Exception as e:
-            # Check if it's a rate limit error
-            error_msg = str(e).lower()
-            if any(
-                term in error_msg
-                for term in ["rate limit", "too many requests", "quota", "429"]
-            ):
+            # Check if it's a rate limit error using better detection
+            if self._is_rate_limit_error(e):
                 raise RateLimitError(f"Rate limit hit: {str(e)}") from e
             raise Exception(f"Failed to load transcript: {str(e)}") from e
+
+    def _is_rate_limit_error(self, exception: Exception) -> bool:
+        """Detect if an exception is due to rate limiting."""
+        error_msg = str(exception).lower()
+
+        # Check for YouTube-specific rate limiting indicators
+        youtube_rate_limit_indicators = [
+            "too many requests",
+            "quota exceeded",
+            "rate limit",
+            "blocked by youtube",
+            "ip has been blocked",
+            "requests from your ip",
+            "cloud provider",
+            "requestblocked",
+            "ipblocked",
+        ]
+
+        # Check for HTTP status codes (in case they're mentioned in error messages)
+        http_rate_limit_codes = ["429", "403", "400"]
+
+        # Check for YouTube transcript API specific errors
+        transcript_api_errors = [
+            "could not retrieve a transcript",
+            "youtube is blocking requests",
+        ]
+
+        return (
+            any(indicator in error_msg for indicator in youtube_rate_limit_indicators)
+            or any(code in error_msg for code in http_rate_limit_codes)
+            or any(api_error in error_msg for api_error in transcript_api_errors)
+        )
 
     def clean_transcript(self, text: str) -> str:
         """Clean transcript text by removing timestamps and music symbols."""
@@ -243,9 +277,3 @@ class YouTubeTranscriptLoader:
             return True, new_path
         else:
             return False, f"Failed to process {video_id}"
-
-
-class RateLimitError(Exception):
-    """Raised when YouTube API rate limit is hit."""
-
-    pass

@@ -7,7 +7,8 @@
       "api_request_delay": 2.0,
       "bulk_operation_delay": 5.0,
       "max_retries": 3,
-      "backoff_multiplier": 2.0
+      "backoff_multiplier": 2.0,
+      "recovery_hours": 3
     },
     "notifications": {
       "enabled": true,
