@@ -28,6 +28,35 @@ def check_disk_space(path: str, required_mb: int = 100) -> bool:
         return True
 
 
+def validate_handle_format(handle: str) -> tuple[bool, str]:
+    """Validate YouTube channel handle format.
+
+    Args:
+        handle: Channel handle to validate
+
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    import string
+
+    if not handle or not isinstance(handle, str):
+        return False, "Handle cannot be empty"
+
+    clean_handle = handle.strip().lstrip("@")
+    allowed_chars = string.ascii_letters + string.digits + "_-"
+
+    if not clean_handle:
+        return False, "Handle cannot be empty after removing @ symbol"
+
+    if not all(c in allowed_chars for c in clean_handle):
+        return (
+            False,
+            "Handles can only contain letters, numbers, underscores, and dashes",
+        )
+
+    return True, ""
+
+
 def validate_channel_id(channel_id: str) -> bool:
     """Validate YouTube channel ID format."""
     if not channel_id:
@@ -219,7 +248,11 @@ def main():
     )
     add_channel_parser.add_argument("name", help="Channel display name")
     add_channel_parser.add_argument("handle", help="Channel handle (e.g., @username)")
-    add_channel_parser.add_argument("channel_id", help="YouTube channel ID (required)")
+    add_channel_parser.add_argument(
+        "channel_id",
+        nargs="?",
+        help="YouTube channel ID (optional - will be resolved from handle if not provided)",
+    )
     add_channel_parser.add_argument(
         "--languages",
         nargs="+",
@@ -245,7 +278,11 @@ def main():
     )
     subscribe_parser.add_argument("name", help="Channel display name")
     subscribe_parser.add_argument("handle", help="Channel handle (e.g., @username)")
-    subscribe_parser.add_argument("channel_id", help="YouTube channel ID (required)")
+    subscribe_parser.add_argument(
+        "channel_id",
+        nargs="?",
+        help="YouTube channel ID (optional - will be resolved from handle if not provided)",
+    )
     subscribe_parser.add_argument(
         "--languages",
         nargs="+",
@@ -726,9 +763,46 @@ def handle_channel(args):
     config_manager = ChannelConfigManager()
 
     if args.channel_action == "add":
+        # Resolve channel ID if not provided
+        channel_id = args.channel_id
+        if not channel_id:
+            print(f"🔍 Resolving channel ID for handle: {args.handle}")
+            monitor = RSSChannelMonitor()
+
+            # Validate handle format first
+            is_valid, error_message = validate_handle_format(args.handle)
+            if not is_valid:
+                print(f"❌ Invalid handle format: {args.handle}")
+                print(error_message)
+                print("Example: @channelname or channelname")
+                return
+
+            try:
+                channel_id = monitor.resolve_channel_id_from_handle(args.handle)
+                if not channel_id:
+                    print(f"❌ Could not resolve channel ID for handle: {args.handle}")
+                    print("\nPossible reasons:")
+                    print("  • The channel handle might be incorrect")
+                    print("  • The channel might not exist")
+                    print("  • YouTube might be blocking automated requests")
+                    print("\nYou can manually find the channel ID by:")
+                    print("  1. Visit the channel page on YouTube")
+                    print("  2. View page source (right-click → View Page Source)")
+                    print('  3. Search for "channelId" or "externalId"')
+                    print("  4. The ID will be a string starting with 'UC'")
+                    print(
+                        f'\nThen run: channel add "{args.name}" "{args.handle}" CHANNEL_ID'
+                    )
+                    return
+                print(f"✅ Resolved channel ID: {channel_id}")
+            except Exception as e:
+                print(f"❌ Error resolving channel ID: {str(e)}")
+                print("Please check your internet connection and try again.")
+                return
+
         # Validate channel ID format
-        if not validate_channel_id(args.channel_id):
-            print(f"❌ Invalid channel ID format: {args.channel_id}")
+        if not validate_channel_id(channel_id):
+            print(f"❌ Invalid channel ID format: {channel_id}")
             print(
                 "Channel ID should be 24 characters starting with 'UC' or a valid username"
             )
@@ -737,7 +811,7 @@ def handle_channel(args):
         success = config_manager.add_channel(
             name=args.name,
             handle=args.handle,
-            channel_id=args.channel_id,
+            channel_id=channel_id,
             languages=args.languages,
             auto_download=args.auto_download,
             auto_process=args.auto_process,
@@ -801,9 +875,46 @@ def handle_channel(args):
             print(f"❌ Channel {args.handle} not found")
 
     elif args.channel_action == "subscribe":
+        # Resolve channel ID if not provided
+        channel_id = args.channel_id
+        if not channel_id:
+            print(f"🔍 Resolving channel ID for handle: {args.handle}")
+            monitor = RSSChannelMonitor()
+
+            # Validate handle format first
+            is_valid, error_message = validate_handle_format(args.handle)
+            if not is_valid:
+                print(f"❌ Invalid handle format: {args.handle}")
+                print(error_message)
+                print("Example: @channelname or channelname")
+                return
+
+            try:
+                channel_id = monitor.resolve_channel_id_from_handle(args.handle)
+                if not channel_id:
+                    print(f"❌ Could not resolve channel ID for handle: {args.handle}")
+                    print("\nPossible reasons:")
+                    print("  • The channel handle might be incorrect")
+                    print("  • The channel might not exist")
+                    print("  • YouTube might be blocking automated requests")
+                    print("\nYou can manually find the channel ID by:")
+                    print("  1. Visit the channel page on YouTube")
+                    print("  2. View page source (right-click → View Page Source)")
+                    print('  3. Search for "channelId" or "externalId"')
+                    print("  4. The ID will be a string starting with 'UC'")
+                    print(
+                        f'\nThen run: channel subscribe "{args.name}" "{args.handle}" CHANNEL_ID'
+                    )
+                    return
+                print(f"✅ Resolved channel ID: {channel_id}")
+            except Exception as e:
+                print(f"❌ Error resolving channel ID: {str(e)}")
+                print("Please check your internet connection and try again.")
+                return
+
         # Validate channel ID format
-        if not validate_channel_id(args.channel_id):
-            print(f"❌ Invalid channel ID format: {args.channel_id}")
+        if not validate_channel_id(channel_id):
+            print(f"❌ Invalid channel ID format: {channel_id}")
             print(
                 "Channel ID should be 24 characters starting with 'UC' or a valid username"
             )
@@ -813,7 +924,7 @@ def handle_channel(args):
         success = config_manager.add_channel(
             name=args.name,
             handle=args.handle,
-            channel_id=args.channel_id,
+            channel_id=channel_id,
             languages=args.languages,
             auto_download=args.auto_download,
             auto_process=args.auto_process,
