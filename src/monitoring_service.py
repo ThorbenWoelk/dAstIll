@@ -166,8 +166,10 @@ class ChannelMonitoringService:
                     self._log_status("🛑 Shutdown requested during error recovery")
                     break
 
-    def _check_rate_limit_recovery(self):
+    def _check_rate_limit_recovery(self) -> None:
         """Check if we've recovered from rate limiting and retry incomplete backfills."""
+        retry_channels = []
+
         with self._recovery_lock:
             current_time = datetime.now()
 
@@ -187,7 +189,6 @@ class ChannelMonitoringService:
 
                 # Get channels that need backfill retry (copy the set to avoid modification during iteration)
                 incomplete_handles = self.incomplete_backfills.copy()
-                retry_channels = []
                 for channel in self.config_manager.get_enabled_channels():
                     if channel.handle in incomplete_handles:
                         retry_channels.append(channel)
@@ -198,7 +199,7 @@ class ChannelMonitoringService:
                     # Retry outside the lock to avoid holding it during long operations
 
         # Retry backfills outside the lock
-        if "retry_channels" in locals() and retry_channels:
+        if retry_channels:
             self._retry_backfill(retry_channels)
 
     def _retry_backfill(self, channels: list[ChannelConfig]):
@@ -218,7 +219,7 @@ class ChannelMonitoringService:
             except Exception as e:
                 self._log_error(f"Error during backfill retry for {channel.name}", e)
 
-    def _cleanup_memory(self):
+    def _cleanup_memory(self) -> None:
         """Periodic memory cleanup to prevent leaks in long-running service."""
         try:
             # Light memory cleanup - let HTTP connections be managed properly by requests
@@ -412,7 +413,7 @@ class ChannelMonitoringService:
         else:
             self._log_status(f"   No new videos to backfill for {channel.name}")
 
-    def _handle_rate_limit_error(self):
+    def _handle_rate_limit_error(self) -> None:
         """Handle rate limit error by setting recovery time."""
         try:
             # Get configurable recovery time, default to 3 hours

@@ -42,8 +42,6 @@ class RateLimitingConfig:
 
     api_request_delay: float = 2.0
     bulk_operation_delay: float = 5.0
-    max_retries: int = 3
-    backoff_multiplier: float = 2.0
     recovery_hours: int = 3  # Hours to wait before retrying after rate limit
 
 
