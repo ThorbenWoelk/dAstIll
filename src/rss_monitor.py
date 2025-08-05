@@ -77,8 +77,16 @@ class RSSChannelMonitor:
                 return None  # All retries failed
         return None
 
-    def get_latest_videos(self, channel_id: str, limit: int = 10) -> list[VideoInfo]:
-        """Get latest videos from a channel using RSS feed."""
+    def get_latest_videos(
+        self, channel_id: str, limit: int | None = 50
+    ) -> list[VideoInfo]:
+        """Get latest videos from a channel using RSS feed.
+
+        Args:
+            channel_id: YouTube channel ID
+            limit: Maximum number of videos to return. If None, returns all available videos.
+                  Default is 50 to balance comprehensiveness with resource usage.
+        """
         try:
             rss_url = (
                 f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
@@ -93,7 +101,9 @@ class RSSChannelMonitor:
             entries = root.findall("{http://www.w3.org/2005/Atom}entry")
 
             videos = []
-            for entry in entries[:limit]:
+            # If no limit specified, process all entries; otherwise slice to limit
+            entries_to_process = entries if limit is None else entries[:limit]
+            for entry in entries_to_process:
                 try:
                     video_id = entry.find(
                         "{http://www.youtube.com/xml/schemas/2015}videoId"
