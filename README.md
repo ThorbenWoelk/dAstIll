@@ -47,18 +47,14 @@ uv run python main.py download https://www.youtube.com/watch?v=VIDEO_ID
 uv run python main.py download https://www.youtube.com/watch?v=VIDEO_ID --channel "Channel Name"
 ```
 
-### Finding YouTube Channel IDs
+### Channel ID Resolution
 
-Currently, you need to provide channel IDs manually:
+dAstIll automatically resolves YouTube channel IDs from handles (e.g., @channelname). If automatic resolution fails, you can manually provide the channel ID:
 
-1. **Via RSS Feed**: Visit `https://www.youtube.com/feeds/videos.xml?channel_id=CHANNEL_ID` and try different channel IDs from the channel's page source
-2. **Via URL**: Check the channel's page source for `channel_id` or `externalId` fields
-3. **Via Third-party Tools**: Use online YouTube channel ID lookup tools
-
-Example for finding @TinaHuang1's channel ID:
-- Visit https://www.youtube.com/@TinaHuang1
-- Test RSS feed: https://www.youtube.com/feeds/videos.xml?channel_id=UC2UXDak6o7rBm23k3Vv5dww
-- If the RSS feed works, the channel ID is valid
+1. Visit the channel page on YouTube (e.g., https://www.youtube.com/@channelname)
+2. View page source (right-click → View Page Source)
+3. Search for "channelId" or "externalId"
+4. The ID will be a string starting with 'UC' (e.g., UCX6OQ3DkcsbYNE6H8uQQuVA)
 
 ### Download Options
 ```bash
@@ -107,7 +103,15 @@ uv run python main.py remove VIDEO_ID --delete-file
 # List configured channels
 uv run python main.py channel list --enabled-only
 
+# Add a channel to monitoring (without downloading videos)
+# Channel ID is optional - will be automatically resolved from handle
+uv run python main.py channel add "Channel Name" "@channelhandle"
+
 # Subscribe to a channel (adds channel and downloads recent videos)
+# Channel ID is optional - will be automatically resolved from handle
+uv run python main.py channel subscribe "Channel Name" "@channelhandle" --recent-count 15
+
+# Or provide channel ID directly if resolution fails
 uv run python main.py channel subscribe "Channel Name" "@channelhandle" CHANNEL_ID --recent-count 15
 
 # Enable/disable specific channels

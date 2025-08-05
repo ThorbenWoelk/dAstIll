@@ -1,5 +1,6 @@
 """RSS-based YouTube channel monitoring without API keys."""
 
+import logging
 import re
 import time
 import xml.etree.ElementTree as ET
@@ -7,6 +8,9 @@ from dataclasses import dataclass
 from typing import Any
 
 import requests
+
+# Set up logger for pattern success tracking
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -158,3 +162,87 @@ class RSSChannelMonitor:
 
         except Exception as e:
             return {"exists": False, "error": str(e)}
+
+    def resolve_channel_id_from_handle(self, handle: str) -> str | None:
+        """Resolve YouTube channel ID from handle without API key.
+
+        Args:
+            handle: YouTube channel handle (e.g., '@username' or 'username')
+
+        Returns:
+            Channel ID if found, None otherwise
+        """
+        # Input validation - ensure handle is safe
+        if not handle or not isinstance(handle, str):
+            return None
+
+        # Remove any leading/trailing whitespace
+        handle = handle.strip()
+
+        # Validate handle format - only allow alphanumeric, underscore, dash, and @
+        # This prevents URL injection and other malicious inputs
+        import string
+
+        allowed_chars = string.ascii_letters + string.digits + "_-@"
+        if not all(c in allowed_chars for c in handle):
+            return None
+
+        # Ensure handle starts with @
+        if not handle.startswith("@"):
+            handle = f"@{handle}"
+
+        # Additional validation: handle should have reasonable length
+        if len(handle) < 2 or len(handle) > 50:  # @ + at least 1 char, max 50 total
+            return None
+
+        # Construct channel URL with validated handle
+        channel_url = f"https://www.youtube.com/{handle}"
+
+        try:
+            response = self._request_with_backoff(channel_url)
+            if not response or response.status_code != 200:
+                return None
+
+            content = response.text
+
+            # Try multiple patterns to extract channel ID
+            patterns = [
+                (
+                    "meta_tag",
+                    r'<meta\s+itemprop="channelId"\s+content="([^"]+)"',
+                    "meta tag with itemprop='channelId'",
+                ),
+                (
+                    "external_id",
+                    r'"externalId"\s*:\s*"([^"]+)"',
+                    "externalId in JSON data",
+                ),
+                (
+                    "browse_id",
+                    r'"browseId"\s*:\s*"(UC[^"]+)"',
+                    "browseId in ytInitialData",
+                ),
+                (
+                    "channel_id_alt",
+                    r'"channelId"\s*:\s*"(UC[^"]+)"',
+                    "channelId in various contexts",
+                ),
+            ]
+
+            for pattern_name, pattern, description in patterns:
+                match = re.search(pattern, content)
+                if match:
+                    channel_id = match.group(1)
+                    logger.debug(
+                        f"Channel ID resolved using {pattern_name} pattern ({description}) for handle {handle}: {channel_id}"
+                    )
+                    return channel_id
+
+            # Log pattern failure for monitoring
+            logger.warning(
+                f"All channel ID patterns failed for handle {handle}. YouTube may have changed their HTML structure."
+            )
+            return None
+
+        except Exception:
+            return None
