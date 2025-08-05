@@ -8,7 +8,11 @@ from typing import Any
 from config.channel_config import ChannelConfig, ChannelConfigManager
 
 from .rss_monitor import RSSChannelMonitor, VideoInfo
-from .transcript_loader import RateLimitError, YouTubeTranscriptLoader
+from .transcript_loader import (
+    RateLimitError,
+    TranscriptUnavailableError,
+    YouTubeTranscriptLoader,
+)
 
 
 class ChannelMonitoringService:
@@ -75,6 +79,130 @@ class ChannelMonitoringService:
 
         return all_good
 
+    def _generate_startup_report(self) -> None:
+        """Generate comprehensive startup status report."""
+        self._log_status("=" * 70)
+        self._log_status("📊 DASTILL MONITORING SERVICE - STARTUP STATUS REPORT")
+        self._log_status("=" * 70)
+
+        # Get all channel configurations
+        all_channels = self.config_manager.list_channels()
+        enabled_channels = self.config_manager.get_enabled_channels()
+
+        # Channel subscription summary
+        self._log_status("\n📺 CHANNEL SUBSCRIPTIONS:")
+        self._log_status(f"   Total subscribed: {len(all_channels)}")
+        self._log_status(f"   Active monitoring: {len(enabled_channels)}")
+        self._log_status(f"   Disabled: {len(all_channels) - len(enabled_channels)}")
+
+        # Get download statistics from file system
+        from .file_manager import VideoFileManager
+
+        manager = VideoFileManager(
+            self.transcript_loader.config.get("storage.base_path")
+        )
+
+        # Count videos in different states
+        to_be_downloaded = len(
+            list((manager.base_path / "to_be_downloaded").glob("*.placeholder"))
+        )
+        downloaded = len(list((manager.base_path / "downloaded").glob("*.md")))
+
+        # Count processed videos by channel
+        processed_total = 0
+        channel_counts = {}
+        for channel_dir in manager.base_path.iterdir():
+            if channel_dir.is_dir() and channel_dir.name not in [
+                "to_be_downloaded",
+                "downloaded",
+                "unknown",
+                "config",
+            ]:
+                count = len(list(channel_dir.glob("*.md")))
+                if count > 0:
+                    channel_counts[channel_dir.name] = count
+                    processed_total += count
+
+        # Also count unknown folder
+        unknown_count = len(list((manager.base_path / "unknown").glob("*.md")))
+        if unknown_count > 0:
+            channel_counts["unknown"] = unknown_count
+            processed_total += unknown_count
+
+        self._log_status("\n📥 DOWNLOAD STATISTICS:")
+        self._log_status(f"   Queued for download: {to_be_downloaded}")
+        self._log_status(f"   Downloaded (awaiting processing): {downloaded}")
+        self._log_status(f"   Total processed: {processed_total}")
+
+        if channel_counts:
+            self._log_status("\n   Processed by channel:")
+            for channel, count in sorted(
+                channel_counts.items(), key=lambda x: x[1], reverse=True
+            ):
+                self._log_status(f"      • {channel}: {count} videos")
+
+        # Check rate limit status
+        if self.rate_limit_recovery_until:
+            remaining = (
+                self.rate_limit_recovery_until - datetime.now()
+            ).total_seconds() / 3600
+            if remaining > 0:
+                self._log_status("\n⚠️  RATE LIMIT RECOVERY MODE")
+                self._log_status(
+                    f"   Recovery until: {self.rate_limit_recovery_until.strftime('%Y-%m-%d %H:%M:%S')}"
+                )
+                self._log_status(f"   Time remaining: {remaining:.1f} hours")
+                self._log_status("   (Using browser fallback method)")
+
+        # List active channel details
+        self._log_status("\n📡 ACTIVE CHANNEL DETAILS:")
+        for i, channel in enumerate(enabled_channels, 1):
+            self._log_status(f"\n   {i}. {channel.name} ({channel.handle})")
+            self._log_status(f"      Channel ID: {channel.channel_id or 'NOT SET'}")
+
+            # Get channel-specific stats
+            channel_dir_name = manager._sanitize_channel_name(channel.name)
+            channel_processed = channel_counts.get(channel_dir_name, 0)
+            self._log_status(f"      Processed videos: {channel_processed}")
+
+            if channel.last_video_id:
+                self._log_status(f"      Last video ID: {channel.last_video_id}")
+
+            # Check RSS feed for available videos
+            if channel.channel_id:
+                try:
+                    recent_videos = self.rss_monitor.get_latest_videos(
+                        channel.channel_id
+                    )
+                    new_videos = 0
+                    for video in recent_videos:
+                        status, _ = manager.get_video_status(video.video_id)
+                        if status == "not_downloaded":
+                            new_videos += 1
+                    if new_videos > 0:
+                        self._log_status(
+                            f"      Available to download: {new_videos} new videos"
+                        )
+                except Exception:
+                    pass
+
+            # Show monitoring settings
+            if channel.monitoring:
+                settings = []
+                if channel.monitoring.auto_download:
+                    settings.append("auto-download")
+                if channel.monitoring.auto_process:
+                    settings.append("auto-process")
+                if channel.monitoring.languages:
+                    settings.append(
+                        f"languages: {','.join(channel.monitoring.languages)}"
+                    )
+                if settings:
+                    self._log_status(f"      Settings: {', '.join(settings)}")
+
+        self._log_status("\n" + "=" * 70)
+        self._log_status("")
+
     def start_monitoring(self) -> bool:
         """Start the monitoring service."""
         if self.running:
@@ -100,6 +228,9 @@ class ChannelMonitoringService:
                 None,
             )
             return False
+
+        # Generate startup status report (before backfill shows current state)
+        self._generate_startup_report()
 
         # Perform startup backfill for all channels
         self._log_status("🔄 Performing startup backfill for all channels...")
@@ -216,6 +347,12 @@ class ChannelMonitoringService:
                 with self._recovery_lock:
                     self.incomplete_backfills.add(channel.handle)
                 break  # Stop retrying other channels
+            except TranscriptUnavailableError:
+                # Skip channels with no transcripts available
+                self._log_status(
+                    f"⏭️ No transcripts available for {channel.name} during retry, continuing..."
+                )
+                continue
             except Exception as e:
                 self._log_error(f"Error during backfill retry for {channel.name}", e)
 
@@ -266,7 +403,7 @@ class ChannelMonitoringService:
         if not channel.channel_id:
             return
 
-        # Get latest videos from RSS
+        # Get latest videos from RSS with configured limit
         max_videos = self.config_manager.global_config.max_videos_per_check
         videos = self.rss_monitor.get_latest_videos(
             channel.channel_id, limit=max_videos
@@ -328,6 +465,12 @@ class ChannelMonitoringService:
                     self.incomplete_backfills.add(channel.handle)
                 self._handle_rate_limit_error()
                 break  # Stop backfill for remaining channels
+            except TranscriptUnavailableError:
+                # Skip channels with no transcripts available, but continue with other channels
+                self._log_status(
+                    f"⏭️ No transcripts available for recent videos in {channel.name}, continuing..."
+                )
+                continue
             except Exception as e:
                 self._log_error(f"Error during backfill for {channel.name}", e)
 
@@ -336,10 +479,21 @@ class ChannelMonitoringService:
         retry_suffix = " (retry)" if is_retry else ""
         self._log_status(f"🔍 Checking backfill for {channel.name}{retry_suffix}...")
 
-        # Get maximum available videos from RSS feed (up to 15)
-        max_videos = min(self.config_manager.global_config.max_videos_per_check, 15)
+        # Get videos for backfill with enhanced limit for comprehensive coverage
+        # Use 2x the normal limit for backfill to get more historical content, but still bounded
+        max_videos = self.config_manager.global_config.max_videos_per_check
+        backfill_limit = (
+            None if max_videos is None else max_videos * 2
+        )  # Enhanced but bounded
+
+        # Memory-aware processing: Warn if processing large number of videos
+        if backfill_limit is None or (backfill_limit and backfill_limit > 200):
+            self._log_status(
+                f"⚠️  Processing large video set for {channel.name} - monitoring memory usage"
+            )
+
         videos = self.rss_monitor.get_latest_videos(
-            channel.channel_id, limit=max_videos
+            channel.channel_id, limit=backfill_limit
         )
 
         if not videos:
@@ -394,6 +548,11 @@ class ChannelMonitoringService:
                 with self._recovery_lock:
                     self.incomplete_backfills.add(channel.handle)
                 raise
+            except TranscriptUnavailableError:
+                self._log_status(
+                    f"⏭️ No transcript available for {video.title}, skipping..."
+                )
+                continue  # Continue with next video
             except Exception as e:
                 self._log_error(f"Error during backfill for {video.title}", e)
                 continue  # Continue with next video
@@ -475,6 +634,11 @@ class ChannelMonitoringService:
             self._handle_rate_limit_error()
             # Re-raise to let the monitoring loop handle it
             raise
+        except TranscriptUnavailableError:
+            self._log_status(
+                f"⏭️ No transcript available for {video.title}, skipping..."
+            )
+            # Don't re-raise, just skip this video
         except Exception as e:
             self._log_error(f"Error processing video {video.title}", e)
 

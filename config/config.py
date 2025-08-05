@@ -17,7 +17,7 @@ class Config:
         if config_path is None:
             # Check environment variable first, then fallback to local config
             config_dir = os.getenv(
-                "DASTILL_CONFIG_DIR", os.path.join(os.getcwd(), "data", "config")
+                "DASTILL_CONFIG_DIR", os.path.join(os.getcwd(), "config", "local")
             )
             os.makedirs(config_dir, exist_ok=True)
             config_path = os.path.join(config_dir, "config.json")
@@ -51,6 +51,7 @@ class Config:
                 "default_languages": ["en"],
                 "include_metadata": True,
                 "clean_transcript": True,
+                "method": "api_with_fallback",  # "api_only", "api_with_fallback", "browser_only"
             },
             "monitoring": {
                 "max_recent_videos": 20,
@@ -63,6 +64,12 @@ class Config:
         return default_config
 
     def get(self, key: str, default=None):
+        # Check for environment variable overrides first
+        if key == "storage.base_path":
+            env_base_path = os.getenv("DASTILL_BASE_PATH")
+            if env_base_path:
+                return env_base_path
+
         keys = key.split(".")
         value = self.config
         for k in keys:
