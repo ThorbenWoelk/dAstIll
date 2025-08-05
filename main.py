@@ -219,7 +219,11 @@ def main():
     )
     add_channel_parser.add_argument("name", help="Channel display name")
     add_channel_parser.add_argument("handle", help="Channel handle (e.g., @username)")
-    add_channel_parser.add_argument("channel_id", help="YouTube channel ID (required)")
+    add_channel_parser.add_argument(
+        "channel_id",
+        nargs="?",
+        help="YouTube channel ID (optional - will be resolved from handle if not provided)",
+    )
     add_channel_parser.add_argument(
         "--languages",
         nargs="+",
@@ -245,7 +249,11 @@ def main():
     )
     subscribe_parser.add_argument("name", help="Channel display name")
     subscribe_parser.add_argument("handle", help="Channel handle (e.g., @username)")
-    subscribe_parser.add_argument("channel_id", help="YouTube channel ID (required)")
+    subscribe_parser.add_argument(
+        "channel_id",
+        nargs="?",
+        help="YouTube channel ID (optional - will be resolved from handle if not provided)",
+    )
     subscribe_parser.add_argument(
         "--languages",
         nargs="+",
@@ -726,9 +734,21 @@ def handle_channel(args):
     config_manager = ChannelConfigManager()
 
     if args.channel_action == "add":
+        # Resolve channel ID if not provided
+        channel_id = args.channel_id
+        if not channel_id:
+            print(f"🔍 Resolving channel ID for handle: {args.handle}")
+            monitor = RSSChannelMonitor()
+            channel_id = monitor.resolve_channel_id_from_handle(args.handle)
+            if not channel_id:
+                print(f"❌ Could not resolve channel ID for handle: {args.handle}")
+                print("Please provide the channel ID manually or check the handle.")
+                return
+            print(f"✅ Resolved channel ID: {channel_id}")
+
         # Validate channel ID format
-        if not validate_channel_id(args.channel_id):
-            print(f"❌ Invalid channel ID format: {args.channel_id}")
+        if not validate_channel_id(channel_id):
+            print(f"❌ Invalid channel ID format: {channel_id}")
             print(
                 "Channel ID should be 24 characters starting with 'UC' or a valid username"
             )
@@ -737,7 +757,7 @@ def handle_channel(args):
         success = config_manager.add_channel(
             name=args.name,
             handle=args.handle,
-            channel_id=args.channel_id,
+            channel_id=channel_id,
             languages=args.languages,
             auto_download=args.auto_download,
             auto_process=args.auto_process,
@@ -801,9 +821,21 @@ def handle_channel(args):
             print(f"❌ Channel {args.handle} not found")
 
     elif args.channel_action == "subscribe":
+        # Resolve channel ID if not provided
+        channel_id = args.channel_id
+        if not channel_id:
+            print(f"🔍 Resolving channel ID for handle: {args.handle}")
+            monitor = RSSChannelMonitor()
+            channel_id = monitor.resolve_channel_id_from_handle(args.handle)
+            if not channel_id:
+                print(f"❌ Could not resolve channel ID for handle: {args.handle}")
+                print("Please provide the channel ID manually or check the handle.")
+                return
+            print(f"✅ Resolved channel ID: {channel_id}")
+
         # Validate channel ID format
-        if not validate_channel_id(args.channel_id):
-            print(f"❌ Invalid channel ID format: {args.channel_id}")
+        if not validate_channel_id(channel_id):
+            print(f"❌ Invalid channel ID format: {channel_id}")
             print(
                 "Channel ID should be 24 characters starting with 'UC' or a valid username"
             )
@@ -813,7 +845,7 @@ def handle_channel(args):
         success = config_manager.add_channel(
             name=args.name,
             handle=args.handle,
-            channel_id=args.channel_id,
+            channel_id=channel_id,
             languages=args.languages,
             auto_download=args.auto_download,
             auto_process=args.auto_process,

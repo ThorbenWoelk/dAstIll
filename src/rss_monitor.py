@@ -158,3 +158,54 @@ class RSSChannelMonitor:
 
         except Exception as e:
             return {"exists": False, "error": str(e)}
+
+    def resolve_channel_id_from_handle(self, handle: str) -> str | None:
+        """Resolve YouTube channel ID from handle without API key.
+
+        Args:
+            handle: YouTube channel handle (e.g., '@username' or 'username')
+
+        Returns:
+            Channel ID if found, None otherwise
+        """
+        # Ensure handle starts with @
+        if not handle.startswith("@"):
+            handle = f"@{handle}"
+
+        # Construct channel URL
+        channel_url = f"https://www.youtube.com/{handle}"
+
+        try:
+            response = self._request_with_backoff(channel_url)
+            if not response or response.status_code != 200:
+                return None
+
+            content = response.text
+
+            # Try multiple patterns to extract channel ID
+            # Pattern 1: meta tag with itemprop="channelId"
+            channel_id_match = re.search(
+                r'<meta\s+itemprop="channelId"\s+content="([^"]+)"', content
+            )
+            if channel_id_match:
+                return channel_id_match.group(1)
+
+            # Pattern 2: externalId in JSON-LD or page data
+            external_id_match = re.search(r'"externalId"\s*:\s*"([^"]+)"', content)
+            if external_id_match:
+                return external_id_match.group(1)
+
+            # Pattern 3: browseId in ytInitialData
+            browse_id_match = re.search(r'"browseId"\s*:\s*"(UC[^"]+)"', content)
+            if browse_id_match:
+                return browse_id_match.group(1)
+
+            # Pattern 4: channelId in various contexts
+            channel_id_alt_match = re.search(r'"channelId"\s*:\s*"(UC[^"]+)"', content)
+            if channel_id_alt_match:
+                return channel_id_alt_match.group(1)
+
+            return None
+
+        except Exception:
+            return None

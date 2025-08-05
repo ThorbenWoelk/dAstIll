@@ -107,7 +107,15 @@ uv run python main.py remove VIDEO_ID --delete-file
 # List configured channels
 uv run python main.py channel list --enabled-only
 
+# Add a channel to monitoring (without downloading videos)
+# Channel ID is optional - will be automatically resolved from handle
+uv run python main.py channel add "Channel Name" "@channelhandle"
+
 # Subscribe to a channel (adds channel and downloads recent videos)
+# Channel ID is optional - will be automatically resolved from handle
+uv run python main.py channel subscribe "Channel Name" "@channelhandle" --recent-count 15
+
+# Or provide channel ID directly if resolution fails
 uv run python main.py channel subscribe "Channel Name" "@channelhandle" CHANNEL_ID --recent-count 15
 
 # Enable/disable specific channels
