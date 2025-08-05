@@ -37,15 +37,27 @@ class ChannelConfig:
 
 
 @dataclass
+class RateLimitingConfig:
+    """Rate limiting configuration."""
+
+    api_request_delay: float = 2.0
+    bulk_operation_delay: float = 5.0
+    recovery_hours: int = 3  # Hours to wait before retrying after rate limit
+
+
+@dataclass
 class GlobalMonitoringConfig:
     """Global monitoring configuration."""
 
     enabled: bool = False
     check_interval: int = 300  # seconds
     max_videos_per_check: int = 5
+    rate_limiting: RateLimitingConfig = None
     notifications: dict[str, Any] = None
 
     def __post_init__(self):
+        if self.rate_limiting is None:
+            self.rate_limiting = RateLimitingConfig()
         if self.notifications is None:
             self.notifications = {"enabled": True, "console": True, "log_file": True}
 
@@ -81,6 +93,13 @@ class ChannelConfigManager:
 
             # Load global config
             global_data = data.get("monitoring", {})
+
+            # Handle nested rate_limiting config
+            rate_limiting_data = global_data.pop("rate_limiting", {})
+            rate_limiting = RateLimitingConfig(**rate_limiting_data)
+
+            # Create global config with rate limiting
+            global_data["rate_limiting"] = rate_limiting
             self.global_config = GlobalMonitoringConfig(**global_data)
 
             # Load channels
