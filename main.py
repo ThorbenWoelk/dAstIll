@@ -1249,7 +1249,7 @@ def handle_ai_workflow(args):
             bufsize=1,
         )
 
-        # Stream output line by line
+        # Stream output line by line with proper resource cleanup
         try:
             while True:
                 output = process.stdout.readline()
@@ -1260,8 +1260,23 @@ def handle_ai_workflow(args):
         except KeyboardInterrupt:
             print("\n⚠️ Workflow interrupted by user")
             process.terminate()
-            process.wait()
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
             sys.exit(1)
+        finally:
+            # Ensure proper cleanup of resources
+            if process.stdout:
+                process.stdout.close()
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
 
         # Wait for process to complete and get return code
         return_code = process.poll()

@@ -114,10 +114,14 @@ process_transcripts() {
     STORAGE_INFO=$(uv run python main.py config 2>/dev/null | grep "base_path" || echo "")
     
     if [[ -z "$STORAGE_INFO" ]]; then
-        warning "Could not determine storage path, using default ~/.dastill/transcripts"
-        BASE_PATH="$HOME/.dastill/transcripts"
-    else
-        BASE_PATH=$(echo "$STORAGE_INFO" | sed 's/.*: //' | tr -d '"')
+        error "Could not determine storage path from configuration. Please check your config/ folder setup."
+    fi
+    
+    BASE_PATH=$(echo "$STORAGE_INFO" | sed 's/.*: //' | tr -d '"')
+    
+    # Validate BASE_PATH to prevent injection
+    if [[ ! -d "$BASE_PATH" ]]; then
+        error "Base path does not exist: $BASE_PATH"
     fi
     
     DOWNLOADED_DIR="$BASE_PATH/downloaded"
@@ -159,42 +163,64 @@ process_transcripts() {
         CLAUDE_CMD="claude-code"
     fi
     
-    # Create automated prompt for Claude Code
-    PROMPT="Use the transcript-education-curator agent to process all transcript files in $DOWNLOADED_DIR. For each .md file, transform it into a well-structured educational summary with key concepts, insights, and actionable takeaways. Replace each original file with the enhanced version."
+    # Create automated prompt for Claude Code (safely escaped)
+    # Construct prompt without direct path injection
+    PROMPT="Use the transcript-education-curator agent to process all transcript files in the downloaded folder. For each .md file, transform it into a well-structured educational summary with key concepts, insights, and actionable takeaways. Replace each original file with the enhanced version."
     
-    # Launch Claude Code in non-interactive mode with Task tool
-    # Using --dangerously-skip-permissions and --add-dir for full automation
-    # Use stdbuf to ensure real-time output buffering
-    log "Starting Claude Code processing (output will appear in real-time)..."
-    if echo "$PROMPT" | timeout 600 stdbuf -oL -eL "$CLAUDE_CMD" --print --dangerously-skip-permissions --add-dir "$BASE_PATH" 2>&1 | tee /tmp/claude-processing.log; then
-        success "Claude Code transcript processing completed"
+    # Process files individually for better error recovery
+    # This allows partial success instead of all-or-nothing processing
+    log "Starting Claude Code processing (individual file processing for better error recovery)..."
+    log "Processing will continue simultaneously with Docker downloads..."
+    
+    SUCCESS_COUNT=0
+    FAILED_COUNT=0
+    FAILED_FILES=()
+    
+    # Process each file individually
+    while IFS= read -r -d '' file; do
+        filename=$(basename "$file")
+        log "Processing file: $filename"
+        
+        # Create file-specific prompt
+        FILE_PROMPT="Use the transcript-education-curator agent to process the transcript file $filename. Transform it into a well-structured educational summary with key concepts, insights, and actionable takeaways. Replace the original file with the enhanced version."
+        
+        if printf '%s\n' "$FILE_PROMPT" | stdbuf -oL -eL "$CLAUDE_CMD" --print --dangerously-skip-permissions --add-dir "$BASE_PATH" 2>&1 | tee -a /tmp/claude-processing.log; then
+            success "✓ Processed: $filename"
+            ((SUCCESS_COUNT++))
+        else
+            warning "✗ Failed to process: $filename (continuing with other files)"
+            FAILED_FILES+=("$filename")
+            ((FAILED_COUNT++))
+            
+            # Log specific failure details but continue processing
+            log "Error processing $filename (exit code: $?)"
+        fi
+    done < <(find "$DOWNLOADED_DIR" -name "*.md" -type f -print0)
+    
+    # Report processing results
+    log "Processing summary:"
+    log "  Successfully processed: $SUCCESS_COUNT files"
+    log "  Failed to process: $FAILED_COUNT files"
+    
+    if [[ $SUCCESS_COUNT -gt 0 ]]; then
+        success "Claude Code processing completed with $SUCCESS_COUNT successful files"
         log "Processing log saved to /tmp/claude-processing.log"
-        
-        # Show processing summary
-        PROCESSED_COUNT=$(find "$DOWNLOADED_DIR" -name "*.md" -type f | wc -l)
-        if [[ $PROCESSED_COUNT -eq 0 ]]; then
-            success "All $FILE_COUNT files have been processed and moved"
-        else
-            warning "$PROCESSED_COUNT files remain in downloaded directory (may need manual review)"
-        fi
+    fi
+    
+    if [[ $FAILED_COUNT -gt 0 ]]; then
+        warning "$FAILED_COUNT files failed processing:"
+        for failed_file in "${FAILED_FILES[@]}"; do
+            log "  → $failed_file"
+        done
+        log "Failed files will be retried on next run"
+    fi
+    
+    # Show final directory status
+    REMAINING_COUNT=$(find "$DOWNLOADED_DIR" -name "*.md" -type f | wc -l)
+    if [[ $REMAINING_COUNT -eq 0 ]]; then
+        success "All files have been processed and moved"
     else
-        EXIT_CODE=$?
-        if [ $EXIT_CODE -eq 124 ]; then
-            error "Claude Code processing timed out after 10 minutes"
-            log "Files that may have been partially processed:"
-            find "$DOWNLOADED_DIR" -name "*.md" -type f -exec basename {} \; || true
-        else
-            error "Claude Code transcript processing failed (exit code: $EXIT_CODE)"
-            log "Last 20 lines of processing log:"
-            tail -20 /tmp/claude-processing.log || true
-        fi
-        
-        # Show which files are still pending
-        REMAINING_COUNT=$(find "$DOWNLOADED_DIR" -name "*.md" -type f | wc -l)
-        if [[ $REMAINING_COUNT -gt 0 ]]; then
-            warning "$REMAINING_COUNT files still need processing"
-        fi
-        return 1
+        log "$REMAINING_COUNT files remain in downloaded directory for next processing run"
     fi
 }
 
