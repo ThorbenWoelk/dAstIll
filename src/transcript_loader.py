@@ -20,6 +20,12 @@ class RateLimitError(Exception):
     pass
 
 
+class TranscriptUnavailableError(Exception):
+    """Exception raised when transcript is not available for a video."""
+
+    pass
+
+
 class YouTubeTranscriptLoader:
     def __init__(self, config_path: str = None):
         self.formatter = TextFormatter()

@@ -14,9 +14,14 @@ A Python app and command-line tool for downloading, organizing, and managing You
 - **Subscription**: Auto-download and process new videos as they're published
 - **Zero Cost**: Completely free using YouTube's public RSS feeds
 
+### AI-Powered Processing (CH-141 Feature)
+- **Claude Code Integration**: Automated transcript enhancement using Claude Code
+- **Educational Summarization**: Transform raw transcripts into structured learning content
+- **Bash Workflow**: Simple script orchestration for Docker + Claude Code automation
+
 ## Quick Start (Docker)
 
-For the complete automated workflow:
+For the complete automated workflow with AI processing:
 
 ```bash
 # 1. Clone and setup
@@ -24,19 +29,99 @@ git clone <repository-url>
 cd dAstIll
 uv sync
 
-# 2. Subscribe to channels
-uv run python main.py channel subscribe "Tina Huang" "@TinaHuang1" UC2UXDak6o7rBm23k3Vv5dww
-uv run python main.py channel subscribe "HealthyGamerGG" "@HealthyGamerGG" UClHVl2N3jPEbkNJVx-ItQIQ
+# 2. Subscribe to channels (resolves channel IDs automatically)
+uv run python main.py channel subscribe "Tina Huang" "@TinaHuang1"
+uv run python main.py channel subscribe "HealthyGamerGG" "@HealthyGamerGG"
 
-# 3. Start the monitoring service
-docker-compose up -d
+# 3. Create data directory for Docker storage
+mkdir -p ./data
 
-# 4. Monitor logs (optional)
-docker-compose logs -f dastill-monitor
+# 4. Start the full AI workflow (Docker + Claude Code automation)
+uv run python main.py ai-workflow start
 ```
 
-The service will now automatically monitor both channels, download new videos every 2 minutes, and handle rate limits gracefully.
+The AI workflow will now:
+- Monitor channels and download new videos automatically 
+- Process transcripts with Claude Code AI enhancement
+- Organize enhanced content by channel
+- Run 24/7 with comprehensive error handling
 
+**Note**: By default, Docker stores transcripts in `./data/`. To use a custom location, modify the volume mount in `docker-compose.yml` and update `config.json` accordingly.
+
+## AI Workflow Automation (CH-141) ✅
+
+**Fully automated YouTube transcript monitoring, AI processing, and organization.**
+
+### Prerequisites
+- Docker running locally
+- Claude Code CLI installed and authenticated (`claude setup-token`)
+
+### Quick Start - Complete Automation
+```bash
+# 1. Setup channels (one-time)
+uv run python main.py channel subscribe "3Blue1Brown" "@3blue1brown"
+uv run python main.py channel subscribe "Tina Huang" "@TinaHuang1"
+
+# 2. Create data directory for Docker storage
+mkdir -p ./data
+
+# 3. Start the full AI workflow (100% automated)
+uv run python main.py ai-workflow start
+```
+
+### Core Commands
+```bash
+# Check status of Docker container and Claude Code
+uv run python main.py ai-workflow status
+
+# Process only downloaded transcripts with Claude Code (automated)
+uv run python main.py ai-workflow process
+
+# Stop the Docker container
+uv run python main.py ai-workflow stop
+```
+
+### How It Works - Three Automated Steps
+
+#### Step 1: Docker Monitoring (Automatic)
+- Monitors subscribed YouTube channels via RSS feeds
+- Downloads new transcript files to `/downloaded/` directory
+- Runs 24/7 with automatic rate limit handling
+- No user interaction required
+
+#### Step 2: Claude AI Processing (Fully Automated)
+- Uses Claude Code CLI in non-interactive mode (`--print --dangerously-skip-permissions`)
+- Launches `transcript-education-curator` agent automatically
+- Processes all `.md` files in downloaded directory
+- 10-minute timeout with comprehensive error handling
+- No prompts or user interaction required
+
+#### Step 3: File Organization (Automatic)
+- Automatically organizes AI-enhanced transcripts by channel
+- Moves files from `/downloaded/` to channel-specific folders
+- Maintains clean directory structure
+- Updates file tracking automatically
+
+### AI Enhancement Features
+The transcript-education-curator agent transforms raw transcripts into:
+- **Structured Educational Summaries**: Well-organized content with clear sections
+- **Key Concepts**: Main topics and important ideas extracted and highlighted
+- **Actionable Takeaways**: Practical insights and lessons you can apply
+- **Technical Details**: Code examples, formulas, and technical explanations preserved
+- **References**: Resources and links mentioned in the video compiled
+- **Comprehensive Learning Resource**: Ready for future reference and AI processing
+
+### Processing Flow (100% Automated)
+```
+Channel RSS → Docker Monitor → downloaded/ → Claude AI → [channel-name]/
+```
+
+### Automation Benefits
+- **Zero Manual Intervention**: Set up once, runs forever
+- **Intelligent Processing**: Claude Code automatically enhances content quality
+- **Clean Organization**: Files automatically sorted by channel
+- **Reliable Operation**: Error handling, timeouts, and logging built-in
+- **Actually Works**: Unlike SDK approaches, leverages Claude Code's native CLI interface
 
 ### Quick Start: Manual Transcript Download
 ```bash
