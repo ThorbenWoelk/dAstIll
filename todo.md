@@ -1,0 +1,1 @@
+- when running the ai workflow, the claude step does not show its logs: [2025-08-06 17:32:10] Launching Claude Code for transcript processing... it just runs very long without transparency of the progress. the same is true for the docker setup that has important logs about subscruptions and downloading. can you make all those logs of subprocesses available?
