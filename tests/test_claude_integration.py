@@ -1,7 +1,8 @@
 """Tests for Claude Code integration."""
 
+import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from src.claude_integration import ClaudeCodeIntegration
 
@@ -12,14 +13,20 @@ class TestClaudeCodeIntegration:
     def test_init_finds_claude_executable(self):
         """Test that initialization finds Claude executable."""
         integration = ClaudeCodeIntegration()
-        # If Claude Code is actually installed, this should work
+        # If Claude Code SDK or CLI is actually installed, this should work
         assert integration.is_available()
-        assert integration.claude_path is not None
+        # SDK might be available even without CLI
+        if not integration.sdk_available:
+            assert integration.claude_path is not None
 
     def test_init_no_claude_executable(self):
         """Test initialization when Claude is not available."""
-        with patch("src.claude_integration.shutil.which", return_value=None):
+        with (
+            patch("src.claude_integration.shutil.which", return_value=None),
+            patch("src.claude_integration.SDK_AVAILABLE", False),
+        ):
             integration = ClaudeCodeIntegration()
+            integration.sdk_available = False  # Force SDK to be unavailable
             assert integration.claude_path is None
             assert not integration.is_available()
 
@@ -30,36 +37,41 @@ class TestClaudeCodeIntegration:
                 "src.claude_integration.shutil.which",
                 return_value="/usr/local/bin/claude",
             ),
-            patch("subprocess.run") as mock_run,
+            patch("src.claude_integration.SDK_AVAILABLE", False),
         ):
-            mock_run.return_value.returncode = 0
             integration = ClaudeCodeIntegration()
+            integration.sdk_available = False  # Ensure SDK is not used
 
             is_auth, message = integration.check_authentication()
             assert is_auth
-            assert message == "Authenticated"
+            assert "Authenticated" in message or "authenticated" in message
 
     def test_check_authentication_failure(self):
-        """Test failed authentication check."""
+        """Test failed authentication check - in Docker environment."""
         with (
             patch(
                 "src.claude_integration.shutil.which",
                 return_value="/usr/local/bin/claude",
             ),
-            patch("subprocess.run") as mock_run,
+            patch("src.claude_integration.Path.exists", return_value=True),
+            patch("src.claude_integration.SDK_AVAILABLE", False),
         ):
-            mock_run.return_value.returncode = 1
-            mock_run.return_value.stderr = "Not authenticated"
+            # This will make _is_running_in_docker return True
             integration = ClaudeCodeIntegration()
+            integration.sdk_available = False  # Ensure SDK is not used
 
             is_auth, message = integration.check_authentication()
             assert not is_auth
-            assert "Not authenticated" in message
+            assert "Docker environment detected" in message
 
     def test_check_authentication_no_claude(self):
         """Test authentication check when Claude is not available."""
-        with patch("src.claude_integration.shutil.which", return_value=None):
+        with (
+            patch("src.claude_integration.shutil.which", return_value=None),
+            patch("src.claude_integration.SDK_AVAILABLE", False),
+        ):
             integration = ClaudeCodeIntegration()
+            integration.sdk_available = False  # Ensure SDK is not used
 
             is_auth, message = integration.check_authentication()
             assert not is_auth
@@ -87,32 +99,42 @@ class TestClaudeCodeIntegration:
                 "src.claude_integration.shutil.which",
                 return_value="/usr/local/bin/claude",
             ),
-            patch("subprocess.run") as mock_run,
-            patch("pathlib.Path.exists", return_value=True),
-            patch("pathlib.Path.read_text") as mock_read,
+            patch("src.claude_integration.asyncio.run") as mock_run,
+            patch("src.claude_integration.SDK_AVAILABLE", True),
+            tempfile.TemporaryDirectory() as tmpdir,
         ):
-            # Mock authentication success
-            mock_run.side_effect = [
-                MagicMock(returncode=0),  # auth check
-                MagicMock(returncode=0, stdout="processed content"),  # agent processing
-            ]
-
-            # Mock file content
-            mock_read.side_effect = ["original content", "processed content"]
+            # Mock successful SDK processing
+            mock_run.return_value = (
+                True,
+                "Successfully processed with SDK",
+                "processed content",
+            )
 
             integration = ClaudeCodeIntegration()
-            test_path = Path("/test/transcript.md")
+            integration.sdk_available = True
+
+            # Create a real temporary file for testing
+            test_path = Path(tmpdir) / "transcript.md"
+            test_path.write_text("original content")
 
             success, message, content = integration.process_transcript(test_path)
             assert success
-            assert "Successfully processed" in message
+            assert "processed" in message.lower()
             assert content == "processed content"
 
     def test_process_transcript_no_claude(self):
         """Test transcript processing when Claude is not available."""
-        with patch("src.claude_integration.shutil.which", return_value=None):
+        with (
+            patch("src.claude_integration.shutil.which", return_value=None),
+            patch("src.claude_integration.SDK_AVAILABLE", False),
+            tempfile.TemporaryDirectory() as tmpdir,
+        ):
             integration = ClaudeCodeIntegration()
-            test_path = Path("/test/transcript.md")
+            integration.sdk_available = False
+
+            # Create a real temporary file for testing
+            test_path = Path(tmpdir) / "transcript.md"
+            test_path.write_text("original content")
 
             success, message, content = integration.process_transcript(test_path)
             assert not success

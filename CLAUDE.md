@@ -55,6 +55,8 @@ The application uses a four-status file-based system:
 └── channels.json       # Channel monitoring configuration
 ```
 
+**Important**: The actual transcript storage locations are configured in `~/.dastill/config.json` under `storage.base_path`. Use `uv run python main.py config` to check the current configuration. For testing AI integration or finding existing transcripts, always use the configured base path, not the local `./data/` directory.
+
 ## Core Modules
 
 1. **main.py**: CLI interface with subcommands
@@ -67,6 +69,14 @@ The application uses a four-status file-based system:
 8. **monitoring_service.py**: Orchestrates automatic video detection and processing
 
 ## Development Rules
+
+### Verification Requirements
+- **NEVER claim feature completion without demonstration**: All features must be tested and verified to work as intended before marking complete
+- **Test end-to-end workflows**: Don't just test components in isolation - verify the complete user workflow functions properly
+- **Provide evidence**: Show actual output, file contents, or behavior that proves the feature works correctly
+- **Fail fast on false positives**: If tests appear to pass but functionality is broken, immediately investigate and fix the root cause
+- **NO MANUAL WORKAROUNDS**: Features must work through the intended automated workflow, not through manual intervention or external processes
+- **VERIFY INTEGRATION**: Ensure new features integrate seamlessly with existing workflows rather than requiring separate manual steps
 
 ### Task Management
 - **Primary task source**: Always check `todo.md` for current tasks and priorities

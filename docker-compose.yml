@@ -5,6 +5,10 @@ services:
     volumes:
       # Mount data directory for video storage and configuration
       - ./data:/data
+      # Mount Claude Code authentication from host (needs write for updates)
+      - ~/.claude:/root/.claude
+      - ~/.claude.json:/root/.claude.json
+      - ~/.ssh:/root/.ssh:ro
     environment:
       # Base path for video storage
       - DASTILL_BASE_PATH=/data
@@ -27,6 +31,10 @@ services:
     container_name: dastill-cli
     volumes:
       - ./data:/data
+      # Mount Claude Code authentication from host (needs write for updates)
+      - ~/.claude:/root/.claude
+      - ~/.claude.json:/root/.claude.json
+      - ~/.ssh:/root/.ssh:ro
     environment:
       - DASTILL_BASE_PATH=/data
       - DASTILL_CONFIG_DIR=/data/config

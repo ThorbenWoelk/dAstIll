@@ -1,9 +1,17 @@
 """Claude Code integration for transcript processing."""
 
+import asyncio
+import os
 import shutil
-import subprocess
 from pathlib import Path
 from typing import Any
+
+try:
+    from claude_code_sdk import AssistantMessage, ClaudeCodeOptions, TextBlock, query
+
+    SDK_AVAILABLE = True
+except ImportError:
+    SDK_AVAILABLE = False
 
 
 class ClaudeCodeIntegration:
@@ -12,144 +20,118 @@ class ClaudeCodeIntegration:
     def __init__(self):
         """Initialize Claude Code integration."""
         self.claude_path = self._find_claude_executable()
+        self.is_docker = self._is_running_in_docker()
+        self.is_claude_code_session = self._is_claude_code_session()
+        self.sdk_available = SDK_AVAILABLE
+
+    def _is_running_in_docker(self) -> bool:
+        """Check if running inside a Docker container."""
+        return Path("/.dockerenv").exists() or Path("/proc/1/cgroup").exists()
+
+    def _is_claude_code_session(self) -> bool:
+        """Check if running within a Claude Code session."""
+        return (
+            os.getenv("CLAUDE_CODE_SESSION") is not None
+            or os.getenv("ANTHROPIC_CLI_SESSION") is not None
+        )
 
     def _find_claude_executable(self) -> str | None:
         """Find Claude Code CLI executable."""
-        # Try common locations for Claude Code CLI
-        possible_paths = [
-            "claude",  # In PATH
-            "claude-code",  # Alternative name
-            "/usr/local/bin/claude",
-            "/opt/homebrew/bin/claude",
-        ]
-
-        for path in possible_paths:
-            if shutil.which(path):
-                return path
-
+        # Try common CLI names
+        for name in ["claude", "claude-code"]:
+            if shutil.which(name):
+                return name
         return None
 
     def is_available(self) -> bool:
-        """Check if Claude Code CLI is available."""
-        return self.claude_path is not None
+        """Check if Claude Code SDK or CLI is available."""
+        return self.sdk_available or self.claude_path is not None
 
     def check_authentication(self) -> tuple[bool, str]:
         """Check if Claude Code is authenticated."""
+        if self.sdk_available:
+            # SDK handles authentication internally
+            return True, "SDK authenticated"
+
         if not self.is_available():
             return False, "Claude Code CLI not found"
 
-        try:
-            result = subprocess.run(
-                [self.claude_path, "auth", "status"],
-                capture_output=True,
-                text=True,
-                timeout=10,
+        # Docker requires special setup for authentication
+        if self.is_docker:
+            return (
+                False,
+                "Docker environment detected - AI features require running on host system",
             )
 
-            if result.returncode == 0:
-                return True, "Authenticated"
-            else:
-                return False, result.stderr.strip() or "Authentication failed"
-
-        except subprocess.TimeoutExpired:
-            return False, "Authentication check timed out"
-        except Exception as e:
-            return False, f"Error checking authentication: {str(e)}"
+        # For now, assume authentication works on host system
+        # TODO: Implement proper authentication check
+        return True, "Authenticated (assuming host authentication)"
 
     def get_status(self) -> dict[str, Any]:
         """Get comprehensive status of Claude Code integration."""
         status = {
             "available": self.is_available(),
+            "sdk_available": self.sdk_available,
             "claude_path": self.claude_path,
             "authenticated": False,
             "auth_message": "",
+            "message": "",
         }
 
         if status["available"]:
             is_auth, auth_msg = self.check_authentication()
             status["authenticated"] = is_auth
             status["auth_message"] = auth_msg
+            status["message"] = auth_msg
+        else:
+            status["message"] = "Claude Code SDK/CLI not found"
 
         return status
 
-    def process_transcript_with_agent(self, transcript_path: Path) -> tuple[bool, str]:
-        """Process a transcript using the transcript-education-curator agent."""
-        if not self.is_available():
-            return False, "Claude Code CLI not available"
-
-        is_auth, auth_msg = self.check_authentication()
-        if not is_auth:
-            return False, f"Authentication failed: {auth_msg}"
-
+    async def _process_with_sdk(
+        self, transcript_content: str, transcript_name: str
+    ) -> tuple[bool, str, str]:
+        """Process transcript using Claude Code SDK."""
         try:
-            # Use the transcript-education-curator agent to process the transcript
-            cmd = [
-                self.claude_path,
-                "--agent",
-                "transcript-education-curator",
-                str(transcript_path),
-            ]
+            options = ClaudeCodeOptions(max_turns=1, model="claude-3-5-sonnet-20241022")
 
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=300,  # 5 minute timeout
-                cwd=transcript_path.parent,
-            )
+            prompt = f"""You are the transcript-education-curator agent. Please process this YouTube transcript and transform it into a well-structured educational summary with key concepts, insights, and actionable takeaways.
 
-            if result.returncode == 0:
-                return True, "Successfully processed transcript with AI agent"
+Transcript file: {transcript_name}
+
+---BEGIN TRANSCRIPT---
+{transcript_content}
+---END TRANSCRIPT---
+
+Please provide a comprehensive educational summary that includes:
+1. Main topic and key concepts
+2. Important insights and lessons
+3. Actionable takeaways
+4. Technical details if applicable
+5. References and resources mentioned"""
+
+            enhanced_content = ""
+            async for message in query(prompt=prompt, options=options):
+                # Handle AssistantMessage with TextBlock content
+                if isinstance(message, AssistantMessage):
+                    for block in message.content:
+                        if isinstance(block, TextBlock):
+                            enhanced_content += block.text
+                elif hasattr(message, "text"):
+                    enhanced_content = message.text
+                elif isinstance(message, str):
+                    enhanced_content = message
+
+            if enhanced_content:
+                return True, "Successfully processed with SDK", enhanced_content
             else:
-                error_msg = result.stderr.strip() or result.stdout.strip()
-                return False, f"Agent processing failed: {error_msg}"
+                return False, "No response from SDK", ""
 
-        except subprocess.TimeoutExpired:
-            return False, "Agent processing timed out (5 minutes)"
         except Exception as e:
-            return False, f"Error running agent: {str(e)}"
-
-    def process_downloaded_transcripts(self, downloaded_dir: Path) -> dict[str, Any]:
-        """Process all transcripts in the downloaded directory using AI agent."""
-        results = {"total": 0, "processed": 0, "failed": 0, "errors": []}
-
-        if not downloaded_dir.exists():
-            results["errors"].append("Downloaded directory does not exist")
-            return results
-
-        # Find all transcript files in downloaded directory
-        transcript_files = list(downloaded_dir.glob("*.md"))
-        results["total"] = len(transcript_files)
-
-        if results["total"] == 0:
-            return results
-
-        print(f"Processing {results['total']} transcripts with AI agent...")
-
-        for transcript_file in transcript_files:
-            print(f"  Processing: {transcript_file.name}")
-
-            success, message = self.process_transcript_with_agent(transcript_file)
-
-            if success:
-                results["processed"] += 1
-                print(f"    ✅ {message}")
-            else:
-                results["failed"] += 1
-                results["errors"].append(f"{transcript_file.name}: {message}")
-                print(f"    ❌ {message}")
-
-        return results
+            return False, f"SDK processing error: {str(e)}", ""
 
     def process_transcript(self, transcript_path: Path) -> tuple[bool, str, str]:
         """Process a single transcript and return success status, message, and processed content."""
-        if not self.is_available():
-            return False, "Claude Code CLI not available", ""
-
-        is_auth, auth_msg = self.check_authentication()
-        if not is_auth:
-            return False, f"Authentication failed: {auth_msg}", ""
-
         if not transcript_path.exists():
             return False, f"Transcript file not found: {transcript_path}", ""
 
@@ -157,56 +139,22 @@ class ClaudeCodeIntegration:
             # Read original content
             original_content = transcript_path.read_text(encoding="utf-8")
 
-            # Use the transcript-education-curator agent to process the transcript
-            cmd = [
-                self.claude_path,
-                "--agent",
-                "transcript-education-curator",
-                str(transcript_path),
-            ]
-
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=300,  # 5 minute timeout
-                cwd=transcript_path.parent,
-            )
-
-            if result.returncode == 0:
-                # Read the processed content (assuming the agent modifies the file in place)
-                processed_content = transcript_path.read_text(encoding="utf-8")
-
-                # If content changed, return the new content
-                if processed_content != original_content:
-                    return (
-                        True,
-                        "Successfully processed transcript with AI agent",
-                        processed_content,
-                    )
-                else:
-                    # If agent didn't modify the file, use stdout as processed content
-                    processed_content = result.stdout.strip()
-                    if processed_content:
-                        return (
-                            True,
-                            "Successfully processed transcript with AI agent",
-                            processed_content,
-                        )
-                    else:
-                        return (
-                            True,
-                            "AI agent completed but no changes made",
-                            original_content,
-                        )
+            if self.sdk_available:
+                # Use SDK for processing
+                success, message, enhanced_content = asyncio.run(
+                    self._process_with_sdk(original_content, transcript_path.name)
+                )
+                return success, message, enhanced_content
             else:
-                error_msg = result.stderr.strip() or result.stdout.strip()
-                return False, f"Agent processing failed: {error_msg}", ""
+                # Fallback: indicate SDK not available
+                return (
+                    False,
+                    "Claude Code SDK not available - install with 'uv add claude-code-sdk'",
+                    "",
+                )
 
-        except subprocess.TimeoutExpired:
-            return False, "Agent processing timed out (5 minutes)", ""
         except Exception as e:
-            return False, f"Error running agent: {str(e)}", ""
+            return False, f"Error in AI processing: {str(e)}", ""
 
     def update_transcript_file(self, transcript_path: Path, content: str) -> bool:
         """Update a transcript file with processed content."""

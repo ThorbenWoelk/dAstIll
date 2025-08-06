@@ -1,0 +1,18 @@
+{
+  "storage": {
+    "base_path": "/root/Documents/dAstIll/transcripts",
+    "markdown_format": true,
+    "organize_by_date": true
+  },
+  "transcript": {
+    "default_languages": [
+      "en"
+    ],
+    "include_metadata": true,
+    "clean_transcript": true,
+    "method": "api_with_fallback"
+  },
+  "monitoring": {
+    "max_recent_videos": 20
+  }
+}

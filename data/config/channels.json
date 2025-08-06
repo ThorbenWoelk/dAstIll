@@ -1,0 +1,18 @@
+{
+  "monitoring": {
+    "enabled": false,
+    "check_interval": 300,
+    "max_videos_per_check": 50,
+    "rate_limiting": {
+      "api_request_delay": 2.0,
+      "bulk_operation_delay": 5.0,
+      "recovery_hours": 3
+    },
+    "notifications": {
+      "enabled": true,
+      "console": true,
+      "log_file": true
+    }
+  },
+  "channels": {}
+}
