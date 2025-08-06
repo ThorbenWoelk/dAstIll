@@ -119,7 +119,21 @@ process_transcripts() {
     
     BASE_PATH=$(echo "$STORAGE_INFO" | sed 's/.*: //' | tr -d '"')
     
-    # Validate BASE_PATH to prevent injection
+    # Validate BASE_PATH to prevent injection and ensure safety
+    if [[ -z "$BASE_PATH" ]]; then
+        error "Base path is empty after parsing configuration"
+    fi
+    
+    # Check for dangerous characters that could enable command injection
+    if [[ "$BASE_PATH" =~ [\;\&\|\`\$\(\)] ]]; then
+        error "Base path contains dangerous characters: $BASE_PATH"
+    fi
+    
+    # Ensure path is absolute and exists
+    if [[ ! "$BASE_PATH" =~ ^/ ]]; then
+        error "Base path must be absolute: $BASE_PATH"
+    fi
+    
     if [[ ! -d "$BASE_PATH" ]]; then
         error "Base path does not exist: $BASE_PATH"
     fi
@@ -184,16 +198,27 @@ process_transcripts() {
         # Create file-specific prompt
         FILE_PROMPT="Use the transcript-education-curator agent to process the transcript file $filename. Transform it into a well-structured educational summary with key concepts, insights, and actionable takeaways. Replace the original file with the enhanced version."
         
-        if printf '%s\n' "$FILE_PROMPT" | stdbuf -oL -eL "$CLAUDE_CMD" --print --dangerously-skip-permissions --add-dir "$BASE_PATH" 2>&1 | tee -a /tmp/claude-processing.log; then
+        # Create individual log file for this processing attempt to preserve context
+        INDIVIDUAL_LOG="/tmp/claude-processing-${filename//[^a-zA-Z0-9]/_}.log"
+        
+        if printf '%s\n' "$FILE_PROMPT" | stdbuf -oL -eL "$CLAUDE_CMD" --print --dangerously-skip-permissions --add-dir "$BASE_PATH" 2>&1 | tee -a "$INDIVIDUAL_LOG" | tee -a /tmp/claude-processing.log; then
             success "✓ Processed: $filename"
             ((SUCCESS_COUNT++))
+            # Clean up successful processing log
+            rm -f "$INDIVIDUAL_LOG" 2>/dev/null || true
         else
+            EXIT_CODE=$?
             warning "✗ Failed to process: $filename (continuing with other files)"
             FAILED_FILES+=("$filename")
             ((FAILED_COUNT++))
             
-            # Log specific failure details but continue processing
-            log "Error processing $filename (exit code: $?)"
+            # Log specific failure details with preserved context
+            log "Error processing $filename (exit code: $EXIT_CODE)"
+            log "Individual processing log saved to: $INDIVIDUAL_LOG"
+            log "Last 5 lines of error output:"
+            tail -5 "$INDIVIDUAL_LOG" 2>/dev/null | while read -r line; do
+                log "  | $line"
+            done || log "  (Could not read error output)"
         fi
     done < <(find "$DOWNLOADED_DIR" -name "*.md" -type f -print0)
     

@@ -1280,6 +1280,11 @@ def handle_ai_workflow(args):
 
         # Wait for process to complete and get return code
         return_code = process.poll()
+
+        # Ensure stdout is closed in normal execution path
+        if process.stdout:
+            process.stdout.close()
+
         if return_code != 0:
             print(f"\n❌ AI workflow exited with code {return_code}")
 
