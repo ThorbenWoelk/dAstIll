@@ -69,9 +69,9 @@ class ChannelConfigManager:
 
     def __init__(self, config_dir: str | None = None):
         if config_dir is None:
-            # Check environment variable first, then fallback to local config
+            # Check environment variable first, then fallback to config directory
             config_dir = os.getenv(
-                "DASTILL_CONFIG_DIR", os.path.join(os.getcwd(), "config", "local")
+                "DASTILL_CONFIG_DIR", os.path.join(os.getcwd(), "config")
             )
 
         self.config_dir = Path(config_dir)

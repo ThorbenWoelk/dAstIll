@@ -8,6 +8,14 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Node.js and npm (needed for Claude CLI to run)
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+    && apt-get install -y nodejs
+
+# Install Claude Code CLI globally in container
+# Auth will be mounted from host via volumes
+RUN npm install -g @anthropic-ai/claude-code
+
 # Install uv package manager
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 

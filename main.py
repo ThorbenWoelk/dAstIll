@@ -176,6 +176,32 @@ def main():
     # AI processing status command
     subparsers.add_parser("ai-status", help="Check Claude Code integration status")
 
+    # AI workflow command
+    ai_workflow_parser = subparsers.add_parser(
+        "ai-workflow", help="AI workflow automation"
+    )
+    ai_workflow_subparsers = ai_workflow_parser.add_subparsers(
+        dest="workflow_action", help="AI workflow actions"
+    )
+
+    # AI workflow start
+    ai_workflow_subparsers.add_parser(
+        "start", help="Start the full AI workflow (monitoring + processing)"
+    )
+
+    # AI workflow process
+    ai_workflow_subparsers.add_parser(
+        "process", help="Only process downloaded transcripts with Claude Code"
+    )
+
+    # AI workflow status
+    ai_workflow_subparsers.add_parser(
+        "status", help="Check the status of Docker container and Claude Code"
+    )
+
+    # AI workflow stop
+    ai_workflow_subparsers.add_parser("stop", help="Stop the Docker container")
+
     # Add command - Add video IDs to be downloaded later
     add_parser = subparsers.add_parser(
         "add", help="Add video IDs to be downloaded later"
@@ -430,6 +456,8 @@ def main():
             handle_channel(args)
         elif args.command == "settings":
             handle_settings(args)
+        elif args.command == "ai-workflow":
+            handle_ai_workflow(args)
 
     except Exception as e:
         print(f"Error: {str(e)}", file=sys.stderr)
@@ -650,13 +678,18 @@ def handle_process(loader, args):
             print(
                 "❌ Claude Code integration not available. Use 'dastill ai-status' to check."
             )
-            print("Processing without AI...")
+            print("❌ --with-ai flag requires Claude Code to be available.")
+            print("💡 Either install Claude Code SDK or run without --with-ai flag.")
+            return
         else:
             is_auth, auth_msg = claude_integration.check_authentication()
             if not is_auth:
                 print(f"❌ Claude Code authentication failed: {auth_msg}")
-                print("Processing without AI...")
-                claude_integration = None
+                print("❌ --with-ai flag requires authenticated Claude Code session.")
+                print(
+                    "💡 Run this command from within Claude Code or remove --with-ai flag."
+                )
+                return
             else:
                 print("✅ Claude Code integration ready. Processing with AI...")
 
@@ -1182,6 +1215,35 @@ def handle_settings(args):
             except ValueError:
                 print("❌ Invalid limit value. Use a number or 'unlimited'")
                 return
+
+
+def handle_ai_workflow(args):
+    """Handle AI workflow automation subcommands."""
+    import subprocess
+    from pathlib import Path
+
+    if args.workflow_action is None:
+        print(
+            "Error: No workflow action specified. Use 'ai-workflow start', 'ai-workflow status', etc."
+        )
+        return
+
+    # Get the script path
+    script_path = Path(__file__).parent / "scripts" / "ai-workflow.sh"
+
+    if not script_path.exists():
+        print(f"❌ AI workflow script not found at: {script_path}")
+        print("Please ensure the script is properly installed.")
+        return
+
+    try:
+        # Execute the bash script with the appropriate action
+        cmd = [str(script_path), args.workflow_action]
+        result = subprocess.run(cmd, check=False)
+        sys.exit(result.returncode)
+    except Exception as e:
+        print(f"❌ Error executing AI workflow: {str(e)}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
