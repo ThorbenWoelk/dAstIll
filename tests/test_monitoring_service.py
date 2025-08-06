@@ -272,6 +272,130 @@ class TestMonitoringService(unittest.TestCase):
         self.assertTrue(channel_status["enabled"])
         self.assertFalse(channel_status["has_channel_id"])
 
+    def test_test_configuration_no_channels(self):
+        """Test configuration testing with no channels."""
+        result = self.service.test_configuration()
+        self.assertTrue(result)
+
+    @patch("src.monitoring_service.RSSChannelMonitor")
+    def test_test_configuration_with_channels(self, mock_rss_monitor_class):
+        """Test configuration testing with channels."""
+        # Setup mock RSS monitor
+        mock_rss_monitor = Mock()
+        mock_rss_monitor.test_rss_feed.return_value = True
+        mock_rss_monitor.get_latest_videos.return_value = [
+            VideoInfo(
+                "test123",
+                "Test Video",
+                "2023-01-01",
+                "Test Channel",
+                "UC123",
+                "https://www.youtube.com/watch?v=test123",
+            )
+        ]
+        mock_rss_monitor_class.return_value = mock_rss_monitor
+        self.service.rss_monitor = mock_rss_monitor
+
+        # Add a test channel with channel ID
+        self.service.config_manager.add_channel(
+            "Test Channel", "@test", channel_id="UC123"
+        )
+
+        result = self.service.test_configuration()
+        self.assertTrue(result)
+
+        # Verify RSS feed was tested
+        mock_rss_monitor.test_rss_feed.assert_called_with("UC123")
+        mock_rss_monitor.get_latest_videos.assert_called_with("UC123", limit=1)
+
+    def test_test_configuration_missing_channel_id(self):
+        """Test configuration testing with missing channel ID."""
+        # Add a channel without channel_id
+        self.service.config_manager.add_channel("Test Channel", "@test")
+
+        result = self.service.test_configuration()
+        self.assertFalse(result)  # Should fail due to missing channel ID
+
+    @patch("src.monitoring_service.RSSChannelMonitor")
+    def test_test_configuration_rss_failure(self, mock_rss_monitor_class):
+        """Test configuration testing with RSS failure."""
+        # Setup mock RSS monitor to fail
+        mock_rss_monitor = Mock()
+        mock_rss_monitor.test_rss_feed.return_value = False
+        mock_rss_monitor_class.return_value = mock_rss_monitor
+        self.service.rss_monitor = mock_rss_monitor
+
+        # Add a test channel
+        self.service.config_manager.add_channel(
+            "Test Channel", "@test", channel_id="UC123"
+        )
+
+        result = self.service.test_configuration()
+        self.assertFalse(result)  # Should fail due to RSS failure
+
+    def test_log_status_callback(self):
+        """Test status logging callback."""
+        status_messages = []
+        self.service.on_status = lambda msg: status_messages.append(msg)
+
+        self.service._log_status("Test message")
+        self.assertEqual(len(status_messages), 1)
+        # Status message includes timestamp prefix
+        self.assertIn("Test message", status_messages[0])
+
+    def test_log_error_callback(self):
+        """Test error logging callback."""
+        error_messages = []
+        self.service.on_error = lambda context, error: error_messages.append(
+            (context, str(error))
+        )
+
+        test_error = Exception("Test error")
+        self.service._log_error("Test context", test_error)
+
+        self.assertEqual(len(error_messages), 1)
+        # Error message includes formatted context
+        self.assertIn("Test context", error_messages[0][0])
+        self.assertIn("Test error", error_messages[0][0])
+
+    def test_rate_limit_recovery_state(self):
+        """Test rate limit recovery state management."""
+        from datetime import datetime, timedelta
+
+        # Initially no rate limit recovery time set
+        self.assertIsNone(self.service.rate_limit_recovery_until)
+
+        # Set rate limit recovery time
+        future_time = datetime.now() + timedelta(hours=1)
+        with self.service._recovery_lock:
+            self.service.rate_limit_recovery_until = future_time
+
+        # Verify it's set
+        self.assertEqual(self.service.rate_limit_recovery_until, future_time)
+
+        # Call the check method (doesn't return anything, but shouldn't crash)
+        self.service._check_rate_limit_recovery()
+
+        # Should still be set because we're before the recovery time
+        self.assertIsNotNone(self.service.rate_limit_recovery_until)
+
+    def test_incomplete_backfills_management(self):
+        """Test incomplete backfills tracking."""
+        # Initially empty
+        self.assertEqual(len(self.service.incomplete_backfills), 0)
+
+        # Add incomplete backfill
+        with self.service._recovery_lock:
+            self.service.incomplete_backfills.add("@test_channel")
+
+        self.assertIn("@test_channel", self.service.incomplete_backfills)
+
+        # Clear incomplete backfills
+        with self.service._recovery_lock:
+            self.service.incomplete_backfills.clear()
+
+        self.assertEqual(len(self.service.incomplete_backfills), 0)
+
 
 if __name__ == "__main__":
     unittest.main()
