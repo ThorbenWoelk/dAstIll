@@ -15,9 +15,9 @@ except ImportError:
 class Config:
     def __init__(self, config_path: str = None):
         if config_path is None:
-            # Check environment variable first, then fallback to local config
+            # Check environment variable first, then fallback to config directory
             config_dir = os.getenv(
-                "DASTILL_CONFIG_DIR", os.path.join(os.getcwd(), "config", "local")
+                "DASTILL_CONFIG_DIR", os.path.join(os.getcwd(), "config")
             )
             os.makedirs(config_dir, exist_ok=True)
             config_path = os.path.join(config_dir, "config.json")
