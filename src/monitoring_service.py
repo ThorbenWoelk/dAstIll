@@ -229,12 +229,11 @@ class ChannelMonitoringService:
             )
             return False
 
-        # Generate startup status report (before backfill shows current state)
+        # Generate startup status report
         self._generate_startup_report()
 
-        # Perform startup backfill for all channels
-        self._log_status("🔄 Performing startup backfill for all channels...")
-        self._startup_backfill(enabled_channels)
+        # Start continuous monitoring immediately - no separate startup backfill
+        self._log_status("🔄 Starting continuous monitoring for all channels...")
 
         self.running = True
         self.monitor_thread = threading.Thread(
@@ -384,7 +383,7 @@ class ChannelMonitoringService:
             )
         else:
             self._log_status(
-                f"🔍 Checking {len(enabled_channels)} channels for new videos..."
+                f"🔍 Checking {len(enabled_channels)} channels for unprocessed videos..."
             )
 
         for channel in enabled_channels:
@@ -433,11 +432,11 @@ class ChannelMonitoringService:
         for video in reversed(new_videos):
             if download_transcripts:
                 self._log_status(
-                    f"🎥 New video detected: {video.title} ({channel.name})"
+                    f"🎥 Unprocessed video found: {video.title} ({channel.name})"
                 )
             else:
                 self._log_status(
-                    f"🎥 New video detected (recovery mode): {video.title} ({channel.name})"
+                    f"🎥 Unprocessed video found (recovery mode): {video.title} ({channel.name})"
                 )
 
             # Update last video ID immediately to avoid reprocessing

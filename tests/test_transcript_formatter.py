@@ -87,15 +87,11 @@ class TestTranscriptFormatter(unittest.TestCase):
 
     def test_sanitize_filename_invalid_chars(self):
         """Test filename sanitization removes invalid characters."""
-        self.assertEqual(self.formatter._sanitize_filename("test<>file"), "test__file")
-        self.assertEqual(
-            self.formatter._sanitize_filename('test"|?*file'), "test____file"
-        )
-        self.assertEqual(self.formatter._sanitize_filename("test:file"), "test_file")
-        self.assertEqual(self.formatter._sanitize_filename("test/file"), "test_file")
-        self.assertEqual(
-            self.formatter._sanitize_filename("test\\\\file"), "test__file"
-        )
+        self.assertEqual(self.formatter._sanitize_filename("test<>file"), "testfile")
+        self.assertEqual(self.formatter._sanitize_filename('test"|?*file'), "testfile")
+        self.assertEqual(self.formatter._sanitize_filename("test:file"), "testfile")
+        self.assertEqual(self.formatter._sanitize_filename("test/file"), "testfile")
+        self.assertEqual(self.formatter._sanitize_filename("test\\\\file"), "testfile")
 
     def test_sanitize_filename_empty(self):
         """Test filename sanitization with empty input."""
@@ -143,7 +139,7 @@ class TestTranscriptFormatter(unittest.TestCase):
         result = self.formatter._generate_filename(
             "ABC123", "Test<>Video", "Test|Channel"
         )
-        self.assertEqual(result, "ABC123_TestChannel_Test__Video.md")
+        self.assertEqual(result, "ABC123_TestChannel_TestVideo.md")
 
     def test_format_transcript_content_minimal(self):
         """Test transcript content formatting with minimal data."""

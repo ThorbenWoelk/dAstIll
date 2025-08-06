@@ -12,6 +12,9 @@ class TestIntegration(unittest.TestCase):
         self.temp_dir = tempfile.mkdtemp()
         self.config_path = os.path.join(self.temp_dir, "config.json")
 
+        # Set environment variable to ensure temp directory is used
+        os.environ["DASTILL_BASE_PATH"] = self.temp_dir
+
         # Create config with temp directory as base path
         from config.config import Config
 
@@ -22,6 +25,10 @@ class TestIntegration(unittest.TestCase):
 
     def tearDown(self):
         import shutil
+
+        # Clean up environment variable
+        if "DASTILL_BASE_PATH" in os.environ:
+            del os.environ["DASTILL_BASE_PATH"]
 
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 

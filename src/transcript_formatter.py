@@ -7,24 +7,26 @@ class TranscriptFormatter:
     def __init__(self, base_path: str):
         self.base_path = Path(base_path)
 
-    def _sanitize_channel_name(self, channel: str) -> str:
+    def _sanitize_channel_name(self, channel: str | None) -> str:
         """Sanitize channel name to prevent path traversal and invalid chars."""
-        if not channel or channel.strip() == "":
+        if not channel or not isinstance(channel, str) or channel.strip() == "":
             return "unknown"
 
-        # Remove path traversal attempts
-        channel = channel.replace("..", "").replace("/", "").replace("\\", "")
+        # Use whitelist approach - only allow safe characters
+        import re
 
-        # Remove invalid filesystem characters
-        invalid_chars = '<>:"|?*'
-        for char in invalid_chars:
-            channel = channel.replace(char, "")
+        # Allow only alphanumeric, spaces, hyphens, and underscores
+        # Strict whitelist approach for maximum security
+        safe_chars = re.sub(r"[^a-zA-Z0-9\s\-_]", "", channel)
+
+        # Normalize whitespace and remove multiple spaces
+        safe_chars = " ".join(safe_chars.split())
 
         # Limit length and strip whitespace
-        channel = channel.strip()[:100]  # Max 100 chars
+        safe_chars = safe_chars.strip()[:100]  # Max 100 chars
 
         # If empty after sanitization, use unknown
-        return channel if channel else "unknown"
+        return safe_chars if safe_chars else "unknown"
 
     def format_transcript_content(
         self, transcript_data: dict[str, Any], summary: str = None
@@ -65,21 +67,29 @@ class TranscriptFormatter:
 
         return content
 
-    def _sanitize_filename(self, filename: str) -> str:
+    def _sanitize_filename(self, filename: str | None) -> str:
         """Sanitize filename for safe file system usage."""
-        if not filename:
+        if not filename or not isinstance(filename, str):
             return ""
 
-        invalid_chars = '<>:"/\\|?*'
-        for char in invalid_chars:
-            filename = filename.replace(char, "_")
+        # Use whitelist approach for filenames - be more restrictive than channel names
+        import re
 
-        filename = filename.strip()
+        # Allow only alphanumeric, spaces, hyphens, and underscores
+        # Strict whitelist approach - no periods to prevent path issues
+        safe_chars = re.sub(r"[^a-zA-Z0-9\s\-_]", "", filename)
 
-        if len(filename) > 50:
-            filename = filename[:50].strip()
+        # Normalize whitespace and remove multiple spaces
+        safe_chars = " ".join(safe_chars.split())
 
-        return filename
+        # Remove leading/trailing whitespace
+        safe_chars = safe_chars.strip()
+
+        # Limit length
+        if len(safe_chars) > 50:
+            safe_chars = safe_chars[:50].strip()
+
+        return safe_chars
 
     def _generate_filename(
         self, video_id: str, title: str = "", channel: str = "unknown"
