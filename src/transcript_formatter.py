@@ -15,9 +15,9 @@ class TranscriptFormatter:
         # Use whitelist approach - only allow safe characters
         import re
 
-        # Allow only alphanumeric, spaces, hyphens, underscores, and basic punctuation
-        # Explicitly exclude dots to prevent path traversal attacks
-        safe_chars = re.sub(r"[^a-zA-Z0-9\s\-_()[\]{}!]", "", channel)
+        # Allow only alphanumeric, spaces, hyphens, and underscores
+        # Strict whitelist approach for maximum security
+        safe_chars = re.sub(r"[^a-zA-Z0-9\s\-_]", "", channel)
 
         # Normalize whitespace and remove multiple spaces
         safe_chars = " ".join(safe_chars.split())
@@ -75,15 +75,15 @@ class TranscriptFormatter:
         # Use whitelist approach for filenames - be more restrictive than channel names
         import re
 
-        # Allow only alphanumeric, spaces, hyphens, underscores, and periods
-        # No path separators or special characters that could cause issues
-        safe_chars = re.sub(r"[^a-zA-Z0-9\s\-_.]", "", filename)
+        # Allow only alphanumeric, spaces, hyphens, and underscores
+        # Strict whitelist approach - no periods to prevent path issues
+        safe_chars = re.sub(r"[^a-zA-Z0-9\s\-_]", "", filename)
 
         # Normalize whitespace and remove multiple spaces
         safe_chars = " ".join(safe_chars.split())
 
-        # Remove leading/trailing periods to prevent hidden files
-        safe_chars = safe_chars.strip(". ")
+        # Remove leading/trailing whitespace
+        safe_chars = safe_chars.strip()
 
         # Limit length
         if len(safe_chars) > 50:
