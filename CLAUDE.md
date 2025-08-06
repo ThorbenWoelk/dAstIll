@@ -161,29 +161,52 @@ The application uses a four-status file-based system:
 
 ## AI Agent Integration
 
-### Transcript Processing Workflow
-The application has a two-phase processing system:
+### CH-141: Bash Workflow Automation ✅
+The application now includes fully automated AI processing through bash script orchestration:
+
+#### Architecture
+- **Docker Container**: Runs dAstIll monitoring as a long-running process
+- **Bash Script Orchestration**: `scripts/ai-workflow.sh` coordinates Docker + Claude Code
+- **Claude Code CLI**: Processes transcripts with transcript-education-curator agent
+- **Automated Organization**: Files are organized by channel after AI processing
+
+#### Usage
+```bash
+# Start full AI workflow (monitoring + processing)
+uv run python main.py ai-workflow start
+./ai-workflow start
+
+# Check status of Docker container and Claude Code
+uv run python main.py ai-workflow status
+
+# Process only downloaded transcripts with Claude Code
+uv run python main.py ai-workflow process
+
+# Stop the Docker container
+uv run python main.py ai-workflow stop
+```
+
+#### Processing Flow (Automated)
+```
+Channel Monitoring (Docker) → downloaded/ → Claude Code AI Processing → process → [channel-name]/
+```
+
+#### Key Benefits
+- **Fully Automated**: No manual intervention required after setup
+- **Clean Architecture**: Each tool used in its optimal environment
+- **Reliable**: Simple bash orchestration is maintainable and robust
+- **Actually Works**: Unlike SDK approach, this leverages Claude Code's native CLI interface
+
+### Legacy: Manual Processing Workflow
+For manual processing without the automated workflow:
+
 1. **Technical Processing**: The CLI application downloads transcripts and organizes them by channel
 2. **Educational Processing**: External AI agents (specifically the transcript-education-curator) analyze and summarize the content
 
-### Professor Agent Role
-- The `transcript-education-curator` agent acts as the "professor" for the application
-- It processes raw transcripts that have been moved to channel folders after the `process` command
-- Transforms verbose transcripts into structured educational summaries with key concepts and insights
-- This educational processing is separate from the technical file management handled by the CLI
-
-### Processing Flow
-```
-YouTube URL → download → downloaded/ → AI agent processing → process → [channel-name]/
-```
-
-**IMPORTANT WORKFLOW STEP**: After using the transcript-education-curator agent (professor) to summarize transcripts in the `downloaded/` folder, you MUST use the dAstIll app's `process` command to move the files to their proper channel folders:
-
+**Manual Processing Flow**: After using the transcript-education-curator agent manually, run:
 ```bash
 uv run python main.py process
 ```
-
-This ensures the enhanced transcripts are properly organized by channel in the file system architecture.
 
 ## Common Pitfalls to Avoid
 

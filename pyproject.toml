@@ -5,7 +5,6 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "claude-code-sdk>=0.0.19",
     "youtube-transcript-api>=1.2.1",
 ]
 

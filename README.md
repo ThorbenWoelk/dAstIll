@@ -14,6 +14,11 @@ A Python app and command-line tool for downloading, organizing, and managing You
 - **Subscription**: Auto-download and process new videos as they're published
 - **Zero Cost**: Completely free using YouTube's public RSS feeds
 
+### AI-Powered Processing (CH-141 Feature)
+- **Claude Code Integration**: Automated transcript enhancement using Claude Code
+- **Educational Summarization**: Transform raw transcripts into structured learning content
+- **Bash Workflow**: Simple script orchestration for Docker + Claude Code automation
+
 ## Quick Start (Docker)
 
 For the complete automated workflow:
@@ -37,6 +42,43 @@ docker-compose logs -f dastill-monitor
 
 The service will now automatically monitor both channels, download new videos every 2 minutes, and handle rate limits gracefully.
 
+## AI Workflow Automation (CH-141)
+
+For automated transcript enhancement with Claude Code:
+
+### Prerequisites
+- Docker running locally
+- Claude Code CLI installed and authenticated (`claude setup-token`)
+
+### Usage
+```bash
+# Start the full AI workflow (monitoring + processing)
+uv run python main.py ai-workflow start
+# or use the wrapper script
+./ai-workflow start
+
+# Check status of Docker container and Claude Code
+uv run python main.py ai-workflow status
+
+# Process only downloaded transcripts with Claude Code
+uv run python main.py ai-workflow process
+
+# Stop the Docker container
+uv run python main.py ai-workflow stop
+```
+
+### How It Works
+1. **Docker Container**: Runs dAstIll monitoring as a long-running process
+2. **Claude Code Processing**: Script launches Claude Code to process downloaded transcripts
+3. **Educational Enhancement**: Raw transcripts become structured summaries with key insights
+4. **File Organization**: Enhanced transcripts are organized by channel automatically
+
+### AI Enhancement Features
+- Main topic identification and key concepts
+- Important insights and actionable takeaways
+- Technical details extraction
+- Reference and resource compilation
+- Structured markdown output for easy reading
 
 ### Quick Start: Manual Transcript Download
 ```bash
