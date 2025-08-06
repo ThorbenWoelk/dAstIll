@@ -1237,10 +1237,59 @@ def handle_ai_workflow(args):
         return
 
     try:
-        # Execute the bash script with the appropriate action
+        # Execute the bash script with the appropriate action and stream output
         cmd = [str(script_path), args.workflow_action]
-        result = subprocess.run(cmd, check=False)
-        sys.exit(result.returncode)
+
+        # Use Popen to stream output in real-time
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            universal_newlines=True,
+            bufsize=1,
+        )
+
+        # Stream output line by line with proper resource cleanup
+        try:
+            while True:
+                output = process.stdout.readline()
+                if output == "" and process.poll() is not None:
+                    break
+                if output:
+                    print(output.strip())
+        except KeyboardInterrupt:
+            print("\n⚠️ Workflow interrupted by user")
+            process.terminate()
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+            sys.exit(1)
+        finally:
+            # Ensure proper cleanup of resources
+            if process.stdout:
+                process.stdout.close()
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+
+        # Wait for process to complete and get return code
+        return_code = process.poll()
+
+        # Ensure stdout is closed in normal execution path
+        if process.stdout:
+            process.stdout.close()
+
+        if return_code != 0:
+            print(f"\n❌ AI workflow exited with code {return_code}")
+
+        sys.exit(return_code)
+
     except Exception as e:
         print(f"❌ Error executing AI workflow: {str(e)}")
         sys.exit(1)
