@@ -578,9 +578,53 @@ def handle_remove(loader, args):
 
 
 def handle_config(loader, args):
+    import os
+
+    print("Configuration Status:")
+    print("=" * 70)
+
+    # Show environment variables that affect configuration
+    print("\n📌 Environment Variables:")
+    env_vars = {
+        "DASTILL_BASE_PATH": os.getenv("DASTILL_BASE_PATH"),
+        "DASTILL_CONFIG_DIR": os.getenv("DASTILL_CONFIG_DIR"),
+    }
+
+    for var_name, var_value in env_vars.items():
+        if var_value:
+            print(f"   ✅ {var_name}: {var_value}")
+        else:
+            print(f"   ⚪ {var_name}: (not set)")
+
+    # Show resolved storage path
+    resolved_base_path = loader.config.get("storage.base_path")
+    print(f"\n📁 Resolved Storage Path: {resolved_base_path}")
+
+    # Show config file location
+    print(f"📄 Config File: {loader.config.config_path}")
+
+    # Show storage directory contents
+    from pathlib import Path
+
+    storage_path = Path(resolved_base_path)
+    print("\n📊 Storage Directory Status:")
+    if storage_path.exists():
+        subdirs = [d for d in storage_path.iterdir() if d.is_dir()]
+        if subdirs:
+            print("   Subdirectories:")
+            for subdir in sorted(subdirs):
+                file_count = len(list(subdir.glob("*.md"))) if subdir.is_dir() else 0
+                print(f"     • {subdir.name}: {file_count} files")
+        else:
+            print("   ⚪ No subdirectories found")
+    else:
+        print(f"   ❌ Storage directory does not exist: {storage_path}")
+        print("   💡 Run a command to create it automatically")
+
+    # Show full configuration
     config = loader.config.config
-    print("Current Configuration:")
-    print("=" * 50)
+    print("\n⚙️ Full Configuration:")
+    print("-" * 50)
 
     def print_dict(d, indent=0):
         for key, value in d.items():

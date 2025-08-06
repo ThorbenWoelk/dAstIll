@@ -243,25 +243,48 @@ Each markdown file includes:
 
 ## Configuration
 
-### Main Configuration
-Configuration is stored in `~/.dastill/config.json`. Default settings:
+### Unified Storage Configuration
+
+dAstIll uses a unified configuration system that works consistently across CLI and Docker environments:
+
+**Environment Variable (Recommended for Docker):**
+```bash
+# Set storage location via environment variable
+export DASTILL_BASE_PATH=/path/to/your/transcripts
+export DASTILL_CONFIG_DIR=/path/to/your/config
+```
+
+**Configuration File (CLI Default):**
+Configuration is stored in `config/config.json` (or `$DASTILL_CONFIG_DIR/config.json`):
 
 ```json
 {
   "storage": {
-    "base_path": "~/Documents/totos-vault/AI Memory/youtube library",
-    "markdown_format": true
+    "base_path": "~/Documents/dAstIll/transcripts",
+    "markdown_format": true,
+    "organize_by_date": true
   },
   "transcript": {
     "default_languages": ["en"],
     "include_metadata": true,
-    "clean_transcript": true
+    "clean_transcript": true,
+    "method": "api_with_fallback"
+  },
+  "monitoring": {
+    "max_recent_videos": 20
   }
 }
 ```
 
+**Priority Order:**
+1. `DASTILL_BASE_PATH` environment variable (highest priority)
+2. Value in config.json file
+3. Default: `~/Documents/dAstIll/transcripts`
+
+This ensures Docker containers and CLI commands operate on the same data.
+
 ### Channel Monitoring Configuration
-Channel monitoring is configured in `~/.dastill/channels.json`:
+Channel monitoring is configured in `channels.json`:
 
 ```json
 {

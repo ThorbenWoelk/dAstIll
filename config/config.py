@@ -38,12 +38,21 @@ class Config:
             return self._create_default_config()
 
     def _create_default_config(self) -> dict[str, Any]:
-        # Use a user-friendly location for transcripts (not hidden)
-        home_dir = Path.home()
+        # Use environment-driven paths with sensible defaults
+        # Check for DASTILL_BASE_PATH environment variable first
+        env_base_path = os.getenv("DASTILL_BASE_PATH")
+
+        if env_base_path:
+            # Use environment path if set (Docker or explicit override)
+            base_path = env_base_path
+        else:
+            # Default to user-friendly location for CLI usage
+            home_dir = Path.home()
+            base_path = str(home_dir / "Documents" / "dAstIll" / "transcripts")
 
         default_config = {
             "storage": {
-                "base_path": str(home_dir / "Documents" / "dAstIll" / "transcripts"),
+                "base_path": base_path,
                 "markdown_format": True,
                 "organize_by_date": True,
             },

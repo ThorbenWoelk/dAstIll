@@ -154,10 +154,24 @@ The application uses a four-status file-based system:
 - RSS Feeds: For channel monitoring (no API key required)
 - File System: Primary data storage (stateless design)
 
-### Configuration System
-- Main config: `~/.dastill/config.json`
-- Channel config: `~/.dastill/channels.json`
+### Configuration System - UNIFIED APPROACH ✅
+
+dAstIll uses a unified configuration system that works consistently across CLI and Docker environments:
+
+**Priority Order**:
+1. `DASTILL_BASE_PATH` environment variable (highest priority)
+2. Value in `config/config.json` file  
+3. Default: `~/Documents/dAstIll/transcripts`
+
+**Key Files**:
+- Main config: `config/config.json` (or `$DASTILL_CONFIG_DIR/config.json`)
+- Channel config: `config/channels.json` (or `$DASTILL_CONFIG_DIR/channels.json`)
 - Both use atomic writes for safety
+
+**Docker Integration**: 
+Docker Compose now uses consistent `/data` paths and environment variables to ensure CLI and containerized commands operate on the same storage location.
+
+**Configuration Check**: Use `uv run python main.py config` to see resolved paths, environment variables, and storage directory status.
 
 ## AI Agent Integration
 
