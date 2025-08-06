@@ -3,6 +3,11 @@ import os
 from pathlib import Path
 from typing import Any
 
+from dotenv import load_dotenv
+
+# Load .env file at module import
+load_dotenv()
+
 # Import fcntl only on Unix systems
 try:
     import fcntl
@@ -64,11 +69,24 @@ class Config:
         return default_config
 
     def get(self, key: str, default=None):
+        """Get configuration value with environment variable override support.
+
+        Configuration hierarchy (highest to lowest priority):
+        1. Environment variables (DASTILL_BASE_PATH)
+        2. Configuration file values
+        3. Default values
+
+        Args:
+            key: Configuration key in dot notation (e.g., "storage.base_path")
+            default: Default value if key not found
+
+        Returns:
+            Configuration value with appropriate type casting and validation
+        """
         # Check for environment variable overrides first
-        if key == "storage.base_path":
-            env_base_path = os.getenv("DASTILL_BASE_PATH")
-            if env_base_path:
-                return env_base_path
+        env_value = self._get_env_override(key)
+        if env_value is not None:
+            return env_value
 
         keys = key.split(".")
         value = self.config
@@ -77,6 +95,46 @@ class Config:
             if not isinstance(value, dict) and k != keys[-1]:
                 return default
         return value if value != {} else default
+
+    def _get_env_override(self, key: str) -> Any:
+        """Get environment variable override for configuration keys.
+
+        Supported environment variable overrides:
+        - storage.base_path -> DASTILL_BASE_PATH
+
+        Args:
+            key: Configuration key to check for environment override
+
+        Returns:
+            Environment variable value if found and valid, None otherwise
+        """
+        if key == "storage.base_path":
+            env_base_path = os.getenv("DASTILL_BASE_PATH")
+            if env_base_path:
+                # Validate environment variable path
+                try:
+                    # Expand user directory first
+                    expanded_path = Path(env_base_path).expanduser()
+
+                    # Check if the original path (before expansion) was absolute
+                    if not Path(
+                        env_base_path
+                    ).is_absolute() and not env_base_path.startswith("~"):
+                        raise ValueError(
+                            "DASTILL_BASE_PATH must be an absolute path or start with ~"
+                        )
+
+                    # Resolve to get canonical absolute path
+                    resolved_path = expanded_path.resolve()
+                    return str(resolved_path)
+                except (OSError, ValueError) as e:
+                    print(
+                        f"Warning: Invalid DASTILL_BASE_PATH environment variable: {e}"
+                    )
+                    print("Falling back to configuration file value")
+                    return None
+
+        return None
 
     def set(self, key: str, value: Any):
         # Validate specific config values

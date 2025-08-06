@@ -7,12 +7,17 @@ import sys
 import time
 from pathlib import Path
 
-from config.channel_config import ChannelConfigManager
-from config.config import Config
-from src.claude_integration import ClaudeCodeIntegration
-from src.monitoring_service import ChannelMonitoringService
-from src.rss_monitor import RSSChannelMonitor
-from src.transcript_loader import RateLimitError, YouTubeTranscriptLoader
+from dotenv import load_dotenv
+
+# Load .env file early to ensure environment variables are available
+load_dotenv()
+
+from config.channel_config import ChannelConfigManager  # noqa: E402
+from config.config import Config  # noqa: E402
+from src.claude_integration import ClaudeCodeIntegration  # noqa: E402
+from src.monitoring_service import ChannelMonitoringService  # noqa: E402
+from src.rss_monitor import RSSChannelMonitor  # noqa: E402
+from src.transcript_loader import RateLimitError, YouTubeTranscriptLoader  # noqa: E402
 
 
 def check_disk_space(path: str, required_mb: int = 100) -> bool:

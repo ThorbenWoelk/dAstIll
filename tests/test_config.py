@@ -152,6 +152,77 @@ class TestConfig(unittest.TestCase):
         with self.assertRaises(ValueError):
             config.set("monitoring.max_recent_videos", 50.5)
 
+    def test_environment_variable_override_validation(self):
+        """Test environment variable override with validation."""
+        config = Config(self.config_path)
+
+        # Test valid absolute path
+        valid_path = "/tmp/test_transcripts"
+        os.environ["DASTILL_BASE_PATH"] = valid_path
+        try:
+            result = config.get("storage.base_path")
+            # Should resolve to absolute path
+            self.assertTrue(os.path.isabs(result))
+            self.assertIn("test_transcripts", result)
+        finally:
+            del os.environ["DASTILL_BASE_PATH"]
+
+        # Test invalid relative path - should fall back to config
+        os.environ["DASTILL_BASE_PATH"] = "relative/path"
+        try:
+            # Should fall back to default config value (not the invalid env var)
+            result = config.get("storage.base_path")
+            self.assertTrue(os.path.isabs(result))
+            # Should contain default path elements
+            self.assertIn("Documents", result)
+        finally:
+            del os.environ["DASTILL_BASE_PATH"]
+
+        # Test home directory expansion
+        os.environ["DASTILL_BASE_PATH"] = "~/test_transcripts"
+        try:
+            result = config.get("storage.base_path")
+            self.assertTrue(os.path.isabs(result))
+            self.assertNotIn("~", result)  # Should be expanded
+        finally:
+            del os.environ["DASTILL_BASE_PATH"]
+
+    def test_config_hierarchy_documentation(self):
+        """Test that config hierarchy is working as documented."""
+        # Store original environment variable if it exists
+        original_env = os.environ.get("DASTILL_BASE_PATH")
+        if "DASTILL_BASE_PATH" in os.environ:
+            del os.environ["DASTILL_BASE_PATH"]
+
+        try:
+            config = Config(self.config_path)
+
+            # 1. Default value (lowest priority)
+            default_value = config.get("storage.base_path")
+            self.assertTrue(os.path.isabs(default_value))
+
+            # 2. Config file value (middle priority)
+            config.set("storage.base_path", "/config/file/path")
+            config_file_value = config.get("storage.base_path")
+            self.assertEqual(config_file_value, "/config/file/path")
+
+            # 3. Environment variable (highest priority)
+            os.environ["DASTILL_BASE_PATH"] = "/env/var/path"
+            try:
+                env_override_value = config.get("storage.base_path")
+                self.assertEqual(env_override_value, "/env/var/path")
+            finally:
+                del os.environ["DASTILL_BASE_PATH"]
+
+            # After removing env var, should fall back to config file
+            fallback_value = config.get("storage.base_path")
+            self.assertEqual(fallback_value, "/config/file/path")
+
+        finally:
+            # Restore original environment variable if it existed
+            if original_env is not None:
+                os.environ["DASTILL_BASE_PATH"] = original_env
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -160,4 +160,4 @@ dAstIll-transcripts/
 # User configuration and data directories  
 .dastill/
 # Temporary files
-*.tmp
+*.tmpdata/

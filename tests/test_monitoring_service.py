@@ -116,8 +116,9 @@ class TestMonitoringService(unittest.TestCase):
         self.assertFalse(self.service.running)
         self.service.monitor_thread.join.assert_called_once()
 
-    def test_check_channel_new_video(self):
-        """Test checking a channel with new videos."""
+    @patch("src.file_manager.VideoFileManager")
+    def test_check_channel_new_video(self, mock_file_manager_class):
+        """Test checking a channel with unprocessed videos."""
         # Mock RSS monitor
         mock_monitor = Mock()
         test_video = VideoInfo(
@@ -125,6 +126,11 @@ class TestMonitoringService(unittest.TestCase):
         )
         mock_monitor.get_latest_videos.return_value = [test_video]
         self.service.rss_monitor = mock_monitor
+
+        # Mock file manager to indicate video is not downloaded
+        mock_file_manager = Mock()
+        mock_file_manager.get_video_status.return_value = ("not_downloaded", None)
+        mock_file_manager_class.return_value = mock_file_manager
 
         # Add the channel to the config manager first
         self.service.config_manager.add_channel(
@@ -140,16 +146,19 @@ class TestMonitoringService(unittest.TestCase):
         # Check channel
         self.service._check_channel(channel)
 
-        # Verify new video was detected and callback called
+        # Verify unprocessed video was detected and callback called
         self.service.on_new_video.assert_called_once_with(test_video, channel)
 
         # Verify last video ID was updated in the config manager
         updated_channel = self.service.config_manager.get_channel("@testchannel")
         self.assertEqual(updated_channel.last_video_id, "new123")
 
+    @patch("src.file_manager.VideoFileManager")
     @patch("src.monitoring_service.RSSChannelMonitor")
-    def test_check_channel_no_new_videos(self, mock_rss_monitor_class):
-        """Test checking a channel with no new videos."""
+    def test_check_channel_no_new_videos(
+        self, mock_rss_monitor_class, mock_file_manager_class
+    ):
+        """Test checking a channel with already processed videos."""
         # Mock RSS monitor
         mock_monitor = Mock()
         existing_video = VideoInfo(
@@ -158,6 +167,11 @@ class TestMonitoringService(unittest.TestCase):
         mock_monitor.get_latest_videos.return_value = [existing_video]
         mock_rss_monitor_class.return_value = mock_monitor
         self.service.rss_monitor = mock_monitor
+
+        # Mock file manager to indicate video is already processed
+        mock_file_manager = Mock()
+        mock_file_manager.get_video_status.return_value = ("processed", "/path/to/file")
+        mock_file_manager_class.return_value = mock_file_manager
 
         # Create channel with last video ID matching the returned video
         channel = ChannelConfig(
@@ -174,7 +188,7 @@ class TestMonitoringService(unittest.TestCase):
         # Check channel
         self.service._check_channel(channel)
 
-        # Verify no new video callback was made
+        # Verify no new video callback was made (video already processed)
         self.service.on_new_video.assert_not_called()
 
     def test_process_new_video_auto_download(self):
