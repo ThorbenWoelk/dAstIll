@@ -16,6 +16,7 @@ from config.channel_config import ChannelConfigManager  # noqa: E402
 from config.config import Config  # noqa: E402
 from src.claude_integration import ClaudeCodeIntegration  # noqa: E402
 from src.monitoring_service import ChannelMonitoringService  # noqa: E402
+from src.ollama_processor import OllamaTranscriptProcessor  # noqa: E402
 from src.rss_monitor import RSSChannelMonitor  # noqa: E402
 from src.transcript_loader import RateLimitError, YouTubeTranscriptLoader  # noqa: E402
 
@@ -180,6 +181,28 @@ def main():
 
     # AI processing status command
     subparsers.add_parser("ai-status", help="Check Claude Code integration status")
+
+    # Ollama processing command
+    ollama_parser = subparsers.add_parser(
+        "ollama", help="Process transcripts with local Ollama models"
+    )
+    ollama_subparsers = ollama_parser.add_subparsers(
+        dest="ollama_action", help="Ollama actions"
+    )
+
+    # Ollama process
+    process_ollama_parser = ollama_subparsers.add_parser(
+        "process", help="Process downloaded transcripts with Ollama"
+    )
+    process_ollama_parser.add_argument(
+        "--model", default="qwen3:8b", help="Ollama model to use (default: qwen3:8b)"
+    )
+    process_ollama_parser.add_argument(
+        "--directory", help="Directory to process (defaults to downloaded folder)"
+    )
+
+    # Ollama status
+    ollama_subparsers.add_parser("status", help="Check Ollama availability and models")
 
     # AI workflow command
     ai_workflow_parser = subparsers.add_parser(
@@ -447,6 +470,8 @@ def main():
             handle_config(loader, args)
         elif args.command == "ai-status":
             handle_ai_status(args)
+        elif args.command == "ollama":
+            handle_ollama(loader, args)
         elif args.command == "add":
             handle_add(loader, args)
         elif args.command == "status":
@@ -1220,6 +1245,99 @@ def handle_settings(args):
             except ValueError:
                 print("❌ Invalid limit value. Use a number or 'unlimited'")
                 return
+
+
+def handle_ollama(loader, args):
+    """Handle Ollama processing commands."""
+    if args.ollama_action == "status":
+        # Check Ollama status
+        processor = OllamaTranscriptProcessor()
+        available, status_message = processor.check_ollama_availability()
+
+        print("Ollama Local AI Status:")
+        print("=" * 50)
+
+        if available:
+            print("✅ Ollama: Available")
+            print(f"   {status_message}")
+
+            # Show available models
+            try:
+                import requests
+
+                response = requests.get(f"{processor.ollama_host}/api/tags", timeout=5)
+                if response.status_code == 200:
+                    models = response.json().get("models", [])
+                    print(f"   Available models: {len(models)}")
+                    for model in models[:5]:  # Show first 5 models
+                        print(
+                            f"      • {model['name']} ({model.get('size', 'unknown size')})"
+                        )
+                    if len(models) > 5:
+                        print(f"      ... and {len(models) - 5} more")
+            except Exception:
+                pass
+        else:
+            print("❌ Ollama: Not Available")
+            print(f"   {status_message}")
+            print("   💡 Make sure Ollama is installed and running:")
+            print("      - Install: https://ollama.ai")
+            print("      - Start: ollama serve")
+            print("      - Pull model: ollama pull qwen3:8b")
+
+    elif args.ollama_action == "process":
+        # Process transcripts with Ollama
+        config = loader.config
+        base_path = config.get("storage.base_path")
+
+        if args.directory:
+            process_dir = Path(args.directory)
+        else:
+            process_dir = Path(base_path) / "downloaded"
+
+        print(f"Processing transcripts with Ollama model: {args.model}")
+        print(f"Directory: {process_dir}")
+        print()
+
+        # Check if Ollama is available
+        processor = OllamaTranscriptProcessor(
+            model_name=args.model,
+            template_path=str(Path(base_path) / "TRANSCRIPT_TEMPLATE.md"),
+        )
+
+        available, status_message = processor.check_ollama_availability()
+        if not available:
+            print(f"❌ {status_message}")
+            print("Please ensure Ollama is running and the model is available.")
+            return
+
+        print(f"✅ {status_message}")
+        print()
+
+        # Process transcripts
+        success_count, total_count, failed_files = processor.process_directory(
+            process_dir
+        )
+
+        print()
+        print("Processing Summary:")
+        print(f"  Successfully processed: {success_count}/{total_count} files")
+
+        if failed_files:
+            print(f"  Failed files: {', '.join(failed_files)}")
+
+        if success_count > 0:
+            print()
+            print("✅ Local AI processing completed successfully!")
+            print(
+                "💡 Run 'uv run python main.py process' to organize enhanced transcripts"
+            )
+        else:
+            print("ℹ️  No files were processed")
+
+    else:
+        print("Error: No Ollama action specified.")
+        print("Available actions: status, process")
 
 
 def handle_ai_workflow(args):
