@@ -3,8 +3,8 @@ services:
     build: .
     container_name: dastill-monitor
     volumes:
-      # Mount actual configured storage path for transcripts
-      - ~/Documents/totos-vault/AI Memory/youtube library:/transcripts
+      # Mount local data directory for transcripts (or customize to your preference)
+      - ./data:/transcripts
       # Mount configuration directory
       - ./config:/app/config
       # Mount Claude Code authentication from host (needs write for updates)
