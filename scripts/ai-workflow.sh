@@ -140,42 +140,25 @@ process_transcripts() {
         CLAUDE_CMD="claude-code"
     fi
     
-    # Create a prompt file for Claude Code
-    PROMPT_FILE="/tmp/claude-transcript-prompt.txt"
-    cat > "$PROMPT_FILE" << EOF
-I need you to process YouTube transcripts that have been downloaded to the directory: $DOWNLOADED_DIR
-
-Please use the transcript-education-curator agent to:
-
-1. Find all .md files in the downloaded directory
-2. For each transcript file:
-   - Read the content
-   - Transform it into a well-structured educational summary
-   - Include key concepts, insights, and actionable takeaways
-   - Replace the original file with the enhanced version
-
-The files are raw YouTube transcripts that need to be converted into structured educational content. Each file should become a comprehensive learning resource with:
-
-- Main topic and key concepts
-- Important insights and lessons  
-- Actionable takeaways
-- Technical details if applicable
-- References and resources mentioned
-
-After processing all files, I'll run the dAstIll process command to organize them by channel.
-
-Please start by listing the files in $DOWNLOADED_DIR and then process each one systematically.
-EOF
-
-    # Launch Claude Code with the prompt
-    if "$CLAUDE_CMD" < "$PROMPT_FILE"; then
-        success "Claude Code transcript processing completed"
-    else
-        error "Claude Code transcript processing failed"
-    fi
+    # Create automated prompt for Claude Code
+    PROMPT="Use the transcript-education-curator agent to process all transcript files in $DOWNLOADED_DIR. For each .md file, transform it into a well-structured educational summary with key concepts, insights, and actionable takeaways. Replace each original file with the enhanced version."
     
-    # Clean up prompt file
-    rm -f "$PROMPT_FILE"
+    # Launch Claude Code in non-interactive mode with Task tool
+    # Using --dangerously-skip-permissions and --add-dir for full automation
+    if echo "$PROMPT" | timeout 600 "$CLAUDE_CMD" --print --dangerously-skip-permissions --add-dir "$BASE_PATH" > /tmp/claude-processing.log 2>&1; then
+        success "Claude Code transcript processing completed"
+        log "Processing log saved to /tmp/claude-processing.log"
+        # Show last few lines of processing for confirmation
+        tail -10 /tmp/claude-processing.log || true
+    else
+        EXIT_CODE=$?
+        if [ $EXIT_CODE -eq 124 ]; then
+            error "Claude Code processing timed out after 10 minutes"
+        else
+            error "Claude Code transcript processing failed. Check log at /tmp/claude-processing.log"
+        fi
+        cat /tmp/claude-processing.log || true
+    fi
 }
 
 # Organize processed transcripts

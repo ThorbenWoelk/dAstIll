@@ -161,41 +161,124 @@ The application uses a four-status file-based system:
 
 ## AI Agent Integration
 
-### CH-141: Bash Workflow Automation ✅
-The application now includes fully automated AI processing through bash script orchestration:
+### Available Claude Code Agents
+The project has access to specialized Claude Code agents for different tasks:
+
+1. **transcript-education-curator** - Primary agent for this project
+   - Analyzes YouTube transcripts and transforms them into educational summaries
+   - Extracts key concepts, insights, and actionable takeaways
+   - Used in automated workflow: `claude --print transcript-education-curator`
+
+2. **git-agent** - For version control workflows
+   - Creates conventional commit messages following v1.0.0 specification
+   - Handles proper branching workflows with PR creation
+   - Usage: For commit message automation and git workflow management
+
+3. **linear-product-owner** - For project management
+   - Manages projects and tasks in Linear
+   - Creates/organizes projects, manages issues, maintains structure
+   - Usage: Project planning and issue tracking
+
+4. **obsidian-journal-writer** - For documentation
+   - Creates journal entries in Obsidian
+   - Documents experiences and reflections
+   - Usage: Development journaling and note-taking
+
+5. **ai-app-architect** - For system design
+   - Helps design AI-powered applications
+   - System architecture, model selection, integration patterns
+   - Usage: Technical architecture decisions
+
+6. **general-purpose** - For research and complex tasks
+   - General-purpose agent for complex, multi-step tasks
+   - Code searching and research
+   - Usage: When other specialized agents don't fit the task
+
+### CH-141: Bash Workflow Automation ✅ (COMPLETED)
+The application now includes **fully automated AI processing** through bash script orchestration with zero user interaction required:
 
 #### Architecture
 - **Docker Container**: Runs dAstIll monitoring as a long-running process
 - **Bash Script Orchestration**: `scripts/ai-workflow.sh` coordinates Docker + Claude Code
-- **Claude Code CLI**: Processes transcripts with transcript-education-curator agent
+- **Claude Code CLI**: Processes transcripts with transcript-education-curator agent in non-interactive mode
 - **Automated Organization**: Files are organized by channel after AI processing
 
-#### Usage
-```bash
-# Start full AI workflow (monitoring + processing)
-uv run python main.py ai-workflow start
-./ai-workflow start
+#### Key Automation Breakthrough: Non-Interactive Claude Code
+**Problem Solved**: Claude Code CLI was requiring user prompts, breaking full automation.
 
-# Check status of Docker container and Claude Code
+**Solution Implemented**: 
+```bash
+# Before (interactive - broke automation)
+claude < prompt_file
+
+# After (fully automated)
+claude --print --dangerously-skip-permissions --add-dir "$BASE_PATH" "$PROMPT"
+```
+
+**Critical Flags for Automation**:
+- `--print`: Non-interactive output mode
+- `--dangerously-skip-permissions`: Bypass all permission prompts
+- `--add-dir`: Grant directory access automatically
+- `timeout 600`: Prevent hanging with 10-minute timeout
+- Comprehensive error handling and logging
+
+#### Usage (100% Automated)
+```bash
+# Setup configuration for Docker (one-time)
+mkdir -p ./data/config && cp config/channels.json ./data/config/
+
+# Start full AI workflow (zero user interaction)
+uv run python main.py ai-workflow start
+
+# Check status
 uv run python main.py ai-workflow status
 
-# Process only downloaded transcripts with Claude Code
+# Process only downloaded transcripts (automated)
 uv run python main.py ai-workflow process
 
 # Stop the Docker container
 uv run python main.py ai-workflow stop
 ```
 
-#### Processing Flow (Automated)
+#### Processing Flow (100% Automated)
 ```
-Channel Monitoring (Docker) → downloaded/ → Claude Code AI Processing → process → [channel-name]/
+Channel RSS → Docker Monitor → downloaded/ → Claude AI (--print) → [channel-name]/
 ```
 
 #### Key Benefits
-- **Fully Automated**: No manual intervention required after setup
-- **Clean Architecture**: Each tool used in its optimal environment
-- **Reliable**: Simple bash orchestration is maintainable and robust
-- **Actually Works**: Unlike SDK approach, this leverages Claude Code's native CLI interface
+- **100% Automated**: Absolutely zero manual intervention after setup
+- **Clean Architecture**: Each tool used in its optimal environment with proper automation flags
+- **Reliable**: Comprehensive error handling, timeouts, logging, and recovery mechanisms
+- **Actually Works**: Leverages Claude Code's native CLI interface with proper automation flags
+- **Production Ready**: Handles edge cases, timeouts, permission bypassing, and logging
+
+#### Critical Lessons Learned
+1. **Docker Configuration**: Container needs channel config copied to `./data/config/` directory
+2. **Claude Code Automation**: `--print --dangerously-skip-permissions` essential for non-interactive operation
+3. **Directory Access**: `--add-dir` flag required for Claude Code to access transcript directories
+4. **Error Handling**: Timeout handling (124 exit code) and comprehensive logging critical for reliability
+5. **Bash vs SDK**: Simple bash orchestration more reliable than complex SDK integration attempts
+
+#### Troubleshooting AI Workflow
+**Problem**: "Docker container: Not running" in status check
+- **Solution**: Check if Docker daemon is running (`docker --version`)
+- **Fix**: Start Docker Desktop application or run `open -a Docker`
+
+**Problem**: "Global monitoring is disabled" in container logs
+- **Solution**: Channel configuration missing in container
+- **Fix**: Copy config with `mkdir -p ./data/config && cp config/channels.json ./data/config/`
+
+**Problem**: Claude Code processing hangs or times out
+- **Solution**: Use proper automation flags and timeout
+- **Fix**: Ensure `--print --dangerously-skip-permissions --add-dir` flags are used with `timeout 600`
+
+**Problem**: Permission denied errors during Claude Code processing
+- **Solution**: Claude Code needs explicit directory access
+- **Fix**: Add `--add-dir "$BASE_PATH"` flag to Claude Code command
+
+**Problem**: Container constantly restarting
+- **Solution**: Configuration files not properly mounted or accessible
+- **Fix**: Verify `./data/config/channels.json` exists and contains valid channel data
 
 ### Legacy: Manual Processing Workflow
 For manual processing without the automated workflow:
@@ -214,6 +297,9 @@ uv run python main.py process
 2. **Don't require API keys** - use RSS feeds for monitoring
 3. **Don't skip input sanitization** - especially for file paths
 4. **Don't forget to update README.md** - it's the primary documentation
+5. **Don't assume Docker auto-starts** - implement Docker daemon startup checks
+6. **Don't use interactive Claude Code in automation** - always use `--print --dangerously-skip-permissions`
+7. **Don't forget Docker config setup** - container needs `./data/config/channels.json`
 
 ## Testing Strategy
 
