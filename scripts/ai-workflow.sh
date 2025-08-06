@@ -83,11 +83,20 @@ start_monitoring() {
         success "Docker container started successfully"
         
         # Wait a moment for container to initialize
-        sleep 5
+        sleep 3
+        
+        # Show initial container logs
+        log "Initial container logs:"
+        docker-compose logs --tail=10 dastill-monitor || true
         
         # Check container status
         if docker-compose ps | grep -q "Up"; then
             success "Container is running and monitoring channels"
+            
+            # Show live logs for a few seconds to see initial activity
+            log "Monitoring initial activity (showing 15 seconds of logs)..."
+            timeout 15 docker-compose logs -f dastill-monitor || true
+            log "Container is now running in the background. Use 'docker-compose logs -f dastill-monitor' to see ongoing activity."
         else
             error "Container failed to start properly"
         fi
@@ -131,8 +140,18 @@ process_transcripts() {
     
     success "Found $FILE_COUNT transcript files to process"
     
+    # List files to be processed
+    log "Files to be processed:"
+    find "$DOWNLOADED_DIR" -name "*.md" -type f -exec basename {} \; | head -10 | while read filename; do
+        log "  → $filename"
+    done
+    if [[ $FILE_COUNT -gt 10 ]]; then
+        log "  ... and $((FILE_COUNT - 10)) more files"
+    fi
+    
     # Use Claude Code to process transcripts
     log "Launching Claude Code for transcript processing..."
+    log "This may take several minutes depending on the number and size of files..."
     
     # Determine Claude Code command
     CLAUDE_CMD="claude"
@@ -145,19 +164,37 @@ process_transcripts() {
     
     # Launch Claude Code in non-interactive mode with Task tool
     # Using --dangerously-skip-permissions and --add-dir for full automation
-    if echo "$PROMPT" | timeout 600 "$CLAUDE_CMD" --print --dangerously-skip-permissions --add-dir "$BASE_PATH" > /tmp/claude-processing.log 2>&1; then
+    # Use stdbuf to ensure real-time output buffering
+    log "Starting Claude Code processing (output will appear in real-time)..."
+    if echo "$PROMPT" | timeout 600 stdbuf -oL -eL "$CLAUDE_CMD" --print --dangerously-skip-permissions --add-dir "$BASE_PATH" 2>&1 | tee /tmp/claude-processing.log; then
         success "Claude Code transcript processing completed"
         log "Processing log saved to /tmp/claude-processing.log"
-        # Show last few lines of processing for confirmation
-        tail -10 /tmp/claude-processing.log || true
+        
+        # Show processing summary
+        PROCESSED_COUNT=$(find "$DOWNLOADED_DIR" -name "*.md" -type f | wc -l)
+        if [[ $PROCESSED_COUNT -eq 0 ]]; then
+            success "All $FILE_COUNT files have been processed and moved"
+        else
+            warning "$PROCESSED_COUNT files remain in downloaded directory (may need manual review)"
+        fi
     else
         EXIT_CODE=$?
         if [ $EXIT_CODE -eq 124 ]; then
             error "Claude Code processing timed out after 10 minutes"
+            log "Files that may have been partially processed:"
+            find "$DOWNLOADED_DIR" -name "*.md" -type f -exec basename {} \; || true
         else
-            error "Claude Code transcript processing failed. Check log at /tmp/claude-processing.log"
+            error "Claude Code transcript processing failed (exit code: $EXIT_CODE)"
+            log "Last 20 lines of processing log:"
+            tail -20 /tmp/claude-processing.log || true
         fi
-        cat /tmp/claude-processing.log || true
+        
+        # Show which files are still pending
+        REMAINING_COUNT=$(find "$DOWNLOADED_DIR" -name "*.md" -type f | wc -l)
+        if [[ $REMAINING_COUNT -gt 0 ]]; then
+            warning "$REMAINING_COUNT files still need processing"
+        fi
+        return 1
     fi
 }
 
@@ -219,8 +256,13 @@ check_status() {
     # Check Docker status
     if docker-compose ps | grep -q "Up"; then
         success "Docker container: Running"
+        
+        # Show recent container activity
+        log "Recent container activity (last 10 lines):"
+        docker-compose logs --tail=10 dastill-monitor || true
     else
         warning "Docker container: Not running"
+        log "Use 'ai-workflow start' to start the container"
     fi
     
     # Check Claude Code
