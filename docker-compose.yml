@@ -3,8 +3,10 @@ services:
     build: .
     container_name: dastill-monitor
     volumes:
-      # Mount data directory for video storage and configuration
+      # Mount data directory for video storage
       - ./data:/data
+      # Mount configuration directory
+      - ./config:/app/config
       # Mount Claude Code authentication from host (needs write for updates)
       - ~/.claude:/root/.claude
       - ~/.claude.json:/root/.claude.json
@@ -12,8 +14,8 @@ services:
     environment:
       # Base path for video storage
       - DASTILL_BASE_PATH=/data
-      # Configuration directory
-      - DASTILL_CONFIG_DIR=/data/config
+      # Configuration directory (use default app config location)
+      - DASTILL_CONFIG_DIR=/app/config
       # Optional: Override check interval (default is from config)
       # - DASTILL_CHECK_INTERVAL=300
     restart: unless-stopped

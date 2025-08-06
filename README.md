@@ -33,8 +33,8 @@ uv sync
 uv run python main.py channel subscribe "Tina Huang" "@TinaHuang1"
 uv run python main.py channel subscribe "HealthyGamerGG" "@HealthyGamerGG"
 
-# 3. Setup Docker configuration
-mkdir -p ./data/config && cp config/channels.json ./data/config/
+# 3. Ensure Docker data directory exists
+mkdir -p ./data
 
 # 4. Start the full AI workflow (Docker + Claude Code automation)
 uv run python main.py ai-workflow start
@@ -60,8 +60,8 @@ The AI workflow will now:
 uv run python main.py channel subscribe "3Blue1Brown" "@3blue1brown"
 uv run python main.py channel subscribe "Tina Huang" "@TinaHuang1"
 
-# 2. Copy channel config for Docker
-mkdir -p ./data/config && cp config/channels.json ./data/config/
+# 2. Ensure Docker data directory exists
+mkdir -p ./data
 
 # 3. Start the full AI workflow (100% automated)
 uv run python main.py ai-workflow start
