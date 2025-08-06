@@ -3,6 +3,11 @@ import os
 from pathlib import Path
 from typing import Any
 
+from dotenv import load_dotenv
+
+# Load .env file at module import
+load_dotenv()
+
 # Import fcntl only on Unix systems
 try:
     import fcntl

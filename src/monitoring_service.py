@@ -229,12 +229,11 @@ class ChannelMonitoringService:
             )
             return False
 
-        # Generate startup status report (before backfill shows current state)
+        # Generate startup status report
         self._generate_startup_report()
 
-        # Perform startup backfill for all channels
-        self._log_status("🔄 Performing startup backfill for all channels...")
-        self._startup_backfill(enabled_channels)
+        # Start continuous monitoring immediately - no separate startup backfill
+        self._log_status("🔄 Starting continuous monitoring for all channels...")
 
         self.running = True
         self.monitor_thread = threading.Thread(
@@ -384,7 +383,7 @@ class ChannelMonitoringService:
             )
         else:
             self._log_status(
-                f"🔍 Checking {len(enabled_channels)} channels for new videos..."
+                f"🔍 Checking {len(enabled_channels)} channels for unprocessed videos..."
             )
 
         for channel in enabled_channels:
@@ -399,7 +398,7 @@ class ChannelMonitoringService:
                 self._log_error(f"Error checking channel {channel.handle}", e)
 
     def _check_channel(self, channel: ChannelConfig, download_transcripts: bool = True):
-        """Check a single channel for new videos."""
+        """Check a single channel for unprocessed videos (continuous monitoring approach)."""
         if not channel.channel_id:
             return
 
@@ -412,32 +411,44 @@ class ChannelMonitoringService:
         if not videos:
             return
 
-        # Determine which videos are new
-        new_videos = []
+        # Check file manager to see which videos need processing
+        from .file_manager import VideoFileManager
 
-        if channel.last_video_id is None:
-            # First time checking this channel - only process the latest video
-            new_videos = [videos[0]]
-            self._log_status(f"🆕 First check for {channel.name} - found latest video")
-        else:
-            # Find videos newer than last processed video
-            for video in videos:
-                if video.video_id == channel.last_video_id:
-                    break
-                new_videos.append(video)
+        base_path = self.transcript_loader.config.get("storage.base_path")
+        file_manager = VideoFileManager(base_path)
 
-        if not new_videos:
+        unprocessed_videos = []
+
+        # Always check all available videos for processing status
+        for video in videos:
+            status, _ = file_manager.get_video_status(video.video_id)
+            if status == "not_downloaded":
+                unprocessed_videos.append(video)
+                # Update last_video_id to track latest available video
+                if not channel.last_video_id or video.video_id != channel.last_video_id:
+                    self.config_manager.update_last_video_id(
+                        channel.handle, video.video_id
+                    )
+
+        if not unprocessed_videos:
+            # Update to latest video ID even if all are processed
+            if videos and (
+                not channel.last_video_id or videos[0].video_id != channel.last_video_id
+            ):
+                self.config_manager.update_last_video_id(
+                    channel.handle, videos[0].video_id
+                )
             return
 
-        # Process new videos (oldest first to maintain chronological order)
-        for video in reversed(new_videos):
+        # Process unprocessed videos (oldest first to maintain chronological order)
+        for video in reversed(unprocessed_videos):
             if download_transcripts:
                 self._log_status(
-                    f"🎥 New video detected: {video.title} ({channel.name})"
+                    f"🎥 Unprocessed video found: {video.title} ({channel.name})"
                 )
             else:
                 self._log_status(
-                    f"🎥 New video detected (recovery mode): {video.title} ({channel.name})"
+                    f"🎥 Unprocessed video found (recovery mode): {video.title} ({channel.name})"
                 )
 
             # Update last video ID immediately to avoid reprocessing
