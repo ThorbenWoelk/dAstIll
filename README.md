@@ -14,8 +14,9 @@ A Python app and command-line tool for downloading, organizing, and managing You
 - **Subscription**: Auto-download and process new videos as they're published
 - **Zero Cost**: Completely free using YouTube's public RSS feeds
 
-### AI-Powered Processing (CH-141 Feature)
-- **Claude Code Integration**: Automated transcript enhancement using Claude Code
+### AI-Powered Processing
+- **Claude Code Integration** (CH-141): Automated transcript enhancement using Claude Code
+- **Ollama Local Processing** (CH-198): Cost-effective local AI processing using Ollama models
 - **Educational Summarization**: Transform raw transcripts into structured learning content
 - **Bash Workflow**: Simple script orchestration for Docker + Claude Code automation
 
@@ -430,6 +431,49 @@ To subscribe to a channel, you need its YouTube channel ID:
 3. Search for "channelId" or "UC" followed by alphanumeric characters
 4. The channel ID typically starts with "UC" and is 24 characters long
 
+## Ollama Local AI Processing
+
+The application supports local AI processing using Ollama, providing a cost-effective alternative to cloud-based AI services for transcript enhancement.
+
+### Prerequisites
+
+1. **Install Ollama**: Download and install from [ollama.ai](https://ollama.ai)
+2. **Pull a model**: 
+   ```bash
+   ollama pull qwen3:8b  # Recommended model
+   # or
+   ollama pull llama3.2   # Alternative model
+   ```
+
+### Usage
+
+```bash
+# Check Ollama status and available models
+uv run python main.py ollama status
+
+# Process transcripts in a directory
+uv run python main.py ollama process /path/to/transcripts
+
+# Process with a specific model
+uv run python main.py ollama process /path/to/transcripts --model llama3.2
+```
+
+### Features
+
+- **Security-First Design**: Input sanitization, path traversal protection, prompt injection prevention
+- **Atomic File Operations**: Safe file handling with automatic rollback on failure
+- **Duplicate Detection**: Skips already processed transcripts to prevent data loss
+- **Batch Processing**: Process entire directories of transcripts efficiently
+- **Configurable Models**: Use any Ollama model for processing
+
+### Processing Workflow
+
+1. Validates and secures all file paths
+2. Extracts video metadata (ID, title, channel) with sanitization
+3. Generates structured educational summaries
+4. Preserves original transcript content
+5. Atomically writes enhanced content to files
+
 ## Architecture
 
 ### Core Components
@@ -442,6 +486,7 @@ To subscribe to a channel, you need its YouTube channel ID:
 - **rss_monitor.py**: RSS-based channel monitoring without API requirements
 - **channel_config.py**: Channel monitoring configuration management
 - **monitoring_service.py**: Core monitoring orchestration and automation service
+- **ollama_processor.py**: Local AI transcript processing with Ollama integration
 
 ### Design Principles
 
