@@ -265,7 +265,7 @@ organize_transcripts() {
 # Main workflow function
 run_workflow() {
     log "=== Starting AI Workflow Automation ==="
-    log "Implementing CH-141: Claude Code integration for automated transcript processing"
+    log "Starting automated monitoring and transcript processing workflow"
     
     check_prerequisites
     start_monitoring
