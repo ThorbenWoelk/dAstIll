@@ -100,8 +100,12 @@ The application uses a four-status file-based system:
 
 ### Security Considerations
 - Sanitize all user inputs, especially file paths and channel names
-- Prevent path traversal attacks in file operations
-- Validate video IDs and channel handles before processing
+- Prevent path traversal attacks in file operations (use `Path.resolve()` and validate boundaries)
+- Validate video IDs and channel handles before processing (YouTube IDs are 11 chars: `^[a-zA-Z0-9_-]{11}$`)
+- **Prompt Injection Prevention**: Sanitize content before including in AI prompts
+- **Input Validation**: Always validate format and length of extracted metadata
+- **Atomic Operations**: Use temporary files with atomic moves to prevent data corruption
+- **Path Security**: Never trust user-provided paths - always resolve and validate
 
 ### Code Style
 - Follow existing patterns in the codebase
@@ -300,6 +304,9 @@ uv run python main.py process
 5. **Don't assume Docker auto-starts** - implement Docker daemon startup checks
 6. **Don't use interactive Claude Code in automation** - always use `--print --dangerously-skip-permissions`
 7. **Don't forget Docker config setup** - container needs `./data/config/channels.json`
+8. **Don't trust user input in AI prompts** - always sanitize to prevent prompt injection
+9. **Don't use non-atomic file operations** - use temporary files with atomic moves
+10. **Don't hardcode paths in code** - use configuration or command-line arguments
 
 ## Testing Strategy
 
@@ -327,3 +334,34 @@ uv run python main.py process
 - Provide realistic mock data that matches API response formats
 - Test both success and failure scenarios with mocks
 - Ensure mocks are properly isolated between tests
+
+## CH-198: Ollama Integration Lessons Learned
+
+### Security Review Insights
+The Claude Code PR review process identified critical security vulnerabilities that must be addressed:
+
+1. **Input Sanitization is Critical**
+   - Always validate video IDs against YouTube's exact format
+   - Sanitize all text fields to prevent injection attacks
+   - Limit field lengths to prevent buffer issues
+
+2. **Path Traversal Prevention**
+   - Use `Path.resolve()` for all file operations
+   - Validate that resolved paths stay within expected directories
+   - Never trust user-provided paths without validation
+
+3. **Prompt Injection Protection**
+   - Sanitize transcript content before including in AI prompts
+   - Remove system prompt markers and instruction injections
+   - Normalize whitespace and control characters
+
+4. **Atomic File Operations**
+   - Use temporary files with atomic moves (not direct writes)
+   - Ensure rollback capability on failure
+   - Clean up temporary files in exception handlers
+
+### Code Review Best Practices
+- Address security issues before functionality improvements
+- Provide comprehensive test coverage for security features
+- Document security measures in both code and user documentation
+- Use type hints and proper error handling throughout
