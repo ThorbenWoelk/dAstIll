@@ -3,23 +3,19 @@ services:
     build: .
     container_name: dastill-monitor
     volumes:
-      # Mount the configured transcript storage directory from .env file
-      - ${DASTILL_BASE_PATH}:/transcripts
       # Mount configuration directory
       - ./config:/app/config
       # Mount Claude Code authentication from host (needs write for updates)
       - ~/.claude:/root/.claude
       - ~/.claude.json:/root/.claude.json
       - ~/.ssh:/root/.ssh:ro
+      # SECURITY: Path mounting is handled by validation script, not direct env interpolation
     environment:
-      # Use the centralized storage path from .env file
-      - DASTILL_BASE_PATH=/transcripts
       # Configuration directory (use default app config location)
       - DASTILL_CONFIG_DIR=/app/config
       # Optional: Override check interval (default is from config)
       # - DASTILL_CHECK_INTERVAL=300
-    env_file:
-      - .env
+      # SECURITY: DASTILL_BASE_PATH is set by Python config system, not Docker
     restart: unless-stopped
     # Health check to ensure service is running
     healthcheck:
@@ -34,17 +30,14 @@ services:
     build: .
     container_name: dastill-cli
     volumes:
-      # Mount the configured transcript storage directory from .env file
-      - ${DASTILL_BASE_PATH}:/data
       # Mount Claude Code authentication from host (needs write for updates)
       - ~/.claude:/root/.claude
       - ~/.claude.json:/root/.claude.json
       - ~/.ssh:/root/.ssh:ro
+      # SECURITY: Path mounting is handled by validation script, not direct env interpolation
     environment:
-      - DASTILL_BASE_PATH=/data
-      - DASTILL_CONFIG_DIR=/data/config
-    env_file:
-      - .env
+      - DASTILL_CONFIG_DIR=/app/config
+      # SECURITY: DASTILL_BASE_PATH is set by Python config system, not Docker
     # Override entrypoint for CLI usage
     entrypoint: ["uv", "run", "python", "main.py"]
     # This service doesn't run by default
