@@ -1,2 +1,1 @@
-- the path where transcripts are stored should only be configured in one place: the .env file. and currently, for me, it should be set to: '/Users/thorben.woelk/Documents/totos-vault/AI Memory/youtube library'. this config should be used no matter we use docker or python for running the app
-- instead of a startup backfill, I want the app to constantly search for new videos to download. if the youtube rate limit is hit, we want to use the backup browsing method we already implemented as far as i remember
+- continuous monitoring is already implemented ✅, but need to implement browser-based fallback method for when YouTube API rate limits are hit (CH-202)
