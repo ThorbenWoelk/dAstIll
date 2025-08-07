@@ -154,18 +154,20 @@ Additional settings can be configured in the JSON file:
 
 ## Docker Deployment
 
-For 24/7 monitoring:
+For 24/7 monitoring, use the secure Docker wrapper that validates paths and prevents security issues:
 
 ```bash
-# Start monitoring service
-docker-compose up -d
+# Start monitoring service (secure)
+./scripts/docker-wrapper.sh up -d
 
 # View logs  
-docker-compose logs -f dastill-monitor
+./scripts/docker-wrapper.sh logs -f dastill-monitor
 
 # Stop service
-docker-compose down
+./scripts/docker-wrapper.sh down
 ```
+
+**Security Note**: The Docker wrapper validates all paths from the Python configuration system before mounting, preventing path injection vulnerabilities. Do not use `docker-compose` directly as it bypasses security validation.
 
 ## Ollama Integration
 
