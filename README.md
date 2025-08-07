@@ -118,12 +118,28 @@ Each markdown file includes video metadata, processing timestamps, and cleaned t
 
 ## Configuration
 
-Default configuration in `~/.dastill/config.json`:
+Configuration uses a hierarchical system with environment variables taking precedence:
+
+### Primary Configuration (.env file)
+
+The storage path is centrally configured in the `.env` file:
+
+```bash
+# Copy .env.example to .env and customize
+cp .env.example .env
+
+# Edit .env file to set your storage path
+DASTILL_BASE_PATH="/path/to/your/transcript/storage"
+```
+
+### Secondary Configuration (~/.dastill/config.json)
+
+Additional settings can be configured in the JSON file:
 
 ```json
 {
   "storage": {
-    "base_path": "~/Documents/youtube-transcripts",
+    "base_path": "~/Documents/youtube-transcripts",  # Overridden by DASTILL_BASE_PATH
     "markdown_format": true
   },
   "transcript": {
@@ -133,6 +149,8 @@ Default configuration in `~/.dastill/config.json`:
   }
 }
 ```
+
+**Note**: The `DASTILL_BASE_PATH` environment variable takes precedence over the JSON configuration for storage path, ensuring consistent paths across Docker and local execution.
 
 ## Docker Deployment
 
