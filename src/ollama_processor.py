@@ -158,6 +158,22 @@ Your mission is to transform raw YouTube transcripts into polished educational r
         except Exception as e:
             return False, f"Error checking Ollama: {str(e)}"
 
+    def get_available_models(self) -> list[dict[str, Any]]:
+        """Get list of available Ollama models.
+
+        Returns:
+            List of model information dictionaries
+        """
+        try:
+            response = requests.get(f"{self.ollama_host}/api/tags", timeout=5)
+            if response.status_code == 200:
+                return response.json().get("models", [])
+        except requests.exceptions.RequestException:
+            pass
+        except Exception:
+            pass
+        return []
+
     def _extract_video_metadata(self, content: str) -> dict[str, Any]:
         """Extract video metadata from transcript content.
 
@@ -169,28 +185,74 @@ Your mission is to transform raw YouTube transcripts into polished educational r
         """
         metadata = {}
 
-        # Extract video ID from content
+        # Extract video ID from content with validation
         video_id_match = re.search(r"Video ID[:\s]*([a-zA-Z0-9_-]+)", content)
         if video_id_match:
-            metadata["video_id"] = video_id_match.group(1)
-            metadata["url"] = f"https://www.youtube.com/watch?v={metadata['video_id']}"
+            video_id = video_id_match.group(1)
+            # Validate YouTube video ID format (11 characters, alphanumeric + _ -)
+            if self._is_valid_video_id(video_id):
+                metadata["video_id"] = video_id
+                metadata["url"] = f"https://www.youtube.com/watch?v={video_id}"
 
-        # Extract title
+        # Extract title with sanitization
         title_match = re.search(r"Title[:\s]*(.+)", content)
         if title_match:
-            metadata["title"] = title_match.group(1).strip()
+            title = title_match.group(1).strip()
+            metadata["title"] = self._sanitize_text_field(title, max_length=200)
 
-        # Extract channel
+        # Extract channel with sanitization
         channel_match = re.search(r"Channel[:\s]*(.+)", content)
         if channel_match:
-            metadata["channel"] = channel_match.group(1).strip()
+            channel = channel_match.group(1).strip()
+            metadata["channel"] = self._sanitize_text_field(channel, max_length=100)
 
-        # Extract language
+        # Extract language with validation
         language_match = re.search(r"Language[:\s]*(.+)", content)
         if language_match:
-            metadata["language"] = language_match.group(1).strip()
+            language = language_match.group(1).strip()
+            # Validate language format (2-3 letter codes)
+            if re.match(r"^[a-z]{2,3}(-[A-Z]{2})?$", language):
+                metadata["language"] = language
 
         return metadata
+
+    def _is_valid_video_id(self, video_id: str) -> bool:
+        """Validate YouTube video ID format.
+
+        Args:
+            video_id: Video ID to validate
+
+        Returns:
+            True if valid YouTube video ID format
+        """
+        if not video_id or not isinstance(video_id, str):
+            return False
+        # YouTube video IDs are 11 characters, alphanumeric plus _ and -
+        return bool(re.match(r"^[a-zA-Z0-9_-]{11}$", video_id))
+
+    def _sanitize_text_field(self, text: str, max_length: int = 500) -> str:
+        """Sanitize text fields to prevent injection attacks.
+
+        Args:
+            text: Text to sanitize
+            max_length: Maximum allowed length
+
+        Returns:
+            Sanitized text
+        """
+        if not text or not isinstance(text, str):
+            return ""
+
+        # Remove potential path traversal sequences
+        text = re.sub(r"\.\./", "", text)
+        text = re.sub(r"\.\.\\", "", text)
+
+        # Remove control characters and normalize whitespace
+        text = re.sub(r"[\x00-\x1f\x7f-\x9f]", "", text)
+        text = re.sub(r"\s+", " ", text).strip()
+
+        # Truncate to max length
+        return text[:max_length] if len(text) > max_length else text
 
     def _generate_prompt(
         self, transcript_content: str, metadata: dict[str, Any]
@@ -204,10 +266,13 @@ Your mission is to transform raw YouTube transcripts into polished educational r
         Returns:
             Formatted prompt for the AI model
         """
+        # Sanitize transcript content to prevent prompt injection
+        sanitized_content = self._sanitize_transcript_content(transcript_content)
+
         prompt = f"""Please process this YouTube transcript into an educational summary following the exact structure specified in your system prompt.
 
 TRANSCRIPT TO PROCESS:
-{transcript_content}
+{sanitized_content}
 
 REQUIREMENTS:
 1. Create a clear, educational title based on the content
@@ -220,6 +285,44 @@ REQUIREMENTS:
 Focus on making the content educational and well-structured while maintaining all original information."""
 
         return prompt
+
+    def _sanitize_transcript_content(self, content: str) -> str:
+        """Sanitize transcript content to prevent prompt injection.
+
+        Args:
+            content: Raw transcript content
+
+        Returns:
+            Sanitized content safe for AI prompts
+        """
+        if not content or not isinstance(content, str):
+            return ""
+
+        # Remove potential prompt injection patterns
+        # Remove system prompt markers and commands
+        content = re.sub(
+            r"```\s*(system|assistant|user|human)",
+            "```text",
+            content,
+            flags=re.IGNORECASE,
+        )
+        content = re.sub(r"\bsystem\s*:", "note:", content, flags=re.IGNORECASE)
+        content = re.sub(r"\bassistant\s*:", "speaker:", content, flags=re.IGNORECASE)
+
+        # Remove potential instruction injection
+        content = re.sub(
+            r"\b(ignore|disregard|forget)\s+(all\s+)?(previous\s+)?(instructions?|prompts?)",
+            "refer to previous content",
+            content,
+            flags=re.IGNORECASE,
+        )
+
+        # Normalize excessive whitespace and control characters
+        content = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]", "", content)
+        content = re.sub(r"\n{3,}", "\n\n", content)
+        content = re.sub(r" {3,}", " ", content)
+
+        return content.strip()
 
     def _call_ollama_api(self, prompt: str, max_retries: int = 3) -> str | None:
         """Call Ollama API to process the transcript.
@@ -283,13 +386,18 @@ Focus on making the content educational and well-structured while maintaining al
             Tuple of (success, message)
         """
         try:
+            # Validate and secure the file path
+            secure_path = self._validate_file_path(file_path)
+            if not secure_path:
+                return False, f"Invalid or unsafe file path: {file_path}"
+
             # Read the original file
-            with open(file_path, encoding="utf-8") as f:
+            with open(secure_path, encoding="utf-8") as f:
                 original_content = f.read()
 
             # Check if already processed (contains "## Deep Dive" section)
             if "## Deep Dive: Structured Learning Guide" in original_content:
-                return True, f"File {file_path.name} already processed, skipping"
+                return True, f"File {secure_path.name} already processed, skipping"
 
             # Extract metadata
             metadata = self._extract_video_metadata(original_content)
@@ -298,13 +406,13 @@ Focus on making the content educational and well-structured while maintaining al
             prompt = self._generate_prompt(original_content, metadata)
 
             # Process with Ollama
-            print(f"Processing {file_path.name} with {self.model_name}...")
+            print(f"Processing {secure_path.name} with {self.model_name}...")
             processed_content = self._call_ollama_api(prompt)
 
             if not processed_content:
                 return (
                     False,
-                    f"Failed to process {file_path.name} - no response from Ollama",
+                    f"Failed to process {secure_path.name} - no response from Ollama",
                 )
 
             # Validate the output has required sections
@@ -326,21 +434,80 @@ Focus on making the content educational and well-structured while maintaining al
                     f"Processed content missing sections: {', '.join(missing_sections)}",
                 )
 
-            # Create backup of original
-            backup_path = file_path.with_suffix(".md.backup")
-            file_path.replace(backup_path)
+            # Atomic file write using temporary file
+            success = self._write_processed_file_atomic(secure_path, processed_content)
+            if not success:
+                return False, f"Failed to write processed content to {secure_path.name}"
 
-            # Write processed content
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(processed_content)
-
-            # Remove backup if successful
-            backup_path.unlink()
-
-            return True, f"Successfully processed {file_path.name}"
+            return True, f"Successfully processed {secure_path.name}"
 
         except Exception as e:
             return False, f"Error processing {file_path.name}: {str(e)}"
+
+    def _validate_file_path(self, file_path: Path) -> Path | None:
+        """Validate file path to prevent path traversal attacks.
+
+        Args:
+            file_path: Path to validate
+
+        Returns:
+            Validated path or None if invalid
+        """
+        try:
+            # Resolve to absolute path and check for path traversal
+            resolved_path = file_path.resolve()
+
+            # Ensure the file is a markdown file
+            if resolved_path.suffix.lower() != ".md":
+                return None
+
+            # Ensure file exists and is actually a file
+            if not resolved_path.exists() or not resolved_path.is_file():
+                return None
+
+            # Basic security check - ensure path doesn't contain suspicious patterns
+            path_str = str(resolved_path)
+            if ".." in path_str or "~" in path_str:
+                return None
+
+            return resolved_path
+
+        except (OSError, RuntimeError):
+            return None
+
+    def _write_processed_file_atomic(self, file_path: Path, content: str) -> bool:
+        """Atomically write processed content to file.
+
+        Args:
+            file_path: Target file path
+            content: Content to write
+
+        Returns:
+            True if successful, False otherwise
+        """
+        import shutil
+        import tempfile
+
+        try:
+            # Create temporary file in the same directory
+            temp_dir = file_path.parent
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=temp_dir, delete=False, suffix=".tmp"
+            ) as temp_file:
+                temp_file.write(content)
+                temp_path = Path(temp_file.name)
+
+            # Atomic move (rename) to final location
+            shutil.move(str(temp_path), str(file_path))
+            return True
+
+        except Exception:
+            # Clean up temp file if it exists
+            try:
+                temp_path.unlink()
+            except (NameError, OSError):
+                pass
+            return False
 
     def process_directory(self, directory_path: Path) -> tuple[int, int, list[str]]:
         """Process all transcript files in a directory.
@@ -378,7 +545,9 @@ Focus on making the content educational and well-structured while maintaining al
 
 
 def main():
-    """Test the Ollama processor."""
+    """Test the Ollama processor with configurable directory."""
+    import sys
+
     processor = OllamaTranscriptProcessor()
 
     # Check availability
@@ -389,18 +558,22 @@ def main():
         print("Ollama not available, exiting")
         return
 
-    # Test with a sample directory (adjust path as needed)
-    from pathlib import Path
+    # Use command line argument or current directory
+    if len(sys.argv) > 1:
+        test_dir = Path(sys.argv[1])
+    else:
+        test_dir = Path.cwd() / "data" / "downloaded"
 
-    test_dir = (
-        Path.home() / "Documents/totos-vault/AI Memory/youtube library/downloaded"
-    )
+    print(f"Testing with directory: {test_dir}")
 
-    if test_dir.exists():
+    if test_dir.exists() and test_dir.is_dir():
         success, total, failed = processor.process_directory(test_dir)
         print(f"\nProcessing complete: {success}/{total} successful")
         if failed:
             print(f"Failed files: {', '.join(failed)}")
+    else:
+        print(f"Directory does not exist: {test_dir}")
+        print("Usage: python ollama_processor.py [directory_path]")
 
 
 if __name__ == "__main__":

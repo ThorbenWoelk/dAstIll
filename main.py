@@ -1261,22 +1261,16 @@ def handle_ollama(loader, args):
             print("✅ Ollama: Available")
             print(f"   {status_message}")
 
-            # Show available models
-            try:
-                import requests
-
-                response = requests.get(f"{processor.ollama_host}/api/tags", timeout=5)
-                if response.status_code == 200:
-                    models = response.json().get("models", [])
-                    print(f"   Available models: {len(models)}")
-                    for model in models[:5]:  # Show first 5 models
-                        print(
-                            f"      • {model['name']} ({model.get('size', 'unknown size')})"
-                        )
-                    if len(models) > 5:
-                        print(f"      ... and {len(models) - 5} more")
-            except Exception:
-                pass
+            # Show available models using processor method
+            models_info = processor.get_available_models()
+            if models_info:
+                print(f"   Available models: {len(models_info)}")
+                for model in models_info[:5]:  # Show first 5 models
+                    print(
+                        f"      • {model['name']} ({model.get('size', 'unknown size')})"
+                    )
+                if len(models_info) > 5:
+                    print(f"      ... and {len(models_info) - 5} more")
         else:
             print("❌ Ollama: Not Available")
             print(f"   {status_message}")
