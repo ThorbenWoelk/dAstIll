@@ -78,8 +78,8 @@ start_monitoring() {
     
     cd "$PROJECT_DIR"
     
-    # Start the container in detached mode
-    if docker-compose up -d; then
+    # Start the container in detached mode using secure wrapper
+    if ./scripts/docker-wrapper.sh up -d; then
         success "Docker container started successfully"
         
         # Wait a moment for container to initialize
@@ -87,16 +87,16 @@ start_monitoring() {
         
         # Show initial container logs
         log "Initial container logs:"
-        docker-compose logs --tail=10 dastill-monitor || true
+        ./scripts/docker-wrapper.sh logs --tail=10 dastill-monitor || true
         
         # Check container status
-        if docker-compose ps | grep -q "Up"; then
+        if ./scripts/docker-wrapper.sh ps | grep -q "Up"; then
             success "Container is running and monitoring channels"
             
             # Show live logs for a few seconds to see initial activity
             log "Monitoring initial activity (showing 15 seconds of logs)..."
-            timeout 15 docker-compose logs -f dastill-monitor || true
-            log "Container is now running in the background. Use 'docker-compose logs -f dastill-monitor' to see ongoing activity."
+            timeout 15 ./scripts/docker-wrapper.sh logs -f dastill-monitor || true
+            log "Container is now running in the background. Use './scripts/docker-wrapper.sh logs -f dastill-monitor' to see ongoing activity."
         else
             error "Container failed to start properly"
         fi
@@ -305,12 +305,12 @@ check_status() {
     cd "$PROJECT_DIR"
     
     # Check Docker status
-    if docker-compose ps | grep -q "Up"; then
+    if ./scripts/docker-wrapper.sh ps | grep -q "Up"; then
         success "Docker container: Running"
         
         # Show recent container activity
         log "Recent container activity (last 10 lines):"
-        docker-compose logs --tail=10 dastill-monitor || true
+        ./scripts/docker-wrapper.sh logs --tail=10 dastill-monitor || true
     else
         warning "Docker container: Not running"
         log "Use 'ai-workflow start' to start the container"
@@ -351,7 +351,7 @@ stop_monitoring() {
     
     cd "$PROJECT_DIR"
     
-    if docker-compose down; then
+    if ./scripts/docker-wrapper.sh down; then
         success "Docker container stopped"
     else
         error "Failed to stop Docker container"
