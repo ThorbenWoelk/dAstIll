@@ -3,8 +3,8 @@ services:
     build: .
     container_name: dastill-monitor
     volumes:
-      # Mount local data directory for transcripts (or customize to your preference)
-      - ./data:/transcripts
+      # Mount the configured transcript storage directory from .env file
+      - ${DASTILL_BASE_PATH}:/transcripts
       # Mount configuration directory
       - ./config:/app/config
       # Mount Claude Code authentication from host (needs write for updates)
@@ -12,12 +12,14 @@ services:
       - ~/.claude.json:/root/.claude.json
       - ~/.ssh:/root/.ssh:ro
     environment:
-      # Use mounted transcript storage path
+      # Use the centralized storage path from .env file
       - DASTILL_BASE_PATH=/transcripts
       # Configuration directory (use default app config location)
       - DASTILL_CONFIG_DIR=/app/config
       # Optional: Override check interval (default is from config)
       # - DASTILL_CHECK_INTERVAL=300
+    env_file:
+      - .env
     restart: unless-stopped
     # Health check to ensure service is running
     healthcheck:
@@ -32,7 +34,8 @@ services:
     build: .
     container_name: dastill-cli
     volumes:
-      - ./data:/data
+      # Mount the configured transcript storage directory from .env file
+      - ${DASTILL_BASE_PATH}:/data
       # Mount Claude Code authentication from host (needs write for updates)
       - ~/.claude:/root/.claude
       - ~/.claude.json:/root/.claude.json
@@ -40,6 +43,8 @@ services:
     environment:
       - DASTILL_BASE_PATH=/data
       - DASTILL_CONFIG_DIR=/data/config
+    env_file:
+      - .env
     # Override entrypoint for CLI usage
     entrypoint: ["uv", "run", "python", "main.py"]
     # This service doesn't run by default
