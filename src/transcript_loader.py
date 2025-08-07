@@ -10,6 +10,10 @@ from youtube_transcript_api.formatters import TextFormatter
 from config.channel_config import ChannelConfigManager
 from config.config import Config
 
+from .browser_transcript_extractor import (
+    BrowserTranscriptError,
+    BrowserTranscriptExtractor,
+)
 from .file_manager import VideoFileManager
 from .transcript_formatter import TranscriptFormatter
 
@@ -26,6 +30,12 @@ class TranscriptUnavailableError(Exception):
     pass
 
 
+class BrowserFallbackUnavailableError(Exception):
+    """Exception raised when browser fallback is not available or configured."""
+
+    pass
+
+
 class YouTubeTranscriptLoader:
     def __init__(self, config_path: str = None):
         self.formatter = TextFormatter()
@@ -37,6 +47,12 @@ class YouTubeTranscriptLoader:
         base_path = self.config.get("storage.base_path")
         self.manager = VideoFileManager(base_path)
         self.storage = TranscriptFormatter(base_path)
+
+        # Initialize browser fallback extractor
+        try:
+            self.browser_extractor = BrowserTranscriptExtractor(headless=True)
+        except BrowserTranscriptError:
+            self.browser_extractor = None
 
         # Track last API request time for rate limiting
         self._last_api_request_time = 0
@@ -126,53 +142,136 @@ class YouTubeTranscriptLoader:
                 else "unknown",
             }
 
-        try:
-            # Apply rate limiting before API request
-            self._apply_rate_limiting()
+        # Determine transcript method from configuration
+        transcript_method = self.config.get("transcript.method", "api_with_fallback")
 
-            # Fetch transcript from YouTube API
-            transcript_list = self.api.list(video_id)
+        # Try API method first (unless browser_only is configured)
+        api_failed = False
+        api_error = None
 
-            transcript = None
-            for lang in languages:
+        if transcript_method != "browser_only":
+            try:
+                # Apply rate limiting before API request
+                self._apply_rate_limiting()
+
+                # Fetch transcript from YouTube API
+                transcript_list = self.api.list(video_id)
+
+                transcript = None
+                for lang in languages:
+                    try:
+                        transcript = transcript_list.find_transcript([lang])
+                        break
+                    except Exception:
+                        continue
+
+                if not transcript:
+                    transcript = transcript_list.find_generated_transcript(languages)
+
+                raw_transcript = transcript.fetch()
+                formatted_text = self.formatter.format_transcript(raw_transcript)
+                cleaned_text = self.clean_transcript(formatted_text)
+
+                transcript_data = {
+                    "video_id": video_id,
+                    "language": transcript.language,
+                    "is_generated": transcript.is_generated,
+                    "raw_transcript": raw_transcript,
+                    "formatted_text": formatted_text,
+                    "cleaned_text": cleaned_text,
+                    "languages_requested": languages,
+                    "extraction_method": "api",
+                    "already_exists": False,
+                }
+
+                # Save as markdown if requested
+                if save_markdown and self.config.get("storage.markdown_format", True):
+                    content = self.storage.format_transcript_content(transcript_data)
+                    file_path = self.manager.mark_downloaded(video_id, content, channel)
+                    transcript_data["file_path"] = file_path
+                    transcript_data["channel"] = channel
+
+                return transcript_data
+
+            except Exception as e:
+                api_error = e
+                api_failed = True
+
+                # Check if it's a rate limit error
+                if self._is_rate_limit_error(e):
+                    print(
+                        f"🚨 API rate limit detected for {video_id}, attempting browser fallback..."
+                    )
+                    # For rate limit errors, we'll try browser fallback below
+                    if transcript_method == "api_only":
+                        raise RateLimitError(
+                            f"Rate limit hit and browser fallback disabled: {str(e)}"
+                        ) from e
+                else:
+                    # For other API errors, fail immediately if not using fallback
+                    if transcript_method == "api_only":
+                        raise Exception(
+                            f"Failed to load transcript via API: {str(e)}"
+                        ) from e
+
+        # Try browser fallback if API failed or if browser_only is configured
+        if api_failed or transcript_method == "browser_only":
+            if transcript_method in ["api_with_fallback", "browser_only"]:
+                if self.browser_extractor is None:
+                    raise BrowserFallbackUnavailableError(
+                        "Browser fallback is not available. Install playwright: uv add playwright && uv run playwright install chromium"
+                    )
+
                 try:
-                    transcript = transcript_list.find_transcript([lang])
-                    break
-                except Exception:
-                    continue
+                    print(
+                        f"🌐 Using browser fallback to extract transcript for {video_id}..."
+                    )
+                    transcript_data = self.browser_extractor.extract_transcript(
+                        video_id, languages
+                    )
 
-            if not transcript:
-                transcript = transcript_list.find_generated_transcript(languages)
+                    # Save as markdown if requested
+                    if save_markdown and self.config.get(
+                        "storage.markdown_format", True
+                    ):
+                        content = self.storage.format_transcript_content(
+                            transcript_data
+                        )
+                        file_path = self.manager.mark_downloaded(
+                            video_id, content, channel
+                        )
+                        transcript_data["file_path"] = file_path
+                        transcript_data["channel"] = channel
 
-            raw_transcript = transcript.fetch()
-            formatted_text = self.formatter.format_transcript(raw_transcript)
-            cleaned_text = self.clean_transcript(formatted_text)
+                    return transcript_data
 
-            transcript_data = {
-                "video_id": video_id,
-                "language": transcript.language,
-                "is_generated": transcript.is_generated,
-                "raw_transcript": raw_transcript,
-                "formatted_text": formatted_text,
-                "cleaned_text": cleaned_text,
-                "languages_requested": languages,
-                "already_exists": False,
-            }
+                except BrowserTranscriptError as browser_error:
+                    # Browser fallback failed
+                    if api_error:
+                        # Both methods failed, report both errors
+                        raise Exception(
+                            f"Both API and browser extraction failed. "
+                            f"API error: {str(api_error)}. Browser error: {str(browser_error)}"
+                        ) from browser_error
+                    else:
+                        # Only browser method was tried (browser_only mode)
+                        raise Exception(
+                            f"Browser extraction failed: {str(browser_error)}"
+                        ) from browser_error
+            else:
+                # Fallback not configured, re-raise the original API error
+                if api_error:
+                    if self._is_rate_limit_error(api_error):
+                        raise RateLimitError(
+                            f"Rate limit hit: {str(api_error)}"
+                        ) from api_error
+                    else:
+                        raise Exception(
+                            f"Failed to load transcript: {str(api_error)}"
+                        ) from api_error
 
-            # Save as markdown if requested
-            if save_markdown and self.config.get("storage.markdown_format", True):
-                content = self.storage.format_transcript_content(transcript_data)
-                file_path = self.manager.mark_downloaded(video_id, content, channel)
-                transcript_data["file_path"] = file_path
-                transcript_data["channel"] = channel
-
-            return transcript_data
-
-        except Exception as e:
-            # Check if it's a rate limit error using better detection
-            if self._is_rate_limit_error(e):
-                raise RateLimitError(f"Rate limit hit: {str(e)}") from e
-            raise Exception(f"Failed to load transcript: {str(e)}") from e
+        # Should never reach here, but just in case
+        raise Exception(f"Unexpected error in transcript loading for {video_id}")
 
     def _is_rate_limit_error(self, exception: Exception) -> bool:
         """Detect if an exception is due to rate limiting."""

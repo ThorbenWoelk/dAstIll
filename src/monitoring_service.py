@@ -152,7 +152,9 @@ class ChannelMonitoringService:
                     f"   Recovery until: {self.rate_limit_recovery_until.strftime('%Y-%m-%d %H:%M:%S')}"
                 )
                 self._log_status(f"   Time remaining: {remaining:.1f} hours")
-                self._log_status("   (Using browser fallback method)")
+                self._log_status(
+                    "   (Browser fallback available for transcript extraction)"
+                )
 
         # List active channel details
         self._log_status("\n📡 ACTIVE CHANNEL DETAILS:")
