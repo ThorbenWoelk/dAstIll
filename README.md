@@ -5,6 +5,7 @@ A Python CLI tool for downloading, organizing, and managing YouTube video transc
 ## Features
 
 - **Automated Channel Monitoring**: Subscribe to channels and auto-download new videos via RSS feeds
+- **Browser-Based Fallback**: Automatic fallback to web scraping when YouTube API is rate limited
 - **AI-Powered Processing**: Claude Code and Ollama integration for educational transcript enhancement  
 - **Channel Organization**: Automatic file organization by YouTube channel in markdown format
 - **Docker Deployment**: 24/7 monitoring with comprehensive error handling
@@ -145,12 +146,49 @@ Additional settings can be configured in the JSON file:
   "transcript": {
     "default_languages": ["en"],
     "include_metadata": true,
-    "clean_transcript": true
+    "clean_transcript": true,
+    "method": "api_with_fallback"  # Options: api_only, api_with_fallback, browser_only
   }
 }
 ```
 
 **Note**: The `DASTILL_BASE_PATH` environment variable takes precedence over the JSON configuration for storage path, ensuring consistent paths across Docker and local execution.
+
+### Transcript Extraction Methods
+
+dAstIll supports multiple transcript extraction methods with automatic fallback:
+
+**API with Fallback (Default - Recommended)**:
+```json
+{"transcript": {"method": "api_with_fallback"}}
+```
+- Uses YouTube Transcript API first (fastest and most reliable)
+- Automatically switches to browser-based extraction if API is rate limited
+- Seamlessly continues during API outages
+- No user intervention required
+
+**API Only**:
+```json
+{"transcript": {"method": "api_only"}}
+```
+- Uses only the YouTube Transcript API
+- Fastest method when working
+- May fail during rate limits (typically 3-hour recovery periods)
+
+**Browser Only**:
+```json
+{"transcript": {"method": "browser_only"}}
+```
+- Uses only web scraping via Playwright
+- More robust against API changes
+- Slower but works when API is blocked
+- Requires `playwright` installation: `uv add playwright && uv run playwright install chromium`
+
+**Rate Limit Behavior**:
+- API rate limits typically last 3 hours
+- Browser fallback allows uninterrupted monitoring during these periods
+- System automatically returns to API method after recovery
+- All methods produce identical transcript quality and format
 
 ## Docker Deployment
 
@@ -189,5 +227,9 @@ uv run python main.py ollama process /path/to/transcripts --model llama3.2
 - `youtube-transcript-api>=1.2.1` - YouTube transcript fetching
 - `python-dotenv>=1.0.0` - Environment configuration
 - `requests>=2.31.0` - HTTP requests for RSS feeds
+- `playwright>=1.40.0` - Browser automation for fallback transcript extraction (optional)
 
 Requires Python 3.13+ and uv package manager.
+
+**Optional Dependencies**:
+- Install Playwright for browser fallback: `uv add playwright && uv run playwright install chromium`
