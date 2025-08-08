@@ -1,8 +1,11 @@
 """YouTube channel monitoring service using RSS feeds."""
 
+import logging
+import os
 import threading
 from collections.abc import Callable
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from config.channel_config import ChannelConfig, ChannelConfigManager
@@ -25,6 +28,13 @@ class ChannelMonitoringService:
         # Initialize transcript loader for processing new videos
         self.transcript_loader = YouTubeTranscriptLoader()
 
+        # Keep but do not use base_path to maintain backward-compatible signature
+        self._base_path = base_path
+
+        # Configure logging once based on global monitoring settings
+        self._logger = logging.getLogger(__name__)
+        self._setup_logging()
+
         # Monitoring state
         self.running = False
         self.monitor_thread = None
@@ -35,13 +45,52 @@ class ChannelMonitoringService:
         self.incomplete_backfills = set()  # Track channels that need backfill retry
         self._recovery_lock = threading.Lock()  # Protect recovery state
 
-        # Event callbacks
-        self.on_new_video: Callable[[VideoInfo, ChannelConfig], None] | None = None
-        self.on_video_processed: (
-            Callable[[VideoInfo, ChannelConfig, dict], None] | None
-        ) = None
-        self.on_error: Callable[[str, Exception], None] | None = None
-        self.on_status: Callable[[str], None] | None = None
+        # Event callbacks (always callable no-ops by default)
+        self.on_new_video: Callable[[VideoInfo, ChannelConfig], None] = (
+            lambda _video, _channel: None
+        )
+        self.on_video_processed: Callable[[VideoInfo, ChannelConfig, dict], None] = (
+            lambda _video, _channel, _data: None
+        )
+        self.on_error: Callable[[str, Exception | None], None] = lambda _msg, _exc: None
+        self.on_status: Callable[[str], None] = lambda _msg: None
+
+    def _setup_logging(self) -> None:
+        """Setup module logger handlers according to configuration.
+
+        - Always set INFO level
+        - If notifications.log_file is enabled, write to logs/monitoring.log
+        - Avoid duplicating handlers on repeated instantiations
+        """
+        try:
+            self._logger.setLevel(logging.INFO)
+
+            # Do not add handlers more than once
+            if self._logger.handlers:
+                return
+
+            notifications = getattr(
+                self.config_manager.global_config, "notifications", {"log_file": True}
+            )
+
+            log_file_enabled = bool(notifications.get("log_file", True))
+
+            if log_file_enabled:
+                logs_dir = Path(os.getcwd()) / "logs"
+                logs_dir.mkdir(parents=True, exist_ok=True)
+                log_path = logs_dir / "monitoring.log"
+
+                file_handler = logging.FileHandler(log_path, encoding="utf-8")
+                file_handler.setLevel(logging.INFO)
+                formatter = logging.Formatter(
+                    fmt="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+                    datefmt="%Y-%m-%d %H:%M:%S",
+                )
+                file_handler.setFormatter(formatter)
+                self._logger.addHandler(file_handler)
+        except Exception:
+            # Never let logging setup break runtime; console prints will still work
+            pass
 
     def test_configuration(self) -> bool:
         """Test monitoring configuration and RSS connectivity."""
@@ -186,6 +235,7 @@ class ChannelMonitoringService:
                             f"      Available to download: {new_videos} new videos"
                         )
                 except Exception:
+                    # Ignore transient RSS or FS errors in startup report
                     pass
 
             # Show monitoring settings
@@ -445,7 +495,7 @@ class ChannelMonitoringService:
             self.config_manager.update_last_video_id(channel.handle, video.video_id)
 
             # Call callback for new video detection
-            if self.on_new_video:
+            if callable(self.on_new_video):
                 self.on_new_video(video, channel)
 
             # Automatically process if enabled and not in recovery mode
@@ -627,7 +677,7 @@ class ChannelMonitoringService:
                         self._log_error(f"Auto-process error for {video.video_id}", e)
 
             # Call callback for processed video
-            if self.on_video_processed:
+            if callable(self.on_video_processed):
                 self.on_video_processed(video, channel, transcript_data)
 
         except RateLimitError as e:
@@ -679,8 +729,12 @@ class ChannelMonitoringService:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         formatted_message = f"[{timestamp}] {message}"
         print(formatted_message)
+        try:
+            self._logger.info(message)
+        except Exception:
+            pass
 
-        if self.on_status:
+        if callable(self.on_status):
             self.on_status(formatted_message)
 
     def _log_error(self, message: str, exception: Exception | None):
@@ -692,8 +746,15 @@ class ChannelMonitoringService:
             formatted_message = f"[{timestamp}] ❌ {message}"
 
         print(formatted_message)
+        try:
+            if exception:
+                self._logger.error("%s: %s", message, exception)
+            else:
+                self._logger.error("%s", message)
+        except Exception:
+            pass
 
-        if self.on_error:
+        if callable(self.on_error):
             self.on_error(formatted_message, exception)
 
     def get_monitoring_status(self) -> dict[str, Any]:
