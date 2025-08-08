@@ -133,7 +133,7 @@ cp .env.example .env
 DASTILL_BASE_PATH="/path/to/your/transcript/storage"
 ```
 
-### Secondary Configuration (~/.dastill/config.json)
+### Secondary Configuration (config/config.json by default)
 
 Additional settings can be configured in the JSON file:
 
@@ -151,6 +151,8 @@ Additional settings can be configured in the JSON file:
   }
 }
 ```
+
+By default, configuration files are read from `config/config.json` in the project directory. You can override the directory with the `DASTILL_CONFIG_DIR` environment variable. For example, to use a home-scoped directory like `~/.dastill`, set `DASTILL_CONFIG_DIR=~/.dastill`.
 
 **Note**: The `DASTILL_BASE_PATH` environment variable takes precedence over the JSON configuration for storage path, ensuring consistent paths across Docker and local execution.
 
