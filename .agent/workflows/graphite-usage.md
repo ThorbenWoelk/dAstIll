@@ -1,0 +1,98 @@
+---
+description: Trunk-based development commands and workflows for Graphite CLI (gt)
+---
+
+# Graphite (gt) Workflow Guide
+
+> [!TIP]
+> **Reference**: [Graphite CLI Cheat Sheet](https://graphite.com/docs/cheatsheet)
+
+## Core Principles: Trunk-Based Stacking
+
+1.  **Small, Stacked PRs**: Break large features into small, dependent branches (stacks).
+2.  **Inverse Workflow**: Make changes first, *then* create the branch (`gt create`).
+3.  **One Commit Per Branch**: Treat branches as atomic units of change. Use `gt modify` to evolve them.
+4.  **Continuous Sync**: Frequently sync with main and restack your changes to avoid merge conflicts.
+
+## 🤖 AI Agent Golden Rules
+
+> [!IMPORTANT]
+> **Strict Protocol for AI Agents**:
+> - **NEVER** use `git` commands for branching/merging (use `gt`).
+> - **ALWAYS** set `EDITOR=true` (or `EDITOR=cat`) to bypass VIM.
+> - **ALWAYS** use `--no-interactive` to prevent hangs.
+> - **Analyze Output**: If a `gt` command fails, read the error (e.g., merge conflict) before retrying.
+
+## Trunk-Based Workflow
+
+### 1. Start Fresh (Sync)
+Always start by syncing with the remote to get the latest main and clean up merged branches.
+
+```bash
+gt sync --no-interactive
+```
+
+### 2. Create a Change
+Graphite recommends: *Edit Code* -> *Stage* -> *Create Branch*.
+
+```bash
+# ... Agent modifies files ...
+
+# 1. Stage all changes (including new files)
+gt add .
+
+# 2. Create branch and commit (-m)
+# Use conventional commit messages: feat/fix/docs/refactor
+gt create -m "feat: descriptive message" <branch-name> --no-interactive
+```
+
+### 3. Vizualize Stack
+Confirm your position in the stack.
+
+```bash
+gt log short
+```
+
+### 4. Submit Stack
+Publish your changes to Graphite (creates/updates PRs).
+
+```bash
+gt stack submit --no-edit --publish --no-interactive
+```
+
+### 5. Iterate & Fix (Addressing Feedback)
+To modify an existing branch in the stack:
+
+```bash
+# 1. Checkout the specific branch
+gt checkout <branch-name>
+
+# 2. Make changes to files
+# ...
+
+# 3. Amend the existing commit using gt modify
+gt add .
+gt modify --no-edit --no-interactive
+
+# 4. Update the PR
+gt stack submit --no-edit --publish --no-interactive
+```
+
+### 6. Maintenance (Sync & Restack)
+`gt sync` pulls the latest main and automates restacking.
+
+```bash
+gt sync --no-interactive
+```
+
+### 7. Merge Stack (Completion)
+To merge the stack into the trunk (main) once approved:
+
+```bash
+gt merge --no-interactive
+```
+
+## Common Stacking Patterns
+- **Layered**: Database Schema -> Backend API -> Frontend UI
+- **Risk Management**: Low-risk Refactor -> High-risk Feature
+- **Isolation**: Generated Code -> Business Logic
