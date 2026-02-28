@@ -1,6 +1,7 @@
-use rusqlite::{Connection, Result, params};
-use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+
+use libsql::{Connection, params};
+use tokio::sync::Mutex;
 
 use crate::models::{
     Channel, ContentStatus, Summary, SummaryEvaluationJob, Transcript, Video, VideoInfo,
@@ -8,19 +9,20 @@ use crate::models::{
 
 pub type DbPool = Arc<Mutex<Connection>>;
 
-pub fn init_db(path: &Path) -> Result<DbPool> {
-    let conn = Connection::open(path)?;
-    run_migrations(&conn)?;
+pub async fn init_db(db: libsql::Database) -> Result<DbPool, libsql::Error> {
+    let conn = db.connect()?;
+    run_migrations(&conn).await?;
     Ok(Arc::new(Mutex::new(conn)))
 }
 
-pub fn init_db_memory() -> Result<DbPool> {
-    let conn = Connection::open_in_memory()?;
-    run_migrations(&conn)?;
+pub async fn init_db_memory() -> Result<DbPool, libsql::Error> {
+    let db = libsql::Builder::new_local(":memory:").build().await?;
+    let conn = db.connect()?;
+    run_migrations(&conn).await?;
     Ok(Arc::new(Mutex::new(conn)))
 }
 
-fn run_migrations(conn: &Connection) -> Result<()> {
+async fn run_migrations(conn: &Connection) -> Result<(), libsql::Error> {
     conn.execute_batch(
         r#"
         CREATE TABLE IF NOT EXISTS channels (
@@ -80,18 +82,18 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_videos_published ON videos(published_at DESC);
         CREATE INDEX IF NOT EXISTS idx_video_info_fetched_at ON video_info(fetched_at DESC);
         "#,
-    )?;
-    ensure_videos_is_short_column(conn)?;
-    ensure_videos_acknowledged_column(conn)?;
-    ensure_summary_quality_columns(conn)?;
+    )
+    .await?;
+    ensure_videos_is_short_column(conn).await?;
+    ensure_videos_acknowledged_column(conn).await?;
+    ensure_summary_quality_columns(conn).await?;
     Ok(())
 }
 
-fn ensure_videos_is_short_column(conn: &Connection) -> Result<()> {
-    let mut stmt = conn.prepare("PRAGMA table_info(videos)")?;
-    let mut rows = stmt.query([])?;
+async fn ensure_videos_is_short_column(conn: &Connection) -> Result<(), libsql::Error> {
+    let mut rows = conn.query("PRAGMA table_info(videos)", ()).await?;
     let mut has_is_short = false;
-    while let Some(row) = rows.next()? {
+    while let Some(row) = rows.next().await? {
         let name: String = row.get(1)?;
         if name == "is_short" {
             has_is_short = true;
@@ -102,18 +104,18 @@ fn ensure_videos_is_short_column(conn: &Connection) -> Result<()> {
     if !has_is_short {
         conn.execute(
             "ALTER TABLE videos ADD COLUMN is_short INTEGER NOT NULL DEFAULT 0",
-            [],
-        )?;
+            (),
+        )
+        .await?;
     }
 
     Ok(())
 }
 
-fn ensure_videos_acknowledged_column(conn: &Connection) -> Result<()> {
-    let mut stmt = conn.prepare("PRAGMA table_info(videos)")?;
-    let mut rows = stmt.query([])?;
+async fn ensure_videos_acknowledged_column(conn: &Connection) -> Result<(), libsql::Error> {
+    let mut rows = conn.query("PRAGMA table_info(videos)", ()).await?;
     let mut has_col = false;
-    while let Some(row) = rows.next()? {
+    while let Some(row) = rows.next().await? {
         let name: String = row.get(1)?;
         if name == "acknowledged" {
             has_col = true;
@@ -124,20 +126,20 @@ fn ensure_videos_acknowledged_column(conn: &Connection) -> Result<()> {
     if !has_col {
         conn.execute(
             "ALTER TABLE videos ADD COLUMN acknowledged INTEGER NOT NULL DEFAULT 0",
-            [],
-        )?;
+            (),
+        )
+        .await?;
     }
 
     Ok(())
 }
 
-fn ensure_summary_quality_columns(conn: &Connection) -> Result<()> {
-    let mut stmt = conn.prepare("PRAGMA table_info(summaries)")?;
-    let mut rows = stmt.query([])?;
+async fn ensure_summary_quality_columns(conn: &Connection) -> Result<(), libsql::Error> {
+    let mut rows = conn.query("PRAGMA table_info(summaries)", ()).await?;
     let mut has_quality_score = false;
     let mut has_auto_regen_attempts = false;
     let mut has_quality_note = false;
-    while let Some(row) = rows.next()? {
+    while let Some(row) = rows.next().await? {
         let name: String = row.get(1)?;
         if name == "quality_score" {
             has_quality_score = true;
@@ -149,71 +151,97 @@ fn ensure_summary_quality_columns(conn: &Connection) -> Result<()> {
     }
 
     if !has_quality_score {
-        conn.execute("ALTER TABLE summaries ADD COLUMN quality_score INTEGER", [])?;
+        conn.execute(
+            "ALTER TABLE summaries ADD COLUMN quality_score INTEGER",
+            (),
+        )
+        .await?;
     }
     if !has_auto_regen_attempts {
         conn.execute(
             "ALTER TABLE summaries ADD COLUMN auto_regen_attempts INTEGER NOT NULL DEFAULT 0",
-            [],
-        )?;
+            (),
+        )
+        .await?;
     }
     if !has_quality_note {
-        conn.execute("ALTER TABLE summaries ADD COLUMN quality_note TEXT", [])?;
+        conn.execute(
+            "ALTER TABLE summaries ADD COLUMN quality_note TEXT",
+            (),
+        )
+        .await?;
     }
 
     Ok(())
 }
 
-pub fn insert_channel(conn: &Connection, channel: &Channel) -> Result<()> {
+pub async fn insert_channel(conn: &Connection, channel: &Channel) -> Result<(), libsql::Error> {
     conn.execute(
         "INSERT OR REPLACE INTO channels (id, handle, name, thumbnail_url, added_at) VALUES (?1, ?2, ?3, ?4, ?5)",
         params![
-            channel.id,
-            channel.handle,
-            channel.name,
-            channel.thumbnail_url,
+            channel.id.as_str(),
+            channel.handle.as_deref(),
+            channel.name.as_str(),
+            channel.thumbnail_url.as_deref(),
             channel.added_at.to_rfc3339(),
         ],
-    )?;
+    )
+    .await?;
     Ok(())
 }
 
-pub fn get_channel(conn: &Connection, id: &str) -> Result<Option<Channel>> {
-    let mut stmt = conn
-        .prepare("SELECT id, handle, name, thumbnail_url, added_at FROM channels WHERE id = ?1")?;
-    let mut rows = stmt.query(params![id])?;
+pub async fn get_channel(
+    conn: &Connection,
+    id: &str,
+) -> Result<Option<Channel>, libsql::Error> {
+    let mut rows = conn
+        .query(
+            "SELECT id, handle, name, thumbnail_url, added_at FROM channels WHERE id = ?1",
+            params![id],
+        )
+        .await?;
 
-    if let Some(row) = rows.next()? {
-        Ok(Some(row_to_channel(row)?))
+    if let Some(row) = rows.next().await? {
+        Ok(Some(row_to_channel(&row)?))
     } else {
         Ok(None)
     }
 }
 
-pub fn list_channels(conn: &Connection) -> Result<Vec<Channel>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, handle, name, thumbnail_url, added_at FROM channels ORDER BY added_at DESC",
-    )?;
-    let rows = stmt.query_map([], row_to_channel)?;
-    rows.collect()
+pub async fn list_channels(conn: &Connection) -> Result<Vec<Channel>, libsql::Error> {
+    let mut rows = conn
+        .query(
+            "SELECT id, handle, name, thumbnail_url, added_at FROM channels ORDER BY added_at DESC",
+            (),
+        )
+        .await?;
+    let mut results = Vec::new();
+    while let Some(row) = rows.next().await? {
+        results.push(row_to_channel(&row)?);
+    }
+    Ok(results)
 }
 
-pub fn delete_channel(conn: &Connection, id: &str) -> Result<bool> {
-    // Delete associated data first
+pub async fn delete_channel(conn: &Connection, id: &str) -> Result<bool, libsql::Error> {
     conn.execute(
         "DELETE FROM summaries WHERE video_id IN (SELECT id FROM videos WHERE channel_id = ?1)",
         params![id],
-    )?;
+    )
+    .await?;
     conn.execute(
         "DELETE FROM transcripts WHERE video_id IN (SELECT id FROM videos WHERE channel_id = ?1)",
         params![id],
-    )?;
-    conn.execute("DELETE FROM videos WHERE channel_id = ?1", params![id])?;
-    let changes = conn.execute("DELETE FROM channels WHERE id = ?1", params![id])?;
+    )
+    .await?;
+    conn.execute("DELETE FROM videos WHERE channel_id = ?1", params![id])
+        .await?;
+    let changes = conn
+        .execute("DELETE FROM channels WHERE id = ?1", params![id])
+        .await?;
     Ok(changes > 0)
 }
 
-fn row_to_channel(row: &rusqlite::Row) -> Result<Channel> {
+fn row_to_channel(row: &libsql::Row) -> Result<Channel, libsql::Error> {
     let added_at: String = row.get(4)?;
     Ok(Channel {
         id: row.get(0)?,
@@ -226,7 +254,7 @@ fn row_to_channel(row: &rusqlite::Row) -> Result<Channel> {
     })
 }
 
-pub fn insert_video(conn: &Connection, video: &Video) -> Result<()> {
+pub async fn insert_video(conn: &Connection, video: &Video) -> Result<(), libsql::Error> {
     conn.execute(
         "INSERT INTO videos (id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, acknowledged)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
@@ -237,51 +265,49 @@ pub fn insert_video(conn: &Connection, video: &Video) -> Result<()> {
              published_at = excluded.published_at,
              is_short = excluded.is_short",
         params![
-            video.id,
-            video.channel_id,
-            video.title,
-            video.thumbnail_url,
+            video.id.as_str(),
+            video.channel_id.as_str(),
+            video.title.as_str(),
+            video.thumbnail_url.as_deref(),
             video.published_at.to_rfc3339(),
-            video.is_short,
+            video.is_short as i64,
             video.transcript_status.as_str(),
             video.summary_status.as_str(),
-            video.acknowledged,
+            video.acknowledged as i64,
         ],
-    )?;
+    )
+    .await?;
     Ok(())
 }
 
-pub fn get_video(conn: &Connection, id: &str) -> Result<Option<Video>> {
-    let mut stmt = conn.prepare("SELECT id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, acknowledged FROM videos WHERE id = ?1")?;
-    let mut rows = stmt.query(params![id])?;
+pub async fn get_video(conn: &Connection, id: &str) -> Result<Option<Video>, libsql::Error> {
+    let mut rows = conn.query("SELECT id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, acknowledged FROM videos WHERE id = ?1", params![id]).await?;
 
-    if let Some(row) = rows.next()? {
-        Ok(Some(row_to_video(row)?))
+    if let Some(row) = rows.next().await? {
+        Ok(Some(row_to_video(&row)?))
     } else {
         Ok(None)
     }
 }
 
-pub fn list_videos_by_channel(
+pub async fn list_videos_by_channel(
     conn: &Connection,
     channel_id: &str,
     limit: usize,
     offset: usize,
     is_short: Option<bool>,
     acknowledged: Option<bool>,
-) -> Result<Vec<Video>> {
+) -> Result<Vec<Video>, libsql::Error> {
     let short_filter: Option<i64> = is_short.map(|value| if value { 1 } else { 0 });
     let ack_filter: Option<i64> = acknowledged.map(|value| if value { 1 } else { 0 });
-    let mut stmt = conn.prepare(
+    let mut rows = conn.query(
         "SELECT id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, acknowledged
          FROM videos
          WHERE channel_id = ?1
            AND (?4 IS NULL OR is_short = ?4)
            AND (?5 IS NULL OR acknowledged = ?5)
          ORDER BY published_at DESC
-         LIMIT ?2 OFFSET ?3"
-    )?;
-    let rows = stmt.query_map(
+         LIMIT ?2 OFFSET ?3",
         params![
             channel_id,
             limit as i64,
@@ -289,79 +315,114 @@ pub fn list_videos_by_channel(
             short_filter,
             ack_filter
         ],
-        row_to_video,
-    )?;
-    rows.collect()
+    ).await?;
+    let mut results = Vec::new();
+    while let Some(row) = rows.next().await? {
+        results.push(row_to_video(&row)?);
+    }
+    Ok(results)
 }
 
-pub fn count_videos_by_channel(conn: &Connection, channel_id: &str) -> Result<usize> {
-    let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM videos WHERE channel_id = ?1",
-        params![channel_id],
-        |row| row.get(0),
-    )?;
-    Ok(count.max(0) as usize)
+pub async fn count_videos_by_channel(
+    conn: &Connection,
+    channel_id: &str,
+) -> Result<usize, libsql::Error> {
+    let mut rows = conn
+        .query(
+            "SELECT COUNT(*) FROM videos WHERE channel_id = ?1",
+            params![channel_id],
+        )
+        .await?;
+    if let Some(row) = rows.next().await? {
+        let count: i64 = row.get(0)?;
+        Ok(count.max(0) as usize)
+    } else {
+        Ok(0)
+    }
 }
 
-pub fn list_video_ids_by_channel(conn: &Connection, channel_id: &str) -> Result<Vec<String>> {
-    let mut stmt = conn.prepare("SELECT id FROM videos WHERE channel_id = ?1")?;
-    let rows = stmt.query_map(params![channel_id], |row| row.get(0))?;
-    rows.collect()
+pub async fn list_video_ids_by_channel(
+    conn: &Connection,
+    channel_id: &str,
+) -> Result<Vec<String>, libsql::Error> {
+    let mut rows = conn
+        .query(
+            "SELECT id FROM videos WHERE channel_id = ?1",
+            params![channel_id],
+        )
+        .await?;
+    let mut results = Vec::new();
+    while let Some(row) = rows.next().await? {
+        results.push(row.get(0)?);
+    }
+    Ok(results)
 }
 
-pub fn list_videos_for_queue_processing(conn: &Connection, limit: usize) -> Result<Vec<Video>> {
-    let mut stmt = conn.prepare(
+pub async fn list_videos_for_queue_processing(
+    conn: &Connection,
+    limit: usize,
+) -> Result<Vec<Video>, libsql::Error> {
+    let mut rows = conn.query(
         "SELECT id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, acknowledged
          FROM videos
          WHERE transcript_status IN ('pending', 'loading')
             OR (transcript_status = 'ready' AND summary_status IN ('pending', 'loading'))
          ORDER BY published_at DESC
          LIMIT ?1",
-    )?;
-    let rows = stmt.query_map(params![limit as i64], row_to_video)?;
-    rows.collect()
+        params![limit as i64],
+    ).await?;
+    let mut results = Vec::new();
+    while let Some(row) = rows.next().await? {
+        results.push(row_to_video(&row)?);
+    }
+    Ok(results)
 }
 
-pub fn update_video_transcript_status(
+pub async fn update_video_transcript_status(
     conn: &Connection,
     video_id: &str,
     status: ContentStatus,
-) -> Result<()> {
+) -> Result<(), libsql::Error> {
     conn.execute(
         "UPDATE videos SET transcript_status = ?1 WHERE id = ?2",
         params![status.as_str(), video_id],
-    )?;
+    )
+    .await?;
     Ok(())
 }
 
-pub fn update_video_summary_status(
+pub async fn update_video_summary_status(
     conn: &Connection,
     video_id: &str,
     status: ContentStatus,
-) -> Result<()> {
+) -> Result<(), libsql::Error> {
     conn.execute(
         "UPDATE videos SET summary_status = ?1 WHERE id = ?2",
         params![status.as_str(), video_id],
-    )?;
+    )
+    .await?;
     Ok(())
 }
 
-pub fn update_video_acknowledged(
+pub async fn update_video_acknowledged(
     conn: &Connection,
     video_id: &str,
     acknowledged: bool,
-) -> Result<()> {
+) -> Result<(), libsql::Error> {
     conn.execute(
         "UPDATE videos SET acknowledged = ?1 WHERE id = ?2",
-        params![acknowledged, video_id],
-    )?;
+        params![acknowledged as i64, video_id],
+    )
+    .await?;
     Ok(())
 }
 
-fn row_to_video(row: &rusqlite::Row) -> Result<Video> {
+fn row_to_video(row: &libsql::Row) -> Result<Video, libsql::Error> {
     let published_at: String = row.get(4)?;
     let transcript_status: String = row.get(6)?;
     let summary_status: String = row.get(7)?;
+    let is_short_val: i64 = row.get(5)?;
+    let acknowledged_val: i64 = row.get::<i64>(8).unwrap_or(0);
     Ok(Video {
         id: row.get(0)?,
         channel_id: row.get(1)?,
@@ -370,36 +431,54 @@ fn row_to_video(row: &rusqlite::Row) -> Result<Video> {
         published_at: chrono::DateTime::parse_from_rfc3339(&published_at)
             .map(|dt| dt.with_timezone(&chrono::Utc))
             .unwrap_or_else(|_| chrono::Utc::now()),
-        is_short: row.get(5)?,
+        is_short: is_short_val != 0,
         transcript_status: ContentStatus::from_db_value(&transcript_status),
         summary_status: ContentStatus::from_db_value(&summary_status),
-        acknowledged: row.get(8).unwrap_or(false),
+        acknowledged: acknowledged_val != 0,
     })
 }
 
-pub fn upsert_transcript(conn: &Connection, transcript: &Transcript) -> Result<()> {
+pub async fn upsert_transcript(
+    conn: &Connection,
+    transcript: &Transcript,
+) -> Result<(), libsql::Error> {
     conn.execute(
         "INSERT OR REPLACE INTO transcripts (video_id, raw_text, formatted_markdown) VALUES (?1, ?2, ?3)",
-        params![transcript.video_id, transcript.raw_text, transcript.formatted_markdown],
-    )?;
+        params![
+            transcript.video_id.as_str(),
+            transcript.raw_text.as_deref(),
+            transcript.formatted_markdown.as_deref()
+        ],
+    )
+    .await?;
     Ok(())
 }
 
-pub fn update_transcript_content(conn: &Connection, video_id: &str, content: &str) -> Result<()> {
+pub async fn update_transcript_content(
+    conn: &Connection,
+    video_id: &str,
+    content: &str,
+) -> Result<(), libsql::Error> {
     conn.execute(
         "INSERT OR REPLACE INTO transcripts (video_id, raw_text, formatted_markdown) VALUES (?1, ?2, ?3)",
         params![video_id, content, content],
-    )?;
+    )
+    .await?;
     Ok(())
 }
 
-pub fn get_transcript(conn: &Connection, video_id: &str) -> Result<Option<Transcript>> {
-    let mut stmt = conn.prepare(
-        "SELECT video_id, raw_text, formatted_markdown FROM transcripts WHERE video_id = ?1",
-    )?;
-    let mut rows = stmt.query(params![video_id])?;
+pub async fn get_transcript(
+    conn: &Connection,
+    video_id: &str,
+) -> Result<Option<Transcript>, libsql::Error> {
+    let mut rows = conn
+        .query(
+            "SELECT video_id, raw_text, formatted_markdown FROM transcripts WHERE video_id = ?1",
+            params![video_id],
+        )
+        .await?;
 
-    if let Some(row) = rows.next()? {
+    if let Some(row) = rows.next().await? {
         Ok(Some(Transcript {
             video_id: row.get(0)?,
             raw_text: row.get(1)?,
@@ -410,7 +489,7 @@ pub fn get_transcript(conn: &Connection, video_id: &str) -> Result<Option<Transc
     }
 }
 
-pub fn upsert_summary(conn: &Connection, summary: &Summary) -> Result<()> {
+pub async fn upsert_summary(conn: &Connection, summary: &Summary) -> Result<(), libsql::Error> {
     conn.execute(
         "INSERT INTO summaries (video_id, content, model_used, quality_score, quality_note, auto_regen_attempts)
          VALUES (
@@ -428,22 +507,23 @@ pub fn upsert_summary(conn: &Connection, summary: &Summary) -> Result<()> {
              quality_note = excluded.quality_note,
              auto_regen_attempts = excluded.auto_regen_attempts",
         params![
-            summary.video_id,
-            summary.content,
-            summary.model_used,
+            summary.video_id.as_str(),
+            summary.content.as_str(),
+            summary.model_used.as_deref(),
             summary.quality_score.map(i64::from),
-            summary.quality_note,
+            summary.quality_note.as_deref(),
         ],
-    )?;
+    )
+    .await?;
     Ok(())
 }
 
-pub fn update_summary_content(
+pub async fn update_summary_content(
     conn: &Connection,
     video_id: &str,
     content: &str,
     model_used: Option<&str>,
-) -> Result<()> {
+) -> Result<(), libsql::Error> {
     conn.execute(
         "INSERT INTO summaries (video_id, content, model_used, quality_score, quality_note, auto_regen_attempts)
          VALUES (?1, ?2, ?3, NULL, NULL, 0)
@@ -454,61 +534,77 @@ pub fn update_summary_content(
              quality_note = NULL,
              auto_regen_attempts = 0",
         params![video_id, content, model_used],
-    )?;
+    )
+    .await?;
     Ok(())
 }
 
-pub fn update_summary_quality(
+pub async fn update_summary_quality(
     conn: &Connection,
     video_id: &str,
     quality_score: Option<u8>,
     quality_note: Option<&str>,
-) -> Result<()> {
+) -> Result<(), libsql::Error> {
     conn.execute(
         "UPDATE summaries SET quality_score = ?1, quality_note = ?2 WHERE video_id = ?3",
         params![quality_score.map(i64::from), quality_note, video_id],
-    )?;
+    )
+    .await?;
     Ok(())
 }
 
-pub fn get_summary_auto_regen_attempts(conn: &Connection, video_id: &str) -> Result<u8> {
-    match conn.query_row(
-        "SELECT COALESCE(auto_regen_attempts, 0) FROM summaries WHERE video_id = ?1",
-        params![video_id],
-        |row| row.get::<_, i64>(0),
-    ) {
-        Ok(value) => Ok(value.clamp(0, i64::from(u8::MAX)) as u8),
-        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(0),
-        Err(err) => Err(err),
+pub async fn get_summary_auto_regen_attempts(
+    conn: &Connection,
+    video_id: &str,
+) -> Result<u8, libsql::Error> {
+    let mut rows = conn
+        .query(
+            "SELECT COALESCE(auto_regen_attempts, 0) FROM summaries WHERE video_id = ?1",
+            params![video_id],
+        )
+        .await?;
+    if let Some(row) = rows.next().await? {
+        let value: i64 = row.get(0)?;
+        Ok(value.clamp(0, i64::from(u8::MAX)) as u8)
+    } else {
+        Ok(0)
     }
 }
 
-pub fn increment_summary_auto_regen_attempts(conn: &Connection, video_id: &str) -> Result<()> {
+pub async fn increment_summary_auto_regen_attempts(
+    conn: &Connection,
+    video_id: &str,
+) -> Result<(), libsql::Error> {
     conn.execute(
         "UPDATE summaries
          SET auto_regen_attempts = COALESCE(auto_regen_attempts, 0) + 1
          WHERE video_id = ?1",
         params![video_id],
-    )?;
+    )
+    .await?;
     Ok(())
 }
 
-pub fn get_summary(conn: &Connection, video_id: &str) -> Result<Option<Summary>> {
-    let mut stmt = conn.prepare(
-        "SELECT video_id, content, model_used, quality_score, quality_note
-         FROM summaries
-         WHERE video_id = ?1",
-    )?;
-    let mut rows = stmt.query(params![video_id])?;
+pub async fn get_summary(
+    conn: &Connection,
+    video_id: &str,
+) -> Result<Option<Summary>, libsql::Error> {
+    let mut rows = conn
+        .query(
+            "SELECT video_id, content, model_used, quality_score, quality_note
+             FROM summaries
+             WHERE video_id = ?1",
+            params![video_id],
+        )
+        .await?;
 
-    if let Some(row) = rows.next()? {
+    if let Some(row) = rows.next().await? {
+        let quality_score: Option<i64> = row.get(3)?;
         Ok(Some(Summary {
             video_id: row.get(0)?,
             content: row.get(1)?,
             model_used: row.get(2)?,
-            quality_score: row
-                .get::<_, Option<i64>>(3)?
-                .map(|score| score.clamp(0, 10) as u8),
+            quality_score: quality_score.map(|score| score.clamp(0, 10) as u8),
             quality_note: row.get(4)?,
         }))
     } else {
@@ -516,11 +612,11 @@ pub fn get_summary(conn: &Connection, video_id: &str) -> Result<Option<Summary>>
     }
 }
 
-pub fn list_summaries_pending_quality_eval(
+pub async fn list_summaries_pending_quality_eval(
     conn: &Connection,
     limit: usize,
-) -> Result<Vec<SummaryEvaluationJob>> {
-    let mut stmt = conn.prepare(
+) -> Result<Vec<SummaryEvaluationJob>, libsql::Error> {
+    let mut rows = conn.query(
         "SELECT s.video_id, v.title, t.raw_text, t.formatted_markdown, s.content
          FROM summaries s
          JOIN videos v ON v.id = s.video_id
@@ -533,8 +629,10 @@ pub fn list_summaries_pending_quality_eval(
            AND TRIM(COALESCE(t.raw_text, t.formatted_markdown, '')) <> ''
          ORDER BY v.published_at DESC
          LIMIT ?1",
-    )?;
-    let rows = stmt.query_map(params![limit as i64], |row| {
+        params![limit as i64],
+    ).await?;
+    let mut results = Vec::new();
+    while let Some(row) = rows.next().await? {
         let raw_text: Option<String> = row.get(2)?;
         let formatted_markdown: Option<String> = row.get(3)?;
         let transcript_text = raw_text
@@ -543,48 +641,54 @@ pub fn list_summaries_pending_quality_eval(
             .trim()
             .to_string();
 
-        Ok(SummaryEvaluationJob {
+        results.push(SummaryEvaluationJob {
             video_id: row.get(0)?,
             video_title: row.get(1)?,
             transcript_text,
             summary_content: row.get(4)?,
-        })
-    })?;
-    rows.collect()
+        });
+    }
+    Ok(results)
 }
 
-pub fn upsert_video_info(conn: &Connection, info: &VideoInfo) -> Result<()> {
+pub async fn upsert_video_info(conn: &Connection, info: &VideoInfo) -> Result<(), libsql::Error> {
     conn.execute(
         "INSERT OR REPLACE INTO video_info
          (video_id, watch_url, title, description, thumbnail_url, channel_name, channel_id, published_at, duration_iso8601, duration_seconds, view_count, fetched_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         params![
-            info.video_id,
-            info.watch_url,
-            info.title,
-            info.description,
-            info.thumbnail_url,
-            info.channel_name,
-            info.channel_id,
+            info.video_id.as_str(),
+            info.watch_url.as_str(),
+            info.title.as_str(),
+            info.description.as_deref(),
+            info.thumbnail_url.as_deref(),
+            info.channel_name.as_deref(),
+            info.channel_id.as_deref(),
             info.published_at.map(|dt| dt.to_rfc3339()),
-            info.duration_iso8601,
+            info.duration_iso8601.as_deref(),
             info.duration_seconds.map(|v| v as i64),
             info.view_count.map(|v| v as i64),
             chrono::Utc::now().to_rfc3339(),
         ],
-    )?;
+    )
+    .await?;
     Ok(())
 }
 
-pub fn get_video_info(conn: &Connection, video_id: &str) -> Result<Option<VideoInfo>> {
-    let mut stmt = conn.prepare(
+pub async fn get_video_info(
+    conn: &Connection,
+    video_id: &str,
+) -> Result<Option<VideoInfo>, libsql::Error> {
+    let mut rows = conn.query(
         "SELECT video_id, watch_url, title, description, thumbnail_url, channel_name, channel_id, published_at, duration_iso8601, duration_seconds, view_count
          FROM video_info
          WHERE video_id = ?1",
-    )?;
-    let mut rows = stmt.query(params![video_id])?;
-    if let Some(row) = rows.next()? {
+        params![video_id],
+    ).await?;
+    if let Some(row) = rows.next().await? {
         let published_at_raw: Option<String> = row.get(7)?;
+        let duration_seconds: Option<i64> = row.get(9)?;
+        let view_count: Option<i64> = row.get(10)?;
         Ok(Some(VideoInfo {
             video_id: row.get(0)?,
             watch_url: row.get(1)?,
@@ -599,36 +703,52 @@ pub fn get_video_info(conn: &Connection, video_id: &str) -> Result<Option<VideoI
                     .map(|dt| dt.with_timezone(&chrono::Utc))
             }),
             duration_iso8601: row.get(8)?,
-            duration_seconds: row.get::<_, Option<i64>>(9)?.map(|value| value as u64),
-            view_count: row.get::<_, Option<i64>>(10)?.map(|value| value as u64),
+            duration_seconds: duration_seconds.map(|value| value as u64),
+            view_count: view_count.map(|value| value as u64),
         }))
     } else {
         Ok(None)
     }
 }
 
-pub fn list_video_ids_missing_info(conn: &Connection, limit: usize) -> Result<Vec<String>> {
-    let mut stmt = conn.prepare(
+pub async fn list_video_ids_missing_info(
+    conn: &Connection,
+    limit: usize,
+) -> Result<Vec<String>, libsql::Error> {
+    let mut rows = conn.query(
         "SELECT v.id
          FROM videos v
          LEFT JOIN video_info vi ON vi.video_id = v.id
          WHERE vi.video_id IS NULL
          ORDER BY v.published_at DESC
          LIMIT ?1",
-    )?;
-    let rows = stmt.query_map(params![limit as i64], |row| row.get(0))?;
-    rows.collect()
+        params![limit as i64],
+    ).await?;
+    let mut results = Vec::new();
+    while let Some(row) = rows.next().await? {
+        results.push(row.get(0)?);
+    }
+    Ok(results)
 }
 
-pub fn list_video_ids_for_info_refresh(conn: &Connection, limit: usize) -> Result<Vec<String>> {
-    let mut stmt = conn.prepare(
-        "SELECT id
-         FROM videos
-         ORDER BY published_at DESC
-         LIMIT ?1",
-    )?;
-    let rows = stmt.query_map(params![limit as i64], |row| row.get(0))?;
-    rows.collect()
+pub async fn list_video_ids_for_info_refresh(
+    conn: &Connection,
+    limit: usize,
+) -> Result<Vec<String>, libsql::Error> {
+    let mut rows = conn
+        .query(
+            "SELECT id
+             FROM videos
+             ORDER BY published_at DESC
+             LIMIT ?1",
+            params![limit as i64],
+        )
+        .await?;
+    let mut results = Vec::new();
+    while let Some(row) = rows.next().await? {
+        results.push(row.get(0)?);
+    }
+    Ok(results)
 }
 
 #[cfg(test)]
@@ -636,10 +756,10 @@ mod tests {
     use super::*;
     use chrono::Utc;
 
-    #[test]
-    fn test_channel_crud() {
-        let pool = init_db_memory().unwrap();
-        let conn = pool.lock().unwrap();
+    #[tokio::test]
+    async fn test_channel_crud() {
+        let pool = init_db_memory().await.unwrap();
+        let conn = pool.lock().await;
 
         let channel = Channel {
             id: "UC123".to_string(),
@@ -649,22 +769,22 @@ mod tests {
             added_at: Utc::now(),
         };
 
-        insert_channel(&conn, &channel).unwrap();
+        insert_channel(&conn, &channel).await.unwrap();
 
-        let fetched = get_channel(&conn, "UC123").unwrap().unwrap();
+        let fetched = get_channel(&conn, "UC123").await.unwrap().unwrap();
         assert_eq!(fetched.name, "Test Channel");
 
-        let channels = list_channels(&conn).unwrap();
+        let channels = list_channels(&conn).await.unwrap();
         assert_eq!(channels.len(), 1);
 
-        assert!(delete_channel(&conn, "UC123").unwrap());
-        assert!(get_channel(&conn, "UC123").unwrap().is_none());
+        assert!(delete_channel(&conn, "UC123").await.unwrap());
+        assert!(get_channel(&conn, "UC123").await.unwrap().is_none());
     }
 
-    #[test]
-    fn test_video_with_transcript_and_summary() {
-        let pool = init_db_memory().unwrap();
-        let conn = pool.lock().unwrap();
+    #[tokio::test]
+    async fn test_video_with_transcript_and_summary() {
+        let pool = init_db_memory().await.unwrap();
+        let conn = pool.lock().await;
 
         let channel = Channel {
             id: "UC123".to_string(),
@@ -673,7 +793,7 @@ mod tests {
             thumbnail_url: None,
             added_at: Utc::now(),
         };
-        insert_channel(&conn, &channel).unwrap();
+        insert_channel(&conn, &channel).await.unwrap();
 
         let video = Video {
             id: "vid1".to_string(),
@@ -686,27 +806,29 @@ mod tests {
             summary_status: ContentStatus::Pending,
             acknowledged: false,
         };
-        insert_video(&conn, &video).unwrap();
+        insert_video(&conn, &video).await.unwrap();
 
         let transcript = Transcript {
             video_id: "vid1".to_string(),
             raw_text: Some("Hello world".to_string()),
             formatted_markdown: Some("# Hello\n\nWorld".to_string()),
         };
-        upsert_transcript(&conn, &transcript).unwrap();
-        update_video_transcript_status(&conn, "vid1", ContentStatus::Ready).unwrap();
+        upsert_transcript(&conn, &transcript).await.unwrap();
+        update_video_transcript_status(&conn, "vid1", ContentStatus::Ready)
+            .await
+            .unwrap();
 
-        let fetched = get_transcript(&conn, "vid1").unwrap().unwrap();
+        let fetched = get_transcript(&conn, "vid1").await.unwrap().unwrap();
         assert_eq!(fetched.raw_text, Some("Hello world".to_string()));
 
-        let video = get_video(&conn, "vid1").unwrap().unwrap();
+        let video = get_video(&conn, "vid1").await.unwrap().unwrap();
         assert_eq!(video.transcript_status, ContentStatus::Ready);
     }
 
-    #[test]
-    fn test_update_transcript_content() {
-        let pool = init_db_memory().unwrap();
-        let conn = pool.lock().unwrap();
+    #[tokio::test]
+    async fn test_update_transcript_content() {
+        let pool = init_db_memory().await.unwrap();
+        let conn = pool.lock().await;
 
         let channel = Channel {
             id: "UC999".to_string(),
@@ -715,7 +837,7 @@ mod tests {
             thumbnail_url: None,
             added_at: Utc::now(),
         };
-        insert_channel(&conn, &channel).unwrap();
+        insert_channel(&conn, &channel).await.unwrap();
 
         let video = Video {
             id: "vid2".to_string(),
@@ -728,20 +850,27 @@ mod tests {
             summary_status: ContentStatus::Pending,
             acknowledged: false,
         };
-        insert_video(&conn, &video).unwrap();
+        insert_video(&conn, &video).await.unwrap();
 
-        update_transcript_content(&conn, "vid2", "## Edited").unwrap();
-        update_video_transcript_status(&conn, "vid2", ContentStatus::Ready).unwrap();
+        update_transcript_content(&conn, "vid2", "## Edited")
+            .await
+            .unwrap();
+        update_video_transcript_status(&conn, "vid2", ContentStatus::Ready)
+            .await
+            .unwrap();
 
-        let transcript = get_transcript(&conn, "vid2").unwrap().unwrap();
-        assert_eq!(transcript.formatted_markdown, Some("## Edited".to_string()));
+        let transcript = get_transcript(&conn, "vid2").await.unwrap().unwrap();
+        assert_eq!(
+            transcript.formatted_markdown,
+            Some("## Edited".to_string())
+        );
         assert_eq!(transcript.raw_text, Some("## Edited".to_string()));
     }
 
-    #[test]
-    fn test_update_summary_content() {
-        let pool = init_db_memory().unwrap();
-        let conn = pool.lock().unwrap();
+    #[tokio::test]
+    async fn test_update_summary_content() {
+        let pool = init_db_memory().await.unwrap();
+        let conn = pool.lock().await;
 
         let channel = Channel {
             id: "UC777".to_string(),
@@ -750,7 +879,7 @@ mod tests {
             thumbnail_url: None,
             added_at: Utc::now(),
         };
-        insert_channel(&conn, &channel).unwrap();
+        insert_channel(&conn, &channel).await.unwrap();
 
         let video = Video {
             id: "vid3".to_string(),
@@ -763,20 +892,24 @@ mod tests {
             summary_status: ContentStatus::Pending,
             acknowledged: false,
         };
-        insert_video(&conn, &video).unwrap();
+        insert_video(&conn, &video).await.unwrap();
 
-        update_summary_content(&conn, "vid3", "Summary text", Some("manual")).unwrap();
-        update_video_summary_status(&conn, "vid3", ContentStatus::Ready).unwrap();
+        update_summary_content(&conn, "vid3", "Summary text", Some("manual"))
+            .await
+            .unwrap();
+        update_video_summary_status(&conn, "vid3", ContentStatus::Ready)
+            .await
+            .unwrap();
 
-        let summary = get_summary(&conn, "vid3").unwrap().unwrap();
+        let summary = get_summary(&conn, "vid3").await.unwrap().unwrap();
         assert_eq!(summary.content, "Summary text");
         assert_eq!(summary.model_used, Some("manual".to_string()));
     }
 
-    #[test]
-    fn test_summary_quality_fields_roundtrip() {
-        let pool = init_db_memory().unwrap();
-        let conn = pool.lock().unwrap();
+    #[tokio::test]
+    async fn test_summary_quality_fields_roundtrip() {
+        let pool = init_db_memory().await.unwrap();
+        let conn = pool.lock().await;
 
         let channel = Channel {
             id: "UC_EVAL".to_string(),
@@ -785,7 +918,7 @@ mod tests {
             thumbnail_url: None,
             added_at: Utc::now(),
         };
-        insert_channel(&conn, &channel).unwrap();
+        insert_channel(&conn, &channel).await.unwrap();
 
         let video = Video {
             id: "vid_eval".to_string(),
@@ -798,24 +931,25 @@ mod tests {
             summary_status: ContentStatus::Ready,
             acknowledged: false,
         };
-        insert_video(&conn, &video).unwrap();
+        insert_video(&conn, &video).await.unwrap();
 
         conn.execute(
             "INSERT INTO summaries (video_id, content, model_used, quality_score, quality_note)
              VALUES (?1, ?2, ?3, ?4, ?5)",
             params!["vid_eval", "Summary body", "manual", 8i64, "Missed nuance"],
         )
+        .await
         .unwrap();
 
-        let summary = get_summary(&conn, "vid_eval").unwrap().unwrap();
+        let summary = get_summary(&conn, "vid_eval").await.unwrap().unwrap();
         assert_eq!(summary.quality_score, Some(8));
         assert_eq!(summary.quality_note, Some("Missed nuance".to_string()));
     }
 
-    #[test]
-    fn test_update_summary_content_resets_quality_fields() {
-        let pool = init_db_memory().unwrap();
-        let conn = pool.lock().unwrap();
+    #[tokio::test]
+    async fn test_update_summary_content_resets_quality_fields() {
+        let pool = init_db_memory().await.unwrap();
+        let conn = pool.lock().await;
 
         let channel = Channel {
             id: "UC_EVAL2".to_string(),
@@ -824,7 +958,7 @@ mod tests {
             thumbnail_url: None,
             added_at: Utc::now(),
         };
-        insert_channel(&conn, &channel).unwrap();
+        insert_channel(&conn, &channel).await.unwrap();
 
         let video = Video {
             id: "vid_eval2".to_string(),
@@ -837,26 +971,29 @@ mod tests {
             summary_status: ContentStatus::Ready,
             acknowledged: false,
         };
-        insert_video(&conn, &video).unwrap();
+        insert_video(&conn, &video).await.unwrap();
 
         conn.execute(
             "INSERT INTO summaries (video_id, content, model_used, quality_score, quality_note)
              VALUES (?1, ?2, ?3, ?4, ?5)",
             params!["vid_eval2", "Before", "manual", 9i64, "Minor mismatch"],
         )
+        .await
         .unwrap();
 
-        update_summary_content(&conn, "vid_eval2", "After edit", Some("manual")).unwrap();
-        let summary = get_summary(&conn, "vid_eval2").unwrap().unwrap();
+        update_summary_content(&conn, "vid_eval2", "After edit", Some("manual"))
+            .await
+            .unwrap();
+        let summary = get_summary(&conn, "vid_eval2").await.unwrap().unwrap();
         assert_eq!(summary.content, "After edit");
         assert_eq!(summary.quality_score, None);
         assert_eq!(summary.quality_note, None);
     }
 
-    #[test]
-    fn test_list_summaries_pending_quality_eval_and_store_result() {
-        let pool = init_db_memory().unwrap();
-        let conn = pool.lock().unwrap();
+    #[tokio::test]
+    async fn test_list_summaries_pending_quality_eval_and_store_result() {
+        let pool = init_db_memory().await.unwrap();
+        let conn = pool.lock().await;
 
         let channel = Channel {
             id: "UC_EVAL3".to_string(),
@@ -865,7 +1002,7 @@ mod tests {
             thumbnail_url: None,
             added_at: Utc::now(),
         };
-        insert_channel(&conn, &channel).unwrap();
+        insert_channel(&conn, &channel).await.unwrap();
 
         let video = Video {
             id: "vid_eval3".to_string(),
@@ -878,7 +1015,7 @@ mod tests {
             summary_status: ContentStatus::Ready,
             acknowledged: false,
         };
-        insert_video(&conn, &video).unwrap();
+        insert_video(&conn, &video).await.unwrap();
 
         upsert_transcript(
             &conn,
@@ -888,6 +1025,7 @@ mod tests {
                 formatted_markdown: None,
             },
         )
+        .await
         .unwrap();
         upsert_summary(
             &conn,
@@ -899,27 +1037,37 @@ mod tests {
                 quality_note: None,
             },
         )
+        .await
         .unwrap();
 
-        let pending = list_summaries_pending_quality_eval(&conn, 10).unwrap();
+        let pending = list_summaries_pending_quality_eval(&conn, 10)
+            .await
+            .unwrap();
         assert_eq!(pending.len(), 1);
         assert_eq!(pending[0].video_id, "vid_eval3");
         assert_eq!(pending[0].transcript_text, "Transcript body");
         assert_eq!(pending[0].summary_content, "Summary body");
 
-        update_summary_quality(&conn, "vid_eval3", Some(7), Some("Missed one claim")).unwrap();
-        let updated = get_summary(&conn, "vid_eval3").unwrap().unwrap();
+        update_summary_quality(&conn, "vid_eval3", Some(7), Some("Missed one claim"))
+            .await
+            .unwrap();
+        let updated = get_summary(&conn, "vid_eval3").await.unwrap().unwrap();
         assert_eq!(updated.quality_score, Some(7));
-        assert_eq!(updated.quality_note, Some("Missed one claim".to_string()));
+        assert_eq!(
+            updated.quality_note,
+            Some("Missed one claim".to_string())
+        );
 
-        let pending_after = list_summaries_pending_quality_eval(&conn, 10).unwrap();
+        let pending_after = list_summaries_pending_quality_eval(&conn, 10)
+            .await
+            .unwrap();
         assert!(pending_after.is_empty());
     }
 
-    #[test]
-    fn test_summary_auto_regen_attempts_increment_and_manual_reset() {
-        let pool = init_db_memory().unwrap();
-        let conn = pool.lock().unwrap();
+    #[tokio::test]
+    async fn test_summary_auto_regen_attempts_increment_and_manual_reset() {
+        let pool = init_db_memory().await.unwrap();
+        let conn = pool.lock().await;
 
         let channel = Channel {
             id: "UC_REGEN".to_string(),
@@ -928,7 +1076,7 @@ mod tests {
             thumbnail_url: None,
             added_at: Utc::now(),
         };
-        insert_channel(&conn, &channel).unwrap();
+        insert_channel(&conn, &channel).await.unwrap();
 
         let video = Video {
             id: "vid_regen".to_string(),
@@ -941,7 +1089,7 @@ mod tests {
             summary_status: ContentStatus::Ready,
             acknowledged: false,
         };
-        insert_video(&conn, &video).unwrap();
+        insert_video(&conn, &video).await.unwrap();
 
         upsert_summary(
             &conn,
@@ -953,26 +1101,38 @@ mod tests {
                 quality_note: None,
             },
         )
+        .await
         .unwrap();
 
-        let attempts = get_summary_auto_regen_attempts(&conn, "vid_regen").unwrap();
+        let attempts = get_summary_auto_regen_attempts(&conn, "vid_regen")
+            .await
+            .unwrap();
         assert_eq!(attempts, 0);
 
-        increment_summary_auto_regen_attempts(&conn, "vid_regen").unwrap();
-        increment_summary_auto_regen_attempts(&conn, "vid_regen").unwrap();
-        let attempts_after_increment = get_summary_auto_regen_attempts(&conn, "vid_regen").unwrap();
+        increment_summary_auto_regen_attempts(&conn, "vid_regen")
+            .await
+            .unwrap();
+        increment_summary_auto_regen_attempts(&conn, "vid_regen")
+            .await
+            .unwrap();
+        let attempts_after_increment = get_summary_auto_regen_attempts(&conn, "vid_regen")
+            .await
+            .unwrap();
         assert_eq!(attempts_after_increment, 2);
 
-        update_summary_content(&conn, "vid_regen", "Manual edit", Some("manual")).unwrap();
-        let attempts_after_manual_edit =
-            get_summary_auto_regen_attempts(&conn, "vid_regen").unwrap();
+        update_summary_content(&conn, "vid_regen", "Manual edit", Some("manual"))
+            .await
+            .unwrap();
+        let attempts_after_manual_edit = get_summary_auto_regen_attempts(&conn, "vid_regen")
+            .await
+            .unwrap();
         assert_eq!(attempts_after_manual_edit, 0);
     }
 
-    #[test]
-    fn test_list_videos_for_queue_processing_filters_failed_and_ready() {
-        let pool = init_db_memory().unwrap();
-        let conn = pool.lock().unwrap();
+    #[tokio::test]
+    async fn test_list_videos_for_queue_processing_filters_failed_and_ready() {
+        let pool = init_db_memory().await.unwrap();
+        let conn = pool.lock().await;
 
         let channel = Channel {
             id: "UCQ".to_string(),
@@ -981,7 +1141,7 @@ mod tests {
             thumbnail_url: None,
             added_at: Utc::now(),
         };
-        insert_channel(&conn, &channel).unwrap();
+        insert_channel(&conn, &channel).await.unwrap();
 
         let videos = [
             Video {
@@ -1042,10 +1202,10 @@ mod tests {
         ];
 
         for video in videos {
-            insert_video(&conn, &video).unwrap();
+            insert_video(&conn, &video).await.unwrap();
         }
 
-        let queue = list_videos_for_queue_processing(&conn, 10).unwrap();
+        let queue = list_videos_for_queue_processing(&conn, 10).await.unwrap();
         let ids = queue.into_iter().map(|video| video.id).collect::<Vec<_>>();
 
         assert!(ids.contains(&"v_pending".to_string()));
@@ -1055,10 +1215,10 @@ mod tests {
         assert!(!ids.contains(&"v_failed".to_string()));
     }
 
-    #[test]
-    fn test_insert_video_preserves_existing_content_statuses_on_refresh() {
-        let pool = init_db_memory().unwrap();
-        let conn = pool.lock().unwrap();
+    #[tokio::test]
+    async fn test_insert_video_preserves_existing_content_statuses_on_refresh() {
+        let pool = init_db_memory().await.unwrap();
+        let conn = pool.lock().await;
 
         let channel = Channel {
             id: "UC_REFRESH".to_string(),
@@ -1067,7 +1227,7 @@ mod tests {
             thumbnail_url: None,
             added_at: Utc::now(),
         };
-        insert_channel(&conn, &channel).unwrap();
+        insert_channel(&conn, &channel).await.unwrap();
 
         let existing = Video {
             id: "vid_refresh".to_string(),
@@ -1080,7 +1240,7 @@ mod tests {
             summary_status: ContentStatus::Ready,
             acknowledged: true,
         };
-        insert_video(&conn, &existing).unwrap();
+        insert_video(&conn, &existing).await.unwrap();
 
         let refreshed = Video {
             id: "vid_refresh".to_string(),
@@ -1093,9 +1253,9 @@ mod tests {
             summary_status: ContentStatus::Pending,
             acknowledged: false,
         };
-        insert_video(&conn, &refreshed).unwrap();
+        insert_video(&conn, &refreshed).await.unwrap();
 
-        let saved = get_video(&conn, "vid_refresh").unwrap().unwrap();
+        let saved = get_video(&conn, "vid_refresh").await.unwrap().unwrap();
         assert_eq!(saved.title, "New title");
         assert_eq!(
             saved.thumbnail_url,
@@ -1107,10 +1267,10 @@ mod tests {
         assert!(saved.acknowledged);
     }
 
-    #[test]
-    fn test_list_videos_by_channel_can_filter_video_type() {
-        let pool = init_db_memory().unwrap();
-        let conn = pool.lock().unwrap();
+    #[tokio::test]
+    async fn test_list_videos_by_channel_can_filter_video_type() {
+        let pool = init_db_memory().await.unwrap();
+        let conn = pool.lock().await;
 
         let channel = Channel {
             id: "UCF".to_string(),
@@ -1119,13 +1279,14 @@ mod tests {
             thumbnail_url: None,
             added_at: Utc::now(),
         };
-        insert_channel(&conn, &channel).unwrap();
+        insert_channel(&conn, &channel).await.unwrap();
 
         conn.execute(
             "INSERT INTO videos (id, channel_id, title, thumbnail_url, published_at, transcript_status, summary_status, is_short)
              VALUES (?1, ?2, ?3, NULL, ?4, 'pending', 'pending', 1)",
             params!["short_vid", "UCF", "Short", Utc::now().to_rfc3339()],
         )
+        .await
         .unwrap();
 
         conn.execute(
@@ -1133,24 +1294,31 @@ mod tests {
              VALUES (?1, ?2, ?3, NULL, ?4, 'pending', 'pending', 0)",
             params!["long_vid", "UCF", "Long", Utc::now().to_rfc3339()],
         )
+        .await
         .unwrap();
 
-        let all_videos = list_videos_by_channel(&conn, "UCF", 10, 0, None, None).unwrap();
+        let all_videos = list_videos_by_channel(&conn, "UCF", 10, 0, None, None)
+            .await
+            .unwrap();
         assert_eq!(all_videos.len(), 2);
 
-        let long_only = list_videos_by_channel(&conn, "UCF", 10, 0, Some(false), None).unwrap();
+        let long_only = list_videos_by_channel(&conn, "UCF", 10, 0, Some(false), None)
+            .await
+            .unwrap();
         assert_eq!(long_only.len(), 1);
         assert_eq!(long_only[0].id, "long_vid");
 
-        let short_only = list_videos_by_channel(&conn, "UCF", 10, 0, Some(true), None).unwrap();
+        let short_only = list_videos_by_channel(&conn, "UCF", 10, 0, Some(true), None)
+            .await
+            .unwrap();
         assert_eq!(short_only.len(), 1);
         assert_eq!(short_only[0].id, "short_vid");
     }
 
-    #[test]
-    fn test_video_info_roundtrip_and_backfill_queries() {
-        let pool = init_db_memory().unwrap();
-        let conn = pool.lock().unwrap();
+    #[tokio::test]
+    async fn test_video_info_roundtrip_and_backfill_queries() {
+        let pool = init_db_memory().await.unwrap();
+        let conn = pool.lock().await;
 
         let channel = Channel {
             id: "UC_INFO".to_string(),
@@ -1159,7 +1327,7 @@ mod tests {
             thumbnail_url: None,
             added_at: Utc::now(),
         };
-        insert_channel(&conn, &channel).unwrap();
+        insert_channel(&conn, &channel).await.unwrap();
 
         let newer = Video {
             id: "vid_info_new".to_string(),
@@ -1183,8 +1351,8 @@ mod tests {
             summary_status: ContentStatus::Ready,
             acknowledged: false,
         };
-        insert_video(&conn, &newer).unwrap();
-        insert_video(&conn, &older).unwrap();
+        insert_video(&conn, &newer).await.unwrap();
+        insert_video(&conn, &older).await.unwrap();
 
         let info = VideoInfo {
             video_id: "vid_info_new".to_string(),
@@ -1199,27 +1367,27 @@ mod tests {
             duration_seconds: Some(190),
             view_count: Some(1234),
         };
-        upsert_video_info(&conn, &info).unwrap();
+        upsert_video_info(&conn, &info).await.unwrap();
 
-        let saved = get_video_info(&conn, "vid_info_new").unwrap().unwrap();
+        let saved = get_video_info(&conn, "vid_info_new").await.unwrap().unwrap();
         assert_eq!(saved.title, "Full Title");
         assert_eq!(saved.duration_seconds, Some(190));
         assert_eq!(saved.view_count, Some(1234));
 
-        let missing = list_video_ids_missing_info(&conn, 10).unwrap();
+        let missing = list_video_ids_missing_info(&conn, 10).await.unwrap();
         assert_eq!(missing, vec!["vid_info_old".to_string()]);
 
-        let refresh_all = list_video_ids_for_info_refresh(&conn, 10).unwrap();
+        let refresh_all = list_video_ids_for_info_refresh(&conn, 10).await.unwrap();
         assert_eq!(
             refresh_all,
             vec!["vid_info_new".to_string(), "vid_info_old".to_string()]
         );
     }
 
-    #[test]
-    fn test_list_video_ids_by_channel_returns_all_ids_for_channel() {
-        let pool = init_db_memory().unwrap();
-        let conn = pool.lock().unwrap();
+    #[tokio::test]
+    async fn test_list_video_ids_by_channel_returns_all_ids_for_channel() {
+        let pool = init_db_memory().await.unwrap();
+        let conn = pool.lock().await;
 
         let channel_a = Channel {
             id: "UC_GAP_A".to_string(),
@@ -1235,8 +1403,8 @@ mod tests {
             thumbnail_url: None,
             added_at: Utc::now(),
         };
-        insert_channel(&conn, &channel_a).unwrap();
-        insert_channel(&conn, &channel_b).unwrap();
+        insert_channel(&conn, &channel_a).await.unwrap();
+        insert_channel(&conn, &channel_b).await.unwrap();
 
         for id in ["a_vid_1", "a_vid_2", "a_vid_3"] {
             insert_video(
@@ -1253,6 +1421,7 @@ mod tests {
                     acknowledged: false,
                 },
             )
+            .await
             .unwrap();
         }
 
@@ -1270,9 +1439,12 @@ mod tests {
                 acknowledged: false,
             },
         )
+        .await
         .unwrap();
 
-        let mut ids = list_video_ids_by_channel(&conn, "UC_GAP_A").unwrap();
+        let mut ids = list_video_ids_by_channel(&conn, "UC_GAP_A")
+            .await
+            .unwrap();
         ids.sort();
         assert_eq!(
             ids,

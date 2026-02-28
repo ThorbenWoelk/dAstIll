@@ -48,11 +48,10 @@ pub fn spawn_queue_worker(state: AppState) {
 
         loop {
             let queue = {
-                match state.db.lock() {
-                    Ok(conn) => db::list_videos_for_queue_processing(&conn, QUEUE_SCAN_LIMIT)
-                        .map_err(|err| err.to_string()),
-                    Err(err) => Err(err.to_string()),
-                }
+                let conn = state.db.lock().await;
+                db::list_videos_for_queue_processing(&conn, QUEUE_SCAN_LIMIT)
+                    .await
+                    .map_err(|err| err.to_string())
             };
 
             let queue = match queue {
@@ -102,10 +101,10 @@ pub fn spawn_queue_worker(state: AppState) {
 /// Refresh all channels by fetching their RSS feeds and inserting new videos.
 async fn refresh_all_channels(state: &AppState) {
     let channels = {
-        match state.db.lock() {
-            Ok(conn) => db::list_channels(&conn).map_err(|err| err.to_string()),
-            Err(err) => Err(err.to_string()),
-        }
+        let conn = state.db.lock().await;
+        db::list_channels(&conn)
+            .await
+            .map_err(|err| err.to_string())
     };
 
     let channels = match channels {
@@ -125,29 +124,17 @@ async fn refresh_all_channels(state: &AppState) {
     for channel in &channels {
         match state.youtube.fetch_videos(&channel.id).await {
             Ok(videos) => {
-                let count = match state.db.lock() {
-                    Ok(conn) => {
-                        let mut n = 0;
-                        for video in videos {
-                            if db::insert_video(&conn, &video).is_ok() {
-                                n += 1;
-                            }
-                        }
-                        n
+                let conn = state.db.lock().await;
+                let mut n = 0;
+                for video in videos {
+                    if db::insert_video(&conn, &video).await.is_ok() {
+                        n += 1;
                     }
-                    Err(err) => {
-                        tracing::error!(
-                            channel_id = %channel.id,
-                            error = %err,
-                            "refresh worker failed to acquire db lock"
-                        );
-                        continue;
-                    }
-                };
-                if count > 0 {
+                }
+                if n > 0 {
                     tracing::info!(
                         channel_id = %channel.id,
-                        new_videos = count,
+                        new_videos = n,
                         "refresh worker found new videos"
                     );
                 }
@@ -186,8 +173,9 @@ async fn fill_channel_gaps(
     limit: usize,
 ) -> Result<usize, String> {
     let known_video_ids = {
-        let conn = state.db.lock().map_err(|err| err.to_string())?;
+        let conn = state.db.lock().await;
         db::list_video_ids_by_channel(&conn, channel_id)
+            .await
             .map_err(|err| err.to_string())?
             .into_iter()
             .collect::<HashSet<_>>()
@@ -199,10 +187,10 @@ async fn fill_channel_gaps(
         .await
         .map_err(|err| err.to_string())?;
 
-    let conn = state.db.lock().map_err(|err| err.to_string())?;
+    let conn = state.db.lock().await;
     let mut inserted = 0usize;
     for video in videos {
-        if db::insert_video(&conn, &video).is_ok() {
+        if db::insert_video(&conn, &video).await.is_ok() {
             inserted += 1;
         }
     }
@@ -211,10 +199,10 @@ async fn fill_channel_gaps(
 
 async fn scan_all_channels_for_gaps(state: &AppState) {
     let channels = {
-        match state.db.lock() {
-            Ok(conn) => db::list_channels(&conn).map_err(|err| err.to_string()),
-            Err(err) => Err(err.to_string()),
-        }
+        let conn = state.db.lock().await;
+        db::list_channels(&conn)
+            .await
+            .map_err(|err| err.to_string())
     };
 
     let channels = match channels {
@@ -283,13 +271,10 @@ pub fn spawn_summary_evaluation_worker(state: AppState) {
 
         loop {
             let queue = {
-                match state.db.lock() {
-                    Ok(conn) => {
-                        db::list_summaries_pending_quality_eval(&conn, SUMMARY_EVAL_SCAN_LIMIT)
-                            .map_err(|err| err.to_string())
-                    }
-                    Err(err) => Err(err.to_string()),
-                }
+                let conn = state.db.lock().await;
+                db::list_summaries_pending_quality_eval(&conn, SUMMARY_EVAL_SCAN_LIMIT)
+                    .await
+                    .map_err(|err| err.to_string())
             };
 
             let queue = match queue {
@@ -321,41 +306,43 @@ pub fn spawn_summary_evaluation_worker(state: AppState) {
 
                 match evaluation {
                     Ok(result) => {
-                        if let Ok(conn) = state.db.lock() {
-                            let _ = db::update_summary_quality(
-                                &conn,
-                                &job.video_id,
-                                Some(result.quality_score),
-                                result.quality_note.as_deref(),
-                            );
+                        let conn = state.db.lock().await;
+                        let _ = db::update_summary_quality(
+                            &conn,
+                            &job.video_id,
+                            Some(result.quality_score),
+                            result.quality_note.as_deref(),
+                        )
+                        .await;
 
-                            if let Ok(auto_regen_attempts) =
-                                db::get_summary_auto_regen_attempts(&conn, &job.video_id)
-                            {
-                                if should_queue_summary_auto_regeneration(
-                                    result.quality_score,
-                                    auto_regen_attempts,
-                                ) {
-                                    if let Err(err) = db::update_video_summary_status(
-                                        &conn,
-                                        &job.video_id,
-                                        ContentStatus::Pending,
-                                    ) {
-                                        tracing::warn!(
-                                            video_id = %job.video_id,
-                                            error = %err,
-                                            "failed to queue low-quality summary regeneration"
-                                        );
-                                    } else {
-                                        tracing::info!(
-                                            video_id = %job.video_id,
-                                            score = result.quality_score,
-                                            attempts = auto_regen_attempts,
-                                            threshold = content::MIN_SUMMARY_QUALITY_SCORE_FOR_ACCEPTANCE,
-                                            max_attempts = content::MAX_SUMMARY_AUTO_REGEN_ATTEMPTS,
-                                            "queued summary for automatic regeneration"
-                                        );
-                                    }
+                        if let Ok(auto_regen_attempts) =
+                            db::get_summary_auto_regen_attempts(&conn, &job.video_id).await
+                        {
+                            if should_queue_summary_auto_regeneration(
+                                result.quality_score,
+                                auto_regen_attempts,
+                            ) {
+                                if let Err(err) = db::update_video_summary_status(
+                                    &conn,
+                                    &job.video_id,
+                                    ContentStatus::Pending,
+                                )
+                                .await
+                                {
+                                    tracing::warn!(
+                                        video_id = %job.video_id,
+                                        error = %err,
+                                        "failed to queue low-quality summary regeneration"
+                                    );
+                                } else {
+                                    tracing::info!(
+                                        video_id = %job.video_id,
+                                        score = result.quality_score,
+                                        attempts = auto_regen_attempts,
+                                        threshold = content::MIN_SUMMARY_QUALITY_SCORE_FOR_ACCEPTANCE,
+                                        max_attempts = content::MAX_SUMMARY_AUTO_REGEN_ATTEMPTS,
+                                        "queued summary for automatic regeneration"
+                                    );
                                 }
                             }
                         }
@@ -366,14 +353,14 @@ pub fn spawn_summary_evaluation_worker(state: AppState) {
                             error = %err,
                             "summary evaluation failed"
                         );
-                        if let Ok(conn) = state.db.lock() {
-                            let _ = db::update_summary_quality(
-                                &conn,
-                                &job.video_id,
-                                None,
-                                Some("Quality check unavailable."),
-                            );
-                        }
+                        let conn = state.db.lock().await;
+                        let _ = db::update_summary_quality(
+                            &conn,
+                            &job.video_id,
+                            None,
+                            Some("Quality check unavailable."),
+                        )
+                        .await;
                     }
                 }
             }

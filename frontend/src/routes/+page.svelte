@@ -27,6 +27,10 @@
 		VideoTypeFilter,
 	} from "$lib/types";
 	import {
+		prioritizeChannelOrder,
+		resolveInitialChannelSelection,
+	} from "$lib/channel-workspace";
+	import {
 		normalizeTranscriptForRender,
 		renderMarkdown,
 	} from "$lib/utils/markdown";
@@ -310,7 +314,7 @@
 		};
 	});
 
-	async function loadChannels() {
+	async function loadChannels(preferredChannelId: string | null = null) {
 		loadingChannels = true;
 		errorMessage = null;
 		let initialChannelId: string | null = null;
@@ -320,19 +324,19 @@
 			const fetchedChannels = await listChannels();
 			channels = applySavedChannelOrder(fetchedChannels);
 			syncChannelOrderFromList();
-			if (channels.length > 0) {
-				const hasSavedChannel =
-					typeof selectedChannelId === "string" &&
-					channels.some(
-						(channel) => channel.id === selectedChannelId,
-					);
-				initialChannelId = hasSavedChannel
-					? selectedChannelId
-					: channels[0].id;
-				preferredVideoId = hasSavedChannel ? selectedVideoId : null;
-			} else {
+			initialChannelId = resolveInitialChannelSelection(
+				channels,
+				selectedChannelId,
+				preferredChannelId,
+			);
+			if (!initialChannelId) {
 				selectedChannelId = null;
 				selectedVideoId = null;
+			} else {
+				preferredVideoId =
+					initialChannelId === selectedChannelId
+						? selectedVideoId
+						: null;
 			}
 		} catch (error) {
 			errorMessage = (error as Error).message;
@@ -343,11 +347,6 @@
 		if (initialChannelId) {
 			await selectChannel(initialChannelId, preferredVideoId);
 		}
-	}
-
-	function upsertChannel(channel: Channel) {
-		channels = [channel, ...channels.filter((existing) => existing.id !== channel.id)];
-		syncChannelOrderFromList();
 	}
 
 	function reorderChannels(dragId: string, targetId: string) {
@@ -405,9 +404,9 @@
 
 		try {
 			const channel = await addChannel(input.trim());
-			upsertChannel(channel);
 			channelInput = "";
-			await selectChannel(channel.id);
+			channelOrder = prioritizeChannelOrder(channelOrder, channel.id);
+			await loadChannels(channel.id);
 		} catch (error) {
 			errorMessage = (error as Error).message;
 		} finally {
