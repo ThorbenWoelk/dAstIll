@@ -1,7 +1,0 @@
-#!/bin/bash
-
-# Simple wrapper for AI workflow automation
-# Usage: ./ai-workflow [start|process|status|stop|help]
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec "$SCRIPT_DIR/scripts/ai-workflow.sh" "$@"
