@@ -109,17 +109,17 @@
 							</svg>
 						{:else}
 							<svg
-								viewBox="0 0 16 16"
+								viewBox="0 0 24 24"
 								class="h-4 w-4"
 								aria-hidden="true"
 							>
 								<path
-									d="M5 4.5H2.5V7M2.5 7A5.5 5.5 0 1 0 4.6 2.7"
+									d="M9 15 3 9m0 0 6-6M3 9h10.5a5.5 5.5 0 0 1 0 11H9"
 									fill="none"
 									stroke="currentColor"
 									stroke-linecap="round"
 									stroke-linejoin="round"
-									stroke-width="1.4"
+									stroke-width="1.8"
 								/>
 							</svg>
 						{/if}
@@ -280,12 +280,12 @@
 						</svg>
 					{:else}
 						<svg
-							viewBox="0 0 16 16"
+							viewBox="0 0 24 24"
 							class="h-[15px] w-[15px]"
 							aria-hidden="true"
 						>
 							<path
-								d="M5 4.5H2.5V7M2.5 7A5.5 5.5 0 1 0 4.6 2.7"
+								d="M9 15 3 9m0 0 6-6M3 9h10.5a5.5 5.5 0 0 1 0 11H9"
 								fill="none"
 								stroke="currentColor"
 								stroke-linecap="round"

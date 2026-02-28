@@ -398,6 +398,62 @@ impl YouTubeService {
         Ok(videos)
     }
 
+    /// Reconcile missing videos from the currently visible channel videos page.
+    /// Selects only IDs that are not present in `known_video_ids`.
+    pub async fn fetch_videos_backfill_missing(
+        &self,
+        channel_id: &str,
+        known_video_ids: &HashSet<String>,
+        limit: usize,
+    ) -> Result<Vec<Video>, YouTubeError> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+
+        let url = format!("https://www.youtube.com/channel/{channel_id}/videos");
+        let response = self
+            .client
+            .get(&url)
+            .header("User-Agent", Self::desktop_user_agent())
+            .send()
+            .await?;
+        if !response.status().is_success() {
+            return Err(YouTubeError::ChannelNotFound);
+        }
+
+        let html = response.text().await?;
+        let channel_video_ids = Self::extract_video_ids_from_channel_page(&html);
+        let selected_ids =
+            Self::select_missing_video_ids(&channel_video_ids, known_video_ids, limit);
+
+        let mut videos = Vec::new();
+        for video_id in selected_ids {
+            match self.fetch_watch_metadata(&video_id).await {
+                Ok(metadata) => videos.push(Video {
+                    id: video_id.clone(),
+                    channel_id: channel_id.to_string(),
+                    title: metadata.title,
+                    thumbnail_url: metadata.thumbnail_url,
+                    published_at: metadata.published_at,
+                    is_short: self.fetch_is_short_flag(&video_id).await,
+                    transcript_status: crate::models::ContentStatus::Pending,
+                    summary_status: crate::models::ContentStatus::Pending,
+                    acknowledged: false,
+                }),
+                Err(err) => {
+                    tracing::warn!(
+                        channel_id = %channel_id,
+                        video_id = %video_id,
+                        error = %err,
+                        "failed to fetch watch metadata while filling channel gaps"
+                    );
+                }
+            }
+        }
+
+        Ok(videos)
+    }
+
     async fn fetch_watch_metadata(&self, video_id: &str) -> Result<WatchMetadata, YouTubeError> {
         let watch_url = format!("https://www.youtube.com/watch?v={video_id}");
         let oembed_response = self
@@ -952,6 +1008,23 @@ impl YouTubeService {
         ids
     }
 
+    fn select_missing_video_ids(
+        channel_video_ids: &[String],
+        known_video_ids: &HashSet<String>,
+        limit: usize,
+    ) -> Vec<String> {
+        if limit == 0 {
+            return Vec::new();
+        }
+
+        channel_video_ids
+            .iter()
+            .filter(|video_id| !known_video_ids.contains(*video_id))
+            .take(limit)
+            .cloned()
+            .collect()
+    }
+
     fn extract_watch_metadata_from_html(html: &str) -> Option<WatchMetadata> {
         let document = Html::parse_document(html);
         let title_selector = Selector::parse(r#"meta[property="og:title"]"#).ok()?;
@@ -1191,6 +1264,45 @@ mod tests {
                 "ghi678jkl90".to_string(),
                 "mno123pqr67".to_string()
             ]
+        );
+    }
+
+    #[test]
+    fn test_select_missing_video_ids_returns_only_missing_in_feed_order() {
+        let channel_ids = vec![
+            "newest00001".to_string(),
+            "known000001".to_string(),
+            "middle00001".to_string(),
+            "known000002".to_string(),
+            "oldest00001".to_string(),
+        ];
+        let known_ids =
+            std::collections::HashSet::from(["known000001".to_string(), "known000002".to_string()]);
+
+        let selected = YouTubeService::select_missing_video_ids(&channel_ids, &known_ids, 10);
+        assert_eq!(
+            selected,
+            vec![
+                "newest00001".to_string(),
+                "middle00001".to_string(),
+                "oldest00001".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_select_missing_video_ids_applies_limit() {
+        let channel_ids = vec![
+            "aa000000001".to_string(),
+            "bb000000002".to_string(),
+            "cc000000003".to_string(),
+        ];
+        let known_ids = std::collections::HashSet::new();
+
+        let selected = YouTubeService::select_missing_video_ids(&channel_ids, &known_ids, 2);
+        assert_eq!(
+            selected,
+            vec!["aa000000001".to_string(), "bb000000002".to_string()]
         );
     }
 

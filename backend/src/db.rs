@@ -303,6 +303,12 @@ pub fn count_videos_by_channel(conn: &Connection, channel_id: &str) -> Result<us
     Ok(count.max(0) as usize)
 }
 
+pub fn list_video_ids_by_channel(conn: &Connection, channel_id: &str) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare("SELECT id FROM videos WHERE channel_id = ?1")?;
+    let rows = stmt.query_map(params![channel_id], |row| row.get(0))?;
+    rows.collect()
+}
+
 pub fn list_videos_for_queue_processing(conn: &Connection, limit: usize) -> Result<Vec<Video>> {
     let mut stmt = conn.prepare(
         "SELECT id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, acknowledged
@@ -1207,6 +1213,74 @@ mod tests {
         assert_eq!(
             refresh_all,
             vec!["vid_info_new".to_string(), "vid_info_old".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_list_video_ids_by_channel_returns_all_ids_for_channel() {
+        let pool = init_db_memory().unwrap();
+        let conn = pool.lock().unwrap();
+
+        let channel_a = Channel {
+            id: "UC_GAP_A".to_string(),
+            handle: None,
+            name: "Gap A".to_string(),
+            thumbnail_url: None,
+            added_at: Utc::now(),
+        };
+        let channel_b = Channel {
+            id: "UC_GAP_B".to_string(),
+            handle: None,
+            name: "Gap B".to_string(),
+            thumbnail_url: None,
+            added_at: Utc::now(),
+        };
+        insert_channel(&conn, &channel_a).unwrap();
+        insert_channel(&conn, &channel_b).unwrap();
+
+        for id in ["a_vid_1", "a_vid_2", "a_vid_3"] {
+            insert_video(
+                &conn,
+                &Video {
+                    id: id.to_string(),
+                    channel_id: "UC_GAP_A".to_string(),
+                    title: id.to_string(),
+                    thumbnail_url: None,
+                    published_at: Utc::now(),
+                    is_short: false,
+                    transcript_status: ContentStatus::Pending,
+                    summary_status: ContentStatus::Pending,
+                    acknowledged: false,
+                },
+            )
+            .unwrap();
+        }
+
+        insert_video(
+            &conn,
+            &Video {
+                id: "b_vid_1".to_string(),
+                channel_id: "UC_GAP_B".to_string(),
+                title: "b_vid_1".to_string(),
+                thumbnail_url: None,
+                published_at: Utc::now(),
+                is_short: false,
+                transcript_status: ContentStatus::Pending,
+                summary_status: ContentStatus::Pending,
+                acknowledged: false,
+            },
+        )
+        .unwrap();
+
+        let mut ids = list_video_ids_by_channel(&conn, "UC_GAP_A").unwrap();
+        ids.sort();
+        assert_eq!(
+            ids,
+            vec![
+                "a_vid_1".to_string(),
+                "a_vid_2".to_string(),
+                "a_vid_3".to_string()
+            ]
         );
     }
 }

@@ -88,6 +88,8 @@
 	let formattingNoticeTone = $state<"info" | "success" | "warning">("info");
 	let formattingRequestSeq = 0;
 	let activeFormattingRequest = $state(0);
+	let contentRequestSeq = 0;
+	let activeContentRequestId = 0;
 
 	let offset = $state(0);
 	const limit = 12;
@@ -183,6 +185,18 @@
 
 	function resetVideoInfo() {
 		videoInfo = null;
+	}
+
+	function isCurrentContentRequest(
+		requestId: number,
+		targetVideoId: string,
+		targetMode: "transcript" | "summary" | "info",
+	) {
+		return (
+			activeContentRequestId === requestId &&
+			selectedVideoId === targetVideoId &&
+			contentMode === targetMode
+		);
 	}
 
 	function formatPublishedAt(value: string | null | undefined) {
@@ -564,13 +578,25 @@
 
 	async function loadContent() {
 		if (!selectedVideoId) return;
+		const targetVideoId = selectedVideoId;
+		const targetMode = contentMode;
+		const requestId = ++contentRequestSeq;
+		activeContentRequestId = requestId;
 
 		loadingContent = true;
 		errorMessage = null;
 
 		try {
-			if (contentMode === "transcript") {
-				const transcript = await getTranscript(selectedVideoId);
+			if (targetMode === "transcript") {
+				const transcript = await getTranscript(targetVideoId);
+				if (
+					!isCurrentContentRequest(
+						requestId,
+						targetVideoId,
+						targetMode,
+					)
+				)
+					return;
 				const originalTranscript = stripPrefix(
 					transcript.raw_text ||
 						transcript.formatted_markdown ||
@@ -581,34 +607,57 @@
 						transcript.raw_text ||
 						"Transcript unavailable.",
 				);
-				if (!(selectedVideoId in originalTranscriptByVideoId)) {
+				if (!(targetVideoId in originalTranscriptByVideoId)) {
 					originalTranscriptByVideoId = {
 						...originalTranscriptByVideoId,
-						[selectedVideoId]: originalTranscript,
+						[targetVideoId]: originalTranscript,
 					};
 				}
 				resetSummaryQuality();
 				resetVideoInfo();
 			} else {
-				if (contentMode === "summary") {
-					const summary = await getSummary(selectedVideoId);
+				if (targetMode === "summary") {
+					const summary = await getSummary(targetVideoId);
+					if (
+						!isCurrentContentRequest(
+							requestId,
+							targetVideoId,
+							targetMode,
+						)
+					)
+						return;
 					contentText = stripPrefix(
 						summary.content || "Summary unavailable.",
 					);
 					applySummaryQuality(summary);
 					resetVideoInfo();
 				} else {
-					const info = await getVideoInfo(selectedVideoId);
+					const info = await getVideoInfo(targetVideoId);
+					if (
+						!isCurrentContentRequest(
+							requestId,
+							targetVideoId,
+							targetMode,
+						)
+					)
+						return;
 					videoInfo = info;
 					contentText = "";
 					resetSummaryQuality();
 				}
 			}
+			if (!isCurrentContentRequest(requestId, targetVideoId, targetMode))
+				return;
 			draft = contentText;
 		} catch (error) {
-			errorMessage = (error as Error).message;
+			if (activeContentRequestId === requestId) {
+				errorMessage = (error as Error).message;
+			}
 		} finally {
-			loadingContent = false;
+			if (activeContentRequestId === requestId) {
+				loadingContent = false;
+				activeContentRequestId = 0;
+			}
 		}
 	}
 

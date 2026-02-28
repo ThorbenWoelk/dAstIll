@@ -6,6 +6,7 @@ use axum::{
 };
 use chrono::Utc;
 use serde::Deserialize;
+use std::collections::HashSet;
 
 use crate::db;
 use crate::models::{AddChannelRequest, Channel};
@@ -191,7 +192,7 @@ pub async fn backfill_channel_videos(
 
     let batch_limit = params.limit.unwrap_or(15).clamp(1, 50);
 
-    let known_count = {
+    let known_video_ids = {
         let conn = state
             .db
             .lock()
@@ -203,13 +204,16 @@ pub async fn backfill_channel_videos(
             return Err((StatusCode::NOT_FOUND, "Channel not found".to_string()));
         }
 
-        db::count_videos_by_channel(&conn, &id)
+        db::list_video_ids_by_channel(&conn, &id)
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+            .into_iter()
+            .collect::<HashSet<_>>()
     };
+    let known_count = known_video_ids.len();
 
     let videos = state
         .youtube
-        .fetch_videos_backfill(&id, known_count, batch_limit)
+        .fetch_videos_backfill_missing(&id, &known_video_ids, batch_limit)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 

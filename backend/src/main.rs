@@ -16,7 +16,10 @@ use dastill::services::{
     build_http_client,
 };
 use dastill::state::AppState;
-use dastill::workers::{spawn_queue_worker, spawn_refresh_worker, spawn_summary_evaluation_worker};
+use dastill::workers::{
+    spawn_gap_scan_worker, spawn_queue_worker, spawn_refresh_worker,
+    spawn_summary_evaluation_worker,
+};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -63,6 +66,7 @@ async fn main() -> anyhow::Result<()> {
     };
     spawn_queue_worker(state.clone());
     spawn_refresh_worker(state.clone());
+    spawn_gap_scan_worker(state.clone());
     spawn_summary_evaluation_worker(state.clone());
 
     let app = Router::new()
