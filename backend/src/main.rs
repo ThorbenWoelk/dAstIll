@@ -1,0 +1,132 @@
+use std::net::SocketAddr;
+use std::path::Path;
+use std::sync::Arc;
+
+use axum::{
+    Router,
+    routing::{get, post},
+};
+use tower_http::cors::{Any, CorsLayer};
+use tower_http::trace::TraceLayer;
+
+use dastill::db::init_db;
+use dastill::handlers::{channels, content, videos};
+use dastill::services::{
+    SummarizerService, SummaryEvaluatorService, TranscriptService, YouTubeService,
+    build_http_client,
+};
+use dastill::state::AppState;
+use dastill::workers::{spawn_queue_worker, spawn_refresh_worker, spawn_summary_evaluation_worker};
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "dastill=info,tower_http=info".into()),
+        )
+        .init();
+
+    let db_path = std::env::var("DATABASE_URL").unwrap_or_else(|_| "dastill.db".to_string());
+    let pool = init_db(Path::new(&db_path))?;
+
+    let client = build_http_client();
+    let youtube = Arc::new(YouTubeService::with_client(client.clone()));
+
+    let summarize_path = std::env::var("SUMMARIZE_PATH")
+        .unwrap_or_else(|_| "/opt/homebrew/bin/summarize".to_string());
+
+    let ollama_url =
+        std::env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
+    let ollama_model =
+        std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "minimax-m2.5:cloud".to_string());
+    let summary_evaluator_model = std::env::var("SUMMARY_EVALUATOR_MODEL")
+        .unwrap_or_else(|_| "qwen3-coder:480b-cloud".to_string());
+    let transcript = Arc::new(TranscriptService::with_path(&summarize_path));
+    let summarizer = Arc::new(SummarizerService::with_client(
+        client.clone(),
+        &ollama_url,
+        &ollama_model,
+    ));
+    let summary_evaluator = Arc::new(SummaryEvaluatorService::with_client(
+        client,
+        &ollama_url,
+        &summary_evaluator_model,
+    ));
+
+    let state = AppState {
+        db: pool,
+        youtube,
+        transcript,
+        summarizer,
+        summary_evaluator,
+    };
+    spawn_queue_worker(state.clone());
+    spawn_refresh_worker(state.clone());
+    spawn_summary_evaluation_worker(state.clone());
+
+    let app = Router::new()
+        .route("/api/health", get(|| async { "ok" }))
+        .route(
+            "/api/channels",
+            get(channels::list_channels).post(channels::add_channel),
+        )
+        .route(
+            "/api/channels/{id}",
+            get(channels::get_channel).delete(channels::delete_channel),
+        )
+        .route(
+            "/api/channels/{id}/refresh",
+            post(channels::refresh_channel_videos),
+        )
+        .route(
+            "/api/channels/{id}/backfill",
+            post(channels::backfill_channel_videos),
+        )
+        .route(
+            "/api/channels/{id}/videos",
+            get(videos::list_channel_videos),
+        )
+        .route("/api/videos/{id}", get(videos::get_video))
+        .route("/api/videos/{id}/info", get(videos::get_video_info))
+        .route(
+            "/api/videos/info/backfill",
+            post(videos::backfill_video_info),
+        )
+        .route(
+            "/api/videos/{id}/transcript",
+            get(content::get_transcript).put(content::update_transcript),
+        )
+        .route(
+            "/api/videos/{id}/acknowledged",
+            axum::routing::put(videos::update_video_acknowledged),
+        )
+        .route(
+            "/api/videos/{id}/transcript/clean",
+            post(content::clean_transcript_formatting),
+        )
+        .route(
+            "/api/videos/{id}/summary",
+            get(content::get_summary).put(content::update_summary),
+        )
+        .layer(
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_methods(Any)
+                .allow_headers(Any),
+        )
+        .layer(TraceLayer::new_for_http())
+        .with_state(state);
+
+    let port: u16 = std::env::var("PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(3001);
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    tracing::info!("backend listening on {}", listener.local_addr()?);
+    axum::serve(listener, app).await?;
+
+    Ok(())
+}
