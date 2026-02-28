@@ -957,7 +957,7 @@
 				<p
 					class="text-xs font-semibold uppercase tracking-[0.35em] text-[var(--accent)]"
 				>
-					dAstIll
+					DASTILL v1.0
 				</p>
 				<h1
 					class="text-balance text-3xl font-bold tracking-tight sm:text-4xl text-[var(--foreground)]"

@@ -1,42 +1,43 @@
-# sv
+# DASTILL Frontend v1.0
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+DASTILL v1.0 is the Svelte 5 frontend for channel tracking and video distillation workflows.
 
-## Creating a project
+## Product Scope (v1.0)
 
-If you're seeing this, you've probably already done this step. Congrats!
+- Channel workspace with customizable channel order.
+- Video list with short/long and acknowledged/unacknowledged filtering.
+- Transcript, summary, and info tabs for each video.
+- Summary quality metadata display (score and incoherence note).
+- Download queue observatory for transcript/summary processing states.
 
-```sh
-# create a new project
-npx sv create my-app
-```
+## Local Development
 
-To recreate this project with the same configuration:
-
-```sh
-# recreate this project
-bun x sv create --template minimal --types ts --install bun frontend
-```
-
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
+Install dependencies:
 
 ```sh
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
+bun install
 ```
 
-## Building
-
-To create a production version of your app:
+Run development server:
 
 ```sh
-npm run build
+bun run dev
 ```
 
-You can preview the production build with `npm run preview`.
+Typecheck:
 
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+```sh
+bun run check
+```
+
+Production build:
+
+```sh
+bun run build
+```
+
+Preview production build:
+
+```sh
+bun run preview
+```
