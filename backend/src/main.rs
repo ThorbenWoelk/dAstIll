@@ -1,5 +1,4 @@
 use std::net::SocketAddr;
-use std::path::Path;
 use std::sync::Arc;
 
 use axum::{
@@ -30,8 +29,40 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    let db_path = std::env::var("DATABASE_URL").unwrap_or_else(|_| "dastill.db".to_string());
-    let pool = init_db(Path::new(&db_path))?;
+    // Load .env if present (simple key=value parsing, no external crate)
+    if let Ok(contents) = std::fs::read_to_string(".env") {
+        for line in contents.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            if let Some((key, value)) = line.split_once('=') {
+                let key = key.trim();
+                let value = value.trim();
+                if std::env::var(key).is_err() {
+                    // SAFETY: called during single-threaded init before any
+                    // worker threads are spawned.
+                    unsafe { std::env::set_var(key, value) };
+                }
+            }
+        }
+    }
+
+    let db_url = std::env::var("DB_URL").ok();
+    let db_pass = std::env::var("DB_PASS").unwrap_or_default();
+
+    let database = if let Some(url) = db_url {
+        tracing::info!(url = %url, "connecting to remote Turso database");
+        libsql::Builder::new_remote(url, db_pass)
+            .build()
+            .await?
+    } else {
+        let db_path = std::env::var("DATABASE_URL").unwrap_or_else(|_| "dastill.db".to_string());
+        tracing::info!(path = %db_path, "using local database");
+        libsql::Builder::new_local(&db_path).build().await?
+    };
+
+    let pool = init_db(database).await.map_err(|e| anyhow::anyhow!(e))?;
 
     let client = build_http_client();
     let youtube = Arc::new(YouTubeService::with_client(client.clone()));

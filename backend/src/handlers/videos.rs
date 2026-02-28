@@ -49,8 +49,8 @@ pub async fn list_channel_videos(
     Query(params): Query<VideoListParams>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     {
-        let conn = state.db.lock().map_err(map_lock_err)?;
-        let channel = db::get_channel(&conn, &channel_id).map_err(map_db_err)?;
+        let conn = state.db.lock().await;
+        let channel = db::get_channel(&conn, &channel_id).await.map_err(map_db_err)?;
         if channel.is_none() {
             return Err((StatusCode::NOT_FOUND, "Channel not found".to_string()));
         }
@@ -67,7 +67,7 @@ pub async fn list_channel_videos(
         }
     };
 
-    let conn = state.db.lock().map_err(map_lock_err)?;
+    let conn = state.db.lock().await;
     let videos = db::list_videos_by_channel(
         &conn,
         &channel_id,
@@ -76,6 +76,7 @@ pub async fn list_channel_videos(
         is_short,
         params.acknowledged,
     )
+    .await
     .map_err(map_db_err)?;
 
     Ok(Json(videos))
@@ -85,8 +86,8 @@ pub async fn get_video(
     State(state): State<AppState>,
     Path(video_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let conn = state.db.lock().map_err(map_lock_err)?;
-    let video = db::get_video(&conn, &video_id).map_err(map_db_err)?;
+    let conn = state.db.lock().await;
+    let video = db::get_video(&conn, &video_id).await.map_err(map_db_err)?;
     match video {
         Some(v) => Ok(Json(v)),
         None => Err((StatusCode::NOT_FOUND, "Video not found".to_string())),
@@ -98,8 +99,8 @@ pub async fn get_video_info(
     Path(video_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let video = {
-        let conn = state.db.lock().map_err(map_lock_err)?;
-        db::get_video(&conn, &video_id).map_err(map_db_err)?
+        let conn = state.db.lock().await;
+        db::get_video(&conn, &video_id).await.map_err(map_db_err)?
     };
 
     let video = match video {
@@ -108,8 +109,8 @@ pub async fn get_video_info(
     };
 
     {
-        let conn = state.db.lock().map_err(map_lock_err)?;
-        if let Some(cached) = db::get_video_info(&conn, &video_id).map_err(map_db_err)? {
+        let conn = state.db.lock().await;
+        if let Some(cached) = db::get_video_info(&conn, &video_id).await.map_err(map_db_err)? {
             return Ok(Json(cached));
         }
     }
@@ -125,8 +126,8 @@ pub async fn get_video_info(
             if info.title.trim().is_empty() {
                 info.title = video.title.clone();
             }
-            let conn = state.db.lock().map_err(map_lock_err)?;
-            db::upsert_video_info(&conn, &info).map_err(map_db_err)?;
+            let conn = state.db.lock().await;
+            db::upsert_video_info(&conn, &info).await.map_err(map_db_err)?;
             Ok(Json(info))
         }
         Err(err) => {
@@ -161,11 +162,11 @@ pub async fn backfill_video_info(
     let force = params.force.unwrap_or(false);
 
     let video_ids = {
-        let conn = state.db.lock().map_err(map_lock_err)?;
+        let conn = state.db.lock().await;
         if force {
-            db::list_video_ids_for_info_refresh(&conn, limit).map_err(map_db_err)?
+            db::list_video_ids_for_info_refresh(&conn, limit).await.map_err(map_db_err)?
         } else {
-            db::list_video_ids_missing_info(&conn, limit).map_err(map_db_err)?
+            db::list_video_ids_missing_info(&conn, limit).await.map_err(map_db_err)?
         }
     };
 
@@ -187,8 +188,8 @@ pub async fn backfill_video_info(
         };
 
         let video = {
-            let conn = state.db.lock().map_err(map_lock_err)?;
-            db::get_video(&conn, video_id).map_err(map_db_err)?
+            let conn = state.db.lock().await;
+            db::get_video(&conn, video_id).await.map_err(map_db_err)?
         };
 
         if let Some(video) = video {
@@ -203,8 +204,8 @@ pub async fn backfill_video_info(
             }
         }
 
-        let conn = state.db.lock().map_err(map_lock_err)?;
-        match db::upsert_video_info(&conn, &info) {
+        let conn = state.db.lock().await;
+        match db::upsert_video_info(&conn, &info).await {
             Ok(_) => updated += 1,
             Err(err) => {
                 failed += 1;
@@ -231,11 +232,12 @@ pub async fn update_video_acknowledged(
     Path(video_id): Path<String>,
     Json(payload): Json<crate::models::UpdateAcknowledgedRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let conn = state.db.lock().map_err(map_lock_err)?;
-    let video = db::get_video(&conn, &video_id).map_err(map_db_err)?;
+    let conn = state.db.lock().await;
+    let video = db::get_video(&conn, &video_id).await.map_err(map_db_err)?;
     match video {
         Some(mut v) => {
             db::update_video_acknowledged(&conn, &video_id, payload.acknowledged)
+                .await
                 .map_err(map_db_err)?;
             v.acknowledged = payload.acknowledged;
             Ok(Json(v))
@@ -244,12 +246,6 @@ pub async fn update_video_acknowledged(
     }
 }
 
-fn map_lock_err(
-    err: std::sync::PoisonError<std::sync::MutexGuard<'_, rusqlite::Connection>>,
-) -> (StatusCode, String) {
-    (StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
-}
-
-fn map_db_err(err: rusqlite::Error) -> (StatusCode, String) {
+fn map_db_err(err: libsql::Error) -> (StatusCode, String) {
     (StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
 }

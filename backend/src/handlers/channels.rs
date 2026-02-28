@@ -20,14 +20,9 @@ pub struct BackfillParams {
 pub async fn list_channels(
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let conn = state
-        .db
-        .lock()
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
+    let conn = state.db.lock().await;
     let channels =
-        db::list_channels(&conn).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
+        db::list_channels(&conn).await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(Json(channels))
 }
 
@@ -38,20 +33,17 @@ pub async fn add_channel(
     let input = payload.input.trim().to_string();
     let youtube = state.youtube.clone();
 
-    // Resolve the input to a channel ID and name
     let (channel_id, name, resolved_thumbnail) = youtube
         .resolve_channel(&input)
         .await
         .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     tracing::info!(channel_id = %channel_id, input = %input, "resolved channel input");
 
-    // Always attempt to fetch the canonical channel avatar on subscribe.
     let thumbnail = match youtube.fetch_channel_thumbnail(&channel_id).await {
         Ok(Some(url)) => Some(url),
         Ok(None) | Err(_) => resolved_thumbnail,
     };
 
-    // Extract handle from input if it looks like one
     let handle = if input.starts_with('@') {
         Some(input.clone())
     } else if !input.starts_with("http") && !input.starts_with("UC") {
@@ -68,27 +60,20 @@ pub async fn add_channel(
         added_at: Utc::now(),
     };
 
-    // Save to database
     {
-        let conn = state
-            .db
-            .lock()
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let conn = state.db.lock().await;
         db::insert_channel(&conn, &channel)
+            .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     }
     tracing::info!(channel_id = %channel.id, channel_name = %channel.name, "channel subscribed");
 
-    // Fetch and store recent videos
     match youtube.fetch_videos(&channel_id).await {
         Ok(videos) => {
-            let conn = state
-                .db
-                .lock()
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            let conn = state.db.lock().await;
             let mut queued_count = 0;
             for video in videos {
-                if db::insert_video(&conn, &video).is_ok() {
+                if db::insert_video(&conn, &video).await.is_ok() {
                     queued_count += 1;
                 }
             }
@@ -110,12 +95,9 @@ pub async fn get_channel(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let conn = state
-        .db
-        .lock()
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
+    let conn = state.db.lock().await;
     let channel = db::get_channel(&conn, &id)
+        .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     match channel {
@@ -128,12 +110,9 @@ pub async fn delete_channel(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let conn = state
-        .db
-        .lock()
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
+    let conn = state.db.lock().await;
     let deleted = db::delete_channel(&conn, &id)
+        .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     if deleted {
@@ -148,13 +127,10 @@ pub async fn refresh_channel_videos(
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     tracing::info!(channel_id = %id, "refresh requested - queueing latest videos");
-    // Verify channel exists
     {
-        let conn = state
-            .db
-            .lock()
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let conn = state.db.lock().await;
         let channel = db::get_channel(&conn, &id)
+            .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
         if channel.is_none() {
             return Err((StatusCode::NOT_FOUND, "Channel not found".to_string()));
@@ -167,14 +143,10 @@ pub async fn refresh_channel_videos(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let conn = state
-        .db
-        .lock()
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
+    let conn = state.db.lock().await;
     let mut count = 0;
     for video in videos {
-        if db::insert_video(&conn, &video).is_ok() {
+        if db::insert_video(&conn, &video).await.is_ok() {
             count += 1;
         }
     }
@@ -193,18 +165,16 @@ pub async fn backfill_channel_videos(
     let batch_limit = params.limit.unwrap_or(15).clamp(1, 50);
 
     let known_video_ids = {
-        let conn = state
-            .db
-            .lock()
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
+        let conn = state.db.lock().await;
         let channel = db::get_channel(&conn, &id)
+            .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
         if channel.is_none() {
             return Err((StatusCode::NOT_FOUND, "Channel not found".to_string()));
         }
 
         db::list_video_ids_by_channel(&conn, &id)
+            .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
             .into_iter()
             .collect::<HashSet<_>>()
@@ -218,14 +188,11 @@ pub async fn backfill_channel_videos(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let fetched_count = videos.len();
-    let conn = state
-        .db
-        .lock()
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let conn = state.db.lock().await;
 
     let mut added_count = 0;
     for video in videos {
-        if db::insert_video(&conn, &video).is_ok() {
+        if db::insert_video(&conn, &video).await.is_ok() {
             added_count += 1;
         }
     }
