@@ -1,7 +1,7 @@
 # Tasks: Transcript Clean Formatting Action
 
 ## Current State
-Implemented and verified with backend/frontend checks plus live API smoke test.
+Implemented and verified with backend/frontend checks plus live API smoke test. Formatter now enforces bounded retries and deadline.
 
 ## Steps
 - [x] Add backend test coverage for transcript text-preservation comparison logic (Red).
@@ -18,4 +18,6 @@ Implemented and verified with backend/frontend checks plus live API smoke test.
 - Frontend formatting status is now scoped to the target video id to avoid stale "Formatting…" messages after switching videos.
 - Formatter prompt now requests logical section headings plus `<mark>` highlights for key message phrases.
 - Text-preservation guard now allows markdown headings and inline markup tags while enforcing unchanged transcript body token order.
-- Transcript clean now runs a self-healing loop with up to 3 Ollama attempts; on each failed attempt it feeds mismatch diagnostics (reason, token index, expected vs actual context) back into the next prompt.
+- Transcript clean now runs a self-healing loop with up to 5 Ollama attempts; on each failed attempt it feeds mismatch diagnostics (reason, token index, expected vs actual context) back into the next prompt.
+- Transcript clean now has a hard 5-minute timeout across all attempts, preventing indefinite runs.
+- API and UI now surface formatting attempt counts (`attempts_used/max_attempts`) so retries are visible to users.

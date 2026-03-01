@@ -151,11 +151,8 @@ async fn ensure_summary_quality_columns(conn: &Connection) -> Result<(), libsql:
     }
 
     if !has_quality_score {
-        conn.execute(
-            "ALTER TABLE summaries ADD COLUMN quality_score INTEGER",
-            (),
-        )
-        .await?;
+        conn.execute("ALTER TABLE summaries ADD COLUMN quality_score INTEGER", ())
+            .await?;
     }
     if !has_auto_regen_attempts {
         conn.execute(
@@ -165,11 +162,8 @@ async fn ensure_summary_quality_columns(conn: &Connection) -> Result<(), libsql:
         .await?;
     }
     if !has_quality_note {
-        conn.execute(
-            "ALTER TABLE summaries ADD COLUMN quality_note TEXT",
-            (),
-        )
-        .await?;
+        conn.execute("ALTER TABLE summaries ADD COLUMN quality_note TEXT", ())
+            .await?;
     }
 
     Ok(())
@@ -190,10 +184,7 @@ pub async fn insert_channel(conn: &Connection, channel: &Channel) -> Result<(), 
     Ok(())
 }
 
-pub async fn get_channel(
-    conn: &Connection,
-    id: &str,
-) -> Result<Option<Channel>, libsql::Error> {
+pub async fn get_channel(conn: &Connection, id: &str) -> Result<Option<Channel>, libsql::Error> {
     let mut rows = conn
         .query(
             "SELECT id, handle, name, thumbnail_url, added_at FROM channels WHERE id = ?1",
@@ -616,8 +607,9 @@ pub async fn list_summaries_pending_quality_eval(
     conn: &Connection,
     limit: usize,
 ) -> Result<Vec<SummaryEvaluationJob>, libsql::Error> {
-    let mut rows = conn.query(
-        "SELECT s.video_id, v.title, t.raw_text, t.formatted_markdown, s.content
+    let mut rows = conn
+        .query(
+            "SELECT s.video_id, v.title, t.raw_text, t.formatted_markdown, s.content
          FROM summaries s
          JOIN videos v ON v.id = s.video_id
          LEFT JOIN transcripts t ON t.video_id = s.video_id
@@ -629,8 +621,9 @@ pub async fn list_summaries_pending_quality_eval(
            AND TRIM(COALESCE(t.raw_text, t.formatted_markdown, '')) <> ''
          ORDER BY v.published_at DESC
          LIMIT ?1",
-        params![limit as i64],
-    ).await?;
+            params![limit as i64],
+        )
+        .await?;
     let mut results = Vec::new();
     while let Some(row) = rows.next().await? {
         let raw_text: Option<String> = row.get(2)?;
@@ -715,15 +708,17 @@ pub async fn list_video_ids_missing_info(
     conn: &Connection,
     limit: usize,
 ) -> Result<Vec<String>, libsql::Error> {
-    let mut rows = conn.query(
-        "SELECT v.id
+    let mut rows = conn
+        .query(
+            "SELECT v.id
          FROM videos v
          LEFT JOIN video_info vi ON vi.video_id = v.id
          WHERE vi.video_id IS NULL
          ORDER BY v.published_at DESC
          LIMIT ?1",
-        params![limit as i64],
-    ).await?;
+            params![limit as i64],
+        )
+        .await?;
     let mut results = Vec::new();
     while let Some(row) = rows.next().await? {
         results.push(row.get(0)?);
@@ -860,10 +855,7 @@ mod tests {
             .unwrap();
 
         let transcript = get_transcript(&conn, "vid2").await.unwrap().unwrap();
-        assert_eq!(
-            transcript.formatted_markdown,
-            Some("## Edited".to_string())
-        );
+        assert_eq!(transcript.formatted_markdown, Some("## Edited".to_string()));
         assert_eq!(transcript.raw_text, Some("## Edited".to_string()));
     }
 
@@ -1053,10 +1045,7 @@ mod tests {
             .unwrap();
         let updated = get_summary(&conn, "vid_eval3").await.unwrap().unwrap();
         assert_eq!(updated.quality_score, Some(7));
-        assert_eq!(
-            updated.quality_note,
-            Some("Missed one claim".to_string())
-        );
+        assert_eq!(updated.quality_note, Some("Missed one claim".to_string()));
 
         let pending_after = list_summaries_pending_quality_eval(&conn, 10)
             .await
@@ -1369,7 +1358,10 @@ mod tests {
         };
         upsert_video_info(&conn, &info).await.unwrap();
 
-        let saved = get_video_info(&conn, "vid_info_new").await.unwrap().unwrap();
+        let saved = get_video_info(&conn, "vid_info_new")
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(saved.title, "Full Title");
         assert_eq!(saved.duration_seconds, Some(190));
         assert_eq!(saved.view_count, Some(1234));
@@ -1442,9 +1434,7 @@ mod tests {
         .await
         .unwrap();
 
-        let mut ids = list_video_ids_by_channel(&conn, "UC_GAP_A")
-            .await
-            .unwrap();
+        let mut ids = list_video_ids_by_channel(&conn, "UC_GAP_A").await.unwrap();
         ids.sort();
         assert_eq!(
             ids,

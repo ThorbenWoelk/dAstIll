@@ -124,4 +124,7 @@ pub struct UpdateAcknowledgedRequest {
 pub struct CleanTranscriptResponse {
     pub content: String,
     pub preserved_text: bool,
+    pub attempts_used: u8,
+    pub max_attempts: u8,
+    pub timed_out: bool,
 }

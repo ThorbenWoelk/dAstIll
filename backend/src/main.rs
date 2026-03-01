@@ -53,9 +53,7 @@ async fn main() -> anyhow::Result<()> {
 
     let database = if let Some(url) = db_url {
         tracing::info!(url = %url, "connecting to remote Turso database");
-        libsql::Builder::new_remote(url, db_pass)
-            .build()
-            .await?
+        libsql::Builder::new_remote(url, db_pass).build().await?
     } else {
         let db_path = std::env::var("DATABASE_URL").unwrap_or_else(|_| "dastill.db".to_string());
         tracing::info!(path = %db_path, "using local database");

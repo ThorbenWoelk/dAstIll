@@ -9,6 +9,7 @@ import type {
 } from './types';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:3001';
+const FORMAT_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
 	const response = await fetch(`${API_BASE}${path}`, {
@@ -103,11 +104,24 @@ export function updateTranscript(videoId: string, content: string) {
 	});
 }
 
-export function cleanTranscriptFormatting(videoId: string, content: string) {
-	return request<CleanTranscriptResponse>(`/api/videos/${videoId}/transcript/clean`, {
-		method: 'POST',
-		body: JSON.stringify({ content })
-	});
+export async function cleanTranscriptFormatting(videoId: string, content: string) {
+	const controller = new AbortController();
+	const timeoutId = setTimeout(() => controller.abort(), FORMAT_REQUEST_TIMEOUT_MS);
+
+	try {
+		return await request<CleanTranscriptResponse>(`/api/videos/${videoId}/transcript/clean`, {
+			method: 'POST',
+			body: JSON.stringify({ content }),
+			signal: controller.signal
+		});
+	} catch (error) {
+		if ((error as Error).name === 'AbortError') {
+			throw new Error('Formatting timed out after 5 minutes.');
+		}
+		throw error;
+	} finally {
+		clearTimeout(timeoutId);
+	}
 }
 
 export function getSummary(videoId: string) {
