@@ -30,6 +30,9 @@ export interface Transcript {
 export interface CleanTranscriptResponse {
 	content: string;
 	preserved_text: boolean;
+	attempts_used: number;
+	max_attempts: number;
+	timed_out: boolean;
 }
 
 export interface Summary {

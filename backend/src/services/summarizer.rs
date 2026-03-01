@@ -3,14 +3,25 @@ use rig::client::Nothing;
 use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::ollama;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use thiserror::Error;
+use tokio::time::{Instant as TokioInstant, timeout};
 
 use crate::services::build_http_client;
 
-const MAX_TRANSCRIPT_FORMAT_ATTEMPTS: usize = 3;
+pub const MAX_TRANSCRIPT_FORMAT_ATTEMPTS: usize = 5;
+pub const TRANSCRIPT_FORMAT_HARD_TIMEOUT_SECS: u64 = 300;
+const TRANSCRIPT_FORMAT_HARD_TIMEOUT: Duration =
+    Duration::from_secs(TRANSCRIPT_FORMAT_HARD_TIMEOUT_SECS);
 const SUMMARY_PREAMBLE: &str = "You are a meticulous transcript-grounded summarizer. Use only facts explicitly present in the provided transcript and title. Never invent details.";
 const TRANSCRIPT_CLEAN_PREAMBLE: &str = "You are a deterministic transcript formatter. Preserve transcript body tokens exactly and only improve layout.";
+
+#[derive(Debug, Clone)]
+pub struct TranscriptCleanResult {
+    pub content: String,
+    pub attempts_used: usize,
+    pub max_attempts: usize,
+}
 
 #[derive(Error, Debug)]
 pub enum SummarizerError {
@@ -20,8 +31,21 @@ pub enum SummarizerError {
     NotAvailable,
     #[error("Generation failed: {0}")]
     GenerationFailed(String),
-    #[error("Formatted transcript changed text content")]
-    TextChanged,
+    #[error(
+        "Formatted transcript changed text content after {attempts_used}/{max_attempts} attempts"
+    )]
+    TextChanged {
+        attempts_used: usize,
+        max_attempts: usize,
+    },
+    #[error(
+        "Transcript formatting timed out after {timeout_secs}s on attempt {attempts_used}/{max_attempts}"
+    )]
+    TimedOut {
+        attempts_used: usize,
+        max_attempts: usize,
+        timeout_secs: u64,
+    },
 }
 
 pub struct SummarizerService {
@@ -85,15 +109,52 @@ impl SummarizerService {
     pub async fn clean_transcript_formatting(
         &self,
         transcript: &str,
-    ) -> Result<String, SummarizerError> {
+    ) -> Result<TranscriptCleanResult, SummarizerError> {
+        let started = TokioInstant::now();
         let mut retry_feedback: Option<String> = None;
 
         for attempt in 1..=MAX_TRANSCRIPT_FORMAT_ATTEMPTS {
+            let elapsed = started.elapsed();
+            if elapsed >= TRANSCRIPT_FORMAT_HARD_TIMEOUT {
+                tracing::warn!(
+                    attempts_used = attempt.saturating_sub(1),
+                    max_attempts = MAX_TRANSCRIPT_FORMAT_ATTEMPTS,
+                    hard_timeout_secs = TRANSCRIPT_FORMAT_HARD_TIMEOUT_SECS,
+                    elapsed_ms = elapsed.as_millis() as u64,
+                    "transcript clean hard timeout reached before new attempt"
+                );
+                return Err(SummarizerError::TimedOut {
+                    attempts_used: attempt.saturating_sub(1),
+                    max_attempts: MAX_TRANSCRIPT_FORMAT_ATTEMPTS,
+                    timeout_secs: TRANSCRIPT_FORMAT_HARD_TIMEOUT_SECS,
+                });
+            }
+
             let prompt = build_clean_transcript_prompt(transcript, retry_feedback.as_deref());
             let operation = format!("transcript_clean_attempt_{attempt}");
-            let response = self
-                .prompt_model(&operation, TRANSCRIPT_CLEAN_PREAMBLE, &prompt)
-                .await?;
+            let remaining = TRANSCRIPT_FORMAT_HARD_TIMEOUT.saturating_sub(elapsed);
+            let response = match timeout(
+                remaining,
+                self.prompt_model(&operation, TRANSCRIPT_CLEAN_PREAMBLE, &prompt),
+            )
+            .await
+            {
+                Ok(result) => result?,
+                Err(_) => {
+                    tracing::warn!(
+                        attempts_used = attempt,
+                        max_attempts = MAX_TRANSCRIPT_FORMAT_ATTEMPTS,
+                        hard_timeout_secs = TRANSCRIPT_FORMAT_HARD_TIMEOUT_SECS,
+                        elapsed_ms = started.elapsed().as_millis() as u64,
+                        "transcript clean hard timeout reached during attempt"
+                    );
+                    return Err(SummarizerError::TimedOut {
+                        attempts_used: attempt,
+                        max_attempts: MAX_TRANSCRIPT_FORMAT_ATTEMPTS,
+                        timeout_secs: TRANSCRIPT_FORMAT_HARD_TIMEOUT_SECS,
+                    });
+                }
+            };
 
             if transcript_text_equivalent(transcript, &response) {
                 if attempt > 1 {
@@ -103,7 +164,11 @@ impl SummarizerService {
                         "transcript clean compliance achieved after retry"
                     );
                 }
-                return Ok(response);
+                return Ok(TranscriptCleanResult {
+                    content: response,
+                    attempts_used: attempt,
+                    max_attempts: MAX_TRANSCRIPT_FORMAT_ATTEMPTS,
+                });
             }
 
             let mismatch = detect_transcript_mismatch(transcript, &response);
@@ -116,12 +181,18 @@ impl SummarizerService {
             );
 
             if attempt == MAX_TRANSCRIPT_FORMAT_ATTEMPTS {
-                return Err(SummarizerError::TextChanged);
+                return Err(SummarizerError::TextChanged {
+                    attempts_used: attempt,
+                    max_attempts: MAX_TRANSCRIPT_FORMAT_ATTEMPTS,
+                });
             }
 
             retry_feedback = Some(build_retry_feedback(&mismatch));
         }
-        Err(SummarizerError::TextChanged)
+        Err(SummarizerError::TextChanged {
+            attempts_used: MAX_TRANSCRIPT_FORMAT_ATTEMPTS,
+            max_attempts: MAX_TRANSCRIPT_FORMAT_ATTEMPTS,
+        })
     }
 
     pub fn model(&self) -> &str {
@@ -526,8 +597,9 @@ mod tests {
     use tokio::time::timeout;
 
     use super::{
-        SummarizerService, build_clean_transcript_prompt, build_summary_prompt,
-        detect_transcript_mismatch, strip_summary_title_heading, transcript_text_equivalent,
+        MAX_TRANSCRIPT_FORMAT_ATTEMPTS, SummarizerService, build_clean_transcript_prompt,
+        build_summary_prompt, detect_transcript_mismatch, strip_summary_title_heading,
+        transcript_text_equivalent,
     };
     use crate::services::summary_evaluator::SummaryEvaluatorService;
 
@@ -698,9 +770,12 @@ For this team, the recommendation is blue-green because rollback must be instant
         .expect("transcript clean call failed");
 
         assert!(
-            transcript_text_equivalent(transcript, &cleaned),
+            transcript_text_equivalent(transcript, &cleaned.content),
             "cleaned transcript changed token sequence"
         );
+        assert!(cleaned.attempts_used >= 1);
+        assert!(cleaned.attempts_used <= MAX_TRANSCRIPT_FORMAT_ATTEMPTS);
+        assert_eq!(cleaned.max_attempts, MAX_TRANSCRIPT_FORMAT_ATTEMPTS);
     }
 
     #[tokio::test]

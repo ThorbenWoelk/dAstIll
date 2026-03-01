@@ -50,7 +50,9 @@ pub async fn list_channel_videos(
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     {
         let conn = state.db.lock().await;
-        let channel = db::get_channel(&conn, &channel_id).await.map_err(map_db_err)?;
+        let channel = db::get_channel(&conn, &channel_id)
+            .await
+            .map_err(map_db_err)?;
         if channel.is_none() {
             return Err((StatusCode::NOT_FOUND, "Channel not found".to_string()));
         }
@@ -110,7 +112,10 @@ pub async fn get_video_info(
 
     {
         let conn = state.db.lock().await;
-        if let Some(cached) = db::get_video_info(&conn, &video_id).await.map_err(map_db_err)? {
+        if let Some(cached) = db::get_video_info(&conn, &video_id)
+            .await
+            .map_err(map_db_err)?
+        {
             return Ok(Json(cached));
         }
     }
@@ -127,7 +132,9 @@ pub async fn get_video_info(
                 info.title = video.title.clone();
             }
             let conn = state.db.lock().await;
-            db::upsert_video_info(&conn, &info).await.map_err(map_db_err)?;
+            db::upsert_video_info(&conn, &info)
+                .await
+                .map_err(map_db_err)?;
             Ok(Json(info))
         }
         Err(err) => {
@@ -164,9 +171,13 @@ pub async fn backfill_video_info(
     let video_ids = {
         let conn = state.db.lock().await;
         if force {
-            db::list_video_ids_for_info_refresh(&conn, limit).await.map_err(map_db_err)?
+            db::list_video_ids_for_info_refresh(&conn, limit)
+                .await
+                .map_err(map_db_err)?
         } else {
-            db::list_video_ids_missing_info(&conn, limit).await.map_err(map_db_err)?
+            db::list_video_ids_missing_info(&conn, limit)
+                .await
+                .map_err(map_db_err)?
         }
     };
 

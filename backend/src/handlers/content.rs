@@ -9,7 +9,7 @@ use crate::db;
 use crate::models::{
     CleanTranscriptResponse, ContentStatus, Summary, Transcript, UpdateContentRequest,
 };
-use crate::services::summarizer::SummarizerError;
+use crate::services::summarizer::{MAX_TRANSCRIPT_FORMAT_ATTEMPTS, SummarizerError};
 use crate::state::AppState;
 
 pub(crate) const MIN_SUMMARY_QUALITY_SCORE_FOR_ACCEPTANCE: u8 = 7;
@@ -58,7 +58,9 @@ pub async fn update_transcript(
     }
 
     let conn = state.db.lock().await;
-    let transcript = db::get_transcript(&conn, &video_id).await.map_err(map_db_err)?;
+    let transcript = db::get_transcript(&conn, &video_id)
+        .await
+        .map_err(map_db_err)?;
     match transcript {
         Some(t) => Ok(Json(t)),
         None => Err((
@@ -92,6 +94,9 @@ pub async fn clean_transcript_formatting(
         return Ok(Json(CleanTranscriptResponse {
             content: payload.content,
             preserved_text: true,
+            attempts_used: 0,
+            max_attempts: MAX_TRANSCRIPT_FORMAT_ATTEMPTS as u8,
+            timed_out: false,
         }));
     }
 
@@ -108,11 +113,17 @@ pub async fn clean_transcript_formatting(
         .clean_transcript_formatting(&payload.content)
         .await
     {
-        Ok(content) => Ok(Json(CleanTranscriptResponse {
-            content,
+        Ok(result) => Ok(Json(CleanTranscriptResponse {
+            content: result.content,
             preserved_text: true,
+            attempts_used: result.attempts_used as u8,
+            max_attempts: result.max_attempts as u8,
+            timed_out: false,
         })),
-        Err(SummarizerError::TextChanged) => {
+        Err(SummarizerError::TextChanged {
+            attempts_used,
+            max_attempts,
+        }) => {
             tracing::warn!(
                 video_id = %video_id,
                 "transcript clean output modified wording - returning original input"
@@ -120,6 +131,29 @@ pub async fn clean_transcript_formatting(
             Ok(Json(CleanTranscriptResponse {
                 content: payload.content,
                 preserved_text: false,
+                attempts_used: attempts_used as u8,
+                max_attempts: max_attempts as u8,
+                timed_out: false,
+            }))
+        }
+        Err(SummarizerError::TimedOut {
+            attempts_used,
+            max_attempts,
+            timeout_secs,
+        }) => {
+            tracing::warn!(
+                video_id = %video_id,
+                attempts_used = attempts_used,
+                max_attempts = max_attempts,
+                timeout_secs = timeout_secs,
+                "transcript clean timed out - returning original input"
+            );
+            Ok(Json(CleanTranscriptResponse {
+                content: payload.content,
+                preserved_text: true,
+                attempts_used: attempts_used as u8,
+                max_attempts: max_attempts as u8,
+                timed_out: true,
             }))
         }
         Err(err) => {
@@ -158,7 +192,9 @@ pub async fn update_summary(
     }
 
     let conn = state.db.lock().await;
-    let summary = db::get_summary(&conn, &video_id).await.map_err(map_db_err)?;
+    let summary = db::get_summary(&conn, &video_id)
+        .await
+        .map_err(map_db_err)?;
     match summary {
         Some(s) => Ok(Json(s)),
         None => Err((
@@ -179,7 +215,10 @@ pub(crate) async fn ensure_transcript(
             return Err((StatusCode::NOT_FOUND, "Video not found".to_string()));
         }
 
-        if let Some(transcript) = db::get_transcript(&conn, video_id).await.map_err(map_db_err)? {
+        if let Some(transcript) = db::get_transcript(&conn, video_id)
+            .await
+            .map_err(map_db_err)?
+        {
             let _ = db::update_video_transcript_status(&conn, video_id, ContentStatus::Ready).await;
             tracing::debug!(video_id = %video_id, "transcript cache hit");
             return Ok(transcript);
@@ -211,7 +250,9 @@ pub(crate) async fn ensure_transcript(
     };
 
     let conn = state.db.lock().await;
-    db::upsert_transcript(&conn, &transcript).await.map_err(map_db_err)?;
+    db::upsert_transcript(&conn, &transcript)
+        .await
+        .map_err(map_db_err)?;
     db::update_video_transcript_status(&conn, video_id, ContentStatus::Ready)
         .await
         .map_err(map_db_err)?;
@@ -232,14 +273,17 @@ pub(crate) async fn ensure_summary(
         };
 
         if let Some(summary) = db::get_summary(&conn, video_id).await.map_err(map_db_err)? {
-            let auto_regen_attempts =
-                db::get_summary_auto_regen_attempts(&conn, video_id).await.map_err(map_db_err)?;
+            let auto_regen_attempts = db::get_summary_auto_regen_attempts(&conn, video_id)
+                .await
+                .map_err(map_db_err)?;
             if should_auto_regenerate_summary(
                 video.summary_status,
                 summary.quality_score,
                 auto_regen_attempts,
             ) {
-                db::increment_summary_auto_regen_attempts(&conn, video_id).await.map_err(map_db_err)?;
+                db::increment_summary_auto_regen_attempts(&conn, video_id)
+                    .await
+                    .map_err(map_db_err)?;
                 tracing::info!(
                     video_id = %video_id,
                     score = summary.quality_score.unwrap_or_default(),
@@ -248,7 +292,8 @@ pub(crate) async fn ensure_summary(
                     "summary auto-regeneration requested"
                 );
             } else {
-                let _ = db::update_video_summary_status(&conn, video_id, ContentStatus::Ready).await;
+                let _ =
+                    db::update_video_summary_status(&conn, video_id, ContentStatus::Ready).await;
                 tracing::debug!(video_id = %video_id, "summary cache hit");
                 return Ok(summary);
             }
@@ -326,7 +371,9 @@ pub(crate) async fn ensure_summary(
             let video_id_owned = video_id.to_string();
             tokio::spawn(async move {
                 let conn = state_clone.db.lock().await;
-                let _ = db::update_video_summary_status(&conn, &video_id_owned, ContentStatus::Failed).await;
+                let _ =
+                    db::update_video_summary_status(&conn, &video_id_owned, ContentStatus::Failed)
+                        .await;
             });
             (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
         })?;
@@ -341,8 +388,12 @@ pub(crate) async fn ensure_summary(
     };
 
     let conn = state.db.lock().await;
-    db::upsert_summary(&conn, &summary).await.map_err(map_db_err)?;
-    db::update_video_summary_status(&conn, video_id, ContentStatus::Ready).await.map_err(map_db_err)?;
+    db::upsert_summary(&conn, &summary)
+        .await
+        .map_err(map_db_err)?;
+    db::update_video_summary_status(&conn, video_id, ContentStatus::Ready)
+        .await
+        .map_err(map_db_err)?;
     tracing::info!(video_id = %video_id, "summary stored - status set to ready");
 
     Ok(summary)
