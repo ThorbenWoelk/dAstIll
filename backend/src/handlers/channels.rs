@@ -21,8 +21,9 @@ pub async fn list_channels(
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let conn = state.db.lock().await;
-    let channels =
-        db::list_channels(&conn).await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let channels = db::list_channels(&conn)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(Json(channels))
 }
 

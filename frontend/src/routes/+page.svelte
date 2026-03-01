@@ -41,6 +41,8 @@
 	const channelSubmitButtonClass =
 		"inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface)] text-xl leading-none text-[var(--accent)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)]";
 	const WORKSPACE_STATE_KEY = "dastill.workspace.state.v1";
+	const FORMAT_MAX_TURNS = 5;
+	const FORMAT_HARD_TIMEOUT_MINUTES = 5;
 
 	type AcknowledgedFilter = "all" | "unack" | "ack";
 
@@ -90,6 +92,9 @@
 	let formattingNotice = $state<string | null>(null);
 	let formattingNoticeVideoId = $state<string | null>(null);
 	let formattingNoticeTone = $state<"info" | "success" | "warning">("info");
+	let formattingAttemptsUsed = $state<number | null>(null);
+	let formattingAttemptsMax = $state<number | null>(null);
+	let formattingAttemptsVideoId = $state<string | null>(null);
 	let formattingRequestSeq = 0;
 	let activeFormattingRequest = $state(0);
 	let contentRequestSeq = 0;
@@ -189,6 +194,14 @@
 
 	function resetVideoInfo() {
 		videoInfo = null;
+	}
+
+	function clearFormattingFeedback() {
+		formattingNotice = null;
+		formattingNoticeVideoId = null;
+		formattingAttemptsUsed = null;
+		formattingAttemptsMax = null;
+		formattingAttemptsVideoId = null;
 	}
 
 	function isCurrentContentRequest(
@@ -430,7 +443,7 @@
 		resetSummaryQuality();
 		resetVideoInfo();
 		editing = false;
-		formattingNotice = null;
+		clearFormattingFeedback();
 		videos = [];
 		offset = 0;
 		hasMore = true;
@@ -559,8 +572,7 @@
 		resetSummaryQuality();
 		resetVideoInfo();
 		editing = false;
-		formattingNotice = null;
-		formattingNoticeVideoId = null;
+		clearFormattingFeedback();
 		await loadContent();
 	}
 
@@ -570,8 +582,7 @@
 		resetSummaryQuality();
 		resetVideoInfo();
 		editing = false;
-		formattingNotice = null;
-		formattingNoticeVideoId = null;
+		clearFormattingFeedback();
 		await loadContent();
 	}
 
@@ -717,15 +728,22 @@
 		formattingContent = true;
 		formattingVideoId = targetVideoId;
 		errorMessage = null;
-		formattingNotice = "Formatting transcript with Ollama…";
+		formattingNotice = `Formatting transcript with Ollama… (up to ${FORMAT_MAX_TURNS} tries, ${FORMAT_HARD_TIMEOUT_MINUTES} minute cutoff)`;
 		formattingNoticeVideoId = targetVideoId;
 		formattingNoticeTone = "info";
+		formattingAttemptsUsed = 0;
+		formattingAttemptsMax = FORMAT_MAX_TURNS;
+		formattingAttemptsVideoId = targetVideoId;
 
 		try {
 			const result = await cleanTranscriptFormatting(
 				targetVideoId,
 				source,
 			);
+			const attemptsSummary = `Attempts ${result.attempts_used}/${result.max_attempts}.`;
+			formattingAttemptsUsed = result.attempts_used;
+			formattingAttemptsMax = result.max_attempts;
+			formattingAttemptsVideoId = targetVideoId;
 			if (startedInEditMode) {
 				if (
 					activeFormattingRequest === requestId &&
@@ -736,45 +754,50 @@
 				}
 				formattingNotice =
 					result.content === source
-						? "No formatting changes."
-						: "Formatting applied to draft. Save to persist.";
+						? `No formatting changes. ${attemptsSummary}`
+						: `Formatting applied to draft. Save to persist. ${attemptsSummary}`;
 				formattingNoticeVideoId = targetVideoId;
 			} else {
-				const transcript = await updateTranscript(
-					targetVideoId,
-					result.content,
-				);
-				if (
-					activeFormattingRequest === requestId &&
-					selectedVideoId === targetVideoId &&
-					!editing
-				) {
-					contentText = stripPrefix(
-						transcript.formatted_markdown ||
-							transcript.raw_text ||
-							"Transcript unavailable.",
+				if (result.content !== source) {
+					const transcript = await updateTranscript(
+						targetVideoId,
+						result.content,
 					);
-					draft = contentText;
+					if (
+						activeFormattingRequest === requestId &&
+						selectedVideoId === targetVideoId &&
+						!editing
+					) {
+						contentText = stripPrefix(
+							transcript.formatted_markdown ||
+								transcript.raw_text ||
+								"Transcript unavailable.",
+						);
+						draft = contentText;
+					}
 				}
 				formattingNotice =
 					result.content === source
-						? "No formatting changes."
-						: "Formatting applied and saved.";
+						? `No formatting changes. ${attemptsSummary}`
+						: `Formatting applied and saved. ${attemptsSummary}`;
 				formattingNoticeVideoId = targetVideoId;
 			}
 			formattingNoticeTone = "success";
-			if (!result.preserved_text) {
+			if (result.timed_out) {
+				formattingNotice = `Formatting stopped after ${FORMAT_HARD_TIMEOUT_MINUTES} minutes. Current transcript was kept. ${attemptsSummary}`;
+				formattingNoticeVideoId = targetVideoId;
+				formattingNoticeTone = "warning";
+			} else if (!result.preserved_text) {
 				errorMessage =
 					"Formatting changed transcript words. Original transcript text was kept.";
 				formattingNotice =
-					"Safety guard kept original wording. Only spacing changes are allowed.";
+					`Safety guard kept original wording. Only spacing changes are allowed. ${attemptsSummary}`;
 				formattingNoticeVideoId = targetVideoId;
 				formattingNoticeTone = "warning";
 			}
 		} catch (error) {
 			errorMessage = (error as Error).message;
-			formattingNotice = null;
-			formattingNoticeVideoId = null;
+			clearFormattingFeedback();
 		} finally {
 			if (activeFormattingRequest === requestId) {
 				formattingContent = false;
@@ -795,6 +818,9 @@
 			formattingNotice = "Already showing the original transcript.";
 			formattingNoticeVideoId = targetVideoId;
 			formattingNoticeTone = "info";
+			formattingAttemptsUsed = null;
+			formattingAttemptsMax = null;
+			formattingAttemptsVideoId = null;
 			return;
 		}
 
@@ -830,8 +856,7 @@
 			formattingNoticeTone = "success";
 		} catch (error) {
 			errorMessage = (error as Error).message;
-			formattingNotice = null;
-			formattingNoticeVideoId = null;
+			clearFormattingFeedback();
 		} finally {
 			revertingContent = false;
 			revertingVideoId = null;
@@ -878,8 +903,7 @@
 			const stillSelected = videos.some((v) => v.id === selectedVideoId);
 			if (!stillSelected) {
 				editing = false;
-				formattingNotice = null;
-				formattingNoticeVideoId = null;
+				clearFormattingFeedback();
 				if (videos.length === 0) {
 					selectedVideoId = null;
 					contentText = "";
@@ -1348,7 +1372,7 @@
 					>
 							{formattingContent &&
 							formattingVideoId === selectedVideoId
-								? "Formatting transcript with Ollama…"
+								? formattingNotice || "Formatting transcript with Ollama…"
 								: formattingNotice}
 						</p>
 					{/if}
