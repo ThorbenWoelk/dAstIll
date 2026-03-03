@@ -2,22 +2,78 @@ import type {
 	Channel,
 	CleanTranscriptResponse,
 	Summary,
+	SyncDepth,
 	Transcript,
 	VideoInfo,
 	Video,
 	VideoTypeFilter
 } from './types';
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:3001';
+const API_BASE =
+	(import.meta as { env?: { VITE_API_BASE?: string } }).env?.VITE_API_BASE ??
+	'http://localhost:3001';
 const FORMAT_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
+const BACKEND_RETRY_DELAY_MS = 1500;
+
+export class BackendUnavailableError extends Error {
+	constructor(message = 'Backend is unreachable.') {
+		super(message);
+		this.name = 'BackendUnavailableError';
+	}
+}
+
+function isAbortError(error: unknown): boolean {
+	return error instanceof Error && error.name === 'AbortError';
+}
+
+function createAbortError(): Error {
+	if (typeof DOMException !== 'undefined') {
+		return new DOMException('The operation was aborted.', 'AbortError');
+	}
+	const error = new Error('The operation was aborted.');
+	error.name = 'AbortError';
+	return error;
+}
+
+function sleep(ms: number, signal?: AbortSignal) {
+	return new Promise<void>((resolve, reject) => {
+		const timeoutId = setTimeout(() => {
+			cleanup();
+			resolve();
+		}, ms);
+
+		const onAbort = () => {
+			clearTimeout(timeoutId);
+			cleanup();
+			reject(createAbortError());
+		};
+
+		const cleanup = () => signal?.removeEventListener('abort', onAbort);
+
+		if (!signal) return;
+		if (signal.aborted) {
+			onAbort();
+			return;
+		}
+		signal.addEventListener('abort', onAbort, { once: true });
+	});
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-	const response = await fetch(`${API_BASE}${path}`, {
-		headers: {
-			'Content-Type': 'application/json'
-		},
-		...init
-	});
+	let response: Response;
+	try {
+		response = await fetch(`${API_BASE}${path}`, {
+			headers: {
+				'Content-Type': 'application/json'
+			},
+			...init
+		});
+	} catch (error) {
+		if (isAbortError(error)) {
+			throw error;
+		}
+		throw new BackendUnavailableError();
+	}
 
 	if (!response.ok) {
 		const message = await response.text();
@@ -35,6 +91,27 @@ export function listChannels() {
 	return request<Channel[]>('/api/channels');
 }
 
+export function isBackendUnavailableError(
+	error: unknown
+): error is BackendUnavailableError {
+	return error instanceof BackendUnavailableError;
+}
+
+export async function listChannelsWhenAvailable(options?: { retryDelayMs?: number }) {
+	const retryDelayMs = options?.retryDelayMs ?? BACKEND_RETRY_DELAY_MS;
+
+	for (; ;) {
+		try {
+			return await listChannels();
+		} catch (error) {
+			if (!isBackendUnavailableError(error)) {
+				throw error;
+			}
+			await sleep(retryDelayMs);
+		}
+	}
+}
+
 export function addChannel(input: string) {
 	return request<Channel>('/api/channels', {
 		method: 'POST',
@@ -42,19 +119,41 @@ export function addChannel(input: string) {
 	});
 }
 
+export function updateChannel(id: string, payload: Partial<Channel>) {
+	return request<Channel>(`/api/channels/${id}`, {
+		method: 'PUT',
+		body: JSON.stringify(payload)
+	});
+}
+
 export function deleteChannel(id: string) {
-	return request<void>(`/api/channels/${id}`, { method: 'DELETE' });
+	return request<void>(`/api/channels/${id}`, {
+		method: 'DELETE'
+	});
+}
+
+export function getChannelSyncDepth(channelId: string) {
+	return request<SyncDepth>(`/api/channels/${channelId}/sync-depth`);
 }
 
 export function refreshChannel(id: string) {
 	return request<{ videos_added: number }>(`/api/channels/${id}/refresh`, { method: 'POST' });
 }
 
-export function backfillChannelVideos(id: string, limit = 15) {
+export interface BackfillChannelVideosResponse {
+	videos_added: number;
+	fetched_count: number;
+	exhausted: boolean;
+}
+
+export function backfillChannelVideos(id: string, limit = 15, until?: string) {
 	const params = new URLSearchParams({
 		limit: `${limit}`
 	});
-	return request<{ videos_added: number; fetched_count: number }>(
+	if (until) {
+		params.append('until', until);
+	}
+	return request<BackfillChannelVideosResponse>(
 		`/api/channels/${id}/backfill?${params.toString()}`,
 		{ method: 'POST' }
 	);
@@ -65,7 +164,8 @@ export function listVideos(
 	limit = 12,
 	offset = 0,
 	videoType: VideoTypeFilter = 'all',
-	acknowledged?: boolean
+	acknowledged?: boolean,
+	queueOnly = false
 ) {
 	const params = new URLSearchParams({
 		limit: `${limit}`,
@@ -75,6 +175,9 @@ export function listVideos(
 	if (acknowledged !== undefined) {
 		params.append('acknowledged', acknowledged.toString());
 	}
+	if (queueOnly) {
+		params.append('queue_only', 'true');
+	}
 	return request<Video[]>(`/api/channels/${channelId}/videos?${params.toString()}`);
 }
 
@@ -83,10 +186,6 @@ export function updateAcknowledged(videoId: string, acknowledged: boolean) {
 		method: 'PUT',
 		body: JSON.stringify({ acknowledged })
 	});
-}
-
-export function getVideo(videoId: string) {
-	return request<Video>(`/api/videos/${videoId}`);
 }
 
 export function getVideoInfo(videoId: string) {

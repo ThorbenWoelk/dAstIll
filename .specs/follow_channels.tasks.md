@@ -44,7 +44,7 @@ Backend + frontend implemented. Transcript extraction now uses direct `summarize
 - [x] start_app.sh
 
 ## Decisions Made During Implementation
-- Backend API uses `/api` routes with SQLite at `dastill.db`, Ollama via `OLLAMA_URL` + `OLLAMA_MODEL`, and summarize CLI via `SUMMARIZE_PATH`.
+- Backend API uses `/api` routes with Turso (DB_URL/DB_PASS), Ollama via `OLLAMA_URL` + `OLLAMA_MODEL`, and summarize CLI via `SUMMARIZE_PATH`.
 - `TranscriptService` now avoids `--markdown-mode llm` for transcript fetches and uses direct extraction (`--extract --format md` plus `--extract --format txt`) to prevent hard dependency on Gemini credentials.
 - Frontend uses SvelteKit + Tailwind v4 with `@tailwindcss/vite` and markdown rendering via marked + isomorphic-dompurify.
 - YouTube `videos.xml` may be Atom, so the backend now parses RSS first and falls back to Atom XML to avoid channel refresh failures.

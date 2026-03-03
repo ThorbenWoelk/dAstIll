@@ -1,6 +1,19 @@
 <script lang="ts">
 	import { onMount } from "svelte";
-	import { listChannels, listVideos, refreshChannel } from "$lib/api";
+	import {
+		getChannelSyncDepth,
+		listChannels,
+		listChannelsWhenAvailable,
+		listVideos,
+		refreshChannel,
+		updateChannel,
+	} from "$lib/api";
+	import {
+		applySavedChannelOrder,
+		resolveInitialChannelSelection,
+		WORKSPACE_STATE_KEY,
+		type WorkspaceStateSnapshot,
+	} from "$lib/channel-workspace";
 	import ChannelCard from "$lib/components/ChannelCard.svelte";
 	import type { Channel, ContentStatus, Video } from "$lib/types";
 
@@ -26,11 +39,16 @@
 		second: "2-digit",
 	});
 	let channels = $state<Channel[]>([]);
+	let channelOrder = $state<string[]>([]);
 	let videos = $state<Video[]>([]);
 	let selectedChannelId = $state<string | null>(null);
+	let draggedChannelId = $state<string | null>(null);
+	let dragOverChannelId = $state<string | null>(null);
 	let loadingChannels = $state(false);
 	let loadingVideos = $state(false);
+	let waitingForBackend = $state(false);
 	let errorMessage = $state<string | null>(null);
+	let workspaceStateHydrated = $state(false);
 
 	let offset = $state(0);
 	const limit = 20;
@@ -38,9 +56,69 @@
 	let lastSyncedAt = $state<Date | null>(null);
 	let queueDeltaSinceLastSync = $state<number | null>(null);
 	let previousQueuedTotal = $state<number | null>(null);
+	let earliestSyncDateInput = $state("");
+	let savingSyncDate = $state(false);
+	let syncDepth = $state<{
+		earliest_sync_date: string | null;
+		earliest_sync_date_user_set: boolean;
+		derived_earliest_ready_date: string | null;
+	} | null>(null);
+
+	function reorderChannels(dragId: string, targetId: string) {
+		if (dragId === targetId) return;
+		const ids = channels.map((channel) => channel.id);
+		const fromIndex = ids.indexOf(dragId);
+		const toIndex = ids.indexOf(targetId);
+		if (fromIndex < 0 || toIndex < 0) return;
+
+		ids.splice(fromIndex, 1);
+		ids.splice(toIndex, 0, dragId);
+		const byId = new Map(channels.map((channel) => [channel.id, channel]));
+		channels = ids
+			.map((id) => byId.get(id))
+			.filter((channel): channel is Channel => !!channel);
+		channelOrder = ids;
+	}
+
+	function handleChannelDragStart(channelId: string, event: DragEvent) {
+		draggedChannelId = channelId;
+		dragOverChannelId = channelId;
+		if (!event.dataTransfer) return;
+		event.dataTransfer.effectAllowed = "move";
+		event.dataTransfer.setData("text/plain", channelId);
+	}
+
+	function handleChannelDragOver(channelId: string, event: DragEvent) {
+		event.preventDefault();
+		if (dragOverChannelId !== channelId) {
+			dragOverChannelId = channelId;
+		}
+	}
+
+	function handleChannelDrop(channelId: string, event: DragEvent) {
+		event.preventDefault();
+		const fallbackId = event.dataTransfer?.getData("text/plain") || null;
+		const sourceId = draggedChannelId || fallbackId;
+		if (sourceId) {
+			reorderChannels(sourceId, channelId);
+		}
+		draggedChannelId = null;
+		dragOverChannelId = null;
+	}
+
+	function handleChannelDragEnd() {
+		draggedChannelId = null;
+		dragOverChannelId = null;
+	}
 
 	const selectedChannel = $derived(
 		channels.find((channel) => channel.id === selectedChannelId) ?? null,
+	);
+
+	const effectiveEarliestSyncDate = $derived(
+		selectedChannel?.earliest_sync_date_user_set
+			? selectedChannel.earliest_sync_date
+			: (syncDepth?.derived_earliest_ready_date ?? selectedChannel?.earliest_sync_date),
 	);
 
 	const queuedVideos = $derived(
@@ -114,6 +192,13 @@
 		return dateFormatter.format(date);
 	}
 
+	function formatSyncDate(value: string | null | undefined) {
+		if (!value) return "Not set";
+		const date = new Date(value);
+		if (Number.isNaN(date.getTime())) return "Not set";
+		return dateFormatter.format(date);
+	}
+
 	function setSyncSnapshot(snapshot: Video[]) {
 		const queuedCount = snapshot.filter(
 			(video) =>
@@ -131,28 +216,113 @@
 		lastSyncedAt = new Date();
 	}
 
-	onMount(() => {
-		void loadChannels();
+	function restoreWorkspaceState() {
+		if (typeof localStorage === "undefined") return;
+		const raw = localStorage.getItem(WORKSPACE_STATE_KEY);
+		if (!raw) return;
+
+		try {
+			const snapshot = JSON.parse(raw) as Partial<WorkspaceStateSnapshot>;
+			if (
+				typeof snapshot.selectedChannelId === "string" ||
+				snapshot.selectedChannelId === null
+			) {
+				selectedChannelId = snapshot.selectedChannelId;
+			}
+			if (Array.isArray(snapshot.channelOrder)) {
+				channelOrder = snapshot.channelOrder.filter(
+					(id): id is string => typeof id === "string",
+				);
+			}
+		} catch {
+			localStorage.removeItem(WORKSPACE_STATE_KEY);
+		}
+	}
+
+	function persistWorkspaceState() {
+		if (!workspaceStateHydrated || typeof localStorage === "undefined")
+			return;
+
+		const raw = localStorage.getItem(WORKSPACE_STATE_KEY);
+		let snapshot: Partial<WorkspaceStateSnapshot> = {};
+		if (raw) {
+			try {
+				snapshot = JSON.parse(raw);
+			} catch {
+				// Ignore
+			}
+		}
+
+		snapshot.selectedChannelId = selectedChannelId;
+		snapshot.channelOrder = channelOrder;
+
+		localStorage.setItem(WORKSPACE_STATE_KEY, JSON.stringify(snapshot));
+	}
+
+	$effect(() => {
+		persistWorkspaceState();
 	});
 
-	async function loadChannels() {
+	$effect(() => {
+		if (!selectedChannel) {
+			earliestSyncDateInput = "";
+			return;
+		}
+		const effective =
+			selectedChannel.earliest_sync_date_user_set
+				? selectedChannel.earliest_sync_date
+				: (syncDepth?.derived_earliest_ready_date ?? selectedChannel.earliest_sync_date);
+		if (effective) {
+			earliestSyncDateInput = new Date(effective).toISOString().split("T")[0];
+		} else {
+			earliestSyncDateInput = "";
+		}
+	});
+
+	$effect(() => {
+		if (selectedChannelId) {
+			void getChannelSyncDepth(selectedChannelId).then((d) => (syncDepth = d));
+		} else {
+			syncDepth = null;
+		}
+	});
+
+	onMount(() => {
+		restoreWorkspaceState();
+		workspaceStateHydrated = true;
+		waitingForBackend = true;
+		void loadChannels(true);
+	});
+
+	async function loadChannels(retryUntilBackendReachable = false) {
 		loadingChannels = true;
 		errorMessage = null;
 		let initialChannelId: string | null = null;
 
 		try {
-			channels = await listChannels();
-			if (!selectedChannelId && channels.length > 0) {
-				initialChannelId = channels[0].id;
-			}
+			const fetchedChannels = retryUntilBackendReachable
+				? await listChannelsWhenAvailable()
+				: await listChannels();
+			waitingForBackend = false;
+			channels = applySavedChannelOrder(fetchedChannels, channelOrder);
+			channelOrder = channels.map((c) => c.id);
+
+			initialChannelId = resolveInitialChannelSelection(
+				channels,
+				selectedChannelId,
+				null,
+			);
 		} catch (error) {
+			waitingForBackend = false;
 			errorMessage = (error as Error).message;
 		} finally {
 			loadingChannels = false;
 		}
 
-		if (initialChannelId && !selectedChannelId) {
+		if (initialChannelId && initialChannelId !== selectedChannelId) {
 			await selectChannel(initialChannelId);
+		} else if (selectedChannelId) {
+			await refreshAndLoadVideos(selectedChannelId);
 		}
 	}
 
@@ -203,6 +373,8 @@
 				limit,
 				reset ? 0 : offset,
 				"all",
+				undefined,
+				true,
 			);
 			videos = reset ? list : [...videos, ...list];
 			offset = (reset ? 0 : offset) + list.length;
@@ -217,107 +389,151 @@
 			if (!silent) loadingVideos = false;
 		}
 	}
+
+	async function saveEarliestSyncDate() {
+		if (!selectedChannelId || !earliestSyncDateInput || savingSyncDate) return;
+		errorMessage = null;
+		savingSyncDate = true;
+		try {
+			const updated = await updateChannel(selectedChannelId, {
+				earliest_sync_date: new Date(earliestSyncDateInput).toISOString(),
+				earliest_sync_date_user_set: true,
+			});
+			channels = channels.map((channel) =>
+				channel.id === selectedChannelId ? updated : channel,
+			);
+			syncDepth = await getChannelSyncDepth(selectedChannelId);
+		} catch (error) {
+			errorMessage = (error as Error).message;
+		} finally {
+			savingSyncDate = false;
+		}
+	}
 </script>
 
-<div class="page-shell min-h-screen px-4 py-6 sm:px-8">
+<div class="page-shell min-h-screen px-4 pb-12 pt-8 sm:px-8">
 	<a
 		href="#main-content"
-		class="skip-link absolute left-4 top-4 z-50 rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white"
+		class="skip-link absolute left-4 top-4 z-50 rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-[var(--accent)]/20"
 	>
 		Skip to Main Content
 	</a>
 
-	<header class="mx-auto flex w-full max-w-[1440px] flex-col gap-5">
-		<div
-			class="flex flex-col justify-between gap-4 md:flex-row md:items-end px-2"
-		>
-			<div class="max-w-3xl space-y-2">
-				<p
-					class="text-xs uppercase tracking-[0.35em] text-[var(--accent)] font-semibold"
-				>
-					DASTILL v1.0
-				</p>
-				<h1
-					class="text-balance text-3xl font-bold tracking-tight sm:text-4xl text-[var(--foreground)]"
-				>
-					Inspect Download Queue
-				</h1>
-				<p
-					class="max-w-2xl font-serif text-[17px] text-[var(--soft-foreground)]"
-				>
-					Inspect transcript and summary processing states per
-					channel.
-				</p>
-			</div>
+	<header class="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-6 px-4 sm:px-2 fade-in border-b border-[var(--border-soft)] pb-4 mb-2">
+		<div class="flex items-center gap-4">
+			<h1 class="text-3xl font-bold tracking-tighter text-[var(--foreground)]">
+				DASTILL
+			</h1>
+			<span class="hidden sm:block h-5 w-px bg-[var(--border-soft)]"></span>
+			<p class="hidden sm:block text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--accent)] opacity-60">
+				Observatory
+			</p>
 		</div>
 
 		<nav
-			class="flex flex-wrap items-center gap-2 rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-1.5 px-2"
+			class="flex items-center gap-1 rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface)] p-1 shadow-sm"
 			aria-label="Workspace sections"
 		>
 			<a
 				href="/"
-				class="rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.15em] text-[var(--soft-foreground)] transition-colors hover:bg-[var(--muted)]/30 hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)]"
-				>Workspace</a
+				class="rounded-[var(--radius-sm)] px-5 py-2 text-[10px] font-bold uppercase tracking-[0.15em] text-[var(--soft-foreground)] opacity-60 transition-all hover:opacity-100 hover:bg-[var(--muted)]/30"
 			>
+				Workspace
+			</a>
 			<a
 				href="/download-queue"
-				class="rounded-full bg-[var(--muted)]/50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.15em] text-[var(--foreground)] transition-colors hover:text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)]"
-				>Download Queue</a
+				class="rounded-[var(--radius-sm)] bg-[var(--muted)]/60 px-5 py-2 text-[10px] font-bold uppercase tracking-[0.15em] text-[var(--foreground)] transition-all"
 			>
+				Details
+			</a>
 		</nav>
 	</header>
 
-	<main
-		id="main-content"
-		class="mx-auto mt-6 grid w-full max-w-[1440px] gap-8 lg:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)]"
-	>
-		<aside
-			class="flex h-fit flex-col gap-4 rounded-3xl bg-[var(--surface)] border border-[var(--border)] p-4 lg:sticky lg:top-6"
+	{#if waitingForBackend && channels.length === 0}
+		<main
+			id="main-content"
+			class="mx-auto mt-12 grid w-full max-w-[1440px]"
 		>
-			<div class="flex items-center justify-between gap-2 px-1">
-				<h2 class="text-lg font-semibold tracking-tight">Channels</h2>
+			<section
+				class="flex min-h-[480px] flex-col items-center justify-center gap-8 rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--surface)] p-12 text-center fade-in shadow-sm"
+				role="status"
+				aria-live="polite"
+			>
+				<div class="relative flex h-12 w-12 items-center justify-center">
+					<div class="absolute h-full w-full animate-ping rounded-full bg-[var(--accent)] opacity-10"></div>
+					<div class="h-8 w-8 animate-spin rounded-full border-2 border-[var(--muted)] border-t-[var(--accent)]"></div>
+				</div>
+				<div class="space-y-3">
+					<p class="text-[11px] font-bold uppercase tracking-[0.3em] text-[var(--accent)]">
+						Establishing Link
+					</p>
+					<p class="max-w-xs text-[15px] font-medium text-[var(--soft-foreground)] opacity-70">
+						Waiting for the observatory to connect with the distillation engine.
+					</p>
+				</div>
+			</section>
+		</main>
+	{:else}
+		<main
+			id="main-content"
+			class="mx-auto mt-10 grid w-full max-w-[1440px] gap-10 lg:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)] items-start"
+		>
+		<aside
+			class="flex h-fit flex-col gap-6 rounded-[var(--radius-lg)] bg-[var(--surface)] border border-[var(--border-soft)] p-6 lg:sticky lg:top-8 fade-in stagger-1 shadow-sm"
+		>
+			<div class="flex items-center justify-between gap-2">
+				<h2 class="text-xl font-bold tracking-tight">Channels</h2>
 			</div>
 			<p
-				class="px-1 text-xs uppercase tracking-[0.15em] text-[var(--soft-foreground)]"
+				class="px-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--soft-foreground)] opacity-40 leading-relaxed"
 			>
-				Manage channels on the workspace page.
+				Select a channel to inspect its specific queue.
 			</p>
 
 			<div
-				class="flex max-h-[70vh] flex-col gap-2 overflow-y-auto pr-1"
+				class="flex max-h-[60vh] flex-col gap-1.5 overflow-y-auto pr-1 custom-scrollbar"
 				aria-busy={loadingChannels}
 			>
 				{#if loadingChannels}
-					<div class="space-y-3" role="status" aria-live="polite">
-						{#each Array.from({ length: 3 }) as _, index (index)}
+					<div class="space-y-4" role="status" aria-live="polite">
+						{#each Array.from({ length: 4 }) as _, index (index)}
 							<div
-								class="flex animate-pulse items-center gap-3 rounded-2xl px-3 py-2.5"
+								class="flex animate-pulse items-center gap-4 px-3 py-3"
 							>
 								<div
-									class="h-12 w-12 rounded-full bg-[var(--muted)]"
+									class="h-10 w-10 shrink-0 rounded-full bg-[var(--muted)] opacity-60"
 								></div>
 								<div class="min-w-0 flex-1 space-y-2">
 									<div
-										class="h-3 w-3/4 rounded-full bg-[var(--muted)]"
+										class="h-3 w-3/4 rounded-full bg-[var(--muted)] opacity-60"
 									></div>
 									<div
-										class="h-2.5 w-1/2 rounded-full bg-[var(--muted)]/80"
+										class="h-2 w-1/2 rounded-full bg-[var(--muted)] opacity-40"
 									></div>
 								</div>
 							</div>
 						{/each}
 					</div>
 				{:else if channels.length === 0}
-					<p class="px-1 text-sm text-[var(--soft-foreground)]">
-						No channels yet.
+					<p class="px-1 text-[14px] font-medium text-[var(--soft-foreground)] opacity-50 italic">
+						No channels followed.
 					</p>
 				{:else}
 					{#each channels as channel}
 						<ChannelCard
 							{channel}
 							active={selectedChannelId === channel.id}
+							draggableEnabled
+							dragging={draggedChannelId === channel.id}
+							dragOver={dragOverChannelId === channel.id &&
+								draggedChannelId !== channel.id}
 							onSelect={() => selectChannel(channel.id)}
+							onDragStart={(event) =>
+								handleChannelDragStart(channel.id, event)}
+							onDragOver={(event) =>
+								handleChannelDragOver(channel.id, event)}
+							onDrop={(event) => handleChannelDrop(channel.id, event)}
+							onDragEnd={handleChannelDragEnd}
 						/>
 					{/each}
 				{/if}
@@ -325,199 +541,164 @@
 		</aside>
 
 		<section
-			class="flex min-w-0 flex-col gap-4 rounded-3xl bg-[var(--surface)] border border-[var(--border)] p-6 md:p-10"
+			class="flex min-w-0 flex-col gap-8 rounded-[var(--radius-lg)] bg-[var(--surface)] border border-[var(--border-soft)] p-8 md:p-12 fade-in stagger-2 shadow-sm"
 		>
 			<div
-				class="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--border)] pb-4"
+				class="flex flex-wrap items-center justify-between gap-8 border-b border-[var(--border-soft)]/50 pb-8"
 			>
-				<div>
-					<h2 class="text-lg font-semibold tracking-tight">
-						Queue Items
+				<div class="space-y-2">
+					<h2 class="text-2xl font-bold tracking-tight">
+						Channel Details
 					</h2>
-					<p
-						class="truncate text-xs uppercase tracking-[0.15em] text-[var(--accent)] font-medium mt-0.5"
-					>
-						{selectedChannel
-							? selectedChannel.name
-							: "No Channel Selected"}
-					</p>
-					<p class="mt-1 text-xs text-[var(--soft-foreground)]">
-						{#if lastSyncedAt}
-							Last sync {syncTimeFormatter.format(lastSyncedAt)}
-						{:else}
-							Waiting for initial sync
-						{/if}
-					</p>
+					<div class="flex items-center gap-3">
+						<span class="inline-flex items-center rounded-full bg-[var(--accent-soft)] border border-[var(--accent)]/20 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--accent-strong)]">
+							{selectedChannel ? selectedChannel.name : "None"}
+						</span>
+						<p class="text-[12px] font-medium text-[var(--soft-foreground)] opacity-60">
+							{#if lastSyncedAt}
+								Pulse captured at {syncTimeFormatter.format(lastSyncedAt)}
+							{:else}
+								Establishing initial sync…
+							{/if}
+						</p>
+					</div>
 				</div>
 				<div
-					class="flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.12em] font-medium"
+					class="flex flex-wrap items-center gap-3"
 				>
-					<span
-						class="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-slate-700"
-					>
-						Pending {queueStats.pending}
-					</span>
-					<span
-						class="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-amber-700"
-					>
-						Loading {queueStats.loading}
-					</span>
-					<span
-						class="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-rose-700"
-					>
-						Failed {queueStats.failed}
-					</span>
-					{#if queueDeltaSinceLastSync !== null}
-						{#if queueDeltaSinceLastSync < 0}
-							<span
-								class="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700"
-							>
-								Queue down {Math.abs(queueDeltaSinceLastSync)}
-							</span>
-						{:else if queueDeltaSinceLastSync > 0}
-							<span
-								class="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-amber-700"
-							>
-								Queue up {queueDeltaSinceLastSync}
-							</span>
-						{:else}
-							<span
-								class="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-slate-700"
-							>
-								No queue change
-							</span>
-						{/if}
-					{/if}
+					<div class="flex items-center gap-2 px-4 py-2 rounded-full bg-[var(--muted)]/30 border border-[var(--border-soft)]">
+						<div class="h-1.5 w-1.5 rounded-full bg-slate-400"></div>
+						<span class="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-600">Unread {queueStats.pending}</span>
+					</div>
+					<div class="flex items-center gap-2 px-4 py-2 rounded-full bg-amber-50 border border-amber-200">
+						<div class="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"></div>
+						<span class="text-[10px] font-bold uppercase tracking-[0.1em] text-amber-700">Distilling {queueStats.loading}</span>
+					</div>
+					<div class="flex items-center gap-2 px-4 py-2 rounded-full bg-rose-50 border border-rose-200">
+						<div class="h-1.5 w-1.5 rounded-full bg-rose-500"></div>
+						<span class="text-[10px] font-bold uppercase tracking-[0.1em] text-rose-700">Failed {queueStats.failed}</span>
+					</div>
+					
 					<button
 						type="button"
-						class={quietButtonClass}
+						class="ml-2 inline-flex h-10 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--border-soft)] bg-[var(--background)] px-6 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--foreground)] transition-all hover:border-[var(--accent)]/40 hover:text-[var(--accent)] hover:shadow-sm disabled:opacity-30"
 						onclick={() => loadVideos(true)}
 						disabled={loadingVideos}
 					>
-						Sync now
+						Sync details
 					</button>
 				</div>
 			</div>
 
+			{#if selectedChannel}
+				<div class="grid gap-4 rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--background)] p-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+					<div class="space-y-2">
+						<p class="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--soft-foreground)] opacity-60">
+							Oldest Sync Date
+						</p>
+						<p class="text-[14px] font-semibold text-[var(--foreground)]">
+							{formatSyncDate(effectiveEarliestSyncDate)}
+						</p>
+						<p class="text-[11px] text-[var(--soft-foreground)] opacity-60">
+							This channel-level value defines how far back sync should go.
+						</p>
+					</div>
+					<div class="flex flex-wrap items-center gap-2">
+						<input
+							type="date"
+							class="min-w-[13rem] rounded-[var(--radius-sm)] border border-[var(--border-soft)] bg-white px-3 py-2 text-[12px] font-medium focus:outline-none focus:border-[var(--accent)]/40 transition-colors"
+							bind:value={earliestSyncDateInput}
+							disabled={savingSyncDate}
+						/>
+						<button
+							type="button"
+							class="inline-flex items-center justify-center rounded-[var(--radius-sm)] bg-[var(--foreground)] px-4 py-2 text-[10px] font-bold uppercase tracking-[0.1em] text-white transition-all hover:bg-[var(--accent-strong)] disabled:opacity-30"
+							onclick={saveEarliestSyncDate}
+							disabled={!earliestSyncDateInput || savingSyncDate}
+						>
+							{savingSyncDate ? "Saving..." : "Save"}
+						</button>
+					</div>
+				</div>
+			{/if}
+
 			{#if !selectedChannelId}
-				<p class="text-sm text-[var(--soft-foreground)]">
-					Select a channel to inspect its queue.
-				</p>
+				<div class="flex flex-col items-center justify-center py-24 opacity-30 text-center">
+					<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="mb-6"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+					<p class="text-[20px] font-serif italic text-[var(--soft-foreground)]">
+						Choose a channel to inspect its heartbeat.
+					</p>
+				</div>
 			{:else if loadingVideos && videos.length === 0}
-				<div class="space-y-3 mt-4" role="status" aria-live="polite">
+				<div class="space-y-4 mt-4" role="status" aria-live="polite">
 					{#each Array.from({ length: 4 }) as _, index (index)}
 						<div
-							class="animate-pulse rounded-2xl border border-[var(--border)] bg-white/70 p-4"
+							class="animate-pulse rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--background)] p-6"
 						>
 							<div
-								class="h-3.5 w-11/12 rounded-full bg-[var(--muted)]"
+								class="h-4 w-3/4 rounded-full bg-[var(--muted)] opacity-60"
 							></div>
 							<div
-								class="mt-2 h-2.5 w-1/3 rounded-full bg-[var(--muted)]/80"
+								class="mt-4 h-3 w-1/4 rounded-full bg-[var(--muted)] opacity-40"
 							></div>
 						</div>
 					{/each}
 				</div>
 			{:else if queueStats.total === 0}
-				<p class="text-sm text-[var(--soft-foreground)] mt-4">
-					Queue is empty. Everything is ready.
-				</p>
+				<div class="flex flex-col items-center justify-center py-24 text-center">
+					<div class="h-16 w-16 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 mb-6">
+						<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+					</div>
+					<p class="text-[20px] font-serif italic text-[var(--soft-foreground)] opacity-60">
+						The queue is clear. Every fragment has been distilled.
+					</p>
+				</div>
 			{:else}
 				<ul class="flex flex-col gap-4 mt-4">
 					{#each queuedVideos as video}
 						<li
-							class="rounded-2xl border border-[var(--border)] bg-white/40 p-4 transition-all hover:bg-white/70"
+							class="group rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-white p-6 transition-all duration-300 hover:border-[var(--accent)]/30 hover:shadow-lg hover:shadow-[var(--accent)]/5"
 						>
 							<div
-								class="flex flex-wrap items-start justify-between gap-3"
+								class="flex flex-wrap items-start justify-between gap-6"
 							>
 								<div class="min-w-0 flex-1">
 									<p
-										class="line-clamp-2 text-sm font-semibold text-[var(--foreground)] leading-relaxed"
+										class="line-clamp-2 text-[16px] font-bold text-[var(--foreground)] leading-[1.4] tracking-tight group-hover:text-[var(--accent-strong)] transition-colors"
 									>
 										{video.title}
 									</p>
 									<p
-										class="mt-1 text-xs text-[var(--soft-foreground)]"
+										class="mt-2 text-[12px] font-medium text-[var(--soft-foreground)] opacity-50"
 									>
-										{formatDate(video.published_at)}
+										Published {formatDate(video.published_at)}
 									</p>
 									<div
-										class="mt-3 text-[10.5px] font-medium tracking-wide"
+										class="mt-6 flex items-center gap-4"
 									>
 										{#if video.transcript_status === "loading" || video.summary_status === "loading"}
 											<span
-												class="text-[var(--accent)] animate-pulse flex items-center gap-1.5"
+												class="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--accent)]"
 											>
-												<svg
-													width="12"
-													height="12"
-													viewBox="0 0 24 24"
-													fill="none"
-													stroke="currentColor"
-													stroke-width="2.5"
-													stroke-linecap="round"
-													stroke-linejoin="round"
-													class="animate-spin"
-													><path
-														d="M21 12a9 9 0 1 1-6.219-8.56"
-													/></svg
-												>
-												Distilling knowledge...
+												<span class="relative flex h-2 w-2">
+													<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--accent)] opacity-75"></span>
+													<span class="relative inline-flex rounded-full h-2 w-2 bg-[var(--accent)]"></span>
+												</span>
+												DISTILLING KNOWLEDGE
 											</span>
 										{:else if video.transcript_status === "ready" && video.summary_status === "ready"}{:else if video.transcript_status === "failed" || video.summary_status === "failed"}
 											<span
-												class="text-rose-600/80 flex items-center gap-1.5"
+												class="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-rose-600"
 											>
-												<svg
-													width="12"
-													height="12"
-													viewBox="0 0 24 24"
-													fill="none"
-													stroke="currentColor"
-													stroke-width="2.5"
-													stroke-linecap="round"
-													stroke-linejoin="round"
-													><circle
-														cx="12"
-														cy="12"
-														r="10"
-													/><line
-														x1="12"
-														y1="8"
-														x2="12"
-														y2="12"
-													/><line
-														x1="12"
-														y1="16"
-														x2="12.01"
-														y2="16"
-													/></svg
-												>
-												Distillation failed
+												<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+												DISTILLATION FAILED
 											</span>
 										{:else}
 											<span
-												class="text-[var(--soft-foreground)] flex items-center gap-1.5"
+												class="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--soft-foreground)] opacity-60"
 											>
-												<svg
-													width="12"
-													height="12"
-													viewBox="0 0 24 24"
-													fill="none"
-													stroke="currentColor"
-													stroke-width="2.5"
-													stroke-linecap="round"
-													stroke-linejoin="round"
-													><circle
-														cx="12"
-														cy="12"
-														r="10"
-													/><polyline
-														points="12 6 12 12 16 14"
-													/></svg
-												>
-												Queued for processing
+												<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+												QUEUED FOR PROCESSING
 											</span>
 										{/if}
 									</div>
@@ -529,27 +710,40 @@
 			{/if}
 
 			{#if hasMore && selectedChannelId}
-				<div class="flex justify-center mt-4">
+				<div class="flex justify-center mt-10">
 					<button
 						type="button"
-						class={secondaryButtonClass}
+						class="inline-flex items-center justify-center rounded-full border border-[var(--border-soft)] bg-[var(--background)] px-10 py-3.5 text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--soft-foreground)] transition-all hover:border-[var(--accent)]/40 hover:text-[var(--foreground)] hover:shadow-md disabled:opacity-30"
 						onclick={() => loadVideos(false)}
 						disabled={loadingVideos}
 					>
-						{loadingVideos ? "Loading…" : "Load More"}
+						{loadingVideos ? "Retrieving…" : "Extend Library"}
 					</button>
 				</div>
 			{/if}
 		</section>
-	</main>
+		</main>
+	{/if}
 
 	{#if errorMessage}
 		<div
-			class="fixed bottom-6 left-1/2 z-50 w-[min(92vw,460px)] -translate-x-1/2 rounded-card border border-[var(--border)] bg-white/95 p-4 shadow-soft"
+			class="fixed bottom-8 left-1/2 z-50 w-[min(92vw,480px)] -translate-x-1/2 rounded-[var(--radius-md)] border-2 border-[var(--accent)]/10 bg-white p-5 shadow-2xl animate-fade-in"
 			role="status"
 			aria-live="polite"
 		>
-			<p class="text-sm text-[var(--accent)]">{errorMessage}</p>
+			<div class="flex items-start gap-4">
+				<div class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-rose-50 text-rose-600">
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+				</div>
+				<p class="text-[14px] font-bold text-rose-600 leading-tight pr-8">{errorMessage}</p>
+				<button 
+					onclick={() => errorMessage = null}
+					class="absolute top-4 right-4 text-[var(--soft-foreground)] hover:text-[var(--foreground)] opacity-40"
+					aria-label="Dismiss error"
+				>
+					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+				</button>
+			</div>
 		</div>
 	{/if}
 </div>

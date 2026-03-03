@@ -30,7 +30,8 @@ async fn run_migrations(conn: &Connection) -> Result<(), libsql::Error> {
             handle TEXT,
             name TEXT NOT NULL,
             thumbnail_url TEXT,
-            added_at TEXT NOT NULL
+            added_at TEXT NOT NULL,
+            earliest_sync_date TEXT
         );
 
         CREATE TABLE IF NOT EXISTS videos (
@@ -87,6 +88,54 @@ async fn run_migrations(conn: &Connection) -> Result<(), libsql::Error> {
     ensure_videos_is_short_column(conn).await?;
     ensure_videos_acknowledged_column(conn).await?;
     ensure_summary_quality_columns(conn).await?;
+    ensure_channels_earliest_sync_date_column(conn).await?;
+    ensure_channels_earliest_sync_date_user_set_column(conn).await?;
+    Ok(())
+}
+
+async fn ensure_channels_earliest_sync_date_user_set_column(
+    conn: &Connection,
+) -> Result<(), libsql::Error> {
+    let mut rows = conn.query("PRAGMA table_info(channels)", ()).await?;
+    let mut has_col = false;
+    while let Some(row) = rows.next().await? {
+        let name: String = row.get(1)?;
+        if name == "earliest_sync_date_user_set" {
+            has_col = true;
+            break;
+        }
+    }
+
+    if !has_col {
+        conn.execute(
+            "ALTER TABLE channels ADD COLUMN earliest_sync_date_user_set INTEGER NOT NULL DEFAULT 0",
+            (),
+        )
+        .await?;
+    }
+
+    Ok(())
+}
+
+async fn ensure_channels_earliest_sync_date_column(conn: &Connection) -> Result<(), libsql::Error> {
+    let mut rows = conn.query("PRAGMA table_info(channels)", ()).await?;
+    let mut has_col = false;
+    while let Some(row) = rows.next().await? {
+        let name: String = row.get(1)?;
+        if name == "earliest_sync_date" {
+            has_col = true;
+            break;
+        }
+    }
+
+    if !has_col {
+        conn.execute(
+            "ALTER TABLE channels ADD COLUMN earliest_sync_date TEXT",
+            (),
+        )
+        .await?;
+    }
+
     Ok(())
 }
 
@@ -171,13 +220,15 @@ async fn ensure_summary_quality_columns(conn: &Connection) -> Result<(), libsql:
 
 pub async fn insert_channel(conn: &Connection, channel: &Channel) -> Result<(), libsql::Error> {
     conn.execute(
-        "INSERT OR REPLACE INTO channels (id, handle, name, thumbnail_url, added_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+        "INSERT OR REPLACE INTO channels (id, handle, name, thumbnail_url, added_at, earliest_sync_date, earliest_sync_date_user_set) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![
             channel.id.as_str(),
             channel.handle.as_deref(),
             channel.name.as_str(),
             channel.thumbnail_url.as_deref(),
             channel.added_at.to_rfc3339(),
+            channel.earliest_sync_date.map(|dt| dt.to_rfc3339()),
+            if channel.earliest_sync_date_user_set { 1i64 } else { 0i64 },
         ],
     )
     .await?;
@@ -187,7 +238,7 @@ pub async fn insert_channel(conn: &Connection, channel: &Channel) -> Result<(), 
 pub async fn get_channel(conn: &Connection, id: &str) -> Result<Option<Channel>, libsql::Error> {
     let mut rows = conn
         .query(
-            "SELECT id, handle, name, thumbnail_url, added_at FROM channels WHERE id = ?1",
+            "SELECT id, handle, name, thumbnail_url, added_at, earliest_sync_date, earliest_sync_date_user_set FROM channels WHERE id = ?1",
             params![id],
         )
         .await?;
@@ -202,7 +253,7 @@ pub async fn get_channel(conn: &Connection, id: &str) -> Result<Option<Channel>,
 pub async fn list_channels(conn: &Connection) -> Result<Vec<Channel>, libsql::Error> {
     let mut rows = conn
         .query(
-            "SELECT id, handle, name, thumbnail_url, added_at FROM channels ORDER BY added_at DESC",
+            "SELECT id, handle, name, thumbnail_url, added_at, earliest_sync_date, COALESCE(earliest_sync_date_user_set, 0) FROM channels ORDER BY added_at DESC",
             (),
         )
         .await?;
@@ -211,6 +262,29 @@ pub async fn list_channels(conn: &Connection) -> Result<Vec<Channel>, libsql::Er
         results.push(row_to_channel(&row)?);
     }
     Ok(results)
+}
+
+pub async fn get_oldest_ready_video_published_at(
+    conn: &Connection,
+    channel_id: &str,
+) -> Result<Option<chrono::DateTime<chrono::Utc>>, libsql::Error> {
+    let mut rows = conn
+        .query(
+            "SELECT MIN(published_at) FROM videos
+             WHERE channel_id = ?1 AND transcript_status = 'ready' AND summary_status = 'ready'",
+            params![channel_id],
+        )
+        .await?;
+
+    if let Some(row) = rows.next().await? {
+        let raw: Option<String> = row.get(0)?;
+        if let Some(s) = raw {
+            if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&s) {
+                return Ok(Some(dt.with_timezone(&chrono::Utc)));
+            }
+        }
+    }
+    Ok(None)
 }
 
 pub async fn delete_channel(conn: &Connection, id: &str) -> Result<bool, libsql::Error> {
@@ -234,6 +308,8 @@ pub async fn delete_channel(conn: &Connection, id: &str) -> Result<bool, libsql:
 
 fn row_to_channel(row: &libsql::Row) -> Result<Channel, libsql::Error> {
     let added_at: String = row.get(4)?;
+    let earliest_sync_date_raw: Option<String> = row.get(5)?;
+    let user_set: i64 = row.get(6).unwrap_or(0);
     Ok(Channel {
         id: row.get(0)?,
         handle: row.get(1)?,
@@ -242,6 +318,12 @@ fn row_to_channel(row: &libsql::Row) -> Result<Channel, libsql::Error> {
         added_at: chrono::DateTime::parse_from_rfc3339(&added_at)
             .map(|dt| dt.with_timezone(&chrono::Utc))
             .unwrap_or_else(|_| chrono::Utc::now()),
+        earliest_sync_date: earliest_sync_date_raw.and_then(|raw| {
+            chrono::DateTime::parse_from_rfc3339(&raw)
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+                .ok()
+        }),
+        earliest_sync_date_user_set: user_set != 0,
     })
 }
 
@@ -288,48 +370,38 @@ pub async fn list_videos_by_channel(
     offset: usize,
     is_short: Option<bool>,
     acknowledged: Option<bool>,
+    queue_only: bool,
 ) -> Result<Vec<Video>, libsql::Error> {
     let short_filter: Option<i64> = is_short.map(|value| if value { 1 } else { 0 });
     let ack_filter: Option<i64> = acknowledged.map(|value| if value { 1 } else { 0 });
-    let mut rows = conn.query(
+    let queue_clause = if queue_only {
+        "AND (transcript_status != 'ready' OR summary_status != 'ready')"
+    } else {
+        ""
+    };
+    let sql = format!(
         "SELECT id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, acknowledged
          FROM videos
          WHERE channel_id = ?1
            AND (?4 IS NULL OR is_short = ?4)
            AND (?5 IS NULL OR acknowledged = ?5)
+           {}
          ORDER BY published_at DESC
          LIMIT ?2 OFFSET ?3",
-        params![
-            channel_id,
-            limit as i64,
-            offset as i64,
-            short_filter,
-            ack_filter
-        ],
-    ).await?;
+        queue_clause
+    );
+    let mut rows = conn.query(&sql, params![
+        channel_id,
+        limit as i64,
+        offset as i64,
+        short_filter,
+        ack_filter
+    ]).await?;
     let mut results = Vec::new();
     while let Some(row) = rows.next().await? {
         results.push(row_to_video(&row)?);
     }
     Ok(results)
-}
-
-pub async fn count_videos_by_channel(
-    conn: &Connection,
-    channel_id: &str,
-) -> Result<usize, libsql::Error> {
-    let mut rows = conn
-        .query(
-            "SELECT COUNT(*) FROM videos WHERE channel_id = ?1",
-            params![channel_id],
-        )
-        .await?;
-    if let Some(row) = rows.next().await? {
-        let count: i64 = row.get(0)?;
-        Ok(count.max(0) as usize)
-    } else {
-        Ok(0)
-    }
 }
 
 pub async fn list_video_ids_by_channel(
@@ -338,7 +410,7 @@ pub async fn list_video_ids_by_channel(
 ) -> Result<Vec<String>, libsql::Error> {
     let mut rows = conn
         .query(
-            "SELECT id FROM videos WHERE channel_id = ?1",
+            "SELECT id FROM videos WHERE channel_id = ?1 ORDER BY published_at DESC",
             params![channel_id],
         )
         .await?;
@@ -762,6 +834,8 @@ mod tests {
             name: "Test Channel".to_string(),
             thumbnail_url: None,
             added_at: Utc::now(),
+            earliest_sync_date: None,
+            earliest_sync_date_user_set: false,
         };
 
         insert_channel(&conn, &channel).await.unwrap();
@@ -787,6 +861,8 @@ mod tests {
             name: "Test".to_string(),
             thumbnail_url: None,
             added_at: Utc::now(),
+            earliest_sync_date: None,
+            earliest_sync_date_user_set: false,
         };
         insert_channel(&conn, &channel).await.unwrap();
 
@@ -831,6 +907,8 @@ mod tests {
             name: "Test".to_string(),
             thumbnail_url: None,
             added_at: Utc::now(),
+            earliest_sync_date: None,
+            earliest_sync_date_user_set: false,
         };
         insert_channel(&conn, &channel).await.unwrap();
 
@@ -870,6 +948,8 @@ mod tests {
             name: "Test".to_string(),
             thumbnail_url: None,
             added_at: Utc::now(),
+            earliest_sync_date: None,
+            earliest_sync_date_user_set: false,
         };
         insert_channel(&conn, &channel).await.unwrap();
 
@@ -909,6 +989,8 @@ mod tests {
             name: "Eval".to_string(),
             thumbnail_url: None,
             added_at: Utc::now(),
+            earliest_sync_date: None,
+            earliest_sync_date_user_set: false,
         };
         insert_channel(&conn, &channel).await.unwrap();
 
@@ -949,6 +1031,8 @@ mod tests {
             name: "Eval 2".to_string(),
             thumbnail_url: None,
             added_at: Utc::now(),
+            earliest_sync_date: None,
+            earliest_sync_date_user_set: false,
         };
         insert_channel(&conn, &channel).await.unwrap();
 
@@ -993,6 +1077,8 @@ mod tests {
             name: "Eval 3".to_string(),
             thumbnail_url: None,
             added_at: Utc::now(),
+            earliest_sync_date: None,
+            earliest_sync_date_user_set: false,
         };
         insert_channel(&conn, &channel).await.unwrap();
 
@@ -1064,6 +1150,8 @@ mod tests {
             name: "Regen".to_string(),
             thumbnail_url: None,
             added_at: Utc::now(),
+            earliest_sync_date: None,
+            earliest_sync_date_user_set: false,
         };
         insert_channel(&conn, &channel).await.unwrap();
 
@@ -1129,6 +1217,8 @@ mod tests {
             name: "Queue".to_string(),
             thumbnail_url: None,
             added_at: Utc::now(),
+            earliest_sync_date: None,
+            earliest_sync_date_user_set: false,
         };
         insert_channel(&conn, &channel).await.unwrap();
 
@@ -1215,6 +1305,8 @@ mod tests {
             name: "Refresh".to_string(),
             thumbnail_url: None,
             added_at: Utc::now(),
+            earliest_sync_date: None,
+            earliest_sync_date_user_set: false,
         };
         insert_channel(&conn, &channel).await.unwrap();
 
@@ -1267,6 +1359,8 @@ mod tests {
             name: "Filter".to_string(),
             thumbnail_url: None,
             added_at: Utc::now(),
+            earliest_sync_date: None,
+            earliest_sync_date_user_set: false,
         };
         insert_channel(&conn, &channel).await.unwrap();
 
@@ -1286,22 +1380,66 @@ mod tests {
         .await
         .unwrap();
 
-        let all_videos = list_videos_by_channel(&conn, "UCF", 10, 0, None, None)
+        let all_videos = list_videos_by_channel(&conn, "UCF", 10, 0, None, None, false)
             .await
             .unwrap();
         assert_eq!(all_videos.len(), 2);
 
-        let long_only = list_videos_by_channel(&conn, "UCF", 10, 0, Some(false), None)
+        let long_only = list_videos_by_channel(&conn, "UCF", 10, 0, Some(false), None, false)
             .await
             .unwrap();
         assert_eq!(long_only.len(), 1);
         assert_eq!(long_only[0].id, "long_vid");
 
-        let short_only = list_videos_by_channel(&conn, "UCF", 10, 0, Some(true), None)
+        let short_only = list_videos_by_channel(&conn, "UCF", 10, 0, Some(true), None, false)
             .await
             .unwrap();
         assert_eq!(short_only.len(), 1);
         assert_eq!(short_only[0].id, "short_vid");
+    }
+
+    #[tokio::test]
+    async fn test_list_videos_by_channel_queue_only_filter() {
+        let pool = init_db_memory().await.unwrap();
+        let conn = pool.lock().await;
+
+        let channel = Channel {
+            id: "UCQ".to_string(),
+            handle: None,
+            name: "Queue".to_string(),
+            thumbnail_url: None,
+            added_at: Utc::now(),
+            earliest_sync_date: None,
+            earliest_sync_date_user_set: false,
+        };
+        insert_channel(&conn, &channel).await.unwrap();
+
+        conn.execute(
+            "INSERT INTO videos (id, channel_id, title, thumbnail_url, published_at, transcript_status, summary_status, is_short)
+             VALUES (?1, ?2, ?3, NULL, ?4, 'ready', 'ready', 0)",
+            params!["ready_vid", "UCQ", "Ready", Utc::now().to_rfc3339()],
+        )
+        .await
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO videos (id, channel_id, title, thumbnail_url, published_at, transcript_status, summary_status, is_short)
+             VALUES (?1, ?2, ?3, NULL, ?4, 'pending', 'pending', 0)",
+            params!["queued_vid", "UCQ", "Queued", Utc::now().to_rfc3339()],
+        )
+        .await
+        .unwrap();
+
+        let all = list_videos_by_channel(&conn, "UCQ", 10, 0, None, None, false)
+            .await
+            .unwrap();
+        assert_eq!(all.len(), 2);
+
+        let queued_only = list_videos_by_channel(&conn, "UCQ", 10, 0, None, None, true)
+            .await
+            .unwrap();
+        assert_eq!(queued_only.len(), 1);
+        assert_eq!(queued_only[0].id, "queued_vid");
     }
 
     #[tokio::test]
@@ -1315,6 +1453,8 @@ mod tests {
             name: "Info".to_string(),
             thumbnail_url: None,
             added_at: Utc::now(),
+            earliest_sync_date: None,
+            earliest_sync_date_user_set: false,
         };
         insert_channel(&conn, &channel).await.unwrap();
 
@@ -1387,6 +1527,8 @@ mod tests {
             name: "Gap A".to_string(),
             thumbnail_url: None,
             added_at: Utc::now(),
+            earliest_sync_date: None,
+            earliest_sync_date_user_set: false,
         };
         let channel_b = Channel {
             id: "UC_GAP_B".to_string(),
@@ -1394,6 +1536,8 @@ mod tests {
             name: "Gap B".to_string(),
             thumbnail_url: None,
             added_at: Utc::now(),
+            earliest_sync_date: None,
+            earliest_sync_date_user_set: false,
         };
         insert_channel(&conn, &channel_a).await.unwrap();
         insert_channel(&conn, &channel_b).await.unwrap();

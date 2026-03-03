@@ -10,7 +10,7 @@ The workspace only exposes transcript and summary views. Users cannot quickly in
 
 ## Non-Goals
 - Editing metadata in the app.
-- Persisting a full metadata cache in SQLite.
+- Persisting a full metadata cache in Turso.
 
 ## Backend Changes
 - Add `GET /api/videos/{id}/info` endpoint.

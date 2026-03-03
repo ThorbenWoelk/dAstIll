@@ -7,6 +7,14 @@ export interface Channel {
 	name: string;
 	thumbnail_url?: string | null;
 	added_at: string;
+	earliest_sync_date?: string | null;
+	earliest_sync_date_user_set?: boolean;
+}
+
+export interface SyncDepth {
+	earliest_sync_date: string | null;
+	earliest_sync_date_user_set: boolean;
+	derived_earliest_ready_date: string | null;
 }
 
 export interface Video {

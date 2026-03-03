@@ -10,32 +10,6 @@
 		year: "numeric",
 	});
 
-	const statusLabel = (status: Video["transcript_status"]) => {
-		switch (status) {
-			case "ready":
-				return "ready";
-			case "loading":
-				return "generating";
-			case "failed":
-				return "failed";
-			default:
-				return "queued";
-		}
-	};
-
-	const statusHighlightClass = (status: Video["transcript_status"]) => {
-		switch (status) {
-			case "ready":
-				return "text-emerald-700 bg-emerald-50/50";
-			case "loading":
-				return "text-[var(--accent)] bg-[var(--accent)]/5 animate-pulse";
-			case "failed":
-				return "text-rose-700 bg-rose-50/50";
-			default:
-				return "text-stone-500 bg-stone-100/50";
-		}
-	};
-
 	const formatDate = (value: string) => {
 		const date = new Date(value);
 		if (Number.isNaN(date.getTime())) {
@@ -47,15 +21,15 @@
 
 <button
 	type="button"
-	class={`group flex h-full w-full min-w-0 flex-col gap-3 rounded-2xl p-3 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)] ${
+	class={`group flex h-full w-full min-w-0 flex-col gap-3.5 rounded-[var(--radius-md)] p-3 text-left transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)] ${
 		active
-			? "bg-[var(--surface)] shadow-[0_4px_24px_rgba(0,0,0,0.02)] border border-[var(--border)]"
-			: "border border-transparent hover:bg-white/40 hover:border-[var(--border)]"
+			? "bg-[var(--surface)] shadow-[0_12px_32px_-8px_rgba(0,0,0,0.06)] border border-[var(--border)]"
+			: "border border-transparent hover:bg-[var(--surface)]/60 hover:border-[var(--border-soft)]"
 	}`}
 	onclick={onSelect}
 >
 	<div
-		class="aspect-video w-full overflow-hidden rounded-xl bg-[var(--muted)]"
+		class="aspect-video w-full overflow-hidden rounded-[var(--radius-md)] bg-[var(--muted)] relative"
 	>
 		{#if video.thumbnail_url}
 			<img
@@ -64,84 +38,57 @@
 				width="480"
 				height="270"
 				loading="lazy"
-				class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
+				class="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
 			/>
+			<div class="absolute inset-0 bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
 		{:else}
 			<div
-				class="flex h-full w-full items-center justify-center text-xs uppercase tracking-[0.3em] text-[var(--soft-foreground)]"
+				class="flex h-full w-full items-center justify-center text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--soft-foreground)] opacity-50"
 			>
-				Video
+				No Preview
 			</div>
 		{/if}
 	</div>
 	<div class="flex min-w-0 flex-1 flex-col gap-1.5 px-0.5">
 		<p
-			class="line-clamp-2 min-h-[2.5rem] break-words text-sm font-semibold leading-relaxed text-[var(--foreground)]"
+			class="line-clamp-2 min-h-[2.8rem] break-words text-[14.5px] font-bold leading-[1.35] tracking-tight text-[var(--foreground)] transition-colors duration-300 group-hover:text-[var(--accent-strong)]"
 		>
 			{video.title}
 		</p>
-		<p class="text-xs text-[var(--soft-foreground)]">
-			{formatDate(video.published_at)}
-		</p>
-		<div class="mt-2 text-[10.5px] font-medium tracking-wide">
-			{#if video.transcript_status === "loading" || video.summary_status === "loading"}
-				<span
-					class="text-[var(--accent)] animate-pulse flex items-center gap-1.5"
-				>
-					<svg
-						width="12"
-						height="12"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="2.5"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						class="animate-spin"
-						><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg
+		<div class="flex items-center justify-between mt-auto">
+			<p class="text-[11.5px] font-medium tracking-wide text-[var(--soft-foreground)] opacity-60">
+				{formatDate(video.published_at)}
+			</p>
+			<div class="text-[10px] font-bold tracking-[0.05em]">
+				{#if video.transcript_status === "loading" || video.summary_status === "loading"}
+					<span
+						class="text-[var(--accent)] flex items-center gap-1.5"
 					>
-					Distilling knowledge...
-				</span>
-			{:else if video.transcript_status === "ready" && video.summary_status === "ready"}{:else if video.transcript_status === "failed" || video.summary_status === "failed"}
-				<span class="text-rose-600/80 flex items-center gap-1.5">
-					<svg
-						width="12"
-						height="12"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="2.5"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						><circle cx="12" cy="12" r="10" /><line
-							x1="12"
-							y1="8"
-							x2="12"
-							y2="12"
-						/><line x1="12" y1="16" x2="12.01" y2="16" /></svg
+						<span class="relative flex h-1.5 w-1.5">
+							<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--accent)] opacity-75"></span>
+							<span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-[var(--accent)]"></span>
+						</span>
+						DISTILLING
+					</span>
+				{:else if video.transcript_status === "failed" || video.summary_status === "failed"}
+					<span class="text-rose-600 flex items-center gap-1.5 opacity-80">
+						<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+						FAILED
+					</span>
+				{:else if video.transcript_status === "ready" && video.summary_status === "ready"}
+					<span class="text-[var(--soft-foreground)] opacity-40 group-hover:opacity-100 transition-opacity duration-300 flex items-center gap-1.5">
+						<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+						READY
+					</span>
+				{:else}
+					<span
+						class="text-[var(--soft-foreground)] flex items-center gap-1.5 opacity-60"
 					>
-					Distillation failed
-				</span>
-			{:else}
-				<span
-					class="text-[var(--soft-foreground)] flex items-center gap-1.5"
-				>
-					<svg
-						width="12"
-						height="12"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="2.5"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						><circle cx="12" cy="12" r="10" /><polyline
-							points="12 6 12 12 16 14"
-						/></svg
-					>
-					Queued for processing
-				</span>
-			{/if}
+						<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+						QUEUED
+					</span>
+				{/if}
+			</div>
 		</div>
 	</div>
 </button>

@@ -171,6 +171,7 @@ async fn fill_channel_gaps(
     state: &AppState,
     channel_id: &str,
     limit: usize,
+    until: Option<chrono::DateTime<chrono::Utc>>,
 ) -> Result<usize, String> {
     let known_video_ids = {
         let conn = state.db.lock().await;
@@ -181,9 +182,9 @@ async fn fill_channel_gaps(
             .collect::<HashSet<_>>()
     };
 
-    let videos = state
+    let (videos, _exhausted) = state
         .youtube
-        .fetch_videos_backfill_missing(channel_id, &known_video_ids, limit)
+        .fetch_videos_backfill_missing(channel_id, &known_video_ids, limit, until)
         .await
         .map_err(|err| err.to_string())?;
 
@@ -224,7 +225,14 @@ async fn scan_all_channels_for_gaps(state: &AppState) {
     );
 
     for channel in channels {
-        match fill_channel_gaps(state, &channel.id, CHANNEL_GAP_SCAN_LIMIT_PER_CHANNEL).await {
+        match fill_channel_gaps(
+            state,
+            &channel.id,
+            CHANNEL_GAP_SCAN_LIMIT_PER_CHANNEL,
+            channel.earliest_sync_date,
+        )
+        .await
+        {
             Ok(inserted) if inserted > 0 => {
                 tracing::info!(
                     channel_id = %channel.id,
