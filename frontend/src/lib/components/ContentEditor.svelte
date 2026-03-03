@@ -16,6 +16,7 @@
 	export let onChange: (next: string) => void = () => {};
 	export let onAcknowledgeToggle: (() => void) | undefined = undefined;
 	export let acknowledged = false;
+	export let aiAvailable = true;
 </script>
 
 {#if editing}
@@ -26,11 +27,17 @@
 					type="button"
 					class="inline-flex h-10 w-10 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--border-soft)] bg-[var(--background)] transition-all hover:border-[var(--accent)]/40 hover:text-[var(--accent)] hover:shadow-sm disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
 					onclick={onFormat}
-					disabled={busy || formatting || reverting}
+					disabled={busy || formatting || reverting || !aiAvailable}
 					aria-label={formatting
 						? "Formatting transcript"
-						: "Clean formatting"}
-					title={formatting ? "Formatting…" : "Clean formatting"}
+						: aiAvailable
+							? "Clean formatting"
+							: "Ollama offline"}
+					title={formatting
+						? "Formatting…"
+						: aiAvailable
+							? "Clean formatting"
+							: "Ollama offline"}
 				>
 					{#if formatting}
 						<svg
@@ -199,11 +206,17 @@
 				type="button"
 				class="inline-flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] text-[var(--soft-foreground)] border border-transparent hover:border-[var(--border-soft)] hover:bg-[var(--muted)]/30 hover:text-[var(--foreground)] transition-all disabled:opacity-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
 				onclick={onFormat}
-				disabled={busy || formatting || reverting}
+				disabled={busy || formatting || reverting || !aiAvailable}
 				aria-label={formatting
 					? "Formatting transcript"
-					: "Clean formatting"}
-				title={formatting ? "Formatting…" : "Clean formatting"}
+					: aiAvailable
+						? "Clean formatting"
+						: "Ollama offline"}
+				title={formatting
+					? "Formatting…"
+					: aiAvailable
+						? "Clean formatting"
+						: "Ollama offline"}
 			>
 				{#if formatting}
 					<svg

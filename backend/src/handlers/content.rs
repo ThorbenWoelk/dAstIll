@@ -172,6 +172,11 @@ pub async fn get_summary(
     Ok(Json(summary))
 }
 
+pub async fn health_ai(State(state): State<AppState>) -> impl IntoResponse {
+    let available = state.summarizer.is_available().await;
+    Json(serde_json::json!({ "available": available }))
+}
+
 pub async fn update_summary(
     State(state): State<AppState>,
     Path(video_id): Path<String>,

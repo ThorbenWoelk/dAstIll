@@ -91,6 +91,10 @@ export function listChannels() {
 	return request<Channel[]>('/api/channels');
 }
 
+export function isAiAvailable() {
+	return request<{ available: boolean }>('/api/health/ai');
+}
+
 export function isBackendUnavailableError(
 	error: unknown
 ): error is BackendUnavailableError {
