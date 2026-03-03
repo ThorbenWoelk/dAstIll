@@ -2,6 +2,13 @@
 
 This project is set up to be deployed on **Google Cloud Run** using **Terraform** for IaC and **GitHub Actions** for CI/CD.
 
+## Versioning
+
+The project uses unified versioning (`1.0.0`) across:
+- `backend/Cargo.toml`
+- `frontend/package.json`
+- UI displays and documentation.
+
 ## Prerequisites
 
 1.  A GCP Project.
