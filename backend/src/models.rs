@@ -8,6 +8,9 @@ pub struct Channel {
     pub name: String,
     pub thumbnail_url: Option<String>,
     pub added_at: DateTime<Utc>,
+    pub earliest_sync_date: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub earliest_sync_date_user_set: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -108,6 +111,12 @@ pub struct SummaryEvaluationResult {
 #[derive(Debug, Deserialize)]
 pub struct AddChannelRequest {
     pub input: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateChannelRequest {
+    pub earliest_sync_date: Option<DateTime<Utc>>,
+    pub earliest_sync_date_user_set: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]

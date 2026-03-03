@@ -48,22 +48,23 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    let db_url = std::env::var("DB_URL").ok();
+    let db_url = std::env::var("DB_URL")
+        .map_err(|_| anyhow::anyhow!("DB_URL must be set (Turso database URL)"))?;
     let db_pass = std::env::var("DB_PASS").unwrap_or_default();
 
-    let database = if let Some(url) = db_url {
-        tracing::info!(url = %url, "connecting to remote Turso database");
-        libsql::Builder::new_remote(url, db_pass).build().await?
-    } else {
-        let db_path = std::env::var("DATABASE_URL").unwrap_or_else(|_| "dastill.db".to_string());
-        tracing::info!(path = %db_path, "using local database");
-        libsql::Builder::new_local(&db_path).build().await?
-    };
+    tracing::info!(url = %db_url, "connecting to Turso database");
+    let database = libsql::Builder::new_remote(db_url, db_pass).build().await?;
 
     let pool = init_db(database).await.map_err(|e| anyhow::anyhow!(e))?;
 
     let client = build_http_client();
     let youtube = Arc::new(YouTubeService::with_client(client.clone()));
+    match youtube.validate_data_api_key().await {
+        Ok(Some(true)) => tracing::info!("YOUTUBE_API_KEY is configured and valid"),
+        Ok(Some(false)) => tracing::warn!("YOUTUBE_API_KEY is configured but invalid"),
+        Ok(None) => tracing::info!("YOUTUBE_API_KEY is not configured - using fallback sources"),
+        Err(err) => tracing::warn!(error = %err, "could not validate YOUTUBE_API_KEY on startup"),
+    }
 
     let summarize_path = std::env::var("SUMMARIZE_PATH")
         .unwrap_or_else(|_| "/opt/homebrew/bin/summarize".to_string());
@@ -106,7 +107,13 @@ async fn main() -> anyhow::Result<()> {
         )
         .route(
             "/api/channels/{id}",
-            get(channels::get_channel).delete(channels::delete_channel),
+            get(channels::get_channel)
+                .delete(channels::delete_channel)
+                .put(channels::update_channel),
+        )
+        .route(
+            "/api/channels/{id}/sync-depth",
+            get(channels::get_channel_sync_depth),
         )
         .route(
             "/api/channels/{id}/refresh",
