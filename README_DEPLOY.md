@@ -4,7 +4,7 @@ This project is set up to be deployed on **Google Cloud Run** using **Terraform*
 
 ## Versioning
 
-The project uses unified versioning (`1.0.0`) across:
+The project uses unified versioning (`0.1.0`) across:
 - `backend/Cargo.toml`
 - `frontend/package.json`
 - UI displays and documentation.
