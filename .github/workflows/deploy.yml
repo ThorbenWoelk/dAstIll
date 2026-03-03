@@ -1,0 +1,70 @@
+name: Deploy
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  REGION: europe-west3
+  REPO_ID: dastill
+  BACKEND_SERVICE: dastill-backend
+  FRONTEND_SERVICE: dastill-frontend
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Google Auth
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+        service_account: ${{ secrets.GCP_WIF_SA_EMAIL }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Configure Docker
+      run: gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
+
+    - name: Build and Push Backend Image
+      run: |
+        docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/backend:$IMAGE_TAG ./backend
+        docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/backend:$IMAGE_TAG
+        docker tag $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/backend:$IMAGE_TAG $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/backend:latest
+        docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/backend:latest
+
+    - name: Deploy Backend to Cloud Run (to get URL)
+      id: deploy-backend
+      uses: google-github-actions/deploy-cloudrun@v2
+      with:
+        service: ${{ env.BACKEND_SERVICE }}
+        region: ${{ env.REGION }}
+        image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_ID }}/backend:${{ env.IMAGE_TAG }}
+
+    - name: Build and Push Frontend Image
+      run: |
+        # Pass the backend URL to the frontend build
+        docker build 
+          --build-arg VITE_API_BASE=${{ steps.deploy-backend.outputs.url }} 
+          -t $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/frontend:$IMAGE_TAG ./frontend
+        docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/frontend:$IMAGE_TAG
+        docker tag $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/frontend:$IMAGE_TAG $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/frontend:latest
+        docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/frontend:latest
+
+    - name: Deploy Frontend to Cloud Run
+      id: deploy-frontend
+      uses: google-github-actions/deploy-cloudrun@v2
+      with:
+        service: ${{ env.FRONTEND_SERVICE }}
+        region: ${{ env.REGION }}
+        image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_ID }}/frontend:${{ env.IMAGE_TAG }}
