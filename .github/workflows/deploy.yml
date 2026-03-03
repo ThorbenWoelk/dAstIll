@@ -3,6 +3,8 @@ name: Deploy
 on:
   push:
     branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
   workflow_dispatch:
 
 env:
@@ -54,8 +56,8 @@ jobs:
     - name: Build and Push Frontend Image
       run: |
         # Pass the backend URL to the frontend build
-        docker build 
-          --build-arg VITE_API_BASE=${{ steps.deploy-backend.outputs.url }} 
+        docker build \
+          --build-arg VITE_API_BASE=${{ steps.deploy-backend.outputs.url }} \
           -t $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/frontend:$IMAGE_TAG ./frontend
         docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/frontend:$IMAGE_TAG
         docker tag $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/frontend:$IMAGE_TAG $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/frontend:latest
