@@ -5,11 +5,11 @@
 </script>
 
 <svelte:head>
-	<title>DASTILL v1.0</title>
+	<title>DASTILL v1.0.0</title>
 	<meta name="theme-color" content="#f8f1ec" />
 	<meta
 		name="description"
-		content="DASTILL v1.0 - follow channels, process transcripts, evaluate summary quality, and manage your video distillation workspace."
+		content="DASTILL v1.0.0 - follow channels, process transcripts, evaluate summary quality, and manage your video distillation workspace."
 	/>
 	<link rel="preconnect" href="https://fonts.googleapis.com" />
 	<link
