@@ -1,18 +1,22 @@
 <script lang="ts">
-	import { onMount } from "svelte";
+	import { onMount, tick } from "svelte";
 	import {
 		addChannel,
 		backfillChannelVideos,
 		cleanTranscriptFormatting,
+		deleteChannel,
+		getChannelSyncDepth,
 		getVideoInfo,
 		getSummary,
 		getTranscript,
 		listChannels,
+		listChannelsWhenAvailable,
 		listVideos,
 		refreshChannel,
 		updateSummary,
 		updateTranscript,
 		updateAcknowledged,
+		updateChannel,
 	} from "$lib/api";
 	import ChannelCard from "$lib/components/ChannelCard.svelte";
 	import ContentEditor from "$lib/components/ContentEditor.svelte";
@@ -27,8 +31,11 @@
 		VideoTypeFilter,
 	} from "$lib/types";
 	import {
+		applySavedChannelOrder,
 		prioritizeChannelOrder,
 		resolveInitialChannelSelection,
+		WORKSPACE_STATE_KEY,
+		type WorkspaceStateSnapshot,
 	} from "$lib/channel-workspace";
 	import {
 		normalizeTranscriptForRender,
@@ -40,21 +47,10 @@
 
 	const channelSubmitButtonClass =
 		"inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface)] text-xl leading-none text-[var(--accent)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)]";
-	const WORKSPACE_STATE_KEY = "dastill.workspace.state.v1";
 	const FORMAT_MAX_TURNS = 5;
 	const FORMAT_HARD_TIMEOUT_MINUTES = 5;
 
 	type AcknowledgedFilter = "all" | "unack" | "ack";
-
-	type WorkspaceStateSnapshot = {
-		selectedChannelId: string | null;
-		selectedVideoId: string | null;
-		contentMode: "transcript" | "summary" | "info";
-		videoTypeFilter: VideoTypeFilter;
-		hideShorts?: boolean;
-		acknowledgedFilter?: AcknowledgedFilter;
-		channelOrder?: string[];
-	};
 
 	let channels = $state<Channel[]>([]);
 	let channelOrder = $state<string[]>([]);
@@ -68,11 +64,17 @@
 	let loadingChannels = $state(false);
 	let loadingVideos = $state(false);
 	let loadingContent = $state(false);
+	let waitingForBackend = $state(false);
 	let addingChannel = $state(false);
 	let errorMessage = $state<string | null>(null);
 	let summaryQualityScore = $state<number | null>(null);
 	let summaryQualityNote = $state<string | null>(null);
 	let videoInfo = $state<VideoInfoPayload | null>(null);
+	let syncDepth = $state<{
+		earliest_sync_date: string | null;
+		earliest_sync_date_user_set: boolean;
+		derived_earliest_ready_date: string | null;
+	} | null>(null);
 
 	let contentMode = $state<"transcript" | "summary" | "info">("transcript");
 	let contentText = $state("");
@@ -101,15 +103,18 @@
 	let activeContentRequestId = 0;
 
 	let offset = $state(0);
-	const limit = 12;
+	const limit = 20;
 	let hasMore = $state(true);
 	let historyExhausted = $state(false);
 	let backfillingHistory = $state(false);
+
 	let videoTypeFilter = $state<VideoTypeFilter>("all");
 	let acknowledgedFilter = $state<AcknowledgedFilter>("all");
 	let workspaceStateHydrated = $state(false);
 	let filterMenuOpen = $state(false);
-	let filterMenuContainer: HTMLDivElement | null = null;
+	let filterMenuContainer = $state<HTMLDivElement | null>(null);
+	let videoListContainer = $state<HTMLDivElement | null>(null);
+	let atVideoListBottom = $state(false);
 	let filterMenuLabel = $derived(
 		videoTypeFilter === "all"
 			? "Open video filter menu."
@@ -119,6 +124,75 @@
 	const selectedChannel = $derived(
 		channels.find((channel) => channel.id === selectedChannelId) ?? null,
 	);
+
+	function resolveOldestLoadedVideoDate(): Date | null {
+		let oldest: Date | null = null;
+		for (const video of videos) {
+			if (
+				video.transcript_status !== "ready" ||
+				video.summary_status !== "ready"
+			)
+				continue;
+			const parsed = new Date(video.published_at);
+			if (Number.isNaN(parsed.getTime())) continue;
+			if (!oldest || parsed < oldest) {
+				oldest = parsed;
+			}
+		}
+		return oldest;
+	}
+
+	function resolveDisplayedSyncDepthIso(): string | null {
+		const oldestLoaded = resolveOldestLoadedVideoDate();
+		if (oldestLoaded) {
+			return oldestLoaded.toISOString();
+		}
+		if (selectedChannel?.earliest_sync_date_user_set) {
+			return selectedChannel.earliest_sync_date ?? null;
+		}
+		return (
+			syncDepth?.derived_earliest_ready_date ??
+			selectedChannel?.earliest_sync_date ??
+			null
+		);
+	}
+
+	async function loadSyncDepth() {
+		if (!selectedChannelId) {
+			syncDepth = null;
+			return;
+		}
+		try {
+			syncDepth = await getChannelSyncDepth(selectedChannelId);
+		} catch {
+			syncDepth = null;
+		}
+	}
+
+	async function syncEarliestDateFromLoadedVideos() {
+		if (!selectedChannelId || !selectedChannel) return;
+		if (selectedChannel.earliest_sync_date_user_set) return;
+
+		const oldest = resolveOldestLoadedVideoDate();
+		if (!oldest) return;
+
+		const currentEarliest = selectedChannel.earliest_sync_date
+			? new Date(selectedChannel.earliest_sync_date)
+			: null;
+		const shouldPushBack =
+			!currentEarliest ||
+			Number.isNaN(currentEarliest.getTime()) ||
+			oldest < currentEarliest;
+		if (!shouldPushBack) return;
+
+		const updated = await updateChannel(selectedChannelId, {
+			earliest_sync_date: oldest.toISOString(),
+		});
+		channels = channels.map((channel) =>
+			channel.id === selectedChannelId ? updated : channel,
+		);
+		void loadSyncDepth();
+	}
 	const selectedVideoYoutubeUrl = $derived(
 		selectedVideoId
 			? `https://www.youtube.com/watch?v=${selectedVideoId}`
@@ -126,7 +200,7 @@
 	);
 	const selectedOriginalTranscript = $derived(
 		selectedVideoId
-			? originalTranscriptByVideoId[selectedVideoId] ?? null
+			? (originalTranscriptByVideoId[selectedVideoId] ?? null)
 			: null,
 	);
 	const canRevertTranscript = $derived(
@@ -151,28 +225,6 @@
 
 	function stripPrefix(text: string): string {
 		return text.replace(/^(?:Transcript|Summary):\s*/i, "").trimStart();
-	}
-
-	function applySavedChannelOrder(nextChannels: Channel[]) {
-		if (channelOrder.length === 0) return nextChannels;
-		const byId = new Map(nextChannels.map((channel) => [channel.id, channel]));
-		const ordered: Channel[] = [];
-		const seen = new Set<string>();
-
-		for (const id of channelOrder) {
-			const channel = byId.get(id);
-			if (!channel) continue;
-			ordered.push(channel);
-			seen.add(id);
-		}
-
-		for (const channel of nextChannels) {
-			if (!seen.has(channel.id)) {
-				ordered.push(channel);
-			}
-		}
-
-		return ordered;
 	}
 
 	function syncChannelOrderFromList() {
@@ -223,6 +275,15 @@
 		return new Intl.DateTimeFormat(undefined, {
 			dateStyle: "long",
 			timeStyle: "short",
+		}).format(date);
+	}
+
+	function formatSyncDate(value: string | null | undefined) {
+		if (!value) return "Unknown";
+		const date = new Date(value);
+		if (Number.isNaN(date.getTime())) return "Unknown";
+		return new Intl.DateTimeFormat(undefined, {
+			dateStyle: "long",
 		}).format(date);
 	}
 
@@ -312,7 +373,8 @@
 	onMount(() => {
 		restoreWorkspaceState();
 		workspaceStateHydrated = true;
-		void loadChannels();
+		waitingForBackend = true;
+		void loadChannels(null, true);
 
 		const handlePointerDown = (event: PointerEvent) => {
 			if (!filterMenuOpen || !filterMenuContainer) return;
@@ -327,15 +389,21 @@
 		};
 	});
 
-	async function loadChannels(preferredChannelId: string | null = null) {
+	async function loadChannels(
+		preferredChannelId: string | null = null,
+		retryUntilBackendReachable = false,
+	) {
 		loadingChannels = true;
 		errorMessage = null;
 		let initialChannelId: string | null = null;
 		let preferredVideoId: string | null = null;
 
 		try {
-			const fetchedChannels = await listChannels();
-			channels = applySavedChannelOrder(fetchedChannels);
+			const fetchedChannels = retryUntilBackendReachable
+				? await listChannelsWhenAvailable()
+				: await listChannels();
+			waitingForBackend = false;
+			channels = applySavedChannelOrder(fetchedChannels, channelOrder);
 			syncChannelOrderFromList();
 			initialChannelId = resolveInitialChannelSelection(
 				channels,
@@ -352,6 +420,7 @@
 						: null;
 			}
 		} catch (error) {
+			waitingForBackend = false;
 			errorMessage = (error as Error).message;
 		} finally {
 			loadingChannels = false;
@@ -431,6 +500,34 @@
 		event.preventDefault();
 		handleAddChannel(channelInput);
 	}
+
+	async function handleDeleteChannel(channelId: string) {
+		if (
+			!confirm(
+				"Are you sure you want to delete this channel? All its downloaded data will be removed.",
+			)
+		)
+			return;
+		try {
+			await deleteChannel(channelId);
+			channelOrder = channelOrder.filter((id) => id !== channelId);
+			if (selectedChannelId === channelId) {
+				selectedChannelId = null;
+				selectedVideoId = null;
+			}
+			await loadChannels(selectedChannelId);
+		} catch (error) {
+			errorMessage = (error as Error).message;
+		}
+	}
+
+	$effect(() => {
+		if (selectedChannelId) {
+			void loadSyncDepth();
+		} else {
+			syncDepth = null;
+		}
+	});
 
 	async function selectChannel(
 		channelId: string,
@@ -540,6 +637,7 @@
 
 		if (hasMore) {
 			await loadVideos(false);
+			await syncEarliestDateFromLoadedVideos();
 			return;
 		}
 
@@ -547,19 +645,17 @@
 		errorMessage = null;
 
 		try {
-			const result = await backfillChannelVideos(
-				selectedChannelId,
-				limit,
-			);
-			if (result.fetched_count === 0 || result.videos_added === 0) {
+			// Try to backfill a batch of 50
+			const result = await backfillChannelVideos(selectedChannelId, 50);
+
+			// Use the explicit flag from backend to know if we hit the actual end of YouTube results
+			if (result.exhausted) {
 				historyExhausted = true;
-				return;
 			}
 
+			// Load the newly added videos (if any) or just try to see if we can find more older ones
 			await loadVideos(false);
-			if (result.fetched_count < limit && !hasMore) {
-				historyExhausted = true;
-			}
+			await syncEarliestDateFromLoadedVideos();
 		} catch (error) {
 			errorMessage = (error as Error).message;
 		} finally {
@@ -568,6 +664,7 @@
 	}
 
 	async function selectVideo(videoId: string) {
+		if (videoId === selectedVideoId) return;
 		selectedVideoId = videoId;
 		resetSummaryQuality();
 		resetVideoInfo();
@@ -790,8 +887,7 @@
 			} else if (!result.preserved_text) {
 				errorMessage =
 					"Formatting changed transcript words. Original transcript text was kept.";
-				formattingNotice =
-					`Safety guard kept original wording. Only spacing changes are allowed. ${attemptsSummary}`;
+				formattingNotice = `Safety guard kept original wording. Only spacing changes are allowed. ${attemptsSummary}`;
 				formattingNoticeVideoId = targetVideoId;
 				formattingNoticeTone = "warning";
 			}
@@ -841,7 +937,10 @@
 				formattingNotice =
 					"Draft reset to original transcript. Save to persist.";
 			} else {
-				const transcript = await updateTranscript(targetVideoId, original);
+				const transcript = await updateTranscript(
+					targetVideoId,
+					original,
+				);
 				if (selectedVideoId === targetVideoId && !editing) {
 					contentText = stripPrefix(
 						transcript.formatted_markdown ||
@@ -929,13 +1028,33 @@
 		}
 	}
 
+	function updateVideoListBottomState() {
+		if (!videoListContainer) {
+			atVideoListBottom = false;
+			return;
+		}
+		const thresholdPx = 12;
+		atVideoListBottom =
+			videoListContainer.scrollTop + videoListContainer.clientHeight >=
+			videoListContainer.scrollHeight - thresholdPx;
+	}
+
 	async function refreshSummaryQuality() {
-		if (!selectedVideoId || contentMode !== "summary" || editing || loadingContent)
+		if (
+			!selectedVideoId ||
+			contentMode !== "summary" ||
+			editing ||
+			loadingContent
+		)
 			return;
 		const targetVideoId = selectedVideoId;
 		try {
 			const summary = await getSummary(targetVideoId);
-			if (selectedVideoId !== targetVideoId || contentMode !== "summary" || editing)
+			if (
+				selectedVideoId !== targetVideoId ||
+				contentMode !== "summary" ||
+				editing
+			)
 				return;
 			applySummaryQuality(summary);
 		} catch {
@@ -960,6 +1079,13 @@
 		}, 7000);
 		return () => clearInterval(timer);
 	});
+
+	$effect(() => {
+		selectedChannelId;
+		videos.length;
+		loadingVideos;
+		void tick().then(updateVideoListBottomState);
+	});
 </script>
 
 <svelte:window onkeydown={handleWindowKeydown} />
@@ -972,570 +1098,877 @@
 		Skip to Main Content
 	</a>
 
-	<header class="mx-auto flex w-full max-w-[1440px] flex-col gap-5">
-		<div
-			class="flex flex-col justify-between gap-4 md:flex-row md:items-end px-2"
-		>
-			<div class="max-w-3xl space-y-2">
-				<p
-					class="text-xs font-semibold uppercase tracking-[0.35em] text-[var(--accent)]"
-				>
-					DASTILL v1.0
-				</p>
-				<h1
-					class="text-balance text-3xl font-bold tracking-tight sm:text-4xl text-[var(--foreground)]"
-				>
-					Follow Channels &amp; Distill Knowledge
-				</h1>
-				<p
-					class="max-w-2xl font-serif text-[17px] text-[var(--soft-foreground)]"
-				>
-					Track new uploads, extract transcripts, and refine summaries
-					from one focused workspace.
-				</p>
-			</div>
+	<header
+		class="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-6 px-4 sm:px-2 fade-in border-b border-[var(--border-soft)] pb-4 mb-2"
+	>
+		<div class="flex items-center gap-4">
+			<h1
+				class="text-3xl font-bold tracking-tighter text-[var(--foreground)]"
+			>
+				DASTILL
+			</h1>
+			<span class="hidden sm:block h-5 w-px bg-[var(--border-soft)]"
+			></span>
+			<p
+				class="hidden sm:block text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--accent)] opacity-60"
+			>
+				v1.0
+			</p>
 		</div>
 
 		<nav
-			class="flex flex-wrap items-center gap-2 rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-1.5 px-2"
+			class="flex items-center gap-1 rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface)] p-1 shadow-sm"
 			aria-label="Workspace sections"
 		>
 			<a
 				href="#workspace"
-				class="rounded-full bg-[var(--muted)]/50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.15em] text-[var(--foreground)] transition-colors hover:text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)]"
+				class="rounded-[var(--radius-sm)] bg-[var(--muted)]/60 px-5 py-2 text-[10px] font-bold uppercase tracking-[0.15em] text-[var(--foreground)] transition-all"
 			>
 				Workspace
 			</a>
 			<a
 				href="/download-queue"
-				class="rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.15em] text-[var(--soft-foreground)] transition-colors hover:bg-[var(--muted)]/30 hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)]"
+				class="rounded-[var(--radius-sm)] px-5 py-2 text-[10px] font-bold uppercase tracking-[0.15em] text-[var(--soft-foreground)] opacity-60 transition-all hover:opacity-100 hover:bg-[var(--muted)]/30"
 			>
-				Download Queue
+				Details
 			</a>
 		</nav>
 	</header>
 
-	<main
-		id="main-content"
-		class="mx-auto mt-6 grid w-full max-w-[1440px] items-start gap-8 lg:grid-cols-[280px_320px_minmax(0,1fr)] xl:grid-cols-[280px_360px_minmax(0,1fr)]"
-	>
-		<aside
-			class="flex h-fit flex-col gap-4 rounded-3xl bg-[var(--surface)] border border-[var(--border)] p-4 lg:sticky lg:top-6"
-			id="workspace"
+	{#if waitingForBackend && channels.length === 0}
+		<main
+			id="main-content"
+			class="mx-auto mt-12 grid w-full max-w-[1440px]"
 		>
-			<div class="flex items-center justify-between gap-2 px-1">
-				<h2 class="text-lg font-semibold tracking-tight">Channels</h2>
-			</div>
-
-			<form
-				class="grid gap-3"
-				onsubmit={handleChannelSubmit}
-				aria-label="Follow channel"
+			<section
+				class="flex min-h-[480px] flex-col items-center justify-center gap-8 rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--surface)] p-12 text-center fade-in shadow-sm"
+				role="status"
+				aria-live="polite"
 			>
 				<div
-					class="flex min-w-0 items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--background)] pl-4 pr-1 transition-shadow focus-within:ring-2 focus-within:ring-[var(--accent)] focus-within:ring-offset-2 focus-within:ring-offset-[var(--surface)]"
+					class="relative flex h-12 w-12 items-center justify-center"
 				>
-					<label for="channel-input" class="sr-only"
-						>Add Channel</label
-					>
-					<input
-						id="channel-input"
-						name="channel"
-						autocomplete="off"
-						spellcheck={false}
-						class="min-w-0 flex-1 bg-transparent py-2.5 text-sm placeholder:text-[var(--soft-foreground)] focus-visible:outline-none"
-						placeholder="Handle, URL..."
-						bind:value={channelInput}
-					/>
-					<button
-						type="submit"
-						class={channelSubmitButtonClass}
-						disabled={!channelInput.trim() || addingChannel}
-						aria-label="Follow channel"
-					>
-						+
-					</button>
+					<div
+						class="absolute h-full w-full animate-ping rounded-full bg-[var(--accent)] opacity-10"
+					></div>
+					<div
+						class="h-8 w-8 animate-spin rounded-full border-2 border-[var(--muted)] border-t-[var(--accent)]"
+					></div>
 				</div>
-			</form>
-
-			<div
-				class="flex max-h-[70vh] flex-col gap-2 overflow-y-auto pr-1"
-				aria-busy={loadingChannels}
+				<div class="space-y-3">
+					<p
+						class="text-[11px] font-bold uppercase tracking-[0.3em] text-[var(--accent)]"
+					>
+						Establishing Link
+					</p>
+					<p
+						class="max-w-xs text-[15px] font-medium text-[var(--soft-foreground)] opacity-70"
+					>
+						Waiting for the distillation engine to become reachable.
+					</p>
+				</div>
+			</section>
+		</main>
+	{:else}
+		<main
+			id="main-content"
+			class="mx-auto mt-10 grid w-full max-w-[1440px] items-start gap-10 lg:grid-cols-[280px_320px_minmax(0,1fr)] xl:grid-cols-[280px_380px_minmax(0,1fr)]"
+		>
+			<aside
+				class="flex h-fit flex-col gap-6 rounded-[var(--radius-lg)] bg-[var(--surface)] border border-[var(--border-soft)] p-6 lg:sticky lg:top-8 fade-in stagger-1 shadow-sm"
+				id="workspace"
 			>
-				{#if loadingChannels}
-					<div class="space-y-3" role="status" aria-live="polite">
-						{#each Array.from({ length: 3 }) as _, index (index)}
-							<div
-								class="flex animate-pulse items-center gap-3 rounded-2xl px-3 py-2.5"
+				<div class="flex items-center justify-between gap-2">
+					<h2 class="text-xl font-bold tracking-tight">Channels</h2>
+				</div>
+
+				<form
+					class="grid gap-3"
+					onsubmit={handleChannelSubmit}
+					aria-label="Follow channel"
+				>
+					<div
+						class="flex min-w-0 items-center gap-3 rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--background)] pl-5 pr-1.5 transition-all focus-within:ring-2 focus-within:ring-[var(--accent)]/20 focus-within:border-[var(--accent)]/40"
+					>
+						<label for="channel-input" class="sr-only"
+							>Add Channel</label
+						>
+						<input
+							id="channel-input"
+							name="channel"
+							autocomplete="off"
+							spellcheck={false}
+							class="min-w-0 flex-1 bg-transparent py-3 text-[14px] font-medium placeholder:text-[var(--soft-foreground)] placeholder:opacity-40 focus-visible:outline-none"
+							placeholder="Channel URL or Handle"
+							bind:value={channelInput}
+						/>
+						<button
+							type="submit"
+							class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--foreground)] text-white transition-all hover:bg-[var(--accent-strong)] disabled:opacity-20 disabled:grayscale"
+							disabled={!channelInput.trim() || addingChannel}
+							aria-label="Follow channel"
+						>
+							<svg
+								width="18"
+								height="18"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2.5"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								><line x1="12" y1="5" x2="12" y2="19"
+								></line><line x1="5" y1="12" x2="19" y2="12"
+								></line></svg
 							>
+						</button>
+					</div>
+				</form>
+
+				<div
+					class="flex max-h-[60vh] flex-col gap-1.5 overflow-y-auto pr-1 custom-scrollbar"
+					aria-busy={loadingChannels}
+				>
+					{#if loadingChannels}
+						<div class="space-y-4" role="status" aria-live="polite">
+							{#each Array.from( { length: 4 }, ) as _, index (index)}
 								<div
-									class="h-12 w-12 rounded-full bg-[var(--muted)]"
-								></div>
-								<div class="min-w-0 flex-1 space-y-2">
+									class="flex animate-pulse items-center gap-4 px-3 py-3"
+								>
 									<div
-										class="h-3 w-3/4 rounded-full bg-[var(--muted)]"
+										class="h-10 w-10 shrink-0 rounded-full bg-[var(--muted)] opacity-60"
 									></div>
-									<div
-										class="h-2.5 w-1/2 rounded-full bg-[var(--muted)]/80"
-									></div>
+									<div class="min-w-0 flex-1 space-y-2">
+										<div
+											class="h-3 w-3/4 rounded-full bg-[var(--muted)] opacity-60"
+										></div>
+										<div
+											class="h-2 w-1/2 rounded-full bg-[var(--muted)] opacity-40"
+										></div>
+									</div>
+								</div>
+							{/each}
+						</div>
+					{:else if channels.length === 0}
+						<p
+							class="px-1 text-[14px] font-medium text-[var(--soft-foreground)] opacity-50 italic"
+						>
+							Start by following a channel.
+						</p>
+					{:else}
+						{#each channels as channel}
+							<ChannelCard
+								{channel}
+								active={selectedChannelId === channel.id}
+								draggableEnabled
+								dragging={draggedChannelId === channel.id}
+								dragOver={dragOverChannelId === channel.id &&
+									draggedChannelId !== channel.id}
+								onSelect={() => selectChannel(channel.id)}
+								onDragStart={(event) =>
+									handleChannelDragStart(channel.id, event)}
+								onDragOver={(event) =>
+									handleChannelDragOver(channel.id, event)}
+								onDrop={(event) =>
+									handleChannelDrop(channel.id, event)}
+								onDragEnd={handleChannelDragEnd}
+								onDelete={() => handleDeleteChannel(channel.id)}
+							/>
+						{/each}
+					{/if}
+				</div>
+			</aside>
+
+			<aside
+				class="flex h-fit min-w-0 flex-col gap-6 rounded-[var(--radius-lg)] bg-[var(--surface)] border border-[var(--border-soft)] p-6 lg:sticky lg:top-8 fade-in stagger-2 shadow-sm"
+				id="videos"
+			>
+				<div class="flex flex-wrap items-center justify-between gap-4">
+					<div class="min-w-0">
+						<h2 class="text-xl font-bold tracking-tight">
+							Knowledge Library
+							{#if refreshingChannel}
+								<span
+									class="ml-3 inline-flex h-5 w-5 items-center justify-center align-middle rounded-full border border-[var(--border-soft)] bg-[var(--background)]"
+									role="status"
+									aria-label="Syncing channel"
+									title="Syncing channel"
+								>
+									<span
+										class="h-2.5 w-2.5 animate-spin rounded-full border border-[var(--accent)]/20 border-t-[var(--accent)]"
+									></span>
+									<span class="sr-only">Syncing</span>
+								</span>
+							{/if}
+						</h2>
+					</div>
+					<div class="relative" bind:this={filterMenuContainer}>
+						<button
+							type="button"
+							class={`group flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] transition-all duration-300 ${videoTypeFilter !== "all" || filterMenuOpen ? "bg-[var(--accent)] text-white shadow-lg shadow-[var(--accent)]/20" : "text-[var(--soft-foreground)] hover:bg-[var(--muted)] border border-[var(--border-soft)] bg-[var(--background)]"} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 disabled:opacity-20`}
+							onclick={toggleFilterMenu}
+							disabled={!selectedChannelId || loadingVideos}
+							aria-label={filterMenuLabel}
+							aria-haspopup="menu"
+							aria-expanded={filterMenuOpen}
+							aria-controls="video-filter-menu"
+						>
+							<svg
+								width="16"
+								height="16"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2.5"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+							>
+								<line x1="3" y1="6" x2="21" y2="6"></line>
+								<line x1="7" y1="12" x2="17" y2="12"></line>
+								<line x1="10" y1="18" x2="14" y2="18"></line>
+							</svg>
+						</button>
+						{#if filterMenuOpen}
+							<div
+								id="video-filter-menu"
+								role="menu"
+								aria-label="Video filters"
+								class="absolute right-0 top-full z-20 mt-3 w-64 overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface)] shadow-2xl animate-fade-in"
+							>
+								<div class="bg-[var(--muted)]/30 px-4 py-2.5">
+									<p
+										class="text-[9px] font-bold uppercase tracking-[0.3em] text-[var(--soft-foreground)]"
+									>
+										Refine View
+									</p>
+								</div>
+								<div class="p-2 space-y-4">
+									<div class="grid gap-1">
+										<p
+											class="px-2 pb-1 text-[10px] font-bold text-[var(--soft-foreground)] opacity-50"
+										>
+											TYPE
+										</p>
+										<button
+											type="button"
+											role="menuitemradio"
+											aria-checked={videoTypeFilter ===
+												"all"}
+											class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[13px] font-medium transition-colors ${videoTypeFilter === "all" ? "bg-[var(--accent-soft)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--muted)]/50"}`}
+											onclick={() =>
+												setVideoTypeFilter("all")}
+										>
+											<span>All Content</span>
+											{#if videoTypeFilter === "all"}
+												<svg
+													width="12"
+													height="12"
+													viewBox="0 0 24 24"
+													fill="none"
+													stroke="currentColor"
+													stroke-width="3"
+													stroke-linecap="round"
+													stroke-linejoin="round"
+													><polyline
+														points="20 6 9 17 4 12"
+													/></svg
+												>
+											{/if}
+										</button>
+										<button
+											type="button"
+											role="menuitemradio"
+											aria-checked={videoTypeFilter ===
+												"long"}
+											class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[13px] font-medium transition-colors ${videoTypeFilter === "long" ? "bg-[var(--accent-soft)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--muted)]/50"}`}
+											onclick={() =>
+												setVideoTypeFilter("long")}
+										>
+											<span>Full Videos</span>
+											{#if videoTypeFilter === "long"}
+												<svg
+													width="12"
+													height="12"
+													viewBox="0 0 24 24"
+													fill="none"
+													stroke="currentColor"
+													stroke-width="3"
+													stroke-linecap="round"
+													stroke-linejoin="round"
+													><polyline
+														points="20 6 9 17 4 12"
+													/></svg
+												>
+											{/if}
+										</button>
+										<button
+											type="button"
+											role="menuitemradio"
+											aria-checked={videoTypeFilter ===
+												"short"}
+											class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[13px] font-medium transition-colors ${videoTypeFilter === "short" ? "bg-[var(--accent-soft)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--muted)]/50"}`}
+											onclick={() =>
+												setVideoTypeFilter("short")}
+										>
+											<span>Shorts</span>
+											{#if videoTypeFilter === "short"}
+												<svg
+													width="12"
+													height="12"
+													viewBox="0 0 24 24"
+													fill="none"
+													stroke="currentColor"
+													stroke-width="3"
+													stroke-linecap="round"
+													stroke-linejoin="round"
+													><polyline
+														points="20 6 9 17 4 12"
+													/></svg
+												>
+											{/if}
+										</button>
+									</div>
+
+									<div class="grid gap-1">
+										<p
+											class="px-2 pb-1 text-[10px] font-bold text-[var(--soft-foreground)] opacity-50"
+										>
+											STATUS
+										</p>
+										<button
+											type="button"
+											role="menuitemradio"
+											aria-checked={acknowledgedFilter ===
+												"all"}
+											class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[13px] font-medium transition-colors ${acknowledgedFilter === "all" ? "bg-[var(--accent-soft)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--muted)]/50"}`}
+											onclick={() =>
+												setAcknowledgedFilter("all")}
+										>
+											<span>All Statuses</span>
+											{#if acknowledgedFilter === "all"}
+												<svg
+													width="12"
+													height="12"
+													viewBox="0 0 24 24"
+													fill="none"
+													stroke="currentColor"
+													stroke-width="3"
+													stroke-linecap="round"
+													stroke-linejoin="round"
+													><polyline
+														points="20 6 9 17 4 12"
+													/></svg
+												>
+											{/if}
+										</button>
+										<button
+											type="button"
+											role="menuitemradio"
+											aria-checked={acknowledgedFilter ===
+												"unack"}
+											class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[13px] font-medium transition-colors ${acknowledgedFilter === "unack" ? "bg-[var(--accent-soft)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--muted)]/50"}`}
+											onclick={() =>
+												setAcknowledgedFilter("unack")}
+										>
+											<span>Unread</span>
+											{#if acknowledgedFilter === "unack"}
+												<svg
+													width="12"
+													height="12"
+													viewBox="0 0 24 24"
+													fill="none"
+													stroke="currentColor"
+													stroke-width="3"
+													stroke-linecap="round"
+													stroke-linejoin="round"
+													><polyline
+														points="20 6 9 17 4 12"
+													/></svg
+												>
+											{/if}
+										</button>
+										<button
+											type="button"
+											role="menuitemradio"
+											aria-checked={acknowledgedFilter ===
+												"ack"}
+											class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[13px] font-medium transition-colors ${acknowledgedFilter === "ack" ? "bg-[var(--accent-soft)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--muted)]/50"}`}
+											onclick={() =>
+												setAcknowledgedFilter("ack")}
+										>
+											<span>Read</span>
+											{#if acknowledgedFilter === "ack"}
+												<svg
+													width="12"
+													height="12"
+													viewBox="0 0 24 24"
+													fill="none"
+													stroke="currentColor"
+													stroke-width="3"
+													stroke-linecap="round"
+													stroke-linejoin="round"
+													><polyline
+														points="20 6 9 17 4 12"
+													/></svg
+												>
+											{/if}
+										</button>
+									</div>
 								</div>
 							</div>
+						{/if}
+					</div>
+				</div>
+
+				<div
+					class="grid max-h-[65vh] gap-4 overflow-y-auto pr-1 custom-scrollbar"
+					bind:this={videoListContainer}
+					onscroll={updateVideoListBottomState}
+					aria-busy={loadingVideos}
+				>
+					{#if loadingVideos && videos.length === 0}
+						{#each Array.from({ length: 3 }) as _, index (index)}
+							<article
+								class="flex min-h-[14rem] flex-col gap-4 rounded-[var(--radius-md)] p-4 animate-pulse bg-[var(--muted)]/30"
+							>
+								<div
+									class="aspect-video rounded-[var(--radius-sm)] bg-[var(--muted)] opacity-60"
+								></div>
+								<div
+									class="h-4 w-11/12 rounded-full bg-[var(--muted)] opacity-60"
+								></div>
+								<div
+									class="h-3 w-2/5 rounded-full bg-[var(--muted)] opacity-40"
+								></div>
+							</article>
 						{/each}
-					</div>
-				{:else if channels.length === 0}
-					<p class="px-1 text-sm text-[var(--soft-foreground)]">
-						Add a channel to get started.
-					</p>
-				{:else}
-					{#each channels as channel}
-						<ChannelCard
-							{channel}
-							active={selectedChannelId === channel.id}
-							draggableEnabled
-							dragging={draggedChannelId === channel.id}
-							dragOver={dragOverChannelId === channel.id &&
-								draggedChannelId !== channel.id}
-							onSelect={() => selectChannel(channel.id)}
-							onDragStart={(event) =>
-								handleChannelDragStart(channel.id, event)}
-							onDragOver={(event) =>
-								handleChannelDragOver(channel.id, event)}
-							onDrop={(event) => handleChannelDrop(channel.id, event)}
-							onDragEnd={handleChannelDragEnd}
-						/>
-					{/each}
-				{/if}
-			</div>
-		</aside>
-
-		<aside
-			class="flex h-fit min-w-0 flex-col gap-5 rounded-3xl bg-[var(--surface)] border border-[var(--border)] p-4 lg:sticky lg:top-6"
-			id="videos"
-		>
-			<div class="flex flex-wrap items-end justify-between gap-3 px-1">
-				<div class="min-w-0">
-					<h2 class="text-lg font-semibold tracking-tight">
-						Latest Videos
-						{#if refreshingChannel}
-							<span
-								class="ml-2 text-[10px] uppercase tracking-widest text-[var(--soft-foreground)] animate-pulse inline-flex items-center align-middle rounded-full border border-[var(--border)] px-2 py-0.5"
-								>Syncing</span
-							>
-						{/if}
-					</h2>
-				</div>
-				<div class="relative" bind:this={filterMenuContainer}>
-					<button
-						type="button"
-						class={`group flex items-center justify-center rounded-full p-2 transition-all duration-200 ${videoTypeFilter !== "all" || filterMenuOpen ? "bg-[var(--accent)] text-white shadow-sm" : "text-[var(--soft-foreground)] hover:bg-white/60 hover:text-[var(--foreground)] border border-transparent hover:border-[var(--border)]"} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-50 disabled:cursor-not-allowed`}
-						onclick={toggleFilterMenu}
-						disabled={!selectedChannelId || loadingVideos}
-						aria-label={filterMenuLabel}
-						aria-haspopup="menu"
-						aria-expanded={filterMenuOpen}
-						aria-controls="video-filter-menu"
-					>
-						<svg
-							width="18"
-							height="18"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-						>
-							<line x1="3" y1="6" x2="21" y2="6"></line>
-							<line x1="7" y1="12" x2="17" y2="12"></line>
-							<line x1="10" y1="18" x2="14" y2="18"></line>
-						</svg>
-					</button>
-					{#if filterMenuOpen}
-						<div
-							id="video-filter-menu"
-							role="menu"
-							aria-label="Video filters"
-							class="absolute right-0 top-full z-20 mt-2 w-56 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-3 shadow-xl"
-						>
-							<p
-								class="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--soft-foreground)]"
-							>
-								Video Type
-							</p>
-							<div class="mt-2 grid gap-1">
-								<button
-									type="button"
-									role="menuitemradio"
-									aria-checked={videoTypeFilter === "all"}
-									class={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition-colors ${videoTypeFilter === "all" ? "bg-[var(--muted)] text-[var(--foreground)]" : "text-[var(--soft-foreground)] hover:bg-[var(--muted)]/50 hover:text-[var(--foreground)]"}`}
-									onclick={() => setVideoTypeFilter("all")}
-								>
-									<span>All videos</span>
-									{#if videoTypeFilter === "all"}
-										<span aria-hidden="true">•</span>
-									{/if}
-								</button>
-								<button
-									type="button"
-									role="menuitemradio"
-									aria-checked={videoTypeFilter === "long"}
-									class={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition-colors ${videoTypeFilter === "long" ? "bg-[var(--muted)] text-[var(--foreground)]" : "text-[var(--soft-foreground)] hover:bg-[var(--muted)]/50 hover:text-[var(--foreground)]"}`}
-									onclick={() => setVideoTypeFilter("long")}
-								>
-									<span>Long videos only</span>
-									{#if videoTypeFilter === "long"}
-										<span aria-hidden="true">•</span>
-									{/if}
-								</button>
-								<button
-									type="button"
-									role="menuitemradio"
-									aria-checked={videoTypeFilter === "short"}
-									class={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition-colors ${videoTypeFilter === "short" ? "bg-[var(--muted)] text-[var(--foreground)]" : "text-[var(--soft-foreground)] hover:bg-[var(--muted)]/50 hover:text-[var(--foreground)]"}`}
-									onclick={() => setVideoTypeFilter("short")}
-								>
-									<span>Shorts only</span>
-									{#if videoTypeFilter === "short"}
-										<span aria-hidden="true">•</span>
-									{/if}
-								</button>
-							</div>
-
-							<p
-								class="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--soft-foreground)] mt-4 mb-2"
-							>
-								Status
-							</p>
-							<div class="grid gap-1">
-								<button
-									type="button"
-									role="menuitemradio"
-									aria-checked={acknowledgedFilter === "all"}
-									class={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition-colors ${acknowledgedFilter === "all" ? "bg-[var(--muted)] text-[var(--foreground)]" : "text-[var(--soft-foreground)] hover:bg-[var(--muted)]/50 hover:text-[var(--foreground)]"}`}
-									onclick={() => setAcknowledgedFilter("all")}
-								>
-									<span>All statuses</span>
-									{#if acknowledgedFilter === "all"}
-										<span aria-hidden="true">•</span>
-									{/if}
-								</button>
-								<button
-									type="button"
-									role="menuitemradio"
-									aria-checked={acknowledgedFilter ===
-										"unack"}
-									class={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition-colors ${acknowledgedFilter === "unack" ? "bg-[var(--muted)] text-[var(--foreground)]" : "text-[var(--soft-foreground)] hover:bg-[var(--muted)]/50 hover:text-[var(--foreground)]"}`}
-									onclick={() =>
-										setAcknowledgedFilter("unack")}
-								>
-									<span>Unacknowledged</span>
-									{#if acknowledgedFilter === "unack"}
-										<span aria-hidden="true">•</span>
-									{/if}
-								</button>
-								<button
-									type="button"
-									role="menuitemradio"
-									aria-checked={acknowledgedFilter === "ack"}
-									class={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition-colors ${acknowledgedFilter === "ack" ? "bg-[var(--muted)] text-[var(--foreground)]" : "text-[var(--soft-foreground)] hover:bg-[var(--muted)]/50 hover:text-[var(--foreground)]"}`}
-									onclick={() => setAcknowledgedFilter("ack")}
-								>
-									<span>Acknowledged</span>
-									{#if acknowledgedFilter === "ack"}
-										<span aria-hidden="true">•</span>
-									{/if}
-								</button>
-							</div>
-						</div>
-					{/if}
-				</div>
-			</div>
-
-			<div
-				class="grid max-h-[70vh] gap-3 overflow-y-auto pr-1"
-				aria-busy={loadingVideos}
-			>
-				{#if loadingVideos && videos.length === 0}
-					{#each Array.from({ length: 4 }) as _, index (index)}
-						<article
-							class="flex min-h-[12rem] flex-col gap-3 rounded-2xl p-3 animate-pulse"
-						>
-							<div
-								class="aspect-video rounded-xl bg-[var(--muted)]"
-							></div>
-							<div
-								class="h-3.5 w-11/12 rounded-full bg-[var(--muted)] mt-1"
-							></div>
-							<div
-								class="h-2.5 w-2/5 rounded-full bg-[var(--muted)]/80"
-							></div>
-						</article>
-					{/each}
-				{:else if videos.length === 0}
-					<p class="px-1 text-sm text-[var(--soft-foreground)]">
-						No videos yet for this channel.
-					</p>
-				{:else}
-					{#each videos as video}
-						<VideoCard
-							{video}
-							active={selectedVideoId === video.id}
-							onSelect={() => selectVideo(video.id)}
-						/>
-					{/each}
-				{/if}
-			</div>
-
-			{#if selectedChannelId && (hasMore || !historyExhausted)}
-				<div class="flex justify-center pt-2">
-					<button
-						type="button"
-						class={secondaryButtonClass}
-						onclick={loadMoreVideos}
-						disabled={loadingVideos || backfillingHistory}
-					>
-						{#if loadingVideos || backfillingHistory}
-							Loading…
-						{:else if hasMore}
-							Load More
-						{:else}
-							Load Older
-						{/if}
-					</button>
-				</div>
-			{/if}
-		</aside>
-
-		<section
-			class="flex min-h-0 min-w-0 flex-col gap-6 rounded-3xl bg-[var(--surface)] border border-[var(--border)] py-6 md:py-10 font-serif lg:sticky lg:top-6 lg:h-[calc(100vh-3rem)] lg:overflow-hidden"
-			id="content-view"
-		>
-			<div
-				class="flex flex-wrap items-center justify-between gap-4 pb-2 px-6 md:px-10"
-			>
-				<div class="flex items-center gap-4">
-					<h2 class="sr-only">Content Mode</h2>
-					<Toggle
-						options={["transcript", "summary", "info"]}
-						value={contentMode}
-						onChange={(value) =>
-							setMode(value as "transcript" | "summary" | "info")}
-					/>
-				</div>
-
-				{#if selectedVideoId &&
-					!loadingContent &&
-					!editing &&
-					contentMode !== "info"}
-					<div class="flex justify-end font-sans">
-						<ContentEditor
-							editing={false}
-							busy={loadingContent}
-							formatting={formattingContent &&
-								formattingVideoId === selectedVideoId}
-							reverting={revertingContent &&
-								revertingVideoId === selectedVideoId}
-							showFormatAction={contentMode === "transcript"}
-							showRevertAction={contentMode === "transcript"}
-							canRevert={canRevertTranscript}
-							youtubeUrl={
-								contentMode === "transcript"
-									? selectedVideoYoutubeUrl
-									: null
-							}
-							value={draft}
-							acknowledged={videos.find(
-								(v) => v.id === selectedVideoId,
-							)?.acknowledged ?? false}
-							onEdit={startEdit}
-							onCancel={cancelEdit}
-							onSave={saveEdit}
-							onFormat={cleanFormatting}
-							onRevert={revertToOriginalTranscript}
-							onChange={(value) => (draft = value)}
-							onAcknowledgeToggle={toggleAcknowledge}
-						/>
-					</div>
-				{/if}
-			</div>
-
-				<div class="w-full min-h-0 flex-1 overflow-y-auto px-6 md:px-10">
-					{#if contentMode === "transcript" && selectedVideoId && ((formattingContent && formattingVideoId === selectedVideoId) || (formattingNotice && formattingNoticeVideoId === selectedVideoId))}
+					{:else if videos.length === 0}
 						<p
-						class={`mb-3 font-sans text-xs ${
-							formattingNoticeTone === "warning"
-								? "text-[var(--accent)]"
-								: "text-[var(--soft-foreground)]"
-						}`}
-						role="status"
-						aria-live="polite"
-					>
-							{formattingContent &&
-							formattingVideoId === selectedVideoId
-								? formattingNotice || "Formatting transcript with Ollama…"
-								: formattingNotice}
+							class="px-1 text-[14px] font-medium text-[var(--soft-foreground)] opacity-50 italic"
+						>
+							Waiting for the library to fill.
 						</p>
+					{:else}
+						{#each videos as video}
+							<VideoCard
+								{video}
+								active={selectedVideoId === video.id}
+								onSelect={() => selectVideo(video.id)}
+							/>
+						{/each}
 					{/if}
-					{#if contentMode === "summary" && selectedVideoId && !loadingContent}
-						<p
-							class="mb-3 font-sans text-[11px] text-[var(--soft-foreground)]"
-							role="status"
-							aria-live="polite"
-						>
-							{#if summaryQualityScore !== null}
-								Quality {summaryQualityScore}/10
-								{#if summaryQualityNote}
-									- {summaryQualityNote}
-								{/if}
-							{:else if summaryQualityNote}
-								{summaryQualityNote}
-							{:else}
-								Quality check in progress…
-							{/if}
-						</p>
-					{/if}
-					{#if !selectedVideoId}
-						<p
-							class="text-[var(--soft-foreground)] font-sans text-base"
-						>
-						Select a video to start reading.
-					</p>
-				{:else if loadingContent}
+				</div>
+
+				{#if selectedChannelId}
 					<div
-						class="space-y-4 animate-pulse mt-4"
-						role="status"
-						aria-live="polite"
+						class="flex flex-col gap-6 pt-6 border-t border-[var(--border-soft)]/50 mt-4"
 					>
-						<div class="h-6 w-2/5 rounded bg-[var(--muted)]"></div>
-						<div
-							class="h-4 w-full rounded bg-[var(--muted)]/85 mt-6"
-						></div>
-						<div
-							class="h-4 w-11/12 rounded bg-[var(--muted)]/85"
-						></div>
-						<div
-							class="h-4 w-10/12 rounded bg-[var(--muted)]/85"
-						></div>
-						<div
-							class="h-4 w-3/4 rounded bg-[var(--muted)]/85"
-						></div>
-						<p
-							class="pt-4 font-sans text-xs uppercase tracking-[0.2em] text-[var(--soft-foreground)]"
-						>
-							Preparing {contentMode}…
-						</p>
-					</div>
-				{:else if contentMode === "info"}
-					<div class="font-sans space-y-5 text-sm leading-relaxed">
-						<div class="space-y-1">
-							<p class="text-xs uppercase tracking-[0.15em] text-[var(--soft-foreground)]">
-								Title
-							</p>
-							<p class="text-[var(--foreground)]">
-								{videoInfo?.title || "Unknown"}
-							</p>
-						</div>
+						{#if hasMore || !historyExhausted}
+							<div class="flex justify-center">
+								<button
+									type="button"
+									class="inline-flex items-center justify-center rounded-full border border-[var(--border-soft)] bg-[var(--background)] px-8 py-3 text-[10px] font-bold uppercase tracking-[0.25em] text-[var(--soft-foreground)] transition-all hover:border-[var(--accent)]/40 hover:text-[var(--foreground)] hover:shadow-sm disabled:opacity-30"
+									onclick={loadMoreVideos}
+									disabled={loadingVideos ||
+										backfillingHistory}
+								>
+									{#if loadingVideos || backfillingHistory}
+										Retrieving…
+									{:else if hasMore}
+										Load More
+									{:else}
+										Explore History
+									{/if}
+								</button>
+							</div>
+						{/if}
 
-						<div class="grid gap-4 sm:grid-cols-2">
-							<div class="space-y-1">
-								<p class="text-xs uppercase tracking-[0.15em] text-[var(--soft-foreground)]">
-									Published
+						{#if atVideoListBottom && videos.length > 0}
+							<div class="space-y-1 px-1">
+								<p
+									class="text-[9px] font-bold uppercase tracking-[0.3em] text-[var(--soft-foreground)] opacity-40"
+								>
+									Bottom Reached
 								</p>
-								<p>{formatPublishedAt(videoInfo?.published_at)}</p>
-							</div>
-							<div class="space-y-1">
-								<p class="text-xs uppercase tracking-[0.15em] text-[var(--soft-foreground)]">
-									Views
-								</p>
-								<p>{formatCount(videoInfo?.view_count)}</p>
-							</div>
-							<div class="space-y-1">
-								<p class="text-xs uppercase tracking-[0.15em] text-[var(--soft-foreground)]">
-									Duration
-								</p>
-								<p>
-									{formatDuration(
-										videoInfo?.duration_seconds,
-										videoInfo?.duration_iso8601,
+								<p
+									class="text-[12px] font-semibold text-[var(--foreground)]"
+								>
+									Sync depth: {formatSyncDate(
+										resolveDisplayedSyncDepthIso(),
 									)}
 								</p>
 							</div>
-							<div class="space-y-1">
-								<p class="text-xs uppercase tracking-[0.15em] text-[var(--soft-foreground)]">
-									Channel
-								</p>
-								<p>{videoInfo?.channel_name || videoInfo?.channel_id || "Unknown"}</p>
-							</div>
-						</div>
-
-						<div class="space-y-1">
-							<p class="text-xs uppercase tracking-[0.15em] text-[var(--soft-foreground)]">
-								Video URL
-							</p>
-							{#if videoInfo?.watch_url}
-								<a
-									href={videoInfo.watch_url}
-									target="_blank"
-									rel="noopener noreferrer"
-									class="break-all text-[var(--accent)] underline underline-offset-4 hover:text-[var(--accent-strong)]"
-								>
-									{videoInfo.watch_url}
-								</a>
-							{:else}
-								<p>Unknown</p>
-							{/if}
-						</div>
-
-						<div class="space-y-1">
-							<p class="text-xs uppercase tracking-[0.15em] text-[var(--soft-foreground)]">
-								Description
-							</p>
-							<p class="whitespace-pre-wrap text-[var(--foreground)]">
-								{videoInfo?.description || "Description unavailable."}
-							</p>
-						</div>
+						{/if}
 					</div>
-				{:else if editing}
-					<div class="font-sans">
-						<ContentEditor
-							editing
-							busy={loadingContent}
-							formatting={formattingContent &&
-								formattingVideoId === selectedVideoId}
-							reverting={revertingContent &&
-								revertingVideoId === selectedVideoId}
-							showFormatAction={contentMode === "transcript"}
-							showRevertAction={contentMode === "transcript"}
-							canRevert={canRevertTranscript}
-							youtubeUrl={
-								contentMode === "transcript"
-									? selectedVideoYoutubeUrl
-									: null
-							}
-							value={draft}
-							acknowledged={videos.find(
-								(v) => v.id === selectedVideoId,
-							)?.acknowledged ?? false}
-							onEdit={startEdit}
-							onCancel={cancelEdit}
-							onSave={saveEdit}
-							onFormat={cleanFormatting}
-							onRevert={revertToOriginalTranscript}
-							onChange={(value) => (draft = value)}
-							onAcknowledgeToggle={toggleAcknowledge}
+				{/if}
+			</aside>
+
+			<section
+				class="flex min-h-[600px] min-w-0 flex-col gap-8 rounded-[var(--radius-lg)] bg-[var(--surface)] border border-[var(--border-soft)] py-10 fade-in stagger-3 shadow-sm lg:sticky lg:top-8 lg:h-[calc(100vh-6rem)] lg:overflow-hidden"
+				id="content-view"
+			>
+				<div
+					class="flex flex-wrap items-center justify-between gap-6 px-8 md:px-12 border-b border-[var(--border-soft)]/50"
+				>
+					<div class="flex items-center gap-6">
+						<h2 class="sr-only">Display Content</h2>
+						<Toggle
+							options={["transcript", "summary", "info"]}
+							value={contentMode}
+							onChange={(value) =>
+								setMode(
+									value as "transcript" | "summary" | "info",
+								)}
 						/>
 					</div>
-				{:else}
-					<TranscriptView
-						html={contentHtml}
-						formatting={contentMode === "transcript" &&
-							formattingContent &&
-							formattingVideoId === selectedVideoId}
-					/>
-				{/if}
-			</div>
-		</section>
-	</main>
+
+					{#if selectedVideoId && !loadingContent && !editing && contentMode !== "info"}
+						<div class="flex items-center justify-end h-10">
+							<ContentEditor
+								editing={false}
+								busy={loadingContent}
+								formatting={formattingContent &&
+									formattingVideoId === selectedVideoId}
+								reverting={revertingContent &&
+									revertingVideoId === selectedVideoId}
+								showFormatAction={contentMode === "transcript"}
+								showRevertAction={contentMode === "transcript"}
+								canRevert={canRevertTranscript}
+								youtubeUrl={contentMode === "transcript"
+									? selectedVideoYoutubeUrl
+									: null}
+								value={draft}
+								acknowledged={videos.find(
+									(v) => v.id === selectedVideoId,
+								)?.acknowledged ?? false}
+								onEdit={startEdit}
+								onCancel={cancelEdit}
+								onSave={saveEdit}
+								onFormat={cleanFormatting}
+								onRevert={revertToOriginalTranscript}
+								onChange={(value) => (draft = value)}
+								onAcknowledgeToggle={toggleAcknowledge}
+							/>
+						</div>
+					{/if}
+				</div>
+
+				<div
+					class="w-full min-h-0 flex-1 overflow-y-auto px-8 md:px-12 custom-scrollbar"
+				>
+					{#if contentMode === "transcript" && selectedVideoId && ((formattingContent && formattingVideoId === selectedVideoId) || (formattingNotice && formattingNoticeVideoId === selectedVideoId))}
+						<div
+							class={`mb-8 p-4 rounded-[var(--radius-md)] border flex items-center gap-3 transition-all duration-500 ${
+								formattingNoticeTone === "warning"
+									? "border-[var(--accent)]/20 bg-[var(--accent-soft)]/50 text-[var(--accent-strong)]"
+									: "border-[var(--border-soft)] bg-[var(--muted)]/30 text-[var(--soft-foreground)]"
+							}`}
+							role="status"
+							aria-live="polite"
+						>
+							{#if formattingContent && formattingVideoId === selectedVideoId}
+								<span class="relative flex h-2 w-2">
+									<span
+										class="animate-ping absolute inline-flex h-full w-full rounded-full bg-current opacity-75"
+									></span>
+									<span
+										class="relative inline-flex rounded-full h-2 w-2 bg-current"
+									></span>
+								</span>
+							{:else}
+								<svg
+									width="14"
+									height="14"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="3"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									><circle cx="12" cy="12" r="10" /><polyline
+										points="12 6 12 12 16 14"
+									/></svg
+								>
+							{/if}
+							<p
+								class="text-[12px] font-bold tracking-wide uppercase"
+							>
+								{formattingContent &&
+								formattingVideoId === selectedVideoId
+									? formattingNotice ||
+										"Refining transcript with Ollama…"
+									: formattingNotice}
+							</p>
+						</div>
+					{/if}
+					{#if contentMode === "summary" && selectedVideoId && !loadingContent}
+						<div
+							class="mb-8 p-4 rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--muted)]/20 flex items-center justify-between"
+							role="status"
+							aria-live="polite"
+						>
+							<div class="flex items-center gap-3">
+								<svg
+									width="14"
+									height="14"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="3"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									class="text-[var(--accent)]"
+									><polygon
+										points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"
+									/></svg
+								>
+								<p
+									class="text-[12px] font-bold tracking-[0.1em] uppercase text-[var(--soft-foreground)]"
+								>
+									{#if summaryQualityScore !== null}
+										Quality Analysis: {summaryQualityScore}/10
+									{:else}
+										Evaluating quality…
+									{/if}
+								</p>
+							</div>
+							{#if summaryQualityNote}
+								<p
+									class="text-[12px] font-medium text-[var(--soft-foreground)] opacity-60 italic"
+								>
+									"{summaryQualityNote}"
+								</p>
+							{/if}
+						</div>
+					{/if}
+
+					{#if !selectedVideoId}
+						<div
+							class="flex flex-col items-center justify-center h-full text-center opacity-40 py-20"
+						>
+							<svg
+								width="48"
+								height="48"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								class="mb-6"
+								><path
+									d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"
+								/><path
+									d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"
+								/></svg
+							>
+							<p
+								class="text-[20px] font-serif italic text-[var(--soft-foreground)]"
+							>
+								Select a video to begin distillation.
+							</p>
+						</div>
+					{:else if loadingContent}
+						<div
+							class="space-y-8 animate-pulse mt-4"
+							role="status"
+							aria-live="polite"
+						>
+							<div
+								class="h-10 w-3/5 rounded-[var(--radius-sm)] bg-[var(--muted)]/60"
+							></div>
+							<div class="space-y-4 pt-4">
+								<div
+									class="h-4 w-full rounded-full bg-[var(--muted)]/50"
+								></div>
+								<div
+									class="h-4 w-11/12 rounded-full bg-[var(--muted)]/50"
+								></div>
+								<div
+									class="h-4 w-10/12 rounded-full bg-[var(--muted)]/50"
+								></div>
+								<div
+									class="h-4 w-full rounded-full bg-[var(--muted)]/50"
+								></div>
+								<div
+									class="h-4 w-3/4 rounded-full bg-[var(--muted)]/50"
+								></div>
+							</div>
+							<p
+								class="pt-10 text-[10px] font-bold uppercase tracking-[0.4em] text-[var(--accent)] text-center"
+							>
+								Processing {contentMode}…
+							</p>
+						</div>
+					{:else if contentMode === "info"}
+						<div
+							class="space-y-10 text-[15px] leading-relaxed pb-20"
+						>
+							<div class="space-y-3">
+								<p
+									class="text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--accent)] opacity-60"
+								>
+									PRIMARY TITLE
+								</p>
+								<p
+									class="text-[24px] font-bold font-serif leading-tight text-[var(--foreground)]"
+								>
+									{videoInfo?.title || "Untitled Fragment"}
+								</p>
+							</div>
+
+							<div
+								class="grid gap-10 sm:grid-cols-2 lg:grid-cols-4 border-y border-[var(--border-soft)]/50 py-10"
+							>
+								<div class="space-y-2">
+									<p
+										class="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--soft-foreground)] opacity-50"
+									>
+										PUBLISHED
+									</p>
+									<p class="font-bold text-[14px]">
+										{formatPublishedAt(
+											videoInfo?.published_at,
+										)}
+									</p>
+								</div>
+								<div class="space-y-2">
+									<p
+										class="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--soft-foreground)] opacity-50"
+									>
+										ENGAGEMENT
+									</p>
+									<p class="font-bold text-[14px]">
+										{formatCount(videoInfo?.view_count)} Views
+									</p>
+								</div>
+								<div class="space-y-2">
+									<p
+										class="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--soft-foreground)] opacity-50"
+									>
+										TEMPORAL
+									</p>
+									<p class="font-bold text-[14px]">
+										{formatDuration(
+											videoInfo?.duration_seconds,
+											videoInfo?.duration_iso8601,
+										)}
+									</p>
+								</div>
+								<div class="space-y-2">
+									<p
+										class="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--soft-foreground)] opacity-50"
+									>
+										ORIGIN
+									</p>
+									<p class="font-bold text-[14px] truncate">
+										{videoInfo?.channel_name ||
+											"Unknown Source"}
+									</p>
+								</div>
+							</div>
+
+							<div class="space-y-3">
+								<p
+									class="text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--soft-foreground)] opacity-50"
+								>
+									SOURCE ACCESS
+								</p>
+								{#if videoInfo?.watch_url}
+									<a
+										href={videoInfo.watch_url}
+										target="_blank"
+										rel="noopener noreferrer"
+										class="inline-flex items-center gap-2 group text-[14px] font-bold text-[var(--accent)] hover:text-[var(--accent-strong)]"
+									>
+										<span>{videoInfo.watch_url}</span>
+										<svg
+											width="14"
+											height="14"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2.5"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											class="transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+											><line
+												x1="7"
+												y1="17"
+												x2="17"
+												y2="7"
+											/><polyline
+												points="7 7 17 7 17 17"
+											/></svg
+										>
+									</a>
+								{:else}
+									<p class="font-bold opacity-40">
+										Direct URL unavailable.
+									</p>
+								{/if}
+							</div>
+
+							<div class="space-y-4">
+								<p
+									class="text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--soft-foreground)] opacity-50"
+								>
+									FULL DESCRIPTION
+								</p>
+								<div
+									class="p-6 rounded-[var(--radius-md)] bg-[var(--background)] border border-[var(--border-soft)]"
+								>
+									<p
+										class="whitespace-pre-wrap text-[14px] font-medium leading-relaxed text-[var(--foreground)] opacity-80"
+									>
+										{videoInfo?.description ||
+											"Source description is empty or unavailable."}
+									</p>
+								</div>
+							</div>
+						</div>
+					{:else if editing}
+						<div class="pb-20">
+							<ContentEditor
+								editing
+								busy={loadingContent}
+								formatting={formattingContent &&
+									formattingVideoId === selectedVideoId}
+								reverting={revertingContent &&
+									revertingVideoId === selectedVideoId}
+								showFormatAction={contentMode === "transcript"}
+								showRevertAction={contentMode === "transcript"}
+								canRevert={canRevertTranscript}
+								youtubeUrl={contentMode === "transcript"
+									? selectedVideoYoutubeUrl
+									: null}
+								value={draft}
+								acknowledged={videos.find(
+									(v) => v.id === selectedVideoId,
+								)?.acknowledged ?? false}
+								onEdit={startEdit}
+								onCancel={cancelEdit}
+								onSave={saveEdit}
+								onFormat={cleanFormatting}
+								onRevert={revertToOriginalTranscript}
+								onChange={(value) => (draft = value)}
+								onAcknowledgeToggle={toggleAcknowledge}
+							/>
+						</div>
+					{:else}
+						<div class="pb-32">
+							<TranscriptView
+								html={contentHtml}
+								formatting={contentMode === "transcript" &&
+									formattingContent &&
+									formattingVideoId === selectedVideoId}
+							/>
+						</div>
+					{/if}
+				</div>
+			</section>
+		</main>
+	{/if}
 
 	{#if errorMessage}
 		<div

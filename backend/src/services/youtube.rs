@@ -24,6 +24,7 @@ pub enum YouTubeError {
 
 pub struct YouTubeService {
     client: Client,
+    api_key: Option<String>,
 }
 
 struct WatchMetadata {
@@ -51,19 +52,105 @@ struct OEmbedResponse {
     thumbnail_url: String,
 }
 
+#[derive(Deserialize)]
+struct DataApiListResponse<T> {
+    #[serde(rename = "nextPageToken")]
+    next_page_token: Option<String>,
+    items: Option<Vec<T>>,
+}
+
+#[derive(Deserialize)]
+struct DataApiChannelItem {
+    #[serde(rename = "contentDetails")]
+    content_details: DataApiChannelContentDetails,
+}
+
+#[derive(Deserialize)]
+struct DataApiChannelContentDetails {
+    #[serde(rename = "relatedPlaylists")]
+    related_playlists: DataApiRelatedPlaylists,
+}
+
+#[derive(Deserialize)]
+struct DataApiRelatedPlaylists {
+    uploads: String,
+}
+
+#[derive(Deserialize)]
+struct DataApiPlaylistItem {
+    snippet: DataApiPlaylistItemSnippet,
+}
+
+#[derive(Deserialize)]
+struct DataApiPlaylistItemSnippet {
+    title: String,
+    #[serde(rename = "publishedAt")]
+    published_at: Option<String>,
+    thumbnails: Option<DataApiThumbnails>,
+    #[serde(rename = "resourceId")]
+    resource_id: Option<DataApiResourceId>,
+}
+
+#[derive(Deserialize)]
+struct DataApiResourceId {
+    #[serde(rename = "videoId")]
+    video_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct DataApiThumbnails {
+    maxres: Option<DataApiThumbnail>,
+    standard: Option<DataApiThumbnail>,
+    high: Option<DataApiThumbnail>,
+    medium: Option<DataApiThumbnail>,
+    default: Option<DataApiThumbnail>,
+}
+
+#[derive(Deserialize)]
+struct DataApiThumbnail {
+    url: Option<String>,
+}
+
 impl YouTubeService {
     fn desktop_user_agent() -> &'static str {
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
     }
 
     pub fn new() -> Self {
-        Self {
-            client: build_http_client(),
-        }
+        Self::with_client(build_http_client())
     }
 
     pub fn with_client(client: Client) -> Self {
-        Self { client }
+        let api_key = std::env::var("YOUTUBE_API_KEY")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        Self { client, api_key }
+    }
+
+    /// Validates whether the configured YouTube Data API key can make requests.
+    /// Returns:
+    /// - Ok(None): no API key configured
+    /// - Ok(Some(true)): key accepted by the API
+    /// - Ok(Some(false)): key rejected by the API
+    pub async fn validate_data_api_key(&self) -> Result<Option<bool>, YouTubeError> {
+        let Some(api_key) = self.api_key.as_deref() else {
+            return Ok(None);
+        };
+
+        let response = self
+            .client
+            .get("https://www.googleapis.com/youtube/v3/channels")
+            .query(&[
+                ("part", "id"),
+                ("id", "UC_x5XG1OV2P6uZZ5FSM9Ttw"),
+                ("maxResults", "1"),
+                ("key", api_key),
+            ])
+            .send()
+            .await?;
+
+        Ok(Some(response.status().is_success()))
     }
 
     /// Resolve various input formats to a channel ID and name.
@@ -326,10 +413,25 @@ impl YouTubeService {
         Ok(thumb)
     }
 
-    /// Fetch recent videos from a channel's RSS feed.
+    /// Fetch recent videos from YouTube Data API with RSS fallback.
     pub async fn fetch_videos(&self, channel_id: &str) -> Result<Vec<Video>, YouTubeError> {
-        let feed_url = format!("https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}");
+        if let Some(api_key) = self.api_key.as_deref() {
+            match self
+                .fetch_videos_from_data_api(channel_id, api_key, 25, &HashSet::new(), None)
+                .await
+            {
+                Ok((videos, _)) => return Ok(videos),
+                Err(err) => {
+                    tracing::warn!(
+                        channel_id = %channel_id,
+                        error = %err,
+                        "YouTube Data API fetch failed, falling back to RSS feed"
+                    );
+                }
+            }
+        }
 
+        let feed_url = format!("https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}");
         let response = self.client.get(&feed_url).send().await?;
         if !response.status().is_success() {
             return Err(YouTubeError::ChannelNotFound);
@@ -343,119 +445,526 @@ impl YouTubeService {
         Ok(videos)
     }
 
-    /// Backfill older videos by scraping the channel's videos page.
-    /// This extends history beyond the RSS feed window (typically ~15 items).
-    pub async fn fetch_videos_backfill(
-        &self,
-        channel_id: &str,
-        start_index: usize,
-        limit: usize,
-    ) -> Result<Vec<Video>, YouTubeError> {
-        if limit == 0 {
-            return Ok(Vec::new());
-        }
-
-        let url = format!("https://www.youtube.com/channel/{channel_id}/videos");
-        let response = self
-            .client
-            .get(&url)
-            .header("User-Agent", Self::desktop_user_agent())
-            .send()
-            .await?;
-        if !response.status().is_success() {
-            return Err(YouTubeError::ChannelNotFound);
-        }
-
-        let html = response.text().await?;
-        let video_ids = Self::extract_video_ids_from_channel_page(&html);
-        let selected_ids = video_ids.into_iter().skip(start_index).take(limit);
-
-        let mut videos = Vec::new();
-        for video_id in selected_ids {
-            match self.fetch_watch_metadata(&video_id).await {
-                Ok(metadata) => videos.push(Video {
-                    id: video_id.clone(),
-                    channel_id: channel_id.to_string(),
-                    title: metadata.title,
-                    thumbnail_url: metadata.thumbnail_url,
-                    published_at: metadata.published_at,
-                    is_short: self.fetch_is_short_flag(&video_id).await,
-                    transcript_status: crate::models::ContentStatus::Pending,
-                    summary_status: crate::models::ContentStatus::Pending,
-                    acknowledged: false,
-                }),
-                Err(err) => {
-                    tracing::warn!(
-                        channel_id = %channel_id,
-                        video_id = %video_id,
-                        error = %err,
-                        "failed to fetch watch metadata while backfilling"
-                    );
-                }
-            }
-        }
-
-        Ok(videos)
-    }
-
-    /// Reconcile missing videos from the currently visible channel videos page.
+    /// Reconcile missing videos from the channel videos list APIs.
     /// Selects only IDs that are not present in `known_video_ids`.
+    /// Uses Data API when configured and falls back to InnerTube browse pagination.
+    /// Stops if `until` date is reached.
     pub async fn fetch_videos_backfill_missing(
         &self,
         channel_id: &str,
         known_video_ids: &HashSet<String>,
         limit: usize,
-    ) -> Result<Vec<Video>, YouTubeError> {
+        until: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Result<(Vec<Video>, bool), YouTubeError> {
         if limit == 0 {
-            return Ok(Vec::new());
+            return Ok((Vec::new(), false));
         }
 
-        let url = format!("https://www.youtube.com/channel/{channel_id}/videos");
-        let response = self
-            .client
-            .get(&url)
-            .header("User-Agent", Self::desktop_user_agent())
-            .send()
-            .await?;
-        if !response.status().is_success() {
-            return Err(YouTubeError::ChannelNotFound);
-        }
-
-        let html = response.text().await?;
-        let channel_video_ids = Self::extract_video_ids_from_channel_page(&html);
-        let selected_ids =
-            Self::select_missing_video_ids(&channel_video_ids, known_video_ids, limit);
-
-        let mut videos = Vec::new();
-        for video_id in selected_ids {
-            match self.fetch_watch_metadata(&video_id).await {
-                Ok(metadata) => videos.push(Video {
-                    id: video_id.clone(),
-                    channel_id: channel_id.to_string(),
-                    title: metadata.title,
-                    thumbnail_url: metadata.thumbnail_url,
-                    published_at: metadata.published_at,
-                    is_short: self.fetch_is_short_flag(&video_id).await,
-                    transcript_status: crate::models::ContentStatus::Pending,
-                    summary_status: crate::models::ContentStatus::Pending,
-                    acknowledged: false,
-                }),
+        if let Some(api_key) = self.api_key.as_deref() {
+            match self
+                .fetch_videos_from_data_api(channel_id, api_key, limit, known_video_ids, until)
+                .await
+            {
+                Ok(result) => return Ok(result),
                 Err(err) => {
                     tracing::warn!(
                         channel_id = %channel_id,
-                        video_id = %video_id,
                         error = %err,
-                        "failed to fetch watch metadata while filling channel gaps"
+                        "YouTube Data API backfill failed, falling back to InnerTube"
                     );
                 }
             }
         }
 
-        Ok(videos)
+        self.fetch_videos_backfill_missing_via_innertube(channel_id, known_video_ids, limit, until)
+            .await
+    }
+
+    async fn fetch_videos_backfill_missing_via_innertube(
+        &self,
+        channel_id: &str,
+        known_video_ids: &HashSet<String>,
+        limit: usize,
+        until: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Result<(Vec<Video>, bool), YouTubeError> {
+        let (mut current_ids, mut continuation) =
+            self.fetch_innertube_initial_page(channel_id).await?;
+        if current_ids.is_empty() && continuation.is_none() {
+            return Ok((Vec::new(), true));
+        }
+
+        let mut total_videos = Vec::new();
+        let mut total_selected_ids = Vec::new();
+        let mut seen_in_this_run = HashSet::new();
+        let mut pages_fetched = 0;
+        let max_pages = if until.is_some() { 50 } else { 10 };
+
+        loop {
+            let next_batch_ids = current_ids
+                .into_iter()
+                .filter(|id| !seen_in_this_run.contains(id))
+                .collect::<Vec<_>>();
+
+            for id in next_batch_ids {
+                seen_in_this_run.insert(id.clone());
+                let is_missing = !known_video_ids.contains(&id);
+                if is_missing || until.is_some() {
+                    match self.fetch_watch_metadata(&id).await {
+                        Ok(metadata) => {
+                            if let Some(until_date) = until {
+                                if metadata.published_at < until_date {
+                                    continuation = None;
+                                    break;
+                                }
+                            }
+
+                            if is_missing && total_selected_ids.len() < limit {
+                                total_selected_ids.push(id.clone());
+                                total_videos.push(Video {
+                                    id: id.clone(),
+                                    channel_id: channel_id.to_string(),
+                                    title: metadata.title,
+                                    thumbnail_url: metadata.thumbnail_url,
+                                    published_at: metadata.published_at,
+                                    is_short: self.fetch_is_short_flag(&id).await,
+                                    transcript_status: crate::models::ContentStatus::Pending,
+                                    summary_status: crate::models::ContentStatus::Pending,
+                                    acknowledged: false,
+                                });
+                            }
+                        }
+                        Err(err) => {
+                            tracing::warn!(video_id = %id, error = %err, "failed to fetch metadata during crawl");
+                            if is_missing && total_selected_ids.len() < limit {
+                                total_selected_ids.push(id.clone());
+                                total_videos.push(Video {
+                                    id: id.clone(),
+                                    channel_id: channel_id.to_string(),
+                                    title: format!("YouTube Video {id}"),
+                                    thumbnail_url: None,
+                                    published_at: chrono::Utc::now(),
+                                    is_short: false,
+                                    transcript_status: crate::models::ContentStatus::Pending,
+                                    summary_status: crate::models::ContentStatus::Pending,
+                                    acknowledged: false,
+                                });
+                            }
+                        }
+                    }
+                }
+
+                if total_selected_ids.len() >= limit && until.is_none() {
+                    break;
+                }
+            }
+
+            if (total_selected_ids.len() >= limit && until.is_none())
+                || continuation.is_none()
+                || pages_fetched >= max_pages
+            {
+                break;
+            }
+
+            if let Some(token) = continuation {
+                pages_fetched += 1;
+                match self.fetch_continuation_page(&token).await {
+                    Ok((next_ids, next_token)) => {
+                        if next_ids.is_empty() && next_token.is_none() {
+                            continuation = None;
+                            break;
+                        }
+                        current_ids = next_ids;
+                        continuation = next_token;
+                    }
+                    Err(err) => {
+                        tracing::warn!(error = %err, "failed to fetch continuation page while backfilling");
+                        continuation = None;
+                        break;
+                    }
+                }
+            } else {
+                break;
+            }
+        }
+
+        let exhausted = continuation.is_none();
+        Ok((total_videos, exhausted))
+    }
+
+    async fn fetch_videos_from_data_api(
+        &self,
+        channel_id: &str,
+        api_key: &str,
+        limit: usize,
+        known_video_ids: &HashSet<String>,
+        until: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Result<(Vec<Video>, bool), YouTubeError> {
+        let uploads_playlist_id = self
+            .fetch_data_api_uploads_playlist_id(channel_id, api_key)
+            .await?;
+
+        let mut page_token: Option<String> = None;
+        let mut videos = Vec::new();
+        let mut seen = HashSet::new();
+        let max_pages = if until.is_some() { 50 } else { 10 };
+        let target_scan_count = limit
+            .saturating_add(known_video_ids.len())
+            .saturating_add(10);
+        let mut pages_fetched = 0usize;
+
+        let exhausted = loop {
+            let mut request = self
+                .client
+                .get("https://www.googleapis.com/youtube/v3/playlistItems")
+                .query(&[
+                    ("part", "snippet"),
+                    ("playlistId", uploads_playlist_id.as_str()),
+                    ("maxResults", "50"),
+                    ("key", api_key),
+                ]);
+
+            if let Some(token) = page_token.as_deref() {
+                request = request.query(&[("pageToken", token)]);
+            }
+
+            let response = request.send().await?;
+            if !response.status().is_success() {
+                let status = response.status();
+                let body = response.text().await.unwrap_or_default();
+                tracing::warn!(
+                    channel_id = %channel_id,
+                    status = %status,
+                    body = %body,
+                    "Data API playlistItems request failed"
+                );
+                return Err(YouTubeError::ChannelNotFound);
+            }
+
+            let payload: DataApiListResponse<DataApiPlaylistItem> =
+                response.json().await.map_err(YouTubeError::FetchError)?;
+            page_token = payload.next_page_token;
+            pages_fetched += 1;
+
+            for item in payload.items.unwrap_or_default() {
+                let Some(video_id) = item
+                    .snippet
+                    .resource_id
+                    .as_ref()
+                    .and_then(|rid| rid.video_id.as_deref())
+                    .map(str::trim)
+                    .filter(|id| id.len() == 11)
+                    .map(ToOwned::to_owned)
+                else {
+                    continue;
+                };
+
+                if !seen.insert(video_id.clone()) {
+                    continue;
+                }
+                if known_video_ids.contains(&video_id) {
+                    continue;
+                }
+
+                let published_at = item
+                    .snippet
+                    .published_at
+                    .as_deref()
+                    .and_then(Self::parse_any_datetime)
+                    .unwrap_or_else(chrono::Utc::now);
+
+                if let Some(until_date) = until {
+                    if published_at < until_date {
+                        return Ok((videos, true));
+                    }
+                }
+
+                if videos.len() >= limit {
+                    continue;
+                }
+
+                let thumbnail_url =
+                    Self::pick_data_api_thumbnail_url(item.snippet.thumbnails.as_ref());
+                let is_short = self.fetch_is_short_flag(&video_id).await;
+                videos.push(Video {
+                    id: video_id,
+                    channel_id: channel_id.to_string(),
+                    title: item.snippet.title,
+                    thumbnail_url,
+                    published_at,
+                    is_short,
+                    transcript_status: crate::models::ContentStatus::Pending,
+                    summary_status: crate::models::ContentStatus::Pending,
+                    acknowledged: false,
+                });
+
+                if videos.len() >= limit && until.is_none() {
+                    return Ok((videos, page_token.is_none()));
+                }
+            }
+
+            if page_token.is_none() {
+                break true;
+            }
+            if pages_fetched >= max_pages || seen.len() >= target_scan_count {
+                break false;
+            }
+        };
+
+        Ok((videos, exhausted))
+    }
+
+    async fn fetch_data_api_uploads_playlist_id(
+        &self,
+        channel_id: &str,
+        api_key: &str,
+    ) -> Result<String, YouTubeError> {
+        let response = self
+            .client
+            .get("https://www.googleapis.com/youtube/v3/channels")
+            .query(&[
+                ("part", "contentDetails"),
+                ("id", channel_id),
+                ("maxResults", "1"),
+                ("key", api_key),
+            ])
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            tracing::warn!(
+                channel_id = %channel_id,
+                status = %status,
+                body = %body,
+                "Data API channels request failed"
+            );
+            return Err(YouTubeError::ChannelNotFound);
+        }
+
+        let payload: DataApiListResponse<DataApiChannelItem> =
+            response.json().await.map_err(YouTubeError::FetchError)?;
+        payload
+            .items
+            .unwrap_or_default()
+            .into_iter()
+            .next()
+            .map(|item| item.content_details.related_playlists.uploads)
+            .filter(|uploads| !uploads.trim().is_empty())
+            .ok_or(YouTubeError::ChannelNotFound)
+    }
+
+    fn pick_data_api_thumbnail_url(thumbnails: Option<&DataApiThumbnails>) -> Option<String> {
+        let thumbs = thumbnails?;
+        thumbs
+            .maxres
+            .as_ref()
+            .and_then(|thumb| thumb.url.as_ref())
+            .or_else(|| {
+                thumbs
+                    .standard
+                    .as_ref()
+                    .and_then(|thumb| thumb.url.as_ref())
+            })
+            .or_else(|| thumbs.high.as_ref().and_then(|thumb| thumb.url.as_ref()))
+            .or_else(|| thumbs.medium.as_ref().and_then(|thumb| thumb.url.as_ref()))
+            .or_else(|| thumbs.default.as_ref().and_then(|thumb| thumb.url.as_ref()))
+            .map(ToOwned::to_owned)
+    }
+
+    async fn fetch_innertube_initial_page(
+        &self,
+        channel_id: &str,
+    ) -> Result<(Vec<String>, Option<String>), YouTubeError> {
+        let url = "https://www.youtube.com/youtubei/v1/browse?prettyPrint=false";
+        let body = serde_json::json!({
+            "context": {
+                "client": {
+                    "clientName": "WEB",
+                    "clientVersion": "2.20240225.01.00",
+                    "hl": "en",
+                    "gl": "US"
+                }
+            },
+            "browseId": channel_id,
+            "params": "EgZ2aWRlb3PyBgQKAjoA"
+        });
+
+        let response = self
+            .client
+            .post(url)
+            .header("User-Agent", Self::desktop_user_agent())
+            .header("Referer", "https://www.youtube.com/")
+            .json(&body)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            tracing::warn!(status = %status, body = %text, "InnerTube initial request failed");
+            return Ok((Vec::new(), None));
+        }
+
+        let data: Value = response.json().await.map_err(YouTubeError::FetchError)?;
+        let mut ids = Vec::new();
+        let mut continuation = None;
+        Self::extract_ids_and_continuation_from_value(&data, &mut ids, &mut continuation);
+        Ok((ids, continuation))
+    }
+
+    fn extract_ids_and_continuation_from_value(
+        value: &Value,
+        ids: &mut Vec<String>,
+        continuation: &mut Option<String>,
+    ) {
+        match value {
+            Value::Object(map) => {
+                // Look for video IDs
+                if let Some(Value::String(id)) = map.get("videoId") {
+                    if id.len() == 11 && !ids.contains(id) {
+                        ids.push(id.clone());
+                    }
+                }
+
+                // Look for continuation tokens in various common locations
+                if let Some(Value::String(token)) = map.get("continuation") {
+                    if token.len() > 20 {
+                        if continuation.is_none() {
+                            *continuation = Some(token.clone());
+                        }
+                    }
+                }
+
+                // Check continuationCommand token
+                if continuation.is_none() {
+                    if let Some(cmd) = map.get("continuationCommand") {
+                        if let Some(Value::String(token)) = cmd.get("token") {
+                            *continuation = Some(token.clone());
+                        }
+                    }
+                }
+
+                // Check nextContinuationData
+                if continuation.is_none() {
+                    if let Some(data) = map.get("nextContinuationData") {
+                        if let Some(Value::String(token)) = data.get("continuation") {
+                            *continuation = Some(token.clone());
+                        }
+                    }
+                }
+
+                // Check continuationItemRenderer
+                if continuation.is_none() {
+                    if let Some(renderer) = map.get("continuationItemRenderer") {
+                        // Look for token anywhere inside this renderer
+                        if let Some(token) = Self::find_token_in_value(renderer) {
+                            *continuation = Some(token);
+                        }
+                    }
+                }
+
+                // Check reloadContinuationItemsCommand
+                if continuation.is_none() {
+                    if let Some(cmd) = map.get("reloadContinuationItemsCommand") {
+                        if let Some(Value::String(token)) = cmd.get("token") {
+                            *continuation = Some(token.clone());
+                        }
+                    }
+                }
+
+                for v in map.values() {
+                    Self::extract_ids_and_continuation_from_value(v, ids, continuation);
+                }
+            }
+            Value::Array(list) => {
+                for v in list {
+                    Self::extract_ids_and_continuation_from_value(v, ids, continuation);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn find_token_in_value(value: &Value) -> Option<String> {
+        match value {
+            Value::Object(map) => {
+                if let Some(Value::String(token)) = map.get("token") {
+                    if token.len() > 20 {
+                        return Some(token.clone());
+                    }
+                }
+                if let Some(Value::String(token)) = map.get("continuation") {
+                    if token.len() > 20 {
+                        return Some(token.clone());
+                    }
+                }
+                for v in map.values() {
+                    if let Some(token) = Self::find_token_in_value(v) {
+                        return Some(token);
+                    }
+                }
+            }
+            Value::Array(list) => {
+                for v in list {
+                    if let Some(token) = Self::find_token_in_value(v) {
+                        return Some(token);
+                    }
+                }
+            }
+            _ => {}
+        }
+        None
+    }
+
+    async fn fetch_continuation_page(
+        &self,
+        token: &str,
+    ) -> Result<(Vec<String>, Option<String>), YouTubeError> {
+        // InnerTube API endpoint for browse
+        let url = "https://www.youtube.com/youtubei/v1/browse?prettyPrint=false";
+
+        // Minimal InnerTube context
+        let body = serde_json::json!({
+            "context": {
+                "client": {
+                    "clientName": "WEB",
+                    "clientVersion": "2.20240225.01.00",
+                    "hl": "en",
+                    "gl": "US"
+                }
+            },
+            "continuation": token
+        });
+
+        let response = self
+            .client
+            .post(url)
+            .header("User-Agent", Self::desktop_user_agent())
+            .header("Referer", "https://www.youtube.com/")
+            .json(&body)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            tracing::warn!(status = %status, body = %text, "InnerTube continuation request failed");
+            return Ok((Vec::new(), None));
+        }
+
+        let data: Value = response.json().await.map_err(YouTubeError::FetchError)?;
+        let mut ids = Vec::new();
+        let mut next_token = None;
+        Self::extract_ids_and_continuation_from_value(&data, &mut ids, &mut next_token);
+
+        Ok((ids, next_token))
     }
 
     async fn fetch_watch_metadata(&self, video_id: &str) -> Result<WatchMetadata, YouTubeError> {
         let watch_url = format!("https://www.youtube.com/watch?v={video_id}");
+        tracing::debug!(video_id = %video_id, "fetching watch metadata");
+
         let oembed_response = self
             .client
             .get("https://www.youtube.com/oembed")
@@ -465,41 +974,23 @@ impl YouTubeService {
             .await?;
 
         if !oembed_response.status().is_success() {
+            tracing::warn!(video_id = %video_id, status = %oembed_response.status(), "OEmbed fetch failed");
             return Err(YouTubeError::ChannelNotFound);
         }
 
         let oembed = oembed_response
             .json::<OEmbedResponse>()
             .await
-            .map_err(YouTubeError::FetchError)?;
+            .map_err(|e| {
+                tracing::warn!(video_id = %video_id, error = %e, "OEmbed JSON parsing failed");
+                YouTubeError::FetchError(e)
+            })?;
 
-        let mut metadata = WatchMetadata {
+        Ok(WatchMetadata {
             title: oembed.title,
             thumbnail_url: Some(oembed.thumbnail_url),
             published_at: chrono::Utc::now(),
-        };
-
-        let watch_response = self
-            .client
-            .get(&watch_url)
-            .header("User-Agent", Self::desktop_user_agent())
-            .send()
-            .await?;
-
-        if watch_response.status().is_success() {
-            let html = watch_response.text().await?;
-            if let Some(parsed) = Self::extract_watch_metadata_from_html(&html) {
-                metadata.title = parsed.title;
-                if parsed.thumbnail_url.is_some() {
-                    metadata.thumbnail_url = parsed.thumbnail_url;
-                }
-                metadata.published_at = parsed.published_at;
-            } else if let Some(published_at) = Self::extract_publish_date_from_watch_html(&html) {
-                metadata.published_at = published_at;
-            }
-        }
-
-        Ok(metadata)
+        })
     }
 
     pub async fn fetch_video_info(&self, video_id: &str) -> Result<VideoInfo, YouTubeError> {
@@ -976,101 +1467,6 @@ impl YouTubeService {
             .filter(|id| !id.is_empty())
     }
 
-    fn extract_video_ids_from_channel_page(html: &str) -> Vec<String> {
-        const VIDEO_ID_PREFIX: &str = "\"videoId\":\"";
-        const VIDEO_ID_LENGTH: usize = 11;
-
-        let mut ids = Vec::new();
-        let mut seen = HashSet::new();
-        let mut scan_from = 0usize;
-
-        while let Some(relative_pos) = html[scan_from..].find(VIDEO_ID_PREFIX) {
-            let id_start = scan_from + relative_pos + VIDEO_ID_PREFIX.len();
-            let id_end = id_start + VIDEO_ID_LENGTH;
-
-            let maybe_id = html.get(id_start..id_end);
-            let trailing_quote = html.as_bytes().get(id_end) == Some(&b'"');
-
-            if let Some(video_id) = maybe_id {
-                let is_valid = trailing_quote
-                    && video_id
-                        .chars()
-                        .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_');
-
-                if is_valid && seen.insert(video_id.to_string()) {
-                    ids.push(video_id.to_string());
-                }
-            }
-
-            scan_from = id_start;
-        }
-
-        ids
-    }
-
-    fn select_missing_video_ids(
-        channel_video_ids: &[String],
-        known_video_ids: &HashSet<String>,
-        limit: usize,
-    ) -> Vec<String> {
-        if limit == 0 {
-            return Vec::new();
-        }
-
-        channel_video_ids
-            .iter()
-            .filter(|video_id| !known_video_ids.contains(*video_id))
-            .take(limit)
-            .cloned()
-            .collect()
-    }
-
-    fn extract_watch_metadata_from_html(html: &str) -> Option<WatchMetadata> {
-        let document = Html::parse_document(html);
-        let title_selector = Selector::parse(r#"meta[property="og:title"]"#).ok()?;
-        let thumbnail_selector = Selector::parse(r#"meta[property="og:image"]"#).ok()?;
-        let date_selector = Selector::parse(r#"meta[itemprop="datePublished"]"#).ok()?;
-
-        let title = document
-            .select(&title_selector)
-            .next()
-            .and_then(|node| node.value().attr("content"))
-            .map(str::trim)
-            .filter(|value| !value.is_empty())?
-            .to_string();
-
-        let thumbnail_url = document
-            .select(&thumbnail_selector)
-            .next()
-            .and_then(|node| node.value().attr("content"))
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToOwned::to_owned);
-
-        let published_at = document
-            .select(&date_selector)
-            .next()
-            .and_then(|node| node.value().attr("content"))
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .and_then(Self::parse_yyyy_mm_dd)
-            .or_else(|| Self::extract_publish_date_from_watch_html(html))?;
-
-        Some(WatchMetadata {
-            title,
-            thumbnail_url,
-            published_at,
-        })
-    }
-
-    fn extract_publish_date_from_watch_html(html: &str) -> Option<chrono::DateTime<chrono::Utc>> {
-        let marker = "\"publishDate\":\"";
-        let start = html.find(marker)? + marker.len();
-        let end = start + 10;
-        let date = html.get(start..end)?;
-        Self::parse_yyyy_mm_dd(date)
-    }
-
     fn parse_yyyy_mm_dd(input: &str) -> Option<chrono::DateTime<chrono::Utc>> {
         chrono::NaiveDate::parse_from_str(input, "%Y-%m-%d")
             .ok()?
@@ -1242,93 +1638,6 @@ mod tests {
         assert!(!YouTubeService::is_short_from_resolved_url(
             "https://www.youtube.com/watch?v=abc123"
         ));
-    }
-
-    #[test]
-    fn test_extract_video_ids_from_channel_page_deduplicates_and_preserves_order() {
-        let html = r#"
-<script>
-{"videoId":"abc123def45","title":"First"}
-{"videoId":"abc123def45","title":"Duplicate"}
-{"videoId":"ghi678jkl90","title":"Second"}
-{"videoId":"invalid","title":"Invalid"}
-{"videoId":"mno123pqr67","title":"Third"}
-</script>
-"#;
-
-        let ids = YouTubeService::extract_video_ids_from_channel_page(html);
-        assert_eq!(
-            ids,
-            vec![
-                "abc123def45".to_string(),
-                "ghi678jkl90".to_string(),
-                "mno123pqr67".to_string()
-            ]
-        );
-    }
-
-    #[test]
-    fn test_select_missing_video_ids_returns_only_missing_in_feed_order() {
-        let channel_ids = vec![
-            "newest00001".to_string(),
-            "known000001".to_string(),
-            "middle00001".to_string(),
-            "known000002".to_string(),
-            "oldest00001".to_string(),
-        ];
-        let known_ids =
-            std::collections::HashSet::from(["known000001".to_string(), "known000002".to_string()]);
-
-        let selected = YouTubeService::select_missing_video_ids(&channel_ids, &known_ids, 10);
-        assert_eq!(
-            selected,
-            vec![
-                "newest00001".to_string(),
-                "middle00001".to_string(),
-                "oldest00001".to_string()
-            ]
-        );
-    }
-
-    #[test]
-    fn test_select_missing_video_ids_applies_limit() {
-        let channel_ids = vec![
-            "aa000000001".to_string(),
-            "bb000000002".to_string(),
-            "cc000000003".to_string(),
-        ];
-        let known_ids = std::collections::HashSet::new();
-
-        let selected = YouTubeService::select_missing_video_ids(&channel_ids, &known_ids, 2);
-        assert_eq!(
-            selected,
-            vec!["aa000000001".to_string(), "bb000000002".to_string()]
-        );
-    }
-
-    #[test]
-    fn test_extract_watch_metadata_from_html() {
-        let html = r#"
-<html>
-  <head>
-    <meta property="og:title" content="Useful Long Video" />
-    <meta property="og:image" content="https://img.example.com/thumb.jpg" />
-    <meta itemprop="datePublished" content="2026-01-20" />
-  </head>
-</html>
-"#;
-
-        let metadata = YouTubeService::extract_watch_metadata_from_html(html)
-            .expect("watch metadata should parse");
-        assert_eq!(metadata.title, "Useful Long Video");
-        assert_eq!(
-            metadata.thumbnail_url.as_deref(),
-            Some("https://img.example.com/thumb.jpg")
-        );
-        assert_eq!(
-            metadata.published_at.to_rfc3339(),
-            "2026-01-20T00:00:00+00:00"
-        );
     }
 
     #[test]

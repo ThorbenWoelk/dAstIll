@@ -49,7 +49,7 @@ trap cleanup EXIT INT TERM
 
 echo "Starting backend on http://localhost:$backend_port (log: backend.log, streaming enabled)"
 pushd backend >/dev/null
-PORT=$backend_port DATABASE_URL="../dastill.db" cargo run > >(tee ../backend.log) 2>&1 &
+PORT=$backend_port cargo run --bin dastill > >(tee ../backend.log) 2>&1 &
 backend_pid=$!
 popd >/dev/null
 

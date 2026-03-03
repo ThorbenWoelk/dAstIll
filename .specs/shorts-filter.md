@@ -7,7 +7,7 @@ Channel video lists include YouTube Shorts mixed with long-form videos, which ma
 Allow users to hide Shorts from video lists using data persisted on each video record.
 
 ## Scope
-- Add Shorts classification data to backend `Video` model and SQLite storage.
+- Add Shorts classification data to backend `Video` model and Turso storage.
 - Populate Shorts classification during channel refresh using YouTube URL resolution.
 - Add API filtering support for including/excluding Shorts.
 - Add UI toggle(s) so users can hide Shorts in Workspace and Download Queue pages.

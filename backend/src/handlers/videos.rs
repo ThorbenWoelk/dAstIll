@@ -35,6 +35,7 @@ pub struct VideoListParams {
     pub include_shorts: Option<bool>,
     pub video_type: Option<VideoTypeFilter>,
     pub acknowledged: Option<bool>,
+    pub queue_only: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -69,6 +70,7 @@ pub async fn list_channel_videos(
         }
     };
 
+    let queue_only = params.queue_only.unwrap_or(false);
     let conn = state.db.lock().await;
     let videos = db::list_videos_by_channel(
         &conn,
@@ -77,6 +79,7 @@ pub async fn list_channel_videos(
         offset,
         is_short,
         params.acknowledged,
+        queue_only,
     )
     .await
     .map_err(map_db_err)?;
