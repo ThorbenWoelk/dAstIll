@@ -1136,7 +1136,7 @@
 			<p
 				class="hidden sm:block text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--accent)] opacity-60"
 			>
-				v1.0
+				v1.0.0
 			</p>
 			{#if aiAvailable === false}
 				<span class="hidden sm:block h-3 w-px bg-[var(--border-soft)]"
