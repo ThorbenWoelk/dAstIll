@@ -64,5 +64,5 @@ resource "google_project_iam_member" "token_creator" {
 resource "google_service_account_iam_member" "wif_user" {
   service_account_id = google_service_account.github_actions_sa.name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "principalSet://iam.googleapis.com/projects/673062863574/locations/global/workloadIdentityPools/github-pool-v1/attribute.repository/ThorbenWoelk/dastill"
+  member             = "principalSet://iam.googleapis.com/projects/673062863574/locations/global/workloadIdentityPools/github-pool-v1/attribute.repository/ThorbenWoelk/dAstIll"
 }
