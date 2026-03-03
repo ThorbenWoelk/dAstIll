@@ -101,6 +101,7 @@ async fn main() -> anyhow::Result<()> {
 
     let app = Router::new()
         .route("/api/health", get(|| async { "ok" }))
+        .route("/api/health/ai", get(handlers::content::health_ai))
         .route(
             "/api/channels",
             get(channels::list_channels).post(channels::add_channel),
