@@ -12,6 +12,10 @@ import type {
 const API_BASE =
 	(import.meta as { env?: { VITE_API_BASE?: string } }).env?.VITE_API_BASE ??
 	'http://localhost:3001';
+
+if (typeof window !== 'undefined') {
+	console.log('Using API_BASE:', API_BASE);
+}
 const FORMAT_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 const BACKEND_RETRY_DELAY_MS = 1500;
 

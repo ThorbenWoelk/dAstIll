@@ -37,6 +37,10 @@ RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o 
 # Copy the backend binary
 COPY --from=builder /usr/src/app/target/release/dastill .
 
+# Copy the fake summarize script
+COPY scripts/fake_summarize.sh /usr/local/bin/summarize
+RUN chmod +x /usr/local/bin/summarize
+
 # Expose the backend port
 EXPOSE 3001
 
