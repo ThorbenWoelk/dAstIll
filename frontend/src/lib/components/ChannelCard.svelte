@@ -98,6 +98,7 @@
 				}
 			}}
 			aria-label="Delete channel"
+			data-tooltip="Delete channel"
 		>
 			<svg
 				viewBox="0 0 24 24"
@@ -111,6 +112,23 @@
 				<path d="M3 6h18"></path>
 				<path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
 				<path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+			</svg>
+		</div>
+		<div
+			class={`transition-opacity duration-300 ${active ? "opacity-100" : "opacity-0 group-hover:opacity-40"}`}
+			aria-hidden="true"
+			data-tooltip="Drag to reorder"
+		>
+			<svg
+				viewBox="0 0 16 16"
+				class="h-4 w-4 text-[var(--soft-foreground)]"
+			>
+				<circle cx="5" cy="4" r="1.1" fill="currentColor" />
+				<circle cx="11" cy="4" r="1.1" fill="currentColor" />
+				<circle cx="5" cy="8" r="1.1" fill="currentColor" />
+				<circle cx="11" cy="8" r="1.1" fill="currentColor" />
+				<circle cx="5" cy="12" r="1.1" fill="currentColor" />
+				<circle cx="11" cy="12" r="1.1" fill="currentColor" />
 			</svg>
 		</div>
 	{/if}
