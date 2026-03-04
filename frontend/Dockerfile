@@ -5,15 +5,21 @@ WORKDIR /app
 
 # Build arguments
 ARG VITE_API_BASE
+# Ensure the variable is available during 'bun run build'
 ENV VITE_API_BASE=$VITE_API_BASE
 
 # Install dependencies
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 
-# Copy source and build
+# Copy source
 COPY . .
-RUN bun run build
+
+# Run sync before build to ensure .svelte-kit directory is populated
+RUN bun x svelte-kit sync
+
+# Build with the environment variable explicitly passed just in case
+RUN VITE_API_BASE=$VITE_API_BASE bun run build
 
 # Runtime stage
 FROM node:20-slim
