@@ -241,3 +241,9 @@ export function updateSummary(videoId: string, content: string) {
 		body: JSON.stringify({ content })
 	});
 }
+
+export function regenerateSummary(videoId: string) {
+	return request<Summary>(`/api/videos/${videoId}/summary/regenerate`, {
+		method: 'POST'
+	});
+}

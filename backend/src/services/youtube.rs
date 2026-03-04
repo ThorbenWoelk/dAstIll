@@ -530,6 +530,7 @@ impl YouTubeService {
                                     transcript_status: crate::models::ContentStatus::Pending,
                                     summary_status: crate::models::ContentStatus::Pending,
                                     acknowledged: false,
+                                    retry_count: 0,
                                 });
                             }
                         }
@@ -547,6 +548,7 @@ impl YouTubeService {
                                     transcript_status: crate::models::ContentStatus::Pending,
                                     summary_status: crate::models::ContentStatus::Pending,
                                     acknowledged: false,
+                                    retry_count: 0,
                                 });
                             }
                         }
@@ -695,6 +697,7 @@ impl YouTubeService {
                     transcript_status: crate::models::ContentStatus::Pending,
                     summary_status: crate::models::ContentStatus::Pending,
                     acknowledged: false,
+                    retry_count: 0,
                 });
 
                 if videos.len() >= limit && until.is_none() {
@@ -1364,6 +1367,7 @@ impl YouTubeService {
                     transcript_status: crate::models::ContentStatus::Pending,
                     summary_status: crate::models::ContentStatus::Pending,
                     acknowledged: false,
+                    retry_count: 0,
                 })
             })
             .collect()
@@ -1445,6 +1449,7 @@ impl YouTubeService {
                     transcript_status: crate::models::ContentStatus::Pending,
                     summary_status: crate::models::ContentStatus::Pending,
                     acknowledged: false,
+                    retry_count: 0,
                 })
             })
             .collect();

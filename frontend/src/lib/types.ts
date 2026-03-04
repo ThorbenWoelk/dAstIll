@@ -27,6 +27,7 @@ export interface Video {
 	transcript_status: ContentStatus;
 	summary_status: ContentStatus;
 	acknowledged: boolean;
+	retry_count?: number;
 }
 
 export interface Transcript {

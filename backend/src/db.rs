@@ -43,6 +43,8 @@ async fn run_migrations(conn: &Connection) -> Result<(), libsql::Error> {
             is_short INTEGER NOT NULL DEFAULT 0,
             transcript_status TEXT DEFAULT 'pending',
             summary_status TEXT DEFAULT 'pending',
+            acknowledged INTEGER NOT NULL DEFAULT 0,
+            retry_count INTEGER NOT NULL DEFAULT 0,
             FOREIGN KEY(channel_id) REFERENCES channels(id)
         );
 
@@ -87,6 +89,7 @@ async fn run_migrations(conn: &Connection) -> Result<(), libsql::Error> {
     .await?;
     ensure_videos_is_short_column(conn).await?;
     ensure_videos_acknowledged_column(conn).await?;
+    ensure_videos_retry_count_column(conn).await?;
     ensure_summary_quality_columns(conn).await?;
     ensure_channels_earliest_sync_date_column(conn).await?;
     ensure_channels_earliest_sync_date_user_set_column(conn).await?;
@@ -175,6 +178,28 @@ async fn ensure_videos_acknowledged_column(conn: &Connection) -> Result<(), libs
     if !has_col {
         conn.execute(
             "ALTER TABLE videos ADD COLUMN acknowledged INTEGER NOT NULL DEFAULT 0",
+            (),
+        )
+        .await?;
+    }
+
+    Ok(())
+}
+
+async fn ensure_videos_retry_count_column(conn: &Connection) -> Result<(), libsql::Error> {
+    let mut rows = conn.query("PRAGMA table_info(videos)", ()).await?;
+    let mut has_col = false;
+    while let Some(row) = rows.next().await? {
+        let name: String = row.get(1)?;
+        if name == "retry_count" {
+            has_col = true;
+            break;
+        }
+    }
+
+    if !has_col {
+        conn.execute(
+            "ALTER TABLE videos ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0",
             (),
         )
         .await?;
@@ -329,8 +354,8 @@ fn row_to_channel(row: &libsql::Row) -> Result<Channel, libsql::Error> {
 
 pub async fn insert_video(conn: &Connection, video: &Video) -> Result<(), libsql::Error> {
     conn.execute(
-        "INSERT INTO videos (id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, acknowledged)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+        "INSERT INTO videos (id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, acknowledged, retry_count)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
          ON CONFLICT(id) DO UPDATE SET
              channel_id = excluded.channel_id,
              title = excluded.title,
@@ -347,6 +372,7 @@ pub async fn insert_video(conn: &Connection, video: &Video) -> Result<(), libsql
             video.transcript_status.as_str(),
             video.summary_status.as_str(),
             video.acknowledged as i64,
+            video.retry_count as i64,
         ],
     )
     .await?;
@@ -354,7 +380,7 @@ pub async fn insert_video(conn: &Connection, video: &Video) -> Result<(), libsql
 }
 
 pub async fn get_video(conn: &Connection, id: &str) -> Result<Option<Video>, libsql::Error> {
-    let mut rows = conn.query("SELECT id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, acknowledged FROM videos WHERE id = ?1", params![id]).await?;
+    let mut rows = conn.query("SELECT id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, acknowledged, retry_count FROM videos WHERE id = ?1", params![id]).await?;
 
     if let Some(row) = rows.next().await? {
         Ok(Some(row_to_video(&row)?))
@@ -380,7 +406,7 @@ pub async fn list_videos_by_channel(
         ""
     };
     let sql = format!(
-        "SELECT id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, acknowledged
+        "SELECT id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, acknowledged, retry_count
          FROM videos
          WHERE channel_id = ?1
            AND (?4 IS NULL OR is_short = ?4)
@@ -424,15 +450,17 @@ pub async fn list_video_ids_by_channel(
 pub async fn list_videos_for_queue_processing(
     conn: &Connection,
     limit: usize,
+    max_retries: u8,
 ) -> Result<Vec<Video>, libsql::Error> {
     let mut rows = conn.query(
-        "SELECT id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, acknowledged
+        "SELECT id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, acknowledged, retry_count
          FROM videos
-         WHERE transcript_status IN ('pending', 'loading')
-            OR (transcript_status = 'ready' AND summary_status IN ('pending', 'loading'))
+         WHERE (transcript_status IN ('pending', 'loading', 'failed')
+            OR (transcript_status = 'ready' AND summary_status IN ('pending', 'loading', 'failed')))
+           AND retry_count < ?2
          ORDER BY published_at DESC
          LIMIT ?1",
-        params![limit as i64],
+        params![limit as i64, max_retries as i64],
     ).await?;
     let mut results = Vec::new();
     while let Some(row) = rows.next().await? {
@@ -480,12 +508,37 @@ pub async fn update_video_acknowledged(
     Ok(())
 }
 
+pub async fn increment_video_retry_count(
+    conn: &Connection,
+    video_id: &str,
+) -> Result<(), libsql::Error> {
+    conn.execute(
+        "UPDATE videos SET retry_count = retry_count + 1 WHERE id = ?1",
+        params![video_id],
+    )
+    .await?;
+    Ok(())
+}
+
+pub async fn reset_video_retry_count(
+    conn: &Connection,
+    video_id: &str,
+) -> Result<(), libsql::Error> {
+    conn.execute(
+        "UPDATE videos SET retry_count = 0 WHERE id = ?1",
+        params![video_id],
+    )
+    .await?;
+    Ok(())
+}
+
 fn row_to_video(row: &libsql::Row) -> Result<Video, libsql::Error> {
     let published_at: String = row.get(4)?;
     let transcript_status: String = row.get(6)?;
     let summary_status: String = row.get(7)?;
     let is_short_val: i64 = row.get(5)?;
     let acknowledged_val: i64 = row.get::<i64>(8).unwrap_or(0);
+    let retry_count: i64 = row.get::<i64>(9).unwrap_or(0);
     Ok(Video {
         id: row.get(0)?,
         channel_id: row.get(1)?,
@@ -498,6 +551,7 @@ fn row_to_video(row: &libsql::Row) -> Result<Video, libsql::Error> {
         transcript_status: ContentStatus::from_db_value(&transcript_status),
         summary_status: ContentStatus::from_db_value(&summary_status),
         acknowledged: acknowledged_val != 0,
+        retry_count: retry_count.clamp(0, 255) as u8,
     })
 }
 
@@ -646,6 +700,13 @@ pub async fn increment_summary_auto_regen_attempts(
     )
     .await?;
     Ok(())
+}
+
+pub async fn delete_summary(conn: &Connection, video_id: &str) -> Result<bool, libsql::Error> {
+    let changes = conn
+        .execute("DELETE FROM summaries WHERE video_id = ?1", params![video_id])
+        .await?;
+    Ok(changes > 0)
 }
 
 pub async fn get_summary(
@@ -876,6 +937,7 @@ mod tests {
             transcript_status: ContentStatus::Pending,
             summary_status: ContentStatus::Pending,
             acknowledged: false,
+            retry_count: 0,
         };
         insert_video(&conn, &video).await.unwrap();
 
@@ -922,6 +984,7 @@ mod tests {
             transcript_status: ContentStatus::Pending,
             summary_status: ContentStatus::Pending,
             acknowledged: false,
+            retry_count: 0,
         };
         insert_video(&conn, &video).await.unwrap();
 
@@ -963,6 +1026,7 @@ mod tests {
             transcript_status: ContentStatus::Pending,
             summary_status: ContentStatus::Pending,
             acknowledged: false,
+            retry_count: 0,
         };
         insert_video(&conn, &video).await.unwrap();
 
@@ -1004,6 +1068,7 @@ mod tests {
             transcript_status: ContentStatus::Ready,
             summary_status: ContentStatus::Ready,
             acknowledged: false,
+            retry_count: 0,
         };
         insert_video(&conn, &video).await.unwrap();
 
@@ -1046,6 +1111,7 @@ mod tests {
             transcript_status: ContentStatus::Ready,
             summary_status: ContentStatus::Ready,
             acknowledged: false,
+            retry_count: 0,
         };
         insert_video(&conn, &video).await.unwrap();
 
@@ -1092,6 +1158,7 @@ mod tests {
             transcript_status: ContentStatus::Ready,
             summary_status: ContentStatus::Ready,
             acknowledged: false,
+            retry_count: 0,
         };
         insert_video(&conn, &video).await.unwrap();
 
@@ -1165,6 +1232,7 @@ mod tests {
             transcript_status: ContentStatus::Ready,
             summary_status: ContentStatus::Ready,
             acknowledged: false,
+            retry_count: 0,
         };
         insert_video(&conn, &video).await.unwrap();
 
@@ -1233,6 +1301,7 @@ mod tests {
                 transcript_status: ContentStatus::Pending,
                 summary_status: ContentStatus::Pending,
                 acknowledged: false,
+                retry_count: 0,
             },
             Video {
                 id: "v_loading".to_string(),
@@ -1244,6 +1313,7 @@ mod tests {
                 transcript_status: ContentStatus::Loading,
                 summary_status: ContentStatus::Pending,
                 acknowledged: false,
+                retry_count: 0,
             },
             Video {
                 id: "v_summary_pending".to_string(),
@@ -1255,6 +1325,7 @@ mod tests {
                 transcript_status: ContentStatus::Ready,
                 summary_status: ContentStatus::Pending,
                 acknowledged: false,
+                retry_count: 0,
             },
             Video {
                 id: "v_done".to_string(),
@@ -1266,6 +1337,7 @@ mod tests {
                 transcript_status: ContentStatus::Ready,
                 summary_status: ContentStatus::Ready,
                 acknowledged: false,
+                retry_count: 0,
             },
             Video {
                 id: "v_failed".to_string(),
@@ -1277,6 +1349,7 @@ mod tests {
                 transcript_status: ContentStatus::Failed,
                 summary_status: ContentStatus::Failed,
                 acknowledged: false,
+                retry_count: 0,
             },
         ];
 
@@ -1284,14 +1357,14 @@ mod tests {
             insert_video(&conn, &video).await.unwrap();
         }
 
-        let queue = list_videos_for_queue_processing(&conn, 10).await.unwrap();
+        let queue = list_videos_for_queue_processing(&conn, 10, 3).await.unwrap();
         let ids = queue.into_iter().map(|video| video.id).collect::<Vec<_>>();
 
         assert!(ids.contains(&"v_pending".to_string()));
         assert!(ids.contains(&"v_loading".to_string()));
         assert!(ids.contains(&"v_summary_pending".to_string()));
         assert!(!ids.contains(&"v_done".to_string()));
-        assert!(!ids.contains(&"v_failed".to_string()));
+        assert!(ids.contains(&"v_failed".to_string()));
     }
 
     #[tokio::test]
@@ -1320,6 +1393,7 @@ mod tests {
             transcript_status: ContentStatus::Ready,
             summary_status: ContentStatus::Ready,
             acknowledged: true,
+            retry_count: 0,
         };
         insert_video(&conn, &existing).await.unwrap();
 
@@ -1333,6 +1407,7 @@ mod tests {
             transcript_status: ContentStatus::Pending,
             summary_status: ContentStatus::Pending,
             acknowledged: false,
+            retry_count: 0,
         };
         insert_video(&conn, &refreshed).await.unwrap();
 
@@ -1468,6 +1543,7 @@ mod tests {
             transcript_status: ContentStatus::Ready,
             summary_status: ContentStatus::Ready,
             acknowledged: false,
+            retry_count: 0,
         };
         let older = Video {
             id: "vid_info_old".to_string(),
@@ -1479,6 +1555,7 @@ mod tests {
             transcript_status: ContentStatus::Ready,
             summary_status: ContentStatus::Ready,
             acknowledged: false,
+            retry_count: 0,
         };
         insert_video(&conn, &newer).await.unwrap();
         insert_video(&conn, &older).await.unwrap();
@@ -1555,6 +1632,7 @@ mod tests {
                     transcript_status: ContentStatus::Pending,
                     summary_status: ContentStatus::Pending,
                     acknowledged: false,
+                    retry_count: 0,
                 },
             )
             .await
@@ -1573,6 +1651,7 @@ mod tests {
                 transcript_status: ContentStatus::Pending,
                 summary_status: ContentStatus::Pending,
                 acknowledged: false,
+                retry_count: 0,
             },
         )
         .await
