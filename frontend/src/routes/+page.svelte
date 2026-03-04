@@ -492,16 +492,45 @@
 	async function handleAddChannel(input: string) {
 		if (!input.trim()) return;
 
+		const trimmedInput = input.trim();
 		addingChannel = true;
 		errorMessage = null;
 
+		// Optimistic update
+		const tempId = `temp-${Date.now()}`;
+		const optimisticChannel: Channel = {
+			id: tempId,
+			name: trimmedInput.includes("youtube.com") || trimmedInput.includes("youtu.be") 
+				? "Fetching Channel..." 
+				: trimmedInput,
+			added_at: new Date().toISOString(),
+		};
+
+		const previousChannels = [...channels];
+		const previousSelectedId = selectedChannelId;
+
+		channels = [optimisticChannel, ...channels];
+		channelOrder = [tempId, ...channelOrder];
+		selectedChannelId = tempId;
+		channelInput = "";
+
 		try {
-			const channel = await addChannel(input.trim());
-			channelInput = "";
-			channelOrder = prioritizeChannelOrder(channelOrder, channel.id);
+			const channel = await addChannel(trimmedInput);
+			
+			// Replace temp channel with real one
+			channels = channels.map(c => c.id === tempId ? channel : c);
+			channelOrder = channelOrder.map(id => id === tempId ? channel.id : id);
+			selectedChannelId = channel.id;
+			
+			// Refresh to get full details and videos
 			await loadChannels(channel.id);
 		} catch (error) {
+			// Rollback on error
+			channels = previousChannels;
+			selectedChannelId = previousSelectedId;
+			syncChannelOrderFromList();
 			errorMessage = (error as Error).message;
+			channelInput = trimmedInput; // Restore input on error
 		} finally {
 			addingChannel = false;
 		}
@@ -1293,6 +1322,7 @@
 								{channel}
 								active={selectedChannelId === channel.id}
 								draggableEnabled
+								loading={channel.id.startsWith("temp-")}
 								dragging={draggedChannelId === channel.id}
 								dragOver={dragOverChannelId === channel.id &&
 									draggedChannelId !== channel.id}
