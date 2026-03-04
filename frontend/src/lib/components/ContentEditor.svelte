@@ -32,12 +32,12 @@
 						? "Formatting transcript"
 						: aiAvailable
 							? "Clean formatting"
-							: "Ollama offline"}
+							: "AI Engine: Offline"}
 					title={formatting
 						? "Formatting…"
 						: aiAvailable
 							? "Clean formatting"
-							: "Ollama offline"}
+							: "AI Engine: Offline"}
 				>
 					{#if formatting}
 						<svg
@@ -211,12 +211,12 @@
 					? "Formatting transcript"
 					: aiAvailable
 						? "Clean formatting"
-						: "Ollama offline"}
+						: "AI Engine: Offline"}
 				title={formatting
 					? "Formatting…"
 					: aiAvailable
 						? "Clean formatting"
-						: "Ollama offline"}
+						: "AI Engine: Offline"}
 			>
 				{#if formatting}
 					<svg

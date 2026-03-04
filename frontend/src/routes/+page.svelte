@@ -1138,22 +1138,13 @@
 			>
 				v0.1.0
 			</p>
-			{#if aiAvailable === false}
+			{#if aiAvailable !== null}
 				<span class="hidden sm:block h-3 w-px bg-[var(--border-soft)]"
 				></span>
-				<p
-					class="hidden sm:block text-[9px] font-bold uppercase tracking-[0.2em] text-[var(--accent)]"
-				>
-					Ollama Offline
-				</p>
-			{:else if aiAvailable === true}
-				<span class="hidden sm:block h-3 w-px bg-[var(--border-soft)]"
-				></span>
-				<p
-					class="hidden sm:block text-[9px] font-bold uppercase tracking-[0.2em] text-[var(--soft-foreground)] opacity-40"
-				>
-					Ollama Ready
-				</p>
+				<div 
+					class="hidden sm:block h-2 w-2 rounded-full {aiAvailable ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]' : 'bg-[var(--accent)] shadow-[0_0_8px_rgba(212,100,81,0.4)]'}"
+					title={aiAvailable ? "AI Engine: Ready" : "AI Engine: Offline"}
+				></div>
 			{/if}
 		</div>
 
@@ -1698,47 +1689,6 @@
 				<div
 					class="w-full min-h-0 flex-1 overflow-y-auto px-8 md:px-12 custom-scrollbar"
 				>
-					{#if aiAvailable === false && (contentMode === "transcript" || contentMode === "summary")}
-						<div
-							class="mb-8 p-6 rounded-[var(--radius-lg)] border border-[var(--accent)]/10 bg-[var(--accent-soft)]/20 flex flex-col gap-3 shadow-sm"
-							role="alert"
-						>
-							<div class="flex items-center gap-3">
-								<svg
-									width="16"
-									height="16"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="3"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									class="text-[var(--accent)]"
-									><circle cx="12" cy="12" r="10" /><line
-										x1="12"
-										y1="8"
-										x2="12"
-										y2="12"
-									/><line
-										x1="12"
-										y1="16"
-										x2="12.01"
-										y2="16"
-									/></svg
-								>
-								<p
-									class="text-[11px] font-bold tracking-[0.2em] uppercase text-[var(--accent)]"
-								>
-									Ollama Offline
-								</p>
-							</div>
-							<p
-								class="text-[13px] font-medium leading-relaxed text-[var(--accent-strong)] opacity-80"
-							>
-								Summarization and transcript refining are disabled because the local distillation engine is unreachable from this environment.
-							</p>
-						</div>
-					{/if}
 					{#if contentMode === "transcript" && selectedVideoId && ((formattingContent && formattingVideoId === selectedVideoId) || (formattingNotice && formattingNoticeVideoId === selectedVideoId))}
 						<div
 							class={`mb-8 p-4 rounded-[var(--radius-md)] border flex items-center gap-3 transition-all duration-500 ${
