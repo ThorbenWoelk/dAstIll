@@ -60,6 +60,8 @@
 	} | null>(null);
 
 	const MAX_RETRIES = 3;
+	const CHANNEL_REFRESH_TTL_MS = 5 * 60 * 1000;
+	const channelLastRefreshedAt = new Map<string, number>();
 
 	$effect(() => {
 		const timer = setInterval(() => {
@@ -348,11 +350,17 @@
 		try {
 			const { deleteChannel } = await import("$lib/api");
 			await deleteChannel(channelId);
+			channels = channels.filter((c) => c.id !== channelId);
 			channelOrder = channelOrder.filter((id) => id !== channelId);
 			if (selectedChannelId === channelId) {
-				selectedChannelId = null;
+				const nextChannel = channels.length > 0 ? channels[0] : null;
+				if (nextChannel) {
+					await selectChannel(nextChannel.id);
+				} else {
+					selectedChannelId = null;
+					videos = [];
+				}
 			}
-			await loadChannels();
 		} catch (error) {
 			errorMessage = (error as Error).message;
 		}
@@ -369,10 +377,17 @@
 		// Instantly load existing videos
 		await loadVideos(true);
 
+		// Skip YouTube refresh if channel was refreshed recently
+		const lastRefresh = channelLastRefreshedAt.get(channelId);
+		if (lastRefresh && Date.now() - lastRefresh < CHANNEL_REFRESH_TTL_MS) {
+			return;
+		}
+
 		// Lazy load/refresh the channel in the background
 		refreshingChannel = true;
 		try {
 			await refreshChannel(channelId);
+			channelLastRefreshedAt.set(channelId, Date.now());
 			// After refresh, silently reload the queue
 			if (selectedChannelId === channelId) {
 				await loadVideos(true, true);
