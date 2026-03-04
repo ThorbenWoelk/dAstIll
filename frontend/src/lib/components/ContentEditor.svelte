@@ -32,12 +32,12 @@
 						? "Formatting transcript"
 						: aiAvailable
 							? "Clean formatting"
-							: "AI Engine: Offline"}
+							: "auto-format (AI engine required)"}
 					title={formatting
 						? "Formatting…"
 						: aiAvailable
 							? "Clean formatting"
-							: "AI Engine: Offline"}
+							: "auto-format (AI engine required)"}
 				>
 					{#if formatting}
 						<svg
@@ -211,12 +211,12 @@
 					? "Formatting transcript"
 					: aiAvailable
 						? "Clean formatting"
-						: "AI Engine: Offline"}
+						: "auto-format (AI engine required)"}
 				title={formatting
 					? "Formatting…"
 					: aiAvailable
 						? "Clean formatting"
-						: "AI Engine: Offline"}
+						: "auto-format (AI engine required)"}
 			>
 				{#if formatting}
 					<svg
