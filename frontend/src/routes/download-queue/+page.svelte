@@ -524,6 +524,7 @@
 							{channel}
 							active={selectedChannelId === channel.id}
 							draggableEnabled
+							loading={channel.id.startsWith("temp-")}
 							dragging={draggedChannelId === channel.id}
 							dragOver={dragOverChannelId === channel.id &&
 								draggedChannelId !== channel.id}
