@@ -11,7 +11,7 @@ use tower_http::trace::TraceLayer;
 use dastill::db::init_db;
 use dastill::handlers::{channels, content, videos};
 use dastill::services::{
-    SummarizerService, SummaryEvaluatorService, TranscriptService, YouTubeService,
+    CloudCooldown, SummarizerService, SummaryEvaluatorService, TranscriptService, YouTubeService,
     build_http_client,
 };
 use dastill::state::AppState;
@@ -82,13 +82,16 @@ async fn main() -> anyhow::Result<()> {
         .ok()
         .or_else(|| Some("qwen3:8b".to_string()));
     let transcript = Arc::new(TranscriptService::with_path(&summarize_path));
+    let cloud_cooldown = Arc::new(CloudCooldown::new());
     let summarizer = Arc::new(
         SummarizerService::with_client(client.clone(), &ollama_url, &ollama_model)
-            .with_fallback_model(ollama_fallback_model),
+            .with_fallback_model(ollama_fallback_model)
+            .with_cloud_cooldown(cloud_cooldown.clone()),
     );
     let summary_evaluator = Arc::new(
         SummaryEvaluatorService::with_client(client, &ollama_url, &summary_evaluator_model)
-            .with_fallback_model(summary_evaluator_fallback_model),
+            .with_fallback_model(summary_evaluator_fallback_model)
+            .with_cloud_cooldown(cloud_cooldown),
     );
 
     let state = AppState {

@@ -4,11 +4,13 @@ use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::ollama;
 use serde::Deserialize;
+use std::sync::Arc;
 use std::time::Instant;
 use thiserror::Error;
 
 use crate::models::SummaryEvaluationResult;
 use crate::services::{build_http_client, is_rate_limited};
+use crate::services::http::CloudCooldown;
 
 #[derive(Error, Debug)]
 pub enum SummaryEvaluatorError {
@@ -27,6 +29,7 @@ pub struct SummaryEvaluatorService {
     base_url: String,
     model: String,
     fallback_model: Option<String>,
+    cloud_cooldown: Option<Arc<CloudCooldown>>,
 }
 
 impl SummaryEvaluatorService {
@@ -36,6 +39,7 @@ impl SummaryEvaluatorService {
             base_url: "http://localhost:11434".to_string(),
             model: "qwen3-coder:480b-cloud".to_string(),
             fallback_model: Some("qwen3:8b".to_string()),
+            cloud_cooldown: None,
         }
     }
 
@@ -45,6 +49,7 @@ impl SummaryEvaluatorService {
             base_url: base_url.to_string(),
             model: model.to_string(),
             fallback_model: None,
+            cloud_cooldown: None,
         }
     }
 
@@ -54,11 +59,17 @@ impl SummaryEvaluatorService {
             base_url: base_url.to_string(),
             model: model.to_string(),
             fallback_model: None,
+            cloud_cooldown: None,
         }
     }
 
     pub fn with_fallback_model(mut self, fallback_model: Option<String>) -> Self {
         self.fallback_model = fallback_model;
+        self
+    }
+
+    pub fn with_cloud_cooldown(mut self, cooldown: Arc<CloudCooldown>) -> Self {
+        self.cloud_cooldown = Some(cooldown);
         self
     }
 
@@ -126,28 +137,58 @@ impl SummaryEvaluatorService {
         );
         let started = Instant::now();
         let ollama_client = self.build_ollama_client()?;
-        let agent = ollama_client.agent(&self.model).preamble(preamble).build();
-        let (response, model_used) = match agent.prompt(prompt).await {
-            Ok(resp) => (resp, self.model.clone()),
-            Err(err) if is_rate_limited(&err) => {
-                let fallback = self.fallback_model.as_deref().ok_or_else(|| {
-                    SummaryEvaluatorError::EvaluationFailed(format!(
-                        "rate limited by provider and no fallback model configured: {err}"
-                    ))
-                })?;
-                tracing::warn!(
-                    operation = operation,
-                    primary_model = %self.model,
-                    fallback_model = %fallback,
-                    error = %err,
-                    "rate limited - falling back to local model"
-                );
-                let fallback_agent =
-                    ollama_client.agent(fallback).preamble(preamble).build();
-                let resp = fallback_agent.prompt(prompt).await?;
-                (resp, fallback.to_string())
+
+        let is_cloud = self.model.ends_with(":cloud");
+        let cooldown_active = is_cloud
+            && self
+                .cloud_cooldown
+                .as_ref()
+                .is_some_and(|cd| cd.is_active());
+
+        let (response, model_used) = if cooldown_active {
+            let fallback = self.fallback_model.as_deref().ok_or_else(|| {
+                SummaryEvaluatorError::EvaluationFailed(
+                    "cloud cooldown active and no fallback model configured".to_string(),
+                )
+            })?;
+            tracing::info!(
+                operation = operation,
+                skipped_model = %self.model,
+                fallback_model = %fallback,
+                "skipping cloud model due to active cooldown"
+            );
+            let fallback_agent = ollama_client.agent(fallback).preamble(preamble).build();
+            let resp = fallback_agent.prompt(prompt).await?;
+            (resp, fallback.to_string())
+        } else {
+            let agent = ollama_client.agent(&self.model).preamble(preamble).build();
+            match agent.prompt(prompt).await {
+                Ok(resp) => (resp, self.model.clone()),
+                Err(err) if is_rate_limited(&err) => {
+                    if let Some(cd) = &self.cloud_cooldown {
+                        if is_cloud {
+                            cd.activate();
+                        }
+                    }
+                    let fallback = self.fallback_model.as_deref().ok_or_else(|| {
+                        SummaryEvaluatorError::EvaluationFailed(format!(
+                            "rate limited by provider and no fallback model configured: {err}"
+                        ))
+                    })?;
+                    tracing::warn!(
+                        operation = operation,
+                        primary_model = %self.model,
+                        fallback_model = %fallback,
+                        error = %err,
+                        "rate limited - falling back to local model"
+                    );
+                    let fallback_agent =
+                        ollama_client.agent(fallback).preamble(preamble).build();
+                    let resp = fallback_agent.prompt(prompt).await?;
+                    (resp, fallback.to_string())
+                }
+                Err(err) => return Err(err.into()),
             }
-            Err(err) => return Err(err.into()),
         };
         tracing::info!(
             operation = operation,
