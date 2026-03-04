@@ -52,6 +52,8 @@
 		"inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface)] text-xl leading-none text-[var(--accent)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)]";
 	const FORMAT_MAX_TURNS = 5;
 	const FORMAT_HARD_TIMEOUT_MINUTES = 5;
+	const CHANNEL_REFRESH_TTL_MS = 5 * 60 * 1000;
+	const channelLastRefreshedAt = new Map<string, number>();
 
 	type AcknowledgedFilter = "all" | "unack" | "ack";
 
@@ -105,6 +107,7 @@
 	let revertingContent = $state(false);
 	let revertingVideoId = $state<string | null>(null);
 	let originalTranscriptByVideoId = $state<Record<string, string>>({});
+	const contentCache = new Map<string, { transcript?: string; summary?: { text: string; quality: SummaryPayload }; info?: VideoInfoPayload }>();
 	let formattingNotice = $state<string | null>(null);
 	let formattingNoticeVideoId = $state<string | null>(null);
 	let formattingNoticeTone = $state<"info" | "success" | "warning">("info");
@@ -559,14 +562,14 @@
 
 		try {
 			const channel = await addChannel(trimmedInput);
-			
-			// Replace temp channel with real one
+
+			// Replace temp channel with real one locally
 			channels = channels.map(c => c.id === tempId ? channel : c);
 			channelOrder = channelOrder.map(id => id === tempId ? channel.id : id);
 			selectedChannelId = channel.id;
-			
-			// Refresh to get full details and videos
-			await loadChannels(channel.id);
+
+			// Load videos for the new channel (bypass TTL since it's brand new)
+			await selectChannel(channel.id);
 		} catch (error) {
 			// Rollback on error
 			channels = previousChannels;
@@ -597,12 +600,20 @@
 
 		try {
 			await deleteChannel(channelId);
+			channels = channels.filter((c) => c.id !== channelId);
 			channelOrder = channelOrder.filter((id) => id !== channelId);
 			if (selectedChannelId === channelId) {
-				selectedChannelId = null;
-				selectedVideoId = null;
+				const nextChannel = channels.length > 0 ? channels[0] : null;
+				if (nextChannel) {
+					await selectChannel(nextChannel.id);
+				} else {
+					selectedChannelId = null;
+					selectedVideoId = null;
+					videos = [];
+					contentText = "";
+					draft = "";
+				}
 			}
-			await loadChannels(selectedChannelId);
 		} catch (error) {
 			errorMessage = (error as Error).message;
 		}
@@ -645,14 +656,21 @@
 
 	let refreshingChannel = $state(false);
 
-	async function refreshAndLoadVideos(channelId: string) {
+	async function refreshAndLoadVideos(channelId: string, bypassTtl = false) {
 		// Instantly load existing videos
 		await loadVideos(true);
+
+		// Skip YouTube refresh if channel was refreshed recently
+		const lastRefresh = channelLastRefreshedAt.get(channelId);
+		if (!bypassTtl && lastRefresh && Date.now() - lastRefresh < CHANNEL_REFRESH_TTL_MS) {
+			return;
+		}
 
 		// Lazy load/refresh the channel in the background
 		refreshingChannel = true;
 		try {
 			await refreshChannel(channelId);
+			channelLastRefreshedAt.set(channelId, Date.now());
 			// After refresh, silently reload the queue
 			if (selectedChannelId === channelId) {
 				await loadVideos(true, true);
@@ -778,12 +796,55 @@
 		await loadContent();
 	}
 
+	function invalidateContentCache(videoId: string, mode?: "transcript" | "summary" | "info") {
+		if (!mode) {
+			contentCache.delete(videoId);
+			return;
+		}
+		const entry = contentCache.get(videoId);
+		if (entry) {
+			delete entry[mode];
+		}
+	}
+
 	async function loadContent() {
 		if (!selectedVideoId) return;
 		const targetVideoId = selectedVideoId;
 		const targetMode = contentMode;
 		const requestId = ++contentRequestSeq;
 		activeContentRequestId = requestId;
+
+		// Check cache first
+		const cached = contentCache.get(targetVideoId);
+		if (cached) {
+			if (targetMode === "transcript" && cached.transcript !== undefined) {
+				contentText = cached.transcript;
+				draft = contentText;
+				resetSummaryQuality();
+				resetVideoInfo();
+				loadingContent = false;
+				activeContentRequestId = 0;
+				return;
+			}
+			if (targetMode === "summary" && cached.summary) {
+				contentText = cached.summary.text;
+				applySummaryQuality(cached.summary.quality);
+				resetVideoInfo();
+				draft = contentText;
+				loadingContent = false;
+				activeContentRequestId = 0;
+				return;
+			}
+			if (targetMode === "info" && cached.info) {
+				videoInfo = cached.info;
+				contentText = "";
+				resetSummaryQuality();
+				draft = contentText;
+				loadingContent = false;
+				activeContentRequestId = 0;
+				return;
+			}
+		}
 
 		loadingContent = true;
 		errorMessage = null;
@@ -815,6 +876,10 @@
 						[targetVideoId]: originalTranscript,
 					};
 				}
+				// Cache the transcript
+				const entry = contentCache.get(targetVideoId) ?? {};
+				entry.transcript = contentText;
+				contentCache.set(targetVideoId, entry);
 				resetSummaryQuality();
 				resetVideoInfo();
 			} else {
@@ -832,6 +897,10 @@
 						summary.content || "Summary unavailable.",
 					);
 					applySummaryQuality(summary);
+					// Cache the summary
+					const entry = contentCache.get(targetVideoId) ?? {};
+					entry.summary = { text: contentText, quality: summary };
+					contentCache.set(targetVideoId, entry);
 					resetVideoInfo();
 				} else {
 					const info = await getVideoInfo(targetVideoId);
@@ -845,6 +914,10 @@
 						return;
 					videoInfo = info;
 					contentText = "";
+					// Cache the info
+					const entry = contentCache.get(targetVideoId) ?? {};
+					entry.info = info;
+					contentCache.set(targetVideoId, entry);
 					resetSummaryQuality();
 				}
 			}
@@ -876,6 +949,7 @@
 	async function saveEdit() {
 		if (!selectedVideoId) return;
 		if (contentMode === "info") return;
+		const targetVideoId = selectedVideoId;
 
 		loadingContent = true;
 		errorMessage = null;
@@ -883,7 +957,7 @@
 		try {
 			if (contentMode === "transcript") {
 				const transcript = await updateTranscript(
-					selectedVideoId,
+					targetVideoId,
 					draft,
 				);
 				contentText = stripPrefix(
@@ -891,13 +965,15 @@
 						transcript.raw_text ||
 						"Transcript unavailable.",
 				);
+				invalidateContentCache(targetVideoId, "transcript");
 				resetSummaryQuality();
 				resetVideoInfo();
 			} else {
-				const summary = await updateSummary(selectedVideoId, draft);
+				const summary = await updateSummary(targetVideoId, draft);
 				contentText = stripPrefix(
 					summary.content || "Summary unavailable.",
 				);
+				invalidateContentCache(targetVideoId, "summary");
 				applySummaryQuality(summary);
 				resetVideoInfo();
 			}
@@ -919,6 +995,7 @@
 
 		try {
 			const summary = await regenerateSummary(targetVideoId);
+			invalidateContentCache(targetVideoId, "summary");
 			if (selectedVideoId === targetVideoId && contentMode === "summary") {
 				contentText = stripPrefix(summary.content || "Summary unavailable.");
 				applySummaryQuality(summary);
@@ -978,6 +1055,7 @@
 						targetVideoId,
 						result.content,
 					);
+					invalidateContentCache(targetVideoId, "transcript");
 					if (
 						activeFormattingRequest === requestId &&
 						selectedVideoId === targetVideoId &&
@@ -1059,6 +1137,7 @@
 					targetVideoId,
 					original,
 				);
+				invalidateContentCache(targetVideoId, "transcript");
 				if (selectedVideoId === targetVideoId && !editing) {
 					contentText = stripPrefix(
 						transcript.formatted_markdown ||
@@ -1872,6 +1951,18 @@
 				<div
 					class="w-full min-h-0 flex-1 overflow-y-auto px-4 sm:px-6 md:px-10 max-lg:px-5 max-lg:pt-6 custom-scrollbar"
 				>
+					{#if selectedVideoId && !loadingContent}
+						{@const selectedVideo = videos.find((v) => v.id === selectedVideoId)}
+						{#if selectedVideo}
+							<nav class="mb-3 sm:mb-4 flex items-center gap-1.5 text-[12px] text-[var(--soft-foreground)] opacity-60" aria-label="Breadcrumb">
+								{#if selectedChannel}
+									<span class="truncate max-w-[160px]">{selectedChannel.name}</span>
+									<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+								{/if}
+								<span class="truncate font-medium text-[var(--foreground)] opacity-80">{selectedVideo.title}</span>
+							</nav>
+						{/if}
+					{/if}
 					{#if contentMode === "transcript" && selectedVideoId && ((formattingContent && formattingVideoId === selectedVideoId) || (formattingNotice && formattingNoticeVideoId === selectedVideoId))}
 						<div
 							class={`mb-4 sm:mb-8 p-4 rounded-[var(--radius-md)] border flex flex-wrap items-center gap-3 transition-all duration-500 ${
@@ -1919,47 +2010,34 @@
 					{/if}
 					{#if contentMode === "summary" && selectedVideoId && !loadingContent}
 						<div
-							class="mb-4 sm:mb-8 p-4 rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--muted)]/20 flex flex-wrap items-center justify-between"
+							class="mb-2 flex flex-wrap items-center gap-2 text-[11px] text-[var(--soft-foreground)] opacity-40"
 							role="status"
 							aria-live="polite"
 						>
-							<div class="flex items-center gap-3">
-								<svg
-									width="14"
-									height="14"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="3"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									class="text-[var(--accent)]"
-									><polygon
-										points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"
-									/></svg
-								>
-								<p
-									class="text-[12px] font-bold tracking-[0.1em] uppercase text-[var(--soft-foreground)]"
-								>
-									{#if summaryQualityScore !== null}
-										Quality Analysis: {summaryQualityScore}/10
-									{:else}
-										Evaluating quality…
-									{/if}
-								</p>
-							</div>
+							<svg
+								width="11"
+								height="11"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="3"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								><polygon
+									points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"
+								/></svg
+							>
+							<span class="font-bold uppercase tracking-[0.08em]">
+								{#if summaryQualityScore !== null}
+									Quality Analysis: {summaryQualityScore}/10
+								{:else}
+									Evaluating quality…
+								{/if}
+							</span>
 							{#if summaryQualityNote}
-								<p
-									class="text-[12px] font-medium text-[var(--soft-foreground)] opacity-60 italic"
-								>
-									"{summaryQualityNote}"
-								</p>
+								<span class="italic">"{summaryQualityNote}"</span>
 							{/if}
-							{#if summaryModelUsed}
-								<span class="text-[11px] font-medium text-[var(--soft-foreground)] opacity-40 whitespace-nowrap">
-									Distilled by {summaryModelUsed}
-								</span>
-							{/if}
+							<span class="hidden sm:inline">Distilled by {summaryModelUsed ?? "unknown model"}</span>
 						</div>
 					{/if}
 
