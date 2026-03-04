@@ -10,6 +10,7 @@ export interface WorkspaceStateSnapshot {
 	hideShorts?: boolean;
 	acknowledgedFilter: "all" | "unack" | "ack";
 	channelOrder: string[];
+	channelSortMode?: "custom" | "alpha" | "newest";
 }
 
 export function prioritizeChannelOrder(

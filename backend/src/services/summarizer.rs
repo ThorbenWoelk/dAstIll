@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use thiserror::Error;
 use tokio::time::{Instant as TokioInstant, timeout};
 
-use crate::services::build_http_client;
+use crate::services::{build_http_client, is_rate_limited};
 
 pub const MAX_TRANSCRIPT_FORMAT_ATTEMPTS: usize = 5;
 pub const TRANSCRIPT_FORMAT_HARD_TIMEOUT_SECS: u64 = 300;
@@ -52,6 +52,7 @@ pub struct SummarizerService {
     client: Client,
     base_url: String,
     model: String,
+    fallback_model: Option<String>,
 }
 
 impl SummarizerService {
@@ -60,6 +61,7 @@ impl SummarizerService {
             client: build_http_client(),
             base_url: "http://localhost:11434".to_string(),
             model: "minimax-m2.5:cloud".to_string(),
+            fallback_model: Some("qwen3:8b".to_string()),
         }
     }
 
@@ -68,6 +70,7 @@ impl SummarizerService {
             client: build_http_client(),
             base_url: base_url.to_string(),
             model: model.to_string(),
+            fallback_model: None,
         }
     }
 
@@ -76,7 +79,13 @@ impl SummarizerService {
             client,
             base_url: base_url.to_string(),
             model: model.to_string(),
+            fallback_model: None,
         }
+    }
+
+    pub fn with_fallback_model(mut self, fallback_model: Option<String>) -> Self {
+        self.fallback_model = fallback_model;
+        self
     }
 
     /// Check if Ollama is available.
@@ -223,7 +232,27 @@ impl SummarizerService {
         let started = Instant::now();
         let ollama_client = self.build_ollama_client()?;
         let agent = ollama_client.agent(&self.model).preamble(preamble).build();
-        let response = agent.prompt(prompt).await?;
+        let response = match agent.prompt(prompt).await {
+            Ok(resp) => resp,
+            Err(err) if is_rate_limited(&err) => {
+                let fallback = self.fallback_model.as_deref().ok_or_else(|| {
+                    SummarizerError::GenerationFailed(format!(
+                        "rate limited by provider and no fallback model configured: {err}"
+                    ))
+                })?;
+                tracing::warn!(
+                    operation = operation,
+                    primary_model = %self.model,
+                    fallback_model = %fallback,
+                    error = %err,
+                    "rate limited - falling back to local model"
+                );
+                let fallback_agent =
+                    ollama_client.agent(fallback).preamble(preamble).build();
+                fallback_agent.prompt(prompt).await?
+            }
+            Err(err) => return Err(err.into()),
+        };
         tracing::info!(
             operation = operation,
             model = %self.model,
@@ -245,6 +274,7 @@ impl Default for SummarizerService {
         Self::new()
     }
 }
+
 
 pub(crate) fn transcript_text_equivalent(input: &str, output: &str) -> bool {
     let expected = input

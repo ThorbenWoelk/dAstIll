@@ -60,6 +60,9 @@
 	let selectedVideoId = $state<string | null>(null);
 	let draggedChannelId = $state<string | null>(null);
 	let dragOverChannelId = $state<string | null>(null);
+	let channelSearchQuery = $state("");
+	let channelSortMode = $state<"custom" | "alpha" | "newest">("custom");
+	let channelSearchOpen = $state(false);
 
 	let channelInput = $state("");
 	let loadingChannels = $state(false);
@@ -71,6 +74,7 @@
 	let errorMessage = $state<string | null>(null);
 	let summaryQualityScore = $state<number | null>(null);
 	let summaryQualityNote = $state<string | null>(null);
+	let summaryModelUsed = $state<string | null>(null);
 	let videoInfo = $state<VideoInfoPayload | null>(null);
 	let syncDepth = $state<{
 		earliest_sync_date: string | null;
@@ -126,6 +130,28 @@
 	const selectedChannel = $derived(
 		channels.find((channel) => channel.id === selectedChannelId) ?? null,
 	);
+
+	const filteredChannels = $derived.by(() => {
+		let result = channels;
+		if (channelSearchQuery.trim()) {
+			const query = channelSearchQuery.trim().toLowerCase();
+			result = result.filter(
+				(channel) =>
+					channel.name?.toLowerCase().includes(query) ||
+					channel.handle?.toLowerCase().includes(query),
+			);
+		}
+		if (channelSortMode === "alpha") {
+			result = [...result].sort((a, b) =>
+				(a.name ?? "").localeCompare(b.name ?? ""),
+			);
+		} else if (channelSortMode === "newest") {
+			result = [...result].sort((a, b) =>
+				(b.added_at ?? "").localeCompare(a.added_at ?? ""),
+			);
+		}
+		return result;
+	});
 
 	function resolveOldestLoadedVideoDate(): Date | null {
 		let oldest: Date | null = null;
@@ -239,11 +265,13 @@
 				? Math.max(0, Math.min(10, Math.round(summary.quality_score)))
 				: null;
 		summaryQualityNote = summary.quality_note?.trim() || null;
+		summaryModelUsed = summary.model_used ?? null;
 	}
 
 	function resetSummaryQuality() {
 		summaryQualityScore = null;
 		summaryQualityNote = null;
+		summaryModelUsed = null;
 	}
 
 	function resetVideoInfo() {
@@ -349,6 +377,12 @@
 					(id): id is string => typeof id === "string",
 				);
 			}
+			if (
+				snapshot.channelSortMode &&
+				["custom", "alpha", "newest"].includes(snapshot.channelSortMode)
+			) {
+				channelSortMode = snapshot.channelSortMode;
+			}
 		} catch {
 			localStorage.removeItem(WORKSPACE_STATE_KEY);
 		}
@@ -364,6 +398,7 @@
 			videoTypeFilter,
 			acknowledgedFilter,
 			channelOrder,
+			channelSortMode,
 		};
 		localStorage.setItem(WORKSPACE_STATE_KEY, JSON.stringify(snapshot));
 	}
@@ -492,16 +527,45 @@
 	async function handleAddChannel(input: string) {
 		if (!input.trim()) return;
 
+		const trimmedInput = input.trim();
 		addingChannel = true;
 		errorMessage = null;
 
+		// Optimistic update
+		const tempId = `temp-${Date.now()}`;
+		const optimisticChannel: Channel = {
+			id: tempId,
+			name: trimmedInput.includes("youtube.com") || trimmedInput.includes("youtu.be") 
+				? "Fetching Channel..." 
+				: trimmedInput,
+			added_at: new Date().toISOString(),
+		};
+
+		const previousChannels = [...channels];
+		const previousSelectedId = selectedChannelId;
+
+		channels = [optimisticChannel, ...channels];
+		channelOrder = [tempId, ...channelOrder];
+		selectedChannelId = tempId;
+		channelInput = "";
+
 		try {
-			const channel = await addChannel(input.trim());
-			channelInput = "";
-			channelOrder = prioritizeChannelOrder(channelOrder, channel.id);
+			const channel = await addChannel(trimmedInput);
+			
+			// Replace temp channel with real one
+			channels = channels.map(c => c.id === tempId ? channel : c);
+			channelOrder = channelOrder.map(id => id === tempId ? channel.id : id);
+			selectedChannelId = channel.id;
+			
+			// Refresh to get full details and videos
 			await loadChannels(channel.id);
 		} catch (error) {
+			// Rollback on error
+			channels = previousChannels;
+			selectedChannelId = previousSelectedId;
+			syncChannelOrderFromList();
 			errorMessage = (error as Error).message;
+			channelInput = trimmedInput; // Restore input on error
 		} finally {
 			addingChannel = false;
 		}
@@ -1123,7 +1187,7 @@
 	</a>
 
 	<header
-		class="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-6 px-4 sm:px-2 fade-in border-b border-[var(--border-soft)] pb-4 mb-2"
+		class="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-4 px-4 sm:px-2 fade-in border-b border-[var(--border-soft)] pb-3 mb-1"
 	>
 		<div class="flex items-center gap-4">
 			<h1
@@ -1204,15 +1268,67 @@
 	{:else}
 		<main
 			id="main-content"
-			class="mx-auto mt-10 grid w-full max-w-[1440px] items-start gap-10 lg:grid-cols-[280px_320px_minmax(0,1fr)] xl:grid-cols-[280px_380px_minmax(0,1fr)]"
+			class="mx-auto mt-6 grid w-full max-w-[1440px] items-start gap-6 lg:grid-cols-[280px_320px_minmax(0,1fr)] xl:grid-cols-[280px_380px_minmax(0,1fr)]"
 		>
 			<aside
-				class="flex h-fit flex-col gap-6 rounded-[var(--radius-lg)] bg-[var(--surface)] border border-[var(--border-soft)] p-6 lg:sticky lg:top-8 fade-in stagger-1 shadow-sm"
+				class="flex h-fit flex-col gap-4 rounded-[var(--radius-lg)] bg-[var(--surface)] border border-[var(--border-soft)] p-5 lg:sticky lg:top-6 fade-in stagger-1 shadow-sm"
 				id="workspace"
 			>
 				<div class="flex items-center justify-between gap-2">
 					<h2 class="text-xl font-bold tracking-tight">Channels</h2>
+					<div class="flex items-center gap-1">
+						<button
+							type="button"
+							class="inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] border border-transparent transition-colors hover:border-[var(--border-soft)] {channelSearchOpen ? 'text-[var(--accent)]' : 'text-[var(--soft-foreground)] opacity-50'}"
+							data-tooltip={channelSearchOpen ? "Close search" : "Search channels"}
+							onclick={() => {
+								channelSearchOpen = !channelSearchOpen;
+								if (!channelSearchOpen) channelSearchQuery = "";
+							}}
+							aria-label={channelSearchOpen ? "Close search" : "Search channels"}
+						>
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+						</button>
+						<button
+							type="button"
+							class="inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] border border-transparent transition-colors hover:border-[var(--border-soft)] {channelSortMode !== 'custom' ? 'text-[var(--accent)]' : 'text-[var(--soft-foreground)] opacity-50'}"
+							data-tooltip={channelSortMode === "custom" ? "Sort: Custom" : channelSortMode === "alpha" ? "Sort: A-Z" : "Sort: Newest"}
+							onclick={() => {
+								channelSortMode = channelSortMode === "custom" ? "alpha" : channelSortMode === "alpha" ? "newest" : "custom";
+							}}
+							aria-label="Cycle sort mode"
+						>
+							{#if channelSortMode === "alpha"}
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h8"></path><path d="M3 12h5"></path><path d="M3 18h3"></path><path d="M18 6v12"></path><path d="m14 18 4 4 4-4"></path></svg>
+							{:else if channelSortMode === "newest"}
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h3"></path><path d="M3 12h5"></path><path d="M3 18h8"></path><path d="M18 18V6"></path><path d="m14 6 4-4 4 4"></path></svg>
+							{:else}
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h8"></path><path d="M3 12h5"></path><path d="M3 18h3"></path><path d="M18 6v12"></path></svg>
+							{/if}
+						</button>
+					</div>
 				</div>
+				{#if channelSearchOpen}
+					<div class="flex items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--background)] px-3 py-1.5 transition-all focus-within:ring-2 focus-within:ring-[var(--accent)]/20 focus-within:border-[var(--accent)]/40">
+						<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-[var(--soft-foreground)] opacity-40"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+						<input
+							type="text"
+							class="min-w-0 flex-1 bg-transparent text-[13px] placeholder:text-[var(--soft-foreground)] placeholder:opacity-40 focus-visible:outline-none"
+							placeholder="Filter channels..."
+							bind:value={channelSearchQuery}
+						/>
+						{#if channelSearchQuery}
+							<button
+								type="button"
+								class="inline-flex h-5 w-5 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-40 hover:opacity-80 transition-opacity"
+								onclick={() => { channelSearchQuery = ""; }}
+								aria-label="Clear search"
+							>
+								<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+							</button>
+						{/if}
+					</div>
+				{/if}
 
 				<form
 					class="grid gap-3"
@@ -1287,12 +1403,19 @@
 						>
 							Start by following a channel.
 						</p>
+					{:else if filteredChannels.length === 0}
+						<p
+							class="px-1 text-[14px] font-medium text-[var(--soft-foreground)] opacity-50 italic"
+						>
+							No channels match your search.
+						</p>
 					{:else}
-						{#each channels as channel}
+						{#each filteredChannels as channel}
 							<ChannelCard
 								{channel}
 								active={selectedChannelId === channel.id}
-								draggableEnabled
+								draggableEnabled={channelSortMode === "custom" && !channelSearchQuery.trim()}
+								loading={channel.id.startsWith("temp-")}
 								dragging={draggedChannelId === channel.id}
 								dragOver={dragOverChannelId === channel.id &&
 									draggedChannelId !== channel.id}
@@ -1312,7 +1435,7 @@
 			</aside>
 
 			<aside
-				class="flex h-fit min-w-0 flex-col gap-6 rounded-[var(--radius-lg)] bg-[var(--surface)] border border-[var(--border-soft)] p-6 lg:sticky lg:top-8 fade-in stagger-2 shadow-sm"
+				class="flex h-fit min-w-0 flex-col gap-4 rounded-[var(--radius-lg)] bg-[var(--surface)] border border-[var(--border-soft)] p-5 lg:sticky lg:top-6 fade-in stagger-2 shadow-sm"
 				id="videos"
 			>
 				<div class="flex flex-wrap items-center justify-between gap-4">
@@ -1324,7 +1447,8 @@
 									class="ml-3 inline-flex h-5 w-5 items-center justify-center align-middle rounded-full border border-[var(--border-soft)] bg-[var(--background)]"
 									role="status"
 									aria-label="Syncing channel"
-									title="Syncing channel"
+									data-tooltip="Syncing channel"
+
 								>
 									<span
 										class="h-2.5 w-2.5 animate-spin rounded-full border border-[var(--accent)]/20 border-t-[var(--accent)]"
@@ -1593,7 +1717,7 @@
 
 				{#if selectedChannelId}
 					<div
-						class="flex flex-col gap-6 pt-6 border-t border-[var(--border-soft)]/50 mt-4"
+						class="flex flex-col gap-4 pt-4 border-t border-[var(--border-soft)]/50 mt-3"
 					>
 						{#if hasMore || !historyExhausted}
 							<div class="flex justify-center">
@@ -1636,13 +1760,13 @@
 			</aside>
 
 			<section
-				class="flex min-h-[600px] min-w-0 flex-col gap-8 rounded-[var(--radius-lg)] bg-[var(--surface)] border border-[var(--border-soft)] py-10 fade-in stagger-3 shadow-sm lg:sticky lg:top-8 lg:h-[calc(100vh-6rem)] lg:overflow-hidden"
+				class="flex min-h-[600px] min-w-0 flex-col gap-6 rounded-[var(--radius-lg)] bg-[var(--surface)] border border-[var(--border-soft)] py-8 fade-in stagger-3 shadow-sm lg:sticky lg:top-6 lg:h-[calc(100vh-5rem)] lg:overflow-hidden"
 				id="content-view"
 			>
 				<div
-					class="flex flex-wrap items-center justify-between gap-6 px-8 md:px-12 border-b border-[var(--border-soft)]/50"
+					class="flex flex-wrap items-center justify-between gap-4 px-6 md:px-10 border-b border-[var(--border-soft)]/50"
 				>
-					<div class="flex items-center gap-6">
+					<div class="flex items-center gap-4">
 						<h2 class="sr-only">Display Content</h2>
 						<Toggle
 							options={["transcript", "summary", "info"]}
@@ -1772,6 +1896,11 @@
 									"{summaryQualityNote}"
 								</p>
 							{/if}
+							{#if summaryModelUsed}
+								<span class="text-[11px] font-medium text-[var(--soft-foreground)] opacity-40 whitespace-nowrap">
+									Distilled by {summaryModelUsed}
+								</span>
+							{/if}
 						</div>
 					{/if}
 
@@ -1851,7 +1980,7 @@
 							</div>
 
 							<div
-								class="grid gap-10 sm:grid-cols-2 lg:grid-cols-4 border-y border-[var(--border-soft)]/50 py-10"
+								class="grid gap-6 sm:grid-cols-2 lg:grid-cols-4 border-y border-[var(--border-soft)]/50 py-8"
 							>
 								<div class="space-y-2">
 									<p
