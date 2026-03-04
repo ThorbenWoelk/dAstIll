@@ -11,8 +11,8 @@ use tower_http::trace::TraceLayer;
 use dastill::db::init_db;
 use dastill::handlers::{channels, content, videos};
 use dastill::services::{
-    CloudCooldown, SummarizerService, SummaryEvaluatorService, TranscriptService, YouTubeService,
-    build_http_client,
+    CloudCooldown, SummarizerService, SummaryEvaluatorService, TranscriptService,
+    YouTubeQuotaCooldown, YouTubeService, build_http_client,
 };
 use dastill::state::AppState;
 use dastill::workers::{
@@ -58,10 +58,16 @@ async fn main() -> anyhow::Result<()> {
     let pool = init_db(database).await.map_err(|e| anyhow::anyhow!(e))?;
 
     let client = build_http_client();
-    let youtube = Arc::new(YouTubeService::with_client(client.clone()));
+    let cloud_cooldown = Arc::new(CloudCooldown::new());
+    let youtube_quota_cooldown = Arc::new(YouTubeQuotaCooldown::new());
+
+    let youtube = Arc::new(
+        YouTubeService::with_client(client.clone())
+            .with_quota_cooldown(youtube_quota_cooldown.clone()),
+    );
     match youtube.validate_data_api_key().await {
         Ok(Some(true)) => tracing::info!("YOUTUBE_API_KEY is configured and valid"),
-        Ok(Some(false)) => tracing::warn!("YOUTUBE_API_KEY is configured but invalid"),
+        Ok(Some(false)) => tracing::warn!("YOUTUBE_API_KEY is configured but invalid (or quota exceeded)"),
         Ok(None) => tracing::info!("YOUTUBE_API_KEY is not configured - using fallback sources"),
         Err(err) => tracing::warn!(error = %err, "could not validate YOUTUBE_API_KEY on startup"),
     }
@@ -82,16 +88,19 @@ async fn main() -> anyhow::Result<()> {
         .ok()
         .or_else(|| Some("qwen3:8b".to_string()));
     let transcript = Arc::new(TranscriptService::with_path(&summarize_path));
-    let cloud_cooldown = Arc::new(CloudCooldown::new());
+    let ollama_semaphore = Arc::new(tokio::sync::Semaphore::new(1));
+
     let summarizer = Arc::new(
         SummarizerService::with_client(client.clone(), &ollama_url, &ollama_model)
             .with_fallback_model(ollama_fallback_model)
-            .with_cloud_cooldown(cloud_cooldown.clone()),
+            .with_cloud_cooldown(cloud_cooldown.clone())
+            .with_ollama_semaphore(ollama_semaphore.clone()),
     );
     let summary_evaluator = Arc::new(
         SummaryEvaluatorService::with_client(client, &ollama_url, &summary_evaluator_model)
             .with_fallback_model(summary_evaluator_fallback_model)
-            .with_cloud_cooldown(cloud_cooldown),
+            .with_cloud_cooldown(cloud_cooldown.clone())
+            .with_ollama_semaphore(ollama_semaphore),
     );
 
     let state = AppState {
@@ -100,6 +109,8 @@ async fn main() -> anyhow::Result<()> {
         transcript,
         summarizer,
         summary_evaluator,
+        cloud_cooldown,
+        youtube_quota_cooldown,
     };
     spawn_queue_worker(state.clone());
     spawn_refresh_worker(state.clone());

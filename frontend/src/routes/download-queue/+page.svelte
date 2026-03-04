@@ -803,7 +803,7 @@
 				{/if}
 
 				{#if hasMore && selectedChannelId}
-					<div class="flex justify-center mt-4 mb-20">
+					<div class="flex justify-center mt-4 max-lg:mb-20">
 						<button
 							type="button"
 							class="inline-flex items-center justify-center rounded-full border border-[var(--border-soft)] bg-[var(--background)] px-10 py-3.5 text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--soft-foreground)] transition-all hover:border-[var(--accent)]/40 hover:text-[var(--foreground)] hover:shadow-md disabled:opacity-30"

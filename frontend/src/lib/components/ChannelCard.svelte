@@ -48,14 +48,19 @@
 	ondragover={onDragOver}
 	ondrop={onDrop}
 	ondragend={onDragEnd}
-	class={`group relative flex w-full min-w-0 items-center gap-3 rounded-[var(--radius-md)] px-3 py-2.5 text-left transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--foreground)]/20 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)] ${
+	class={`group relative flex w-full min-w-0 items-center gap-3 rounded-[var(--radius-md)] px-3 py-2.5 text-left transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)] ${
 		active
-			? "bg-[var(--foreground)] text-white shadow-xl shadow-black/10"
+			? "bg-[var(--surface)] border border-[var(--border)] shadow-[0_4px_12px_-2px_rgba(0,0,0,0.04)]"
 			: "border border-transparent hover:bg-[var(--surface)]/60 hover:border-[var(--border-soft)]"
 	} ${dragging || loading ? "opacity-40" : ""} ${dragOver ? "ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-[var(--background)]" : ""} ${loading ? "animate-pulse" : ""}`}
 	onclick={onSelect}
 	disabled={loading}
 >
+	{#if active}
+		<div
+			class="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-[var(--accent)] transition-all duration-300"
+		></div>
+	{/if}
 	<div
 		class="h-9 w-9 shrink-0 overflow-hidden rounded-full border border-[var(--border-soft)] bg-[var(--muted)] transition-transform duration-300 {loading ? '' : 'group-hover:scale-105'}"
 	>
@@ -72,12 +77,12 @@
 	</div>
 	<div class="min-w-0 flex-1">
 		<p
-			class={`truncate text-[14px] font-bold leading-tight tracking-tight transition-colors ${active ? "text-white" : "text-[var(--foreground)]"}`}
+			class="truncate text-[14px] font-bold leading-tight tracking-tight text-[var(--foreground)] transition-colors"
 		>
 			{channel.name}
 		</p>
 		<p
-			class={`mt-0.5 truncate text-[11px] font-medium tracking-wide transition-colors ${active ? "text-white/70" : "text-[var(--soft-foreground)] opacity-60"}`}
+			class="mt-0.5 truncate text-[11px] font-medium tracking-wide text-[var(--soft-foreground)] opacity-60 transition-colors"
 		>
 			{channel.handle ?? channel.id}
 		</p>
