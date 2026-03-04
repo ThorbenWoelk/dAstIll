@@ -5,7 +5,6 @@ WORKDIR /app
 
 # Build arguments
 ARG VITE_API_BASE
-# Ensure the variable is available during 'bun run build'
 ENV VITE_API_BASE=$VITE_API_BASE
 
 # Install dependencies
@@ -15,11 +14,15 @@ RUN bun install --frozen-lockfile
 # Copy source
 COPY . .
 
-# Run sync before build to ensure .svelte-kit directory is populated
+# Run sync and build
 RUN bun x svelte-kit sync
-
-# Build with the environment variable explicitly passed just in case
 RUN VITE_API_BASE=$VITE_API_BASE bun run build
+
+# Install only production dependencies to a separate directory
+# This ensures we have exactly what we need for runtime
+RUN mkdir /temp/prod_deps
+COPY package.json bun.lock /temp/prod_deps/
+RUN cd /temp/prod_deps && bun install --frozen-lockfile --production
 
 # Runtime stage
 FROM node:20-slim
@@ -30,6 +33,8 @@ ENV NODE_ENV=production
 # Copy build output
 COPY --from=builder /app/build ./build
 COPY --from=builder /app/package.json ./package.json
+# Copy production dependencies
+COPY --from=builder /temp/prod_deps/node_modules ./node_modules
 
 # Expose the frontend port
 EXPOSE 3000
