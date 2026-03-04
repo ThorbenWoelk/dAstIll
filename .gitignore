@@ -1,10 +1,21 @@
 **/.DS_Store
 **/*.log
 
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+terraform.tfvars
+
+# Playwright
+**/.playwright-mcp/
+
+# Backend
 backend/target/
 **/*.db
 **/.env
 
+# Frontend
 frontend/node_modules/
 frontend/.svelte-kit/
 frontend/build/

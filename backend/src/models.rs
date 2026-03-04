@@ -61,6 +61,8 @@ pub struct Video {
     pub transcript_status: ContentStatus,
     pub summary_status: ContentStatus,
     pub acknowledged: bool,
+    #[serde(default)]
+    pub retry_count: u8,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

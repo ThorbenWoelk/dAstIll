@@ -14,12 +14,14 @@
 		listChannelsWhenAvailable,
 		listVideos,
 		refreshChannel,
+		regenerateSummary,
 		updateSummary,
 		updateTranscript,
 		updateAcknowledged,
 		updateChannel,
 	} from "$lib/api";
 	import ChannelCard from "$lib/components/ChannelCard.svelte";
+	import ConfirmationModal from "$lib/components/ConfirmationModal.svelte";
 	import ContentEditor from "$lib/components/ContentEditor.svelte";
 	import Toggle from "$lib/components/Toggle.svelte";
 	import TranscriptView from "$lib/components/TranscriptView.svelte";
@@ -63,6 +65,7 @@
 	let channelSearchQuery = $state("");
 	let channelSortMode = $state<"custom" | "alpha" | "newest">("custom");
 	let channelSearchOpen = $state(false);
+	let manageChannels = $state(false);
 
 	let channelInput = $state("");
 	let loadingChannels = $state(false);
@@ -72,6 +75,8 @@
 	let waitingForBackend = $state(false);
 	let addingChannel = $state(false);
 	let errorMessage = $state<string | null>(null);
+	let showDeleteConfirmation = $state(false);
+	let channelIdToDelete = $state<string | null>(null);
 	let summaryQualityScore = $state<number | null>(null);
 	let summaryQualityNote = $state<string | null>(null);
 	let summaryModelUsed = $state<string | null>(null);
@@ -83,6 +88,7 @@
 	} | null>(null);
 
 	let contentMode = $state<"transcript" | "summary" | "info">("transcript");
+	let mobileTab = $state<"channels" | "videos" | "content">("channels");
 	let contentText = $state("");
 	let contentRenderText = $derived(
 		contentMode === "transcript"
@@ -94,6 +100,8 @@
 	let draft = $state("");
 	let formattingContent = $state(false);
 	let formattingVideoId = $state<string | null>(null);
+	let regeneratingSummary = $state(false);
+	let regeneratingVideoId = $state<string | null>(null);
 	let revertingContent = $state(false);
 	let revertingVideoId = $state<string | null>(null);
 	let originalTranscriptByVideoId = $state<Record<string, string>>({});
@@ -577,12 +585,16 @@
 	}
 
 	async function handleDeleteChannel(channelId: string) {
-		if (
-			!confirm(
-				"Are you sure you want to delete this channel? All its downloaded data will be removed.",
-			)
-		)
-			return;
+		channelIdToDelete = channelId;
+		showDeleteConfirmation = true;
+	}
+
+	async function confirmDeleteChannel() {
+		if (!channelIdToDelete) return;
+		const channelId = channelIdToDelete;
+		showDeleteConfirmation = false;
+		channelIdToDelete = null;
+
 		try {
 			await deleteChannel(channelId);
 			channelOrder = channelOrder.filter((id) => id !== channelId);
@@ -596,6 +608,11 @@
 		}
 	}
 
+	function cancelDeleteChannel() {
+		showDeleteConfirmation = false;
+		channelIdToDelete = null;
+	}
+
 	$effect(() => {
 		if (selectedChannelId) {
 			void loadSyncDepth();
@@ -607,7 +624,9 @@
 	async function selectChannel(
 		channelId: string,
 		preferredVideoId: string | null = null,
+		fromUserInteraction = false,
 	) {
+		if (fromUserInteraction) mobileTab = "videos";
 		selectedChannelId = channelId;
 		selectedVideoId = preferredVideoId;
 		contentText = "";
@@ -738,7 +757,8 @@
 		}
 	}
 
-	async function selectVideo(videoId: string) {
+	async function selectVideo(videoId: string, fromUserInteraction = false) {
+		if (fromUserInteraction) mobileTab = "content";
 		if (videoId === selectedVideoId) return;
 		selectedVideoId = videoId;
 		resetSummaryQuality();
@@ -886,6 +906,29 @@
 			errorMessage = (error as Error).message;
 		} finally {
 			loadingContent = false;
+		}
+	}
+
+	async function regenerateSummaryContent() {
+		if (!selectedVideoId || contentMode !== "summary") return;
+		const targetVideoId = selectedVideoId;
+
+		regeneratingSummary = true;
+		regeneratingVideoId = targetVideoId;
+		errorMessage = null;
+
+		try {
+			const summary = await regenerateSummary(targetVideoId);
+			if (selectedVideoId === targetVideoId && contentMode === "summary") {
+				contentText = stripPrefix(summary.content || "Summary unavailable.");
+				applySummaryQuality(summary);
+				draft = contentText;
+			}
+		} catch (error) {
+			errorMessage = (error as Error).message;
+		} finally {
+			regeneratingSummary = false;
+			regeneratingVideoId = null;
 		}
 	}
 
@@ -1178,7 +1221,7 @@
 
 <svelte:window onkeydown={handleWindowKeydown} />
 
-<div class="page-shell min-h-screen px-4 py-6 sm:px-8">
+<div class="page-shell min-h-screen px-3 py-4 max-lg:px-0 lg:px-6">
 	<a
 		href="#main-content"
 		class="skip-link absolute left-4 top-4 z-50 rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white"
@@ -1191,7 +1234,7 @@
 	>
 		<div class="flex items-center gap-4">
 			<h1
-				class="text-3xl font-bold tracking-tighter text-[var(--foreground)]"
+				class="text-2xl sm:text-3xl font-bold tracking-tighter text-[var(--foreground)]"
 			>
 				DASTILL
 			</h1>
@@ -1217,14 +1260,14 @@
 			aria-label="Workspace sections"
 		>
 			<a
-				href="#workspace"
-				class="rounded-[var(--radius-sm)] bg-[var(--muted)]/60 px-5 py-2 text-[10px] font-bold uppercase tracking-[0.15em] text-[var(--foreground)] transition-all"
+				href="/"
+				class="rounded-[var(--radius-sm)] bg-[var(--muted)]/60 px-3 py-1.5 sm:px-5 sm:py-2 text-[10px] font-bold uppercase tracking-[0.15em] text-[var(--foreground)] transition-all"
 			>
 				Workspace
 			</a>
 			<a
 				href="/download-queue"
-				class="rounded-[var(--radius-sm)] px-5 py-2 text-[10px] font-bold uppercase tracking-[0.15em] text-[var(--soft-foreground)] opacity-60 transition-all hover:opacity-100 hover:bg-[var(--muted)]/30"
+				class="rounded-[var(--radius-sm)] px-3 py-1.5 sm:px-5 sm:py-2 text-[10px] font-bold uppercase tracking-[0.15em] text-[var(--soft-foreground)] opacity-60 transition-all hover:opacity-100 hover:bg-[var(--muted)]/30"
 			>
 				Details
 			</a>
@@ -1237,7 +1280,7 @@
 			class="mx-auto mt-12 grid w-full max-w-[1440px]"
 		>
 			<section
-				class="flex min-h-[480px] flex-col items-center justify-center gap-8 rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--surface)] p-12 text-center fade-in shadow-sm"
+				class="flex min-h-[280px] sm:min-h-[400px] flex-col items-center justify-center gap-5 sm:gap-8 rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--surface)] p-6 sm:p-10 text-center fade-in shadow-sm"
 				role="status"
 				aria-live="polite"
 			>
@@ -1268,15 +1311,26 @@
 	{:else}
 		<main
 			id="main-content"
-			class="mx-auto mt-6 grid w-full max-w-[1440px] items-start gap-6 lg:grid-cols-[280px_320px_minmax(0,1fr)] xl:grid-cols-[280px_380px_minmax(0,1fr)]"
+			class="mx-auto mt-0 grid w-full max-w-[1440px] items-start lg:mt-6 lg:gap-6 lg:grid-cols-[280px_320px_minmax(0,1fr)] xl:grid-cols-[280px_380px_minmax(0,1fr)]"
 		>
 			<aside
-				class="flex h-fit flex-col gap-4 rounded-[var(--radius-lg)] bg-[var(--surface)] border border-[var(--border-soft)] p-5 lg:sticky lg:top-6 fade-in stagger-1 shadow-sm"
+				class="flex min-w-0 flex-col border-0 lg:gap-4 lg:rounded-[var(--radius-lg)] lg:bg-[var(--surface)] lg:border lg:border-[var(--border-soft)] lg:p-5 lg:sticky lg:top-6 fade-in stagger-1 lg:shadow-sm {mobileTab !== 'channels' ? 'hidden lg:flex' : 'h-[calc(100dvh-10rem)] p-3 gap-4'}"
 				id="workspace"
 			>
 				<div class="flex items-center justify-between gap-2">
 					<h2 class="text-xl font-bold tracking-tight">Channels</h2>
 					<div class="flex items-center gap-1">
+						<button
+							type="button"
+							class="inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] border border-transparent transition-colors hover:border-[var(--border-soft)] {manageChannels ? 'text-red-500' : 'text-[var(--soft-foreground)] opacity-50'}"
+							data-tooltip={manageChannels ? "Exit manage mode" : "Manage channels"}
+							onclick={() => {
+								manageChannels = !manageChannels;
+							}}
+							aria-label={manageChannels ? "Exit manage mode" : "Manage channels"}
+						>
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+						</button>
 						<button
 							type="button"
 							class="inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] border border-transparent transition-colors hover:border-[var(--border-soft)] {channelSearchOpen ? 'text-[var(--accent)]' : 'text-[var(--soft-foreground)] opacity-50'}"
@@ -1374,7 +1428,7 @@
 				</form>
 
 				<div
-					class="flex max-h-[60vh] flex-col gap-1.5 overflow-y-auto pr-1 custom-scrollbar"
+					class="flex flex-1 min-h-0 flex-col gap-1.5 overflow-y-auto pr-1 custom-scrollbar lg:max-h-[60vh]"
 					aria-busy={loadingChannels}
 				>
 					{#if loadingChannels}
@@ -1414,12 +1468,13 @@
 							<ChannelCard
 								{channel}
 								active={selectedChannelId === channel.id}
+								showDelete={manageChannels}
 								draggableEnabled={channelSortMode === "custom" && !channelSearchQuery.trim()}
 								loading={channel.id.startsWith("temp-")}
 								dragging={draggedChannelId === channel.id}
 								dragOver={dragOverChannelId === channel.id &&
 									draggedChannelId !== channel.id}
-								onSelect={() => selectChannel(channel.id)}
+								onSelect={() => selectChannel(channel.id, null, true)}
 								onDragStart={(event) =>
 									handleChannelDragStart(channel.id, event)}
 								onDragOver={(event) =>
@@ -1435,7 +1490,7 @@
 			</aside>
 
 			<aside
-				class="flex h-fit min-w-0 flex-col gap-4 rounded-[var(--radius-lg)] bg-[var(--surface)] border border-[var(--border-soft)] p-5 lg:sticky lg:top-6 fade-in stagger-2 shadow-sm"
+				class="flex min-w-0 flex-col border-0 lg:gap-4 lg:rounded-[var(--radius-lg)] lg:bg-[var(--surface)] lg:border lg:border-[var(--border-soft)] lg:p-5 lg:sticky lg:top-6 fade-in stagger-2 lg:shadow-sm {mobileTab !== 'videos' ? 'hidden lg:flex' : 'h-[calc(100dvh-4rem)] p-3 gap-6'}"
 				id="videos"
 			>
 				<div class="flex flex-wrap items-center justify-between gap-4">
@@ -1677,7 +1732,7 @@
 				</div>
 
 				<div
-					class="grid max-h-[65vh] gap-4 overflow-y-auto pr-1 custom-scrollbar"
+					class="grid flex-1 min-h-0 gap-4 overflow-y-auto pr-1 custom-scrollbar lg:max-h-[65vh]"
 					bind:this={videoListContainer}
 					onscroll={updateVideoListBottomState}
 					aria-busy={loadingVideos}
@@ -1709,7 +1764,7 @@
 							<VideoCard
 								{video}
 								active={selectedVideoId === video.id}
-								onSelect={() => selectVideo(video.id)}
+								onSelect={() => selectVideo(video.id, true)}
 							/>
 						{/each}
 					{/if}
@@ -1760,13 +1815,13 @@
 			</aside>
 
 			<section
-				class="flex min-h-[600px] min-w-0 flex-col gap-6 rounded-[var(--radius-lg)] bg-[var(--surface)] border border-[var(--border-soft)] py-8 fade-in stagger-3 shadow-sm lg:sticky lg:top-6 lg:h-[calc(100vh-5rem)] lg:overflow-hidden"
+				class="flex min-w-0 flex-col overflow-hidden border-0 lg:gap-6 lg:py-8 lg:min-h-[600px] lg:rounded-[var(--radius-lg)] lg:bg-[var(--surface)] lg:border lg:border-[var(--border-soft)] lg:shadow-sm lg:sticky lg:top-6 lg:h-[calc(100vh-5rem)] fade-in stagger-3 {mobileTab !== 'content' ? 'hidden lg:flex' : 'h-[calc(100dvh-4rem)]'}"
 				id="content-view"
 			>
 				<div
-					class="flex flex-wrap items-center justify-between gap-4 px-6 md:px-10 border-b border-[var(--border-soft)]/50"
+					class="flex flex-wrap items-center justify-between gap-3 sm:gap-4 px-4 sm:px-6 md:px-10 border-b border-[var(--border-soft)]/50 max-lg:pt-4 max-lg:pb-2"
 				>
-					<div class="flex items-center gap-4">
+					<div class="flex items-center gap-3 sm:gap-4">
 						<h2 class="sr-only">Display Content</h2>
 						<Toggle
 							options={["transcript", "summary", "info"]}
@@ -1786,9 +1841,12 @@
 								aiAvailable={aiAvailable ?? false}
 								formatting={formattingContent &&
 									formattingVideoId === selectedVideoId}
+								regenerating={regeneratingSummary &&
+									regeneratingVideoId === selectedVideoId}
 								reverting={revertingContent &&
 									revertingVideoId === selectedVideoId}
 								showFormatAction={contentMode === "transcript"}
+								showRegenerateAction={contentMode === "summary"}
 								showRevertAction={contentMode === "transcript"}
 								canRevert={canRevertTranscript}
 								youtubeUrl={contentMode === "transcript"
@@ -1802,6 +1860,7 @@
 								onCancel={cancelEdit}
 								onSave={saveEdit}
 								onFormat={cleanFormatting}
+								onRegenerate={regenerateSummaryContent}
 								onRevert={revertToOriginalTranscript}
 								onChange={(value) => (draft = value)}
 								onAcknowledgeToggle={toggleAcknowledge}
@@ -1811,11 +1870,11 @@
 				</div>
 
 				<div
-					class="w-full min-h-0 flex-1 overflow-y-auto px-8 md:px-12 custom-scrollbar"
+					class="w-full min-h-0 flex-1 overflow-y-auto px-4 sm:px-6 md:px-10 max-lg:px-5 max-lg:pt-6 custom-scrollbar"
 				>
 					{#if contentMode === "transcript" && selectedVideoId && ((formattingContent && formattingVideoId === selectedVideoId) || (formattingNotice && formattingNoticeVideoId === selectedVideoId))}
 						<div
-							class={`mb-8 p-4 rounded-[var(--radius-md)] border flex items-center gap-3 transition-all duration-500 ${
+							class={`mb-4 sm:mb-8 p-4 rounded-[var(--radius-md)] border flex flex-wrap items-center gap-3 transition-all duration-500 ${
 								formattingNoticeTone === "warning"
 									? "border-[var(--accent)]/20 bg-[var(--accent-soft)]/50 text-[var(--accent-strong)]"
 									: "border-[var(--border-soft)] bg-[var(--muted)]/30 text-[var(--soft-foreground)]"
@@ -1860,7 +1919,7 @@
 					{/if}
 					{#if contentMode === "summary" && selectedVideoId && !loadingContent}
 						<div
-							class="mb-8 p-4 rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--muted)]/20 flex items-center justify-between"
+							class="mb-4 sm:mb-8 p-4 rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--muted)]/20 flex flex-wrap items-center justify-between"
 							role="status"
 							aria-live="polite"
 						>
@@ -1980,7 +2039,7 @@
 							</div>
 
 							<div
-								class="grid gap-6 sm:grid-cols-2 lg:grid-cols-4 border-y border-[var(--border-soft)]/50 py-8"
+								class="grid gap-4 grid-cols-2 sm:gap-6 lg:grid-cols-4 border-y border-[var(--border-soft)]/50 py-5 sm:py-8 max-lg:border-0 max-lg:py-0"
 							>
 								<div class="space-y-2">
 									<p
@@ -2078,7 +2137,7 @@
 									FULL DESCRIPTION
 								</p>
 								<div
-									class="p-6 rounded-[var(--radius-md)] bg-[var(--background)] border border-[var(--border-soft)]"
+									class="p-6 rounded-[var(--radius-md)] bg-[var(--background)] border border-[var(--border-soft)] max-lg:bg-transparent max-lg:border-0 max-lg:p-0"
 								>
 									<p
 										class="whitespace-pre-wrap text-[14px] font-medium leading-relaxed text-[var(--foreground)] opacity-80"
@@ -2097,9 +2156,12 @@
 								aiAvailable={aiAvailable ?? false}
 								formatting={formattingContent &&
 									formattingVideoId === selectedVideoId}
+								regenerating={regeneratingSummary &&
+									regeneratingVideoId === selectedVideoId}
 								reverting={revertingContent &&
 									revertingVideoId === selectedVideoId}
 								showFormatAction={contentMode === "transcript"}
+								showRegenerateAction={contentMode === "summary"}
 								showRevertAction={contentMode === "transcript"}
 								canRevert={canRevertTranscript}
 								youtubeUrl={contentMode === "transcript"
@@ -2113,6 +2175,7 @@
 								onCancel={cancelEdit}
 								onSave={saveEdit}
 								onFormat={cleanFormatting}
+								onRegenerate={regenerateSummaryContent}
 								onRevert={revertToOriginalTranscript}
 								onChange={(value) => (draft = value)}
 								onAcknowledgeToggle={toggleAcknowledge}
@@ -2131,15 +2194,65 @@
 				</div>
 			</section>
 		</main>
+
+		<nav class="mobile-tab-bar lg:hidden" aria-label="Panel navigation">
+			<button
+				type="button"
+				class="mobile-tab-item {mobileTab === 'channels' ? 'mobile-tab-item--active' : ''}"
+				onclick={() => (mobileTab = 'channels')}
+				aria-current={mobileTab === 'channels' ? 'page' : undefined}
+			>
+				<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+					<rect x="3" y="3" width="6" height="18" rx="1.5" />
+					<rect x="15" y="3" width="6" height="18" rx="1.5" />
+					<rect x="9" y="3" width="6" height="18" rx="1.5" />
+				</svg>
+				<span>Channels</span>
+			</button>
+			<button
+				type="button"
+				class="mobile-tab-item {mobileTab === 'videos' ? 'mobile-tab-item--active' : ''}"
+				onclick={() => (mobileTab = 'videos')}
+				aria-current={mobileTab === 'videos' ? 'page' : undefined}
+			>
+				<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+					<polygon points="6,3 20,12 6,21" />
+				</svg>
+				<span>Videos</span>
+			</button>
+			<button
+				type="button"
+				class="mobile-tab-item {mobileTab === 'content' ? 'mobile-tab-item--active' : ''}"
+				onclick={() => (mobileTab = 'content')}
+				aria-current={mobileTab === 'content' ? 'page' : undefined}
+			>
+				<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+					<path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+				</svg>
+				<span>Content</span>
+			</button>
+		</nav>
 	{/if}
 
 	{#if errorMessage}
 		<div
-			class="fixed bottom-6 left-1/2 z-50 w-[min(92vw,460px)] -translate-x-1/2 rounded-card border border-[var(--border)] bg-white/95 p-4 shadow-soft"
+			class="fixed bottom-6 max-lg:bottom-[calc(4rem+env(safe-area-inset-bottom)+1.5rem)] left-1/2 z-50 w-[min(92vw,460px)] -translate-x-1/2 rounded-card border border-[var(--border)] bg-white/95 p-4 shadow-soft"
 			role="status"
 			aria-live="polite"
 		>
 			<p class="text-sm text-[var(--accent)]">{errorMessage}</p>
 		</div>
 	{/if}
+
+	<ConfirmationModal
+		show={showDeleteConfirmation}
+		title="Remove Channel?"
+		message="Are you sure you want to remove this channel? All its downloaded transcripts and summaries will be permanently deleted."
+		confirmLabel="Delete"
+		cancelLabel="Keep"
+		tone="danger"
+		onConfirm={confirmDeleteChannel}
+		onCancel={cancelDeleteChannel}
+	/>
 </div>

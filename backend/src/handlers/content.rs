@@ -172,6 +172,26 @@ pub async fn get_summary(
     Ok(Json(summary))
 }
 
+pub async fn regenerate_summary(
+    State(state): State<AppState>,
+    Path(video_id): Path<String>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    tracing::info!(video_id = %video_id, "summary regeneration requested");
+    {
+        let conn = state.db.lock().await;
+        let video = db::get_video(&conn, &video_id).await.map_err(map_db_err)?;
+        if video.is_none() {
+            return Err((StatusCode::NOT_FOUND, "Video not found".to_string()));
+        }
+        db::delete_summary(&conn, &video_id)
+            .await
+            .map_err(map_db_err)?;
+    }
+
+    let summary = ensure_summary(&state, &video_id).await?;
+    Ok(Json(summary))
+}
+
 pub async fn health_ai(State(state): State<AppState>) -> impl IntoResponse {
     let available = state.summarizer.is_available().await;
     Json(serde_json::json!({ "available": available }))
@@ -359,14 +379,14 @@ pub(crate) async fn ensure_summary(
         ));
     }
 
-    let (title, model) = {
+    let title = {
         let conn = state.db.lock().await;
         let video = db::get_video(&conn, video_id).await.map_err(map_db_err)?;
         let video = video.ok_or((StatusCode::NOT_FOUND, "Video not found".to_string()))?;
-        (video.title, state.summarizer.model().to_string())
+        video.title
     };
 
-    let content = state
+    let (content, model) = state
         .summarizer
         .summarize(&transcript_text, &title)
         .await
