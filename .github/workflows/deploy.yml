@@ -45,7 +45,7 @@ jobs:
         docker tag $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/backend:$IMAGE_TAG $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/backend:latest
         docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/backend:latest
 
-    - name: Deploy Backend to Cloud Run (to get URL)
+    - name: Deploy Backend to Cloud Run
       id: deploy-backend
       uses: google-github-actions/deploy-cloudrun@v2
       with:
@@ -55,6 +55,7 @@ jobs:
 
     - name: Build and Push Frontend Image
       run: |
+        echo "Backend URL is: ${{ steps.deploy-backend.outputs.url }}"
         # Pass the backend URL to the frontend build
         docker build \
           --build-arg VITE_API_BASE=${{ steps.deploy-backend.outputs.url }} \
