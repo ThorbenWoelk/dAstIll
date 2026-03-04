@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::db::DbPool;
 use crate::services::{
-    CloudCooldown, SummarizerService, SummaryEvaluatorService, TranscriptService, YouTubeQuotaCooldown,
+    CloudCooldown, SummarizerService, SummaryEvaluatorService, TranscriptCooldown, TranscriptService, YouTubeQuotaCooldown,
     YouTubeService,
 };
 
@@ -15,4 +15,5 @@ pub struct AppState {
     pub summary_evaluator: Arc<SummaryEvaluatorService>,
     pub cloud_cooldown: Arc<CloudCooldown>,
     pub youtube_quota_cooldown: Arc<YouTubeQuotaCooldown>,
+    pub transcript_cooldown: Arc<TranscriptCooldown>,
 }

@@ -443,7 +443,7 @@ impl YouTubeService {
 
         if let Some(api_key) = self.api_key.as_deref() {
             if cooldown_active {
-                tracing::info!(
+                tracing::debug!(
                     channel_id = %channel_id,
                     "skipping YouTube Data API due to active quota cooldown, using RSS fallback"
                 );
@@ -500,7 +500,7 @@ impl YouTubeService {
 
         if let Some(api_key) = self.api_key.as_deref() {
             if cooldown_active {
-                tracing::info!(
+                tracing::debug!(
                     channel_id = %channel_id,
                     "skipping YouTube Data API backfill due to active quota cooldown, using InnerTube"
                 );
