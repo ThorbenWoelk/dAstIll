@@ -150,6 +150,38 @@ textarea {
 .stagger-2 { animation-delay: 200ms; }
 .stagger-3 { animation-delay: 300ms; }
 
+/* Custom Tooltips */
+[data-tooltip] {
+	position: relative;
+}
+
+[data-tooltip]::before {
+	content: attr(data-tooltip);
+	position: absolute;
+	bottom: 100%;
+	left: 50%;
+	transform: translateX(-50%) translateY(-8px);
+	padding: 6px 10px;
+	background: #1a1a1a;
+	color: white;
+	font-size: 10px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.1em;
+	white-space: nowrap;
+	border-radius: 6px;
+	opacity: 0;
+	pointer-events: none;
+	transition: all 150ms cubic-bezier(0.16, 1, 0.3, 1);
+	z-index: 1000;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+[data-tooltip]:hover::before {
+	opacity: 1;
+	transform: translateX(-50%) translateY(-4px);
+}
+
 @media (prefers-reduced-motion: reduce) {
 	*,
 	*::before,
