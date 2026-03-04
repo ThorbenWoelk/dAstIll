@@ -1142,7 +1142,7 @@
 				<span class="hidden sm:block h-3 w-px bg-[var(--border-soft)]"
 				></span>
 				<div 
-					class="hidden sm:block h-2 w-2 rounded-full {aiAvailable ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]' : 'bg-[var(--accent)] shadow-[0_0_8px_rgba(212,100,81,0.4)]'}"
+					class="hidden sm:block h-2 w-2 rounded-full cursor-help {aiAvailable ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]' : 'bg-[var(--accent)] shadow-[0_0_8px_rgba(212,100,81,0.4)]'}"
 					title={aiAvailable ? "AI Engine: Ready" : "AI Engine: Offline"}
 				></div>
 			{/if}
