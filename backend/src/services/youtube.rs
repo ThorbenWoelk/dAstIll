@@ -3,10 +3,12 @@ use scraper::{Html, Selector};
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashSet;
+use std::sync::Arc;
 use thiserror::Error;
 
 use crate::models::{Video, VideoInfo};
 use crate::services::build_http_client;
+use crate::services::http::YouTubeQuotaCooldown;
 
 #[derive(Error, Debug)]
 pub enum YouTubeError {
@@ -25,12 +27,13 @@ pub enum YouTubeError {
 pub struct YouTubeService {
     client: Client,
     api_key: Option<String>,
+    quota_cooldown: Option<Arc<YouTubeQuotaCooldown>>,
 }
 
 struct WatchMetadata {
     title: String,
     thumbnail_url: Option<String>,
-    published_at: chrono::DateTime<chrono::Utc>,
+    published_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(Default)]
@@ -125,7 +128,21 @@ impl YouTubeService {
             .ok()
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
-        Self { client, api_key }
+        Self {
+            client,
+            api_key,
+            quota_cooldown: None,
+        }
+    }
+
+    pub fn with_quota_cooldown(mut self, cooldown: Arc<YouTubeQuotaCooldown>) -> Self {
+        self.quota_cooldown = Some(cooldown);
+        self
+    }
+
+    /// Detects if a response body indicates that the YouTube API quota has been exceeded.
+    fn is_quota_exceeded(body: &str) -> bool {
+        body.contains("quotaExceeded")
     }
 
     /// Validates whether the configured YouTube Data API key can make requests.
@@ -137,6 +154,10 @@ impl YouTubeService {
         let Some(api_key) = self.api_key.as_deref() else {
             return Ok(None);
         };
+
+        if self.quota_cooldown.as_ref().is_some_and(|cd| cd.is_active()) {
+            return Ok(Some(false));
+        }
 
         let response = self
             .client
@@ -415,18 +436,30 @@ impl YouTubeService {
 
     /// Fetch recent videos from YouTube Data API with RSS fallback.
     pub async fn fetch_videos(&self, channel_id: &str) -> Result<Vec<Video>, YouTubeError> {
+        let cooldown_active = self
+            .quota_cooldown
+            .as_ref()
+            .is_some_and(|cd| cd.is_active());
+
         if let Some(api_key) = self.api_key.as_deref() {
-            match self
-                .fetch_videos_from_data_api(channel_id, api_key, 25, &HashSet::new(), None)
-                .await
-            {
-                Ok((videos, _)) => return Ok(videos),
-                Err(err) => {
-                    tracing::warn!(
-                        channel_id = %channel_id,
-                        error = %err,
-                        "YouTube Data API fetch failed, falling back to RSS feed"
-                    );
+            if cooldown_active {
+                tracing::info!(
+                    channel_id = %channel_id,
+                    "skipping YouTube Data API due to active quota cooldown, using RSS fallback"
+                );
+            } else {
+                match self
+                    .fetch_videos_from_data_api(channel_id, api_key, 25, &HashSet::new(), None)
+                    .await
+                {
+                    Ok((videos, _)) => return Ok(videos),
+                    Err(err) => {
+                        tracing::warn!(
+                            channel_id = %channel_id,
+                            error = %err,
+                            "YouTube Data API fetch failed, falling back to RSS feed"
+                        );
+                    }
                 }
             }
         }
@@ -460,18 +493,30 @@ impl YouTubeService {
             return Ok((Vec::new(), false));
         }
 
+        let cooldown_active = self
+            .quota_cooldown
+            .as_ref()
+            .is_some_and(|cd| cd.is_active());
+
         if let Some(api_key) = self.api_key.as_deref() {
-            match self
-                .fetch_videos_from_data_api(channel_id, api_key, limit, known_video_ids, until)
-                .await
-            {
-                Ok(result) => return Ok(result),
-                Err(err) => {
-                    tracing::warn!(
-                        channel_id = %channel_id,
-                        error = %err,
-                        "YouTube Data API backfill failed, falling back to InnerTube"
-                    );
+            if cooldown_active {
+                tracing::info!(
+                    channel_id = %channel_id,
+                    "skipping YouTube Data API backfill due to active quota cooldown, using InnerTube"
+                );
+            } else {
+                match self
+                    .fetch_videos_from_data_api(channel_id, api_key, limit, known_video_ids, until)
+                    .await
+                {
+                    Ok(result) => return Ok(result),
+                    Err(err) => {
+                        tracing::warn!(
+                            channel_id = %channel_id,
+                            error = %err,
+                            "YouTube Data API backfill failed, falling back to InnerTube"
+                        );
+                    }
                 }
             }
         }
@@ -512,9 +557,11 @@ impl YouTubeService {
                     match self.fetch_watch_metadata(&id).await {
                         Ok(metadata) => {
                             if let Some(until_date) = until {
-                                if metadata.published_at < until_date {
-                                    continuation = None;
-                                    break;
+                                if let Some(pub_at) = metadata.published_at {
+                                    if pub_at < until_date {
+                                        continuation = None;
+                                        break;
+                                    }
                                 }
                             }
 
@@ -525,7 +572,7 @@ impl YouTubeService {
                                     channel_id: channel_id.to_string(),
                                     title: metadata.title,
                                     thumbnail_url: metadata.thumbnail_url,
-                                    published_at: metadata.published_at,
+                                    published_at: metadata.published_at.unwrap_or_else(chrono::Utc::now),
                                     is_short: self.fetch_is_short_flag(&id).await,
                                     transcript_status: crate::models::ContentStatus::Pending,
                                     summary_status: crate::models::ContentStatus::Pending,
@@ -639,6 +686,11 @@ impl YouTubeService {
                     body = %body,
                     "Data API playlistItems request failed"
                 );
+                if Self::is_quota_exceeded(&body) {
+                    if let Some(cd) = &self.quota_cooldown {
+                        cd.activate();
+                    }
+                }
                 return Err(YouTubeError::ChannelNotFound);
             }
 
@@ -671,11 +723,17 @@ impl YouTubeService {
                     .snippet
                     .published_at
                     .as_deref()
-                    .and_then(Self::parse_any_datetime)
-                    .unwrap_or_else(chrono::Utc::now);
+                    .and_then(Self::parse_any_datetime);
+
+                let effective_published_at = if let Some(dt) = published_at {
+                    dt
+                } else {
+                    tracing::warn!(video_id = %video_id, "Data API snippet missing publishedAt, using now() as absolute fallback");
+                    chrono::Utc::now()
+                };
 
                 if let Some(until_date) = until {
-                    if published_at < until_date {
+                    if effective_published_at < until_date {
                         return Ok((videos, true));
                     }
                 }
@@ -692,7 +750,7 @@ impl YouTubeService {
                     channel_id: channel_id.to_string(),
                     title: item.snippet.title,
                     thumbnail_url,
-                    published_at,
+                    published_at: effective_published_at,
                     is_short,
                     transcript_status: crate::models::ContentStatus::Pending,
                     summary_status: crate::models::ContentStatus::Pending,
@@ -742,6 +800,11 @@ impl YouTubeService {
                 body = %body,
                 "Data API channels request failed"
             );
+            if Self::is_quota_exceeded(&body) {
+                if let Some(cd) = &self.quota_cooldown {
+                    cd.activate();
+                }
+            }
             return Err(YouTubeError::ChannelNotFound);
         }
 
@@ -992,7 +1055,7 @@ impl YouTubeService {
         Ok(WatchMetadata {
             title: oembed.title,
             thumbnail_url: Some(oembed.thumbnail_url),
-            published_at: chrono::Utc::now(),
+            published_at: None,
         })
     }
 
@@ -1430,8 +1493,7 @@ impl YouTubeService {
                     })
                     .and_then(|node| node.text())
                     .and_then(|text| chrono::DateTime::parse_from_rfc3339(text).ok())
-                    .map(|dt| dt.with_timezone(&chrono::Utc))
-                    .unwrap_or_else(chrono::Utc::now);
+                    .map(|dt| dt.with_timezone(&chrono::Utc));
 
                 let thumbnail_url = entry
                     .descendants()
@@ -1444,7 +1506,7 @@ impl YouTubeService {
                     channel_id: channel_id.to_string(),
                     title,
                     thumbnail_url,
-                    published_at: published,
+                    published_at: published.unwrap_or_else(chrono::Utc::now),
                     is_short: false,
                     transcript_status: crate::models::ContentStatus::Pending,
                     summary_status: crate::models::ContentStatus::Pending,

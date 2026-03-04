@@ -7,9 +7,10 @@ use serde::Deserialize;
 use std::sync::Arc;
 use std::time::Instant;
 use thiserror::Error;
+use tokio::sync::Semaphore;
 
 use crate::models::SummaryEvaluationResult;
-use crate::services::{build_http_client, is_rate_limited};
+use crate::services::{build_http_client, is_cloud_model, is_rate_limited};
 use crate::services::http::CloudCooldown;
 
 #[derive(Error, Debug)]
@@ -30,6 +31,7 @@ pub struct SummaryEvaluatorService {
     model: String,
     fallback_model: Option<String>,
     cloud_cooldown: Option<Arc<CloudCooldown>>,
+    ollama_semaphore: Option<Arc<Semaphore>>,
 }
 
 impl SummaryEvaluatorService {
@@ -40,6 +42,7 @@ impl SummaryEvaluatorService {
             model: "qwen3-coder:480b-cloud".to_string(),
             fallback_model: Some("qwen3:8b".to_string()),
             cloud_cooldown: None,
+            ollama_semaphore: None,
         }
     }
 
@@ -50,6 +53,7 @@ impl SummaryEvaluatorService {
             model: model.to_string(),
             fallback_model: None,
             cloud_cooldown: None,
+            ollama_semaphore: None,
         }
     }
 
@@ -60,6 +64,7 @@ impl SummaryEvaluatorService {
             model: model.to_string(),
             fallback_model: None,
             cloud_cooldown: None,
+            ollama_semaphore: None,
         }
     }
 
@@ -70,6 +75,11 @@ impl SummaryEvaluatorService {
 
     pub fn with_cloud_cooldown(mut self, cooldown: Arc<CloudCooldown>) -> Self {
         self.cloud_cooldown = Some(cooldown);
+        self
+    }
+
+    pub fn with_ollama_semaphore(mut self, semaphore: Arc<Semaphore>) -> Self {
+        self.ollama_semaphore = Some(semaphore);
         self
     }
 
@@ -138,7 +148,7 @@ impl SummaryEvaluatorService {
         let started = Instant::now();
         let ollama_client = self.build_ollama_client()?;
 
-        let is_cloud = self.model.ends_with(":cloud");
+        let is_cloud = is_cloud_model(&self.model);
         let cooldown_active = is_cloud
             && self
                 .cloud_cooldown
@@ -157,10 +167,33 @@ impl SummaryEvaluatorService {
                 fallback_model = %fallback,
                 "skipping cloud model due to active cooldown"
             );
+
+            // Acquire semaphore for fallback (presumably local) model
+            let _permit = if !is_cloud_model(fallback) {
+                if let Some(sem) = &self.ollama_semaphore {
+                    Some(sem.acquire().await.map_err(|e| SummaryEvaluatorError::EvaluationFailed(e.to_string()))?)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
             let fallback_agent = ollama_client.agent(fallback).preamble(preamble).build();
             let resp = fallback_agent.prompt(prompt).await?;
             (resp, fallback.to_string())
         } else {
+            // Acquire semaphore for primary model if it's not cloud
+            let _permit = if !is_cloud {
+                if let Some(sem) = &self.ollama_semaphore {
+                    Some(sem.acquire().await.map_err(|e| SummaryEvaluatorError::EvaluationFailed(e.to_string()))?)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
             let agent = ollama_client.agent(&self.model).preamble(preamble).build();
             match agent.prompt(prompt).await {
                 Ok(resp) => (resp, self.model.clone()),
@@ -182,6 +215,18 @@ impl SummaryEvaluatorService {
                         error = %err,
                         "rate limited - falling back to local model"
                     );
+
+                    // Acquire semaphore for fallback (presumably local) model
+                    let _permit = if !is_cloud_model(fallback) {
+                        if let Some(sem) = &self.ollama_semaphore {
+                            Some(sem.acquire().await.map_err(|e| SummaryEvaluatorError::EvaluationFailed(e.to_string()))?)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+
                     let fallback_agent =
                         ollama_client.agent(fallback).preamble(preamble).build();
                     let resp = fallback_agent.prompt(prompt).await?;
