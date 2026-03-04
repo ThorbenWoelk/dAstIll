@@ -72,8 +72,14 @@ pub fn spawn_queue_worker(state: AppState) {
             };
 
             for video in queue {
-                tracing::info!(video_id = %video.id, "queue worker processing video");
                 let task = next_queue_task(&video);
+                
+                // Fast-path skip if transcript rate limits apply to avoid log spam
+                if task == QueueTask::Transcript && state.transcript_cooldown.is_active() {
+                    continue;
+                }
+
+                tracing::info!(video_id = %video.id, "queue worker processing video");
                 let result = match task {
                     QueueTask::Transcript => {
                         tracing::info!(video_id = %video.id, "queue worker ensuring transcript");
@@ -92,14 +98,22 @@ pub fn spawn_queue_worker(state: AppState) {
                 };
 
                 if let Err((status, message)) = result {
-                    tracing::warn!(
-                        video_id = %video.id,
-                        http_status = %status,
-                        error = %message,
-                        "queue worker failed to process video"
-                    );
-                    let conn = state.db.lock().await;
-                    let _ = db::increment_video_retry_count(&conn, &video.id).await;
+                    // Only log as warning/increment retry if it's not a quota/rate limit error we know about
+                    if status == axum::http::StatusCode::TOO_MANY_REQUESTS {
+                        tracing::debug!(
+                            video_id = %video.id,
+                            "queue worker paused for video due to rate limits"
+                        );
+                    } else {
+                        tracing::warn!(
+                            video_id = %video.id,
+                            http_status = %status,
+                            error = %message,
+                            "queue worker failed to process video"
+                        );
+                        let conn = state.db.lock().await;
+                        let _ = db::increment_video_retry_count(&conn, &video.id).await;
+                    }
                 } else {
                     let conn = state.db.lock().await;
                     let _ = db::reset_video_retry_count(&conn, &video.id).await;
@@ -134,7 +148,10 @@ async fn refresh_all_channels(state: &AppState) {
 
     tracing::info!(channel_count = channels.len(), "refreshing all channels");
 
-    for channel in &channels {
+    for (i, channel) in channels.iter().enumerate() {
+        if i > 0 {
+            sleep(Duration::from_secs(1)).await;
+        }
         match state.youtube.fetch_videos(&channel.id).await {
             Ok(videos) => {
                 let conn = state.db.lock().await;
@@ -212,6 +229,11 @@ async fn fill_channel_gaps(
 }
 
 async fn scan_all_channels_for_gaps(state: &AppState) {
+    if state.youtube_quota_cooldown.is_active() {
+        tracing::debug!("skipping gap scan worker - youtube quota cooldown active");
+        return;
+    }
+
     let channels = {
         let conn = state.db.lock().await;
         db::list_channels(&conn)
@@ -237,7 +259,10 @@ async fn scan_all_channels_for_gaps(state: &AppState) {
         "gap scan worker scanning channels"
     );
 
-    for channel in channels {
+    for (i, channel) in channels.into_iter().enumerate() {
+        if i > 0 {
+            sleep(Duration::from_secs(1)).await;
+        }
         match fill_channel_gaps(
             state,
             &channel.id,

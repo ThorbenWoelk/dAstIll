@@ -391,16 +391,29 @@ pub(crate) async fn ensure_summary(
         .summarize(&transcript_text, &title)
         .await
         .map_err(|e| {
+            let error_msg = e.to_string();
+            let status = if error_msg.contains("rate limited") || error_msg.contains("429") {
+                StatusCode::TOO_MANY_REQUESTS
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR
+            };
+
+            let next_status = if status == StatusCode::TOO_MANY_REQUESTS {
+                ContentStatus::Pending
+            } else {
+                ContentStatus::Failed
+            };
+
             // Fire-and-forget status update
             let state_clone = state.clone();
             let video_id_owned = video_id.to_string();
             tokio::spawn(async move {
                 let conn = state_clone.db.lock().await;
                 let _ =
-                    db::update_video_summary_status(&conn, &video_id_owned, ContentStatus::Failed)
+                    db::update_video_summary_status(&conn, &video_id_owned, next_status)
                         .await;
             });
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+            (status, error_msg)
         })?;
     tracing::info!(video_id = %video_id, "summary generation completed");
 
@@ -432,6 +445,7 @@ fn map_transcript_err(
     match &err {
         crate::services::transcript::TranscriptError::RateLimited => {
             tracing::warn!(video_id = %video_id, error = %err, "transcript download rate limited");
+            state.transcript_cooldown.activate();
         }
         crate::services::transcript::TranscriptError::NoTranscript => {
             tracing::warn!(

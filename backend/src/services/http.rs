@@ -4,6 +4,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const CLOUD_COOLDOWN_DURATION: Duration = Duration::from_secs(3600);
 const YOUTUBE_QUOTA_COOLDOWN_DURATION: Duration = Duration::from_secs(24 * 3600);
+const TRANSCRIPT_COOLDOWN_DURATION: Duration = Duration::from_secs(60 * 60);
 
 /// Shared cooldown state for cloud (`:cloud` suffix) models after HTTP 429.
 /// Once activated, all cloud model attempts are skipped for 1 hour.
@@ -81,6 +82,45 @@ impl YouTubeQuotaCooldown {
             .as_millis() as u64;
         let elapsed_ms = now.saturating_sub(started);
         elapsed_ms < YOUTUBE_QUOTA_COOLDOWN_DURATION.as_millis() as u64
+    }
+}
+
+/// Shared cooldown state for YouTube transcript fetching after rate limits.
+/// Once activated, all transcript extraction attempts are skipped for 1 hour.
+pub struct TranscriptCooldown {
+    started_epoch_ms: AtomicU64,
+}
+
+impl TranscriptCooldown {
+    pub fn new() -> Self {
+        Self {
+            started_epoch_ms: AtomicU64::new(0),
+        }
+    }
+
+    pub fn activate(&self) {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        self.started_epoch_ms.store(now, Ordering::Relaxed);
+        tracing::warn!(
+            cooldown_hours = 1,
+            "YouTube transcript cooldown activated - skipping transcript downloads for 1 hour"
+        );
+    }
+
+    pub fn is_active(&self) -> bool {
+        let started = self.started_epoch_ms.load(Ordering::Relaxed);
+        if started == 0 {
+            return false;
+        }
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        let elapsed_ms = now.saturating_sub(started);
+        elapsed_ms < TRANSCRIPT_COOLDOWN_DURATION.as_millis() as u64
     }
 }
 

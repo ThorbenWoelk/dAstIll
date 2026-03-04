@@ -11,7 +11,7 @@ use tower_http::trace::TraceLayer;
 use dastill::db::init_db;
 use dastill::handlers::{channels, content, videos};
 use dastill::services::{
-    CloudCooldown, SummarizerService, SummaryEvaluatorService, TranscriptService,
+    CloudCooldown, SummarizerService, SummaryEvaluatorService, TranscriptCooldown, TranscriptService,
     YouTubeQuotaCooldown, YouTubeService, build_http_client,
 };
 use dastill::state::AppState;
@@ -60,6 +60,7 @@ async fn main() -> anyhow::Result<()> {
     let client = build_http_client();
     let cloud_cooldown = Arc::new(CloudCooldown::new());
     let youtube_quota_cooldown = Arc::new(YouTubeQuotaCooldown::new());
+    let transcript_cooldown = Arc::new(TranscriptCooldown::new());
 
     let youtube = Arc::new(
         YouTubeService::with_client(client.clone())
@@ -111,6 +112,7 @@ async fn main() -> anyhow::Result<()> {
         summary_evaluator,
         cloud_cooldown,
         youtube_quota_cooldown,
+        transcript_cooldown,
     };
     spawn_queue_worker(state.clone());
     spawn_refresh_worker(state.clone());
