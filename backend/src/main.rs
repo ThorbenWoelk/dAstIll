@@ -73,19 +73,23 @@ async fn main() -> anyhow::Result<()> {
         std::env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
     let ollama_model =
         std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "minimax-m2.5:cloud".to_string());
+    let ollama_fallback_model = std::env::var("OLLAMA_FALLBACK_MODEL")
+        .ok()
+        .or_else(|| Some("qwen3:8b".to_string()));
     let summary_evaluator_model = std::env::var("SUMMARY_EVALUATOR_MODEL")
         .unwrap_or_else(|_| "qwen3-coder:480b-cloud".to_string());
+    let summary_evaluator_fallback_model = std::env::var("SUMMARY_EVALUATOR_FALLBACK_MODEL")
+        .ok()
+        .or_else(|| Some("qwen3:8b".to_string()));
     let transcript = Arc::new(TranscriptService::with_path(&summarize_path));
-    let summarizer = Arc::new(SummarizerService::with_client(
-        client.clone(),
-        &ollama_url,
-        &ollama_model,
-    ));
-    let summary_evaluator = Arc::new(SummaryEvaluatorService::with_client(
-        client,
-        &ollama_url,
-        &summary_evaluator_model,
-    ));
+    let summarizer = Arc::new(
+        SummarizerService::with_client(client.clone(), &ollama_url, &ollama_model)
+            .with_fallback_model(ollama_fallback_model),
+    );
+    let summary_evaluator = Arc::new(
+        SummaryEvaluatorService::with_client(client, &ollama_url, &summary_evaluator_model)
+            .with_fallback_model(summary_evaluator_fallback_model),
+    );
 
     let state = AppState {
         db: pool,

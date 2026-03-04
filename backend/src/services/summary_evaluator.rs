@@ -8,7 +8,7 @@ use std::time::Instant;
 use thiserror::Error;
 
 use crate::models::SummaryEvaluationResult;
-use crate::services::build_http_client;
+use crate::services::{build_http_client, is_rate_limited};
 
 #[derive(Error, Debug)]
 pub enum SummaryEvaluatorError {
@@ -26,6 +26,7 @@ pub struct SummaryEvaluatorService {
     client: Client,
     base_url: String,
     model: String,
+    fallback_model: Option<String>,
 }
 
 impl SummaryEvaluatorService {
@@ -34,6 +35,7 @@ impl SummaryEvaluatorService {
             client: build_http_client(),
             base_url: "http://localhost:11434".to_string(),
             model: "qwen3-coder:480b-cloud".to_string(),
+            fallback_model: Some("qwen3:8b".to_string()),
         }
     }
 
@@ -42,6 +44,7 @@ impl SummaryEvaluatorService {
             client: build_http_client(),
             base_url: base_url.to_string(),
             model: model.to_string(),
+            fallback_model: None,
         }
     }
 
@@ -50,7 +53,13 @@ impl SummaryEvaluatorService {
             client,
             base_url: base_url.to_string(),
             model: model.to_string(),
+            fallback_model: None,
         }
+    }
+
+    pub fn with_fallback_model(mut self, fallback_model: Option<String>) -> Self {
+        self.fallback_model = fallback_model;
+        self
     }
 
     pub async fn is_available(&self) -> bool {
@@ -118,7 +127,27 @@ impl SummaryEvaluatorService {
         let started = Instant::now();
         let ollama_client = self.build_ollama_client()?;
         let agent = ollama_client.agent(&self.model).preamble(preamble).build();
-        let response = agent.prompt(prompt).await?;
+        let response = match agent.prompt(prompt).await {
+            Ok(resp) => resp,
+            Err(err) if is_rate_limited(&err) => {
+                let fallback = self.fallback_model.as_deref().ok_or_else(|| {
+                    SummaryEvaluatorError::EvaluationFailed(format!(
+                        "rate limited by provider and no fallback model configured: {err}"
+                    ))
+                })?;
+                tracing::warn!(
+                    operation = operation,
+                    primary_model = %self.model,
+                    fallback_model = %fallback,
+                    error = %err,
+                    "rate limited - falling back to local model"
+                );
+                let fallback_agent =
+                    ollama_client.agent(fallback).preamble(preamble).build();
+                fallback_agent.prompt(prompt).await?
+            }
+            Err(err) => return Err(err.into()),
+        };
         tracing::info!(
             operation = operation,
             model = %self.model,
@@ -142,6 +171,7 @@ impl Default for SummaryEvaluatorService {
         Self::new()
     }
 }
+
 
 #[derive(Deserialize)]
 struct EvaluatorResponse {

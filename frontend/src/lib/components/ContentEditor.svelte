@@ -87,7 +87,7 @@
 						aria-label={reverting
 							? "Reverting transcript"
 							: "Revert to original transcript"}
-						title={reverting
+						data-tooltip={reverting
 							? "Reverting…"
 							: "Revert to original transcript"}
 					>
@@ -139,7 +139,7 @@
 						rel="noopener noreferrer"
 						class="inline-flex h-10 w-10 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--border-soft)] bg-[var(--background)] text-[var(--soft-foreground)] transition-all hover:border-[var(--accent)]/40 hover:text-[var(--accent)] hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
 						aria-label="Open video on YouTube"
-						title="Open on YouTube"
+						data-tooltip="Open on YouTube"
 					>
 						<svg
 							viewBox="0 0 24 24"
@@ -266,7 +266,7 @@
 					aria-label={reverting
 						? "Reverting transcript"
 						: "Revert to original transcript"}
-					title={reverting
+					data-tooltip={reverting
 						? "Reverting…"
 						: "Revert to original transcript"}
 				>
@@ -318,7 +318,7 @@
 					rel="noopener noreferrer"
 					class="inline-flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] text-[var(--soft-foreground)] border border-transparent hover:border-[var(--border-soft)] hover:bg-[var(--muted)]/30 hover:text-[var(--foreground)] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
 					aria-label="Open video on YouTube"
-					title="Open on YouTube"
+					data-tooltip="Open on YouTube"
 				>
 					<svg
 						viewBox="0 0 24 24"
@@ -349,7 +349,7 @@
 			class="inline-flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] text-[var(--soft-foreground)] border border-transparent hover:border-[var(--border-soft)] hover:bg-[var(--muted)]/30 hover:text-[var(--foreground)] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 disabled:opacity-20"
 			onclick={onEdit}
 			disabled={busy}
-			title="Edit distillation"
+			data-tooltip="Edit distillation"
 			aria-label="Edit distillation"
 		>
 			<svg
@@ -370,7 +370,7 @@
 			<div class="h-4 w-px bg-[var(--border-soft)] mx-1"></div>
 			<label
 				class="flex items-center justify-center h-9 w-9 cursor-pointer group transition-opacity hover:opacity-100"
-				title={acknowledged ? "Mark as unread" : "Mark as read"}
+				data-tooltip={acknowledged ? "Mark as unread" : "Mark as read"}
 			>
 				<div class="relative flex items-center justify-center">
 					<input
