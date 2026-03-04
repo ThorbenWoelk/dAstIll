@@ -2260,7 +2260,7 @@
 							/>
 						</div>
 					{:else}
-						<div class="pb-32">
+						<div class="max-lg:pb-32">
 							<TranscriptView
 								html={contentHtml}
 								formatting={contentMode === "transcript" &&
