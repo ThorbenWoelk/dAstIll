@@ -100,18 +100,19 @@ impl SummarizerService {
     }
 
     /// Generate a summary from transcript text.
+    /// Returns `(summary_content, model_used)`.
     pub async fn summarize(
         &self,
         transcript: &str,
         video_title: &str,
-    ) -> Result<String, SummarizerError> {
+    ) -> Result<(String, String), SummarizerError> {
         let prompt = build_summary_prompt(transcript, video_title);
 
-        let raw = self
+        let (raw, model_used) = self
             .prompt_model("summary", SUMMARY_PREAMBLE, &prompt)
             .await?;
 
-        Ok(strip_summary_title_heading(&raw))
+        Ok((strip_summary_title_heading(&raw), model_used))
     }
 
     /// Clean transcript formatting while preserving token sequence.
@@ -142,7 +143,7 @@ impl SummarizerService {
             let prompt = build_clean_transcript_prompt(transcript, retry_feedback.as_deref());
             let operation = format!("transcript_clean_attempt_{attempt}");
             let remaining = TRANSCRIPT_FORMAT_HARD_TIMEOUT.saturating_sub(elapsed);
-            let response = match timeout(
+            let (response, _model_used) = match timeout(
                 remaining,
                 self.prompt_model(&operation, TRANSCRIPT_CLEAN_PREAMBLE, &prompt),
             )
@@ -216,12 +217,13 @@ impl SummarizerService {
             .map_err(|err| SummarizerError::GenerationFailed(err.to_string()))
     }
 
+    /// Returns `(response_text, model_used)`.
     async fn prompt_model(
         &self,
         operation: &str,
         preamble: &str,
         prompt: &str,
-    ) -> Result<String, SummarizerError> {
+    ) -> Result<(String, String), SummarizerError> {
         tracing::info!(
             operation = operation,
             model = %self.model,
@@ -232,8 +234,8 @@ impl SummarizerService {
         let started = Instant::now();
         let ollama_client = self.build_ollama_client()?;
         let agent = ollama_client.agent(&self.model).preamble(preamble).build();
-        let response = match agent.prompt(prompt).await {
-            Ok(resp) => resp,
+        let (response, model_used) = match agent.prompt(prompt).await {
+            Ok(resp) => (resp, self.model.clone()),
             Err(err) if is_rate_limited(&err) => {
                 let fallback = self.fallback_model.as_deref().ok_or_else(|| {
                     SummarizerError::GenerationFailed(format!(
@@ -249,13 +251,14 @@ impl SummarizerService {
                 );
                 let fallback_agent =
                     ollama_client.agent(fallback).preamble(preamble).build();
-                fallback_agent.prompt(prompt).await?
+                let resp = fallback_agent.prompt(prompt).await?;
+                (resp, fallback.to_string())
             }
             Err(err) => return Err(err.into()),
         };
         tracing::info!(
             operation = operation,
-            model = %self.model,
+            model = %model_used,
             response_chars = response.len(),
             elapsed_ms = started.elapsed().as_millis() as u64,
             "completed ollama prompt"
@@ -265,7 +268,7 @@ impl SummarizerService {
                 "Empty response from Ollama".to_string(),
             ));
         }
-        Ok(response)
+        Ok((response, model_used))
     }
 }
 
@@ -837,7 +840,7 @@ while blue-green is safer when instant rollback is required. \
 Final recommendation: use blue-green for high-risk launches in peak business hours, \
 and use canary for lower-risk feature rollouts.";
 
-        let summary = timeout(
+        let (summary, model_used) = timeout(
             Duration::from_secs(240),
             summarizer.summarize(transcript, title),
         )
@@ -845,6 +848,7 @@ and use canary for lower-risk feature rollouts.";
         .expect("summary generation timed out")
         .expect("summary generation failed");
 
+        assert!(!model_used.is_empty(), "model_used should not be empty");
         assert!(summary.contains("## Overview"), "missing Overview section");
         assert!(
             summary.contains("## Key Points"),

@@ -3,8 +3,10 @@
 	export let editing = false;
 	export let busy = false;
 	export let formatting = false;
+	export let regenerating = false;
 	export let reverting = false;
 	export let showFormatAction = false;
+	export let showRegenerateAction = false;
 	export let showRevertAction = false;
 	export let canRevert = true;
 	export let youtubeUrl: string | null = null;
@@ -12,6 +14,7 @@
 	export let onCancel: () => void = () => {};
 	export let onSave: () => void = () => {};
 	export let onFormat: () => void = () => {};
+	export let onRegenerate: () => void = () => {};
 	export let onRevert: () => void = () => {};
 	export let onChange: (next: string) => void = () => {};
 	export let onAcknowledgeToggle: (() => void) | undefined = undefined;
@@ -83,7 +86,7 @@
 						type="button"
 						class="inline-flex h-10 w-10 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--border-soft)] bg-[var(--background)] transition-all hover:border-[var(--accent)]/40 hover:text-[var(--accent)] hover:shadow-sm disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
 						onclick={onRevert}
-						disabled={busy || formatting || reverting || !canRevert}
+						disabled={busy || formatting || regenerating || reverting || !canRevert}
 						aria-label={reverting
 							? "Reverting transcript"
 							: "Revert to original transcript"}
@@ -165,6 +168,62 @@
 					</a>
 				{/if}
 			{/if}
+			{#if showRegenerateAction}
+				<button
+					type="button"
+					class="inline-flex h-10 w-10 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--border-soft)] bg-[var(--background)] transition-all hover:border-[var(--accent)]/40 hover:text-[var(--accent)] hover:shadow-sm disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+					onclick={onRegenerate}
+					disabled={busy || formatting || regenerating || reverting || !aiAvailable}
+					aria-label={regenerating
+						? "Regenerating summary"
+						: aiAvailable
+							? "Regenerate summary"
+							: "regenerate (AI engine required)"}
+					data-tooltip={regenerating
+						? "Regenerating…"
+						: aiAvailable
+							? "Regenerate summary"
+							: "regenerate (AI engine required)"}
+				>
+					{#if regenerating}
+						<svg
+							viewBox="0 0 24 24"
+							class="h-4 w-4 animate-spin"
+							aria-hidden="true"
+						>
+							<circle
+								cx="12"
+								cy="12"
+								r="9"
+								fill="none"
+								stroke="currentColor"
+								stroke-opacity="0.25"
+								stroke-width="2"
+							/>
+							<path
+								d="M12 3a9 9 0 0 1 9 9"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+							/>
+						</svg>
+					{:else}
+						<svg
+							viewBox="0 0 24 24"
+							class="h-4 w-4"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2.5"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						>
+							<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+							<path d="M21 3v5h-5" />
+						</svg>
+					{/if}
+				</button>
+			{/if}
 			<div class="ml-auto flex items-center gap-3">
 				<button
 					type="button"
@@ -188,7 +247,7 @@
 			name="content"
 			autocomplete="off"
 			aria-label="Content editor"
-			class={`min-h-[400px] w-full rounded-[var(--radius-md)] border border-[var(--border-soft)] p-8 text-[15px] font-medium leading-[1.7] shadow-sm transition-all focus-within:ring-2 focus-within:ring-[var(--accent)]/10 focus-within:border-[var(--accent)]/40 focus-visible:outline-none ${
+			class={`min-h-[400px] w-full rounded-[var(--radius-md)] border border-[var(--border-soft)] p-8 text-[15px] font-medium leading-[1.7] shadow-sm transition-all focus-within:ring-2 focus-within:ring-[var(--accent)]/10 focus-within:border-[var(--accent)]/40 focus-visible:outline-none max-lg:border-0 max-lg:bg-transparent max-lg:p-0 max-lg:shadow-none ${
 				formatting
 					? "opacity-50 blur-[0.5px] bg-[var(--background)]"
 					: "bg-white"
@@ -343,6 +402,62 @@
 					</svg>
 				</a>
 			{/if}
+		{/if}
+		{#if showRegenerateAction}
+			<button
+				type="button"
+				class="inline-flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] text-[var(--soft-foreground)] border border-transparent hover:border-[var(--border-soft)] hover:bg-[var(--muted)]/30 hover:text-[var(--foreground)] transition-all disabled:opacity-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+				onclick={onRegenerate}
+				disabled={busy || formatting || regenerating || reverting || !aiAvailable}
+				aria-label={regenerating
+					? "Regenerating summary"
+					: aiAvailable
+						? "Regenerate summary"
+						: "regenerate (AI engine required)"}
+				data-tooltip={regenerating
+					? "Regenerating…"
+					: aiAvailable
+						? "Regenerate summary"
+						: "regenerate (AI engine required)"}
+			>
+				{#if regenerating}
+					<svg
+						viewBox="0 0 24 24"
+						class="h-4 w-4 animate-spin"
+						aria-hidden="true"
+					>
+						<circle
+							cx="12"
+							cy="12"
+							r="9"
+							fill="none"
+							stroke="currentColor"
+							stroke-opacity="0.25"
+							stroke-width="2"
+						/>
+						<path
+							d="M12 3a9 9 0 0 1 9 9"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+						/>
+					</svg>
+				{:else}
+					<svg
+						viewBox="0 0 24 24"
+						class="h-4 w-4"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2.5"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					>
+						<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+						<path d="M21 3v5h-5" />
+					</svg>
+				{/if}
+			</button>
 		{/if}
 		<button
 			type="button"

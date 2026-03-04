@@ -154,6 +154,10 @@ async fn main() -> anyhow::Result<()> {
             "/api/videos/{id}/summary",
             get(content::get_summary).put(content::update_summary),
         )
+        .route(
+            "/api/videos/{id}/summary/regenerate",
+            post(content::regenerate_summary),
+        )
         .layer(
             CorsLayer::new()
                 .allow_origin(Any)

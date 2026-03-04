@@ -15,6 +15,7 @@ const CHANNEL_GAP_SCAN_INTERVAL: Duration = Duration::from_secs(10 * 60);
 const CHANNEL_GAP_SCAN_LIMIT_PER_CHANNEL: usize = 8;
 const SUMMARY_EVAL_SCAN_LIMIT: usize = 4;
 const SUMMARY_EVAL_POLL_INTERVAL: Duration = Duration::from_secs(7);
+const MAX_DISTILLATION_RETRIES: u8 = 3;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum QueueTask {
@@ -24,13 +25,20 @@ enum QueueTask {
 }
 
 fn next_queue_task(video: &Video) -> QueueTask {
+    if video.retry_count >= MAX_DISTILLATION_RETRIES {
+        return QueueTask::Skip;
+    }
+
     match video.transcript_status {
-        ContentStatus::Pending | ContentStatus::Loading => QueueTask::Transcript,
+        ContentStatus::Pending | ContentStatus::Loading | ContentStatus::Failed => {
+            QueueTask::Transcript
+        }
         ContentStatus::Ready => match video.summary_status {
-            ContentStatus::Pending | ContentStatus::Loading => QueueTask::Summary,
-            ContentStatus::Ready | ContentStatus::Failed => QueueTask::Skip,
+            ContentStatus::Pending | ContentStatus::Loading | ContentStatus::Failed => {
+                QueueTask::Summary
+            }
+            ContentStatus::Ready => QueueTask::Skip,
         },
-        ContentStatus::Failed => QueueTask::Skip,
     }
 }
 
@@ -49,7 +57,7 @@ pub fn spawn_queue_worker(state: AppState) {
         loop {
             let queue = {
                 let conn = state.db.lock().await;
-                db::list_videos_for_queue_processing(&conn, QUEUE_SCAN_LIMIT)
+                db::list_videos_for_queue_processing(&conn, QUEUE_SCAN_LIMIT, MAX_DISTILLATION_RETRIES)
                     .await
                     .map_err(|err| err.to_string())
             };
@@ -90,6 +98,11 @@ pub fn spawn_queue_worker(state: AppState) {
                         error = %message,
                         "queue worker failed to process video"
                     );
+                    let conn = state.db.lock().await;
+                    let _ = db::increment_video_retry_count(&conn, &video.id).await;
+                } else {
+                    let conn = state.db.lock().await;
+                    let _ = db::reset_video_retry_count(&conn, &video.id).await;
                 }
             }
 
@@ -399,6 +412,7 @@ mod tests {
             transcript_status,
             summary_status,
             acknowledged: false,
+            retry_count: 0,
         }
     }
 
@@ -421,12 +435,18 @@ mod tests {
     }
 
     #[test]
-    fn next_queue_task_skips_complete_or_failed_rows() {
+    fn next_queue_task_retries_failed_rows() {
+        let failed_transcript = video_with_statuses(ContentStatus::Failed, ContentStatus::Pending);
+        assert_eq!(next_queue_task(&failed_transcript), QueueTask::Transcript);
+
+        let failed_summary = video_with_statuses(ContentStatus::Ready, ContentStatus::Failed);
+        assert_eq!(next_queue_task(&failed_summary), QueueTask::Summary);
+    }
+
+    #[test]
+    fn next_queue_task_skips_complete_rows() {
         let done = video_with_statuses(ContentStatus::Ready, ContentStatus::Ready);
         assert_eq!(next_queue_task(&done), QueueTask::Skip);
-
-        let failed_transcript = video_with_statuses(ContentStatus::Failed, ContentStatus::Pending);
-        assert_eq!(next_queue_task(&failed_transcript), QueueTask::Skip);
     }
 
     #[test]

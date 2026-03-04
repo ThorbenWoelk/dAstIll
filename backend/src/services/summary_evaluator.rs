@@ -127,8 +127,8 @@ impl SummaryEvaluatorService {
         let started = Instant::now();
         let ollama_client = self.build_ollama_client()?;
         let agent = ollama_client.agent(&self.model).preamble(preamble).build();
-        let response = match agent.prompt(prompt).await {
-            Ok(resp) => resp,
+        let (response, model_used) = match agent.prompt(prompt).await {
+            Ok(resp) => (resp, self.model.clone()),
             Err(err) if is_rate_limited(&err) => {
                 let fallback = self.fallback_model.as_deref().ok_or_else(|| {
                     SummaryEvaluatorError::EvaluationFailed(format!(
@@ -144,13 +144,14 @@ impl SummaryEvaluatorService {
                 );
                 let fallback_agent =
                     ollama_client.agent(fallback).preamble(preamble).build();
-                fallback_agent.prompt(prompt).await?
+                let resp = fallback_agent.prompt(prompt).await?;
+                (resp, fallback.to_string())
             }
             Err(err) => return Err(err.into()),
         };
         tracing::info!(
             operation = operation,
-            model = %self.model,
+            model = %model_used,
             response_chars = response.len(),
             elapsed_ms = started.elapsed().as_millis() as u64,
             "completed ollama summary evaluation prompt"
