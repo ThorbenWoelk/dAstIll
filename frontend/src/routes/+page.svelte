@@ -1324,7 +1324,8 @@
 									class="ml-3 inline-flex h-5 w-5 items-center justify-center align-middle rounded-full border border-[var(--border-soft)] bg-[var(--background)]"
 									role="status"
 									aria-label="Syncing channel"
-									title="Syncing channel"
+									data-tooltip="Syncing channel"
+
 								>
 									<span
 										class="h-2.5 w-2.5 animate-spin rounded-full border border-[var(--accent)]/20 border-t-[var(--accent)]"

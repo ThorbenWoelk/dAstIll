@@ -96,7 +96,7 @@
 				}
 			}}
 			aria-label="Delete channel"
-			title="Delete channel"
+			data-tooltip="Delete channel"
 		>
 			<svg
 				viewBox="0 0 24 24"
@@ -115,7 +115,7 @@
 		<div
 			class={`transition-opacity duration-300 ${active ? "opacity-100" : "opacity-0 group-hover:opacity-40"}`}
 			aria-hidden="true"
-			title="Drag to reorder"
+			data-tooltip="Drag to reorder"
 		>
 			<svg
 				viewBox="0 0 16 16"

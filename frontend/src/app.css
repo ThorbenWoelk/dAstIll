@@ -160,26 +160,48 @@ textarea {
 	position: absolute;
 	bottom: 100%;
 	left: 50%;
-	transform: translateX(-50%) translateY(-8px);
+	transform: translateX(-50%) translateY(-2px);
 	padding: 6px 10px;
-	background: #1a1a1a;
+	background: rgba(26, 26, 26, 0.95);
+	backdrop-filter: blur(4px);
 	color: white;
 	font-size: 10px;
 	font-weight: 700;
 	text-transform: uppercase;
-	letter-spacing: 0.1em;
+	letter-spacing: 0.08em;
 	white-space: nowrap;
 	border-radius: 6px;
 	opacity: 0;
 	pointer-events: none;
 	transition: all 150ms cubic-bezier(0.16, 1, 0.3, 1);
 	z-index: 1000;
-	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Tooltip Arrow */
+[data-tooltip]::after {
+	content: "";
+	position: absolute;
+	bottom: 100%;
+	left: 50%;
+	transform: translateX(-50%) translateY(6px);
+	border-width: 4px;
+	border-style: solid;
+	border-color: rgba(26, 26, 26, 0.95) transparent transparent transparent;
+	opacity: 0;
+	pointer-events: none;
+	transition: all 150ms cubic-bezier(0.16, 1, 0.3, 1);
+	z-index: 1000;
 }
 
 [data-tooltip]:hover::before {
 	opacity: 1;
-	transform: translateX(-50%) translateY(-4px);
+	transform: translateX(-50%) translateY(-8px);
+}
+
+[data-tooltip]:hover::after {
+	opacity: 1;
+	transform: translateX(-50%) translateY(0px);
 }
 
 @media (prefers-reduced-motion: reduce) {
