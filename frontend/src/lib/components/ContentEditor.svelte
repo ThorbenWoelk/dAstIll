@@ -33,7 +33,7 @@
 						: aiAvailable
 							? "Clean formatting"
 							: "auto-format (AI engine required)"}
-					title={formatting
+					data-tooltip={formatting
 						? "Formatting…"
 						: aiAvailable
 							? "Clean formatting"
@@ -212,7 +212,7 @@
 					: aiAvailable
 						? "Clean formatting"
 						: "auto-format (AI engine required)"}
-				title={formatting
+				data-tooltip={formatting
 					? "Formatting…"
 					: aiAvailable
 						? "Clean formatting"
