@@ -53,6 +53,7 @@
 	const FORMAT_MAX_TURNS = 5;
 	const FORMAT_HARD_TIMEOUT_MINUTES = 5;
 	const CHANNEL_REFRESH_TTL_MS = 5 * 60 * 1000;
+	const SELECTED_VIDEO_SCAN_PAGE_LIMIT = 8;
 	const channelLastRefreshedAt = new Map<string, number>();
 
 	type AcknowledgedFilter = "all" | "unack" | "ack";
@@ -724,9 +725,39 @@
 					return;
 				}
 
-				const hasSelectedVideo = videos.some(
+				let hasSelectedVideo = videos.some(
 					(video) => video.id === selectedVideoId,
 				);
+				const targetVideoId = selectedVideoId;
+				const targetChannelId = selectedChannelId;
+				let scannedPages = 0;
+
+				while (
+					!hasSelectedVideo &&
+					hasMore &&
+					scannedPages < SELECTED_VIDEO_SCAN_PAGE_LIMIT &&
+					selectedChannelId === targetChannelId &&
+					selectedVideoId === targetVideoId
+				) {
+					const next = await listVideos(
+						targetChannelId,
+						limit,
+						offset,
+						videoTypeFilter,
+						isAck,
+					);
+					scannedPages += 1;
+					if (next.length === 0) {
+						hasMore = false;
+						break;
+					}
+
+					videos = [...videos, ...next];
+					offset += next.length;
+					hasMore = next.length === limit;
+					hasSelectedVideo = videos.some((video) => video.id === targetVideoId);
+				}
+
 				if (!hasSelectedVideo) {
 					void selectVideo(videos[0].id);
 					return;
@@ -1309,7 +1340,7 @@
 	</a>
 
 	<header
-		class="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-4 px-4 sm:px-2 fade-in border-b border-[var(--border-soft)] pb-3 mb-1"
+		class="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-4 px-4 sm:px-2 fade-in pb-3 mb-1"
 	>
 		<div class="flex items-center gap-4">
 			<h1
@@ -1393,7 +1424,7 @@
 			class="mx-auto mt-0 grid w-full max-w-[1440px] items-start lg:mt-6 lg:gap-6 lg:grid-cols-[280px_320px_minmax(0,1fr)] xl:grid-cols-[280px_380px_minmax(0,1fr)]"
 		>
 			<aside
-				class="flex min-w-0 flex-col border-0 lg:gap-4 lg:rounded-[var(--radius-lg)] lg:bg-[var(--surface)] lg:border lg:border-[var(--border-soft)] lg:p-5 lg:sticky lg:top-6 fade-in stagger-1 lg:shadow-sm {mobileTab !== 'channels' ? 'hidden lg:flex' : 'h-[calc(100dvh-10rem)] p-3 gap-4'}"
+				class="flex min-w-0 flex-col border-0 lg:gap-4 lg:rounded-[var(--radius-lg)] lg:bg-[var(--surface)] lg:border lg:border-[var(--border-soft)] lg:p-5 lg:sticky lg:top-6 lg:h-[calc(100vh-5rem)] fade-in stagger-1 lg:shadow-sm {mobileTab !== 'channels' ? 'hidden lg:flex' : 'h-[calc(100dvh-10rem)] p-3 gap-4'}"
 				id="workspace"
 			>
 				<div class="flex items-center justify-between gap-2">
@@ -1507,7 +1538,7 @@
 				</form>
 
 				<div
-					class="flex flex-1 min-h-0 flex-col gap-1.5 overflow-y-auto pr-1 custom-scrollbar lg:max-h-[60vh]"
+					class="flex flex-1 min-h-0 flex-col gap-1.5 overflow-y-auto pr-1 custom-scrollbar"
 					aria-busy={loadingChannels}
 				>
 					{#if loadingChannels}
@@ -1569,7 +1600,7 @@
 			</aside>
 
 			<aside
-				class="flex min-w-0 flex-col border-0 lg:gap-4 lg:rounded-[var(--radius-lg)] lg:bg-[var(--surface)] lg:border lg:border-[var(--border-soft)] lg:p-5 lg:sticky lg:top-6 fade-in stagger-2 lg:shadow-sm {mobileTab !== 'videos' ? 'hidden lg:flex' : 'h-[calc(100dvh-4rem)] p-3 gap-6'}"
+				class="flex min-w-0 flex-col border-0 lg:gap-4 lg:rounded-[var(--radius-lg)] lg:bg-[var(--surface)] lg:border lg:border-[var(--border-soft)] lg:p-5 lg:sticky lg:top-6 lg:h-[calc(100vh-5rem)] fade-in stagger-2 lg:shadow-sm {mobileTab !== 'videos' ? 'hidden lg:flex' : 'h-[calc(100dvh-4rem)] p-3 gap-6'}"
 				id="videos"
 			>
 				<div class="flex flex-wrap items-center justify-between gap-4">
@@ -1811,7 +1842,7 @@
 				</div>
 
 				<div
-					class="grid flex-1 min-h-0 gap-4 overflow-y-auto pr-1 custom-scrollbar lg:max-h-[65vh]"
+					class="grid flex-1 min-h-0 gap-4 overflow-y-auto pr-1 custom-scrollbar"
 					bind:this={videoListContainer}
 					onscroll={updateVideoListBottomState}
 					aria-busy={loadingVideos}
@@ -1851,7 +1882,7 @@
 
 				{#if selectedChannelId}
 					<div
-						class="flex flex-col gap-4 pt-4 border-t border-[var(--border-soft)]/50 mt-3"
+						class="flex flex-col gap-4 pt-4 mt-3"
 					>
 						{#if hasMore || !historyExhausted}
 							<div class="flex justify-center">
@@ -1894,11 +1925,11 @@
 			</aside>
 
 			<section
-				class="flex min-w-0 flex-col overflow-hidden border-0 lg:gap-6 lg:py-8 lg:min-h-[600px] lg:rounded-[var(--radius-lg)] lg:bg-[var(--surface)] lg:border lg:border-[var(--border-soft)] lg:shadow-sm lg:sticky lg:top-6 lg:h-[calc(100vh-5rem)] fade-in stagger-3 {mobileTab !== 'content' ? 'hidden lg:flex' : 'h-[calc(100dvh-4rem)]'}"
+				class="flex min-w-0 flex-col overflow-hidden border-0 lg:gap-6 lg:py-8 lg:rounded-[var(--radius-lg)] lg:bg-[var(--surface)] lg:border lg:border-[var(--border-soft)] lg:shadow-sm lg:sticky lg:top-6 lg:h-[calc(100vh-5rem)] fade-in stagger-3 {mobileTab !== 'content' ? 'hidden lg:flex' : 'h-[calc(100dvh-4rem)]'}"
 				id="content-view"
 			>
 				<div
-					class="flex flex-wrap items-center justify-between gap-3 sm:gap-4 px-4 sm:px-6 md:px-10 border-b border-[var(--border-soft)]/50 max-lg:pt-4 max-lg:pb-2"
+					class="flex flex-wrap items-center justify-between gap-3 sm:gap-4 px-4 sm:px-6 md:px-10 max-lg:pt-4 max-lg:pb-2"
 				>
 					<div class="flex items-center gap-3 sm:gap-4">
 						<h2 class="sr-only">Display Content</h2>
@@ -2117,7 +2148,7 @@
 							</div>
 
 							<div
-								class="grid gap-4 grid-cols-2 sm:gap-6 lg:grid-cols-4 border-y border-[var(--border-soft)]/50 py-5 sm:py-8 max-lg:border-0 max-lg:py-0"
+								class="grid gap-4 grid-cols-2 sm:gap-6 lg:grid-cols-4 py-5 sm:py-8 max-lg:py-0"
 							>
 								<div class="space-y-2">
 									<p
