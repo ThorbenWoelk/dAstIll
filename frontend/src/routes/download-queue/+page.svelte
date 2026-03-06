@@ -558,39 +558,34 @@
 		Skip to Main Content
 	</a>
 
-	<header class="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-4 px-4 sm:px-2 fade-in border-b border-[var(--border-soft)] pb-3 mb-1">
-		<div class="flex items-center gap-4">
-			<h1 class="text-2xl sm:text-3xl font-bold tracking-tighter text-[var(--foreground)]">
+	<header class="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-3 px-4 sm:px-2 fade-in pb-2 mb-0">
+		<div class="flex items-center gap-3">
+			<h1 class="text-xl sm:text-2xl font-bold tracking-tighter text-[var(--foreground)]">
 				DASTILL
 			</h1>
-			<span class="hidden sm:block h-5 w-px bg-[var(--border-soft)]"></span>
-			<p class="hidden sm:block text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--accent)] opacity-60">
-				Observatory
-			</p>
 			{#if aiAvailable !== null}
-				<span class="hidden sm:block h-3 w-px bg-[var(--border-soft)]"></span>
-				<div 
-					class="hidden sm:block h-2 w-2 rounded-full {aiAvailable ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]' : 'bg-[var(--accent)] shadow-[0_0_8px_rgba(212,100,81,0.4)]'}"
+				<div
+					class="h-1.5 w-1.5 rounded-full {aiAvailable ? 'bg-green-500' : 'bg-[var(--accent)]'}"
 					data-tooltip={aiAvailable ? "AI Engine: Ready" : "AI Engine: Offline"}
 				></div>
 			{/if}
 		</div>
 
 		<nav
-			class="flex items-center gap-1 rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface)] p-1 shadow-sm"
+			class="flex items-center gap-0.5"
 			aria-label="Workspace sections"
 		>
 			<a
 				href="/"
-				class="rounded-[var(--radius-sm)] px-3 py-1.5 sm:px-5 sm:py-2 text-[10px] font-bold uppercase tracking-[0.15em] text-[var(--soft-foreground)] opacity-60 transition-all hover:opacity-100 hover:bg-[var(--muted)]/30"
+				class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 transition-all hover:opacity-100"
 			>
 				Workspace
 			</a>
 			<a
 				href="/download-queue"
-				class="rounded-[var(--radius-sm)] bg-[var(--muted)]/60 px-3 py-1.5 sm:px-5 sm:py-2 text-[10px] font-bold uppercase tracking-[0.15em] text-[var(--foreground)] transition-all"
+				class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--foreground)] bg-[var(--muted)] transition-all"
 			>
-				Details
+				Queue
 			</a>
 		</nav>
 	</header>
@@ -598,56 +593,40 @@
 	{#if waitingForBackend && channels.length === 0}
 		<main
 			id="main-content"
-			class="mx-auto mt-12 grid w-full max-w-[1440px]"
+			class="mx-auto flex min-h-[60vh] w-full max-w-[1440px] flex-col items-center justify-center text-center fade-in px-6"
+			role="status"
+			aria-live="polite"
 		>
-			<section
-				class="flex min-h-[480px] flex-col items-center justify-center gap-8 rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--surface)] p-12 text-center fade-in shadow-sm"
-				role="status"
-				aria-live="polite"
-			>
-				<div class="relative flex h-12 w-12 items-center justify-center">
-					<div class="absolute h-full w-full animate-ping rounded-full bg-[var(--accent)] opacity-10"></div>
-					<div class="h-8 w-8 animate-spin rounded-full border-2 border-[var(--muted)] border-t-[var(--accent)]"></div>
-				</div>
-				<div class="space-y-3">
-					<p class="text-[11px] font-bold uppercase tracking-[0.3em] text-[var(--accent)]">
-						Establishing Link
-					</p>
-					<p class="max-w-xs text-[15px] font-medium text-[var(--soft-foreground)] opacity-70">
-						Waiting for the observatory to connect with the distillation engine.
-					</p>
-				</div>
-			</section>
+			<div class="mb-6 h-6 w-6 animate-spin rounded-full border-2 border-[var(--muted)] border-t-[var(--accent)]"></div>
+			<p class="text-[11px] font-bold uppercase tracking-[0.25em] text-[var(--accent)]">
+				Connecting
+			</p>
+			<p class="mt-2 max-w-[260px] text-[14px] font-medium text-[var(--soft-foreground)] opacity-60">
+				Waiting for the distillation engine.
+			</p>
 		</main>
 	{:else}
 		<main
 			id="main-content"
-			class="mx-auto mt-10 grid w-full max-w-[1440px] gap-10 lg:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)] items-start max-lg:mt-0 max-lg:gap-0"
+			class="mx-auto mt-4 grid w-full max-w-[1440px] gap-0 lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)] items-start max-lg:mt-0"
 		>
 		<aside
-			class="flex h-fit flex-col gap-6 border-0 lg:rounded-[var(--radius-lg)] lg:bg-[var(--surface)] lg:border lg:border-[var(--border-soft)] lg:p-6 lg:sticky lg:top-8 fade-in stagger-1 lg:shadow-sm {mobileTab !== 'channels' ? 'hidden lg:flex' : 'h-[calc(100dvh-4rem)] p-4 gap-4'}"
+			class="flex h-fit flex-col gap-4 border-0 lg:pr-5 lg:border-r lg:border-[var(--border-soft)] lg:pl-2 lg:sticky lg:top-4 fade-in stagger-1 {mobileTab !== 'channels' ? 'hidden lg:flex' : 'h-[calc(100dvh-4rem)] p-4 gap-4'}"
 		>
 			<div class="flex items-center justify-between gap-2">
-				<h2 class="text-xl font-bold tracking-tight">Channels</h2>
-				<div class="flex items-center gap-1">
-					<button
-						type="button"
-						class="inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] border border-transparent transition-colors hover:border-[var(--border-soft)] {manageChannels ? 'text-red-500' : 'text-[var(--soft-foreground)] opacity-50'}"
-						data-tooltip={manageChannels ? "Exit manage mode" : "Manage channels"}
-						onclick={() => {
-							manageChannels = !manageChannels;
-						}}
-						aria-label={manageChannels ? "Exit manage mode" : "Manage channels"}
-					>
-						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
-					</button>
-				</div>
+				<h2 class="text-base font-bold tracking-tight text-[var(--soft-foreground)]">Channels</h2>
+				<button
+					type="button"
+					class="inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors {manageChannels ? 'text-red-500' : 'text-[var(--soft-foreground)] opacity-40 hover:opacity-80'}"
+					data-tooltip={manageChannels ? "Exit manage mode" : "Manage channels"}
+					onclick={() => {
+						manageChannels = !manageChannels;
+					}}
+					aria-label={manageChannels ? "Exit manage mode" : "Manage channels"}
+				>
+					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+				</button>
 			</div>
-			<p
-				class="px-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--soft-foreground)] opacity-40 leading-relaxed"
-			>
-				Select a channel to inspect its specific queue.
-			</p>
 
 			<div
 				class="flex flex-1 min-h-0 flex-col gap-1.5 overflow-y-auto pr-1 custom-scrollbar lg:max-h-[60vh]"
@@ -703,106 +682,86 @@
 		</aside>
 
 		<section
-			class="flex min-w-0 flex-col gap-8 overflow-hidden border-0 lg:rounded-[var(--radius-lg)] lg:bg-[var(--surface)] lg:border lg:border-[var(--border-soft)] lg:p-8 lg:md:p-12 fade-in stagger-2 lg:shadow-sm {mobileTab !== 'details' ? 'hidden lg:flex' : 'h-[calc(100dvh-4rem)] p-4 pt-6'}"
+			class="flex min-w-0 flex-col gap-6 overflow-hidden border-0 lg:pl-6 fade-in stagger-2 {mobileTab !== 'details' ? 'hidden lg:flex' : 'h-[calc(100dvh-4rem)] p-4 pt-4'}"
 		>
 			<div
-				class="flex flex-wrap items-center justify-between gap-8 border-b border-[var(--border-soft)]/50 pb-8 max-lg:gap-4 max-lg:pb-4"
+				class="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[var(--border-soft)]"
 			>
-				<div class="space-y-2">
-					<h2 class="text-2xl font-bold tracking-tight">
-						Channel Details
-					</h2>
-					<div class="flex items-center gap-3">
-						<button 
-							onclick={() => mobileTab = 'channels'}
-							class="lg:hidden inline-flex items-center rounded-full bg-[var(--muted)] border border-[var(--border)] pl-1.5 pr-3 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--foreground)] transition-transform active:scale-95 shadow-sm"
-						>
-							<div class="mr-2 h-5 w-5 shrink-0 overflow-hidden rounded-full border border-[var(--border-soft)] bg-white">
-								<img
-									src={selectedChannel?.thumbnail_url || defaultChannelIcon}
-									alt=""
-									class="h-full w-full object-cover"
-								/>
-							</div>
-							{selectedChannel ? selectedChannel.name : "None"}
-							<svg class="ml-1.5 h-2.5 w-2.5 opacity-40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-						</button>
-						<span class="max-lg:hidden inline-flex items-center rounded-full bg-[var(--muted)] border border-[var(--border)] pl-1.5 pr-4 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--foreground)]">
-							<div class="mr-2 h-5 w-5 shrink-0 overflow-hidden rounded-full border border-[var(--border-soft)] bg-white">
-								<img
-									src={selectedChannel?.thumbnail_url || defaultChannelIcon}
-									alt=""
-									class="h-full w-full object-cover"
-								/>
-							</div>
-							{selectedChannel ? selectedChannel.name : "None"}
+				<div class="flex items-center gap-3 min-w-0">
+					<button
+						onclick={() => mobileTab = 'channels'}
+						class="lg:hidden inline-flex items-center gap-2 text-[13px] font-semibold text-[var(--foreground)] transition-transform active:scale-95"
+					>
+						<div class="h-6 w-6 shrink-0 overflow-hidden rounded-full bg-[var(--muted)]">
+							<img
+								src={selectedChannel?.thumbnail_url || defaultChannelIcon}
+								alt=""
+								class="h-full w-full object-cover"
+							/>
+						</div>
+						<span class="truncate">{selectedChannel ? selectedChannel.name : "None"}</span>
+						<svg class="h-3 w-3 opacity-30 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+					</button>
+					<span class="max-lg:hidden flex items-center gap-2 text-[13px] font-semibold text-[var(--foreground)]">
+						<div class="h-6 w-6 shrink-0 overflow-hidden rounded-full bg-[var(--muted)]">
+							<img
+								src={selectedChannel?.thumbnail_url || defaultChannelIcon}
+								alt=""
+								class="h-full w-full object-cover"
+							/>
+						</div>
+						{selectedChannel ? selectedChannel.name : "None"}
+					</span>
+					<span class="hidden sm:block text-[11px] text-[var(--soft-foreground)] opacity-40">
+						{#if lastSyncedAt}
+							{syncTimeFormatter.format(lastSyncedAt)}
+						{/if}
+					</span>
+				</div>
+				<div class="flex items-center gap-4 text-[11px] font-bold tabular-nums">
+					<span class="text-slate-500" data-tooltip="Queued">{queueStats.pending} queued</span>
+					{#if queueStats.loading > 0}
+						<span class="text-amber-600 flex items-center gap-1.5">
+							<span class="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+							{queueStats.loading} active
 						</span>
-						<p class="text-[12px] font-medium text-[var(--soft-foreground)] opacity-60">
-							{#if lastSyncedAt}
-								Pulse captured at {syncTimeFormatter.format(lastSyncedAt)}
-							{:else}
-								Establishing initial sync…
-							{/if}
-						</p>
-					</div>
+					{/if}
+					{#if queueStats.failed > 0}
+						<span class="text-rose-600">{queueStats.failed} failed</span>
+					{/if}
 				</div>
-				<div
-					class="flex flex-wrap items-center gap-3"
-				>
-					<div class="flex items-center gap-2 px-4 py-2 rounded-full bg-[var(--muted)]/30 border border-[var(--border-soft)] max-lg:px-3 max-lg:py-1">
-						<div class="h-1.5 w-1.5 rounded-full bg-slate-400"></div>
-						<span class="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-600">{queueStats.pending}</span>
-					</div>
-					<div class="flex items-center gap-2 px-4 py-2 rounded-full bg-amber-50 border border-amber-200 max-lg:px-3 max-lg:py-1">
-						<div class="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"></div>
-						<span class="text-[10px] font-bold uppercase tracking-[0.1em] text-amber-700">{queueStats.loading}</span>
-					</div>
-					<div class="flex items-center gap-2 px-4 py-2 rounded-full bg-rose-50 border border-rose-200 max-lg:px-3 max-lg:py-1">
-						<div class="h-1.5 w-1.5 rounded-full bg-rose-500"></div>
-						<span class="text-[10px] font-bold uppercase tracking-[0.1em] text-rose-700">{queueStats.failed}</span>
-					</div>
-					
-					</div>
-				</div>
+			</div>
 
 			{#if selectedChannel}
-				<div class="grid gap-4 rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--background)] p-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end max-lg:bg-transparent max-lg:border-0 max-lg:p-0">
-					<div class="space-y-2">
-						<p class="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--soft-foreground)] opacity-60">
-							Oldest Sync Date
-						</p>
-						<p class="text-[14px] font-semibold text-[var(--foreground)]">
-							{formatSyncDate(effectiveEarliestSyncDate)}
-						</p>
-						<p class="text-[11px] text-[var(--soft-foreground)] opacity-60 max-lg:hidden">
-							This channel-level value defines how far back sync should go.
-						</p>
+				<div class="flex flex-wrap items-center gap-4 py-2">
+					<div class="flex items-center gap-2 min-w-0">
+						<p class="text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50">Sync from</p>
+						<p class="text-[13px] font-semibold text-[var(--foreground)]">{formatSyncDate(effectiveEarliestSyncDate)}</p>
 					</div>
-					<div class="flex flex-wrap items-center gap-2">
+					<div class="flex items-center gap-2 ml-auto">
 						<input
 							type="date"
-							class="min-w-[13rem] rounded-[var(--radius-sm)] border border-[var(--border-soft)] bg-white px-3 py-2 text-[12px] font-medium focus:outline-none focus:border-[var(--accent)]/40 transition-colors max-lg:flex-1"
+							class="rounded-[var(--radius-sm)] border border-[var(--border-soft)] bg-white px-2.5 py-1.5 text-[12px] font-medium focus:outline-none focus:border-[var(--accent)]/40 transition-colors"
 							bind:value={earliestSyncDateInput}
 							disabled={savingSyncDate}
 						/>
 						<button
 							type="button"
-							class="inline-flex items-center justify-center rounded-[var(--radius-sm)] bg-[var(--foreground)] px-4 py-2 text-[10px] font-bold uppercase tracking-[0.1em] text-white transition-all hover:bg-[var(--accent-strong)] disabled:opacity-30"
+							class="rounded-[var(--radius-sm)] bg-[var(--foreground)] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-white transition-all hover:bg-[var(--accent-strong)] disabled:opacity-30"
 							onclick={saveEarliestSyncDate}
 							disabled={!earliestSyncDateInput || savingSyncDate}
-							>
-								{savingSyncDate ? "Saving..." : "Save"}
-							</button>
-						</div>
+						>
+							{savingSyncDate ? "..." : "Set"}
+						</button>
 					</div>
-				{/if}
+				</div>
+			{/if}
 
 			<div class="flex-1 overflow-y-auto custom-scrollbar">
 				{#if !selectedChannelId}
-					<div class="flex flex-col items-center justify-center py-24 opacity-30 text-center">
-						<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="mb-6"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-						<p class="text-[20px] font-serif italic text-[var(--soft-foreground)]">
-							Choose a channel to inspect its heartbeat.
+					<div class="flex flex-col items-center justify-center py-20 text-center">
+						<p class="text-[15px] text-[var(--soft-foreground)] opacity-30">
+							Select a channel to view its queue.
 						</p>
 					</div>
 				{:else if loadingVideos && videos.length === 0}
@@ -821,91 +780,52 @@
 						{/each}
 					</div>
 				{:else if queueStats.total === 0}
-					<div class="flex flex-col items-center justify-center py-24 text-center">
-						<div class="h-16 w-16 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 mb-6">
-							<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-						</div>
-						<p class="text-[20px] font-serif italic text-[var(--soft-foreground)] opacity-60">
-							The queue is clear. Every fragment has been distilled.
+					<div class="flex flex-col items-center justify-center py-20 text-center">
+						<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="text-emerald-500 mb-3"><polyline points="20 6 9 17 4 12"/></svg>
+						<p class="text-[14px] text-[var(--soft-foreground)] opacity-50">
+							Queue is clear.
 						</p>
 					</div>
 				{:else}
-					<ul class="flex flex-col gap-4 mt-4 pb-20">
+					<ul class="flex flex-col mt-2 pb-20">
 						{#each queuedVideosWithDistillationStatus as item}
 							{@const video = item.video}
 							<li
-								class="rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-white transition-all duration-300 hover:border-[var(--accent)]/30 hover:shadow-lg hover:shadow-[var(--accent)]/5 max-lg:border-x-0 max-lg:rounded-none"
+								class="border-b border-[var(--border-soft)] last:border-b-0"
 							>
 								<button
 									type="button"
-									class="group w-full cursor-pointer p-6 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 max-lg:p-4"
+									class="group w-full cursor-pointer py-4 px-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 max-lg:py-3"
 									onclick={() => openVideoTranscriptInWorkspace(video)}
 									aria-label={`Open transcript workspace for ${video.title}`}
 								>
-									<div
-										class="flex flex-wrap items-start justify-between gap-6 max-lg:gap-3"
+									<p
+										class="line-clamp-2 text-[14px] font-semibold text-[var(--foreground)] leading-[1.4] tracking-tight group-hover:text-[var(--accent-strong)] transition-colors"
 									>
-										<div class="min-w-0 flex-1">
-											<p
-												class="line-clamp-2 text-[16px] font-bold text-[var(--foreground)] leading-[1.4] tracking-tight group-hover:text-[var(--accent-strong)] transition-colors"
-											>
-												{video.title}
-											</p>
-											<p
-												class="mt-2 text-[12px] font-medium text-[var(--soft-foreground)] opacity-50"
-											>
-												Published {formatDate(video.published_at)}
-											</p>
-											<div
-												class="mt-6 flex items-center gap-4 max-lg:mt-4"
-											>
-												{#if item.distillationStatus.kind === "processing"}
-													<div class="flex flex-col gap-1">
-														<span
-															class="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--accent)]"
-														>
-															<span class="relative flex h-2 w-2">
-																<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--accent)] opacity-75"></span>
-																<span class="relative inline-flex rounded-full h-2 w-2 bg-[var(--accent)]"></span>
-															</span>
-															{item.distillationStatus.label}
-														</span>
-														<p class="text-[9px] font-bold text-[var(--accent-strong)]/70 uppercase tracking-widest ml-5">
-															{item.distillationStatus.detail}
-														</p>
-													</div>
-												{:else if item.distillationStatus.kind === "failed"}
-													<div class="flex flex-col gap-1">
-														<span
-															class="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-rose-600"
-														>
-															<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-															{item.distillationStatus.label}
-														</span>
-														<p class="text-[9px] font-bold text-rose-600/60 uppercase tracking-widest ml-5">
-															{item.distillationStatus.detail}
-														</p>
-														{#if video.retry_count !== undefined && video.retry_count > 0}
-															<p class="text-[9px] font-bold text-rose-600/60 uppercase tracking-widest ml-5">
-																Attempt {video.retry_count} of {MAX_RETRIES}
-															</p>
-														{/if}
-													</div>
-												{:else}
-													<div class="flex flex-col gap-1">
-														<span
-															class="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--soft-foreground)] opacity-60"
-														>
-															<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-															{item.distillationStatus.label}
-														</span>
-														<p class="text-[9px] font-bold text-[var(--soft-foreground)]/60 uppercase tracking-widest ml-5">
-															{item.distillationStatus.detail}
-														</p>
-													</div>
-													{/if}
-											</div>
-										</div>
+										{video.title}
+									</p>
+									<div class="mt-2 flex flex-wrap items-center gap-3">
+										<span class="text-[11px] font-medium text-[var(--soft-foreground)] opacity-50">
+											{formatDate(video.published_at)}
+										</span>
+										{#if item.distillationStatus.kind === "processing"}
+											<span class="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--accent)]">
+												<span class="relative flex h-1.5 w-1.5">
+													<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--accent)] opacity-75"></span>
+													<span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-[var(--accent)]"></span>
+												</span>
+												Processing
+											</span>
+										{:else if item.distillationStatus.kind === "failed"}
+											<span class="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-rose-600">
+												<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+												Failed{#if video.retry_count !== undefined && video.retry_count > 0} ({video.retry_count}/{MAX_RETRIES}){/if}
+											</span>
+										{:else}
+											<span class="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-40">
+												Queued
+											</span>
+										{/if}
 									</div>
 								</button>
 							</li>
@@ -917,11 +837,11 @@
 					<div class="flex justify-center mt-4 max-lg:mb-20">
 						<button
 							type="button"
-							class="inline-flex items-center justify-center rounded-full border border-[var(--border-soft)] bg-[var(--background)] px-10 py-3.5 text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--soft-foreground)] transition-all hover:border-[var(--accent)]/40 hover:text-[var(--foreground)] hover:shadow-md disabled:opacity-30"
+							class="w-full rounded-[var(--radius-sm)] border border-[var(--border-soft)] py-2.5 text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--soft-foreground)] transition-all hover:border-[var(--accent)]/40 hover:text-[var(--foreground)] disabled:opacity-30"
 							onclick={() => loadVideos(false)}
 							disabled={loadingVideos}
 						>
-							{loadingVideos ? "Retrieving…" : "Extend Library"}
+							{loadingVideos ? "Loading..." : "Load More"}
 						</button>
 					</div>
 				{/if}
@@ -961,21 +881,18 @@
 
 	{#if errorMessage}
 		<div
-			class="fixed bottom-8 left-1/2 z-50 w-[min(92vw,480px)] -translate-x-1/2 rounded-[var(--radius-md)] border-2 border-[var(--accent)]/10 bg-white p-5 shadow-2xl animate-fade-in"
+			class="fixed bottom-6 max-lg:bottom-[calc(3.5rem+env(safe-area-inset-bottom)+1rem)] left-1/2 z-50 w-[min(90vw,420px)] -translate-x-1/2 rounded-[var(--radius-md)] bg-white border border-rose-200 px-4 py-3 shadow-lg fade-in"
 			role="status"
 			aria-live="polite"
 		>
-			<div class="flex items-start gap-4">
-				<div class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-rose-50 text-rose-600">
-					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-				</div>
-				<p class="text-[14px] font-bold text-rose-600 leading-tight pr-8">{errorMessage}</p>
-				<button 
+			<div class="flex items-start gap-3">
+				<p class="text-[13px] font-medium text-rose-600 flex-1">{errorMessage}</p>
+				<button
 					onclick={() => errorMessage = null}
-					class="absolute top-4 right-4 text-[var(--soft-foreground)] hover:text-[var(--foreground)] opacity-40"
-					aria-label="Dismiss error"
+					class="shrink-0 text-[var(--soft-foreground)] opacity-40 hover:opacity-80"
+					aria-label="Dismiss"
 				>
-					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
 				</button>
 			</div>
 		</div>
