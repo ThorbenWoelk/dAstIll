@@ -1340,46 +1340,37 @@
 	</a>
 
 	<header
-		class="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-4 px-4 sm:px-2 fade-in pb-3 mb-1"
+		class="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-3 px-4 sm:px-2 fade-in pb-2 mb-0"
 	>
-		<div class="flex items-center gap-4">
+		<div class="flex items-center gap-3">
 			<h1
-				class="text-2xl sm:text-3xl font-bold tracking-tighter text-[var(--foreground)]"
+				class="text-xl sm:text-2xl font-bold tracking-tighter text-[var(--foreground)]"
 			>
 				DASTILL
 			</h1>
-			<span class="hidden sm:block h-5 w-px bg-[var(--border-soft)]"
-			></span>
-			<p
-				class="hidden sm:block text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--accent)] opacity-60"
-			>
-				v0.1.0
-			</p>
 			{#if aiAvailable !== null}
-				<span class="hidden sm:block h-3 w-px bg-[var(--border-soft)]"
-				></span>
-				<div 
-					class="hidden sm:block h-2 w-2 rounded-full {aiAvailable ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]' : 'bg-[var(--accent)] shadow-[0_0_8px_rgba(212,100,81,0.4)]'}"
+				<div
+					class="h-1.5 w-1.5 rounded-full {aiAvailable ? 'bg-green-500' : 'bg-[var(--accent)]'}"
 					data-tooltip={aiAvailable ? "AI Engine: Ready" : "AI Engine: Offline"}
 				></div>
 			{/if}
 		</div>
 
 		<nav
-			class="flex items-center gap-1 rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface)] p-1 shadow-sm"
+			class="flex items-center gap-0.5"
 			aria-label="Workspace sections"
 		>
 			<a
 				href="/"
-				class="rounded-[var(--radius-sm)] bg-[var(--muted)]/60 px-3 py-1.5 sm:px-5 sm:py-2 text-[10px] font-bold uppercase tracking-[0.15em] text-[var(--foreground)] transition-all"
+				class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--foreground)] bg-[var(--muted)] transition-all"
 			>
 				Workspace
 			</a>
 			<a
 				href="/download-queue"
-				class="rounded-[var(--radius-sm)] px-3 py-1.5 sm:px-5 sm:py-2 text-[10px] font-bold uppercase tracking-[0.15em] text-[var(--soft-foreground)] opacity-60 transition-all hover:opacity-100 hover:bg-[var(--muted)]/30"
+				class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 transition-all hover:opacity-100"
 			>
-				Details
+				Queue
 			</a>
 		</nav>
 	</header>
@@ -1387,63 +1378,50 @@
 	{#if waitingForBackend && channels.length === 0}
 		<main
 			id="main-content"
-			class="mx-auto mt-12 grid w-full max-w-[1440px]"
+			class="mx-auto flex min-h-[60vh] w-full max-w-[1440px] flex-col items-center justify-center text-center fade-in px-6"
+			role="status"
+			aria-live="polite"
 		>
-			<section
-				class="flex min-h-[280px] sm:min-h-[400px] flex-col items-center justify-center gap-5 sm:gap-8 rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--surface)] p-6 sm:p-10 text-center fade-in shadow-sm"
-				role="status"
-				aria-live="polite"
+			<div
+				class="mb-6 h-6 w-6 animate-spin rounded-full border-2 border-[var(--muted)] border-t-[var(--accent)]"
+			></div>
+			<p
+				class="text-[11px] font-bold uppercase tracking-[0.25em] text-[var(--accent)]"
 			>
-				<div
-					class="relative flex h-12 w-12 items-center justify-center"
-				>
-					<div
-						class="absolute h-full w-full animate-ping rounded-full bg-[var(--accent)] opacity-10"
-					></div>
-					<div
-						class="h-8 w-8 animate-spin rounded-full border-2 border-[var(--muted)] border-t-[var(--accent)]"
-					></div>
-				</div>
-				<div class="space-y-3">
-					<p
-						class="text-[11px] font-bold uppercase tracking-[0.3em] text-[var(--accent)]"
-					>
-						Establishing Link
-					</p>
-					<p
-						class="max-w-xs text-[15px] font-medium text-[var(--soft-foreground)] opacity-70"
-					>
-						Waiting for the distillation engine to become reachable.
-					</p>
-				</div>
-			</section>
+				Connecting
+			</p>
+			<p
+				class="mt-2 max-w-[260px] text-[14px] font-medium text-[var(--soft-foreground)] opacity-60"
+			>
+				Waiting for the distillation engine.
+			</p>
 		</main>
 	{:else}
 		<main
 			id="main-content"
-			class="mx-auto mt-0 grid w-full max-w-[1440px] items-start lg:mt-6 lg:gap-6 lg:grid-cols-[280px_320px_minmax(0,1fr)] xl:grid-cols-[280px_380px_minmax(0,1fr)]"
+			class="mx-auto mt-0 grid w-full max-w-[1440px] items-start lg:mt-4 lg:gap-0 lg:grid-cols-[260px_300px_minmax(0,1fr)] xl:grid-cols-[280px_340px_minmax(0,1fr)]"
 		>
 			<aside
-				class="flex min-w-0 flex-col border-0 lg:gap-4 lg:rounded-[var(--radius-lg)] lg:bg-[var(--surface)] lg:border lg:border-[var(--border-soft)] lg:p-5 lg:sticky lg:top-6 lg:h-[calc(100vh-5rem)] fade-in stagger-1 lg:shadow-sm {mobileTab !== 'channels' ? 'hidden lg:flex' : 'h-[calc(100dvh-10rem)] p-3 gap-4'}"
+				class="flex min-w-0 flex-col border-0 lg:gap-3 lg:pr-5 lg:border-r lg:border-[var(--border-soft)] lg:pl-2 lg:sticky lg:top-4 lg:h-[calc(100vh-4rem)] fade-in stagger-1 {mobileTab !== 'channels' ? 'hidden lg:flex' : 'h-[calc(100dvh-10rem)] p-3 gap-4'}"
 				id="workspace"
 			>
 				<div class="flex items-center justify-between gap-2">
-					<h2 class="text-xl font-bold tracking-tight">Channels</h2>
-					<div class="flex items-center gap-1">
+					<h2 class="text-base font-bold tracking-tight text-[var(--soft-foreground)]">Channels</h2>
+					<div class="flex items-center gap-0.5">
 						<button
 							type="button"
-							class="inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] border border-transparent transition-colors hover:border-[var(--border-soft)] {manageChannels ? 'text-red-500' : 'text-[var(--soft-foreground)] opacity-50'}"
+							class="inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors {manageChannels ? 'text-red-500' : 'text-[var(--soft-foreground)] opacity-40 hover:opacity-80'}"
 							data-tooltip={manageChannels ? "Exit manage mode" : "Manage channels"}
 							onclick={() => {
 								manageChannels = !manageChannels;
 							}}
 							aria-label={manageChannels ? "Exit manage mode" : "Manage channels"}
 						>
-							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
 						</button>
 						<button
 							type="button"
-							class="inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] border border-transparent transition-colors hover:border-[var(--border-soft)] {channelSearchOpen ? 'text-[var(--accent)]' : 'text-[var(--soft-foreground)] opacity-50'}"
+							class="inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors {channelSearchOpen ? 'text-[var(--accent)]' : 'text-[var(--soft-foreground)] opacity-40 hover:opacity-80'}"
 							data-tooltip={channelSearchOpen ? "Close search" : "Search channels"}
 							onclick={() => {
 								channelSearchOpen = !channelSearchOpen;
@@ -1451,11 +1429,11 @@
 							}}
 							aria-label={channelSearchOpen ? "Close search" : "Search channels"}
 						>
-							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
 						</button>
 						<button
 							type="button"
-							class="inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] border border-transparent transition-colors hover:border-[var(--border-soft)] {channelSortMode !== 'custom' ? 'text-[var(--accent)]' : 'text-[var(--soft-foreground)] opacity-50'}"
+							class="inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors {channelSortMode !== 'custom' ? 'text-[var(--accent)]' : 'text-[var(--soft-foreground)] opacity-40 hover:opacity-80'}"
 							data-tooltip={channelSortMode === "custom" ? "Sort: Custom" : channelSortMode === "alpha" ? "Sort: A-Z" : "Sort: Newest"}
 							onclick={() => {
 								channelSortMode = channelSortMode === "custom" ? "alpha" : channelSortMode === "alpha" ? "newest" : "custom";
@@ -1463,22 +1441,22 @@
 							aria-label="Cycle sort mode"
 						>
 							{#if channelSortMode === "alpha"}
-								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h8"></path><path d="M3 12h5"></path><path d="M3 18h3"></path><path d="M18 6v12"></path><path d="m14 18 4 4 4-4"></path></svg>
+								<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h8"></path><path d="M3 12h5"></path><path d="M3 18h3"></path><path d="M18 6v12"></path><path d="m14 18 4 4 4-4"></path></svg>
 							{:else if channelSortMode === "newest"}
-								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h3"></path><path d="M3 12h5"></path><path d="M3 18h8"></path><path d="M18 18V6"></path><path d="m14 6 4-4 4 4"></path></svg>
+								<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h3"></path><path d="M3 12h5"></path><path d="M3 18h8"></path><path d="M18 18V6"></path><path d="m14 6 4-4 4 4"></path></svg>
 							{:else}
-								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h8"></path><path d="M3 12h5"></path><path d="M3 18h3"></path><path d="M18 6v12"></path></svg>
+								<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h8"></path><path d="M3 12h5"></path><path d="M3 18h3"></path><path d="M18 6v12"></path></svg>
 							{/if}
 						</button>
 					</div>
 				</div>
 				{#if channelSearchOpen}
-					<div class="flex items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--background)] px-3 py-1.5 transition-all focus-within:ring-2 focus-within:ring-[var(--accent)]/20 focus-within:border-[var(--accent)]/40">
-						<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-[var(--soft-foreground)] opacity-40"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+					<div class="flex items-center gap-2 border-b border-[var(--border-soft)] px-1 pb-2 transition-all">
+						<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-[var(--soft-foreground)] opacity-30"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
 						<input
 							type="text"
 							class="min-w-0 flex-1 bg-transparent text-[13px] placeholder:text-[var(--soft-foreground)] placeholder:opacity-40 focus-visible:outline-none"
-							placeholder="Filter channels..."
+							placeholder="Filter..."
 							bind:value={channelSearchQuery}
 						/>
 						{#if channelSearchQuery}
@@ -1495,12 +1473,12 @@
 				{/if}
 
 				<form
-					class="grid gap-3"
+					class="grid"
 					onsubmit={handleChannelSubmit}
 					aria-label="Follow channel"
 				>
 					<div
-						class="flex min-w-0 items-center gap-3 rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--background)] pl-5 pr-1.5 transition-all focus-within:ring-2 focus-within:ring-[var(--accent)]/20 focus-within:border-[var(--accent)]/40"
+						class="flex min-w-0 items-center gap-2 border-b border-[var(--border-soft)] pb-1 transition-all focus-within:border-[var(--accent)]/40"
 					>
 						<label for="channel-input" class="sr-only"
 							>Add Channel</label
@@ -1510,23 +1488,23 @@
 							name="channel"
 							autocomplete="off"
 							spellcheck={false}
-							class="min-w-0 flex-1 bg-transparent py-3 text-[14px] font-medium placeholder:text-[var(--soft-foreground)] placeholder:opacity-40 focus-visible:outline-none"
-							placeholder="Channel URL or Handle"
+							class="min-w-0 flex-1 bg-transparent py-2 text-[13px] font-medium placeholder:text-[var(--soft-foreground)] placeholder:opacity-40 focus-visible:outline-none"
+							placeholder="Follow a channel..."
 							bind:value={channelInput}
 						/>
 						<button
 							type="submit"
-							class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--foreground)] text-white transition-all hover:bg-[var(--accent-strong)] disabled:opacity-20 disabled:grayscale"
+							class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-white transition-all hover:bg-[var(--accent-strong)] disabled:opacity-15"
 							disabled={!channelInput.trim() || addingChannel}
 							aria-label="Follow channel"
 						>
 							<svg
-								width="18"
-								height="18"
+								width="14"
+								height="14"
 								viewBox="0 0 24 24"
 								fill="none"
 								stroke="currentColor"
-								stroke-width="2.5"
+								stroke-width="3"
 								stroke-linecap="round"
 								stroke-linejoin="round"
 								><line x1="12" y1="5" x2="12" y2="19"
@@ -1600,33 +1578,26 @@
 			</aside>
 
 			<aside
-				class="flex min-w-0 flex-col border-0 lg:gap-4 lg:rounded-[var(--radius-lg)] lg:bg-[var(--surface)] lg:border lg:border-[var(--border-soft)] lg:p-5 lg:sticky lg:top-6 lg:h-[calc(100vh-5rem)] fade-in stagger-2 lg:shadow-sm {mobileTab !== 'videos' ? 'hidden lg:flex' : 'h-[calc(100dvh-4rem)] p-3 gap-6'}"
+				class="flex min-w-0 flex-col border-0 lg:gap-3 lg:px-5 lg:border-r lg:border-[var(--border-soft)] lg:sticky lg:top-4 lg:h-[calc(100vh-4rem)] fade-in stagger-2 {mobileTab !== 'videos' ? 'hidden lg:flex' : 'h-[calc(100dvh-4rem)] p-3 gap-4'}"
 				id="videos"
 			>
-				<div class="flex flex-wrap items-center justify-between gap-4">
-					<div class="min-w-0">
-						<h2 class="text-xl font-bold tracking-tight">
-							Knowledge Library
-							{#if refreshingChannel}
-								<span
-									class="ml-3 inline-flex h-5 w-5 items-center justify-center align-middle rounded-full border border-[var(--border-soft)] bg-[var(--background)]"
-									role="status"
-									aria-label="Syncing channel"
-									data-tooltip="Syncing channel"
-
-								>
-									<span
-										class="h-2.5 w-2.5 animate-spin rounded-full border border-[var(--accent)]/20 border-t-[var(--accent)]"
-									></span>
-									<span class="sr-only">Syncing</span>
-								</span>
-							{/if}
+				<div class="flex flex-wrap items-center justify-between gap-3">
+					<div class="flex items-center gap-2 min-w-0">
+						<h2 class="text-base font-bold tracking-tight text-[var(--soft-foreground)]">
+							Videos
 						</h2>
+						{#if refreshingChannel}
+							<span
+								class="h-3 w-3 animate-spin rounded-full border-[1.5px] border-[var(--border)] border-t-[var(--accent)]"
+								role="status"
+								aria-label="Syncing"
+							></span>
+						{/if}
 					</div>
 					<div class="relative" bind:this={filterMenuContainer}>
 						<button
 							type="button"
-							class={`group flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] transition-all duration-300 ${videoTypeFilter !== "all" || filterMenuOpen ? "bg-[var(--accent)] text-white shadow-lg shadow-[var(--accent)]/20" : "text-[var(--soft-foreground)] hover:bg-[var(--muted)] border border-[var(--border-soft)] bg-[var(--background)]"} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 disabled:opacity-20`}
+							class={`group flex h-7 w-7 items-center justify-center rounded-full transition-all duration-200 ${videoTypeFilter !== "all" || acknowledgedFilter !== "all" || filterMenuOpen ? "bg-[var(--accent)] text-white" : "text-[var(--soft-foreground)] opacity-40 hover:opacity-80"} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 disabled:opacity-20`}
 							onclick={toggleFilterMenu}
 							disabled={!selectedChannelId || loadingVideos}
 							aria-label={filterMenuLabel}
@@ -1654,15 +1625,8 @@
 								id="video-filter-menu"
 								role="menu"
 								aria-label="Video filters"
-								class="absolute right-0 top-full z-20 mt-3 w-64 overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface)] shadow-2xl animate-fade-in"
+								class="absolute right-0 top-full z-20 mt-2 w-56 overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-white shadow-xl fade-in"
 							>
-								<div class="bg-[var(--muted)]/30 px-4 py-2.5">
-									<p
-										class="text-[9px] font-bold uppercase tracking-[0.3em] text-[var(--soft-foreground)]"
-									>
-										Refine View
-									</p>
-								</div>
 								<div class="p-2 space-y-4">
 									<div class="grid gap-1">
 										<p
@@ -1881,55 +1845,40 @@
 				</div>
 
 				{#if selectedChannelId}
-					<div
-						class="flex flex-col gap-4 pt-4 mt-3"
-					>
+					<div class="flex flex-col gap-3 pt-3">
 						{#if hasMore || !historyExhausted}
-							<div class="flex justify-center">
-								<button
-									type="button"
-									class="inline-flex items-center justify-center rounded-full border border-[var(--border-soft)] bg-[var(--background)] px-8 py-3 text-[10px] font-bold uppercase tracking-[0.25em] text-[var(--soft-foreground)] transition-all hover:border-[var(--accent)]/40 hover:text-[var(--foreground)] hover:shadow-sm disabled:opacity-30"
-									onclick={loadMoreVideos}
-									disabled={loadingVideos ||
-										backfillingHistory}
-								>
-									{#if loadingVideos || backfillingHistory}
-										Retrieving…
-									{:else if hasMore}
-										Load More
-									{:else}
-										Explore History
-									{/if}
-								</button>
-							</div>
+							<button
+								type="button"
+								class="w-full rounded-[var(--radius-sm)] border border-[var(--border-soft)] py-2.5 text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--soft-foreground)] transition-all hover:border-[var(--accent)]/40 hover:text-[var(--foreground)] disabled:opacity-30"
+								onclick={loadMoreVideos}
+								disabled={loadingVideos ||
+									backfillingHistory}
+							>
+								{#if loadingVideos || backfillingHistory}
+									Loading...
+								{:else if hasMore}
+									More
+								{:else}
+									Explore History
+								{/if}
+							</button>
 						{/if}
 
 						{#if atVideoListBottom && videos.length > 0}
-							<div class="space-y-1 px-1">
-								<p
-									class="text-[9px] font-bold uppercase tracking-[0.3em] text-[var(--soft-foreground)] opacity-40"
-								>
-									Bottom Reached
-								</p>
-								<p
-									class="text-[12px] font-semibold text-[var(--foreground)]"
-								>
-									Sync depth: {formatSyncDate(
-										resolveDisplayedSyncDepthIso(),
-									)}
-								</p>
-							</div>
+							<p class="text-[11px] text-[var(--soft-foreground)] opacity-40 px-0.5">
+								Synced to {formatSyncDate(resolveDisplayedSyncDepthIso())}
+							</p>
 						{/if}
 					</div>
 				{/if}
 			</aside>
 
 			<section
-				class="flex min-w-0 flex-col overflow-hidden border-0 lg:gap-6 lg:py-8 lg:rounded-[var(--radius-lg)] lg:bg-[var(--surface)] lg:border lg:border-[var(--border-soft)] lg:shadow-sm lg:sticky lg:top-6 lg:h-[calc(100vh-5rem)] fade-in stagger-3 {mobileTab !== 'content' ? 'hidden lg:flex' : 'h-[calc(100dvh-4rem)]'}"
+				class="flex min-w-0 flex-col overflow-hidden border-0 lg:gap-4 lg:py-6 lg:pl-6 lg:sticky lg:top-4 lg:h-[calc(100vh-4rem)] fade-in stagger-3 {mobileTab !== 'content' ? 'hidden lg:flex' : 'h-[calc(100dvh-4rem)]'}"
 				id="content-view"
 			>
 				<div
-					class="flex flex-wrap items-center justify-between gap-3 sm:gap-4 px-4 sm:px-6 md:px-10 max-lg:pt-4 max-lg:pb-2"
+					class="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-6 lg:px-0 max-lg:pt-3 max-lg:pb-1"
 				>
 					<div class="flex items-center gap-3 sm:gap-4">
 						<h2 class="sr-only">Display Content</h2>
@@ -1980,18 +1929,14 @@
 				</div>
 
 				<div
-					class="w-full min-h-0 flex-1 overflow-y-auto px-4 sm:px-6 md:px-10 max-lg:px-5 max-lg:pt-6 custom-scrollbar"
+					class="w-full min-h-0 flex-1 overflow-y-auto px-4 sm:px-6 lg:px-0 lg:pr-4 max-lg:pt-4 custom-scrollbar"
 				>
 					{#if selectedVideoId && !loadingContent}
 						{@const selectedVideo = videos.find((v) => v.id === selectedVideoId)}
 						{#if selectedVideo}
-							<nav class="mb-3 sm:mb-4 flex items-center gap-1.5 text-[12px] text-[var(--soft-foreground)] opacity-60" aria-label="Breadcrumb">
-								{#if selectedChannel}
-									<span class="truncate max-w-[160px]">{selectedChannel.name}</span>
-									<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-								{/if}
-								<span class="truncate font-medium text-[var(--foreground)] opacity-80">{selectedVideo.title}</span>
-							</nav>
+							<p class="mb-2 truncate text-[13px] font-semibold text-[var(--foreground)]">
+								{selectedVideo.title}
+							</p>
 						{/if}
 					{/if}
 					{#if contentMode === "transcript" && selectedVideoId && ((formattingContent && formattingVideoId === selectedVideoId) || (formattingNotice && formattingNoticeVideoId === selectedVideoId))}
@@ -2074,28 +2019,12 @@
 
 					{#if !selectedVideoId}
 						<div
-							class="flex flex-col items-center justify-center h-full text-center opacity-40 py-20"
+							class="flex flex-col items-center justify-center h-full text-center py-20"
 						>
-							<svg
-								width="48"
-								height="48"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="1"
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								class="mb-6"
-								><path
-									d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"
-								/><path
-									d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"
-								/></svg
-							>
 							<p
-								class="text-[20px] font-serif italic text-[var(--soft-foreground)]"
+								class="text-[15px] text-[var(--soft-foreground)] opacity-30"
 							>
-								Select a video to begin distillation.
+								Select a video to view its content.
 							</p>
 						</div>
 					{:else if loadingContent}
@@ -2132,130 +2061,55 @@
 						</div>
 					{:else if contentMode === "info"}
 						<div
-							class="space-y-10 text-[15px] leading-relaxed pb-20"
+							class="space-y-8 text-[15px] leading-relaxed pb-20"
 						>
-							<div class="space-y-3">
-								<p
-									class="text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--accent)] opacity-60"
-								>
-									PRIMARY TITLE
-								</p>
-								<p
-									class="text-[24px] font-bold font-serif leading-tight text-[var(--foreground)]"
-								>
-									{videoInfo?.title || "Untitled Fragment"}
-								</p>
-							</div>
+							<h3
+								class="text-[20px] font-bold font-serif leading-tight text-[var(--foreground)]"
+							>
+								{videoInfo?.title || "Untitled"}
+							</h3>
 
 							<div
-								class="grid gap-4 grid-cols-2 sm:gap-6 lg:grid-cols-4 py-5 sm:py-8 max-lg:py-0"
+								class="grid gap-x-6 gap-y-4 grid-cols-2 lg:grid-cols-4"
 							>
-								<div class="space-y-2">
-									<p
-										class="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--soft-foreground)] opacity-50"
-									>
-										PUBLISHED
-									</p>
-									<p class="font-bold text-[14px]">
-										{formatPublishedAt(
-											videoInfo?.published_at,
-										)}
-									</p>
+								<div>
+									<p class="text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 mb-1">Published</p>
+									<p class="font-semibold text-[13px]">{formatPublishedAt(videoInfo?.published_at)}</p>
 								</div>
-								<div class="space-y-2">
-									<p
-										class="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--soft-foreground)] opacity-50"
-									>
-										ENGAGEMENT
-									</p>
-									<p class="font-bold text-[14px]">
-										{formatCount(videoInfo?.view_count)} Views
-									</p>
+								<div>
+									<p class="text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 mb-1">Views</p>
+									<p class="font-semibold text-[13px]">{formatCount(videoInfo?.view_count)}</p>
 								</div>
-								<div class="space-y-2">
-									<p
-										class="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--soft-foreground)] opacity-50"
-									>
-										TEMPORAL
-									</p>
-									<p class="font-bold text-[14px]">
-										{formatDuration(
-											videoInfo?.duration_seconds,
-											videoInfo?.duration_iso8601,
-										)}
-									</p>
+								<div>
+									<p class="text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 mb-1">Duration</p>
+									<p class="font-semibold text-[13px]">{formatDuration(videoInfo?.duration_seconds, videoInfo?.duration_iso8601)}</p>
 								</div>
-								<div class="space-y-2">
-									<p
-										class="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--soft-foreground)] opacity-50"
-									>
-										ORIGIN
-									</p>
-									<p class="font-bold text-[14px] truncate">
-										{videoInfo?.channel_name ||
-											"Unknown Source"}
-									</p>
+								<div>
+									<p class="text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 mb-1">Channel</p>
+									<p class="font-semibold text-[13px] truncate">{videoInfo?.channel_name || "Unknown"}</p>
 								</div>
 							</div>
 
-							<div class="space-y-3">
-								<p
-									class="text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--soft-foreground)] opacity-50"
+							{#if videoInfo?.watch_url}
+								<a
+									href={videoInfo.watch_url}
+									target="_blank"
+									rel="noopener noreferrer"
+									class="inline-flex items-center gap-2 group text-[13px] font-semibold text-[var(--accent)] hover:text-[var(--accent-strong)]"
 								>
-									SOURCE ACCESS
-								</p>
-								{#if videoInfo?.watch_url}
-									<a
-										href={videoInfo.watch_url}
-										target="_blank"
-										rel="noopener noreferrer"
-										class="inline-flex items-center gap-2 group text-[14px] font-bold text-[var(--accent)] hover:text-[var(--accent-strong)]"
-									>
-										<span>{videoInfo.watch_url}</span>
-										<svg
-											width="14"
-											height="14"
-											viewBox="0 0 24 24"
-											fill="none"
-											stroke="currentColor"
-											stroke-width="2.5"
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											class="transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
-											><line
-												x1="7"
-												y1="17"
-												x2="17"
-												y2="7"
-											/><polyline
-												points="7 7 17 7 17 17"
-											/></svg
-										>
-									</a>
-								{:else}
-									<p class="font-bold opacity-40">
-										Direct URL unavailable.
-									</p>
-								{/if}
-							</div>
+									<span>Open on YouTube</span>
+									<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
+								</a>
+							{/if}
 
-							<div class="space-y-4">
-								<p
-									class="text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--soft-foreground)] opacity-50"
-								>
-									FULL DESCRIPTION
-								</p>
-								<div
-									class="p-6 rounded-[var(--radius-md)] bg-[var(--background)] border border-[var(--border-soft)] max-lg:bg-transparent max-lg:border-0 max-lg:p-0"
-								>
-									<p
-										class="whitespace-pre-wrap text-[14px] font-medium leading-relaxed text-[var(--foreground)] opacity-80"
-									>
-										{videoInfo?.description ||
-											"Source description is empty or unavailable."}
+							{#if videoInfo?.description}
+								<div>
+									<p class="text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 mb-3">Description</p>
+									<p class="whitespace-pre-wrap text-[14px] font-medium leading-relaxed text-[var(--foreground)] opacity-70">
+										{videoInfo.description}
 									</p>
 								</div>
-							</div>
+							{/if}
 						</div>
 					{:else if editing}
 						<div class="pb-20">
@@ -2346,11 +2200,20 @@
 
 	{#if errorMessage}
 		<div
-			class="fixed bottom-6 max-lg:bottom-[calc(4rem+env(safe-area-inset-bottom)+1.5rem)] left-1/2 z-50 w-[min(92vw,460px)] -translate-x-1/2 rounded-card border border-[var(--border)] bg-white/95 p-4 shadow-soft"
+			class="fixed bottom-6 max-lg:bottom-[calc(3.5rem+env(safe-area-inset-bottom)+1rem)] left-1/2 z-50 w-[min(90vw,420px)] -translate-x-1/2 rounded-[var(--radius-md)] bg-white border border-rose-200 px-4 py-3 shadow-lg fade-in"
 			role="status"
 			aria-live="polite"
 		>
-			<p class="text-sm text-[var(--accent)]">{errorMessage}</p>
+			<div class="flex items-start gap-3">
+				<p class="text-[13px] font-medium text-rose-600 flex-1">{errorMessage}</p>
+				<button
+					onclick={() => errorMessage = null}
+					class="shrink-0 text-[var(--soft-foreground)] opacity-40 hover:opacity-80"
+					aria-label="Dismiss"
+				>
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+				</button>
+			</div>
 		</div>
 	{/if}
 

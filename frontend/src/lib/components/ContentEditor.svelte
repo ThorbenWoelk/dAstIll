@@ -224,22 +224,22 @@
 					{/if}
 				</button>
 			{/if}
-			<div class="ml-auto flex items-center gap-3">
+			<div class="ml-auto flex items-center gap-2">
 				<button
 					type="button"
-					class="rounded-[var(--radius-sm)] bg-[var(--foreground)] px-6 py-2.5 text-[10px] font-bold uppercase tracking-[0.25em] text-white transition-all hover:bg-[var(--accent-strong)] hover:shadow-lg hover:shadow-[var(--accent-strong)]/20 disabled:opacity-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+					class="rounded-full bg-[var(--foreground)] px-5 py-2 text-[11px] font-bold uppercase tracking-[0.1em] text-white transition-all hover:bg-[var(--accent-strong)] disabled:opacity-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
 					onclick={onSave}
 					disabled={busy}
 				>
-					{busy ? "RECORDING…" : "PERSIST"}
+					{busy ? "Saving..." : "Save"}
 				</button>
 				<button
 					type="button"
-					class="rounded-[var(--radius-sm)] border border-[var(--border-soft)] bg-[var(--surface)] px-6 py-2.5 text-[10px] font-bold uppercase tracking-[0.25em] text-[var(--soft-foreground)] transition-all hover:bg-[var(--muted)]/40 disabled:opacity-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+					class="rounded-full px-4 py-2 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] transition-all hover:text-[var(--foreground)] disabled:opacity-20 focus-visible:outline-none"
 					onclick={onCancel}
 					disabled={busy}
 				>
-					ABORT
+					Cancel
 				</button>
 			</div>
 		</div>

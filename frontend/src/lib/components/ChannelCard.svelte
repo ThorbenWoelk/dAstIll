@@ -48,27 +48,27 @@
 	ondragover={onDragOver}
 	ondrop={onDrop}
 	ondragend={onDragEnd}
-	class={`group relative flex w-full min-w-0 items-center gap-3 rounded-[var(--radius-md)] px-3 py-2.5 text-left transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)] ${
+	class={`group relative flex w-full min-w-0 items-center gap-2.5 rounded-[var(--radius-sm)] px-2 py-2 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${
 		active
-			? "bg-[var(--surface)] border border-[var(--border)] shadow-[0_4px_12px_-2px_rgba(0,0,0,0.04)]"
-			: "border border-transparent hover:bg-[var(--surface)]/60 hover:border-[var(--border-soft)]"
-	} ${dragging || loading ? "opacity-40" : ""} ${dragOver ? "ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-[var(--background)]" : ""} ${loading ? "animate-pulse" : ""}`}
+			? "bg-[var(--surface)]"
+			: "hover:bg-[var(--surface)]/60"
+	} ${dragging || loading ? "opacity-40" : ""} ${dragOver ? "ring-2 ring-[var(--accent)]/30" : ""} ${loading ? "animate-pulse" : ""}`}
 	onclick={onSelect}
 	disabled={loading}
 >
 	{#if active}
 		<div
-			class="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-[var(--accent)] transition-all duration-300"
+			class="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-r-full bg-[var(--accent)]"
 		></div>
 	{/if}
 	<div
-		class="h-9 w-9 shrink-0 overflow-hidden rounded-full border border-[var(--border-soft)] bg-[var(--muted)] transition-transform duration-300 {loading ? '' : 'group-hover:scale-105'}"
+		class="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-[var(--muted)]"
 	>
 		<img
 			src={avatarUrl}
 			alt={channel.name}
-			width="36"
-			height="36"
+			width="32"
+			height="32"
 			loading="lazy"
 			referrerpolicy="no-referrer"
 			class="h-full w-full object-cover"
@@ -77,12 +77,12 @@
 	</div>
 	<div class="min-w-0 flex-1">
 		<p
-			class="truncate text-[14px] font-bold leading-tight tracking-tight text-[var(--foreground)] transition-colors"
+			class="truncate text-[13px] font-semibold leading-tight tracking-tight text-[var(--foreground)]"
 		>
 			{channel.name}
 		</p>
 		<p
-			class="mt-0.5 truncate text-[11px] font-medium tracking-wide text-[var(--soft-foreground)] opacity-60 transition-colors"
+			class="mt-0.5 truncate text-[11px] font-medium text-[var(--soft-foreground)] opacity-40"
 		>
 			{channel.handle ?? channel.id}
 		</p>
@@ -91,7 +91,7 @@
 		<div
 			role="button"
 			tabindex="0"
-			class={`absolute right-1 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center transition-all duration-300 ${showDelete ? "opacity-100 translate-x-0" : "opacity-0 lg:group-hover:opacity-40 translate-x-2 pointer-events-none lg:pointer-events-auto max-lg:hidden"} hover:!opacity-100 text-[var(--soft-foreground)] hover:text-red-500`}
+			class={`absolute right-1 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center transition-all duration-200 ${showDelete ? "opacity-100 translate-x-0" : "opacity-0 lg:group-hover:opacity-30 translate-x-2 pointer-events-none lg:pointer-events-auto max-lg:hidden"} hover:!opacity-100 text-[var(--soft-foreground)] hover:text-red-500`}
 			onclick={(e) => {
 				e.stopPropagation();
 				onDelete(e);
@@ -108,7 +108,7 @@
 			<svg
 				viewBox="0 0 24 24"
 				fill="none"
-				class="h-4 w-4"
+				class="h-3.5 w-3.5"
 				stroke="currentColor"
 				stroke-width="2.5"
 				stroke-linecap="round"
