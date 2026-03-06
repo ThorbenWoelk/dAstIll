@@ -342,7 +342,7 @@ fn row_to_channel(row: &libsql::Row) -> Result<Channel, libsql::Error> {
         thumbnail_url: row.get(3)?,
         added_at: chrono::DateTime::parse_from_rfc3339(&added_at)
             .map(|dt| dt.with_timezone(&chrono::Utc))
-            .unwrap_or_else(|_| chrono::Utc::now()),
+            .map_err(|e| libsql::Error::ToSqlConversionFailure(Box::new(e)))?,
         earliest_sync_date: earliest_sync_date_raw.and_then(|raw| {
             chrono::DateTime::parse_from_rfc3339(&raw)
                 .map(|dt| dt.with_timezone(&chrono::Utc))
@@ -353,6 +353,12 @@ fn row_to_channel(row: &libsql::Row) -> Result<Channel, libsql::Error> {
 }
 
 pub async fn insert_video(conn: &Connection, video: &Video) -> Result<(), libsql::Error> {
+    tracing::info!(
+        video_id = %video.id,
+        title = %video.title,
+        published_at = %video.published_at.to_rfc3339(),
+        "inserting/updating video"
+    );
     conn.execute(
         "INSERT INTO videos (id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, acknowledged, retry_count)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
@@ -546,7 +552,7 @@ fn row_to_video(row: &libsql::Row) -> Result<Video, libsql::Error> {
         thumbnail_url: row.get(3)?,
         published_at: chrono::DateTime::parse_from_rfc3339(&published_at)
             .map(|dt| dt.with_timezone(&chrono::Utc))
-            .unwrap_or_else(|_| chrono::Utc::now()),
+            .map_err(|e| libsql::Error::ToSqlConversionFailure(Box::new(e)))?,
         is_short: is_short_val != 0,
         transcript_status: ContentStatus::from_db_value(&transcript_status),
         summary_status: ContentStatus::from_db_value(&summary_status),
