@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { goto } from "$app/navigation";
 	import { onMount } from "svelte";
 	import {
 		getChannelSyncDepth,
@@ -162,6 +163,73 @@
 		return "pending";
 	}
 
+	type DistillationStatusKind = "processing" | "queued" | "failed";
+
+	interface DistillationStatusCopy {
+		kind: DistillationStatusKind;
+		label: string;
+		detail: string;
+	}
+
+	function getDistillationStatusCopy(video: Video): DistillationStatusCopy {
+		const retries = video.retry_count ?? 0;
+		const permanentlyFailed = retries >= MAX_RETRIES;
+
+		if (video.transcript_status !== "ready") {
+			if (video.transcript_status === "loading") {
+				return {
+					kind: "processing",
+					label: "DISTILLING KNOWLEDGE - PROCESSING TRANSCRIPT",
+					detail: "Transcript extraction is running now."
+				};
+			}
+
+			if (video.transcript_status === "failed") {
+				return {
+					kind: "failed",
+					label: permanentlyFailed
+						? "DISTILLATION FAILED - TRANSCRIPT (PERMANENT)"
+						: "DISTILLATION FAILED - TRANSCRIPT (RETRYING)",
+					detail: permanentlyFailed
+						? "Automatic retries are exhausted."
+						: "Transcript extraction failed. Automatic retry is queued."
+				};
+			}
+
+			return {
+				kind: "queued",
+				label: "DISTILLING KNOWLEDGE - QUEUED FOR TRANSCRIPT",
+				detail: "Waiting in queue to start transcript extraction."
+			};
+		}
+
+		if (video.summary_status === "loading") {
+			return {
+				kind: "processing",
+				label: "DISTILLING KNOWLEDGE - PROCESSING SUMMARY",
+				detail: "Summary generation is running now."
+			};
+		}
+
+		if (video.summary_status === "failed") {
+			return {
+				kind: "failed",
+				label: permanentlyFailed
+					? "DISTILLATION FAILED - SUMMARY (PERMANENT)"
+					: "DISTILLATION FAILED - SUMMARY (RETRYING)",
+				detail: permanentlyFailed
+					? "Automatic retries are exhausted."
+					: "Summary generation failed. Automatic retry is queued."
+			};
+		}
+
+		return {
+			kind: "queued",
+			label: "DISTILLING KNOWLEDGE - QUEUED FOR SUMMARY",
+			detail: "Transcript is ready. Waiting in queue for summary generation."
+		};
+	}
+
 	const queueStats = $derived({
 		total: queuedVideos.length,
 		loading: queuedVideos.filter(
@@ -174,6 +242,12 @@
 			(video) => getQueueState(video) === "failed",
 		).length,
 	});
+	const queuedVideosWithDistillationStatus = $derived(
+		queuedVideos.map((video) => ({
+			video,
+			distillationStatus: getDistillationStatusCopy(video)
+		})),
+	);
 
 	function formatDate(value: string) {
 		const date = new Date(value);
@@ -246,6 +320,30 @@
 		snapshot.channelOrder = channelOrder;
 
 		localStorage.setItem(WORKSPACE_STATE_KEY, JSON.stringify(snapshot));
+	}
+
+	async function openVideoTranscriptInWorkspace(video: Video) {
+		if (typeof localStorage !== "undefined") {
+			const raw = localStorage.getItem(WORKSPACE_STATE_KEY);
+			let snapshot: Partial<WorkspaceStateSnapshot> = {};
+			if (raw) {
+				try {
+					snapshot = JSON.parse(raw);
+				} catch {
+					// Ignore malformed workspace snapshot
+				}
+			}
+
+			snapshot.selectedChannelId = video.channel_id;
+			snapshot.selectedVideoId = video.id;
+			snapshot.contentMode = "transcript";
+			snapshot.videoTypeFilter = "all";
+			snapshot.acknowledgedFilter = "all";
+
+			localStorage.setItem(WORKSPACE_STATE_KEY, JSON.stringify(snapshot));
+		}
+
+		await goto("/");
 	}
 
 	$effect(() => {
@@ -664,16 +762,8 @@
 						<span class="text-[10px] font-bold uppercase tracking-[0.1em] text-rose-700">{queueStats.failed}</span>
 					</div>
 					
-					<button
-						type="button"
-						class="ml-2 inline-flex h-10 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--border-soft)] bg-[var(--background)] px-6 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--foreground)] transition-all hover:border-[var(--accent)]/40 hover:text-[var(--accent)] hover:shadow-sm disabled:opacity-30 max-lg:h-8 max-lg:px-3"
-						onclick={() => loadVideos(true)}
-						disabled={loadingVideos}
-					>
-						Sync
-					</button>
+					</div>
 				</div>
-			</div>
 
 			{#if selectedChannel}
 				<div class="grid gap-4 rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--background)] p-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end max-lg:bg-transparent max-lg:border-0 max-lg:p-0">
@@ -700,12 +790,12 @@
 							class="inline-flex items-center justify-center rounded-[var(--radius-sm)] bg-[var(--foreground)] px-4 py-2 text-[10px] font-bold uppercase tracking-[0.1em] text-white transition-all hover:bg-[var(--accent-strong)] disabled:opacity-30"
 							onclick={saveEarliestSyncDate}
 							disabled={!earliestSyncDateInput || savingSyncDate}
-						>
-							{savingSyncDate ? "Saving..." : "Save"}
-						</button>
+							>
+								{savingSyncDate ? "Saving..." : "Save"}
+							</button>
+						</div>
 					</div>
-				</div>
-			{/if}
+				{/if}
 
 			<div class="flex-1 overflow-y-auto custom-scrollbar">
 				{#if !selectedChannelId}
@@ -741,62 +831,83 @@
 					</div>
 				{:else}
 					<ul class="flex flex-col gap-4 mt-4 pb-20">
-						{#each queuedVideos as video}
+						{#each queuedVideosWithDistillationStatus as item}
+							{@const video = item.video}
 							<li
-								class="group rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-white p-6 transition-all duration-300 hover:border-[var(--accent)]/30 hover:shadow-lg hover:shadow-[var(--accent)]/5 max-lg:p-4 max-lg:border-x-0 max-lg:rounded-none"
+								class="rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-white transition-all duration-300 hover:border-[var(--accent)]/30 hover:shadow-lg hover:shadow-[var(--accent)]/5 max-lg:border-x-0 max-lg:rounded-none"
 							>
-								<div
-									class="flex flex-wrap items-start justify-between gap-6 max-lg:gap-3"
+								<button
+									type="button"
+									class="group w-full cursor-pointer p-6 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 max-lg:p-4"
+									onclick={() => openVideoTranscriptInWorkspace(video)}
+									aria-label={`Open transcript workspace for ${video.title}`}
 								>
-									<div class="min-w-0 flex-1">
-										<p
-											class="line-clamp-2 text-[16px] font-bold text-[var(--foreground)] leading-[1.4] tracking-tight group-hover:text-[var(--accent-strong)] transition-colors"
-										>
-											{video.title}
-										</p>
-										<p
-											class="mt-2 text-[12px] font-medium text-[var(--soft-foreground)] opacity-50"
-										>
-											Published {formatDate(video.published_at)}
-										</p>
-										<div
-											class="mt-6 flex items-center gap-4 max-lg:mt-4"
-										>
-											{#if video.transcript_status === "loading" || video.summary_status === "loading"}
-												<span
-													class="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--accent)]"
-												>
-													<span class="relative flex h-2 w-2">
-														<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--accent)] opacity-75"></span>
-														<span class="relative inline-flex rounded-full h-2 w-2 bg-[var(--accent)]"></span>
-													</span>
-													DISTILLING KNOWLEDGE
-												</span>
-											{:else if video.transcript_status === "failed" || video.summary_status === "failed"}
-												<div class="flex flex-col gap-1">
-													<span
-														class="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-rose-600"
-													>
-														<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-														{video.retry_count !== undefined && video.retry_count >= MAX_RETRIES ? "DISTILLATION FAILED (PERMANENT)" : "DISTILLATION FAILED (RETRYING...)"}
-													</span>
-													{#if video.retry_count !== undefined && video.retry_count > 0}
-														<p class="text-[9px] font-bold text-rose-600/60 uppercase tracking-widest ml-5">
-															Attempt {video.retry_count} of {MAX_RETRIES}
+									<div
+										class="flex flex-wrap items-start justify-between gap-6 max-lg:gap-3"
+									>
+										<div class="min-w-0 flex-1">
+											<p
+												class="line-clamp-2 text-[16px] font-bold text-[var(--foreground)] leading-[1.4] tracking-tight group-hover:text-[var(--accent-strong)] transition-colors"
+											>
+												{video.title}
+											</p>
+											<p
+												class="mt-2 text-[12px] font-medium text-[var(--soft-foreground)] opacity-50"
+											>
+												Published {formatDate(video.published_at)}
+											</p>
+											<div
+												class="mt-6 flex items-center gap-4 max-lg:mt-4"
+											>
+												{#if item.distillationStatus.kind === "processing"}
+													<div class="flex flex-col gap-1">
+														<span
+															class="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--accent)]"
+														>
+															<span class="relative flex h-2 w-2">
+																<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--accent)] opacity-75"></span>
+																<span class="relative inline-flex rounded-full h-2 w-2 bg-[var(--accent)]"></span>
+															</span>
+															{item.distillationStatus.label}
+														</span>
+														<p class="text-[9px] font-bold text-[var(--accent-strong)]/70 uppercase tracking-widest ml-5">
+															{item.distillationStatus.detail}
 														</p>
+													</div>
+												{:else if item.distillationStatus.kind === "failed"}
+													<div class="flex flex-col gap-1">
+														<span
+															class="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-rose-600"
+														>
+															<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+															{item.distillationStatus.label}
+														</span>
+														<p class="text-[9px] font-bold text-rose-600/60 uppercase tracking-widest ml-5">
+															{item.distillationStatus.detail}
+														</p>
+														{#if video.retry_count !== undefined && video.retry_count > 0}
+															<p class="text-[9px] font-bold text-rose-600/60 uppercase tracking-widest ml-5">
+																Attempt {video.retry_count} of {MAX_RETRIES}
+															</p>
+														{/if}
+													</div>
+												{:else}
+													<div class="flex flex-col gap-1">
+														<span
+															class="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--soft-foreground)] opacity-60"
+														>
+															<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+															{item.distillationStatus.label}
+														</span>
+														<p class="text-[9px] font-bold text-[var(--soft-foreground)]/60 uppercase tracking-widest ml-5">
+															{item.distillationStatus.detail}
+														</p>
+													</div>
 													{/if}
-												</div>
-											{:else}
-												<span
-													class="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--soft-foreground)] opacity-60"
-												>
-													<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-													QUEUED FOR PROCESSING
-												</span>
-											{/if}
+											</div>
 										</div>
 									</div>
-								</div>
+								</button>
 							</li>
 						{/each}
 					</ul>

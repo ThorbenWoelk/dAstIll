@@ -219,21 +219,27 @@ textarea {
 	}
 }
 
-/* Mobile tab bar */
+/* Mobile tab bar — mobile only */
 .mobile-tab-bar {
-	position: fixed;
-	bottom: 0;
-	left: 0;
-	right: 0;
-	z-index: 40;
-	display: flex;
-	justify-content: space-around;
-	align-items: center;
-	height: calc(4rem + env(safe-area-inset-bottom));
-	padding-bottom: env(safe-area-inset-bottom);
-	background: var(--surface);
-	border-top: 1px solid var(--border-soft);
-	box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.04);
+	display: none;
+}
+
+@media (max-width: 1023px) {
+	.mobile-tab-bar {
+		position: fixed;
+		bottom: 0;
+		left: 0;
+		right: 0;
+		z-index: 40;
+		display: flex;
+		justify-content: space-around;
+		align-items: center;
+		height: calc(4rem + env(safe-area-inset-bottom));
+		padding-bottom: env(safe-area-inset-bottom);
+		background: var(--surface);
+		border-top: 1px solid var(--border-soft);
+		box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.04);
+	}
 }
 
 .mobile-tab-item {

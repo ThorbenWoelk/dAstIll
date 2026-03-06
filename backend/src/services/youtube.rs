@@ -50,12 +50,6 @@ struct WatchVideoDetails {
 }
 
 #[derive(Deserialize)]
-struct OEmbedResponse {
-    title: String,
-    thumbnail_url: String,
-}
-
-#[derive(Deserialize)]
 struct DataApiListResponse<T> {
     #[serde(rename = "nextPageToken")]
     next_page_token: Option<String>,
@@ -556,23 +550,32 @@ impl YouTubeService {
                 if is_missing || until.is_some() {
                     match self.fetch_watch_metadata(&id).await {
                         Ok(metadata) => {
+                            let Some(pub_at) = metadata.published_at else {
+                                tracing::warn!(video_id = %id, "metadata missing published_at during crawl, skipping video");
+                                continue;
+                            };
+
                             if let Some(until_date) = until {
-                                if let Some(pub_at) = metadata.published_at {
-                                    if pub_at < until_date {
-                                        continuation = None;
-                                        break;
-                                    }
+                                if pub_at < until_date {
+                                    continuation = None;
+                                    break;
                                 }
                             }
 
                             if is_missing && total_selected_ids.len() < limit {
+                                tracing::info!(
+                                    video_id = %id,
+                                    title = %metadata.title,
+                                    published_at = %pub_at.to_rfc3339(),
+                                    "backfill: found missing video via InnerTube"
+                                );
                                 total_selected_ids.push(id.clone());
                                 total_videos.push(Video {
                                     id: id.clone(),
                                     channel_id: channel_id.to_string(),
                                     title: metadata.title,
                                     thumbnail_url: metadata.thumbnail_url,
-                                    published_at: metadata.published_at.unwrap_or_else(chrono::Utc::now),
+                                    published_at: pub_at,
                                     is_short: self.fetch_is_short_flag(&id).await,
                                     transcript_status: crate::models::ContentStatus::Pending,
                                     summary_status: crate::models::ContentStatus::Pending,
@@ -582,22 +585,7 @@ impl YouTubeService {
                             }
                         }
                         Err(err) => {
-                            tracing::warn!(video_id = %id, error = %err, "failed to fetch metadata during crawl");
-                            if is_missing && total_selected_ids.len() < limit {
-                                total_selected_ids.push(id.clone());
-                                total_videos.push(Video {
-                                    id: id.clone(),
-                                    channel_id: channel_id.to_string(),
-                                    title: format!("YouTube Video {id}"),
-                                    thumbnail_url: None,
-                                    published_at: chrono::Utc::now(),
-                                    is_short: false,
-                                    transcript_status: crate::models::ContentStatus::Pending,
-                                    summary_status: crate::models::ContentStatus::Pending,
-                                    acknowledged: false,
-                                    retry_count: 0,
-                                });
-                            }
+                            tracing::warn!(video_id = %id, error = %err, "failed to fetch metadata during crawl, skipping video to avoid date corruption");
                         }
                     }
                 }
@@ -725,11 +713,9 @@ impl YouTubeService {
                     .as_deref()
                     .and_then(Self::parse_any_datetime);
 
-                let effective_published_at = if let Some(dt) = published_at {
-                    dt
-                } else {
-                    tracing::warn!(video_id = %video_id, "Data API snippet missing publishedAt, using now() as absolute fallback");
-                    chrono::Utc::now()
+                let Some(effective_published_at) = published_at else {
+                    tracing::warn!(video_id = %video_id, "Data API snippet missing publishedAt, skipping video");
+                    continue;
                 };
 
                 if let Some(until_date) = until {
@@ -741,6 +727,13 @@ impl YouTubeService {
                 if videos.len() >= limit {
                     continue;
                 }
+
+                tracing::info!(
+                    video_id = %video_id,
+                    title = %item.snippet.title,
+                    published_at = %effective_published_at.to_rfc3339(),
+                    "data_api: found video"
+                );
 
                 let thumbnail_url =
                     Self::pick_data_api_thumbnail_url(item.snippet.thumbnails.as_ref());
@@ -1029,33 +1022,29 @@ impl YouTubeService {
 
     async fn fetch_watch_metadata(&self, video_id: &str) -> Result<WatchMetadata, YouTubeError> {
         let watch_url = format!("https://www.youtube.com/watch?v={video_id}");
-        tracing::debug!(video_id = %video_id, "fetching watch metadata");
+        tracing::debug!(video_id = %video_id, "fetching watch metadata via full page");
 
-        let oembed_response = self
+        let response = self
             .client
-            .get("https://www.youtube.com/oembed")
-            .query(&[("url", watch_url.as_str()), ("format", "json")])
+            .get(&watch_url)
             .header("User-Agent", Self::desktop_user_agent())
             .send()
             .await?;
 
-        if !oembed_response.status().is_success() {
-            tracing::warn!(video_id = %video_id, status = %oembed_response.status(), "OEmbed fetch failed");
+        if !response.status().is_success() {
+            tracing::warn!(video_id = %video_id, status = %response.status(), "watch page fetch failed");
             return Err(YouTubeError::ChannelNotFound);
         }
 
-        let oembed = oembed_response
-            .json::<OEmbedResponse>()
-            .await
-            .map_err(|e| {
-                tracing::warn!(video_id = %video_id, error = %e, "OEmbed JSON parsing failed");
-                YouTubeError::FetchError(e)
-            })?;
+        let html = response.text().await?;
+        let details = Self::extract_video_details_from_watch_html(&html);
 
         Ok(WatchMetadata {
-            title: oembed.title,
-            thumbnail_url: Some(oembed.thumbnail_url),
-            published_at: None,
+            title: details
+                .title
+                .unwrap_or_else(|| format!("YouTube video {video_id}")),
+            thumbnail_url: details.thumbnail_url,
+            published_at: details.published_at,
         })
     }
 
@@ -1406,8 +1395,14 @@ impl YouTubeService {
                 let published = item
                     .pub_date()
                     .and_then(|d| chrono::DateTime::parse_from_rfc2822(d).ok())
-                    .map(|dt| dt.with_timezone(&chrono::Utc))
-                    .unwrap_or_else(chrono::Utc::now);
+                    .map(|dt| dt.with_timezone(&chrono::Utc))?;
+
+                tracing::info!(
+                    video_id = %video_id,
+                    title = %item.title().unwrap_or("Untitled"),
+                    published_at = %published.to_rfc3339(),
+                    "feed: found video via RSS"
+                );
 
                 // Extract thumbnail from media:group
                 let thumbnail = item
@@ -1501,12 +1496,21 @@ impl YouTubeService {
                     .and_then(|node| node.attribute("url"))
                     .map(ToOwned::to_owned);
 
+                let published_at = published?;
+
+                tracing::info!(
+                    video_id = %video_id,
+                    title = %title,
+                    published_at = %published_at.to_rfc3339(),
+                    "feed: found video via Atom"
+                );
+
                 Some(Video {
                     id: video_id,
                     channel_id: channel_id.to_string(),
                     title,
                     thumbnail_url,
-                    published_at: published.unwrap_or_else(chrono::Utc::now),
+                    published_at,
                     is_short: false,
                     transcript_status: crate::models::ContentStatus::Pending,
                     summary_status: crate::models::ContentStatus::Pending,
@@ -1632,6 +1636,42 @@ mod tests {
             videos[0].thumbnail_url.as_deref(),
             Some("https://img.example.com/atom-thumb.jpg")
         );
+    }
+
+    #[test]
+    fn test_parse_rss_feed_videos_missing_date() {
+        let feed = r#"<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:yt="http://www.youtube.com/xml/schemas/2015">
+  <channel>
+    <item>
+      <title>No Date Video</title>
+      <link>https://www.youtube.com/watch?v=nodate12345</link>
+      <yt:videoId>nodate12345</yt:videoId>
+    </item>
+  </channel>
+</rss>"#;
+
+        let videos = YouTubeService::parse_videos_from_feed(feed.as_bytes(), "UC_TEST")
+            .expect("RSS feed should parse");
+
+        assert_eq!(videos.len(), 0, "Videos without pubDate should be skipped");
+    }
+
+    #[test]
+    fn test_parse_atom_feed_videos_missing_date() {
+        let feed = r#"<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:yt="http://www.youtube.com/xml/schemas/2015">
+  <entry>
+    <yt:videoId>nodate67890</yt:videoId>
+    <title>No Date Atom Video</title>
+    <link rel="alternate" href="https://www.youtube.com/watch?v=nodate67890"/>
+  </entry>
+</feed>"#;
+
+        let videos = YouTubeService::parse_videos_from_feed(feed.as_bytes(), "UC_TEST")
+            .expect("Atom feed should parse");
+
+        assert_eq!(videos.len(), 0, "Atom entries without published/updated should be skipped");
     }
 
     #[test]
