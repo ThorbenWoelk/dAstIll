@@ -9,8 +9,9 @@ use thiserror::Error;
 use tokio::sync::Semaphore;
 use tokio::time::{Instant as TokioInstant, timeout};
 
-use crate::services::{build_http_client, is_cloud_model, is_rate_limited};
+use crate::models::AiStatus;
 use crate::services::http::CloudCooldown;
+use crate::services::{build_http_client, is_cloud_model, is_rate_limited};
 
 pub const MAX_TRANSCRIPT_FORMAT_ATTEMPTS: usize = 5;
 pub const TRANSCRIPT_FORMAT_HARD_TIMEOUT_SECS: u64 = 300;
@@ -118,6 +119,29 @@ impl SummarizerService {
             .await
             .map(|r| r.status().is_success())
             .unwrap_or(false)
+    }
+
+    pub fn indicator_status(
+        &self,
+        cloud_cooldown_active: bool,
+        endpoint_available: bool,
+    ) -> AiStatus {
+        if !endpoint_available {
+            return AiStatus::Offline;
+        }
+
+        if !is_cloud_model(&self.model) {
+            return AiStatus::LocalOnly;
+        }
+
+        if !cloud_cooldown_active {
+            return AiStatus::Cloud;
+        }
+
+        match self.fallback_model.as_deref() {
+            Some(fallback_model) if !is_cloud_model(fallback_model) => AiStatus::LocalOnly,
+            _ => AiStatus::Offline,
+        }
     }
 
     /// Generate a summary from transcript text.
@@ -279,7 +303,11 @@ impl SummarizerService {
             // Acquire semaphore for fallback (presumably local) model
             let _permit = if !is_cloud_model(fallback) {
                 if let Some(sem) = &self.ollama_semaphore {
-                    Some(sem.acquire().await.map_err(|e| SummarizerError::GenerationFailed(e.to_string()))?)
+                    Some(
+                        sem.acquire()
+                            .await
+                            .map_err(|e| SummarizerError::GenerationFailed(e.to_string()))?,
+                    )
                 } else {
                     None
                 }
@@ -294,7 +322,11 @@ impl SummarizerService {
             // Acquire semaphore for primary model if it's not cloud
             let _permit = if !is_cloud {
                 if let Some(sem) = &self.ollama_semaphore {
-                    Some(sem.acquire().await.map_err(|e| SummarizerError::GenerationFailed(e.to_string()))?)
+                    Some(
+                        sem.acquire()
+                            .await
+                            .map_err(|e| SummarizerError::GenerationFailed(e.to_string()))?,
+                    )
                 } else {
                     None
                 }
@@ -326,18 +358,20 @@ impl SummarizerService {
 
                     // Acquire semaphore for fallback (presumably local) model
                     // We drop the previous permit (if any) by letting _permit go out of scope or re-assigning
-                    let _permit = if !is_cloud_model(fallback) {
-                        if let Some(sem) = &self.ollama_semaphore {
-                            Some(sem.acquire().await.map_err(|e| SummarizerError::GenerationFailed(e.to_string()))?)
+                    let _permit =
+                        if !is_cloud_model(fallback) {
+                            if let Some(sem) = &self.ollama_semaphore {
+                                Some(sem.acquire().await.map_err(|e| {
+                                    SummarizerError::GenerationFailed(e.to_string())
+                                })?)
+                            } else {
+                                None
+                            }
                         } else {
                             None
-                        }
-                    } else {
-                        None
-                    };
+                        };
 
-                    let fallback_agent =
-                        ollama_client.agent(fallback).preamble(preamble).build();
+                    let fallback_agent = ollama_client.agent(fallback).preamble(preamble).build();
                     let resp = fallback_agent.prompt(prompt).await?;
                     (resp, fallback.to_string())
                 }
@@ -365,7 +399,6 @@ impl Default for SummarizerService {
         Self::new()
     }
 }
-
 
 pub(crate) fn transcript_text_equivalent(input: &str, output: &str) -> bool {
     let expected = input
@@ -722,6 +755,7 @@ mod tests {
         build_summary_prompt, detect_transcript_mismatch, strip_summary_title_heading,
         transcript_text_equivalent,
     };
+    use crate::models::AiStatus;
     use crate::services::summary_evaluator::SummaryEvaluatorService;
 
     #[tokio::test]
@@ -839,6 +873,52 @@ mod tests {
         assert!(prompt.contains("return the original transcript unchanged"));
         assert!(prompt.contains("Compliance feedback from previous attempt:"));
         assert!(prompt.contains("Mismatch at token 2"));
+    }
+
+    #[test]
+    fn indicator_status_reports_cloud_when_primary_model_is_cloud_and_available() {
+        let summarizer =
+            SummarizerService::with_config("http://localhost:11434", "minimax-m2.5:cloud")
+                .with_fallback_model(Some("qwen3:8b".to_string()));
+
+        assert_eq!(summarizer.indicator_status(false, true), AiStatus::Cloud);
+    }
+
+    #[test]
+    fn indicator_status_reports_local_only_when_cloud_cooldown_uses_local_fallback() {
+        let summarizer =
+            SummarizerService::with_config("http://localhost:11434", "minimax-m2.5:cloud")
+                .with_fallback_model(Some("qwen3:8b".to_string()));
+
+        assert_eq!(summarizer.indicator_status(true, true), AiStatus::LocalOnly);
+    }
+
+    #[test]
+    fn indicator_status_reports_offline_when_cloud_cooldown_has_no_local_fallback() {
+        let summarizer =
+            SummarizerService::with_config("http://localhost:11434", "minimax-m2.5:cloud")
+                .with_fallback_model(None);
+
+        assert_eq!(summarizer.indicator_status(true, true), AiStatus::Offline);
+    }
+
+    #[test]
+    fn indicator_status_reports_local_only_for_local_primary_model() {
+        let summarizer = SummarizerService::with_config("http://localhost:11434", "qwen3:8b");
+
+        assert_eq!(
+            summarizer.indicator_status(false, true),
+            AiStatus::LocalOnly
+        );
+    }
+
+    #[test]
+    fn indicator_status_reports_offline_when_endpoint_is_unreachable() {
+        let summarizer =
+            SummarizerService::with_config("http://localhost:11434", "minimax-m2.5:cloud")
+                .with_fallback_model(Some("qwen3:8b".to_string()));
+
+        assert_eq!(summarizer.indicator_status(false, false), AiStatus::Offline);
     }
 
     fn live_ollama_tests_enabled() -> bool {

@@ -139,3 +139,40 @@ pub struct CleanTranscriptResponse {
     pub max_attempts: u8,
     pub timed_out: bool,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AiStatus {
+    Cloud,
+    LocalOnly,
+    Offline,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiHealthPayload {
+    pub available: bool,
+    pub status: AiStatus,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncDepthPayload {
+    pub earliest_sync_date: Option<String>,
+    pub earliest_sync_date_user_set: bool,
+    pub derived_earliest_ready_date: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChannelSnapshotPayload {
+    pub channel_id: String,
+    pub sync_depth: SyncDepthPayload,
+    pub videos: Vec<Video>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceBootstrapPayload {
+    pub ai_available: bool,
+    pub ai_status: AiStatus,
+    pub channels: Vec<Channel>,
+    pub selected_channel_id: Option<String>,
+    pub snapshot: Option<ChannelSnapshotPayload>,
+}

@@ -1,5 +1,6 @@
 export type ContentStatus = "pending" | "loading" | "ready" | "failed";
 export type VideoTypeFilter = "all" | "long" | "short";
+export type AiStatus = "cloud" | "local_only" | "offline";
 
 export interface Channel {
   id: string;
@@ -15,6 +16,25 @@ export interface SyncDepth {
   earliest_sync_date: string | null;
   earliest_sync_date_user_set: boolean;
   derived_earliest_ready_date: string | null;
+}
+
+export interface ChannelSnapshot {
+  channel_id: string;
+  sync_depth: SyncDepth;
+  videos: Video[];
+}
+
+export interface WorkspaceBootstrap {
+  ai_available: boolean;
+  ai_status: AiStatus;
+  channels: Channel[];
+  selected_channel_id: string | null;
+  snapshot: ChannelSnapshot | null;
+}
+
+export interface AiHealthResponse {
+  available: boolean;
+  status: AiStatus;
 }
 
 export interface Video {

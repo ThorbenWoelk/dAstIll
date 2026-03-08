@@ -19,7 +19,7 @@ pub enum VideoTypeFilter {
 }
 
 impl VideoTypeFilter {
-    fn as_is_short(self) -> Option<bool> {
+    pub fn as_is_short(self) -> Option<bool> {
         match self {
             Self::All => None,
             Self::Long => Some(false),

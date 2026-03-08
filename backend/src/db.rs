@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use libsql::{Connection, params};
+use libsql::{Connection, Value, params};
 use tokio::sync::Mutex;
 
 use crate::models::{
@@ -8,6 +8,20 @@ use crate::models::{
 };
 
 pub type DbPool = Arc<Mutex<Connection>>;
+
+#[derive(Debug, Clone)]
+pub struct ChannelSnapshotData {
+    pub channel: Channel,
+    pub derived_earliest_ready_date: Option<chrono::DateTime<chrono::Utc>>,
+    pub videos: Vec<Video>,
+}
+
+#[derive(Debug, Clone)]
+pub struct WorkspaceBootstrapData {
+    pub channels: Vec<Channel>,
+    pub selected_channel_id: Option<String>,
+    pub snapshot: Option<ChannelSnapshotData>,
+}
 
 pub async fn init_db(db: libsql::Database) -> Result<DbPool, libsql::Error> {
     let conn = db.connect()?;
@@ -83,6 +97,9 @@ async fn run_migrations(conn: &Connection) -> Result<(), libsql::Error> {
 
         CREATE INDEX IF NOT EXISTS idx_videos_channel ON videos(channel_id);
         CREATE INDEX IF NOT EXISTS idx_videos_published ON videos(published_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_videos_channel_published ON videos(channel_id, published_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_videos_channel_short_published ON videos(channel_id, is_short, published_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_videos_channel_ack_published ON videos(channel_id, acknowledged, published_at DESC);
         CREATE INDEX IF NOT EXISTS idx_video_info_fetched_at ON video_info(fetched_at DESC);
         "#,
     )
@@ -352,13 +369,26 @@ fn row_to_channel(row: &libsql::Row) -> Result<Channel, libsql::Error> {
     })
 }
 
-pub async fn insert_video(conn: &Connection, video: &Video) -> Result<(), libsql::Error> {
-    tracing::info!(
-        video_id = %video.id,
-        title = %video.title,
-        published_at = %video.published_at.to_rfc3339(),
-        "inserting/updating video"
-    );
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VideoInsertOutcome {
+    Inserted,
+    Existing,
+}
+
+pub async fn insert_video(
+    conn: &Connection,
+    video: &Video,
+) -> Result<VideoInsertOutcome, libsql::Error> {
+    let already_exists = conn
+        .query(
+            "SELECT 1 FROM videos WHERE id = ?1 LIMIT 1",
+            params![video.id.as_str()],
+        )
+        .await?
+        .next()
+        .await?
+        .is_some();
+
     conn.execute(
         "INSERT INTO videos (id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, acknowledged, retry_count)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
@@ -382,7 +412,26 @@ pub async fn insert_video(conn: &Connection, video: &Video) -> Result<(), libsql
         ],
     )
     .await?;
-    Ok(())
+
+    if already_exists {
+        tracing::debug!(
+            channel_id = %video.channel_id,
+            video_id = %video.id,
+            title = %video.title,
+            published_at = %video.published_at.to_rfc3339(),
+            "found existing video"
+        );
+        Ok(VideoInsertOutcome::Existing)
+    } else {
+        tracing::info!(
+            channel_id = %video.channel_id,
+            video_id = %video.id,
+            title = %video.title,
+            published_at = %video.published_at.to_rfc3339(),
+            "inserted new video"
+        );
+        Ok(VideoInsertOutcome::Inserted)
+    }
 }
 
 pub async fn get_video(conn: &Connection, id: &str) -> Result<Option<Video>, libsql::Error> {
@@ -404,31 +453,36 @@ pub async fn list_videos_by_channel(
     acknowledged: Option<bool>,
     queue_only: bool,
 ) -> Result<Vec<Video>, libsql::Error> {
-    let short_filter: Option<i64> = is_short.map(|value| if value { 1 } else { 0 });
-    let ack_filter: Option<i64> = acknowledged.map(|value| if value { 1 } else { 0 });
-    let queue_clause = if queue_only {
-        "AND (transcript_status != 'ready' OR summary_status != 'ready')"
-    } else {
-        ""
-    };
-    let sql = format!(
+    let mut sql = String::from(
         "SELECT id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, acknowledged, retry_count
          FROM videos
-         WHERE channel_id = ?1
-           AND (?4 IS NULL OR is_short = ?4)
-           AND (?5 IS NULL OR acknowledged = ?5)
-           {}
-         ORDER BY published_at DESC
-         LIMIT ?2 OFFSET ?3",
-        queue_clause
+         WHERE channel_id = ?1",
     );
-    let mut rows = conn.query(&sql, params![
-        channel_id,
-        limit as i64,
-        offset as i64,
-        short_filter,
-        ack_filter
-    ]).await?;
+    let mut query_params = vec![
+        Value::from(channel_id.to_string()),
+        Value::from(limit as i64),
+        Value::from(offset as i64),
+    ];
+    let mut next_param_index = 4;
+
+    if let Some(short_filter) = is_short {
+        sql.push_str(&format!(" AND is_short = ?{next_param_index}"));
+        query_params.push(Value::from(if short_filter { 1i64 } else { 0i64 }));
+        next_param_index += 1;
+    }
+
+    if let Some(ack_filter) = acknowledged {
+        sql.push_str(&format!(" AND acknowledged = ?{next_param_index}"));
+        query_params.push(Value::from(if ack_filter { 1i64 } else { 0i64 }));
+    }
+
+    if queue_only {
+        sql.push_str(" AND (transcript_status != 'ready' OR summary_status != 'ready')");
+    }
+
+    sql.push_str(" ORDER BY published_at DESC LIMIT ?2 OFFSET ?3");
+
+    let mut rows = conn.query(&sql, query_params).await?;
     let mut results = Vec::new();
     while let Some(row) = rows.next().await? {
         results.push(row_to_video(&row)?);
@@ -451,6 +505,100 @@ pub async fn list_video_ids_by_channel(
         results.push(row.get(0)?);
     }
     Ok(results)
+}
+
+async fn build_channel_snapshot_data(
+    conn: &Connection,
+    channel: Channel,
+    limit: usize,
+    offset: usize,
+    is_short: Option<bool>,
+    acknowledged: Option<bool>,
+    queue_only: bool,
+) -> Result<ChannelSnapshotData, libsql::Error> {
+    let derived_earliest_ready_date =
+        get_oldest_ready_video_published_at(conn, &channel.id).await?;
+    let videos = list_videos_by_channel(
+        conn,
+        &channel.id,
+        limit,
+        offset,
+        is_short,
+        acknowledged,
+        queue_only,
+    )
+    .await?;
+
+    Ok(ChannelSnapshotData {
+        channel,
+        derived_earliest_ready_date,
+        videos,
+    })
+}
+
+pub async fn load_channel_snapshot_data(
+    conn: &Connection,
+    channel_id: &str,
+    limit: usize,
+    offset: usize,
+    is_short: Option<bool>,
+    acknowledged: Option<bool>,
+    queue_only: bool,
+) -> Result<Option<ChannelSnapshotData>, libsql::Error> {
+    let channel = get_channel(conn, channel_id).await?;
+    match channel {
+        Some(channel) => Ok(Some(
+            build_channel_snapshot_data(
+                conn,
+                channel,
+                limit,
+                offset,
+                is_short,
+                acknowledged,
+                queue_only,
+            )
+            .await?,
+        )),
+        None => Ok(None),
+    }
+}
+
+pub async fn load_workspace_bootstrap_data(
+    conn: &Connection,
+    preferred_channel_id: Option<&str>,
+    limit: usize,
+    offset: usize,
+    is_short: Option<bool>,
+    acknowledged: Option<bool>,
+    queue_only: bool,
+) -> Result<WorkspaceBootstrapData, libsql::Error> {
+    let channels = list_channels(conn).await?;
+    let selected_channel = preferred_channel_id
+        .and_then(|channel_id| channels.iter().find(|channel| channel.id == channel_id))
+        .cloned()
+        .or_else(|| channels.first().cloned());
+    let selected_channel_id = selected_channel.as_ref().map(|channel| channel.id.clone());
+    let snapshot = match selected_channel {
+        Some(channel) => Some(
+            build_channel_snapshot_data(
+                conn,
+                channel,
+                limit,
+                offset,
+                is_short,
+                acknowledged,
+                queue_only,
+            )
+            .await?,
+        ),
+        None => None,
+    };
+
+    Ok(WorkspaceBootstrapData {
+        channels,
+        selected_channel_id,
+        snapshot,
+    })
 }
 
 pub async fn list_videos_for_queue_processing(
@@ -710,7 +858,10 @@ pub async fn increment_summary_auto_regen_attempts(
 
 pub async fn delete_summary(conn: &Connection, video_id: &str) -> Result<bool, libsql::Error> {
     let changes = conn
-        .execute("DELETE FROM summaries WHERE video_id = ?1", params![video_id])
+        .execute(
+            "DELETE FROM summaries WHERE video_id = ?1",
+            params![video_id],
+        )
         .await?;
     Ok(changes > 0)
 }
@@ -1363,7 +1514,9 @@ mod tests {
             insert_video(&conn, &video).await.unwrap();
         }
 
-        let queue = list_videos_for_queue_processing(&conn, 10, 3).await.unwrap();
+        let queue = list_videos_for_queue_processing(&conn, 10, 3)
+            .await
+            .unwrap();
         let ids = queue.into_iter().map(|video| video.id).collect::<Vec<_>>();
 
         assert!(ids.contains(&"v_pending".to_string()));
@@ -1401,7 +1554,8 @@ mod tests {
             acknowledged: true,
             retry_count: 0,
         };
-        insert_video(&conn, &existing).await.unwrap();
+        let first_insert = insert_video(&conn, &existing).await.unwrap();
+        assert_eq!(first_insert, VideoInsertOutcome::Inserted);
 
         let refreshed = Video {
             id: "vid_refresh".to_string(),
@@ -1415,7 +1569,8 @@ mod tests {
             acknowledged: false,
             retry_count: 0,
         };
-        insert_video(&conn, &refreshed).await.unwrap();
+        let refresh_insert = insert_video(&conn, &refreshed).await.unwrap();
+        assert_eq!(refresh_insert, VideoInsertOutcome::Existing);
 
         let saved = get_video(&conn, "vid_refresh").await.unwrap().unwrap();
         assert_eq!(saved.title, "New title");
@@ -1673,5 +1828,136 @@ mod tests {
                 "a_vid_3".to_string()
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn test_load_channel_snapshot_data_returns_videos_and_sync_depth() {
+        let pool = init_db_memory().await.unwrap();
+        let conn = pool.lock().await;
+        let earliest_sync_date = Utc::now() - chrono::Duration::days(14);
+        let ready_published_at = Utc::now() - chrono::Duration::days(10);
+        let pending_published_at = Utc::now() - chrono::Duration::days(2);
+
+        let channel = Channel {
+            id: "UC_SNAPSHOT".to_string(),
+            handle: None,
+            name: "Snapshot".to_string(),
+            thumbnail_url: None,
+            added_at: Utc::now(),
+            earliest_sync_date: Some(earliest_sync_date),
+            earliest_sync_date_user_set: false,
+        };
+        insert_channel(&conn, &channel).await.unwrap();
+
+        insert_video(
+            &conn,
+            &Video {
+                id: "ready_vid".to_string(),
+                channel_id: channel.id.clone(),
+                title: "Ready".to_string(),
+                thumbnail_url: None,
+                published_at: ready_published_at,
+                is_short: false,
+                transcript_status: ContentStatus::Ready,
+                summary_status: ContentStatus::Ready,
+                acknowledged: false,
+                retry_count: 0,
+            },
+        )
+        .await
+        .unwrap();
+
+        insert_video(
+            &conn,
+            &Video {
+                id: "pending_vid".to_string(),
+                channel_id: channel.id.clone(),
+                title: "Pending".to_string(),
+                thumbnail_url: None,
+                published_at: pending_published_at,
+                is_short: true,
+                transcript_status: ContentStatus::Pending,
+                summary_status: ContentStatus::Pending,
+                acknowledged: true,
+                retry_count: 0,
+            },
+        )
+        .await
+        .unwrap();
+
+        let snapshot = load_channel_snapshot_data(&conn, &channel.id, 10, 0, None, None, false)
+            .await
+            .unwrap()
+            .expect("snapshot should exist");
+
+        assert_eq!(snapshot.channel.id, channel.id);
+        assert_eq!(snapshot.videos.len(), 2);
+        assert_eq!(snapshot.videos[0].id, "pending_vid");
+        assert_eq!(
+            snapshot
+                .derived_earliest_ready_date
+                .expect("derived ready date should exist"),
+            ready_published_at
+        );
+    }
+
+    #[tokio::test]
+    async fn test_load_workspace_bootstrap_data_prefers_selected_channel() {
+        let pool = init_db_memory().await.unwrap();
+        let conn = pool.lock().await;
+
+        let first = Channel {
+            id: "UC_BOOT_1".to_string(),
+            handle: None,
+            name: "First".to_string(),
+            thumbnail_url: None,
+            added_at: Utc::now() - chrono::Duration::days(1),
+            earliest_sync_date: None,
+            earliest_sync_date_user_set: false,
+        };
+        let second = Channel {
+            id: "UC_BOOT_2".to_string(),
+            handle: None,
+            name: "Second".to_string(),
+            thumbnail_url: None,
+            added_at: Utc::now(),
+            earliest_sync_date: None,
+            earliest_sync_date_user_set: false,
+        };
+        insert_channel(&conn, &first).await.unwrap();
+        insert_channel(&conn, &second).await.unwrap();
+
+        insert_video(
+            &conn,
+            &Video {
+                id: "boot_vid".to_string(),
+                channel_id: first.id.clone(),
+                title: "Boot".to_string(),
+                thumbnail_url: None,
+                published_at: Utc::now(),
+                is_short: false,
+                transcript_status: ContentStatus::Ready,
+                summary_status: ContentStatus::Ready,
+                acknowledged: false,
+                retry_count: 0,
+            },
+        )
+        .await
+        .unwrap();
+
+        let bootstrap =
+            load_workspace_bootstrap_data(&conn, Some(&first.id), 10, 0, None, None, false)
+                .await
+                .unwrap();
+
+        assert_eq!(bootstrap.channels.len(), 2);
+        assert_eq!(
+            bootstrap.selected_channel_id.as_deref(),
+            Some(first.id.as_str())
+        );
+        let snapshot = bootstrap.snapshot.expect("selected snapshot should exist");
+        assert_eq!(snapshot.channel.id, first.id);
+        assert_eq!(snapshot.videos.len(), 1);
+        assert_eq!(snapshot.videos[0].id, "boot_vid");
     }
 }

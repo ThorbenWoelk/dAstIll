@@ -11,8 +11,8 @@ use tower_http::trace::TraceLayer;
 use dastill::db::init_db;
 use dastill::handlers::{channels, content, videos};
 use dastill::services::{
-    CloudCooldown, SummarizerService, SummaryEvaluatorService, TranscriptCooldown, TranscriptService,
-    YouTubeQuotaCooldown, YouTubeService, build_http_client,
+    CloudCooldown, SummarizerService, SummaryEvaluatorService, TranscriptCooldown,
+    TranscriptService, YouTubeQuotaCooldown, YouTubeService, build_http_client,
 };
 use dastill::state::AppState;
 use dastill::workers::{
@@ -68,7 +68,9 @@ async fn main() -> anyhow::Result<()> {
     );
     match youtube.validate_data_api_key().await {
         Ok(Some(true)) => tracing::info!("YOUTUBE_API_KEY is configured and valid"),
-        Ok(Some(false)) => tracing::warn!("YOUTUBE_API_KEY is configured but invalid (or quota exceeded)"),
+        Ok(Some(false)) => {
+            tracing::warn!("YOUTUBE_API_KEY is configured but invalid (or quota exceeded)")
+        }
         Ok(None) => tracing::info!("YOUTUBE_API_KEY is not configured - using fallback sources"),
         Err(err) => tracing::warn!(error = %err, "could not validate YOUTUBE_API_KEY on startup"),
     }
@@ -85,9 +87,13 @@ async fn main() -> anyhow::Result<()> {
         .or_else(|| Some("qwen3:8b".to_string()));
     let summary_evaluator_model = std::env::var("SUMMARY_EVALUATOR_MODEL")
         .unwrap_or_else(|_| "qwen3-coder:480b-cloud".to_string());
-    let summary_evaluator_fallback_model = std::env::var("SUMMARY_EVALUATOR_FALLBACK_MODEL")
-        .ok()
-        .or_else(|| Some("qwen3:8b".to_string()));
+    SummaryEvaluatorService::validate_model_policy(&summary_evaluator_model)
+        .map_err(|err| anyhow::anyhow!(err))?;
+    if std::env::var("SUMMARY_EVALUATOR_FALLBACK_MODEL").is_ok() {
+        tracing::warn!(
+            "SUMMARY_EVALUATOR_FALLBACK_MODEL is ignored - summary evaluation is cloud-only"
+        );
+    }
     let transcript = Arc::new(TranscriptService::with_path(&summarize_path));
     let ollama_semaphore = Arc::new(tokio::sync::Semaphore::new(1));
 
@@ -99,7 +105,6 @@ async fn main() -> anyhow::Result<()> {
     );
     let summary_evaluator = Arc::new(
         SummaryEvaluatorService::with_client(client, &ollama_url, &summary_evaluator_model)
-            .with_fallback_model(summary_evaluator_fallback_model)
             .with_cloud_cooldown(cloud_cooldown.clone())
             .with_ollama_semaphore(ollama_semaphore),
     );
@@ -123,6 +128,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/health", get(|| async { "ok" }))
         .route("/api/health/ai", get(content::health_ai))
         .route(
+            "/api/workspace/bootstrap",
+            get(channels::workspace_bootstrap),
+        )
+        .route(
             "/api/channels",
             get(channels::list_channels).post(channels::add_channel),
         )
@@ -135,6 +144,10 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/channels/{id}/sync-depth",
             get(channels::get_channel_sync_depth),
+        )
+        .route(
+            "/api/channels/{id}/snapshot",
+            get(channels::get_channel_snapshot),
         )
         .route(
             "/api/channels/{id}/refresh",

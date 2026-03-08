@@ -194,7 +194,10 @@ pub async fn regenerate_summary(
 
 pub async fn health_ai(State(state): State<AppState>) -> impl IntoResponse {
     let available = state.summarizer.is_available().await;
-    Json(serde_json::json!({ "available": available }))
+    let status = state
+        .summarizer
+        .indicator_status(state.cloud_cooldown.is_active(), available);
+    Json(crate::models::AiHealthPayload { available, status })
 }
 
 pub async fn update_summary(
@@ -409,9 +412,7 @@ pub(crate) async fn ensure_summary(
             let video_id_owned = video_id.to_string();
             tokio::spawn(async move {
                 let conn = state_clone.db.lock().await;
-                let _ =
-                    db::update_video_summary_status(&conn, &video_id_owned, next_status)
-                        .await;
+                let _ = db::update_video_summary_status(&conn, &video_id_owned, next_status).await;
             });
             (status, error_msg)
         })?;

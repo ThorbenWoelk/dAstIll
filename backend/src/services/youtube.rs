@@ -149,7 +149,11 @@ impl YouTubeService {
             return Ok(None);
         };
 
-        if self.quota_cooldown.as_ref().is_some_and(|cd| cd.is_active()) {
+        if self
+            .quota_cooldown
+            .as_ref()
+            .is_some_and(|cd| cd.is_active())
+        {
             return Ok(Some(false));
         }
 
@@ -563,7 +567,8 @@ impl YouTubeService {
                             }
 
                             if is_missing && total_selected_ids.len() < limit {
-                                tracing::info!(
+                                tracing::debug!(
+                                    channel_id = %channel_id,
                                     video_id = %id,
                                     title = %metadata.title,
                                     published_at = %pub_at.to_rfc3339(),
@@ -728,7 +733,8 @@ impl YouTubeService {
                     continue;
                 }
 
-                tracing::info!(
+                tracing::debug!(
+                    channel_id = %channel_id,
                     video_id = %video_id,
                     title = %item.snippet.title,
                     published_at = %effective_published_at.to_rfc3339(),
@@ -888,10 +894,8 @@ impl YouTubeService {
 
                 // Look for continuation tokens in various common locations
                 if let Some(Value::String(token)) = map.get("continuation") {
-                    if token.len() > 20 {
-                        if continuation.is_none() {
-                            *continuation = Some(token.clone());
-                        }
+                    if token.len() > 20 && continuation.is_none() {
+                        *continuation = Some(token.clone());
                     }
                 }
 
@@ -1397,7 +1401,8 @@ impl YouTubeService {
                     .and_then(|d| chrono::DateTime::parse_from_rfc2822(d).ok())
                     .map(|dt| dt.with_timezone(&chrono::Utc))?;
 
-                tracing::info!(
+                tracing::debug!(
+                    channel_id = %channel_id,
                     video_id = %video_id,
                     title = %item.title().unwrap_or("Untitled"),
                     published_at = %published.to_rfc3339(),
@@ -1498,7 +1503,8 @@ impl YouTubeService {
 
                 let published_at = published?;
 
-                tracing::info!(
+                tracing::debug!(
+                    channel_id = %channel_id,
                     video_id = %video_id,
                     title = %title,
                     published_at = %published_at.to_rfc3339(),
@@ -1671,7 +1677,11 @@ mod tests {
         let videos = YouTubeService::parse_videos_from_feed(feed.as_bytes(), "UC_TEST")
             .expect("Atom feed should parse");
 
-        assert_eq!(videos.len(), 0, "Atom entries without published/updated should be skipped");
+        assert_eq!(
+            videos.len(),
+            0,
+            "Atom entries without published/updated should be skipped"
+        );
     }
 
     #[test]
