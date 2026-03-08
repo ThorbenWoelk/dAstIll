@@ -12,6 +12,12 @@ pub struct CloudCooldown {
     started_epoch_ms: AtomicU64,
 }
 
+impl Default for CloudCooldown {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CloudCooldown {
     pub fn new() -> Self {
         Self {
@@ -52,6 +58,12 @@ pub struct YouTubeQuotaCooldown {
     started_epoch_ms: AtomicU64,
 }
 
+impl Default for YouTubeQuotaCooldown {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl YouTubeQuotaCooldown {
     pub fn new() -> Self {
         Self {
@@ -89,6 +101,12 @@ impl YouTubeQuotaCooldown {
 /// Once activated, all transcript extraction attempts are skipped for 1 hour.
 pub struct TranscriptCooldown {
     started_epoch_ms: AtomicU64,
+}
+
+impl Default for TranscriptCooldown {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl TranscriptCooldown {
@@ -138,7 +156,20 @@ pub fn is_rate_limited(err: &rig::completion::PromptError) -> bool {
     msg.contains("429") && msg.contains("Too Many Requests")
 }
 
-/// Helper to check if a model is "cloud" (ends with :cloud suffix).
+/// Helper to check if a model is "cloud".
+/// Some providers expose names ending in `:cloud`, others in `-cloud`.
 pub fn is_cloud_model(model: &str) -> bool {
-    model.ends_with(":cloud")
+    model.ends_with(":cloud") || model.ends_with("-cloud")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_cloud_model;
+
+    #[test]
+    fn detects_cloud_models_with_colon_or_hyphen_suffixes() {
+        assert!(is_cloud_model("minimax-m2.5:cloud"));
+        assert!(is_cloud_model("qwen3-coder:480b-cloud"));
+        assert!(!is_cloud_model("qwen3:8b"));
+    }
 }
