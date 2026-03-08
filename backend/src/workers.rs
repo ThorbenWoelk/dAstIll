@@ -5,7 +5,7 @@ use tokio::time::sleep;
 
 use crate::db;
 use crate::handlers::content;
-use crate::models::{ContentStatus, Video};
+use crate::models::{AiStatus, ContentStatus, Video};
 use crate::state::AppState;
 
 const QUEUE_SCAN_LIMIT: usize = 4;
@@ -47,6 +47,14 @@ fn should_queue_summary_auto_regeneration(quality_score: u8, auto_regen_attempts
         && auto_regen_attempts < content::MAX_SUMMARY_AUTO_REGEN_ATTEMPTS
 }
 
+fn should_run_summary_evaluation(evaluator_status: AiStatus, evaluator_model: &str) -> bool {
+    match evaluator_status {
+        AiStatus::Cloud => true,
+        AiStatus::LocalOnly => !crate::services::is_cloud_model(evaluator_model),
+        AiStatus::Offline => false,
+    }
+}
+
 pub fn spawn_queue_worker(state: AppState) {
     tokio::spawn(async move {
         tracing::info!(
@@ -57,9 +65,13 @@ pub fn spawn_queue_worker(state: AppState) {
         loop {
             let queue = {
                 let conn = state.db.lock().await;
-                db::list_videos_for_queue_processing(&conn, QUEUE_SCAN_LIMIT, MAX_DISTILLATION_RETRIES)
-                    .await
-                    .map_err(|err| err.to_string())
+                db::list_videos_for_queue_processing(
+                    &conn,
+                    QUEUE_SCAN_LIMIT,
+                    MAX_DISTILLATION_RETRIES,
+                )
+                .await
+                .map_err(|err| err.to_string())
             };
 
             let queue = match queue {
@@ -73,7 +85,7 @@ pub fn spawn_queue_worker(state: AppState) {
 
             for video in queue {
                 let task = next_queue_task(&video);
-                
+
                 // Fast-path skip if transcript rate limits apply to avoid log spam
                 if task == QueueTask::Transcript && state.transcript_cooldown.is_active() {
                     continue;
@@ -157,7 +169,10 @@ async fn refresh_all_channels(state: &AppState) {
                 let conn = state.db.lock().await;
                 let mut n = 0;
                 for video in videos {
-                    if db::insert_video(&conn, &video).await.is_ok() {
+                    if matches!(
+                        db::insert_video(&conn, &video).await,
+                        Ok(db::VideoInsertOutcome::Inserted)
+                    ) {
                         n += 1;
                     }
                 }
@@ -221,7 +236,10 @@ async fn fill_channel_gaps(
     let conn = state.db.lock().await;
     let mut inserted = 0usize;
     for video in videos {
-        if db::insert_video(&conn, &video).await.is_ok() {
+        if matches!(
+            db::insert_video(&conn, &video).await,
+            Ok(db::VideoInsertOutcome::Inserted)
+        ) {
             inserted += 1;
         }
     }
@@ -337,8 +355,16 @@ pub fn spawn_summary_evaluation_worker(state: AppState) {
                 continue;
             }
 
-            if !state.summary_evaluator.is_available().await {
-                tracing::warn!("summary evaluation skipped - ollama unavailable");
+            let evaluator_available = state.summary_evaluator.is_available().await;
+            let evaluator_status = state
+                .summary_evaluator
+                .indicator_status(state.cloud_cooldown.is_active(), evaluator_available);
+
+            if !should_run_summary_evaluation(evaluator_status, state.summary_evaluator.model()) {
+                tracing::warn!(
+                    evaluator_status = ?evaluator_status,
+                    "summary evaluation skipped - preserving local capacity for summary generation"
+                );
                 sleep(SUMMARY_EVAL_POLL_INTERVAL).await;
                 continue;
             }
@@ -420,8 +446,11 @@ pub fn spawn_summary_evaluation_worker(state: AppState) {
 mod tests {
     use chrono::Utc;
 
-    use super::{QueueTask, next_queue_task, should_queue_summary_auto_regeneration};
-    use crate::models::{ContentStatus, Video};
+    use super::{
+        QueueTask, next_queue_task, should_queue_summary_auto_regeneration,
+        should_run_summary_evaluation,
+    };
+    use crate::models::{AiStatus, ContentStatus, Video};
 
     fn video_with_statuses(
         transcript_status: ContentStatus,
@@ -481,5 +510,25 @@ mod tests {
         assert!(!should_queue_summary_auto_regeneration(7, 0));
         assert!(!should_queue_summary_auto_regeneration(9, 0));
         assert!(!should_queue_summary_auto_regeneration(6, 2));
+    }
+
+    #[test]
+    fn summary_evaluation_runs_only_when_it_wont_consume_local_fallback_capacity() {
+        assert!(should_run_summary_evaluation(
+            AiStatus::Cloud,
+            "qwen3-coder:480b-cloud"
+        ));
+        assert!(!should_run_summary_evaluation(
+            AiStatus::LocalOnly,
+            "qwen3-coder:480b-cloud"
+        ));
+        assert!(should_run_summary_evaluation(
+            AiStatus::LocalOnly,
+            "qwen3:8b"
+        ));
+        assert!(!should_run_summary_evaluation(
+            AiStatus::Offline,
+            "qwen3-coder:480b-cloud"
+        ));
     }
 }

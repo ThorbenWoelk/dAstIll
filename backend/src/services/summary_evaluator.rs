@@ -9,9 +9,9 @@ use std::time::Instant;
 use thiserror::Error;
 use tokio::sync::Semaphore;
 
-use crate::models::SummaryEvaluationResult;
-use crate::services::{build_http_client, is_cloud_model, is_rate_limited};
+use crate::models::{AiStatus, SummaryEvaluationResult};
 use crate::services::http::CloudCooldown;
+use crate::services::{build_http_client, is_cloud_model, is_rate_limited};
 
 #[derive(Error, Debug)]
 pub enum SummaryEvaluatorError {
@@ -35,12 +35,14 @@ pub struct SummaryEvaluatorService {
 }
 
 impl SummaryEvaluatorService {
+    pub const MIN_EVALUATOR_PARAMS_B: u16 = 41;
+
     pub fn new() -> Self {
         Self {
             client: build_http_client(),
             base_url: "http://localhost:11434".to_string(),
             model: "qwen3-coder:480b-cloud".to_string(),
-            fallback_model: Some("qwen3:8b".to_string()),
+            fallback_model: None,
             cloud_cooldown: None,
             ollama_semaphore: None,
         }
@@ -83,6 +85,28 @@ impl SummaryEvaluatorService {
         self
     }
 
+    pub fn validate_model_policy(model: &str) -> Result<(), String> {
+        if !is_cloud_model(model) {
+            return Err(format!(
+                "summary evaluator model must be a cloud model, got `{model}`"
+            ));
+        }
+
+        let params_b = parse_model_params_billions(model).ok_or_else(|| {
+            format!(
+                "summary evaluator model must include a parseable parameter size, got `{model}`"
+            )
+        })?;
+
+        if params_b < Self::MIN_EVALUATOR_PARAMS_B {
+            return Err(format!(
+                "summary evaluator model must be >40B parameters, got `{model}`"
+            ));
+        }
+
+        Ok(())
+    }
+
     pub async fn is_available(&self) -> bool {
         let base_url = &self.base_url;
         self.client
@@ -91,6 +115,26 @@ impl SummaryEvaluatorService {
             .await
             .map(|r| r.status().is_success())
             .unwrap_or(false)
+    }
+
+    pub fn indicator_status(
+        &self,
+        cloud_cooldown_active: bool,
+        endpoint_available: bool,
+    ) -> AiStatus {
+        if !endpoint_available {
+            return AiStatus::Offline;
+        }
+
+        if !is_cloud_model(&self.model) {
+            return AiStatus::LocalOnly;
+        }
+
+        if !cloud_cooldown_active {
+            return AiStatus::Cloud;
+        }
+
+        AiStatus::Offline
     }
 
     pub async fn evaluate(
@@ -156,37 +200,16 @@ impl SummaryEvaluatorService {
                 .is_some_and(|cd| cd.is_active());
 
         let (response, model_used) = if cooldown_active {
-            let fallback = self.fallback_model.as_deref().ok_or_else(|| {
-                SummaryEvaluatorError::EvaluationFailed(
-                    "cloud cooldown active and no fallback model configured".to_string(),
-                )
-            })?;
-            tracing::info!(
-                operation = operation,
-                skipped_model = %self.model,
-                fallback_model = %fallback,
-                "skipping cloud model due to active cooldown"
-            );
-
-            // Acquire semaphore for fallback (presumably local) model
-            let _permit = if !is_cloud_model(fallback) {
-                if let Some(sem) = &self.ollama_semaphore {
-                    Some(sem.acquire().await.map_err(|e| SummaryEvaluatorError::EvaluationFailed(e.to_string()))?)
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-
-            let fallback_agent = ollama_client.agent(fallback).preamble(preamble).build();
-            let resp = fallback_agent.prompt(prompt).await?;
-            (resp, fallback.to_string())
+            return Err(SummaryEvaluatorError::NotAvailable);
         } else {
             // Acquire semaphore for primary model if it's not cloud
             let _permit = if !is_cloud {
                 if let Some(sem) = &self.ollama_semaphore {
-                    Some(sem.acquire().await.map_err(|e| SummaryEvaluatorError::EvaluationFailed(e.to_string()))?)
+                    Some(
+                        sem.acquire()
+                            .await
+                            .map_err(|e| SummaryEvaluatorError::EvaluationFailed(e.to_string()))?,
+                    )
                 } else {
                     None
                 }
@@ -203,34 +226,17 @@ impl SummaryEvaluatorService {
                             cd.activate();
                         }
                     }
-                    let fallback = self.fallback_model.as_deref().ok_or_else(|| {
-                        SummaryEvaluatorError::EvaluationFailed(format!(
-                            "rate limited by provider and no fallback model configured: {err}"
-                        ))
-                    })?;
-                    tracing::warn!(
-                        operation = operation,
-                        primary_model = %self.model,
-                        fallback_model = %fallback,
-                        error = %err,
-                        "rate limited - falling back to local model"
-                    );
+                    if is_cloud {
+                        tracing::warn!(
+                            operation = operation,
+                            primary_model = %self.model,
+                            error = %err,
+                            "rate limited - deferring summary evaluation to preserve local capacity"
+                        );
+                        return Err(SummaryEvaluatorError::NotAvailable);
+                    }
 
-                    // Acquire semaphore for fallback (presumably local) model
-                    let _permit = if !is_cloud_model(fallback) {
-                        if let Some(sem) = &self.ollama_semaphore {
-                            Some(sem.acquire().await.map_err(|e| SummaryEvaluatorError::EvaluationFailed(e.to_string()))?)
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    };
-
-                    let fallback_agent =
-                        ollama_client.agent(fallback).preamble(preamble).build();
-                    let resp = fallback_agent.prompt(prompt).await?;
-                    (resp, fallback.to_string())
+                    return Err(err.into());
                 }
                 Err(err) => return Err(err.into()),
             }
@@ -253,12 +259,38 @@ impl SummaryEvaluatorService {
     }
 }
 
+fn parse_model_params_billions(model: &str) -> Option<u16> {
+    let chars: Vec<char> = model.chars().collect();
+    let mut index = 0usize;
+    let mut found = None;
+
+    while index < chars.len() {
+        if !chars[index].is_ascii_digit() {
+            index += 1;
+            continue;
+        }
+
+        let start = index;
+        while index < chars.len() && chars[index].is_ascii_digit() {
+            index += 1;
+        }
+
+        if index < chars.len() && chars[index].eq_ignore_ascii_case(&'b') {
+            let digits: String = chars[start..index].iter().collect();
+            if let Ok(value) = digits.parse::<u16>() {
+                found = Some(value);
+            }
+        }
+    }
+
+    found
+}
+
 impl Default for SummaryEvaluatorService {
     fn default() -> Self {
         Self::new()
     }
 }
-
 
 #[derive(Deserialize)]
 struct EvaluatorResponse {
@@ -293,12 +325,65 @@ fn parse_evaluation_response(raw: &str) -> Result<SummaryEvaluationResult, Summa
 #[cfg(test)]
 mod tests {
     use super::{SummaryEvaluatorService, parse_evaluation_response};
+    use crate::models::AiStatus;
 
     #[tokio::test]
     async fn is_available_returns_false_for_invalid_url() {
         let service =
             SummaryEvaluatorService::with_config("://invalid-url", "qwen3-coder:480b-cloud");
         assert!(!service.is_available().await);
+    }
+
+    #[test]
+    fn indicator_status_reports_cloud_when_cloud_evaluator_is_available() {
+        let service = SummaryEvaluatorService::with_config(
+            "http://localhost:11434",
+            "qwen3-coder:480b-cloud",
+        );
+        assert_eq!(service.indicator_status(false, true), AiStatus::Cloud);
+    }
+
+    #[test]
+    fn indicator_status_reports_local_only_when_local_evaluator_is_primary() {
+        let service = SummaryEvaluatorService::with_config("http://localhost:11434", "qwen3:8b");
+        assert_eq!(service.indicator_status(false, true), AiStatus::LocalOnly);
+    }
+
+    #[test]
+    fn indicator_status_reports_offline_when_cloud_evaluator_is_in_cooldown() {
+        let service = SummaryEvaluatorService::with_config(
+            "http://localhost:11434",
+            "qwen3-coder:480b-cloud",
+        )
+        .with_fallback_model(Some("qwen3:8b".to_string()));
+        assert_eq!(service.indicator_status(true, true), AiStatus::Offline);
+    }
+
+    #[test]
+    fn evaluator_model_policy_accepts_large_cloud_models() {
+        assert!(SummaryEvaluatorService::validate_model_policy("qwen3-coder:480b-cloud").is_ok());
+        assert!(SummaryEvaluatorService::validate_model_policy("llama3.3:70b-cloud").is_ok());
+    }
+
+    #[test]
+    fn evaluator_model_policy_rejects_local_models() {
+        let err = SummaryEvaluatorService::validate_model_policy("qwen3:32b")
+            .expect_err("local evaluator model should be rejected");
+        assert!(err.contains("cloud"));
+    }
+
+    #[test]
+    fn evaluator_model_policy_rejects_models_at_or_below_40b() {
+        let err = SummaryEvaluatorService::validate_model_policy("qwen3-coder:40b-cloud")
+            .expect_err("40b cloud evaluator model should be rejected");
+        assert!(err.contains(">40B"));
+    }
+
+    #[test]
+    fn evaluator_model_policy_rejects_models_without_parseable_size() {
+        let err = SummaryEvaluatorService::validate_model_policy("custom-evaluator:cloud")
+            .expect_err("size-less cloud evaluator model should be rejected");
+        assert!(err.contains("parameter size"));
     }
 
     #[test]
