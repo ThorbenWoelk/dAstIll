@@ -42,6 +42,7 @@
 <button
   bind:this={button}
   type="button"
+  id="ai-status-pill"
   class="inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)]"
   aria-expanded={open}
   aria-haspopup="dialog"
@@ -58,11 +59,15 @@
     aria-label="AI engine status details"
     class="fixed left-0 right-0 top-0 z-[9999] border-b border-[var(--border)] bg-[var(--surface)] p-3 shadow-lg"
   >
-    <div class="mx-auto flex max-w-[1440px] items-start justify-between gap-3 px-4">
+    <div
+      class="mx-auto flex max-w-[1440px] items-start justify-between gap-3 px-4"
+    >
       <div>
         <div class="mb-1 flex items-center gap-2">
           <span class={`h-2.5 w-2.5 rounded-full ${dotClass}`}></span>
-          <p class="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--foreground)]">
+          <p
+            class="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--foreground)]"
+          >
             {title}
           </p>
         </div>
