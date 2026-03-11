@@ -1,8 +1,6 @@
 use reqwest::Client;
-use rig::client::Nothing;
 use rig::completion::Prompt;
 use rig::prelude::*;
-use rig::providers::ollama;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use thiserror::Error;
@@ -11,13 +9,18 @@ use tokio::time::{Instant as TokioInstant, timeout};
 
 use crate::models::AiStatus;
 use crate::services::http::CloudCooldown;
-use crate::services::{build_http_client, is_cloud_model, is_rate_limited};
+use crate::services::is_rate_limited;
+use crate::services::ollama::{CooldownStatusPolicy, OllamaCore};
 
 pub const MAX_TRANSCRIPT_FORMAT_ATTEMPTS: usize = 5;
 pub const TRANSCRIPT_FORMAT_HARD_TIMEOUT_SECS: u64 = 300;
 const TRANSCRIPT_FORMAT_HARD_TIMEOUT: Duration =
     Duration::from_secs(TRANSCRIPT_FORMAT_HARD_TIMEOUT_SECS);
-const SUMMARY_PREAMBLE: &str = "You are a meticulous transcript-grounded summarizer. Use only facts explicitly present in the provided transcript and title. Never invent details.";
+
+const SUMMARY_PREAMBLE: &str = "You are a meticulous, comprehensive transcript-grounded summarizer. \
+    Your summaries must capture ALL key points from the transcript - never skip or gloss over content. \
+    Use only facts explicitly present in the provided transcript and title. Never invent details. \
+    Scale summary length proportionally to transcript length.";
 const TRANSCRIPT_CLEAN_PREAMBLE: &str = "You are a deterministic transcript formatter. Preserve transcript body tokens exactly and only improve layout.";
 
 #[derive(Debug, Clone)]
@@ -53,72 +56,40 @@ pub enum SummarizerError {
 }
 
 pub struct SummarizerService {
-    client: Client,
-    base_url: String,
-    model: String,
-    fallback_model: Option<String>,
-    cloud_cooldown: Option<Arc<CloudCooldown>>,
-    ollama_semaphore: Option<Arc<Semaphore>>,
+    core: OllamaCore,
 }
 
 impl SummarizerService {
-    pub fn new() -> Self {
-        Self {
-            client: build_http_client(),
-            base_url: "http://localhost:11434".to_string(),
-            model: "minimax-m2.5:cloud".to_string(),
-            fallback_model: Some("qwen3:8b".to_string()),
-            cloud_cooldown: None,
-            ollama_semaphore: None,
-        }
-    }
-
     pub fn with_config(base_url: &str, model: &str) -> Self {
         Self {
-            client: build_http_client(),
-            base_url: base_url.to_string(),
-            model: model.to_string(),
-            fallback_model: None,
-            cloud_cooldown: None,
-            ollama_semaphore: None,
+            core: OllamaCore::new(base_url, model),
         }
     }
 
     pub fn with_client(client: Client, base_url: &str, model: &str) -> Self {
         Self {
-            client,
-            base_url: base_url.to_string(),
-            model: model.to_string(),
-            fallback_model: None,
-            cloud_cooldown: None,
-            ollama_semaphore: None,
+            core: OllamaCore::with_client(client, base_url, model),
         }
     }
 
     pub fn with_fallback_model(mut self, fallback_model: Option<String>) -> Self {
-        self.fallback_model = fallback_model;
+        self.core = self.core.with_fallback_model(fallback_model);
         self
     }
 
     pub fn with_cloud_cooldown(mut self, cooldown: Arc<CloudCooldown>) -> Self {
-        self.cloud_cooldown = Some(cooldown);
+        self.core = self.core.with_cloud_cooldown(cooldown);
         self
     }
 
     pub fn with_ollama_semaphore(mut self, semaphore: Arc<Semaphore>) -> Self {
-        self.ollama_semaphore = Some(semaphore);
+        self.core = self.core.with_ollama_semaphore(semaphore);
         self
     }
 
     /// Check if Ollama is available.
     pub async fn is_available(&self) -> bool {
-        let base_url = &self.base_url;
-        self.client
-            .get(format!("{base_url}/api/tags"))
-            .send()
-            .await
-            .map(|r| r.status().is_success())
-            .unwrap_or(false)
+        self.core.is_available().await
     }
 
     pub fn indicator_status(
@@ -126,22 +97,11 @@ impl SummarizerService {
         cloud_cooldown_active: bool,
         endpoint_available: bool,
     ) -> AiStatus {
-        if !endpoint_available {
-            return AiStatus::Offline;
-        }
-
-        if !is_cloud_model(&self.model) {
-            return AiStatus::LocalOnly;
-        }
-
-        if !cloud_cooldown_active {
-            return AiStatus::Cloud;
-        }
-
-        match self.fallback_model.as_deref() {
-            Some(fallback_model) if !is_cloud_model(fallback_model) => AiStatus::LocalOnly,
-            _ => AiStatus::Offline,
-        }
+        self.core.indicator_status(
+            cloud_cooldown_active,
+            endpoint_available,
+            CooldownStatusPolicy::UseLocalFallback,
+        )
     }
 
     /// Generate a summary from transcript text.
@@ -251,15 +211,7 @@ impl SummarizerService {
     }
 
     pub fn model(&self) -> &str {
-        &self.model
-    }
-
-    fn build_ollama_client(&self) -> Result<ollama::Client, SummarizerError> {
-        ollama::Client::builder()
-            .api_key(Nothing)
-            .base_url(&self.base_url)
-            .build()
-            .map_err(|err| SummarizerError::GenerationFailed(err.to_string()))
+        self.core.model()
     }
 
     /// Returns `(response_text, model_used)`.
@@ -271,105 +223,75 @@ impl SummarizerService {
     ) -> Result<(String, String), SummarizerError> {
         tracing::info!(
             operation = operation,
-            model = %self.model,
-            base_url = %self.base_url,
+            model = %self.model(),
+            base_url = %self.core.base_url(),
             prompt_chars = prompt.len(),
             "starting ollama prompt"
         );
         let started = Instant::now();
-        let ollama_client = self.build_ollama_client()?;
+        let ollama_client = self
+            .core
+            .build_ollama_client()
+            .map_err(SummarizerError::GenerationFailed)?;
 
         // Skip cloud model entirely if cooldown is active
-        let is_cloud = is_cloud_model(&self.model);
-        let cooldown_active = is_cloud
-            && self
-                .cloud_cooldown
-                .as_ref()
-                .is_some_and(|cd| cd.is_active());
+        let is_cloud = self.core.uses_cloud_model();
+        let cooldown_active = self.core.is_cloud_cooldown_active();
 
         let (response, model_used) = if cooldown_active {
-            let fallback = self.fallback_model.as_deref().ok_or_else(|| {
+            let fallback = self.core.fallback_model().ok_or_else(|| {
                 SummarizerError::GenerationFailed(
                     "cloud cooldown active and no fallback model configured".to_string(),
                 )
             })?;
             tracing::info!(
                 operation = operation,
-                skipped_model = %self.model,
+                skipped_model = %self.model(),
                 fallback_model = %fallback,
                 "skipping cloud model due to active cooldown"
             );
 
-            // Acquire semaphore for fallback (presumably local) model
-            let _permit = if !is_cloud_model(fallback) {
-                if let Some(sem) = &self.ollama_semaphore {
-                    Some(
-                        sem.acquire()
-                            .await
-                            .map_err(|e| SummarizerError::GenerationFailed(e.to_string()))?,
-                    )
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
+            let _permit = self
+                .core
+                .acquire_local_permit(fallback)
+                .await
+                .map_err(SummarizerError::GenerationFailed)?;
 
             let fallback_agent = ollama_client.agent(fallback).preamble(preamble).build();
             let resp = fallback_agent.prompt(prompt).await?;
             (resp, fallback.to_string())
         } else {
-            // Acquire semaphore for primary model if it's not cloud
-            let _permit = if !is_cloud {
-                if let Some(sem) = &self.ollama_semaphore {
-                    Some(
-                        sem.acquire()
-                            .await
-                            .map_err(|e| SummarizerError::GenerationFailed(e.to_string()))?,
-                    )
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
+            let _permit = self
+                .core
+                .acquire_local_permit(self.model())
+                .await
+                .map_err(SummarizerError::GenerationFailed)?;
 
-            let agent = ollama_client.agent(&self.model).preamble(preamble).build();
+            let agent = ollama_client.agent(self.model()).preamble(preamble).build();
             match agent.prompt(prompt).await {
-                Ok(resp) => (resp, self.model.clone()),
+                Ok(resp) => (resp, self.model().to_string()),
                 Err(err) if is_rate_limited(&err) => {
-                    if let Some(cd) = &self.cloud_cooldown {
-                        if is_cloud {
-                            cd.activate();
-                        }
+                    if is_cloud {
+                        self.core.activate_cloud_cooldown();
                     }
-                    let fallback = self.fallback_model.as_deref().ok_or_else(|| {
+                    let fallback = self.core.fallback_model().ok_or_else(|| {
                         SummarizerError::GenerationFailed(format!(
                             "rate limited by provider and no fallback model configured: {err}"
                         ))
                     })?;
                     tracing::warn!(
                         operation = operation,
-                        primary_model = %self.model,
+                        primary_model = %self.model(),
                         fallback_model = %fallback,
                         error = %err,
                         "rate limited - falling back to local model"
                     );
 
-                    // Acquire semaphore for fallback (presumably local) model
-                    // We drop the previous permit (if any) by letting _permit go out of scope or re-assigning
-                    let _permit =
-                        if !is_cloud_model(fallback) {
-                            if let Some(sem) = &self.ollama_semaphore {
-                                Some(sem.acquire().await.map_err(|e| {
-                                    SummarizerError::GenerationFailed(e.to_string())
-                                })?)
-                            } else {
-                                None
-                            }
-                        } else {
-                            None
-                        };
+                    let _permit = self
+                        .core
+                        .acquire_local_permit(fallback)
+                        .await
+                        .map_err(SummarizerError::GenerationFailed)?;
 
                     let fallback_agent = ollama_client.agent(fallback).preamble(preamble).build();
                     let resp = fallback_agent.prompt(prompt).await?;
@@ -391,12 +313,6 @@ impl SummarizerService {
             ));
         }
         Ok((response, model_used))
-    }
-}
-
-impl Default for SummarizerService {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -441,35 +357,55 @@ Safety fallback:
 }
 
 fn build_summary_prompt(transcript: &str, video_title: &str) -> String {
+    let word_count = transcript.split_whitespace().count();
+    let length_guidance = if word_count < 500 {
+        "This is a short transcript. Keep the summary concise but still capture every point made."
+    } else if word_count < 2000 {
+        "This is a medium-length transcript. Provide a thorough summary that covers all topics discussed."
+    } else if word_count < 5000 {
+        "This is a long transcript. Provide a detailed, comprehensive summary. Use sub-sections under Key Points if the video covers multiple distinct topics. Every argument, example, and conclusion in the transcript should be reflected."
+    } else {
+        "This is a very long transcript. Provide an extensive, well-structured summary. Use sub-sections and group related points by theme. Leave nothing out - every significant topic, argument, example, data point, and conclusion must appear in the summary."
+    };
+
     format!(
         r#"Video Title: {video_title}
 
-Transcript (authoritative source):
+Transcript (authoritative source - {word_count} words):
 <<<TRANSCRIPT_START>>>
 {transcript}
 <<<TRANSCRIPT_END>>>
 
+Length guidance: {length_guidance}
+
 Task:
-Create a concise markdown summary grounded only in the transcript.
+Create a comprehensive markdown summary grounded only in the transcript. The summary must capture ALL key points, arguments, examples, and conclusions from the transcript. Nothing should be skipped or glossed over.
 
 Reliability rules:
 - Use only information explicitly present in the transcript and title.
 - Do not invent names, numbers, claims, timelines, or conclusions.
 - If a point is uncertain or incomplete in the transcript, say so briefly.
 - Keep wording precise and avoid speculative language.
-- Start directly with section heading ## Overview - no top title line.
+- Start directly with section heading ## TL;DR - no top title line.
 
 Output format (exact section headings):
+## TL;DR
+- Bullet-point list of the most important takeaways (3-7 bullets depending on content density).
+
 ## Overview
-(2-3 sentence factual overview)
+Factual overview paragraph covering the video's main subject, context, and purpose. Scale length with transcript length (2-3 sentences for short videos, a full paragraph for long ones).
 
 ## Key Points
-- **Point name**: transcript-grounded explanation.
-- **Point name**: transcript-grounded explanation.
+Cover every distinct topic, argument, or segment from the transcript. Group related points under descriptive sub-headings if the video covers multiple themes. Each point must include the actual substance - not just a label but the specific claim, reasoning, or evidence from the transcript.
+
+- **Point name**: transcript-grounded explanation with specifics (names, numbers, examples mentioned).
+- **Point name**: transcript-grounded explanation with specifics.
+(Add as many points as needed to fully represent the transcript content.)
 
 ## Takeaways
 - Actionable or memorable takeaway grounded in transcript.
-- Actionable or memorable takeaway grounded in transcript."#
+- Actionable or memorable takeaway grounded in transcript.
+(Scale number of takeaways with content density.)"#
     )
 }
 
@@ -859,9 +795,26 @@ mod tests {
         assert!(
             prompt.contains("Do not invent names, numbers, claims, timelines, or conclusions.")
         );
-        assert!(prompt.contains("Start directly with section heading ## Overview"));
+        assert!(prompt.contains("Start directly with section heading ## TL;DR"));
         assert!(prompt.contains("## Key Points"));
         assert!(prompt.contains("## Takeaways"));
+        assert!(prompt.contains("## Overview"));
+        assert!(prompt.contains("Length guidance:"));
+    }
+
+    #[test]
+    fn build_summary_prompt_scales_guidance_with_transcript_length() {
+        let short = build_summary_prompt("word ".repeat(100).trim(), "Short");
+        assert!(short.contains("short transcript"));
+
+        let medium = build_summary_prompt(&"word ".repeat(1000), "Medium");
+        assert!(medium.contains("medium-length transcript"));
+
+        let long = build_summary_prompt(&"word ".repeat(3000), "Long");
+        assert!(long.contains("long transcript"));
+
+        let very_long = build_summary_prompt(&"word ".repeat(6000), "Very Long");
+        assert!(very_long.contains("very long transcript"));
     }
 
     #[test]
@@ -877,34 +830,32 @@ mod tests {
 
     #[test]
     fn indicator_status_reports_cloud_when_primary_model_is_cloud_and_available() {
-        let summarizer =
-            SummarizerService::with_config("http://localhost:11434", "minimax-m2.5:cloud")
-                .with_fallback_model(Some("qwen3:8b".to_string()));
+        let summarizer = SummarizerService::with_config("http://localhost:11434", "glm-5:cloud")
+            .with_fallback_model(Some("qwen3-coder:30b".to_string()));
 
         assert_eq!(summarizer.indicator_status(false, true), AiStatus::Cloud);
     }
 
     #[test]
     fn indicator_status_reports_local_only_when_cloud_cooldown_uses_local_fallback() {
-        let summarizer =
-            SummarizerService::with_config("http://localhost:11434", "minimax-m2.5:cloud")
-                .with_fallback_model(Some("qwen3:8b".to_string()));
+        let summarizer = SummarizerService::with_config("http://localhost:11434", "glm-5:cloud")
+            .with_fallback_model(Some("qwen3-coder:30b".to_string()));
 
         assert_eq!(summarizer.indicator_status(true, true), AiStatus::LocalOnly);
     }
 
     #[test]
     fn indicator_status_reports_offline_when_cloud_cooldown_has_no_local_fallback() {
-        let summarizer =
-            SummarizerService::with_config("http://localhost:11434", "minimax-m2.5:cloud")
-                .with_fallback_model(None);
+        let summarizer = SummarizerService::with_config("http://localhost:11434", "glm-5:cloud")
+            .with_fallback_model(None);
 
         assert_eq!(summarizer.indicator_status(true, true), AiStatus::Offline);
     }
 
     #[test]
     fn indicator_status_reports_local_only_for_local_primary_model() {
-        let summarizer = SummarizerService::with_config("http://localhost:11434", "qwen3:8b");
+        let summarizer =
+            SummarizerService::with_config("http://localhost:11434", "qwen3-coder:30b");
 
         assert_eq!(
             summarizer.indicator_status(false, true),
@@ -914,9 +865,8 @@ mod tests {
 
     #[test]
     fn indicator_status_reports_offline_when_endpoint_is_unreachable() {
-        let summarizer =
-            SummarizerService::with_config("http://localhost:11434", "minimax-m2.5:cloud")
-                .with_fallback_model(Some("qwen3:8b".to_string()));
+        let summarizer = SummarizerService::with_config("http://localhost:11434", "glm-5:cloud")
+            .with_fallback_model(Some("qwen3-coder:30b".to_string()));
 
         assert_eq!(summarizer.indicator_status(false, false), AiStatus::Offline);
     }
@@ -935,12 +885,12 @@ mod tests {
     }
 
     fn live_summary_model() -> String {
-        std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "minimax-m2.5:cloud".to_string())
+        std::env::var("OLLAMA_MODEL").expect("OLLAMA_MODEL must be set for live Ollama tests")
     }
 
     fn live_evaluator_model() -> String {
         std::env::var("SUMMARY_EVALUATOR_MODEL")
-            .unwrap_or_else(|_| "qwen3-coder:480b-cloud".to_string())
+            .expect("SUMMARY_EVALUATOR_MODEL must be set for live Ollama tests")
     }
 
     #[tokio::test]

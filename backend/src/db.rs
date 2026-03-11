@@ -104,159 +104,73 @@ async fn run_migrations(conn: &Connection) -> Result<(), libsql::Error> {
         "#,
     )
     .await?;
-    ensure_videos_is_short_column(conn).await?;
-    ensure_videos_acknowledged_column(conn).await?;
-    ensure_videos_retry_count_column(conn).await?;
-    ensure_summary_quality_columns(conn).await?;
-    ensure_channels_earliest_sync_date_column(conn).await?;
-    ensure_channels_earliest_sync_date_user_set_column(conn).await?;
+    ensure_column(
+        conn,
+        "videos",
+        "is_short",
+        "is_short INTEGER NOT NULL DEFAULT 0",
+    )
+    .await?;
+    ensure_column(
+        conn,
+        "videos",
+        "acknowledged",
+        "acknowledged INTEGER NOT NULL DEFAULT 0",
+    )
+    .await?;
+    ensure_column(
+        conn,
+        "videos",
+        "retry_count",
+        "retry_count INTEGER NOT NULL DEFAULT 0",
+    )
+    .await?;
+    ensure_column(conn, "summaries", "quality_score", "quality_score INTEGER").await?;
+    ensure_column(
+        conn,
+        "summaries",
+        "auto_regen_attempts",
+        "auto_regen_attempts INTEGER NOT NULL DEFAULT 0",
+    )
+    .await?;
+    ensure_column(conn, "summaries", "quality_note", "quality_note TEXT").await?;
+    ensure_column(
+        conn,
+        "channels",
+        "earliest_sync_date",
+        "earliest_sync_date TEXT",
+    )
+    .await?;
+    ensure_column(
+        conn,
+        "channels",
+        "earliest_sync_date_user_set",
+        "earliest_sync_date_user_set INTEGER NOT NULL DEFAULT 0",
+    )
+    .await?;
     Ok(())
 }
 
-async fn ensure_channels_earliest_sync_date_user_set_column(
+async fn ensure_column(
     conn: &Connection,
+    table: &str,
+    column: &str,
+    col_definition: &str,
 ) -> Result<(), libsql::Error> {
-    let mut rows = conn.query("PRAGMA table_info(channels)", ()).await?;
-    let mut has_col = false;
+    let mut rows = conn
+        .query(&format!("PRAGMA table_info({table})"), ())
+        .await?;
     while let Some(row) = rows.next().await? {
         let name: String = row.get(1)?;
-        if name == "earliest_sync_date_user_set" {
-            has_col = true;
-            break;
+        if name == column {
+            return Ok(());
         }
     }
-
-    if !has_col {
-        conn.execute(
-            "ALTER TABLE channels ADD COLUMN earliest_sync_date_user_set INTEGER NOT NULL DEFAULT 0",
-            (),
-        )
-        .await?;
-    }
-
-    Ok(())
-}
-
-async fn ensure_channels_earliest_sync_date_column(conn: &Connection) -> Result<(), libsql::Error> {
-    let mut rows = conn.query("PRAGMA table_info(channels)", ()).await?;
-    let mut has_col = false;
-    while let Some(row) = rows.next().await? {
-        let name: String = row.get(1)?;
-        if name == "earliest_sync_date" {
-            has_col = true;
-            break;
-        }
-    }
-
-    if !has_col {
-        conn.execute(
-            "ALTER TABLE channels ADD COLUMN earliest_sync_date TEXT",
-            (),
-        )
-        .await?;
-    }
-
-    Ok(())
-}
-
-async fn ensure_videos_is_short_column(conn: &Connection) -> Result<(), libsql::Error> {
-    let mut rows = conn.query("PRAGMA table_info(videos)", ()).await?;
-    let mut has_is_short = false;
-    while let Some(row) = rows.next().await? {
-        let name: String = row.get(1)?;
-        if name == "is_short" {
-            has_is_short = true;
-            break;
-        }
-    }
-
-    if !has_is_short {
-        conn.execute(
-            "ALTER TABLE videos ADD COLUMN is_short INTEGER NOT NULL DEFAULT 0",
-            (),
-        )
-        .await?;
-    }
-
-    Ok(())
-}
-
-async fn ensure_videos_acknowledged_column(conn: &Connection) -> Result<(), libsql::Error> {
-    let mut rows = conn.query("PRAGMA table_info(videos)", ()).await?;
-    let mut has_col = false;
-    while let Some(row) = rows.next().await? {
-        let name: String = row.get(1)?;
-        if name == "acknowledged" {
-            has_col = true;
-            break;
-        }
-    }
-
-    if !has_col {
-        conn.execute(
-            "ALTER TABLE videos ADD COLUMN acknowledged INTEGER NOT NULL DEFAULT 0",
-            (),
-        )
-        .await?;
-    }
-
-    Ok(())
-}
-
-async fn ensure_videos_retry_count_column(conn: &Connection) -> Result<(), libsql::Error> {
-    let mut rows = conn.query("PRAGMA table_info(videos)", ()).await?;
-    let mut has_col = false;
-    while let Some(row) = rows.next().await? {
-        let name: String = row.get(1)?;
-        if name == "retry_count" {
-            has_col = true;
-            break;
-        }
-    }
-
-    if !has_col {
-        conn.execute(
-            "ALTER TABLE videos ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0",
-            (),
-        )
-        .await?;
-    }
-
-    Ok(())
-}
-
-async fn ensure_summary_quality_columns(conn: &Connection) -> Result<(), libsql::Error> {
-    let mut rows = conn.query("PRAGMA table_info(summaries)", ()).await?;
-    let mut has_quality_score = false;
-    let mut has_auto_regen_attempts = false;
-    let mut has_quality_note = false;
-    while let Some(row) = rows.next().await? {
-        let name: String = row.get(1)?;
-        if name == "quality_score" {
-            has_quality_score = true;
-        } else if name == "auto_regen_attempts" {
-            has_auto_regen_attempts = true;
-        } else if name == "quality_note" {
-            has_quality_note = true;
-        }
-    }
-
-    if !has_quality_score {
-        conn.execute("ALTER TABLE summaries ADD COLUMN quality_score INTEGER", ())
-            .await?;
-    }
-    if !has_auto_regen_attempts {
-        conn.execute(
-            "ALTER TABLE summaries ADD COLUMN auto_regen_attempts INTEGER NOT NULL DEFAULT 0",
-            (),
-        )
-        .await?;
-    }
-    if !has_quality_note {
-        conn.execute("ALTER TABLE summaries ADD COLUMN quality_note TEXT", ())
-            .await?;
-    }
-
+    conn.execute(
+        &format!("ALTER TABLE {table} ADD COLUMN {col_definition}"),
+        (),
+    )
+    .await?;
     Ok(())
 }
 
@@ -434,14 +348,43 @@ pub async fn insert_video(
     }
 }
 
+pub async fn bulk_insert_videos(
+    conn: &Connection,
+    videos: Vec<Video>,
+) -> Result<usize, libsql::Error> {
+    let mut inserted = 0;
+    for video in &videos {
+        if matches!(
+            insert_video(conn, video).await?,
+            VideoInsertOutcome::Inserted
+        ) {
+            inserted += 1;
+        }
+    }
+    Ok(inserted)
+}
+
 pub async fn get_video(conn: &Connection, id: &str) -> Result<Option<Video>, libsql::Error> {
-    let mut rows = conn.query("SELECT id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, acknowledged, retry_count FROM videos WHERE id = ?1", params![id]).await?;
+    let mut rows = conn.query("SELECT v.id, v.channel_id, v.title, v.thumbnail_url, v.published_at, v.is_short, v.transcript_status, v.summary_status, v.acknowledged, v.retry_count, s.quality_score FROM videos v LEFT JOIN summaries s ON s.video_id = v.id WHERE v.id = ?1", params![id]).await?;
 
     if let Some(row) = rows.next().await? {
         Ok(Some(row_to_video(&row)?))
     } else {
         Ok(None)
     }
+}
+
+/// Queue tab filter for splitting the queue view into separate concerns.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QueueFilter {
+    /// Legacy: transcript OR summary not ready.
+    AnyIncomplete,
+    /// Transcript not ready (pending, loading, failed).
+    TranscriptsOnly,
+    /// Transcript ready, but summary not ready.
+    SummariesOnly,
+    /// Both transcript and summary ready, but evaluation pending (quality_score IS NULL).
+    EvaluationsOnly,
 }
 
 pub async fn list_videos_by_channel(
@@ -451,12 +394,13 @@ pub async fn list_videos_by_channel(
     offset: usize,
     is_short: Option<bool>,
     acknowledged: Option<bool>,
-    queue_only: bool,
+    queue_filter: Option<QueueFilter>,
 ) -> Result<Vec<Video>, libsql::Error> {
     let mut sql = String::from(
-        "SELECT id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, acknowledged, retry_count
-         FROM videos
-         WHERE channel_id = ?1",
+        "SELECT v.id, v.channel_id, v.title, v.thumbnail_url, v.published_at, v.is_short, v.transcript_status, v.summary_status, v.acknowledged, v.retry_count, s.quality_score
+         FROM videos v
+         LEFT JOIN summaries s ON s.video_id = v.id
+         WHERE v.channel_id = ?1",
     );
     let mut query_params = vec![
         Value::from(channel_id.to_string()),
@@ -466,21 +410,35 @@ pub async fn list_videos_by_channel(
     let mut next_param_index = 4;
 
     if let Some(short_filter) = is_short {
-        sql.push_str(&format!(" AND is_short = ?{next_param_index}"));
+        sql.push_str(&format!(" AND v.is_short = ?{next_param_index}"));
         query_params.push(Value::from(if short_filter { 1i64 } else { 0i64 }));
         next_param_index += 1;
     }
 
     if let Some(ack_filter) = acknowledged {
-        sql.push_str(&format!(" AND acknowledged = ?{next_param_index}"));
+        sql.push_str(&format!(" AND v.acknowledged = ?{next_param_index}"));
         query_params.push(Value::from(if ack_filter { 1i64 } else { 0i64 }));
     }
 
-    if queue_only {
-        sql.push_str(" AND (transcript_status != 'ready' OR summary_status != 'ready')");
+    match queue_filter {
+        Some(QueueFilter::AnyIncomplete) => {
+            sql.push_str(" AND (v.transcript_status != 'ready' OR v.summary_status != 'ready')");
+        }
+        Some(QueueFilter::TranscriptsOnly) => {
+            sql.push_str(" AND v.transcript_status != 'ready'");
+        }
+        Some(QueueFilter::SummariesOnly) => {
+            sql.push_str(" AND v.transcript_status = 'ready' AND v.summary_status != 'ready'");
+        }
+        Some(QueueFilter::EvaluationsOnly) => {
+            sql.push_str(
+                " AND v.transcript_status = 'ready' AND v.summary_status = 'ready' AND s.quality_score IS NULL",
+            );
+        }
+        None => {}
     }
 
-    sql.push_str(" ORDER BY published_at DESC LIMIT ?2 OFFSET ?3");
+    sql.push_str(" ORDER BY v.published_at DESC LIMIT ?2 OFFSET ?3");
 
     let mut rows = conn.query(&sql, query_params).await?;
     let mut results = Vec::new();
@@ -514,7 +472,7 @@ async fn build_channel_snapshot_data(
     offset: usize,
     is_short: Option<bool>,
     acknowledged: Option<bool>,
-    queue_only: bool,
+    queue_filter: Option<QueueFilter>,
 ) -> Result<ChannelSnapshotData, libsql::Error> {
     let derived_earliest_ready_date =
         get_oldest_ready_video_published_at(conn, &channel.id).await?;
@@ -525,7 +483,7 @@ async fn build_channel_snapshot_data(
         offset,
         is_short,
         acknowledged,
-        queue_only,
+        queue_filter,
     )
     .await?;
 
@@ -543,7 +501,7 @@ pub async fn load_channel_snapshot_data(
     offset: usize,
     is_short: Option<bool>,
     acknowledged: Option<bool>,
-    queue_only: bool,
+    queue_filter: Option<QueueFilter>,
 ) -> Result<Option<ChannelSnapshotData>, libsql::Error> {
     let channel = get_channel(conn, channel_id).await?;
     match channel {
@@ -555,7 +513,7 @@ pub async fn load_channel_snapshot_data(
                 offset,
                 is_short,
                 acknowledged,
-                queue_only,
+                queue_filter,
             )
             .await?,
         )),
@@ -570,7 +528,7 @@ pub async fn load_workspace_bootstrap_data(
     offset: usize,
     is_short: Option<bool>,
     acknowledged: Option<bool>,
-    queue_only: bool,
+    queue_filter: Option<QueueFilter>,
 ) -> Result<WorkspaceBootstrapData, libsql::Error> {
     let channels = list_channels(conn).await?;
     let selected_channel = preferred_channel_id
@@ -587,7 +545,7 @@ pub async fn load_workspace_bootstrap_data(
                 offset,
                 is_short,
                 acknowledged,
-                queue_only,
+                queue_filter,
             )
             .await?,
         ),
@@ -607,12 +565,13 @@ pub async fn list_videos_for_queue_processing(
     max_retries: u8,
 ) -> Result<Vec<Video>, libsql::Error> {
     let mut rows = conn.query(
-        "SELECT id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, acknowledged, retry_count
-         FROM videos
-         WHERE (transcript_status IN ('pending', 'loading', 'failed')
-            OR (transcript_status = 'ready' AND summary_status IN ('pending', 'loading', 'failed')))
-           AND retry_count < ?2
-         ORDER BY published_at DESC
+        "SELECT v.id, v.channel_id, v.title, v.thumbnail_url, v.published_at, v.is_short, v.transcript_status, v.summary_status, v.acknowledged, v.retry_count, s.quality_score
+         FROM videos v
+         LEFT JOIN summaries s ON s.video_id = v.id
+         WHERE (v.transcript_status IN ('pending', 'loading', 'failed')
+            OR (v.transcript_status = 'ready' AND v.summary_status IN ('pending', 'loading', 'failed')))
+           AND v.retry_count < ?2
+         ORDER BY v.published_at DESC
          LIMIT ?1",
         params![limit as i64, max_retries as i64],
     ).await?;
@@ -693,6 +652,7 @@ fn row_to_video(row: &libsql::Row) -> Result<Video, libsql::Error> {
     let is_short_val: i64 = row.get(5)?;
     let acknowledged_val: i64 = row.get::<i64>(8).unwrap_or(0);
     let retry_count: i64 = row.get::<i64>(9).unwrap_or(0);
+    let quality_score: Option<i64> = row.get::<Option<i64>>(10).unwrap_or(None);
     Ok(Video {
         id: row.get(0)?,
         channel_id: row.get(1)?,
@@ -706,6 +666,7 @@ fn row_to_video(row: &libsql::Row) -> Result<Video, libsql::Error> {
         summary_status: ContentStatus::from_db_value(&summary_status),
         acknowledged: acknowledged_val != 0,
         retry_count: retry_count.clamp(0, 255) as u8,
+        quality_score: quality_score.map(|s| s.clamp(0, 10) as u8),
     })
 }
 
@@ -1095,6 +1056,7 @@ mod tests {
             summary_status: ContentStatus::Pending,
             acknowledged: false,
             retry_count: 0,
+            quality_score: None,
         };
         insert_video(&conn, &video).await.unwrap();
 
@@ -1142,6 +1104,7 @@ mod tests {
             summary_status: ContentStatus::Pending,
             acknowledged: false,
             retry_count: 0,
+            quality_score: None,
         };
         insert_video(&conn, &video).await.unwrap();
 
@@ -1184,6 +1147,7 @@ mod tests {
             summary_status: ContentStatus::Pending,
             acknowledged: false,
             retry_count: 0,
+            quality_score: None,
         };
         insert_video(&conn, &video).await.unwrap();
 
@@ -1226,6 +1190,7 @@ mod tests {
             summary_status: ContentStatus::Ready,
             acknowledged: false,
             retry_count: 0,
+            quality_score: None,
         };
         insert_video(&conn, &video).await.unwrap();
 
@@ -1269,6 +1234,7 @@ mod tests {
             summary_status: ContentStatus::Ready,
             acknowledged: false,
             retry_count: 0,
+            quality_score: None,
         };
         insert_video(&conn, &video).await.unwrap();
 
@@ -1316,6 +1282,7 @@ mod tests {
             summary_status: ContentStatus::Ready,
             acknowledged: false,
             retry_count: 0,
+            quality_score: None,
         };
         insert_video(&conn, &video).await.unwrap();
 
@@ -1390,6 +1357,7 @@ mod tests {
             summary_status: ContentStatus::Ready,
             acknowledged: false,
             retry_count: 0,
+            quality_score: None,
         };
         insert_video(&conn, &video).await.unwrap();
 
@@ -1459,6 +1427,7 @@ mod tests {
                 summary_status: ContentStatus::Pending,
                 acknowledged: false,
                 retry_count: 0,
+                quality_score: None,
             },
             Video {
                 id: "v_loading".to_string(),
@@ -1471,6 +1440,7 @@ mod tests {
                 summary_status: ContentStatus::Pending,
                 acknowledged: false,
                 retry_count: 0,
+                quality_score: None,
             },
             Video {
                 id: "v_summary_pending".to_string(),
@@ -1483,6 +1453,7 @@ mod tests {
                 summary_status: ContentStatus::Pending,
                 acknowledged: false,
                 retry_count: 0,
+                quality_score: None,
             },
             Video {
                 id: "v_done".to_string(),
@@ -1495,6 +1466,7 @@ mod tests {
                 summary_status: ContentStatus::Ready,
                 acknowledged: false,
                 retry_count: 0,
+                quality_score: None,
             },
             Video {
                 id: "v_failed".to_string(),
@@ -1507,6 +1479,7 @@ mod tests {
                 summary_status: ContentStatus::Failed,
                 acknowledged: false,
                 retry_count: 0,
+                quality_score: None,
             },
         ];
 
@@ -1553,6 +1526,7 @@ mod tests {
             summary_status: ContentStatus::Ready,
             acknowledged: true,
             retry_count: 0,
+            quality_score: None,
         };
         let first_insert = insert_video(&conn, &existing).await.unwrap();
         assert_eq!(first_insert, VideoInsertOutcome::Inserted);
@@ -1568,6 +1542,7 @@ mod tests {
             summary_status: ContentStatus::Pending,
             acknowledged: false,
             retry_count: 0,
+            quality_score: None,
         };
         let refresh_insert = insert_video(&conn, &refreshed).await.unwrap();
         assert_eq!(refresh_insert, VideoInsertOutcome::Existing);
@@ -1616,18 +1591,18 @@ mod tests {
         .await
         .unwrap();
 
-        let all_videos = list_videos_by_channel(&conn, "UCF", 10, 0, None, None, false)
+        let all_videos = list_videos_by_channel(&conn, "UCF", 10, 0, None, None, None)
             .await
             .unwrap();
         assert_eq!(all_videos.len(), 2);
 
-        let long_only = list_videos_by_channel(&conn, "UCF", 10, 0, Some(false), None, false)
+        let long_only = list_videos_by_channel(&conn, "UCF", 10, 0, Some(false), None, None)
             .await
             .unwrap();
         assert_eq!(long_only.len(), 1);
         assert_eq!(long_only[0].id, "long_vid");
 
-        let short_only = list_videos_by_channel(&conn, "UCF", 10, 0, Some(true), None, false)
+        let short_only = list_videos_by_channel(&conn, "UCF", 10, 0, Some(true), None, None)
             .await
             .unwrap();
         assert_eq!(short_only.len(), 1);
@@ -1666,14 +1641,22 @@ mod tests {
         .await
         .unwrap();
 
-        let all = list_videos_by_channel(&conn, "UCQ", 10, 0, None, None, false)
+        let all = list_videos_by_channel(&conn, "UCQ", 10, 0, None, None, None)
             .await
             .unwrap();
         assert_eq!(all.len(), 2);
 
-        let queued_only = list_videos_by_channel(&conn, "UCQ", 10, 0, None, None, true)
-            .await
-            .unwrap();
+        let queued_only = list_videos_by_channel(
+            &conn,
+            "UCQ",
+            10,
+            0,
+            None,
+            None,
+            Some(QueueFilter::AnyIncomplete),
+        )
+        .await
+        .unwrap();
         assert_eq!(queued_only.len(), 1);
         assert_eq!(queued_only[0].id, "queued_vid");
     }
@@ -1705,6 +1688,7 @@ mod tests {
             summary_status: ContentStatus::Ready,
             acknowledged: false,
             retry_count: 0,
+            quality_score: None,
         };
         let older = Video {
             id: "vid_info_old".to_string(),
@@ -1717,6 +1701,7 @@ mod tests {
             summary_status: ContentStatus::Ready,
             acknowledged: false,
             retry_count: 0,
+            quality_score: None,
         };
         insert_video(&conn, &newer).await.unwrap();
         insert_video(&conn, &older).await.unwrap();
@@ -1794,6 +1779,7 @@ mod tests {
                     summary_status: ContentStatus::Pending,
                     acknowledged: false,
                     retry_count: 0,
+                    quality_score: None,
                 },
             )
             .await
@@ -1813,6 +1799,7 @@ mod tests {
                 summary_status: ContentStatus::Pending,
                 acknowledged: false,
                 retry_count: 0,
+                quality_score: None,
             },
         )
         .await
@@ -1862,6 +1849,7 @@ mod tests {
                 summary_status: ContentStatus::Ready,
                 acknowledged: false,
                 retry_count: 0,
+                quality_score: None,
             },
         )
         .await
@@ -1880,12 +1868,13 @@ mod tests {
                 summary_status: ContentStatus::Pending,
                 acknowledged: true,
                 retry_count: 0,
+                quality_score: None,
             },
         )
         .await
         .unwrap();
 
-        let snapshot = load_channel_snapshot_data(&conn, &channel.id, 10, 0, None, None, false)
+        let snapshot = load_channel_snapshot_data(&conn, &channel.id, 10, 0, None, None, None)
             .await
             .unwrap()
             .expect("snapshot should exist");
@@ -1940,13 +1929,14 @@ mod tests {
                 summary_status: ContentStatus::Ready,
                 acknowledged: false,
                 retry_count: 0,
+                quality_score: None,
             },
         )
         .await
         .unwrap();
 
         let bootstrap =
-            load_workspace_bootstrap_data(&conn, Some(&first.id), 10, 0, None, None, false)
+            load_workspace_bootstrap_data(&conn, Some(&first.id), 10, 0, None, None, None)
                 .await
                 .unwrap();
 

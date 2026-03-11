@@ -586,6 +586,7 @@ impl YouTubeService {
                                     summary_status: crate::models::ContentStatus::Pending,
                                     acknowledged: false,
                                     retry_count: 0,
+                                    quality_score: None,
                                 });
                             }
                         }
@@ -755,6 +756,7 @@ impl YouTubeService {
                     summary_status: crate::models::ContentStatus::Pending,
                     acknowledged: false,
                     retry_count: 0,
+                    quality_score: None,
                 });
 
                 if videos.len() >= limit && until.is_none() {
@@ -1431,6 +1433,7 @@ impl YouTubeService {
                     summary_status: crate::models::ContentStatus::Pending,
                     acknowledged: false,
                     retry_count: 0,
+                    quality_score: None,
                 })
             })
             .collect()
@@ -1522,6 +1525,7 @@ impl YouTubeService {
                     summary_status: crate::models::ContentStatus::Pending,
                     acknowledged: false,
                     retry_count: 0,
+                    quality_score: None,
                 })
             })
             .collect();

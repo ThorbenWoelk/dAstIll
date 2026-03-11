@@ -6,6 +6,7 @@
     getChannelSyncDepth,
     getWorkspaceBootstrapWhenAvailable,
     isAiAvailable,
+    listChannelsWhenAvailable,
     listVideos,
     refreshChannel,
     updateChannel,
@@ -26,6 +27,7 @@
     Channel,
     ChannelSnapshot,
     ContentStatus,
+    QueueTab,
     Video,
   } from "$lib/types";
 
@@ -49,7 +51,7 @@
   let aiAvailable = $state<boolean | null>(null);
   let aiStatus = $state<AiStatus | null>(null);
   let loadingVideos = $state(false);
-  let waitingForBackend = $state(false);
+
   let errorMessage = $state<string | null>(null);
   let showDeleteConfirmation = $state(false);
   let channelIdToDelete = $state<string | null>(null);
@@ -93,6 +95,7 @@
 
   let mobileTab = $state<"channels" | "details">("details");
   let manageChannels = $state(false);
+  let queueTab = $state<QueueTab>("transcripts");
 
   function reorderChannels(dragId: string, targetId: string) {
     if (dragId === targetId) return;
@@ -152,12 +155,7 @@
           selectedChannel?.earliest_sync_date),
   );
 
-  const queuedVideos = $derived(
-    videos.filter(
-      (video) =>
-        video.transcript_status !== "ready" || video.summary_status !== "ready",
-    ),
-  );
+  const queuedVideos = $derived(videos);
 
   function getQueueState(video: Video): Exclude<ContentStatus, "ready"> {
     if (
@@ -193,7 +191,7 @@
       if (video.transcript_status === "loading") {
         return {
           kind: "processing",
-          label: "DISTILLING KNOWLEDGE - PROCESSING TRANSCRIPT",
+          label: "PROCESSING TRANSCRIPT",
           detail: "Transcript extraction is running now.",
         };
       }
@@ -202,8 +200,8 @@
         return {
           kind: "failed",
           label: permanentlyFailed
-            ? "DISTILLATION FAILED - TRANSCRIPT (PERMANENT)"
-            : "DISTILLATION FAILED - TRANSCRIPT (RETRYING)",
+            ? "TRANSCRIPT FAILED (PERMANENT)"
+            : "TRANSCRIPT FAILED (RETRYING)",
           detail: permanentlyFailed
             ? "Automatic retries are exhausted."
             : "Transcript extraction failed. Automatic retry is queued.",
@@ -212,46 +210,64 @@
 
       return {
         kind: "queued",
-        label: "DISTILLING KNOWLEDGE - QUEUED FOR TRANSCRIPT",
+        label: "QUEUED FOR TRANSCRIPT",
         detail: "Waiting in queue to start transcript extraction.",
       };
     }
 
-    if (video.summary_status === "loading") {
+    if (video.summary_status !== "ready") {
+      if (video.summary_status === "loading") {
+        return {
+          kind: "processing",
+          label: "PROCESSING SUMMARY",
+          detail: "Summary generation is running now.",
+        };
+      }
+
+      if (video.summary_status === "failed") {
+        return {
+          kind: "failed",
+          label: permanentlyFailed
+            ? "SUMMARY FAILED (PERMANENT)"
+            : "SUMMARY FAILED (RETRYING)",
+          detail: permanentlyFailed
+            ? "Automatic retries are exhausted."
+            : "Summary generation failed. Automatic retry is queued.",
+        };
+      }
+
       return {
-        kind: "processing",
-        label: "DISTILLING KNOWLEDGE - PROCESSING SUMMARY",
-        detail: "Summary generation is running now.",
+        kind: "queued",
+        label: "QUEUED FOR SUMMARY",
+        detail: "Transcript is ready. Waiting in queue for summary generation.",
       };
     }
 
-    if (video.summary_status === "failed") {
-      return {
-        kind: "failed",
-        label: permanentlyFailed
-          ? "DISTILLATION FAILED - SUMMARY (PERMANENT)"
-          : "DISTILLATION FAILED - SUMMARY (RETRYING)",
-        detail: permanentlyFailed
-          ? "Automatic retries are exhausted."
-          : "Summary generation failed. Automatic retry is queued.",
-      };
-    }
-
+    // Both ready but no quality score - pending evaluation
     return {
       kind: "queued",
-      label: "DISTILLING KNOWLEDGE - QUEUED FOR SUMMARY",
-      detail: "Transcript is ready. Waiting in queue for summary generation.",
+      label: "PENDING EVALUATION",
+      detail: "Summary is ready. Waiting for quality evaluation.",
     };
   }
 
   const queueStats = $derived({
     total: queuedVideos.length,
-    loading: queuedVideos.filter((video) => getQueueState(video) === "loading")
-      .length,
-    pending: queuedVideos.filter((video) => getQueueState(video) === "pending")
-      .length,
-    failed: queuedVideos.filter((video) => getQueueState(video) === "failed")
-      .length,
+    loading: queuedVideos.filter((video) => {
+      if (queueTab === "transcripts") return video.transcript_status === "loading";
+      if (queueTab === "summaries") return video.summary_status === "loading";
+      return false;
+    }).length,
+    pending: queuedVideos.filter((video) => {
+      if (queueTab === "transcripts") return video.transcript_status === "pending";
+      if (queueTab === "summaries") return video.summary_status === "pending";
+      return true; // Evaluations are all pending
+    }).length,
+    failed: queuedVideos.filter((video) => {
+      if (queueTab === "transcripts") return video.transcript_status === "failed";
+      if (queueTab === "summaries") return video.summary_status === "failed";
+      return false;
+    }).length,
   });
   const queuedVideosWithDistillationStatus = $derived(
     queuedVideos.map((video) => ({
@@ -274,10 +290,7 @@
   }
 
   function setSyncSnapshot(snapshot: Video[]) {
-    const queuedCount = snapshot.filter(
-      (video) =>
-        video.transcript_status !== "ready" || video.summary_status !== "ready",
-    ).length;
+    const queuedCount = snapshot.length;
 
     if (previousQueuedTotal === null) {
       queueDeltaSinceLastSync = null;
@@ -412,59 +425,68 @@
     }
   });
 
+  // Reload videos when queue tab changes
+  let previousQueueTab = $state<QueueTab>("transcripts");
+  $effect(() => {
+    const currentTab = queueTab;
+    if (currentTab !== previousQueueTab) {
+      previousQueueTab = currentTab;
+      if (selectedChannelId) {
+        videos = [];
+        offset = 0;
+        hasMore = true;
+        previousQueuedTotal = null;
+        queueDeltaSinceLastSync = null;
+        void refreshAndLoadVideos(selectedChannelId);
+      }
+    }
+  });
+
   onMount(() => {
     restoreWorkspaceState();
     workspaceStateHydrated = true;
-    waitingForBackend = true;
-    void loadChannels(true);
+    void loadInitial();
   });
 
-  async function loadChannels(retryUntilBackendReachable = false) {
+  async function loadInitial() {
     loadingChannels = true;
     errorMessage = null;
 
     try {
-      const bootstrap = retryUntilBackendReachable
-        ? await getWorkspaceBootstrapWhenAvailable({
-            selectedChannelId,
-            limit,
-            offset: 0,
-            queueOnly: true,
-          })
-        : await getWorkspaceBootstrapWhenAvailable({
-            selectedChannelId,
-            limit,
-            offset: 0,
-            queueOnly: true,
-            retryDelayMs: 0,
-          });
-
-      aiAvailable = bootstrap.ai_available;
-      aiStatus = bootstrap.ai_status;
-      waitingForBackend = false;
-      channels = applySavedChannelOrder(bootstrap.channels, channelOrder);
+      // Phase 1: Get channels as fast as possible
+      const channelList = await listChannelsWhenAvailable({ retryDelayMs: 500 });
+      channels = applySavedChannelOrder(channelList, channelOrder);
       channelOrder = channels.map((c) => c.id);
+      loadingChannels = false;
 
+      // Resolve initial channel selection
       const initialChannelId = resolveInitialChannelSelection(
         channels,
         selectedChannelId,
-        bootstrap.selected_channel_id,
+        null,
       );
+
       if (!initialChannelId) {
         selectedChannelId = null;
         videos = [];
         syncDepth = null;
       } else {
         selectedChannelId = initialChannelId;
-        if (
-          bootstrap.snapshot &&
-          bootstrap.snapshot.channel_id === initialChannelId
-        ) {
-          await applyChannelSnapshot(initialChannelId, bootstrap.snapshot);
-        }
+        // Phase 2: Load snapshot for the selected channel (non-blocking)
+        void refreshAndLoadVideos(initialChannelId);
       }
+
+      // Phase 3: Check AI status in background
+      void isAiAvailable()
+        .then((status) => {
+          aiAvailable = status.available;
+          aiStatus = status.status;
+        })
+        .catch(() => {
+          aiAvailable = false;
+          aiStatus = "offline";
+        });
     } catch (error) {
-      waitingForBackend = false;
       errorMessage = (error as Error).message;
     } finally {
       loadingChannels = false;
@@ -524,7 +546,7 @@
     const snapshot = await getChannelSnapshot(channelId, {
       limit,
       offset: 0,
-      queueOnly: true,
+      queueTab: queueTab,
     });
     await applyChannelSnapshot(channelId, snapshot);
 
@@ -571,7 +593,8 @@
         reset ? 0 : offset,
         "all",
         undefined,
-        true,
+        false,
+        queueTab,
       );
       videos = reset ? list : [...videos, ...list];
       offset = (reset ? 0 : offset) + list.length;
@@ -651,28 +674,6 @@
     </nav>
   </header>
 
-  {#if waitingForBackend && channels.length === 0}
-    <main
-      id="main-content"
-      class="mx-auto flex min-h-[60vh] w-full max-w-[1440px] flex-col items-center justify-center text-center fade-in px-6"
-      role="status"
-      aria-live="polite"
-    >
-      <div
-        class="mb-6 h-6 w-6 animate-spin rounded-full border-2 border-[var(--muted)] border-t-[var(--accent)]"
-      ></div>
-      <p
-        class="text-[11px] font-bold uppercase tracking-[0.25em] text-[var(--accent)]"
-      >
-        Connecting
-      </p>
-      <p
-        class="mt-2 max-w-[260px] text-[14px] font-medium text-[var(--soft-foreground)] opacity-60"
-      >
-        Waiting for the distillation engine.
-      </p>
-    </main>
-  {:else}
     <main
       id="main-content"
       class="mx-auto mt-4 grid w-full max-w-[1440px] gap-0 lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)] items-start max-lg:mt-0"
@@ -777,7 +778,7 @@
           : 'h-[calc(100dvh-4rem)] p-4 pt-4'}"
       >
         <div
-          class="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[var(--border-soft)]"
+          class="flex flex-wrap items-center justify-between gap-4 pb-3 border-b border-[var(--border-soft)]"
         >
           <div class="flex items-center gap-3 min-w-0">
             <button
@@ -831,8 +832,8 @@
           <div
             class="flex items-center gap-4 text-[11px] font-bold tabular-nums"
           >
-            <span class="text-slate-500" data-tooltip="Queued"
-              >{queueStats.pending} queued</span
+            <span class="text-slate-500" data-tooltip="Total"
+              >{queueStats.total} items</span
             >
             {#if queueStats.loading > 0}
               <span class="text-amber-600 flex items-center gap-1.5">
@@ -847,6 +848,39 @@
             {/if}
           </div>
         </div>
+
+        <nav class="flex gap-0 border-b border-[var(--border-soft)]" aria-label="Queue tabs">
+          <button
+            type="button"
+            class="px-4 py-2.5 text-[11px] font-bold uppercase tracking-[0.1em] transition-all border-b-2 {queueTab === 'transcripts'
+              ? 'text-[var(--foreground)] border-[var(--foreground)]'
+              : 'text-[var(--soft-foreground)] opacity-50 border-transparent hover:opacity-80'}"
+            onclick={() => (queueTab = "transcripts")}
+            aria-current={queueTab === "transcripts" ? "page" : undefined}
+          >
+            Transcripts
+          </button>
+          <button
+            type="button"
+            class="px-4 py-2.5 text-[11px] font-bold uppercase tracking-[0.1em] transition-all border-b-2 {queueTab === 'summaries'
+              ? 'text-[var(--foreground)] border-[var(--foreground)]'
+              : 'text-[var(--soft-foreground)] opacity-50 border-transparent hover:opacity-80'}"
+            onclick={() => (queueTab = "summaries")}
+            aria-current={queueTab === "summaries" ? "page" : undefined}
+          >
+            Summaries
+          </button>
+          <button
+            type="button"
+            class="px-4 py-2.5 text-[11px] font-bold uppercase tracking-[0.1em] transition-all border-b-2 {queueTab === 'evaluations'
+              ? 'text-[var(--foreground)] border-[var(--foreground)]'
+              : 'text-[var(--soft-foreground)] opacity-50 border-transparent hover:opacity-80'}"
+            onclick={() => (queueTab = "evaluations")}
+            aria-current={queueTab === "evaluations" ? "page" : undefined}
+          >
+            Evaluations
+          </button>
+        </nav>
 
         {#if selectedChannel}
           <div class="flex flex-wrap items-center gap-4 py-2">
@@ -1062,7 +1096,6 @@
         <span>Details</span>
       </button>
     </nav>
-  {/if}
 
   {#if errorMessage}
     <div

@@ -7,8 +7,46 @@ use axum::{
 use serde::Deserialize;
 
 use crate::db;
-use crate::models::VideoInfo;
+use crate::models::{Video, VideoInfo};
 use crate::state::AppState;
+
+pub fn resolve_is_short(
+    video_type: Option<VideoTypeFilter>,
+    include_shorts: Option<bool>,
+) -> Option<bool> {
+    match video_type {
+        Some(vt) => vt.as_is_short(),
+        None => {
+            let include = include_shorts.unwrap_or(true);
+            if include { None } else { Some(false) }
+        }
+    }
+}
+
+pub fn resolve_queue_filter(
+    queue_tab: Option<QueueTab>,
+    queue_only: Option<bool>,
+) -> Option<db::QueueFilter> {
+    match queue_tab {
+        Some(QueueTab::Transcripts) => Some(db::QueueFilter::TranscriptsOnly),
+        Some(QueueTab::Summaries) => Some(db::QueueFilter::SummariesOnly),
+        Some(QueueTab::Evaluations) => Some(db::QueueFilter::EvaluationsOnly),
+        None if queue_only.unwrap_or(false) => Some(db::QueueFilter::AnyIncomplete),
+        None => None,
+    }
+}
+
+pub fn enrich_video_info(info: &mut VideoInfo, video: &Video) {
+    if info.thumbnail_url.is_none() {
+        info.thumbnail_url = video.thumbnail_url.clone();
+    }
+    if info.published_at.is_none() {
+        info.published_at = Some(video.published_at);
+    }
+    if info.title.trim().is_empty() {
+        info.title = video.title.clone();
+    }
+}
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -28,6 +66,14 @@ impl VideoTypeFilter {
     }
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum QueueTab {
+    Transcripts,
+    Summaries,
+    Evaluations,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct VideoListParams {
     pub limit: Option<usize>,
@@ -36,6 +82,7 @@ pub struct VideoListParams {
     pub video_type: Option<VideoTypeFilter>,
     pub acknowledged: Option<bool>,
     pub queue_only: Option<bool>,
+    pub queue_tab: Option<QueueTab>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -62,15 +109,8 @@ pub async fn list_channel_videos(
     let limit = params.limit.unwrap_or(20).min(100);
     let offset = params.offset.unwrap_or(0);
     tracing::info!("video_type filter: {:?}", params.video_type);
-    let is_short = match params.video_type {
-        Some(video_type) => video_type.as_is_short(),
-        None => {
-            let include_shorts = params.include_shorts.unwrap_or(true);
-            if include_shorts { None } else { Some(false) }
-        }
-    };
-
-    let queue_only = params.queue_only.unwrap_or(false);
+    let is_short = resolve_is_short(params.video_type, params.include_shorts);
+    let queue_filter = resolve_queue_filter(params.queue_tab, params.queue_only);
     let conn = state.db.lock().await;
     let videos = db::list_videos_by_channel(
         &conn,
@@ -79,7 +119,7 @@ pub async fn list_channel_videos(
         offset,
         is_short,
         params.acknowledged,
-        queue_only,
+        queue_filter,
     )
     .await
     .map_err(map_db_err)?;
@@ -125,15 +165,7 @@ pub async fn get_video_info(
 
     match state.youtube.fetch_video_info(&video_id).await {
         Ok(mut info) => {
-            if info.thumbnail_url.is_none() {
-                info.thumbnail_url = video.thumbnail_url.clone();
-            }
-            if info.published_at.is_none() {
-                info.published_at = Some(video.published_at);
-            }
-            if info.title.trim().is_empty() {
-                info.title = video.title.clone();
-            }
+            enrich_video_info(&mut info, &video);
             let conn = state.db.lock().await;
             db::upsert_video_info(&conn, &info)
                 .await
@@ -207,15 +239,7 @@ pub async fn backfill_video_info(
         };
 
         if let Some(video) = video {
-            if info.thumbnail_url.is_none() {
-                info.thumbnail_url = video.thumbnail_url;
-            }
-            if info.published_at.is_none() {
-                info.published_at = Some(video.published_at);
-            }
-            if info.title.trim().is_empty() {
-                info.title = video.title;
-            }
+            enrich_video_info(&mut info, &video);
         }
 
         let conn = state.db.lock().await;
@@ -260,6 +284,4 @@ pub async fn update_video_acknowledged(
     }
 }
 
-fn map_db_err(err: libsql::Error) -> (StatusCode, String) {
-    (StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
-}
+use super::map_db_err;
