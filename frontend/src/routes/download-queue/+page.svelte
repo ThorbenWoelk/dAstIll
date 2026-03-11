@@ -33,6 +33,7 @@
   } from "$lib/channel-workspace";
   import defaultChannelIcon from "$lib/assets/channel-default.svg";
   import ChannelCard from "$lib/components/ChannelCard.svelte";
+  import Footer from "$lib/components/Footer.svelte";
   import ConfirmationModal from "$lib/components/ConfirmationModal.svelte";
   import type {
     AiStatus,
@@ -86,6 +87,15 @@
       placement: "bottom",
       prepare: () => {
         mobileTab = "details";
+      },
+    },
+    {
+      selector: ".footer-link",
+      title: "Open Source",
+      body: "dAstIll is fully open source. Check out the GitHub repository, star the project, or contribute to improve it!",
+      placement: "top",
+      prepare: () => {
+        mobileTab = "channels";
       },
     },
   ];
@@ -1258,4 +1268,6 @@
     onClose={closeGuide}
     onStep={setGuideStep}
   />
+
+  <Footer showMobile={mobileTab === "channels"} />
 </div>
