@@ -1118,7 +1118,114 @@ impl YouTubeService {
         };
 
         Self::merge_ld_json_video_details(&document, &mut details);
+        Self::merge_player_response_video_details(html, &mut details);
         details
+    }
+
+    fn merge_player_response_video_details(html: &str, details: &mut WatchVideoDetails) {
+        let Some(player_response) = Self::extract_json_assignment(html, "ytInitialPlayerResponse")
+            .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+        else {
+            return;
+        };
+
+        if details.title.is_none() {
+            details.title = Self::value_at_path(&player_response, &["videoDetails", "title"])
+                .and_then(Self::extract_string_or_first_string)
+                .map(ToOwned::to_owned);
+        }
+        if details.channel_name.is_none() {
+            details.channel_name =
+                Self::value_at_path(&player_response, &["videoDetails", "author"])
+                    .or_else(|| {
+                        Self::value_at_path(&player_response, &["videoDetails", "ownerChannelName"])
+                    })
+                    .and_then(Self::extract_string_or_first_string)
+                    .map(ToOwned::to_owned);
+        }
+        if details.channel_id.is_none() {
+            details.channel_id =
+                Self::value_at_path(&player_response, &["videoDetails", "externalChannelId"])
+                    .and_then(Self::extract_string_or_first_string)
+                    .map(ToOwned::to_owned);
+        }
+        if details.published_at.is_none() {
+            details.published_at = Self::value_at_path(
+                &player_response,
+                &["microformat", "playerMicroformatRenderer", "publishDate"],
+            )
+            .or_else(|| {
+                Self::value_at_path(
+                    &player_response,
+                    &["microformat", "playerMicroformatRenderer", "uploadDate"],
+                )
+            })
+            .and_then(Self::extract_string_or_first_string)
+            .and_then(Self::parse_any_datetime);
+        }
+        if details.duration_seconds.is_none() {
+            details.duration_seconds =
+                Self::value_at_path(&player_response, &["videoDetails", "lengthSeconds"])
+                    .and_then(Self::extract_u64_from_value)
+                    .or_else(|| {
+                        Self::value_at_path(&player_response, &["videoDetails", "approxDurationMs"])
+                            .and_then(Self::extract_u64_from_value)
+                            .map(|milliseconds| milliseconds / 1_000)
+                    });
+        }
+        if details.view_count.is_none() {
+            details.view_count =
+                Self::value_at_path(&player_response, &["videoDetails", "viewCount"])
+                    .and_then(Self::extract_u64_from_value);
+        }
+    }
+
+    fn extract_json_assignment<'a>(html: &'a str, variable_name: &str) -> Option<&'a str> {
+        let variable_offset = html.find(variable_name)?;
+        let assignment = &html[variable_offset + variable_name.len()..];
+        let json_start = variable_offset + variable_name.len() + assignment.find('{')?;
+        let mut depth = 0usize;
+        let mut in_string = false;
+        let mut escaped = false;
+
+        for (offset, ch) in html[json_start..].char_indices() {
+            if in_string {
+                if escaped {
+                    escaped = false;
+                    continue;
+                }
+
+                match ch {
+                    '\\' => escaped = true,
+                    '"' => in_string = false,
+                    _ => {}
+                }
+                continue;
+            }
+
+            match ch {
+                '"' => in_string = true,
+                '{' => depth = depth.saturating_add(1),
+                '}' => {
+                    depth = depth.saturating_sub(1);
+                    if depth == 0 {
+                        let json_end = json_start + offset + ch.len_utf8();
+                        return Some(&html[json_start..json_end]);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        None
+    }
+
+    fn value_at_path<'a>(value: &'a Value, path: &[&str]) -> Option<&'a Value> {
+        let mut current = value;
+        for segment in path {
+            current = current.get(*segment)?;
+        }
+        Some(current)
     }
 
     fn extract_meta_content<'a>(document: &'a Html, selector: &str) -> Option<&'a str> {
@@ -1805,6 +1912,46 @@ mod tests {
         assert_eq!(details.view_count, Some(12_345));
         assert_eq!(details.duration_iso8601.as_deref(), Some("PT1H2M3S"));
         assert_eq!(details.duration_seconds, Some(3_723));
+    }
+
+    #[test]
+    fn test_extract_video_details_from_player_response() {
+        let html = r#"
+<html>
+  <head>
+    <meta property="og:title" content="Fallback Title" />
+    <script>
+      var ytInitialPlayerResponse = {
+        "videoDetails": {
+          "title": "Fallback Title",
+          "author": "Channel Name",
+          "externalChannelId": "UC1234567890123456789012",
+          "lengthSeconds": "1214",
+          "viewCount": "369664"
+        },
+        "microformat": {
+          "playerMicroformatRenderer": {
+            "publishDate": "2026-03-03"
+          }
+        }
+      };
+    </script>
+  </head>
+</html>
+"#;
+
+        let details = YouTubeService::extract_video_details_from_watch_html(html);
+        assert_eq!(details.channel_name.as_deref(), Some("Channel Name"));
+        assert_eq!(
+            details.channel_id.as_deref(),
+            Some("UC1234567890123456789012")
+        );
+        assert_eq!(details.duration_seconds, Some(1_214));
+        assert_eq!(details.view_count, Some(369_664));
+        assert_eq!(
+            details.published_at,
+            YouTubeService::parse_any_datetime("2026-03-03")
+        );
     }
 
     #[test]

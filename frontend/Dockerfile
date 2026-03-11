@@ -1,22 +1,26 @@
-# Build stage
-FROM node:20-slim AS builder
+# Shared base with Bun available for deterministic installs.
+FROM node:20-slim AS base
 
 WORKDIR /app
 
-# Install build dependencies
-# (We need these for some native packages if any, and for the build process)
+# Install build tooling and Bun.
 RUN apt-get update && apt-get install -y \
     python3 \
     make \
     g++ \
     && rm -rf /var/lib/apt/lists/*
-
-# Install bun just for the build if we want to stay consistent, 
-# or just use npm/pnpm. Let's use npm for maximum compatibility in Docker.
 RUN npm install -g bun
 
+FROM base AS prod-deps
+
+COPY package.json bun.lock .npmrc ./
+RUN bun install --frozen-lockfile --production --ignore-scripts
+
+# Build stage
+FROM base AS builder
+
 # Copy configuration files
-COPY package.json bun.lock ./
+COPY package.json bun.lock .npmrc ./
 
 # Install dependencies
 RUN bun install --frozen-lockfile
@@ -31,7 +35,7 @@ RUN bun x svelte-kit sync
 RUN VITE_API_BASE=$VITE_API_BASE bun run build
 
 # Runtime stage
-FROM node:20-slim
+FROM node:20-slim AS runtime
 
 WORKDIR /app
 ENV NODE_ENV=production
@@ -39,10 +43,7 @@ ENV NODE_ENV=production
 # Copy build output
 COPY --from=builder /app/build ./build
 COPY --from=builder /app/package.json ./package.json
-
-# Instead of copying node_modules from builder (which might have dev deps 
-# or be incompatible), we install only production deps here.
-RUN npm install --omit=dev
+COPY --from=prod-deps /app/node_modules ./node_modules
 
 # Expose the frontend port
 EXPOSE 3000

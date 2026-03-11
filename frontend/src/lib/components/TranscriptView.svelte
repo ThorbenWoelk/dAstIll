@@ -1,15 +1,27 @@
 <script lang="ts">
   export let html = "";
+  export let text = "";
+  export let mode: "markdown" | "plain_text" = "markdown";
   export let formatting = false;
 </script>
 
-<article
-  class={`prose max-w-none break-words leading-relaxed transition-all duration-500 prose-headings:font-serif prose-headings:font-bold prose-headings:tracking-tight prose-h1:text-xl prose-h2:text-lg prose-h3:text-base prose-p:text-[17px] prose-p:leading-[1.75] prose-p:tracking-[-0.01em] prose-strong:font-bold prose-a:text-[var(--accent)] prose-a:underline-offset-4 prose-blockquote:border-l-[var(--accent)] prose-blockquote:bg-[var(--accent-soft)]/30 prose-blockquote:py-1 prose-blockquote:px-6 prose-blockquote:rounded-r-lg ${
-    formatting ? "opacity-40 grayscale blur-[1px]" : "opacity-100"
-  }`}
->
-  {@html html}
-</article>
+{#if mode === "markdown"}
+  <article
+    class={`prose max-w-none break-words leading-relaxed transition-all duration-500 prose-headings:font-serif prose-headings:font-bold prose-headings:tracking-tight prose-h1:text-xl prose-h2:text-lg prose-h3:text-base prose-p:text-[17px] prose-p:leading-[1.75] prose-p:tracking-[-0.01em] prose-strong:font-bold prose-a:text-[var(--accent)] prose-a:underline-offset-4 prose-blockquote:border-l-[var(--accent)] prose-blockquote:bg-[var(--accent-soft)]/30 prose-blockquote:py-1 prose-blockquote:px-6 prose-blockquote:rounded-r-lg ${
+      formatting ? "opacity-40 grayscale blur-[1px]" : "opacity-100"
+    }`}
+  >
+    {@html html}
+  </article>
+{:else}
+  <article
+    class={`max-w-none whitespace-pre-wrap break-words text-[17px] leading-[1.75] tracking-[-0.01em] text-[var(--foreground)] transition-all duration-500 ${
+      formatting ? "opacity-40 grayscale blur-[1px]" : "opacity-100"
+    }`}
+  >
+    {text}
+  </article>
+{/if}
 
 <style>
   :global(.prose h1, .prose h2, .prose h3) {

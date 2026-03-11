@@ -46,7 +46,9 @@ To run the application locally, you will need:
    DB_PASS=your-turso-auth-token
    YOUTUBE_API_KEY=optional-api-key
    OLLAMA_URL=http://localhost:11434
-   OLLAMA_MODEL=qwen3:8b
+   OLLAMA_MODEL=glm-5:cloud
+   OLLAMA_FALLBACK_MODEL=qwen3-coder:30b
+   SUMMARY_EVALUATOR_MODEL=glm-5:cloud
    ```
 
 3. **Start the Application**:
