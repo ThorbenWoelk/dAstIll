@@ -1,8 +1,6 @@
 use reqwest::Client;
-use rig::client::Nothing;
 use rig::completion::Prompt;
 use rig::prelude::*;
-use rig::providers::ollama;
 use serde::Deserialize;
 use std::sync::Arc;
 use std::time::Instant;
@@ -11,7 +9,8 @@ use tokio::sync::Semaphore;
 
 use crate::models::{AiStatus, SummaryEvaluationResult};
 use crate::services::http::CloudCooldown;
-use crate::services::{build_http_client, is_cloud_model, is_rate_limited};
+use crate::services::ollama::{CooldownStatusPolicy, OllamaCore};
+use crate::services::{is_cloud_model, is_rate_limited};
 
 #[derive(Error, Debug)]
 pub enum SummaryEvaluatorError {
@@ -26,62 +25,36 @@ pub enum SummaryEvaluatorError {
 }
 
 pub struct SummaryEvaluatorService {
-    client: Client,
-    base_url: String,
-    model: String,
-    fallback_model: Option<String>,
-    cloud_cooldown: Option<Arc<CloudCooldown>>,
-    ollama_semaphore: Option<Arc<Semaphore>>,
+    core: OllamaCore,
 }
 
 impl SummaryEvaluatorService {
     pub const MIN_EVALUATOR_PARAMS_B: u16 = 41;
 
-    pub fn new() -> Self {
-        Self {
-            client: build_http_client(),
-            base_url: "http://localhost:11434".to_string(),
-            model: "qwen3-coder:480b-cloud".to_string(),
-            fallback_model: None,
-            cloud_cooldown: None,
-            ollama_semaphore: None,
-        }
-    }
-
     pub fn with_config(base_url: &str, model: &str) -> Self {
         Self {
-            client: build_http_client(),
-            base_url: base_url.to_string(),
-            model: model.to_string(),
-            fallback_model: None,
-            cloud_cooldown: None,
-            ollama_semaphore: None,
+            core: OllamaCore::new(base_url, model),
         }
     }
 
     pub fn with_client(client: Client, base_url: &str, model: &str) -> Self {
         Self {
-            client,
-            base_url: base_url.to_string(),
-            model: model.to_string(),
-            fallback_model: None,
-            cloud_cooldown: None,
-            ollama_semaphore: None,
+            core: OllamaCore::with_client(client, base_url, model),
         }
     }
 
     pub fn with_fallback_model(mut self, fallback_model: Option<String>) -> Self {
-        self.fallback_model = fallback_model;
+        self.core = self.core.with_fallback_model(fallback_model);
         self
     }
 
     pub fn with_cloud_cooldown(mut self, cooldown: Arc<CloudCooldown>) -> Self {
-        self.cloud_cooldown = Some(cooldown);
+        self.core = self.core.with_cloud_cooldown(cooldown);
         self
     }
 
     pub fn with_ollama_semaphore(mut self, semaphore: Arc<Semaphore>) -> Self {
-        self.ollama_semaphore = Some(semaphore);
+        self.core = self.core.with_ollama_semaphore(semaphore);
         self
     }
 
@@ -92,11 +65,13 @@ impl SummaryEvaluatorService {
             ));
         }
 
-        let params_b = parse_model_params_billions(model).ok_or_else(|| {
-            format!(
-                "summary evaluator model must include a parseable parameter size, got `{model}`"
-            )
-        })?;
+        let params_b = parse_model_params_billions(model)
+            .or_else(|| known_cloud_model_params_billions(model))
+            .ok_or_else(|| {
+                format!(
+                    "summary evaluator model must include a parseable parameter size, got `{model}`"
+                )
+            })?;
 
         if params_b < Self::MIN_EVALUATOR_PARAMS_B {
             return Err(format!(
@@ -108,13 +83,7 @@ impl SummaryEvaluatorService {
     }
 
     pub async fn is_available(&self) -> bool {
-        let base_url = &self.base_url;
-        self.client
-            .get(format!("{base_url}/api/tags"))
-            .send()
-            .await
-            .map(|r| r.status().is_success())
-            .unwrap_or(false)
+        self.core.is_available().await
     }
 
     pub fn indicator_status(
@@ -122,19 +91,11 @@ impl SummaryEvaluatorService {
         cloud_cooldown_active: bool,
         endpoint_available: bool,
     ) -> AiStatus {
-        if !endpoint_available {
-            return AiStatus::Offline;
-        }
-
-        if !is_cloud_model(&self.model) {
-            return AiStatus::LocalOnly;
-        }
-
-        if !cloud_cooldown_active {
-            return AiStatus::Cloud;
-        }
-
-        AiStatus::Offline
+        self.core.indicator_status(
+            cloud_cooldown_active,
+            endpoint_available,
+            CooldownStatusPolicy::Offline,
+        )
     }
 
     pub async fn evaluate(
@@ -149,14 +110,48 @@ impl SummaryEvaluatorService {
             ));
         }
 
+        let transcript_word_count = transcript.split_whitespace().count();
         let prompt = format!(
-            "Video Title: {video_title}\n\nTranscript:\n{transcript}\n\nSummary:\n{summary}\n\nEvaluate summary coherence against the transcript.\nReturn strict JSON only with this schema:\n{{\"score\": <integer 0-10>, \"incoherence_note\": \"<brief note or empty string>\"}}\n\nRules:\n- Score 10 means fully faithful and coherent.\n- Penalize hallucinations, contradictions, and missing core claims.\n- Keep incoherence_note very brief.\n- If no incoherence exists, return an empty string as incoherence_note.\n- Do not include markdown, comments, or extra keys."
+            r#"Video Title: {video_title}
+
+Transcript ({transcript_word_count} words):
+{transcript}
+
+Summary:
+{summary}
+
+Evaluate the summary against the transcript on two independent axes, then combine into a final score.
+
+Axis 1 - Faithfulness (no hallucination):
+- Every claim in the summary must be supported by the transcript.
+- Penalize any invented names, numbers, claims, or conclusions not in the transcript.
+- Penalize vague or generic statements that could apply to any video (e.g. "the speaker discusses interesting topics").
+
+Axis 2 - Completeness (no omission):
+- Every significant topic, argument, example, and conclusion in the transcript must appear in the summary, at minimum as a higher-level statement.
+- For a {transcript_word_count}-word transcript, a summary with only 2-3 bullet points is almost certainly incomplete.
+- Mentally walk through the transcript section by section and check each is represented.
+
+Scoring guide:
+- 10: Fully faithful AND fully complete. No hallucinations, no omissions.
+- 8-9: Minor omissions or minor imprecisions, but all major points covered.
+- 5-7: Several points missing or some unsupported claims.
+- 3-4: Major gaps - large sections of transcript content not reflected in summary.
+- 0-2: Summary is mostly hallucinated or almost entirely missing transcript content.
+
+Return strict JSON only with this schema:
+{{"score": <integer 0-10>, "incoherence_note": "<brief note listing specific hallucinations and/or omitted topics, or empty string if none>"}}
+
+Rules:
+- Be harsh. A short, generic summary of a long, detailed transcript should score low.
+- List specific omitted topics or hallucinated claims in incoherence_note.
+- Do not include markdown, comments, or extra keys."#
         );
 
         let raw = self
             .prompt_model(
                 "summary_quality_evaluation",
-                "You are a strict evaluator that compares a summary against a transcript.",
+                "You are a strict, skeptical evaluator. You check summaries for two failure modes: hallucination (claims not in the transcript) and omission (transcript content missing from the summary). You penalize both equally. A short generic summary of a long detailed transcript is a failing summary.",
                 &prompt,
             )
             .await?;
@@ -165,15 +160,7 @@ impl SummaryEvaluatorService {
     }
 
     pub fn model(&self) -> &str {
-        &self.model
-    }
-
-    fn build_ollama_client(&self) -> Result<ollama::Client, SummaryEvaluatorError> {
-        ollama::Client::builder()
-            .api_key(Nothing)
-            .base_url(&self.base_url)
-            .build()
-            .map_err(|err| SummaryEvaluatorError::EvaluationFailed(err.to_string()))
+        self.core.model()
     }
 
     async fn prompt_model(
@@ -184,52 +171,40 @@ impl SummaryEvaluatorService {
     ) -> Result<String, SummaryEvaluatorError> {
         tracing::info!(
             operation = operation,
-            model = %self.model,
-            base_url = %self.base_url,
+            model = %self.model(),
+            base_url = %self.core.base_url(),
             prompt_chars = prompt.len(),
             "starting ollama summary evaluation prompt"
         );
         let started = Instant::now();
-        let ollama_client = self.build_ollama_client()?;
+        let ollama_client = self
+            .core
+            .build_ollama_client()
+            .map_err(SummaryEvaluatorError::EvaluationFailed)?;
 
-        let is_cloud = is_cloud_model(&self.model);
-        let cooldown_active = is_cloud
-            && self
-                .cloud_cooldown
-                .as_ref()
-                .is_some_and(|cd| cd.is_active());
+        let is_cloud = self.core.uses_cloud_model();
+        let cooldown_active = self.core.is_cloud_cooldown_active();
 
         let (response, model_used) = if cooldown_active {
             return Err(SummaryEvaluatorError::NotAvailable);
         } else {
-            // Acquire semaphore for primary model if it's not cloud
-            let _permit = if !is_cloud {
-                if let Some(sem) = &self.ollama_semaphore {
-                    Some(
-                        sem.acquire()
-                            .await
-                            .map_err(|e| SummaryEvaluatorError::EvaluationFailed(e.to_string()))?,
-                    )
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
+            let _permit = self
+                .core
+                .acquire_local_permit(self.model())
+                .await
+                .map_err(SummaryEvaluatorError::EvaluationFailed)?;
 
-            let agent = ollama_client.agent(&self.model).preamble(preamble).build();
+            let agent = ollama_client.agent(self.model()).preamble(preamble).build();
             match agent.prompt(prompt).await {
-                Ok(resp) => (resp, self.model.clone()),
+                Ok(resp) => (resp, self.model().to_string()),
                 Err(err) if is_rate_limited(&err) => {
-                    if let Some(cd) = &self.cloud_cooldown {
-                        if is_cloud {
-                            cd.activate();
-                        }
+                    if is_cloud {
+                        self.core.activate_cloud_cooldown();
                     }
                     if is_cloud {
                         tracing::warn!(
                             operation = operation,
-                            primary_model = %self.model,
+                            primary_model = %self.model(),
                             error = %err,
                             "rate limited - deferring summary evaluation to preserve local capacity"
                         );
@@ -286,9 +261,10 @@ fn parse_model_params_billions(model: &str) -> Option<u16> {
     found
 }
 
-impl Default for SummaryEvaluatorService {
-    fn default() -> Self {
-        Self::new()
+fn known_cloud_model_params_billions(model: &str) -> Option<u16> {
+    match model {
+        "glm-5:cloud" => Some(744),
+        _ => None,
     }
 }
 
@@ -329,17 +305,14 @@ mod tests {
 
     #[tokio::test]
     async fn is_available_returns_false_for_invalid_url() {
-        let service =
-            SummaryEvaluatorService::with_config("://invalid-url", "qwen3-coder:480b-cloud");
+        let service = SummaryEvaluatorService::with_config("://invalid-url", "qwen3.5:397b-cloud");
         assert!(!service.is_available().await);
     }
 
     #[test]
     fn indicator_status_reports_cloud_when_cloud_evaluator_is_available() {
-        let service = SummaryEvaluatorService::with_config(
-            "http://localhost:11434",
-            "qwen3-coder:480b-cloud",
-        );
+        let service =
+            SummaryEvaluatorService::with_config("http://localhost:11434", "qwen3.5:397b-cloud");
         assert_eq!(service.indicator_status(false, true), AiStatus::Cloud);
     }
 
@@ -351,17 +324,16 @@ mod tests {
 
     #[test]
     fn indicator_status_reports_offline_when_cloud_evaluator_is_in_cooldown() {
-        let service = SummaryEvaluatorService::with_config(
-            "http://localhost:11434",
-            "qwen3-coder:480b-cloud",
-        )
-        .with_fallback_model(Some("qwen3:8b".to_string()));
+        let service =
+            SummaryEvaluatorService::with_config("http://localhost:11434", "qwen3.5:397b-cloud")
+                .with_fallback_model(Some("qwen3:8b".to_string()));
         assert_eq!(service.indicator_status(true, true), AiStatus::Offline);
     }
 
     #[test]
     fn evaluator_model_policy_accepts_large_cloud_models() {
-        assert!(SummaryEvaluatorService::validate_model_policy("qwen3-coder:480b-cloud").is_ok());
+        assert!(SummaryEvaluatorService::validate_model_policy("glm-5:cloud").is_ok());
+        assert!(SummaryEvaluatorService::validate_model_policy("qwen3.5:397b-cloud").is_ok());
         assert!(SummaryEvaluatorService::validate_model_policy("llama3.3:70b-cloud").is_ok());
     }
 

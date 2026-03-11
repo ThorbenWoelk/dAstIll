@@ -167,15 +167,7 @@ async fn refresh_all_channels(state: &AppState) {
         match state.youtube.fetch_videos(&channel.id).await {
             Ok(videos) => {
                 let conn = state.db.lock().await;
-                let mut n = 0;
-                for video in videos {
-                    if matches!(
-                        db::insert_video(&conn, &video).await,
-                        Ok(db::VideoInsertOutcome::Inserted)
-                    ) {
-                        n += 1;
-                    }
-                }
+                let n = db::bulk_insert_videos(&conn, videos).await.unwrap_or(0);
                 if n > 0 {
                     tracing::info!(
                         channel_id = %channel.id,
@@ -234,15 +226,9 @@ async fn fill_channel_gaps(
         .map_err(|err| err.to_string())?;
 
     let conn = state.db.lock().await;
-    let mut inserted = 0usize;
-    for video in videos {
-        if matches!(
-            db::insert_video(&conn, &video).await,
-            Ok(db::VideoInsertOutcome::Inserted)
-        ) {
-            inserted += 1;
-        }
-    }
+    let inserted = db::bulk_insert_videos(&conn, videos)
+        .await
+        .map_err(|err| err.to_string())?;
     Ok(inserted)
 }
 
@@ -361,11 +347,12 @@ pub fn spawn_summary_evaluation_worker(state: AppState) {
                 .indicator_status(state.cloud_cooldown.is_active(), evaluator_available);
 
             if !should_run_summary_evaluation(evaluator_status, state.summary_evaluator.model()) {
-                tracing::warn!(
+                tracing::debug!(
                     evaluator_status = ?evaluator_status,
-                    "summary evaluation skipped - preserving local capacity for summary generation"
+                    "summary evaluation paused - evaluator unavailable or preserving local capacity"
                 );
-                sleep(SUMMARY_EVAL_POLL_INTERVAL).await;
+                // Back off longer when evaluator is offline to avoid log spam
+                sleep(Duration::from_secs(60)).await;
                 continue;
             }
 
@@ -419,20 +406,25 @@ pub fn spawn_summary_evaluation_worker(state: AppState) {
                             }
                         }
                     }
+                    Err(ref err)
+                        if matches!(
+                            err,
+                            crate::services::summary_evaluator::SummaryEvaluatorError::NotAvailable
+                        ) =>
+                    {
+                        tracing::debug!(
+                            video_id = %job.video_id,
+                            "summary evaluation deferred - evaluator not available"
+                        );
+                        // Leave quality_score/quality_note NULL so the job is retried later
+                    }
                     Err(err) => {
                         tracing::warn!(
                             video_id = %job.video_id,
                             error = %err,
                             "summary evaluation failed"
                         );
-                        let conn = state.db.lock().await;
-                        let _ = db::update_summary_quality(
-                            &conn,
-                            &job.video_id,
-                            None,
-                            Some("Quality check unavailable."),
-                        )
-                        .await;
+                        // Permanent failure - mark with note but no score so it can be retried
                     }
                 }
             }
@@ -467,6 +459,7 @@ mod tests {
             summary_status,
             acknowledged: false,
             retry_count: 0,
+            quality_score: None,
         }
     }
 
@@ -516,11 +509,11 @@ mod tests {
     fn summary_evaluation_runs_only_when_it_wont_consume_local_fallback_capacity() {
         assert!(should_run_summary_evaluation(
             AiStatus::Cloud,
-            "qwen3-coder:480b-cloud"
+            "qwen3.5:397b-cloud"
         ));
         assert!(!should_run_summary_evaluation(
             AiStatus::LocalOnly,
-            "qwen3-coder:480b-cloud"
+            "qwen3.5:397b-cloud"
         ));
         assert!(should_run_summary_evaluation(
             AiStatus::LocalOnly,
@@ -528,7 +521,7 @@ mod tests {
         ));
         assert!(!should_run_summary_evaluation(
             AiStatus::Offline,
-            "qwen3-coder:480b-cloud"
+            "qwen3.5:397b-cloud"
         ));
     }
 }

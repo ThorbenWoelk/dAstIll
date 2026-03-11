@@ -41,12 +41,10 @@ variable "ollama_url" {
 
 variable "ollama_model" {
   type        = string
-  default     = "minimax-m2.5:cloud"
   description = "Ollama model"
 }
 
 variable "summary_evaluator_model" {
   type        = string
-  default     = "qwen3-coder:480b-cloud"
   description = "Summary evaluator model"
 }

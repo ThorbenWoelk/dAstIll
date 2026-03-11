@@ -12,6 +12,8 @@ use crate::models::{
 use crate::services::summarizer::{MAX_TRANSCRIPT_FORMAT_ATTEMPTS, SummarizerError};
 use crate::state::AppState;
 
+use super::map_db_err;
+
 pub(crate) const MIN_SUMMARY_QUALITY_SCORE_FOR_ACCEPTANCE: u8 = 7;
 pub(crate) const MAX_SUMMARY_AUTO_REGEN_ATTEMPTS: u8 = 2;
 
@@ -352,15 +354,7 @@ pub(crate) async fn ensure_summary(
             } else {
                 ContentStatus::Failed
             };
-
-            // Fire-and-forget status update
-            let state_clone = state.clone();
-            let video_id_owned = video_id.to_string();
-            tokio::spawn(async move {
-                let conn = state_clone.db.lock().await;
-                let _ = db::update_video_summary_status(&conn, &video_id_owned, next_status).await;
-            });
-
+            spawn_status_update(state, video_id, StatusField::Summary, next_status);
             (status, message)
         })?;
     let transcript_text = transcript
@@ -407,13 +401,7 @@ pub(crate) async fn ensure_summary(
                 ContentStatus::Failed
             };
 
-            // Fire-and-forget status update
-            let state_clone = state.clone();
-            let video_id_owned = video_id.to_string();
-            tokio::spawn(async move {
-                let conn = state_clone.db.lock().await;
-                let _ = db::update_video_summary_status(&conn, &video_id_owned, next_status).await;
-            });
+            spawn_status_update(state, video_id, StatusField::Summary, next_status);
             (status, error_msg)
         })?;
     tracing::info!(video_id = %video_id, "summary generation completed");
@@ -436,6 +424,30 @@ pub(crate) async fn ensure_summary(
     tracing::info!(video_id = %video_id, "summary stored - status set to ready");
 
     Ok(summary)
+}
+
+enum StatusField {
+    Transcript,
+    Summary,
+}
+
+fn spawn_status_update(
+    state: &AppState,
+    video_id: &str,
+    field: StatusField,
+    status: ContentStatus,
+) {
+    let state = state.clone();
+    let video_id = video_id.to_string();
+    tokio::spawn(async move {
+        let conn = state.db.lock().await;
+        let _ = match field {
+            StatusField::Transcript => {
+                db::update_video_transcript_status(&conn, &video_id, status).await
+            }
+            StatusField::Summary => db::update_video_summary_status(&conn, &video_id, status).await,
+        };
+    });
 }
 
 fn map_transcript_err(
@@ -471,19 +483,9 @@ fn map_transcript_err(
         _ => ContentStatus::Failed,
     };
 
-    // Fire-and-forget status update
-    let state_clone = state.clone();
-    let video_id_owned = video_id.to_string();
-    tokio::spawn(async move {
-        let conn = state_clone.db.lock().await;
-        let _ = db::update_video_transcript_status(&conn, &video_id_owned, next_status).await;
-    });
+    spawn_status_update(state, video_id, StatusField::Transcript, next_status);
 
     (status, err.to_string())
-}
-
-fn map_db_err(err: libsql::Error) -> (StatusCode, String) {
-    (StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
 }
 
 #[cfg(test)]

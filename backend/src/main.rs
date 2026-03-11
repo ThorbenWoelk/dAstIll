@@ -8,11 +8,12 @@ use axum::{
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 
+use dastill::config::OllamaRuntimeConfig;
 use dastill::db::init_db;
 use dastill::handlers::{channels, content, videos};
 use dastill::services::{
-    CloudCooldown, SummarizerService, SummaryEvaluatorService, TranscriptCooldown,
-    TranscriptService, YouTubeQuotaCooldown, YouTubeService, build_http_client,
+    Cooldown, SummarizerService, SummaryEvaluatorService, TranscriptService, YouTubeService,
+    build_http_client,
 };
 use dastill::state::AppState;
 use dastill::workers::{
@@ -58,9 +59,9 @@ async fn main() -> anyhow::Result<()> {
     let pool = init_db(database).await.map_err(|e| anyhow::anyhow!(e))?;
 
     let client = build_http_client();
-    let cloud_cooldown = Arc::new(CloudCooldown::new());
-    let youtube_quota_cooldown = Arc::new(YouTubeQuotaCooldown::new());
-    let transcript_cooldown = Arc::new(TranscriptCooldown::new());
+    let cloud_cooldown = Arc::new(Cooldown::cloud());
+    let youtube_quota_cooldown = Arc::new(Cooldown::youtube_quota());
+    let transcript_cooldown = Arc::new(Cooldown::transcript());
 
     let youtube = Arc::new(
         YouTubeService::with_client(client.clone())
@@ -77,18 +78,7 @@ async fn main() -> anyhow::Result<()> {
 
     let summarize_path = std::env::var("SUMMARIZE_PATH")
         .unwrap_or_else(|_| "/opt/homebrew/bin/summarize".to_string());
-
-    let ollama_url =
-        std::env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
-    let ollama_model =
-        std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "minimax-m2.5:cloud".to_string());
-    let ollama_fallback_model = std::env::var("OLLAMA_FALLBACK_MODEL")
-        .ok()
-        .or_else(|| Some("qwen3:8b".to_string()));
-    let summary_evaluator_model = std::env::var("SUMMARY_EVALUATOR_MODEL")
-        .unwrap_or_else(|_| "qwen3-coder:480b-cloud".to_string());
-    SummaryEvaluatorService::validate_model_policy(&summary_evaluator_model)
-        .map_err(|err| anyhow::anyhow!(err))?;
+    let ollama = OllamaRuntimeConfig::from_env().map_err(|err| anyhow::anyhow!(err))?;
     if std::env::var("SUMMARY_EVALUATOR_FALLBACK_MODEL").is_ok() {
         tracing::warn!(
             "SUMMARY_EVALUATOR_FALLBACK_MODEL is ignored - summary evaluation is cloud-only"
@@ -98,13 +88,13 @@ async fn main() -> anyhow::Result<()> {
     let ollama_semaphore = Arc::new(tokio::sync::Semaphore::new(1));
 
     let summarizer = Arc::new(
-        SummarizerService::with_client(client.clone(), &ollama_url, &ollama_model)
-            .with_fallback_model(ollama_fallback_model)
+        SummarizerService::with_client(client.clone(), &ollama.url, &ollama.model)
+            .with_fallback_model(ollama.fallback_model)
             .with_cloud_cooldown(cloud_cooldown.clone())
             .with_ollama_semaphore(ollama_semaphore.clone()),
     );
     let summary_evaluator = Arc::new(
-        SummaryEvaluatorService::with_client(client, &ollama_url, &summary_evaluator_model)
+        SummaryEvaluatorService::with_client(client, &ollama.url, &ollama.summary_evaluator_model)
             .with_cloud_cooldown(cloud_cooldown.clone())
             .with_ollama_semaphore(ollama_semaphore),
     );

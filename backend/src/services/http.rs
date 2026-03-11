@@ -6,23 +6,33 @@ const CLOUD_COOLDOWN_DURATION: Duration = Duration::from_secs(3600);
 const YOUTUBE_QUOTA_COOLDOWN_DURATION: Duration = Duration::from_secs(24 * 3600);
 const TRANSCRIPT_COOLDOWN_DURATION: Duration = Duration::from_secs(60 * 60);
 
-/// Shared cooldown state for cloud (`:cloud` suffix) models after HTTP 429.
-/// Once activated, all cloud model attempts are skipped for 1 hour.
-pub struct CloudCooldown {
+/// Generic cooldown timer backed by an atomic epoch-ms timestamp.
+/// Once activated, `is_active()` returns true until `duration` elapses.
+pub struct Cooldown {
     started_epoch_ms: AtomicU64,
+    duration: Duration,
+    label: &'static str,
 }
 
-impl Default for CloudCooldown {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl CloudCooldown {
-    pub fn new() -> Self {
+impl Cooldown {
+    fn new(duration: Duration, label: &'static str) -> Self {
         Self {
             started_epoch_ms: AtomicU64::new(0),
+            duration,
+            label,
         }
+    }
+
+    pub fn cloud() -> Self {
+        Self::new(CLOUD_COOLDOWN_DURATION, "cloud model")
+    }
+
+    pub fn youtube_quota() -> Self {
+        Self::new(YOUTUBE_QUOTA_COOLDOWN_DURATION, "YouTube Data API quota")
+    }
+
+    pub fn transcript() -> Self {
+        Self::new(TRANSCRIPT_COOLDOWN_DURATION, "YouTube transcript")
     }
 
     pub fn activate(&self) {
@@ -31,10 +41,12 @@ impl CloudCooldown {
             .unwrap_or_default()
             .as_millis() as u64;
         self.started_epoch_ms.store(now, Ordering::Relaxed);
-        let remaining = CLOUD_COOLDOWN_DURATION.as_secs() / 60;
+        let remaining_min = self.duration.as_secs() / 60;
         tracing::warn!(
-            cooldown_minutes = remaining,
-            "cloud model cooldown activated - skipping cloud models for {remaining} min"
+            cooldown_minutes = remaining_min,
+            "{} cooldown activated for {} min",
+            self.label,
+            remaining_min,
         );
     }
 
@@ -48,99 +60,13 @@ impl CloudCooldown {
             .unwrap_or_default()
             .as_millis() as u64;
         let elapsed_ms = now.saturating_sub(started);
-        elapsed_ms < CLOUD_COOLDOWN_DURATION.as_millis() as u64
+        elapsed_ms < self.duration.as_millis() as u64
     }
 }
 
-/// Shared cooldown state for YouTube Data API after quota exhaustion (403 quotaExceeded).
-/// Once activated, all YouTube Data API attempts are skipped for 24 hours.
-pub struct YouTubeQuotaCooldown {
-    started_epoch_ms: AtomicU64,
-}
-
-impl Default for YouTubeQuotaCooldown {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl YouTubeQuotaCooldown {
-    pub fn new() -> Self {
-        Self {
-            started_epoch_ms: AtomicU64::new(0),
-        }
-    }
-
-    pub fn activate(&self) {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
-        self.started_epoch_ms.store(now, Ordering::Relaxed);
-        tracing::warn!(
-            cooldown_hours = 24,
-            "YouTube Data API quota cooldown activated - skipping Data API for 24 hours"
-        );
-    }
-
-    pub fn is_active(&self) -> bool {
-        let started = self.started_epoch_ms.load(Ordering::Relaxed);
-        if started == 0 {
-            return false;
-        }
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
-        let elapsed_ms = now.saturating_sub(started);
-        elapsed_ms < YOUTUBE_QUOTA_COOLDOWN_DURATION.as_millis() as u64
-    }
-}
-
-/// Shared cooldown state for YouTube transcript fetching after rate limits.
-/// Once activated, all transcript extraction attempts are skipped for 1 hour.
-pub struct TranscriptCooldown {
-    started_epoch_ms: AtomicU64,
-}
-
-impl Default for TranscriptCooldown {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl TranscriptCooldown {
-    pub fn new() -> Self {
-        Self {
-            started_epoch_ms: AtomicU64::new(0),
-        }
-    }
-
-    pub fn activate(&self) {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
-        self.started_epoch_ms.store(now, Ordering::Relaxed);
-        tracing::warn!(
-            cooldown_hours = 1,
-            "YouTube transcript cooldown activated - skipping transcript downloads for 1 hour"
-        );
-    }
-
-    pub fn is_active(&self) -> bool {
-        let started = self.started_epoch_ms.load(Ordering::Relaxed);
-        if started == 0 {
-            return false;
-        }
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
-        let elapsed_ms = now.saturating_sub(started);
-        elapsed_ms < TRANSCRIPT_COOLDOWN_DURATION.as_millis() as u64
-    }
-}
+pub type CloudCooldown = Cooldown;
+pub type YouTubeQuotaCooldown = Cooldown;
+pub type TranscriptCooldown = Cooldown;
 
 pub fn build_http_client() -> Client {
     ClientBuilder::new()
@@ -169,7 +95,7 @@ mod tests {
     #[test]
     fn detects_cloud_models_with_colon_or_hyphen_suffixes() {
         assert!(is_cloud_model("minimax-m2.5:cloud"));
-        assert!(is_cloud_model("qwen3-coder:480b-cloud"));
+        assert!(is_cloud_model("qwen3.5:397b-cloud"));
         assert!(!is_cloud_model("qwen3:8b"));
     }
 }

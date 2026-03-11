@@ -6,6 +6,10 @@
 *.tfstate
 *.tfstate.*
 terraform.tfvars
+*.tfvars
+*.tfvars.json
+*.auto.tfvars
+*.auto.tfvars.json
 
 # Playwright
 **/.playwright-mcp/

@@ -84,7 +84,7 @@
   let aiStatus = $state<AiStatus | null>(null);
   let loadingVideos = $state(false);
   let loadingContent = $state(false);
-  let waitingForBackend = $state(false);
+
   let addingChannel = $state(false);
   let errorMessage = $state<string | null>(null);
   let showDeleteConfirmation = $state(false);
@@ -512,7 +512,6 @@
   onMount(() => {
     restoreWorkspaceState();
     workspaceStateHydrated = true;
-    waitingForBackend = true;
     void loadChannels(null, true);
 
     const handlePointerDown = (event: PointerEvent) => {
@@ -549,6 +548,7 @@
             offset: 0,
             videoType: videoTypeFilter,
             acknowledged: isAck,
+            retryDelayMs: 500,
           })
         : await getWorkspaceBootstrapWhenAvailable({
             selectedChannelId: preferredChannelId ?? selectedChannelId,
@@ -561,7 +561,6 @@
 
       aiAvailable = bootstrap.ai_available;
       aiStatus = bootstrap.ai_status;
-      waitingForBackend = false;
       channels = applySavedChannelOrder(bootstrap.channels, channelOrder);
       syncChannelOrderFromList();
       const initialChannelId = resolveInitialChannelSelection(
@@ -596,7 +595,6 @@
         }
       }
     } catch (error) {
-      waitingForBackend = false;
       errorMessage = (error as Error).message;
     } finally {
       loadingChannels = false;
@@ -1450,28 +1448,6 @@
     </nav>
   </header>
 
-  {#if waitingForBackend && channels.length === 0}
-    <main
-      id="main-content"
-      class="mx-auto flex min-h-[60vh] w-full max-w-[1440px] flex-col items-center justify-center text-center fade-in px-6"
-      role="status"
-      aria-live="polite"
-    >
-      <div
-        class="mb-6 h-6 w-6 animate-spin rounded-full border-2 border-[var(--muted)] border-t-[var(--accent)]"
-      ></div>
-      <p
-        class="text-[11px] font-bold uppercase tracking-[0.25em] text-[var(--accent)]"
-      >
-        Connecting
-      </p>
-      <p
-        class="mt-2 max-w-[260px] text-[14px] font-medium text-[var(--soft-foreground)] opacity-60"
-      >
-        Waiting for the distillation engine.
-      </p>
-    </main>
-  {:else}
     <main
       id="main-content"
       class="mx-auto mt-0 grid w-full max-w-[1440px] items-start lg:mt-4 lg:gap-0 lg:grid-cols-[260px_300px_minmax(0,1fr)] xl:grid-cols-[280px_340px_minmax(0,1fr)]"
@@ -2457,7 +2433,6 @@
         <span>Content</span>
       </button>
     </nav>
-  {/if}
 
   {#if errorMessage}
     <div
