@@ -79,6 +79,8 @@ pub struct Transcript {
     pub video_id: String,
     pub raw_text: Option<String>,
     pub formatted_markdown: Option<String>,
+    #[serde(default)]
+    pub render_mode: TranscriptRenderMode,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,6 +90,7 @@ pub struct Summary {
     pub model_used: Option<String>,
     pub quality_score: Option<u8>,
     pub quality_note: Option<String>,
+    pub quality_model_used: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -102,6 +105,7 @@ pub struct SummaryEvaluationJob {
 pub struct SummaryEvaluationResult {
     pub quality_score: u8,
     pub quality_note: Option<String>,
+    pub quality_model_used: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -118,6 +122,8 @@ pub struct UpdateChannelRequest {
 #[derive(Debug, Deserialize)]
 pub struct UpdateContentRequest {
     pub content: String,
+    #[serde(default)]
+    pub render_mode: Option<TranscriptRenderMode>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -132,6 +138,35 @@ pub struct CleanTranscriptResponse {
     pub attempts_used: u8,
     pub max_attempts: u8,
     pub timed_out: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TranscriptRenderMode {
+    PlainText,
+    Markdown,
+}
+
+impl TranscriptRenderMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::PlainText => "plain_text",
+            Self::Markdown => "markdown",
+        }
+    }
+
+    pub fn from_db_value(value: &str) -> Self {
+        match value {
+            "markdown" => Self::Markdown,
+            _ => Self::PlainText,
+        }
+    }
+}
+
+impl Default for TranscriptRenderMode {
+    fn default() -> Self {
+        Self::PlainText
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

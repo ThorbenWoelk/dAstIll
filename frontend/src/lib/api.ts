@@ -7,6 +7,7 @@ import type {
   Summary,
   SyncDepth,
   Transcript,
+  TranscriptRenderMode,
   Video,
   VideoInfo,
   VideoTypeFilter,
@@ -345,7 +346,12 @@ export function listVideos(
     limit: `${limit}`,
     offset: `${offset}`,
   });
-  appendVideoQueryParams(params, { videoType, acknowledged, queueOnly, queueTab });
+  appendVideoQueryParams(params, {
+    videoType,
+    acknowledged,
+    queueOnly,
+    queueTab,
+  });
   return cachedGetRequest<Video[]>(
     `/api/channels/${channelId}/videos?${params.toString()}`,
   );
@@ -369,10 +375,14 @@ export function getTranscript(videoId: string) {
   return cachedGetRequest<Transcript>(`/api/videos/${videoId}/transcript`);
 }
 
-export function updateTranscript(videoId: string, content: string) {
+export function updateTranscript(
+  videoId: string,
+  content: string,
+  renderMode: TranscriptRenderMode,
+) {
   return request<Transcript>(`/api/videos/${videoId}/transcript`, {
     method: "PUT",
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content, render_mode: renderMode }),
   }).then((result) => {
     clearGetRequestCache();
     return result;

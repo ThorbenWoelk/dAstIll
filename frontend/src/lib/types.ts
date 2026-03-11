@@ -1,6 +1,7 @@
 export type ContentStatus = "pending" | "loading" | "ready" | "failed";
 export type VideoTypeFilter = "all" | "long" | "short";
 export type AiStatus = "cloud" | "local_only" | "offline";
+export type TranscriptRenderMode = "plain_text" | "markdown";
 
 export interface Channel {
   id: string;
@@ -57,6 +58,7 @@ export interface Transcript {
   video_id: string;
   raw_text?: string | null;
   formatted_markdown?: string | null;
+  render_mode?: TranscriptRenderMode | null;
 }
 
 export interface CleanTranscriptResponse {
@@ -73,6 +75,7 @@ export interface Summary {
   model_used?: string | null;
   quality_score?: number | null;
   quality_note?: string | null;
+  quality_model_used?: string | null;
 }
 
 export interface VideoInfo {

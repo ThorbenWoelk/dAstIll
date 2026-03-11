@@ -1,4 +1,6 @@
 <script lang="ts">
+  import ContentActionButton from "./ContentActionButton.svelte";
+
   export let value = "";
   export let editing = false;
   export let busy = false;
@@ -20,202 +22,70 @@
   export let onAcknowledgeToggle: (() => void) | undefined = undefined;
   export let acknowledged = false;
   export let aiAvailable = true;
+
+  $: formatActionLabel = formatting
+    ? "Formatting transcript"
+    : aiAvailable
+      ? "Clean formatting"
+      : "auto-format (AI engine required)";
+  $: revertActionLabel = reverting
+    ? "Reverting transcript"
+    : "Revert to original transcript";
+  $: regenerateActionLabel = regenerating
+    ? "Regenerating summary"
+    : aiAvailable
+      ? "Regenerate summary"
+      : "regenerate (AI engine required)";
 </script>
 
 {#if editing}
   <div class="flex flex-col gap-4 fade-in">
     <div class="flex flex-wrap items-center gap-3">
       {#if showFormatAction}
-        <button
-          type="button"
-          class="inline-flex h-10 w-10 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--border-soft)] bg-[var(--background)] transition-all hover:border-[var(--accent)]/40 hover:text-[var(--accent)] hover:shadow-sm disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
-          onclick={onFormat}
+        <ContentActionButton
+          icon="format"
+          loading={formatting}
           disabled={busy || formatting || reverting || !aiAvailable}
-          aria-label={formatting
-            ? "Formatting transcript"
-            : aiAvailable
-              ? "Clean formatting"
-              : "auto-format (AI engine required)"}
-          data-tooltip={formatting
-            ? "Formatting…"
-            : aiAvailable
-              ? "Clean formatting"
-              : "auto-format (AI engine required)"}
-        >
-          {#if formatting}
-            <svg
-              viewBox="0 0 24 24"
-              class="h-4 w-4 animate-spin"
-              aria-hidden="true"
-            >
-              <circle
-                cx="12"
-                cy="12"
-                r="9"
-                fill="none"
-                stroke="currentColor"
-                stroke-opacity="0.25"
-                stroke-width="2"
-              />
-              <path
-                d="M12 3a9 9 0 0 1 9 9"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-              />
-            </svg>
-          {:else}
-            <svg viewBox="0 0 16 16" class="h-4 w-4" aria-hidden="true">
-              <path
-                d="M3 4h10M3 8h6M3 12h8"
-                fill="none"
-                stroke="currentColor"
-                stroke-linecap="round"
-                stroke-width="2"
-              />
-            </svg>
-          {/if}
-        </button>
+          label={formatActionLabel}
+          tooltip={formatting ? "Formatting…" : formatActionLabel}
+          onClick={onFormat}
+        />
         {#if showRevertAction}
-          <button
-            type="button"
-            class="inline-flex h-10 w-10 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--border-soft)] bg-[var(--background)] transition-all hover:border-[var(--accent)]/40 hover:text-[var(--accent)] hover:shadow-sm disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
-            onclick={onRevert}
+          <ContentActionButton
+            icon="revert"
+            loading={reverting}
             disabled={busy ||
               formatting ||
               regenerating ||
               reverting ||
               !canRevert}
-            aria-label={reverting
-              ? "Reverting transcript"
-              : "Revert to original transcript"}
-            data-tooltip={reverting
-              ? "Reverting…"
-              : "Revert to original transcript"}
-          >
-            {#if reverting}
-              <svg
-                viewBox="0 0 24 24"
-                class="h-4 w-4 animate-spin"
-                aria-hidden="true"
-              >
-                <circle
-                  cx="12"
-                  cy="12"
-                  r="9"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-opacity="0.25"
-                  stroke-width="2"
-                />
-                <path
-                  d="M12 3a9 9 0 0 1 9 9"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                />
-              </svg>
-            {:else}
-              <svg viewBox="0 0 24 24" class="h-4 w-4" aria-hidden="true">
-                <path
-                  d="M9 15 3 9m0 0 6-6M3 9h10.5a5.5 5.5 0 0 1 0 11H9"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2.5"
-                />
-              </svg>
-            {/if}
-          </button>
-        {/if}
-        {#if youtubeUrl}
-          <a
-            href={youtubeUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            class="inline-flex h-10 w-10 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--border-soft)] bg-[var(--background)] text-[var(--soft-foreground)] transition-all hover:border-[var(--accent)]/40 hover:text-[var(--accent)] hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
-            aria-label="Open video on YouTube"
-            data-tooltip="Open on YouTube"
-          >
-            <svg viewBox="0 0 24 24" class="h-4 w-4" aria-hidden="true">
-              <rect
-                x="3"
-                y="6"
-                width="18"
-                height="12"
-                rx="2"
-                ry="2"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.5"
-              />
-              <path d="M10 9l5 3-5 3V9z" fill="currentColor" />
-            </svg>
-          </a>
+            label={revertActionLabel}
+            tooltip={reverting ? "Reverting…" : revertActionLabel}
+            onClick={onRevert}
+          />
         {/if}
       {/if}
       {#if showRegenerateAction}
-        <button
-          type="button"
-          class="inline-flex h-10 w-10 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--border-soft)] bg-[var(--background)] transition-all hover:border-[var(--accent)]/40 hover:text-[var(--accent)] hover:shadow-sm disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
-          onclick={onRegenerate}
+        <ContentActionButton
+          icon="regenerate"
+          loading={regenerating}
           disabled={busy ||
             formatting ||
             regenerating ||
             reverting ||
             !aiAvailable}
-          aria-label={regenerating
-            ? "Regenerating summary"
-            : aiAvailable
-              ? "Regenerate summary"
-              : "regenerate (AI engine required)"}
-          data-tooltip={regenerating
-            ? "Regenerating…"
-            : aiAvailable
-              ? "Regenerate summary"
-              : "regenerate (AI engine required)"}
-        >
-          {#if regenerating}
-            <svg
-              viewBox="0 0 24 24"
-              class="h-4 w-4 animate-spin"
-              aria-hidden="true"
-            >
-              <circle
-                cx="12"
-                cy="12"
-                r="9"
-                fill="none"
-                stroke="currentColor"
-                stroke-opacity="0.25"
-                stroke-width="2"
-              />
-              <path
-                d="M12 3a9 9 0 0 1 9 9"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-              />
-            </svg>
-          {:else}
-            <svg
-              viewBox="0 0 24 24"
-              class="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
-              <path d="M21 3v5h-5" />
-            </svg>
-          {/if}
-        </button>
+          label={regenerateActionLabel}
+          tooltip={regenerating ? "Regenerating…" : regenerateActionLabel}
+          onClick={onRegenerate}
+        />
+      {/if}
+      {#if youtubeUrl}
+        <ContentActionButton
+          icon="youtube"
+          href={youtubeUrl}
+          label="Open video on YouTube"
+          tooltip="Open on YouTube"
+        />
       {/if}
       <div class="ml-auto flex items-center gap-2">
         <button
@@ -254,220 +124,66 @@
 {:else}
   <div class="flex flex-wrap gap-4 items-center">
     {#if showFormatAction}
-      <button
-        type="button"
-        class="inline-flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] text-[var(--soft-foreground)] border border-transparent hover:border-[var(--border-soft)] hover:bg-[var(--muted)]/30 hover:text-[var(--foreground)] transition-all disabled:opacity-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
-        onclick={onFormat}
+      <ContentActionButton
+        compact
+        icon="format"
+        loading={formatting}
         disabled={busy || formatting || reverting || !aiAvailable}
-        aria-label={formatting
-          ? "Formatting transcript"
-          : aiAvailable
-            ? "Clean formatting"
-            : "auto-format (AI engine required)"}
-        data-tooltip={formatting
-          ? "Formatting…"
-          : aiAvailable
-            ? "Clean formatting"
-            : "auto-format (AI engine required)"}
-      >
-        {#if formatting}
-          <svg
-            viewBox="0 0 24 24"
-            class="h-4 w-4 animate-spin"
-            aria-hidden="true"
-          >
-            <circle
-              cx="12"
-              cy="12"
-              r="9"
-              fill="none"
-              stroke="currentColor"
-              stroke-opacity="0.25"
-              stroke-width="2"
-            />
-            <path
-              d="M12 3a9 9 0 0 1 9 9"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-            />
-          </svg>
-        {:else}
-          <svg viewBox="0 0 16 16" class="h-4 w-4" aria-hidden="true">
-            <path
-              d="M3 4h10M3 8h6M3 12h8"
-              fill="none"
-              stroke="currentColor"
-              stroke-linecap="round"
-              stroke-width="2.2"
-            />
-          </svg>
-        {/if}
-      </button>
+        label={formatActionLabel}
+        tooltip={formatting ? "Formatting…" : formatActionLabel}
+        onClick={onFormat}
+      />
       {#if showRevertAction}
-        <button
-          type="button"
-          class="inline-flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] text-[var(--soft-foreground)] border border-transparent hover:border-[var(--border-soft)] hover:bg-[var(--muted)]/30 hover:text-[var(--foreground)] transition-all disabled:opacity-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
-          onclick={onRevert}
+        <ContentActionButton
+          compact
+          icon="revert"
+          loading={reverting}
           disabled={busy || formatting || reverting || !canRevert}
-          aria-label={reverting
-            ? "Reverting transcript"
-            : "Revert to original transcript"}
-          data-tooltip={reverting
-            ? "Reverting…"
-            : "Revert to original transcript"}
-        >
-          {#if reverting}
-            <svg
-              viewBox="0 0 24 24"
-              class="h-4 w-4 animate-spin"
-              aria-hidden="true"
-            >
-              <circle
-                cx="12"
-                cy="12"
-                r="9"
-                fill="none"
-                stroke="currentColor"
-                stroke-opacity="0.25"
-                stroke-width="2"
-              />
-              <path
-                d="M12 3a9 9 0 0 1 9 9"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-              />
-            </svg>
-          {:else}
-            <svg viewBox="0 0 24 24" class="h-4 w-4" aria-hidden="true">
-              <path
-                d="M9 15 3 9m0 0 6-6M3 9h10.5a5.5 5.5 0 0 1 0 11H9"
-                fill="none"
-                stroke="currentColor"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2.2"
-              />
-            </svg>
-          {/if}
-        </button>
-      {/if}
-      {#if youtubeUrl}
-        <a
-          href={youtubeUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          class="inline-flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] text-[var(--soft-foreground)] border border-transparent hover:border-[var(--border-soft)] hover:bg-[var(--muted)]/30 hover:text-[var(--foreground)] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
-          aria-label="Open video on YouTube"
-          data-tooltip="Open on YouTube"
-        >
-          <svg viewBox="0 0 24 24" class="h-4 w-4" aria-hidden="true">
-            <rect
-              x="3"
-              y="6"
-              width="18"
-              height="12"
-              rx="2"
-              ry="2"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.2"
-            />
-            <path d="M10 9l5 3-5 3V9z" fill="currentColor" />
-          </svg>
-        </a>
+          label={revertActionLabel}
+          tooltip={reverting ? "Reverting…" : revertActionLabel}
+          onClick={onRevert}
+        />
       {/if}
     {/if}
     {#if showRegenerateAction}
-      <button
-        type="button"
-        class="inline-flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] text-[var(--soft-foreground)] border border-transparent hover:border-[var(--border-soft)] hover:bg-[var(--muted)]/30 hover:text-[var(--foreground)] transition-all disabled:opacity-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
-        onclick={onRegenerate}
+      <ContentActionButton
+        compact
+        icon="regenerate"
+        loading={regenerating}
         disabled={busy ||
           formatting ||
           regenerating ||
           reverting ||
           !aiAvailable}
-        aria-label={regenerating
-          ? "Regenerating summary"
-          : aiAvailable
-            ? "Regenerate summary"
-            : "regenerate (AI engine required)"}
-        data-tooltip={regenerating
-          ? "Regenerating…"
-          : aiAvailable
-            ? "Regenerate summary"
-            : "regenerate (AI engine required)"}
-      >
-        {#if regenerating}
-          <svg
-            viewBox="0 0 24 24"
-            class="h-4 w-4 animate-spin"
-            aria-hidden="true"
-          >
-            <circle
-              cx="12"
-              cy="12"
-              r="9"
-              fill="none"
-              stroke="currentColor"
-              stroke-opacity="0.25"
-              stroke-width="2"
-            />
-            <path
-              d="M12 3a9 9 0 0 1 9 9"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-            />
-          </svg>
-        {:else}
-          <svg
-            viewBox="0 0 24 24"
-            class="h-4 w-4"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
-            <path d="M21 3v5h-5" />
-          </svg>
-        {/if}
-      </button>
+        label={regenerateActionLabel}
+        tooltip={regenerating ? "Regenerating…" : regenerateActionLabel}
+        onClick={onRegenerate}
+      />
     {/if}
-    <button
-      type="button"
-      class="inline-flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] text-[var(--soft-foreground)] border border-transparent hover:border-[var(--border-soft)] hover:bg-[var(--muted)]/30 hover:text-[var(--foreground)] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 disabled:opacity-20"
-      onclick={onEdit}
+    {#if youtubeUrl}
+      <ContentActionButton
+        compact
+        icon="youtube"
+        href={youtubeUrl}
+        label="Open video on YouTube"
+        tooltip="Open on YouTube"
+      />
+    {/if}
+    <ContentActionButton
+      compact
+      icon="edit"
       disabled={busy}
-      data-tooltip="Edit distillation"
-      aria-label="Edit distillation"
-    >
-      <svg
-        width="15"
-        height="15"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2.5"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        ><path d="M12 20h9" /><path
-          d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"
-        /></svg
-      >
-    </button>
+      label="Edit distillation"
+      tooltip="Edit distillation"
+      tooltipAnchor="end"
+      onClick={onEdit}
+    />
     {#if onAcknowledgeToggle}
       <div class="h-4 w-px bg-[var(--border-soft)] mx-1"></div>
       <label
         class="flex items-center justify-center h-9 w-9 cursor-pointer group transition-opacity hover:opacity-100"
         data-tooltip={acknowledged ? "Mark as unread" : "Mark as read"}
+        data-tooltip-anchor="end"
       >
         <div class="relative flex items-center justify-center">
           <input

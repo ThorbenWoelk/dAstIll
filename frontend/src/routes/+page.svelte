@@ -33,15 +33,19 @@
     Channel,
     ChannelSnapshot,
     Summary as SummaryPayload,
+    Transcript as TranscriptPayload,
+    TranscriptRenderMode,
     VideoInfo as VideoInfoPayload,
     Video,
     VideoTypeFilter,
   } from "$lib/types";
   import {
     applySavedChannelOrder,
+    loadWorkspaceState,
     prioritizeChannelOrder,
+    reorderChannels as reorderChannelList,
     resolveInitialChannelSelection,
-    WORKSPACE_STATE_KEY,
+    saveWorkspaceState,
     type WorkspaceStateSnapshot,
   } from "$lib/channel-workspace";
   import {
@@ -92,6 +96,8 @@
   let summaryQualityScore = $state<number | null>(null);
   let summaryQualityNote = $state<string | null>(null);
   let summaryModelUsed = $state<string | null>(null);
+  let summaryQualityModelUsed = $state<string | null>(null);
+  let summaryQualityNoteExpanded = $state(false);
   let videoInfo = $state<VideoInfoPayload | null>(null);
   let syncDepth = $state<{
     earliest_sync_date: string | null;
@@ -102,9 +108,13 @@
   let contentMode = $state<"transcript" | "summary" | "info">("transcript");
   let mobileTab = $state<"channels" | "videos" | "content">("channels");
   let contentText = $state("");
+  let transcriptRenderMode = $state<TranscriptRenderMode>("plain_text");
+  let draftTranscriptRenderMode = $state<TranscriptRenderMode>("plain_text");
   let contentRenderText = $derived(
     contentMode === "transcript"
-      ? normalizeTranscriptForRender(contentText)
+      ? transcriptRenderMode === "markdown"
+        ? normalizeTranscriptForRender(contentText)
+        : contentText
       : contentText,
   );
   let aiIndicator = $derived(
@@ -123,7 +133,10 @@
   const contentCache = new Map<
     string,
     {
-      transcript?: string;
+      transcript?: {
+        text: string;
+        renderMode: TranscriptRenderMode;
+      };
       summary?: { text: string; quality: SummaryPayload };
       info?: VideoInfoPayload;
     }
@@ -200,7 +213,9 @@
   function clearSelectedVideoState() {
     selectedVideoId = null;
     contentText = "";
+    transcriptRenderMode = "plain_text";
     draft = "";
+    draftTranscriptRenderMode = "plain_text";
     resetSummaryQuality();
     resetVideoInfo();
   }
@@ -358,6 +373,23 @@
     return text.replace(/^(?:Transcript|Summary):\s*/i, "").trimStart();
   }
 
+  function resolveTranscriptPresentation(transcript: TranscriptPayload) {
+    const rawText = stripPrefix(transcript.raw_text || "");
+    const formattedMarkdown = stripPrefix(transcript.formatted_markdown || "");
+    const renderMode = transcript.render_mode ?? "plain_text";
+    const originalText =
+      rawText || formattedMarkdown || "Transcript unavailable.";
+    const content =
+      renderMode === "markdown"
+        ? formattedMarkdown || rawText || "Transcript unavailable."
+        : rawText || formattedMarkdown || "Transcript unavailable.";
+    return {
+      content,
+      originalText,
+      renderMode,
+    };
+  }
+
   function syncChannelOrderFromList() {
     channelOrder = channels.map((channel) => channel.id);
   }
@@ -369,12 +401,16 @@
         : null;
     summaryQualityNote = summary.quality_note?.trim() || null;
     summaryModelUsed = summary.model_used ?? null;
+    summaryQualityModelUsed = summary.quality_model_used ?? null;
+    summaryQualityNoteExpanded = false;
   }
 
   function resetSummaryQuality() {
     summaryQualityScore = null;
     summaryQualityNote = null;
     summaryModelUsed = null;
+    summaryQualityModelUsed = null;
+    summaryQualityNoteExpanded = false;
   }
 
   function resetVideoInfo() {
@@ -420,9 +456,14 @@
     }).format(date);
   }
 
-  function formatCount(value: number | null | undefined) {
-    if (value === null || value === undefined) return "Unknown";
-    return new Intl.NumberFormat().format(value);
+  function hasKnownDuration(
+    seconds: number | null | undefined,
+    iso8601: string | null | undefined,
+  ) {
+    return (
+      (seconds !== null && seconds !== undefined && seconds >= 0) ||
+      Boolean(iso8601?.trim())
+    );
   }
 
   function formatDuration(
@@ -444,50 +485,45 @@
 
   function restoreWorkspaceState() {
     if (typeof localStorage === "undefined") return;
-    const raw = localStorage.getItem(WORKSPACE_STATE_KEY);
-    if (!raw) return;
+    const snapshot = loadWorkspaceState(localStorage);
+    if (!snapshot) return;
 
-    try {
-      const snapshot = JSON.parse(raw) as Partial<WorkspaceStateSnapshot>;
-      if (
-        typeof snapshot.selectedChannelId === "string" ||
-        snapshot.selectedChannelId === null
-      ) {
-        selectedChannelId = snapshot.selectedChannelId;
-      }
-      if (
-        typeof snapshot.selectedVideoId === "string" ||
-        snapshot.selectedVideoId === null
-      ) {
-        selectedVideoId = snapshot.selectedVideoId;
-      }
-      if (isContentMode(snapshot.contentMode)) {
-        contentMode = snapshot.contentMode;
-      }
-      if (isVideoTypeFilter(snapshot.videoTypeFilter)) {
-        videoTypeFilter = snapshot.videoTypeFilter;
-      } else if (typeof snapshot.hideShorts === "boolean") {
-        videoTypeFilter = snapshot.hideShorts ? "long" : "all";
-      }
-      if (
-        snapshot.acknowledgedFilter &&
-        ["all", "unack", "ack"].includes(snapshot.acknowledgedFilter)
-      ) {
-        acknowledgedFilter = snapshot.acknowledgedFilter;
-      }
-      if (Array.isArray(snapshot.channelOrder)) {
-        channelOrder = snapshot.channelOrder.filter(
-          (id): id is string => typeof id === "string",
-        );
-      }
-      if (
-        snapshot.channelSortMode &&
-        ["custom", "alpha", "newest"].includes(snapshot.channelSortMode)
-      ) {
-        channelSortMode = snapshot.channelSortMode;
-      }
-    } catch {
-      localStorage.removeItem(WORKSPACE_STATE_KEY);
+    if (
+      typeof snapshot.selectedChannelId === "string" ||
+      snapshot.selectedChannelId === null
+    ) {
+      selectedChannelId = snapshot.selectedChannelId;
+    }
+    if (
+      typeof snapshot.selectedVideoId === "string" ||
+      snapshot.selectedVideoId === null
+    ) {
+      selectedVideoId = snapshot.selectedVideoId;
+    }
+    if (isContentMode(snapshot.contentMode)) {
+      contentMode = snapshot.contentMode;
+    }
+    if (isVideoTypeFilter(snapshot.videoTypeFilter)) {
+      videoTypeFilter = snapshot.videoTypeFilter;
+    } else if (typeof snapshot.hideShorts === "boolean") {
+      videoTypeFilter = snapshot.hideShorts ? "long" : "all";
+    }
+    if (
+      snapshot.acknowledgedFilter &&
+      ["all", "unack", "ack"].includes(snapshot.acknowledgedFilter)
+    ) {
+      acknowledgedFilter = snapshot.acknowledgedFilter;
+    }
+    if (Array.isArray(snapshot.channelOrder)) {
+      channelOrder = snapshot.channelOrder.filter(
+        (id): id is string => typeof id === "string",
+      );
+    }
+    if (
+      snapshot.channelSortMode &&
+      ["custom", "alpha", "newest"].includes(snapshot.channelSortMode)
+    ) {
+      channelSortMode = snapshot.channelSortMode;
     }
   }
 
@@ -502,7 +538,7 @@
       channelOrder,
       channelSortMode,
     };
-    localStorage.setItem(WORKSPACE_STATE_KEY, JSON.stringify(snapshot));
+    saveWorkspaceState(localStorage, snapshot);
   }
 
   $effect(() => {
@@ -602,19 +638,10 @@
   }
 
   function reorderChannels(dragId: string, targetId: string) {
-    if (dragId === targetId) return;
-    const ids = channels.map((channel) => channel.id);
-    const fromIndex = ids.indexOf(dragId);
-    const toIndex = ids.indexOf(targetId);
-    if (fromIndex < 0 || toIndex < 0) return;
-
-    ids.splice(fromIndex, 1);
-    ids.splice(toIndex, 0, dragId);
-    const byId = new Map(channels.map((channel) => [channel.id, channel]));
-    channels = ids
-      .map((id) => byId.get(id))
-      .filter((channel): channel is Channel => !!channel);
-    channelOrder = ids;
+    const reordered = reorderChannelList(channels, dragId, targetId);
+    if (!reordered) return;
+    channels = reordered.channels;
+    channelOrder = reordered.channelOrder;
   }
 
   function handleChannelDragStart(channelId: string, event: DragEvent) {
@@ -906,7 +933,11 @@
     if (videoId === selectedVideoId) return;
     selectedVideoId = videoId;
     const video = videos.find((v) => v.id === videoId);
-    if (contentMode === "summary" && video && video.summary_status !== "ready") {
+    if (
+      contentMode === "summary" &&
+      video &&
+      video.summary_status !== "ready"
+    ) {
       contentMode = "transcript";
     }
     resetSummaryQuality();
@@ -951,8 +982,10 @@
     const cached = contentCache.get(targetVideoId);
     if (cached) {
       if (targetMode === "transcript" && cached.transcript !== undefined) {
-        contentText = cached.transcript;
+        contentText = cached.transcript.text;
+        transcriptRenderMode = cached.transcript.renderMode;
         draft = contentText;
+        draftTranscriptRenderMode = transcriptRenderMode;
         resetSummaryQuality();
         resetVideoInfo();
         loadingContent = false;
@@ -987,16 +1020,11 @@
         const transcript = await getTranscript(targetVideoId);
         if (!isCurrentContentRequest(requestId, targetVideoId, targetMode))
           return;
-        const originalTranscript = stripPrefix(
-          transcript.raw_text ||
-            transcript.formatted_markdown ||
-            "Transcript unavailable.",
-        );
-        contentText = stripPrefix(
-          transcript.formatted_markdown ||
-            transcript.raw_text ||
-            "Transcript unavailable.",
-        );
+        const presentation = resolveTranscriptPresentation(transcript);
+        const originalTranscript = presentation.originalText;
+        contentText = presentation.content;
+        transcriptRenderMode = presentation.renderMode;
+        draftTranscriptRenderMode = presentation.renderMode;
         if (!(targetVideoId in originalTranscriptByVideoId)) {
           originalTranscriptByVideoId = {
             ...originalTranscriptByVideoId,
@@ -1005,7 +1033,10 @@
         }
         // Cache the transcript
         const entry = contentCache.get(targetVideoId) ?? {};
-        entry.transcript = contentText;
+        entry.transcript = {
+          text: presentation.content,
+          renderMode: presentation.renderMode,
+        };
         contentCache.set(targetVideoId, entry);
         resetSummaryQuality();
         resetVideoInfo();
@@ -1037,6 +1068,9 @@
       if (!isCurrentContentRequest(requestId, targetVideoId, targetMode))
         return;
       draft = contentText;
+      if (targetMode === "transcript") {
+        draftTranscriptRenderMode = transcriptRenderMode;
+      }
     } catch (error) {
       if (activeContentRequestId === requestId) {
         errorMessage = (error as Error).message;
@@ -1052,11 +1086,13 @@
   function startEdit() {
     editing = true;
     draft = contentText;
+    draftTranscriptRenderMode = transcriptRenderMode;
   }
 
   function cancelEdit() {
     editing = false;
     draft = contentText;
+    draftTranscriptRenderMode = transcriptRenderMode;
   }
 
   async function saveEdit() {
@@ -1069,12 +1105,15 @@
 
     try {
       if (contentMode === "transcript") {
-        const transcript = await updateTranscript(targetVideoId, draft);
-        contentText = stripPrefix(
-          transcript.formatted_markdown ||
-            transcript.raw_text ||
-            "Transcript unavailable.",
+        const transcript = await updateTranscript(
+          targetVideoId,
+          draft,
+          draftTranscriptRenderMode,
         );
+        const presentation = resolveTranscriptPresentation(transcript);
+        contentText = presentation.content;
+        transcriptRenderMode = presentation.renderMode;
+        draftTranscriptRenderMode = presentation.renderMode;
         invalidateContentCache(targetVideoId, "transcript");
         resetSummaryQuality();
         resetVideoInfo();
@@ -1148,6 +1187,9 @@
           editing
         ) {
           draft = result.content;
+          if (result.content !== source) {
+            draftTranscriptRenderMode = "markdown";
+          }
         }
         formattingNotice =
           result.content === source
@@ -1159,6 +1201,7 @@
           const transcript = await updateTranscript(
             targetVideoId,
             result.content,
+            "markdown",
           );
           invalidateContentCache(targetVideoId, "transcript");
           if (
@@ -1166,11 +1209,10 @@
             selectedVideoId === targetVideoId &&
             !editing
           ) {
-            contentText = stripPrefix(
-              transcript.formatted_markdown ||
-                transcript.raw_text ||
-                "Transcript unavailable.",
-            );
+            const presentation = resolveTranscriptPresentation(transcript);
+            contentText = presentation.content;
+            transcriptRenderMode = presentation.renderMode;
+            draftTranscriptRenderMode = presentation.renderMode;
             draft = contentText;
           }
         }
@@ -1234,18 +1276,22 @@
       if (startedInEditMode) {
         if (selectedVideoId === targetVideoId && editing) {
           draft = original;
+          draftTranscriptRenderMode = "plain_text";
         }
         formattingNotice =
           "Draft reset to original transcript. Save to persist.";
       } else {
-        const transcript = await updateTranscript(targetVideoId, original);
+        const transcript = await updateTranscript(
+          targetVideoId,
+          original,
+          "plain_text",
+        );
         invalidateContentCache(targetVideoId, "transcript");
         if (selectedVideoId === targetVideoId && !editing) {
-          contentText = stripPrefix(
-            transcript.formatted_markdown ||
-              transcript.raw_text ||
-              "Transcript unavailable.",
-          );
+          const presentation = resolveTranscriptPresentation(transcript);
+          contentText = presentation.content;
+          transcriptRenderMode = presentation.renderMode;
+          draftTranscriptRenderMode = presentation.renderMode;
           draft = contentText;
         }
         formattingNotice = "Original transcript restored.";
@@ -1448,170 +1494,74 @@
     </nav>
   </header>
 
-    <main
-      id="main-content"
-      class="mx-auto mt-0 grid w-full max-w-[1440px] items-start lg:mt-4 lg:gap-0 lg:grid-cols-[260px_300px_minmax(0,1fr)] xl:grid-cols-[280px_340px_minmax(0,1fr)]"
+  <main
+    id="main-content"
+    class="mx-auto mt-0 grid w-full max-w-[1440px] items-start lg:mt-4 lg:gap-0 lg:grid-cols-[260px_300px_minmax(0,1fr)] xl:grid-cols-[280px_340px_minmax(0,1fr)]"
+  >
+    <aside
+      class="flex min-w-0 flex-col border-0 lg:gap-3 lg:pr-5 lg:border-r lg:border-[var(--border-soft)] lg:pl-2 lg:sticky lg:top-4 lg:h-[calc(100vh-4rem)] fade-in stagger-1 {mobileTab !==
+      'channels'
+        ? 'hidden lg:flex'
+        : 'h-[calc(100dvh-10rem)] p-3 gap-4'}"
+      id="workspace"
     >
-      <aside
-        class="flex min-w-0 flex-col border-0 lg:gap-3 lg:pr-5 lg:border-r lg:border-[var(--border-soft)] lg:pl-2 lg:sticky lg:top-4 lg:h-[calc(100vh-4rem)] fade-in stagger-1 {mobileTab !==
-        'channels'
-          ? 'hidden lg:flex'
-          : 'h-[calc(100dvh-10rem)] p-3 gap-4'}"
-        id="workspace"
-      >
-        <div class="flex items-center justify-between gap-2">
-          <h2
-            class="text-base font-bold tracking-tight text-[var(--soft-foreground)]"
-          >
-            Channels
-          </h2>
-          <div class="flex items-center gap-0.5">
-            <button
-              type="button"
-              class="inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors {manageChannels
-                ? 'text-red-500'
-                : 'text-[var(--soft-foreground)] opacity-40 hover:opacity-80'}"
-              data-tooltip={manageChannels
-                ? "Exit manage mode"
-                : "Manage channels"}
-              onclick={() => {
-                manageChannels = !manageChannels;
-              }}
-              aria-label={manageChannels
-                ? "Exit manage mode"
-                : "Manage channels"}
-            >
-              <svg
-                width="13"
-                height="13"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                ><path d="M3 6h18"></path><path
-                  d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"
-                ></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"
-                ></path></svg
-              >
-            </button>
-            <button
-              type="button"
-              class="inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors {channelSearchOpen
-                ? 'text-[var(--accent)]'
-                : 'text-[var(--soft-foreground)] opacity-40 hover:opacity-80'}"
-              data-tooltip={channelSearchOpen
-                ? "Close search"
-                : "Search channels"}
-              onclick={() => {
-                channelSearchOpen = !channelSearchOpen;
-                if (!channelSearchOpen) channelSearchQuery = "";
-              }}
-              aria-label={channelSearchOpen
-                ? "Close search"
-                : "Search channels"}
-            >
-              <svg
-                width="13"
-                height="13"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                ><circle cx="11" cy="11" r="8"></circle><line
-                  x1="21"
-                  y1="21"
-                  x2="16.65"
-                  y2="16.65"
-                ></line></svg
-              >
-            </button>
-            <button
-              type="button"
-              class="inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors {channelSortMode !==
-              'custom'
-                ? 'text-[var(--accent)]'
-                : 'text-[var(--soft-foreground)] opacity-40 hover:opacity-80'}"
-              data-tooltip={channelSortMode === "custom"
-                ? "Sort: Custom"
-                : channelSortMode === "alpha"
-                  ? "Sort: A-Z"
-                  : "Sort: Newest"}
-              onclick={() => {
-                channelSortMode =
-                  channelSortMode === "custom"
-                    ? "alpha"
-                    : channelSortMode === "alpha"
-                      ? "newest"
-                      : "custom";
-              }}
-              aria-label="Cycle sort mode"
-            >
-              {#if channelSortMode === "alpha"}
-                <svg
-                  width="13"
-                  height="13"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.5"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  ><path d="M3 6h8"></path><path d="M3 12h5"></path><path
-                    d="M3 18h3"
-                  ></path><path d="M18 6v12"></path><path d="m14 18 4 4 4-4"
-                  ></path></svg
-                >
-              {:else if channelSortMode === "newest"}
-                <svg
-                  width="13"
-                  height="13"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.5"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  ><path d="M3 6h3"></path><path d="M3 12h5"></path><path
-                    d="M3 18h8"
-                  ></path><path d="M18 18V6"></path><path d="m14 6 4-4 4 4"
-                  ></path></svg
-                >
-              {:else}
-                <svg
-                  width="13"
-                  height="13"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.5"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  ><path d="M3 6h8"></path><path d="M3 12h5"></path><path
-                    d="M3 18h3"
-                  ></path><path d="M18 6v12"></path></svg
-                >
-              {/if}
-            </button>
-          </div>
-        </div>
-        {#if channelSearchOpen}
-          <div
-            class="flex items-center gap-2 border-b border-[var(--border-soft)] px-1 pb-2 transition-all"
+      <div class="flex items-center justify-between gap-2">
+        <h2
+          class="text-base font-bold tracking-tight text-[var(--soft-foreground)]"
+        >
+          Channels
+        </h2>
+        <div class="flex items-center gap-0.5">
+          <button
+            type="button"
+            class="inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors {manageChannels
+              ? 'text-red-500'
+              : 'text-[var(--soft-foreground)] opacity-40 hover:opacity-80'}"
+            data-tooltip={manageChannels
+              ? "Exit manage mode"
+              : "Manage channels"}
+            onclick={() => {
+              manageChannels = !manageChannels;
+            }}
+            aria-label={manageChannels ? "Exit manage mode" : "Manage channels"}
           >
             <svg
-              width="12"
-              height="12"
+              width="13"
+              height="13"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
               stroke-width="2.5"
               stroke-linecap="round"
               stroke-linejoin="round"
-              class="shrink-0 text-[var(--soft-foreground)] opacity-30"
+              ><path d="M3 6h18"></path><path
+                d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"
+              ></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg
+            >
+          </button>
+          <button
+            type="button"
+            class="inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors {channelSearchOpen
+              ? 'text-[var(--accent)]'
+              : 'text-[var(--soft-foreground)] opacity-40 hover:opacity-80'}"
+            data-tooltip={channelSearchOpen
+              ? "Close search"
+              : "Search channels"}
+            onclick={() => {
+              channelSearchOpen = !channelSearchOpen;
+              if (!channelSearchOpen) channelSearchQuery = "";
+            }}
+            aria-label={channelSearchOpen ? "Close search" : "Search channels"}
+          >
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
               ><circle cx="11" cy="11" r="8"></circle><line
                 x1="21"
                 y1="21"
@@ -1619,66 +1569,634 @@
                 y2="16.65"
               ></line></svg
             >
-            <input
-              type="text"
-              class="min-w-0 flex-1 bg-transparent text-[13px] placeholder:text-[var(--soft-foreground)] placeholder:opacity-40 focus-visible:outline-none"
-              placeholder="Filter..."
-              bind:value={channelSearchQuery}
-            />
-            {#if channelSearchQuery}
-              <button
-                type="button"
-                class="inline-flex h-5 w-5 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-40 hover:opacity-80 transition-opacity"
-                onclick={() => {
-                  channelSearchQuery = "";
-                }}
-                aria-label="Clear search"
+          </button>
+          <button
+            type="button"
+            class="inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors {channelSortMode !==
+            'custom'
+              ? 'text-[var(--accent)]'
+              : 'text-[var(--soft-foreground)] opacity-40 hover:opacity-80'}"
+            data-tooltip={channelSortMode === "custom"
+              ? "Sort: Custom"
+              : channelSortMode === "alpha"
+                ? "Sort: A-Z"
+                : "Sort: Newest"}
+            onclick={() => {
+              channelSortMode =
+                channelSortMode === "custom"
+                  ? "alpha"
+                  : channelSortMode === "alpha"
+                    ? "newest"
+                    : "custom";
+            }}
+            aria-label="Cycle sort mode"
+          >
+            {#if channelSortMode === "alpha"}
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                ><path d="M3 6h8"></path><path d="M3 12h5"></path><path
+                  d="M3 18h3"
+                ></path><path d="M18 6v12"></path><path d="m14 18 4 4 4-4"
+                ></path></svg
               >
+            {:else if channelSortMode === "newest"}
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                ><path d="M3 6h3"></path><path d="M3 12h5"></path><path
+                  d="M3 18h8"
+                ></path><path d="M18 18V6"></path><path d="m14 6 4-4 4 4"
+                ></path></svg
+              >
+            {:else}
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                ><path d="M3 6h8"></path><path d="M3 12h5"></path><path
+                  d="M3 18h3"
+                ></path><path d="M18 6v12"></path></svg
+              >
+            {/if}
+          </button>
+        </div>
+      </div>
+      {#if channelSearchOpen}
+        <div
+          class="flex items-center gap-2 border-b border-[var(--border-soft)] px-1 pb-2 transition-all"
+        >
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="shrink-0 text-[var(--soft-foreground)] opacity-30"
+            ><circle cx="11" cy="11" r="8"></circle><line
+              x1="21"
+              y1="21"
+              x2="16.65"
+              y2="16.65"
+            ></line></svg
+          >
+          <input
+            type="text"
+            class="min-w-0 flex-1 bg-transparent text-[13px] placeholder:text-[var(--soft-foreground)] placeholder:opacity-40 focus-visible:outline-none"
+            placeholder="Filter..."
+            bind:value={channelSearchQuery}
+          />
+          {#if channelSearchQuery}
+            <button
+              type="button"
+              class="inline-flex h-5 w-5 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-40 hover:opacity-80 transition-opacity"
+              onclick={() => {
+                channelSearchQuery = "";
+              }}
+              aria-label="Clear search"
+            >
+              <svg
+                width="10"
+                height="10"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="3"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                ><line x1="18" y1="6" x2="6" y2="18"></line><line
+                  x1="6"
+                  y1="6"
+                  x2="18"
+                  y2="18"
+                ></line></svg
+              >
+            </button>
+          {/if}
+        </div>
+      {/if}
+
+      <form
+        class="grid"
+        onsubmit={handleChannelSubmit}
+        aria-label="Follow channel"
+      >
+        <div
+          class="flex min-w-0 items-center gap-2 border-b border-[var(--border-soft)] pb-1 transition-all focus-within:border-[var(--accent)]/40"
+        >
+          <label for="channel-input" class="sr-only">Add Channel</label>
+          <input
+            id="channel-input"
+            name="channel"
+            autocomplete="off"
+            spellcheck={false}
+            class="min-w-0 flex-1 bg-transparent py-2 text-[13px] font-medium placeholder:text-[var(--soft-foreground)] placeholder:opacity-40 focus-visible:outline-none"
+            placeholder="Follow a channel..."
+            bind:value={channelInput}
+          />
+          <button
+            type="submit"
+            class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-white transition-all hover:bg-[var(--accent-strong)] disabled:opacity-15"
+            disabled={!channelInput.trim() || addingChannel}
+            aria-label="Follow channel"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="3"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              ><line x1="12" y1="5" x2="12" y2="19"></line><line
+                x1="5"
+                y1="12"
+                x2="19"
+                y2="12"
+              ></line></svg
+            >
+          </button>
+        </div>
+      </form>
+
+      <div
+        class="flex flex-1 min-h-0 flex-col gap-1.5 overflow-y-auto pr-1 custom-scrollbar"
+        aria-busy={loadingChannels}
+      >
+        {#if loadingChannels}
+          <div class="space-y-4" role="status" aria-live="polite">
+            {#each Array.from({ length: 4 }) as _, index (index)}
+              <div class="flex animate-pulse items-center gap-4 px-3 py-3">
+                <div
+                  class="h-10 w-10 shrink-0 rounded-full bg-[var(--muted)] opacity-60"
+                ></div>
+                <div class="min-w-0 flex-1 space-y-2">
+                  <div
+                    class="h-3 w-3/4 rounded-full bg-[var(--muted)] opacity-60"
+                  ></div>
+                  <div
+                    class="h-2 w-1/2 rounded-full bg-[var(--muted)] opacity-40"
+                  ></div>
+                </div>
+              </div>
+            {/each}
+          </div>
+        {:else if channels.length === 0}
+          <p
+            class="px-1 text-[14px] font-medium text-[var(--soft-foreground)] opacity-50 italic"
+          >
+            Start by following a channel.
+          </p>
+        {:else if filteredChannels.length === 0}
+          <p
+            class="px-1 text-[14px] font-medium text-[var(--soft-foreground)] opacity-50 italic"
+          >
+            No channels match your search.
+          </p>
+        {:else}
+          {#each filteredChannels as channel}
+            <ChannelCard
+              {channel}
+              active={selectedChannelId === channel.id}
+              showDelete={manageChannels}
+              draggableEnabled={channelSortMode === "custom" &&
+                !channelSearchQuery.trim()}
+              loading={channel.id.startsWith("temp-")}
+              dragging={draggedChannelId === channel.id}
+              dragOver={dragOverChannelId === channel.id &&
+                draggedChannelId !== channel.id}
+              onSelect={() => selectChannel(channel.id, null, true)}
+              onDragStart={(event) => handleChannelDragStart(channel.id, event)}
+              onDragOver={(event) => handleChannelDragOver(channel.id, event)}
+              onDrop={(event) => handleChannelDrop(channel.id, event)}
+              onDragEnd={handleChannelDragEnd}
+              onDelete={() => handleDeleteChannel(channel.id)}
+            />
+          {/each}
+        {/if}
+      </div>
+    </aside>
+
+    <aside
+      class="flex min-w-0 flex-col border-0 lg:gap-3 lg:px-5 lg:border-r lg:border-[var(--border-soft)] lg:sticky lg:top-4 lg:h-[calc(100vh-4rem)] fade-in stagger-2 {mobileTab !==
+      'videos'
+        ? 'hidden lg:flex'
+        : 'h-[calc(100dvh-4rem)] p-3 gap-4'}"
+      id="videos"
+    >
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-2 min-w-0">
+          <h2
+            class="text-base font-bold tracking-tight text-[var(--soft-foreground)]"
+          >
+            Videos
+          </h2>
+          {#if refreshingChannel}
+            <span
+              class="h-3 w-3 animate-spin rounded-full border-[1.5px] border-[var(--border)] border-t-[var(--accent)]"
+              role="status"
+              aria-label="Syncing"
+            ></span>
+          {/if}
+        </div>
+        <div class="relative" bind:this={filterMenuContainer}>
+          <button
+            type="button"
+            class={`group flex h-7 w-7 items-center justify-center rounded-full transition-all duration-200 ${videoTypeFilter !== "all" || acknowledgedFilter !== "all" || filterMenuOpen ? "bg-[var(--accent)] text-white" : "text-[var(--soft-foreground)] opacity-40 hover:opacity-80"} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 disabled:opacity-20`}
+            onclick={toggleFilterMenu}
+            disabled={!selectedChannelId || loadingVideos}
+            aria-label={filterMenuLabel}
+            aria-haspopup="menu"
+            aria-expanded={filterMenuOpen}
+            aria-controls="video-filter-menu"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="7" y1="12" x2="17" y2="12"></line>
+              <line x1="10" y1="18" x2="14" y2="18"></line>
+            </svg>
+          </button>
+          {#if filterMenuOpen}
+            <div
+              id="video-filter-menu"
+              role="menu"
+              aria-label="Video filters"
+              class="absolute right-0 top-full z-20 mt-2 w-56 overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-white shadow-xl fade-in"
+            >
+              <div class="p-2 space-y-4">
+                <div class="grid gap-1">
+                  <p
+                    class="px-2 pb-1 text-[10px] font-bold text-[var(--soft-foreground)] opacity-50"
+                  >
+                    TYPE
+                  </p>
+                  <button
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={videoTypeFilter === "all"}
+                    class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[13px] font-medium transition-colors ${videoTypeFilter === "all" ? "bg-[var(--accent-soft)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--muted)]/50"}`}
+                    onclick={() => setVideoTypeFilter("all")}
+                  >
+                    <span>All Content</span>
+                    {#if videoTypeFilter === "all"}
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="3"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        ><polyline points="20 6 9 17 4 12" /></svg
+                      >
+                    {/if}
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={videoTypeFilter === "long"}
+                    class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[13px] font-medium transition-colors ${videoTypeFilter === "long" ? "bg-[var(--accent-soft)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--muted)]/50"}`}
+                    onclick={() => setVideoTypeFilter("long")}
+                  >
+                    <span>Full Videos</span>
+                    {#if videoTypeFilter === "long"}
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="3"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        ><polyline points="20 6 9 17 4 12" /></svg
+                      >
+                    {/if}
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={videoTypeFilter === "short"}
+                    class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[13px] font-medium transition-colors ${videoTypeFilter === "short" ? "bg-[var(--accent-soft)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--muted)]/50"}`}
+                    onclick={() => setVideoTypeFilter("short")}
+                  >
+                    <span>Shorts</span>
+                    {#if videoTypeFilter === "short"}
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="3"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        ><polyline points="20 6 9 17 4 12" /></svg
+                      >
+                    {/if}
+                  </button>
+                </div>
+
+                <div class="grid gap-1">
+                  <p
+                    class="px-2 pb-1 text-[10px] font-bold text-[var(--soft-foreground)] opacity-50"
+                  >
+                    STATUS
+                  </p>
+                  <button
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={acknowledgedFilter === "all"}
+                    class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[13px] font-medium transition-colors ${acknowledgedFilter === "all" ? "bg-[var(--accent-soft)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--muted)]/50"}`}
+                    onclick={() => setAcknowledgedFilter("all")}
+                  >
+                    <span>All Statuses</span>
+                    {#if acknowledgedFilter === "all"}
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="3"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        ><polyline points="20 6 9 17 4 12" /></svg
+                      >
+                    {/if}
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={acknowledgedFilter === "unack"}
+                    class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[13px] font-medium transition-colors ${acknowledgedFilter === "unack" ? "bg-[var(--accent-soft)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--muted)]/50"}`}
+                    onclick={() => setAcknowledgedFilter("unack")}
+                  >
+                    <span>Unread</span>
+                    {#if acknowledgedFilter === "unack"}
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="3"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        ><polyline points="20 6 9 17 4 12" /></svg
+                      >
+                    {/if}
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={acknowledgedFilter === "ack"}
+                    class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[13px] font-medium transition-colors ${acknowledgedFilter === "ack" ? "bg-[var(--accent-soft)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--muted)]/50"}`}
+                    onclick={() => setAcknowledgedFilter("ack")}
+                  >
+                    <span>Read</span>
+                    {#if acknowledgedFilter === "ack"}
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="3"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        ><polyline points="20 6 9 17 4 12" /></svg
+                      >
+                    {/if}
+                  </button>
+                </div>
+              </div>
+            </div>
+          {/if}
+        </div>
+      </div>
+
+      <div
+        class="grid flex-1 min-h-0 gap-4 overflow-y-auto pr-1 custom-scrollbar"
+        bind:this={videoListContainer}
+        onscroll={updateVideoListBottomState}
+        aria-busy={loadingVideos}
+      >
+        {#if loadingVideos && videos.length === 0}
+          {#each Array.from({ length: 3 }) as _, index (index)}
+            <article
+              class="flex min-h-[14rem] flex-col gap-4 rounded-[var(--radius-md)] p-4 animate-pulse bg-[var(--muted)]/30"
+            >
+              <div
+                class="aspect-video rounded-[var(--radius-sm)] bg-[var(--muted)] opacity-60"
+              ></div>
+              <div
+                class="h-4 w-11/12 rounded-full bg-[var(--muted)] opacity-60"
+              ></div>
+              <div
+                class="h-3 w-2/5 rounded-full bg-[var(--muted)] opacity-40"
+              ></div>
+            </article>
+          {/each}
+        {:else if videos.length === 0}
+          <p
+            class="px-1 text-[14px] font-medium text-[var(--soft-foreground)] opacity-50 italic"
+          >
+            Waiting for the library to fill.
+          </p>
+        {:else}
+          {#each videos as video}
+            <VideoCard
+              {video}
+              active={selectedVideoId === video.id}
+              onSelect={() => selectVideo(video.id, true)}
+            />
+          {/each}
+        {/if}
+      </div>
+
+      {#if selectedChannelId}
+        <div class="flex flex-col gap-3 pt-3">
+          {#if hasMore || !historyExhausted}
+            <button
+              type="button"
+              class="w-full rounded-[var(--radius-sm)] border border-[var(--border-soft)] py-2.5 text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--soft-foreground)] transition-all hover:border-[var(--accent)]/40 hover:text-[var(--foreground)] disabled:opacity-30"
+              onclick={loadMoreVideos}
+              disabled={loadingVideos || backfillingHistory}
+            >
+              {#if loadingVideos || backfillingHistory}
+                Loading...
+              {:else if hasMore}
+                More
+              {:else}
+                Explore History
+              {/if}
+            </button>
+          {/if}
+
+          {#if atVideoListBottom && videos.length > 0}
+            <p
+              class="text-[11px] text-[var(--soft-foreground)] opacity-40 px-0.5"
+            >
+              Synced to {formatSyncDate(
+                resolveDisplayedSyncDepthIso({
+                  videos,
+                  selectedChannel,
+                  syncDepth,
+                  allowLoadedVideoOverride: allowLoadedVideoSyncDepthOverride,
+                }),
+              )}
+            </p>
+          {/if}
+        </div>
+      {/if}
+    </aside>
+
+    <section
+      class="relative z-10 flex min-w-0 flex-col overflow-visible border-0 lg:gap-4 lg:py-6 lg:pl-6 lg:sticky lg:top-4 lg:h-[calc(100vh-4rem)] fade-in stagger-3 {mobileTab !==
+      'content'
+        ? 'hidden lg:flex'
+        : 'h-[calc(100dvh-4rem)]'}"
+      id="content-view"
+    >
+      <div
+        class="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-6 lg:px-0 max-lg:pt-3 max-lg:pb-1"
+      >
+        <div class="flex items-center gap-3 sm:gap-4">
+          <h2 class="sr-only">Display Content</h2>
+          <Toggle
+            options={["transcript", "summary", "info"]}
+            value={contentMode}
+            onChange={(value) =>
+              setMode(value as "transcript" | "summary" | "info")}
+          />
+        </div>
+
+        {#if selectedVideoId && !loadingContent && !editing && contentMode !== "info"}
+          <div class="relative z-20 flex items-center justify-end h-10">
+            <ContentEditor
+              editing={false}
+              busy={loadingContent}
+              aiAvailable={aiAvailable ?? false}
+              formatting={formattingContent &&
+                formattingVideoId === selectedVideoId}
+              regenerating={regeneratingSummary &&
+                regeneratingVideoId === selectedVideoId}
+              reverting={revertingContent &&
+                revertingVideoId === selectedVideoId}
+              showFormatAction={contentMode === "transcript"}
+              showRegenerateAction={contentMode === "summary"}
+              showRevertAction={contentMode === "transcript"}
+              canRevert={canRevertTranscript}
+              youtubeUrl={selectedVideoYoutubeUrl}
+              value={draft}
+              acknowledged={videos.find((v) => v.id === selectedVideoId)
+                ?.acknowledged ?? false}
+              onEdit={startEdit}
+              onCancel={cancelEdit}
+              onSave={saveEdit}
+              onFormat={cleanFormatting}
+              onRegenerate={regenerateSummaryContent}
+              onRevert={revertToOriginalTranscript}
+              onChange={(value) => (draft = value)}
+              onAcknowledgeToggle={toggleAcknowledge}
+            />
+          </div>
+        {/if}
+      </div>
+
+      <div
+        class="w-full min-h-0 flex-1 overflow-y-auto px-4 sm:px-6 lg:px-0 lg:pr-4 max-lg:pt-4 custom-scrollbar"
+      >
+        {#if selectedVideoId && !loadingContent}
+          {@const selectedVideo = videos.find((v) => v.id === selectedVideoId)}
+          {#if selectedVideo}
+            <nav
+              class="mb-3 sm:mb-4 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[12px] text-[var(--soft-foreground)] opacity-60"
+              aria-label="Breadcrumb"
+            >
+              {#if selectedChannel}
+                <button
+                  type="button"
+                  class="shrink-0 hover:text-[var(--foreground)] transition-colors"
+                  onclick={() => {
+                    mobileTab = "channels";
+                  }}>{selectedChannel.name}</button
+                >
                 <svg
+                  class="shrink-0"
                   width="10"
                   height="10"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
-                  stroke-width="3"
+                  stroke-width="2.5"
                   stroke-linecap="round"
                   stroke-linejoin="round"
-                  ><line x1="18" y1="6" x2="6" y2="18"></line><line
-                    x1="6"
-                    y1="6"
-                    x2="18"
-                    y2="18"
-                  ></line></svg
+                  ><polyline points="9 18 15 12 9 6" /></svg
                 >
-              </button>
-            {/if}
-          </div>
+              {/if}
+              <button
+                type="button"
+                class="font-medium text-[var(--foreground)] opacity-80 hover:opacity-100 transition-opacity text-left"
+                onclick={() => {
+                  mobileTab = "videos";
+                }}>{selectedVideo.title}</button
+              >
+            </nav>
+          {/if}
         {/if}
-
-        <form
-          class="grid"
-          onsubmit={handleChannelSubmit}
-          aria-label="Follow channel"
-        >
+        {#if contentMode === "transcript" && selectedVideoId && ((formattingContent && formattingVideoId === selectedVideoId) || (formattingNotice && formattingNoticeVideoId === selectedVideoId))}
           <div
-            class="flex min-w-0 items-center gap-2 border-b border-[var(--border-soft)] pb-1 transition-all focus-within:border-[var(--accent)]/40"
+            class={`mb-4 sm:mb-8 p-4 rounded-[var(--radius-md)] border flex flex-wrap items-center gap-3 transition-all duration-500 ${
+              formattingNoticeTone === "warning"
+                ? "border-[var(--accent)]/20 bg-[var(--accent-soft)]/50 text-[var(--accent-strong)]"
+                : "border-[var(--border-soft)] bg-[var(--muted)]/30 text-[var(--soft-foreground)]"
+            }`}
+            role="status"
+            aria-live="polite"
           >
-            <label for="channel-input" class="sr-only">Add Channel</label>
-            <input
-              id="channel-input"
-              name="channel"
-              autocomplete="off"
-              spellcheck={false}
-              class="min-w-0 flex-1 bg-transparent py-2 text-[13px] font-medium placeholder:text-[var(--soft-foreground)] placeholder:opacity-40 focus-visible:outline-none"
-              placeholder="Follow a channel..."
-              bind:value={channelInput}
-            />
-            <button
-              type="submit"
-              class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-white transition-all hover:bg-[var(--accent-strong)] disabled:opacity-15"
-              disabled={!channelInput.trim() || addingChannel}
-              aria-label="Follow channel"
-            >
+            {#if formattingContent && formattingVideoId === selectedVideoId}
+              <span class="relative flex h-2 w-2">
+                <span
+                  class="animate-ping absolute inline-flex h-full w-full rounded-full bg-current opacity-75"
+                ></span>
+                <span
+                  class="relative inline-flex rounded-full h-2 w-2 bg-current"
+                ></span>
+              </span>
+            {:else}
               <svg
                 width="14"
                 height="14"
@@ -1688,481 +2206,30 @@
                 stroke-width="3"
                 stroke-linecap="round"
                 stroke-linejoin="round"
-                ><line x1="12" y1="5" x2="12" y2="19"></line><line
-                  x1="5"
-                  y1="12"
-                  x2="19"
-                  y2="12"
-                ></line></svg
+                ><circle cx="12" cy="12" r="10" /><polyline
+                  points="12 6 12 12 16 14"
+                /></svg
               >
-            </button>
-          </div>
-        </form>
-
-        <div
-          class="flex flex-1 min-h-0 flex-col gap-1.5 overflow-y-auto pr-1 custom-scrollbar"
-          aria-busy={loadingChannels}
-        >
-          {#if loadingChannels}
-            <div class="space-y-4" role="status" aria-live="polite">
-              {#each Array.from({ length: 4 }) as _, index (index)}
-                <div class="flex animate-pulse items-center gap-4 px-3 py-3">
-                  <div
-                    class="h-10 w-10 shrink-0 rounded-full bg-[var(--muted)] opacity-60"
-                  ></div>
-                  <div class="min-w-0 flex-1 space-y-2">
-                    <div
-                      class="h-3 w-3/4 rounded-full bg-[var(--muted)] opacity-60"
-                    ></div>
-                    <div
-                      class="h-2 w-1/2 rounded-full bg-[var(--muted)] opacity-40"
-                    ></div>
-                  </div>
-                </div>
-              {/each}
-            </div>
-          {:else if channels.length === 0}
-            <p
-              class="px-1 text-[14px] font-medium text-[var(--soft-foreground)] opacity-50 italic"
-            >
-              Start by following a channel.
+            {/if}
+            <p class="text-[12px] font-bold tracking-wide uppercase">
+              {formattingContent && formattingVideoId === selectedVideoId
+                ? formattingNotice || "Refining transcript with Ollama…"
+                : formattingNotice}
             </p>
-          {:else if filteredChannels.length === 0}
-            <p
-              class="px-1 text-[14px] font-medium text-[var(--soft-foreground)] opacity-50 italic"
-            >
-              No channels match your search.
-            </p>
-          {:else}
-            {#each filteredChannels as channel}
-              <ChannelCard
-                {channel}
-                active={selectedChannelId === channel.id}
-                showDelete={manageChannels}
-                draggableEnabled={channelSortMode === "custom" &&
-                  !channelSearchQuery.trim()}
-                loading={channel.id.startsWith("temp-")}
-                dragging={draggedChannelId === channel.id}
-                dragOver={dragOverChannelId === channel.id &&
-                  draggedChannelId !== channel.id}
-                onSelect={() => selectChannel(channel.id, null, true)}
-                onDragStart={(event) =>
-                  handleChannelDragStart(channel.id, event)}
-                onDragOver={(event) => handleChannelDragOver(channel.id, event)}
-                onDrop={(event) => handleChannelDrop(channel.id, event)}
-                onDragEnd={handleChannelDragEnd}
-                onDelete={() => handleDeleteChannel(channel.id)}
-              />
-            {/each}
-          {/if}
-        </div>
-      </aside>
-
-      <aside
-        class="flex min-w-0 flex-col border-0 lg:gap-3 lg:px-5 lg:border-r lg:border-[var(--border-soft)] lg:sticky lg:top-4 lg:h-[calc(100vh-4rem)] fade-in stagger-2 {mobileTab !==
-        'videos'
-          ? 'hidden lg:flex'
-          : 'h-[calc(100dvh-4rem)] p-3 gap-4'}"
-        id="videos"
-      >
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <div class="flex items-center gap-2 min-w-0">
-            <h2
-              class="text-base font-bold tracking-tight text-[var(--soft-foreground)]"
-            >
-              Videos
-            </h2>
-            {#if refreshingChannel}
-              <span
-                class="h-3 w-3 animate-spin rounded-full border-[1.5px] border-[var(--border)] border-t-[var(--accent)]"
-                role="status"
-                aria-label="Syncing"
-              ></span>
-            {/if}
-          </div>
-          <div class="relative" bind:this={filterMenuContainer}>
-            <button
-              type="button"
-              class={`group flex h-7 w-7 items-center justify-center rounded-full transition-all duration-200 ${videoTypeFilter !== "all" || acknowledgedFilter !== "all" || filterMenuOpen ? "bg-[var(--accent)] text-white" : "text-[var(--soft-foreground)] opacity-40 hover:opacity-80"} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 disabled:opacity-20`}
-              onclick={toggleFilterMenu}
-              disabled={!selectedChannelId || loadingVideos}
-              aria-label={filterMenuLabel}
-              aria-haspopup="menu"
-              aria-expanded={filterMenuOpen}
-              aria-controls="video-filter-menu"
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <line x1="3" y1="6" x2="21" y2="6"></line>
-                <line x1="7" y1="12" x2="17" y2="12"></line>
-                <line x1="10" y1="18" x2="14" y2="18"></line>
-              </svg>
-            </button>
-            {#if filterMenuOpen}
-              <div
-                id="video-filter-menu"
-                role="menu"
-                aria-label="Video filters"
-                class="absolute right-0 top-full z-20 mt-2 w-56 overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-white shadow-xl fade-in"
-              >
-                <div class="p-2 space-y-4">
-                  <div class="grid gap-1">
-                    <p
-                      class="px-2 pb-1 text-[10px] font-bold text-[var(--soft-foreground)] opacity-50"
-                    >
-                      TYPE
-                    </p>
-                    <button
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={videoTypeFilter === "all"}
-                      class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[13px] font-medium transition-colors ${videoTypeFilter === "all" ? "bg-[var(--accent-soft)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--muted)]/50"}`}
-                      onclick={() => setVideoTypeFilter("all")}
-                    >
-                      <span>All Content</span>
-                      {#if videoTypeFilter === "all"}
-                        <svg
-                          width="12"
-                          height="12"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="3"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          ><polyline points="20 6 9 17 4 12" /></svg
-                        >
-                      {/if}
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={videoTypeFilter === "long"}
-                      class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[13px] font-medium transition-colors ${videoTypeFilter === "long" ? "bg-[var(--accent-soft)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--muted)]/50"}`}
-                      onclick={() => setVideoTypeFilter("long")}
-                    >
-                      <span>Full Videos</span>
-                      {#if videoTypeFilter === "long"}
-                        <svg
-                          width="12"
-                          height="12"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="3"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          ><polyline points="20 6 9 17 4 12" /></svg
-                        >
-                      {/if}
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={videoTypeFilter === "short"}
-                      class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[13px] font-medium transition-colors ${videoTypeFilter === "short" ? "bg-[var(--accent-soft)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--muted)]/50"}`}
-                      onclick={() => setVideoTypeFilter("short")}
-                    >
-                      <span>Shorts</span>
-                      {#if videoTypeFilter === "short"}
-                        <svg
-                          width="12"
-                          height="12"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="3"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          ><polyline points="20 6 9 17 4 12" /></svg
-                        >
-                      {/if}
-                    </button>
-                  </div>
-
-                  <div class="grid gap-1">
-                    <p
-                      class="px-2 pb-1 text-[10px] font-bold text-[var(--soft-foreground)] opacity-50"
-                    >
-                      STATUS
-                    </p>
-                    <button
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={acknowledgedFilter === "all"}
-                      class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[13px] font-medium transition-colors ${acknowledgedFilter === "all" ? "bg-[var(--accent-soft)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--muted)]/50"}`}
-                      onclick={() => setAcknowledgedFilter("all")}
-                    >
-                      <span>All Statuses</span>
-                      {#if acknowledgedFilter === "all"}
-                        <svg
-                          width="12"
-                          height="12"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="3"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          ><polyline points="20 6 9 17 4 12" /></svg
-                        >
-                      {/if}
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={acknowledgedFilter === "unack"}
-                      class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[13px] font-medium transition-colors ${acknowledgedFilter === "unack" ? "bg-[var(--accent-soft)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--muted)]/50"}`}
-                      onclick={() => setAcknowledgedFilter("unack")}
-                    >
-                      <span>Unread</span>
-                      {#if acknowledgedFilter === "unack"}
-                        <svg
-                          width="12"
-                          height="12"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="3"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          ><polyline points="20 6 9 17 4 12" /></svg
-                        >
-                      {/if}
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={acknowledgedFilter === "ack"}
-                      class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[13px] font-medium transition-colors ${acknowledgedFilter === "ack" ? "bg-[var(--accent-soft)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--muted)]/50"}`}
-                      onclick={() => setAcknowledgedFilter("ack")}
-                    >
-                      <span>Read</span>
-                      {#if acknowledgedFilter === "ack"}
-                        <svg
-                          width="12"
-                          height="12"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="3"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          ><polyline points="20 6 9 17 4 12" /></svg
-                        >
-                      {/if}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            {/if}
-          </div>
-        </div>
-
-        <div
-          class="grid flex-1 min-h-0 gap-4 overflow-y-auto pr-1 custom-scrollbar"
-          bind:this={videoListContainer}
-          onscroll={updateVideoListBottomState}
-          aria-busy={loadingVideos}
-        >
-          {#if loadingVideos && videos.length === 0}
-            {#each Array.from({ length: 3 }) as _, index (index)}
-              <article
-                class="flex min-h-[14rem] flex-col gap-4 rounded-[var(--radius-md)] p-4 animate-pulse bg-[var(--muted)]/30"
-              >
-                <div
-                  class="aspect-video rounded-[var(--radius-sm)] bg-[var(--muted)] opacity-60"
-                ></div>
-                <div
-                  class="h-4 w-11/12 rounded-full bg-[var(--muted)] opacity-60"
-                ></div>
-                <div
-                  class="h-3 w-2/5 rounded-full bg-[var(--muted)] opacity-40"
-                ></div>
-              </article>
-            {/each}
-          {:else if videos.length === 0}
-            <p
-              class="px-1 text-[14px] font-medium text-[var(--soft-foreground)] opacity-50 italic"
-            >
-              Waiting for the library to fill.
-            </p>
-          {:else}
-            {#each videos as video}
-              <VideoCard
-                {video}
-                active={selectedVideoId === video.id}
-                onSelect={() => selectVideo(video.id, true)}
-              />
-            {/each}
-          {/if}
-        </div>
-
-        {#if selectedChannelId}
-          <div class="flex flex-col gap-3 pt-3">
-            {#if hasMore || !historyExhausted}
-              <button
-                type="button"
-                class="w-full rounded-[var(--radius-sm)] border border-[var(--border-soft)] py-2.5 text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--soft-foreground)] transition-all hover:border-[var(--accent)]/40 hover:text-[var(--foreground)] disabled:opacity-30"
-                onclick={loadMoreVideos}
-                disabled={loadingVideos || backfillingHistory}
-              >
-                {#if loadingVideos || backfillingHistory}
-                  Loading...
-                {:else if hasMore}
-                  More
-                {:else}
-                  Explore History
-                {/if}
-              </button>
-            {/if}
-
-            {#if atVideoListBottom && videos.length > 0}
-              <p
-                class="text-[11px] text-[var(--soft-foreground)] opacity-40 px-0.5"
-              >
-                Synced to {formatSyncDate(
-                  resolveDisplayedSyncDepthIso({
-                    videos,
-                    selectedChannel,
-                    syncDepth,
-                    allowLoadedVideoOverride: allowLoadedVideoSyncDepthOverride,
-                  }),
-                )}
-              </p>
-            {/if}
           </div>
         {/if}
-      </aside>
-
-      <section
-        class="flex min-w-0 flex-col overflow-hidden border-0 lg:gap-4 lg:py-6 lg:pl-6 lg:sticky lg:top-4 lg:h-[calc(100vh-4rem)] fade-in stagger-3 {mobileTab !==
-        'content'
-          ? 'hidden lg:flex'
-          : 'h-[calc(100dvh-4rem)]'}"
-        id="content-view"
-      >
-        <div
-          class="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-6 lg:px-0 max-lg:pt-3 max-lg:pb-1"
-        >
-          <div class="flex items-center gap-3 sm:gap-4">
-            <h2 class="sr-only">Display Content</h2>
-            <Toggle
-              options={["transcript", "summary", "info"]}
-              value={contentMode}
-              onChange={(value) =>
-                setMode(value as "transcript" | "summary" | "info")}
-            />
-          </div>
-
-          {#if selectedVideoId && !loadingContent && !editing && contentMode !== "info"}
-            <div class="flex items-center justify-end h-10">
-              <ContentEditor
-                editing={false}
-                busy={loadingContent}
-                aiAvailable={aiAvailable ?? false}
-                formatting={formattingContent &&
-                  formattingVideoId === selectedVideoId}
-                regenerating={regeneratingSummary &&
-                  regeneratingVideoId === selectedVideoId}
-                reverting={revertingContent &&
-                  revertingVideoId === selectedVideoId}
-                showFormatAction={contentMode === "transcript"}
-                showRegenerateAction={contentMode === "summary"}
-                showRevertAction={contentMode === "transcript"}
-                canRevert={canRevertTranscript}
-                youtubeUrl={contentMode === "transcript"
-                  ? selectedVideoYoutubeUrl
-                  : null}
-                value={draft}
-                acknowledged={videos.find((v) => v.id === selectedVideoId)
-                  ?.acknowledged ?? false}
-                onEdit={startEdit}
-                onCancel={cancelEdit}
-                onSave={saveEdit}
-                onFormat={cleanFormatting}
-                onRegenerate={regenerateSummaryContent}
-                onRevert={revertToOriginalTranscript}
-                onChange={(value) => (draft = value)}
-                onAcknowledgeToggle={toggleAcknowledge}
-              />
-            </div>
-          {/if}
-        </div>
-
-        <div
-          class="w-full min-h-0 flex-1 overflow-y-auto px-4 sm:px-6 lg:px-0 lg:pr-4 max-lg:pt-4 custom-scrollbar"
-        >
-          {#if selectedVideoId && !loadingContent}
-            {@const selectedVideo = videos.find(
-              (v) => v.id === selectedVideoId,
-            )}
-            {#if selectedVideo}
-              <nav class="mb-3 sm:mb-4 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[12px] text-[var(--soft-foreground)] opacity-60" aria-label="Breadcrumb">
-                {#if selectedChannel}
-                  <button type="button" class="shrink-0 hover:text-[var(--foreground)] transition-colors" onclick={() => { mobileTab = 'channels'; }}>{selectedChannel.name}</button>
-                  <svg class="shrink-0" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-                {/if}
-                <button type="button" class="font-medium text-[var(--foreground)] opacity-80 hover:opacity-100 transition-opacity text-left" onclick={() => { mobileTab = 'videos'; }}>{selectedVideo.title}</button>
-              </nav>
-            {/if}
-          {/if}
-          {#if contentMode === "transcript" && selectedVideoId && ((formattingContent && formattingVideoId === selectedVideoId) || (formattingNotice && formattingNoticeVideoId === selectedVideoId))}
+        {#if contentMode === "summary" && selectedVideoId && !loadingContent}
+          <div
+            class="mb-2 flex flex-col gap-1 text-[11px] text-[var(--soft-foreground)] opacity-40"
+          >
+            <span>Distilled by {summaryModelUsed ?? "unknown model"}</span>
             <div
-              class={`mb-4 sm:mb-8 p-4 rounded-[var(--radius-md)] border flex flex-wrap items-center gap-3 transition-all duration-500 ${
-                formattingNoticeTone === "warning"
-                  ? "border-[var(--accent)]/20 bg-[var(--accent-soft)]/50 text-[var(--accent-strong)]"
-                  : "border-[var(--border-soft)] bg-[var(--muted)]/30 text-[var(--soft-foreground)]"
-              }`}
-              role="status"
-              aria-live="polite"
-            >
-              {#if formattingContent && formattingVideoId === selectedVideoId}
-                <span class="relative flex h-2 w-2">
-                  <span
-                    class="animate-ping absolute inline-flex h-full w-full rounded-full bg-current opacity-75"
-                  ></span>
-                  <span
-                    class="relative inline-flex rounded-full h-2 w-2 bg-current"
-                  ></span>
-                </span>
-              {:else}
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="3"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  ><circle cx="12" cy="12" r="10" /><polyline
-                    points="12 6 12 12 16 14"
-                  /></svg
-                >
-              {/if}
-              <p class="text-[12px] font-bold tracking-wide uppercase">
-                {formattingContent && formattingVideoId === selectedVideoId
-                  ? formattingNotice || "Refining transcript with Ollama…"
-                  : formattingNotice}
-              </p>
-            </div>
-          {/if}
-          {#if contentMode === "summary" && selectedVideoId && !loadingContent}
-            <div
-              class="mb-2 flex flex-wrap items-center gap-2 text-[11px] text-[var(--soft-foreground)] opacity-40"
+              class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1"
               role="status"
               aria-live="polite"
             >
               <svg
+                class={`mt-0.5 ${summaryQualityNote && summaryQualityNoteExpanded ? "row-span-2" : ""}`}
                 width="11"
                 height="11"
                 viewBox="0 0 24 24"
@@ -2175,85 +2242,109 @@
                   points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"
                 /></svg
               >
-              <span class="font-bold uppercase tracking-[0.08em]">
-                {#if summaryQualityScore !== null}
-                  Quality Analysis: {summaryQualityScore}/10
-                {:else}
-                  Evaluating quality…
+              <div class="flex min-w-0 flex-wrap items-center gap-2">
+                <span class="font-bold uppercase tracking-[0.08em]">
+                  {#if summaryQualityScore !== null}
+                    Quality Analysis: {summaryQualityScore}/10
+                  {:else}
+                    Evaluating quality…
+                  {/if}
+                </span>
+                {#if summaryQualityNote}
+                  <button
+                    type="button"
+                    class="inline-flex items-center gap-1 rounded-[var(--radius-sm)] text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--soft-foreground)] opacity-70 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30"
+                    aria-expanded={summaryQualityNoteExpanded}
+                    aria-controls="summary-quality-note"
+                    onclick={() =>
+                      (summaryQualityNoteExpanded =
+                        !summaryQualityNoteExpanded)}
+                  >
+                    {summaryQualityNoteExpanded ? "Hide eval" : "Show eval"}
+                    <svg
+                      class={`h-3 w-3 transition-transform ${summaryQualityNoteExpanded ? "rotate-180" : ""}`}
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                    >
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </button>
                 {/if}
-              </span>
-              {#if summaryQualityNote}
-                <span class="italic">"{summaryQualityNote}"</span>
-              {/if}
-              <span class="hidden sm:inline"
-                >Distilled by {summaryModelUsed ?? "unknown model"}</span
-              >
-            </div>
-          {/if}
-
-          {#if !selectedVideoId}
-            <div
-              class="flex flex-col items-center justify-center h-full text-center py-20"
-            >
-              <p class="text-[15px] text-[var(--soft-foreground)] opacity-30">
-                Select a video to view its content.
-              </p>
-            </div>
-          {:else if loadingContent}
-            <div
-              class="space-y-8 animate-pulse mt-4"
-              role="status"
-              aria-live="polite"
-            >
-              <div
-                class="h-10 w-3/5 rounded-[var(--radius-sm)] bg-[var(--muted)]/60"
-              ></div>
-              <div class="space-y-4 pt-4">
-                <div class="h-4 w-full rounded-full bg-[var(--muted)]/50"></div>
-                <div
-                  class="h-4 w-11/12 rounded-full bg-[var(--muted)]/50"
-                ></div>
-                <div
-                  class="h-4 w-10/12 rounded-full bg-[var(--muted)]/50"
-                ></div>
-                <div class="h-4 w-full rounded-full bg-[var(--muted)]/50"></div>
-                <div class="h-4 w-3/4 rounded-full bg-[var(--muted)]/50"></div>
+                {#if summaryQualityModelUsed}
+                  <span
+                    class="text-[10px] font-medium normal-case tracking-normal text-[var(--soft-foreground)] opacity-70"
+                  >
+                    Eval by {summaryQualityModelUsed}
+                  </span>
+                {/if}
               </div>
-              <p
-                class="pt-10 text-[10px] font-bold uppercase tracking-[0.4em] text-[var(--accent)] text-center"
-              >
-                Processing {contentMode}…
-              </p>
+              {#if summaryQualityNote && summaryQualityNoteExpanded}
+                <p
+                  id="summary-quality-note"
+                  class="min-w-0 italic leading-relaxed"
+                >
+                  "{summaryQualityNote}"
+                </p>
+              {/if}
             </div>
-          {:else if contentMode === "info"}
-            <div class="space-y-8 text-[15px] leading-relaxed pb-20">
-              <h3
-                class="text-[20px] font-bold font-serif leading-tight text-[var(--foreground)]"
-              >
-                {videoInfo?.title || "Untitled"}
-              </h3>
+          </div>
+        {/if}
 
-              <div class="grid gap-x-6 gap-y-4 grid-cols-2 lg:grid-cols-4">
-                <div>
-                  <p
-                    class="text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 mb-1"
-                  >
-                    Published
-                  </p>
-                  <p class="font-semibold text-[13px]">
-                    {formatPublishedAt(videoInfo?.published_at)}
-                  </p>
-                </div>
-                <div>
-                  <p
-                    class="text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 mb-1"
-                  >
-                    Views
-                  </p>
-                  <p class="font-semibold text-[13px]">
-                    {formatCount(videoInfo?.view_count)}
-                  </p>
-                </div>
+        {#if !selectedVideoId}
+          <div
+            class="flex flex-col items-center justify-center h-full text-center py-20"
+          >
+            <p class="text-[15px] text-[var(--soft-foreground)] opacity-30">
+              Select a video to view its content.
+            </p>
+          </div>
+        {:else if loadingContent}
+          <div
+            class="space-y-8 animate-pulse mt-4"
+            role="status"
+            aria-live="polite"
+          >
+            <div
+              class="h-10 w-3/5 rounded-[var(--radius-sm)] bg-[var(--muted)]/60"
+            ></div>
+            <div class="space-y-4 pt-4">
+              <div class="h-4 w-full rounded-full bg-[var(--muted)]/50"></div>
+              <div class="h-4 w-11/12 rounded-full bg-[var(--muted)]/50"></div>
+              <div class="h-4 w-10/12 rounded-full bg-[var(--muted)]/50"></div>
+              <div class="h-4 w-full rounded-full bg-[var(--muted)]/50"></div>
+              <div class="h-4 w-3/4 rounded-full bg-[var(--muted)]/50"></div>
+            </div>
+            <p
+              class="pt-10 text-[10px] font-bold uppercase tracking-[0.4em] text-[var(--accent)] text-center"
+            >
+              Processing {contentMode}…
+            </p>
+          </div>
+        {:else if contentMode === "info"}
+          <div class="space-y-8 text-[15px] leading-relaxed pb-20">
+            <h3
+              class="text-[20px] font-bold font-serif leading-tight text-[var(--foreground)]"
+            >
+              {videoInfo?.title || "Untitled"}
+            </h3>
+
+            <div class="grid gap-x-6 gap-y-4 grid-cols-2 lg:grid-cols-4">
+              <div>
+                <p
+                  class="text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 mb-1"
+                >
+                  Published
+                </p>
+                <p class="font-semibold text-[13px]">
+                  {formatPublishedAt(videoInfo?.published_at)}
+                </p>
+              </div>
+              {#if hasKnownDuration(videoInfo?.duration_seconds, videoInfo?.duration_iso8601)}
                 <div>
                   <p
                     class="text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 mb-1"
@@ -2267,172 +2358,175 @@
                     )}
                   </p>
                 </div>
-                <div>
-                  <p
-                    class="text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 mb-1"
-                  >
-                    Channel
-                  </p>
-                  <p class="font-semibold text-[13px] truncate">
-                    {videoInfo?.channel_name || "Unknown"}
-                  </p>
-                </div>
-              </div>
-
-              {#if videoInfo?.watch_url}
-                <a
-                  href={videoInfo.watch_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="inline-flex items-center gap-2 group text-[13px] font-semibold text-[var(--accent)] hover:text-[var(--accent-strong)]"
+              {/if}
+              <div>
+                <p
+                  class="text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 mb-1"
                 >
-                  <span>Open on YouTube</span>
-                  <svg
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2.5"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    class="transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
-                    ><line x1="7" y1="17" x2="17" y2="7" /><polyline
-                      points="7 7 17 7 17 17"
-                    /></svg
-                  >
-                </a>
-              {/if}
+                  Channel
+                </p>
+                <p class="font-semibold text-[13px] truncate">
+                  {videoInfo?.channel_name || "Unknown"}
+                </p>
+              </div>
+            </div>
 
-              {#if videoInfo?.description}
-                <div>
-                  <p
-                    class="text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 mb-3"
-                  >
-                    Description
-                  </p>
-                  <p
-                    class="whitespace-pre-wrap text-[14px] font-medium leading-relaxed text-[var(--foreground)] opacity-70"
-                  >
-                    {videoInfo.description}
-                  </p>
-                </div>
-              {/if}
-            </div>
-          {:else if editing}
-            <div class="pb-20">
-              <ContentEditor
-                editing
-                busy={loadingContent}
-                aiAvailable={aiAvailable ?? false}
-                formatting={formattingContent &&
-                  formattingVideoId === selectedVideoId}
-                regenerating={regeneratingSummary &&
-                  regeneratingVideoId === selectedVideoId}
-                reverting={revertingContent &&
-                  revertingVideoId === selectedVideoId}
-                showFormatAction={contentMode === "transcript"}
-                showRegenerateAction={contentMode === "summary"}
-                showRevertAction={contentMode === "transcript"}
-                canRevert={canRevertTranscript}
-                youtubeUrl={contentMode === "transcript"
-                  ? selectedVideoYoutubeUrl
-                  : null}
-                value={draft}
-                acknowledged={videos.find((v) => v.id === selectedVideoId)
-                  ?.acknowledged ?? false}
-                onEdit={startEdit}
-                onCancel={cancelEdit}
-                onSave={saveEdit}
-                onFormat={cleanFormatting}
-                onRegenerate={regenerateSummaryContent}
-                onRevert={revertToOriginalTranscript}
-                onChange={(value) => (draft = value)}
-                onAcknowledgeToggle={toggleAcknowledge}
-              />
-            </div>
-          {:else}
-            <div class="max-lg:pb-32">
-              <TranscriptView
-                html={contentHtml}
-                formatting={contentMode === "transcript" &&
-                  formattingContent &&
-                  formattingVideoId === selectedVideoId}
-              />
-            </div>
-          {/if}
-        </div>
-      </section>
-    </main>
+            {#if videoInfo?.watch_url}
+              <a
+                href={videoInfo.watch_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="inline-flex items-center gap-2 group text-[13px] font-semibold text-[var(--accent)] hover:text-[var(--accent-strong)]"
+              >
+                <span>Open on YouTube</span>
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  class="transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+                  ><line x1="7" y1="17" x2="17" y2="7" /><polyline
+                    points="7 7 17 7 17 17"
+                  /></svg
+                >
+              </a>
+            {/if}
 
-    <nav class="mobile-tab-bar lg:hidden" aria-label="Panel navigation">
-      <button
-        type="button"
-        class="mobile-tab-item {mobileTab === 'channels'
-          ? 'mobile-tab-item--active'
-          : ''}"
-        onclick={() => (mobileTab = "channels")}
-        aria-current={mobileTab === "channels" ? "page" : undefined}
+            {#if videoInfo?.description}
+              <div>
+                <p
+                  class="text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 mb-3"
+                >
+                  Description
+                </p>
+                <p
+                  class="whitespace-pre-wrap text-[14px] font-medium leading-relaxed text-[var(--foreground)] opacity-70"
+                >
+                  {videoInfo.description}
+                </p>
+              </div>
+            {/if}
+          </div>
+        {:else if editing}
+          <div class="pb-20">
+            <ContentEditor
+              editing
+              busy={loadingContent}
+              aiAvailable={aiAvailable ?? false}
+              formatting={formattingContent &&
+                formattingVideoId === selectedVideoId}
+              regenerating={regeneratingSummary &&
+                regeneratingVideoId === selectedVideoId}
+              reverting={revertingContent &&
+                revertingVideoId === selectedVideoId}
+              showFormatAction={contentMode === "transcript"}
+              showRegenerateAction={contentMode === "summary"}
+              showRevertAction={contentMode === "transcript"}
+              canRevert={canRevertTranscript}
+              youtubeUrl={selectedVideoYoutubeUrl}
+              value={draft}
+              acknowledged={videos.find((v) => v.id === selectedVideoId)
+                ?.acknowledged ?? false}
+              onEdit={startEdit}
+              onCancel={cancelEdit}
+              onSave={saveEdit}
+              onFormat={cleanFormatting}
+              onRegenerate={regenerateSummaryContent}
+              onRevert={revertToOriginalTranscript}
+              onChange={(value) => (draft = value)}
+              onAcknowledgeToggle={toggleAcknowledge}
+            />
+          </div>
+        {:else}
+          <div class="max-lg:pb-32">
+            <TranscriptView
+              html={contentHtml}
+              text={contentText}
+              mode={contentMode === "transcript"
+                ? transcriptRenderMode
+                : "markdown"}
+              formatting={contentMode === "transcript" &&
+                formattingContent &&
+                formattingVideoId === selectedVideoId}
+            />
+          </div>
+        {/if}
+      </div>
+    </section>
+  </main>
+
+  <nav class="mobile-tab-bar lg:hidden" aria-label="Panel navigation">
+    <button
+      type="button"
+      class="mobile-tab-item {mobileTab === 'channels'
+        ? 'mobile-tab-item--active'
+        : ''}"
+      onclick={() => (mobileTab = "channels")}
+      aria-current={mobileTab === "channels" ? "page" : undefined}
+    >
+      <svg
+        class="h-5 w-5"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
       >
-        <svg
-          class="h-5 w-5"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <rect x="3" y="3" width="6" height="18" rx="1.5" />
-          <rect x="15" y="3" width="6" height="18" rx="1.5" />
-          <rect x="9" y="3" width="6" height="18" rx="1.5" />
-        </svg>
-        <span>Channels</span>
-      </button>
-      <button
-        type="button"
-        class="mobile-tab-item {mobileTab === 'videos'
-          ? 'mobile-tab-item--active'
-          : ''}"
-        onclick={() => (mobileTab = "videos")}
-        aria-current={mobileTab === "videos" ? "page" : undefined}
+        <rect x="3" y="3" width="6" height="18" rx="1.5" />
+        <rect x="15" y="3" width="6" height="18" rx="1.5" />
+        <rect x="9" y="3" width="6" height="18" rx="1.5" />
+      </svg>
+      <span>Channels</span>
+    </button>
+    <button
+      type="button"
+      class="mobile-tab-item {mobileTab === 'videos'
+        ? 'mobile-tab-item--active'
+        : ''}"
+      onclick={() => (mobileTab = "videos")}
+      aria-current={mobileTab === "videos" ? "page" : undefined}
+    >
+      <svg
+        class="h-5 w-5"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
       >
-        <svg
-          class="h-5 w-5"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <polygon points="6,3 20,12 6,21" />
-        </svg>
-        <span>Videos</span>
-      </button>
-      <button
-        type="button"
-        class="mobile-tab-item {mobileTab === 'content'
-          ? 'mobile-tab-item--active'
-          : ''}"
-        onclick={() => (mobileTab = "content")}
-        aria-current={mobileTab === "content" ? "page" : undefined}
+        <polygon points="6,3 20,12 6,21" />
+      </svg>
+      <span>Videos</span>
+    </button>
+    <button
+      type="button"
+      class="mobile-tab-item {mobileTab === 'content'
+        ? 'mobile-tab-item--active'
+        : ''}"
+      onclick={() => (mobileTab = "content")}
+      aria-current={mobileTab === "content" ? "page" : undefined}
+    >
+      <svg
+        class="h-5 w-5"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
       >
-        <svg
-          class="h-5 w-5"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
-          <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
-        </svg>
-        <span>Content</span>
-      </button>
-    </nav>
+        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+        <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+      </svg>
+      <span>Content</span>
+    </button>
+  </nav>
 
   {#if errorMessage}
     <div

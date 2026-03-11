@@ -371,6 +371,7 @@ pub fn spawn_summary_evaluation_worker(state: AppState) {
                             &job.video_id,
                             Some(result.quality_score),
                             result.quality_note.as_deref(),
+                            result.quality_model_used.as_deref(),
                         )
                         .await;
 

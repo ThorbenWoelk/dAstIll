@@ -148,7 +148,7 @@ Rules:
 - Do not include markdown, comments, or extra keys."#
         );
 
-        let raw = self
+        let (raw, model_used) = self
             .prompt_model(
                 "summary_quality_evaluation",
                 "You are a strict, skeptical evaluator. You check summaries for two failure modes: hallucination (claims not in the transcript) and omission (transcript content missing from the summary). You penalize both equally. A short generic summary of a long detailed transcript is a failing summary.",
@@ -156,7 +156,9 @@ Rules:
             )
             .await?;
 
-        parse_evaluation_response(&raw)
+        let mut evaluation = parse_evaluation_response(&raw)?;
+        evaluation.quality_model_used = Some(model_used);
+        Ok(evaluation)
     }
 
     pub fn model(&self) -> &str {
@@ -168,7 +170,7 @@ Rules:
         operation: &str,
         preamble: &str,
         prompt: &str,
-    ) -> Result<String, SummaryEvaluatorError> {
+    ) -> Result<(String, String), SummaryEvaluatorError> {
         tracing::info!(
             operation = operation,
             model = %self.model(),
@@ -230,7 +232,7 @@ Rules:
             ));
         }
 
-        Ok(response)
+        Ok((response, model_used))
     }
 }
 
@@ -295,6 +297,7 @@ fn parse_evaluation_response(raw: &str) -> Result<SummaryEvaluationResult, Summa
     Ok(SummaryEvaluationResult {
         quality_score: score,
         quality_note: note,
+        quality_model_used: None,
     })
 }
 
