@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { goto } from "$app/navigation";
+  import { goto, replaceState as replacePageState } from "$app/navigation";
   import { onMount } from "svelte";
   import {
     getChannelSnapshot,
@@ -12,13 +12,23 @@
   } from "$lib/api";
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
   import AiStatusIndicator from "$lib/components/AiStatusIndicator.svelte";
+  import FeatureGuide, {
+    type TourStep,
+  } from "$lib/components/FeatureGuide.svelte";
   import {
     applySavedChannelOrder,
+    beginChannelDrag,
     buildQueueSnapshotOptions,
+    completeChannelDrop,
+    finishChannelDrag,
     loadWorkspaceState,
+    markChannelRefreshed,
     reorderChannels as reorderChannelList,
+    restoreWorkspaceSnapshot,
     resolveInitialChannelSelection,
     saveWorkspaceState,
+    shouldRefreshChannel,
+    updateChannelDragOver,
     type WorkspaceStateSnapshot,
   } from "$lib/channel-workspace";
   import defaultChannelIcon from "$lib/assets/channel-default.svg";
@@ -32,6 +42,12 @@
     QueueTab,
     Video,
   } from "$lib/types";
+  import {
+    buildQueueViewHref,
+    buildWorkspaceViewHref,
+    mergeQueueViewState,
+    parseQueueViewUrlState,
+  } from "$lib/view-url";
 
   const dateFormatter = new Intl.DateTimeFormat(undefined, {
     month: "short",
@@ -51,12 +67,65 @@
   let dragOverChannelId = $state<string | null>(null);
   let loadingChannels = $state(false);
   let aiStatus = $state<AiStatus | null>(null);
+
+  // -- Guide tour (URL-driven: ?guide=0, ?guide=1, ...) --
+  let guideOpen = $state(false);
+  let guideStep = $state(0);
+
+  const tourSteps: TourStep[] = [
+    {
+      selector: "#ai-status-pill",
+      title: "AI Status",
+      body: "The colored dot shows AI engine availability. In showcase mode, AI is disabled but all browsing features work fully.",
+      placement: "bottom",
+    },
+    {
+      selector: "nav[aria-label='Queue tabs']",
+      title: "Queue Tabs",
+      body: "Switch between Transcripts, Summaries, and Evaluations to monitor the processing pipeline for each channel.",
+      placement: "bottom",
+      prepare: () => {
+        mobileTab = "details";
+      },
+    },
+  ];
+
+  function openGuide() {
+    guideStep = 0;
+    guideOpen = true;
+    syncGuideToUrl(0);
+  }
+
+  function closeGuide() {
+    guideOpen = false;
+    removeGuideFromUrl();
+  }
+
+  function setGuideStep(s: number) {
+    guideStep = s;
+    syncGuideToUrl(s);
+  }
+
+  function syncGuideToUrl(s: number) {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("guide", String(s));
+    window.history.replaceState(window.history.state, "", url);
+  }
+
+  function removeGuideFromUrl() {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("guide");
+    window.history.replaceState(window.history.state, "", url);
+  }
   let loadingVideos = $state(false);
 
   let errorMessage = $state<string | null>(null);
   let showDeleteConfirmation = $state(false);
   let channelIdToDelete = $state<string | null>(null);
   let workspaceStateHydrated = $state(false);
+  let viewUrlHydrated = $state(false);
 
   let offset = $state(0);
   const limit = 20;
@@ -104,34 +173,34 @@
   }
 
   function handleChannelDragStart(channelId: string, event: DragEvent) {
-    draggedChannelId = channelId;
-    dragOverChannelId = channelId;
-    if (!event.dataTransfer) return;
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", channelId);
+    const dragState = beginChannelDrag(channelId, event.dataTransfer);
+    draggedChannelId = dragState.draggedChannelId;
+    dragOverChannelId = dragState.dragOverChannelId;
   }
 
   function handleChannelDragOver(channelId: string, event: DragEvent) {
     event.preventDefault();
-    if (dragOverChannelId !== channelId) {
-      dragOverChannelId = channelId;
-    }
+    dragOverChannelId = updateChannelDragOver(dragOverChannelId, channelId);
   }
 
   function handleChannelDrop(channelId: string, event: DragEvent) {
     event.preventDefault();
-    const fallbackId = event.dataTransfer?.getData("text/plain") || null;
-    const sourceId = draggedChannelId || fallbackId;
+    const { sourceId, dragState } = completeChannelDrop(
+      channelId,
+      draggedChannelId,
+      event.dataTransfer?.getData("text/plain") || null,
+    );
     if (sourceId) {
       reorderChannels(sourceId, channelId);
     }
-    draggedChannelId = null;
-    dragOverChannelId = null;
+    draggedChannelId = dragState.draggedChannelId;
+    dragOverChannelId = dragState.dragOverChannelId;
   }
 
   function handleChannelDragEnd() {
-    draggedChannelId = null;
-    dragOverChannelId = null;
+    const dragState = finishChannelDrag();
+    draggedChannelId = dragState.draggedChannelId;
+    dragOverChannelId = dragState.dragOverChannelId;
   }
 
   const selectedChannel = $derived(
@@ -327,20 +396,25 @@
   }
 
   function restoreWorkspaceState() {
-    if (typeof localStorage === "undefined") return;
-    const snapshot = loadWorkspaceState(localStorage);
-    if (!snapshot) return;
+    const restored = mergeQueueViewState(
+      restoreWorkspaceSnapshot(
+        typeof localStorage === "undefined"
+          ? null
+          : loadWorkspaceState(localStorage),
+      ),
+      typeof window === "undefined"
+        ? {}
+        : parseQueueViewUrlState(new URL(window.location.href)),
+    );
 
-    if (
-      typeof snapshot.selectedChannelId === "string" ||
-      snapshot.selectedChannelId === null
-    ) {
-      selectedChannelId = snapshot.selectedChannelId;
+    if ("selectedChannelId" in restored) {
+      selectedChannelId = restored.selectedChannelId ?? null;
     }
-    if (Array.isArray(snapshot.channelOrder)) {
-      channelOrder = snapshot.channelOrder.filter(
-        (id): id is string => typeof id === "string",
-      );
+    if (restored.channelOrder) {
+      channelOrder = restored.channelOrder;
+    }
+    if (restored.queueTab) {
+      queueTab = restored.queueTab;
     }
   }
 
@@ -363,11 +437,39 @@
       });
     }
 
-    await goto("/");
+    await goto(
+      buildWorkspaceViewHref({
+        selectedChannelId: video.channel_id,
+        selectedVideoId: video.id,
+        contentMode: "transcript",
+        videoTypeFilter: "all",
+        acknowledgedFilter: "all",
+      }),
+    );
+  }
+
+  function persistViewUrl() {
+    if (!viewUrlHydrated || typeof window === "undefined") return;
+    const nextHref = buildQueueViewHref({
+      selectedChannelId,
+      queueTab,
+    });
+    const nextUrl = new URL(nextHref, window.location.origin);
+    if (
+      nextUrl.pathname === window.location.pathname &&
+      nextUrl.search === window.location.search
+    ) {
+      return;
+    }
+    replacePageState(nextUrl, window.history.state);
   }
 
   $effect(() => {
     persistWorkspaceState();
+  });
+
+  $effect(() => {
+    persistViewUrl();
   });
 
   $effect(() => {
@@ -411,8 +513,25 @@
 
   onMount(() => {
     restoreWorkspaceState();
+    previousQueueTab = queueTab;
     workspaceStateHydrated = true;
-    void loadInitial();
+    void (async () => {
+      try {
+        await loadInitial();
+      } finally {
+        viewUrlHydrated = true;
+      }
+    })();
+
+    // Restore guide from URL
+    const guideParam = new URL(window.location.href).searchParams.get("guide");
+    if (guideParam !== null) {
+      const parsed = parseInt(guideParam, 10);
+      if (!Number.isNaN(parsed) && parsed >= 0 && parsed < tourSteps.length) {
+        guideStep = parsed;
+        guideOpen = true;
+      }
+    }
   });
 
   async function loadInitial() {
@@ -515,8 +634,13 @@
     await applyChannelSnapshot(channelId, snapshot);
 
     // Skip YouTube refresh if channel was refreshed recently
-    const lastRefresh = channelLastRefreshedAt.get(channelId);
-    if (lastRefresh && Date.now() - lastRefresh < CHANNEL_REFRESH_TTL_MS) {
+    if (
+      !shouldRefreshChannel(
+        channelLastRefreshedAt,
+        channelId,
+        CHANNEL_REFRESH_TTL_MS,
+      )
+    ) {
       return;
     }
 
@@ -524,7 +648,7 @@
     refreshingChannel = true;
     try {
       await refreshChannel(channelId);
-      channelLastRefreshedAt.set(channelId, Date.now());
+      markChannelRefreshed(channelLastRefreshedAt, channelId);
       // After refresh, silently reload the queue snapshot.
       if (selectedChannelId === channelId) {
         const refreshedSnapshot = await getChannelSnapshot(
@@ -619,6 +743,28 @@
           title={aiIndicator.title}
         />
       {/if}
+      <button
+        type="button"
+        id="guide-trigger"
+        class="inline-flex h-7 w-7 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-40 transition-all hover:opacity-80 hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+        onclick={openGuide}
+        aria-label="Feature guide"
+      >
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+          <line x1="12" y1="17" x2="12.01" y2="17"></line>
+        </svg>
+      </button>
     </div>
 
     <nav class="flex items-center gap-0.5" aria-label="Workspace sections">
@@ -1103,5 +1249,13 @@
     tone="danger"
     onConfirm={confirmDeleteChannel}
     onCancel={cancelDeleteChannel}
+  />
+
+  <FeatureGuide
+    open={guideOpen}
+    step={guideStep}
+    steps={tourSteps}
+    onClose={closeGuide}
+    onStep={setGuideStep}
   />
 </div>

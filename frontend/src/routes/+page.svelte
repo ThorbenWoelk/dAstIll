@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { replaceState as replacePageState } from "$app/navigation";
   import { onMount, tick } from "svelte";
   import {
     addChannel,
@@ -22,6 +23,9 @@
   } from "$lib/api";
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
   import AiStatusIndicator from "$lib/components/AiStatusIndicator.svelte";
+  import FeatureGuide, {
+    type TourStep,
+  } from "$lib/components/FeatureGuide.svelte";
   import ChannelCard from "$lib/components/ChannelCard.svelte";
   import ConfirmationModal from "$lib/components/ConfirmationModal.svelte";
   import ContentEditor from "$lib/components/ContentEditor.svelte";
@@ -41,11 +45,18 @@
   } from "$lib/types";
   import {
     applySavedChannelOrder,
+    beginChannelDrag,
+    completeChannelDrop,
+    finishChannelDrag,
     loadWorkspaceState,
+    markChannelRefreshed,
     prioritizeChannelOrder,
     reorderChannels as reorderChannelList,
+    restoreWorkspaceSnapshot,
     resolveInitialChannelSelection,
     saveWorkspaceState,
+    shouldRefreshChannel,
+    updateChannelDragOver,
     type WorkspaceStateSnapshot,
   } from "$lib/channel-workspace";
   import {
@@ -56,6 +67,11 @@
     resolveDisplayedSyncDepthIso,
     resolveOldestLoadedReadyVideoDate,
   } from "$lib/sync-depth";
+  import {
+    buildWorkspaceViewHref,
+    mergeWorkspaceViewState,
+    parseWorkspaceViewUrlState,
+  } from "$lib/view-url";
 
   const secondaryButtonClass =
     "inline-flex items-center justify-center rounded-full border border-[var(--border)] px-5 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--foreground)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)]";
@@ -81,6 +97,124 @@
   let channelSortMode = $state<"custom" | "alpha" | "newest">("custom");
   let channelSearchOpen = $state(false);
   let manageChannels = $state(false);
+
+  // -- Guide tour (URL-driven: ?guide=0, ?guide=1, ...) --
+  let guideOpen = $state(false);
+  let guideStep = $state(0);
+
+  const tourSteps: TourStep[] = [
+    {
+      selector: "#workspace",
+      title: "Channel Sidebar",
+      body: "All your followed YouTube channels live here. Drag to reorder, search to filter, and use the trash icon to manage.",
+      placement: "right",
+      prepare: () => {
+        mobileTab = "channels";
+      },
+    },
+    {
+      selector: "#channel-input",
+      title: "Follow a Channel",
+      body: "Paste any YouTube channel URL, handle, or channel ID and press enter. The channel and its videos are fetched automatically.",
+      placement: "bottom",
+      prepare: () => {
+        mobileTab = "channels";
+      },
+    },
+    {
+      selector: "#videos",
+      title: "Video Library",
+      body: "Every video from your channels appears here. Use the filter button to show only long-form, shorts, or unread videos.",
+      placement: "right",
+      prepare: () => {
+        mobileTab = "videos";
+      },
+    },
+    {
+      selector: "#content-mode-tabs",
+      title: "Transcript View",
+      body: "Each video's transcript is automatically extracted and displayed. This is the raw text of everything said in the video.",
+      placement: "bottom",
+      prepare: () => {
+        mobileTab = "content";
+        if (contentMode !== "transcript") {
+          void setMode("transcript");
+        }
+      },
+    },
+    {
+      selector: "#content-mode-tabs",
+      title: "Summary View",
+      body: "Switch to Summary to see an AI-generated distillation of the video's key points. The model name and a quality score are shown below the text.",
+      placement: "bottom",
+      prepare: () => {
+        mobileTab = "content";
+        if (contentMode !== "summary") {
+          void setMode("summary");
+        }
+      },
+    },
+    {
+      selector: "#content-mode-tabs",
+      title: "Info View",
+      body: "The Info tab shows video metadata - publish date, duration, description, and thumbnail - pulled directly from YouTube.",
+      placement: "bottom",
+      prepare: () => {
+        mobileTab = "content";
+        if (contentMode !== "info") {
+          void setMode("info");
+        }
+      },
+    },
+    {
+      selector: "#content-actions",
+      title: "Content Actions",
+      body: "The action bar gives you quick access to: edit the text inline, reformat the transcript with AI, regenerate the summary, jump to the video on YouTube, and mark a video as read.",
+      placement: "bottom",
+      prepare: () => {
+        mobileTab = "content";
+        if (contentMode === "info") {
+          void setMode("transcript");
+        }
+      },
+    },
+    {
+      selector: "#ai-status-pill",
+      title: "AI Status",
+      body: "The colored dot shows AI engine availability. In showcase mode, AI features like formatting and summary generation are disabled, but browsing and reading work fully.",
+      placement: "bottom",
+    },
+  ];
+
+  function openGuide() {
+    guideStep = 0;
+    guideOpen = true;
+    syncGuideToUrl(0);
+  }
+
+  function closeGuide() {
+    guideOpen = false;
+    removeGuideFromUrl();
+  }
+
+  function setGuideStep(s: number) {
+    guideStep = s;
+    syncGuideToUrl(s);
+  }
+
+  function syncGuideToUrl(s: number) {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("guide", String(s));
+    window.history.replaceState(window.history.state, "", url);
+  }
+
+  function removeGuideFromUrl() {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("guide");
+    window.history.replaceState(window.history.state, "", url);
+  }
 
   let channelInput = $state("");
   let loadingChannels = $state(false);
@@ -162,6 +296,7 @@
   let videoTypeFilter = $state<VideoTypeFilter>("all");
   let acknowledgedFilter = $state<AcknowledgedFilter>("all");
   let workspaceStateHydrated = $state(false);
+  let viewUrlHydrated = $state(false);
   let filterMenuOpen = $state(false);
   let filterMenuContainer = $state<HTMLDivElement | null>(null);
   let videoListContainer = $state<HTMLDivElement | null>(null);
@@ -484,47 +619,67 @@
   }
 
   function restoreWorkspaceState() {
-    if (typeof localStorage === "undefined") return;
-    const snapshot = loadWorkspaceState(localStorage);
-    if (!snapshot) return;
+    const restored = mergeWorkspaceViewState(
+      restoreWorkspaceSnapshot(
+        typeof localStorage === "undefined"
+          ? null
+          : loadWorkspaceState(localStorage),
+        {
+          includeSelectedVideoId: true,
+          includeContentMode: true,
+          includeVideoTypeFilter: true,
+          includeAcknowledgedFilter: true,
+          includeChannelSortMode: true,
+        },
+      ),
+      typeof window === "undefined"
+        ? {}
+        : parseWorkspaceViewUrlState(new URL(window.location.href)),
+    );
 
-    if (
-      typeof snapshot.selectedChannelId === "string" ||
-      snapshot.selectedChannelId === null
-    ) {
-      selectedChannelId = snapshot.selectedChannelId;
+    if ("selectedChannelId" in restored) {
+      selectedChannelId = restored.selectedChannelId ?? null;
+    }
+    if ("selectedVideoId" in restored) {
+      selectedVideoId = restored.selectedVideoId ?? null;
+    }
+    if (restored.contentMode && isContentMode(restored.contentMode)) {
+      contentMode = restored.contentMode;
     }
     if (
-      typeof snapshot.selectedVideoId === "string" ||
-      snapshot.selectedVideoId === null
+      restored.videoTypeFilter &&
+      isVideoTypeFilter(restored.videoTypeFilter)
     ) {
-      selectedVideoId = snapshot.selectedVideoId;
+      videoTypeFilter = restored.videoTypeFilter;
     }
-    if (isContentMode(snapshot.contentMode)) {
-      contentMode = snapshot.contentMode;
+    if (restored.acknowledgedFilter) {
+      acknowledgedFilter = restored.acknowledgedFilter;
     }
-    if (isVideoTypeFilter(snapshot.videoTypeFilter)) {
-      videoTypeFilter = snapshot.videoTypeFilter;
-    } else if (typeof snapshot.hideShorts === "boolean") {
-      videoTypeFilter = snapshot.hideShorts ? "long" : "all";
+    if (restored.channelOrder) {
+      channelOrder = restored.channelOrder;
     }
+    if (restored.channelSortMode) {
+      channelSortMode = restored.channelSortMode;
+    }
+  }
+
+  function persistViewUrl() {
+    if (!viewUrlHydrated || typeof window === "undefined") return;
+    const nextHref = buildWorkspaceViewHref({
+      selectedChannelId,
+      selectedVideoId,
+      contentMode,
+      videoTypeFilter,
+      acknowledgedFilter,
+    });
+    const nextUrl = new URL(nextHref, window.location.origin);
     if (
-      snapshot.acknowledgedFilter &&
-      ["all", "unack", "ack"].includes(snapshot.acknowledgedFilter)
+      nextUrl.pathname === window.location.pathname &&
+      nextUrl.search === window.location.search
     ) {
-      acknowledgedFilter = snapshot.acknowledgedFilter;
+      return;
     }
-    if (Array.isArray(snapshot.channelOrder)) {
-      channelOrder = snapshot.channelOrder.filter(
-        (id): id is string => typeof id === "string",
-      );
-    }
-    if (
-      snapshot.channelSortMode &&
-      ["custom", "alpha", "newest"].includes(snapshot.channelSortMode)
-    ) {
-      channelSortMode = snapshot.channelSortMode;
-    }
+    replacePageState(nextUrl, window.history.state);
   }
 
   function persistWorkspaceState() {
@@ -545,10 +700,30 @@
     persistWorkspaceState();
   });
 
+  $effect(() => {
+    persistViewUrl();
+  });
+
   onMount(() => {
     restoreWorkspaceState();
     workspaceStateHydrated = true;
-    void loadChannels(null, true);
+    void (async () => {
+      try {
+        await loadChannels(null, true);
+      } finally {
+        viewUrlHydrated = true;
+      }
+    })();
+
+    // Restore guide from URL
+    const guideParam = new URL(window.location.href).searchParams.get("guide");
+    if (guideParam !== null) {
+      const parsed = parseInt(guideParam, 10);
+      if (!Number.isNaN(parsed) && parsed >= 0 && parsed < tourSteps.length) {
+        guideStep = parsed;
+        guideOpen = true;
+      }
+    }
 
     const handlePointerDown = (event: PointerEvent) => {
       if (!filterMenuOpen || !filterMenuContainer) return;
@@ -645,34 +820,34 @@
   }
 
   function handleChannelDragStart(channelId: string, event: DragEvent) {
-    draggedChannelId = channelId;
-    dragOverChannelId = channelId;
-    if (!event.dataTransfer) return;
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", channelId);
+    const dragState = beginChannelDrag(channelId, event.dataTransfer);
+    draggedChannelId = dragState.draggedChannelId;
+    dragOverChannelId = dragState.dragOverChannelId;
   }
 
   function handleChannelDragOver(channelId: string, event: DragEvent) {
     event.preventDefault();
-    if (dragOverChannelId !== channelId) {
-      dragOverChannelId = channelId;
-    }
+    dragOverChannelId = updateChannelDragOver(dragOverChannelId, channelId);
   }
 
   function handleChannelDrop(channelId: string, event: DragEvent) {
     event.preventDefault();
-    const fallbackId = event.dataTransfer?.getData("text/plain") || null;
-    const sourceId = draggedChannelId || fallbackId;
+    const { sourceId, dragState } = completeChannelDrop(
+      channelId,
+      draggedChannelId,
+      event.dataTransfer?.getData("text/plain") || null,
+    );
     if (sourceId) {
       reorderChannels(sourceId, channelId);
     }
-    draggedChannelId = null;
-    dragOverChannelId = null;
+    draggedChannelId = dragState.draggedChannelId;
+    dragOverChannelId = dragState.dragOverChannelId;
   }
 
   function handleChannelDragEnd() {
-    draggedChannelId = null;
-    dragOverChannelId = null;
+    const dragState = finishChannelDrag();
+    draggedChannelId = dragState.draggedChannelId;
+    dragOverChannelId = dragState.dragOverChannelId;
   }
 
   async function handleAddChannel(input: string) {
@@ -819,11 +994,13 @@
     await applyChannelSnapshot(channelId, snapshot, preferredVideoId);
 
     // Skip YouTube refresh if channel was refreshed recently
-    const lastRefresh = channelLastRefreshedAt.get(channelId);
     if (
       !bypassTtl &&
-      lastRefresh &&
-      Date.now() - lastRefresh < CHANNEL_REFRESH_TTL_MS
+      !shouldRefreshChannel(
+        channelLastRefreshedAt,
+        channelId,
+        CHANNEL_REFRESH_TTL_MS,
+      )
     ) {
       return;
     }
@@ -832,7 +1009,7 @@
     refreshingChannel = true;
     try {
       await refreshChannel(channelId);
-      channelLastRefreshedAt.set(channelId, Date.now());
+      markChannelRefreshed(channelLastRefreshedAt, channelId);
       // After refresh, silently reload current channel data.
       if (selectedChannelId === channelId) {
         const refreshedSnapshot = await getChannelSnapshot(channelId, {
@@ -1476,6 +1653,28 @@
           title={aiIndicator.title}
         />
       {/if}
+      <button
+        type="button"
+        id="guide-trigger"
+        class="inline-flex h-7 w-7 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-40 transition-all hover:opacity-80 hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+        onclick={openGuide}
+        aria-label="Feature guide"
+      >
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+          <line x1="12" y1="17" x2="12.01" y2="17"></line>
+        </svg>
+      </button>
     </div>
 
     <nav class="flex items-center gap-0.5" aria-label="Workspace sections">
@@ -2093,7 +2292,7 @@
       <div
         class="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-6 lg:px-0 max-lg:pt-3 max-lg:pb-1"
       >
-        <div class="flex items-center gap-3 sm:gap-4">
+        <div class="flex items-center gap-3 sm:gap-4" id="content-mode-tabs">
           <h2 class="sr-only">Display Content</h2>
           <Toggle
             options={["transcript", "summary", "info"]}
@@ -2104,7 +2303,7 @@
         </div>
 
         {#if selectedVideoId && !loadingContent && !editing && contentMode !== "info"}
-          <div class="relative z-20 flex items-center justify-end h-10">
+          <div id="content-actions" class="relative z-20 flex items-center justify-end h-10">
             <ContentEditor
               editing={false}
               busy={loadingContent}
@@ -2573,5 +2772,13 @@
     tone="danger"
     onConfirm={confirmDeleteChannel}
     onCancel={cancelDeleteChannel}
+  />
+
+  <FeatureGuide
+    open={guideOpen}
+    step={guideStep}
+    steps={tourSteps}
+    onClose={closeGuide}
+    onStep={setGuideStep}
   />
 </div>

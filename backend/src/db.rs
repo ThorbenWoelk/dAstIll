@@ -704,35 +704,7 @@ pub async fn upsert_transcript(
     Ok(())
 }
 
-pub async fn update_transcript_content(
-    conn: &Connection,
-    video_id: &str,
-    content: &str,
-) -> Result<(), libsql::Error> {
-    update_transcript_content_with_render_mode(
-        conn,
-        video_id,
-        content,
-        TranscriptRenderMode::PlainText,
-    )
-    .await
-}
-
-pub async fn update_transcript_content_with_render_mode(
-    conn: &Connection,
-    video_id: &str,
-    content: &str,
-    render_mode: TranscriptRenderMode,
-) -> Result<(), libsql::Error> {
-    let existing = get_transcript(conn, video_id).await?;
-    upsert_transcript(
-        conn,
-        &transcript_with_render_mode(video_id, content, render_mode, existing),
-    )
-    .await
-}
-
-pub async fn save_manual_transcript(
+async fn write_transcript_content(
     conn: &Connection,
     video_id: &str,
     content: &str,
@@ -741,6 +713,16 @@ pub async fn save_manual_transcript(
     let existing = get_transcript(conn, video_id).await?;
     let transcript = transcript_with_render_mode(video_id, content, render_mode, existing);
     upsert_transcript(conn, &transcript).await?;
+    Ok(transcript)
+}
+
+pub async fn save_manual_transcript(
+    conn: &Connection,
+    video_id: &str,
+    content: &str,
+    render_mode: TranscriptRenderMode,
+) -> Result<Transcript, libsql::Error> {
+    let transcript = write_transcript_content(conn, video_id, content, render_mode).await?;
     update_video_transcript_status(conn, video_id, ContentStatus::Ready).await?;
     Ok(transcript)
 }
@@ -837,12 +819,12 @@ pub async fn upsert_summary(conn: &Connection, summary: &Summary) -> Result<(), 
     Ok(())
 }
 
-pub async fn update_summary_content(
+async fn write_summary_content(
     conn: &Connection,
     video_id: &str,
     content: &str,
     model_used: Option<&str>,
-) -> Result<(), libsql::Error> {
+) -> Result<Summary, libsql::Error> {
     conn.execute(
         "INSERT INTO summaries (video_id, content, model_used, quality_score, quality_note, quality_model_used, auto_regen_attempts)
          VALUES (?1, ?2, ?3, NULL, NULL, NULL, 0)
@@ -856,17 +838,6 @@ pub async fn update_summary_content(
         params![video_id, content, model_used],
     )
     .await?;
-    Ok(())
-}
-
-pub async fn save_manual_summary(
-    conn: &Connection,
-    video_id: &str,
-    content: &str,
-    model_used: Option<&str>,
-) -> Result<Summary, libsql::Error> {
-    update_summary_content(conn, video_id, content, model_used).await?;
-    update_video_summary_status(conn, video_id, ContentStatus::Ready).await?;
     Ok(Summary {
         video_id: video_id.to_string(),
         content: content.to_string(),
@@ -875,6 +846,17 @@ pub async fn save_manual_summary(
         quality_note: None,
         quality_model_used: None,
     })
+}
+
+pub async fn save_manual_summary(
+    conn: &Connection,
+    video_id: &str,
+    content: &str,
+    model_used: Option<&str>,
+) -> Result<Summary, libsql::Error> {
+    let summary = write_summary_content(conn, video_id, content, model_used).await?;
+    update_video_summary_status(conn, video_id, ContentStatus::Ready).await?;
+    Ok(summary)
 }
 
 pub async fn update_summary_quality(
@@ -1192,7 +1174,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_update_transcript_content() {
+    async fn test_write_transcript_content() {
         let pool = init_db_memory().await.unwrap();
         let conn = pool.lock().await;
 
@@ -1222,7 +1204,7 @@ mod tests {
         };
         insert_video(&conn, &video).await.unwrap();
 
-        update_transcript_content(&conn, "vid2", "## Edited")
+        write_transcript_content(&conn, "vid2", "## Edited", TranscriptRenderMode::PlainText)
             .await
             .unwrap();
         update_video_transcript_status(&conn, "vid2", ContentStatus::Ready)
@@ -1286,7 +1268,67 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_update_summary_content() {
+    async fn test_save_manual_transcript_preserves_existing_raw_text_for_markdown_mode() {
+        let pool = init_db_memory().await.unwrap();
+        let conn = pool.lock().await;
+
+        let channel = Channel {
+            id: "UC999_MANUAL_MD".to_string(),
+            handle: None,
+            name: "Test".to_string(),
+            thumbnail_url: None,
+            added_at: Utc::now(),
+            earliest_sync_date: None,
+            earliest_sync_date_user_set: false,
+        };
+        insert_channel(&conn, &channel).await.unwrap();
+
+        let video = Video {
+            id: "vid_manual_transcript_md".to_string(),
+            channel_id: "UC999_MANUAL_MD".to_string(),
+            title: "Test Video".to_string(),
+            thumbnail_url: None,
+            published_at: Utc::now(),
+            is_short: false,
+            transcript_status: ContentStatus::Pending,
+            summary_status: ContentStatus::Pending,
+            acknowledged: false,
+            retry_count: 0,
+            quality_score: None,
+        };
+        insert_video(&conn, &video).await.unwrap();
+
+        upsert_transcript(
+            &conn,
+            &Transcript {
+                video_id: "vid_manual_transcript_md".to_string(),
+                raw_text: Some("Original raw text".to_string()),
+                formatted_markdown: None,
+                render_mode: TranscriptRenderMode::PlainText,
+            },
+        )
+        .await
+        .unwrap();
+
+        let transcript = save_manual_transcript(
+            &conn,
+            "vid_manual_transcript_md",
+            "## Edited markdown",
+            TranscriptRenderMode::Markdown,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(transcript.raw_text, Some("Original raw text".to_string()));
+        assert_eq!(
+            transcript.formatted_markdown,
+            Some("## Edited markdown".to_string())
+        );
+        assert_eq!(transcript.render_mode, TranscriptRenderMode::Markdown);
+    }
+
+    #[tokio::test]
+    async fn test_write_summary_content() {
         let pool = init_db_memory().await.unwrap();
         let conn = pool.lock().await;
 
@@ -1316,7 +1358,7 @@ mod tests {
         };
         insert_video(&conn, &video).await.unwrap();
 
-        update_summary_content(&conn, "vid3", "Summary text", Some("manual"))
+        write_summary_content(&conn, "vid3", "Summary text", Some("manual"))
             .await
             .unwrap();
         update_video_summary_status(&conn, "vid3", ContentStatus::Ready)
@@ -1485,7 +1527,7 @@ mod tests {
         .await
         .unwrap();
 
-        update_summary_content(&conn, "vid_eval2", "After edit", Some("manual"))
+        write_summary_content(&conn, "vid_eval2", "After edit", Some("manual"))
             .await
             .unwrap();
         let summary = get_summary(&conn, "vid_eval2").await.unwrap().unwrap();
@@ -1643,7 +1685,7 @@ mod tests {
             .unwrap();
         assert_eq!(attempts_after_increment, 2);
 
-        update_summary_content(&conn, "vid_regen", "Manual edit", Some("manual"))
+        write_summary_content(&conn, "vid_regen", "Manual edit", Some("manual"))
             .await
             .unwrap();
         let attempts_after_manual_edit = get_summary_auto_regen_attempts(&conn, "vid_regen")

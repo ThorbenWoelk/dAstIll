@@ -1,0 +1,131 @@
+import { describe, expect, it } from "bun:test";
+import {
+  buildQueueViewHref,
+  buildWorkspaceViewHref,
+  mergeQueueViewState,
+  mergeWorkspaceViewState,
+  parseQueueViewUrlState,
+  parseWorkspaceViewUrlState,
+} from "../src/lib/view-url";
+
+describe("parseWorkspaceViewUrlState", () => {
+  it("restores a shared workspace view from query params", () => {
+    const url = new URL(
+      "https://example.com/?channel=abc&video=vid-1&content=summary&type=short&ack=ack",
+    );
+
+    expect(parseWorkspaceViewUrlState(url)).toEqual({
+      selectedChannelId: "abc",
+      selectedVideoId: "vid-1",
+      contentMode: "summary",
+      videoTypeFilter: "short",
+      acknowledgedFilter: "ack",
+    });
+  });
+
+  it("ignores invalid workspace params", () => {
+    const url = new URL(
+      "https://example.com/?channel=&video=&content=nope&type=wat&ack=maybe",
+    );
+
+    expect(parseWorkspaceViewUrlState(url)).toEqual({});
+  });
+});
+
+describe("buildWorkspaceViewHref", () => {
+  it("serializes the current workspace view into a shareable url", () => {
+    expect(
+      buildWorkspaceViewHref({
+        selectedChannelId: "abc",
+        selectedVideoId: "vid-1",
+        contentMode: "transcript",
+        videoTypeFilter: "all",
+        acknowledgedFilter: "all",
+      }),
+    ).toBe("/?channel=abc&video=vid-1&content=transcript&type=all&ack=all");
+  });
+});
+
+describe("mergeWorkspaceViewState", () => {
+  it("prefers explicit url state over restored local state", () => {
+    expect(
+      mergeWorkspaceViewState(
+        {
+          selectedChannelId: "saved-channel",
+          selectedVideoId: "saved-video",
+          contentMode: "transcript",
+          videoTypeFilter: "all",
+          acknowledgedFilter: "all",
+          channelOrder: ["saved-channel"],
+        },
+        {
+          selectedChannelId: "url-channel",
+          selectedVideoId: "url-video",
+          contentMode: "summary",
+          videoTypeFilter: "short",
+          acknowledgedFilter: "ack",
+        },
+      ),
+    ).toEqual({
+      selectedChannelId: "url-channel",
+      selectedVideoId: "url-video",
+      contentMode: "summary",
+      videoTypeFilter: "short",
+      acknowledgedFilter: "ack",
+      channelOrder: ["saved-channel"],
+    });
+  });
+});
+
+describe("parseQueueViewUrlState", () => {
+  it("restores the selected queue channel and tab from query params", () => {
+    const url = new URL(
+      "https://example.com/download-queue?channel=abc&queue=summaries",
+    );
+
+    expect(parseQueueViewUrlState(url)).toEqual({
+      selectedChannelId: "abc",
+      queueTab: "summaries",
+    });
+  });
+
+  it("ignores invalid queue params", () => {
+    const url = new URL(
+      "https://example.com/download-queue?channel=&queue=wat",
+    );
+
+    expect(parseQueueViewUrlState(url)).toEqual({});
+  });
+});
+
+describe("buildQueueViewHref", () => {
+  it("serializes the current queue view into a shareable url", () => {
+    expect(
+      buildQueueViewHref({
+        selectedChannelId: "abc",
+        queueTab: "evaluations",
+      }),
+    ).toBe("/download-queue?channel=abc&queue=evaluations");
+  });
+});
+
+describe("mergeQueueViewState", () => {
+  it("prefers explicit url state over restored queue state", () => {
+    expect(
+      mergeQueueViewState(
+        {
+          selectedChannelId: "saved-channel",
+          channelOrder: ["saved-channel"],
+        },
+        {
+          selectedChannelId: "url-channel",
+          queueTab: "summaries",
+        },
+      ),
+    ).toEqual({
+      selectedChannelId: "url-channel",
+      channelOrder: ["saved-channel"],
+      queueTab: "summaries",
+    });
+  });
+});

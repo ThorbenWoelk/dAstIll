@@ -19,6 +19,41 @@ export interface WorkspaceStateSnapshot {
   channelSortMode?: "custom" | "alpha" | "newest";
 }
 
+export interface RestoreWorkspaceSnapshotOptions {
+  includeSelectedVideoId?: boolean;
+  includeContentMode?: boolean;
+  includeVideoTypeFilter?: boolean;
+  includeAcknowledgedFilter?: boolean;
+  includeChannelSortMode?: boolean;
+}
+
+export interface ChannelDragState {
+  draggedChannelId: string | null;
+  dragOverChannelId: string | null;
+}
+
+interface ChannelDragTransfer {
+  effectAllowed: string;
+  setData(type: string, value: string): void;
+}
+
+const CONTENT_MODES = new Set<WorkspaceStateSnapshot["contentMode"]>([
+  "transcript",
+  "summary",
+  "info",
+]);
+const VIDEO_TYPE_FILTERS = new Set<WorkspaceStateSnapshot["videoTypeFilter"]>([
+  "all",
+  "long",
+  "short",
+]);
+const ACKNOWLEDGED_FILTERS = new Set<
+  WorkspaceStateSnapshot["acknowledgedFilter"]
+>(["all", "unack", "ack"]);
+const CHANNEL_SORT_MODES = new Set<
+  NonNullable<WorkspaceStateSnapshot["channelSortMode"]>
+>(["custom", "alpha", "newest"]);
+
 export function prioritizeChannelOrder(
   channelOrder: string[],
   channelId: string,
@@ -54,6 +89,74 @@ export function saveWorkspaceState(
       ...snapshot,
     }),
   );
+}
+
+export function restoreWorkspaceSnapshot(
+  snapshot: Partial<WorkspaceStateSnapshot> | null,
+  options: RestoreWorkspaceSnapshotOptions = {},
+): Partial<WorkspaceStateSnapshot> {
+  if (!snapshot) {
+    return {};
+  }
+
+  const restored: Partial<WorkspaceStateSnapshot> = {};
+  if (
+    typeof snapshot.selectedChannelId === "string" ||
+    snapshot.selectedChannelId === null
+  ) {
+    restored.selectedChannelId = snapshot.selectedChannelId;
+  }
+
+  if (Array.isArray(snapshot.channelOrder)) {
+    restored.channelOrder = snapshot.channelOrder.filter(
+      (id): id is string => typeof id === "string",
+    );
+  }
+
+  if (
+    options.includeSelectedVideoId &&
+    (typeof snapshot.selectedVideoId === "string" ||
+      snapshot.selectedVideoId === null)
+  ) {
+    restored.selectedVideoId = snapshot.selectedVideoId;
+  }
+
+  if (
+    options.includeContentMode &&
+    snapshot.contentMode &&
+    CONTENT_MODES.has(snapshot.contentMode)
+  ) {
+    restored.contentMode = snapshot.contentMode;
+  }
+
+  if (options.includeVideoTypeFilter) {
+    if (
+      snapshot.videoTypeFilter &&
+      VIDEO_TYPE_FILTERS.has(snapshot.videoTypeFilter)
+    ) {
+      restored.videoTypeFilter = snapshot.videoTypeFilter;
+    } else if (typeof snapshot.hideShorts === "boolean") {
+      restored.videoTypeFilter = snapshot.hideShorts ? "long" : "all";
+    }
+  }
+
+  if (
+    options.includeAcknowledgedFilter &&
+    snapshot.acknowledgedFilter &&
+    ACKNOWLEDGED_FILTERS.has(snapshot.acknowledgedFilter)
+  ) {
+    restored.acknowledgedFilter = snapshot.acknowledgedFilter;
+  }
+
+  if (
+    options.includeChannelSortMode &&
+    snapshot.channelSortMode &&
+    CHANNEL_SORT_MODES.has(snapshot.channelSortMode)
+  ) {
+    restored.channelSortMode = snapshot.channelSortMode;
+  }
+
+  return restored;
 }
 
 export function applySavedChannelOrder(
@@ -133,6 +236,70 @@ export function reorderChannels(
       .filter((channel): channel is Channel => !!channel),
     channelOrder,
   };
+}
+
+export function beginChannelDrag(
+  channelId: string,
+  dataTransfer?: ChannelDragTransfer | null,
+): ChannelDragState {
+  if (dataTransfer) {
+    dataTransfer.effectAllowed = "move";
+    dataTransfer.setData("text/plain", channelId);
+  }
+
+  return {
+    draggedChannelId: channelId,
+    dragOverChannelId: channelId,
+  };
+}
+
+export function updateChannelDragOver(
+  currentDragOverChannelId: string | null,
+  channelId: string,
+) {
+  return currentDragOverChannelId === channelId
+    ? currentDragOverChannelId
+    : channelId;
+}
+
+export function finishChannelDrag(): ChannelDragState {
+  return {
+    draggedChannelId: null,
+    dragOverChannelId: null,
+  };
+}
+
+export function completeChannelDrop(
+  _channelId: string,
+  draggedChannelId: string | null,
+  fallbackChannelId: string | null,
+) {
+  return {
+    sourceId: draggedChannelId || fallbackChannelId,
+    dragState: finishChannelDrag(),
+  };
+}
+
+export function shouldRefreshChannel(
+  refreshedAtByChannel: Map<string, number>,
+  channelId: string,
+  ttlMs: number,
+  now = Date.now(),
+) {
+  const lastRefresh = refreshedAtByChannel.get(channelId);
+  if (lastRefresh === undefined) {
+    return true;
+  }
+
+  return now - lastRefresh >= ttlMs;
+}
+
+export function markChannelRefreshed(
+  refreshedAtByChannel: Map<string, number>,
+  channelId: string,
+  now = Date.now(),
+) {
+  refreshedAtByChannel.set(channelId, now);
 }
 
 export function buildQueueSnapshotOptions(

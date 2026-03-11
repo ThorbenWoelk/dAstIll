@@ -8,12 +8,12 @@ use axum::{
 use crate::db;
 use crate::models::{
     CleanTranscriptResponse, ContentStatus, Summary, Transcript, TranscriptRenderMode,
-    UpdateContentRequest, Video,
+    UpdateContentRequest,
 };
 use crate::services::summarizer::{MAX_TRANSCRIPT_FORMAT_ATTEMPTS, SummarizerError};
 use crate::state::AppState;
 
-use super::map_db_err;
+use super::{map_db_err, require_video};
 
 pub(crate) const MIN_SUMMARY_QUALITY_SCORE_FOR_ACCEPTANCE: u8 = 7;
 pub(crate) const MAX_SUMMARY_AUTO_REGEN_ATTEMPTS: u8 = 2;
@@ -63,7 +63,7 @@ pub async fn clean_transcript_formatting(
         input_chars = payload.content.len(),
         "transcript clean formatting requested"
     );
-    get_video_or_not_found(&state, &video_id).await?;
+    require_video(&state, &video_id).await?;
 
     if payload.content.trim().is_empty() {
         tracing::info!(video_id = %video_id, "transcript clean skipped for empty input");
@@ -153,7 +153,7 @@ pub async fn regenerate_summary(
     Path(video_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     tracing::info!(video_id = %video_id, "summary regeneration requested");
-    get_video_or_not_found(&state, &video_id).await?;
+    require_video(&state, &video_id).await?;
     {
         let conn = state.db.lock().await;
         db::delete_summary(&conn, &video_id)
@@ -186,7 +186,7 @@ pub(crate) async fn ensure_transcript(
     state: &AppState,
     video_id: &str,
 ) -> Result<Transcript, (StatusCode, String)> {
-    get_video_or_not_found(state, video_id).await?;
+    require_video(state, video_id).await?;
     {
         let conn = state.db.lock().await;
         if let Some(transcript) = db::get_transcript(&conn, video_id)
@@ -240,7 +240,7 @@ pub(crate) async fn ensure_summary(
     state: &AppState,
     video_id: &str,
 ) -> Result<Summary, (StatusCode, String)> {
-    let video = get_video_or_not_found(state, video_id).await?;
+    let video = require_video(state, video_id).await?;
     {
         let conn = state.db.lock().await;
         if let Some(summary) = db::get_summary(&conn, video_id).await.map_err(map_db_err)? {
@@ -361,24 +361,13 @@ pub(crate) async fn ensure_summary(
     Ok(summary)
 }
 
-async fn get_video_or_not_found(
-    state: &AppState,
-    video_id: &str,
-) -> Result<Video, (StatusCode, String)> {
-    let conn = state.db.lock().await;
-    db::get_video(&conn, video_id)
-        .await
-        .map_err(map_db_err)?
-        .ok_or((StatusCode::NOT_FOUND, "Video not found".to_string()))
-}
-
 async fn save_manual_transcript_content(
     state: &AppState,
     video_id: &str,
     content: &str,
     render_mode: Option<TranscriptRenderMode>,
 ) -> Result<Transcript, (StatusCode, String)> {
-    get_video_or_not_found(state, video_id).await?;
+    require_video(state, video_id).await?;
     let conn = state.db.lock().await;
     let existing_render_mode = db::get_transcript(&conn, video_id)
         .await
@@ -397,7 +386,7 @@ async fn save_manual_summary_content(
     video_id: &str,
     content: &str,
 ) -> Result<Summary, (StatusCode, String)> {
-    get_video_or_not_found(state, video_id).await?;
+    require_video(state, video_id).await?;
     let conn = state.db.lock().await;
     db::save_manual_summary(&conn, video_id, content, Some("manual"))
         .await
