@@ -4,37 +4,10 @@ use axum::{
     http::StatusCode,
     response::IntoResponse,
 };
-use serde::Deserialize;
 
 use crate::db;
 use crate::models::{Video, VideoInfo};
 use crate::state::AppState;
-
-pub fn resolve_is_short(
-    video_type: Option<VideoTypeFilter>,
-    include_shorts: Option<bool>,
-) -> Option<bool> {
-    match video_type {
-        Some(vt) => vt.as_is_short(),
-        None => {
-            let include = include_shorts.unwrap_or(true);
-            if include { None } else { Some(false) }
-        }
-    }
-}
-
-pub fn resolve_queue_filter(
-    queue_tab: Option<QueueTab>,
-    queue_only: Option<bool>,
-) -> Option<db::QueueFilter> {
-    match queue_tab {
-        Some(QueueTab::Transcripts) => Some(db::QueueFilter::TranscriptsOnly),
-        Some(QueueTab::Summaries) => Some(db::QueueFilter::SummariesOnly),
-        Some(QueueTab::Evaluations) => Some(db::QueueFilter::EvaluationsOnly),
-        None if queue_only.unwrap_or(false) => Some(db::QueueFilter::AnyIncomplete),
-        None => None,
-    }
-}
 
 pub fn enrich_video_info(info: &mut VideoInfo, video: &Video) {
     if info.thumbnail_url.is_none() {
@@ -55,45 +28,10 @@ fn cached_video_info_needs_refresh(info: &VideoInfo) -> bool {
             .as_deref()
             .is_none_or(|value| value.trim().is_empty())
 }
+use super::query::VideoListParams;
+use super::{map_db_err, require_channel, require_video};
 
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum VideoTypeFilter {
-    All,
-    Long,
-    Short,
-}
-
-impl VideoTypeFilter {
-    pub fn as_is_short(self) -> Option<bool> {
-        match self {
-            Self::All => None,
-            Self::Long => Some(false),
-            Self::Short => Some(true),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum QueueTab {
-    Transcripts,
-    Summaries,
-    Evaluations,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct VideoListParams {
-    pub limit: Option<usize>,
-    pub offset: Option<usize>,
-    pub include_shorts: Option<bool>,
-    pub video_type: Option<VideoTypeFilter>,
-    pub acknowledged: Option<bool>,
-    pub queue_only: Option<bool>,
-    pub queue_tab: Option<QueueTab>,
-}
-
-#[derive(Debug, Deserialize)]
+#[derive(Debug, serde::Deserialize)]
 pub struct VideoInfoBackfillParams {
     pub limit: Option<usize>,
     pub force: Option<bool>,
@@ -104,30 +42,18 @@ pub async fn list_channel_videos(
     Path(channel_id): Path<String>,
     Query(params): Query<VideoListParams>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    {
-        let conn = state.db.lock().await;
-        let channel = db::get_channel(&conn, &channel_id)
-            .await
-            .map_err(map_db_err)?;
-        if channel.is_none() {
-            return Err((StatusCode::NOT_FOUND, "Channel not found".to_string()));
-        }
-    }
+    require_channel(&state, &channel_id).await?;
 
-    let limit = params.limit.unwrap_or(20).min(100);
-    let offset = params.offset.unwrap_or(0);
     tracing::info!("video_type filter: {:?}", params.video_type);
-    let is_short = resolve_is_short(params.video_type, params.include_shorts);
-    let queue_filter = resolve_queue_filter(params.queue_tab, params.queue_only);
     let conn = state.db.lock().await;
     let videos = db::list_videos_by_channel(
         &conn,
         &channel_id,
-        limit,
-        offset,
-        is_short,
-        params.acknowledged,
-        queue_filter,
+        params.limit_or_default(),
+        params.offset_or_default(),
+        params.is_short_filter(),
+        params.acknowledged_filter(),
+        params.queue_filter(),
     )
     .await
     .map_err(map_db_err)?;
@@ -139,27 +65,14 @@ pub async fn get_video(
     State(state): State<AppState>,
     Path(video_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let conn = state.db.lock().await;
-    let video = db::get_video(&conn, &video_id).await.map_err(map_db_err)?;
-    match video {
-        Some(v) => Ok(Json(v)),
-        None => Err((StatusCode::NOT_FOUND, "Video not found".to_string())),
-    }
+    Ok(Json(require_video(&state, &video_id).await?))
 }
 
 pub async fn get_video_info(
     State(state): State<AppState>,
     Path(video_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let video = {
-        let conn = state.db.lock().await;
-        db::get_video(&conn, &video_id).await.map_err(map_db_err)?
-    };
-
-    let video = match video {
-        Some(video) => video,
-        None => return Err((StatusCode::NOT_FOUND, "Video not found".to_string())),
-    };
+    let video = require_video(&state, &video_id).await?;
 
     let cached = {
         let conn = state.db.lock().await;
@@ -285,25 +198,20 @@ pub async fn update_video_acknowledged(
     Path(video_id): Path<String>,
     Json(payload): Json<crate::models::UpdateAcknowledgedRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let mut video = require_video(&state, &video_id).await?;
     let conn = state.db.lock().await;
-    let video = db::get_video(&conn, &video_id).await.map_err(map_db_err)?;
-    match video {
-        Some(mut v) => {
-            db::update_video_acknowledged(&conn, &video_id, payload.acknowledged)
-                .await
-                .map_err(map_db_err)?;
-            v.acknowledged = payload.acknowledged;
-            Ok(Json(v))
-        }
-        None => Err((StatusCode::NOT_FOUND, "Video not found".to_string())),
-    }
+    db::update_video_acknowledged(&conn, &video_id, payload.acknowledged)
+        .await
+        .map_err(map_db_err)?;
+    video.acknowledged = payload.acknowledged;
+    Ok(Json(video))
 }
-
-use super::map_db_err;
 
 #[cfg(test)]
 mod tests {
-    use super::cached_video_info_needs_refresh;
+    use super::{VideoListParams, cached_video_info_needs_refresh};
+    use crate::db;
+    use crate::handlers::query::{QueueTab, VideoTypeFilter};
     use crate::models::VideoInfo;
 
     fn build_video_info(
@@ -346,5 +254,42 @@ mod tests {
             None,
             Some("PT3M5S"),
         )));
+    }
+
+    #[test]
+    fn video_list_params_resolve_limits_and_filters() {
+        let params = VideoListParams {
+            limit: Some(500),
+            offset: Some(7),
+            include_shorts: Some(false),
+            video_type: None,
+            acknowledged: Some(true),
+            queue_only: Some(true),
+            queue_tab: None,
+        };
+
+        assert_eq!(params.limit_or_default(), 100);
+        assert_eq!(params.offset_or_default(), 7);
+        assert_eq!(params.is_short_filter(), Some(false));
+        assert_eq!(params.acknowledged_filter(), Some(true));
+        assert_eq!(params.queue_filter(), Some(db::QueueFilter::AnyIncomplete));
+    }
+
+    #[test]
+    fn video_list_params_prefer_explicit_queue_tab() {
+        let params = VideoListParams {
+            limit: None,
+            offset: None,
+            include_shorts: Some(true),
+            video_type: Some(VideoTypeFilter::Short),
+            acknowledged: None,
+            queue_only: Some(true),
+            queue_tab: Some(QueueTab::Summaries),
+        };
+
+        assert_eq!(params.limit_or_default(), 20);
+        assert_eq!(params.offset_or_default(), 0);
+        assert_eq!(params.is_short_filter(), Some(true));
+        assert_eq!(params.queue_filter(), Some(db::QueueFilter::SummariesOnly));
     }
 }

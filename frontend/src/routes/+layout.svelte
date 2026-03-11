@@ -1,5 +1,6 @@
 <script lang="ts">
   import "../app.css";
+  import Footer from "$lib/components/Footer.svelte";
 
   let { children } = $props();
 </script>
@@ -25,4 +26,9 @@
   />
 </svelte:head>
 
-{@render children()}
+<div class="flex min-h-screen flex-col">
+  <div class="flex-1">
+    {@render children()}
+  </div>
+  <Footer />
+</div>

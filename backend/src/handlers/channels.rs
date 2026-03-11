@@ -9,28 +9,16 @@ use serde::Deserialize;
 use std::collections::HashSet;
 
 use crate::db;
-use crate::handlers::videos::{QueueTab, VideoTypeFilter, resolve_is_short, resolve_queue_filter};
+use crate::handlers::query::{VideoListParams, WorkspaceBootstrapParams};
 use crate::models::{AddChannelRequest, Channel, UpdateChannelRequest};
 use crate::state::AppState;
 
-use super::{map_db_err, map_internal_err};
+use super::{map_db_err, map_internal_err, require_channel};
 
 #[derive(Deserialize)]
 pub struct BackfillParams {
     pub limit: Option<usize>,
     pub until: Option<chrono::DateTime<chrono::Utc>>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct ChannelSnapshotParams {
-    pub selected_channel_id: Option<String>,
-    pub limit: Option<usize>,
-    pub offset: Option<usize>,
-    pub include_shorts: Option<bool>,
-    pub video_type: Option<VideoTypeFilter>,
-    pub acknowledged: Option<bool>,
-    pub queue_only: Option<bool>,
-    pub queue_tab: Option<QueueTab>,
 }
 
 fn build_sync_depth_payload(
@@ -67,13 +55,9 @@ pub async fn list_channels(
 
 pub async fn workspace_bootstrap(
     State(state): State<AppState>,
-    Query(params): Query<ChannelSnapshotParams>,
+    Query(params): Query<WorkspaceBootstrapParams>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let limit = params.limit.unwrap_or(20).min(100);
-    let offset = params.offset.unwrap_or(0);
-    let is_short = resolve_is_short(params.video_type, params.include_shorts);
-    let queue_filter = resolve_queue_filter(params.queue_tab, params.queue_only);
-
+    let video_params = params.video_params();
     let ai_available = state.summarizer.is_available().await;
     let ai_status = state
         .summarizer
@@ -82,11 +66,11 @@ pub async fn workspace_bootstrap(
     let bootstrap = db::load_workspace_bootstrap_data(
         &conn,
         params.selected_channel_id.as_deref(),
-        limit,
-        offset,
-        is_short,
-        params.acknowledged,
-        queue_filter,
+        video_params.limit_or_default(),
+        video_params.offset_or_default(),
+        video_params.is_short_filter(),
+        video_params.acknowledged_filter(),
+        video_params.queue_filter(),
     )
     .await
     .map_err(map_db_err)?;
@@ -181,26 +165,15 @@ pub async fn get_channel(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let conn = state.db.lock().await;
-    let channel = db::get_channel(&conn, &id).await.map_err(map_db_err)?;
-
-    match channel {
-        Some(c) => Ok(Json(c)),
-        None => Err((StatusCode::NOT_FOUND, "Channel not found".to_string())),
-    }
+    Ok(Json(require_channel(&state, &id).await?))
 }
 
 pub async fn get_channel_sync_depth(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let channel = require_channel(&state, &id).await?;
     let conn = state.db.lock().await;
-    let channel = db::get_channel(&conn, &id).await.map_err(map_db_err)?;
-
-    let channel = match channel {
-        Some(c) => c,
-        None => return Err((StatusCode::NOT_FOUND, "Channel not found".to_string())),
-    };
 
     let derived = db::get_oldest_ready_video_published_at(&conn, &id)
         .await
@@ -212,22 +185,17 @@ pub async fn get_channel_sync_depth(
 pub async fn get_channel_snapshot(
     State(state): State<AppState>,
     Path(id): Path<String>,
-    Query(params): Query<ChannelSnapshotParams>,
+    Query(params): Query<VideoListParams>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let limit = params.limit.unwrap_or(20).min(100);
-    let offset = params.offset.unwrap_or(0);
-    let is_short = resolve_is_short(params.video_type, params.include_shorts);
-    let queue_filter = resolve_queue_filter(params.queue_tab, params.queue_only);
-
     let conn = state.db.lock().await;
     let snapshot = db::load_channel_snapshot_data(
         &conn,
         &id,
-        limit,
-        offset,
-        is_short,
-        params.acknowledged,
-        queue_filter,
+        params.limit_or_default(),
+        params.offset_or_default(),
+        params.is_short_filter(),
+        params.acknowledged_filter(),
+        params.queue_filter(),
     )
     .await
     .map_err(map_db_err)?;
@@ -257,13 +225,7 @@ pub async fn update_channel(
     Path(id): Path<String>,
     Json(payload): Json<UpdateChannelRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let mut channel = {
-        let conn = state.db.lock().await;
-        db::get_channel(&conn, &id)
-            .await
-            .map_err(map_db_err)?
-            .ok_or_else(|| (StatusCode::NOT_FOUND, "Channel not found".to_string()))?
-    };
+    let mut channel = require_channel(&state, &id).await?;
 
     if let Some(v) = payload.earliest_sync_date {
         channel.earliest_sync_date = Some(v);
@@ -291,14 +253,7 @@ pub async fn refresh_channel_videos(
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     tracing::info!(channel_id = %id, "refresh requested - queueing latest videos");
 
-    let earliest_sync_date = {
-        let conn = state.db.lock().await;
-        let channel = db::get_channel(&conn, &id).await.map_err(map_db_err)?;
-        match channel {
-            Some(c) => c.earliest_sync_date,
-            None => return Err((StatusCode::NOT_FOUND, "Channel not found".to_string())),
-        }
-    };
+    let earliest_sync_date = require_channel(&state, &id).await?.earliest_sync_date;
 
     let videos = state
         .youtube
@@ -376,13 +331,9 @@ pub async fn backfill_channel_videos(
 
     let batch_limit = params.limit.unwrap_or(15).clamp(1, 100);
 
+    require_channel(&state, &id).await?;
     let known_video_ids = {
         let conn = state.db.lock().await;
-        let channel = db::get_channel(&conn, &id).await.map_err(map_db_err)?;
-        if channel.is_none() {
-            return Err((StatusCode::NOT_FOUND, "Channel not found".to_string()));
-        }
-
         db::list_video_ids_by_channel(&conn, &id)
             .await
             .map_err(map_db_err)?

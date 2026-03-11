@@ -1,11 +1,18 @@
 import { describe, expect, it } from "bun:test";
 import {
+  beginChannelDrag,
   buildQueueSnapshotOptions,
+  completeChannelDrop,
+  finishChannelDrag,
   loadWorkspaceState,
+  markChannelRefreshed,
   prioritizeChannelOrder,
   reorderChannels,
+  restoreWorkspaceSnapshot,
   resolveInitialChannelSelection,
   saveWorkspaceState,
+  shouldRefreshChannel,
+  updateChannelDragOver,
 } from "../src/lib/channel-workspace";
 import type { QueueTab } from "../src/lib/types";
 import type { Channel } from "../src/lib/types";
@@ -119,6 +126,89 @@ describe("workspace state storage helpers", () => {
       selectedChannelId: "abc",
       channelOrder: ["abc"],
     });
+  });
+});
+
+describe("restoreWorkspaceSnapshot", () => {
+  it("sanitizes the persisted snapshot for the main workspace", () => {
+    expect(
+      restoreWorkspaceSnapshot(
+        {
+          selectedChannelId: "abc",
+          selectedVideoId: "vid-1",
+          contentMode: "summary",
+          hideShorts: true,
+          acknowledgedFilter: "ack",
+          channelOrder: ["abc", 12, "def"] as unknown as string[],
+          channelSortMode: "alpha",
+        },
+        {
+          includeSelectedVideoId: true,
+          includeContentMode: true,
+          includeVideoTypeFilter: true,
+          includeAcknowledgedFilter: true,
+          includeChannelSortMode: true,
+        },
+      ),
+    ).toEqual({
+      selectedChannelId: "abc",
+      selectedVideoId: "vid-1",
+      contentMode: "summary",
+      videoTypeFilter: "long",
+      acknowledgedFilter: "ack",
+      channelOrder: ["abc", "def"],
+      channelSortMode: "alpha",
+    });
+  });
+
+  it("can restore only the shared channel selection fields", () => {
+    expect(
+      restoreWorkspaceSnapshot({
+        selectedChannelId: "queue-channel",
+        selectedVideoId: "ignored",
+        contentMode: "transcript",
+        channelOrder: ["queue-channel"],
+      }),
+    ).toEqual({
+      selectedChannelId: "queue-channel",
+      channelOrder: ["queue-channel"],
+    });
+  });
+});
+
+describe("channel drag helpers", () => {
+  it("tracks drag state and transfers the dragged channel id", () => {
+    const writes: Array<[string, string]> = [];
+    const transfer = {
+      effectAllowed: "copy",
+      setData(type: string, value: string) {
+        writes.push([type, value]);
+      },
+    };
+
+    expect(beginChannelDrag("abc", transfer)).toEqual({
+      draggedChannelId: "abc",
+      dragOverChannelId: "abc",
+    });
+    expect(updateChannelDragOver("abc", "def")).toBe("def");
+    expect(completeChannelDrop("def", "abc", "fallback").sourceId).toBe("abc");
+    expect(finishChannelDrag()).toEqual({
+      draggedChannelId: null,
+      dragOverChannelId: null,
+    });
+    expect(writes).toEqual([["text/plain", "abc"]]);
+    expect(transfer.effectAllowed).toBe("move");
+  });
+});
+
+describe("channel refresh helpers", () => {
+  it("skips refreshes inside the TTL window and marks refresh times", () => {
+    const refreshedAt = new Map<string, number>();
+    markChannelRefreshed(refreshedAt, "abc", 1_000);
+
+    expect(shouldRefreshChannel(refreshedAt, "abc", 500, 1_400)).toBe(false);
+    expect(shouldRefreshChannel(refreshedAt, "abc", 500, 1_501)).toBe(true);
+    expect(shouldRefreshChannel(refreshedAt, "missing", 500, 1_400)).toBe(true);
   });
 });
 
