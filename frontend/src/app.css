@@ -321,10 +321,10 @@ textarea {
   }
 }
 
-/* Mobile tab bar bottom padding */
+/* Mobile tab bar + footer bottom padding */
 @media (max-width: 1023px) {
   .page-shell {
-    padding-bottom: calc(3.5rem + env(safe-area-inset-bottom) + 0.25rem);
+    padding-bottom: calc(3.5rem + env(safe-area-inset-bottom) + 2rem);
   }
 }
 
