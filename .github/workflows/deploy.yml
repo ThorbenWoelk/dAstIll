@@ -12,6 +12,7 @@ env:
   BACKEND_SERVICE: dastill-backend
   FRONTEND_SERVICE: dastill-frontend
   IMAGE_TAG: ${{ github.sha }}
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   deploy:
