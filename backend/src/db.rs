@@ -4,7 +4,8 @@ use libsql::{Connection, Value, params};
 use tokio::sync::Mutex;
 
 use crate::models::{
-    Channel, ContentStatus, Summary, SummaryEvaluationJob, Transcript, Video, VideoInfo,
+    Channel, ContentStatus, Summary, SummaryEvaluationJob, Transcript, TranscriptRenderMode, Video,
+    VideoInfo,
 };
 
 pub type DbPool = Arc<Mutex<Connection>>;
@@ -66,6 +67,7 @@ async fn run_migrations(conn: &Connection) -> Result<(), libsql::Error> {
             video_id TEXT PRIMARY KEY,
             raw_text TEXT,
             formatted_markdown TEXT,
+            render_mode TEXT NOT NULL DEFAULT 'plain_text',
             FOREIGN KEY(video_id) REFERENCES videos(id)
         );
 
@@ -76,6 +78,7 @@ async fn run_migrations(conn: &Connection) -> Result<(), libsql::Error> {
             quality_score INTEGER,
             auto_regen_attempts INTEGER NOT NULL DEFAULT 0,
             quality_note TEXT,
+            quality_model_used TEXT,
             FOREIGN KEY(video_id) REFERENCES videos(id)
         );
 
@@ -136,6 +139,13 @@ async fn run_migrations(conn: &Connection) -> Result<(), libsql::Error> {
     ensure_column(conn, "summaries", "quality_note", "quality_note TEXT").await?;
     ensure_column(
         conn,
+        "summaries",
+        "quality_model_used",
+        "quality_model_used TEXT",
+    )
+    .await?;
+    ensure_column(
+        conn,
         "channels",
         "earliest_sync_date",
         "earliest_sync_date TEXT",
@@ -146,6 +156,13 @@ async fn run_migrations(conn: &Connection) -> Result<(), libsql::Error> {
         "channels",
         "earliest_sync_date_user_set",
         "earliest_sync_date_user_set INTEGER NOT NULL DEFAULT 0",
+    )
+    .await?;
+    ensure_column(
+        conn,
+        "transcripts",
+        "render_mode",
+        "render_mode TEXT NOT NULL DEFAULT 'plain_text'",
     )
     .await?;
     Ok(())
@@ -675,11 +692,12 @@ pub async fn upsert_transcript(
     transcript: &Transcript,
 ) -> Result<(), libsql::Error> {
     conn.execute(
-        "INSERT OR REPLACE INTO transcripts (video_id, raw_text, formatted_markdown) VALUES (?1, ?2, ?3)",
+        "INSERT OR REPLACE INTO transcripts (video_id, raw_text, formatted_markdown, render_mode) VALUES (?1, ?2, ?3, ?4)",
         params![
             transcript.video_id.as_str(),
             transcript.raw_text.as_deref(),
-            transcript.formatted_markdown.as_deref()
+            transcript.formatted_markdown.as_deref(),
+            transcript.render_mode.as_str(),
         ],
     )
     .await?;
@@ -691,12 +709,40 @@ pub async fn update_transcript_content(
     video_id: &str,
     content: &str,
 ) -> Result<(), libsql::Error> {
-    conn.execute(
-        "INSERT OR REPLACE INTO transcripts (video_id, raw_text, formatted_markdown) VALUES (?1, ?2, ?3)",
-        params![video_id, content, content],
+    update_transcript_content_with_render_mode(
+        conn,
+        video_id,
+        content,
+        TranscriptRenderMode::PlainText,
     )
-    .await?;
-    Ok(())
+    .await
+}
+
+pub async fn update_transcript_content_with_render_mode(
+    conn: &Connection,
+    video_id: &str,
+    content: &str,
+    render_mode: TranscriptRenderMode,
+) -> Result<(), libsql::Error> {
+    let existing = get_transcript(conn, video_id).await?;
+    upsert_transcript(
+        conn,
+        &transcript_with_render_mode(video_id, content, render_mode, existing),
+    )
+    .await
+}
+
+pub async fn save_manual_transcript(
+    conn: &Connection,
+    video_id: &str,
+    content: &str,
+    render_mode: TranscriptRenderMode,
+) -> Result<Transcript, libsql::Error> {
+    let existing = get_transcript(conn, video_id).await?;
+    let transcript = transcript_with_render_mode(video_id, content, render_mode, existing);
+    upsert_transcript(conn, &transcript).await?;
+    update_video_transcript_status(conn, video_id, ContentStatus::Ready).await?;
+    Ok(transcript)
 }
 
 pub async fn get_transcript(
@@ -705,31 +751,70 @@ pub async fn get_transcript(
 ) -> Result<Option<Transcript>, libsql::Error> {
     let mut rows = conn
         .query(
-            "SELECT video_id, raw_text, formatted_markdown FROM transcripts WHERE video_id = ?1",
+            "SELECT video_id, raw_text, formatted_markdown, COALESCE(render_mode, 'plain_text') FROM transcripts WHERE video_id = ?1",
             params![video_id],
         )
         .await?;
 
     if let Some(row) = rows.next().await? {
+        let render_mode: String = row.get(3)?;
         Ok(Some(Transcript {
             video_id: row.get(0)?,
             raw_text: row.get(1)?,
             formatted_markdown: row.get(2)?,
+            render_mode: TranscriptRenderMode::from_db_value(&render_mode),
         }))
     } else {
         Ok(None)
     }
 }
 
+fn transcript_with_render_mode(
+    video_id: &str,
+    content: &str,
+    render_mode: TranscriptRenderMode,
+    existing: Option<Transcript>,
+) -> Transcript {
+    match render_mode {
+        TranscriptRenderMode::PlainText => Transcript {
+            video_id: video_id.to_string(),
+            raw_text: Some(content.to_string()),
+            formatted_markdown: None,
+            render_mode,
+        },
+        TranscriptRenderMode::Markdown => {
+            let raw_text = existing
+                .as_ref()
+                .and_then(|transcript| transcript.raw_text.clone())
+                .filter(|value| !value.trim().is_empty())
+                .or_else(|| {
+                    existing
+                        .as_ref()
+                        .and_then(|transcript| transcript.formatted_markdown.clone())
+                        .filter(|value| !value.trim().is_empty())
+                })
+                .or_else(|| Some(content.to_string()));
+
+            Transcript {
+                video_id: video_id.to_string(),
+                raw_text,
+                formatted_markdown: Some(content.to_string()),
+                render_mode,
+            }
+        }
+    }
+}
+
 pub async fn upsert_summary(conn: &Connection, summary: &Summary) -> Result<(), libsql::Error> {
     conn.execute(
-        "INSERT INTO summaries (video_id, content, model_used, quality_score, quality_note, auto_regen_attempts)
+        "INSERT INTO summaries (video_id, content, model_used, quality_score, quality_note, quality_model_used, auto_regen_attempts)
          VALUES (
              ?1,
              ?2,
              ?3,
              ?4,
              ?5,
+             ?6,
              COALESCE((SELECT auto_regen_attempts FROM summaries WHERE video_id = ?1), 0)
          )
          ON CONFLICT(video_id) DO UPDATE SET
@@ -737,6 +822,7 @@ pub async fn upsert_summary(conn: &Connection, summary: &Summary) -> Result<(), 
              model_used = excluded.model_used,
              quality_score = excluded.quality_score,
              quality_note = excluded.quality_note,
+             quality_model_used = excluded.quality_model_used,
              auto_regen_attempts = excluded.auto_regen_attempts",
         params![
             summary.video_id.as_str(),
@@ -744,6 +830,7 @@ pub async fn upsert_summary(conn: &Connection, summary: &Summary) -> Result<(), 
             summary.model_used.as_deref(),
             summary.quality_score.map(i64::from),
             summary.quality_note.as_deref(),
+            summary.quality_model_used.as_deref(),
         ],
     )
     .await?;
@@ -757,13 +844,14 @@ pub async fn update_summary_content(
     model_used: Option<&str>,
 ) -> Result<(), libsql::Error> {
     conn.execute(
-        "INSERT INTO summaries (video_id, content, model_used, quality_score, quality_note, auto_regen_attempts)
-         VALUES (?1, ?2, ?3, NULL, NULL, 0)
+        "INSERT INTO summaries (video_id, content, model_used, quality_score, quality_note, quality_model_used, auto_regen_attempts)
+         VALUES (?1, ?2, ?3, NULL, NULL, NULL, 0)
          ON CONFLICT(video_id) DO UPDATE SET
              content = excluded.content,
              model_used = excluded.model_used,
              quality_score = NULL,
              quality_note = NULL,
+             quality_model_used = NULL,
              auto_regen_attempts = 0",
         params![video_id, content, model_used],
     )
@@ -771,15 +859,39 @@ pub async fn update_summary_content(
     Ok(())
 }
 
+pub async fn save_manual_summary(
+    conn: &Connection,
+    video_id: &str,
+    content: &str,
+    model_used: Option<&str>,
+) -> Result<Summary, libsql::Error> {
+    update_summary_content(conn, video_id, content, model_used).await?;
+    update_video_summary_status(conn, video_id, ContentStatus::Ready).await?;
+    Ok(Summary {
+        video_id: video_id.to_string(),
+        content: content.to_string(),
+        model_used: model_used.map(ToOwned::to_owned),
+        quality_score: None,
+        quality_note: None,
+        quality_model_used: None,
+    })
+}
+
 pub async fn update_summary_quality(
     conn: &Connection,
     video_id: &str,
     quality_score: Option<u8>,
     quality_note: Option<&str>,
+    quality_model_used: Option<&str>,
 ) -> Result<(), libsql::Error> {
     conn.execute(
-        "UPDATE summaries SET quality_score = ?1, quality_note = ?2 WHERE video_id = ?3",
-        params![quality_score.map(i64::from), quality_note, video_id],
+        "UPDATE summaries SET quality_score = ?1, quality_note = ?2, quality_model_used = ?3 WHERE video_id = ?4",
+        params![
+            quality_score.map(i64::from),
+            quality_note,
+            quality_model_used,
+            video_id
+        ],
     )
     .await?;
     Ok(())
@@ -833,7 +945,7 @@ pub async fn get_summary(
 ) -> Result<Option<Summary>, libsql::Error> {
     let mut rows = conn
         .query(
-            "SELECT video_id, content, model_used, quality_score, quality_note
+            "SELECT video_id, content, model_used, quality_score, quality_note, quality_model_used
              FROM summaries
              WHERE video_id = ?1",
             params![video_id],
@@ -848,6 +960,7 @@ pub async fn get_summary(
             model_used: row.get(2)?,
             quality_score: quality_score.map(|score| score.clamp(0, 10) as u8),
             quality_note: row.get(4)?,
+            quality_model_used: row.get(5)?,
         }))
     } else {
         Ok(None)
@@ -1064,6 +1177,7 @@ mod tests {
             video_id: "vid1".to_string(),
             raw_text: Some("Hello world".to_string()),
             formatted_markdown: Some("# Hello\n\nWorld".to_string()),
+            render_mode: TranscriptRenderMode::PlainText,
         };
         upsert_transcript(&conn, &transcript).await.unwrap();
         update_video_transcript_status(&conn, "vid1", ContentStatus::Ready)
@@ -1116,8 +1230,59 @@ mod tests {
             .unwrap();
 
         let transcript = get_transcript(&conn, "vid2").await.unwrap().unwrap();
-        assert_eq!(transcript.formatted_markdown, Some("## Edited".to_string()));
+        assert_eq!(transcript.formatted_markdown, None);
         assert_eq!(transcript.raw_text, Some("## Edited".to_string()));
+        assert_eq!(transcript.render_mode, TranscriptRenderMode::PlainText);
+    }
+
+    #[tokio::test]
+    async fn test_save_manual_transcript_marks_video_ready_and_returns_content() {
+        let pool = init_db_memory().await.unwrap();
+        let conn = pool.lock().await;
+
+        let channel = Channel {
+            id: "UC999_MANUAL".to_string(),
+            handle: None,
+            name: "Test".to_string(),
+            thumbnail_url: None,
+            added_at: Utc::now(),
+            earliest_sync_date: None,
+            earliest_sync_date_user_set: false,
+        };
+        insert_channel(&conn, &channel).await.unwrap();
+
+        let video = Video {
+            id: "vid_manual_transcript".to_string(),
+            channel_id: "UC999_MANUAL".to_string(),
+            title: "Test Video".to_string(),
+            thumbnail_url: None,
+            published_at: Utc::now(),
+            is_short: false,
+            transcript_status: ContentStatus::Pending,
+            summary_status: ContentStatus::Pending,
+            acknowledged: false,
+            retry_count: 0,
+            quality_score: None,
+        };
+        insert_video(&conn, &video).await.unwrap();
+
+        let transcript = save_manual_transcript(
+            &conn,
+            "vid_manual_transcript",
+            "## Edited",
+            TranscriptRenderMode::PlainText,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(transcript.formatted_markdown, None);
+        assert_eq!(transcript.raw_text, Some("## Edited".to_string()));
+        assert_eq!(transcript.render_mode, TranscriptRenderMode::PlainText);
+        let saved_video = get_video(&conn, "vid_manual_transcript")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(saved_video.transcript_status, ContentStatus::Ready);
     }
 
     #[tokio::test]
@@ -1164,6 +1329,65 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_save_manual_summary_marks_video_ready_and_resets_quality() {
+        let pool = init_db_memory().await.unwrap();
+        let conn = pool.lock().await;
+
+        let channel = Channel {
+            id: "UC777_MANUAL".to_string(),
+            handle: None,
+            name: "Test".to_string(),
+            thumbnail_url: None,
+            added_at: Utc::now(),
+            earliest_sync_date: None,
+            earliest_sync_date_user_set: false,
+        };
+        insert_channel(&conn, &channel).await.unwrap();
+
+        let video = Video {
+            id: "vid_manual_summary".to_string(),
+            channel_id: "UC777_MANUAL".to_string(),
+            title: "Test Video".to_string(),
+            thumbnail_url: None,
+            published_at: Utc::now(),
+            is_short: false,
+            transcript_status: ContentStatus::Ready,
+            summary_status: ContentStatus::Pending,
+            acknowledged: false,
+            retry_count: 0,
+            quality_score: None,
+        };
+        insert_video(&conn, &video).await.unwrap();
+
+        conn.execute(
+            "INSERT INTO summaries (video_id, content, model_used, quality_score, quality_note, auto_regen_attempts)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params!["vid_manual_summary", "Before", "manual", 9i64, "Minor mismatch", 2i64],
+        )
+        .await
+        .unwrap();
+
+        let summary =
+            save_manual_summary(&conn, "vid_manual_summary", "After edit", Some("manual"))
+                .await
+                .unwrap();
+
+        assert_eq!(summary.content, "After edit");
+        assert_eq!(summary.model_used, Some("manual".to_string()));
+        assert_eq!(summary.quality_score, None);
+        assert_eq!(summary.quality_note, None);
+        let saved_video = get_video(&conn, "vid_manual_summary")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(saved_video.summary_status, ContentStatus::Ready);
+        let auto_regen_attempts = get_summary_auto_regen_attempts(&conn, "vid_manual_summary")
+            .await
+            .unwrap();
+        assert_eq!(auto_regen_attempts, 0);
+    }
+
+    #[tokio::test]
     async fn test_summary_quality_fields_roundtrip() {
         let pool = init_db_memory().await.unwrap();
         let conn = pool.lock().await;
@@ -1195,9 +1419,16 @@ mod tests {
         insert_video(&conn, &video).await.unwrap();
 
         conn.execute(
-            "INSERT INTO summaries (video_id, content, model_used, quality_score, quality_note)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-            params!["vid_eval", "Summary body", "manual", 8i64, "Missed nuance"],
+            "INSERT INTO summaries (video_id, content, model_used, quality_score, quality_note, quality_model_used)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                "vid_eval",
+                "Summary body",
+                "manual",
+                8i64,
+                "Missed nuance",
+                "glm-5:cloud",
+            ],
         )
         .await
         .unwrap();
@@ -1205,6 +1436,7 @@ mod tests {
         let summary = get_summary(&conn, "vid_eval").await.unwrap().unwrap();
         assert_eq!(summary.quality_score, Some(8));
         assert_eq!(summary.quality_note, Some("Missed nuance".to_string()));
+        assert_eq!(summary.quality_model_used, Some("glm-5:cloud".to_string()));
     }
 
     #[tokio::test]
@@ -1239,9 +1471,16 @@ mod tests {
         insert_video(&conn, &video).await.unwrap();
 
         conn.execute(
-            "INSERT INTO summaries (video_id, content, model_used, quality_score, quality_note)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-            params!["vid_eval2", "Before", "manual", 9i64, "Minor mismatch"],
+            "INSERT INTO summaries (video_id, content, model_used, quality_score, quality_note, quality_model_used)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                "vid_eval2",
+                "Before",
+                "manual",
+                9i64,
+                "Minor mismatch",
+                "glm-5:cloud",
+            ],
         )
         .await
         .unwrap();
@@ -1253,6 +1492,7 @@ mod tests {
         assert_eq!(summary.content, "After edit");
         assert_eq!(summary.quality_score, None);
         assert_eq!(summary.quality_note, None);
+        assert_eq!(summary.quality_model_used, None);
     }
 
     #[tokio::test]
@@ -1292,6 +1532,7 @@ mod tests {
                 video_id: "vid_eval3".to_string(),
                 raw_text: Some("Transcript body".to_string()),
                 formatted_markdown: None,
+                render_mode: TranscriptRenderMode::PlainText,
             },
         )
         .await
@@ -1304,6 +1545,7 @@ mod tests {
                 model_used: Some("manual".to_string()),
                 quality_score: None,
                 quality_note: None,
+                quality_model_used: None,
             },
         )
         .await
@@ -1317,12 +1559,22 @@ mod tests {
         assert_eq!(pending[0].transcript_text, "Transcript body");
         assert_eq!(pending[0].summary_content, "Summary body");
 
-        update_summary_quality(&conn, "vid_eval3", Some(7), Some("Missed one claim"))
-            .await
-            .unwrap();
+        update_summary_quality(
+            &conn,
+            "vid_eval3",
+            Some(7),
+            Some("Missed one claim"),
+            Some("qwen3-235b-a22b:cloud"),
+        )
+        .await
+        .unwrap();
         let updated = get_summary(&conn, "vid_eval3").await.unwrap().unwrap();
         assert_eq!(updated.quality_score, Some(7));
         assert_eq!(updated.quality_note, Some("Missed one claim".to_string()));
+        assert_eq!(
+            updated.quality_model_used,
+            Some("qwen3-235b-a22b:cloud".to_string())
+        );
 
         let pending_after = list_summaries_pending_quality_eval(&conn, 10)
             .await
@@ -1369,6 +1621,7 @@ mod tests {
                 model_used: Some("model".to_string()),
                 quality_score: None,
                 quality_note: None,
+                quality_model_used: None,
             },
         )
         .await

@@ -48,6 +48,14 @@ pub fn enrich_video_info(info: &mut VideoInfo, video: &Video) {
     }
 }
 
+fn cached_video_info_needs_refresh(info: &VideoInfo) -> bool {
+    info.duration_seconds.is_none()
+        && info
+            .duration_iso8601
+            .as_deref()
+            .is_none_or(|value| value.trim().is_empty())
+}
+
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum VideoTypeFilter {
@@ -153,13 +161,16 @@ pub async fn get_video_info(
         None => return Err((StatusCode::NOT_FOUND, "Video not found".to_string())),
     };
 
-    {
+    let cached = {
         let conn = state.db.lock().await;
-        if let Some(cached) = db::get_video_info(&conn, &video_id)
+        db::get_video_info(&conn, &video_id)
             .await
             .map_err(map_db_err)?
-        {
-            return Ok(Json(cached));
+    };
+
+    if let Some(cached) = cached.as_ref() {
+        if !cached_video_info_needs_refresh(cached) {
+            return Ok(Json(cached.clone()));
         }
     }
 
@@ -176,8 +187,12 @@ pub async fn get_video_info(
             tracing::warn!(
                 video_id = %video_id,
                 error = %err,
-                "video info fetch failed - returning fallback metadata"
+                "video info fetch failed - returning cached or fallback metadata"
             );
+
+            if let Some(cached) = cached {
+                return Ok(Json(cached));
+            }
 
             Ok(Json(VideoInfo {
                 video_id: video_id.clone(),
@@ -285,3 +300,51 @@ pub async fn update_video_acknowledged(
 }
 
 use super::map_db_err;
+
+#[cfg(test)]
+mod tests {
+    use super::cached_video_info_needs_refresh;
+    use crate::models::VideoInfo;
+
+    fn build_video_info(
+        duration_seconds: Option<u64>,
+        duration_iso8601: Option<&str>,
+    ) -> VideoInfo {
+        VideoInfo {
+            video_id: "video-123".to_string(),
+            watch_url: "https://www.youtube.com/watch?v=video-123".to_string(),
+            title: "Video".to_string(),
+            description: None,
+            thumbnail_url: None,
+            channel_name: None,
+            channel_id: None,
+            published_at: None,
+            duration_iso8601: duration_iso8601.map(str::to_string),
+            duration_seconds,
+            view_count: None,
+        }
+    }
+
+    #[test]
+    fn cached_video_info_needs_refresh_when_duration_is_missing() {
+        assert!(cached_video_info_needs_refresh(&build_video_info(
+            None, None
+        )));
+        assert!(cached_video_info_needs_refresh(&build_video_info(
+            None,
+            Some(""),
+        )));
+    }
+
+    #[test]
+    fn cached_video_info_with_known_duration_does_not_need_refresh() {
+        assert!(!cached_video_info_needs_refresh(&build_video_info(
+            Some(185),
+            None,
+        )));
+        assert!(!cached_video_info_needs_refresh(&build_video_info(
+            None,
+            Some("PT3M5S"),
+        )));
+    }
+}

@@ -7,7 +7,8 @@ use axum::{
 
 use crate::db;
 use crate::models::{
-    CleanTranscriptResponse, ContentStatus, Summary, Transcript, UpdateContentRequest,
+    CleanTranscriptResponse, ContentStatus, Summary, Transcript, TranscriptRenderMode,
+    UpdateContentRequest, Video,
 };
 use crate::services::summarizer::{MAX_TRANSCRIPT_FORMAT_ATTEMPTS, SummarizerError};
 use crate::state::AppState;
@@ -45,31 +46,10 @@ pub async fn update_transcript(
     Path(video_id): Path<String>,
     Json(payload): Json<UpdateContentRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    {
-        let conn = state.db.lock().await;
-        let video = db::get_video(&conn, &video_id).await.map_err(map_db_err)?;
-        if video.is_none() {
-            return Err((StatusCode::NOT_FOUND, "Video not found".to_string()));
-        }
-        db::update_transcript_content(&conn, &video_id, &payload.content)
-            .await
-            .map_err(map_db_err)?;
-        db::update_video_transcript_status(&conn, &video_id, ContentStatus::Ready)
-            .await
-            .map_err(map_db_err)?;
-    }
-
-    let conn = state.db.lock().await;
-    let transcript = db::get_transcript(&conn, &video_id)
-        .await
-        .map_err(map_db_err)?;
-    match transcript {
-        Some(t) => Ok(Json(t)),
-        None => Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Transcript update failed".to_string(),
-        )),
-    }
+    let transcript =
+        save_manual_transcript_content(&state, &video_id, &payload.content, payload.render_mode)
+            .await?;
+    Ok(Json(transcript))
 }
 
 pub async fn clean_transcript_formatting(
@@ -83,13 +63,7 @@ pub async fn clean_transcript_formatting(
         input_chars = payload.content.len(),
         "transcript clean formatting requested"
     );
-    {
-        let conn = state.db.lock().await;
-        let video = db::get_video(&conn, &video_id).await.map_err(map_db_err)?;
-        if video.is_none() {
-            return Err((StatusCode::NOT_FOUND, "Video not found".to_string()));
-        }
-    }
+    get_video_or_not_found(&state, &video_id).await?;
 
     if payload.content.trim().is_empty() {
         tracing::info!(video_id = %video_id, "transcript clean skipped for empty input");
@@ -179,12 +153,9 @@ pub async fn regenerate_summary(
     Path(video_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     tracing::info!(video_id = %video_id, "summary regeneration requested");
+    get_video_or_not_found(&state, &video_id).await?;
     {
         let conn = state.db.lock().await;
-        let video = db::get_video(&conn, &video_id).await.map_err(map_db_err)?;
-        if video.is_none() {
-            return Err((StatusCode::NOT_FOUND, "Video not found".to_string()));
-        }
         db::delete_summary(&conn, &video_id)
             .await
             .map_err(map_db_err)?;
@@ -207,44 +178,17 @@ pub async fn update_summary(
     Path(video_id): Path<String>,
     Json(payload): Json<UpdateContentRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    {
-        let conn = state.db.lock().await;
-        let video = db::get_video(&conn, &video_id).await.map_err(map_db_err)?;
-        if video.is_none() {
-            return Err((StatusCode::NOT_FOUND, "Video not found".to_string()));
-        }
-        db::update_summary_content(&conn, &video_id, &payload.content, Some("manual"))
-            .await
-            .map_err(map_db_err)?;
-        db::update_video_summary_status(&conn, &video_id, ContentStatus::Ready)
-            .await
-            .map_err(map_db_err)?;
-    }
-
-    let conn = state.db.lock().await;
-    let summary = db::get_summary(&conn, &video_id)
-        .await
-        .map_err(map_db_err)?;
-    match summary {
-        Some(s) => Ok(Json(s)),
-        None => Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Summary update failed".to_string(),
-        )),
-    }
+    let summary = save_manual_summary_content(&state, &video_id, &payload.content).await?;
+    Ok(Json(summary))
 }
 
 pub(crate) async fn ensure_transcript(
     state: &AppState,
     video_id: &str,
 ) -> Result<Transcript, (StatusCode, String)> {
+    get_video_or_not_found(state, video_id).await?;
     {
         let conn = state.db.lock().await;
-        let video = db::get_video(&conn, video_id).await.map_err(map_db_err)?;
-        if video.is_none() {
-            return Err((StatusCode::NOT_FOUND, "Video not found".to_string()));
-        }
-
         if let Some(transcript) = db::get_transcript(&conn, video_id)
             .await
             .map_err(map_db_err)?
@@ -277,6 +221,7 @@ pub(crate) async fn ensure_transcript(
         video_id: video_id.to_string(),
         raw_text: Some(raw),
         formatted_markdown: Some(formatted),
+        render_mode: TranscriptRenderMode::PlainText,
     };
 
     let conn = state.db.lock().await;
@@ -295,13 +240,9 @@ pub(crate) async fn ensure_summary(
     state: &AppState,
     video_id: &str,
 ) -> Result<Summary, (StatusCode, String)> {
+    let video = get_video_or_not_found(state, video_id).await?;
     {
         let conn = state.db.lock().await;
-        let video = db::get_video(&conn, video_id).await.map_err(map_db_err)?;
-        let Some(video) = video else {
-            return Err((StatusCode::NOT_FOUND, "Video not found".to_string()));
-        };
-
         if let Some(summary) = db::get_summary(&conn, video_id).await.map_err(map_db_err)? {
             let auto_regen_attempts = db::get_summary_auto_regen_attempts(&conn, video_id)
                 .await
@@ -376,16 +317,9 @@ pub(crate) async fn ensure_summary(
         ));
     }
 
-    let title = {
-        let conn = state.db.lock().await;
-        let video = db::get_video(&conn, video_id).await.map_err(map_db_err)?;
-        let video = video.ok_or((StatusCode::NOT_FOUND, "Video not found".to_string()))?;
-        video.title
-    };
-
     let (content, model) = state
         .summarizer
-        .summarize(&transcript_text, &title)
+        .summarize(&transcript_text, &video.title)
         .await
         .map_err(|e| {
             let error_msg = e.to_string();
@@ -412,6 +346,7 @@ pub(crate) async fn ensure_summary(
         model_used: Some(model),
         quality_score: None,
         quality_note: None,
+        quality_model_used: None,
     };
 
     let conn = state.db.lock().await;
@@ -424,6 +359,49 @@ pub(crate) async fn ensure_summary(
     tracing::info!(video_id = %video_id, "summary stored - status set to ready");
 
     Ok(summary)
+}
+
+async fn get_video_or_not_found(
+    state: &AppState,
+    video_id: &str,
+) -> Result<Video, (StatusCode, String)> {
+    let conn = state.db.lock().await;
+    db::get_video(&conn, video_id)
+        .await
+        .map_err(map_db_err)?
+        .ok_or((StatusCode::NOT_FOUND, "Video not found".to_string()))
+}
+
+async fn save_manual_transcript_content(
+    state: &AppState,
+    video_id: &str,
+    content: &str,
+    render_mode: Option<TranscriptRenderMode>,
+) -> Result<Transcript, (StatusCode, String)> {
+    get_video_or_not_found(state, video_id).await?;
+    let conn = state.db.lock().await;
+    let existing_render_mode = db::get_transcript(&conn, video_id)
+        .await
+        .map_err(map_db_err)?
+        .map(|transcript| transcript.render_mode);
+    let effective_render_mode = render_mode
+        .or(existing_render_mode)
+        .unwrap_or(TranscriptRenderMode::PlainText);
+    db::save_manual_transcript(&conn, video_id, content, effective_render_mode)
+        .await
+        .map_err(map_db_err)
+}
+
+async fn save_manual_summary_content(
+    state: &AppState,
+    video_id: &str,
+    content: &str,
+) -> Result<Summary, (StatusCode, String)> {
+    get_video_or_not_found(state, video_id).await?;
+    let conn = state.db.lock().await;
+    db::save_manual_summary(&conn, video_id, content, Some("manual"))
+        .await
+        .map_err(map_db_err)
 }
 
 enum StatusField {
