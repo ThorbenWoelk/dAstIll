@@ -3,6 +3,7 @@ import type {
   Channel,
   ChannelSnapshot,
   CleanTranscriptResponse,
+  QueueTab,
   Summary,
   SyncDepth,
   Transcript,
@@ -154,6 +155,7 @@ interface VideoQueryOptions {
   videoType?: VideoTypeFilter;
   acknowledged?: boolean;
   queueOnly?: boolean;
+  queueTab?: QueueTab;
 }
 
 function appendVideoQueryParams(
@@ -178,6 +180,9 @@ function appendVideoQueryParams(
   }
   if (options.queueOnly) {
     params.set("queue_only", "true");
+  }
+  if (options.queueTab) {
+    params.set("queue_tab", options.queueTab);
   }
 }
 
@@ -334,12 +339,13 @@ export function listVideos(
   videoType: VideoTypeFilter = "all",
   acknowledged?: boolean,
   queueOnly = false,
+  queueTab?: QueueTab,
 ) {
   const params = new URLSearchParams({
     limit: `${limit}`,
     offset: `${offset}`,
   });
-  appendVideoQueryParams(params, { videoType, acknowledged, queueOnly });
+  appendVideoQueryParams(params, { videoType, acknowledged, queueOnly, queueTab });
   return cachedGetRequest<Video[]>(
     `/api/channels/${channelId}/videos?${params.toString()}`,
   );

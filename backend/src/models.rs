@@ -42,14 +42,6 @@ impl ContentStatus {
     }
 }
 
-impl std::str::FromStr for ContentStatus {
-    type Err = core::convert::Infallible;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self::from_db_value(s))
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Video {
     pub id: String,
@@ -63,6 +55,8 @@ pub struct Video {
     pub acknowledged: bool,
     #[serde(default)]
     pub retry_count: u8,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quality_score: Option<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

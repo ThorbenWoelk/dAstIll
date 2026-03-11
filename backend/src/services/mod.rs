@@ -1,12 +1,13 @@
 pub mod http;
+pub(crate) mod ollama;
 pub mod summarizer;
 pub mod summary_evaluator;
 pub mod transcript;
 pub mod youtube;
 
 pub use http::{
-    CloudCooldown, TranscriptCooldown, YouTubeQuotaCooldown, build_http_client, is_cloud_model,
-    is_rate_limited,
+    CloudCooldown, Cooldown, TranscriptCooldown, YouTubeQuotaCooldown, build_http_client,
+    is_cloud_model, is_rate_limited,
 };
 pub use summarizer::SummarizerService;
 pub use summary_evaluator::SummaryEvaluatorService;

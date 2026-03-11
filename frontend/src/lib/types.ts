@@ -37,6 +37,8 @@ export interface AiHealthResponse {
   status: AiStatus;
 }
 
+export type QueueTab = "transcripts" | "summaries" | "evaluations";
+
 export interface Video {
   id: string;
   channel_id: string;
@@ -48,6 +50,7 @@ export interface Video {
   summary_status: ContentStatus;
   acknowledged: boolean;
   retry_count?: number;
+  quality_score?: number | null;
 }
 
 export interface Transcript {
