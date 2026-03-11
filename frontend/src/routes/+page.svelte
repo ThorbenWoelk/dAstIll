@@ -28,6 +28,7 @@
   } from "$lib/components/FeatureGuide.svelte";
   import ChannelCard from "$lib/components/ChannelCard.svelte";
   import ConfirmationModal from "$lib/components/ConfirmationModal.svelte";
+  import Footer from "$lib/components/Footer.svelte";
   import ContentEditor from "$lib/components/ContentEditor.svelte";
   import Toggle from "$lib/components/Toggle.svelte";
   import TranscriptView from "$lib/components/TranscriptView.svelte";
@@ -184,6 +185,15 @@
       body: "The colored dot shows AI engine availability. In showcase mode, AI features like formatting and summary generation are disabled, but browsing and reading work fully.",
       placement: "bottom",
     },
+    {
+      selector: ".footer-link",
+      title: "Open Source",
+      body: "dAstIll is fully open source. Check out the GitHub repository, star the project, or contribute to improve it!",
+      placement: "top",
+      prepare: () => {
+        mobileTab = "channels";
+      },
+    },
   ];
 
   function openGuide() {
@@ -300,7 +310,7 @@
   let filterMenuOpen = $state(false);
   let filterMenuContainer = $state<HTMLDivElement | null>(null);
   let videoListContainer = $state<HTMLDivElement | null>(null);
-  let atVideoListBottom = $state(false);
+
   let filterMenuLabel = $derived(
     videoTypeFilter === "all"
       ? "Open video filter menu."
@@ -1550,16 +1560,7 @@
     }
   }
 
-  function updateVideoListBottomState() {
-    if (!videoListContainer) {
-      atVideoListBottom = false;
-      return;
-    }
-    const thresholdPx = 12;
-    atVideoListBottom =
-      videoListContainer.scrollTop + videoListContainer.clientHeight >=
-      videoListContainer.scrollHeight - thresholdPx;
-  }
+
 
   async function refreshSummaryQuality() {
     if (
@@ -1617,12 +1618,7 @@
     return () => clearInterval(timer);
   });
 
-  $effect(() => {
-    selectedChannelId;
-    videos.length;
-    loadingVideos;
-    void tick().then(updateVideoListBottomState);
-  });
+
 </script>
 
 <svelte:window onkeydown={handleWindowKeydown} />
@@ -1940,7 +1936,7 @@
       </form>
 
       <div
-        class="flex flex-1 min-h-0 flex-col gap-1.5 overflow-y-auto pr-1 custom-scrollbar"
+        class="flex flex-1 min-h-0 flex-col gap-1.5 overflow-y-auto pr-1 pb-[calc(3.5rem+env(safe-area-inset-bottom)+2rem)] lg:pb-0 custom-scrollbar"
         aria-busy={loadingChannels}
       >
         {#if loadingChannels}
@@ -2207,9 +2203,8 @@
       </div>
 
       <div
-        class="grid flex-1 min-h-0 gap-4 overflow-y-auto pr-1 custom-scrollbar"
+        class="grid flex-1 min-h-0 gap-4 overflow-y-auto pr-1 pb-[calc(3.5rem+env(safe-area-inset-bottom)+2rem)] lg:pb-0 custom-scrollbar"
         bind:this={videoListContainer}
-        onscroll={updateVideoListBottomState}
         aria-busy={loadingVideos}
       >
         {#if loadingVideos && videos.length === 0}
@@ -2243,43 +2238,41 @@
             />
           {/each}
         {/if}
+
+        {#if selectedChannelId}
+          <div class="flex flex-col gap-3 pt-1 pb-4">
+            {#if hasMore || !historyExhausted}
+              <button
+                type="button"
+                class="w-full rounded-[var(--radius-sm)] border border-[var(--border-soft)] py-2.5 text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--soft-foreground)] transition-all hover:border-[var(--accent)]/40 hover:text-[var(--foreground)] disabled:opacity-30"
+                onclick={loadMoreVideos}
+                disabled={loadingVideos || backfillingHistory}
+              >
+                {#if loadingVideos || backfillingHistory}
+                  Loading...
+                {:else if hasMore}
+                  More
+                {:else}
+                  Explore History
+                {/if}
+              </button>
+            {/if}
+
+            {#if videos.length > 0}
+              <p class="text-[11px] text-[var(--soft-foreground)] opacity-40 px-0.5">
+                Synced to {formatSyncDate(
+                  resolveDisplayedSyncDepthIso({
+                    videos,
+                    selectedChannel,
+                    syncDepth,
+                    allowLoadedVideoOverride: allowLoadedVideoSyncDepthOverride,
+                  }),
+                )}
+              </p>
+            {/if}
+          </div>
+        {/if}
       </div>
-
-      {#if selectedChannelId}
-        <div class="flex flex-col gap-3 pt-3">
-          {#if hasMore || !historyExhausted}
-            <button
-              type="button"
-              class="w-full rounded-[var(--radius-sm)] border border-[var(--border-soft)] py-2.5 text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--soft-foreground)] transition-all hover:border-[var(--accent)]/40 hover:text-[var(--foreground)] disabled:opacity-30"
-              onclick={loadMoreVideos}
-              disabled={loadingVideos || backfillingHistory}
-            >
-              {#if loadingVideos || backfillingHistory}
-                Loading...
-              {:else if hasMore}
-                More
-              {:else}
-                Explore History
-              {/if}
-            </button>
-          {/if}
-
-          {#if atVideoListBottom && videos.length > 0}
-            <p
-              class="text-[11px] text-[var(--soft-foreground)] opacity-40 px-0.5"
-            >
-              Synced to {formatSyncDate(
-                resolveDisplayedSyncDepthIso({
-                  videos,
-                  selectedChannel,
-                  syncDepth,
-                  allowLoadedVideoOverride: allowLoadedVideoSyncDepthOverride,
-                }),
-              )}
-            </p>
-          {/if}
-        </div>
-      {/if}
     </aside>
 
     <section
@@ -2336,7 +2329,7 @@
       </div>
 
       <div
-        class="w-full min-h-0 flex-1 overflow-y-auto px-4 sm:px-6 lg:px-0 lg:pr-4 max-lg:pt-4 custom-scrollbar"
+        class="w-full min-h-0 flex-1 overflow-y-auto px-4 sm:px-6 lg:px-0 lg:pr-4 max-lg:pt-4 pb-[calc(3.5rem+env(safe-area-inset-bottom)+2rem)] lg:pb-0 custom-scrollbar"
       >
         {#if selectedVideoId && !loadingContent}
           {@const selectedVideo = videos.find((v) => v.id === selectedVideoId)}
@@ -2781,4 +2774,6 @@
     onClose={closeGuide}
     onStep={setGuideStep}
   />
+
+  <Footer showMobile={mobileTab === "channels"} />
 </div>

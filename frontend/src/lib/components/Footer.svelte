@@ -1,7 +1,11 @@
-<footer class="site-footer">
+<script lang="ts">
+  export let showMobile = false;
+</script>
+
+<footer class="site-footer" class:mobile-visible={showMobile}>
   <div class="footer-inner">
     <span class="footer-copyright">
-      &copy; {new Date().getFullYear()} Thorben Woelk. MIT License.
+      &copy; {new Date().getFullYear()} Thorben Woelk.
     </span>
     <a
       href="https://github.com/ThorbenWoelk/dAstIll"
@@ -10,8 +14,8 @@
       class="footer-link"
     >
       <svg
-        width="16"
-        height="16"
+        width="14"
+        height="14"
         viewBox="0 0 24 24"
         fill="currentColor"
         aria-hidden="true"
@@ -27,15 +31,21 @@
 
 <style>
   .site-footer {
-    width: 100%;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 30;
     border-top: 1px solid var(--border-soft);
-    background: var(--background);
+    background: rgba(250, 249, 246, 0.85);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
   }
 
   .footer-inner {
     max-width: 1440px;
     margin: 0 auto;
-    padding: 1rem 1.5rem;
+    padding: 0.625rem 1.5rem;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -75,9 +85,38 @@
     border-radius: 4px;
   }
 
+  /*
+   * On mobile, hide by default, unless mobile-visible is applied.
+   */
   @media (max-width: 1023px) {
     .site-footer {
-      padding-bottom: calc(3.5rem + env(safe-area-inset-bottom) + 0.25rem);
+      display: none;
+    }
+
+    .site-footer.mobile-visible {
+      display: block;
+      bottom: calc(3.5rem + env(safe-area-inset-bottom));
+      border-top: none;
+      border-bottom: 1px solid var(--border-soft);
+      background: rgba(255, 255, 255, 0.88);
+    }
+
+    .site-footer.mobile-visible .footer-inner {
+      padding: 0.4rem 1rem;
+      justify-content: center;
+      gap: 0.75rem;
+    }
+
+    .site-footer.mobile-visible .footer-copyright {
+      font-size: 0.625rem;
+    }
+
+    .site-footer.mobile-visible .footer-link {
+      font-size: 0.625rem;
+    }
+
+    .site-footer.mobile-visible .footer-link span {
+      display: none;
     }
   }
 </style>
