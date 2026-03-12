@@ -29,7 +29,7 @@ pub(crate) async fn require_channel(
     state: &AppState,
     channel_id: &str,
 ) -> Result<Channel, (StatusCode, String)> {
-    let conn = state.db.lock().await;
+    let conn = state.db.connect();
     db::get_channel(&conn, channel_id)
         .await
         .map_err(map_db_err)?
@@ -40,7 +40,7 @@ pub(crate) async fn require_video(
     state: &AppState,
     video_id: &str,
 ) -> Result<Video, (StatusCode, String)> {
-    let conn = state.db.lock().await;
+    let conn = state.db.connect();
     db::get_video(&conn, video_id)
         .await
         .map_err(map_db_err)?

@@ -64,7 +64,7 @@ pub fn spawn_queue_worker(state: AppState) {
 
         loop {
             let queue = {
-                let conn = state.db.lock().await;
+                let conn = state.db.connect();
                 db::list_videos_for_queue_processing(
                     &conn,
                     QUEUE_SCAN_LIMIT,
@@ -123,11 +123,11 @@ pub fn spawn_queue_worker(state: AppState) {
                             error = %message,
                             "queue worker failed to process video"
                         );
-                        let conn = state.db.lock().await;
+                        let conn = state.db.connect();
                         let _ = db::increment_video_retry_count(&conn, &video.id).await;
                     }
                 } else {
-                    let conn = state.db.lock().await;
+                    let conn = state.db.connect();
                     let _ = db::reset_video_retry_count(&conn, &video.id).await;
                 }
             }
@@ -140,7 +140,7 @@ pub fn spawn_queue_worker(state: AppState) {
 /// Refresh all channels by fetching their RSS feeds and inserting new videos.
 async fn refresh_all_channels(state: &AppState) {
     let channels = {
-        let conn = state.db.lock().await;
+        let conn = state.db.connect();
         db::list_channels(&conn)
             .await
             .map_err(|err| err.to_string())
@@ -166,7 +166,7 @@ async fn refresh_all_channels(state: &AppState) {
         }
         match state.youtube.fetch_videos(&channel.id).await {
             Ok(videos) => {
-                let conn = state.db.lock().await;
+                let conn = state.db.connect();
                 let n = db::bulk_insert_videos(&conn, videos).await.unwrap_or(0);
                 if n > 0 {
                     tracing::info!(
@@ -211,7 +211,7 @@ async fn fill_channel_gaps(
     until: Option<chrono::DateTime<chrono::Utc>>,
 ) -> Result<usize, String> {
     let known_video_ids = {
-        let conn = state.db.lock().await;
+        let conn = state.db.connect();
         db::list_video_ids_by_channel(&conn, channel_id)
             .await
             .map_err(|err| err.to_string())?
@@ -225,7 +225,7 @@ async fn fill_channel_gaps(
         .await
         .map_err(|err| err.to_string())?;
 
-    let conn = state.db.lock().await;
+    let conn = state.db.connect();
     let inserted = db::bulk_insert_videos(&conn, videos)
         .await
         .map_err(|err| err.to_string())?;
@@ -239,7 +239,7 @@ async fn scan_all_channels_for_gaps(state: &AppState) {
     }
 
     let channels = {
-        let conn = state.db.lock().await;
+        let conn = state.db.connect();
         db::list_channels(&conn)
             .await
             .map_err(|err| err.to_string())
@@ -321,7 +321,7 @@ pub fn spawn_summary_evaluation_worker(state: AppState) {
 
         loop {
             let queue = {
-                let conn = state.db.lock().await;
+                let conn = state.db.connect();
                 db::list_summaries_pending_quality_eval(&conn, SUMMARY_EVAL_SCAN_LIMIT)
                     .await
                     .map_err(|err| err.to_string())
@@ -365,7 +365,7 @@ pub fn spawn_summary_evaluation_worker(state: AppState) {
 
                 match evaluation {
                     Ok(result) => {
-                        let conn = state.db.lock().await;
+                        let conn = state.db.connect();
                         let _ = db::update_summary_quality(
                             &conn,
                             &job.video_id,

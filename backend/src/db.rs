@@ -1,14 +1,25 @@
-use std::sync::Arc;
-
 use libsql::{Connection, Value, params};
-use tokio::sync::Mutex;
 
 use crate::models::{
     Channel, ContentStatus, Summary, SummaryEvaluationJob, Transcript, TranscriptRenderMode, Video,
     VideoInfo,
 };
 
-pub type DbPool = Arc<Mutex<Connection>>;
+#[derive(Clone)]
+pub struct DbPool {
+    connection: Connection,
+}
+
+impl DbPool {
+    pub fn connect(&self) -> Connection {
+        self.connection.clone()
+    }
+
+    #[cfg(test)]
+    pub async fn lock(&self) -> Connection {
+        self.connect()
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ChannelSnapshotData {
@@ -27,14 +38,14 @@ pub struct WorkspaceBootstrapData {
 pub async fn init_db(db: libsql::Database) -> Result<DbPool, libsql::Error> {
     let conn = db.connect()?;
     run_migrations(&conn).await?;
-    Ok(Arc::new(Mutex::new(conn)))
+    Ok(DbPool { connection: conn })
 }
 
 pub async fn init_db_memory() -> Result<DbPool, libsql::Error> {
     let db = libsql::Builder::new_local(":memory:").build().await?;
     let conn = db.connect()?;
     run_migrations(&conn).await?;
-    Ok(Arc::new(Mutex::new(conn)))
+    Ok(DbPool { connection: conn })
 }
 
 async fn run_migrations(conn: &Connection) -> Result<(), libsql::Error> {
@@ -163,6 +174,15 @@ async fn run_migrations(conn: &Connection) -> Result<(), libsql::Error> {
         "transcripts",
         "render_mode",
         "render_mode TEXT NOT NULL DEFAULT 'plain_text'",
+    )
+    .await?;
+    conn.execute_batch(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_videos_channel_ack_short_published ON videos(channel_id, acknowledged, is_short, published_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_videos_channel_transcript_queue_published ON videos(channel_id, published_at DESC) WHERE transcript_status != 'ready';
+        CREATE INDEX IF NOT EXISTS idx_videos_channel_summary_queue_published ON videos(channel_id, published_at DESC) WHERE transcript_status = 'ready' AND summary_status != 'ready';
+        CREATE INDEX IF NOT EXISTS idx_videos_channel_ready_published ON videos(channel_id, published_at) WHERE transcript_status = 'ready' AND summary_status = 'ready';
+        "#,
     )
     .await?;
     Ok(())
@@ -1096,6 +1116,36 @@ pub async fn list_video_ids_for_info_refresh(
 mod tests {
     use super::*;
     use chrono::Utc;
+
+    #[tokio::test]
+    async fn test_db_pool_connect_shares_state_across_callers() {
+        let pool = init_db_memory().await.unwrap();
+        let conn_a = pool.connect();
+        let conn_b = pool.connect();
+
+        conn_a
+            .execute(
+                "CREATE TABLE pool_check (id INTEGER PRIMARY KEY, label TEXT)",
+                (),
+            )
+            .await
+            .unwrap();
+        conn_b
+            .execute(
+                "INSERT INTO pool_check (id, label) VALUES (?1, ?2)",
+                params![1i64, "shared"],
+            )
+            .await
+            .unwrap();
+
+        let mut rows = conn_a
+            .query("SELECT label FROM pool_check WHERE id = ?1", params![1i64])
+            .await
+            .unwrap();
+        let row = rows.next().await.unwrap().expect("row should exist");
+        let label: String = row.get(0).unwrap();
+        assert_eq!(label, "shared");
+    }
 
     #[tokio::test]
     async fn test_channel_crud() {
@@ -2244,5 +2294,55 @@ mod tests {
         assert_eq!(snapshot.channel.id, first.id);
         assert_eq!(snapshot.videos.len(), 1);
         assert_eq!(snapshot.videos[0].id, "boot_vid");
+    }
+
+    #[tokio::test]
+    async fn test_init_db_creates_scalability_indexes_for_video_lists() {
+        let pool = init_db_memory().await.unwrap();
+        let conn = pool.lock().await;
+
+        let mut rows = conn
+            .query(
+                "SELECT name, sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'videos'",
+                (),
+            )
+            .await
+            .unwrap();
+
+        let mut indexes = std::collections::HashMap::new();
+        while let Some(row) = rows.next().await.unwrap() {
+            let name: String = row.get(0).unwrap();
+            let sql: Option<String> = row.get(1).unwrap();
+            if let Some(sql) = sql {
+                indexes.insert(name, sql);
+            }
+        }
+
+        let ack_short_index = indexes
+            .get("idx_videos_channel_ack_short_published")
+            .expect("combined acknowledged/short index should exist");
+        assert!(
+            ack_short_index.contains("(channel_id, acknowledged, is_short, published_at DESC)")
+        );
+
+        let transcript_queue_index = indexes
+            .get("idx_videos_channel_transcript_queue_published")
+            .expect("channel transcript queue partial index should exist");
+        assert!(transcript_queue_index.contains("WHERE transcript_status != 'ready'"));
+
+        let summary_queue_index = indexes
+            .get("idx_videos_channel_summary_queue_published")
+            .expect("channel summary queue partial index should exist");
+        assert!(
+            summary_queue_index
+                .contains("WHERE transcript_status = 'ready' AND summary_status != 'ready'")
+        );
+
+        let ready_index = indexes
+            .get("idx_videos_channel_ready_published")
+            .expect("ready-video partial index should exist");
+        assert!(
+            ready_index.contains("WHERE transcript_status = 'ready' AND summary_status = 'ready'")
+        );
     }
 }
