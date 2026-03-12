@@ -18,6 +18,8 @@ terraform.tfvars
 backend/target/
 **/*.db
 **/.env
+**/__pycache__/
+**/*.pyc
 
 # Frontend
 frontend/node_modules/
