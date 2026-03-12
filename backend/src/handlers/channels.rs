@@ -48,7 +48,7 @@ fn build_snapshot_payload(
 pub async fn list_channels(
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let conn = state.db.lock().await;
+    let conn = state.db.connect();
     let channels = db::list_channels(&conn).await.map_err(map_db_err)?;
     Ok(Json(channels))
 }
@@ -62,7 +62,7 @@ pub async fn workspace_bootstrap(
     let ai_status = state
         .summarizer
         .indicator_status(state.cloud_cooldown.is_active(), ai_available);
-    let conn = state.db.lock().await;
+    let conn = state.db.connect();
     let bootstrap = db::load_workspace_bootstrap_data(
         &conn,
         params.selected_channel_id.as_deref(),
@@ -126,7 +126,7 @@ pub async fn add_channel(
     };
 
     {
-        let conn = state.db.lock().await;
+        let conn = state.db.connect();
         db::insert_channel(&conn, &channel)
             .await
             .map_err(map_db_err)?;
@@ -138,7 +138,7 @@ pub async fn add_channel(
     tokio::spawn(async move {
         match youtube.fetch_videos(&channel_id_clone).await {
             Ok(videos) => {
-                let conn = db_pool.lock().await;
+                let conn = db_pool.connect();
                 let inserted_count = crate::db::bulk_insert_videos(&conn, videos)
                     .await
                     .unwrap_or(0);
@@ -173,7 +173,7 @@ pub async fn get_channel_sync_depth(
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let channel = require_channel(&state, &id).await?;
-    let conn = state.db.lock().await;
+    let conn = state.db.connect();
 
     let derived = db::get_oldest_ready_video_published_at(&conn, &id)
         .await
@@ -187,7 +187,7 @@ pub async fn get_channel_snapshot(
     Path(id): Path<String>,
     Query(params): Query<VideoListParams>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let conn = state.db.lock().await;
+    let conn = state.db.connect();
     let snapshot = db::load_channel_snapshot_data(
         &conn,
         &id,
@@ -210,7 +210,7 @@ pub async fn delete_channel(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let conn = state.db.lock().await;
+    let conn = state.db.connect();
     let deleted = db::delete_channel(&conn, &id).await.map_err(map_db_err)?;
 
     if deleted {
@@ -235,7 +235,7 @@ pub async fn update_channel(
     }
 
     {
-        let conn = state.db.lock().await;
+        let conn = state.db.connect();
         db::insert_channel(&conn, &channel)
             .await
             .map_err(map_db_err)?;
@@ -262,7 +262,7 @@ pub async fn refresh_channel_videos(
         .map_err(map_internal_err)?;
 
     let mut count = {
-        let conn = state.db.lock().await;
+        let conn = state.db.connect();
         db::bulk_insert_videos(&conn, videos)
             .await
             .map_err(map_db_err)?
@@ -271,7 +271,7 @@ pub async fn refresh_channel_videos(
     if let Some(until) = earliest_sync_date {
         for round in 0..REFRESH_BACKFILL_MAX_ROUNDS {
             let known_video_ids = {
-                let conn = state.db.lock().await;
+                let conn = state.db.connect();
                 db::list_video_ids_by_channel(&conn, &id)
                     .await
                     .map_err(map_db_err)?
@@ -291,7 +291,7 @@ pub async fn refresh_channel_videos(
                 .map_err(map_internal_err)?;
 
             let added = {
-                let conn = state.db.lock().await;
+                let conn = state.db.connect();
                 db::bulk_insert_videos(&conn, backfill_videos)
                     .await
                     .map_err(map_db_err)?
@@ -333,7 +333,7 @@ pub async fn backfill_channel_videos(
 
     require_channel(&state, &id).await?;
     let known_video_ids = {
-        let conn = state.db.lock().await;
+        let conn = state.db.connect();
         db::list_video_ids_by_channel(&conn, &id)
             .await
             .map_err(map_db_err)?
@@ -349,7 +349,7 @@ pub async fn backfill_channel_videos(
         .map_err(map_internal_err)?;
 
     let fetched_count = videos.len();
-    let conn = state.db.lock().await;
+    let conn = state.db.connect();
     let added_count = db::bulk_insert_videos(&conn, videos)
         .await
         .map_err(map_db_err)?;

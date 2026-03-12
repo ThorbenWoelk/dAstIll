@@ -155,7 +155,7 @@ pub async fn regenerate_summary(
     tracing::info!(video_id = %video_id, "summary regeneration requested");
     require_video(&state, &video_id).await?;
     {
-        let conn = state.db.lock().await;
+        let conn = state.db.connect();
         db::delete_summary(&conn, &video_id)
             .await
             .map_err(map_db_err)?;
@@ -188,7 +188,7 @@ pub(crate) async fn ensure_transcript(
 ) -> Result<Transcript, (StatusCode, String)> {
     require_video(state, video_id).await?;
     {
-        let conn = state.db.lock().await;
+        let conn = state.db.connect();
         if let Some(transcript) = db::get_transcript(&conn, video_id)
             .await
             .map_err(map_db_err)?
@@ -224,7 +224,7 @@ pub(crate) async fn ensure_transcript(
         render_mode: TranscriptRenderMode::PlainText,
     };
 
-    let conn = state.db.lock().await;
+    let conn = state.db.connect();
     db::upsert_transcript(&conn, &transcript)
         .await
         .map_err(map_db_err)?;
@@ -242,7 +242,7 @@ pub(crate) async fn ensure_summary(
 ) -> Result<Summary, (StatusCode, String)> {
     let video = require_video(state, video_id).await?;
     {
-        let conn = state.db.lock().await;
+        let conn = state.db.connect();
         if let Some(summary) = db::get_summary(&conn, video_id).await.map_err(map_db_err)? {
             let auto_regen_attempts = db::get_summary_auto_regen_attempts(&conn, video_id)
                 .await
@@ -277,7 +277,7 @@ pub(crate) async fn ensure_summary(
     }
 
     if !state.summarizer.is_available().await {
-        let conn = state.db.lock().await;
+        let conn = state.db.connect();
         db::update_video_summary_status(&conn, video_id, ContentStatus::Failed)
             .await
             .map_err(map_db_err)?;
@@ -307,7 +307,7 @@ pub(crate) async fn ensure_summary(
         .to_string();
 
     if transcript_text.is_empty() {
-        let conn = state.db.lock().await;
+        let conn = state.db.connect();
         db::update_video_summary_status(&conn, video_id, ContentStatus::Failed)
             .await
             .map_err(map_db_err)?;
@@ -349,7 +349,7 @@ pub(crate) async fn ensure_summary(
         quality_model_used: None,
     };
 
-    let conn = state.db.lock().await;
+    let conn = state.db.connect();
     db::upsert_summary(&conn, &summary)
         .await
         .map_err(map_db_err)?;
@@ -368,7 +368,7 @@ async fn save_manual_transcript_content(
     render_mode: Option<TranscriptRenderMode>,
 ) -> Result<Transcript, (StatusCode, String)> {
     require_video(state, video_id).await?;
-    let conn = state.db.lock().await;
+    let conn = state.db.connect();
     let existing_render_mode = db::get_transcript(&conn, video_id)
         .await
         .map_err(map_db_err)?
@@ -387,7 +387,7 @@ async fn save_manual_summary_content(
     content: &str,
 ) -> Result<Summary, (StatusCode, String)> {
     require_video(state, video_id).await?;
-    let conn = state.db.lock().await;
+    let conn = state.db.connect();
     db::save_manual_summary(&conn, video_id, content, Some("manual"))
         .await
         .map_err(map_db_err)
@@ -407,7 +407,7 @@ fn spawn_status_update(
     let state = state.clone();
     let video_id = video_id.to_string();
     tokio::spawn(async move {
-        let conn = state.db.lock().await;
+        let conn = state.db.connect();
         let _ = match field {
             StatusField::Transcript => {
                 db::update_video_transcript_status(&conn, &video_id, status).await
