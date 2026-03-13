@@ -1,5 +1,6 @@
 <script lang="ts">
   import "../app.css";
+  import ServiceWorkerRegistration from "$lib/components/ServiceWorkerRegistration.svelte";
 
   let { children } = $props();
 </script>
@@ -9,6 +10,9 @@
   <meta name="theme-color" content="#f8f1ec" />
   <meta name="application-name" content="dAstIll" />
   <meta name="apple-mobile-web-app-title" content="dAstIll" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta
     name="description"
     content="dAstIll - follow channels, process transcripts, evaluate summary quality, and manage your video distillation workspace."
@@ -26,6 +30,7 @@
 </svelte:head>
 
 <div class="flex min-h-screen flex-col">
+  <ServiceWorkerRegistration />
   <div class="flex-1">
     {@render children()}
   </div>
