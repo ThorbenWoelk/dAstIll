@@ -29,6 +29,7 @@ impl OllamaRuntimeConfig {
             optional_env("OLLAMA_EMBEDDING_MODEL")
         };
 
+        validate_distinct_model_roles(&model, &summary_evaluator_model)?;
         SummaryEvaluatorService::validate_model_policy(&summary_evaluator_model)?;
 
         Ok(Self {
@@ -39,6 +40,16 @@ impl OllamaRuntimeConfig {
             embedding_model,
         })
     }
+}
+
+fn validate_distinct_model_roles(model: &str, summary_evaluator_model: &str) -> Result<(), String> {
+    if model == summary_evaluator_model {
+        return Err(format!(
+            "OLLAMA_MODEL and SUMMARY_EVALUATOR_MODEL must differ so summaries are evaluated independently; got `{model}` for both"
+        ));
+    }
+
+    Ok(())
 }
 
 impl SearchRuntimeConfig {
@@ -153,7 +164,7 @@ mod tests {
             "OLLAMA_EMBEDDING_MODEL",
         ]);
         set_env("OLLAMA_MODEL", "glm-5:cloud");
-        set_env("SUMMARY_EVALUATOR_MODEL", "glm-5:cloud");
+        set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
         remove_env("OLLAMA_EMBEDDING_MODEL");
 
         let err = OllamaRuntimeConfig::from_env(true)
@@ -175,7 +186,7 @@ mod tests {
             "OLLAMA_EMBEDDING_MODEL",
         ]);
         set_env("OLLAMA_MODEL", "glm-5:cloud");
-        set_env("SUMMARY_EVALUATOR_MODEL", "glm-5:cloud");
+        set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
         remove_env("OLLAMA_EMBEDDING_MODEL");
 
         let config = OllamaRuntimeConfig::from_env(false).expect("config");
@@ -197,7 +208,7 @@ mod tests {
         ]);
         set_env("OLLAMA_MODEL", "glm-5:cloud");
         set_env("OLLAMA_FALLBACK_MODEL", "   ");
-        set_env("SUMMARY_EVALUATOR_MODEL", "glm-5:cloud");
+        set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
         set_env("OLLAMA_EMBEDDING_MODEL", "embeddinggemma");
 
         let config = OllamaRuntimeConfig::from_env(true).expect("config");
@@ -219,14 +230,37 @@ mod tests {
         ]);
         set_env("OLLAMA_MODEL", "glm-5:cloud");
         set_env("OLLAMA_FALLBACK_MODEL", "qwen3-coder:30b");
-        set_env("SUMMARY_EVALUATOR_MODEL", "glm-5:cloud");
+        set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
         set_env("OLLAMA_EMBEDDING_MODEL", "embeddinggemma");
 
         let config = OllamaRuntimeConfig::from_env(true).expect("config");
         assert_eq!(config.model, "glm-5:cloud");
         assert_eq!(config.fallback_model.as_deref(), Some("qwen3-coder:30b"));
-        assert_eq!(config.summary_evaluator_model, "glm-5:cloud");
+        assert_eq!(config.summary_evaluator_model, "qwen3.5:397b-cloud");
         assert_eq!(config.embedding_model.as_deref(), Some("embeddinggemma"));
+    }
+
+    #[test]
+    fn from_env_rejects_matching_summary_and_evaluator_models() {
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+
+        let _reset = EnvReset::capture(&[
+            "OLLAMA_MODEL",
+            "OLLAMA_FALLBACK_MODEL",
+            "SUMMARY_EVALUATOR_MODEL",
+            "OLLAMA_EMBEDDING_MODEL",
+        ]);
+        set_env("OLLAMA_MODEL", "qwen3.5:397b-cloud");
+        set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
+        set_env("OLLAMA_EMBEDDING_MODEL", "embeddinggemma");
+
+        let err = OllamaRuntimeConfig::from_env(true)
+            .expect_err("matching summary and evaluator models should fail");
+        assert!(err.contains("OLLAMA_MODEL"));
+        assert!(err.contains("SUMMARY_EVALUATOR_MODEL"));
     }
 
     #[test]

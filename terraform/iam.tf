@@ -8,6 +8,11 @@ resource "google_service_account" "frontend_sa" {
   display_name = "${var.app_name} Frontend Service Account"
 }
 
+resource "google_service_account" "docs_sa" {
+  account_id   = "${var.app_name}-docs-sa"
+  display_name = "${var.app_name} Docs Service Account"
+}
+
 # Service Account for GitHub Actions
 resource "google_service_account" "github_actions_sa" {
   account_id   = "${var.app_name}-github-sa"
@@ -35,9 +40,9 @@ resource "google_artifact_registry_repository_iam_member" "repo_writer" {
   member     = "serviceAccount:${google_service_account.github_actions_sa.email}"
 }
 
-resource "google_project_iam_member" "cloud_run_developer" {
+resource "google_project_iam_member" "cloud_run_admin" {
   project = var.project_id
-  role    = "roles/run.developer"
+  role    = "roles/run.admin"
   member  = "serviceAccount:${google_service_account.github_actions_sa.email}"
 }
 
@@ -49,6 +54,12 @@ resource "google_service_account_iam_member" "sa_user_backend" {
 
 resource "google_service_account_iam_member" "sa_user_frontend" {
   service_account_id = google_service_account.frontend_sa.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.github_actions_sa.email}"
+}
+
+resource "google_service_account_iam_member" "sa_user_docs" {
+  service_account_id = google_service_account.docs_sa.name
   role               = "roles/iam.serviceAccountUser"
   member             = "serviceAccount:${google_service_account.github_actions_sa.email}"
 }

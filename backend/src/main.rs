@@ -49,6 +49,17 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    let search_runtime = SearchRuntimeConfig::from_env();
+    let summarize_path = std::env::var("SUMMARIZE_PATH")
+        .unwrap_or_else(|_| "/opt/homebrew/bin/summarize".to_string());
+    let ollama = OllamaRuntimeConfig::from_env(search_runtime.semantic_enabled)
+        .map_err(|err| anyhow::anyhow!(err))?;
+    if std::env::var("SUMMARY_EVALUATOR_FALLBACK_MODEL").is_ok() {
+        tracing::warn!(
+            "SUMMARY_EVALUATOR_FALLBACK_MODEL is ignored - summary evaluation is cloud-only"
+        );
+    }
+
     let db_url = std::env::var("DB_URL")
         .map_err(|_| anyhow::anyhow!("DB_URL must be set (Turso database URL)"))?;
     let db_pass = std::env::var("DB_PASS").unwrap_or_default();
@@ -74,17 +85,6 @@ async fn main() -> anyhow::Result<()> {
         }
         Ok(None) => tracing::info!("YOUTUBE_API_KEY is not configured - using fallback sources"),
         Err(err) => tracing::warn!(error = %err, "could not validate YOUTUBE_API_KEY on startup"),
-    }
-
-    let search_runtime = SearchRuntimeConfig::from_env();
-    let summarize_path = std::env::var("SUMMARIZE_PATH")
-        .unwrap_or_else(|_| "/opt/homebrew/bin/summarize".to_string());
-    let ollama = OllamaRuntimeConfig::from_env(search_runtime.semantic_enabled)
-        .map_err(|err| anyhow::anyhow!(err))?;
-    if std::env::var("SUMMARY_EVALUATOR_FALLBACK_MODEL").is_ok() {
-        tracing::warn!(
-            "SUMMARY_EVALUATOR_FALLBACK_MODEL is ignored - summary evaluation is cloud-only"
-        );
     }
     let transcript = Arc::new(TranscriptService::with_path(&summarize_path));
     let ollama_semaphore = Arc::new(tokio::sync::Semaphore::new(1));
