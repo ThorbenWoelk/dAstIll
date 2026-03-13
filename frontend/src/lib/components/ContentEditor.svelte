@@ -113,7 +113,7 @@
       class={`min-h-[400px] w-full rounded-[var(--radius-md)] border border-[var(--border-soft)] p-8 text-[15px] font-medium leading-[1.7] shadow-sm transition-all focus-within:ring-2 focus-within:ring-[var(--accent)]/10 focus-within:border-[var(--accent)]/40 focus-visible:outline-none max-lg:border-0 max-lg:bg-transparent max-lg:p-0 max-lg:shadow-none ${
         formatting
           ? "opacity-50 blur-[0.5px] bg-[var(--background)]"
-          : "bg-white"
+          : "bg-[var(--surface)]"
       }`}
       {value}
       oninput={(event) =>

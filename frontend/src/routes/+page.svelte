@@ -37,6 +37,7 @@
   import { DOCS_URL } from "$lib/app-config";
   import ContentEditor from "$lib/components/ContentEditor.svelte";
   import SearchResultsPopover from "$lib/components/SearchResultsPopover.svelte";
+  import ThemeToggle from "$lib/components/ThemeToggle.svelte";
   import { resolveSearchCoverageHint } from "$lib/search-status";
   import Toggle from "$lib/components/Toggle.svelte";
   import TranscriptView from "$lib/components/TranscriptView.svelte";
@@ -1973,7 +1974,7 @@
         bind:this={searchPanelContainer}
       >
         <div
-          class={`flex items-center gap-2 rounded-full border bg-white/85 px-3 py-2 shadow-sm transition-colors ${searchResultsVisible ? "border-[var(--accent)]/35" : "border-[var(--border-soft)]"}`}
+          class={`flex items-center gap-2 rounded-full border bg-[var(--surface-frost)] px-3 py-2 shadow-sm transition-colors ${searchResultsVisible ? "border-[var(--accent)]/35" : "border-[var(--border-soft)]"}`}
         >
           <svg
             width="14"
@@ -2088,6 +2089,7 @@
           Docs
         </a>
       </nav>
+      <ThemeToggle className="order-3 sm:order-3" />
     </div>
   </header>
 
@@ -2112,7 +2114,7 @@
           <button
             type="button"
             class="inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors {manageChannels
-              ? 'text-red-500'
+              ? 'text-[var(--danger)]'
               : 'text-[var(--soft-foreground)] opacity-40 hover:opacity-80'}"
             data-tooltip={manageChannels
               ? "Exit manage mode"
@@ -2448,7 +2450,7 @@
               id="video-filter-menu"
               role="menu"
               aria-label="Video filters"
-              class="absolute right-0 top-full z-20 mt-2 w-56 overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-white shadow-xl fade-in"
+              class="absolute right-0 top-full z-20 mt-2 w-56 overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface)] shadow-xl fade-in"
             >
               <div class="p-2 space-y-4">
                 <div class="grid gap-1">
@@ -2958,7 +2960,7 @@
               <div class="space-y-3">
                 {#each selectedVideoHighlights as highlight (highlight.id)}
                   <article
-                    class="rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-white/90 px-4 py-4 shadow-sm"
+                    class="rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface-frost-strong)] px-4 py-4 shadow-sm"
                   >
                     <div
                       class="flex flex-wrap items-center justify-between gap-2"
@@ -2976,7 +2978,7 @@
                         </span>
                         <button
                           type="button"
-                          class="inline-flex items-center rounded-full border border-[var(--border)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] transition-colors hover:border-rose-300 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
+                          class="inline-flex items-center rounded-full border border-[var(--border)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] transition-colors hover:border-[var(--danger-border)] hover:text-[var(--danger-foreground)] disabled:cursor-not-allowed disabled:opacity-50"
                           onclick={() => deleteExistingHighlight(highlight.id)}
                           disabled={deletingHighlightId === highlight.id}
                         >
@@ -3217,12 +3219,14 @@
 
   {#if errorMessage}
     <div
-      class="fixed bottom-6 max-lg:bottom-[calc(3.5rem+env(safe-area-inset-bottom)+1rem)] left-1/2 z-50 w-[min(90vw,420px)] -translate-x-1/2 rounded-[var(--radius-md)] bg-white border border-rose-200 px-4 py-3 shadow-lg fade-in"
+      class="fixed bottom-6 max-lg:bottom-[calc(3.5rem+env(safe-area-inset-bottom)+1rem)] left-1/2 z-50 w-[min(90vw,420px)] -translate-x-1/2 rounded-[var(--radius-md)] border border-[var(--danger-border)] bg-[var(--surface)] px-4 py-3 shadow-lg fade-in"
       role="status"
       aria-live="polite"
     >
       <div class="flex items-start gap-3">
-        <p class="text-[13px] font-medium text-rose-600 flex-1">
+        <p
+          class="flex-1 text-[13px] font-medium text-[var(--danger-foreground)]"
+        >
           {errorMessage}
         </p>
         <button

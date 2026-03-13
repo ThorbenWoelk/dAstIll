@@ -5,6 +5,7 @@
   import AiStatusIndicator from "$lib/components/AiStatusIndicator.svelte";
   import { DOCS_URL } from "$lib/app-config";
   import Footer from "$lib/components/Footer.svelte";
+  import ThemeToggle from "$lib/components/ThemeToggle.svelte";
   import type {
     AiStatus,
     HighlightChannelGroup,
@@ -122,34 +123,37 @@
       {/if}
     </div>
 
-    <nav class="flex items-center gap-0.5" aria-label="Workspace sections">
-      <a
-        href="/"
-        class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 transition-all hover:opacity-100"
-      >
-        Workspace
-      </a>
-      <a
-        href="/download-queue"
-        class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 transition-all hover:opacity-100"
-      >
-        Queue
-      </a>
-      <a
-        href="/highlights"
-        class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--foreground)] bg-[var(--muted)] transition-all"
-      >
-        Highlights
-      </a>
-      <a
-        href={DOCS_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 transition-all hover:opacity-100"
-      >
-        Docs
-      </a>
-    </nav>
+    <div class="flex items-center gap-2">
+      <nav class="flex items-center gap-0.5" aria-label="Workspace sections">
+        <a
+          href="/"
+          class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 transition-all hover:opacity-100"
+        >
+          Workspace
+        </a>
+        <a
+          href="/download-queue"
+          class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 transition-all hover:opacity-100"
+        >
+          Queue
+        </a>
+        <a
+          href="/highlights"
+          class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--foreground)] bg-[var(--muted)] transition-all"
+        >
+          Highlights
+        </a>
+        <a
+          href={DOCS_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 transition-all hover:opacity-100"
+        >
+          Docs
+        </a>
+      </nav>
+      <ThemeToggle />
+    </div>
   </header>
 
   <main
@@ -157,7 +161,7 @@
     class="mx-auto mt-4 w-full max-w-[1120px] px-4 pb-28 sm:px-2"
   >
     <section
-      class="rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-white/80 p-6 shadow-sm"
+      class="rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--surface-frost)] p-6 shadow-sm"
     >
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -204,7 +208,7 @@
         </div>
       {:else if errorMessage}
         <div
-          class="mt-8 rounded-[var(--radius-md)] border border-rose-200 bg-rose-50 px-4 py-3 text-[14px] text-rose-600"
+          class="mt-8 rounded-[var(--radius-md)] border border-[var(--danger-border)] bg-[var(--danger-soft)] px-4 py-3 text-[14px] text-[var(--danger-foreground)]"
         >
           {errorMessage}
         </div>
@@ -254,7 +258,7 @@
               <div class="mt-5 space-y-4">
                 {#each group.videos as video}
                   <article
-                    class="rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-white/90 p-4 shadow-sm"
+                    class="rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface-frost-strong)] p-4 shadow-sm"
                   >
                     <div class="flex flex-col gap-4 sm:flex-row sm:items-start">
                       <div

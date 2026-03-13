@@ -36,6 +36,7 @@
   import { DOCS_URL } from "$lib/app-config";
   import Footer from "$lib/components/Footer.svelte";
   import ConfirmationModal from "$lib/components/ConfirmationModal.svelte";
+  import ThemeToggle from "$lib/components/ThemeToggle.svelte";
   import type {
     AiStatus,
     Channel,
@@ -778,34 +779,37 @@
       </button>
     </div>
 
-    <nav class="flex items-center gap-0.5" aria-label="Workspace sections">
-      <a
-        href="/"
-        class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 transition-all hover:opacity-100"
-      >
-        Workspace
-      </a>
-      <a
-        href="/download-queue"
-        class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--foreground)] bg-[var(--muted)] transition-all"
-      >
-        Queue
-      </a>
-      <a
-        href="/highlights"
-        class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 transition-all hover:opacity-100"
-      >
-        Highlights
-      </a>
-      <a
-        href={DOCS_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 transition-all hover:opacity-100"
-      >
-        Docs
-      </a>
-    </nav>
+    <div class="flex items-center gap-2">
+      <nav class="flex items-center gap-0.5" aria-label="Workspace sections">
+        <a
+          href="/"
+          class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 transition-all hover:opacity-100"
+        >
+          Workspace
+        </a>
+        <a
+          href="/download-queue"
+          class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--foreground)] bg-[var(--muted)] transition-all"
+        >
+          Queue
+        </a>
+        <a
+          href="/highlights"
+          class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 transition-all hover:opacity-100"
+        >
+          Highlights
+        </a>
+        <a
+          href={DOCS_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 transition-all hover:opacity-100"
+        >
+          Docs
+        </a>
+      </nav>
+      <ThemeToggle />
+    </div>
   </header>
 
   <main
@@ -827,7 +831,7 @@
         <button
           type="button"
           class="inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors {manageChannels
-            ? 'text-red-500'
+            ? 'text-[var(--danger)]'
             : 'text-[var(--soft-foreground)] opacity-40 hover:opacity-80'}"
           data-tooltip={manageChannels ? "Exit manage mode" : "Manage channels"}
           onclick={() => {
@@ -961,8 +965,9 @@
           </span>
         </div>
         <div class="flex items-center gap-4 text-[11px] font-bold tabular-nums">
-          <span class="text-slate-500" data-tooltip="Total"
-            >{queueStats.total} items</span
+          <span
+            class="text-[var(--soft-foreground)] opacity-60"
+            data-tooltip="Total">{queueStats.total} items</span
           >
           {#if queueStats.loading > 0}
             <span class="text-amber-600 flex items-center gap-1.5">
@@ -972,7 +977,9 @@
             </span>
           {/if}
           {#if queueStats.failed > 0}
-            <span class="text-rose-600">{queueStats.failed} failed</span>
+            <span class="text-[var(--danger-foreground)]"
+              >{queueStats.failed} failed</span
+            >
           {/if}
         </div>
       </div>
@@ -1031,7 +1038,7 @@
           <div class="flex items-center gap-2 ml-auto">
             <input
               type="date"
-              class="rounded-[var(--radius-sm)] border border-[var(--border-soft)] bg-white px-2.5 py-1.5 text-[12px] font-medium focus:outline-none focus:border-[var(--accent)]/40 transition-colors"
+              class="rounded-[var(--radius-sm)] border border-[var(--border-soft)] bg-[var(--surface)] px-2.5 py-1.5 text-[12px] font-medium focus:outline-none focus:border-[var(--accent)]/40 transition-colors"
               bind:value={earliestSyncDateInput}
               disabled={savingSyncDate}
             />
@@ -1129,7 +1136,7 @@
                       </span>
                     {:else if item.distillationStatus.kind === "failed"}
                       <span
-                        class="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-rose-600"
+                        class="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--danger-foreground)]"
                       >
                         <svg
                           width="10"
@@ -1231,12 +1238,14 @@
 
   {#if errorMessage}
     <div
-      class="fixed bottom-6 max-lg:bottom-[calc(3.5rem+env(safe-area-inset-bottom)+1rem)] left-1/2 z-50 w-[min(90vw,420px)] -translate-x-1/2 rounded-[var(--radius-md)] bg-white border border-rose-200 px-4 py-3 shadow-lg fade-in"
+      class="fixed bottom-6 max-lg:bottom-[calc(3.5rem+env(safe-area-inset-bottom)+1rem)] left-1/2 z-50 w-[min(90vw,420px)] -translate-x-1/2 rounded-[var(--radius-md)] border border-[var(--danger-border)] bg-[var(--surface)] px-4 py-3 shadow-lg fade-in"
       role="status"
       aria-live="polite"
     >
       <div class="flex items-start gap-3">
-        <p class="text-[13px] font-medium text-rose-600 flex-1">
+        <p
+          class="flex-1 text-[13px] font-medium text-[var(--danger-foreground)]"
+        >
           {errorMessage}
         </p>
         <button

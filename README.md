@@ -105,7 +105,7 @@ To run the application locally, you will need:
    For local hybrid semantic search, keep `OLLAMA_EMBEDDING_MODEL` configured and either leave `SEARCH_SEMANTIC_ENABLED` unset or set it to `true`.
 
 4. **Start the Application**:
-   You can start both the frontend and backend simultaneously using the provided startup script:
+   You can start the frontend, backend, and docs simultaneously using the provided startup script:
 
    ```bash
    ./start_app.sh
@@ -117,7 +117,7 @@ To run the application locally, you will need:
    ./start_app.sh --detach
    ```
 
-   Detached mode starts a background supervisor, performs the usual health checks in the background, and writes its startup output to `start_app.log`. The service logs remain in `backend.log` and `frontend.log`.
+   Detached mode starts a background supervisor, performs the usual health checks in the background, and writes its startup output to `start_app.log`. The service logs remain in `backend.log`, `frontend.log`, and `docs.log`.
 
 ## License
 

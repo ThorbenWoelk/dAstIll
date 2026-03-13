@@ -420,7 +420,7 @@
       class={`absolute z-40 shadow-lg transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
         tooltip.kind === "create"
           ? "inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--accent)]/30 bg-[var(--foreground)] text-white hover:bg-[var(--accent-strong)]"
-          : "inline-flex items-center gap-2 rounded-full border border-rose-200 bg-white px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-rose-600 hover:border-rose-300 hover:bg-rose-50"
+          : "inline-flex items-center gap-2 rounded-full border border-[var(--danger-border)] bg-[var(--surface)] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--danger-foreground)] hover:border-[var(--danger)] hover:bg-[var(--danger-soft)]"
       }`}
       style={`top: ${tooltip.top}px; left: ${tooltip.left}px; transform: translateX(-50%);`}
       onmousedown={(event) => event.preventDefault()}

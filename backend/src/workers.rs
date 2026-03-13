@@ -446,7 +446,8 @@ async fn process_pending_search_sources(state: &AppState) {
         return;
     }
 
-    // Phase 2: Single batched embed call for all chunks across all sources.
+    // Phase 2: Embed all chunks across claimed sources. The search service
+    // sub-batches requests so large local Ollama payloads do not time out.
     let all_inputs: Vec<String> = prepared
         .iter()
         .flat_map(|source| source.embedding_inputs.iter().cloned())

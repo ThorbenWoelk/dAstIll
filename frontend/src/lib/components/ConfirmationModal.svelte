@@ -46,21 +46,21 @@
   >
     <!-- Backdrop -->
     <div
-      class="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+      class="absolute inset-0 bg-[var(--overlay)] backdrop-blur-[2px]"
       transition:fade={{ duration: 200 }}
     ></div>
 
     <!-- Modal -->
     <div
       bind:this={modalElement}
-      class="relative w-full max-w-sm overflow-hidden rounded-[var(--radius-lg)] bg-white shadow-2xl transition-all"
+      class="relative w-full max-w-sm overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--surface)] shadow-2xl transition-all"
       transition:scale={{ duration: 200, start: 0.95, opacity: 0 }}
     >
       <div class="p-6 sm:p-8">
         <div class="flex flex-col items-center text-center">
           {#if tone === "danger"}
             <div
-              class="mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-red-50 text-red-500"
+              class="mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--danger-soft)] text-[var(--danger)]"
             >
               <svg
                 width="24"
@@ -114,14 +114,15 @@
         <div class="mt-8 flex flex-col gap-2 sm:flex-row-reverse sm:gap-3">
           <button
             type="button"
-            class={`inline-flex w-full items-center justify-center rounded-[var(--radius-md)] px-6 py-3 text-[12px] font-bold uppercase tracking-[0.1em] text-white transition-all sm:w-auto ${tone === "danger" ? "bg-red-500 hover:bg-red-600 shadow-lg shadow-red-500/20" : "bg-[var(--accent)] hover:bg-[var(--accent-strong)] shadow-lg shadow-[var(--accent)]/20"}`}
+            class={`inline-flex w-full items-center justify-center rounded-[var(--radius-md)] px-6 py-3 text-[12px] font-bold uppercase tracking-[0.1em] text-white transition-all sm:w-auto ${tone === "danger" ? "" : "bg-[var(--accent)] hover:bg-[var(--accent-strong)] shadow-lg shadow-[var(--accent)]/20"}`}
+            class:tone-danger={tone === "danger"}
             onclick={onConfirm}
           >
             {confirmLabel}
           </button>
           <button
             type="button"
-            class="inline-flex w-full items-center justify-center rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-white px-6 py-3 text-[12px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] transition-all hover:bg-[var(--muted)]/30 sm:w-auto"
+            class="inline-flex w-full items-center justify-center rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface)] px-6 py-3 text-[12px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] transition-all hover:bg-[var(--muted)]/30 sm:w-auto"
             onclick={onCancel}
           >
             {cancelLabel}
@@ -131,3 +132,14 @@
     </div>
   </div>
 {/if}
+
+<style>
+  .tone-danger {
+    background: var(--danger);
+    box-shadow: 0 18px 36px color-mix(in srgb, var(--danger) 24%, transparent);
+  }
+
+  .tone-danger:hover {
+    background: var(--danger-foreground);
+  }
+</style>

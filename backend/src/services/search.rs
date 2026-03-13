@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::time::Duration;
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -13,6 +14,9 @@ pub const SEARCH_TRANSCRIPT_TARGET_WORDS: usize = 300;
 pub const SEARCH_TRANSCRIPT_OVERLAP_WORDS: usize = 40;
 pub const SEARCH_SUMMARY_TARGET_WORDS: usize = 300;
 pub const SEARCH_RRF_K: f32 = 60.0;
+const SEARCH_EMBED_BATCH_SIZE: usize = 8;
+const SEARCH_EMBED_REQUEST_TIMEOUT: Duration = Duration::from_secs(90);
+const MAX_ERROR_DETAIL_CHARS: usize = 240;
 const MAX_SNIPPET_CHARS: usize = 420;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
@@ -199,11 +203,35 @@ impl SearchService {
         };
 
         let _permit = self.acquire_local_permit().await?;
+        let total_batches = input.len().div_ceil(SEARCH_EMBED_BATCH_SIZE);
+        let mut embeddings = Vec::with_capacity(input.len());
+        for (batch_index, batch) in input.chunks(SEARCH_EMBED_BATCH_SIZE).enumerate() {
+            let batch_embeddings = self.embed_batch(model, batch).await.map_err(|err| {
+                SearchError::Request(format!(
+                    "embed batch {}/{} failed for {} chunks: {}",
+                    batch_index + 1,
+                    total_batches,
+                    batch.len(),
+                    err
+                ))
+            })?;
+            embeddings.extend(batch_embeddings);
+        }
+
+        Ok(embeddings)
+    }
+
+    async fn embed_batch(
+        &self,
+        model: &str,
+        input: &[String],
+    ) -> Result<Vec<Vec<f32>>, SearchError> {
         let response = self
             .client
             .post(format!("{}/api/embed", self.base_url))
+            .timeout(SEARCH_EMBED_REQUEST_TIMEOUT)
             .json(&EmbedRequest {
-                model: model.clone(),
+                model: model.to_string(),
                 input,
                 dimensions: Some(self.dimensions),
             })
@@ -212,10 +240,17 @@ impl SearchService {
             .map_err(|err| SearchError::Request(err.to_string()))?;
 
         if !response.status().is_success() {
-            return Err(SearchError::Request(format!(
-                "Ollama embed request failed ({})",
-                response.status()
-            )));
+            let status = response.status();
+            let detail = response
+                .text()
+                .await
+                .ok()
+                .map(|text| limit_error_detail(&text))
+                .filter(|text| !text.is_empty());
+            return Err(SearchError::Request(match detail {
+                Some(detail) => format!("Ollama embed request failed ({status}): {detail}"),
+                None => format!("Ollama embed request failed ({status})"),
+            }));
         }
 
         let payload = response
@@ -602,12 +637,21 @@ fn count_words(text: &str) -> usize {
 }
 
 fn limit_snippet(text: &str) -> String {
+    limit_text(text, MAX_SNIPPET_CHARS)
+}
+
+fn limit_error_detail(text: &str) -> String {
+    let collapsed = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    limit_text(&collapsed, MAX_ERROR_DETAIL_CHARS)
+}
+
+fn limit_text(text: &str, max_chars: usize) -> String {
     let mut output = String::new();
-    for character in text.chars().take(MAX_SNIPPET_CHARS) {
+    for character in text.chars().take(max_chars) {
         output.push(character);
     }
 
-    if text.chars().count() > MAX_SNIPPET_CHARS {
+    if text.chars().count() > max_chars {
         output.push_str("...");
     }
 
@@ -616,10 +660,86 @@ fn limit_snippet(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        SearchSourceKind, chunk_summary_content, chunk_transcript_content, fuse_ranked_matches,
-        hash_search_content,
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
     };
+
+    use axum::{Json, Router, http::StatusCode, response::IntoResponse, routing::post};
+    use serde::Deserialize;
+    use serde_json::json;
+
+    use super::{
+        SearchService, SearchSourceKind, chunk_summary_content, chunk_transcript_content,
+        fuse_ranked_matches, hash_search_content,
+    };
+
+    #[derive(Debug, Deserialize)]
+    struct TestEmbedRequest {
+        input: Vec<String>,
+        dimensions: Option<usize>,
+    }
+
+    async fn spawn_embed_test_server(
+        max_inputs_per_request: usize,
+    ) -> (String, Arc<AtomicUsize>, tokio::sync::oneshot::Sender<()>) {
+        let request_count = Arc::new(AtomicUsize::new(0));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind embed test server");
+        let address = listener.local_addr().expect("embed test server address");
+        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+
+        let app = Router::new().route(
+            "/api/embed",
+            post({
+                let request_count = request_count.clone();
+                move |Json(payload): Json<TestEmbedRequest>| {
+                    let request_count = request_count.clone();
+                    async move {
+                        let request_number = request_count.fetch_add(1, Ordering::SeqCst) + 1;
+                        if payload.input.len() > max_inputs_per_request {
+                            return (
+                                StatusCode::PAYLOAD_TOO_LARGE,
+                                Json(json!({ "error": "too many inputs" })),
+                            )
+                                .into_response();
+                        }
+
+                        let dimensions = payload.dimensions.unwrap_or(2);
+                        let embeddings = payload
+                            .input
+                            .iter()
+                            .enumerate()
+                            .map(|(index, _)| {
+                                let mut embedding = vec![0.0; dimensions];
+                                if dimensions > 0 {
+                                    embedding[0] = request_number as f32;
+                                }
+                                if dimensions > 1 {
+                                    embedding[1] = index as f32;
+                                }
+                                embedding
+                            })
+                            .collect::<Vec<_>>();
+
+                        (StatusCode::OK, Json(json!({ "embeddings": embeddings }))).into_response()
+                    }
+                }
+            }),
+        );
+
+        tokio::spawn(async move {
+            axum::serve(listener, app)
+                .with_graceful_shutdown(async {
+                    let _ = shutdown_rx.await;
+                })
+                .await
+                .expect("run embed test server");
+        });
+
+        (format!("http://{address}"), request_count, shutdown_tx)
+    }
 
     #[test]
     fn hash_search_content_changes_when_text_changes() {
@@ -700,5 +820,27 @@ mod tests {
 
         assert_eq!(fused[0].0, "chunk-b");
         assert!(fused[0].1 > fused[1].1);
+    }
+
+    #[tokio::test]
+    async fn embed_texts_splits_large_requests_into_multiple_batches() {
+        let (base_url, request_count, shutdown_tx) = spawn_embed_test_server(8).await;
+        let service = SearchService::with_config(&base_url, Some("embeddinggemma:latest"), 2, true);
+
+        let inputs = (0..9)
+            .map(|index| format!("chunk {index}"))
+            .collect::<Vec<_>>();
+        let embeddings = service
+            .embed_texts(&inputs)
+            .await
+            .expect("batched embeddings");
+
+        assert_eq!(request_count.load(Ordering::SeqCst), 2);
+        assert_eq!(embeddings.len(), 9);
+        assert_eq!(embeddings[0], vec![1.0, 0.0]);
+        assert_eq!(embeddings[7], vec![1.0, 7.0]);
+        assert_eq!(embeddings[8], vec![2.0, 0.0]);
+
+        let _ = shutdown_tx.send(());
     }
 }

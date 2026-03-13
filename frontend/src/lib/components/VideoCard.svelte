@@ -71,7 +71,7 @@
             </span>
           </span>
         {:else if video.transcript_status === "failed" || video.summary_status === "failed"}
-          <span class="text-rose-500 flex items-center gap-1">
+          <span class="text-[var(--danger)] flex items-center gap-1">
             <svg
               width="9"
               height="9"

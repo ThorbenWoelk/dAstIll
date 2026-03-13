@@ -6,6 +6,7 @@ The product app consists of:
 
 - a SvelteKit frontend on `3543` by default
 - a Rust backend on `3544` by default
+- a VitePress docs frontend on `4173` by default
 
 From the repo root:
 
@@ -19,23 +20,15 @@ Detached mode:
 ./start_app.sh --detach
 ```
 
-Detached startup writes supervisor output to `start_app.log` and service logs to `backend.log` and `frontend.log`.
-
-## Docs Frontend
-
-The docs site is a separate frontend under `docs/`.
-
-```bash
-cd docs
-bun install
-bun run dev
-```
+Detached startup writes supervisor output to `start_app.log` and service logs to `backend.log`, `frontend.log`, and `docs.log`.
 
 Default docs URL:
 
 ```text
 http://localhost:4173
 ```
+
+## Docs Frontend
 
 Build the static docs site:
 
@@ -89,8 +82,7 @@ That check exists to keep summary generation and summary evaluation independent.
 ## Recommended Working Loop
 
 ```text
-1. Start app frontend/backend with ./start_app.sh
-2. Start docs frontend with cd docs && bun run dev
-3. Edit product code and docs side by side
-4. Build the docs app before closing changes
+1. Start frontend/backend/docs together with ./start_app.sh
+2. Edit product code and docs side by side
+3. Build the docs app before closing changes
 ```
