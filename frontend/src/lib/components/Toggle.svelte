@@ -18,8 +18,8 @@
       aria-selected={value === option}
       class={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] transition-all duration-200 focus-visible:outline-none ${
         value === option
-          ? "bg-[var(--foreground)] text-white"
-          : "text-[var(--soft-foreground)] opacity-40 hover:opacity-80"
+          ? "bg-[var(--foreground)] text-[var(--background)] shadow-sm"
+          : "text-[var(--soft-foreground)] opacity-65 hover:text-[var(--foreground)] hover:opacity-100"
       }`}
       onclick={() => onChange(option)}
     >

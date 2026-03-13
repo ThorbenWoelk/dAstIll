@@ -39,6 +39,14 @@
   --space-md: 16px;
   --space-lg: 24px;
   --space-xl: 32px;
+  --mobile-tab-bar-height: calc(3.5rem + env(safe-area-inset-bottom));
+  --mobile-bottom-nav-height: 0px;
+  --mobile-footer-height: 2rem;
+  --mobile-viewport-offset-bottom: 0px;
+  --mobile-bottom-stack-height: calc(
+    var(--mobile-bottom-nav-height) + var(--mobile-footer-height) +
+      var(--mobile-viewport-offset-bottom)
+  );
 }
 
 .dark {
@@ -143,6 +151,10 @@ h4,
 .page-shell {
   padding-top: max(1rem, env(safe-area-inset-top));
   padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+.page-shell--with-mobile-nav {
+  --mobile-bottom-nav-height: var(--mobile-tab-bar-height);
 }
 
 .skip-link {
@@ -380,7 +392,30 @@ textarea {
 /* Mobile tab bar + footer bottom padding */
 @media (max-width: 1023px) {
   .page-shell {
-    padding-bottom: calc(3.5rem + env(safe-area-inset-bottom) + 2rem);
+    padding-bottom: calc(var(--mobile-bottom-stack-height) + 2rem);
+  }
+
+  .page-shell--panel-mobile-shell {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    height: 100dvh;
+    min-height: 100svh;
+    overflow: hidden;
+    padding-bottom: 0;
+  }
+
+  .panel-shell-main {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .mobile-bottom-stack-padding {
+    padding-bottom: calc(var(--mobile-bottom-stack-height) + 2rem);
+  }
+
+  .mobile-bottom-stack-offset {
+    bottom: calc(var(--mobile-bottom-stack-height) + 1rem);
   }
 }
 
@@ -392,16 +427,16 @@ textarea {
 @media (max-width: 1023px) {
   .mobile-tab-bar {
     position: fixed;
-    bottom: 0;
+    bottom: var(--mobile-viewport-offset-bottom);
     left: 0;
     right: 0;
     z-index: 60;
     display: flex;
     justify-content: space-around;
     align-items: center;
-    height: calc(3.5rem + env(safe-area-inset-bottom));
+    height: var(--mobile-tab-bar-height);
     padding-bottom: env(safe-area-inset-bottom);
-    background: var(--surface-overlay-strong);
+    background: var(--surface-strong);
     border-top: 1px solid var(--border-soft);
     box-shadow: 0 -12px 30px var(--shadow-soft);
   }

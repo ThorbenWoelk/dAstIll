@@ -1,5 +1,6 @@
 <script lang="ts">
   import "../app.css";
+  import MobileViewportInset from "$lib/components/MobileViewportInset.svelte";
   import ServiceWorkerRegistration from "$lib/components/ServiceWorkerRegistration.svelte";
 
   let { children } = $props();
@@ -29,6 +30,7 @@
 </svelte:head>
 
 <div class="flex min-h-screen flex-col">
+  <MobileViewportInset />
   <ServiceWorkerRegistration />
   <div class="flex-1">
     {@render children()}
