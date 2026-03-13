@@ -3,6 +3,11 @@
   --background: #faf9f6;
   --foreground: #1a1a1a;
   --surface: #ffffff;
+  --surface-strong: #ffffff;
+  --surface-frost: rgba(255, 255, 255, 0.84);
+  --surface-frost-strong: rgba(255, 255, 255, 0.94);
+  --surface-overlay: rgba(250, 249, 246, 0.85);
+  --surface-overlay-strong: rgba(255, 255, 255, 0.9);
   --accent: #d33c2a;
   --accent-soft: #fdf2f0;
   --accent-strong: #9e2a1d;
@@ -10,6 +15,17 @@
   --border: #e8e2d9;
   --border-soft: #f0ebe4;
   --soft-foreground: #5a5a5a;
+  --danger: #d25a5a;
+  --danger-soft: #fff1f1;
+  --danger-border: #f3d1d1;
+  --danger-foreground: #b54444;
+  --tooltip-bg: rgba(26, 26, 26, 0.92);
+  --tooltip-foreground: #ffffff;
+  --overlay: rgba(0, 0, 0, 0.4);
+  --overlay-strong: rgba(0, 0, 0, 0.45);
+  --shadow-soft: rgba(0, 0, 0, 0.12);
+  --shadow-strong: rgba(0, 0, 0, 0.18);
+  --noise-opacity: 0.012;
 
   /* Layout */
   --radius-sm: 8px;
@@ -23,6 +39,36 @@
   --space-md: 16px;
   --space-lg: 24px;
   --space-xl: 32px;
+}
+
+.dark {
+  color-scheme: dark;
+  --background: #111315;
+  --foreground: #f4efe9;
+  --surface: #181b1f;
+  --surface-strong: #1d2126;
+  --surface-frost: rgba(29, 33, 38, 0.84);
+  --surface-frost-strong: rgba(29, 33, 38, 0.94);
+  --surface-overlay: rgba(17, 19, 21, 0.86);
+  --surface-overlay-strong: rgba(24, 27, 31, 0.92);
+  --accent: #ff8e79;
+  --accent-soft: rgba(255, 142, 121, 0.14);
+  --accent-strong: #ffb8aa;
+  --muted: #24292f;
+  --border: #353b43;
+  --border-soft: #2c3138;
+  --soft-foreground: #b8b1aa;
+  --danger: #ff8f8f;
+  --danger-soft: rgba(255, 143, 143, 0.12);
+  --danger-border: rgba(255, 143, 143, 0.24);
+  --danger-foreground: #ffb9b9;
+  --tooltip-bg: rgba(244, 239, 233, 0.94);
+  --tooltip-foreground: #111315;
+  --overlay: rgba(0, 0, 0, 0.5);
+  --overlay-strong: rgba(0, 0, 0, 0.58);
+  --shadow-soft: rgba(0, 0, 0, 0.32);
+  --shadow-strong: rgba(0, 0, 0, 0.45);
+  --noise-opacity: 0.018;
 }
 
 @import "tailwindcss";
@@ -76,7 +122,7 @@ body::before {
   left: 0;
   width: 100%;
   height: 100%;
-  opacity: 0.012;
+  opacity: var(--noise-opacity);
   pointer-events: none;
   z-index: 50;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
@@ -187,9 +233,9 @@ textarea {
   left: 50%;
   transform: translateX(-50%) translateY(-2px);
   padding: 5px 9px;
-  background: rgba(26, 26, 26, 0.92);
+  background: var(--tooltip-bg);
   backdrop-filter: blur(4px);
-  color: white;
+  color: var(--tooltip-foreground);
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
@@ -205,7 +251,7 @@ textarea {
   pointer-events: none;
   transition: all 150ms cubic-bezier(0.16, 1, 0.3, 1);
   z-index: 1000;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 4px 12px var(--shadow-soft);
 }
 
 [data-tooltip]::after {
@@ -216,7 +262,7 @@ textarea {
   transform: translateX(-50%) translateY(6px);
   border-width: 4px;
   border-style: solid;
-  border-color: rgba(26, 26, 26, 0.92) transparent transparent transparent;
+  border-color: var(--tooltip-bg) transparent transparent transparent;
   opacity: 0;
   pointer-events: none;
   transition: all 150ms cubic-bezier(0.16, 1, 0.3, 1);
@@ -233,7 +279,7 @@ textarea {
   top: 100%;
   bottom: auto;
   transform: translateX(-50%) translateY(-6px);
-  border-color: transparent transparent rgba(26, 26, 26, 0.92) transparent;
+  border-color: transparent transparent var(--tooltip-bg) transparent;
 }
 
 [data-tooltip-anchor="end"]::before {
@@ -355,9 +401,9 @@ textarea {
     align-items: center;
     height: calc(3.5rem + env(safe-area-inset-bottom));
     padding-bottom: env(safe-area-inset-bottom);
-    background: var(--surface);
+    background: var(--surface-overlay-strong);
     border-top: 1px solid var(--border-soft);
-    box-shadow: 0 -12px 30px rgb(26 26 26 / 0.06);
+    box-shadow: 0 -12px 30px var(--shadow-soft);
   }
 }
 

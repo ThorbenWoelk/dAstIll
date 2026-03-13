@@ -7,7 +7,6 @@
 
 <svelte:head>
   <title>dAstIll</title>
-  <meta name="theme-color" content="#f8f1ec" />
   <meta name="application-name" content="dAstIll" />
   <meta name="apple-mobile-web-app-title" content="dAstIll" />
   <meta name="apple-mobile-web-app-capable" content="yes" />

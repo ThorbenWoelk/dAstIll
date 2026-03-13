@@ -37,7 +37,7 @@
     right: 0;
     z-index: 30;
     border-top: 1px solid var(--border-soft);
-    background: rgba(250, 249, 246, 0.85);
+    background: var(--surface-overlay);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
   }
@@ -98,7 +98,7 @@
       bottom: calc(3.5rem + env(safe-area-inset-bottom));
       border-top: none;
       border-bottom: 1px solid var(--border-soft);
-      background: rgba(255, 255, 255, 0.88);
+      background: var(--surface-overlay-strong);
     }
 
     .site-footer.mobile-visible .footer-inner {

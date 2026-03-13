@@ -43,12 +43,12 @@
 
 {#if show}
   <div
-    class="absolute left-0 right-0 top-[calc(100%+0.75rem)] z-40 overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-white shadow-2xl sm:left-auto sm:w-[32rem] lg:w-[40rem]"
+    class="absolute left-0 right-0 top-[calc(100%+0.75rem)] z-40 overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--surface)] shadow-2xl sm:left-auto sm:w-[32rem] lg:w-[40rem]"
     role="dialog"
     aria-label="Search results"
   >
     <div
-      class="flex items-start justify-between gap-3 border-b border-[var(--border-soft)] bg-white/95 px-4 py-3"
+      class="flex items-start justify-between gap-3 border-b border-[var(--border-soft)] bg-[var(--surface-frost-strong)] px-4 py-3"
     >
       <div class="min-w-0">
         <p
@@ -122,7 +122,9 @@
           {/each}
         </div>
       {:else if error}
-        <p class="px-2 py-3 text-[14px] font-medium italic text-red-600">
+        <p
+          class="px-2 py-3 text-[14px] font-medium italic text-[var(--danger-foreground)]"
+        >
           {error}
         </p>
       {:else if results.length === 0}
@@ -136,7 +138,7 @@
           {#each results as result}
             <button
               type="button"
-              class="group flex w-full flex-col gap-3 rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-white/80 p-4 text-left transition-colors hover:border-[var(--accent)]/45 hover:bg-white"
+              class="group flex w-full flex-col gap-3 rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface-frost)] p-4 text-left transition-colors hover:border-[var(--accent)]/45 hover:bg-[var(--surface-strong)]"
               onclick={() => onResultSelect(result)}
             >
               <div class="flex items-start justify-between gap-3">

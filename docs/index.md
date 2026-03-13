@@ -1,50 +1,59 @@
 ---
-layout: home
-
-hero:
-  name: "dAstIll"
-  text: "System Documentation"
-  tagline: "Architecture, workers, AI model behavior, search indexing, data flows, and operations."
-  actions:
-    - theme: brand
-      text: Read Architecture
-      link: /architecture/overview
-    - theme: alt
-      text: Local Development
-      link: /local-development
-
-features:
-  - title: Runtime Topology
-    details: Understand the three user-facing frontends, the Rust backend, and the five always-on worker loops that keep the system progressing.
-  - title: AI and Search Behavior
-    details: See how summarization, evaluation, transcript cleanup, and hybrid search are configured, gated, and degraded across local and production runtimes.
-  - title: Data and Flow Documentation
-    details: Trace how channels, videos, transcripts, summaries, highlights, and search chunks move from ingestion through indexing and retrieval.
+title: Documentation
+pageClass: overview-page
 ---
 
-## Why This Site Exists
+# Documentation
 
-The repository README is intentionally short. This site is the longer-lived technical reference for how dAstIll is wired today.
+dAstIll is a YouTube channel intelligence application. This site is the technical reference for how the product is structured today: the user-facing surfaces, the Rust backend, the AI and search pipeline, and the deployment boundaries around them.
 
-It is a separate frontend built with **VitePress** because that keeps the docs:
+<div class="overview-grid">
+  <a class="overview-card" href="/local-development">
+    <p class="overview-card-eyebrow">Get started</p>
+    <h2>Local development</h2>
+    <p>Run the frontend, backend, and docs locally with the expected ports and startup flow.</p>
+  </a>
+  <a class="overview-card" href="/architecture/overview">
+    <p class="overview-card-eyebrow">Architecture</p>
+    <h2>System overview</h2>
+    <p>See the major components, repo layout, and the boundaries between product, backend, and infrastructure.</p>
+  </a>
+  <a class="overview-card" href="/flows/content-pipeline">
+    <p class="overview-card-eyebrow">Pipeline</p>
+    <h2>Content flow</h2>
+    <p>Trace a video from channel discovery through transcript, summary, evaluation, and indexing.</p>
+  </a>
+  <a class="overview-card" href="/operations/deployment">
+    <p class="overview-card-eyebrow">Operations</p>
+    <h2>Deployment</h2>
+    <p>Review the Cloud Run services, Terraform ownership, and the current config boundaries.</p>
+  </a>
+</div>
 
-- static-first
-- markdown-native
-- low-maintenance
-- easy to build with Bun
-- separate from the product UI and deployment runtime
+## Start here
 
-## Documentation Map
+- [System Overview](/architecture/overview) - start with the major components and repo boundaries.
+- [Local Development](/local-development) - run the app and docs locally, including the default ports.
+- [Content Pipeline](/flows/content-pipeline) - follow the ingest-to-search flow end to end.
+- [Deployment and Operations](/operations/deployment) - review the production shape and IaC ownership.
 
-- [System Overview](/architecture/overview) - major components and repo layout
-- [Runtime Topology](/architecture/runtime-topology) - process model, parallel workers, and startup behavior
-- [Frontend and API](/architecture/frontend-and-api) - Svelte routes, bootstrap flow, and handler boundaries
-- [Data Model](/architecture/data-model) - canonical tables, search projection tables, and status fields
-- [Content Pipeline](/flows/content-pipeline) - ingestion through transcript, summary, evaluation, and search hooks
-- [Search Indexing](/search-indexing) - indexing worker phases and retrieval modes
-- [AI Models](/ai-models) - model roles, fallback policy, cooldowns, and local-vs-prod defaults
-- [Deployment](/operations/deployment) - Cloud Run, Terraform, Docker, and current hosting boundaries
-- [UI Tour](/ui-tour) - screenshots and route-level UX summary
+## What This Site Covers
+
+### Product and Runtime
+
+- [UI Tour](/ui-tour) - screenshots and route-level UX summary.
+- [Runtime Topology](/architecture/runtime-topology) - active processes, startup sequence, and shared runtime state.
+- [Frontend and API](/architecture/frontend-and-api) - Svelte routes, bootstrap flow, and handler boundaries.
+
+### Data, AI, and Search
+
+- [Data Model](/architecture/data-model) - canonical tables, derived search projection, and status fields.
+- [Search Indexing](/search-indexing) - indexing worker phases and retrieval modes.
+- [AI Models](/ai-models) - model roles, fallback policy, and local versus production defaults.
+
+### Operations
+
+- [Deployment and Operations](/operations/deployment) - Cloud Run services, Terraform ownership, and CI/CD flow.
 
 ## Repo Layout
 
@@ -57,6 +66,6 @@ dAstIll/
 └── .specs/      Persistent implementation specs and task tracking
 ```
 
-## Current Scope
+## Scope
 
-This docs site documents the application as it exists in this repository today. It does **not** currently imply a production deployment for the docs site itself.
+This site documents the application as it exists in this repository today. It complements the root README and does not imply a separate product surface beyond the docs frontend itself.

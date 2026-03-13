@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>dAstIll</title>
+    <meta name="theme-color" content="#f8f1ec" />
     <meta name="application-name" content="dAstIll" />
     <meta name="apple-mobile-web-app-title" content="dAstIll" />
     <link rel="manifest" href="%sveltekit.assets%/manifest.webmanifest" />
@@ -30,6 +31,28 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&display=swap"
       rel="stylesheet"
     />
+    <script>
+      (() => {
+        const storageKey = "dastill-theme-appearance";
+        const lightThemeColor = "#f8f1ec";
+        const darkThemeColor = "#111315";
+        const storedPreference = localStorage.getItem(storageKey);
+        const hasExplicitPreference =
+          storedPreference === "light" || storedPreference === "dark";
+        const systemPrefersDark = window.matchMedia(
+          "(prefers-color-scheme: dark)",
+        ).matches;
+        const isDark =
+          storedPreference === "dark" ||
+          (!hasExplicitPreference && systemPrefersDark);
+
+        document.documentElement.classList.toggle("dark", isDark);
+        document.documentElement.style.colorScheme = isDark ? "dark" : "light";
+        document
+          .querySelector('meta[name="theme-color"]')
+          ?.setAttribute("content", isDark ? darkThemeColor : lightThemeColor);
+      })();
+    </script>
     %sveltekit.head%
   </head>
 

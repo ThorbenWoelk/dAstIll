@@ -19,7 +19,8 @@ esac
 
 frontend_port=${FRONTEND_PORT:-3543}
 backend_port=${BACKEND_PORT:-3544}
-ports=($frontend_port $backend_port)
+docs_port=${DOCS_PORT:-4173}
+ports=($frontend_port $backend_port $docs_port)
 script_path=${0:A}
 
 wait_for_http() {
@@ -52,6 +53,13 @@ start_frontend() {
 	VITE_API_BASE="http://localhost:$backend_port" \
 		bun run dev -- --host 0.0.0.0 --port $frontend_port > >(tee ../frontend.log) 2>&1 &
 	frontend_pid=$!
+	popd >/dev/null
+}
+
+start_docs() {
+	pushd docs >/dev/null
+	./node_modules/.bin/vitepress dev . --host 0.0.0.0 --port $docs_port > >(tee ../docs.log) 2>&1 &
+	docs_pid=$!
 	popd >/dev/null
 }
 
@@ -147,12 +155,12 @@ PY
 	exit 0
 fi
 
-echo "Cleaning up old processes on ports $frontend_port and $backend_port..."
+echo "Cleaning up old processes on ports $frontend_port, $backend_port, and $docs_port..."
 cleanup
 trap cleanup EXIT INT TERM
 
 if [[ "$mode" == "detached_child" ]]; then
-	echo "Detached supervisor running for ports $frontend_port/$backend_port"
+	echo "Detached supervisor running for ports $frontend_port/$backend_port/$docs_port"
 	echo "Starting backend on http://localhost:$backend_port (log: backend.log)"
 else
 	echo "Starting backend on http://localhost:$backend_port (log: backend.log, streaming enabled)"
@@ -166,6 +174,13 @@ else
 fi
 start_frontend
 
+if [[ "$mode" == "detached_child" ]]; then
+	echo "Starting docs on http://localhost:$docs_port (log: docs.log)"
+else
+	echo "Starting docs on http://localhost:$docs_port (log: docs.log, streaming enabled)"
+fi
+start_docs
+
 if ! wait_for_http "Backend" "http://localhost:$backend_port/api/health"; then
 	echo "Backend failed to start. Last backend log lines:"
 	tail -n 80 backend.log || true
@@ -178,8 +193,15 @@ if ! wait_for_http "Frontend" "http://localhost:$frontend_port"; then
 	exit 1
 fi
 
+if ! wait_for_http "Docs" "http://localhost:$docs_port"; then
+	echo "Docs failed to start. Last docs log lines:"
+	tail -n 80 docs.log || true
+	exit 1
+fi
+
 echo "App is ready:"
 echo "- Frontend: http://localhost:$frontend_port"
 echo "- Backend:  http://localhost:$backend_port"
+echo "- Docs:     http://localhost:$docs_port"
 
-wait $backend_pid $frontend_pid
+wait $backend_pid $frontend_pid $docs_pid
