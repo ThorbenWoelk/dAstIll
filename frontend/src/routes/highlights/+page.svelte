@@ -5,6 +5,7 @@
   import AiStatusIndicator from "$lib/components/AiStatusIndicator.svelte";
   import { DOCS_URL } from "$lib/app-config";
   import Footer from "$lib/components/Footer.svelte";
+  import SectionNavigation from "$lib/components/SectionNavigation.svelte";
   import ThemeToggle from "$lib/components/ThemeToggle.svelte";
   import type {
     AiStatus,
@@ -104,9 +105,9 @@
   </a>
 
   <header
-    class="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-3 px-4 sm:px-2 pb-2 mb-0"
+    class="mx-auto flex w-full max-w-[1440px] min-w-0 flex-wrap items-start gap-3 px-4 pb-2 sm:px-2 lg:items-center"
   >
-    <div class="flex items-center gap-3">
+    <div class="flex min-w-0 flex-1 items-center gap-3">
       <a
         href="/"
         class="text-xl sm:text-2xl font-bold tracking-tighter text-[var(--foreground)] transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)]"
@@ -123,36 +124,9 @@
       {/if}
     </div>
 
-    <div class="flex items-center gap-2">
-      <nav class="flex items-center gap-0.5" aria-label="Workspace sections">
-        <a
-          href="/"
-          class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 transition-all hover:opacity-100"
-        >
-          Workspace
-        </a>
-        <a
-          href="/download-queue"
-          class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 transition-all hover:opacity-100"
-        >
-          Queue
-        </a>
-        <a
-          href="/highlights"
-          class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--foreground)] bg-[var(--muted)] transition-all"
-        >
-          Highlights
-        </a>
-        <a
-          href={DOCS_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 transition-all hover:opacity-100"
-        >
-          Docs
-        </a>
-      </nav>
+    <div class="ml-auto flex shrink-0 items-center gap-2">
       <ThemeToggle />
+      <SectionNavigation currentSection="highlights" docsUrl={DOCS_URL} />
     </div>
   </header>
 

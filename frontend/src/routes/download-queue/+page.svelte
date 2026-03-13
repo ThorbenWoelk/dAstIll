@@ -36,6 +36,7 @@
   import { DOCS_URL } from "$lib/app-config";
   import Footer from "$lib/components/Footer.svelte";
   import ConfirmationModal from "$lib/components/ConfirmationModal.svelte";
+  import SectionNavigation from "$lib/components/SectionNavigation.svelte";
   import ThemeToggle from "$lib/components/ThemeToggle.svelte";
   import type {
     AiStatus,
@@ -729,7 +730,9 @@
   }
 </script>
 
-<div class="page-shell min-h-screen px-4 pb-12 pt-8 sm:px-8 max-lg:px-0">
+<div
+  class="page-shell page-shell--panel-mobile-shell page-shell--with-mobile-nav min-h-screen px-4 pb-12 pt-8 sm:px-8 max-lg:px-0"
+>
   <a
     href="#main-content"
     class="skip-link absolute left-4 top-4 z-50 rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-[var(--accent)]/20"
@@ -738,9 +741,9 @@
   </a>
 
   <header
-    class="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-3 px-4 sm:px-2 pb-2 mb-0"
+    class="mx-auto flex w-full max-w-[1440px] min-w-0 flex-wrap items-start gap-3 px-4 pb-2 sm:px-2 lg:items-center"
   >
-    <div class="flex items-center gap-3">
+    <div class="flex min-w-0 flex-1 items-center gap-3">
       <a
         href="/"
         class="text-xl sm:text-2xl font-bold tracking-tighter text-[var(--foreground)] transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)]"
@@ -779,48 +782,21 @@
       </button>
     </div>
 
-    <div class="flex items-center gap-2">
-      <nav class="flex items-center gap-0.5" aria-label="Workspace sections">
-        <a
-          href="/"
-          class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 transition-all hover:opacity-100"
-        >
-          Workspace
-        </a>
-        <a
-          href="/download-queue"
-          class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--foreground)] bg-[var(--muted)] transition-all"
-        >
-          Queue
-        </a>
-        <a
-          href="/highlights"
-          class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 transition-all hover:opacity-100"
-        >
-          Highlights
-        </a>
-        <a
-          href={DOCS_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 transition-all hover:opacity-100"
-        >
-          Docs
-        </a>
-      </nav>
+    <div class="ml-auto flex shrink-0 items-center gap-2">
       <ThemeToggle />
+      <SectionNavigation currentSection="queue" docsUrl={DOCS_URL} />
     </div>
   </header>
 
   <main
     id="main-content"
-    class="mx-auto mt-4 grid w-full max-w-[1440px] gap-0 lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)] items-start max-lg:mt-0"
+    class="panel-shell-main mx-auto mt-4 grid w-full max-w-[1440px] gap-0 lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)] items-start max-lg:mt-0"
   >
     <aside
-      class="flex h-fit flex-col gap-4 border-0 lg:pr-5 lg:border-r lg:border-[var(--border-soft)] lg:pl-2 lg:sticky lg:top-4 fade-in stagger-1 {mobileTab !==
+      class="flex min-h-0 flex-col gap-4 border-0 lg:h-fit lg:pr-5 lg:border-r lg:border-[var(--border-soft)] lg:pl-2 lg:sticky lg:top-4 fade-in stagger-1 {mobileTab !==
       'channels'
         ? 'hidden lg:flex'
-        : 'h-[calc(100dvh-4rem)] p-4 gap-4'}"
+        : 'h-full p-4 gap-4'}"
     >
       <div class="flex items-center justify-between gap-2">
         <h2
@@ -856,7 +832,7 @@
       </div>
 
       <div
-        class="flex flex-1 min-h-0 flex-col gap-1.5 overflow-y-auto pr-1 custom-scrollbar lg:max-h-[60vh]"
+        class="custom-scrollbar mobile-bottom-stack-padding flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1 lg:max-h-[60vh] lg:pb-0"
         aria-busy={loadingChannels}
       >
         {#if loadingChannels}
@@ -907,10 +883,10 @@
     </aside>
 
     <section
-      class="flex min-w-0 flex-col gap-6 overflow-hidden border-0 lg:pl-6 fade-in stagger-2 {mobileTab !==
+      class="flex min-h-0 min-w-0 flex-col gap-6 overflow-hidden border-0 lg:pl-6 fade-in stagger-2 {mobileTab !==
       'details'
         ? 'hidden lg:flex'
-        : 'h-[calc(100dvh-4rem)] p-4 pt-4'}"
+        : 'h-full p-4 pt-4'}"
     >
       <div
         class="flex flex-wrap items-center justify-between gap-4 pb-3 border-b border-[var(--border-soft)]"
@@ -1054,7 +1030,9 @@
         </div>
       {/if}
 
-      <div class="flex-1 overflow-y-auto custom-scrollbar">
+      <div
+        class="custom-scrollbar mobile-bottom-stack-padding flex-1 overflow-y-auto lg:pb-0"
+      >
         {#if !selectedChannelId}
           <div
             class="flex flex-col items-center justify-center py-20 text-center"
@@ -1099,7 +1077,7 @@
             </p>
           </div>
         {:else}
-          <ul class="flex flex-col mt-2 pb-20">
+          <ul class="mt-2 flex flex-col">
             {#each queuedVideosWithDistillationStatus as item}
               {@const video = item.video}
               <li class="border-b border-[var(--border-soft)] last:border-b-0">
@@ -1172,7 +1150,7 @@
         {/if}
 
         {#if hasMore && selectedChannelId}
-          <div class="flex justify-center mt-4 max-lg:mb-20">
+          <div class="mt-4 flex justify-center">
             <button
               type="button"
               class="w-full rounded-[var(--radius-sm)] border border-[var(--border-soft)] py-2.5 text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--soft-foreground)] transition-all hover:border-[var(--accent)]/40 hover:text-[var(--foreground)] disabled:opacity-30"
@@ -1238,7 +1216,7 @@
 
   {#if errorMessage}
     <div
-      class="fixed bottom-6 max-lg:bottom-[calc(3.5rem+env(safe-area-inset-bottom)+1rem)] left-1/2 z-50 w-[min(90vw,420px)] -translate-x-1/2 rounded-[var(--radius-md)] border border-[var(--danger-border)] bg-[var(--surface)] px-4 py-3 shadow-lg fade-in"
+      class="mobile-bottom-stack-offset fixed bottom-6 left-1/2 z-50 w-[min(90vw,420px)] -translate-x-1/2 rounded-[var(--radius-md)] border border-[var(--danger-border)] bg-[var(--surface)] px-4 py-3 shadow-lg fade-in"
       role="status"
       aria-live="polite"
     >
@@ -1293,5 +1271,5 @@
     onStep={setGuideStep}
   />
 
-  <Footer showMobile={mobileTab === "channels"} />
+  <Footer showMobile />
 </div>
