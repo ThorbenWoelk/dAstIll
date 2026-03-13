@@ -1,9 +1,26 @@
 #!/bin/zsh
 set -euo pipefail
 
+mode="attached"
+case "${1:-}" in
+	"")
+		;;
+	--detach)
+		mode="detach"
+		;;
+	--detached-child)
+		mode="detached_child"
+		;;
+	*)
+		echo "Usage: ./start_app.sh [--detach]"
+		exit 1
+		;;
+esac
+
 frontend_port=${FRONTEND_PORT:-3543}
 backend_port=${BACKEND_PORT:-3544}
 ports=($frontend_port $backend_port)
+script_path=${0:A}
 
 wait_for_http() {
 	local name=$1
@@ -21,6 +38,21 @@ wait_for_http() {
 
 	echo "$name did not become ready at $url"
 	return 1
+}
+
+start_backend() {
+	pushd backend >/dev/null
+	PORT=$backend_port cargo run --bin dastill > >(tee ../backend.log) 2>&1 &
+	backend_pid=$!
+	popd >/dev/null
+}
+
+start_frontend() {
+	pushd frontend >/dev/null
+	VITE_API_BASE="http://localhost:$backend_port" \
+		bun run dev -- --host 0.0.0.0 --port $frontend_port > >(tee ../frontend.log) 2>&1 &
+	frontend_pid=$!
+	popd >/dev/null
 }
 
 cleanup() {
@@ -43,21 +75,53 @@ cleanup() {
 	set -e
 }
 
+if [[ "$mode" == "detach" ]]; then
+	echo "Starting app supervisor in detached mode (log: start_app.log)"
+	supervisor_pid=$(
+		python3 - "$script_path" "$PWD/start_app.log" <<'PY'
+import os
+import subprocess
+import sys
+
+script_path = sys.argv[1]
+log_path = sys.argv[2]
+
+with open(log_path, "ab", buffering=0) as log_file:
+    process = subprocess.Popen(
+        ["zsh", script_path, "--detached-child"],
+        cwd=os.getcwd(),
+        stdin=subprocess.DEVNULL,
+        stdout=log_file,
+        stderr=subprocess.STDOUT,
+        start_new_session=True,
+    )
+
+print(process.pid)
+PY
+	)
+	echo "Detached supervisor PID: $supervisor_pid"
+	echo "Follow startup with: tail -f start_app.log"
+	exit 0
+fi
+
 echo "Cleaning up old processes on ports $frontend_port and $backend_port..."
 cleanup
 trap cleanup EXIT INT TERM
 
-echo "Starting backend on http://localhost:$backend_port (log: backend.log, streaming enabled)"
-pushd backend >/dev/null
-PORT=$backend_port cargo run --bin dastill > >(tee ../backend.log) 2>&1 &
-backend_pid=$!
-popd >/dev/null
+if [[ "$mode" == "detached_child" ]]; then
+	echo "Detached supervisor running for ports $frontend_port/$backend_port"
+	echo "Starting backend on http://localhost:$backend_port (log: backend.log)"
+else
+	echo "Starting backend on http://localhost:$backend_port (log: backend.log, streaming enabled)"
+fi
+start_backend
 
-echo "Starting frontend on http://localhost:$frontend_port (log: frontend.log, streaming enabled)"
-pushd frontend >/dev/null
-VITE_API_BASE="http://localhost:$backend_port" bun run dev -- --host 0.0.0.0 --port $frontend_port > >(tee ../frontend.log) 2>&1 &
-frontend_pid=$!
-popd >/dev/null
+if [[ "$mode" == "detached_child" ]]; then
+	echo "Starting frontend on http://localhost:$frontend_port (log: frontend.log)"
+else
+	echo "Starting frontend on http://localhost:$frontend_port (log: frontend.log, streaming enabled)"
+fi
+start_frontend
 
 if ! wait_for_http "Backend" "http://localhost:$backend_port/api/health"; then
 	echo "Backend failed to start. Last backend log lines:"
