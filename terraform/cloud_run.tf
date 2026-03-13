@@ -147,3 +147,48 @@ output "backend_url" {
 output "frontend_url" {
   value = google_cloud_run_v2_service.frontend.uri
 }
+
+resource "google_cloud_run_v2_service" "docs" {
+  provider            = google-beta
+  name                = "${var.app_name}-docs"
+  location            = var.region
+  ingress             = "INGRESS_TRAFFIC_ALL"
+  deletion_protection = false
+
+  template {
+    service_account = google_service_account.docs_sa.email
+    containers {
+      image = "us-docker.pkg.dev/cloudrun/container/hello" # Placeholder, updated by CI/CD
+
+      ports {
+        container_port = 8080
+      }
+
+      resources {
+        cpu_idle          = true
+        startup_cpu_boost = true
+        limits = {
+          cpu    = "1000m"
+          memory = "512Mi"
+        }
+      }
+    }
+  }
+
+  lifecycle {
+    ignore_changes = [
+      template[0].containers[0].image,
+    ]
+  }
+}
+
+resource "google_cloud_run_v2_service_iam_member" "docs_public" {
+  location = google_cloud_run_v2_service.docs.location
+  name     = google_cloud_run_v2_service.docs.name
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+}
+
+output "docs_url" {
+  value = google_cloud_run_v2_service.docs.uri
+}
