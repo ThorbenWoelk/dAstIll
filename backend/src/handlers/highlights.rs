@@ -38,6 +38,7 @@ pub async fn create_highlight(
     )
     .await
     .map_err(map_db_err)?;
+    state.read_cache.clear().await;
 
     Ok((StatusCode::CREATED, Json(highlight)))
 }
@@ -78,5 +79,6 @@ pub async fn delete_highlight(
         return Err((StatusCode::NOT_FOUND, "Highlight not found".to_string()));
     }
 
+    state.read_cache.clear().await;
     Ok(StatusCode::NO_CONTENT)
 }

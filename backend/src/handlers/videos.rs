@@ -204,6 +204,7 @@ pub async fn update_video_acknowledged(
         .await
         .map_err(map_db_err)?;
     video.acknowledged = payload.acknowledged;
+    state.read_cache.clear().await;
     Ok(Json(video))
 }
 
