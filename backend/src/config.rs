@@ -46,9 +46,14 @@ impl SearchRuntimeConfig {
         Self {
             auto_create_vector_index: optional_bool_env("SEARCH_AUTO_CREATE_VECTOR_INDEX")
                 .unwrap_or(false),
-            semantic_enabled: optional_bool_env("SEARCH_SEMANTIC_ENABLED").unwrap_or(false),
+            semantic_enabled: optional_bool_env("SEARCH_SEMANTIC_ENABLED")
+                .unwrap_or(default_search_semantic_enabled()),
         }
     }
+}
+
+fn default_search_semantic_enabled() -> bool {
+    cfg!(debug_assertions)
 }
 
 fn required_env(key: &str) -> Result<String, String> {
@@ -238,7 +243,7 @@ mod tests {
 
         let config = SearchRuntimeConfig::from_env();
         assert!(!config.auto_create_vector_index);
-        assert!(!config.semantic_enabled);
+        assert_eq!(config.semantic_enabled, cfg!(debug_assertions));
     }
 
     #[test]
@@ -256,6 +261,23 @@ mod tests {
         let config = SearchRuntimeConfig::from_env();
         assert!(config.auto_create_vector_index);
         assert!(config.semantic_enabled);
+    }
+
+    #[test]
+    fn search_runtime_config_respects_explicit_disable() {
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+
+        let _reset =
+            EnvReset::capture(&["SEARCH_AUTO_CREATE_VECTOR_INDEX", "SEARCH_SEMANTIC_ENABLED"]);
+        remove_env("SEARCH_AUTO_CREATE_VECTOR_INDEX");
+        set_env("SEARCH_SEMANTIC_ENABLED", "false");
+
+        let config = SearchRuntimeConfig::from_env();
+        assert!(!config.auto_create_vector_index);
+        assert!(!config.semantic_enabled);
     }
 
     struct EnvReset {

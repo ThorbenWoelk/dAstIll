@@ -53,7 +53,7 @@ To run the application locally, you will need:
    OLLAMA_EMBEDDING_MODEL=embeddinggemma
    ```
 
-   `SEARCH_SEMANTIC_ENABLED` defaults to `false`. Leave it unset in production to keep search on plain FTS without embeddings.
+   `SEARCH_SEMANTIC_ENABLED` overrides the default behavior. Local debug runs (`cargo run`, `./start_app.sh`) default to semantic search on, while release / production builds default to plain FTS unless you explicitly set `SEARCH_SEMANTIC_ENABLED=true`.
 
 3. **Start the Application**:
    You can start both the frontend and backend simultaneously using the provided startup script:
