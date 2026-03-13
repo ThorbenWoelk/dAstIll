@@ -58,22 +58,65 @@ start_frontend() {
 cleanup() {
 	set +e
 	for port in "${ports[@]}"; do
-		ids=$(netstat -anv -p tcp \
-			| awk -v target_port=".$port" '
-				$6 == "LISTEN" && $4 ~ (target_port "$") {
-					for (i = 1; i <= NF; i++) {
-						if ($i ~ /:[0-9]+$/) {
-							split($i, parts, ":");
-							print parts[2];
-							break;
-						}
-					}
-				}
-			' | sort -u)
-		[[ -n "$ids" ]] && echo "$ids" | xargs kill >/dev/null 2>&1 || true
+		pids=$(lsof -ti :"$port" 2>/dev/null)
+		if [[ -n "$pids" ]]; then
+			echo "Killing processes on port $port: $pids"
+			echo "$pids" | xargs kill -9 2>/dev/null || true
+		fi
 	done
 	set -e
 }
+
+check_ollama_models() {
+	local env_file="backend/.env"
+	if [[ ! -f "$env_file" ]]; then
+		echo "Warning: $env_file not found, skipping ollama model check"
+		return 0
+	fi
+
+	if ! command -v ollama &>/dev/null; then
+		echo "Error: ollama is not installed"
+		exit 1
+	fi
+
+	local available
+	available=$(ollama list 2>/dev/null | awk 'NR>1 {print $1}') || {
+		echo "Error: failed to query ollama - is it running?"
+		exit 1
+	}
+
+	local model_vars=(OLLAMA_MODEL OLLAMA_FALLBACK_MODEL SUMMARY_EVALUATOR_MODEL OLLAMA_EMBEDDING_MODEL)
+	local missing=()
+
+	for var in "${model_vars[@]}"; do
+		local model
+		model=$(grep -E "^${var}=" "$env_file" | cut -d= -f2- || echo "")
+		[[ -z "$model" ]] && continue
+
+		if [[ "$model" != *":"* ]]; then
+			echo "Error: $var=$model is missing an explicit tag (e.g. :latest, :cloud)"
+			exit 1
+		fi
+
+		if ! echo "$available" | grep -qxF "$model"; then
+			missing+=("$var=$model")
+		fi
+	done
+
+	if (( ${#missing[@]} > 0 )); then
+		echo "Error: the following ollama models are not available:"
+		for entry in "${missing[@]}"; do
+			echo "  - $entry"
+		done
+		echo ""
+		echo "Pull them with:  ollama pull <model>"
+		exit 1
+	fi
+
+	echo "All ollama models verified."
+}
+
+check_ollama_models
 
 if [[ "$mode" == "detach" ]]; then
 	echo "Starting app supervisor in detached mode (log: start_app.log)"
