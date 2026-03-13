@@ -5,7 +5,7 @@ export default defineConfig({
   description:
     "Architecture, runtime, model, data-flow, and operations documentation for dAstIll.",
   cleanUrls: true,
-  lastUpdated: true,
+  lastUpdated: false,
   srcExclude: ["README.md"],
   themeConfig: {
     search: {
