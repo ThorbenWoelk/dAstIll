@@ -74,6 +74,7 @@ pub async fn workspace_bootstrap(
     )
     .await
     .map_err(map_db_err)?;
+    let search_status = super::search::load_search_status_payload(&state, &conn).await?;
 
     Ok(Json(crate::models::WorkspaceBootstrapPayload {
         ai_available,
@@ -81,6 +82,7 @@ pub async fn workspace_bootstrap(
         channels: bootstrap.channels,
         selected_channel_id: bootstrap.selected_channel_id,
         snapshot: bootstrap.snapshot.map(build_snapshot_payload),
+        search_status,
     }))
 }
 
@@ -368,4 +370,118 @@ pub async fn backfill_channel_videos(
         "fetched_count": fetched_count,
         "exhausted": exhausted
     })))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use axum::{
+        body::to_bytes,
+        extract::{Query, State},
+        response::IntoResponse,
+    };
+    use chrono::Utc;
+    use reqwest::Client;
+    use serde_json::Value;
+    use tokio::sync::RwLock;
+
+    use super::workspace_bootstrap;
+    use crate::{
+        db::{init_db_memory, insert_channel, insert_video, upsert_transcript},
+        handlers::query::WorkspaceBootstrapParams,
+        models::{Channel, ContentStatus, Transcript, TranscriptRenderMode, Video},
+        services::{
+            CloudCooldown, SearchService, SummarizerService, SummaryEvaluatorService,
+            TranscriptCooldown, TranscriptService, YouTubeQuotaCooldown, YouTubeService,
+        },
+        state::AppState,
+    };
+
+    fn test_app_state(db: crate::db::DbPool) -> AppState {
+        let cooldown = Arc::new(CloudCooldown::cloud());
+        AppState {
+            db,
+            search_auto_create_vector_index: false,
+            search_projection_lock: Arc::new(RwLock::new(())),
+            youtube: Arc::new(YouTubeService::with_client(Client::new())),
+            transcript: Arc::new(TranscriptService::with_path("/usr/bin/false")),
+            summarizer: Arc::new(
+                SummarizerService::with_config("://invalid-url", "qwen3:8b")
+                    .with_cloud_cooldown(cooldown.clone()),
+            ),
+            summary_evaluator: Arc::new(
+                SummaryEvaluatorService::with_config("://invalid-url", "qwen3.5:397b-cloud")
+                    .with_cloud_cooldown(cooldown.clone()),
+            ),
+            search: Arc::new(SearchService::with_config(
+                "://invalid-url",
+                None,
+                crate::services::search::SEARCH_EMBEDDING_DIMENSIONS,
+                false,
+            )),
+            cloud_cooldown: cooldown,
+            youtube_quota_cooldown: Arc::new(YouTubeQuotaCooldown::youtube_quota()),
+            transcript_cooldown: Arc::new(TranscriptCooldown::transcript()),
+        }
+    }
+
+    #[tokio::test]
+    async fn workspace_bootstrap_includes_search_status_for_initial_render() {
+        let pool = init_db_memory().await.unwrap();
+        let conn = pool.lock().await;
+        let channel = Channel {
+            id: "UC_BOOT_SEARCH".to_string(),
+            handle: None,
+            name: "Bootstrap Search".to_string(),
+            thumbnail_url: None,
+            added_at: Utc::now(),
+            earliest_sync_date: None,
+            earliest_sync_date_user_set: false,
+        };
+        insert_channel(&conn, &channel).await.unwrap();
+        insert_video(
+            &conn,
+            &Video {
+                id: "vid_boot_search".to_string(),
+                channel_id: channel.id.clone(),
+                title: "Ready transcript".to_string(),
+                thumbnail_url: None,
+                published_at: Utc::now(),
+                is_short: false,
+                transcript_status: ContentStatus::Ready,
+                summary_status: ContentStatus::Pending,
+                acknowledged: false,
+                retry_count: 0,
+                quality_score: None,
+            },
+        )
+        .await
+        .unwrap();
+        upsert_transcript(
+            &conn,
+            &Transcript {
+                video_id: "vid_boot_search".to_string(),
+                raw_text: Some("bootstrap transcript content".to_string()),
+                formatted_markdown: None,
+                render_mode: TranscriptRenderMode::PlainText,
+            },
+        )
+        .await
+        .unwrap();
+
+        let response = workspace_bootstrap(
+            State(test_app_state(pool.clone())),
+            Query(WorkspaceBootstrapParams::default()),
+        )
+        .await
+        .unwrap()
+        .into_response();
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let payload: Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(payload["channels"].as_array().unwrap().len(), 1);
+        assert_eq!(payload["search_status"]["total_sources"].as_u64(), Some(1));
+        assert_eq!(payload["search_status"]["ready"].as_u64(), Some(0));
+    }
 }

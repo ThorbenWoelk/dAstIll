@@ -49,7 +49,11 @@ To run the application locally, you will need:
    OLLAMA_MODEL=glm-5:cloud
    OLLAMA_FALLBACK_MODEL=qwen3-coder:30b
    SUMMARY_EVALUATOR_MODEL=glm-5:cloud
+   SEARCH_SEMANTIC_ENABLED=true
+   OLLAMA_EMBEDDING_MODEL=embeddinggemma
    ```
+
+   `SEARCH_SEMANTIC_ENABLED` defaults to `false`. Leave it unset in production to keep search on plain FTS without embeddings.
 
 3. **Start the Application**:
    You can start both the frontend and backend simultaneously using the provided startup script:

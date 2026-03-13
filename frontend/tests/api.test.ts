@@ -1,12 +1,25 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import {
+  createHighlight,
+  deleteHighlight,
   getChannelSnapshot,
+  getVideoHighlights,
   getWorkspaceBootstrap,
   isAiAvailable,
+  listHighlights,
   listChannelsWhenAvailable,
   resetApiCacheForTests,
+  searchContent,
 } from "../src/lib/api";
-import type { Channel, SyncDepth, Video } from "../src/lib/types";
+import type {
+  Channel,
+  HighlightChannelGroup,
+  HighlightSource,
+  SearchResponse,
+  SearchStatus,
+  SyncDepth,
+  Video,
+} from "../src/lib/types";
 
 const originalFetch = globalThis.fetch;
 
@@ -37,6 +50,21 @@ function syncDepth(): SyncDepth {
     earliest_sync_date: "2026-02-01T00:00:00.000Z",
     earliest_sync_date_user_set: false,
     derived_earliest_ready_date: "2026-02-10T00:00:00.000Z",
+  };
+}
+
+function searchStatus(): SearchStatus {
+  return {
+    available: false,
+    model: "",
+    dimensions: 0,
+    pending: 1,
+    indexing: 0,
+    ready: 3,
+    failed: 0,
+    total_sources: 4,
+    vector_index_ready: false,
+    retrieval_mode: "fts_only",
   };
 }
 
@@ -85,6 +113,7 @@ describe("getWorkspaceBootstrap", () => {
       ai_status: "cloud",
       channels: [channel("abc")],
       selected_channel_id: "abc",
+      search_status: searchStatus(),
       snapshot: {
         channel_id: "abc",
         sync_depth: syncDepth(),
@@ -107,6 +136,7 @@ describe("getWorkspaceBootstrap", () => {
     });
 
     expect(result).toEqual(payload);
+    expect(result.search_status.total_sources).toBe(4);
     expect(requestedUrl).toContain("/api/workspace/bootstrap?");
     expect(requestedUrl).toContain("selected_channel_id=abc");
     expect(requestedUrl).toContain("limit=12");
@@ -121,6 +151,7 @@ describe("getWorkspaceBootstrap", () => {
       ai_status: "cloud",
       channels: [channel("abc")],
       selected_channel_id: "abc",
+      search_status: searchStatus(),
       snapshot: {
         channel_id: "abc",
         sync_depth: syncDepth(),
@@ -217,5 +248,140 @@ describe("getChannelSnapshot", () => {
 
     await getChannelSnapshot("abc", { queueOnly: true });
     expect(attempts).toBe(3);
+  });
+});
+
+describe("highlight api helpers", () => {
+  it("posts a new highlight and clears cached reads", async () => {
+    const payload = {
+      id: 7,
+      video_id: "vid-7",
+      source: "transcript" as HighlightSource,
+      text: "Important passage",
+      prefix_context: "Before",
+      suffix_context: "After",
+      created_at: "2026-03-12T20:00:00.000Z",
+    };
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+
+    globalThis.fetch = (async (input, init) => {
+      requests.push({ url: String(input), init });
+      if (String(input).includes("/api/highlights")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      return new Response(JSON.stringify(payload), { status: 200 });
+    }) as typeof fetch;
+
+    await createHighlight("vid-7", {
+      source: "transcript",
+      text: "Important passage",
+      prefix_context: "Before",
+      suffix_context: "After",
+    });
+    await listHighlights();
+
+    expect(requests[0].url).toContain("/api/videos/vid-7/highlights");
+    expect(requests[0].init?.method).toBe("POST");
+    expect(requests[0].init?.body).toBe(
+      JSON.stringify({
+        source: "transcript",
+        text: "Important passage",
+        prefix_context: "Before",
+        suffix_context: "After",
+      }),
+    );
+    expect(requests[1].url).toContain("/api/highlights");
+  });
+
+  it("loads grouped highlights and per-video highlights from their endpoints", async () => {
+    const groupedPayload: HighlightChannelGroup[] = [
+      {
+        channel_id: "abc",
+        channel_name: "Channel ABC",
+        channel_thumbnail_url: null,
+        videos: [
+          {
+            video_id: "vid-1",
+            title: "Video 1",
+            thumbnail_url: null,
+            published_at: "2026-03-02T00:00:00.000Z",
+            highlights: [
+              {
+                id: 1,
+                video_id: "vid-1",
+                source: "summary",
+                text: "Important idea",
+                prefix_context: "",
+                suffix_context: "",
+                created_at: "2026-03-12T20:00:00.000Z",
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    const perVideoPayload = groupedPayload[0].videos[0].highlights;
+    const requestedUrls: string[] = [];
+
+    globalThis.fetch = (async (input) => {
+      requestedUrls.push(String(input));
+      if (String(input).includes("/api/videos/vid-1/highlights")) {
+        return new Response(JSON.stringify(perVideoPayload), { status: 200 });
+      }
+      return new Response(JSON.stringify(groupedPayload), { status: 200 });
+    }) as typeof fetch;
+
+    await expect(listHighlights()).resolves.toEqual(groupedPayload);
+    await expect(getVideoHighlights("vid-1")).resolves.toEqual(perVideoPayload);
+    expect(requestedUrls[0]).toContain("/api/highlights");
+    expect(requestedUrls[1]).toContain("/api/videos/vid-1/highlights");
+  });
+
+  it("deletes a highlight and clears cached reads", async () => {
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+
+    globalThis.fetch = (async (input, init) => {
+      requests.push({ url: String(input), init });
+      if (String(input).includes("/api/highlights/7")) {
+        return new Response(null, { status: 204 });
+      }
+      return new Response(JSON.stringify([]), { status: 200 });
+    }) as typeof fetch;
+
+    await deleteHighlight(7);
+    await listHighlights();
+
+    expect(requests[0].url).toContain("/api/highlights/7");
+    expect(requests[0].init?.method).toBe("DELETE");
+    expect(requests[1].url).toContain("/api/highlights");
+  });
+});
+
+describe("search api helpers", () => {
+  it("queries search with source and channel filters", async () => {
+    const payload: SearchResponse = {
+      query: "semantic search",
+      source: "summary",
+      results: [],
+    };
+    let requestedUrl = "";
+
+    globalThis.fetch = (async (input) => {
+      requestedUrl = String(input);
+      return new Response(JSON.stringify(payload), { status: 200 });
+    }) as typeof fetch;
+
+    const result = await searchContent("semantic search", {
+      source: "summary",
+      channelId: "abc",
+      limit: 7,
+    });
+
+    expect(result).toEqual(payload);
+    expect(requestedUrl).toContain("/api/search?");
+    expect(requestedUrl).toContain("q=semantic+search");
+    expect(requestedUrl).toContain("source=summary");
+    expect(requestedUrl).toContain("channel_id=abc");
+    expect(requestedUrl).toContain("limit=7");
   });
 });

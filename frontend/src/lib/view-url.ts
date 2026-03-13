@@ -18,6 +18,7 @@ type QueueViewState = {
 const CONTENT_MODES = new Set<WorkspaceStateSnapshot["contentMode"]>([
   "transcript",
   "summary",
+  "highlights",
   "info",
 ]);
 const VIDEO_TYPE_FILTERS = new Set<WorkspaceStateSnapshot["videoTypeFilter"]>([

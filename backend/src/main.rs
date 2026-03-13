@@ -3,21 +3,21 @@ use std::sync::Arc;
 
 use axum::{
     Router,
-    routing::{get, post},
+    routing::{delete, get, post},
 };
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 
-use dastill::config::OllamaRuntimeConfig;
+use dastill::config::{OllamaRuntimeConfig, SearchRuntimeConfig};
 use dastill::db::init_db;
-use dastill::handlers::{channels, content, videos};
+use dastill::handlers::{channels, content, highlights, search, videos};
 use dastill::services::{
-    Cooldown, SummarizerService, SummaryEvaluatorService, TranscriptService, YouTubeService,
-    build_http_client,
+    Cooldown, SearchService, SummarizerService, SummaryEvaluatorService, TranscriptService,
+    YouTubeService, build_http_client,
 };
 use dastill::state::AppState;
 use dastill::workers::{
-    spawn_gap_scan_worker, spawn_queue_worker, spawn_refresh_worker,
+    spawn_gap_scan_worker, spawn_queue_worker, spawn_refresh_worker, spawn_search_index_worker,
     spawn_summary_evaluation_worker,
 };
 
@@ -76,9 +76,11 @@ async fn main() -> anyhow::Result<()> {
         Err(err) => tracing::warn!(error = %err, "could not validate YOUTUBE_API_KEY on startup"),
     }
 
+    let search_runtime = SearchRuntimeConfig::from_env();
     let summarize_path = std::env::var("SUMMARIZE_PATH")
         .unwrap_or_else(|_| "/opt/homebrew/bin/summarize".to_string());
-    let ollama = OllamaRuntimeConfig::from_env().map_err(|err| anyhow::anyhow!(err))?;
+    let ollama = OllamaRuntimeConfig::from_env(search_runtime.semantic_enabled)
+        .map_err(|err| anyhow::anyhow!(err))?;
     if std::env::var("SUMMARY_EVALUATOR_FALLBACK_MODEL").is_ok() {
         tracing::warn!(
             "SUMMARY_EVALUATOR_FALLBACK_MODEL is ignored - summary evaluation is cloud-only"
@@ -86,6 +88,7 @@ async fn main() -> anyhow::Result<()> {
     }
     let transcript = Arc::new(TranscriptService::with_path(&summarize_path));
     let ollama_semaphore = Arc::new(tokio::sync::Semaphore::new(1));
+    let search_ollama_semaphore = Arc::new(tokio::sync::Semaphore::new(1));
 
     let summarizer = Arc::new(
         SummarizerService::with_client(client.clone(), &ollama.url, &ollama.model)
@@ -96,15 +99,27 @@ async fn main() -> anyhow::Result<()> {
     let summary_evaluator = Arc::new(
         SummaryEvaluatorService::with_client(client, &ollama.url, &ollama.summary_evaluator_model)
             .with_cloud_cooldown(cloud_cooldown.clone())
-            .with_ollama_semaphore(ollama_semaphore),
+            .with_ollama_semaphore(ollama_semaphore.clone()),
+    );
+    let search = Arc::new(
+        SearchService::with_config(
+            &ollama.url,
+            ollama.embedding_model.as_deref(),
+            dastill::services::search::SEARCH_EMBEDDING_DIMENSIONS,
+            search_runtime.semantic_enabled,
+        )
+        .with_ollama_semaphore(search_ollama_semaphore),
     );
 
     let state = AppState {
         db: pool,
+        search_auto_create_vector_index: search_runtime.auto_create_vector_index,
+        search_projection_lock: Arc::new(tokio::sync::RwLock::new(())),
         youtube,
         transcript,
         summarizer,
         summary_evaluator,
+        search,
         cloud_cooldown,
         youtube_quota_cooldown,
         transcript_cooldown,
@@ -113,10 +128,17 @@ async fn main() -> anyhow::Result<()> {
     spawn_refresh_worker(state.clone());
     spawn_gap_scan_worker(state.clone());
     spawn_summary_evaluation_worker(state.clone());
+    spawn_search_index_worker(state.clone());
 
     let app = Router::new()
         .route("/api/health", get(|| async { "ok" }))
         .route("/api/health/ai", get(content::health_ai))
+        .route("/api/search", get(search::search))
+        .route("/api/search/status", get(search::search_status))
+        .route(
+            "/api/search/rebuild",
+            post(search::rebuild_search_projection),
+        )
         .route(
             "/api/workspace/bootstrap",
             get(channels::workspace_bootstrap),
@@ -177,6 +199,12 @@ async fn main() -> anyhow::Result<()> {
             "/api/videos/{id}/summary/regenerate",
             post(content::regenerate_summary),
         )
+        .route("/api/highlights", get(highlights::list_highlights))
+        .route(
+            "/api/videos/{id}/highlights",
+            get(highlights::list_video_highlights).post(highlights::create_highlight),
+        )
+        .route("/api/highlights/{id}", delete(highlights::delete_highlight))
         .layer(
             CorsLayer::new()
                 .allow_origin(Any)

@@ -31,8 +31,8 @@ describe("resolveAiIndicatorPresentation", () => {
     expect(presentation("offline")).toEqual({
       dotClass: "bg-red-500",
       detail:
-        "The AI endpoint is offline. AI formatting and summary actions are unavailable until connectivity returns.",
-      title: "Offline",
+        "This is a showcase deployment - AI features are turned off. Browsing channels, inspecting summaries, and all other non-AI features are fully functional.",
+      title: "Showcase mode",
     });
   });
 });

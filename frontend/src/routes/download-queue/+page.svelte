@@ -790,6 +790,12 @@
       >
         Queue
       </a>
+      <a
+        href="/highlights"
+        class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 transition-all hover:opacity-100"
+      >
+        Highlights
+      </a>
     </nav>
   </header>
 

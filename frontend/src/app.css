@@ -115,6 +115,14 @@ textarea {
   -webkit-tap-highlight-color: transparent;
 }
 
+.search-input::-webkit-search-decoration,
+.search-input::-webkit-search-cancel-button,
+.search-input::-webkit-search-results-button,
+.search-input::-webkit-search-results-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
 .prose {
   max-width: 65ch;
   color: var(--foreground);
@@ -132,10 +140,12 @@ textarea {
 }
 
 .prose mark {
-  background: var(--accent-soft);
-  color: var(--accent-strong);
-  padding: 0 0.2em;
+  background: color-mix(in srgb, rgb(248 231 162) 84%, white);
+  color: inherit;
+  padding: 0;
   border-radius: 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
 }
 
 /* Animations */

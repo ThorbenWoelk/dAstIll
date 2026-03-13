@@ -5,9 +5,12 @@
     addChannel,
     backfillChannelVideos,
     cleanTranscriptFormatting,
+    createHighlight,
+    deleteHighlight,
     deleteChannel,
     getChannelSnapshot,
     getChannelSyncDepth,
+    getVideoHighlights,
     getVideoInfo,
     getWorkspaceBootstrapWhenAvailable,
     getSummary,
@@ -16,6 +19,8 @@
     listVideos,
     refreshChannel,
     regenerateSummary,
+    searchContent,
+    getSearchStatus,
     updateSummary,
     updateTranscript,
     updateAcknowledged,
@@ -30,6 +35,8 @@
   import ConfirmationModal from "$lib/components/ConfirmationModal.svelte";
   import Footer from "$lib/components/Footer.svelte";
   import ContentEditor from "$lib/components/ContentEditor.svelte";
+  import SearchResultsPopover from "$lib/components/SearchResultsPopover.svelte";
+  import { resolveSearchCoverageHint } from "$lib/search-status";
   import Toggle from "$lib/components/Toggle.svelte";
   import TranscriptView from "$lib/components/TranscriptView.svelte";
   import VideoCard from "$lib/components/VideoCard.svelte";
@@ -37,6 +44,12 @@
     AiStatus,
     Channel,
     ChannelSnapshot,
+    CreateHighlightRequest,
+    Highlight,
+    HighlightSource,
+    SearchResult,
+    SearchSourceFilter,
+    SearchStatus,
     Summary as SummaryPayload,
     Transcript as TranscriptPayload,
     TranscriptRenderMode,
@@ -64,6 +77,11 @@
     normalizeTranscriptForRender,
     renderMarkdown,
   } from "$lib/utils/markdown";
+  import {
+    buildOptimisticHighlight,
+    mergeHighlightIntoList,
+    reconcileOptimisticHighlight,
+  } from "$lib/utils/highlights";
   import {
     resolveDisplayedSyncDepthIso,
     resolveOldestLoadedReadyVideoDate,
@@ -98,6 +116,24 @@
   let channelSortMode = $state<"custom" | "alpha" | "newest">("custom");
   let channelSearchOpen = $state(false);
   let manageChannels = $state(false);
+  let searchQuery = $state("");
+  let searchSource = $state<SearchSourceFilter>("all");
+  let searchResults = $state<SearchResult[]>([]);
+  let searchLoading = $state(false);
+  let searchError = $state<string | null>(null);
+  let searchPanelOpen = $state(false);
+  let searchPanelContainer = $state<HTMLDivElement | null>(null);
+  let searchRequestId = 0;
+  const SEARCH_DEBOUNCE_MS = 280;
+  const SEARCH_RESULT_LIMIT = 8;
+  let searchQueryTrimmed = $derived(searchQuery.trim());
+  let searchResultsVisible = $derived(
+    searchPanelOpen &&
+      (searchQueryTrimmed.length > 0 || searchLoading || searchError !== null),
+  );
+  let searchStatus = $state<SearchStatus | null>(null);
+  const SEARCH_STATUS_POLL_MS = 15_000;
+  let searchCoverageHint = $derived(resolveSearchCoverageHint(searchStatus));
 
   // -- Guide tour (URL-driven: ?guide=0, ?guide=1, ...) --
   let guideOpen = $state(false);
@@ -174,7 +210,7 @@
       placement: "bottom",
       prepare: () => {
         mobileTab = "content";
-        if (contentMode === "info") {
+        if (contentMode === "info" || contentMode === "highlights") {
           void setMode("transcript");
         }
       },
@@ -249,7 +285,9 @@
     derived_earliest_ready_date: string | null;
   } | null>(null);
 
-  let contentMode = $state<"transcript" | "summary" | "info">("transcript");
+  let contentMode = $state<"transcript" | "summary" | "highlights" | "info">(
+    "transcript",
+  );
   let mobileTab = $state<"channels" | "videos" | "content">("channels");
   let contentText = $state("");
   let transcriptRenderMode = $state<TranscriptRenderMode>("plain_text");
@@ -273,6 +311,21 @@
   let regeneratingVideoId = $state<string | null>(null);
   let revertingContent = $state(false);
   let revertingVideoId = $state<string | null>(null);
+  let videoHighlightsByVideoId = $state<Record<string, Highlight[]>>({});
+  let nextOptimisticHighlightId = -1;
+  let creatingHighlight = $state(false);
+  let creatingHighlightVideoId = $state<string | null>(null);
+  let deletingHighlightId = $state<number | null>(null);
+  const selectedVideoHighlights = $derived(
+    selectedVideoId ? (videoHighlightsByVideoId[selectedVideoId] ?? []) : [],
+  );
+  const contentHighlights = $derived(
+    contentMode === "transcript" || contentMode === "summary"
+      ? selectedVideoHighlights.filter(
+          (highlight) => highlight.source === (contentMode as HighlightSource),
+        )
+      : [],
+  );
   let originalTranscriptByVideoId = $state<Record<string, string>>({});
   const contentCache = new Map<
     string,
@@ -319,6 +372,9 @@
 
   const selectedChannel = $derived(
     channels.find((channel) => channel.id === selectedChannelId) ?? null,
+  );
+  const selectedVideo = $derived(
+    videos.find((video) => video.id === selectedVideoId) ?? null,
   );
 
   const filteredChannels = $derived.by(() => {
@@ -504,10 +560,110 @@
         : contentText !== selectedOriginalTranscript),
   );
 
+  function storeVideoHighlights(videoId: string, highlights: Highlight[]) {
+    videoHighlightsByVideoId = {
+      ...videoHighlightsByVideoId,
+      [videoId]: highlights,
+    };
+  }
+
+  function mergeVideoHighlight(videoId: string, highlight: Highlight) {
+    const current = videoHighlightsByVideoId[videoId] ?? [];
+    storeVideoHighlights(videoId, mergeHighlightIntoList(current, highlight));
+  }
+
+  function removeVideoHighlight(videoId: string, highlightId: number) {
+    const current = videoHighlightsByVideoId[videoId] ?? [];
+    storeVideoHighlights(
+      videoId,
+      current.filter((item) => item.id !== highlightId),
+    );
+  }
+
+  async function hydrateVideoHighlights(
+    videoId: string,
+    options: { showError?: boolean } = {},
+  ) {
+    try {
+      const highlights = await getVideoHighlights(videoId);
+      storeVideoHighlights(videoId, highlights);
+      return highlights;
+    } catch (error) {
+      if (options.showError) {
+        errorMessage = (error as Error).message;
+      }
+      return null;
+    }
+  }
+
+  async function saveSelectionHighlight(payload: CreateHighlightRequest) {
+    if (
+      !selectedVideoId ||
+      (contentMode !== "transcript" && contentMode !== "summary")
+    ) {
+      return;
+    }
+
+    const targetVideoId = selectedVideoId;
+    const optimisticHighlight = buildOptimisticHighlight(
+      targetVideoId,
+      payload,
+      nextOptimisticHighlightId,
+    );
+    nextOptimisticHighlightId -= 1;
+
+    mergeVideoHighlight(targetVideoId, optimisticHighlight);
+    creatingHighlight = true;
+    creatingHighlightVideoId = targetVideoId;
+    errorMessage = null;
+
+    try {
+      const highlight = await createHighlight(targetVideoId, payload);
+      storeVideoHighlights(
+        targetVideoId,
+        reconcileOptimisticHighlight(
+          videoHighlightsByVideoId[targetVideoId] ?? [],
+          optimisticHighlight.id,
+          highlight,
+        ),
+      );
+    } catch (error) {
+      removeVideoHighlight(targetVideoId, optimisticHighlight.id);
+      errorMessage = (error as Error).message;
+    } finally {
+      creatingHighlight = false;
+      creatingHighlightVideoId = null;
+    }
+  }
+
+  async function deleteExistingHighlight(highlightId: number) {
+    if (!selectedVideoId) {
+      return;
+    }
+
+    const targetVideoId = selectedVideoId;
+    deletingHighlightId = highlightId;
+    errorMessage = null;
+
+    try {
+      await deleteHighlight(highlightId);
+      removeVideoHighlight(targetVideoId, highlightId);
+    } catch (error) {
+      errorMessage = (error as Error).message;
+    } finally {
+      deletingHighlightId = null;
+    }
+  }
+
   function isContentMode(
     value: unknown,
-  ): value is "transcript" | "summary" | "info" {
-    return value === "transcript" || value === "summary" || value === "info";
+  ): value is "transcript" | "summary" | "highlights" | "info" {
+    return (
+      value === "transcript" ||
+      value === "summary" ||
+      value === "highlights" ||
+      value === "info"
+    );
   }
 
   function isVideoTypeFilter(value: unknown): value is VideoTypeFilter {
@@ -573,7 +729,7 @@
   function isCurrentContentRequest(
     requestId: number,
     targetVideoId: string,
-    targetMode: "transcript" | "summary" | "info",
+    targetMode: "transcript" | "summary" | "highlights" | "info",
   ) {
     return (
       activeContentRequestId === requestId &&
@@ -736,17 +892,119 @@
     }
 
     const handlePointerDown = (event: PointerEvent) => {
-      if (!filterMenuOpen || !filterMenuContainer) return;
-      if (!filterMenuContainer.contains(event.target as Node)) {
+      if (
+        filterMenuOpen &&
+        filterMenuContainer &&
+        !filterMenuContainer.contains(event.target as Node)
+      ) {
         filterMenuOpen = false;
+      }
+
+      if (
+        searchPanelOpen &&
+        searchPanelContainer &&
+        !searchPanelContainer.contains(event.target as Node)
+      ) {
+        searchPanelOpen = false;
       }
     };
 
     document.addEventListener("pointerdown", handlePointerDown);
+
+    const pollSearchStatus = async (bypassCache = false) => {
+      try {
+        searchStatus = await getSearchStatus({ bypassCache });
+      } catch {
+        // Silently ignore - search status is informational only.
+      }
+    };
+    void pollSearchStatus();
+    const statusInterval = setInterval(
+      () => void pollSearchStatus(true),
+      SEARCH_STATUS_POLL_MS,
+    );
+
     return () => {
       document.removeEventListener("pointerdown", handlePointerDown);
+      clearInterval(statusInterval);
     };
   });
+
+  $effect(() => {
+    const query = searchQueryTrimmed;
+    const source = searchSource;
+
+    if (!query) {
+      searchPanelOpen = false;
+      searchResults = [];
+      searchError = null;
+      searchLoading = false;
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      void runSearch(query, source);
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => clearTimeout(timeoutId);
+  });
+
+  async function runSearch(query: string, source: SearchSourceFilter) {
+    const requestId = ++searchRequestId;
+    searchLoading = true;
+    searchError = null;
+
+    try {
+      const response = await searchContent(query, {
+        source,
+        limit: SEARCH_RESULT_LIMIT,
+      });
+      if (requestId !== searchRequestId || query !== searchQueryTrimmed) return;
+      searchResults = response.results;
+    } catch (error) {
+      if (requestId !== searchRequestId) return;
+      searchResults = [];
+      searchError = (error as Error).message;
+    } finally {
+      if (requestId === searchRequestId) {
+        searchLoading = false;
+      }
+    }
+  }
+
+  function clearSearch() {
+    searchRequestId += 1;
+    searchPanelOpen = false;
+    searchQuery = "";
+    searchResults = [];
+    searchError = null;
+    searchLoading = false;
+  }
+
+  function closeSearchPanel() {
+    searchPanelOpen = false;
+  }
+
+  function primarySearchSource(
+    result: SearchResult,
+  ): "transcript" | "summary" | "highlights" | "info" {
+    const preferredMatch = result.matches[0];
+    return preferredMatch?.source === "summary" ? "summary" : "transcript";
+  }
+
+  async function openSearchResult(result: SearchResult) {
+    const targetMode = primarySearchSource(result);
+    searchPanelOpen = false;
+    if (selectedChannelId !== result.channel_id) {
+      await selectChannel(result.channel_id, result.video_id, true);
+    } else {
+      await selectVideo(result.video_id, true);
+    }
+
+    if (contentMode !== targetMode) {
+      await setMode(targetMode);
+    }
+  }
 
   async function loadChannels(
     preferredChannelId: string | null = null,
@@ -782,6 +1040,7 @@
 
       aiAvailable = bootstrap.ai_available;
       aiStatus = bootstrap.ai_status;
+      searchStatus = bootstrap.search_status;
       channels = applySavedChannelOrder(bootstrap.channels, channelOrder);
       syncChannelOrderFromList();
       const initialChannelId = resolveInitialChannelSelection(
@@ -1134,7 +1393,9 @@
     await loadContent();
   }
 
-  async function setMode(mode: "transcript" | "summary" | "info") {
+  async function setMode(
+    mode: "transcript" | "summary" | "highlights" | "info",
+  ) {
     if (contentMode === mode) return;
     contentMode = mode;
     resetSummaryQuality();
@@ -1166,6 +1427,19 @@
     activeContentRequestId = requestId;
 
     // Check cache first
+    if (
+      targetMode === "highlights" &&
+      videoHighlightsByVideoId[targetVideoId] !== undefined
+    ) {
+      contentText = "";
+      resetSummaryQuality();
+      resetVideoInfo();
+      draft = "";
+      loadingContent = false;
+      activeContentRequestId = 0;
+      return;
+    }
+
     const cached = contentCache.get(targetVideoId);
     if (cached) {
       if (targetMode === "transcript" && cached.transcript !== undefined) {
@@ -1175,6 +1449,9 @@
         draftTranscriptRenderMode = transcriptRenderMode;
         resetSummaryQuality();
         resetVideoInfo();
+        if (videoHighlightsByVideoId[targetVideoId] === undefined) {
+          void hydrateVideoHighlights(targetVideoId);
+        }
         loadingContent = false;
         activeContentRequestId = 0;
         return;
@@ -1184,6 +1461,9 @@
         applySummaryQuality(cached.summary.quality);
         resetVideoInfo();
         draft = contentText;
+        if (videoHighlightsByVideoId[targetVideoId] === undefined) {
+          void hydrateVideoHighlights(targetVideoId);
+        }
         loadingContent = false;
         activeContentRequestId = 0;
         return;
@@ -1227,6 +1507,7 @@
         contentCache.set(targetVideoId, entry);
         resetSummaryQuality();
         resetVideoInfo();
+        void hydrateVideoHighlights(targetVideoId);
       } else {
         if (targetMode === "summary") {
           const summary = await getSummary(targetVideoId);
@@ -1238,6 +1519,19 @@
           const entry = contentCache.get(targetVideoId) ?? {};
           entry.summary = { text: contentText, quality: summary };
           contentCache.set(targetVideoId, entry);
+          resetVideoInfo();
+          void hydrateVideoHighlights(targetVideoId);
+        } else if (targetMode === "highlights") {
+          const highlights = await hydrateVideoHighlights(targetVideoId, {
+            showError: true,
+          });
+          if (!isCurrentContentRequest(requestId, targetVideoId, targetMode))
+            return;
+          if (!highlights) {
+            return;
+          }
+          contentText = "";
+          resetSummaryQuality();
           resetVideoInfo();
         } else {
           const info = await getVideoInfo(targetVideoId);
@@ -1284,7 +1578,7 @@
 
   async function saveEdit() {
     if (!selectedVideoId) return;
-    if (contentMode === "info") return;
+    if (contentMode === "info" || contentMode === "highlights") return;
     const targetVideoId = selectedVideoId;
 
     loadingContent = true;
@@ -1557,10 +1851,9 @@
   function handleWindowKeydown(event: KeyboardEvent) {
     if (event.key === "Escape") {
       filterMenuOpen = false;
+      searchPanelOpen = false;
     }
   }
-
-
 
   async function refreshSummaryQuality() {
     if (
@@ -1617,8 +1910,6 @@
     }, 7000);
     return () => clearInterval(timer);
   });
-
-
 </script>
 
 <svelte:window onkeydown={handleWindowKeydown} />
@@ -1632,7 +1923,7 @@
   </a>
 
   <header
-    class="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-3 px-4 sm:px-2 pb-2 mb-0"
+    class="mx-auto flex w-full max-w-[1440px] flex-wrap items-center gap-3 px-4 sm:px-2 pb-2 mb-0"
   >
     <div class="flex items-center gap-3">
       <a
@@ -1673,20 +1964,122 @@
       </button>
     </div>
 
-    <nav class="flex items-center gap-0.5" aria-label="Workspace sections">
-      <a
-        href="/"
-        class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--foreground)] bg-[var(--muted)] transition-all"
+    <div
+      class="ml-auto flex w-full flex-wrap items-center justify-end gap-3 sm:w-auto sm:flex-nowrap"
+    >
+      <div
+        class="relative order-2 w-full sm:order-1 sm:w-[23rem] lg:w-[27rem]"
+        bind:this={searchPanelContainer}
       >
-        Workspace
-      </a>
-      <a
-        href="/download-queue"
-        class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 transition-all hover:opacity-100"
+        <div
+          class={`flex items-center gap-2 rounded-full border bg-white/85 px-3 py-2 shadow-sm transition-colors ${searchResultsVisible ? "border-[var(--accent)]/35" : "border-[var(--border-soft)]"}`}
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="shrink-0 text-[var(--soft-foreground)] opacity-50"
+          >
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input
+            type="search"
+            class="search-input min-w-0 flex-1 bg-transparent text-[13px] font-medium placeholder:text-[var(--soft-foreground)] placeholder:opacity-40 focus-visible:outline-none"
+            placeholder="Search transcripts and summaries..."
+            bind:value={searchQuery}
+            oninput={() => {
+              searchPanelOpen = true;
+            }}
+            onfocus={() => {
+              if (searchQueryTrimmed) {
+                searchPanelOpen = true;
+              }
+            }}
+            aria-label="Search transcripts and summaries"
+          />
+          {#if searchLoading}
+            <span
+              class="h-4 w-4 animate-spin rounded-full border-[1.5px] border-[var(--border)] border-t-[var(--accent)]"
+              aria-hidden="true"
+            ></span>
+          {:else if searchStatus && searchCoverageHint}
+            <span
+              class="shrink-0 text-[10px] font-bold tabular-nums text-[var(--soft-foreground)] opacity-50"
+              title="Search index: {searchStatus.ready} / {searchStatus.total_sources} transcripts and summaries indexed"
+            >
+              {searchCoverageHint}
+            </span>
+          {/if}
+          {#if searchQuery}
+            <button
+              type="button"
+              class="inline-flex h-6 w-6 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-50 transition-opacity hover:opacity-90"
+              onclick={clearSearch}
+              aria-label="Clear search"
+            >
+              <svg
+                width="10"
+                height="10"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="3"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          {/if}
+        </div>
+
+        <SearchResultsPopover
+          show={searchResultsVisible}
+          query={searchQueryTrimmed}
+          source={searchSource}
+          results={searchResults}
+          loading={searchLoading}
+          error={searchError}
+          onClose={closeSearchPanel}
+          onSourceChange={(nextValue) => {
+            searchSource = nextValue;
+            searchPanelOpen = true;
+          }}
+          onResultSelect={(result) => void openSearchResult(result)}
+        />
+      </div>
+
+      <nav
+        class="order-1 flex items-center gap-0.5 sm:order-2"
+        aria-label="Workspace sections"
       >
-        Queue
-      </a>
-    </nav>
+        <a
+          href="/"
+          class="rounded-full bg-[var(--muted)] px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--foreground)] transition-all"
+        >
+          Workspace
+        </a>
+        <a
+          href="/download-queue"
+          class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 transition-all hover:opacity-100"
+        >
+          Queue
+        </a>
+        <a
+          href="/highlights"
+          class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 transition-all hover:opacity-100"
+        >
+          Highlights
+        </a>
+      </nav>
+    </div>
   </header>
 
   <main
@@ -2259,7 +2652,9 @@
             {/if}
 
             {#if videos.length > 0}
-              <p class="text-[11px] text-[var(--soft-foreground)] opacity-40 px-0.5">
+              <p
+                class="text-[11px] text-[var(--soft-foreground)] opacity-40 px-0.5"
+              >
                 Synced to {formatSyncDate(
                   resolveDisplayedSyncDepthIso({
                     videos,
@@ -2288,15 +2683,20 @@
         <div class="flex items-center gap-3 sm:gap-4" id="content-mode-tabs">
           <h2 class="sr-only">Display Content</h2>
           <Toggle
-            options={["transcript", "summary", "info"]}
+            options={["transcript", "summary", "highlights", "info"]}
             value={contentMode}
             onChange={(value) =>
-              setMode(value as "transcript" | "summary" | "info")}
+              setMode(
+                value as "transcript" | "summary" | "highlights" | "info",
+              )}
           />
         </div>
 
-        {#if selectedVideoId && !loadingContent && !editing && contentMode !== "info"}
-          <div id="content-actions" class="relative z-20 flex items-center justify-end h-10">
+        {#if selectedVideoId && !loadingContent && !editing && contentMode !== "info" && contentMode !== "highlights"}
+          <div
+            id="content-actions"
+            class="relative z-20 flex items-center justify-end h-10"
+          >
             <ContentEditor
               editing={false}
               busy={loadingContent}
@@ -2332,7 +2732,6 @@
         class="w-full min-h-0 flex-1 overflow-y-auto px-4 sm:px-6 lg:px-0 lg:pr-4 max-lg:pt-4 pb-[calc(3.5rem+env(safe-area-inset-bottom)+2rem)] lg:pb-0 custom-scrollbar"
       >
         {#if selectedVideoId && !loadingContent}
-          {@const selectedVideo = videos.find((v) => v.id === selectedVideoId)}
           {#if selectedVideo}
             <nav
               class="mb-3 sm:mb-4 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[12px] text-[var(--soft-foreground)] opacity-60"
@@ -2517,6 +2916,77 @@
               Processing {contentMode}…
             </p>
           </div>
+        {:else if contentMode === "highlights"}
+          <div class="space-y-5 pb-20">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p
+                  class="text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50"
+                >
+                  Saved highlights
+                </p>
+                <h3
+                  class="mt-1 text-[20px] font-bold font-serif leading-tight text-[var(--foreground)]"
+                >
+                  {selectedVideo?.title || "Highlights"}
+                </h3>
+              </div>
+              <p
+                class="text-[12px] font-semibold text-[var(--soft-foreground)] opacity-60"
+              >
+                {selectedVideoHighlights.length} saved
+              </p>
+            </div>
+
+            {#if selectedVideoHighlights.length === 0}
+              <div
+                class="rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--muted)]/20 px-4 py-5 text-[14px] text-[var(--soft-foreground)] opacity-70"
+              >
+                Select text in the transcript or summary to save your first
+                highlight for this video.
+              </div>
+            {:else}
+              <div class="space-y-3">
+                {#each selectedVideoHighlights as highlight (highlight.id)}
+                  <article
+                    class="rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-white/90 px-4 py-4 shadow-sm"
+                  >
+                    <div
+                      class="flex flex-wrap items-center justify-between gap-2"
+                    >
+                      <span
+                        class="inline-flex rounded-full bg-[var(--accent-soft)]/60 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--accent-strong)]"
+                      >
+                        {highlight.source}
+                      </span>
+                      <div class="flex items-center gap-3">
+                        <span
+                          class="text-[11px] text-[var(--soft-foreground)] opacity-50"
+                        >
+                          {formatPublishedAt(highlight.created_at)}
+                        </span>
+                        <button
+                          type="button"
+                          class="inline-flex items-center rounded-full border border-[var(--border)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] transition-colors hover:border-rose-300 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
+                          onclick={() => deleteExistingHighlight(highlight.id)}
+                          disabled={deletingHighlightId === highlight.id}
+                        >
+                          {deletingHighlightId === highlight.id
+                            ? "Removing..."
+                            : "Remove"}
+                        </button>
+                      </div>
+                    </div>
+                    <p
+                      class="mt-3 whitespace-pre-wrap text-[15px] leading-relaxed text-[var(--foreground)]"
+                    >
+                      {highlight.text}
+                    </p>
+                  </article>
+                {/each}
+              </div>
+            {/if}
+          </div>
         {:else if contentMode === "info"}
           <div class="space-y-8 text-[15px] leading-relaxed pb-20">
             <h3
@@ -2644,6 +3114,22 @@
               formatting={contentMode === "transcript" &&
                 formattingContent &&
                 formattingVideoId === selectedVideoId}
+              highlights={contentHighlights}
+              highlightSource={contentMode === "transcript" ||
+              contentMode === "summary"
+                ? (contentMode as HighlightSource)
+                : null}
+              highlightEnabled={Boolean(
+                selectedVideoId &&
+                !loadingContent &&
+                !editing &&
+                (contentMode === "transcript" || contentMode === "summary"),
+              )}
+              creatingHighlight={creatingHighlight &&
+                creatingHighlightVideoId === selectedVideoId}
+              {deletingHighlightId}
+              onCreateHighlight={saveSelectionHighlight}
+              onDeleteHighlight={deleteExistingHighlight}
             />
           </div>
         {/if}
