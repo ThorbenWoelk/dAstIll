@@ -11,13 +11,13 @@ import {
 describe("parseWorkspaceViewUrlState", () => {
   it("restores a shared workspace view from query params", () => {
     const url = new URL(
-      "https://example.com/?channel=abc&video=vid-1&content=summary&type=short&ack=ack",
+      "https://example.com/?channel=abc&video=vid-1&content=highlights&type=short&ack=ack",
     );
 
     expect(parseWorkspaceViewUrlState(url)).toEqual({
       selectedChannelId: "abc",
       selectedVideoId: "vid-1",
-      contentMode: "summary",
+      contentMode: "highlights",
       videoTypeFilter: "short",
       acknowledgedFilter: "ack",
     });
@@ -38,11 +38,11 @@ describe("buildWorkspaceViewHref", () => {
       buildWorkspaceViewHref({
         selectedChannelId: "abc",
         selectedVideoId: "vid-1",
-        contentMode: "transcript",
+        contentMode: "highlights",
         videoTypeFilter: "all",
         acknowledgedFilter: "all",
       }),
-    ).toBe("/?channel=abc&video=vid-1&content=transcript&type=all&ack=all");
+    ).toBe("/?channel=abc&video=vid-1&content=highlights&type=all&ack=all");
   });
 });
 
@@ -61,7 +61,7 @@ describe("mergeWorkspaceViewState", () => {
         {
           selectedChannelId: "url-channel",
           selectedVideoId: "url-video",
-          contentMode: "summary",
+          contentMode: "highlights",
           videoTypeFilter: "short",
           acknowledgedFilter: "ack",
         },
@@ -69,7 +69,7 @@ describe("mergeWorkspaceViewState", () => {
     ).toEqual({
       selectedChannelId: "url-channel",
       selectedVideoId: "url-video",
-      contentMode: "summary",
+      contentMode: "highlights",
       videoTypeFilter: "short",
       acknowledgedFilter: "ack",
       channelOrder: ["saved-channel"],

@@ -1,6 +1,8 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::services::search::SearchSourceKind;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Channel {
     pub id: String,
@@ -131,6 +133,67 @@ pub struct UpdateAcknowledgedRequest {
     pub acknowledged: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HighlightSource {
+    Transcript,
+    Summary,
+}
+
+impl HighlightSource {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Transcript => "transcript",
+            Self::Summary => "summary",
+        }
+    }
+
+    pub fn from_db_value(value: &str) -> Self {
+        match value {
+            "summary" => Self::Summary,
+            _ => Self::Transcript,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Highlight {
+    pub id: i64,
+    pub video_id: String,
+    pub source: HighlightSource,
+    pub text: String,
+    pub prefix_context: String,
+    pub suffix_context: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateHighlightRequest {
+    pub source: HighlightSource,
+    pub text: String,
+    #[serde(default)]
+    pub prefix_context: String,
+    #[serde(default)]
+    pub suffix_context: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HighlightVideoGroup {
+    pub video_id: String,
+    pub title: String,
+    pub thumbnail_url: Option<String>,
+    pub published_at: DateTime<Utc>,
+    pub highlights: Vec<Highlight>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HighlightChannelGroup {
+    pub channel_id: String,
+    pub channel_name: String,
+    pub channel_thumbnail_url: Option<String>,
+    pub videos: Vec<HighlightVideoGroup>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct CleanTranscriptResponse {
     pub content: String,
@@ -204,4 +267,44 @@ pub struct WorkspaceBootstrapPayload {
     pub channels: Vec<Channel>,
     pub selected_channel_id: Option<String>,
     pub snapshot: Option<ChannelSnapshotPayload>,
+    pub search_status: SearchStatusPayload,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchMatchPayload {
+    pub source: SearchSourceKind,
+    pub section_title: Option<String>,
+    pub snippet: String,
+    pub score: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchVideoResultPayload {
+    pub video_id: String,
+    pub channel_id: String,
+    pub channel_name: String,
+    pub video_title: String,
+    pub published_at: String,
+    pub matches: Vec<SearchMatchPayload>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchResponsePayload {
+    pub query: String,
+    pub source: String,
+    pub results: Vec<SearchVideoResultPayload>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchStatusPayload {
+    pub available: bool,
+    pub model: String,
+    pub dimensions: usize,
+    pub pending: usize,
+    pub indexing: usize,
+    pub ready: usize,
+    pub failed: usize,
+    pub total_sources: usize,
+    pub vector_index_ready: bool,
+    pub retrieval_mode: String,
 }

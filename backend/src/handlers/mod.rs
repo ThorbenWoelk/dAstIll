@@ -1,6 +1,8 @@
 pub mod channels;
 pub mod content;
+pub mod highlights;
 pub mod query;
+pub mod search;
 pub mod videos;
 
 use axum::http::StatusCode;

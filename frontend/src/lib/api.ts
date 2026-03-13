@@ -3,7 +3,13 @@ import type {
   Channel,
   ChannelSnapshot,
   CleanTranscriptResponse,
+  CreateHighlightRequest,
+  Highlight,
+  HighlightChannelGroup,
   QueueTab,
+  SearchResponse,
+  SearchSourceFilter,
+  SearchStatus,
   Summary,
   SyncDepth,
   Transcript,
@@ -435,6 +441,63 @@ export function updateSummary(videoId: string, content: string) {
 export function regenerateSummary(videoId: string) {
   return request<Summary>(`/api/videos/${videoId}/summary/regenerate`, {
     method: "POST",
+  }).then((result) => {
+    clearGetRequestCache();
+    return result;
+  });
+}
+
+export function listHighlights() {
+  return cachedGetRequest<HighlightChannelGroup[]>("/api/highlights");
+}
+
+export function getVideoHighlights(videoId: string) {
+  return cachedGetRequest<Highlight[]>(`/api/videos/${videoId}/highlights`);
+}
+
+export function createHighlight(
+  videoId: string,
+  payload: CreateHighlightRequest,
+) {
+  return request<Highlight>(`/api/videos/${videoId}/highlights`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  }).then((result) => {
+    clearGetRequestCache();
+    return result;
+  });
+}
+
+export function searchContent(
+  query: string,
+  options?: {
+    source?: SearchSourceFilter;
+    channelId?: string | null;
+    limit?: number;
+  },
+) {
+  const params = new URLSearchParams({
+    q: query,
+  });
+  if (options?.source && options.source !== "all") {
+    params.set("source", options.source);
+  }
+  if (options?.channelId) {
+    params.set("channel_id", options.channelId);
+  }
+  if (options?.limit !== undefined) {
+    params.set("limit", `${options.limit}`);
+  }
+  return request<SearchResponse>(`/api/search?${params.toString()}`);
+}
+
+export function getSearchStatus(options?: { bypassCache?: boolean }) {
+  return cachedGetRequest<SearchStatus>("/api/search/status", options);
+}
+
+export function deleteHighlight(highlightId: number) {
+  return request<void>(`/api/highlights/${highlightId}`, {
+    method: "DELETE",
   }).then((result) => {
     clearGetRequestCache();
     return result;

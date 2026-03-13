@@ -2,6 +2,8 @@ export type ContentStatus = "pending" | "loading" | "ready" | "failed";
 export type VideoTypeFilter = "all" | "long" | "short";
 export type AiStatus = "cloud" | "local_only" | "offline";
 export type TranscriptRenderMode = "plain_text" | "markdown";
+export type HighlightSource = "transcript" | "summary";
+export type SearchSourceFilter = "all" | "transcript" | "summary";
 
 export interface Channel {
   id: string;
@@ -31,6 +33,7 @@ export interface WorkspaceBootstrap {
   channels: Channel[];
   selected_channel_id: string | null;
   snapshot: ChannelSnapshot | null;
+  search_status: SearchStatus;
 }
 
 export interface AiHealthResponse {
@@ -69,6 +72,38 @@ export interface CleanTranscriptResponse {
   timed_out: boolean;
 }
 
+export interface Highlight {
+  id: number;
+  video_id: string;
+  source: HighlightSource;
+  text: string;
+  prefix_context: string;
+  suffix_context: string;
+  created_at: string;
+}
+
+export interface CreateHighlightRequest {
+  source: HighlightSource;
+  text: string;
+  prefix_context: string;
+  suffix_context: string;
+}
+
+export interface HighlightVideoGroup {
+  video_id: string;
+  title: string;
+  thumbnail_url?: string | null;
+  published_at: string;
+  highlights: Highlight[];
+}
+
+export interface HighlightChannelGroup {
+  channel_id: string;
+  channel_name: string;
+  channel_thumbnail_url?: string | null;
+  videos: HighlightVideoGroup[];
+}
+
 export interface Summary {
   video_id: string;
   content: string;
@@ -90,4 +125,39 @@ export interface VideoInfo {
   duration_iso8601?: string | null;
   duration_seconds?: number | null;
   view_count?: number | null;
+}
+
+export interface SearchMatch {
+  source: Exclude<SearchSourceFilter, "all">;
+  section_title?: string | null;
+  snippet: string;
+  score: number;
+}
+
+export interface SearchResult {
+  video_id: string;
+  channel_id: string;
+  channel_name: string;
+  video_title: string;
+  published_at: string;
+  matches: SearchMatch[];
+}
+
+export interface SearchResponse {
+  query: string;
+  source: SearchSourceFilter;
+  results: SearchResult[];
+}
+
+export interface SearchStatus {
+  available: boolean;
+  model: string;
+  dimensions: number;
+  pending: number;
+  indexing: number;
+  ready: number;
+  failed: number;
+  total_sources: number;
+  vector_index_ready: boolean;
+  retrieval_mode: "hybrid_exact" | "hybrid_ann" | "fts_only";
 }
