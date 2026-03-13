@@ -66,6 +66,16 @@ resource "google_cloud_run_v2_service" "backend" {
       }
 
       env {
+        name  = "OLLAMA_FALLBACK_MODEL"
+        value = var.ollama_fallback_model
+      }
+
+      env {
+        name  = "OLLAMA_EMBEDDING_MODEL"
+        value = var.ollama_embedding_model
+      }
+
+      env {
         name  = "SUMMARIZE_PATH"
         value = "/usr/local/bin/summarize"
       }

@@ -48,3 +48,13 @@ variable "summary_evaluator_model" {
   type        = string
   description = "Summary evaluator model"
 }
+
+variable "ollama_fallback_model" {
+  type        = string
+  description = "Ollama fallback model"
+}
+
+variable "ollama_embedding_model" {
+  type        = string
+  description = "Ollama embedding model"
+}
