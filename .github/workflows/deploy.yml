@@ -52,6 +52,7 @@ jobs:
           service: ${{ env.BACKEND_SERVICE }}
           region: ${{ env.REGION }}
           image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_ID }}/backend:${{ env.IMAGE_TAG }}
+          flags: "--service-account=dastill-backend-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
 
       - name: Build and Push Docs Image
         run: |
@@ -68,7 +69,7 @@ jobs:
           service: ${{ env.DOCS_SERVICE }}
           region: ${{ env.REGION }}
           image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_ID }}/docs:${{ env.IMAGE_TAG }}
-          flags: "--allow-unauthenticated"
+          flags: "--allow-unauthenticated --service-account=dastill-docs-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
 
       - name: Build and Push Frontend Image
         run: |
@@ -88,5 +89,6 @@ jobs:
           service: ${{ env.FRONTEND_SERVICE }}
           region: ${{ env.REGION }}
           image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_ID }}/frontend:${{ env.IMAGE_TAG }}
+          flags: "--service-account=dastill-frontend-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
           env_vars: |
             PUBLIC_DOCS_URL=${{ steps.deploy-docs.outputs.url }}
