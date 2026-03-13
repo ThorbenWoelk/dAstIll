@@ -192,8 +192,21 @@ pub async fn search(
 pub async fn search_status(
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    Ok(Json(load_search_status_payload_cached(&state).await?))
+}
+
+pub(crate) async fn load_search_status_payload_cached(
+    state: &AppState,
+) -> Result<SearchStatusPayload, (StatusCode, String)> {
+    if let Some(payload) = state.read_cache.get_search_status().await {
+        tracing::debug!("search status cache hit");
+        return Ok(payload);
+    }
+
     let conn = state.db.connect();
-    Ok(Json(load_search_status_payload(&state, &conn).await?))
+    let payload = load_search_status_payload(state, &conn).await?;
+    state.read_cache.set_search_status(payload.clone()).await;
+    Ok(payload)
 }
 
 pub(crate) async fn load_search_status_payload(

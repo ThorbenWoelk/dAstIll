@@ -11,6 +11,7 @@ use std::collections::HashSet;
 use crate::db;
 use crate::handlers::query::{VideoListParams, WorkspaceBootstrapParams};
 use crate::models::{AddChannelRequest, Channel, UpdateChannelRequest};
+use crate::read_cache::{ChannelSnapshotCacheKey, VideoListCacheKey, WorkspaceBootstrapCacheKey};
 use crate::state::AppState;
 
 use super::{map_db_err, map_internal_err, require_channel};
@@ -48,8 +49,14 @@ fn build_snapshot_payload(
 pub async fn list_channels(
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    if let Some(channels) = state.read_cache.get_channels().await {
+        tracing::debug!("channels cache hit");
+        return Ok(Json(channels));
+    }
+
     let conn = state.db.connect();
     let channels = db::list_channels(&conn).await.map_err(map_db_err)?;
+    state.read_cache.set_channels(channels.clone()).await;
     Ok(Json(channels))
 }
 
@@ -58,6 +65,21 @@ pub async fn workspace_bootstrap(
     Query(params): Query<WorkspaceBootstrapParams>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let video_params = params.video_params();
+    let cache_key = WorkspaceBootstrapCacheKey {
+        selected_channel_id: params.selected_channel_id.clone(),
+        video_list: VideoListCacheKey::new(
+            video_params.limit_or_default(),
+            video_params.offset_or_default(),
+            video_params.is_short_filter(),
+            video_params.acknowledged_filter(),
+            video_params.queue_filter(),
+        ),
+    };
+    if let Some(payload) = state.read_cache.get_workspace_bootstrap(&cache_key).await {
+        tracing::debug!("workspace bootstrap cache hit");
+        return Ok(Json(payload));
+    }
+
     let ai_available = state.summarizer.is_available().await;
     let ai_status = state
         .summarizer
@@ -74,16 +96,22 @@ pub async fn workspace_bootstrap(
     )
     .await
     .map_err(map_db_err)?;
-    let search_status = super::search::load_search_status_payload(&state, &conn).await?;
+    let search_status = super::search::load_search_status_payload_cached(&state).await?;
 
-    Ok(Json(crate::models::WorkspaceBootstrapPayload {
+    let payload = crate::models::WorkspaceBootstrapPayload {
         ai_available,
         ai_status,
         channels: bootstrap.channels,
         selected_channel_id: bootstrap.selected_channel_id,
         snapshot: bootstrap.snapshot.map(build_snapshot_payload),
         search_status,
-    }))
+    };
+    state
+        .read_cache
+        .set_workspace_bootstrap(cache_key, payload.clone())
+        .await;
+
+    Ok(Json(payload))
 }
 
 pub async fn add_channel(
@@ -133,9 +161,11 @@ pub async fn add_channel(
             .await
             .map_err(map_db_err)?;
     }
+    state.read_cache.clear().await;
     tracing::info!(channel_id = %channel.id, channel_name = %channel.name, "channel subscribed");
 
     let db_pool = state.db.clone();
+    let read_cache = state.read_cache.clone();
     let channel_id_clone = channel_id.clone();
     tokio::spawn(async move {
         match youtube.fetch_videos(&channel_id_clone).await {
@@ -144,6 +174,7 @@ pub async fn add_channel(
                 let inserted_count = crate::db::bulk_insert_videos(&conn, videos)
                     .await
                     .unwrap_or(0);
+                read_cache.clear().await;
                 tracing::info!(
                     channel_id = %channel_id_clone,
                     inserted_count,
@@ -174,6 +205,11 @@ pub async fn get_channel_sync_depth(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    if let Some(payload) = state.read_cache.get_channel_sync_depth(&id).await {
+        tracing::debug!(channel_id = %id, "channel sync depth cache hit");
+        return Ok(Json(payload));
+    }
+
     let channel = require_channel(&state, &id).await?;
     let conn = state.db.connect();
 
@@ -181,7 +217,13 @@ pub async fn get_channel_sync_depth(
         .await
         .map_err(map_db_err)?;
 
-    Ok(Json(build_sync_depth_payload(&channel, derived)))
+    let payload = build_sync_depth_payload(&channel, derived);
+    state
+        .read_cache
+        .set_channel_sync_depth(id.clone(), payload.clone())
+        .await;
+
+    Ok(Json(payload))
 }
 
 pub async fn get_channel_snapshot(
@@ -189,6 +231,21 @@ pub async fn get_channel_snapshot(
     Path(id): Path<String>,
     Query(params): Query<VideoListParams>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let cache_key = ChannelSnapshotCacheKey {
+        channel_id: id.clone(),
+        video_list: VideoListCacheKey::new(
+            params.limit_or_default(),
+            params.offset_or_default(),
+            params.is_short_filter(),
+            params.acknowledged_filter(),
+            params.queue_filter(),
+        ),
+    };
+    if let Some(payload) = state.read_cache.get_channel_snapshot(&cache_key).await {
+        tracing::debug!(channel_id = %id, "channel snapshot cache hit");
+        return Ok(Json(payload));
+    }
+
     let conn = state.db.connect();
     let snapshot = db::load_channel_snapshot_data(
         &conn,
@@ -203,7 +260,14 @@ pub async fn get_channel_snapshot(
     .map_err(map_db_err)?;
 
     match snapshot {
-        Some(snapshot) => Ok(Json(build_snapshot_payload(snapshot))),
+        Some(snapshot) => {
+            let payload = build_snapshot_payload(snapshot);
+            state
+                .read_cache
+                .set_channel_snapshot(cache_key, payload.clone())
+                .await;
+            Ok(Json(payload))
+        }
         None => Err((StatusCode::NOT_FOUND, "Channel not found".to_string())),
     }
 }
@@ -216,6 +280,7 @@ pub async fn delete_channel(
     let deleted = db::delete_channel(&conn, &id).await.map_err(map_db_err)?;
 
     if deleted {
+        state.read_cache.clear().await;
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err((StatusCode::NOT_FOUND, "Channel not found".to_string()))
@@ -242,6 +307,7 @@ pub async fn update_channel(
             .await
             .map_err(map_db_err)?;
     }
+    state.read_cache.clear().await;
 
     Ok(Json(channel))
 }
@@ -320,6 +386,7 @@ pub async fn refresh_channel_videos(
         inserted_count = count,
         "channel refresh inserted new videos"
     );
+    state.read_cache.clear().await;
 
     Ok(Json(serde_json::json!({ "videos_added": count })))
 }
@@ -364,6 +431,7 @@ pub async fn backfill_channel_videos(
         exhausted,
         "channel history backfill complete"
     );
+    state.read_cache.clear().await;
 
     Ok(Json(serde_json::json!({
         "videos_added": added_count,
@@ -402,6 +470,7 @@ mod tests {
         let cooldown = Arc::new(CloudCooldown::cloud());
         AppState {
             db,
+            read_cache: Arc::new(crate::read_cache::ReadCache::default()),
             search_auto_create_vector_index: false,
             search_projection_lock: Arc::new(RwLock::new(())),
             youtube: Arc::new(YouTubeService::with_client(Client::new())),

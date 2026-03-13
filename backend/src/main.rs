@@ -11,6 +11,7 @@ use tower_http::trace::TraceLayer;
 use dastill::config::{OllamaRuntimeConfig, SearchRuntimeConfig};
 use dastill::db::init_db;
 use dastill::handlers::{channels, content, highlights, search, videos};
+use dastill::read_cache::ReadCache;
 use dastill::services::{
     Cooldown, SearchService, SummarizerService, SummaryEvaluatorService, TranscriptService,
     YouTubeService, build_http_client,
@@ -113,6 +114,7 @@ async fn main() -> anyhow::Result<()> {
 
     let state = AppState {
         db: pool,
+        read_cache: Arc::new(ReadCache::default()),
         search_auto_create_vector_index: search_runtime.auto_create_vector_index,
         search_projection_lock: Arc::new(tokio::sync::RwLock::new(())),
         youtube,

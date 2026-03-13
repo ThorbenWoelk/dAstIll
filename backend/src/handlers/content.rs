@@ -161,6 +161,7 @@ pub async fn regenerate_summary(
             .await
             .map_err(map_db_err)?;
     }
+    state.read_cache.clear().await;
 
     let summary = ensure_summary(&state, &video_id).await?;
     Ok(Json(summary))
@@ -240,6 +241,7 @@ pub(crate) async fn ensure_transcript(
     )
     .await
     .map_err(map_db_err)?;
+    state.read_cache.clear().await;
     tracing::info!(video_id = %video_id, "transcript stored - status set to ready");
 
     Ok(transcript)
@@ -373,6 +375,7 @@ pub(crate) async fn ensure_summary(
     )
     .await
     .map_err(map_db_err)?;
+    state.read_cache.clear().await;
     tracing::info!(video_id = %video_id, "summary stored - status set to ready");
 
     Ok(summary)
@@ -404,6 +407,7 @@ async fn save_manual_transcript_content(
     )
     .await
     .map_err(map_db_err)?;
+    state.read_cache.clear().await;
     Ok(transcript)
 }
 
@@ -425,6 +429,7 @@ async fn save_manual_summary_content(
     )
     .await
     .map_err(map_db_err)?;
+    state.read_cache.clear().await;
     Ok(summary)
 }
 
