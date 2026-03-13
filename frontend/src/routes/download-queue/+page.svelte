@@ -33,6 +33,7 @@
   } from "$lib/channel-workspace";
   import defaultChannelIcon from "$lib/assets/channel-default.svg";
   import ChannelCard from "$lib/components/ChannelCard.svelte";
+  import { DOCS_URL } from "$lib/app-config";
   import Footer from "$lib/components/Footer.svelte";
   import ConfirmationModal from "$lib/components/ConfirmationModal.svelte";
   import type {
@@ -795,6 +796,14 @@
         class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 transition-all hover:opacity-100"
       >
         Highlights
+      </a>
+      <a
+        href={DOCS_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 transition-all hover:opacity-100"
+      >
+        Docs
       </a>
     </nav>
   </header>

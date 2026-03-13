@@ -3,6 +3,7 @@
   import { isAiAvailable, listHighlights } from "$lib/api";
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
   import AiStatusIndicator from "$lib/components/AiStatusIndicator.svelte";
+  import { DOCS_URL } from "$lib/app-config";
   import Footer from "$lib/components/Footer.svelte";
   import type {
     AiStatus,
@@ -139,6 +140,14 @@
         class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--foreground)] bg-[var(--muted)] transition-all"
       >
         Highlights
+      </a>
+      <a
+        href={DOCS_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        class="rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 transition-all hover:opacity-100"
+      >
+        Docs
       </a>
     </nav>
   </header>
