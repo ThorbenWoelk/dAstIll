@@ -40,7 +40,12 @@ To run the application locally, you will need:
    ```
 
 2. **Configure Environment Variables**:
-   Create a `.env` file in the root directory (or in the `backend/` directory) with your database credentials:
+   Copy the backend template and fill in your local credentials:
+   ```bash
+   cp backend/.env.example backend/.env
+   ```
+
+   The backend reads `backend/.env` during local startup. A typical local config looks like this:
    ```env
    DB_URL=libsql://your-turso-db.turso.io
    DB_PASS=your-turso-auth-token
@@ -51,15 +56,31 @@ To run the application locally, you will need:
    SUMMARY_EVALUATOR_MODEL=glm-5:cloud
    SEARCH_SEMANTIC_ENABLED=true
    OLLAMA_EMBEDDING_MODEL=embeddinggemma
+   SEARCH_AUTO_CREATE_VECTOR_INDEX=false
+   SUMMARIZE_PATH=/opt/homebrew/bin/summarize
    ```
 
-   `SEARCH_SEMANTIC_ENABLED` overrides the default behavior. Local debug runs (`cargo run`, `./start_app.sh`) default to semantic search on, while release / production builds default to plain FTS unless you explicitly set `SEARCH_SEMANTIC_ENABLED=true`.
+3. **Understand Search Defaults**:
+   `SEARCH_SEMANTIC_ENABLED` overrides the runtime default behavior:
 
-3. **Start the Application**:
+   - Local debug runs (`cargo run`, `./start_app.sh`) default to semantic search on.
+   - Release / production builds default to plain FTS mode unless you explicitly set `SEARCH_SEMANTIC_ENABLED=true`.
+   - Setting `SEARCH_SEMANTIC_ENABLED=false` disables embeddings even locally.
+
+   For local hybrid semantic search, keep `OLLAMA_EMBEDDING_MODEL` configured and either leave `SEARCH_SEMANTIC_ENABLED` unset or set it to `true`.
+
+4. **Start the Application**:
    You can start both the frontend and backend simultaneously using the provided startup script:
    ```bash
    ./start_app.sh
    ```
+
+   To start the app in the background and return your shell immediately:
+   ```bash
+   ./start_app.sh --detach
+   ```
+
+   Detached mode starts a background supervisor, performs the usual health checks in the background, and writes its startup output to `start_app.log`. The service logs remain in `backend.log` and `frontend.log`.
 
 ## License
 
