@@ -1,11 +1,16 @@
 use std::collections::HashSet;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tokio::time::sleep;
 
 use crate::db;
 use crate::handlers::content;
 use crate::models::{AiStatus, ContentStatus, Video};
+use crate::services::search::{
+    SEARCH_SUMMARY_TARGET_WORDS, SEARCH_TRANSCRIPT_OVERLAP_WORDS, SEARCH_TRANSCRIPT_TARGET_WORDS,
+    SearchIndexChunk, SearchSourceKind, build_embedding_input, chunk_summary_content,
+    chunk_transcript_content, hash_search_content, vector_to_json,
+};
 use crate::state::AppState;
 
 const QUEUE_SCAN_LIMIT: usize = 4;
@@ -15,6 +20,13 @@ const CHANNEL_GAP_SCAN_INTERVAL: Duration = Duration::from_secs(10 * 60);
 const CHANNEL_GAP_SCAN_LIMIT_PER_CHANNEL: usize = 8;
 const SUMMARY_EVAL_SCAN_LIMIT: usize = 4;
 const SUMMARY_EVAL_POLL_INTERVAL: Duration = Duration::from_secs(7);
+const SEARCH_BACKFILL_SCAN_LIMIT: usize = 64;
+const SEARCH_INDEX_SCAN_LIMIT: usize = 8;
+const SEARCH_RECONCILE_SCAN_LIMIT: usize = 64;
+const SEARCH_PRUNE_SCAN_LIMIT: usize = 256;
+const SEARCH_INDEX_POLL_INTERVAL: Duration = Duration::from_secs(3);
+const SEARCH_RECONCILE_INTERVAL: Duration = Duration::from_secs(60);
+const SEARCH_VECTOR_INDEX_RETRY_INTERVAL: Duration = Duration::from_secs(5 * 60);
 const MAX_DISTILLATION_RETRIES: u8 = 3;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -52,6 +64,557 @@ fn should_run_summary_evaluation(evaluator_status: AiStatus, evaluator_model: &s
         AiStatus::Cloud => true,
         AiStatus::LocalOnly => !crate::services::is_cloud_model(evaluator_model),
         AiStatus::Offline => false,
+    }
+}
+
+fn chunk_material(material: &db::SearchMaterial) -> Vec<crate::services::search::ChunkDraft> {
+    match material.source_kind {
+        SearchSourceKind::Transcript => chunk_transcript_content(
+            &material.content,
+            SEARCH_TRANSCRIPT_TARGET_WORDS,
+            SEARCH_TRANSCRIPT_OVERLAP_WORDS,
+        ),
+        SearchSourceKind::Summary => {
+            chunk_summary_content(&material.content, SEARCH_SUMMARY_TARGET_WORDS)
+        }
+    }
+}
+
+async fn backfill_search_sources(state: &AppState) {
+    let _projection_guard = state.search_projection_lock.read().await;
+    let materials = {
+        let conn = state.db.connect();
+        db::list_search_backfill_materials(&conn, SEARCH_BACKFILL_SCAN_LIMIT)
+            .await
+            .map_err(|err| err.to_string())
+    };
+
+    let materials = match materials {
+        Ok(materials) => materials,
+        Err(err) => {
+            tracing::error!(error = %err, "search backfill failed to load existing materials");
+            return;
+        }
+    };
+
+    let discovered_count = materials.len();
+    let mut queued = 0usize;
+    let mut failed = 0usize;
+    for material in materials {
+        let content_hash = hash_search_content(&material.content);
+        let conn = state.db.connect();
+        if let Err(err) = db::mark_search_source_pending(
+            &conn,
+            &material.video_id,
+            material.source_kind,
+            &content_hash,
+        )
+        .await
+        {
+            tracing::error!(
+                video_id = %material.video_id,
+                source_kind = material.source_kind.as_str(),
+                error = %err,
+                "search backfill failed to queue source"
+            );
+            failed += 1;
+            continue;
+        }
+        queued += 1;
+    }
+
+    if discovered_count > 0 || failed > 0 {
+        tracing::info!(
+            batch_limit = SEARCH_BACKFILL_SCAN_LIMIT,
+            discovered_count,
+            queued_count = queued,
+            failed_count = failed,
+            "search backfill round complete"
+        );
+    }
+}
+
+async fn reconcile_search_sources(state: &AppState) {
+    let _projection_guard = state.search_projection_lock.read().await;
+    let materials = {
+        let conn = state.db.connect();
+        db::list_search_reconciliation_materials(&conn, SEARCH_RECONCILE_SCAN_LIMIT)
+            .await
+            .map_err(|err| err.to_string())
+    };
+
+    let materials = match materials {
+        Ok(materials) => materials,
+        Err(err) => {
+            tracing::error!(error = %err, "search reconcile failed to load materials");
+            return;
+        }
+    };
+
+    let inspected_count = materials.len();
+    let mut refreshed_count = 0usize;
+    let mut failed_count = 0usize;
+    for material in materials {
+        let content_hash = hash_search_content(&material.content);
+        let conn = state.db.connect();
+        let state_row =
+            db::get_search_source_state(&conn, &material.video_id, material.source_kind).await;
+        let state_row = match state_row {
+            Ok(value) => value,
+            Err(err) => {
+                tracing::error!(
+                    video_id = %material.video_id,
+                    source_kind = material.source_kind.as_str(),
+                    error = %err,
+                    "search reconcile failed to inspect source state"
+                );
+                failed_count += 1;
+                continue;
+            }
+        };
+
+        let Some(state_row) = state_row else {
+            continue;
+        };
+
+        let needs_refresh = state_row.content_hash != content_hash
+            || state_row.index_status == "failed"
+            || (state.search.semantic_enabled()
+                && state_row.embedding_model.as_deref() != state.search.model());
+
+        if needs_refresh {
+            if let Err(err) = db::mark_search_source_pending(
+                &conn,
+                &material.video_id,
+                material.source_kind,
+                &content_hash,
+            )
+            .await
+            {
+                tracing::error!(
+                    video_id = %material.video_id,
+                    source_kind = material.source_kind.as_str(),
+                    error = %err,
+                    "search reconcile failed to mark source pending"
+                );
+                failed_count += 1;
+            } else {
+                refreshed_count += 1;
+            }
+        }
+    }
+
+    if refreshed_count > 0 || failed_count > 0 {
+        tracing::info!(
+            inspected_count,
+            refreshed_count,
+            failed_count,
+            "search reconcile round complete"
+        );
+    }
+}
+
+async fn process_pending_search_sources(state: &AppState) {
+    let semantic_enabled = state.search.semantic_enabled();
+    if semantic_enabled && !state.search.is_available().await {
+        tracing::warn!(
+            "search index worker skipped - Ollama embedding model not found in /api/tags"
+        );
+        return;
+    }
+    let _projection_guard = state.search_projection_lock.read().await;
+
+    let pending_sources = {
+        let conn = state.db.connect();
+        db::list_pending_search_sources(&conn, SEARCH_INDEX_SCAN_LIMIT)
+            .await
+            .map_err(|err| err.to_string())
+    };
+
+    let pending_sources = match pending_sources {
+        Ok(pending_sources) => pending_sources,
+        Err(err) => {
+            tracing::error!(error = %err, "search index worker failed to load pending sources");
+            return;
+        }
+    };
+
+    let discovered_count = pending_sources.len();
+    let mut claimed_count = 0usize;
+    let mut indexed_count = 0usize;
+    let mut cleared_count = 0usize;
+    let mut requeued_count = 0usize;
+    let mut embedded_chunk_count = 0usize;
+    let mut failed_count = 0usize;
+
+    // Phase 1: Claim sources and load materials, collecting all embedding work.
+    struct PreparedSource {
+        video_id: String,
+        source_kind: SearchSourceKind,
+        content_hash: String,
+        drafts: Vec<crate::services::search::ChunkDraft>,
+        embedding_inputs: Vec<String>,
+    }
+
+    let mut prepared = Vec::new();
+    for source in pending_sources {
+        let conn = state.db.connect();
+        let claimed = match db::mark_search_source_indexing(
+            &conn,
+            &source.video_id,
+            source.source_kind,
+            &source.content_hash,
+        )
+        .await
+        {
+            Ok(claimed) => claimed,
+            Err(err) => {
+                tracing::error!(
+                    video_id = %source.video_id,
+                    source_kind = source.source_kind.as_str(),
+                    error = %err,
+                    "search index worker failed to claim source"
+                );
+                failed_count += 1;
+                continue;
+            }
+        };
+
+        if !claimed {
+            continue;
+        }
+        claimed_count += 1;
+
+        let material =
+            match db::load_search_material(&conn, &source.video_id, source.source_kind).await {
+                Ok(material) => material,
+                Err(err) => {
+                    let _ = db::mark_search_source_failed(
+                        &conn,
+                        &source.video_id,
+                        source.source_kind,
+                        &source.content_hash,
+                        &err.to_string(),
+                    )
+                    .await;
+                    failed_count += 1;
+                    continue;
+                }
+            };
+
+        let Some(material) = material else {
+            let _ = db::clear_search_source(&conn, &source.video_id, source.source_kind).await;
+            cleared_count += 1;
+            continue;
+        };
+
+        let current_hash = hash_search_content(&material.content);
+        if current_hash != source.content_hash {
+            let _ = db::mark_search_source_pending(
+                &conn,
+                &source.video_id,
+                source.source_kind,
+                &current_hash,
+            )
+            .await;
+            requeued_count += 1;
+            continue;
+        }
+
+        let drafts = chunk_material(&material);
+        if drafts.is_empty() {
+            let _ = db::clear_search_source(&conn, &source.video_id, source.source_kind).await;
+            cleared_count += 1;
+            continue;
+        }
+
+        let embedding_inputs = if semantic_enabled {
+            drafts
+                .iter()
+                .map(|draft| {
+                    build_embedding_input(
+                        &material.video_title,
+                        &material.channel_name,
+                        draft.source_kind,
+                        draft.section_title.as_deref(),
+                        &draft.text,
+                    )
+                })
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+
+        prepared.push(PreparedSource {
+            video_id: source.video_id,
+            source_kind: source.source_kind,
+            content_hash: source.content_hash,
+            drafts,
+            embedding_inputs,
+        });
+    }
+
+    if prepared.is_empty() {
+        if discovered_count > 0 || failed_count > 0 {
+            tracing::info!(
+                batch_limit = SEARCH_INDEX_SCAN_LIMIT,
+                semantic_enabled,
+                embedding_model = %state.search.model_label(),
+                discovered_count,
+                claimed_count,
+                indexed_count,
+                cleared_count,
+                requeued_count,
+                embedded_chunk_count,
+                failed_count,
+                "search indexing round complete"
+            );
+        }
+        return;
+    }
+
+    if !semantic_enabled {
+        for source in prepared {
+            let chunk_count = source.drafts.len();
+            let chunks = source
+                .drafts
+                .into_iter()
+                .enumerate()
+                .map(|(index, draft)| SearchIndexChunk {
+                    chunk_index: index,
+                    section_title: draft.section_title,
+                    chunk_text: draft.text,
+                    embedding_json: None,
+                    token_count: draft.word_count,
+                })
+                .collect::<Vec<_>>();
+
+            let write_start = std::time::Instant::now();
+            let conn = state.db.connect();
+            match db::replace_search_chunks(
+                &conn,
+                &source.video_id,
+                source.source_kind,
+                &source.content_hash,
+                None,
+                &chunks,
+            )
+            .await
+            {
+                Ok(stored) => {
+                    if stored {
+                        indexed_count += 1;
+                    }
+                }
+                Err(err) => {
+                    tracing::error!(
+                        video_id = %source.video_id,
+                        source_kind = source.source_kind.as_str(),
+                        chunk_count,
+                        elapsed_ms = write_start.elapsed().as_millis() as u64,
+                        error = %err,
+                        "search index: FTS-only source write failed"
+                    );
+                    let _ = db::mark_search_source_failed(
+                        &conn,
+                        &source.video_id,
+                        source.source_kind,
+                        &source.content_hash,
+                        &err.to_string(),
+                    )
+                    .await;
+                    failed_count += 1;
+                }
+            }
+        }
+
+        if discovered_count > 0 || failed_count > 0 {
+            tracing::info!(
+                batch_limit = SEARCH_INDEX_SCAN_LIMIT,
+                semantic_enabled,
+                embedding_model = %state.search.model_label(),
+                discovered_count,
+                claimed_count,
+                indexed_count,
+                cleared_count,
+                requeued_count,
+                embedded_chunk_count,
+                failed_count,
+                "search indexing round complete"
+            );
+        }
+        return;
+    }
+
+    // Phase 2: Single batched embed call for all chunks across all sources.
+    let all_inputs: Vec<String> = prepared
+        .iter()
+        .flat_map(|source| source.embedding_inputs.iter().cloned())
+        .collect();
+
+    let all_embeddings = match state.search.embed_texts(&all_inputs).await {
+        Ok(embeddings) => embeddings,
+        Err(err) => {
+            // Mark all claimed sources as failed.
+            for source in &prepared {
+                let conn = state.db.connect();
+                let _ = db::mark_search_source_failed(
+                    &conn,
+                    &source.video_id,
+                    source.source_kind,
+                    &source.content_hash,
+                    &err.to_string(),
+                )
+                .await;
+            }
+            tracing::error!(
+                error = %err,
+                sources = prepared.len(),
+                chunks = all_inputs.len(),
+                failed_count = failed_count + prepared.len(),
+                "search indexing embed batch failed"
+            );
+            return;
+        }
+    };
+    embedded_chunk_count = all_embeddings.len();
+
+    // Phase 3: Distribute embeddings back to sources and write to DB.
+    let mut embedding_offset = 0usize;
+    for source in prepared {
+        let chunk_count = source.drafts.len();
+        let source_embeddings = &all_embeddings[embedding_offset..embedding_offset + chunk_count];
+        embedding_offset += chunk_count;
+
+        let chunks = source
+            .drafts
+            .into_iter()
+            .zip(source_embeddings.iter())
+            .enumerate()
+            .map(|(index, (draft, embedding))| SearchIndexChunk {
+                chunk_index: index,
+                section_title: draft.section_title,
+                chunk_text: draft.text,
+                embedding_json: Some(vector_to_json(embedding)),
+                token_count: draft.word_count,
+            })
+            .collect::<Vec<_>>();
+
+        let write_start = std::time::Instant::now();
+        let conn = state.db.connect();
+        match db::replace_search_chunks(
+            &conn,
+            &source.video_id,
+            source.source_kind,
+            &source.content_hash,
+            state.search.model(),
+            &chunks,
+        )
+        .await
+        {
+            Ok(stored) => {
+                if stored {
+                    indexed_count += 1;
+                }
+            }
+            Err(err) => {
+                tracing::error!(
+                    video_id = %source.video_id,
+                    source_kind = source.source_kind.as_str(),
+                    chunk_count,
+                    elapsed_ms = write_start.elapsed().as_millis() as u64,
+                    error = %err,
+                    "search index: source write failed"
+                );
+                let _ = db::mark_search_source_failed(
+                    &conn,
+                    &source.video_id,
+                    source.source_kind,
+                    &source.content_hash,
+                    &err.to_string(),
+                )
+                .await;
+                failed_count += 1;
+            }
+        }
+    }
+
+    if discovered_count > 0 || failed_count > 0 {
+        tracing::info!(
+            batch_limit = SEARCH_INDEX_SCAN_LIMIT,
+            semantic_enabled,
+            embedding_model = %state.search.model_label(),
+            discovered_count,
+            claimed_count,
+            indexed_count,
+            cleared_count,
+            requeued_count,
+            embedded_chunk_count,
+            failed_count,
+            "search indexing round complete"
+        );
+    }
+}
+
+async fn prune_stale_search_rows(state: &AppState) {
+    let _projection_guard = state.search_projection_lock.read().await;
+    let conn = state.db.connect();
+    match db::prune_stale_search_rows(&conn, SEARCH_PRUNE_SCAN_LIMIT).await {
+        Ok(pruned_count) if pruned_count > 0 => {
+            tracing::info!(pruned_count, "search prune round complete");
+        }
+        Ok(_) => {}
+        Err(err) => {
+            tracing::error!(error = %err, "search prune failed");
+        }
+    }
+}
+
+async fn maybe_ensure_vector_index(state: &AppState, last_attempt: &mut Option<Instant>) {
+    if !state.search_auto_create_vector_index || !state.search.semantic_enabled() {
+        return;
+    }
+    let _projection_guard = state.search_projection_lock.read().await;
+
+    if last_attempt
+        .as_ref()
+        .is_some_and(|instant| instant.elapsed() < SEARCH_VECTOR_INDEX_RETRY_INTERVAL)
+    {
+        return;
+    }
+
+    let conn = state.db.connect();
+    let counts = match db::get_search_source_counts(&conn).await {
+        Ok(counts) => counts,
+        Err(err) => {
+            tracing::error!(error = %err, "search vector index check failed to load counts");
+            return;
+        }
+    };
+
+    if counts.ready == 0 || counts.pending > 0 || counts.indexing > 0 {
+        return;
+    }
+
+    match db::has_vector_index(&conn).await {
+        Ok(true) => return,
+        Ok(false) => {}
+        Err(err) => {
+            tracing::error!(error = %err, "search vector index check failed");
+            return;
+        }
+    }
+
+    *last_attempt = Some(Instant::now());
+    tracing::info!(
+        ready_sources = counts.ready,
+        "search vector index build starting"
+    );
+    match db::ensure_vector_index(&conn).await {
+        Ok(()) => tracing::info!("search vector index build complete"),
+        Err(err) => {
+            tracing::error!(error = %err, "search vector index build failed");
+        }
     }
 }
 
@@ -431,6 +994,48 @@ pub fn spawn_summary_evaluation_worker(state: AppState) {
             }
 
             sleep(SUMMARY_EVAL_POLL_INTERVAL).await;
+        }
+    });
+}
+
+pub fn spawn_search_index_worker(state: AppState) {
+    tokio::spawn(async move {
+        tracing::info!(
+            backfill_scan_limit = SEARCH_BACKFILL_SCAN_LIMIT,
+            index_scan_limit = SEARCH_INDEX_SCAN_LIMIT,
+            poll_interval_secs = SEARCH_INDEX_POLL_INTERVAL.as_secs(),
+            reconcile_interval_secs = SEARCH_RECONCILE_INTERVAL.as_secs(),
+            vector_index_retry_interval_secs = SEARCH_VECTOR_INDEX_RETRY_INTERVAL.as_secs(),
+            auto_create_vector_index = state.search_auto_create_vector_index,
+            semantic_enabled = state.search.semantic_enabled(),
+            model = %state.search.model_label(),
+            "search index worker started"
+        );
+
+        backfill_search_sources(&state).await;
+        process_pending_search_sources(&state).await;
+        reconcile_search_sources(&state).await;
+        prune_stale_search_rows(&state).await;
+        let mut last_vector_index_attempt = None;
+        maybe_ensure_vector_index(&state, &mut last_vector_index_attempt).await;
+        let mut ticks_since_reconcile = 0usize;
+
+        loop {
+            backfill_search_sources(&state).await;
+            process_pending_search_sources(&state).await;
+            prune_stale_search_rows(&state).await;
+            maybe_ensure_vector_index(&state, &mut last_vector_index_attempt).await;
+            ticks_since_reconcile += 1;
+
+            if ticks_since_reconcile * SEARCH_INDEX_POLL_INTERVAL.as_secs() as usize
+                >= SEARCH_RECONCILE_INTERVAL.as_secs() as usize
+            {
+                reconcile_search_sources(&state).await;
+                maybe_ensure_vector_index(&state, &mut last_vector_index_attempt).await;
+                ticks_since_reconcile = 0;
+            }
+
+            sleep(SEARCH_INDEX_POLL_INTERVAL).await;
         }
     });
 }

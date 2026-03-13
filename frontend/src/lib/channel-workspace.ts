@@ -11,7 +11,7 @@ export interface WorkspaceStorage {
 export interface WorkspaceStateSnapshot {
   selectedChannelId: string | null;
   selectedVideoId: string | null;
-  contentMode: "transcript" | "summary" | "info";
+  contentMode: "transcript" | "summary" | "highlights" | "info";
   videoTypeFilter: "all" | "long" | "short";
   hideShorts?: boolean;
   acknowledgedFilter: "all" | "unack" | "ack";
@@ -40,6 +40,7 @@ interface ChannelDragTransfer {
 const CONTENT_MODES = new Set<WorkspaceStateSnapshot["contentMode"]>([
   "transcript",
   "summary",
+  "highlights",
   "info",
 ]);
 const VIDEO_TYPE_FILTERS = new Set<WorkspaceStateSnapshot["videoTypeFilter"]>([

@@ -10,6 +10,7 @@ use crate::models::{
     CleanTranscriptResponse, ContentStatus, Summary, Transcript, TranscriptRenderMode,
     UpdateContentRequest,
 };
+use crate::services::search::{SearchSourceKind, hash_search_content};
 use crate::services::summarizer::{MAX_TRANSCRIPT_FORMAT_ATTEMPTS, SummarizerError};
 use crate::state::AppState;
 
@@ -231,6 +232,14 @@ pub(crate) async fn ensure_transcript(
     db::update_video_transcript_status(&conn, video_id, ContentStatus::Ready)
         .await
         .map_err(map_db_err)?;
+    sync_search_source(
+        &conn,
+        video_id,
+        SearchSourceKind::Transcript,
+        transcript_text(&transcript),
+    )
+    .await
+    .map_err(map_db_err)?;
     tracing::info!(video_id = %video_id, "transcript stored - status set to ready");
 
     Ok(transcript)
@@ -356,6 +365,14 @@ pub(crate) async fn ensure_summary(
     db::update_video_summary_status(&conn, video_id, ContentStatus::Ready)
         .await
         .map_err(map_db_err)?;
+    sync_search_source(
+        &conn,
+        video_id,
+        SearchSourceKind::Summary,
+        Some(summary.content.as_str()),
+    )
+    .await
+    .map_err(map_db_err)?;
     tracing::info!(video_id = %video_id, "summary stored - status set to ready");
 
     Ok(summary)
@@ -376,9 +393,18 @@ async fn save_manual_transcript_content(
     let effective_render_mode = render_mode
         .or(existing_render_mode)
         .unwrap_or(TranscriptRenderMode::PlainText);
-    db::save_manual_transcript(&conn, video_id, content, effective_render_mode)
+    let transcript = db::save_manual_transcript(&conn, video_id, content, effective_render_mode)
         .await
-        .map_err(map_db_err)
+        .map_err(map_db_err)?;
+    sync_search_source(
+        &conn,
+        video_id,
+        SearchSourceKind::Transcript,
+        transcript_text(&transcript),
+    )
+    .await
+    .map_err(map_db_err)?;
+    Ok(transcript)
 }
 
 async fn save_manual_summary_content(
@@ -388,9 +414,18 @@ async fn save_manual_summary_content(
 ) -> Result<Summary, (StatusCode, String)> {
     require_video(state, video_id).await?;
     let conn = state.db.connect();
-    db::save_manual_summary(&conn, video_id, content, Some("manual"))
+    let summary = db::save_manual_summary(&conn, video_id, content, Some("manual"))
         .await
-        .map_err(map_db_err)
+        .map_err(map_db_err)?;
+    sync_search_source(
+        &conn,
+        video_id,
+        SearchSourceKind::Summary,
+        Some(summary.content.as_str()),
+    )
+    .await
+    .map_err(map_db_err)?;
+    Ok(summary)
 }
 
 enum StatusField {
@@ -415,6 +450,28 @@ fn spawn_status_update(
             StatusField::Summary => db::update_video_summary_status(&conn, &video_id, status).await,
         };
     });
+}
+
+fn transcript_text(transcript: &Transcript) -> Option<&str> {
+    transcript
+        .raw_text
+        .as_deref()
+        .or(transcript.formatted_markdown.as_deref())
+}
+
+async fn sync_search_source(
+    conn: &libsql::Connection,
+    video_id: &str,
+    source_kind: SearchSourceKind,
+    content: Option<&str>,
+) -> Result<(), libsql::Error> {
+    match content.map(str::trim) {
+        Some(content) if !content.is_empty() => {
+            let content_hash = hash_search_content(content);
+            db::mark_search_source_pending(conn, video_id, source_kind, &content_hash).await
+        }
+        _ => db::clear_search_source(conn, video_id, source_kind).await,
+    }
 }
 
 fn map_transcript_err(

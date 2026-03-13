@@ -1,4 +1,6 @@
 <script lang="ts">
+  import HighlighterIcon from "$lib/components/icons/HighlighterIcon.svelte";
+
   export let options: string[] = [];
   export let value = "";
   export let onChange: (next: string) => void = () => {};
@@ -62,6 +64,8 @@
             y2="16"
           /></svg
         >
+      {:else if option === "highlights"}
+        <HighlighterIcon size={11} strokeWidth={2.5} />
       {:else}
         <svg
           width="11"
