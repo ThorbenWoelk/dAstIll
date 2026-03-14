@@ -4,7 +4,6 @@
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
   import AiStatusIndicator from "$lib/components/AiStatusIndicator.svelte";
   import { DOCS_URL } from "$lib/app-config";
-  import Footer from "$lib/components/Footer.svelte";
   import SectionNavigation from "$lib/components/SectionNavigation.svelte";
   import ThemeToggle from "$lib/components/ThemeToggle.svelte";
   import type {
@@ -319,5 +318,4 @@
     </section>
   </main>
 
-  <Footer showMobile />
 </div>

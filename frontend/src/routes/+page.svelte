@@ -25,11 +25,11 @@
     updateChannel,
   } from "$lib/api";
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
+  import { DOCS_URL } from "$lib/app-config";
   import FeatureGuide, {
     type TourStep,
   } from "$lib/components/FeatureGuide.svelte";
   import ConfirmationModal from "$lib/components/ConfirmationModal.svelte";
-  import Footer from "$lib/components/Footer.svelte";
   import WorkspaceChannelSidebar from "$lib/components/workspace/WorkspaceChannelSidebar.svelte";
   import WorkspaceContentPanel from "$lib/components/workspace/WorkspaceContentPanel.svelte";
   import WorkspaceHeader from "$lib/components/workspace/WorkspaceHeader.svelte";
@@ -188,10 +188,10 @@
       placement: "bottom",
     },
     {
-      selector: ".footer-link",
-      title: "Open Source",
-      body: "dAstIll is fully open source. Check out the GitHub repository, star the project, or contribute to improve it!",
-      placement: "top",
+      selector: "#guide-trigger",
+      title: "Documentation",
+      body: "Find detailed guides and references in the docs — everything you need to get the most out of dAstIll.",
+      placement: "bottom",
       prepare: () => {
         mobileTab = "channels";
       },
@@ -1783,9 +1783,9 @@
     open={guideOpen}
     step={guideStep}
     steps={tourSteps}
+    docsUrl={DOCS_URL}
     onClose={closeGuide}
     onStep={setGuideStep}
   />
 
-  <Footer showMobile />
 </div>
