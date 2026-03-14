@@ -208,7 +208,11 @@
 
   <div class="ml-auto flex shrink-0 items-center gap-2">
     <ThemeToggle />
-    <SectionNavigation currentSection="workspace" docsUrl={DOCS_URL} />
+    <SectionNavigation
+      currentSection="workspace"
+      docsUrl={DOCS_URL}
+      mobileMode="inline"
+    />
   </div>
 
   <div
