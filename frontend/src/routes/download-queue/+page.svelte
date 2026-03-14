@@ -34,7 +34,6 @@
   import defaultChannelIcon from "$lib/assets/channel-default.svg";
   import ChannelCard from "$lib/components/ChannelCard.svelte";
   import { DOCS_URL } from "$lib/app-config";
-  import Footer from "$lib/components/Footer.svelte";
   import ConfirmationModal from "$lib/components/ConfirmationModal.svelte";
   import SectionNavigation from "$lib/components/SectionNavigation.svelte";
   import ThemeToggle from "$lib/components/ThemeToggle.svelte";
@@ -1275,5 +1274,4 @@
     onStep={setGuideStep}
   />
 
-  <Footer showMobile />
 </div>

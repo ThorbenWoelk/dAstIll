@@ -403,7 +403,6 @@ textarea {
 /* Mobile tab bar + footer bottom padding */
 @media (max-width: 1023px) {
   .page-shell {
-    padding-top: calc(var(--mobile-footer-height) + env(safe-area-inset-top));
     padding-bottom: calc(var(--mobile-bottom-stack-height) + 2rem);
   }
 
