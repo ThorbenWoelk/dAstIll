@@ -54,7 +54,6 @@
     applySavedChannelOrder,
     loadWorkspaceState,
     markChannelRefreshed,
-    reorderChannels as reorderChannelList,
     restoreWorkspaceSnapshot,
     resolveInitialChannelSelection,
     saveWorkspaceState,
@@ -827,11 +826,9 @@
     }
   }
 
-  function reorderChannels(dragId: string, targetId: string) {
-    const reordered = reorderChannelList(channels, dragId, targetId);
-    if (!reordered) return;
-    channels = reordered.channels;
-    channelOrder = reordered.channelOrder;
+  function reorderChannels(nextOrder: string[]) {
+    channels = applySavedChannelOrder(channels, nextOrder);
+    channelOrder = nextOrder;
   }
   async function handleAddChannel(input: string) {
     if (!input.trim()) return false;
