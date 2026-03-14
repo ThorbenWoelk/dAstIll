@@ -784,7 +784,11 @@
 
     <div class="ml-auto flex shrink-0 items-center gap-2">
       <ThemeToggle />
-      <SectionNavigation currentSection="queue" docsUrl={DOCS_URL} />
+      <SectionNavigation
+        currentSection="queue"
+        docsUrl={DOCS_URL}
+        mobileMode="inline"
+      />
     </div>
   </header>
 
