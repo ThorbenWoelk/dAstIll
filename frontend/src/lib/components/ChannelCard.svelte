@@ -8,6 +8,7 @@
   export let dragging = false;
   export let dragOver = false;
   export let loading = false;
+  export let trailingSpace: "none" | "compact" | "wide" = "none";
   export let onSelect: () => void = () => {};
   export let onDragStart: (event: DragEvent) => void = () => {};
   export let onDragOver: (event: DragEvent) => void = () => {};
@@ -24,6 +25,7 @@
   let thumbnailUrl: string | null = null;
   let avatarUrl = defaultChannelIcon;
   let avatarLoadFailed = false;
+  let trailingSpaceClass = "";
 
   $: thumbnailUrl = normalizeThumbnail(channel.thumbnail_url);
   $: {
@@ -33,6 +35,12 @@
   }
   $: avatarUrl =
     !avatarLoadFailed && thumbnailUrl ? thumbnailUrl : defaultChannelIcon;
+  $: trailingSpaceClass =
+    trailingSpace === "wide"
+      ? "pr-28"
+      : trailingSpace === "compact"
+        ? "pr-12"
+        : "";
 
   function handleAvatarError() {
     avatarLoadFailed = true;
@@ -46,7 +54,7 @@
   ondragover={onDragOver}
   ondrop={onDrop}
   ondragend={onDragEnd}
-  class={`group relative flex w-full min-w-0 items-center gap-2.5 rounded-[var(--radius-sm)] px-2 py-2 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${
+  class={`group relative flex w-full min-w-0 items-center gap-2.5 rounded-[var(--radius-sm)] px-2 py-2 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${trailingSpaceClass} ${
     active ? "bg-[var(--surface)]" : "hover:bg-[var(--surface)]/60"
   } ${dragging || loading ? "opacity-40" : ""} ${dragOver ? "ring-2 ring-[var(--accent)]/30" : ""} ${loading ? "animate-pulse" : ""}`}
   onclick={onSelect}
