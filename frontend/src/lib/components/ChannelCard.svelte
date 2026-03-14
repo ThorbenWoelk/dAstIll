@@ -81,6 +81,42 @@
       {channel.handle ?? channel.id}
     </p>
   </div>
+  {#if draggableEnabled && !showDelete}
+    <div
+      class="shrink-0 text-[var(--soft-foreground)] opacity-20 lg:hidden"
+      aria-hidden="true"
+    >
+      <svg
+        width="12"
+        height="12"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <circle cx="9" cy="5" r="1" fill="currentColor" stroke="none"></circle>
+        <circle cx="9" cy="12" r="1" fill="currentColor" stroke="none"></circle>
+        <circle cx="9" cy="19" r="1" fill="currentColor" stroke="none"></circle>
+        <circle cx="15" cy="5" r="1" fill="currentColor" stroke="none"></circle>
+        <circle
+          cx="15"
+          cy="12"
+          r="1"
+          fill="currentColor"
+          stroke="none"
+        ></circle>
+        <circle
+          cx="15"
+          cy="19"
+          r="1"
+          fill="currentColor"
+          stroke="none"
+        ></circle>
+      </svg>
+    </div>
+  {/if}
   {#if !loading}
     <div
       role="button"
