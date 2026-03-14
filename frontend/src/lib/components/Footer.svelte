@@ -32,13 +32,13 @@
 <style>
   .site-footer {
     position: fixed;
-    bottom: 0;
+    top: 0;
     left: 0;
     right: 0;
     z-index: 70;
-    border-top: 1px solid var(--border-soft);
+    border-bottom: 1px solid var(--border-soft);
     background: var(--surface-strong);
-    box-shadow: 0 -12px 30px var(--shadow-soft);
+    box-shadow: 0 12px 30px var(--shadow-soft);
   }
 
   .footer-inner {
@@ -94,11 +94,11 @@
 
     .site-footer.mobile-visible {
       display: block;
-      bottom: calc(
-        var(--mobile-bottom-nav-height) + var(--mobile-viewport-offset-bottom)
-      );
+      top: 0;
+      padding-top: env(safe-area-inset-top);
       border-top: none;
       border-bottom: 1px solid var(--border-soft);
+      box-shadow: 0 12px 30px var(--shadow-soft);
       background: var(--surface-strong);
     }
 
