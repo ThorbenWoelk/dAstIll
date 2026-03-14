@@ -39,12 +39,16 @@
   --space-md: 16px;
   --space-lg: 24px;
   --space-xl: 32px;
-  --mobile-tab-bar-height: calc(3.5rem + env(safe-area-inset-top));
+  --mobile-tab-bar-height: calc(3.5rem + env(safe-area-inset-bottom));
   --mobile-bottom-nav-height: 0px;
+  --mobile-bottom-overlay-height: 0px;
   --mobile-footer-height: 2rem;
   --mobile-viewport-offset-bottom: 0px;
-  --mobile-bottom-stack-height: calc(
+  --mobile-bottom-fixed-height: calc(
     var(--mobile-bottom-nav-height) + var(--mobile-viewport-offset-bottom)
+  );
+  --mobile-bottom-stack-height: calc(
+    var(--mobile-bottom-fixed-height) + var(--mobile-bottom-overlay-height)
   );
 }
 
@@ -154,17 +158,13 @@ h4,
 
 .page-shell--with-mobile-nav {
   --mobile-bottom-nav-height: 0px;
+  --mobile-bottom-overlay-height: 0px;
 }
 
 @media (max-width: 1023px) {
   .page-shell--with-mobile-nav {
-    padding-top: var(--mobile-tab-bar-height);
-  }
-}
-
-@media (max-width: 1023px) {
-  .page-shell--with-mobile-nav {
-    padding-top: calc(var(--mobile-footer-height) + env(safe-area-inset-top));
+    --mobile-bottom-nav-height: var(--mobile-tab-bar-height);
+    --mobile-bottom-overlay-height: 0px;
   }
 }
 
@@ -425,6 +425,10 @@ textarea {
     padding-bottom: calc(var(--mobile-bottom-stack-height) + 2rem);
   }
 
+  .mobile-bottom-nav-offset {
+    bottom: calc(var(--mobile-bottom-fixed-height) + 1.5rem);
+  }
+
   .mobile-bottom-stack-offset {
     bottom: calc(var(--mobile-bottom-stack-height) + 1rem);
   }
@@ -438,18 +442,18 @@ textarea {
 @media (max-width: 1023px) {
   .mobile-tab-bar {
     position: fixed;
-    top: 0;
+    bottom: 0;
     left: 0;
     right: 0;
     z-index: 60;
     display: flex;
     justify-content: space-around;
-    align-items: flex-end;
+    align-items: center;
     height: var(--mobile-tab-bar-height);
-    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
     background: var(--surface-strong);
-    border-bottom: 1px solid var(--border-soft);
-    box-shadow: 0 12px 30px var(--shadow-soft);
+    border-top: 1px solid var(--border-soft);
+    box-shadow: 0 -12px 30px var(--shadow-soft);
   }
 }
 
