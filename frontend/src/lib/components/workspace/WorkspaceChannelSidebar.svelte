@@ -41,6 +41,11 @@
 
   let draggedChannelId = $state<string | null>(null);
   let dragOverChannelId = $state<string | null>(null);
+  let touchDraggedChannelId = $state<string | null>(null);
+  let touchDragOverChannelId = $state<string | null>(null);
+  let touchDragActive = $state(false);
+  let touchStartY = 0;
+  let channelListEl = $state<HTMLDivElement | null>(null);
   let channelSearchQuery = $state("");
   let channelSearchOpen = $state(false);
   let manageChannels = $state(false);
@@ -94,6 +99,57 @@
     draggedChannelId = dragState.draggedChannelId;
     dragOverChannelId = dragState.dragOverChannelId;
   }
+
+  function handleListTouchStart(event: TouchEvent) {
+    if (channelSortMode !== "custom" || channelSearchQuery.trim()) return;
+    const touch = event.touches[0];
+    touchStartY = touch.clientY;
+    const card = (event.target as Element)?.closest(
+      "[data-channel-id]",
+    ) as HTMLElement | null;
+    const id = card?.dataset.channelId ?? null;
+    if (id) {
+      touchDraggedChannelId = id;
+      touchDragOverChannelId = id;
+      touchDragActive = false;
+    }
+  }
+
+  function handleListTouchMove(event: TouchEvent) {
+    if (!touchDraggedChannelId) return;
+    const touch = event.touches[0];
+    const moveY = Math.abs(touch.clientY - touchStartY);
+    if (moveY > 8) {
+      touchDragActive = true;
+      event.preventDefault();
+      const el = document.elementFromPoint(touch.clientX, touch.clientY);
+      const card = el?.closest("[data-channel-id]") as HTMLElement | null;
+      const id = card?.dataset.channelId ?? null;
+      if (id) touchDragOverChannelId = id;
+    }
+  }
+
+  function handleListTouchEnd() {
+    if (
+      touchDragActive &&
+      touchDraggedChannelId &&
+      touchDragOverChannelId &&
+      touchDraggedChannelId !== touchDragOverChannelId
+    ) {
+      onReorderChannels(touchDraggedChannelId, touchDragOverChannelId);
+    }
+    touchDraggedChannelId = null;
+    touchDragOverChannelId = null;
+    touchDragActive = false;
+  }
+
+  $effect(() => {
+    const el = channelListEl;
+    if (!el) return;
+    const handler = (e: TouchEvent) => handleListTouchMove(e);
+    el.addEventListener("touchmove", handler, { passive: false });
+    return () => el.removeEventListener("touchmove", handler);
+  });
 </script>
 
 <aside
@@ -159,7 +215,7 @@
       </button>
       <button
         type="button"
-        class={`inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors ${channelSortMode !== "custom" ? "text-[var(--accent)]" : "text-[var(--soft-foreground)] opacity-40 hover:opacity-80"}`}
+        class={`inline-flex h-7 items-center justify-center gap-1 rounded-full px-1.5 transition-colors lg:w-7 lg:px-0 ${channelSortMode !== "custom" ? "text-[var(--accent)]" : "text-[var(--soft-foreground)] opacity-40 hover:opacity-80"}`}
         data-tooltip={channelSortMode === "custom"
           ? "Sort: Custom"
           : channelSortMode === "alpha"
@@ -220,6 +276,16 @@
             <path d="M18 6v12"></path>
           </svg>
         {/if}
+        <span
+          class="text-[9px] font-bold uppercase tracking-wider lg:hidden"
+          aria-hidden="true"
+        >
+          {channelSortMode === "alpha"
+            ? "A–Z"
+            : channelSortMode === "newest"
+              ? "New"
+              : "Custom"}
+        </span>
       </button>
     </div>
   </div>
@@ -313,8 +379,12 @@
   </form>
 
   <div
+    bind:this={channelListEl}
     class="custom-scrollbar mobile-bottom-stack-padding flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1 lg:pb-0"
     aria-busy={loadingChannels}
+    ontouchstart={handleListTouchStart}
+    ontouchend={handleListTouchEnd}
+    ontouchcancel={handleListTouchEnd}
   >
     {#if loadingChannels}
       <div class="space-y-4" role="status" aria-live="polite">
@@ -348,23 +418,29 @@
       </p>
     {:else}
       {#each filteredChannels as channel}
-        <ChannelCard
-          {channel}
-          active={selectedChannelId === channel.id}
-          showDelete={manageChannels}
-          draggableEnabled={channelSortMode === "custom" &&
-            !channelSearchQuery.trim()}
-          loading={channel.id.startsWith("temp-")}
-          dragging={draggedChannelId === channel.id}
-          dragOver={dragOverChannelId === channel.id &&
-            draggedChannelId !== channel.id}
-          onSelect={() => void onSelectChannel(channel.id)}
-          onDragStart={(event) => handleChannelDragStart(channel.id, event)}
-          onDragOver={(event) => handleChannelDragOver(channel.id, event)}
-          onDrop={(event) => handleChannelDrop(channel.id, event)}
-          onDragEnd={handleChannelDragEnd}
-          onDelete={() => void onDeleteChannel(channel.id)}
-        />
+        <div data-channel-id={channel.id}>
+          <ChannelCard
+            {channel}
+            active={selectedChannelId === channel.id}
+            showDelete={manageChannels}
+            draggableEnabled={channelSortMode === "custom" &&
+              !channelSearchQuery.trim()}
+            loading={channel.id.startsWith("temp-")}
+            dragging={draggedChannelId === channel.id ||
+              (touchDraggedChannelId === channel.id && touchDragActive)}
+            dragOver={(dragOverChannelId === channel.id &&
+              draggedChannelId !== channel.id) ||
+              (touchDragOverChannelId === channel.id &&
+                touchDraggedChannelId !== channel.id &&
+                touchDragActive)}
+            onSelect={() => void onSelectChannel(channel.id)}
+            onDragStart={(event) => handleChannelDragStart(channel.id, event)}
+            onDragOver={(event) => handleChannelDragOver(channel.id, event)}
+            onDrop={(event) => handleChannelDrop(channel.id, event)}
+            onDragEnd={handleChannelDragEnd}
+            onDelete={() => void onDeleteChannel(channel.id)}
+          />
+        </div>
       {/each}
     {/if}
   </div>
