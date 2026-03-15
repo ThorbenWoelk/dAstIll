@@ -15,19 +15,85 @@ use crate::state::AppState;
 
 const QUEUE_SCAN_LIMIT: usize = 4;
 const QUEUE_POLL_INTERVAL: Duration = Duration::from_secs(5);
+const QUEUE_IDLE_POLL_INTERVAL: Duration = Duration::from_secs(15);
+const QUEUE_IDLE_POLL_MAX_INTERVAL: Duration = Duration::from_secs(60);
 const CHANNEL_REFRESH_INTERVAL: Duration = Duration::from_secs(30 * 60);
 const CHANNEL_GAP_SCAN_INTERVAL: Duration = Duration::from_secs(10 * 60);
 const CHANNEL_GAP_SCAN_LIMIT_PER_CHANNEL: usize = 8;
 const SUMMARY_EVAL_SCAN_LIMIT: usize = 4;
 const SUMMARY_EVAL_POLL_INTERVAL: Duration = Duration::from_secs(7);
+const SUMMARY_EVAL_IDLE_POLL_INTERVAL: Duration = Duration::from_secs(30);
+const SUMMARY_EVAL_IDLE_POLL_MAX_INTERVAL: Duration = Duration::from_secs(120);
 const SEARCH_BACKFILL_SCAN_LIMIT: usize = 64;
 const SEARCH_INDEX_SCAN_LIMIT: usize = 8;
 const SEARCH_RECONCILE_SCAN_LIMIT: usize = 64;
 const SEARCH_PRUNE_SCAN_LIMIT: usize = 256;
 const SEARCH_INDEX_POLL_INTERVAL: Duration = Duration::from_secs(3);
+const SEARCH_INDEX_IDLE_POLL_INTERVAL: Duration = Duration::from_secs(15);
+const SEARCH_INDEX_IDLE_POLL_MAX_INTERVAL: Duration = Duration::from_secs(120);
 const SEARCH_RECONCILE_INTERVAL: Duration = Duration::from_secs(60);
 const SEARCH_VECTOR_INDEX_RETRY_INTERVAL: Duration = Duration::from_secs(5 * 60);
 const MAX_DISTILLATION_RETRIES: u8 = 3;
+
+#[derive(Clone, Copy, Debug)]
+struct PollBackoff {
+    active_interval: Duration,
+    idle_start_interval: Duration,
+    idle_max_interval: Duration,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct PollBackoffState {
+    consecutive_idle_cycles: u32,
+}
+
+impl PollBackoff {
+    const fn new(
+        active_interval: Duration,
+        idle_start_interval: Duration,
+        idle_max_interval: Duration,
+    ) -> Self {
+        Self {
+            active_interval,
+            idle_start_interval,
+            idle_max_interval,
+        }
+    }
+
+    fn next_interval(&self, state: &mut PollBackoffState, had_activity: bool) -> Duration {
+        if had_activity {
+            state.consecutive_idle_cycles = 0;
+            return self.active_interval;
+        }
+
+        let multiplier = 1u32
+            .checked_shl(state.consecutive_idle_cycles.min(31))
+            .unwrap_or(u32::MAX) as u128;
+        state.consecutive_idle_cycles = state.consecutive_idle_cycles.saturating_add(1);
+
+        let idle_millis = self.idle_start_interval.as_millis();
+        let max_millis = self.idle_max_interval.as_millis();
+        let next_millis = idle_millis.saturating_mul(multiplier).min(max_millis);
+        let next_millis = next_millis.min(u64::MAX as u128) as u64;
+        Duration::from_millis(next_millis)
+    }
+}
+
+const QUEUE_POLL_BACKOFF: PollBackoff = PollBackoff::new(
+    QUEUE_POLL_INTERVAL,
+    QUEUE_IDLE_POLL_INTERVAL,
+    QUEUE_IDLE_POLL_MAX_INTERVAL,
+);
+const SUMMARY_EVAL_POLL_BACKOFF: PollBackoff = PollBackoff::new(
+    SUMMARY_EVAL_POLL_INTERVAL,
+    SUMMARY_EVAL_IDLE_POLL_INTERVAL,
+    SUMMARY_EVAL_IDLE_POLL_MAX_INTERVAL,
+);
+const SEARCH_INDEX_POLL_BACKOFF: PollBackoff = PollBackoff::new(
+    SEARCH_INDEX_POLL_INTERVAL,
+    SEARCH_INDEX_IDLE_POLL_INTERVAL,
+    SEARCH_INDEX_IDLE_POLL_MAX_INTERVAL,
+);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum QueueTask {
@@ -80,7 +146,7 @@ fn chunk_material(material: &db::SearchMaterial) -> Vec<crate::services::search:
     }
 }
 
-async fn backfill_search_sources(state: &AppState) {
+async fn backfill_search_sources(state: &AppState) -> bool {
     let _projection_guard = state.search_projection_lock.read().await;
     let materials = {
         let conn = state.db.connect();
@@ -93,7 +159,7 @@ async fn backfill_search_sources(state: &AppState) {
         Ok(materials) => materials,
         Err(err) => {
             tracing::error!(error = %err, "search backfill failed to load existing materials");
-            return;
+            return false;
         }
     };
 
@@ -132,9 +198,11 @@ async fn backfill_search_sources(state: &AppState) {
             "search backfill round complete"
         );
     }
+
+    discovered_count > 0 || queued > 0 || failed > 0
 }
 
-async fn reconcile_search_sources(state: &AppState) {
+async fn reconcile_search_sources(state: &AppState) -> bool {
     let _projection_guard = state.search_projection_lock.read().await;
     let materials = {
         let conn = state.db.connect();
@@ -147,7 +215,7 @@ async fn reconcile_search_sources(state: &AppState) {
         Ok(materials) => materials,
         Err(err) => {
             tracing::error!(error = %err, "search reconcile failed to load materials");
-            return;
+            return false;
         }
     };
 
@@ -212,15 +280,17 @@ async fn reconcile_search_sources(state: &AppState) {
             "search reconcile round complete"
         );
     }
+
+    refreshed_count > 0 || failed_count > 0
 }
 
-async fn process_pending_search_sources(state: &AppState) {
+async fn process_pending_search_sources(state: &AppState) -> bool {
     let semantic_enabled = state.search.semantic_enabled();
     if semantic_enabled && !state.search.is_available().await {
         tracing::warn!(
             "search index worker skipped - Ollama embedding model not found in /api/tags"
         );
-        return;
+        return false;
     }
     let _projection_guard = state.search_projection_lock.read().await;
 
@@ -235,7 +305,7 @@ async fn process_pending_search_sources(state: &AppState) {
         Ok(pending_sources) => pending_sources,
         Err(err) => {
             tracing::error!(error = %err, "search index worker failed to load pending sources");
-            return;
+            return false;
         }
     };
 
@@ -370,7 +440,7 @@ async fn process_pending_search_sources(state: &AppState) {
                 "search indexing round complete"
             );
         }
-        return;
+        return discovered_count > 0 || failed_count > 0;
     }
 
     if !semantic_enabled {
@@ -443,7 +513,12 @@ async fn process_pending_search_sources(state: &AppState) {
                 "search indexing round complete"
             );
         }
-        return;
+        return discovered_count > 0
+            || indexed_count > 0
+            || cleared_count > 0
+            || requeued_count > 0
+            || embedded_chunk_count > 0
+            || failed_count > 0;
     }
 
     // Phase 2: Embed all chunks across claimed sources. The search service
@@ -475,7 +550,7 @@ async fn process_pending_search_sources(state: &AppState) {
                 failed_count = failed_count + prepared.len(),
                 "search indexing embed batch failed"
             );
-            return;
+            return true;
         }
     };
     embedded_chunk_count = all_embeddings.len();
@@ -555,20 +630,38 @@ async fn process_pending_search_sources(state: &AppState) {
             "search indexing round complete"
         );
     }
+
+    discovered_count > 0
+        || indexed_count > 0
+        || cleared_count > 0
+        || requeued_count > 0
+        || embedded_chunk_count > 0
+        || failed_count > 0
 }
 
-async fn prune_stale_search_rows(state: &AppState) {
+async fn prune_stale_search_rows(state: &AppState) -> bool {
     let _projection_guard = state.search_projection_lock.read().await;
     let conn = state.db.connect();
     match db::prune_stale_search_rows(&conn, SEARCH_PRUNE_SCAN_LIMIT).await {
         Ok(pruned_count) if pruned_count > 0 => {
             tracing::info!(pruned_count, "search prune round complete");
+            true
         }
-        Ok(_) => {}
+        Ok(_) => false,
         Err(err) => {
             tracing::error!(error = %err, "search prune failed");
+            false
         }
     }
+}
+
+async fn sleep_with_backoff(
+    backoff: PollBackoff,
+    state: &mut PollBackoffState,
+    had_activity: bool,
+) {
+    let delay = backoff.next_interval(state, had_activity);
+    sleep(delay).await;
 }
 
 async fn maybe_ensure_vector_index(state: &AppState, last_attempt: &mut Option<Instant>) {
@@ -622,9 +715,12 @@ async fn maybe_ensure_vector_index(state: &AppState, last_attempt: &mut Option<I
 pub fn spawn_queue_worker(state: AppState) {
     tokio::spawn(async move {
         tracing::info!(
-            poll_interval_secs = QUEUE_POLL_INTERVAL.as_secs(),
+            active_poll_interval_secs = QUEUE_POLL_INTERVAL.as_secs(),
+            idle_poll_start_secs = QUEUE_IDLE_POLL_INTERVAL.as_secs(),
+            idle_poll_max_secs = QUEUE_IDLE_POLL_MAX_INTERVAL.as_secs(),
             "queue worker started"
         );
+        let mut backoff_state = PollBackoffState::default();
 
         loop {
             let queue = {
@@ -642,10 +738,11 @@ pub fn spawn_queue_worker(state: AppState) {
                 Ok(videos) => videos,
                 Err(err) => {
                     tracing::error!(error = %err, "queue worker failed to load queue");
-                    sleep(QUEUE_POLL_INTERVAL).await;
+                    sleep_with_backoff(QUEUE_POLL_BACKOFF, &mut backoff_state, false).await;
                     continue;
                 }
             };
+            let had_activity = !queue.is_empty();
 
             for video in queue {
                 let task = next_queue_task(&video);
@@ -696,7 +793,7 @@ pub fn spawn_queue_worker(state: AppState) {
                 }
             }
 
-            sleep(QUEUE_POLL_INTERVAL).await;
+            sleep_with_backoff(QUEUE_POLL_BACKOFF, &mut backoff_state, had_activity).await;
         }
     });
 }
@@ -878,10 +975,13 @@ pub fn spawn_gap_scan_worker(state: AppState) {
 pub fn spawn_summary_evaluation_worker(state: AppState) {
     tokio::spawn(async move {
         tracing::info!(
-            poll_interval_secs = SUMMARY_EVAL_POLL_INTERVAL.as_secs(),
+            active_poll_interval_secs = SUMMARY_EVAL_POLL_INTERVAL.as_secs(),
+            idle_poll_start_secs = SUMMARY_EVAL_IDLE_POLL_INTERVAL.as_secs(),
+            idle_poll_max_secs = SUMMARY_EVAL_IDLE_POLL_MAX_INTERVAL.as_secs(),
             model = %state.summary_evaluator.model(),
             "summary evaluation worker started"
         );
+        let mut backoff_state = PollBackoffState::default();
 
         loop {
             let queue = {
@@ -895,13 +995,13 @@ pub fn spawn_summary_evaluation_worker(state: AppState) {
                 Ok(rows) => rows,
                 Err(err) => {
                     tracing::error!(error = %err, "summary evaluation worker failed to load queue");
-                    sleep(SUMMARY_EVAL_POLL_INTERVAL).await;
+                    sleep_with_backoff(SUMMARY_EVAL_POLL_BACKOFF, &mut backoff_state, false).await;
                     continue;
                 }
             };
 
             if queue.is_empty() {
-                sleep(SUMMARY_EVAL_POLL_INTERVAL).await;
+                sleep_with_backoff(SUMMARY_EVAL_POLL_BACKOFF, &mut backoff_state, false).await;
                 continue;
             }
 
@@ -915,8 +1015,7 @@ pub fn spawn_summary_evaluation_worker(state: AppState) {
                     evaluator_status = ?evaluator_status,
                     "summary evaluation paused - evaluator unavailable or preserving local capacity"
                 );
-                // Back off longer when evaluator is offline to avoid log spam
-                sleep(Duration::from_secs(60)).await;
+                sleep_with_backoff(SUMMARY_EVAL_POLL_BACKOFF, &mut backoff_state, false).await;
                 continue;
             }
 
@@ -994,7 +1093,7 @@ pub fn spawn_summary_evaluation_worker(state: AppState) {
                 }
             }
 
-            sleep(SUMMARY_EVAL_POLL_INTERVAL).await;
+            sleep_with_backoff(SUMMARY_EVAL_POLL_BACKOFF, &mut backoff_state, true).await;
         }
     });
 }
@@ -1004,7 +1103,9 @@ pub fn spawn_search_index_worker(state: AppState) {
         tracing::info!(
             backfill_scan_limit = SEARCH_BACKFILL_SCAN_LIMIT,
             index_scan_limit = SEARCH_INDEX_SCAN_LIMIT,
-            poll_interval_secs = SEARCH_INDEX_POLL_INTERVAL.as_secs(),
+            active_poll_interval_secs = SEARCH_INDEX_POLL_INTERVAL.as_secs(),
+            idle_poll_start_secs = SEARCH_INDEX_IDLE_POLL_INTERVAL.as_secs(),
+            idle_poll_max_secs = SEARCH_INDEX_IDLE_POLL_MAX_INTERVAL.as_secs(),
             reconcile_interval_secs = SEARCH_RECONCILE_INTERVAL.as_secs(),
             vector_index_retry_interval_secs = SEARCH_VECTOR_INDEX_RETRY_INTERVAL.as_secs(),
             auto_create_vector_index = state.search_auto_create_vector_index,
@@ -1013,30 +1114,28 @@ pub fn spawn_search_index_worker(state: AppState) {
             "search index worker started"
         );
 
-        backfill_search_sources(&state).await;
-        process_pending_search_sources(&state).await;
-        reconcile_search_sources(&state).await;
-        prune_stale_search_rows(&state).await;
+        let _ = backfill_search_sources(&state).await;
+        let _ = process_pending_search_sources(&state).await;
+        let _ = reconcile_search_sources(&state).await;
+        let _ = prune_stale_search_rows(&state).await;
         let mut last_vector_index_attempt = None;
         maybe_ensure_vector_index(&state, &mut last_vector_index_attempt).await;
-        let mut ticks_since_reconcile = 0usize;
+        let mut last_reconcile_at = Instant::now();
+        let mut backoff_state = PollBackoffState::default();
 
         loop {
-            backfill_search_sources(&state).await;
-            process_pending_search_sources(&state).await;
-            prune_stale_search_rows(&state).await;
+            let mut had_activity = backfill_search_sources(&state).await;
+            had_activity |= process_pending_search_sources(&state).await;
+            had_activity |= prune_stale_search_rows(&state).await;
             maybe_ensure_vector_index(&state, &mut last_vector_index_attempt).await;
-            ticks_since_reconcile += 1;
 
-            if ticks_since_reconcile * SEARCH_INDEX_POLL_INTERVAL.as_secs() as usize
-                >= SEARCH_RECONCILE_INTERVAL.as_secs() as usize
-            {
-                reconcile_search_sources(&state).await;
+            if last_reconcile_at.elapsed() >= SEARCH_RECONCILE_INTERVAL {
+                had_activity |= reconcile_search_sources(&state).await;
                 maybe_ensure_vector_index(&state, &mut last_vector_index_attempt).await;
-                ticks_since_reconcile = 0;
+                last_reconcile_at = Instant::now();
             }
 
-            sleep(SEARCH_INDEX_POLL_INTERVAL).await;
+            sleep_with_backoff(SEARCH_INDEX_POLL_BACKOFF, &mut backoff_state, had_activity).await;
         }
     });
 }
@@ -1044,10 +1143,11 @@ pub fn spawn_search_index_worker(state: AppState) {
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
+    use std::time::Duration;
 
     use super::{
-        QueueTask, next_queue_task, should_queue_summary_auto_regeneration,
-        should_run_summary_evaluation,
+        PollBackoff, PollBackoffState, QueueTask, next_queue_task,
+        should_queue_summary_auto_regeneration, should_run_summary_evaluation,
     };
     use crate::models::{AiStatus, ContentStatus, Video};
 
@@ -1130,5 +1230,59 @@ mod tests {
             AiStatus::Offline,
             "qwen3.5:397b-cloud"
         ));
+    }
+
+    #[test]
+    fn poll_backoff_uses_idle_start_then_doubles_until_max() {
+        let backoff = PollBackoff::new(
+            Duration::from_secs(3),
+            Duration::from_secs(15),
+            Duration::from_secs(60),
+        );
+        let mut state = PollBackoffState::default();
+
+        assert_eq!(
+            backoff.next_interval(&mut state, false),
+            Duration::from_secs(15)
+        );
+        assert_eq!(
+            backoff.next_interval(&mut state, false),
+            Duration::from_secs(30)
+        );
+        assert_eq!(
+            backoff.next_interval(&mut state, false),
+            Duration::from_secs(60)
+        );
+        assert_eq!(
+            backoff.next_interval(&mut state, false),
+            Duration::from_secs(60)
+        );
+    }
+
+    #[test]
+    fn poll_backoff_resets_to_active_interval_after_activity() {
+        let backoff = PollBackoff::new(
+            Duration::from_secs(5),
+            Duration::from_secs(15),
+            Duration::from_secs(60),
+        );
+        let mut state = PollBackoffState::default();
+
+        assert_eq!(
+            backoff.next_interval(&mut state, false),
+            Duration::from_secs(15)
+        );
+        assert_eq!(
+            backoff.next_interval(&mut state, false),
+            Duration::from_secs(30)
+        );
+        assert_eq!(
+            backoff.next_interval(&mut state, true),
+            Duration::from_secs(5)
+        );
+        assert_eq!(
+            backoff.next_interval(&mut state, false),
+            Duration::from_secs(15)
+        );
     }
 }

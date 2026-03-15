@@ -56,7 +56,7 @@
   ondragend={onDragEnd}
   class={`group relative flex w-full min-w-0 items-center gap-2.5 rounded-[var(--radius-sm)] px-2 py-2 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${trailingSpaceClass} ${
     active ? "bg-[var(--surface)]" : "hover:bg-[var(--surface)]/60"
-  } ${dragging || loading ? "opacity-40" : ""} ${dragOver ? "ring-2 ring-[var(--accent)]/30" : ""} ${loading ? "animate-pulse" : ""}`}
+  } ${dragging || loading ? "opacity-40" : ""} ${dragOver ? "ring-2 ring-[var(--accent)]/30" : ""} ${loading ? "animate-pulse" : ""} ${draggableEnabled ? (dragging ? "cursor-grabbing" : "cursor-grab") : ""}`}
   onclick={onSelect}
   disabled={loading}
 >
@@ -64,6 +64,34 @@
     <div
       class="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-r-full bg-[var(--accent)]"
     ></div>
+  {/if}
+  {#if draggableEnabled && !showDelete}
+    <div
+      class="hidden shrink-0 items-center justify-center lg:flex"
+      aria-hidden="true"
+    >
+      <div
+        class={`inline-flex h-8 w-6 items-center justify-center rounded-full border transition-all ${dragging ? "border-[var(--accent)]/25 bg-[var(--accent-soft)] text-[var(--accent-strong)]" : "border-transparent text-[var(--soft-foreground)] opacity-35 group-hover:opacity-70"}`}
+      >
+        <svg
+          width="10"
+          height="16"
+          viewBox="0 0 10 16"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M2 3h.01"></path>
+          <path d="M2 8h.01"></path>
+          <path d="M2 13h.01"></path>
+          <path d="M8 3h.01"></path>
+          <path d="M8 8h.01"></path>
+          <path d="M8 13h.01"></path>
+        </svg>
+      </div>
+    </div>
   {/if}
   <div class="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-[var(--muted)]">
     <img
@@ -89,42 +117,6 @@
       {channel.handle ?? channel.id}
     </p>
   </div>
-  {#if draggableEnabled && !showDelete}
-    <div
-      class="shrink-0 text-[var(--soft-foreground)] opacity-20 lg:hidden"
-      aria-hidden="true"
-    >
-      <svg
-        width="12"
-        height="12"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2.5"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <circle cx="9" cy="5" r="1" fill="currentColor" stroke="none"></circle>
-        <circle cx="9" cy="12" r="1" fill="currentColor" stroke="none"></circle>
-        <circle cx="9" cy="19" r="1" fill="currentColor" stroke="none"></circle>
-        <circle cx="15" cy="5" r="1" fill="currentColor" stroke="none"></circle>
-        <circle
-          cx="15"
-          cy="12"
-          r="1"
-          fill="currentColor"
-          stroke="none"
-        ></circle>
-        <circle
-          cx="15"
-          cy="19"
-          r="1"
-          fill="currentColor"
-          stroke="none"
-        ></circle>
-      </svg>
-    </div>
-  {/if}
   {#if !loading}
     <div
       role="button"
