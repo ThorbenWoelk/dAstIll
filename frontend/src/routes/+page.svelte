@@ -1084,6 +1084,8 @@
     if (fromUserInteraction) mobileTab = "content";
     if (videoId === selectedVideoId) return;
     selectedVideoId = videoId;
+    contentText = "";
+    draft = "";
     const video = videos.find((v) => v.id === videoId);
     if (
       contentMode === "summary" &&
@@ -1262,6 +1264,8 @@
       }
     } catch (error) {
       if (activeContentRequestId === requestId) {
+        contentText = "";
+        draft = "";
         errorMessage = (error as Error).message;
       }
     } finally {

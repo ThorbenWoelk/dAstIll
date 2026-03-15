@@ -4,7 +4,7 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum TranscriptError {
-    #[error("Summarize command failed: {0}")]
+    #[error("Transcript extraction failed: {0}")]
     CommandFailed(String),
     #[error("Video has no transcript available")]
     NoTranscript,
