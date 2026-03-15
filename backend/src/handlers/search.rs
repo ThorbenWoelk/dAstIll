@@ -100,18 +100,25 @@ pub async fn search(
 
     let source = params.source.unwrap_or(SearchSourceFilter::All);
     let limit = params.limit.unwrap_or(8).clamp(1, 25);
-    let candidate_limit = (limit * 8).clamp(10, 100);
     let fts_query = build_fts_query(query);
     let conn = state.db.connect();
     let semantic_enabled = state.search.semantic_enabled();
     let search_model = state.search.model();
-    let vector_index_ready = if semantic_enabled {
-        db::has_vector_index(&conn).await.map_err(map_db_err)?
+    let retrieval_mode = if !semantic_enabled {
+        SearchRetrievalMode::FtsOnly
     } else {
-        false
+        let embeddings_available = state.search.is_available().await;
+        if !embeddings_available {
+            SearchRetrievalMode::FtsOnly
+        } else {
+            let vector_index_ready = db::has_vector_index(&conn).await.map_err(map_db_err)?;
+            resolve_search_retrieval_mode(true, vector_index_ready)
+        }
     };
-    let embeddings_available = state.search.is_available().await;
-    let retrieval_mode = resolve_search_retrieval_mode(embeddings_available, vector_index_ready);
+    let candidate_limit = match retrieval_mode {
+        SearchRetrievalMode::FtsOnly => (limit * 2).clamp(10, 50),
+        _ => (limit * 8).clamp(10, 100),
+    };
 
     let fts_candidates = if fts_query.is_empty() {
         Vec::new()
@@ -181,7 +188,11 @@ pub async fn search(
         }
     };
 
-    let results = rank_and_group_candidates(&hybrid_candidates, &fts_candidates, limit);
+    let results = if retrieval_mode == SearchRetrievalMode::FtsOnly {
+        group_fts_candidates(&fts_candidates, limit)
+    } else {
+        rank_and_group_candidates(&hybrid_candidates, &fts_candidates, limit)
+    };
     Ok(Json(SearchResponsePayload {
         query: query.to_string(),
         source: source.as_str().to_string(),
@@ -263,6 +274,78 @@ fn build_fts_query(query: &str) -> String {
         .map(|token| format!("\"{token}\""))
         .collect::<Vec<_>>()
         .join(" OR ")
+}
+
+fn group_fts_candidates(
+    candidates: &[SearchCandidate],
+    limit: usize,
+) -> Vec<SearchVideoResultPayload> {
+    let mut grouped = HashMap::<String, SearchVideoResultPayload>::new();
+    let mut best_ranks = HashMap::<String, usize>::new();
+
+    for (index, candidate) in candidates.iter().enumerate() {
+        let rank = index + 1;
+        let group = grouped
+            .entry(candidate.video_id.clone())
+            .or_insert_with(|| SearchVideoResultPayload {
+                video_id: candidate.video_id.clone(),
+                channel_id: candidate.channel_id.clone(),
+                channel_name: candidate.channel_name.clone(),
+                video_title: candidate.video_title.clone(),
+                published_at: candidate.published_at.clone(),
+                matches: Vec::new(),
+            });
+
+        let existing = group
+            .matches
+            .iter()
+            .position(|existing| existing.source == candidate.source_kind);
+        let score = 1.0 / (SEARCH_RRF_K + rank as f32);
+        let payload = SearchMatchPayload {
+            source: candidate.source_kind,
+            section_title: candidate.section_title.clone(),
+            snippet: truncate_chunk_for_display(&candidate.chunk_text),
+            score,
+        };
+
+        match existing {
+            Some(index) if payload.score > group.matches[index].score => {
+                group.matches[index] = payload;
+            }
+            None => group.matches.push(payload),
+            _ => {}
+        }
+
+        best_ranks
+            .entry(candidate.video_id.clone())
+            .and_modify(|best| *best = (*best).min(rank))
+            .or_insert(rank);
+    }
+
+    let mut results = grouped.into_values().collect::<Vec<_>>();
+    results.sort_by(|left, right| {
+        let left_rank = best_ranks
+            .get(&left.video_id)
+            .copied()
+            .unwrap_or(usize::MAX);
+        let right_rank = best_ranks
+            .get(&right.video_id)
+            .copied()
+            .unwrap_or(usize::MAX);
+        left_rank
+            .cmp(&right_rank)
+            .then_with(|| right.published_at.cmp(&left.published_at))
+    });
+    for result in &mut results {
+        result.matches.sort_by(|left, right| {
+            right
+                .score
+                .partial_cmp(&left.score)
+                .unwrap_or(Ordering::Equal)
+        });
+    }
+    results.truncate(limit);
+    results
 }
 
 fn rank_and_group_candidates(
@@ -358,7 +441,7 @@ fn rank_and_group_candidates(
 #[cfg(test)]
 mod tests {
     use super::{
-        SearchSourceFilter, build_fts_query, rank_and_group_candidates,
+        SearchSourceFilter, build_fts_query, group_fts_candidates, rank_and_group_candidates,
         resolve_search_retrieval_mode,
     };
     use crate::services::search::{SearchCandidate, SearchSourceKind};
@@ -407,6 +490,37 @@ mod tests {
             SearchSourceFilter::Summary.as_source_kind(),
             Some(SearchSourceKind::Summary)
         );
+    }
+
+    #[test]
+    fn fts_grouping_preserves_bm25_rank_order() {
+        let results = group_fts_candidates(
+            &[
+                candidate("a", "video-1", SearchSourceKind::Summary),
+                candidate("b", "video-2", SearchSourceKind::Transcript),
+                candidate("c", "video-1", SearchSourceKind::Transcript),
+            ],
+            10,
+        );
+
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].video_id, "video-1");
+        assert_eq!(results[0].matches.len(), 2);
+        assert_eq!(results[1].video_id, "video-2");
+    }
+
+    #[test]
+    fn fts_grouping_respects_limit() {
+        let results = group_fts_candidates(
+            &[
+                candidate("a", "video-1", SearchSourceKind::Summary),
+                candidate("b", "video-2", SearchSourceKind::Transcript),
+            ],
+            1,
+        );
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].video_id, "video-1");
     }
 
     #[test]
