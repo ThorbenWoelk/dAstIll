@@ -1,5 +1,6 @@
 <script lang="ts">
   import "../app.css";
+  import Footer from "$lib/components/Footer.svelte";
   import MobileViewportInset from "$lib/components/MobileViewportInset.svelte";
   import ServiceWorkerRegistration from "$lib/components/ServiceWorkerRegistration.svelte";
 
@@ -35,4 +36,5 @@
   <div class="flex-1">
     {@render children()}
   </div>
+  <Footer />
 </div>

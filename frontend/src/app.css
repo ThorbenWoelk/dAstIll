@@ -193,6 +193,15 @@ textarea {
 }
 
 .prose {
+  --tw-prose-body: var(--foreground);
+  --tw-prose-headings: var(--foreground);
+  --tw-prose-bold: var(--foreground);
+  --tw-prose-links: var(--accent);
+  --tw-prose-bullets: var(--soft-foreground);
+  --tw-prose-counters: var(--soft-foreground);
+  --tw-prose-quotes: var(--foreground);
+  --tw-prose-quote-borders: var(--accent);
+  --tw-prose-code: var(--foreground);
   max-width: 65ch;
   color: var(--foreground);
 }
