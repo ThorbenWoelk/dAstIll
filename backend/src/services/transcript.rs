@@ -63,10 +63,13 @@ impl TranscriptService {
                 error_output = %stderr.trim(),
                 "summarize transcript command failed"
             );
-            if stderr.contains("rate limit") || stderr.contains("429") {
+            let stderr_lower = stderr.to_lowercase();
+            if stderr_lower.contains("rate limit") || stderr_lower.contains("429") {
                 return Err(TranscriptError::RateLimited);
             }
-            if stderr.contains("no transcript") || stderr.contains("Subtitles are disabled") {
+            if stderr_lower.contains("no transcript")
+                || stderr_lower.contains("subtitles are disabled")
+            {
                 return Err(TranscriptError::NoTranscript);
             }
             return Err(TranscriptError::CommandFailed(stderr.to_string()));
