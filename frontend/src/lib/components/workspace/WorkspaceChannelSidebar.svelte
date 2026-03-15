@@ -62,6 +62,7 @@
   let mobileReorderMode = $state(false);
   let pointerDrag = $state<ChannelHandlePointerState | null>(null);
   let reorderAnnouncement = $state("");
+  let listContainerEl = $state<HTMLDivElement | null>(null);
 
   let filteredChannels = $derived(
     filterChannels(channels, channelSearchQuery, channelSortMode),
@@ -73,6 +74,7 @@
   let activeDraggedChannel = $derived(
     filteredChannels.find((channel) => channel.id === draggedChannelId) ?? null,
   );
+  let isDragging = $derived(pointerDrag !== null);
 
   async function handleChannelSubmit(event: SubmitEvent) {
     event.preventDefault();
@@ -201,9 +203,6 @@
     event.preventDefault();
     event.stopPropagation();
 
-    const handle = event.currentTarget as HTMLElement | null;
-    handle?.setPointerCapture?.(event.pointerId);
-
     pointerDrag = {
       channelId,
       pointerId: event.pointerId,
@@ -214,61 +213,73 @@
     dragOverChannelId = channelId;
   }
 
-  function handleHandlePointerMove(event: PointerEvent) {
-    if (!pointerDrag || event.pointerId !== pointerDrag.pointerId) {
-      return;
+  // Window-level pointer tracking: attached only while a drag is in progress.
+  // This is more reliable than per-button handlers + setPointerCapture, which
+  // breaks on some mobile WebViews and loses events when the finger drifts off
+  // the small handle target.
+  $effect(() => {
+    if (!isDragging) return;
+
+    function onPointerMove(event: PointerEvent) {
+      if (event.pointerId !== pointerDrag?.pointerId) return;
+      event.preventDefault();
+      pointerDrag = {
+        ...pointerDrag!,
+        clientX: event.clientX,
+        clientY: event.clientY,
+      };
+      const nextTargetId = resolvePointerDropTarget(event.clientX, event.clientY);
+      if (nextTargetId) dragOverChannelId = nextTargetId;
+      autoScrollList(event.clientY);
     }
 
-    event.preventDefault();
+    function onPointerEnd(event: PointerEvent) {
+      if (event.pointerId !== pointerDrag?.pointerId) return;
+      event.preventDefault();
+      const draggedId = draggedChannelId;
+      const targetId = dragOverChannelId;
+      const movedChannel = activeDraggedChannel;
+      clearPointerReorderState();
+      if (!draggedId || !targetId || draggedId === targetId) return;
+      const reordered = reorderChannelList(channels, draggedId, targetId);
+      if (!reordered) return;
+      onReorderChannels(reordered.channelOrder);
+      if (movedChannel) announceReorder(movedChannel.name);
+    }
 
-    pointerDrag = {
-      ...pointerDrag,
-      clientX: event.clientX,
-      clientY: event.clientY,
+    function onPointerCancel(event: PointerEvent) {
+      if (event.pointerId !== pointerDrag?.pointerId) return;
+      clearPointerReorderState();
+    }
+
+    window.addEventListener("pointermove", onPointerMove, { passive: false });
+    window.addEventListener("pointerup", onPointerEnd);
+    window.addEventListener("pointercancel", onPointerCancel);
+
+    return () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerEnd);
+      window.removeEventListener("pointercancel", onPointerCancel);
     };
+  });
 
-    const nextTargetId = resolvePointerDropTarget(event.clientX, event.clientY);
-    if (nextTargetId) {
-      dragOverChannelId = nextTargetId;
+  const AUTOSCROLL_ZONE = 64;
+  const AUTOSCROLL_SPEED = 8;
+
+  function autoScrollList(clientY: number) {
+    if (!listContainerEl) return;
+    const rect = listContainerEl.getBoundingClientRect();
+    const distFromTop = clientY - rect.top;
+    const distFromBottom = rect.bottom - clientY;
+    if (distFromTop > 0 && distFromTop < AUTOSCROLL_ZONE) {
+      listContainerEl.scrollTop -= Math.ceil(
+        AUTOSCROLL_SPEED * (1 - distFromTop / AUTOSCROLL_ZONE),
+      );
+    } else if (distFromBottom > 0 && distFromBottom < AUTOSCROLL_ZONE) {
+      listContainerEl.scrollTop += Math.ceil(
+        AUTOSCROLL_SPEED * (1 - distFromBottom / AUTOSCROLL_ZONE),
+      );
     }
-  }
-
-  function handleHandlePointerEnd(event: PointerEvent) {
-    if (!pointerDrag || event.pointerId !== pointerDrag.pointerId) {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-
-    const draggedId = draggedChannelId;
-    const targetId = dragOverChannelId;
-    const movedChannel = activeDraggedChannel;
-
-    clearPointerReorderState();
-
-    if (!draggedId || !targetId || draggedId === targetId) {
-      return;
-    }
-
-    const reordered = reorderChannelList(channels, draggedId, targetId);
-    if (!reordered) {
-      return;
-    }
-
-    onReorderChannels(reordered.channelOrder);
-    if (movedChannel) {
-      announceReorder(movedChannel.name);
-    }
-  }
-
-  function handleHandlePointerCancel(event: PointerEvent) {
-    if (!pointerDrag || event.pointerId !== pointerDrag.pointerId) {
-      return;
-    }
-
-    event.preventDefault();
-    clearPointerReorderState();
   }
 
   $effect(() => {
@@ -576,7 +587,8 @@
   <div class="sr-only" aria-live="polite">{reorderAnnouncement}</div>
 
   <div
-    class="custom-scrollbar mobile-bottom-stack-padding flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1 lg:pb-0"
+    bind:this={listContainerEl}
+    class={`custom-scrollbar mobile-bottom-stack-padding flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1 lg:pb-0${isDragging ? " touch-none" : ""}`}
     aria-busy={loadingChannels}
   >
     {#if loadingChannels}
@@ -627,19 +639,19 @@
         >
           {#if dropIndicatorEdge === "top"}
             <div
-              class="pointer-events-none absolute inset-x-3 -top-1 z-10 flex items-center gap-2"
+              class="pointer-events-none absolute inset-x-2 -top-[3px] z-10 flex items-center gap-1.5"
             >
-              <span class="h-2 w-2 rounded-full bg-[var(--accent)]"></span>
-              <span class="h-0.5 flex-1 rounded-full bg-[var(--accent)]"></span>
+              <span class="h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--accent)]"></span>
+              <span class="h-[3px] flex-1 rounded-full bg-[var(--accent)]"></span>
             </div>
           {/if}
 
           {#if dropIndicatorEdge === "bottom"}
             <div
-              class="pointer-events-none absolute inset-x-3 -bottom-1 z-10 flex items-center gap-2"
+              class="pointer-events-none absolute inset-x-2 -bottom-[3px] z-10 flex items-center gap-1.5"
             >
-              <span class="h-2 w-2 rounded-full bg-[var(--accent)]"></span>
-              <span class="h-0.5 flex-1 rounded-full bg-[var(--accent)]"></span>
+              <span class="h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--accent)]"></span>
+              <span class="h-[3px] flex-1 rounded-full bg-[var(--accent)]"></span>
             </div>
           {/if}
 
@@ -733,9 +745,6 @@
                 class={`inline-flex h-11 w-11 touch-none items-center justify-center rounded-full border transition-all ${draggedChannelId === channel.id ? "border-[var(--accent)] bg-[var(--accent)] text-white shadow-lg shadow-[var(--accent)]/20" : "border-[var(--border-soft)] bg-[var(--surface-strong)] text-[var(--soft-foreground)] shadow-sm hover:border-[var(--accent)]/20 hover:text-[var(--foreground)]"}`}
                 onpointerdown={(event) =>
                   handleHandlePointerDown(channel.id, event)}
-                onpointermove={handleHandlePointerMove}
-                onpointerup={handleHandlePointerEnd}
-                onpointercancel={handleHandlePointerCancel}
                 aria-label={`Drag to reorder ${channel.name}`}
                 aria-describedby="mobile-channel-reorder-help"
                 disabled={Boolean(

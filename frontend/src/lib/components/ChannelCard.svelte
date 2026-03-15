@@ -37,7 +37,7 @@
     !avatarLoadFailed && thumbnailUrl ? thumbnailUrl : defaultChannelIcon;
   $: trailingSpaceClass =
     trailingSpace === "wide"
-      ? "pr-28"
+      ? "pr-36"
       : trailingSpace === "compact"
         ? "pr-12"
         : "";
