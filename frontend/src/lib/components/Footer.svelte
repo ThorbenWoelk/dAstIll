@@ -32,13 +32,13 @@
 <style>
   .site-footer {
     position: fixed;
-    top: 0;
+    bottom: 0;
     left: 0;
     right: 0;
     z-index: 70;
-    border-bottom: 1px solid var(--border-soft);
+    border-top: 1px solid var(--border-soft);
     background: var(--surface-strong);
-    box-shadow: 0 12px 30px var(--shadow-soft);
+    box-shadow: 0 -12px 30px var(--shadow-soft);
   }
 
   .footer-inner {
@@ -95,6 +95,9 @@
     .site-footer.mobile-visible {
       display: block;
       top: 0;
+      bottom: auto;
+      left: 0;
+      right: 0;
       padding-top: env(safe-area-inset-top);
       border-top: none;
       border-bottom: 1px solid var(--border-soft);
