@@ -138,9 +138,8 @@
   function findDropTargetFromY(clientY: number): string | null {
     if (!channelListEl) return null;
 
-    const cards = channelListEl.querySelectorAll<HTMLElement>(
-      "[data-channel-id]",
-    );
+    const cards =
+      channelListEl.querySelectorAll<HTMLElement>("[data-channel-id]");
     for (const card of cards) {
       const rect = card.getBoundingClientRect();
       if (clientY >= rect.top && clientY <= rect.bottom) {
@@ -150,14 +149,28 @@
     return null;
   }
 
-  function handleTouchStart(channelId: string, event: TouchEvent) {
-    if (!mobileVisible || !manualReorderEnabled || filteredChannels.length < 2) {
+  function resolveChannelIdFromTarget(
+    target: EventTarget | null,
+  ): string | null {
+    if (!(target instanceof HTMLElement)) return null;
+    const card = target.closest<HTMLElement>("[data-channel-id]");
+    return card?.dataset.channelId ?? null;
+  }
+
+  function onContainerTouchStart(event: TouchEvent) {
+    if (
+      !mobileVisible ||
+      !manualReorderEnabled ||
+      filteredChannels.length < 2
+    ) {
       return;
     }
-
     if (manageChannels || event.touches.length > 1) {
       return;
     }
+
+    const channelId = resolveChannelIdFromTarget(event.target);
+    if (!channelId) return;
 
     const touch = event.touches[0];
     const timer = setTimeout(() => {
@@ -177,7 +190,7 @@
     };
   }
 
-  function handleTouchMove(event: TouchEvent) {
+  function onContainerTouchMove(event: TouchEvent) {
     if (!touchDrag) return;
 
     const touch = Array.from(event.touches).find(
@@ -194,6 +207,7 @@
       return;
     }
 
+    // Non-passive listener: this preventDefault() actually works
     event.preventDefault();
 
     const targetId = findDropTargetFromY(touch.clientY);
@@ -202,7 +216,7 @@
     }
   }
 
-  function handleTouchEnd(event: TouchEvent) {
+  function onContainerTouchEnd(event: TouchEvent) {
     if (!touchDrag) return;
 
     const touch = Array.from(event.changedTouches).find(
@@ -236,6 +250,22 @@
     }
   }
 
+  // Register non-passive touch listeners so preventDefault() works.
+  // Svelte's ontouchmove is passive by default in Chrome, which lets
+  // the browser's pull-to-refresh / scroll gestures take over.
+  $effect(() => {
+    const el = channelListEl;
+    if (!el) return;
+
+    const opts = { passive: false } as const;
+    el.addEventListener("touchmove", onContainerTouchMove, opts);
+    el.addEventListener("touchend", onContainerTouchEnd, opts);
+
+    return () => {
+      el.removeEventListener("touchmove", onContainerTouchMove);
+      el.removeEventListener("touchend", onContainerTouchEnd);
+    };
+  });
 </script>
 
 <aside
@@ -467,10 +497,13 @@
   <div class="sr-only" aria-live="polite">{reorderAnnouncement}</div>
 
   <div
-    class="custom-scrollbar mobile-bottom-stack-padding flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1 lg:pb-0"
-    class:!overflow-hidden={touchDragActive}
+    class={`custom-scrollbar mobile-bottom-stack-padding flex min-h-0 flex-1 flex-col gap-1.5 pr-1 lg:pb-0 ${touchDragActive ? "overflow-hidden" : "overflow-y-auto"}`}
+    style="overscroll-behavior: contain;"
+    role="list"
     aria-busy={loadingChannels}
     bind:this={channelListEl}
+    ontouchstart={onContainerTouchStart}
+    ontouchcancel={() => clearTouchDrag()}
   >
     {#if loadingChannels}
       <div class="space-y-4" role="status" aria-live="polite">
@@ -512,7 +545,8 @@
                 channel.id,
               )
             : null}
-        {@const isBeingDragged = touchDragActive && draggedChannelId === channel.id}
+        {@const isBeingDragged =
+          touchDragActive && draggedChannelId === channel.id}
         {@const isDropTarget =
           touchDragActive &&
           dragOverChannelId === channel.id &&
@@ -520,11 +554,6 @@
         <div
           class={`relative transition-transform duration-150 ${isBeingDragged ? "z-50 scale-[1.03] rounded-lg shadow-xl ring-2 ring-[var(--accent)]/30" : ""} ${touchDragActive && !isBeingDragged && !isDropTarget ? "opacity-40" : ""}`}
           data-channel-id={channel.id}
-          role="listitem"
-          ontouchstart={(e) => handleTouchStart(channel.id, e)}
-          ontouchmove={handleTouchMove}
-          ontouchend={handleTouchEnd}
-          ontouchcancel={() => clearTouchDrag()}
         >
           {#if dropIndicatorEdge === "top"}
             <div
@@ -568,5 +597,4 @@
       {/each}
     {/if}
   </div>
-
 </aside>

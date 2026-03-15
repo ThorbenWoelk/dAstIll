@@ -1791,5 +1791,4 @@
     onClose={closeGuide}
     onStep={setGuideStep}
   />
-
 </div>
