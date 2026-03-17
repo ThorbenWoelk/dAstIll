@@ -527,7 +527,7 @@
 
   .tour-nav-next {
     background: var(--foreground);
-    color: white;
+    color: var(--surface);
   }
 
   .tour-nav-github {
