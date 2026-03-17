@@ -16,7 +16,7 @@
       type="button"
       role="tab"
       aria-selected={value === option}
-      class={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] transition-all duration-200 focus-visible:outline-none ${
+      class={`flex h-7 flex-none items-center gap-1.5 rounded-full px-3 text-[11px] font-bold uppercase tracking-[0.1em] transition-all duration-200 focus-visible:outline-none ${
         value === option
           ? "bg-[var(--foreground)] text-[var(--background)] shadow-sm"
           : "text-[var(--soft-foreground)] opacity-65 hover:text-[var(--foreground)] hover:opacity-100"
@@ -25,8 +25,7 @@
     >
       {#if option === "transcript"}
         <svg
-          width="11"
-          height="11"
+          class="size-[11px] shrink-0"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -44,8 +43,7 @@
         >
       {:else if option === "summary"}
         <svg
-          width="11"
-          height="11"
+          class="size-[11px] shrink-0"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -65,11 +63,10 @@
           /></svg
         >
       {:else if option === "highlights"}
-        <HighlighterIcon size={11} strokeWidth={2.5} />
+        <HighlighterIcon size={11} strokeWidth={2.5} class="shrink-0" />
       {:else}
         <svg
-          width="11"
-          height="11"
+          class="size-[11px] shrink-0"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -82,7 +79,7 @@
           <path d="M12 8h.01" />
         </svg>
       {/if}
-      <span>{option}</span>
+      <span class="leading-none">{option}</span>
     </button>
   {/each}
 </div>

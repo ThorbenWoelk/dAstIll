@@ -39,6 +39,32 @@
     onSourceChange: (source: SearchSourceFilter) => void;
     onResultSelect: (result: SearchResult) => void;
   } = $props();
+
+  function highlightMatches(text: string, q: string) {
+    if (!q.trim()) return text;
+
+    // Escape HTML from the original text first to be safe
+    const div = document.createElement("div");
+    div.textContent = text;
+    const escapedText = div.innerHTML;
+
+    // Split query into words to highlight each individually if needed
+    const terms = q
+      .trim()
+      .split(/\s+/)
+      .filter((w) => w.length > 2) // only highlight words longer than 2 chars to avoid noise
+      .map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+
+    if (terms.length === 0) return escapedText;
+
+    // Combine into a single regex pattern (alternation)
+    const pattern = `(${terms.join("|")})`;
+    const regex = new RegExp(pattern, "gi");
+
+    return escapedText.replace(regex, (match) => {
+      return `<mark class="bg-[var(--accent)]/20 text-[var(--accent-strong)] rounded-[2px] px-0.5 font-semibold">${match}</mark>`;
+    });
+  }
 </script>
 
 {#if show}
@@ -151,7 +177,7 @@
                   <h3
                     class="text-[15px] font-semibold leading-snug text-[var(--foreground)]"
                   >
-                    {result.video_title}
+                    {@html highlightMatches(result.video_title, query)}
                   </h3>
                 </div>
                 <span
@@ -179,7 +205,7 @@
                       {/if}
                     </div>
                     <p class="text-[13px] leading-6 text-[var(--foreground)]">
-                      {match.snippet}
+                      {@html highlightMatches(match.snippet, query)}
                     </p>
                   </div>
                 {/each}

@@ -122,8 +122,8 @@
   <div
     class="flex flex-wrap items-center justify-between gap-3 px-4 max-lg:pb-1 max-lg:pt-3 sm:px-6 lg:px-0"
   >
+    <h2 class="sr-only">Display Content</h2>
     <div class="flex items-center gap-3 sm:gap-4" id="content-mode-tabs">
-      <h2 class="sr-only">Display Content</h2>
       <Toggle
         options={["transcript", "summary", "highlights", "info"]}
         value={contentMode}
