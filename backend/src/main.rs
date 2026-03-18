@@ -12,6 +12,7 @@ use dastill::config::{OllamaRuntimeConfig, SearchRuntimeConfig};
 use dastill::db::init_db;
 use dastill::handlers::{channels, content, highlights, search, videos};
 use dastill::read_cache::ReadCache;
+use dastill::search_progress::SearchProgress;
 use dastill::services::{
     Cooldown, SearchService, SummarizerService, SummaryEvaluatorService, TranscriptService,
     YouTubeService, build_http_client,
@@ -111,12 +112,18 @@ async fn main() -> anyhow::Result<()> {
         )
         .with_ollama_semaphore(search_ollama_semaphore),
     );
+    let search_progress = Arc::new(SearchProgress::new(
+        search.model(),
+        search.dimensions(),
+        search.semantic_enabled(),
+    ));
 
     let state = AppState {
         db: pool,
         read_cache: Arc::new(ReadCache::default()),
         search_auto_create_vector_index: search_runtime.auto_create_vector_index,
         search_projection_lock: Arc::new(tokio::sync::RwLock::new(())),
+        search_progress,
         youtube,
         transcript,
         summarizer,
@@ -126,6 +133,55 @@ async fn main() -> anyhow::Result<()> {
         youtube_quota_cooldown,
         transcript_cooldown,
     };
+
+    let search_progress_state = state.clone();
+    tokio::spawn(async move {
+        tracing::info!("search progress hydration started");
+
+        let search_progress_materials = {
+            let conn = search_progress_state.db.connect();
+            dastill::db::list_search_progress_materials(&conn).await
+        };
+
+        let search_progress_materials = match search_progress_materials {
+            Ok(materials) => materials,
+            Err(err) => {
+                tracing::error!(error = %err, "search progress hydration failed to load materials");
+                return;
+            }
+        };
+
+        let vector_index_ready = if search_progress_state.search.semantic_enabled() {
+            let conn = search_progress_state.db.connect();
+            match dastill::db::has_vector_index(&conn).await {
+                Ok(ready) => ready,
+                Err(err) => {
+                    tracing::error!(error = %err, "search progress hydration failed to inspect vector index");
+                    false
+                }
+            }
+        } else {
+            false
+        };
+
+        let search_available = search_progress_state.search.is_available().await;
+        search_progress_state
+            .search_progress
+            .initialize_from_materials(
+                &search_progress_materials,
+                search_available,
+                vector_index_ready,
+            )
+            .await;
+
+        tracing::info!(
+            total_sources = search_progress_materials.len(),
+            vector_index_ready,
+            search_available,
+            "search progress hydration complete"
+        );
+    });
+
     spawn_queue_worker(state.clone());
     spawn_refresh_worker(state.clone());
     spawn_gap_scan_worker(state.clone());
@@ -137,6 +193,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/health/ai", get(content::health_ai))
         .route("/api/search", get(search::search))
         .route("/api/search/status", get(search::search_status))
+        .route(
+            "/api/search/status/stream",
+            get(search::search_status_stream),
+        )
         .route(
             "/api/search/rebuild",
             post(search::rebuild_search_projection),

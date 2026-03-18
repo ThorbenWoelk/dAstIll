@@ -158,6 +158,8 @@ export interface SearchStatus {
   ready: number;
   failed: number;
   total_sources: number;
+  total_chunk_count: number;
+  embedded_chunk_count: number;
   vector_index_ready: boolean;
   retrieval_mode: "hybrid_exact" | "hybrid_ann" | "fts_only";
 }

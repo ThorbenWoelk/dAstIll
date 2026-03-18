@@ -1,13 +1,16 @@
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use axum::{
     Json,
     extract::{Query, State},
     http::StatusCode,
-    response::IntoResponse,
+    response::{IntoResponse, Sse, sse::Event},
 };
 use serde::Deserialize;
+use std::convert::Infallible;
+use std::time::{Duration, Instant};
+use tokio_stream::{StreamExt, wrappers::WatchStream};
 
 use crate::db;
 use crate::models::{
@@ -53,6 +56,33 @@ pub struct SearchParams {
     pub source: Option<SearchSourceFilter>,
     pub limit: Option<usize>,
     pub channel_id: Option<String>,
+    pub mode: Option<SearchExecutionMode>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SearchExecutionMode {
+    Keyword,
+    Semantic,
+    Hybrid,
+}
+
+impl SearchExecutionMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Keyword => "keyword",
+            Self::Semantic => "semantic",
+            Self::Hybrid => "hybrid",
+        }
+    }
+
+    fn runs_keyword(self) -> bool {
+        matches!(self, Self::Keyword | Self::Hybrid)
+    }
+
+    fn runs_semantic(self) -> bool {
+        matches!(self, Self::Semantic | Self::Hybrid)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,6 +102,7 @@ impl SearchRetrievalMode {
     }
 }
 
+#[cfg(test)]
 fn resolve_search_retrieval_mode(
     embeddings_available: bool,
     vector_index_ready: bool,
@@ -85,10 +116,45 @@ fn resolve_search_retrieval_mode(
     }
 }
 
+fn resolve_requested_retrieval_mode(
+    execution_mode: SearchExecutionMode,
+    hybrid_configured: bool,
+    vector_index_ready: bool,
+) -> SearchRetrievalMode {
+    if execution_mode == SearchExecutionMode::Keyword || !hybrid_configured {
+        SearchRetrievalMode::FtsOnly
+    } else if vector_index_ready {
+        SearchRetrievalMode::HybridAnn
+    } else {
+        SearchRetrievalMode::HybridExact
+    }
+}
+
+fn resolve_semantic_retrieval_mode(
+    hybrid_configured: bool,
+    vector_index_ready: bool,
+) -> Option<SearchRetrievalMode> {
+    if !hybrid_configured {
+        None
+    } else if vector_index_ready {
+        Some(SearchRetrievalMode::HybridAnn)
+    } else {
+        Some(SearchRetrievalMode::HybridExact)
+    }
+}
+
+fn resolve_semantic_exact_source_kind(source: SearchSourceFilter) -> Option<SearchSourceKind> {
+    match source {
+        SearchSourceFilter::All => Some(SearchSourceKind::Summary),
+        _ => source.as_source_kind(),
+    }
+}
+
 pub async fn search(
     State(state): State<AppState>,
     Query(params): Query<SearchParams>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let handler_started = Instant::now();
     let _projection_guard = state.search_projection_lock.read().await;
     let query = params.q.trim();
     if query.is_empty() {
@@ -100,99 +166,165 @@ pub async fn search(
 
     let source = params.source.unwrap_or(SearchSourceFilter::All);
     let limit = params.limit.unwrap_or(8).clamp(1, 25);
+    let execution_mode = params.mode.unwrap_or(SearchExecutionMode::Hybrid);
+    let run_keyword_search = execution_mode.runs_keyword();
+    let run_semantic_search = execution_mode.runs_semantic();
     let fts_query = build_fts_query(query);
     let conn = state.db.connect();
     let semantic_enabled = state.search.semantic_enabled();
     let search_model = state.search.model();
-    let retrieval_mode = if !semantic_enabled {
-        SearchRetrievalMode::FtsOnly
+    let search_status = state.search_progress.snapshot();
+    let hybrid_configured = semantic_enabled && search_model.is_some();
+    let semantic_retrieval_mode = if run_semantic_search {
+        resolve_semantic_retrieval_mode(hybrid_configured, search_status.vector_index_ready)
     } else {
-        let embeddings_available = state.search.is_available().await;
-        if !embeddings_available {
-            SearchRetrievalMode::FtsOnly
-        } else {
-            let vector_index_ready = db::has_vector_index(&conn).await.map_err(map_db_err)?;
-            resolve_search_retrieval_mode(true, vector_index_ready)
-        }
+        None
     };
-    let candidate_limit = match retrieval_mode {
-        SearchRetrievalMode::FtsOnly => (limit * 2).clamp(10, 50),
-        _ => (limit * 8).clamp(10, 100),
+    let retrieval_mode = resolve_requested_retrieval_mode(
+        if run_semantic_search {
+            execution_mode
+        } else {
+            SearchExecutionMode::Keyword
+        },
+        hybrid_configured,
+        search_status.vector_index_ready,
+    );
+    let fts_candidate_limit = match execution_mode {
+        SearchExecutionMode::Hybrid => (limit * 8).clamp(10, 100),
+        _ => (limit * 2).clamp(10, 50),
+    };
+    let semantic_candidate_limit = match semantic_retrieval_mode {
+        Some(SearchRetrievalMode::HybridAnn) => (limit * 8).clamp(10, 100),
+        Some(SearchRetrievalMode::HybridExact) => (limit * 4).clamp(10, 50),
+        _ => 0,
     };
 
-    let fts_candidates = if fts_query.is_empty() {
+    let fts_db_started = Instant::now();
+    let fts_candidates = if !run_keyword_search || fts_query.is_empty() {
         Vec::new()
     } else {
         db::search_fts_candidates(
             &conn,
             &fts_query,
-            if semantic_enabled { search_model } else { None },
+            None,
             source.as_source_kind(),
             params.channel_id.as_deref(),
-            candidate_limit,
+            fts_candidate_limit,
         )
         .await
         .map_err(map_db_err)?
     };
+    let fts_candidates = rerank_fts_candidates(&fts_candidates, query);
+    let fts_db_elapsed_ms = fts_db_started.elapsed().as_millis() as u64;
 
-    let hybrid_candidates = match retrieval_mode {
-        SearchRetrievalMode::FtsOnly => Vec::new(),
-        SearchRetrievalMode::HybridExact => {
-            if fts_candidates.is_empty() {
-                Vec::new()
-            } else {
-                let Some(search_model) = search_model else {
-                    return Err(map_internal_err("search embedding model is not configured"));
-                };
-                let embedding = state
-                    .search
-                    .embed_texts(&[query.to_string()])
-                    .await
-                    .map_err(map_internal_err)?;
-                let query_embedding_json = vector_to_json(&embedding[0]);
-                let candidate_ids = fts_candidates
-                    .iter()
-                    .filter_map(|candidate| candidate.chunk_id.parse::<i64>().ok())
-                    .collect::<Vec<_>>();
-                db::search_exact_candidates(
-                    &conn,
-                    &query_embedding_json,
-                    search_model,
-                    &candidate_ids,
-                    candidate_limit,
-                )
-                .await
-                .map_err(map_db_err)?
-            }
-        }
-        SearchRetrievalMode::HybridAnn => {
+    let mut embedding_elapsed_ms = 0;
+    let mut hybrid_db_elapsed_ms = 0;
+    let mut embedding_failed = false;
+
+    let hybrid_candidates = match semantic_retrieval_mode {
+        None => Vec::new(),
+        Some(retrieval_mode) => {
             let Some(search_model) = search_model else {
                 return Err(map_internal_err("search embedding model is not configured"));
             };
-            let embedding = state
-                .search
-                .embed_texts(&[query.to_string()])
-                .await
-                .map_err(map_internal_err)?;
-            let query_embedding_json = vector_to_json(&embedding[0]);
-            db::search_vector_candidates(
-                &conn,
-                &query_embedding_json,
-                search_model,
-                source.as_source_kind(),
-                params.channel_id.as_deref(),
-                candidate_limit,
-            )
-            .await
-            .map_err(map_db_err)?
+            let embedding_started = Instant::now();
+            let embedding = match state.search.embed_texts(&[query.to_string()]).await {
+                Ok(embedding) => embedding,
+                Err(err) => {
+                    tracing::warn!(
+                        error = %err,
+                        execution_mode = execution_mode.as_str(),
+                        retrieval_mode = retrieval_mode.as_str(),
+                        "search embedding failed"
+                    );
+                    embedding_failed = true;
+                    Vec::new()
+                }
+            };
+            embedding_elapsed_ms = embedding_started.elapsed().as_millis() as u64;
+            if embedding_failed {
+                Vec::new()
+            } else {
+                let query_embedding_json = vector_to_json(&embedding[0]);
+                let hybrid_db_started = Instant::now();
+                let candidates = match retrieval_mode {
+                    SearchRetrievalMode::HybridExact => {
+                        db::search_exact_global_candidates(
+                            &conn,
+                            &query_embedding_json,
+                            search_model,
+                            resolve_semantic_exact_source_kind(source),
+                            params.channel_id.as_deref(),
+                            semantic_candidate_limit,
+                        )
+                        .await
+                    }
+                    SearchRetrievalMode::HybridAnn => {
+                        db::search_vector_candidates(
+                            &conn,
+                            &query_embedding_json,
+                            search_model,
+                            source.as_source_kind(),
+                            params.channel_id.as_deref(),
+                            semantic_candidate_limit,
+                        )
+                        .await
+                    }
+                    SearchRetrievalMode::FtsOnly => Ok(Vec::new()),
+                }
+                .map_err(map_db_err)?;
+                hybrid_db_elapsed_ms = hybrid_db_started.elapsed().as_millis() as u64;
+                candidates
+            }
         }
     };
 
-    let results = if retrieval_mode == SearchRetrievalMode::FtsOnly {
-        group_fts_candidates(&fts_candidates, limit)
-    } else {
-        rank_and_group_candidates(&hybrid_candidates, &fts_candidates, limit)
+    if (semantic_retrieval_mode.is_none() || embedding_failed)
+        && execution_mode == SearchExecutionMode::Semantic
+    {
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Semantic search is currently unavailable".to_string(),
+        ));
+    }
+
+    let results = match execution_mode {
+        SearchExecutionMode::Keyword => group_fts_candidates(&fts_candidates, limit),
+        SearchExecutionMode::Semantic => group_ranked_candidates(&hybrid_candidates, limit),
+        SearchExecutionMode::Hybrid if semantic_retrieval_mode.is_none() || embedding_failed => {
+            group_fts_candidates(&fts_candidates, limit)
+        }
+        SearchExecutionMode::Hybrid if fts_candidates.is_empty() => {
+            group_ranked_candidates(&hybrid_candidates, limit)
+        }
+        SearchExecutionMode::Hybrid if hybrid_candidates.is_empty() => {
+            group_fts_candidates(&fts_candidates, limit)
+        }
+        SearchExecutionMode::Hybrid => {
+            rank_and_group_candidates(&hybrid_candidates, &fts_candidates, limit)
+        }
     };
+    tracing::info!(
+        query_chars = query.chars().count(),
+        query_terms = query.split_whitespace().count(),
+        source = source.as_str(),
+        execution_mode = execution_mode.as_str(),
+        retrieval_mode = retrieval_mode.as_str(),
+        limit,
+        fts_candidate_limit,
+        semantic_candidate_limit,
+        embedding_failed,
+        run_keyword_search,
+        run_semantic_search,
+        fts_candidates = fts_candidates.len(),
+        hybrid_candidates = hybrid_candidates.len(),
+        result_count = results.len(),
+        fts_db_elapsed_ms,
+        embedding_elapsed_ms,
+        hybrid_db_elapsed_ms,
+        elapsed_ms = handler_started.elapsed().as_millis() as u64,
+        "search request completed"
+    );
     Ok(Json(SearchResponsePayload {
         query: query.to_string(),
         source: source.as_str().to_string(),
@@ -203,54 +335,27 @@ pub async fn search(
 pub async fn search_status(
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    Ok(Json(load_search_status_payload_cached(&state).await?))
+    Ok(Json(load_search_status_payload(&state)))
 }
 
-pub(crate) async fn load_search_status_payload_cached(
-    state: &AppState,
-) -> Result<SearchStatusPayload, (StatusCode, String)> {
-    if let Some(payload) = state.read_cache.get_search_status().await {
-        tracing::debug!("search status cache hit");
-        return Ok(payload);
-    }
+pub async fn search_status_stream(
+    State(state): State<AppState>,
+) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
+    let stream = WatchStream::new(state.search_progress.subscribe()).map(|payload| {
+        let data =
+            serde_json::to_string(&payload).expect("search status payload should always serialize");
+        Ok(Event::default().data(data))
+    });
 
-    let conn = state.db.connect();
-    let payload = load_search_status_payload(state, &conn).await?;
-    state.read_cache.set_search_status(payload.clone()).await;
-    Ok(payload)
+    Sse::new(stream).keep_alive(
+        axum::response::sse::KeepAlive::new()
+            .interval(Duration::from_secs(30))
+            .text("ping"),
+    )
 }
 
-pub(crate) async fn load_search_status_payload(
-    state: &AppState,
-    conn: &libsql::Connection,
-) -> Result<SearchStatusPayload, (StatusCode, String)> {
-    let _projection_guard = state.search_projection_lock.read().await;
-    let counts = db::get_search_source_counts(conn)
-        .await
-        .map_err(map_db_err)?;
-    let available = state.search.is_available().await;
-    let vector_index_ready = if state.search.semantic_enabled() {
-        db::has_vector_index(conn).await.map_err(map_db_err)?
-    } else {
-        false
-    };
-    let retrieval_mode = resolve_search_retrieval_mode(available, vector_index_ready);
-    Ok(SearchStatusPayload {
-        available,
-        model: state.search.model().unwrap_or_default().to_string(),
-        dimensions: if state.search.semantic_enabled() {
-            state.search.dimensions()
-        } else {
-            0
-        },
-        pending: counts.pending,
-        indexing: counts.indexing,
-        ready: counts.ready,
-        failed: counts.failed,
-        total_sources: counts.total_sources,
-        vector_index_ready,
-        retrieval_mode: retrieval_mode.as_str().to_string(),
-    })
+pub(crate) fn load_search_status_payload(state: &AppState) -> SearchStatusPayload {
+    state.search_progress.snapshot()
 }
 
 pub async fn rebuild_search_projection(
@@ -261,22 +366,153 @@ pub async fn rebuild_search_projection(
     db::reset_search_projection(&conn)
         .await
         .map_err(map_db_err)?;
+    let materials = db::list_search_progress_materials(&conn)
+        .await
+        .map_err(map_db_err)?;
+    state
+        .search_progress
+        .initialize_from_materials(
+            &materials,
+            state.search_progress.snapshot().available,
+            false,
+        )
+        .await;
     Ok(StatusCode::ACCEPTED)
 }
 
-fn build_fts_query(query: &str) -> String {
+const MAX_FTS_QUERY_TERMS: usize = 4;
+const SEARCH_STOPWORDS: &[&str] = &[
+    "a", "an", "and", "are", "as", "at", "be", "best", "by", "do", "for", "from", "get", "good",
+    "how", "i", "in", "into", "is", "it", "me", "my", "of", "on", "or", "show", "tell", "than",
+    "that", "the", "this", "to", "was", "what", "which", "who", "why", "with", "you", "your",
+];
+const SHORT_TECHNICAL_SEARCH_TERMS: &[&str] = &[
+    "ai", "api", "bi", "ci", "cli", "cpu", "db", "fs", "go", "gpu", "js", "llm", "ml", "qa", "ram",
+    "sdk", "sql", "ssh", "ts", "ui", "ux",
+];
+
+fn tokenize_search_terms(query: &str) -> Vec<String> {
     query
         .split(|character: char| {
             !(character.is_alphanumeric() || matches!(character, '_' | '-' | '.'))
         })
         .map(str::trim)
-        .filter(|token| token.len() >= 2)
-        .map(|token| format!("\"{token}\""))
-        .collect::<Vec<_>>()
-        .join(" OR ")
+        .filter(|token| !token.is_empty())
+        .map(str::to_ascii_lowercase)
+        .collect()
 }
 
-fn group_fts_candidates(
+fn is_meaningful_search_term(token: &str) -> bool {
+    if token.len() < 2 || SEARCH_STOPWORDS.contains(&token) {
+        return false;
+    }
+
+    token.len() >= 3 || SHORT_TECHNICAL_SEARCH_TERMS.contains(&token)
+}
+
+fn meaningful_search_terms(query: &str) -> Vec<String> {
+    let mut seen = HashSet::new();
+
+    tokenize_search_terms(query)
+        .into_iter()
+        .filter(|token| is_meaningful_search_term(token))
+        .filter(|token| seen.insert(token.clone()))
+        .take(MAX_FTS_QUERY_TERMS)
+        .collect()
+}
+
+fn build_fts_query(query: &str) -> String {
+    meaningful_search_terms(query)
+        .into_iter()
+        .map(|token| format!("\"{token}\""))
+        .collect::<Vec<_>>()
+        .join(" AND ")
+}
+
+fn contains_token_phrase(text: &str, phrase_tokens: &[String]) -> bool {
+    if phrase_tokens.len() < 2 {
+        return false;
+    }
+
+    let text_tokens = tokenize_search_terms(text);
+    text_tokens
+        .windows(phrase_tokens.len())
+        .any(|window| window == phrase_tokens)
+}
+
+fn count_title_term_matches(title: &str, terms: &[String]) -> usize {
+    let title_terms = tokenize_search_terms(title)
+        .into_iter()
+        .collect::<HashSet<_>>();
+    terms
+        .iter()
+        .filter(|term| title_terms.contains(*term))
+        .count()
+}
+
+fn rerank_fts_candidates(candidates: &[SearchCandidate], query: &str) -> Vec<SearchCandidate> {
+    let meaningful_terms = meaningful_search_terms(query);
+    if candidates.len() <= 1 || meaningful_terms.is_empty() {
+        return candidates.to_vec();
+    }
+
+    let raw_phrase_tokens = tokenize_search_terms(query);
+    let meaningful_phrase_tokens = if meaningful_terms.len() >= 2 {
+        Some(meaningful_terms.clone())
+    } else {
+        None
+    };
+    let mut ranked = candidates
+        .iter()
+        .enumerate()
+        .map(|(index, candidate)| {
+            let exact_phrase_match =
+                contains_token_phrase(&candidate.video_title, &raw_phrase_tokens)
+                    || contains_token_phrase(&candidate.chunk_text, &raw_phrase_tokens)
+                    || candidate
+                        .section_title
+                        .as_deref()
+                        .is_some_and(|title| contains_token_phrase(title, &raw_phrase_tokens))
+                    || meaningful_phrase_tokens
+                        .as_ref()
+                        .is_some_and(|phrase_tokens| {
+                            contains_token_phrase(&candidate.video_title, phrase_tokens)
+                                || contains_token_phrase(&candidate.chunk_text, phrase_tokens)
+                                || candidate.section_title.as_deref().is_some_and(|title| {
+                                    contains_token_phrase(title, phrase_tokens)
+                                })
+                        });
+            let title_term_matches =
+                count_title_term_matches(&candidate.video_title, &meaningful_terms);
+            let title_contains_all_terms = title_term_matches == meaningful_terms.len();
+            (
+                exact_phrase_match,
+                candidate.source_kind == SearchSourceKind::Summary,
+                title_contains_all_terms,
+                title_term_matches,
+                index,
+                candidate.clone(),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    ranked.sort_by(|left, right| {
+        right
+            .0
+            .cmp(&left.0)
+            .then_with(|| right.1.cmp(&left.1))
+            .then_with(|| right.2.cmp(&left.2))
+            .then_with(|| right.3.cmp(&left.3))
+            .then_with(|| left.4.cmp(&right.4))
+    });
+
+    ranked
+        .into_iter()
+        .map(|(_, _, _, _, _, candidate)| candidate)
+        .collect()
+}
+
+fn group_ranked_candidates(
     candidates: &[SearchCandidate],
     limit: usize,
 ) -> Vec<SearchVideoResultPayload> {
@@ -346,6 +582,13 @@ fn group_fts_candidates(
     }
     results.truncate(limit);
     results
+}
+
+fn group_fts_candidates(
+    candidates: &[SearchCandidate],
+    limit: usize,
+) -> Vec<SearchVideoResultPayload> {
+    group_ranked_candidates(candidates, limit)
 }
 
 fn rank_and_group_candidates(
@@ -441,8 +684,10 @@ fn rank_and_group_candidates(
 #[cfg(test)]
 mod tests {
     use super::{
-        SearchSourceFilter, build_fts_query, group_fts_candidates, rank_and_group_candidates,
-        resolve_search_retrieval_mode,
+        SearchExecutionMode, SearchRetrievalMode, SearchSourceFilter, build_fts_query,
+        group_fts_candidates, group_ranked_candidates, rank_and_group_candidates,
+        rerank_fts_candidates, resolve_requested_retrieval_mode, resolve_search_retrieval_mode,
+        resolve_semantic_exact_source_kind, resolve_semantic_retrieval_mode,
     };
     use crate::services::search::{SearchCandidate, SearchSourceKind};
 
@@ -464,8 +709,56 @@ mod tests {
     fn build_fts_query_quotes_search_terms() {
         assert_eq!(
             build_fts_query("semantic search qwen3-embedding"),
-            "\"semantic\" OR \"search\" OR \"qwen3-embedding\""
+            "\"semantic\" AND \"search\" AND \"qwen3-embedding\""
         );
+    }
+
+    #[test]
+    fn build_fts_query_drops_broad_question_stopwords_but_keeps_technical_terms() {
+        assert_eq!(
+            build_fts_query("what is the best db in town"),
+            "\"db\" AND \"town\""
+        );
+        assert_eq!(build_fts_query("how to use ai"), "\"use\" AND \"ai\"");
+    }
+
+    #[test]
+    fn build_fts_query_deduplicates_and_caps_terms() {
+        assert_eq!(
+            build_fts_query("rust rust tokio axum libsql semantic search"),
+            "\"rust\" AND \"tokio\" AND \"axum\" AND \"libsql\""
+        );
+    }
+
+    #[test]
+    fn rerank_fts_candidates_prioritizes_phrase_then_summary_then_title() {
+        let results = rerank_fts_candidates(
+            &[
+                SearchCandidate {
+                    video_title: "town database guide".to_string(),
+                    source_kind: SearchSourceKind::Transcript,
+                    chunk_text: "db town".to_string(),
+                    ..candidate("a", "video-1", SearchSourceKind::Transcript)
+                },
+                SearchCandidate {
+                    video_title: "DB choices".to_string(),
+                    source_kind: SearchSourceKind::Summary,
+                    chunk_text: "database options across the town with db comparisons".to_string(),
+                    ..candidate("b", "video-2", SearchSourceKind::Summary)
+                },
+                SearchCandidate {
+                    video_title: "Other video".to_string(),
+                    source_kind: SearchSourceKind::Transcript,
+                    chunk_text: "a db for every town".to_string(),
+                    ..candidate("c", "video-3", SearchSourceKind::Transcript)
+                },
+            ],
+            "db town",
+        );
+
+        assert_eq!(results[0].video_id, "video-1");
+        assert_eq!(results[1].video_id, "video-2");
+        assert_eq!(results[2].video_id, "video-3");
     }
 
     #[test]
@@ -489,6 +782,18 @@ mod tests {
         assert_eq!(
             SearchSourceFilter::Summary.as_source_kind(),
             Some(SearchSourceKind::Summary)
+        );
+    }
+
+    #[test]
+    fn semantic_exact_fallback_prefers_summaries_for_all_sources() {
+        assert_eq!(
+            resolve_semantic_exact_source_kind(SearchSourceFilter::All),
+            Some(SearchSourceKind::Summary)
+        );
+        assert_eq!(
+            resolve_semantic_exact_source_kind(SearchSourceFilter::Transcript),
+            Some(SearchSourceKind::Transcript)
         );
     }
 
@@ -524,6 +829,20 @@ mod tests {
     }
 
     #[test]
+    fn semantic_grouping_preserves_rank_order() {
+        let results = group_ranked_candidates(
+            &[
+                candidate("a", "video-2", SearchSourceKind::Summary),
+                candidate("b", "video-1", SearchSourceKind::Transcript),
+            ],
+            10,
+        );
+
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].video_id, "video-2");
+    }
+
+    #[test]
     fn retrieval_mode_falls_back_to_fts_without_vector_index() {
         assert_eq!(
             resolve_search_retrieval_mode(false, false).as_str(),
@@ -536,6 +855,41 @@ mod tests {
         assert_eq!(
             resolve_search_retrieval_mode(true, true).as_str(),
             "hybrid_ann"
+        );
+    }
+
+    #[test]
+    fn semantic_retrieval_mode_is_disabled_when_semantic_search_is_not_configured() {
+        assert_eq!(resolve_semantic_retrieval_mode(false, false), None);
+        assert_eq!(
+            resolve_semantic_retrieval_mode(true, false),
+            Some(SearchRetrievalMode::HybridExact)
+        );
+        assert_eq!(
+            resolve_semantic_retrieval_mode(true, true),
+            Some(SearchRetrievalMode::HybridAnn)
+        );
+    }
+
+    #[test]
+    fn keyword_mode_forces_fts_only_even_when_hybrid_is_ready() {
+        assert!(SearchExecutionMode::Keyword.runs_keyword());
+        assert!(!SearchExecutionMode::Keyword.runs_semantic());
+        assert!(!SearchExecutionMode::Semantic.runs_keyword());
+        assert!(SearchExecutionMode::Semantic.runs_semantic());
+        assert!(SearchExecutionMode::Hybrid.runs_keyword());
+        assert!(SearchExecutionMode::Hybrid.runs_semantic());
+        assert_eq!(
+            resolve_requested_retrieval_mode(SearchExecutionMode::Keyword, true, true),
+            SearchRetrievalMode::FtsOnly,
+        );
+        assert_eq!(
+            resolve_requested_retrieval_mode(SearchExecutionMode::Semantic, true, true),
+            SearchRetrievalMode::HybridAnn,
+        );
+        assert_eq!(
+            resolve_requested_retrieval_mode(SearchExecutionMode::Hybrid, true, false),
+            SearchRetrievalMode::HybridExact,
         );
     }
 }

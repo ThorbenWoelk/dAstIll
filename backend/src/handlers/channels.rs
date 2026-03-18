@@ -96,7 +96,7 @@ pub async fn workspace_bootstrap(
     )
     .await
     .map_err(map_db_err)?;
-    let search_status = super::search::load_search_status_payload_cached(&state).await?;
+    let search_status = super::search::load_search_status_payload(&state);
 
     let payload = crate::models::WorkspaceBootstrapPayload {
         ai_available,
@@ -456,9 +456,13 @@ mod tests {
 
     use super::workspace_bootstrap;
     use crate::{
-        db::{init_db_memory, insert_channel, insert_video, upsert_transcript},
+        db::{
+            init_db_memory, insert_channel, insert_video, list_search_progress_materials,
+            upsert_transcript,
+        },
         handlers::query::WorkspaceBootstrapParams,
         models::{Channel, ContentStatus, Transcript, TranscriptRenderMode, Video},
+        search_progress::SearchProgress,
         services::{
             CloudCooldown, SearchService, SummarizerService, SummaryEvaluatorService,
             TranscriptCooldown, TranscriptService, YouTubeQuotaCooldown, YouTubeService,
@@ -473,6 +477,11 @@ mod tests {
             read_cache: Arc::new(crate::read_cache::ReadCache::default()),
             search_auto_create_vector_index: false,
             search_projection_lock: Arc::new(RwLock::new(())),
+            search_progress: Arc::new(SearchProgress::new(
+                None,
+                crate::services::search::SEARCH_EMBEDDING_DIMENSIONS,
+                false,
+            )),
             youtube: Arc::new(YouTubeService::with_client(Client::new())),
             transcript: Arc::new(TranscriptService::with_path("/usr/bin/false")),
             summarizer: Arc::new(
@@ -539,13 +548,18 @@ mod tests {
         .await
         .unwrap();
 
-        let response = workspace_bootstrap(
-            State(test_app_state(pool.clone())),
-            Query(WorkspaceBootstrapParams::default()),
-        )
-        .await
-        .unwrap()
-        .into_response();
+        let state = test_app_state(pool.clone());
+        let materials = list_search_progress_materials(&conn).await.unwrap();
+        state
+            .search_progress
+            .initialize_from_materials(&materials, false, false)
+            .await;
+
+        let response =
+            workspace_bootstrap(State(state), Query(WorkspaceBootstrapParams::default()))
+                .await
+                .unwrap()
+                .into_response();
         let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let payload: Value = serde_json::from_slice(&body).unwrap();
 

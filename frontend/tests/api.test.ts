@@ -63,6 +63,8 @@ function searchStatus(): SearchStatus {
     ready: 3,
     failed: 0,
     total_sources: 4,
+    total_chunk_count: 12,
+    embedded_chunk_count: 0,
     vector_index_ready: false,
     retrieval_mode: "fts_only",
   };
@@ -375,6 +377,7 @@ describe("search api helpers", () => {
       source: "summary",
       channelId: "abc",
       limit: 7,
+      mode: "hybrid",
     });
 
     expect(result).toEqual(payload);
@@ -383,5 +386,47 @@ describe("search api helpers", () => {
     expect(requestedUrl).toContain("source=summary");
     expect(requestedUrl).toContain("channel_id=abc");
     expect(requestedUrl).toContain("limit=7");
+    expect(requestedUrl).toContain("mode=hybrid");
+  });
+
+  it("passes through an abort signal for cancellable searches", async () => {
+    const payload: SearchResponse = {
+      query: "db",
+      source: "all",
+      results: [],
+    };
+    const controller = new AbortController();
+    let requestedSignal: AbortSignal | null | undefined;
+
+    globalThis.fetch = (async (_input, init) => {
+      requestedSignal = init?.signal;
+      return new Response(JSON.stringify(payload), { status: 200 });
+    }) as typeof fetch;
+
+    await searchContent("db", {
+      signal: controller.signal,
+    });
+
+    expect(requestedSignal).toBe(controller.signal);
+  });
+
+  it("supports decoupled semantic-only searches", async () => {
+    const payload: SearchResponse = {
+      query: "best db",
+      source: "all",
+      results: [],
+    };
+    let requestedUrl = "";
+
+    globalThis.fetch = (async (input) => {
+      requestedUrl = String(input);
+      return new Response(JSON.stringify(payload), { status: 200 });
+    }) as typeof fetch;
+
+    await searchContent("best db", {
+      mode: "semantic",
+    });
+
+    expect(requestedUrl).toContain("mode=semantic");
   });
 });

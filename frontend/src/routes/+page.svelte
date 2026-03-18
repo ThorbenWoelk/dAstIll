@@ -43,6 +43,7 @@
     Highlight,
     HighlightSource,
     SearchResult,
+    SearchStatus,
     Summary as SummaryPayload,
     Transcript as TranscriptPayload,
     TranscriptRenderMode,
@@ -231,6 +232,7 @@
   let loadingChannels = $state(false);
   let aiAvailable = $state<boolean | null>(null);
   let aiStatus = $state<AiStatus | null>(null);
+  let searchStatus = $state<SearchStatus | null>(null);
   let loadingVideos = $state(false);
   let loadingContent = $state(false);
 
@@ -786,6 +788,7 @@
 
       aiAvailable = bootstrap.ai_available;
       aiStatus = bootstrap.ai_status;
+      searchStatus = bootstrap.search_status;
       channels = applySavedChannelOrder(bootstrap.channels, channelOrder);
       syncChannelOrderFromList();
       const initialChannelId = resolveInitialChannelSelection(
@@ -1627,6 +1630,7 @@
 
   <WorkspaceHeader
     {aiIndicator}
+    initialSearchStatus={searchStatus}
     onOpenGuide={openGuide}
     onSearchResultSelect={handleSearchResultSelection}
   />
@@ -1791,5 +1795,4 @@
     onClose={closeGuide}
     onStep={setGuideStep}
   />
-
 </div>

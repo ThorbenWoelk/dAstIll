@@ -295,7 +295,7 @@ pub struct SearchResponsePayload {
     pub results: Vec<SearchVideoResultPayload>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SearchStatusPayload {
     pub available: bool,
     pub model: String,
@@ -305,6 +305,8 @@ pub struct SearchStatusPayload {
     pub ready: usize,
     pub failed: usize,
     pub total_sources: usize,
+    pub total_chunk_count: usize,
+    pub embedded_chunk_count: usize,
     pub vector_index_ready: bool,
     pub retrieval_mode: String,
 }

@@ -129,6 +129,15 @@ pub struct SearchMaterial {
 }
 
 #[derive(Debug, Clone)]
+pub struct SearchProgressMaterial {
+    pub video_id: String,
+    pub source_kind: SearchSourceKind,
+    pub content: String,
+    pub index_status: Option<String>,
+    pub embedding_model: Option<String>,
+}
+
+#[derive(Debug, Clone)]
 pub struct SearchSourceCounts {
     pub pending: usize,
     pub indexing: usize,
@@ -149,6 +158,23 @@ async fn load_search_materials_from_rows(
             video_title: row.get(2)?,
             source_kind,
             content: row.get(3)?,
+        });
+    }
+    Ok(materials)
+}
+
+async fn load_search_progress_materials_from_rows(
+    mut rows: libsql::Rows,
+    source_kind: SearchSourceKind,
+) -> Result<Vec<SearchProgressMaterial>, libsql::Error> {
+    let mut materials = Vec::new();
+    while let Some(row) = rows.next().await? {
+        materials.push(SearchProgressMaterial {
+            video_id: row.get(0)?,
+            source_kind,
+            content: row.get(1)?,
+            index_status: row.get(2)?,
+            embedding_model: row.get(3)?,
         });
     }
     Ok(materials)
@@ -181,95 +207,164 @@ pub async fn init_db_memory() -> Result<DbPool, libsql::Error> {
 }
 
 async fn run_migrations(conn: &Connection) -> Result<(), libsql::Error> {
-    run_migration_statements(
+    ensure_table(
         conn,
-        &[
-            r#"
-            CREATE TABLE IF NOT EXISTS channels (
-                id TEXT PRIMARY KEY,
-                handle TEXT,
-                name TEXT NOT NULL,
-                thumbnail_url TEXT,
-                added_at TEXT NOT NULL,
-                earliest_sync_date TEXT
-            )
-            "#,
-            r#"
-            CREATE TABLE IF NOT EXISTS videos (
-                id TEXT PRIMARY KEY,
-                channel_id TEXT NOT NULL,
-                title TEXT NOT NULL,
-                thumbnail_url TEXT,
-                published_at TEXT NOT NULL,
-                is_short INTEGER NOT NULL DEFAULT 0,
-                transcript_status TEXT DEFAULT 'pending',
-                summary_status TEXT DEFAULT 'pending',
-                acknowledged INTEGER NOT NULL DEFAULT 0,
-                retry_count INTEGER NOT NULL DEFAULT 0,
-                FOREIGN KEY(channel_id) REFERENCES channels(id)
-            )
-            "#,
-            r#"
-            CREATE TABLE IF NOT EXISTS transcripts (
-                video_id TEXT PRIMARY KEY,
-                raw_text TEXT,
-                formatted_markdown TEXT,
-                render_mode TEXT NOT NULL DEFAULT 'plain_text',
-                FOREIGN KEY(video_id) REFERENCES videos(id)
-            )
-            "#,
-            r#"
-            CREATE TABLE IF NOT EXISTS summaries (
-                video_id TEXT PRIMARY KEY,
-                content TEXT NOT NULL,
-                model_used TEXT,
-                quality_score INTEGER,
-                auto_regen_attempts INTEGER NOT NULL DEFAULT 0,
-                quality_note TEXT,
-                quality_model_used TEXT,
-                FOREIGN KEY(video_id) REFERENCES videos(id)
-            )
-            "#,
-            r#"
-            CREATE TABLE IF NOT EXISTS video_info (
-                video_id TEXT PRIMARY KEY,
-                watch_url TEXT NOT NULL,
-                title TEXT NOT NULL,
-                description TEXT,
-                thumbnail_url TEXT,
-                channel_name TEXT,
-                channel_id TEXT,
-                published_at TEXT,
-                duration_iso8601 TEXT,
-                duration_seconds INTEGER,
-                view_count INTEGER,
-                fetched_at TEXT NOT NULL,
-                FOREIGN KEY(video_id) REFERENCES videos(id)
-            )
-            "#,
-            r#"
-            CREATE TABLE IF NOT EXISTS highlights (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                video_id TEXT NOT NULL,
-                source TEXT NOT NULL,
-                text TEXT NOT NULL,
-                normalized_text TEXT NOT NULL,
-                prefix_context TEXT NOT NULL DEFAULT '',
-                suffix_context TEXT NOT NULL DEFAULT '',
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(video_id) REFERENCES videos(id)
-            )
-            "#,
-            "CREATE INDEX IF NOT EXISTS idx_videos_channel ON videos(channel_id)",
-            "CREATE INDEX IF NOT EXISTS idx_videos_published ON videos(published_at DESC)",
-            "CREATE INDEX IF NOT EXISTS idx_videos_channel_published ON videos(channel_id, published_at DESC)",
-            "CREATE INDEX IF NOT EXISTS idx_videos_channel_short_published ON videos(channel_id, is_short, published_at DESC)",
-            "CREATE INDEX IF NOT EXISTS idx_videos_channel_ack_published ON videos(channel_id, acknowledged, published_at DESC)",
-            "CREATE INDEX IF NOT EXISTS idx_video_info_fetched_at ON video_info(fetched_at DESC)",
-            "CREATE INDEX IF NOT EXISTS idx_highlights_video_created ON highlights(video_id, created_at DESC, id DESC)",
-            "CREATE INDEX IF NOT EXISTS idx_highlights_created ON highlights(created_at DESC, id DESC)",
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_highlights_video_match ON highlights(video_id, source, normalized_text, prefix_context, suffix_context)",
-        ],
+        "channels",
+        r#"
+        CREATE TABLE IF NOT EXISTS channels (
+            id TEXT PRIMARY KEY,
+            handle TEXT,
+            name TEXT NOT NULL,
+            thumbnail_url TEXT,
+            added_at TEXT NOT NULL,
+            earliest_sync_date TEXT
+        )
+        "#,
+    )
+    .await?;
+    ensure_table(
+        conn,
+        "videos",
+        r#"
+        CREATE TABLE IF NOT EXISTS videos (
+            id TEXT PRIMARY KEY,
+            channel_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            thumbnail_url TEXT,
+            published_at TEXT NOT NULL,
+            is_short INTEGER NOT NULL DEFAULT 0,
+            transcript_status TEXT DEFAULT 'pending',
+            summary_status TEXT DEFAULT 'pending',
+            acknowledged INTEGER NOT NULL DEFAULT 0,
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY(channel_id) REFERENCES channels(id)
+        )
+        "#,
+    )
+    .await?;
+    ensure_table(
+        conn,
+        "transcripts",
+        r#"
+        CREATE TABLE IF NOT EXISTS transcripts (
+            video_id TEXT PRIMARY KEY,
+            raw_text TEXT,
+            formatted_markdown TEXT,
+            render_mode TEXT NOT NULL DEFAULT 'plain_text',
+            FOREIGN KEY(video_id) REFERENCES videos(id)
+        )
+        "#,
+    )
+    .await?;
+    ensure_table(
+        conn,
+        "summaries",
+        r#"
+        CREATE TABLE IF NOT EXISTS summaries (
+            video_id TEXT PRIMARY KEY,
+            content TEXT NOT NULL,
+            model_used TEXT,
+            quality_score INTEGER,
+            auto_regen_attempts INTEGER NOT NULL DEFAULT 0,
+            quality_note TEXT,
+            quality_model_used TEXT,
+            FOREIGN KEY(video_id) REFERENCES videos(id)
+        )
+        "#,
+    )
+    .await?;
+    ensure_table(
+        conn,
+        "video_info",
+        r#"
+        CREATE TABLE IF NOT EXISTS video_info (
+            video_id TEXT PRIMARY KEY,
+            watch_url TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            thumbnail_url TEXT,
+            channel_name TEXT,
+            channel_id TEXT,
+            published_at TEXT,
+            duration_iso8601 TEXT,
+            duration_seconds INTEGER,
+            view_count INTEGER,
+            fetched_at TEXT NOT NULL,
+            FOREIGN KEY(video_id) REFERENCES videos(id)
+        )
+        "#,
+    )
+    .await?;
+    ensure_table(
+        conn,
+        "highlights",
+        r#"
+        CREATE TABLE IF NOT EXISTS highlights (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            video_id TEXT NOT NULL,
+            source TEXT NOT NULL,
+            text TEXT NOT NULL,
+            normalized_text TEXT NOT NULL,
+            prefix_context TEXT NOT NULL DEFAULT '',
+            suffix_context TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(video_id) REFERENCES videos(id)
+        )
+        "#,
+    )
+    .await?;
+    ensure_index(
+        conn,
+        "idx_videos_channel",
+        "CREATE INDEX IF NOT EXISTS idx_videos_channel ON videos(channel_id)",
+    )
+    .await?;
+    ensure_index(
+        conn,
+        "idx_videos_published",
+        "CREATE INDEX IF NOT EXISTS idx_videos_published ON videos(published_at DESC)",
+    )
+    .await?;
+    ensure_index(
+        conn,
+        "idx_videos_channel_published",
+        "CREATE INDEX IF NOT EXISTS idx_videos_channel_published ON videos(channel_id, published_at DESC)",
+    )
+    .await?;
+    ensure_index(
+        conn,
+        "idx_videos_channel_short_published",
+        "CREATE INDEX IF NOT EXISTS idx_videos_channel_short_published ON videos(channel_id, is_short, published_at DESC)",
+    )
+    .await?;
+    ensure_index(
+        conn,
+        "idx_videos_channel_ack_published",
+        "CREATE INDEX IF NOT EXISTS idx_videos_channel_ack_published ON videos(channel_id, acknowledged, published_at DESC)",
+    )
+    .await?;
+    ensure_index(
+        conn,
+        "idx_video_info_fetched_at",
+        "CREATE INDEX IF NOT EXISTS idx_video_info_fetched_at ON video_info(fetched_at DESC)",
+    )
+    .await?;
+    ensure_index(
+        conn,
+        "idx_highlights_video_created",
+        "CREATE INDEX IF NOT EXISTS idx_highlights_video_created ON highlights(video_id, created_at DESC, id DESC)",
+    )
+    .await?;
+    ensure_index(
+        conn,
+        "idx_highlights_created",
+        "CREATE INDEX IF NOT EXISTS idx_highlights_created ON highlights(created_at DESC, id DESC)",
+    )
+    .await?;
+    ensure_index(
+        conn,
+        "idx_highlights_video_match",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_highlights_video_match ON highlights(video_id, source, normalized_text, prefix_context, suffix_context)",
     )
     .await?;
     // Note: vector index (idx_search_chunks_embedding) is NOT created during migration.
@@ -370,31 +465,80 @@ async fn run_migrations(conn: &Connection) -> Result<(), libsql::Error> {
     )
     .await?;
     ensure_search_projection_schema(conn).await?;
-    run_migration_statements(
+    ensure_index(
         conn,
-        &[
-            "CREATE INDEX IF NOT EXISTS idx_videos_channel_ack_short_published ON videos(channel_id, acknowledged, is_short, published_at DESC)",
-            "CREATE INDEX IF NOT EXISTS idx_videos_channel_transcript_queue_published ON videos(channel_id, published_at DESC) WHERE transcript_status != 'ready'",
-            "CREATE INDEX IF NOT EXISTS idx_videos_channel_summary_queue_published ON videos(channel_id, published_at DESC) WHERE transcript_status = 'ready' AND summary_status != 'ready'",
-            "CREATE INDEX IF NOT EXISTS idx_videos_channel_ready_published ON videos(channel_id, published_at) WHERE transcript_status = 'ready' AND summary_status = 'ready'",
-            "CREATE INDEX IF NOT EXISTS idx_highlights_video_created ON highlights(video_id, created_at DESC, id DESC)",
-            "CREATE INDEX IF NOT EXISTS idx_highlights_created ON highlights(created_at DESC, id DESC)",
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_highlights_video_match ON highlights(video_id, source, normalized_text, prefix_context, suffix_context)",
-            "CREATE INDEX IF NOT EXISTS idx_search_sources_status ON search_sources(index_status, source_kind, id)",
-            "CREATE INDEX IF NOT EXISTS idx_search_chunks_source_generation ON search_chunks(search_source_id, source_generation, chunk_index)",
-        ],
+        "idx_videos_channel_ack_short_published",
+        "CREATE INDEX IF NOT EXISTS idx_videos_channel_ack_short_published ON videos(channel_id, acknowledged, is_short, published_at DESC)",
+    )
+    .await?;
+    ensure_index(
+        conn,
+        "idx_videos_channel_transcript_queue_published",
+        "CREATE INDEX IF NOT EXISTS idx_videos_channel_transcript_queue_published ON videos(channel_id, published_at DESC) WHERE transcript_status != 'ready'",
+    )
+    .await?;
+    ensure_index(
+        conn,
+        "idx_videos_channel_summary_queue_published",
+        "CREATE INDEX IF NOT EXISTS idx_videos_channel_summary_queue_published ON videos(channel_id, published_at DESC) WHERE transcript_status = 'ready' AND summary_status != 'ready'",
+    )
+    .await?;
+    ensure_index(
+        conn,
+        "idx_videos_channel_ready_published",
+        "CREATE INDEX IF NOT EXISTS idx_videos_channel_ready_published ON videos(channel_id, published_at) WHERE transcript_status = 'ready' AND summary_status = 'ready'",
     )
     .await?;
     Ok(())
 }
 
-async fn run_migration_statements(
+async fn schema_object_exists(
     conn: &Connection,
-    statements: &[&str],
+    object_type: &str,
+    object_name: &str,
+) -> Result<bool, libsql::Error> {
+    let mut rows = conn
+        .query(
+            "SELECT 1 FROM sqlite_master WHERE type = ?1 AND name = ?2 LIMIT 1",
+            params![object_type, object_name],
+        )
+        .await?;
+    Ok(rows.next().await?.is_some())
+}
+
+async fn ensure_table(
+    conn: &Connection,
+    table_name: &str,
+    create_sql: &str,
 ) -> Result<(), libsql::Error> {
-    for statement in statements {
-        conn.execute(statement, ()).await?;
+    if schema_object_exists(conn, "table", table_name).await? {
+        return Ok(());
     }
+    conn.execute(create_sql, ()).await?;
+    Ok(())
+}
+
+async fn ensure_index(
+    conn: &Connection,
+    index_name: &str,
+    create_sql: &str,
+) -> Result<(), libsql::Error> {
+    if schema_object_exists(conn, "index", index_name).await? {
+        return Ok(());
+    }
+    conn.execute(create_sql, ()).await?;
+    Ok(())
+}
+
+async fn ensure_trigger(
+    conn: &Connection,
+    trigger_name: &str,
+    create_sql: &str,
+) -> Result<(), libsql::Error> {
+    if schema_object_exists(conn, "trigger", trigger_name).await? {
+        return Ok(());
+    }
+    conn.execute(create_sql, ()).await?;
     Ok(())
 }
 
@@ -421,27 +565,41 @@ async fn ensure_search_projection_schema(conn: &Connection) -> Result<(), libsql
             .await?;
     }
 
-    conn.execute(SEARCH_SOURCES_SQL, ()).await?;
-    conn.execute(SEARCH_CHUNKS_SQL, ()).await?;
-    conn.execute(SEARCH_CHUNKS_FTS_SQL, ()).await?;
-    conn.execute(
+    ensure_table(conn, "search_sources", SEARCH_SOURCES_SQL).await?;
+    ensure_table(conn, "search_chunks", SEARCH_CHUNKS_SQL).await?;
+    ensure_table(conn, "search_chunks_fts", SEARCH_CHUNKS_FTS_SQL).await?;
+    ensure_index(
+        conn,
+        "idx_search_sources_status",
         "CREATE INDEX IF NOT EXISTS idx_search_sources_status
          ON search_sources(index_status, source_kind, id)",
-        (),
     )
     .await?;
-    conn.execute(
+    ensure_index(
+        conn,
+        "idx_search_chunks_source_generation",
         "CREATE INDEX IF NOT EXISTS idx_search_chunks_source_generation
          ON search_chunks(search_source_id, source_generation, chunk_index)",
-        (),
     )
     .await?;
-    conn.execute(SEARCH_CHUNKS_FTS_INSERT_TRIGGER_SQL, ())
-        .await?;
-    conn.execute(SEARCH_CHUNKS_FTS_DELETE_TRIGGER_SQL, ())
-        .await?;
-    conn.execute(SEARCH_CHUNKS_FTS_UPDATE_TRIGGER_SQL, ())
-        .await?;
+    ensure_trigger(
+        conn,
+        "search_chunks_ai",
+        SEARCH_CHUNKS_FTS_INSERT_TRIGGER_SQL,
+    )
+    .await?;
+    ensure_trigger(
+        conn,
+        "search_chunks_ad",
+        SEARCH_CHUNKS_FTS_DELETE_TRIGGER_SQL,
+    )
+    .await?;
+    ensure_trigger(
+        conn,
+        "search_chunks_au",
+        SEARCH_CHUNKS_FTS_UPDATE_TRIGGER_SQL,
+    )
+    .await?;
 
     Ok(())
 }
@@ -1732,6 +1890,54 @@ pub async fn list_search_reconciliation_materials(
     Ok(materials)
 }
 
+pub async fn list_search_progress_materials(
+    conn: &Connection,
+) -> Result<Vec<SearchProgressMaterial>, libsql::Error> {
+    let summary_rows = conn
+        .query(
+            "SELECT
+                v.id,
+                TRIM(COALESCE(s.content, '')),
+                ss.index_status,
+                ss.embedding_model
+             FROM videos v
+             JOIN summaries s ON s.video_id = v.id
+             LEFT JOIN search_sources ss
+               ON ss.video_id = v.id
+              AND ss.source_kind = 'summary'
+             WHERE v.summary_status = 'ready'
+               AND TRIM(COALESCE(s.content, '')) <> ''",
+            (),
+        )
+        .await?;
+    let mut materials =
+        load_search_progress_materials_from_rows(summary_rows, SearchSourceKind::Summary).await?;
+
+    let transcript_rows = conn
+        .query(
+            "SELECT
+                v.id,
+                TRIM(COALESCE(t.raw_text, t.formatted_markdown, '')),
+                ss.index_status,
+                ss.embedding_model
+             FROM videos v
+             JOIN transcripts t ON t.video_id = v.id
+             LEFT JOIN search_sources ss
+               ON ss.video_id = v.id
+              AND ss.source_kind = 'transcript'
+             WHERE v.transcript_status = 'ready'
+               AND TRIM(COALESCE(t.raw_text, t.formatted_markdown, '')) <> ''",
+            (),
+        )
+        .await?;
+    materials.extend(
+        load_search_progress_materials_from_rows(transcript_rows, SearchSourceKind::Transcript)
+            .await?,
+    );
+
+    Ok(materials)
+}
+
 pub async fn search_vector_candidates(
     conn: &Connection,
     query_embedding: &str,
@@ -1811,14 +2017,17 @@ pub async fn search_vector_candidates(
 }
 
 pub async fn has_vector_index(conn: &Connection) -> Result<bool, libsql::Error> {
-    let mut rows = conn.query("PRAGMA index_list(search_chunks)", ()).await?;
-    while let Some(row) = rows.next().await? {
-        let name: String = row.get(1)?;
-        if name == "idx_search_chunks_embedding" {
-            return Ok(true);
-        }
+    if !schema_object_exists(conn, "table", "libsql_vector_meta_shadow").await? {
+        return Ok(false);
     }
-    Ok(false)
+
+    let mut rows = conn
+        .query(
+            "SELECT 1 FROM libsql_vector_meta_shadow WHERE name = ?1 LIMIT 1",
+            params!["idx_search_chunks_embedding"],
+        )
+        .await?;
+    Ok(rows.next().await?.is_some())
 }
 
 /// Create the vector index for semantic search. Expensive on remote Turso -
@@ -1899,6 +2108,77 @@ pub async fn search_exact_candidates(
     let limit_param_index = candidate_ids.len() + 3;
     sql.push_str(") ORDER BY vector_distance_cos(sc.embedding, vector32(?1)) ASC");
     sql.push_str(&format!(" LIMIT ?{limit_param_index}"));
+    params_vec.push(Value::from(limit as i64));
+
+    let mut rows = conn.query(&sql, params_vec).await?;
+    let mut matches = Vec::new();
+    while let Some(row) = rows.next().await? {
+        let chunk_id: i64 = row.get(0)?;
+        let source_kind_raw: String = row.get(5)?;
+        matches.push(SearchCandidate {
+            chunk_id: chunk_id.to_string(),
+            video_id: row.get(1)?,
+            channel_id: row.get(2)?,
+            channel_name: row.get(3)?,
+            video_title: row.get(4)?,
+            source_kind: SearchSourceKind::from_db_value(&source_kind_raw),
+            section_title: row.get(6)?,
+            chunk_text: row.get(7)?,
+            published_at: row.get(8)?,
+        });
+    }
+    Ok(matches)
+}
+
+pub async fn search_exact_global_candidates(
+    conn: &Connection,
+    query_embedding: &str,
+    embedding_model: &str,
+    source_kind: Option<SearchSourceKind>,
+    channel_id: Option<&str>,
+    limit: usize,
+) -> Result<Vec<SearchCandidate>, libsql::Error> {
+    let mut sql = String::from(
+        "SELECT
+            sc.id,
+            ss.video_id,
+            v.channel_id,
+            COALESCE(c.name, ''),
+            v.title,
+            ss.source_kind,
+            sc.section_title,
+            sc.chunk_text,
+            v.published_at
+         FROM search_chunks sc
+         JOIN search_sources ss
+           ON ss.id = sc.search_source_id
+          AND ss.source_generation = sc.source_generation
+          AND ss.index_status = 'ready'
+          AND ss.embedding_model = ?2
+         JOIN videos v ON v.id = ss.video_id
+         LEFT JOIN channels c ON c.id = v.channel_id
+         WHERE 1 = 1",
+    );
+    let mut params_vec = vec![
+        Value::from(query_embedding.to_string()),
+        Value::from(embedding_model.to_string()),
+    ];
+    let mut next_param_index = 3;
+
+    if let Some(source_kind) = source_kind {
+        sql.push_str(&format!(" AND ss.source_kind = ?{next_param_index}"));
+        params_vec.push(Value::from(source_kind.as_str().to_string()));
+        next_param_index += 1;
+    }
+
+    if let Some(channel_id) = channel_id {
+        sql.push_str(&format!(" AND v.channel_id = ?{next_param_index}"));
+        params_vec.push(Value::from(channel_id.to_string()));
+        next_param_index += 1;
+    }
+
+    sql.push_str(" ORDER BY vector_distance_cos(sc.embedding, vector32(?1)) ASC");
+    sql.push_str(&format!(" LIMIT ?{next_param_index}"));
     params_vec.push(Value::from(limit as i64));
 
     let mut rows = conn.query(&sql, params_vec).await?;
@@ -4481,6 +4761,25 @@ mod tests {
         ensure_vector_index(&conn).await.unwrap();
 
         assert!(has_vector_index(&conn).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_run_migrations_is_idempotent_on_existing_schema() {
+        let pool = init_db_memory().await.unwrap();
+        let conn = pool.lock().await;
+
+        run_migrations(&conn).await.unwrap();
+
+        let mut rows = conn
+            .query(
+                "SELECT count(*) FROM sqlite_master WHERE type = 'trigger' AND name IN ('search_chunks_ai', 'search_chunks_ad', 'search_chunks_au')",
+                (),
+            )
+            .await
+            .unwrap();
+        let row = rows.next().await.unwrap().unwrap();
+        let trigger_count: i64 = row.get(0).unwrap();
+        assert_eq!(trigger_count, 3);
     }
 
     #[tokio::test]

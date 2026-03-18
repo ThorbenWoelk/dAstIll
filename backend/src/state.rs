@@ -4,6 +4,7 @@ use tokio::sync::RwLock;
 
 use crate::db::DbPool;
 use crate::read_cache::ReadCache;
+use crate::search_progress::SearchProgress;
 use crate::services::{
     CloudCooldown, SearchService, SummarizerService, SummaryEvaluatorService, TranscriptCooldown,
     TranscriptService, YouTubeQuotaCooldown, YouTubeService,
@@ -15,6 +16,7 @@ pub struct AppState {
     pub read_cache: Arc<ReadCache>,
     pub search_auto_create_vector_index: bool,
     pub search_projection_lock: Arc<RwLock<()>>,
+    pub search_progress: Arc<SearchProgress>,
     pub youtube: Arc<YouTubeService>,
     pub transcript: Arc<TranscriptService>,
     pub summarizer: Arc<SummarizerService>,

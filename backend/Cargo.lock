@@ -510,6 +510,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-stream",
  "tower-http 0.6.8",
  "tracing",
  "tracing-subscriber",
@@ -2891,6 +2892,7 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]

@@ -15,6 +15,8 @@ function searchStatus(overrides: Partial<SearchStatus> = {}): SearchStatus {
     ready: 3,
     failed: 0,
     total_sources: 4,
+    total_chunk_count: 10,
+    embedded_chunk_count: 7,
     vector_index_ready: false,
     retrieval_mode: "hybrid_exact",
     ...overrides,
@@ -37,17 +39,42 @@ describe("resolveSearchCoveragePercent", () => {
       ),
     ).toBe(100);
   });
+
+  it("returns semantic coverage when embeddings are available", () => {
+    expect(resolveSearchCoveragePercent(searchStatus(), "semantic")).toBe(70);
+    expect(
+      resolveSearchCoveragePercent(
+        searchStatus({ available: false, embedded_chunk_count: 0 }),
+        "semantic",
+      ),
+    ).toBeNull();
+  });
 });
 
 describe("resolveSearchCoverageHint", () => {
-  it("returns the subtle percent-indexed label once enough content is indexed", () => {
-    expect(resolveSearchCoverageHint(searchStatus())).toBe("75% indexed");
+  it("shows keyword and semantic coverage when hybrid search is available", () => {
+    expect(resolveSearchCoverageHint(searchStatus())).toBe(
+      "75% keyword | 70% semantic",
+    );
   });
 
   it("keeps the completed coverage hint visible at 100 percent", () => {
     expect(
-      resolveSearchCoverageHint(searchStatus({ ready: 8, total_sources: 8 })),
-    ).toBe("100% indexed");
+      resolveSearchCoverageHint(
+        searchStatus({
+          ready: 8,
+          total_sources: 8,
+          total_chunk_count: 12,
+          embedded_chunk_count: 12,
+        }),
+      ),
+    ).toBe("100% keyword | 100% semantic");
+  });
+
+  it("falls back to the keyword-only label when semantic search is unavailable", () => {
+    expect(resolveSearchCoverageHint(searchStatus({ available: false }))).toBe(
+      "75% indexed",
+    );
   });
 
   it("falls back to raw counts when rounding would hide progress", () => {

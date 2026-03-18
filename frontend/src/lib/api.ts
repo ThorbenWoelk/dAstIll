@@ -474,6 +474,8 @@ export function searchContent(
     source?: SearchSourceFilter;
     channelId?: string | null;
     limit?: number;
+    mode?: "keyword" | "hybrid" | "semantic";
+    signal?: AbortSignal;
   },
 ) {
   const params = new URLSearchParams({
@@ -488,11 +490,21 @@ export function searchContent(
   if (options?.limit !== undefined) {
     params.set("limit", `${options.limit}`);
   }
-  return request<SearchResponse>(`/api/search?${params.toString()}`);
+  if (options?.mode) {
+    params.set("mode", options.mode);
+  }
+  return request<SearchResponse>(`/api/search?${params.toString()}`, {
+    signal: options?.signal,
+  });
 }
 
 export function getSearchStatus(options?: { bypassCache?: boolean }) {
   return cachedGetRequest<SearchStatus>("/api/search/status", options);
+}
+
+export function openSearchStatusStream() {
+  const apiBase = API_BASE.endsWith("/") ? API_BASE.slice(0, -1) : API_BASE;
+  return new EventSource(`${apiBase}/api/search/status/stream`);
 }
 
 export function deleteHighlight(highlightId: number) {

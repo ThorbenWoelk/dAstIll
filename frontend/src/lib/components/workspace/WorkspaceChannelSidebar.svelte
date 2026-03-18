@@ -138,9 +138,8 @@
   function findDropTargetFromY(clientY: number): string | null {
     if (!channelListEl) return null;
 
-    const cards = channelListEl.querySelectorAll<HTMLElement>(
-      "[data-channel-id]",
-    );
+    const cards =
+      channelListEl.querySelectorAll<HTMLElement>("[data-channel-id]");
     for (const card of cards) {
       const rect = card.getBoundingClientRect();
       if (clientY >= rect.top && clientY <= rect.bottom) {
@@ -151,7 +150,11 @@
   }
 
   function handleTouchStart(channelId: string, event: TouchEvent) {
-    if (!mobileVisible || !manualReorderEnabled || filteredChannels.length < 2) {
+    if (
+      !mobileVisible ||
+      !manualReorderEnabled ||
+      filteredChannels.length < 2
+    ) {
       return;
     }
 
@@ -235,7 +238,6 @@
       }
     }
   }
-
 </script>
 
 <aside
@@ -512,7 +514,8 @@
                 channel.id,
               )
             : null}
-        {@const isBeingDragged = touchDragActive && draggedChannelId === channel.id}
+        {@const isBeingDragged =
+          touchDragActive && draggedChannelId === channel.id}
         {@const isDropTarget =
           touchDragActive &&
           dragOverChannelId === channel.id &&
@@ -568,5 +571,4 @@
       {/each}
     {/if}
   </div>
-
 </aside>

@@ -279,8 +279,10 @@ mod tests {
                 ready: 1,
                 failed: 0,
                 total_sources: 1,
+                total_chunk_count: 3,
+                embedded_chunk_count: 3,
                 vector_index_ready: true,
-                retrieval_mode: "fts".to_string(),
+                retrieval_mode: "hybrid_ann".to_string(),
             },
         }
     }
@@ -295,8 +297,10 @@ mod tests {
             ready: 1,
             failed: 0,
             total_sources: 1,
+            total_chunk_count: 3,
+            embedded_chunk_count: 3,
             vector_index_ready: true,
-            retrieval_mode: "fts".to_string(),
+            retrieval_mode: "hybrid_ann".to_string(),
         }
     }
 

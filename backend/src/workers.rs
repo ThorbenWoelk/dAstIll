@@ -6,6 +6,7 @@ use tokio::time::sleep;
 use crate::db;
 use crate::handlers::content;
 use crate::models::{AiStatus, ContentStatus, Video};
+use crate::search_progress::SearchProgressSourceStatus;
 use crate::services::search::{
     SEARCH_SUMMARY_TARGET_WORDS, SEARCH_TRANSCRIPT_OVERLAP_WORDS, SEARCH_TRANSCRIPT_TARGET_WORDS,
     SearchIndexChunk, SearchSourceKind, build_embedding_input, chunk_summary_content,
@@ -31,6 +32,7 @@ const SEARCH_PRUNE_SCAN_LIMIT: usize = 256;
 const SEARCH_INDEX_POLL_INTERVAL: Duration = Duration::from_secs(3);
 const SEARCH_INDEX_IDLE_POLL_INTERVAL: Duration = Duration::from_secs(15);
 const SEARCH_INDEX_IDLE_POLL_MAX_INTERVAL: Duration = Duration::from_secs(120);
+const SEARCH_VECTOR_INDEX_BUILD_BACKLOG_THRESHOLD: usize = 128;
 const SEARCH_RECONCILE_INTERVAL: Duration = Duration::from_secs(60);
 const SEARCH_VECTOR_INDEX_RETRY_INTERVAL: Duration = Duration::from_secs(5 * 60);
 const MAX_DISTILLATION_RETRIES: u8 = 3;
@@ -186,6 +188,10 @@ async fn backfill_search_sources(state: &AppState) -> bool {
             failed += 1;
             continue;
         }
+        state
+            .search_progress
+            .upsert_material(&material, SearchProgressSourceStatus::Pending, 0)
+            .await;
         queued += 1;
     }
 
@@ -267,6 +273,10 @@ async fn reconcile_search_sources(state: &AppState) -> bool {
                 );
                 failed_count += 1;
             } else {
+                state
+                    .search_progress
+                    .upsert_material(&material, SearchProgressSourceStatus::Pending, 0)
+                    .await;
                 refreshed_count += 1;
             }
         }
@@ -286,7 +296,16 @@ async fn reconcile_search_sources(state: &AppState) -> bool {
 
 async fn process_pending_search_sources(state: &AppState) -> bool {
     let semantic_enabled = state.search.semantic_enabled();
-    if semantic_enabled && !state.search.is_available().await {
+    let semantic_available = if semantic_enabled {
+        state.search.is_available().await
+    } else {
+        false
+    };
+    state
+        .search_progress
+        .set_semantic_available(semantic_available);
+
+    if semantic_enabled && !semantic_available {
         tracing::warn!(
             "search index worker skipped - Ollama embedding model not found in /api/tags"
         );
@@ -367,6 +386,14 @@ async fn process_pending_search_sources(state: &AppState) -> bool {
                         &err.to_string(),
                     )
                     .await;
+                    state
+                        .search_progress
+                        .set_source_status(
+                            &source.video_id,
+                            source.source_kind,
+                            SearchProgressSourceStatus::Failed,
+                        )
+                        .await;
                     failed_count += 1;
                     continue;
                 }
@@ -374,6 +401,10 @@ async fn process_pending_search_sources(state: &AppState) -> bool {
 
         let Some(material) = material else {
             let _ = db::clear_search_source(&conn, &source.video_id, source.source_kind).await;
+            state
+                .search_progress
+                .remove_source(&source.video_id, source.source_kind)
+                .await;
             cleared_count += 1;
             continue;
         };
@@ -387,6 +418,10 @@ async fn process_pending_search_sources(state: &AppState) -> bool {
                 &current_hash,
             )
             .await;
+            state
+                .search_progress
+                .upsert_material(&material, SearchProgressSourceStatus::Pending, 0)
+                .await;
             requeued_count += 1;
             continue;
         }
@@ -394,9 +429,24 @@ async fn process_pending_search_sources(state: &AppState) -> bool {
         let drafts = chunk_material(&material);
         if drafts.is_empty() {
             let _ = db::clear_search_source(&conn, &source.video_id, source.source_kind).await;
+            state
+                .search_progress
+                .remove_source(&source.video_id, source.source_kind)
+                .await;
             cleared_count += 1;
             continue;
         }
+
+        state
+            .search_progress
+            .upsert_source(
+                &source.video_id,
+                source.source_kind,
+                SearchProgressSourceStatus::Indexing,
+                drafts.len(),
+                0,
+            )
+            .await;
 
         let embedding_inputs = if semantic_enabled {
             drafts
@@ -473,6 +523,16 @@ async fn process_pending_search_sources(state: &AppState) -> bool {
             {
                 Ok(stored) => {
                     if stored {
+                        state
+                            .search_progress
+                            .upsert_source(
+                                &source.video_id,
+                                source.source_kind,
+                                SearchProgressSourceStatus::Ready,
+                                chunk_count,
+                                0,
+                            )
+                            .await;
                         indexed_count += 1;
                     }
                 }
@@ -493,6 +553,14 @@ async fn process_pending_search_sources(state: &AppState) -> bool {
                         &err.to_string(),
                     )
                     .await;
+                    state
+                        .search_progress
+                        .set_source_status(
+                            &source.video_id,
+                            source.source_kind,
+                            SearchProgressSourceStatus::Failed,
+                        )
+                        .await;
                     failed_count += 1;
                 }
             }
@@ -542,6 +610,14 @@ async fn process_pending_search_sources(state: &AppState) -> bool {
                     &err.to_string(),
                 )
                 .await;
+                state
+                    .search_progress
+                    .set_source_status(
+                        &source.video_id,
+                        source.source_kind,
+                        SearchProgressSourceStatus::Failed,
+                    )
+                    .await;
             }
             tracing::error!(
                 error = %err,
@@ -590,6 +666,16 @@ async fn process_pending_search_sources(state: &AppState) -> bool {
         {
             Ok(stored) => {
                 if stored {
+                    state
+                        .search_progress
+                        .upsert_source(
+                            &source.video_id,
+                            source.source_kind,
+                            SearchProgressSourceStatus::Ready,
+                            chunk_count,
+                            chunk_count,
+                        )
+                        .await;
                     indexed_count += 1;
                 }
             }
@@ -610,6 +696,14 @@ async fn process_pending_search_sources(state: &AppState) -> bool {
                     &err.to_string(),
                 )
                 .await;
+                state
+                    .search_progress
+                    .set_source_status(
+                        &source.video_id,
+                        source.source_kind,
+                        SearchProgressSourceStatus::Failed,
+                    )
+                    .await;
                 failed_count += 1;
             }
         }
@@ -664,6 +758,12 @@ async fn sleep_with_backoff(
     sleep(delay).await;
 }
 
+fn should_build_vector_index(counts: &db::SearchSourceCounts) -> bool {
+    counts.ready > 0
+        && counts.pending.saturating_add(counts.indexing)
+            <= SEARCH_VECTOR_INDEX_BUILD_BACKLOG_THRESHOLD
+}
+
 async fn maybe_ensure_vector_index(state: &AppState, last_attempt: &mut Option<Instant>) {
     if !state.search_auto_create_vector_index || !state.search.semantic_enabled() {
         return;
@@ -686,13 +786,18 @@ async fn maybe_ensure_vector_index(state: &AppState, last_attempt: &mut Option<I
         }
     };
 
-    if counts.ready == 0 || counts.pending > 0 || counts.indexing > 0 {
+    if !should_build_vector_index(&counts) {
         return;
     }
 
     match db::has_vector_index(&conn).await {
-        Ok(true) => return,
-        Ok(false) => {}
+        Ok(true) => {
+            state.search_progress.set_vector_index_ready(true);
+            return;
+        }
+        Ok(false) => {
+            state.search_progress.set_vector_index_ready(false);
+        }
         Err(err) => {
             tracing::error!(error = %err, "search vector index check failed");
             return;
@@ -702,10 +807,16 @@ async fn maybe_ensure_vector_index(state: &AppState, last_attempt: &mut Option<I
     *last_attempt = Some(Instant::now());
     tracing::info!(
         ready_sources = counts.ready,
+        pending_sources = counts.pending,
+        indexing_sources = counts.indexing,
+        backlog_threshold = SEARCH_VECTOR_INDEX_BUILD_BACKLOG_THRESHOLD,
         "search vector index build starting"
     );
     match db::ensure_vector_index(&conn).await {
-        Ok(()) => tracing::info!("search vector index build complete"),
+        Ok(()) => {
+            state.search_progress.set_vector_index_ready(true);
+            tracing::info!("search vector index build complete");
+        }
         Err(err) => {
             tracing::error!(error = %err, "search vector index build failed");
         }
@@ -1106,6 +1217,7 @@ pub fn spawn_search_index_worker(state: AppState) {
             active_poll_interval_secs = SEARCH_INDEX_POLL_INTERVAL.as_secs(),
             idle_poll_start_secs = SEARCH_INDEX_IDLE_POLL_INTERVAL.as_secs(),
             idle_poll_max_secs = SEARCH_INDEX_IDLE_POLL_MAX_INTERVAL.as_secs(),
+            vector_index_build_backlog_threshold = SEARCH_VECTOR_INDEX_BUILD_BACKLOG_THRESHOLD,
             reconcile_interval_secs = SEARCH_RECONCILE_INTERVAL.as_secs(),
             vector_index_retry_interval_secs = SEARCH_VECTOR_INDEX_RETRY_INTERVAL.as_secs(),
             auto_create_vector_index = state.search_auto_create_vector_index,
@@ -1146,9 +1258,10 @@ mod tests {
     use std::time::Duration;
 
     use super::{
-        PollBackoff, PollBackoffState, QueueTask, next_queue_task,
+        PollBackoff, PollBackoffState, QueueTask, next_queue_task, should_build_vector_index,
         should_queue_summary_auto_regeneration, should_run_summary_evaluation,
     };
+    use crate::db::SearchSourceCounts;
     use crate::models::{AiStatus, ContentStatus, Video};
 
     fn video_with_statuses(
@@ -1284,5 +1397,32 @@ mod tests {
             backoff.next_interval(&mut state, false),
             Duration::from_secs(15)
         );
+    }
+
+    #[test]
+    fn vector_index_build_waits_for_backlog_to_shrink_but_not_to_zero() {
+        assert!(should_build_vector_index(&SearchSourceCounts {
+            pending: 3,
+            indexing: 115,
+            ready: 6283,
+            failed: 0,
+            total_sources: 6401,
+        }));
+
+        assert!(!should_build_vector_index(&SearchSourceCounts {
+            pending: 0,
+            indexing: 129,
+            ready: 6283,
+            failed: 0,
+            total_sources: 6412,
+        }));
+
+        assert!(!should_build_vector_index(&SearchSourceCounts {
+            pending: 0,
+            indexing: 0,
+            ready: 0,
+            failed: 0,
+            total_sources: 0,
+        }));
     }
 }
