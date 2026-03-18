@@ -347,6 +347,16 @@
           onAcknowledgeToggle={onToggleAcknowledge}
         />
       </div>
+    {:else if contentMode === "summary" && selectedVideo && selectedVideo.summary_status !== "ready" && selectedVideo.summary_status !== "loading" && !contentText.trim()}
+      <div
+        class="flex h-full flex-col items-center justify-center py-20 text-center"
+      >
+        <p class="text-[13px] text-[var(--soft-foreground)] opacity-40">
+          {selectedVideo.summary_status === "failed"
+            ? "Summary generation failed."
+            : "Summary not yet available."}
+        </p>
+      </div>
     {:else}
       <div class="max-lg:pb-32">
         <TranscriptView
