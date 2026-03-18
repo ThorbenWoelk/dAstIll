@@ -2,7 +2,7 @@
 
 ## Current Production Shape
 
-The repository now defines **three** Cloud Run services:
+The repository defines **three** Cloud Run services:
 
 - backend
 - product frontend
@@ -12,23 +12,42 @@ The repository now defines **three** Cloud Run services:
 
 Terraform manages:
 
-- Cloud Run services
-- service accounts and IAM
-- Secret Manager secrets
-- Artifact Registry integration points
+- Cloud Run services (GCP)
+- service accounts and IAM (GCP and AWS)
+- AWS S3 bucket for data storage
+- AWS S3 Vectors bucket and index for semantic search
+- AWS IAM role for GCP Workload Identity Federation
+- Secret Manager secrets (GCP)
+
+## Cross-Cloud Authentication
+
+The backend runs on Cloud Run but accesses AWS S3 and S3 Vectors. Authentication uses **GCP Workload Identity Federation**:
+
+1. AWS IAM role (`backend_s3`) trusts GCP service account
+2. Cloud Run backend receives `AWS_ROLE_ARN` and `AWS_WIF_AUDIENCE` env vars
+3. Backend exchanges GCP identity token for AWS temporary credentials
+4. All S3/S3 Vectors requests use the AWS credentials
+
+Local development uses standard AWS credentials (`~/.aws/credentials` or environment).
 
 ## Secret and Config Boundaries
 
-Secrets are stored for:
+Secrets are stored in GCP Secret Manager for:
 
-- `DB_URL`
-- `DB_PASS`
 - `YOUTUBE_API_KEY`
 
 Non-secret runtime config is passed as plain env values for:
 
+- `AWS_REGION`
+- `S3_DATA_BUCKET`
+- `S3_VECTOR_BUCKET`
+- `S3_VECTOR_INDEX`
+- `AWS_ROLE_ARN` (production only)
+- `AWS_WIF_AUDIENCE` (production only)
 - `OLLAMA_URL`
 - `OLLAMA_MODEL`
+- `OLLAMA_FALLBACK_MODEL`
+- `OLLAMA_EMBEDDING_MODEL`
 - `SUMMARY_EVALUATOR_MODEL`
 - `SUMMARIZE_PATH`
 - log level
@@ -38,12 +57,13 @@ Non-secret runtime config is passed as plain env values for:
 The GitHub Actions workflow:
 
 ```text
-1. Builds and pushes backend image
-2. Deploys backend to Cloud Run
-3. Builds and pushes the docs image
-4. Deploys docs to Cloud Run as a public service
-5. Builds the frontend image with the deployed backend URL injected as VITE_API_BASE
-6. Deploys the frontend to Cloud Run with PUBLIC_DOCS_URL set to the deployed docs URL
+1. Applies Terraform to provision/update AWS and GCP resources
+2. Builds and pushes backend image to Artifact Registry
+3. Deploys backend to Cloud Run with AWS IAM role configuration
+4. Builds and pushes the docs image
+5. Deploys docs to Cloud Run as a public service
+6. Builds the frontend image with the deployed backend URL injected as VITE_API_BASE
+7. Deploys the frontend to Cloud Run with PUBLIC_DOCS_URL set to the deployed docs URL
 ```
 
 ## Docker Layout

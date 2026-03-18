@@ -18,19 +18,23 @@ At startup the backend:
 
 ```text
 1. Loads backend/.env if present
-2. Connects to Turso/libSQL
-3. Runs schema and compatibility migrations
-4. Builds shared runtime services
-5. Spawns background workers
-6. Binds the Axum HTTP listener
+2. Configures AWS SDK with local credentials or GCP Workload Identity Federation
+3. Connects to S3 data bucket and S3 Vectors bucket
+4. Initializes the store (no schema migrations needed - S3 is schemaless)
+5. Hydrates search progress from existing data
+6. Builds shared runtime services
+7. Spawns background workers
+8. Binds the Axum HTTP listener
 ```
 
 ## Shared Runtime State
 
 `AppState` carries the core runtime singletons:
 
-- database pool
+- S3 store (data + vectors clients)
+- read cache
 - search projection lock
+- search progress tracker
 - YouTube service
 - transcript service
 - summarizer service

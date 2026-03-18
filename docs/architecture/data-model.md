@@ -11,7 +11,7 @@ These tables represent application truth and are not merely cache artifacts.
 | `transcripts` | Extracted raw text and formatted markdown transcript forms                        |
 | `summaries`   | Generated or manually edited summaries plus quality fields                        |
 | `video_info`  | Extended metadata such as description, duration, and view count                   |
-| `highlights`  | User-created transcript or summary snippets                                       |
+| `highlights`  | User-created transcript or summary snippets with context                          |
 
 ## Core Status Fields
 
@@ -29,19 +29,27 @@ Each can be:
 
 These statuses drive the queue worker and much of the UI state.
 
-## Search Projection Tables
+Additional video fields:
 
-Search is intentionally modeled as a derived projection.
+- `acknowledged` - tracks whether the user has marked a video as seen
+- `retry_count` - caps regeneration attempts for summaries
+- `quality_score` - 0-100 rating from the evaluator model
 
-| Table               | Role                                             |
-| ------------------- | ------------------------------------------------ |
-| `search_sources`    | Per-video, per-source indexing lifecycle state   |
-| `search_chunks`     | Chunked search content plus optional embeddings  |
-| `search_chunks_fts` | External-content FTS5 table over `search_chunks` |
+## Search Projection
+
+Search is intentionally modeled as a derived projection stored in S3:
+
+| Storage            | Role                                             |
+| ------------------ | ------------------------------------------------ |
+| `search_sources`   | Per-video, per-source indexing lifecycle state   |
+| `search_chunks`    | Chunked search content stored as S3 objects       |
+| S3 Vectors Index   | Vector embeddings for semantic search             |
+
+S3 Vectors provides managed ANN vector storage and retrieval, eliminating the need for a separate FTS5 table.
 
 ### `search_sources`
 
-Tracks one row per `(video_id, source_kind)` pair with:
+Tracks one record per `(video_id, source_kind)` pair with:
 
 - `content_hash`
 - `source_generation`
@@ -60,11 +68,20 @@ Stores:
 - `section_title`
 - `chunk_text`
 - `token_count`
-- `embedding`
+- `embedding` (stored in S3 Vectors)
 
-### `search_chunks_fts`
+## Highlights
 
-FTS5 is maintained as an external-content projection of `search_chunks`, with insert/update/delete triggers.
+The `highlights` table stores user-selected snippets:
+
+- `id` - unique identifier
+- `video_id` - associated video
+- `source` - `transcript` or `summary`
+- `text` - the highlighted content
+- `prefix_context` / `suffix_context` - surrounding text for context
+- `created_at` - timestamp
+
+Highlights are grouped by channel and video in the `/highlights` route.
 
 ## Why Separate Canonical and Search Tables
 

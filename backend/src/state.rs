@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use tokio::sync::RwLock;
 
-use crate::db::DbPool;
+use crate::db::Store;
 use crate::read_cache::ReadCache;
 use crate::search_progress::SearchProgress;
 use crate::services::{
@@ -12,7 +12,7 @@ use crate::services::{
 
 #[derive(Clone)]
 pub struct AppState {
-    pub db: DbPool,
+    pub db: Store,
     pub read_cache: Arc<ReadCache>,
     pub search_auto_create_vector_index: bool,
     pub search_projection_lock: Arc<RwLock<()>>,

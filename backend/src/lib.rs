@@ -1,3 +1,4 @@
+pub mod aws_auth;
 pub mod config;
 pub mod db;
 pub mod handlers;

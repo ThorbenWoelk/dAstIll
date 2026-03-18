@@ -4,9 +4,9 @@
 
 The current product UI is organized into three route-level experiences:
 
-- main workspace
-- download queue
-- highlights
+- main workspace (`/`)
+- download queue (`/download-queue`)
+- highlights (`/highlights`)
 
 ## Main Workspace
 
@@ -15,7 +15,8 @@ The workspace combines:
 - channel management
 - video browsing
 - transcript and summary reading/editing
-- search
+- search with result highlighting
+- acknowledgement tracking
 
 ### Desktop workspace
 

@@ -19,7 +19,8 @@ dAstIll is a YouTube channel intelligence application. It tracks channels, inges
 - Built with **Rust + Axum** in `backend/`
 - Owns:
   - HTTP API
-  - libSQL/Turso persistence
+  - AWS S3 persistence for canonical data
+  - AWS S3 Vectors for semantic search embeddings
   - runtime config
   - AI service adapters
   - all long-running worker loops
@@ -34,7 +35,10 @@ dAstIll is a YouTube channel intelligence application. It tracks channels, inges
 
 - **Terraform** in `terraform/`
 - **Cloud Run** services for backend and product frontend
-- **Secret Manager** for database credentials and YouTube API key
+- **AWS S3** for data storage
+- **AWS S3 Vectors** for semantic search
+- **AWS IAM** with GCP Workload Identity Federation for cross-cloud auth
+- **Secret Manager** for YouTube API key
 
 ## Repo-Level Boundaries
 

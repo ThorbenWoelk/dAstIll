@@ -11,8 +11,15 @@ Channel input
   -> summary generation
   -> summary evaluation
   -> search source sync
-  -> search chunk indexing
+  -> search chunk indexing (S3 + S3 Vectors)
   -> retrieval in workspace search
+```
+
+User interactions:
+
+```text
+Highlight creation -> stored in highlights table -> grouped in /highlights route
+Acknowledgement -> stored on video record -> filters inbox view
 ```
 
 ## 1. Channel Subscription

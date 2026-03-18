@@ -7,7 +7,6 @@ WORKDIR /usr/src/app
 RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
-    libsqlite3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY . .
@@ -24,7 +23,6 @@ WORKDIR /usr/local/bin
 RUN apt-get update && apt-get install -y \
     openssl \
     ca-certificates \
-    libsqlite3-0 \
     curl \
     python3 \
     ffmpeg \

@@ -440,6 +440,7 @@ pub async fn backfill_channel_videos(
     })))
 }
 
+// Tests require S3 backend; run with: cargo test -- --ignored
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -457,8 +458,8 @@ mod tests {
     use super::workspace_bootstrap;
     use crate::{
         db::{
-            init_db_memory, insert_channel, insert_video, list_search_progress_materials,
-            upsert_transcript,
+            insert_channel, insert_video, list_search_progress_materials,
+            upsert_transcript, Store,
         },
         handlers::query::WorkspaceBootstrapParams,
         models::{Channel, ContentStatus, Transcript, TranscriptRenderMode, Video},
@@ -470,7 +471,7 @@ mod tests {
         state::AppState,
     };
 
-    fn test_app_state(db: crate::db::DbPool) -> AppState {
+    fn test_app_state(db: crate::db::Store) -> AppState {
         let cooldown = Arc::new(CloudCooldown::cloud());
         AppState {
             db,
@@ -505,9 +506,9 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore] // requires live S3 backend
     async fn workspace_bootstrap_includes_search_status_for_initial_render() {
-        let pool = init_db_memory().await.unwrap();
-        let conn = pool.lock().await;
+        let store = Store::for_test().await;
         let channel = Channel {
             id: "UC_BOOT_SEARCH".to_string(),
             handle: None,
@@ -517,9 +518,9 @@ mod tests {
             earliest_sync_date: None,
             earliest_sync_date_user_set: false,
         };
-        insert_channel(&conn, &channel).await.unwrap();
+        insert_channel(&store, &channel).await.unwrap();
         insert_video(
-            &conn,
+            &store,
             &Video {
                 id: "vid_boot_search".to_string(),
                 channel_id: channel.id.clone(),
@@ -537,7 +538,7 @@ mod tests {
         .await
         .unwrap();
         upsert_transcript(
-            &conn,
+            &store,
             &Transcript {
                 video_id: "vid_boot_search".to_string(),
                 raw_text: Some("bootstrap transcript content".to_string()),
@@ -548,8 +549,8 @@ mod tests {
         .await
         .unwrap();
 
-        let state = test_app_state(pool.clone());
-        let materials = list_search_progress_materials(&conn).await.unwrap();
+        let state = test_app_state(store.clone());
+        let materials = list_search_progress_materials(&store).await.unwrap();
         state
             .search_progress
             .initialize_from_materials(&materials, false, false)

@@ -16,23 +16,33 @@ resource "google_cloud_run_v2_service" "backend" {
 
 
       env {
-        name = "DB_URL"
-        value_source {
-          secret_key_ref {
-            secret  = google_secret_manager_secret.db_url.secret_id
-            version = "latest"
-          }
-        }
+        name  = "AWS_REGION"
+        value = var.aws_region
       }
 
       env {
-        name = "DB_PASS"
-        value_source {
-          secret_key_ref {
-            secret  = google_secret_manager_secret.db_pass.secret_id
-            version = "latest"
-          }
-        }
+        name  = "AWS_ROLE_ARN"
+        value = aws_iam_role.backend_s3.arn
+      }
+
+      env {
+        name  = "AWS_WIF_AUDIENCE"
+        value = google_service_account.backend_sa.unique_id
+      }
+
+      env {
+        name  = "S3_DATA_BUCKET"
+        value = aws_s3_bucket.data.bucket
+      }
+
+      env {
+        name  = "S3_VECTOR_BUCKET"
+        value = aws_s3vectors_vector_bucket.vectors.vector_bucket_name
+      }
+
+      env {
+        name  = "S3_VECTOR_INDEX"
+        value = aws_s3vectors_index.search_chunks.index_name
       }
 
       env {

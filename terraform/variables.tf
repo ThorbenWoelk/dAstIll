@@ -15,17 +15,13 @@ variable "app_name" {
   description = "The application name"
 }
 
-variable "db_url" {
+variable "aws_region" {
   type        = string
-  sensitive   = true
-  description = "Turso database URL"
+  default     = "eu-central-1"
+  description = "AWS region for S3 and S3 Vectors"
 }
 
-variable "db_pass" {
-  type        = string
-  sensitive   = true
-  description = "Turso database password"
-}
+
 
 variable "youtube_api_key" {
   type        = string

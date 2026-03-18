@@ -1,13 +1,13 @@
 # Search Indexing
 
-## Search Scope
+## Storage Backend
 
-Search works over two source kinds:
+Search uses AWS S3 for chunk storage and AWS S3 Vectors for semantic embeddings:
 
-- `transcript`
-- `summary`
+- **S3 Data Bucket**: stores chunked search content as JSON objects
+- **S3 Vectors Bucket/Index**: stores and indexes embeddings for ANN retrieval
 
-Each source kind is indexed independently per video.
+This eliminates the need for a local FTS5 table and enables managed vector search.
 
 ## Search Worker Phases
 
@@ -59,13 +59,14 @@ This keeps summary searchability from being starved behind a large transcript ba
 
 ## Retrieval Modes
 
-The backend reports one of three retrieval modes:
+The backend reports one of two retrieval modes:
 
 | Mode           | Meaning                                             |
 | -------------- | --------------------------------------------------- |
-| `fts_only`     | No embeddings are used                              |
-| `hybrid_exact` | FTS shortlist plus exact vector rerank              |
-| `hybrid_ann`   | ANN vector candidate retrieval plus fusion with FTS |
+| `fts_only`     | Plain keyword search over chunk text                |
+| `hybrid_ann`   | ANN vector retrieval via S3 Vectors plus FTS fusion |
+
+S3 Vectors provides native ANN search, replacing the previous exact vector rerank mode.
 
 ## Semantic Enablement Rules
 
@@ -99,6 +100,8 @@ At query time the backend:
 - `ready`
 - `failed`
 - `total_sources`
+- `total_chunk_count`
+- `embedded_chunk_count`
 - `vector_index_ready`
 - `retrieval_mode`
 

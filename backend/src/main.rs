@@ -9,7 +9,7 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 
 use dastill::config::{OllamaRuntimeConfig, SearchRuntimeConfig};
-use dastill::db::init_db;
+use dastill::db::init_store;
 use dastill::handlers::{channels, content, highlights, search, videos};
 use dastill::read_cache::ReadCache;
 use dastill::search_progress::SearchProgress;
@@ -62,14 +62,40 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
-    let db_url = std::env::var("DB_URL")
-        .map_err(|_| anyhow::anyhow!("DB_URL must be set (Turso database URL)"))?;
-    let db_pass = std::env::var("DB_PASS").unwrap_or_default();
+    let data_bucket = std::env::var("S3_DATA_BUCKET")
+        .map_err(|_| anyhow::anyhow!("S3_DATA_BUCKET must be set"))?;
+    let vector_bucket = std::env::var("S3_VECTOR_BUCKET")
+        .map_err(|_| anyhow::anyhow!("S3_VECTOR_BUCKET must be set"))?;
+    let vector_index = std::env::var("S3_VECTOR_INDEX").unwrap_or_else(|_| "search-chunks".to_string());
+    let aws_region = std::env::var("AWS_REGION").unwrap_or_else(|_| "eu-central-1".to_string());
 
-    tracing::info!(url = %db_url, "connecting to Turso database");
-    let database = libsql::Builder::new_remote(db_url, db_pass).build().await?;
+    let aws_config = if let (Ok(role_arn), Ok(audience)) =
+        (std::env::var("AWS_ROLE_ARN"), std::env::var("AWS_WIF_AUDIENCE"))
+    {
+        tracing::info!(role_arn = %role_arn, "using GCP Workload Identity Federation for AWS auth");
+        let wif_provider = dastill::aws_auth::GcpWifCredentialProvider::new(
+            role_arn, audience, aws_region.clone(),
+        );
+        aws_config::defaults(aws_config::BehaviorVersion::latest())
+            .region(aws_config::Region::new(aws_region))
+            .credentials_provider(wif_provider)
+            .load()
+            .await
+    } else {
+        tracing::info!("using default AWS credential chain (local dev)");
+        aws_config::defaults(aws_config::BehaviorVersion::latest())
+            .region(aws_config::Region::new(aws_region))
+            .load()
+            .await
+    };
 
-    let pool = init_db(database).await.map_err(|e| anyhow::anyhow!(e))?;
+    tracing::info!(bucket = %data_bucket, vector_bucket = %vector_bucket, "connecting to AWS S3");
+    let s3_client = aws_sdk_s3::Client::new(&aws_config);
+    let s3v_client = aws_sdk_s3vectors::Client::new(&aws_config);
+
+    let pool = init_store(s3_client, s3v_client, data_bucket, vector_bucket, vector_index)
+        .await
+        .map_err(|e| anyhow::anyhow!(e))?;
 
     let client = build_http_client();
     let cloud_cooldown = Arc::new(Cooldown::cloud());

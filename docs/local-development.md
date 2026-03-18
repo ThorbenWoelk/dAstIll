@@ -53,7 +53,11 @@ Important variables:
 
 | Variable                          | Purpose                                                                          |
 | --------------------------------- | -------------------------------------------------------------------------------- |
-| `DB_URL` / `DB_PASS`              | Turso/libSQL connection                                                          |
+| `AWS_REGION`                      | AWS region for S3 and S3 Vectors                                                 |
+| `S3_DATA_BUCKET`                  | S3 bucket for data storage                                                       |
+| `S3_VECTOR_BUCKET`                | S3 Vectors bucket for semantic search                                            |
+| `S3_VECTOR_INDEX`                 | S3 Vectors index name for embeddings                                             |
+| `AWS_ROLE_ARN` / `AWS_WIF_AUDIENCE` | Production only: GCP Workload Identity Federation for AWS                      |
 | `YOUTUBE_API_KEY`                 | Optional YouTube Data API access                                                 |
 | `OLLAMA_URL`                      | Ollama endpoint                                                                  |
 | `OLLAMA_MODEL`                    | Primary summarizer model                                                         |

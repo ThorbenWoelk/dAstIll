@@ -465,11 +465,11 @@ fn transcript_text(transcript: &Transcript) -> Option<&str> {
 }
 
 async fn sync_search_source(
-    conn: &libsql::Connection,
+    conn: &crate::db::Store,
     video_id: &str,
     source_kind: SearchSourceKind,
     content: Option<&str>,
-) -> Result<(), libsql::Error> {
+) -> Result<(), crate::db::StoreError> {
     match content.map(str::trim) {
         Some(content) if !content.is_empty() => {
             let content_hash = hash_search_content(content);

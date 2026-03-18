@@ -9,6 +9,8 @@ Built with a focus on reliability, performance, and clear architectural separati
 
 - **Channel Management**: Tracks favorite YouTube channels, backfills historical videos, and auto-refreshes for new content.
 - **AI Summarization**: Generates insightful summaries in a consistent way, evaluated by LLM-as-a-judge for quality of summary related to ground-truth.
+- **Highlights**: Mark and save important snippets from transcripts and summaries for quick reference.
+- **Hybrid Search**: Full-text and optional semantic search across transcripts and summaries with highlighting.
 - **Background Workers**: Automatic, asynchronous syncing, downloading, and generating of summaries and evals.
 
 ## Documentation
@@ -46,11 +48,11 @@ On `main` branch pushes, the docs site is also deployed through the same GitHub 
 
 ### Backend
 
-Rust, Turso, Ollama
+Rust, AWS S3, AWS S3 Vectors, Ollama
 
 ### Infrastructure & Deployment
 
-Terraform, Google Cloud Run, Google Secret Manager, Artifact Registry, GitHub Actions, Docker
+Terraform, Google Cloud Run, AWS IAM (Workload Identity Federation), Google Secret Manager, Artifact Registry, GitHub Actions, Docker
 
 ## Prerequisites
 
@@ -59,7 +61,8 @@ To run the application locally, you will need:
 - [Rust](https://rustup.rs/)
 - [Bun](https://bun.sh/)
 - [Ollama](https://ollama.com/) (running locally if using local AI models)
-- A [Turso](https://turso.tech/) database URL and Auth Token.
+- AWS credentials with access to S3 and S3 Vectors (configured via `~/.aws/credentials` or environment variables)
+- An AWS S3 bucket for data storage and an S3 Vectors bucket for semantic search
 - (Optional) YouTube Data API Key.
 
 ## Getting Started (Local Development)
@@ -81,8 +84,10 @@ To run the application locally, you will need:
    The backend reads `backend/.env` during local startup. A typical local config looks like this:
 
    ```env
-   DB_URL=libsql://your-turso-db.turso.io
-   DB_PASS=your-turso-auth-token
+   AWS_REGION=eu-central-1
+   S3_DATA_BUCKET=your-data-bucket
+   S3_VECTOR_BUCKET=your-vectors-bucket
+   S3_VECTOR_INDEX=search-chunks
    YOUTUBE_API_KEY=optional-api-key
    OLLAMA_URL=http://localhost:11434
    OLLAMA_MODEL=glm-5:cloud

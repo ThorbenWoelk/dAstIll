@@ -13,7 +13,7 @@ use crate::{
     state::AppState,
 };
 
-pub(crate) fn map_db_err(err: libsql::Error) -> (axum::http::StatusCode, String) {
+pub(crate) fn map_db_err(err: crate::db::StoreError) -> (axum::http::StatusCode, String) {
     (
         axum::http::StatusCode::INTERNAL_SERVER_ERROR,
         err.to_string(),

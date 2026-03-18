@@ -22,8 +22,6 @@ resource "google_service_account" "github_actions_sa" {
 # Grant access to secrets for backend
 resource "google_secret_manager_secret_iam_member" "backend_secrets" {
   for_each = {
-    db_url          = google_secret_manager_secret.db_url.id
-    db_pass         = google_secret_manager_secret.db_pass.id
     youtube_api_key = google_secret_manager_secret.youtube_api_key.id
   }
 

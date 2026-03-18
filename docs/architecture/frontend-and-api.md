@@ -80,13 +80,15 @@ The backend handler modules are split by concern:
 
 - `channels.rs`
 - `videos.rs`
+- `video_info.rs`
 - `content.rs`
 - `highlights.rs`
 - `search.rs`
+- `query.rs`
 
 The handlers are thin orchestration points. Durable logic primarily lives in:
 
-- `db.rs`
+- `db/*`
 - `services/*`
 - `workers.rs`
 
