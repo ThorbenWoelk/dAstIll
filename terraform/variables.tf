@@ -29,6 +29,12 @@ variable "youtube_api_key" {
   description = "YouTube API key"
 }
 
+variable "ollama_api_key" {
+  type        = string
+  sensitive   = true
+  description = "Ollama API key for authenticated cloud endpoints"
+}
+
 variable "ollama_url" {
   type        = string
   default     = "http://localhost:11434"

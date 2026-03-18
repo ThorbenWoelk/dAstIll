@@ -56,6 +56,16 @@ resource "google_cloud_run_v2_service" "backend" {
       }
 
       env {
+        name = "OLLAMA_API_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.ollama_api_key.secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      env {
         name  = "OLLAMA_URL"
         value = var.ollama_url
       }
