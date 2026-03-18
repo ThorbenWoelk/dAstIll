@@ -1219,7 +1219,7 @@
 
   {#if errorMessage}
     <div
-      class="mobile-bottom-stack-offset fixed bottom-6 left-1/2 z-50 w-[min(90vw,420px)] -translate-x-1/2 rounded-[var(--radius-md)] border border-[var(--danger-border)] bg-[var(--surface)] px-4 py-3 shadow-lg fade-in"
+      class="mobile-bottom-stack-offset fixed bottom-6 left-1/2 z-[80] w-[min(90vw,420px)] -translate-x-1/2 rounded-[var(--radius-md)] border border-[var(--danger-border)] bg-[var(--surface)] px-4 py-3 shadow-lg fade-in"
       role="status"
       aria-live="polite"
     >
