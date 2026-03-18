@@ -168,6 +168,16 @@ pub async fn replace_search_chunks(
 
     delete_vectors_for_source(store, video_id, source_kind).await?;
 
+    #[derive(serde::Serialize)]
+    struct ChunkData<'a> {
+        video_id: &'a str,
+        source_kind: &'a str,
+        section_title: Option<&'a str>,
+        chunk_text: &'a str,
+    }
+
+    let mut put_batch: Vec<aws_sdk_s3vectors::types::PutInputVector> = Vec::new();
+
     for chunk in chunks {
         let embedding = chunk
             .embedding_json
@@ -183,17 +193,9 @@ pub async fn replace_search_chunks(
         );
 
         // Store full chunk text in S3 for FTS and retrieval
-        let chunk_s3_key = format!("search-chunks/{vkey}.json");
-        #[derive(serde::Serialize)]
-        struct ChunkData<'a> {
-            video_id: &'a str,
-            source_kind: &'a str,
-            section_title: Option<&'a str>,
-            chunk_text: &'a str,
-        }
         store
             .put_json(
-                &chunk_s3_key,
+                &format!("search-chunks/{vkey}.json"),
                 &ChunkData {
                     video_id,
                     source_kind: source_kind.as_str(),
@@ -203,8 +205,6 @@ pub async fn replace_search_chunks(
             )
             .await?;
 
-        // Metadata: keep small (filterable <= 2 KB, total <= 40 KB)
-        // chunk_text + section_title are declared non-filterable in the index
         let chunk_text_clamped: String = chunk.chunk_text.chars().take(30_000).collect();
         let mut meta_entries: Vec<(&str, Document)> = vec![
             ("video_id", Document::String(video_id.to_string())),
@@ -217,20 +217,37 @@ pub async fn replace_search_chunks(
             meta_entries.push(("section_title", Document::String(title.clone())));
         }
 
-        let vector_data = aws_sdk_s3vectors::types::VectorData::Float32(embedding);
         let put_vector = aws_sdk_s3vectors::types::PutInputVector::builder()
             .key(vkey)
-            .data(vector_data)
+            .data(aws_sdk_s3vectors::types::VectorData::Float32(embedding))
             .metadata(build_metadata(meta_entries))
             .build()
             .map_err(|e| StoreError::S3Vectors(e.to_string()))?;
 
+        put_batch.push(put_vector);
+
+        // Flush in batches of 500 (API limit)
+        if put_batch.len() >= 500 {
+            store
+                .s3v
+                .put_vectors()
+                .vector_bucket_name(&store.vector_bucket)
+                .index_name(&store.vector_index)
+                .set_vectors(Some(put_batch.drain(..).collect()))
+                .send()
+                .await
+                .map_err(|e| StoreError::S3Vectors(format!("{e:#}")))?;
+        }
+    }
+
+    // Flush remaining vectors
+    if !put_batch.is_empty() {
         store
             .s3v
             .put_vectors()
             .vector_bucket_name(&store.vector_bucket)
             .index_name(&store.vector_index)
-            .vectors(put_vector)
+            .set_vectors(Some(put_batch))
             .send()
             .await
             .map_err(|e| StoreError::S3Vectors(format!("{e:#}")))?;
@@ -278,26 +295,35 @@ async fn delete_vectors_for_source(
     video_id: &str,
     source_kind: SearchSourceKind,
 ) -> Result<(), StoreError> {
-    let prefix = format!("{video_id}_{}_", source_kind.as_str());
-    let all_keys = list_all_vector_keys(store).await;
+    // Derive vector keys from S3 chunk objects (avoids scanning entire vector index)
+    let prefix = format!("search-chunks/{video_id}_{}_", source_kind.as_str());
+    let chunk_keys = store.list_keys(&prefix).await?;
 
-    let keys_to_delete: Vec<&String> = all_keys
+    let vector_keys: Vec<String> = chunk_keys
         .iter()
-        .filter(|k| k.starts_with(&prefix))
+        .filter_map(|k| {
+            k.strip_prefix("search-chunks/")
+                .and_then(|s| s.strip_suffix(".json"))
+                .map(|s| s.to_string())
+        })
         .collect();
 
-    for key in &keys_to_delete {
-        store
+    // Batch delete vectors (up to 500 per call)
+    for batch in vector_keys.chunks(500) {
+        let mut req = store
             .s3v
             .delete_vectors()
             .vector_bucket_name(&store.vector_bucket)
-            .index_name(&store.vector_index)
-            .keys(key.as_str())
-            .send()
-            .await
-            .ok();
-        // Also clean up the S3 chunk text
-        store.delete_key(&format!("search-chunks/{key}.json")).await.ok();
+            .index_name(&store.vector_index);
+        for key in batch {
+            req = req.keys(key);
+        }
+        req.send().await.ok();
+    }
+
+    // Clean up S3 chunk objects
+    for key in &chunk_keys {
+        store.delete_key(key).await.ok();
     }
     Ok(())
 }
@@ -464,18 +490,28 @@ pub async fn search_vector_candidates(
     let embedding: Vec<f32> = serde_json::from_str(query_embedding).unwrap_or_default();
     if embedding.is_empty() { return Ok(Vec::new()); }
 
-    let result = store
+    // Over-fetch to compensate for client-side channel_id filtering
+    let top_k = if channel_id.is_some() { (limit * 3).clamp(10, 100) } else { limit.clamp(1, 100) };
+
+    let mut req = store
         .s3v
         .query_vectors()
         .vector_bucket_name(&store.vector_bucket)
         .index_name(&store.vector_index)
         .query_vector(aws_sdk_s3vectors::types::VectorData::Float32(embedding))
-        .top_k(limit as i32)
-        .return_metadata(true)
-        .send()
-        .await;
+        .top_k(top_k as i32)
+        .return_metadata(true);
 
-    let vectors = match result {
+    // Server-side filter on source_kind (filterable metadata)
+    if let Some(kind) = source_kind {
+        req = req.filter(Document::Object(
+            [("source_kind".to_string(), Document::String(kind.as_str().to_string()))]
+                .into_iter()
+                .collect(),
+        ));
+    }
+
+    let vectors = match req.send().await {
         Ok(output) => output.vectors,
         Err(err) => {
             tracing::debug!(error = %err, "vector search unavailable");
@@ -483,29 +519,38 @@ pub async fn search_vector_candidates(
         }
     };
 
-    let all_videos: Vec<Video> = store.load_all("videos/").await?;
-    let video_map: std::collections::HashMap<&str, &Video> =
-        all_videos.iter().map(|v| (v.id.as_str(), v)).collect();
-    let all_channels: Vec<crate::models::Channel> = store.load_all("channels/").await?;
-    let channel_map: std::collections::HashMap<&str, &crate::models::Channel> =
-        all_channels.iter().map(|c| (c.id.as_str(), c)).collect();
+    // Collect unique video IDs from results, then fetch only those
+    let video_ids: std::collections::HashSet<String> = vectors
+        .iter()
+        .filter_map(|v| v.metadata.as_ref().and_then(|m| get_doc_string(m, "video_id")))
+        .collect();
+
+    let mut video_map: std::collections::HashMap<String, Video> = std::collections::HashMap::new();
+    let mut channel_map: std::collections::HashMap<String, crate::models::Channel> = std::collections::HashMap::new();
+    for vid in &video_ids {
+        if let Some(video) = store.get_json::<Video>(&format!("videos/{vid}.json")).await? {
+            if !channel_map.contains_key(&video.channel_id) {
+                if let Some(ch) = store.get_json::<crate::models::Channel>(&format!("channels/{}.json", video.channel_id)).await? {
+                    channel_map.insert(ch.id.clone(), ch);
+                }
+            }
+            video_map.insert(vid.clone(), video);
+        }
+    }
 
     let mut candidates = Vec::new();
     for v in vectors {
-        let metadata = v.metadata.as_ref();
         let empty_doc = Document::Object(Default::default());
-        let meta = metadata.unwrap_or(&empty_doc);
+        let meta = v.metadata.as_ref().unwrap_or(&empty_doc);
 
         let vid = get_doc_string(meta, "video_id").unwrap_or_default();
         let sk = get_doc_string(meta, "source_kind").unwrap_or_default();
 
-        if source_kind.is_some_and(|f| sk != f.as_str()) { continue; }
-
-        let video = video_map.get(vid.as_str());
+        let video = video_map.get(&vid);
         if channel_id.is_some_and(|f| video.is_none_or(|v| v.channel_id != f)) { continue; }
 
         let Some(video) = video else { continue };
-        let ch = channel_map.get(video.channel_id.as_str());
+        let ch = channel_map.get(&video.channel_id);
 
         candidates.push(SearchCandidate {
             chunk_id: v.key.clone(),
@@ -518,6 +563,8 @@ pub async fn search_vector_candidates(
             chunk_text: get_doc_string(meta, "chunk_text").unwrap_or_default(),
             published_at: video.published_at.to_rfc3339(),
         });
+
+        if candidates.len() >= limit { break; }
     }
     Ok(candidates)
 }
@@ -537,14 +584,6 @@ pub async fn search_fts_candidates(
         .collect();
     if query_tokens.is_empty() { return Ok(Vec::new()); }
 
-    let all_videos: Vec<Video> = store.load_all("videos/").await?;
-    let video_map: std::collections::HashMap<&str, &Video> =
-        all_videos.iter().map(|v| (v.id.as_str(), v)).collect();
-    let all_channels: Vec<crate::models::Channel> = store.load_all("channels/").await?;
-    let channel_map: std::collections::HashMap<&str, &crate::models::Channel> =
-        all_channels.iter().map(|c| (c.id.as_str(), c)).collect();
-
-    // Scan chunk text from S3 objects (stored during indexing)
     #[derive(serde::Deserialize)]
     struct ChunkData {
         video_id: String,
@@ -554,6 +593,10 @@ pub async fn search_fts_candidates(
     }
 
     let chunk_keys = store.list_keys("search-chunks/").await?;
+
+    // Lazy-loaded video/channel caches (only fetch what we need)
+    let mut video_cache: std::collections::HashMap<String, Option<Video>> = std::collections::HashMap::new();
+    let mut channel_cache: std::collections::HashMap<String, crate::models::Channel> = std::collections::HashMap::new();
     let mut scored: Vec<(SearchCandidate, usize)> = Vec::new();
 
     for chunk_key in chunk_keys {
@@ -561,15 +604,30 @@ pub async fn search_fts_candidates(
 
         if source_kind.is_some_and(|f| chunk.source_kind != f.as_str()) { continue; }
 
-        let video = video_map.get(chunk.video_id.as_str());
-        if channel_id.is_some_and(|f| video.is_none_or(|v| v.channel_id != f)) { continue; }
-
         let text_lower = chunk.chunk_text.to_lowercase();
         let match_count = query_tokens.iter().filter(|t| text_lower.contains(t.as_str())).count();
         if match_count == 0 { continue; }
 
+        // Fetch video on demand
+        let video = match video_cache.entry(chunk.video_id.clone()) {
+            std::collections::hash_map::Entry::Occupied(e) => e.get().clone(),
+            std::collections::hash_map::Entry::Vacant(e) => {
+                let v = store.get_json::<Video>(&format!("videos/{}.json", chunk.video_id)).await?;
+                e.insert(v.clone());
+                v
+            }
+        };
+
         let Some(video) = video else { continue };
-        let ch = channel_map.get(video.channel_id.as_str());
+        if channel_id.is_some_and(|f| video.channel_id != f) { continue; }
+
+        // Fetch channel on demand
+        if !channel_cache.contains_key(&video.channel_id) {
+            if let Some(ch) = store.get_json::<crate::models::Channel>(&format!("channels/{}.json", video.channel_id)).await? {
+                channel_cache.insert(ch.id.clone(), ch);
+            }
+        }
+        let ch = channel_cache.get(&video.channel_id);
 
         let chunk_id = chunk_key
             .strip_prefix("search-chunks/")
@@ -596,16 +654,6 @@ pub async fn search_fts_candidates(
     scored.sort_by(|a, b| b.1.cmp(&a.1));
     scored.truncate(limit);
     Ok(scored.into_iter().map(|(c, _)| c).collect())
-}
-
-pub async fn search_exact_candidates(
-    _store: &Store,
-    _query_embedding: &str,
-    _embedding_model: &str,
-    _candidate_ids: &[i64],
-    _limit: usize,
-) -> Result<Vec<SearchCandidate>, StoreError> {
-    Ok(Vec::new())
 }
 
 pub async fn search_exact_global_candidates(
@@ -660,16 +708,16 @@ pub async fn reset_search_projection(store: &Store) -> Result<(), StoreError> {
     store.delete_prefix("search-chunks/").await?;
 
     let all_keys = list_all_vector_keys(store).await;
-    for key in all_keys {
-        store
+    for batch in all_keys.chunks(500) {
+        let mut req = store
             .s3v
             .delete_vectors()
             .vector_bucket_name(&store.vector_bucket)
-            .index_name(&store.vector_index)
-            .keys(&key)
-            .send()
-            .await
-            .ok();
+            .index_name(&store.vector_index);
+        for key in batch {
+            req = req.keys(key);
+        }
+        req.send().await.ok();
     }
     Ok(())
 }
