@@ -99,6 +99,7 @@ pub struct SearchService {
     client: Client,
     base_url: String,
     model: Option<String>,
+    api_key: Option<String>,
     dimensions: usize,
     semantic_enabled: bool,
     ollama_semaphore: Option<std::sync::Arc<Semaphore>>,
@@ -115,6 +116,7 @@ impl SearchService {
             client: build_http_client(),
             base_url: base_url.to_string(),
             model: model.map(str::to_string),
+            api_key: None,
             dimensions,
             semantic_enabled,
             ollama_semaphore: None,
@@ -132,6 +134,7 @@ impl SearchService {
             client,
             base_url: base_url.to_string(),
             model: model.map(str::to_string),
+            api_key: None,
             dimensions,
             semantic_enabled,
             ollama_semaphore: None,
@@ -141,6 +144,18 @@ impl SearchService {
     pub fn with_ollama_semaphore(mut self, semaphore: std::sync::Arc<Semaphore>) -> Self {
         self.ollama_semaphore = Some(semaphore);
         self
+    }
+
+    pub fn with_api_key(mut self, key: Option<String>) -> Self {
+        self.api_key = key;
+        self
+    }
+
+    fn auth(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        match &self.api_key {
+            Some(key) => req.bearer_auth(key),
+            None => req,
+        }
     }
 
     pub fn model(&self) -> Option<&str> {
@@ -167,8 +182,7 @@ impl SearchService {
             return false;
         };
         let Ok(response) = self
-            .client
-            .get(format!("{}/api/tags", self.base_url))
+            .auth(self.client.get(format!("{}/api/tags", self.base_url)))
             .send()
             .await
         else {
@@ -227,14 +241,16 @@ impl SearchService {
         input: &[String],
     ) -> Result<Vec<Vec<f32>>, SearchError> {
         let response = self
-            .client
-            .post(format!("{}/api/embed", self.base_url))
-            .timeout(SEARCH_EMBED_REQUEST_TIMEOUT)
-            .json(&EmbedRequest {
-                model: model.to_string(),
-                input,
-                dimensions: Some(self.dimensions),
-            })
+            .auth(
+                self.client
+                    .post(format!("{}/api/embed", self.base_url))
+                    .timeout(SEARCH_EMBED_REQUEST_TIMEOUT)
+                    .json(&EmbedRequest {
+                        model: model.to_string(),
+                        input,
+                        dimensions: Some(self.dimensions),
+                    }),
+            )
             .send()
             .await
             .map_err(|err| SearchError::Request(err.to_string()))?;

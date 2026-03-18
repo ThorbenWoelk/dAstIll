@@ -77,6 +77,11 @@ impl SummarizerService {
         self
     }
 
+    pub fn with_api_key(mut self, key: Option<String>) -> Self {
+        self.core = self.core.with_api_key(key);
+        self
+    }
+
     pub fn with_cloud_cooldown(mut self, cooldown: Arc<CloudCooldown>) -> Self {
         self.core = self.core.with_cloud_cooldown(cooldown);
         self

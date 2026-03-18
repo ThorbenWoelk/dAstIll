@@ -121,11 +121,13 @@ async fn main() -> anyhow::Result<()> {
     let summarizer = Arc::new(
         SummarizerService::with_client(client.clone(), &ollama.url, &ollama.model)
             .with_fallback_model(ollama.fallback_model)
+            .with_api_key(ollama.api_key.clone())
             .with_cloud_cooldown(cloud_cooldown.clone())
             .with_ollama_semaphore(ollama_semaphore.clone()),
     );
     let summary_evaluator = Arc::new(
         SummaryEvaluatorService::with_client(client, &ollama.url, &ollama.summary_evaluator_model)
+            .with_api_key(ollama.api_key.clone())
             .with_cloud_cooldown(cloud_cooldown.clone())
             .with_ollama_semaphore(ollama_semaphore.clone()),
     );
@@ -136,6 +138,7 @@ async fn main() -> anyhow::Result<()> {
             dastill::services::search::SEARCH_EMBEDDING_DIMENSIONS,
             search_runtime.semantic_enabled,
         )
+        .with_api_key(ollama.api_key)
         .with_ollama_semaphore(search_ollama_semaphore),
     );
     let search_progress = Arc::new(SearchProgress::new(
