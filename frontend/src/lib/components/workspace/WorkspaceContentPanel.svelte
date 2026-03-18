@@ -264,27 +264,52 @@
         </p>
       </div>
     {:else if loadingContent}
-      <div
-        class="mt-4 space-y-8 animate-pulse"
-        role="status"
-        aria-live="polite"
-      >
+      {@const contentStatus =
+        contentMode === "summary"
+          ? selectedVideo?.summary_status
+          : contentMode === "transcript"
+            ? selectedVideo?.transcript_status
+            : null}
+      {@const isProcessing = contentStatus === "loading"}
+      {@const isUnavailable =
+        contentStatus === "pending" || contentStatus === "failed"}
+      {#if isUnavailable}
         <div
-          class="h-10 w-3/5 rounded-[var(--radius-sm)] bg-[var(--muted)]/60"
-        ></div>
-        <div class="space-y-4 pt-4">
-          <div class="h-4 w-full rounded-full bg-[var(--muted)]/50"></div>
-          <div class="h-4 w-11/12 rounded-full bg-[var(--muted)]/50"></div>
-          <div class="h-4 w-10/12 rounded-full bg-[var(--muted)]/50"></div>
-          <div class="h-4 w-full rounded-full bg-[var(--muted)]/50"></div>
-          <div class="h-4 w-3/4 rounded-full bg-[var(--muted)]/50"></div>
-        </div>
-        <p
-          class="pt-10 text-center text-[10px] font-bold uppercase tracking-[0.4em] text-[var(--accent)]"
+          class="flex h-full flex-col items-center justify-center py-20 text-center"
+          role="status"
+          aria-live="polite"
         >
-          Processing {contentMode}...
-        </p>
-      </div>
+          <p
+            class="text-[13px] text-[var(--soft-foreground)] opacity-40"
+          >
+            {contentStatus === "failed"
+              ? `${contentMode === "summary" ? "Summary" : "Transcript"} generation failed.`
+              : `${contentMode === "summary" ? "Summary" : "Transcript"} not yet available.`}
+          </p>
+        </div>
+      {:else}
+        <div
+          class="mt-4 space-y-8 animate-pulse"
+          role="status"
+          aria-live="polite"
+        >
+          <div
+            class="h-10 w-3/5 rounded-[var(--radius-sm)] bg-[var(--muted)]/60"
+          ></div>
+          <div class="space-y-4 pt-4">
+            <div class="h-4 w-full rounded-full bg-[var(--muted)]/50"></div>
+            <div class="h-4 w-11/12 rounded-full bg-[var(--muted)]/50"></div>
+            <div class="h-4 w-10/12 rounded-full bg-[var(--muted)]/50"></div>
+            <div class="h-4 w-full rounded-full bg-[var(--muted)]/50"></div>
+            <div class="h-4 w-3/4 rounded-full bg-[var(--muted)]/50"></div>
+          </div>
+          <p
+            class="pt-10 text-center text-[10px] font-bold uppercase tracking-[0.4em] text-[var(--accent)]"
+          >
+            {isProcessing ? `Processing ${contentMode}...` : `Loading ${contentMode}...`}
+          </p>
+        </div>
+      {/if}
     {:else if contentMode === "highlights"}
       <WorkspaceHighlightsPanel
         {selectedVideo}
