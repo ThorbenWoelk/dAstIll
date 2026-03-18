@@ -9,7 +9,7 @@
   import AiStatusIndicator from "$lib/components/AiStatusIndicator.svelte";
   import SearchResultsPopover from "$lib/components/SearchResultsPopover.svelte";
   import SectionNavigation from "$lib/components/SectionNavigation.svelte";
-  import ThemeToggle from "$lib/components/ThemeToggle.svelte";
+  import ThemePanel from "$lib/components/ThemePanel.svelte";
   import { resolveSearchCoverageHint } from "$lib/search-status";
   import {
     anySearchSectionLoading,
@@ -360,7 +360,7 @@
   </div>
 
   <div class="ml-auto flex shrink-0 items-center gap-2">
-    <ThemeToggle />
+    <ThemePanel />
     <SectionNavigation
       currentSection="workspace"
       docsUrl={DOCS_URL}
@@ -464,12 +464,41 @@
           ask ↵
         </span>
       {:else if !searchLoading && searchStatus && searchCoverageHint}
-        <span
-          class="shrink-0 text-[10px] font-bold tabular-nums text-[var(--soft-foreground)] opacity-50"
-          title={`Search index: ${searchStatus.ready} / ${searchStatus.total_sources} keyword sources indexed${searchStatus.available && searchStatus.total_chunk_count > 0 ? `, ${searchStatus.embedded_chunk_count} / ${searchStatus.total_chunk_count} semantic chunks embedded` : ""}. Search mode: ${searchCapabilityLabel(searchStatus)}.`}
-        >
-          {searchCoverageHint}
-        </span>
+        <div class="group relative shrink-0">
+          <button
+            type="button"
+            class="inline-flex h-5 w-5 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-40 transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+            aria-label="Search index status"
+          >
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.4"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="16" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+          </button>
+          <div
+            class="pointer-events-none absolute right-0 top-full z-50 mt-2 w-56 rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-3 opacity-0 shadow-lg transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
+          >
+            <p
+              class="text-[11px] font-bold tabular-nums text-[var(--foreground)]"
+            >
+              {searchCoverageHint}
+            </p>
+            <p class="mt-1 text-[10px] leading-snug text-[var(--soft-foreground)]">
+              {searchStatus.ready} / {searchStatus.total_sources} keyword sources indexed{searchStatus.available && searchStatus.total_chunk_count > 0 ? `. ${searchStatus.embedded_chunk_count} / ${searchStatus.total_chunk_count} semantic chunks embedded` : ""}.
+              Mode: {searchCapabilityLabel(searchStatus)}.
+            </p>
+          </div>
+        </div>
       {/if}
     </form>
 

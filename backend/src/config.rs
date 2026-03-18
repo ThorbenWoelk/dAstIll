@@ -5,6 +5,7 @@ use crate::services::SummaryEvaluatorService;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OllamaRuntimeConfig {
     pub url: String,
+    pub api_key: Option<String>,
     pub model: String,
     pub fallback_model: Option<String>,
     pub summary_evaluator_model: String,
@@ -20,6 +21,7 @@ pub struct SearchRuntimeConfig {
 impl OllamaRuntimeConfig {
     pub fn from_env(search_semantic_enabled: bool) -> Result<Self, String> {
         let url = env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
+        let api_key = optional_env("OLLAMA_API_KEY");
         let model = required_env("OLLAMA_MODEL")?;
         let fallback_model = optional_env("OLLAMA_FALLBACK_MODEL");
         let summary_evaluator_model = required_env("SUMMARY_EVALUATOR_MODEL")?;
@@ -31,9 +33,11 @@ impl OllamaRuntimeConfig {
 
         validate_distinct_model_roles(&model, &summary_evaluator_model)?;
         SummaryEvaluatorService::validate_model_policy(&summary_evaluator_model)?;
+        validate_cloud_auth(&url, &api_key)?;
 
         Ok(Self {
             url,
+            api_key,
             model,
             fallback_model,
             summary_evaluator_model,
@@ -61,6 +65,25 @@ impl SearchRuntimeConfig {
                 .unwrap_or(default_search_semantic_enabled()),
         }
     }
+}
+
+fn is_local_url(url: &str) -> bool {
+    let host = url
+        .strip_prefix("http://")
+        .or_else(|| url.strip_prefix("https://"))
+        .and_then(|s| s.split('/').next())
+        .and_then(|s| s.split(':').next())
+        .unwrap_or(url);
+    matches!(host, "localhost" | "127.0.0.1" | "0.0.0.0" | "::1")
+}
+
+fn validate_cloud_auth(url: &str, api_key: &Option<String>) -> Result<(), String> {
+    if !is_local_url(url) && api_key.is_none() {
+        return Err(format!(
+            "OLLAMA_API_KEY is required when OLLAMA_URL points to a remote endpoint ({url})"
+        ));
+    }
+    Ok(())
 }
 
 fn default_search_semantic_enabled() -> bool {
@@ -110,6 +133,15 @@ mod tests {
 
     static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
+    const OLLAMA_ENV_KEYS: &[&str] = &[
+        "OLLAMA_URL",
+        "OLLAMA_API_KEY",
+        "OLLAMA_MODEL",
+        "OLLAMA_FALLBACK_MODEL",
+        "SUMMARY_EVALUATOR_MODEL",
+        "OLLAMA_EMBEDDING_MODEL",
+    ];
+
     #[test]
     fn from_env_requires_primary_model() {
         let _guard = ENV_LOCK
@@ -117,12 +149,9 @@ mod tests {
             .lock()
             .unwrap_or_else(|err| err.into_inner());
 
-        let _reset = EnvReset::capture(&[
-            "OLLAMA_MODEL",
-            "OLLAMA_FALLBACK_MODEL",
-            "SUMMARY_EVALUATOR_MODEL",
-            "OLLAMA_EMBEDDING_MODEL",
-        ]);
+        let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
+        remove_env("OLLAMA_URL");
+        remove_env("OLLAMA_API_KEY");
         remove_env("OLLAMA_MODEL");
         set_env("SUMMARY_EVALUATOR_MODEL", "glm-5:cloud");
 
@@ -137,12 +166,9 @@ mod tests {
             .lock()
             .unwrap_or_else(|err| err.into_inner());
 
-        let _reset = EnvReset::capture(&[
-            "OLLAMA_MODEL",
-            "OLLAMA_FALLBACK_MODEL",
-            "SUMMARY_EVALUATOR_MODEL",
-            "OLLAMA_EMBEDDING_MODEL",
-        ]);
+        let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
+        remove_env("OLLAMA_URL");
+        remove_env("OLLAMA_API_KEY");
         set_env("OLLAMA_MODEL", "glm-5:cloud");
         remove_env("SUMMARY_EVALUATOR_MODEL");
 
@@ -157,12 +183,9 @@ mod tests {
             .lock()
             .unwrap_or_else(|err| err.into_inner());
 
-        let _reset = EnvReset::capture(&[
-            "OLLAMA_MODEL",
-            "OLLAMA_FALLBACK_MODEL",
-            "SUMMARY_EVALUATOR_MODEL",
-            "OLLAMA_EMBEDDING_MODEL",
-        ]);
+        let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
+        remove_env("OLLAMA_URL");
+        remove_env("OLLAMA_API_KEY");
         set_env("OLLAMA_MODEL", "glm-5:cloud");
         set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
         remove_env("OLLAMA_EMBEDDING_MODEL");
@@ -179,12 +202,9 @@ mod tests {
             .lock()
             .unwrap_or_else(|err| err.into_inner());
 
-        let _reset = EnvReset::capture(&[
-            "OLLAMA_MODEL",
-            "OLLAMA_FALLBACK_MODEL",
-            "SUMMARY_EVALUATOR_MODEL",
-            "OLLAMA_EMBEDDING_MODEL",
-        ]);
+        let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
+        remove_env("OLLAMA_URL");
+        remove_env("OLLAMA_API_KEY");
         set_env("OLLAMA_MODEL", "glm-5:cloud");
         set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
         remove_env("OLLAMA_EMBEDDING_MODEL");
@@ -200,12 +220,9 @@ mod tests {
             .lock()
             .unwrap_or_else(|err| err.into_inner());
 
-        let _reset = EnvReset::capture(&[
-            "OLLAMA_MODEL",
-            "OLLAMA_FALLBACK_MODEL",
-            "SUMMARY_EVALUATOR_MODEL",
-            "OLLAMA_EMBEDDING_MODEL",
-        ]);
+        let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
+        remove_env("OLLAMA_URL");
+        remove_env("OLLAMA_API_KEY");
         set_env("OLLAMA_MODEL", "glm-5:cloud");
         set_env("OLLAMA_FALLBACK_MODEL", "   ");
         set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
@@ -222,12 +239,9 @@ mod tests {
             .lock()
             .unwrap_or_else(|err| err.into_inner());
 
-        let _reset = EnvReset::capture(&[
-            "OLLAMA_MODEL",
-            "OLLAMA_FALLBACK_MODEL",
-            "SUMMARY_EVALUATOR_MODEL",
-            "OLLAMA_EMBEDDING_MODEL",
-        ]);
+        let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
+        remove_env("OLLAMA_URL");
+        remove_env("OLLAMA_API_KEY");
         set_env("OLLAMA_MODEL", "glm-5:cloud");
         set_env("OLLAMA_FALLBACK_MODEL", "qwen3-coder:30b");
         set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
@@ -247,12 +261,9 @@ mod tests {
             .lock()
             .unwrap_or_else(|err| err.into_inner());
 
-        let _reset = EnvReset::capture(&[
-            "OLLAMA_MODEL",
-            "OLLAMA_FALLBACK_MODEL",
-            "SUMMARY_EVALUATOR_MODEL",
-            "OLLAMA_EMBEDDING_MODEL",
-        ]);
+        let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
+        remove_env("OLLAMA_URL");
+        remove_env("OLLAMA_API_KEY");
         set_env("OLLAMA_MODEL", "qwen3.5:397b-cloud");
         set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
         set_env("OLLAMA_EMBEDDING_MODEL", "embeddinggemma");
@@ -312,6 +323,71 @@ mod tests {
         let config = SearchRuntimeConfig::from_env();
         assert!(!config.auto_create_vector_index);
         assert!(!config.semantic_enabled);
+    }
+
+    #[test]
+    fn from_env_rejects_remote_url_without_api_key() {
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+
+        let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
+        set_env("OLLAMA_URL", "https://ollama.cloud.example.com");
+        remove_env("OLLAMA_API_KEY");
+        set_env("OLLAMA_MODEL", "glm-5:cloud");
+        set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
+        set_env("OLLAMA_EMBEDDING_MODEL", "embeddinggemma");
+
+        let err = OllamaRuntimeConfig::from_env(true)
+            .expect_err("remote URL without API key should fail");
+        assert!(err.contains("OLLAMA_API_KEY"));
+    }
+
+    #[test]
+    fn from_env_accepts_remote_url_with_api_key() {
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+
+        let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
+        set_env("OLLAMA_URL", "https://ollama.cloud.example.com");
+        set_env("OLLAMA_API_KEY", "sk-test-key");
+        set_env("OLLAMA_MODEL", "glm-5:cloud");
+        set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
+        set_env("OLLAMA_EMBEDDING_MODEL", "embeddinggemma");
+
+        let config = OllamaRuntimeConfig::from_env(true).expect("config");
+        assert_eq!(config.api_key.as_deref(), Some("sk-test-key"));
+    }
+
+    #[test]
+    fn from_env_allows_localhost_without_api_key() {
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+
+        let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
+        set_env("OLLAMA_URL", "http://localhost:11434");
+        remove_env("OLLAMA_API_KEY");
+        set_env("OLLAMA_MODEL", "glm-5:cloud");
+        set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
+        set_env("OLLAMA_EMBEDDING_MODEL", "embeddinggemma");
+
+        OllamaRuntimeConfig::from_env(true).expect("localhost without API key should succeed");
+    }
+
+    #[test]
+    fn is_local_url_recognizes_local_addresses() {
+        use super::is_local_url;
+
+        assert!(is_local_url("http://localhost:11434"));
+        assert!(is_local_url("http://127.0.0.1:11434"));
+        assert!(is_local_url("http://0.0.0.0:11434"));
+        assert!(!is_local_url("https://ollama.cloud.example.com"));
+        assert!(!is_local_url("http://10.0.0.5:11434"));
     }
 
     struct EnvReset {

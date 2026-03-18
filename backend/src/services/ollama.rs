@@ -19,6 +19,7 @@ pub(crate) struct OllamaCore {
     base_url: String,
     model: String,
     fallback_model: Option<String>,
+    api_key: Option<String>,
     cloud_cooldown: Option<Arc<CloudCooldown>>,
     ollama_semaphore: Option<Arc<Semaphore>>,
 }
@@ -30,6 +31,7 @@ impl OllamaCore {
             base_url: base_url.to_string(),
             model: model.to_string(),
             fallback_model: None,
+            api_key: None,
             cloud_cooldown: None,
             ollama_semaphore: None,
         }
@@ -41,6 +43,7 @@ impl OllamaCore {
             base_url: base_url.to_string(),
             model: model.to_string(),
             fallback_model: None,
+            api_key: None,
             cloud_cooldown: None,
             ollama_semaphore: None,
         }
@@ -49,6 +52,19 @@ impl OllamaCore {
     pub fn with_fallback_model(mut self, model: Option<String>) -> Self {
         self.fallback_model = model;
         self
+    }
+
+    pub fn with_api_key(mut self, key: Option<String>) -> Self {
+        self.api_key = key;
+        self
+    }
+
+    /// Add Authorization header to a request builder if an API key is configured.
+    pub fn auth(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        match &self.api_key {
+            Some(key) => req.bearer_auth(key),
+            None => req,
+        }
     }
 
     pub fn with_cloud_cooldown(mut self, cooldown: Arc<CloudCooldown>) -> Self {
@@ -86,8 +102,7 @@ impl OllamaCore {
     }
 
     pub async fn is_available(&self) -> bool {
-        self.client
-            .get(format!("{}/api/tags", self.base_url))
+        self.auth(self.client.get(format!("{}/api/tags", self.base_url)))
             .send()
             .await
             .map(|r| r.status().is_success())
@@ -132,11 +147,27 @@ impl OllamaCore {
     }
 
     pub fn build_ollama_client(&self) -> Result<ollama::Client, String> {
-        ollama::Client::builder()
-            .api_key(Nothing)
+        let builder = ollama::Client::builder()
             .base_url(&self.base_url)
-            .build()
-            .map_err(|err| err.to_string())
+            .api_key(Nothing);
+
+        let builder = if let Some(key) = &self.api_key {
+            let mut headers = reqwest::header::HeaderMap::new();
+            let val = reqwest::header::HeaderValue::from_str(&format!("Bearer {key}"))
+                .map_err(|e| e.to_string())?;
+            headers.insert(reqwest::header::AUTHORIZATION, val);
+            let http_client = reqwest::Client::builder()
+                .user_agent("dastill/0.1")
+                .timeout(std::time::Duration::from_secs(20))
+                .default_headers(headers)
+                .build()
+                .map_err(|e| e.to_string())?;
+            builder.http_client(http_client)
+        } else {
+            builder
+        };
+
+        builder.build().map_err(|err| err.to_string())
     }
 
     /// Acquire the local-model semaphore if `model` is not a cloud model.
@@ -203,5 +234,44 @@ mod tests {
         assert!(core.ollama_semaphore().is_some());
         assert_eq!(core.base_url(), "http://localhost:11434");
         assert_eq!(core.model(), "qwen3-coder:30b");
+    }
+
+    #[test]
+    fn build_ollama_client_succeeds_without_api_key() {
+        let core = OllamaCore::new("http://localhost:11434", "qwen3-coder:30b");
+        assert!(core.build_ollama_client().is_ok());
+    }
+
+    #[test]
+    fn build_ollama_client_succeeds_with_api_key() {
+        let core = OllamaCore::new("https://cloud.example.com", "glm-5:cloud")
+            .with_api_key(Some("test-key-123".to_string()));
+        assert!(core.build_ollama_client().is_ok());
+    }
+
+    #[test]
+    fn auth_adds_bearer_header_when_api_key_is_set() {
+        let core = OllamaCore::new("http://localhost:11434", "qwen3-coder:30b")
+            .with_api_key(Some("test-key".to_string()));
+        let client = reqwest::Client::new();
+        let req = core.auth(client.get("http://localhost:11434/api/tags"));
+        let built = req.build().expect("request should build");
+        let auth = built
+            .headers()
+            .get(reqwest::header::AUTHORIZATION)
+            .expect("should have Authorization header");
+        assert_eq!(auth.to_str().unwrap(), "Bearer test-key");
+    }
+
+    #[test]
+    fn auth_omits_header_when_no_api_key() {
+        let core = OllamaCore::new("http://localhost:11434", "qwen3-coder:30b");
+        let client = reqwest::Client::new();
+        let req = core.auth(client.get("http://localhost:11434/api/tags"));
+        let built = req.build().expect("request should build");
+        assert!(built
+            .headers()
+            .get(reqwest::header::AUTHORIZATION)
+            .is_none());
     }
 }
