@@ -279,9 +279,7 @@
           role="status"
           aria-live="polite"
         >
-          <p
-            class="text-[13px] text-[var(--soft-foreground)] opacity-40"
-          >
+          <p class="text-[13px] text-[var(--soft-foreground)] opacity-40">
             {contentStatus === "failed"
               ? `${contentMode === "summary" ? "Summary" : "Transcript"} generation failed.`
               : `${contentMode === "summary" ? "Summary" : "Transcript"} not yet available.`}
@@ -306,7 +304,9 @@
           <p
             class="pt-10 text-center text-[10px] font-bold uppercase tracking-[0.4em] text-[var(--accent)]"
           >
-            {isProcessing ? `Processing ${contentMode}...` : `Loading ${contentMode}...`}
+            {isProcessing
+              ? `Processing ${contentMode}...`
+              : `Loading ${contentMode}...`}
           </p>
         </div>
       {/if}

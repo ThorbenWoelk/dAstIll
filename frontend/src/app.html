@@ -34,23 +34,28 @@
     <script>
       (() => {
         const storageKey = "dastill-theme-appearance";
+        const colorKey = "dastill-theme-color";
         const lightThemeColor = "#f8f1ec";
         const darkThemeColor = "#111315";
-        const storedPreference = localStorage.getItem(storageKey);
-        const hasExplicitPreference =
-          storedPreference === "light" || storedPreference === "dark";
+        const storedMode = localStorage.getItem(storageKey);
+        const isSystem = storedMode !== "light" && storedMode !== "dark";
         const systemPrefersDark = window.matchMedia(
           "(prefers-color-scheme: dark)",
         ).matches;
-        const isDark =
-          storedPreference === "dark" ||
-          (!hasExplicitPreference && systemPrefersDark);
+        const isDark = isSystem ? systemPrefersDark : storedMode === "dark";
 
         document.documentElement.classList.toggle("dark", isDark);
         document.documentElement.style.colorScheme = isDark ? "dark" : "light";
         document
           .querySelector('meta[name="theme-color"]')
           ?.setAttribute("content", isDark ? darkThemeColor : lightThemeColor);
+
+        const validColors = ["ember", "sage", "ocean", "sand", "plum"];
+        const color = localStorage.getItem(colorKey);
+        document.documentElement.setAttribute(
+          "data-color",
+          validColors.includes(color) ? color : "ember",
+        );
       })();
     </script>
     %sveltekit.head%

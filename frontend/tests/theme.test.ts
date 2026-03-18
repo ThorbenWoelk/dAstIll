@@ -4,9 +4,14 @@ import {
   DARK_THEME_COLOR,
   LIGHT_THEME_COLOR,
   applyThemeState,
+  applyColorScheme,
   parseThemePreference,
+  parseThemeMode,
+  parseColorScheme,
+  resolveModePreference,
   resolveNextThemePreference,
   resolveThemeState,
+  DEFAULT_COLOR,
 } from "../src/lib/theme";
 
 describe("parseThemePreference", () => {
@@ -55,10 +60,53 @@ describe("resolveNextThemePreference", () => {
   });
 });
 
+describe("parseThemeMode", () => {
+  it("accepts light, dark, and system values", () => {
+    expect(parseThemeMode("light")).toBe("light");
+    expect(parseThemeMode("dark")).toBe("dark");
+    expect(parseThemeMode("system")).toBe("system");
+  });
+
+  it("defaults to system for unknown values", () => {
+    expect(parseThemeMode("auto")).toBe("system");
+    expect(parseThemeMode(null)).toBe("system");
+    expect(parseThemeMode(undefined)).toBe("system");
+  });
+});
+
+describe("parseColorScheme", () => {
+  it("accepts valid color schemes", () => {
+    expect(parseColorScheme("ember")).toBe("ember");
+    expect(parseColorScheme("sage")).toBe("sage");
+    expect(parseColorScheme("ocean")).toBe("ocean");
+    expect(parseColorScheme("sand")).toBe("sand");
+    expect(parseColorScheme("plum")).toBe("plum");
+  });
+
+  it("defaults to ember for unknown values", () => {
+    expect(parseColorScheme("red")).toBe(DEFAULT_COLOR);
+    expect(parseColorScheme(null)).toBe(DEFAULT_COLOR);
+    expect(parseColorScheme(undefined)).toBe(DEFAULT_COLOR);
+  });
+});
+
+describe("resolveModePreference", () => {
+  it("resolves system mode based on system preference", () => {
+    expect(resolveModePreference("system", true)).toBe("dark");
+    expect(resolveModePreference("system", false)).toBe("light");
+  });
+
+  it("resolves explicit modes directly", () => {
+    expect(resolveModePreference("dark", false)).toBe("dark");
+    expect(resolveModePreference("light", true)).toBe("light");
+  });
+});
+
 describe("applyThemeState", () => {
-  it("applies the dark class, color scheme, and theme-color meta", () => {
+  function createDocumentLike() {
     const toggles: Array<[string, boolean]> = [];
     const metaAttributes: Record<string, string> = {};
+    const elAttributes: Record<string, string> = {};
     const documentLike = {
       documentElement: {
         classList: {
@@ -68,6 +116,9 @@ describe("applyThemeState", () => {
         },
         style: {
           colorScheme: "light",
+        },
+        setAttribute(name: string, value: string) {
+          elAttributes[name] = value;
         },
       },
       querySelector(selector: string) {
@@ -79,11 +130,24 @@ describe("applyThemeState", () => {
         };
       },
     };
+    return { documentLike, toggles, metaAttributes, elAttributes };
+  }
+
+  it("applies the dark class, color scheme, and theme-color meta", () => {
+    const { documentLike, toggles, metaAttributes } = createDocumentLike();
 
     applyThemeState(documentLike, resolveThemeState(null, true));
 
     expect(toggles).toEqual([["dark", true]]);
     expect(documentLike.documentElement.style.colorScheme).toBe("dark");
     expect(metaAttributes.content).toBe(DARK_THEME_COLOR);
+  });
+
+  it("applies data-color attribute via applyColorScheme", () => {
+    const { documentLike, elAttributes } = createDocumentLike();
+
+    applyColorScheme(documentLike, "sage");
+
+    expect(elAttributes["data-color"]).toBe("sage");
   });
 });

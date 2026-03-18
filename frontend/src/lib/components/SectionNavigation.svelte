@@ -48,14 +48,14 @@
 
   function itemClass(item: SectionNavigationItem): string {
     return item.active
-      ? "bg-[var(--muted)] text-[var(--foreground)]"
-      : "text-[var(--soft-foreground)] opacity-80 hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)]";
+      ? "bg-[var(--accent-soft)] text-[var(--accent-strong)]"
+      : "text-[var(--soft-foreground)] opacity-80 hover:bg-[var(--accent-soft)]/45 hover:text-[var(--foreground)]";
   }
 
   function pillClass(item: SectionNavigationItem): string {
     return item.active
-      ? "bg-[var(--muted)] text-[var(--foreground)]"
-      : "text-[var(--soft-foreground)] opacity-50 hover:opacity-100";
+      ? "bg-[var(--accent-soft)] text-[var(--accent-strong)] shadow-sm"
+      : "text-[var(--soft-foreground)] opacity-50 hover:bg-[var(--accent-soft)]/40 hover:text-[var(--foreground)] hover:opacity-100";
   }
 
   function handleKeydown(event: KeyboardEvent) {

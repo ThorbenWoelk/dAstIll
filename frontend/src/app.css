@@ -26,6 +26,7 @@
   --shadow-soft: rgba(0, 0, 0, 0.12);
   --shadow-strong: rgba(0, 0, 0, 0.18);
   --noise-opacity: 0.012;
+  --color-swatch: #d33c2a;
 
   /* Layout */
   --radius-sm: 8px;
@@ -84,6 +85,65 @@
 
 @import "tailwindcss";
 @plugin '@tailwindcss/typography';
+
+/* ── Color schemes: light (unlayered to beat Tailwind layers) ── */
+:root[data-color="ember"] {
+  --accent: #d33c2a;
+  --accent-soft: #fdf2f0;
+  --accent-strong: #9e2a1d;
+  --color-swatch: #d33c2a;
+}
+:root[data-color="sage"] {
+  --accent: #4a8a5c;
+  --accent-soft: #eef6f0;
+  --accent-strong: #2f6b3f;
+  --color-swatch: #4a8a5c;
+}
+:root[data-color="ocean"] {
+  --accent: #2a7ab5;
+  --accent-soft: #edf5fb;
+  --accent-strong: #1c5a8a;
+  --color-swatch: #2a7ab5;
+}
+:root[data-color="sand"] {
+  --accent: #a68a5b;
+  --accent-soft: #f8f4ed;
+  --accent-strong: #7d6840;
+  --color-swatch: #a68a5b;
+}
+:root[data-color="plum"] {
+  --accent: #8b5cb4;
+  --accent-soft: #f5eefa;
+  --accent-strong: #6a3f90;
+  --color-swatch: #8b5cb4;
+}
+
+/* ── Color schemes: dark ── */
+:root.dark[data-color="ember"] {
+  --accent: #ff8e79;
+  --accent-soft: rgba(255, 142, 121, 0.14);
+  --accent-strong: #ffb8aa;
+}
+:root.dark[data-color="sage"] {
+  --accent: #7ac88e;
+  --accent-soft: rgba(122, 200, 142, 0.14);
+  --accent-strong: #a8e0b6;
+}
+:root.dark[data-color="ocean"] {
+  --accent: #6db8e8;
+  --accent-soft: rgba(109, 184, 232, 0.14);
+  --accent-strong: #a0d4f3;
+}
+:root.dark[data-color="sand"] {
+  --accent: #d4b882;
+  --accent-soft: rgba(212, 184, 130, 0.14);
+  --accent-strong: #e6d4a8;
+}
+:root.dark[data-color="plum"] {
+  --accent: #c49aeb;
+  --accent-soft: rgba(196, 154, 235, 0.14);
+  --accent-strong: #dbbef3;
+}
 
 * {
   box-sizing: border-box;

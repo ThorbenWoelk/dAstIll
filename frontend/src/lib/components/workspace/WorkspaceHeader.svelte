@@ -493,9 +493,14 @@
             >
               {searchCoverageHint}
             </p>
-            <p class="mt-1 text-[10px] leading-snug text-[var(--soft-foreground)]">
-              {searchStatus.ready} / {searchStatus.total_sources} keyword sources indexed{searchStatus.available && searchStatus.total_chunk_count > 0 ? `. ${searchStatus.embedded_chunk_count} / ${searchStatus.total_chunk_count} semantic chunks embedded` : ""}.
-              Mode: {searchCapabilityLabel(searchStatus)}.
+            <p
+              class="mt-1 text-[10px] leading-snug text-[var(--soft-foreground)]"
+            >
+              {searchStatus.ready} / {searchStatus.total_sources} keyword sources
+              indexed{searchStatus.available &&
+              searchStatus.total_chunk_count > 0
+                ? `. ${searchStatus.embedded_chunk_count} / ${searchStatus.total_chunk_count} semantic chunks embedded`
+                : ""}. Mode: {searchCapabilityLabel(searchStatus)}.
             </p>
           </div>
         </div>

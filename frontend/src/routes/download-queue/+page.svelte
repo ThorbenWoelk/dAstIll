@@ -36,7 +36,7 @@
   import { DOCS_URL } from "$lib/app-config";
   import ConfirmationModal from "$lib/components/ConfirmationModal.svelte";
   import SectionNavigation from "$lib/components/SectionNavigation.svelte";
-  import ThemeToggle from "$lib/components/ThemeToggle.svelte";
+  import ThemePanel from "$lib/components/ThemePanel.svelte";
   import type {
     AiStatus,
     Channel,
@@ -782,7 +782,7 @@
     </div>
 
     <div class="ml-auto flex shrink-0 items-center gap-2">
-      <ThemeToggle />
+      <ThemePanel />
       <SectionNavigation
         currentSection="queue"
         docsUrl={DOCS_URL}

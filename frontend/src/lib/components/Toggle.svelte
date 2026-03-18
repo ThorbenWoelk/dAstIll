@@ -16,10 +16,10 @@
       type="button"
       role="tab"
       aria-selected={value === option}
-      class={`flex h-7 flex-none items-center gap-1.5 rounded-full px-3 text-[11px] font-bold uppercase tracking-[0.1em] transition-all duration-200 focus-visible:outline-none ${
+      class={`flex h-7 flex-none items-center gap-1.5 rounded-full border px-3 text-[11px] font-bold uppercase tracking-[0.1em] transition-all duration-200 focus-visible:outline-none ${
         value === option
-          ? "bg-[var(--foreground)] text-[var(--background)] shadow-sm"
-          : "text-[var(--soft-foreground)] opacity-65 hover:text-[var(--foreground)] hover:opacity-100"
+          ? "border-[var(--accent)]/20 bg-[var(--accent-soft)] text-[var(--accent-strong)] shadow-sm"
+          : "border-transparent text-[var(--soft-foreground)] opacity-65 hover:border-[var(--accent)]/15 hover:bg-[var(--accent-soft)]/40 hover:text-[var(--foreground)] hover:opacity-100"
       }`}
       onclick={() => onChange(option)}
     >
