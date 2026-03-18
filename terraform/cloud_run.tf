@@ -8,96 +8,10 @@ resource "google_cloud_run_v2_service" "backend" {
   template {
     service_account = google_service_account.backend_sa.email
     containers {
-      image = "us-docker.pkg.dev/cloudrun/container/hello" # Placeholder, updated by CI/CD
+      image = "us-docker.pkg.dev/cloudrun/container/hello"
 
       ports {
         container_port = 3001
-      }
-
-
-      env {
-        name  = "AWS_REGION"
-        value = var.aws_region
-      }
-
-      env {
-        name  = "AWS_ROLE_ARN"
-        value = aws_iam_role.backend_s3.arn
-      }
-
-      env {
-        name  = "AWS_WIF_AUDIENCE"
-        value = google_service_account.backend_sa.unique_id
-      }
-
-      env {
-        name  = "S3_DATA_BUCKET"
-        value = aws_s3_bucket.data.bucket
-      }
-
-      env {
-        name  = "S3_VECTOR_BUCKET"
-        value = aws_s3vectors_vector_bucket.vectors.vector_bucket_name
-      }
-
-      env {
-        name  = "S3_VECTOR_INDEX"
-        value = aws_s3vectors_index.search_chunks.index_name
-      }
-
-      env {
-        name = "YOUTUBE_API_KEY"
-        value_source {
-          secret_key_ref {
-            secret  = google_secret_manager_secret.youtube_api_key.secret_id
-            version = "latest"
-          }
-        }
-      }
-
-      env {
-        name = "OLLAMA_API_KEY"
-        value_source {
-          secret_key_ref {
-            secret  = google_secret_manager_secret.ollama_api_key.secret_id
-            version = "latest"
-          }
-        }
-      }
-
-      env {
-        name  = "OLLAMA_URL"
-        value = var.ollama_url
-      }
-
-      env {
-        name  = "OLLAMA_MODEL"
-        value = var.ollama_model
-      }
-
-      env {
-        name  = "SUMMARY_EVALUATOR_MODEL"
-        value = var.summary_evaluator_model
-      }
-
-      env {
-        name  = "RUST_LOG"
-        value = "dastill=info,tower_http=info"
-      }
-
-      env {
-        name  = "OLLAMA_FALLBACK_MODEL"
-        value = var.ollama_fallback_model
-      }
-
-      env {
-        name  = "OLLAMA_EMBEDDING_MODEL"
-        value = var.ollama_embedding_model
-      }
-
-      env {
-        name  = "SUMMARIZE_PATH"
-        value = "/usr/local/bin/summarize"
       }
 
       resources {
@@ -112,9 +26,7 @@ resource "google_cloud_run_v2_service" "backend" {
   }
 
   lifecycle {
-    ignore_changes = [
-      template[0].containers[0].image,
-    ]
+    ignore_changes = [template]
   }
 }
 
@@ -128,14 +40,11 @@ resource "google_cloud_run_v2_service" "frontend" {
   template {
     service_account = google_service_account.frontend_sa.email
     containers {
-      image = "us-docker.pkg.dev/cloudrun/container/hello" # Placeholder, updated by CI/CD
+      image = "us-docker.pkg.dev/cloudrun/container/hello"
 
       ports {
         container_port = 3000
       }
-
-
-      # VITE_API_BASE will be set by CI/CD as an environment variable
 
       resources {
         cpu_idle          = true
@@ -149,10 +58,7 @@ resource "google_cloud_run_v2_service" "frontend" {
   }
 
   lifecycle {
-    ignore_changes = [
-      template[0].containers[0].image,
-      template[0].containers[0].env,
-    ]
+    ignore_changes = [template]
   }
 }
 
@@ -188,7 +94,7 @@ resource "google_cloud_run_v2_service" "docs" {
   template {
     service_account = google_service_account.docs_sa.email
     containers {
-      image = "us-docker.pkg.dev/cloudrun/container/hello" # Placeholder, updated by CI/CD
+      image = "us-docker.pkg.dev/cloudrun/container/hello"
 
       ports {
         container_port = 8080
@@ -206,9 +112,7 @@ resource "google_cloud_run_v2_service" "docs" {
   }
 
   lifecycle {
-    ignore_changes = [
-      template[0].containers[0].image,
-    ]
+    ignore_changes = [template]
   }
 }
 

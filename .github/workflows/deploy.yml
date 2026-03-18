@@ -52,6 +52,23 @@ jobs:
           region: ${{ env.REGION }}
           image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_ID }}/backend:${{ env.IMAGE_TAG }}
           flags: "--service-account=dastill-backend-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
+          secrets: |
+            YOUTUBE_API_KEY=dastill-youtube-api-key:latest
+            OLLAMA_API_KEY=dastill-ollama-api-key:latest
+          env_vars: |
+            AWS_REGION=${{ vars.AWS_REGION }}
+            AWS_ROLE_ARN=${{ vars.AWS_ROLE_ARN }}
+            AWS_WIF_AUDIENCE=${{ vars.AWS_WIF_AUDIENCE }}
+            S3_DATA_BUCKET=${{ vars.S3_DATA_BUCKET }}
+            S3_VECTOR_BUCKET=${{ vars.S3_VECTOR_BUCKET }}
+            S3_VECTOR_INDEX=${{ vars.S3_VECTOR_INDEX }}
+            OLLAMA_URL=${{ vars.OLLAMA_URL }}
+            OLLAMA_MODEL=${{ vars.OLLAMA_MODEL }}
+            OLLAMA_FALLBACK_MODEL=${{ vars.OLLAMA_FALLBACK_MODEL }}
+            OLLAMA_EMBEDDING_MODEL=${{ vars.OLLAMA_EMBEDDING_MODEL }}
+            SUMMARY_EVALUATOR_MODEL=${{ vars.SUMMARY_EVALUATOR_MODEL }}
+            SUMMARIZE_PATH=/usr/local/bin/summarize
+            RUST_LOG=dastill=info,tower_http=info
 
       - name: Build and Push Docs Image
         run: |

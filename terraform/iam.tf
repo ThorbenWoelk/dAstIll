@@ -19,16 +19,26 @@ resource "google_service_account" "github_actions_sa" {
   display_name = "${var.app_name} GitHub Actions Service Account"
 }
 
-# Grant access to secrets for backend
-resource "google_secret_manager_secret_iam_member" "backend_secrets" {
-  for_each = {
+# Grant access to secrets for backend (runtime) and GitHub Actions (deploy-time binding)
+locals {
+  secret_ids = {
     ollama_api_key  = google_secret_manager_secret.ollama_api_key.id
     youtube_api_key = google_secret_manager_secret.youtube_api_key.id
   }
+}
 
+resource "google_secret_manager_secret_iam_member" "backend_secrets" {
+  for_each  = local.secret_ids
   secret_id = each.value
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.backend_sa.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "cicd_secrets" {
+  for_each  = local.secret_ids
+  secret_id = each.value
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.github_actions_sa.email}"
 }
 
 # CICD Permissions
@@ -43,6 +53,10 @@ resource "google_project_iam_member" "cloud_run_admin" {
   project = var.project_id
   role    = "roles/run.admin"
   member  = "serviceAccount:${google_service_account.github_actions_sa.email}"
+}
+
+output "backend_sa_unique_id" {
+  value = google_service_account.backend_sa.unique_id
 }
 
 resource "google_service_account_iam_member" "sa_user_backend" {

@@ -34,29 +34,3 @@ variable "ollama_api_key" {
   sensitive   = true
   description = "Ollama API key for authenticated cloud endpoints"
 }
-
-variable "ollama_url" {
-  type        = string
-  default     = "http://localhost:11434"
-  description = "Ollama URL"
-}
-
-variable "ollama_model" {
-  type        = string
-  description = "Ollama model"
-}
-
-variable "summary_evaluator_model" {
-  type        = string
-  description = "Summary evaluator model"
-}
-
-variable "ollama_fallback_model" {
-  type        = string
-  description = "Ollama fallback model"
-}
-
-variable "ollama_embedding_model" {
-  type        = string
-  description = "Ollama embedding model"
-}

@@ -68,6 +68,10 @@ output "s3_vector_bucket_arn" {
   value = aws_s3vectors_vector_bucket.vectors.vector_bucket_arn
 }
 
+output "s3_vector_index" {
+  value = aws_s3vectors_index.search_chunks.index_name
+}
+
 output "s3_vector_index_arn" {
   value = aws_s3vectors_index.search_chunks.index_arn
 }
