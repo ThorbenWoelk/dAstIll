@@ -158,7 +158,7 @@ impl OllamaCore {
             headers.insert(reqwest::header::AUTHORIZATION, val);
             let http_client = reqwest::Client::builder()
                 .user_agent("dastill/0.1")
-                .timeout(std::time::Duration::from_secs(20))
+                .timeout(std::time::Duration::from_secs(300))
                 .default_headers(headers)
                 .build()
                 .map_err(|e| e.to_string())?;
