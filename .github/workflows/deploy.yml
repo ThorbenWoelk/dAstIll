@@ -41,8 +41,6 @@ jobs:
         run: |
           docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/backend:$IMAGE_TAG ./backend
           docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/backend:$IMAGE_TAG
-          docker tag $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/backend:$IMAGE_TAG $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/backend:latest
-          docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/backend:latest
 
       - name: Deploy Backend to Cloud Run
         id: deploy-backend
@@ -75,8 +73,6 @@ jobs:
           docker build \
             -t $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/docs:$IMAGE_TAG ./docs
           docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/docs:$IMAGE_TAG
-          docker tag $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/docs:$IMAGE_TAG $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/docs:latest
-          docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/docs:latest
 
       - name: Deploy Docs to Cloud Run
         id: deploy-docs
@@ -89,14 +85,10 @@ jobs:
 
       - name: Build and Push Frontend Image
         run: |
-          echo "Backend URL is: ${{ steps.deploy-backend.outputs.url }}"
-          echo "Docs URL is: ${{ steps.deploy-docs.outputs.url }}"
           docker build \
             --build-arg VITE_API_BASE=${{ steps.deploy-backend.outputs.url }} \
             -t $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/frontend:$IMAGE_TAG ./frontend
           docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/frontend:$IMAGE_TAG
-          docker tag $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/frontend:$IMAGE_TAG $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/frontend:latest
-          docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/frontend:latest
 
       - name: Deploy Frontend to Cloud Run
         id: deploy-frontend
