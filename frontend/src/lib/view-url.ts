@@ -134,7 +134,10 @@ export function buildQueueViewHref(state: QueueViewState) {
 }
 
 export function mergeQueueViewState(
-  restoredState: { selectedChannelId?: string | null; channelOrder?: string[] },
+  restoredState: Pick<
+    Partial<WorkspaceStateSnapshot>,
+    "selectedChannelId" | "channelOrder" | "channelSortMode"
+  >,
   urlState: Partial<QueueViewState>,
 ) {
   return {

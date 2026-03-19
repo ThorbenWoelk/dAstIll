@@ -11,16 +11,14 @@
     VideoInfo,
   } from "$lib/types";
   import type { WorkspaceContentMode } from "$lib/workspace/types";
+  import {
+    resolveSwipedContentMode,
+    WORKSPACE_CONTENT_MODE_ORDER,
+  } from "$lib/workspace/navigation";
   import WorkspaceHighlightsPanel from "$lib/components/workspace/WorkspaceHighlightsPanel.svelte";
   import WorkspaceSummaryMeta from "$lib/components/workspace/WorkspaceSummaryMeta.svelte";
   import WorkspaceVideoInfoPanel from "$lib/components/workspace/WorkspaceVideoInfoPanel.svelte";
 
-  const CONTENT_MODE_ORDER: WorkspaceContentMode[] = [
-    "transcript",
-    "summary",
-    "highlights",
-    "info",
-  ];
   const CONTENT_MODE_LABELS: Record<WorkspaceContentMode, string> = {
     transcript: "Transcript",
     summary: "Summary",
@@ -28,7 +26,9 @@
     info: "Info",
   };
   const SWIPE_BACK_THRESHOLD_PX = 72;
+  const SWIPE_TAB_THRESHOLD_PX = 56;
   const SWIPE_BACK_EDGE_PX = 32;
+  const SWIPE_LOCK_THRESHOLD_PX = 12;
 
   let {
     mobileVisible = false,
@@ -135,6 +135,7 @@
     startY: number;
     edgeStart: boolean;
     interactive: boolean;
+    axisLocked: "x" | "y" | null;
   } | null = null;
 
   function isInteractiveSwipeTarget(target: EventTarget | null): boolean {
@@ -162,13 +163,46 @@
       startY: touch.clientY,
       edgeStart,
       interactive: edgeStart ? false : isInteractiveSwipeTarget(event.target),
+      axisLocked: null,
     };
+  }
+
+  function handleSwipeMove(event: TouchEvent) {
+    if (
+      !touchGesture ||
+      !mobileVisible ||
+      editing ||
+      event.touches.length !== 1
+    ) {
+      return;
+    }
+
+    const touch = event.touches[0];
+    const deltaX = touch.clientX - touchGesture.startX;
+    const deltaY = touch.clientY - touchGesture.startY;
+
+    if (!touchGesture.axisLocked) {
+      if (
+        Math.abs(deltaX) < SWIPE_LOCK_THRESHOLD_PX &&
+        Math.abs(deltaY) < SWIPE_LOCK_THRESHOLD_PX
+      ) {
+        return;
+      }
+
+      touchGesture = {
+        ...touchGesture,
+        axisLocked: Math.abs(deltaX) > Math.abs(deltaY) * 1.1 ? "x" : "y",
+      };
+    }
+
+    if (touchGesture?.axisLocked === "x" && !touchGesture.interactive) {
+      event.preventDefault();
+    }
   }
 
   function handleSwipeEnd(event: TouchEvent) {
     if (
       !touchGesture ||
-      !touchGesture.edgeStart ||
       touchGesture.interactive ||
       !mobileVisible ||
       editing ||
@@ -181,22 +215,43 @@
     const touch = event.changedTouches[0];
     const deltaX = touch.clientX - touchGesture.startX;
     const deltaY = touch.clientY - touchGesture.startY;
+    const gesture = touchGesture;
 
     touchGesture = null;
 
-    if (
-      deltaX < SWIPE_BACK_THRESHOLD_PX ||
-      Math.abs(deltaX) <= Math.abs(deltaY) * 1.25
-    ) {
+    if (gesture.axisLocked !== "x") {
       return;
     }
 
-    onBack();
+    if (gesture.edgeStart) {
+      if (
+        deltaX >= SWIPE_BACK_THRESHOLD_PX &&
+        Math.abs(deltaX) > Math.abs(deltaY) * 1.25
+      ) {
+        onBack();
+      }
+      return;
+    }
+
+    if (!selectedVideoId) {
+      return;
+    }
+
+    const nextMode = resolveSwipedContentMode(
+      contentMode,
+      deltaX,
+      deltaY,
+      SWIPE_TAB_THRESHOLD_PX,
+    );
+
+    if (nextMode && nextMode !== contentMode) {
+      void onSetMode(nextMode);
+    }
   }
 </script>
 
 <section
-  class={`fade-in stagger-3 relative z-10 flex min-h-0 min-w-0 flex-col overflow-visible border-0 lg:sticky lg:top-4 lg:h-[calc(100vh-4rem)] lg:gap-4 lg:py-6 lg:pl-5 ${mobileVisible ? "h-full" : "hidden lg:flex"}`}
+  class={`fade-in stagger-3 relative z-10 flex min-h-0 min-w-0 flex-col overflow-visible border-0 lg:sticky lg:top-4 lg:h-[calc(100vh-4rem)] lg:gap-4 lg:pb-6 lg:pl-5 ${mobileVisible ? "h-full" : "hidden lg:flex"}`}
   id="content-view"
 >
   <div class="flex flex-col gap-3 px-4 max-lg:pb-1 max-lg:pt-3 sm:px-6 lg:px-0">
@@ -209,7 +264,7 @@
           <div
             class="flex min-w-max items-center gap-5 border-b border-[var(--accent-border-soft)] pr-4 sm:pr-0"
           >
-            {#each CONTENT_MODE_ORDER as mode}
+            {#each WORKSPACE_CONTENT_MODE_ORDER as mode}
               <button
                 type="button"
                 class={`-mb-px border-b-2 pb-3 text-[11px] font-bold uppercase tracking-[0.12em] transition-colors ${
@@ -267,6 +322,7 @@
     role="region"
     aria-label="Content panel"
     ontouchstart={handleSwipeStart}
+    ontouchmove={handleSwipeMove}
     ontouchend={handleSwipeEnd}
     ontouchcancel={() => {
       touchGesture = null;

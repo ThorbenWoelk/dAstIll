@@ -11,6 +11,7 @@
   import SectionNavigation from "$lib/components/SectionNavigation.svelte";
   import ThemePanel from "$lib/components/ThemePanel.svelte";
   import { resolveSearchCoverageHint } from "$lib/search-status";
+  import type { SectionNavigationSection } from "$lib/section-navigation";
   import {
     anySearchSectionLoading,
     createEmptySearchSections,
@@ -45,19 +46,15 @@
   const SEARCH_RESULT_LIMIT = 8;
 
   let {
+    currentSection = "workspace",
     aiIndicator = null,
     initialSearchStatus = null,
-    showMobileBack = false,
-    mobileBackLabel = "Back",
-    onMobileBack = () => {},
     onOpenGuide = () => {},
     onSearchResultSelect = async () => {},
   }: {
+    currentSection?: SectionNavigationSection;
     aiIndicator?: AiIndicatorPresentation | null;
     initialSearchStatus?: SearchStatus | null;
-    showMobileBack?: boolean;
-    mobileBackLabel?: string;
-    onMobileBack?: () => void;
     onOpenGuide?: () => void;
     onSearchResultSelect?: (
       result: SearchResult,
@@ -505,39 +502,17 @@
 {/snippet}
 
 <div class="space-y-3 lg:space-y-0">
-  <header class="mx-auto w-full max-w-[1440px] min-w-0 px-4 pb-2 sm:px-2">
+  <header class="mx-auto w-full max-w-[1440px] min-w-0 px-4 pb-2 sm:px-2 lg:px-5">
     <div
       class="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 lg:grid-cols-[minmax(0,1fr)_auto_minmax(18rem,22rem)] lg:gap-6"
     >
       <div class="flex min-w-0 items-center gap-3 lg:justify-self-start">
-        {#if showMobileBack}
-          <button
-            type="button"
-            class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-70 transition-all hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 lg:hidden"
-            onclick={onMobileBack}
-            aria-label={mobileBackLabel}
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.4"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
-          </button>
-        {/if}
-
         <a
           href="/"
           class="text-xl font-bold tracking-tighter text-[var(--accent)] transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)] sm:text-2xl"
           aria-label="Go to dAstIll home"
         >
-          DASTILL
+          dAstIll
         </a>
         {#if aiIndicator}
           <AiStatusIndicator
@@ -598,7 +573,7 @@
 
       <div class="hidden lg:flex lg:justify-center">
         <SectionNavigation
-          currentSection="workspace"
+          {currentSection}
           docsUrl={DOCS_URL}
           showMobile={false}
         />

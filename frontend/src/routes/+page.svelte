@@ -33,6 +33,7 @@
   import WorkspaceChannelSidebar from "$lib/components/workspace/WorkspaceChannelSidebar.svelte";
   import WorkspaceContentPanel from "$lib/components/workspace/WorkspaceContentPanel.svelte";
   import WorkspaceHeader from "$lib/components/workspace/WorkspaceHeader.svelte";
+  import WorkspaceMobileTabBar from "$lib/components/workspace/WorkspaceMobileTabBar.svelte";
   import WorkspaceVideoSidebar from "$lib/components/workspace/WorkspaceVideoSidebar.svelte";
   import type {
     AiStatus,
@@ -90,6 +91,7 @@
     resolveTranscriptPresentation,
     stripContentPrefix,
   } from "$lib/workspace/content";
+  import { resolveDefaultContentMode } from "$lib/workspace/navigation";
   import {
     type AcknowledgedFilter,
     type ChannelSortMode,
@@ -1183,13 +1185,15 @@
     contentText = "";
     draft = "";
     const video = videos.find((v) => v.id === videoId);
-    if (
-      contentMode === "summary" &&
-      video &&
-      video.summary_status !== "ready"
-    ) {
-      contentMode = "transcript";
-    }
+    const cachedHighlights = videoHighlightsByVideoId[videoId];
+    const highlights =
+      cachedHighlights ?? (await hydrateVideoHighlights(videoId)) ?? [];
+    if (selectedVideoId !== videoId) return;
+    contentMode = resolveDefaultContentMode({
+      hasHighlights: highlights.length > 0,
+      hasSummary: video?.summary_status === "ready",
+      hasTranscript: video?.transcript_status === "ready",
+    });
     resetSummaryQuality();
     resetVideoInfo();
     editing = false;
@@ -1735,15 +1739,15 @@
   <WorkspaceHeader
     {aiIndicator}
     initialSearchStatus={searchStatus}
-    showMobileBack={mobileTab !== "channels"}
-    mobileBackLabel={mobileTab === "content"
-      ? "Back to videos"
-      : "Back to channels"}
-    onMobileBack={() => {
-      mobileTab = mobileTab === "content" ? "videos" : "channels";
-    }}
     onOpenGuide={openGuide}
     onSearchResultSelect={handleSearchResultSelection}
+  />
+
+  <WorkspaceMobileTabBar
+    activeTab={mobileTab}
+    onTabChange={(tab) => {
+      mobileTab = tab;
+    }}
   />
 
   <main

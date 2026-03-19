@@ -116,6 +116,7 @@ describe("mergeQueueViewState", () => {
         {
           selectedChannelId: "saved-channel",
           channelOrder: ["saved-channel"],
+          channelSortMode: "alpha",
         },
         {
           selectedChannelId: "url-channel",
@@ -125,6 +126,7 @@ describe("mergeQueueViewState", () => {
     ).toEqual({
       selectedChannelId: "url-channel",
       channelOrder: ["saved-channel"],
+      channelSortMode: "alpha",
       queueTab: "summaries",
     });
   });

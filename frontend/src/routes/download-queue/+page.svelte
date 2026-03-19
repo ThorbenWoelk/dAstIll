@@ -2,6 +2,8 @@
   import { goto, replaceState as replacePageState } from "$app/navigation";
   import { onMount } from "svelte";
   import {
+    addChannel,
+    deleteChannel,
     getChannelSnapshot,
     getChannelSyncDepth,
     isAiAvailable,
@@ -11,37 +13,32 @@
     updateChannel,
   } from "$lib/api";
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
-  import AppHeaderBar from "$lib/components/AppHeaderBar.svelte";
+  import { DOCS_URL } from "$lib/app-config";
   import FeatureGuide, {
     type TourStep,
   } from "$lib/components/FeatureGuide.svelte";
+  import ConfirmationModal from "$lib/components/ConfirmationModal.svelte";
+  import QueueContentPanel from "$lib/components/queue/QueueContentPanel.svelte";
+  import QueueVideoSidebar from "$lib/components/queue/QueueVideoSidebar.svelte";
+  import WorkspaceChannelSidebar from "$lib/components/workspace/WorkspaceChannelSidebar.svelte";
+  import WorkspaceHeader from "$lib/components/workspace/WorkspaceHeader.svelte";
+  import WorkspaceMobileTabBar from "$lib/components/workspace/WorkspaceMobileTabBar.svelte";
   import {
     applySavedChannelOrder,
-    beginChannelDrag,
     buildQueueSnapshotOptions,
-    completeChannelDrop,
-    finishChannelDrag,
     loadWorkspaceState,
     markChannelRefreshed,
-    reorderChannels as reorderChannelList,
-    restoreWorkspaceSnapshot,
     resolveInitialChannelSelection,
+    restoreWorkspaceSnapshot,
     saveWorkspaceState,
     shouldRefreshChannel,
-    updateChannelDragOver,
-    type WorkspaceStateSnapshot,
   } from "$lib/channel-workspace";
-  import defaultChannelIcon from "$lib/assets/channel-default.svg";
-  import ChannelCard from "$lib/components/ChannelCard.svelte";
-  import { DOCS_URL } from "$lib/app-config";
-  import ConfirmationModal from "$lib/components/ConfirmationModal.svelte";
-  import Toggle from "$lib/components/Toggle.svelte";
   import type {
     AiStatus,
     Channel,
     ChannelSnapshot,
-    ContentStatus,
     QueueTab,
+    SearchResult,
     Video,
   } from "$lib/types";
   import {
@@ -50,102 +47,45 @@
     mergeQueueViewState,
     parseQueueViewUrlState,
   } from "$lib/view-url";
+  import { channelOrderFromList } from "$lib/workspace/channels";
+  import type { ChannelSortMode } from "$lib/workspace/types";
 
-  const dateFormatter = new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-  const syncTimeFormatter = new Intl.DateTimeFormat(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+  const CHANNEL_REFRESH_TTL_MS = 5 * 60 * 1000;
+  const MAX_RETRIES = 3;
+  const limit = 20;
+  const channelLastRefreshedAt = new Map<string, number>();
+
+  type QueueMobileTab = "channels" | "videos" | "content";
+  type DistillationStatusKind = "processing" | "queued" | "failed";
+
+  interface DistillationStatusCopy {
+    kind: DistillationStatusKind;
+    label: string;
+    detail: string;
+  }
+
   let channels = $state<Channel[]>([]);
   let channelOrder = $state<string[]>([]);
   let videos = $state<Video[]>([]);
   let selectedChannelId = $state<string | null>(null);
-  let draggedChannelId = $state<string | null>(null);
-  let dragOverChannelId = $state<string | null>(null);
   let loadingChannels = $state(false);
-  let aiStatus = $state<AiStatus | null>(null);
-
-  // -- Guide tour (URL-driven: ?guide=0, ?guide=1, ...) --
-  let guideOpen = $state(false);
-  let guideStep = $state(0);
-
-  const tourSteps: TourStep[] = [
-    {
-      selector: "#ai-status-pill",
-      title: "AI Status",
-      body: "The colored dot shows AI engine availability. In showcase mode, AI is disabled but all browsing features work fully.",
-      placement: "bottom",
-    },
-    {
-      selector: "[aria-label='Queue tabs']",
-      title: "Queue Tabs",
-      body: "Switch between Transcripts, Summaries, and Evaluations to monitor the processing pipeline for each channel.",
-      placement: "bottom",
-      prepare: () => {
-        mobileTab = "details";
-      },
-    },
-    {
-      selector: "nav[aria-label='Workspace sections']",
-      title: "Navigate the app",
-      body: "Jump between the workspace, queue, highlights, and docs from the same header navigation used across the app.",
-      placement: "bottom",
-      prepare: () => {
-        mobileTab = "details";
-      },
-    },
-  ];
-
-  function openGuide() {
-    guideStep = 0;
-    guideOpen = true;
-    syncGuideToUrl(0);
-  }
-
-  function closeGuide() {
-    guideOpen = false;
-    removeGuideFromUrl();
-  }
-
-  function setGuideStep(s: number) {
-    guideStep = s;
-    syncGuideToUrl(s);
-  }
-
-  function syncGuideToUrl(s: number) {
-    if (typeof window === "undefined") return;
-    const url = new URL(window.location.href);
-    url.searchParams.set("guide", String(s));
-    window.history.replaceState(window.history.state, "", url);
-  }
-
-  function removeGuideFromUrl() {
-    if (typeof window === "undefined") return;
-    const url = new URL(window.location.href);
-    url.searchParams.delete("guide");
-    window.history.replaceState(window.history.state, "", url);
-  }
   let loadingVideos = $state(false);
-
+  let addingChannel = $state(false);
+  let channelSortMode = $state<ChannelSortMode>("custom");
+  let aiStatus = $state<AiStatus | null>(null);
+  let mobileTab = $state<QueueMobileTab>("channels");
+  let queueTab = $state<QueueTab>("transcripts");
   let errorMessage = $state<string | null>(null);
   let showDeleteConfirmation = $state(false);
   let channelIdToDelete = $state<string | null>(null);
   let workspaceStateHydrated = $state(false);
   let viewUrlHydrated = $state(false);
-
   let offset = $state(0);
-  const limit = 20;
   let hasMore = $state(true);
   let lastSyncedAt = $state<Date | null>(null);
-  let queueDeltaSinceLastSync = $state<number | null>(null);
-  let previousQueuedTotal = $state<number | null>(null);
   let earliestSyncDateInput = $state("");
   let savingSyncDate = $state(false);
+  let refreshingChannel = $state(false);
   let syncDepth = $state<{
     earliest_sync_date: string | null;
     earliest_sync_date_user_set: boolean;
@@ -155,9 +95,95 @@
     aiStatus ? resolveAiIndicatorPresentation(aiStatus) : null,
   );
 
-  const MAX_RETRIES = 3;
-  const CHANNEL_REFRESH_TTL_MS = 5 * 60 * 1000;
-  const channelLastRefreshedAt = new Map<string, number>();
+  let guideOpen = $state(false);
+  let guideStep = $state(0);
+  let previousQueueTab = $state<QueueTab>("transcripts");
+
+  const tourSteps: TourStep[] = [
+    {
+      selector: "#workspace",
+      title: "Channel Sidebar",
+      body: "Queue now uses the same channel navigation shell as Workspace, including search, sort, add, and reorder controls.",
+      placement: "right",
+      prepare: () => {
+        mobileTab = "channels";
+      },
+    },
+    {
+      selector: "#videos",
+      title: "Queue List",
+      body: "The middle pane mirrors Workspace navigation while keeping queue-specific tabs for transcripts, summaries, and evaluations.",
+      placement: "right",
+      prepare: () => {
+        mobileTab = "videos";
+      },
+    },
+    {
+      selector: "#content-view",
+      title: "Queue Insights",
+      body: "The right pane gives you channel-level queue health, sync depth controls, and stage-specific context without leaving Queue.",
+      placement: "left",
+      prepare: () => {
+        mobileTab = "content";
+      },
+    },
+    {
+      selector: "nav[aria-label='Workspace sections']",
+      title: "Navigate the app",
+      body: "Queue now shares the same shell and section navigation patterns as Workspace.",
+      placement: "bottom",
+      prepare: () => {
+        mobileTab = selectedChannelId ? "videos" : "channels";
+      },
+    },
+  ];
+
+  const selectedChannel = $derived(
+    channels.find((channel) => channel.id === selectedChannelId) ?? null,
+  );
+  const queuedVideos = $derived(videos);
+  const effectiveEarliestSyncDate = $derived(
+    selectedChannel?.earliest_sync_date_user_set
+      ? selectedChannel.earliest_sync_date
+      : (syncDepth?.derived_earliest_ready_date ??
+          selectedChannel?.earliest_sync_date),
+  );
+  const queueStats = $derived({
+    total: queuedVideos.length,
+    loading: queuedVideos.filter((video) => {
+      if (queueTab === "transcripts") {
+        return video.transcript_status === "loading";
+      }
+      if (queueTab === "summaries") {
+        return video.summary_status === "loading";
+      }
+      return false;
+    }).length,
+    pending: queuedVideos.filter((video) => {
+      if (queueTab === "transcripts") {
+        return video.transcript_status === "pending";
+      }
+      if (queueTab === "summaries") {
+        return video.summary_status === "pending";
+      }
+      return true;
+    }).length,
+    failed: queuedVideos.filter((video) => {
+      if (queueTab === "transcripts") {
+        return video.transcript_status === "failed";
+      }
+      if (queueTab === "summaries") {
+        return video.summary_status === "failed";
+      }
+      return false;
+    }).length,
+  });
+  const queuedVideosWithDistillationStatus = $derived(
+    queuedVideos.map((video) => ({
+      video,
+      distillationStatus: getDistillationStatusCopy(video),
+    })),
+  );
 
   $effect(() => {
     const timer = setInterval(() => {
@@ -172,85 +198,103 @@
     return () => clearInterval(timer);
   });
 
-  let mobileTab = $state<"channels" | "details">("details");
-  let manageChannels = $state(false);
-  let queueTab = $state<QueueTab>("transcripts");
-
-  function reorderChannels(dragId: string, targetId: string) {
-    const reordered = reorderChannelList(channels, dragId, targetId);
-    if (!reordered) return;
-    channels = reordered.channels;
-    channelOrder = reordered.channelOrder;
-  }
-
-  function handleChannelDragStart(channelId: string, event: DragEvent) {
-    const dragState = beginChannelDrag(channelId, event.dataTransfer);
-    draggedChannelId = dragState.draggedChannelId;
-    dragOverChannelId = dragState.dragOverChannelId;
-  }
-
-  function handleChannelDragOver(channelId: string, event: DragEvent) {
-    event.preventDefault();
-    dragOverChannelId = updateChannelDragOver(dragOverChannelId, channelId);
-  }
-
-  function handleChannelDrop(channelId: string, event: DragEvent) {
-    event.preventDefault();
-    const { sourceId, dragState } = completeChannelDrop(
-      channelId,
-      draggedChannelId,
-      event.dataTransfer?.getData("text/plain") || null,
-    );
-    if (sourceId) {
-      reorderChannels(sourceId, channelId);
+  $effect(() => {
+    if (!selectedChannel) {
+      earliestSyncDateInput = "";
+      return;
     }
-    draggedChannelId = dragState.draggedChannelId;
-    dragOverChannelId = dragState.dragOverChannelId;
-  }
 
-  function handleChannelDragEnd() {
-    const dragState = finishChannelDrag();
-    draggedChannelId = dragState.draggedChannelId;
-    dragOverChannelId = dragState.dragOverChannelId;
-  }
-
-  const selectedChannel = $derived(
-    channels.find((channel) => channel.id === selectedChannelId) ?? null,
-  );
-
-  const effectiveEarliestSyncDate = $derived(
-    selectedChannel?.earliest_sync_date_user_set
+    const effective = selectedChannel.earliest_sync_date_user_set
       ? selectedChannel.earliest_sync_date
       : (syncDepth?.derived_earliest_ready_date ??
-          selectedChannel?.earliest_sync_date),
-  );
+        selectedChannel.earliest_sync_date);
 
-  const queuedVideos = $derived(videos);
+    earliestSyncDateInput = effective
+      ? new Date(effective).toISOString().split("T")[0]
+      : "";
+  });
 
-  function getQueueState(video: Video): Exclude<ContentStatus, "ready"> {
-    if (
-      video.transcript_status === "failed" ||
-      video.summary_status === "failed"
-    ) {
-      return "failed";
+  $effect(() => {
+    if (!selectedChannelId) {
+      syncDepth = null;
+      if (mobileTab !== "channels") {
+        mobileTab = "channels";
+      }
     }
+  });
 
-    if (
-      video.transcript_status === "loading" ||
-      video.summary_status === "loading"
-    ) {
-      return "loading";
+  $effect(() => {
+    persistWorkspaceState();
+  });
+
+  $effect(() => {
+    persistViewUrl();
+  });
+
+  $effect(() => {
+    const currentTab = queueTab;
+    if (currentTab !== previousQueueTab) {
+      previousQueueTab = currentTab;
+      if (selectedChannelId) {
+        videos = [];
+        offset = 0;
+        hasMore = true;
+        void refreshAndLoadVideos(selectedChannelId);
+      }
     }
+  });
 
-    return "pending";
+  onMount(() => {
+    restoreQueueState();
+    previousQueueTab = queueTab;
+    workspaceStateHydrated = true;
+
+    void (async () => {
+      try {
+        await loadInitial();
+      } finally {
+        viewUrlHydrated = true;
+      }
+    })();
+
+    const guideParam = new URL(window.location.href).searchParams.get("guide");
+    if (guideParam !== null) {
+      const parsed = parseInt(guideParam, 10);
+      if (!Number.isNaN(parsed) && parsed >= 0 && parsed < tourSteps.length) {
+        guideStep = parsed;
+        guideOpen = true;
+      }
+    }
+  });
+
+  function openGuide() {
+    guideStep = 0;
+    guideOpen = true;
+    syncGuideToUrl(0);
   }
 
-  type DistillationStatusKind = "processing" | "queued" | "failed";
+  function closeGuide() {
+    guideOpen = false;
+    removeGuideFromUrl();
+  }
 
-  interface DistillationStatusCopy {
-    kind: DistillationStatusKind;
-    label: string;
-    detail: string;
+  function setGuideStep(step: number) {
+    guideStep = step;
+    syncGuideToUrl(step);
+  }
+
+  function syncGuideToUrl(step: number) {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("guide", String(step));
+    window.history.replaceState(window.history.state, "", url);
+  }
+
+  function removeGuideFromUrl() {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("guide");
+    window.history.replaceState(window.history.state, "", url);
   }
 
   function getDistillationStatusCopy(video: Video): DistillationStatusCopy {
@@ -313,7 +357,6 @@
       };
     }
 
-    // Both ready but no quality score - pending evaluation
     return {
       kind: "queued",
       label: "PENDING EVALUATION",
@@ -321,58 +364,68 @@
     };
   }
 
-  const queueStats = $derived({
-    total: queuedVideos.length,
-    loading: queuedVideos.filter((video) => {
-      if (queueTab === "transcripts")
-        return video.transcript_status === "loading";
-      if (queueTab === "summaries") return video.summary_status === "loading";
-      return false;
-    }).length,
-    pending: queuedVideos.filter((video) => {
-      if (queueTab === "transcripts")
-        return video.transcript_status === "pending";
-      if (queueTab === "summaries") return video.summary_status === "pending";
-      return true; // Evaluations are all pending
-    }).length,
-    failed: queuedVideos.filter((video) => {
-      if (queueTab === "transcripts")
-        return video.transcript_status === "failed";
-      if (queueTab === "summaries") return video.summary_status === "failed";
-      return false;
-    }).length,
-  });
-  const queuedVideosWithDistillationStatus = $derived(
-    queuedVideos.map((video) => ({
-      video,
-      distillationStatus: getDistillationStatusCopy(video),
-    })),
-  );
-
-  function formatDate(value: string) {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "Date unavailable";
-    return dateFormatter.format(date);
+  function setSyncSnapshot() {
+    lastSyncedAt = new Date();
   }
 
-  function formatSyncDate(value: string | null | undefined) {
-    if (!value) return "Not set";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "Not set";
-    return dateFormatter.format(date);
+  function syncChannelOrderFromList() {
+    channelOrder = channelOrderFromList(channels);
   }
 
-  function setSyncSnapshot(snapshot: Video[]) {
-    const queuedCount = snapshot.length;
+  function restoreQueueState() {
+    const restored = mergeQueueViewState(
+      restoreWorkspaceSnapshot(
+        typeof localStorage === "undefined"
+          ? null
+          : loadWorkspaceState(localStorage),
+        {
+          includeChannelSortMode: true,
+        },
+      ),
+      typeof window === "undefined"
+        ? {}
+        : parseQueueViewUrlState(new URL(window.location.href)),
+    );
 
-    if (previousQueuedTotal === null) {
-      queueDeltaSinceLastSync = null;
-    } else {
-      queueDeltaSinceLastSync = queuedCount - previousQueuedTotal;
+    if ("selectedChannelId" in restored) {
+      selectedChannelId = restored.selectedChannelId ?? null;
+    }
+    if (restored.channelOrder) {
+      channelOrder = restored.channelOrder;
+    }
+    if (restored.channelSortMode) {
+      channelSortMode = restored.channelSortMode;
+    }
+    if (restored.queueTab) {
+      queueTab = restored.queueTab;
     }
 
-    previousQueuedTotal = queuedCount;
-    lastSyncedAt = new Date();
+    mobileTab = selectedChannelId ? "videos" : "channels";
+  }
+
+  function persistWorkspaceState() {
+    if (!workspaceStateHydrated || typeof localStorage === "undefined") return;
+    saveWorkspaceState(localStorage, {
+      selectedChannelId,
+      channelOrder,
+      channelSortMode,
+    });
+  }
+
+  function persistViewUrl() {
+    if (!viewUrlHydrated || typeof window === "undefined") return;
+    const nextHref = buildQueueViewHref({
+      selectedChannelId,
+      queueTab,
+    });
+    const nextUrl = new URL(nextHref, window.location.origin);
+    if (
+      nextUrl.pathname === window.location.pathname &&
+      nextUrl.search === window.location.search
+    ) {
+      return;
+    }
+    replacePageState(nextUrl, window.history.state);
   }
 
   async function applyChannelSnapshot(
@@ -394,7 +447,7 @@
       videos = snapshot.videos;
       offset = snapshot.videos.length;
       hasMore = snapshot.videos.length === limit;
-      setSyncSnapshot(snapshot.videos);
+      setSyncSnapshot();
     } catch (error) {
       if (!silent || !errorMessage) {
         errorMessage = (error as Error).message;
@@ -406,159 +459,18 @@
     }
   }
 
-  function restoreWorkspaceState() {
-    const restored = mergeQueueViewState(
-      restoreWorkspaceSnapshot(
-        typeof localStorage === "undefined"
-          ? null
-          : loadWorkspaceState(localStorage),
-      ),
-      typeof window === "undefined"
-        ? {}
-        : parseQueueViewUrlState(new URL(window.location.href)),
-    );
-
-    if ("selectedChannelId" in restored) {
-      selectedChannelId = restored.selectedChannelId ?? null;
-    }
-    if (restored.channelOrder) {
-      channelOrder = restored.channelOrder;
-    }
-    if (restored.queueTab) {
-      queueTab = restored.queueTab;
-    }
-  }
-
-  function persistWorkspaceState() {
-    if (!workspaceStateHydrated || typeof localStorage === "undefined") return;
-    saveWorkspaceState(localStorage, {
-      selectedChannelId,
-      channelOrder,
-    });
-  }
-
-  async function openVideoTranscriptInWorkspace(video: Video) {
-    if (typeof localStorage !== "undefined") {
-      saveWorkspaceState(localStorage, {
-        selectedChannelId: video.channel_id,
-        selectedVideoId: video.id,
-        contentMode: "transcript",
-        videoTypeFilter: "all",
-        acknowledgedFilter: "all",
-      });
-    }
-
-    await goto(
-      buildWorkspaceViewHref({
-        selectedChannelId: video.channel_id,
-        selectedVideoId: video.id,
-        contentMode: "transcript",
-        videoTypeFilter: "all",
-        acknowledgedFilter: "all",
-      }),
-    );
-  }
-
-  function persistViewUrl() {
-    if (!viewUrlHydrated || typeof window === "undefined") return;
-    const nextHref = buildQueueViewHref({
-      selectedChannelId,
-      queueTab,
-    });
-    const nextUrl = new URL(nextHref, window.location.origin);
-    if (
-      nextUrl.pathname === window.location.pathname &&
-      nextUrl.search === window.location.search
-    ) {
-      return;
-    }
-    replacePageState(nextUrl, window.history.state);
-  }
-
-  $effect(() => {
-    persistWorkspaceState();
-  });
-
-  $effect(() => {
-    persistViewUrl();
-  });
-
-  $effect(() => {
-    if (!selectedChannel) {
-      earliestSyncDateInput = "";
-      return;
-    }
-    const effective = selectedChannel.earliest_sync_date_user_set
-      ? selectedChannel.earliest_sync_date
-      : (syncDepth?.derived_earliest_ready_date ??
-        selectedChannel.earliest_sync_date);
-    if (effective) {
-      earliestSyncDateInput = new Date(effective).toISOString().split("T")[0];
-    } else {
-      earliestSyncDateInput = "";
-    }
-  });
-
-  $effect(() => {
-    if (!selectedChannelId) {
-      syncDepth = null;
-    }
-  });
-
-  // Reload videos when queue tab changes
-  let previousQueueTab = $state<QueueTab>("transcripts");
-  $effect(() => {
-    const currentTab = queueTab;
-    if (currentTab !== previousQueueTab) {
-      previousQueueTab = currentTab;
-      if (selectedChannelId) {
-        videos = [];
-        offset = 0;
-        hasMore = true;
-        previousQueuedTotal = null;
-        queueDeltaSinceLastSync = null;
-        void refreshAndLoadVideos(selectedChannelId);
-      }
-    }
-  });
-
-  onMount(() => {
-    restoreWorkspaceState();
-    previousQueueTab = queueTab;
-    workspaceStateHydrated = true;
-    void (async () => {
-      try {
-        await loadInitial();
-      } finally {
-        viewUrlHydrated = true;
-      }
-    })();
-
-    // Restore guide from URL
-    const guideParam = new URL(window.location.href).searchParams.get("guide");
-    if (guideParam !== null) {
-      const parsed = parseInt(guideParam, 10);
-      if (!Number.isNaN(parsed) && parsed >= 0 && parsed < tourSteps.length) {
-        guideStep = parsed;
-        guideOpen = true;
-      }
-    }
-  });
-
   async function loadInitial() {
     loadingChannels = true;
     errorMessage = null;
 
     try {
-      // Phase 1: Get channels as fast as possible
       const channelList = await listChannelsWhenAvailable({
         retryDelayMs: 500,
       });
       channels = applySavedChannelOrder(channelList, channelOrder);
-      channelOrder = channels.map((c) => c.id);
+      syncChannelOrderFromList();
       loadingChannels = false;
 
-      // Resolve initial channel selection
       const initialChannelId = resolveInitialChannelSelection(
         channels,
         selectedChannelId,
@@ -569,13 +481,15 @@
         selectedChannelId = null;
         videos = [];
         syncDepth = null;
+        mobileTab = "channels";
       } else {
         selectedChannelId = initialChannelId;
-        // Phase 2: Load snapshot for the selected channel (non-blocking)
+        if (mobileTab === "channels") {
+          mobileTab = "videos";
+        }
         void refreshAndLoadVideos(initialChannelId);
       }
 
-      // Phase 3: Check AI status in background
       void isAiAvailable()
         .then((status) => {
           aiStatus = status.status;
@@ -590,16 +504,64 @@
     }
   }
 
-  async function selectChannel(channelId: string) {
+  async function selectChannel(channelId: string, fromUserInteraction = false) {
     selectedChannelId = channelId;
-    mobileTab = "details";
+    if (fromUserInteraction) {
+      mobileTab = "videos";
+    }
     videos = [];
     offset = 0;
     hasMore = true;
     lastSyncedAt = null;
-    queueDeltaSinceLastSync = null;
-    previousQueuedTotal = null;
     await refreshAndLoadVideos(channelId);
+  }
+
+  async function handleAddChannel(input: string) {
+    if (!input.trim()) return false;
+
+    const trimmedInput = input.trim();
+    addingChannel = true;
+    errorMessage = null;
+
+    const tempId = `temp-${Date.now()}`;
+    const optimisticChannel: Channel = {
+      id: tempId,
+      name:
+        trimmedInput.includes("youtube.com") ||
+        trimmedInput.includes("youtu.be")
+          ? "Fetching Channel..."
+          : trimmedInput,
+      added_at: new Date().toISOString(),
+    };
+
+    const previousChannels = [...channels];
+    const previousSelectedId = selectedChannelId;
+
+    channels = [optimisticChannel, ...channels];
+    channelOrder = [tempId, ...channelOrder];
+    selectedChannelId = tempId;
+    mobileTab = "videos";
+
+    try {
+      const channel = await addChannel(trimmedInput);
+      channels = channels.map((current) =>
+        current.id === tempId ? channel : current,
+      );
+      channelOrder = channelOrder.map((id) =>
+        id === tempId ? channel.id : id,
+      );
+      selectedChannelId = channel.id;
+      await selectChannel(channel.id, true);
+      return true;
+    } catch (error) {
+      channels = previousChannels;
+      selectedChannelId = previousSelectedId;
+      syncChannelOrderFromList();
+      errorMessage = (error as Error).message;
+      return false;
+    } finally {
+      addingChannel = false;
+    }
   }
 
   async function handleDeleteChannel(channelId: string) {
@@ -614,17 +576,18 @@
     channelIdToDelete = null;
 
     try {
-      const { deleteChannel } = await import("$lib/api");
       await deleteChannel(channelId);
-      channels = channels.filter((c) => c.id !== channelId);
+      channels = channels.filter((channel) => channel.id !== channelId);
       channelOrder = channelOrder.filter((id) => id !== channelId);
       if (selectedChannelId === channelId) {
-        const nextChannel = channels.length > 0 ? channels[0] : null;
+        const nextChannel = channels[0] ?? null;
         if (nextChannel) {
           await selectChannel(nextChannel.id);
         } else {
           selectedChannelId = null;
           videos = [];
+          syncDepth = null;
+          mobileTab = "channels";
         }
       }
     } catch (error) {
@@ -637,14 +600,16 @@
     channelIdToDelete = null;
   }
 
-  let refreshingChannel = $state(false);
+  function reorderChannels(nextOrder: string[]) {
+    channels = applySavedChannelOrder(channels, nextOrder);
+    channelOrder = nextOrder;
+  }
 
   async function refreshAndLoadVideos(channelId: string) {
     const snapshotOptions = buildQueueSnapshotOptions(queueTab, limit);
     const snapshot = await getChannelSnapshot(channelId, snapshotOptions);
     await applyChannelSnapshot(channelId, snapshot);
 
-    // Skip YouTube refresh if channel was refreshed recently
     if (
       !shouldRefreshChannel(
         channelLastRefreshedAt,
@@ -655,12 +620,10 @@
       return;
     }
 
-    // Lazy load/refresh the channel in the background
     refreshingChannel = true;
     try {
       await refreshChannel(channelId);
       markChannelRefreshed(channelLastRefreshedAt, channelId);
-      // After refresh, silently reload the queue snapshot.
       if (selectedChannelId === channelId) {
         const refreshedSnapshot = await getChannelSnapshot(
           channelId,
@@ -698,22 +661,26 @@
       offset = (reset ? 0 : offset) + list.length;
       hasMore = list.length === limit;
       if (reset) {
-        setSyncSnapshot(list);
+        setSyncSnapshot();
       }
     } catch (error) {
-      if (!silent || !errorMessage) errorMessage = (error as Error).message;
+      if (!silent || !errorMessage) {
+        errorMessage = (error as Error).message;
+      }
     } finally {
-      if (!silent) loadingVideos = false;
+      if (!silent) {
+        loadingVideos = false;
+      }
     }
   }
 
-  async function saveEarliestSyncDate() {
-    if (!selectedChannelId || !earliestSyncDateInput || savingSyncDate) return;
+  async function saveEarliestSyncDate(value: string) {
+    if (!selectedChannelId || !value || savingSyncDate) return;
     errorMessage = null;
     savingSyncDate = true;
     try {
       const updated = await updateChannel(selectedChannelId, {
-        earliest_sync_date: new Date(earliestSyncDateInput).toISOString(),
+        earliest_sync_date: new Date(value).toISOString(),
         earliest_sync_date_user_set: true,
       });
       channels = channels.map((channel) =>
@@ -726,412 +693,135 @@
       savingSyncDate = false;
     }
   }
+
+  async function openVideoTranscriptInWorkspace(video: Video) {
+    if (typeof localStorage !== "undefined") {
+      saveWorkspaceState(localStorage, {
+        selectedChannelId: video.channel_id,
+        selectedVideoId: video.id,
+        contentMode: "transcript",
+        videoTypeFilter: "all",
+        acknowledgedFilter: "all",
+      });
+    }
+
+    await goto(
+      buildWorkspaceViewHref({
+        selectedChannelId: video.channel_id,
+        selectedVideoId: video.id,
+        contentMode: "transcript",
+        videoTypeFilter: "all",
+        acknowledgedFilter: "all",
+      }),
+    );
+  }
+
+  async function handleSearchResultSelection(
+    result: SearchResult,
+    targetMode: "transcript" | "summary",
+  ) {
+    if (typeof localStorage !== "undefined") {
+      saveWorkspaceState(localStorage, {
+        selectedChannelId: result.channel_id,
+        selectedVideoId: result.video_id,
+        contentMode: targetMode,
+        videoTypeFilter: "all",
+        acknowledgedFilter: "all",
+      });
+    }
+
+    await goto(
+      buildWorkspaceViewHref({
+        selectedChannelId: result.channel_id,
+        selectedVideoId: result.video_id,
+        contentMode: targetMode,
+        videoTypeFilter: "all",
+        acknowledgedFilter: "all",
+      }),
+    );
+  }
 </script>
 
 <div
-  class="page-shell page-shell--panel-mobile-shell page-shell--with-mobile-nav min-h-screen px-4 pb-12 pt-8 sm:px-8 max-lg:px-0 lg:px-6"
+  class="page-shell page-shell--panel-mobile-shell page-shell--with-mobile-nav min-h-screen px-3 py-4 max-lg:px-0 lg:px-6"
 >
   <a
     href="#main-content"
-    class="skip-link absolute left-4 top-4 z-50 rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-[var(--accent)]/20"
+    class="skip-link absolute left-4 top-4 z-50 rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white"
   >
     Skip to Main Content
   </a>
 
-  <AppHeaderBar
+  <WorkspaceHeader
     currentSection="queue"
-    docsUrl={DOCS_URL}
     {aiIndicator}
-    showGuide
-    guideButtonId="guide-trigger"
     onOpenGuide={openGuide}
+    onSearchResultSelect={handleSearchResultSelection}
   />
 
-  <div class="px-4 sm:px-2 lg:hidden">
-    <div class="mx-auto max-w-[1440px] pt-1">
-      <Toggle
-        ariaLabel="Queue panels"
-        options={["channels", "details"]}
-        value={mobileTab}
-        labels={{ channels: "Channels", details: "Details" }}
-        onChange={(value) => {
-          mobileTab = value as "channels" | "details";
-        }}
-      />
-    </div>
-  </div>
+  <WorkspaceMobileTabBar
+    activeTab={mobileTab}
+    onTabChange={(tab) => {
+      mobileTab = tab as QueueMobileTab;
+    }}
+  />
 
   <main
     id="main-content"
-    class="panel-shell-main mx-auto mt-4 grid w-full max-w-[1440px] gap-0 lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)] items-start max-lg:mt-0"
+    class="panel-shell-main mx-auto mt-0 grid w-full max-w-[1440px] items-start lg:mt-4 lg:grid-cols-[260px_300px_minmax(0,1fr)] lg:gap-0 xl:grid-cols-[280px_340px_minmax(0,1fr)]"
   >
-    <aside
-      class="flex min-h-0 flex-col gap-4 border-0 lg:sticky lg:top-4 lg:h-fit lg:border-r lg:border-[var(--accent-border-soft)] lg:px-5 fade-in stagger-1 {mobileTab !==
-      'channels'
-        ? 'hidden lg:flex'
-        : 'h-full p-4 gap-4'}"
-    >
-      <div class="flex items-center justify-between gap-2">
-        <h2
-          class="text-base font-bold tracking-tight text-[var(--foreground)]"
-        >
-          Channels
-        </h2>
-        <button
-          type="button"
-          class="inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors {manageChannels
-            ? 'bg-[var(--accent-wash)] text-[var(--danger)]'
-            : 'text-[var(--soft-foreground)] opacity-55 hover:bg-[var(--accent-wash)] hover:opacity-100'}"
-          data-tooltip={manageChannels ? "Exit manage mode" : "Manage channels"}
-          onclick={() => {
-            manageChannels = !manageChannels;
-          }}
-          aria-label={manageChannels ? "Exit manage mode" : "Manage channels"}
-        >
-          <svg
-            width="13"
-            height="13"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            ><path d="M3 6h18"></path><path
-              d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"
-            ></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg
-          >
-        </button>
-      </div>
+    <WorkspaceChannelSidebar
+      mobileVisible={mobileTab === "channels"}
+      {channels}
+      {selectedChannelId}
+      {loadingChannels}
+      {addingChannel}
+      {channelSortMode}
+      onChannelSortModeChange={(nextValue) => {
+        channelSortMode = nextValue;
+      }}
+      onAddChannel={handleAddChannel}
+      onSelectChannel={(channelId) => selectChannel(channelId, true)}
+      onDeleteChannel={handleDeleteChannel}
+      onReorderChannels={reorderChannels}
+    />
 
-      <div
-        class="custom-scrollbar mobile-bottom-stack-padding flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1 lg:max-h-[60vh] lg:pb-0"
-        aria-busy={loadingChannels}
-      >
-        {#if loadingChannels}
-          <div class="space-y-4" role="status" aria-live="polite">
-            {#each Array.from({ length: 7 }) as _, index (index)}
-              <div class="flex animate-pulse items-center gap-4 px-3 py-3">
-                <div
-                  class="h-10 w-10 shrink-0 rounded-full bg-[var(--border)] opacity-80"
-                ></div>
-                <div class="min-w-0 flex-1 space-y-2">
-                  <div
-                    class="h-3 w-3/4 rounded-full bg-[var(--border)] opacity-80"
-                  ></div>
-                  <div
-                    class="h-2 w-1/2 rounded-full bg-[var(--border)] opacity-60"
-                  ></div>
-                </div>
-              </div>
-            {/each}
-          </div>
-        {:else if channels.length === 0}
-          <p
-            class="px-1 text-[14px] font-medium text-[var(--soft-foreground)] opacity-50 italic"
-          >
-            No channels followed.
-          </p>
-        {:else}
-          {#each channels as channel}
-            <ChannelCard
-              {channel}
-              active={selectedChannelId === channel.id}
-              showDelete={manageChannels}
-              draggableEnabled
-              loading={channel.id.startsWith("temp-")}
-              dragging={draggedChannelId === channel.id}
-              dragOver={dragOverChannelId === channel.id &&
-                draggedChannelId !== channel.id}
-              onSelect={() => selectChannel(channel.id)}
-              onDragStart={(event) => handleChannelDragStart(channel.id, event)}
-              onDragOver={(event) => handleChannelDragOver(channel.id, event)}
-              onDrop={(event) => handleChannelDrop(channel.id, event)}
-              onDragEnd={handleChannelDragEnd}
-              onDelete={() => handleDeleteChannel(channel.id)}
-            />
-          {/each}
-        {/if}
-      </div>
-    </aside>
+    <QueueVideoSidebar
+      mobileVisible={mobileTab === "videos"}
+      {selectedChannelId}
+      {selectedChannel}
+      {queueTab}
+      {loadingVideos}
+      {refreshingChannel}
+      {hasMore}
+      {lastSyncedAt}
+      {queueStats}
+      items={queuedVideosWithDistillationStatus}
+      onBack={() => {
+        mobileTab = "channels";
+      }}
+      onQueueTabChange={(value) => {
+        queueTab = value;
+      }}
+      onOpenVideo={openVideoTranscriptInWorkspace}
+      onLoadMoreVideos={() => loadVideos(false)}
+    />
 
-    <section
-      class="flex min-h-0 min-w-0 flex-col gap-6 overflow-hidden border-0 lg:pl-5 fade-in stagger-2 {mobileTab !==
-      'details'
-        ? 'hidden lg:flex'
-        : 'h-full p-4 pt-4'}"
-    >
-      {#if selectedChannel}
-        <div
-          class="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--accent-border-soft)] pb-3"
-        >
-          <div class="flex min-w-0 items-center gap-3">
-            <button
-              onclick={() => (mobileTab = "channels")}
-              class="inline-flex min-w-0 items-center gap-2 text-[13px] font-semibold text-[var(--foreground)] transition-transform active:scale-95 lg:pointer-events-none"
-            >
-              <div
-                class="h-6 w-6 shrink-0 overflow-hidden rounded-full bg-[var(--muted)]"
-              >
-                <img
-                  src={selectedChannel.thumbnail_url || defaultChannelIcon}
-                  alt=""
-                  class="h-full w-full object-cover"
-                />
-              </div>
-              <span class="truncate">{selectedChannel.name}</span>
-              <svg
-                class="h-3 w-3 shrink-0 opacity-30 lg:hidden"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="3"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <path d="m6 9 6 6 6-6" />
-              </svg>
-            </button>
-            <span
-              class="hidden text-[11px] text-[var(--soft-foreground)] opacity-60 sm:block"
-            >
-              {#if lastSyncedAt}
-                {syncTimeFormatter.format(lastSyncedAt)}
-              {/if}
-            </span>
-          </div>
-          <div
-            class="flex items-center gap-4 text-[11px] font-bold tabular-nums"
-          >
-            <span
-              class="text-[var(--soft-foreground)] opacity-70"
-              data-tooltip="Total"
-            >
-              {queueStats.total} items
-            </span>
-            {#if queueStats.loading > 0}
-              <span class="flex items-center gap-1.5 text-amber-600">
-                <span
-                  class="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"
-                ></span>
-                {queueStats.loading} active
-              </span>
-            {/if}
-            {#if queueStats.failed > 0}
-              <span class="text-[var(--danger-foreground)]"
-                >{queueStats.failed} failed</span
-              >
-            {/if}
-          </div>
-        </div>
-
-        <div aria-label="Queue tabs" class="pt-1">
-          <Toggle
-            ariaLabel="Queue tabs"
-            options={["transcripts", "summaries", "evaluations"]}
-            value={queueTab}
-            labels={{
-              transcripts: "Transcripts",
-              summaries: "Summaries",
-              evaluations: "Evaluations",
-            }}
-            onChange={(value) => {
-              queueTab = value as QueueTab;
-            }}
-          />
-        </div>
-
-        <div class="flex flex-wrap items-center gap-4 py-2">
-          <div class="flex min-w-0 items-center gap-2">
-            <p
-              class="text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50"
-            >
-              Sync from
-            </p>
-            <p class="text-[13px] font-semibold text-[var(--foreground)]">
-              {formatSyncDate(effectiveEarliestSyncDate)}
-            </p>
-          </div>
-          <div class="ml-auto flex items-center gap-2">
-            <input
-              type="date"
-              class="rounded-[var(--radius-sm)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] px-2.5 py-1.5 text-[12px] font-medium transition-colors focus:border-[var(--accent)]/40 focus:outline-none"
-              bind:value={earliestSyncDateInput}
-              disabled={savingSyncDate}
-            />
-            <button
-              type="button"
-              class="rounded-[var(--radius-sm)] bg-[var(--foreground)] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-white transition-all hover:bg-[var(--accent-strong)] disabled:opacity-30"
-              onclick={saveEarliestSyncDate}
-              disabled={!earliestSyncDateInput || savingSyncDate}
-            >
-              {savingSyncDate ? "..." : "Set"}
-            </button>
-          </div>
-        </div>
-      {:else}
-        <div
-          class="rounded-[var(--radius-lg)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] px-6 py-8 text-center shadow-sm"
-        >
-          <div
-            class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[var(--accent-soft)]/60 text-[var(--accent-strong)]"
-          >
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <rect x="3" y="4" width="6" height="16" rx="1.5" />
-              <rect x="10" y="4" width="5" height="16" rx="1.5" />
-              <rect x="16" y="4" width="5" height="16" rx="1.5" />
-            </svg>
-          </div>
-          <p class="mt-4 text-[16px] font-semibold text-[var(--foreground)]">
-            Select a channel from the sidebar
-          </p>
-          <p class="mt-2 text-[13px] leading-6 text-[var(--soft-foreground)]">
-            Choose any followed channel to inspect transcript, summary, and
-            evaluation processing.
-          </p>
-        </div>
-      {/if}
-
-      <div
-        class="custom-scrollbar mobile-bottom-stack-padding flex-1 overflow-y-auto lg:pb-0"
-      >
-        {#if !selectedChannelId}
-          <div class="h-0"></div>
-        {:else if loadingVideos && videos.length === 0}
-          <div class="space-y-4 mt-4" role="status" aria-live="polite">
-            {#each Array.from({ length: 6 }) as _, index (index)}
-              <div
-                class="animate-pulse rounded-[var(--radius-md)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] p-6"
-              >
-                <div
-                  class="h-4 w-3/4 rounded-full bg-[var(--border)] opacity-80"
-                ></div>
-                <div
-                  class="mt-4 h-3 w-1/4 rounded-full bg-[var(--border)] opacity-60"
-                ></div>
-              </div>
-            {/each}
-          </div>
-        {:else if queueStats.total === 0}
-          <div
-            class="flex flex-col items-center justify-center py-20 text-center"
-          >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              class="mb-3 text-emerald-500"
-              ><polyline points="20 6 9 17 4 12" /></svg
-            >
-            <p
-              class="text-[14px] font-medium text-[var(--soft-foreground)] opacity-70"
-            >
-              Queue is clear.
-            </p>
-          </div>
-        {:else}
-          <ul class="mt-2 flex flex-col">
-            {#each queuedVideosWithDistillationStatus as item}
-              {@const video = item.video}
-              <li
-                class="border-b border-[var(--accent-border-soft)] last:border-b-0"
-              >
-                <button
-                  type="button"
-                  class="group w-full cursor-pointer py-4 px-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 max-lg:py-3"
-                  onclick={() => openVideoTranscriptInWorkspace(video)}
-                  aria-label={`Open transcript workspace for ${video.title}`}
-                >
-                  <p
-                    class="line-clamp-2 text-[14px] font-semibold text-[var(--foreground)] leading-[1.4] tracking-tight group-hover:text-[var(--accent-strong)] transition-colors"
-                  >
-                    {video.title}
-                  </p>
-                  <div class="mt-2 flex flex-wrap items-center gap-3">
-                    <span
-                      class="text-[11px] font-medium text-[var(--soft-foreground)] opacity-50"
-                    >
-                      {formatDate(video.published_at)}
-                    </span>
-                    {#if item.distillationStatus.kind === "processing"}
-                      <span
-                        class="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--accent)]"
-                      >
-                        <span class="relative flex h-1.5 w-1.5">
-                          <span
-                            class="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--accent)] opacity-75"
-                          ></span>
-                          <span
-                            class="relative inline-flex rounded-full h-1.5 w-1.5 bg-[var(--accent)]"
-                          ></span>
-                        </span>
-                        Processing
-                      </span>
-                    {:else if item.distillationStatus.kind === "failed"}
-                      <span
-                        class="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--danger-foreground)]"
-                      >
-                        <svg
-                          width="10"
-                          height="10"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="3"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          ><circle cx="12" cy="12" r="10" /><line
-                            x1="12"
-                            y1="8"
-                            x2="12"
-                            y2="12"
-                          /><line x1="12" y1="16" x2="12.01" y2="16" /></svg
-                        >
-                        Failed{#if video.retry_count !== undefined && video.retry_count > 0}
-                          ({video.retry_count}/{MAX_RETRIES}){/if}
-                      </span>
-                    {:else}
-                      <span
-                        class="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-40"
-                      >
-                        Queued
-                      </span>
-                    {/if}
-                  </div>
-                </button>
-              </li>
-            {/each}
-          </ul>
-        {/if}
-
-        {#if hasMore && selectedChannelId}
-          <div class="mt-4 flex justify-center">
-            <button
-              type="button"
-              class="w-full rounded-[var(--radius-sm)] border border-[var(--accent-border-soft)] py-2.5 text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--soft-foreground)] transition-all hover:border-[var(--accent)]/40 hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] disabled:opacity-30"
-              onclick={() => loadVideos(false)}
-              disabled={loadingVideos}
-            >
-              {loadingVideos ? "Loading..." : "Load More"}
-            </button>
-          </div>
-        {/if}
-      </div>
-    </section>
+    <QueueContentPanel
+      mobileVisible={mobileTab === "content"}
+      {selectedChannel}
+      {selectedChannelId}
+      {queueTab}
+      {queueStats}
+      {effectiveEarliestSyncDate}
+      {earliestSyncDateInput}
+      {savingSyncDate}
+      {refreshingChannel}
+      onBack={() => {
+        mobileTab = "videos";
+      }}
+      onSaveSyncDate={saveEarliestSyncDate}
+    />
   </main>
 
   {#if errorMessage}
@@ -1147,7 +837,9 @@
           {errorMessage}
         </p>
         <button
-          onclick={() => (errorMessage = null)}
+          onclick={() => {
+            errorMessage = null;
+          }}
           class="shrink-0 text-[var(--soft-foreground)] opacity-40 hover:opacity-80"
           aria-label="Dismiss"
         >
@@ -1160,13 +852,10 @@
             stroke-width="2.5"
             stroke-linecap="round"
             stroke-linejoin="round"
-            ><line x1="18" y1="6" x2="6" y2="18"></line><line
-              x1="6"
-              y1="6"
-              x2="18"
-              y2="18"
-            ></line></svg
           >
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
         </button>
       </div>
     </div>
@@ -1187,6 +876,7 @@
     open={guideOpen}
     step={guideStep}
     steps={tourSteps}
+    docsUrl={DOCS_URL}
     onClose={closeGuide}
     onStep={setGuideStep}
   />
