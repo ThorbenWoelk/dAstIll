@@ -7,6 +7,7 @@ use axum::{
 };
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
+use tracing_subscriber::{Layer, filter, layer::SubscriberExt, util::SubscriberInitExt};
 
 use dastill::config::{ChatRuntimeConfig, OllamaRuntimeConfig, SearchRuntimeConfig};
 use dastill::db::init_store;
@@ -22,6 +23,10 @@ use dastill::workers::{
     spawn_gap_scan_worker, spawn_queue_worker, spawn_refresh_worker, spawn_search_index_worker,
     spawn_summary_evaluation_worker,
 };
+
+fn should_send_to_logfire(target: &str) -> bool {
+    target.starts_with("dastill::services::chat") || target.starts_with("dastill::handlers::search")
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -44,14 +49,30 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| "dastill=info,tower_http=info".into());
+
     let _logfire_guard = if std::env::var("LOGFIRE_TOKEN").is_ok() {
-        Some(logfire::configure().finish()?.shutdown_guard())
-    } else {
-        tracing_subscriber::fmt()
-            .with_env_filter(
-                tracing_subscriber::EnvFilter::try_from_default_env()
-                    .unwrap_or_else(|_| "dastill=info,tower_http=info".into()),
+        let logfire = logfire::configure().local().finish()?;
+        let guard = logfire.clone().shutdown_guard();
+
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(tracing_subscriber::fmt::layer())
+            .with(
+                logfire
+                    .tracing_layer()
+                    .with_filter(filter::filter_fn(|metadata| {
+                        should_send_to_logfire(metadata.target())
+                    })),
             )
+            .init();
+
+        Some(guard)
+    } else {
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(tracing_subscriber::fmt::layer())
             .init();
         None
     };

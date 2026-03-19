@@ -128,11 +128,11 @@
     }),
   );
   let effectiveSearchAction = $derived(searchAction);
-  let showSubmitModeToggle = $derived(
-    searchInputFocused || searchQueryTrimmed.length > 0 || hasRecentSearchState,
-  );
   let hasActiveFilter = $derived(
     searchSource !== "all" || modeKeyword !== modeSemantic,
+  );
+  let showModeShortcutHints = $derived(
+    searchQueryTrimmed.length === 0 && !searchLoading && !hasRecentSearchState,
   );
   let activeFilterLabel = $derived.by(() => {
     const labels: string[] = [];
@@ -374,18 +374,31 @@
     searchPanelOpen = false;
   }
 
-  function submitModePillClass(active: boolean) {
-    return `inline-flex h-6 items-center justify-center rounded-full px-2.5 text-[9px] font-bold uppercase tracking-[0.08em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${
-      active
-        ? "bg-[var(--accent-soft)] text-[var(--accent-strong)]"
-        : "text-[var(--soft-foreground)] opacity-75 hover:bg-[var(--muted)] hover:text-[var(--foreground)] hover:opacity-100"
-    }`;
-  }
-
   function setSubmitMode(nextMode: "search" | "ask") {
     submitMode = nextMode;
     searchPanelOpen = hasRecentSearchState;
     searchInputElement?.focus();
+  }
+
+  async function focusSearchBar(nextMode?: "search" | "ask") {
+    if (nextMode) {
+      submitMode = nextMode;
+    }
+
+    const input = searchInputElement;
+    if (input) {
+      input.focus();
+      input.select();
+      return;
+    }
+
+    await openSearchOverlay();
+    searchInputElement?.focus();
+  }
+
+  async function toggleSubmitMode() {
+    const nextMode = submitMode === "search" ? "ask" : "search";
+    await focusSearchBar(nextMode);
   }
 
   async function submitAsk() {
@@ -409,12 +422,19 @@
   function handleWindowKeydown(event: KeyboardEvent) {
     if (event.metaKey && !event.ctrlKey && !event.altKey && event.key === "k") {
       event.preventDefault();
-      if (searchInputElement) {
-        searchInputElement.focus();
-        searchInputElement.select();
-      } else {
-        void openSearchOverlay();
-      }
+      void focusSearchBar("search");
+      return;
+    }
+
+    if (
+      event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey &&
+      !event.shiftKey &&
+      event.key.toLowerCase() === "l"
+    ) {
+      event.preventDefault();
+      void toggleSubmitMode();
       return;
     }
 
@@ -535,39 +555,36 @@
         }}
         aria-label="Search transcripts and summaries"
       />
-      {#if showSubmitModeToggle}
-        <div class="flex items-center rounded-full bg-[var(--muted)]/65 p-0.5">
-          <button
-            type="button"
-            class={submitModePillClass(submitMode === "search")}
-            aria-pressed={submitMode === "search"}
-            onclick={() => setSubmitMode("search")}
-          >
-            Search
-          </button>
-          <button
-            type="button"
-            class={submitModePillClass(submitMode === "ask")}
-            aria-pressed={submitMode === "ask"}
-            onclick={() => setSubmitMode("ask")}
-          >
-            Ask
-          </button>
-        </div>
-      {/if}
       {#if searchLoading}
         <span
           class="h-4 w-4 animate-spin rounded-full border-[1.5px] border-[var(--border)] border-t-[var(--accent)]"
           aria-hidden="true"
         ></span>
       {/if}
-      {#if !searchQuery && !searchLoading}
-        {#if !searchInputFocused}
-          <kbd
-            class="hidden shrink-0 font-sans text-[10px] text-[var(--soft-foreground)] opacity-40 lg:inline"
-            aria-hidden="true">⌘K</kbd
+      {#if showModeShortcutHints}
+        <div class="hidden shrink-0 items-center gap-3 lg:flex">
+          <button
+            type="button"
+            class="font-sans text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--soft-foreground)] opacity-40 transition-opacity hover:opacity-75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+            onclick={() => void focusSearchBar("search")}
+            aria-label="Focus search input with Command K"
           >
-        {/if}
+            ⌘K
+          </button>
+          <button
+            type="button"
+            class="relative inline-grid text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--soft-foreground)] opacity-55 transition-colors hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+            onclick={() => void toggleSubmitMode()}
+            aria-label={submitMode === "search"
+              ? "Switch to ask mode"
+              : "Switch to search mode"}
+          >
+            <span class="invisible">Ctrl+L to Search</span>
+            <span class="absolute inset-0 whitespace-nowrap"
+              >Ctrl+L to {submitMode === "search" ? "Ask" : "Search"}</span
+            >
+          </button>
+        </div>
       {/if}
     </form>
 
