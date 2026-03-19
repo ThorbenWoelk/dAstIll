@@ -100,7 +100,6 @@
   let searchPanelOpen = $state(false);
   let mobileSearchOpen = $state(false);
   let searchInputElement = $state<HTMLInputElement | null>(null);
-  let searchInputFocused = $state(false);
   let searchRequestId = 0;
   let retainedSearchQuery = $state("");
   let pendingSearchQuery = $state<string | null>(null);
@@ -535,7 +534,7 @@
       <input
         type="search"
         class="search-input min-w-0 flex-1 bg-transparent text-[13px] font-medium placeholder:text-[var(--soft-foreground)] placeholder:opacity-40 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-        placeholder="Search transcripts and summaries..."
+        placeholder={submitMode === "search" ? "Search db" : "Ask dAstIll"}
         bind:value={searchQuery}
         bind:this={searchInputElement}
         disabled={searchLoading}
@@ -545,47 +544,48 @@
           }
         }}
         onfocus={() => {
-          searchInputFocused = true;
           if (hasRecentSearchState) {
             searchPanelOpen = true;
           }
         }}
-        onblur={() => {
-          searchInputFocused = false;
-        }}
-        aria-label="Search transcripts and summaries"
+        aria-label={submitMode === "search" ? "Search db" : "Ask dAstIll"}
       />
-      {#if searchLoading}
-        <span
-          class="h-4 w-4 animate-spin rounded-full border-[1.5px] border-[var(--border)] border-t-[var(--accent)]"
-          aria-hidden="true"
-        ></span>
-      {/if}
-      {#if showModeShortcutHints}
-        <div class="hidden shrink-0 items-center gap-3 lg:flex">
-          <button
-            type="button"
-            class="font-sans text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--soft-foreground)] opacity-40 transition-opacity hover:opacity-75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
-            onclick={() => void focusSearchBar("search")}
-            aria-label="Focus search input with Command K"
+      <div
+        class="hidden min-w-[7.5rem] shrink-0 items-center justify-end lg:flex"
+      >
+        {#if searchLoading}
+          <span
+            class="h-4 w-4 animate-spin rounded-full border-[1.5px] border-[var(--border)] border-t-[var(--accent)]"
+            aria-hidden="true"
+          ></span>
+        {:else}
+          <div
+            class={`flex items-center gap-3 transition-opacity ${showModeShortcutHints ? "opacity-100" : "pointer-events-none opacity-0"}`}
+            aria-hidden={!showModeShortcutHints}
           >
-            ⌘K
-          </button>
-          <button
-            type="button"
-            class="relative inline-grid text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--soft-foreground)] opacity-55 transition-colors hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
-            onclick={() => void toggleSubmitMode()}
-            aria-label={submitMode === "search"
-              ? "Switch to ask mode"
-              : "Switch to search mode"}
-          >
-            <span class="invisible">Ctrl+L to Search</span>
-            <span class="absolute inset-0 whitespace-nowrap"
-              >Ctrl+L to {submitMode === "search" ? "Ask" : "Search"}</span
+            <button
+              type="button"
+              class="font-sans text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--soft-foreground)] opacity-40 transition-opacity hover:opacity-75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 disabled:pointer-events-none"
+              onclick={() => void focusSearchBar("search")}
+              aria-label="Focus search input with Command K"
+              disabled={!showModeShortcutHints}
             >
-          </button>
-        </div>
-      {/if}
+              ⌘K
+            </button>
+            <button
+              type="button"
+              class="inline-flex whitespace-nowrap font-sans text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--soft-foreground)] opacity-55 transition-colors hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 disabled:pointer-events-none"
+              onclick={() => void toggleSubmitMode()}
+              aria-label={submitMode === "search"
+                ? "Switch to ask mode"
+                : "Switch to search mode"}
+              disabled={!showModeShortcutHints}
+            >
+              Ctrl+L
+            </button>
+          </div>
+        {/if}
+      </div>
     </form>
 
     <SearchResultsPopover
