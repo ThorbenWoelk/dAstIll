@@ -7,6 +7,7 @@ pub struct OllamaRuntimeConfig {
     pub url: String,
     pub api_key: Option<String>,
     pub model: String,
+    pub chat_model: Option<String>,
     pub fallback_model: Option<String>,
     pub summary_evaluator_model: String,
     pub embedding_model: Option<String>,
@@ -18,11 +19,17 @@ pub struct SearchRuntimeConfig {
     pub semantic_enabled: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChatRuntimeConfig {
+    pub multi_pass_enabled: bool,
+}
+
 impl OllamaRuntimeConfig {
     pub fn from_env(search_semantic_enabled: bool) -> Result<Self, String> {
         let url = env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
         let api_key = optional_env("OLLAMA_API_KEY");
         let model = required_env("OLLAMA_MODEL")?;
+        let chat_model = optional_env("OLLAMA_CHAT_MODEL");
         let fallback_model = optional_env("OLLAMA_FALLBACK_MODEL");
         let summary_evaluator_model = required_env("SUMMARY_EVALUATOR_MODEL")?;
         let embedding_model = if search_semantic_enabled {
@@ -39,6 +46,7 @@ impl OllamaRuntimeConfig {
             url,
             api_key,
             model,
+            chat_model,
             fallback_model,
             summary_evaluator_model,
             embedding_model,
@@ -63,6 +71,14 @@ impl SearchRuntimeConfig {
                 .unwrap_or(false),
             semantic_enabled: optional_bool_env("SEARCH_SEMANTIC_ENABLED")
                 .unwrap_or(default_search_semantic_enabled()),
+        }
+    }
+}
+
+impl ChatRuntimeConfig {
+    pub fn from_env() -> Self {
+        Self {
+            multi_pass_enabled: optional_bool_env("CHAT_MULTI_PASS_ENABLED").unwrap_or(true),
         }
     }
 }
@@ -129,7 +145,7 @@ mod tests {
     use std::env;
     use std::sync::{Mutex, OnceLock};
 
-    use super::{OllamaRuntimeConfig, SearchRuntimeConfig};
+    use super::{ChatRuntimeConfig, OllamaRuntimeConfig, SearchRuntimeConfig};
 
     static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
@@ -137,6 +153,7 @@ mod tests {
         "OLLAMA_URL",
         "OLLAMA_API_KEY",
         "OLLAMA_MODEL",
+        "OLLAMA_CHAT_MODEL",
         "OLLAMA_FALLBACK_MODEL",
         "SUMMARY_EVALUATOR_MODEL",
         "OLLAMA_EMBEDDING_MODEL",
@@ -249,9 +266,29 @@ mod tests {
 
         let config = OllamaRuntimeConfig::from_env(true).expect("config");
         assert_eq!(config.model, "glm-5:cloud");
+        assert_eq!(config.chat_model, None);
         assert_eq!(config.fallback_model.as_deref(), Some("qwen3-coder:30b"));
         assert_eq!(config.summary_evaluator_model, "qwen3.5:397b-cloud");
         assert_eq!(config.embedding_model.as_deref(), Some("embeddinggemma"));
+    }
+
+    #[test]
+    fn from_env_loads_optional_chat_model() {
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+
+        let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
+        remove_env("OLLAMA_URL");
+        remove_env("OLLAMA_API_KEY");
+        set_env("OLLAMA_MODEL", "glm-5:cloud");
+        set_env("OLLAMA_CHAT_MODEL", "qwen3-chat:latest");
+        set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
+        set_env("OLLAMA_EMBEDDING_MODEL", "embeddinggemma");
+
+        let config = OllamaRuntimeConfig::from_env(true).expect("config");
+        assert_eq!(config.chat_model.as_deref(), Some("qwen3-chat:latest"));
     }
 
     #[test]
@@ -323,6 +360,34 @@ mod tests {
         let config = SearchRuntimeConfig::from_env();
         assert!(!config.auto_create_vector_index);
         assert!(!config.semantic_enabled);
+    }
+
+    #[test]
+    fn chat_runtime_config_defaults_multi_pass_on() {
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+
+        let _reset = EnvReset::capture(&["CHAT_MULTI_PASS_ENABLED"]);
+        remove_env("CHAT_MULTI_PASS_ENABLED");
+
+        let config = ChatRuntimeConfig::from_env();
+        assert!(config.multi_pass_enabled);
+    }
+
+    #[test]
+    fn chat_runtime_config_respects_explicit_disable() {
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+
+        let _reset = EnvReset::capture(&["CHAT_MULTI_PASS_ENABLED"]);
+        set_env("CHAT_MULTI_PASS_ENABLED", "false");
+
+        let config = ChatRuntimeConfig::from_env();
+        assert!(!config.multi_pass_enabled);
     }
 
     #[test]

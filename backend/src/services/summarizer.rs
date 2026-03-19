@@ -1,16 +1,10 @@
-use reqwest::Client;
-use rig::completion::Prompt;
-use rig::prelude::*;
-use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use thiserror::Error;
-use tokio::sync::Semaphore;
 use tokio::time::{Instant as TokioInstant, timeout};
+use tracing::Instrument;
 
 use crate::models::AiStatus;
-use crate::services::http::CloudCooldown;
-use crate::services::is_rate_limited;
-use crate::services::ollama::{CooldownStatusPolicy, OllamaCore};
+use crate::services::ollama::{CooldownStatusPolicy, OllamaCore, OllamaPromptError};
 
 pub const MAX_TRANSCRIPT_FORMAT_ATTEMPTS: usize = 5;
 pub const TRANSCRIPT_FORMAT_HARD_TIMEOUT_SECS: u64 = 300;
@@ -59,37 +53,22 @@ pub struct SummarizerService {
     core: OllamaCore,
 }
 
+impl From<OllamaPromptError> for SummarizerError {
+    fn from(err: OllamaPromptError) -> Self {
+        match err {
+            OllamaPromptError::NotAvailable => Self::NotAvailable,
+            OllamaPromptError::RequestFailed(e) => Self::RequestFailed(e),
+            OllamaPromptError::GenerationFailed(s) => Self::GenerationFailed(s),
+            OllamaPromptError::EmptyResponse => {
+                Self::GenerationFailed("Empty response from Ollama".to_string())
+            }
+        }
+    }
+}
+
 impl SummarizerService {
-    pub fn with_config(base_url: &str, model: &str) -> Self {
-        Self {
-            core: OllamaCore::new(base_url, model),
-        }
-    }
-
-    pub fn with_client(client: Client, base_url: &str, model: &str) -> Self {
-        Self {
-            core: OllamaCore::with_client(client, base_url, model),
-        }
-    }
-
-    pub fn with_fallback_model(mut self, fallback_model: Option<String>) -> Self {
-        self.core = self.core.with_fallback_model(fallback_model);
-        self
-    }
-
-    pub fn with_api_key(mut self, key: Option<String>) -> Self {
-        self.core = self.core.with_api_key(key);
-        self
-    }
-
-    pub fn with_cloud_cooldown(mut self, cooldown: Arc<CloudCooldown>) -> Self {
-        self.core = self.core.with_cloud_cooldown(cooldown);
-        self
-    }
-
-    pub fn with_ollama_semaphore(mut self, semaphore: Arc<Semaphore>) -> Self {
-        self.core = self.core.with_ollama_semaphore(semaphore);
-        self
+    pub fn new(core: OllamaCore) -> Self {
+        Self { core }
     }
 
     /// Check if Ollama is available.
@@ -118,13 +97,42 @@ impl SummarizerService {
         video_id: &str,
         channel_id: &str,
     ) -> Result<(String, String), SummarizerError> {
-        let prompt = build_summary_prompt(transcript, video_title);
+        let span = logfire::span!(
+            "summary.generate",
+            video.id = video_id.to_string(),
+            channel.id = channel_id.to_string(),
+            transcript_chars = transcript.chars().count(),
+            title_chars = video_title.chars().count(),
+        );
 
-        let (raw, model_used) = self
-            .prompt_model("summary", SUMMARY_PREAMBLE, &prompt, Some(video_id), Some(channel_id))
-            .await?;
+        async move {
+            let started = TokioInstant::now();
+            let prompt = build_summary_prompt(transcript, video_title);
 
-        Ok((strip_summary_title_heading(&raw), model_used))
+            let (raw, model_used) = self
+                .prompt_model(
+                    "summary",
+                    SUMMARY_PREAMBLE,
+                    &prompt,
+                    Some(video_id),
+                    Some(channel_id),
+                )
+                .await?;
+            let summary = strip_summary_title_heading(&raw);
+
+            tracing::info!(
+                video_id = video_id,
+                channel_id = channel_id,
+                model = %model_used,
+                summary_chars = summary.chars().count(),
+                elapsed_ms = started.elapsed().as_millis() as u64,
+                "summary generated"
+            );
+
+            Ok((summary, model_used))
+        }
+        .instrument(span)
+        .await
     }
 
     /// Clean transcript formatting while preserving token sequence.
@@ -134,89 +142,118 @@ impl SummarizerService {
         video_id: &str,
         channel_id: &str,
     ) -> Result<TranscriptCleanResult, SummarizerError> {
-        let started = TokioInstant::now();
-        let mut retry_feedback: Option<String> = None;
+        let span = logfire::span!(
+            "transcript.clean",
+            video.id = video_id.to_string(),
+            channel.id = channel_id.to_string(),
+            transcript_chars = transcript.chars().count(),
+            max_attempts = MAX_TRANSCRIPT_FORMAT_ATTEMPTS,
+        );
 
-        for attempt in 1..=MAX_TRANSCRIPT_FORMAT_ATTEMPTS {
-            let elapsed = started.elapsed();
-            if elapsed >= TRANSCRIPT_FORMAT_HARD_TIMEOUT {
-                tracing::warn!(
-                    attempts_used = attempt.saturating_sub(1),
-                    max_attempts = MAX_TRANSCRIPT_FORMAT_ATTEMPTS,
-                    hard_timeout_secs = TRANSCRIPT_FORMAT_HARD_TIMEOUT_SECS,
-                    elapsed_ms = elapsed.as_millis() as u64,
-                    "transcript clean hard timeout reached before new attempt"
-                );
-                return Err(SummarizerError::TimedOut {
-                    attempts_used: attempt.saturating_sub(1),
-                    max_attempts: MAX_TRANSCRIPT_FORMAT_ATTEMPTS,
-                    timeout_secs: TRANSCRIPT_FORMAT_HARD_TIMEOUT_SECS,
-                });
-            }
+        async move {
+            let started = TokioInstant::now();
+            let mut retry_feedback: Option<String> = None;
 
-            let prompt = build_clean_transcript_prompt(transcript, retry_feedback.as_deref());
-            let operation = format!("transcript_clean_attempt_{attempt}");
-            let remaining = TRANSCRIPT_FORMAT_HARD_TIMEOUT.saturating_sub(elapsed);
-            let (response, _model_used) = match timeout(
-                remaining,
-                self.prompt_model(&operation, TRANSCRIPT_CLEAN_PREAMBLE, &prompt, Some(video_id), Some(channel_id)),
-            )
-            .await
-            {
-                Ok(result) => result?,
-                Err(_) => {
+            for attempt in 1..=MAX_TRANSCRIPT_FORMAT_ATTEMPTS {
+                let elapsed = started.elapsed();
+                if elapsed >= TRANSCRIPT_FORMAT_HARD_TIMEOUT {
                     tracing::warn!(
-                        attempts_used = attempt,
+                        attempts_used = attempt.saturating_sub(1),
                         max_attempts = MAX_TRANSCRIPT_FORMAT_ATTEMPTS,
                         hard_timeout_secs = TRANSCRIPT_FORMAT_HARD_TIMEOUT_SECS,
-                        elapsed_ms = started.elapsed().as_millis() as u64,
-                        "transcript clean hard timeout reached during attempt"
+                        elapsed_ms = elapsed.as_millis() as u64,
+                        "transcript clean hard timeout reached before new attempt"
                     );
                     return Err(SummarizerError::TimedOut {
-                        attempts_used: attempt,
+                        attempts_used: attempt.saturating_sub(1),
                         max_attempts: MAX_TRANSCRIPT_FORMAT_ATTEMPTS,
                         timeout_secs: TRANSCRIPT_FORMAT_HARD_TIMEOUT_SECS,
                     });
                 }
-            };
 
-            if transcript_text_equivalent(transcript, &response) {
-                if attempt > 1 {
+                let prompt = build_clean_transcript_prompt(transcript, retry_feedback.as_deref());
+                let operation = format!("transcript_clean_attempt_{attempt}");
+                let remaining = TRANSCRIPT_FORMAT_HARD_TIMEOUT.saturating_sub(elapsed);
+                let (response, model_used) = match timeout(
+                    remaining,
+                    self.prompt_model(
+                        &operation,
+                        TRANSCRIPT_CLEAN_PREAMBLE,
+                        &prompt,
+                        Some(video_id),
+                        Some(channel_id),
+                    ),
+                )
+                .await
+                {
+                    Ok(result) => result?,
+                    Err(_) => {
+                        tracing::warn!(
+                            attempts_used = attempt,
+                            max_attempts = MAX_TRANSCRIPT_FORMAT_ATTEMPTS,
+                            hard_timeout_secs = TRANSCRIPT_FORMAT_HARD_TIMEOUT_SECS,
+                            elapsed_ms = started.elapsed().as_millis() as u64,
+                            "transcript clean hard timeout reached during attempt"
+                        );
+                        return Err(SummarizerError::TimedOut {
+                            attempts_used: attempt,
+                            max_attempts: MAX_TRANSCRIPT_FORMAT_ATTEMPTS,
+                            timeout_secs: TRANSCRIPT_FORMAT_HARD_TIMEOUT_SECS,
+                        });
+                    }
+                };
+
+                if transcript_text_equivalent(transcript, &response) {
+                    if attempt > 1 {
+                        tracing::info!(
+                            attempt = attempt,
+                            max_attempts = MAX_TRANSCRIPT_FORMAT_ATTEMPTS,
+                            model = %model_used,
+                            "transcript clean compliance achieved after retry"
+                        );
+                    }
+                    let result = TranscriptCleanResult {
+                        content: response,
+                        attempts_used: attempt,
+                        max_attempts: MAX_TRANSCRIPT_FORMAT_ATTEMPTS,
+                    };
                     tracing::info!(
-                        attempt = attempt,
-                        max_attempts = MAX_TRANSCRIPT_FORMAT_ATTEMPTS,
-                        "transcript clean compliance achieved after retry"
+                        attempts_used = result.attempts_used,
+                        max_attempts = result.max_attempts,
+                        model = %model_used,
+                        cleaned_chars = result.content.chars().count(),
+                        elapsed_ms = started.elapsed().as_millis() as u64,
+                        "transcript clean completed"
                     );
+                    return Ok(result);
                 }
-                return Ok(TranscriptCleanResult {
-                    content: response,
-                    attempts_used: attempt,
-                    max_attempts: MAX_TRANSCRIPT_FORMAT_ATTEMPTS,
-                });
+
+                let mismatch = detect_transcript_mismatch(transcript, &response);
+                tracing::warn!(
+                    attempt = attempt,
+                    max_attempts = MAX_TRANSCRIPT_FORMAT_ATTEMPTS,
+                    mismatch_index = mismatch.index,
+                    reason = mismatch.reason,
+                    model = %model_used,
+                    "transcript clean compliance failed"
+                );
+
+                if attempt == MAX_TRANSCRIPT_FORMAT_ATTEMPTS {
+                    return Err(SummarizerError::TextChanged {
+                        attempts_used: attempt,
+                        max_attempts: MAX_TRANSCRIPT_FORMAT_ATTEMPTS,
+                    });
+                }
+
+                retry_feedback = Some(build_retry_feedback(&mismatch));
             }
-
-            let mismatch = detect_transcript_mismatch(transcript, &response);
-            tracing::warn!(
-                attempt = attempt,
-                max_attempts = MAX_TRANSCRIPT_FORMAT_ATTEMPTS,
-                mismatch_index = mismatch.index,
-                reason = mismatch.reason,
-                "transcript clean compliance failed"
-            );
-
-            if attempt == MAX_TRANSCRIPT_FORMAT_ATTEMPTS {
-                return Err(SummarizerError::TextChanged {
-                    attempts_used: attempt,
-                    max_attempts: MAX_TRANSCRIPT_FORMAT_ATTEMPTS,
-                });
-            }
-
-            retry_feedback = Some(build_retry_feedback(&mismatch));
+            Err(SummarizerError::TextChanged {
+                attempts_used: MAX_TRANSCRIPT_FORMAT_ATTEMPTS,
+                max_attempts: MAX_TRANSCRIPT_FORMAT_ATTEMPTS,
+            })
         }
-        Err(SummarizerError::TextChanged {
-            attempts_used: MAX_TRANSCRIPT_FORMAT_ATTEMPTS,
-            max_attempts: MAX_TRANSCRIPT_FORMAT_ATTEMPTS,
-        })
+        .instrument(span)
+        .await
     }
 
     pub fn model(&self) -> &str {
@@ -236,98 +273,17 @@ impl SummarizerService {
             operation = operation,
             video_id = video_id.unwrap_or("-"),
             channel_id = channel_id.unwrap_or("-"),
-            model = %self.model(),
-            base_url = %self.core.base_url(),
-            prompt_chars = prompt.len(),
-            "starting ollama prompt"
+            "starting summarizer prompt"
         );
-        let started = Instant::now();
-        let ollama_client = self
-            .core
-            .build_ollama_client()
-            .map_err(SummarizerError::GenerationFailed)?;
-
-        // Skip cloud model entirely if cooldown is active
-        let is_cloud = self.core.uses_cloud_model();
-        let cooldown_active = self.core.is_cloud_cooldown_active();
-
-        let (response, model_used) = if cooldown_active {
-            let fallback = self.core.fallback_model().ok_or_else(|| {
-                SummarizerError::GenerationFailed(
-                    "cloud cooldown active and no fallback model configured".to_string(),
-                )
-            })?;
-            tracing::info!(
-                operation = operation,
-                skipped_model = %self.model(),
-                fallback_model = %fallback,
-                "skipping cloud model due to active cooldown"
-            );
-
-            let _permit = self
-                .core
-                .acquire_local_permit(fallback)
-                .await
-                .map_err(SummarizerError::GenerationFailed)?;
-
-            let fallback_agent = ollama_client.agent(fallback).preamble(preamble).build();
-            let resp = fallback_agent.prompt(prompt).await?;
-            (resp, fallback.to_string())
-        } else {
-            let _permit = self
-                .core
-                .acquire_local_permit(self.model())
-                .await
-                .map_err(SummarizerError::GenerationFailed)?;
-
-            let agent = ollama_client.agent(self.model()).preamble(preamble).build();
-            match agent.prompt(prompt).await {
-                Ok(resp) => (resp, self.model().to_string()),
-                Err(err) if is_rate_limited(&err) => {
-                    if is_cloud {
-                        self.core.activate_cloud_cooldown();
-                    }
-                    let fallback = self.core.fallback_model().ok_or_else(|| {
-                        SummarizerError::GenerationFailed(format!(
-                            "rate limited by provider and no fallback model configured: {err}"
-                        ))
-                    })?;
-                    tracing::warn!(
-                        operation = operation,
-                        primary_model = %self.model(),
-                        fallback_model = %fallback,
-                        error = %err,
-                        "rate limited - falling back to local model"
-                    );
-
-                    let _permit = self
-                        .core
-                        .acquire_local_permit(fallback)
-                        .await
-                        .map_err(SummarizerError::GenerationFailed)?;
-
-                    let fallback_agent = ollama_client.agent(fallback).preamble(preamble).build();
-                    let resp = fallback_agent.prompt(prompt).await?;
-                    (resp, fallback.to_string())
-                }
-                Err(err) => return Err(err.into()),
-            }
-        };
-        tracing::info!(
-            operation = operation,
-            video_id = video_id.unwrap_or("-"),
-            channel_id = channel_id.unwrap_or("-"),
-            model = %model_used,
-            response_chars = response.len(),
-            elapsed_ms = started.elapsed().as_millis() as u64,
-            "completed ollama prompt"
-        );
-        if response.trim().is_empty() {
-            return Err(SummarizerError::GenerationFailed(
-                "Empty response from Ollama".to_string(),
-            ));
-        }
-        Ok((response, model_used))
+        self.core
+            .prompt_with_fallback(
+                operation,
+                preamble,
+                prompt,
+                CooldownStatusPolicy::UseLocalFallback,
+            )
+            .await
+            .map_err(Into::into)
     }
 }
 
@@ -707,18 +663,26 @@ mod tests {
         transcript_text_equivalent,
     };
     use crate::models::AiStatus;
+    use crate::services::ollama::OllamaCore;
     use crate::services::summary_evaluator::SummaryEvaluatorService;
 
     #[tokio::test]
     async fn is_available_returns_false_for_invalid_url() {
-        let service = SummarizerService::with_config("://invalid-url", "qwen3:8b");
+        let service = SummarizerService::new(OllamaCore::new("://invalid-url", "qwen3:8b"));
         assert!(!service.is_available().await);
     }
 
     #[tokio::test]
     async fn summarize_returns_error_for_invalid_url() {
-        let service = SummarizerService::with_config("://invalid-url", "qwen3:8b");
-        let result = service.summarize("test transcript", "test title", "test-video", "test-channel").await;
+        let service = SummarizerService::new(OllamaCore::new("://invalid-url", "qwen3:8b"));
+        let result = service
+            .summarize(
+                "test transcript",
+                "test title",
+                "test-video",
+                "test-channel",
+            )
+            .await;
         assert!(result.is_err());
     }
 
@@ -845,24 +809,29 @@ mod tests {
 
     #[test]
     fn indicator_status_reports_cloud_when_primary_model_is_cloud_and_available() {
-        let summarizer = SummarizerService::with_config("http://localhost:11434", "glm-5:cloud")
-            .with_fallback_model(Some("qwen3-coder:30b".to_string()));
+        let summarizer = SummarizerService::new(
+            OllamaCore::new("http://localhost:11434", "glm-5:cloud")
+                .with_fallback_model(Some("qwen3-coder:30b".to_string())),
+        );
 
         assert_eq!(summarizer.indicator_status(false, true), AiStatus::Cloud);
     }
 
     #[test]
     fn indicator_status_reports_local_only_when_cloud_cooldown_uses_local_fallback() {
-        let summarizer = SummarizerService::with_config("http://localhost:11434", "glm-5:cloud")
-            .with_fallback_model(Some("qwen3-coder:30b".to_string()));
+        let summarizer = SummarizerService::new(
+            OllamaCore::new("http://localhost:11434", "glm-5:cloud")
+                .with_fallback_model(Some("qwen3-coder:30b".to_string())),
+        );
 
         assert_eq!(summarizer.indicator_status(true, true), AiStatus::LocalOnly);
     }
 
     #[test]
     fn indicator_status_reports_offline_when_cloud_cooldown_has_no_local_fallback() {
-        let summarizer = SummarizerService::with_config("http://localhost:11434", "glm-5:cloud")
-            .with_fallback_model(None);
+        let summarizer = SummarizerService::new(
+            OllamaCore::new("http://localhost:11434", "glm-5:cloud").with_fallback_model(None),
+        );
 
         assert_eq!(summarizer.indicator_status(true, true), AiStatus::Offline);
     }
@@ -870,7 +839,7 @@ mod tests {
     #[test]
     fn indicator_status_reports_local_only_for_local_primary_model() {
         let summarizer =
-            SummarizerService::with_config("http://localhost:11434", "qwen3-coder:30b");
+            SummarizerService::new(OllamaCore::new("http://localhost:11434", "qwen3-coder:30b"));
 
         assert_eq!(
             summarizer.indicator_status(false, true),
@@ -880,8 +849,10 @@ mod tests {
 
     #[test]
     fn indicator_status_reports_offline_when_endpoint_is_unreachable() {
-        let summarizer = SummarizerService::with_config("http://localhost:11434", "glm-5:cloud")
-            .with_fallback_model(Some("qwen3-coder:30b".to_string()));
+        let summarizer = SummarizerService::new(
+            OllamaCore::new("http://localhost:11434", "glm-5:cloud")
+                .with_fallback_model(Some("qwen3-coder:30b".to_string())),
+        );
 
         assert_eq!(summarizer.indicator_status(false, false), AiStatus::Offline);
     }
@@ -916,7 +887,8 @@ mod tests {
         }
 
         let ollama_url = live_ollama_url();
-        let summarizer = SummarizerService::with_config(&ollama_url, &live_summary_model());
+        let summarizer =
+            SummarizerService::new(OllamaCore::new(&ollama_url, &live_summary_model()));
         assert!(
             summarizer.is_available().await,
             "Ollama is not reachable at {ollama_url}"
@@ -952,8 +924,10 @@ For this team, the recommendation is blue-green because rollback must be instant
         }
 
         let ollama_url = live_ollama_url();
-        let summarizer = SummarizerService::with_config(&ollama_url, &live_summary_model());
-        let evaluator = SummaryEvaluatorService::with_config(&ollama_url, &live_evaluator_model());
+        let summarizer =
+            SummarizerService::new(OllamaCore::new(&ollama_url, &live_summary_model()));
+        let evaluator =
+            SummaryEvaluatorService::new(OllamaCore::new(&ollama_url, &live_evaluator_model()));
 
         assert!(
             summarizer.is_available().await,

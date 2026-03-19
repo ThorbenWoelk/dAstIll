@@ -1,20 +1,36 @@
 use reqwest::Client;
 use rig::client::Nothing;
+use rig::completion::Prompt;
+use rig::prelude::*;
 use rig::providers::ollama;
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+use tracing::Instrument;
 
 use crate::models::AiStatus;
-use crate::services::http::{CloudCooldown, build_http_client, is_cloud_model};
+use crate::services::http::{CloudCooldown, build_http_client, is_cloud_model, is_rate_limited};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CooldownStatusPolicy {
+pub enum CooldownStatusPolicy {
     UseLocalFallback,
     Offline,
 }
 
+/// Error returned by [`OllamaCore::prompt_with_fallback`].
+#[derive(Debug)]
+pub enum OllamaPromptError {
+    /// Cloud cooldown active and no fallback configured, or cancelled by policy.
+    NotAvailable,
+    RequestFailed(rig::completion::PromptError),
+    GenerationFailed(String),
+    /// Model returned an empty response.
+    EmptyResponse,
+}
+
 /// Shared configuration and low-level helpers for Ollama-backed services.
-pub(crate) struct OllamaCore {
+#[derive(Clone)]
+pub struct OllamaCore {
     client: Client,
     base_url: String,
     model: String,
@@ -79,6 +95,10 @@ impl OllamaCore {
 
     pub fn base_url(&self) -> &str {
         &self.base_url
+    }
+
+    pub fn client(&self) -> Client {
+        self.client.clone()
     }
 
     pub fn model(&self) -> &str {
@@ -187,6 +207,138 @@ impl OllamaCore {
         }
         Ok(None)
     }
+
+    /// Prompt the configured model with automatic fallback and cooldown handling.
+    ///
+    /// Returns `(response_text, model_used)`.
+    /// `policy` controls whether a local fallback is used or `NotAvailable` is
+    /// returned when the cloud model is in cooldown or rate-limited.
+    pub async fn prompt_with_fallback(
+        &self,
+        operation: &str,
+        preamble: &str,
+        prompt: &str,
+        policy: CooldownStatusPolicy,
+    ) -> Result<(String, String), OllamaPromptError> {
+        let span = logfire::span!(
+            "ollama.prompt",
+            operation = operation,
+            model = self.model().to_string(),
+            base_url = self.base_url().to_string(),
+            prompt_chars = prompt.chars().count(),
+            cooldown_policy = format!("{policy:?}"),
+            fallback_configured = self.fallback_model().is_some(),
+        );
+
+        async move {
+            let started = Instant::now();
+            let ollama_client = self
+                .build_ollama_client()
+                .map_err(OllamaPromptError::GenerationFailed)?;
+
+            let is_cloud = self.uses_cloud_model();
+            let cooldown_active = self.is_cloud_cooldown_active();
+
+            let (response, model_used) = if cooldown_active {
+                match policy {
+                    CooldownStatusPolicy::UseLocalFallback => {
+                        let fallback = self.fallback_model().ok_or_else(|| {
+                            OllamaPromptError::GenerationFailed(
+                                "cloud cooldown active and no fallback model configured"
+                                    .to_string(),
+                            )
+                        })?;
+                        tracing::info!(
+                            operation = operation,
+                            skipped_model = %self.model(),
+                            fallback_model = %fallback,
+                            "skipping cloud model due to active cooldown"
+                        );
+                        let _permit = self
+                            .acquire_local_permit(fallback)
+                            .await
+                            .map_err(OllamaPromptError::GenerationFailed)?;
+                        let agent = ollama_client.agent(fallback).preamble(preamble).build();
+                        let resp = agent
+                            .prompt(prompt)
+                            .await
+                            .map_err(OllamaPromptError::RequestFailed)?;
+                        (resp, fallback.to_string())
+                    }
+                    CooldownStatusPolicy::Offline => return Err(OllamaPromptError::NotAvailable),
+                }
+            } else {
+                let _permit = self
+                    .acquire_local_permit(self.model())
+                    .await
+                    .map_err(OllamaPromptError::GenerationFailed)?;
+                let agent = ollama_client.agent(self.model()).preamble(preamble).build();
+                match agent.prompt(prompt).await {
+                    Ok(resp) => (resp, self.model().to_string()),
+                    Err(err) if is_rate_limited(&err) => {
+                        if is_cloud {
+                            self.activate_cloud_cooldown();
+                        }
+                        match policy {
+                            CooldownStatusPolicy::UseLocalFallback => {
+                                let fallback = self.fallback_model().ok_or_else(|| {
+                                    OllamaPromptError::GenerationFailed(format!(
+                                        "rate limited by provider and no fallback model configured: {err}"
+                                    ))
+                                })?;
+                                tracing::warn!(
+                                    operation = operation,
+                                    primary_model = %self.model(),
+                                    fallback_model = %fallback,
+                                    error = %err,
+                                    "rate limited - falling back to local model"
+                                );
+                                let _permit = self
+                                    .acquire_local_permit(fallback)
+                                    .await
+                                    .map_err(OllamaPromptError::GenerationFailed)?;
+                                let fallback_agent =
+                                    ollama_client.agent(fallback).preamble(preamble).build();
+                                let resp = fallback_agent
+                                    .prompt(prompt)
+                                    .await
+                                    .map_err(OllamaPromptError::RequestFailed)?;
+                                (resp, fallback.to_string())
+                            }
+                            CooldownStatusPolicy::Offline => {
+                                if is_cloud {
+                                    tracing::warn!(
+                                        operation = operation,
+                                        primary_model = %self.model(),
+                                        error = %err,
+                                        "rate limited - deferring to preserve local capacity"
+                                    );
+                                }
+                                return Err(OllamaPromptError::NotAvailable);
+                            }
+                        }
+                    }
+                    Err(err) => return Err(OllamaPromptError::RequestFailed(err)),
+                }
+            };
+
+            tracing::info!(
+                operation = operation,
+                model = %model_used,
+                response_chars = response.len(),
+                elapsed_ms = started.elapsed().as_millis() as u64,
+                "completed ollama prompt"
+            );
+
+            if response.trim().is_empty() {
+                return Err(OllamaPromptError::EmptyResponse);
+            }
+
+            Ok((response, model_used))
+        }
+        .instrument(span)
+        .await
+    }
 }
 
 #[cfg(test)]
@@ -269,9 +421,11 @@ mod tests {
         let client = reqwest::Client::new();
         let req = core.auth(client.get("http://localhost:11434/api/tags"));
         let built = req.build().expect("request should build");
-        assert!(built
-            .headers()
-            .get(reqwest::header::AUTHORIZATION)
-            .is_none());
+        assert!(
+            built
+                .headers()
+                .get(reqwest::header::AUTHORIZATION)
+                .is_none()
+        );
     }
 }

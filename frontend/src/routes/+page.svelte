@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { replaceState as replacePageState } from "$app/navigation";
+  import { goto, replaceState as replacePageState } from "$app/navigation";
   import { onMount } from "svelte";
   import {
     addChannel,
@@ -15,7 +15,6 @@
     getWorkspaceBootstrapWhenAvailable,
     getSummary,
     getTranscript,
-    isAiAvailable,
     listVideos,
     refreshChannel,
     regenerateSummary,
@@ -30,6 +29,7 @@
     type TourStep,
   } from "$lib/components/FeatureGuide.svelte";
   import ConfirmationModal from "$lib/components/ConfirmationModal.svelte";
+  import ErrorToast from "$lib/components/ErrorToast.svelte";
   import WorkspaceChannelSidebar from "$lib/components/workspace/WorkspaceChannelSidebar.svelte";
   import WorkspaceContentPanel from "$lib/components/workspace/WorkspaceContentPanel.svelte";
   import WorkspaceHeader from "$lib/components/workspace/WorkspaceHeader.svelte";
@@ -80,6 +80,11 @@
     removeCachedChannel,
   } from "$lib/workspace-cache";
   import { resolveOldestLoadedReadyVideoDate } from "$lib/sync-depth";
+  import { createAiStatusPoller } from "$lib/utils/ai-poller";
+  import {
+    resolveGuideStepFromUrl,
+    writeGuideStepToUrl,
+  } from "$lib/utils/guide";
   import {
     buildWorkspaceViewHref,
     mergeWorkspaceViewState,
@@ -87,16 +92,31 @@
   } from "$lib/view-url";
   import { channelOrderFromList } from "$lib/workspace/channels";
   import {
+    buildOptimisticChannel,
+    replaceOptimisticChannel,
+    replaceOptimisticChannelId,
+  } from "$lib/workspace/channel-actions";
+  import {
     resolveSummaryQualityPresentation,
     resolveTranscriptPresentation,
     stripContentPrefix,
   } from "$lib/workspace/content";
+  import {
+    buildFormattingAttemptSummary,
+    clearFormattingFeedbackState,
+    resetSummaryQualityState,
+  } from "$lib/workspace/formatting";
+  import {
+    mergeVideoHighlights,
+    removeVideoHighlightFromState,
+  } from "$lib/workspace/highlight-actions";
   import { resolveDefaultContentMode } from "$lib/workspace/navigation";
   import {
     type AcknowledgedFilter,
     type ChannelSortMode,
     isWorkspaceContentMode,
     isWorkspaceVideoTypeFilter,
+    resolveAcknowledgedParam,
     type WorkspaceContentMode,
   } from "$lib/workspace/types";
   const FORMAT_MAX_TURNS = 5;
@@ -246,31 +266,17 @@
   function openGuide() {
     guideStep = 0;
     guideOpen = true;
-    syncGuideToUrl(0);
+    writeGuideStepToUrl(0);
   }
 
   function closeGuide() {
     guideOpen = false;
-    removeGuideFromUrl();
+    writeGuideStepToUrl(null);
   }
 
   function setGuideStep(s: number) {
     guideStep = s;
-    syncGuideToUrl(s);
-  }
-
-  function syncGuideToUrl(s: number) {
-    if (typeof window === "undefined") return;
-    const url = new URL(window.location.href);
-    url.searchParams.set("guide", String(s));
-    window.history.replaceState(window.history.state, "", url);
-  }
-
-  function removeGuideFromUrl() {
-    if (typeof window === "undefined") return;
-    const url = new URL(window.location.href);
-    url.searchParams.delete("guide");
-    window.history.replaceState(window.history.state, "", url);
+    writeGuideStepToUrl(s);
   }
 
   let loadingChannels = $state(false);
@@ -472,12 +478,7 @@
         return;
       }
 
-      const isAck =
-        acknowledgedFilter === "ack"
-          ? true
-          : acknowledgedFilter === "unack"
-            ? false
-            : undefined;
+      const isAck = resolveAcknowledgedParam(acknowledgedFilter);
 
       syncDepth = snapshot.sync_depth;
       allowLoadedVideoSyncDepthOverride = false;
@@ -546,15 +547,18 @@
   }
 
   function mergeVideoHighlight(videoId: string, highlight: Highlight) {
-    const current = videoHighlightsByVideoId[videoId] ?? [];
-    storeVideoHighlights(videoId, mergeHighlightIntoList(current, highlight));
+    videoHighlightsByVideoId = mergeVideoHighlights(
+      videoHighlightsByVideoId,
+      videoId,
+      highlight,
+    );
   }
 
   function removeVideoHighlight(videoId: string, highlightId: number) {
-    const current = videoHighlightsByVideoId[videoId] ?? [];
-    storeVideoHighlights(
+    videoHighlightsByVideoId = removeVideoHighlightFromState(
+      videoHighlightsByVideoId,
       videoId,
-      current.filter((item) => item.id !== highlightId),
+      highlightId,
     );
   }
 
@@ -646,10 +650,11 @@
   }
 
   function resetSummaryQuality() {
-    summaryQualityScore = null;
-    summaryQualityNote = null;
-    summaryModelUsed = null;
-    summaryQualityModelUsed = null;
+    const nextState = resetSummaryQualityState();
+    summaryQualityScore = nextState.score;
+    summaryQualityNote = nextState.note;
+    summaryModelUsed = nextState.modelUsed;
+    summaryQualityModelUsed = nextState.qualityModelUsed;
   }
 
   function resetVideoInfo() {
@@ -657,11 +662,12 @@
   }
 
   function clearFormattingFeedback() {
-    formattingNotice = null;
-    formattingNoticeVideoId = null;
-    formattingAttemptsUsed = null;
-    formattingAttemptsMax = null;
-    formattingAttemptsVideoId = null;
+    const nextState = clearFormattingFeedbackState();
+    formattingNotice = nextState.formattingNotice;
+    formattingNoticeVideoId = nextState.formattingNoticeVideoId;
+    formattingAttemptsUsed = nextState.formattingAttemptsUsed;
+    formattingAttemptsMax = nextState.formattingAttemptsMax;
+    formattingAttemptsVideoId = nextState.formattingAttemptsVideoId;
   }
 
   function isCurrentContentRequest(
@@ -809,14 +815,13 @@
       });
     })();
 
-    // Restore guide from URL
-    const guideParam = new URL(window.location.href).searchParams.get("guide");
-    if (guideParam !== null) {
-      const parsed = parseInt(guideParam, 10);
-      if (!Number.isNaN(parsed) && parsed >= 0 && parsed < tourSteps.length) {
-        guideStep = parsed;
-        guideOpen = true;
-      }
+    const restoredGuideStep = resolveGuideStepFromUrl(
+      new URL(window.location.href),
+      tourSteps.length,
+    );
+    if (restoredGuideStep !== null) {
+      guideStep = restoredGuideStep;
+      guideOpen = true;
     }
   });
 
@@ -846,12 +851,7 @@
     errorMessage = null;
 
     try {
-      const isAck =
-        acknowledgedFilter === "ack"
-          ? true
-          : acknowledgedFilter === "unack"
-            ? false
-            : undefined;
+      const isAck = resolveAcknowledgedParam(acknowledgedFilter);
       const bootstrap = retryUntilBackendReachable
         ? await getWorkspaceBootstrapWhenAvailable({
             selectedChannelId: preferredChannelId ?? selectedChannelId,
@@ -928,21 +928,10 @@
   async function handleAddChannel(input: string) {
     if (!input.trim()) return false;
 
-    const trimmedInput = input.trim();
+    const { optimisticChannel, tempId, trimmedInput } =
+      buildOptimisticChannel(input);
     addingChannel = true;
     errorMessage = null;
-
-    // Optimistic update
-    const tempId = `temp-${Date.now()}`;
-    const optimisticChannel: Channel = {
-      id: tempId,
-      name:
-        trimmedInput.includes("youtube.com") ||
-        trimmedInput.includes("youtu.be")
-          ? "Fetching Channel..."
-          : trimmedInput,
-      added_at: new Date().toISOString(),
-    };
 
     const previousChannels = [...channels];
     const previousSelectedId = selectedChannelId;
@@ -954,19 +943,18 @@
     try {
       const channel = await addChannel(trimmedInput);
 
-      // Replace temp channel with real one locally
-      channels = channels.map((c) => (c.id === tempId ? channel : c));
-      channelOrder = channelOrder.map((id) =>
-        id === tempId ? channel.id : id,
+      channels = replaceOptimisticChannel(channels, tempId, channel);
+      channelOrder = replaceOptimisticChannelId(
+        channelOrder,
+        tempId,
+        channel.id,
       );
       selectedChannelId = channel.id;
       void putCachedChannels(channels);
 
-      // Load videos for the new channel (bypass TTL since it's brand new)
       await selectChannel(channel.id);
       return true;
     } catch (error) {
-      // Rollback on error
       channels = previousChannels;
       selectedChannelId = previousSelectedId;
       syncChannelOrderFromList();
@@ -1051,12 +1039,7 @@
     bypassTtl = false,
     preferredVideoId: string | null = selectedVideoId,
   ) {
-    const isAck =
-      acknowledgedFilter === "ack"
-        ? true
-        : acknowledgedFilter === "unack"
-          ? false
-          : undefined;
+    const isAck = resolveAcknowledgedParam(acknowledgedFilter);
 
     const snapshot = await getChannelSnapshot(channelId, {
       limit,
@@ -1115,12 +1098,7 @@
     if (!silent) errorMessage = null;
 
     try {
-      const isAck =
-        acknowledgedFilter === "ack"
-          ? true
-          : acknowledgedFilter === "unack"
-            ? false
-            : undefined;
+      const isAck = resolveAcknowledgedParam(acknowledgedFilter);
       const list = await listVideos(
         selectedChannelId,
         limit,
@@ -1484,7 +1462,7 @@
 
     try {
       const result = await cleanTranscriptFormatting(targetVideoId, source);
-      const attemptsSummary = `Attempts ${result.attempts_used}/${result.max_attempts}.`;
+      const attemptsSummary = buildFormattingAttemptSummary(result);
       formattingAttemptsUsed = result.attempts_used;
       formattingAttemptsMax = result.max_attempts;
       formattingAttemptsVideoId = targetVideoId;
@@ -1618,13 +1596,23 @@
   async function setVideoTypeFilter(nextValue: VideoTypeFilter) {
     if (videoTypeFilter === nextValue) return;
     videoTypeFilter = nextValue;
-    await loadVideos(true);
+    videos = videos.filter((video) => {
+      if (nextValue === "long") return !video.is_short;
+      if (nextValue === "short") return video.is_short;
+      return true;
+    });
+    await loadVideos(true, true);
   }
 
   async function setAcknowledgedFilter(nextValue: AcknowledgedFilter) {
     if (acknowledgedFilter === nextValue) return;
     acknowledgedFilter = nextValue;
-    await loadVideos(true);
+    videos = videos.filter((video) => {
+      if (nextValue === "ack") return video.acknowledged;
+      if (nextValue === "unack") return !video.acknowledged;
+      return true;
+    });
+    await loadVideos(true, true);
   }
 
   function matchesAcknowledgedFilter(video: Video) {
@@ -1692,20 +1680,14 @@
     }
   }
 
-  $effect(() => {
-    const timer = setInterval(() => {
-      void isAiAvailable()
-        .then((status) => {
-          aiAvailable = status.available;
-          aiStatus = status.status;
-        })
-        .catch(() => {
-          aiAvailable = false;
-          aiStatus = "offline";
-        });
-    }, 30000);
-    return () => clearInterval(timer);
-  });
+  $effect(() =>
+    createAiStatusPoller({
+      onStatus: (status) => {
+        aiAvailable = status.available;
+        aiStatus = status.status;
+      },
+    }),
+  );
 
   $effect(() => {
     if (
@@ -1746,7 +1728,7 @@
   <WorkspaceMobileTabBar
     activeTab={mobileTab}
     onTabChange={(tab) => {
-      mobileTab = tab;
+      mobileTab = tab as typeof mobileTab;
     }}
   />
 
@@ -1854,40 +1836,10 @@
   </main>
 
   {#if errorMessage}
-    <div
-      class="mobile-bottom-stack-offset fixed bottom-6 left-1/2 z-[80] w-[min(90vw,420px)] -translate-x-1/2 rounded-[var(--radius-md)] border border-[var(--danger-border)] bg-[var(--surface)] px-4 py-3 shadow-lg fade-in"
-      role="status"
-      aria-live="polite"
-    >
-      <div class="flex items-start gap-3">
-        <p
-          class="flex-1 text-[13px] font-medium text-[var(--danger-foreground)]"
-        >
-          {errorMessage}
-        </p>
-        <button
-          onclick={() => {
-            errorMessage = null;
-          }}
-          class="shrink-0 text-[var(--soft-foreground)] opacity-40 hover:opacity-80"
-          aria-label="Dismiss"
-        >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
-      </div>
-    </div>
+    <ErrorToast
+      message={errorMessage}
+      onDismiss={() => (errorMessage = null)}
+    />
   {/if}
 
   <ConfirmationModal

@@ -1,17 +1,26 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { clickOutside } from "$lib/actions/click-outside";
   import { fade, scale } from "svelte/transition";
 
-  export let show = false;
-  export let title = "Are you sure?";
-  export let message = "This action cannot be undone.";
-  export let confirmLabel = "Delete";
-  export let cancelLabel = "Cancel";
-  export let onConfirm: () => void;
-  export let onCancel: () => void;
-  export let tone: "danger" | "info" = "danger";
-
-  let modalElement: HTMLDivElement;
+  let {
+    show = false,
+    title = "Are you sure?",
+    message = "This action cannot be undone.",
+    confirmLabel = "Delete",
+    cancelLabel = "Cancel",
+    onConfirm,
+    onCancel,
+    tone = "danger",
+  }: {
+    show?: boolean;
+    title?: string;
+    message?: string;
+    confirmLabel?: string;
+    cancelLabel?: string;
+    onConfirm: () => void;
+    onCancel: () => void;
+    tone?: "danger" | "info";
+  } = $props();
 
   function handleKeydown(event: KeyboardEvent) {
     if (!show) return;
@@ -19,20 +28,6 @@
       onCancel();
     }
   }
-
-  onMount(() => {
-    const handleOutsideClick = (event: MouseEvent) => {
-      if (
-        show &&
-        modalElement &&
-        !modalElement.contains(event.target as Node)
-      ) {
-        onCancel();
-      }
-    };
-    window.addEventListener("mousedown", handleOutsideClick);
-    return () => window.removeEventListener("mousedown", handleOutsideClick);
-  });
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -52,7 +47,7 @@
 
     <!-- Modal -->
     <div
-      bind:this={modalElement}
+      use:clickOutside={{ enabled: show, onClickOutside: onCancel }}
       class="relative w-full max-w-sm overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--surface)] shadow-2xl transition-all"
       transition:scale={{ duration: 200, start: 0.95, opacity: 0 }}
     >

@@ -2,45 +2,60 @@
   import defaultChannelIcon from "$lib/assets/channel-default.svg";
   import type { Channel } from "$lib/types";
 
-  export let channel: Channel;
-  export let active = false;
-  export let draggableEnabled = false;
-  export let dragging = false;
-  export let dragOver = false;
-  export let loading = false;
-  export let trailingSpace: "none" | "compact" | "wide" = "none";
-  export let onSelect: () => void = () => {};
-  export let onDragStart: (event: DragEvent) => void = () => {};
-  export let onDragOver: (event: DragEvent) => void = () => {};
-  export let onDrop: (event: DragEvent) => void = () => {};
-  export let onDragEnd: (event: DragEvent) => void = () => {};
-  export let onDelete: (event: Event) => void = () => {};
-  export let showDelete = false;
+  let {
+    channel,
+    active = false,
+    draggableEnabled = false,
+    dragging = false,
+    dragOver = false,
+    loading = false,
+    trailingSpace = "none",
+    onSelect = () => {},
+    onDragStart = () => {},
+    onDragOver = () => {},
+    onDrop = () => {},
+    onDragEnd = () => {},
+    onDelete = () => {},
+    showDelete = false,
+  }: {
+    channel: Channel;
+    active?: boolean;
+    draggableEnabled?: boolean;
+    dragging?: boolean;
+    dragOver?: boolean;
+    loading?: boolean;
+    trailingSpace?: "none" | "compact" | "wide";
+    onSelect?: () => void;
+    onDragStart?: (event: DragEvent) => void;
+    onDragOver?: (event: DragEvent) => void;
+    onDrop?: (event: DragEvent) => void;
+    onDragEnd?: (event: DragEvent) => void;
+    onDelete?: (event: Event) => void;
+    showDelete?: boolean;
+  } = $props();
 
   const normalizeThumbnail = (thumbnailUrl?: string | null): string | null => {
     const trimmed = thumbnailUrl?.trim();
     return trimmed ? trimmed : null;
   };
 
-  let thumbnailUrl: string | null = null;
-  let avatarUrl = defaultChannelIcon;
-  let avatarLoadFailed = false;
-  let trailingSpaceClass = "";
-
-  $: thumbnailUrl = normalizeThumbnail(channel.thumbnail_url);
-  $: {
+  let avatarLoadFailed = $state(false);
+  let thumbnailUrl = $derived(normalizeThumbnail(channel.thumbnail_url));
+  $effect(() => {
     channel.id;
     thumbnailUrl;
     avatarLoadFailed = false;
-  }
-  $: avatarUrl =
-    !avatarLoadFailed && thumbnailUrl ? thumbnailUrl : defaultChannelIcon;
-  $: trailingSpaceClass =
+  });
+  let avatarUrl = $derived(
+    !avatarLoadFailed && thumbnailUrl ? thumbnailUrl : defaultChannelIcon,
+  );
+  let trailingSpaceClass = $derived(
     trailingSpace === "wide"
       ? "pr-28"
       : trailingSpace === "compact"
         ? "pr-12"
-        : "";
+        : "",
+  );
 
   function handleAvatarError() {
     avatarLoadFailed = true;

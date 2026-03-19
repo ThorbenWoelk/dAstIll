@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { clickOutside } from "$lib/actions/click-outside";
   import {
     applyColorScheme,
     applyThemeState,
@@ -22,7 +23,6 @@
   let color = $state<ColorScheme>(DEFAULT_COLOR);
   let isDark = $state(false);
   let mediaQueryList = $state<MediaQueryList | null>(null);
-  let panelEl = $state<HTMLDivElement | null>(null);
   let triggerEl = $state<HTMLButtonElement | null>(null);
 
   function systemPrefersDark(): boolean {
@@ -54,18 +54,6 @@
     syncTheme();
   }
 
-  function handleClickOutside(e: MouseEvent) {
-    if (
-      open &&
-      panelEl &&
-      !panelEl.contains(e.target as Node) &&
-      triggerEl &&
-      !triggerEl.contains(e.target as Node)
-    ) {
-      open = false;
-    }
-  }
-
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === "Escape" && open) {
       open = false;
@@ -83,18 +71,24 @@
       if (mode === "system") syncTheme();
     };
     mediaQueryList.addEventListener("change", handleChange);
-    document.addEventListener("click", handleClickOutside);
     document.addEventListener("keydown", handleKeydown);
 
     return () => {
       mediaQueryList?.removeEventListener("change", handleChange);
-      document.removeEventListener("click", handleClickOutside);
       document.removeEventListener("keydown", handleKeydown);
     };
   });
 </script>
 
-<div class="theme-panel-wrapper {className}">
+<div
+  class="theme-panel-wrapper {className}"
+  use:clickOutside={{
+    enabled: open,
+    onClickOutside: () => {
+      open = false;
+    },
+  }}
+>
   <button
     bind:this={triggerEl}
     type="button"
@@ -143,7 +137,6 @@
   </button>
 
   <div
-    bind:this={panelEl}
     class="theme-panel"
     class:is-open={open}
     role="dialog"
@@ -192,24 +185,19 @@
     justify-content: center;
     width: 2rem;
     height: 2rem;
-    border-radius: var(--radius-full);
-    border: 1px solid var(--border-soft);
-    background: transparent;
+    border: none;
+    background: none;
     color: var(--soft-foreground);
     cursor: pointer;
-    transition:
-      color 180ms ease,
-      border-color 180ms ease;
+    transition: color 180ms ease;
   }
 
   .theme-panel-trigger[aria-expanded="true"] {
     color: var(--accent-strong);
-    border-color: color-mix(in srgb, var(--accent) 28%, var(--border-soft));
   }
 
   .theme-panel-trigger:hover {
     color: var(--foreground);
-    border-color: var(--border);
   }
 
   .theme-panel-swatch {

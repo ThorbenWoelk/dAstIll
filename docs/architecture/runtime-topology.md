@@ -35,6 +35,9 @@ At startup the backend:
 - read cache
 - search projection lock
 - search progress tracker
+- chat service
+- active chats tracker (in-progress conversations)
+- chat store lock
 - YouTube service
 - transcript service
 - summarizer service

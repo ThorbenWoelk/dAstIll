@@ -1,8 +1,4 @@
-import type {
-  Channel,
-  ChannelSnapshot,
-  WorkspaceBootstrap,
-} from "$lib/types";
+import type { Channel, ChannelSnapshot, WorkspaceBootstrap } from "$lib/types";
 
 const DB_NAME = "dastill-workspace-cache";
 const DB_VERSION = 1;
@@ -22,7 +18,8 @@ let workspaceCacheDbPromise: Promise<IDBDatabase> | null = null;
 function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error("IDB request failed"));
+    request.onerror = () =>
+      reject(request.error ?? new Error("IDB request failed"));
   });
 }
 
@@ -54,7 +51,9 @@ function openWorkspaceCacheInternal(): Promise<IDBDatabase> {
 
         if (!db.objectStoreNames.contains("videos")) {
           const videosStore = db.createObjectStore("videos", { keyPath: "id" });
-          videosStore.createIndex("channel_id", "channel_id", { unique: false });
+          videosStore.createIndex("channel_id", "channel_id", {
+            unique: false,
+          });
         }
 
         if (!db.objectStoreNames.contains("snapshots")) {
@@ -76,7 +75,9 @@ function openWorkspaceCacheInternal(): Promise<IDBDatabase> {
 
       openRequest.onerror = () => {
         workspaceCacheDbPromise = null;
-        reject(openRequest.error ?? new Error("Failed to open workspace cache"));
+        reject(
+          openRequest.error ?? new Error("Failed to open workspace cache"),
+        );
       };
 
       openRequest.onblocked = () => {
@@ -109,7 +110,9 @@ async function deleteVideosByChannel(
     };
 
     cursorRequest.onerror = () => {
-      reject(cursorRequest.error ?? new Error("Failed to delete channel videos"));
+      reject(
+        cursorRequest.error ?? new Error("Failed to delete channel videos"),
+      );
     };
   });
 }

@@ -1,4 +1,5 @@
 pub mod channels;
+pub mod chat;
 pub mod content;
 pub mod highlights;
 pub mod query;

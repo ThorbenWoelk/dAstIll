@@ -5,22 +5,11 @@
     type SearchResultMode,
     type SearchSectionsState,
   } from "$lib/workspace-search";
-
-  const sourceOptions: SearchSourceFilter[] = ["all", "summary", "transcript"];
+  import { formatMediumDate } from "$lib/utils/date";
+  import { escapeHtml } from "$lib/utils/html";
 
   function formatPublishedAt(value: string | null | undefined) {
-    if (!value) return "Unknown";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return value;
-    return new Intl.DateTimeFormat(undefined, {
-      dateStyle: "medium",
-    }).format(date);
-  }
-
-  function labelForSource(option: SearchSourceFilter) {
-    if (option === "all") return "All";
-    if (option === "summary") return "Summaries";
-    return "Transcripts";
+    return formatMediumDate(value);
   }
 
   let {
@@ -29,8 +18,9 @@
     pendingQuery = null,
     source,
     sections,
+    modeKeyword = true,
+    modeSemantic = true,
     onClose,
-    onSourceChange,
     onResultSelect,
   }: {
     show?: boolean;
@@ -38,19 +28,11 @@
     pendingQuery?: string | null;
     source: SearchSourceFilter;
     sections: SearchSectionsState;
+    modeKeyword?: boolean;
+    modeSemantic?: boolean;
     onClose: () => void;
-    onSourceChange: (source: SearchSourceFilter) => void;
     onResultSelect: (result: SearchResult) => void;
   } = $props();
-
-  function escapeHtml(text: string) {
-    return text
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#39;");
-  }
 
   function renderSearchText(text: string, q: string, highlight: boolean) {
     const escapedText = escapeHtml(text);
@@ -109,6 +91,8 @@
   }
 
   function shouldRenderSection(mode: SearchResultMode) {
+    if (mode === "keyword" && !modeKeyword) return false;
+    if (mode === "semantic" && !modeSemantic) return false;
     return (
       mode === "keyword" ||
       sections[mode].loading ||
@@ -162,23 +146,6 @@
           <line x1="6" y1="6" x2="18" y2="18"></line>
         </svg>
       </button>
-    </div>
-
-    <div
-      class="flex flex-wrap items-center gap-2 border-b border-[var(--border-soft)] bg-[var(--surface)]/80 px-4 py-3"
-      role="toolbar"
-      aria-label="Search source filter"
-    >
-      {#each sourceOptions as option}
-        <button
-          type="button"
-          class={`rounded-full px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] transition-colors ${source === option ? "bg-[var(--accent)] text-white" : "bg-[var(--muted)]/70 text-[var(--soft-foreground)] hover:text-[var(--foreground)]"}`}
-          aria-pressed={source === option}
-          onclick={() => onSourceChange(option)}
-        >
-          {labelForSource(option)}
-        </button>
-      {/each}
     </div>
 
     <div class="max-h-[70vh] overflow-y-auto p-3 custom-scrollbar">

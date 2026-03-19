@@ -1,13 +1,15 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::db::Store;
 use crate::read_cache::ReadCache;
 use crate::search_progress::SearchProgress;
 use crate::services::{
-    CloudCooldown, SearchService, SummarizerService, SummaryEvaluatorService, TranscriptCooldown,
-    TranscriptService, YouTubeQuotaCooldown, YouTubeService,
+    ActiveChatHandle, ChatService, CloudCooldown, SearchService, SummarizerService,
+    SummaryEvaluatorService, TranscriptCooldown, TranscriptService, YouTubeQuotaCooldown,
+    YouTubeService,
 };
 
 #[derive(Clone)]
@@ -22,6 +24,9 @@ pub struct AppState {
     pub summarizer: Arc<SummarizerService>,
     pub summary_evaluator: Arc<SummaryEvaluatorService>,
     pub search: Arc<SearchService>,
+    pub chat: Arc<ChatService>,
+    pub active_chats: Arc<Mutex<HashMap<String, ActiveChatHandle>>>,
+    pub chat_store_lock: Arc<Mutex<()>>,
     pub cloud_cooldown: Arc<CloudCooldown>,
     pub youtube_quota_cooldown: Arc<YouTubeQuotaCooldown>,
     pub transcript_cooldown: Arc<TranscriptCooldown>,

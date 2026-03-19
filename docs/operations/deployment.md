@@ -35,6 +35,7 @@ Local development uses standard AWS credentials (`~/.aws/credentials` or environ
 Secrets are stored in GCP Secret Manager for:
 
 - `YOUTUBE_API_KEY`
+- `LOGFIRE_TOKEN` (when Logfire observability is enabled for the backend)
 
 Non-secret runtime config is passed as plain env values for:
 
@@ -47,6 +48,7 @@ Non-secret runtime config is passed as plain env values for:
 - `OLLAMA_URL`
 - `OLLAMA_MODEL`
 - `OLLAMA_FALLBACK_MODEL`
+- `OLLAMA_CHAT_MODEL`
 - `OLLAMA_EMBEDDING_MODEL`
 - `SUMMARY_EVALUATOR_MODEL`
 - `SUMMARIZE_PATH`

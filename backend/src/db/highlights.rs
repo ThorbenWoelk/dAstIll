@@ -75,10 +75,7 @@ pub async fn list_video_highlights(
     video_id: &str,
 ) -> Result<Vec<Highlight>, StoreError> {
     let all: Vec<Highlight> = store.load_all("highlights/").await?;
-    let mut filtered: Vec<Highlight> = all
-        .into_iter()
-        .filter(|h| h.video_id == video_id)
-        .collect();
+    let mut filtered: Vec<Highlight> = all.into_iter().filter(|h| h.video_id == video_id).collect();
     filtered.sort_by(|a, b| b.created_at.cmp(&a.created_at).then(b.id.cmp(&a.id)));
     Ok(filtered)
 }

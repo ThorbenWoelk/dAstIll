@@ -1,5 +1,5 @@
 <script lang="ts">
-  export let showMobile = false;
+  let { showMobile = false }: { showMobile?: boolean } = $props();
 </script>
 
 <footer class="site-footer" class:mobile-visible={showMobile}>

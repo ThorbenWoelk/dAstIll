@@ -1,41 +1,69 @@
 <script lang="ts">
   import ContentActionButton from "./ContentActionButton.svelte";
 
-  export let value = "";
-  export let editing = false;
-  export let busy = false;
-  export let formatting = false;
-  export let regenerating = false;
-  export let reverting = false;
-  export let showFormatAction = false;
-  export let showRegenerateAction = false;
-  export let showRevertAction = false;
-  export let canRevert = true;
-  export let youtubeUrl: string | null = null;
-  export let onEdit: () => void = () => {};
-  export let onCancel: () => void = () => {};
-  export let onSave: () => void = () => {};
-  export let onFormat: () => void = () => {};
-  export let onRegenerate: () => void = () => {};
-  export let onRevert: () => void = () => {};
-  export let onChange: (next: string) => void = () => {};
-  export let onAcknowledgeToggle: (() => void) | undefined = undefined;
-  export let acknowledged = false;
-  export let aiAvailable = true;
+  let {
+    value = "",
+    editing = false,
+    busy = false,
+    formatting = false,
+    regenerating = false,
+    reverting = false,
+    showFormatAction = false,
+    showRegenerateAction = false,
+    showRevertAction = false,
+    canRevert = true,
+    youtubeUrl = null,
+    onEdit = () => {},
+    onCancel = () => {},
+    onSave = () => {},
+    onFormat = () => {},
+    onRegenerate = () => {},
+    onRevert = () => {},
+    onChange = (_: string) => {},
+    onAcknowledgeToggle = undefined,
+    acknowledged = false,
+    aiAvailable = true,
+  }: {
+    value?: string;
+    editing?: boolean;
+    busy?: boolean;
+    formatting?: boolean;
+    regenerating?: boolean;
+    reverting?: boolean;
+    showFormatAction?: boolean;
+    showRegenerateAction?: boolean;
+    showRevertAction?: boolean;
+    canRevert?: boolean;
+    youtubeUrl?: string | null;
+    onEdit?: () => void;
+    onCancel?: () => void;
+    onSave?: () => void;
+    onFormat?: () => void;
+    onRegenerate?: () => void;
+    onRevert?: () => void;
+    onChange?: (next: string) => void;
+    onAcknowledgeToggle?: (() => void) | undefined;
+    acknowledged?: boolean;
+    aiAvailable?: boolean;
+  } = $props();
 
-  $: formatActionLabel = formatting
-    ? "Formatting transcript"
-    : aiAvailable
-      ? "Clean formatting"
-      : "auto-format (AI engine required)";
-  $: revertActionLabel = reverting
-    ? "Reverting transcript"
-    : "Revert to original transcript";
-  $: regenerateActionLabel = regenerating
-    ? "Regenerating summary"
-    : aiAvailable
-      ? "Regenerate summary"
-      : "regenerate (AI engine required)";
+  let formatActionLabel = $derived(
+    formatting
+      ? "Formatting transcript"
+      : aiAvailable
+        ? "Clean formatting"
+        : "auto-format (AI engine required)",
+  );
+  let revertActionLabel = $derived(
+    reverting ? "Reverting transcript" : "Revert to original transcript",
+  );
+  let regenerateActionLabel = $derived(
+    regenerating
+      ? "Regenerating summary"
+      : aiAvailable
+        ? "Regenerate summary"
+        : "regenerate (AI engine required)",
+  );
 </script>
 
 {#if editing}
@@ -179,34 +207,42 @@
       onClick={onEdit}
     />
     {#if onAcknowledgeToggle}
-      <div class="h-4 w-px bg-[var(--border-soft)] mx-1"></div>
-      <label
-        class="flex items-center justify-center h-9 w-9 cursor-pointer group transition-opacity hover:opacity-100"
+      <button
+        type="button"
+        class={`inline-flex h-9 items-center gap-2 rounded-full border px-3 text-[11px] font-bold uppercase tracking-[0.08em] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 disabled:cursor-not-allowed disabled:opacity-30 ${
+          acknowledged
+            ? "border-[var(--accent)]/20 bg-[var(--accent-wash-strong)] text-[var(--accent-strong)] shadow-sm"
+            : "border-[var(--accent-border-soft)] bg-[var(--panel-surface)] text-[var(--soft-foreground)] hover:border-[var(--accent)]/30 hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]"
+        }`}
         data-tooltip={acknowledged ? "Mark as unread" : "Mark as read"}
         data-tooltip-anchor="end"
+        aria-label={acknowledged ? "Mark as unread" : "Mark as read"}
+        aria-pressed={acknowledged}
+        onclick={onAcknowledgeToggle}
+        disabled={busy}
       >
-        <div class="relative flex items-center justify-center">
-          <input
-            type="checkbox"
-            class="peer h-5 w-5 cursor-pointer appearance-none rounded-[var(--radius-sm)] border-2 border-[var(--border)] bg-[var(--background)] transition-all checked:border-[var(--accent)] checked:bg-[var(--accent)] hover:border-[var(--accent)]/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 disabled:cursor-not-allowed disabled:opacity-30"
-            checked={acknowledged}
-            onchange={onAcknowledgeToggle}
-            disabled={busy}
-            aria-label="Toggle read status"
-          />
+        <span
+          class={`flex h-5 w-5 items-center justify-center rounded-full border transition-all ${
+            acknowledged
+              ? "border-[var(--accent)] bg-[var(--accent)] text-white"
+              : "border-[var(--border-soft)] bg-[var(--background)] text-transparent"
+          }`}
+          aria-hidden="true"
+        >
           <svg
-            class="absolute h-3.5 w-3.5 text-white opacity-0 transition-opacity peer-checked:opacity-100"
+            class={`h-3 w-3 transition-opacity ${acknowledged ? "opacity-100" : "opacity-0"}`}
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            stroke-width="4"
+            stroke-width="3.4"
             stroke-linecap="round"
             stroke-linejoin="round"
           >
             <polyline points="20 6 9 17 4 12" />
           </svg>
-        </div>
-      </label>
+        </span>
+        <span>{acknowledged ? "Read" : "Unread"}</span>
+      </button>
     {/if}
   </div>
 {/if}

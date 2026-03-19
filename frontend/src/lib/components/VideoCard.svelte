@@ -1,22 +1,16 @@
 <script lang="ts">
   import type { Video } from "$lib/types";
+  import { formatShortDate } from "$lib/utils/date";
 
-  export let video: Video;
-  export let active = false;
-  export let onSelect: () => void = () => {};
-  const dateFormatter = new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-
-  const formatDate = (value: string) => {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
-      return "Date Unavailable";
-    }
-    return dateFormatter.format(date);
-  };
+  let {
+    video,
+    active = false,
+    onSelect = () => {},
+  }: {
+    video: Video;
+    active?: boolean;
+    onSelect?: () => void;
+  } = $props();
 </script>
 
 <button
@@ -58,7 +52,7 @@
       <p
         class="text-[11px] font-medium text-[var(--soft-foreground)] opacity-50"
       >
-        {formatDate(video.published_at)}
+        {formatShortDate(video.published_at)}
       </p>
       <div class="text-[9px] font-bold tracking-[0.04em]">
         {#if video.transcript_status === "loading" || video.summary_status === "loading"}

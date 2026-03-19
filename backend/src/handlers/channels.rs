@@ -458,15 +458,15 @@ mod tests {
     use super::workspace_bootstrap;
     use crate::{
         db::{
-            insert_channel, insert_video, list_search_progress_materials,
-            upsert_transcript, Store,
+            Store, insert_channel, insert_video, list_search_progress_materials, upsert_transcript,
         },
         handlers::query::WorkspaceBootstrapParams,
         models::{Channel, ContentStatus, Transcript, TranscriptRenderMode, Video},
         search_progress::SearchProgress,
         services::{
-            CloudCooldown, SearchService, SummarizerService, SummaryEvaluatorService,
-            TranscriptCooldown, TranscriptService, YouTubeQuotaCooldown, YouTubeService,
+            ChatService, CloudCooldown, OllamaCore, SearchService, SummarizerService,
+            SummaryEvaluatorService, TranscriptCooldown, TranscriptService, YouTubeQuotaCooldown,
+            YouTubeService,
         },
         state::AppState,
     };
@@ -485,20 +485,24 @@ mod tests {
             )),
             youtube: Arc::new(YouTubeService::with_client(Client::new())),
             transcript: Arc::new(TranscriptService::with_path("/usr/bin/false")),
-            summarizer: Arc::new(
-                SummarizerService::with_config("://invalid-url", "qwen3:8b")
+            summarizer: Arc::new(SummarizerService::new(
+                OllamaCore::new("://invalid-url", "qwen3:8b").with_cloud_cooldown(cooldown.clone()),
+            )),
+            summary_evaluator: Arc::new(SummaryEvaluatorService::new(
+                OllamaCore::new("://invalid-url", "qwen3.5:397b-cloud")
                     .with_cloud_cooldown(cooldown.clone()),
-            ),
-            summary_evaluator: Arc::new(
-                SummaryEvaluatorService::with_config("://invalid-url", "qwen3.5:397b-cloud")
-                    .with_cloud_cooldown(cooldown.clone()),
-            ),
+            )),
             search: Arc::new(SearchService::with_config(
                 "://invalid-url",
                 None,
                 crate::services::search::SEARCH_EMBEDDING_DIMENSIONS,
                 false,
             )),
+            chat: Arc::new(ChatService::new(
+                OllamaCore::new("://invalid-url", "qwen3:8b").with_cloud_cooldown(cooldown.clone()),
+            )),
+            active_chats: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+            chat_store_lock: Arc::new(tokio::sync::Mutex::new(())),
             cloud_cooldown: cooldown,
             youtube_quota_cooldown: Arc::new(YouTubeQuotaCooldown::youtube_quota()),
             transcript_cooldown: Arc::new(TranscriptCooldown::transcript()),

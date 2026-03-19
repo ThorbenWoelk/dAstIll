@@ -1,4 +1,8 @@
-export type SectionNavigationSection = "workspace" | "queue" | "highlights";
+export type SectionNavigationSection =
+  | "workspace"
+  | "queue"
+  | "highlights"
+  | "chat";
 
 export type SectionNavigationItem = {
   section: SectionNavigationSection | "docs";
@@ -32,6 +36,13 @@ export function getSectionNavigationItems(
       label: "Highlights",
       href: "/highlights",
       active: currentSection === "highlights",
+      external: false,
+    },
+    {
+      section: "chat",
+      label: "Chat",
+      href: "/chat",
+      active: currentSection === "chat",
       external: false,
     },
     {

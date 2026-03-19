@@ -1,6 +1,6 @@
+use aws_credential_types::Credentials;
 use aws_credential_types::provider::future::ProvideCredentials as ProvideCredentialsFuture;
 use aws_credential_types::provider::{self, ProvideCredentials};
-use aws_credential_types::Credentials;
 
 #[derive(Debug)]
 pub struct GcpWifCredentialProvider {

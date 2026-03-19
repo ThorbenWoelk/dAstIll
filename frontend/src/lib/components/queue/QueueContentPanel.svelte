@@ -1,16 +1,8 @@
 <script lang="ts">
   import { formatSyncDate } from "$lib/workspace/content";
   import type { Channel, QueueTab } from "$lib/types";
-
-  const SWIPE_BACK_THRESHOLD_PX = 72;
-  const SWIPE_BACK_EDGE_PX = 32;
-
-  interface QueueStats {
-    total: number;
-    loading: number;
-    pending: number;
-    failed: number;
-  }
+  import type { QueueStats } from "$lib/workspace/types";
+  import { swipeBack } from "$lib/mobile-shell/swipe";
 
   let {
     mobileVisible = false,
@@ -39,12 +31,6 @@
   } = $props();
 
   let localSyncDateInput = $state("");
-  let touchGesture = $state<{
-    startX: number;
-    startY: number;
-    edgeStart: boolean;
-    interactive: boolean;
-  } | null>(null);
 
   const queueTabCopy = {
     transcripts: {
@@ -73,62 +59,6 @@
   $effect(() => {
     localSyncDateInput = earliestSyncDateInput;
   });
-
-  function isInteractiveSwipeTarget(target: EventTarget | null): boolean {
-    if (!(target instanceof HTMLElement)) {
-      return false;
-    }
-
-    return Boolean(
-      target.closest(
-        "button, a, input, textarea, select, label, [role='button'], [role='tab']",
-      ),
-    );
-  }
-
-  function handleSwipeStart(event: TouchEvent) {
-    if (!mobileVisible || event.touches.length !== 1) {
-      touchGesture = null;
-      return;
-    }
-
-    const touch = event.touches[0];
-    const edgeStart = touch.clientX <= SWIPE_BACK_EDGE_PX;
-    touchGesture = {
-      startX: touch.clientX,
-      startY: touch.clientY,
-      edgeStart,
-      interactive: edgeStart ? false : isInteractiveSwipeTarget(event.target),
-    };
-  }
-
-  function handleSwipeEnd(event: TouchEvent) {
-    if (
-      !touchGesture ||
-      !touchGesture.edgeStart ||
-      touchGesture.interactive ||
-      !mobileVisible ||
-      event.changedTouches.length !== 1
-    ) {
-      touchGesture = null;
-      return;
-    }
-
-    const touch = event.changedTouches[0];
-    const deltaX = touch.clientX - touchGesture.startX;
-    const deltaY = touch.clientY - touchGesture.startY;
-
-    touchGesture = null;
-
-    if (
-      deltaX < SWIPE_BACK_THRESHOLD_PX ||
-      Math.abs(deltaX) <= Math.abs(deltaY) * 1.25
-    ) {
-      return;
-    }
-
-    onBack();
-  }
 
   async function saveSyncDate() {
     await onSaveSyncDate(localSyncDateInput);
@@ -200,11 +130,7 @@
     class="custom-scrollbar mobile-bottom-stack-padding w-full min-h-0 flex-1 overflow-y-auto px-4 max-lg:pt-4 sm:px-6 lg:px-0 lg:pr-4 lg:pb-0"
     role="region"
     aria-label="Queue content panel"
-    ontouchstart={handleSwipeStart}
-    ontouchend={handleSwipeEnd}
-    ontouchcancel={() => {
-      touchGesture = null;
-    }}
+    use:swipeBack={{ enabled: mobileVisible, onBack }}
   >
     {#if !selectedChannelId}
       <div

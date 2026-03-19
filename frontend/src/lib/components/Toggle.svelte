@@ -1,12 +1,21 @@
 <script lang="ts">
   import HighlighterIcon from "$lib/components/icons/HighlighterIcon.svelte";
 
-  export let options: string[] = [];
-  export let value = "";
-  export let onChange: (next: string) => void = () => {};
-  export let labels: Record<string, string> = {};
-  export let ariaLabel = "Options";
-  export let showIcons = true;
+  let {
+    options = [],
+    value = "",
+    onChange = () => {},
+    labels = {},
+    ariaLabel = "Options",
+    showIcons = true,
+  }: {
+    options?: string[];
+    value?: string;
+    onChange?: (next: string) => void;
+    labels?: Record<string, string>;
+    ariaLabel?: string;
+    showIcons?: boolean;
+  } = $props();
 
   const resolveLabel = (option: string) => labels[option] ?? option;
 </script>

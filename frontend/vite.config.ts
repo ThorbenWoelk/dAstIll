@@ -4,6 +4,10 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [tailwindcss(), sveltekit()],
+  devtools: true,
+  resolve: {
+    tsconfigPaths: true,
+  },
   server: {
     port: 3000,
   },

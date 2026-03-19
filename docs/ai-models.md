@@ -8,6 +8,7 @@ dAstIll uses different models for different jobs.
 | ------------------------- | ------------------------------------------------------------------------------------ |
 | `OLLAMA_MODEL`            | Primary summarizer and transcript-cleaning model                                     |
 | `OLLAMA_FALLBACK_MODEL`   | Optional local fallback when the summarizer primary is cloud-backed and rate-limited |
+| `OLLAMA_CHAT_MODEL`       | Chat model for RAG conversations (falls back to `OLLAMA_MODEL` if not set)           |
 | `SUMMARY_EVALUATOR_MODEL` | Summary quality evaluator                                                            |
 | `OLLAMA_EMBEDDING_MODEL`  | Search embedding model                                                               |
 
@@ -46,6 +47,30 @@ It owns:
 - optional local-model semaphore
 
 If semantic search is disabled, the embedding model can still be configured but will not be used.
+
+### Default Embedding Model
+
+The default embedding model is **embeddinggemma:latest** (Gemma's embedding model via Ollama). This model:
+
+- is optimized for semantic similarity tasks
+- produces dense vector representations suitable for ANN retrieval
+- runs locally through the configured Ollama endpoint
+
+Other embedding models can be configured via `OLLAMA_EMBEDDING_MODEL` as long as they expose the `/api/embed` endpoint and produce float32 vectors.
+
+## Chat Behavior
+
+The chat service powers RAG (Retrieval-Augmented Generation) conversations with video content:
+
+- **Model selection**: Uses `OLLAMA_CHAT_MODEL` if configured, otherwise falls back to `OLLAMA_MODEL`
+- **Context retrieval**: Queries the semantic search index to find relevant transcript/summary chunks
+- **Streaming responses**: Returns AI responses via server-sent events for real-time display
+- **Source attribution**: Each response includes the source chunks used for grounding
+- **Observability**: When `LOGFIRE_TOKEN` is configured, backend `tracing` events for Ollama calls and chat pipeline milestones are streamed to Logfire
+
+Chat is optional and does not block other features. If the chat model is unavailable, chat requests fail gracefully while summarization and search continue.
+
+Current Logfire coverage is operational rather than exhaustive: it includes prompt lifecycle metadata, retrieval timings, fallback/rate-limit events, and chat stage transitions, but not full raw prompt / response payloads by default.
 
 ## Availability and Cooldowns
 

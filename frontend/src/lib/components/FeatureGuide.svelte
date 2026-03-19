@@ -139,9 +139,12 @@
     await tick();
 
     const primary = document.querySelector(s.selector);
-    const el = primary && primary.getClientRects().length > 0
-      ? primary
-      : (s.fallbackSelector ? document.querySelector(s.fallbackSelector) : null);
+    const el =
+      primary && primary.getClientRects().length > 0
+        ? primary
+        : s.fallbackSelector
+          ? document.querySelector(s.fallbackSelector)
+          : null;
     if (!el) {
       // No target found: center card, no spotlight
       spotlightRect = null;

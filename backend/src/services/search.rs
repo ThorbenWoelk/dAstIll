@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-use std::collections::HashMap;
 use std::time::Duration;
 
 use reqwest::Client;
@@ -8,12 +6,15 @@ use sha2::{Digest, Sha256};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use crate::services::http::build_http_client;
+use crate::services::text::limit_text as limit_text_base;
 
 pub const SEARCH_EMBEDDING_DIMENSIONS: usize = 512;
 pub const SEARCH_TRANSCRIPT_TARGET_WORDS: usize = 300;
 pub const SEARCH_TRANSCRIPT_OVERLAP_WORDS: usize = 40;
 pub const SEARCH_SUMMARY_TARGET_WORDS: usize = 300;
-pub const SEARCH_RRF_K: f32 = 60.0;
+// Re-export so callers don't need to know about the fusion module.
+pub use crate::services::fusion::SEARCH_RRF_K;
+pub use crate::services::fusion::fuse_ranked_matches;
 const SEARCH_EMBED_BATCH_SIZE: usize = 8;
 const SEARCH_EMBED_REQUEST_TIMEOUT: Duration = Duration::from_secs(90);
 const MAX_ERROR_DETAIL_CHARS: usize = 240;
@@ -417,29 +418,6 @@ pub fn chunk_transcript_content(
         .collect()
 }
 
-pub fn fuse_ranked_matches(
-    vector_ranks: &[(&str, usize)],
-    fts_ranks: &[(&str, usize)],
-    rrf_k: f32,
-) -> Vec<(String, f32)> {
-    let mut fused = HashMap::<String, f32>::new();
-
-    for (chunk_id, rank) in vector_ranks.iter().chain(fts_ranks.iter()) {
-        let score = 1.0 / (rrf_k + (*rank as f32));
-        *fused.entry((*chunk_id).to_string()).or_default() += score;
-    }
-
-    let mut entries = fused.into_iter().collect::<Vec<_>>();
-    entries.sort_by(|left, right| {
-        right
-            .1
-            .partial_cmp(&left.1)
-            .unwrap_or(Ordering::Equal)
-            .then_with(|| left.0.cmp(&right.0))
-    });
-    entries
-}
-
 pub fn vector_to_json(embedding: &[f32]) -> String {
     let mut json = String::from("[");
     for (index, value) in embedding.iter().enumerate() {
@@ -688,25 +666,22 @@ fn count_words(text: &str) -> usize {
 }
 
 fn limit_snippet(text: &str) -> String {
-    limit_text(text, MAX_SNIPPET_CHARS)
+    let truncated = limit_text_base(text, MAX_SNIPPET_CHARS);
+    if text.chars().count() > MAX_SNIPPET_CHARS {
+        format!("{truncated}...")
+    } else {
+        truncated
+    }
 }
 
 fn limit_error_detail(text: &str) -> String {
     let collapsed = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    limit_text(&collapsed, MAX_ERROR_DETAIL_CHARS)
-}
-
-fn limit_text(text: &str, max_chars: usize) -> String {
-    let mut output = String::new();
-    for character in text.chars().take(max_chars) {
-        output.push(character);
+    let truncated = limit_text_base(&collapsed, MAX_ERROR_DETAIL_CHARS);
+    if collapsed.chars().count() > MAX_ERROR_DETAIL_CHARS {
+        format!("{truncated}...")
+    } else {
+        truncated
     }
-
-    if text.chars().count() > max_chars {
-        output.push_str("...");
-    }
-
-    output
 }
 
 #[cfg(test)]

@@ -8,14 +8,14 @@ use axum::{
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 
-use dastill::config::{OllamaRuntimeConfig, SearchRuntimeConfig};
+use dastill::config::{ChatRuntimeConfig, OllamaRuntimeConfig, SearchRuntimeConfig};
 use dastill::db::init_store;
-use dastill::handlers::{channels, content, highlights, search, videos};
+use dastill::handlers::{channels, chat, content, highlights, search, videos};
 use dastill::read_cache::ReadCache;
 use dastill::search_progress::SearchProgress;
 use dastill::services::{
-    Cooldown, SearchService, SummarizerService, SummaryEvaluatorService, TranscriptService,
-    YouTubeService, build_http_client,
+    ChatService, Cooldown, OllamaCore, SearchService, SummarizerService, SummaryEvaluatorService,
+    TranscriptService, YouTubeService, build_http_client,
 };
 use dastill::state::AppState;
 use dastill::workers::{
@@ -25,13 +25,6 @@ use dastill::workers::{
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "dastill=info,tower_http=info".into()),
-        )
-        .init();
-
     // Load .env if present (simple key=value parsing, no external crate)
     if let Ok(contents) = std::fs::read_to_string(".env") {
         for line in contents.lines() {
@@ -51,7 +44,20 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    let _logfire_guard = if std::env::var("LOGFIRE_TOKEN").is_ok() {
+        Some(logfire::configure().finish()?.shutdown_guard())
+    } else {
+        tracing_subscriber::fmt()
+            .with_env_filter(
+                tracing_subscriber::EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| "dastill=info,tower_http=info".into()),
+            )
+            .init();
+        None
+    };
+
     let search_runtime = SearchRuntimeConfig::from_env();
+    let chat_runtime = ChatRuntimeConfig::from_env();
     let summarize_path = std::env::var("SUMMARIZE_PATH")
         .unwrap_or_else(|_| "/opt/homebrew/bin/summarize".to_string());
     let ollama = OllamaRuntimeConfig::from_env(search_runtime.semantic_enabled)
@@ -66,15 +72,19 @@ async fn main() -> anyhow::Result<()> {
         .map_err(|_| anyhow::anyhow!("S3_DATA_BUCKET must be set"))?;
     let vector_bucket = std::env::var("S3_VECTOR_BUCKET")
         .map_err(|_| anyhow::anyhow!("S3_VECTOR_BUCKET must be set"))?;
-    let vector_index = std::env::var("S3_VECTOR_INDEX").unwrap_or_else(|_| "search-chunks".to_string());
+    let vector_index =
+        std::env::var("S3_VECTOR_INDEX").unwrap_or_else(|_| "search-chunks".to_string());
     let aws_region = std::env::var("AWS_REGION").unwrap_or_else(|_| "eu-central-1".to_string());
 
-    let aws_config = if let (Ok(role_arn), Ok(audience)) =
-        (std::env::var("AWS_ROLE_ARN"), std::env::var("AWS_WIF_AUDIENCE"))
-    {
+    let aws_config = if let (Ok(role_arn), Ok(audience)) = (
+        std::env::var("AWS_ROLE_ARN"),
+        std::env::var("AWS_WIF_AUDIENCE"),
+    ) {
         tracing::info!(role_arn = %role_arn, "using GCP Workload Identity Federation for AWS auth");
         let wif_provider = dastill::aws_auth::GcpWifCredentialProvider::new(
-            role_arn, audience, aws_region.clone(),
+            role_arn,
+            audience,
+            aws_region.clone(),
         );
         aws_config::defaults(aws_config::BehaviorVersion::latest())
             .region(aws_config::Region::new(aws_region))
@@ -93,9 +103,15 @@ async fn main() -> anyhow::Result<()> {
     let s3_client = aws_sdk_s3::Client::new(&aws_config);
     let s3v_client = aws_sdk_s3vectors::Client::new(&aws_config);
 
-    let pool = init_store(s3_client, s3v_client, data_bucket, vector_bucket, vector_index)
-        .await
-        .map_err(|e| anyhow::anyhow!(e))?;
+    let pool = init_store(
+        s3_client,
+        s3v_client,
+        data_bucket,
+        vector_bucket,
+        vector_index,
+    )
+    .await
+    .map_err(|e| anyhow::anyhow!(e))?;
 
     let client = build_http_client();
     let cloud_cooldown = Arc::new(Cooldown::cloud());
@@ -118,19 +134,32 @@ async fn main() -> anyhow::Result<()> {
     let ollama_semaphore = Arc::new(tokio::sync::Semaphore::new(1));
     let search_ollama_semaphore = Arc::new(tokio::sync::Semaphore::new(1));
 
-    let summarizer = Arc::new(
-        SummarizerService::with_client(client.clone(), &ollama.url, &ollama.model)
-            .with_fallback_model(ollama.fallback_model)
+    let summarizer_core = OllamaCore::with_client(client.clone(), &ollama.url, &ollama.model)
+        .with_fallback_model(ollama.fallback_model.clone())
+        .with_api_key(ollama.api_key.clone())
+        .with_cloud_cooldown(cloud_cooldown.clone())
+        .with_ollama_semaphore(ollama_semaphore.clone());
+    let summarizer = Arc::new(SummarizerService::new(summarizer_core));
+
+    let chat_model = ollama
+        .chat_model
+        .clone()
+        .unwrap_or_else(|| ollama.model.clone());
+    let chat_core = OllamaCore::with_client(build_http_client(), &ollama.url, &chat_model)
+        .with_fallback_model(ollama.fallback_model.clone())
+        .with_api_key(ollama.api_key.clone())
+        .with_cloud_cooldown(cloud_cooldown.clone())
+        .with_ollama_semaphore(ollama_semaphore.clone());
+    let chat = Arc::new(
+        ChatService::new(chat_core).with_multi_pass_enabled(chat_runtime.multi_pass_enabled),
+    );
+
+    let evaluator_core =
+        OllamaCore::with_client(client, &ollama.url, &ollama.summary_evaluator_model)
             .with_api_key(ollama.api_key.clone())
             .with_cloud_cooldown(cloud_cooldown.clone())
-            .with_ollama_semaphore(ollama_semaphore.clone()),
-    );
-    let summary_evaluator = Arc::new(
-        SummaryEvaluatorService::with_client(client, &ollama.url, &ollama.summary_evaluator_model)
-            .with_api_key(ollama.api_key.clone())
-            .with_cloud_cooldown(cloud_cooldown.clone())
-            .with_ollama_semaphore(ollama_semaphore.clone()),
-    );
+            .with_ollama_semaphore(ollama_semaphore.clone());
+    let summary_evaluator = Arc::new(SummaryEvaluatorService::new(evaluator_core));
     let search = Arc::new(
         SearchService::with_config(
             &ollama.url,
@@ -158,6 +187,9 @@ async fn main() -> anyhow::Result<()> {
         summarizer,
         summary_evaluator,
         search,
+        chat,
+        active_chats: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+        chat_store_lock: Arc::new(tokio::sync::Mutex::new(())),
         cloud_cooldown,
         youtube_quota_cooldown,
         transcript_cooldown,
@@ -220,6 +252,28 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .route("/api/health", get(|| async { "ok" }))
         .route("/api/health/ai", get(content::health_ai))
+        .route(
+            "/api/chat/conversations",
+            get(chat::list_conversations).post(chat::create_conversation),
+        )
+        .route(
+            "/api/chat/conversations/{id}",
+            get(chat::get_conversation)
+                .put(chat::update_conversation)
+                .delete(chat::delete_conversation),
+        )
+        .route(
+            "/api/chat/conversations/{id}/messages",
+            post(chat::send_message),
+        )
+        .route(
+            "/api/chat/conversations/{id}/stream",
+            get(chat::reconnect_stream),
+        )
+        .route(
+            "/api/chat/conversations/{id}/cancel",
+            post(chat::cancel_message),
+        )
         .route("/api/search", get(search::search))
         .route("/api/search/status", get(search::search_status))
         .route(

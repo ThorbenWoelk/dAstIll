@@ -6,7 +6,6 @@
     deleteChannel,
     getChannelSnapshot,
     getChannelSyncDepth,
-    isAiAvailable,
     listChannelsWhenAvailable,
     listVideos,
     refreshChannel,
@@ -18,6 +17,7 @@
     type TourStep,
   } from "$lib/components/FeatureGuide.svelte";
   import ConfirmationModal from "$lib/components/ConfirmationModal.svelte";
+  import ErrorToast from "$lib/components/ErrorToast.svelte";
   import QueueContentPanel from "$lib/components/queue/QueueContentPanel.svelte";
   import QueueVideoSidebar from "$lib/components/queue/QueueVideoSidebar.svelte";
   import WorkspaceChannelSidebar from "$lib/components/workspace/WorkspaceChannelSidebar.svelte";
@@ -48,7 +48,22 @@
     parseQueueViewUrlState,
   } from "$lib/view-url";
   import { channelOrderFromList } from "$lib/workspace/channels";
-  import type { ChannelSortMode } from "$lib/workspace/types";
+  import {
+    buildOptimisticChannel,
+    removeChannelFromCollection,
+    removeChannelId,
+    replaceOptimisticChannel,
+    replaceOptimisticChannelId,
+  } from "$lib/workspace/channel-actions";
+  import type {
+    ChannelSortMode,
+    DistillationStatusCopy,
+  } from "$lib/workspace/types";
+  import { createAiStatusPoller, refreshAiStatus } from "$lib/utils/ai-poller";
+  import {
+    resolveGuideStepFromUrl,
+    writeGuideStepToUrl,
+  } from "$lib/utils/guide";
 
   const CHANNEL_REFRESH_TTL_MS = 5 * 60 * 1000;
   const MAX_RETRIES = 3;
@@ -56,13 +71,6 @@
   const channelLastRefreshedAt = new Map<string, number>();
 
   type QueueMobileTab = "channels" | "videos" | "content";
-  type DistillationStatusKind = "processing" | "queued" | "failed";
-
-  interface DistillationStatusCopy {
-    kind: DistillationStatusKind;
-    label: string;
-    detail: string;
-  }
 
   let channels = $state<Channel[]>([]);
   let channelOrder = $state<string[]>([]);
@@ -185,18 +193,13 @@
     })),
   );
 
-  $effect(() => {
-    const timer = setInterval(() => {
-      void isAiAvailable()
-        .then((status) => {
-          aiStatus = status.status;
-        })
-        .catch(() => {
-          aiStatus = "offline";
-        });
-    }, 30000);
-    return () => clearInterval(timer);
-  });
+  $effect(() =>
+    createAiStatusPoller({
+      onStatus: (status) => {
+        aiStatus = status.status;
+      },
+    }),
+  );
 
   $effect(() => {
     if (!selectedChannel) {
@@ -257,44 +260,30 @@
       }
     })();
 
-    const guideParam = new URL(window.location.href).searchParams.get("guide");
-    if (guideParam !== null) {
-      const parsed = parseInt(guideParam, 10);
-      if (!Number.isNaN(parsed) && parsed >= 0 && parsed < tourSteps.length) {
-        guideStep = parsed;
-        guideOpen = true;
-      }
+    const restoredGuideStep = resolveGuideStepFromUrl(
+      new URL(window.location.href),
+      tourSteps.length,
+    );
+    if (restoredGuideStep !== null) {
+      guideStep = restoredGuideStep;
+      guideOpen = true;
     }
   });
 
   function openGuide() {
     guideStep = 0;
     guideOpen = true;
-    syncGuideToUrl(0);
+    writeGuideStepToUrl(0);
   }
 
   function closeGuide() {
     guideOpen = false;
-    removeGuideFromUrl();
+    writeGuideStepToUrl(null);
   }
 
   function setGuideStep(step: number) {
     guideStep = step;
-    syncGuideToUrl(step);
-  }
-
-  function syncGuideToUrl(step: number) {
-    if (typeof window === "undefined") return;
-    const url = new URL(window.location.href);
-    url.searchParams.set("guide", String(step));
-    window.history.replaceState(window.history.state, "", url);
-  }
-
-  function removeGuideFromUrl() {
-    if (typeof window === "undefined") return;
-    const url = new URL(window.location.href);
-    url.searchParams.delete("guide");
-    window.history.replaceState(window.history.state, "", url);
+    writeGuideStepToUrl(step);
   }
 
   function getDistillationStatusCopy(video: Video): DistillationStatusCopy {
@@ -490,13 +479,11 @@
         void refreshAndLoadVideos(initialChannelId);
       }
 
-      void isAiAvailable()
-        .then((status) => {
-          aiStatus = status.status;
-        })
-        .catch(() => {
-          aiStatus = "offline";
-        });
+      void refreshAiStatus((status) => {
+        aiStatus = status.status;
+      }).catch(() => {
+        aiStatus = "offline";
+      });
     } catch (error) {
       errorMessage = (error as Error).message;
     } finally {
@@ -519,20 +506,10 @@
   async function handleAddChannel(input: string) {
     if (!input.trim()) return false;
 
-    const trimmedInput = input.trim();
+    const { optimisticChannel, tempId, trimmedInput } =
+      buildOptimisticChannel(input);
     addingChannel = true;
     errorMessage = null;
-
-    const tempId = `temp-${Date.now()}`;
-    const optimisticChannel: Channel = {
-      id: tempId,
-      name:
-        trimmedInput.includes("youtube.com") ||
-        trimmedInput.includes("youtu.be")
-          ? "Fetching Channel..."
-          : trimmedInput,
-      added_at: new Date().toISOString(),
-    };
 
     const previousChannels = [...channels];
     const previousSelectedId = selectedChannelId;
@@ -544,11 +521,11 @@
 
     try {
       const channel = await addChannel(trimmedInput);
-      channels = channels.map((current) =>
-        current.id === tempId ? channel : current,
-      );
-      channelOrder = channelOrder.map((id) =>
-        id === tempId ? channel.id : id,
+      channels = replaceOptimisticChannel(channels, tempId, channel);
+      channelOrder = replaceOptimisticChannelId(
+        channelOrder,
+        tempId,
+        channel.id,
       );
       selectedChannelId = channel.id;
       await selectChannel(channel.id, true);
@@ -577,8 +554,8 @@
 
     try {
       await deleteChannel(channelId);
-      channels = channels.filter((channel) => channel.id !== channelId);
-      channelOrder = channelOrder.filter((id) => id !== channelId);
+      channels = removeChannelFromCollection(channels, channelId);
+      channelOrder = removeChannelId(channelOrder, channelId);
       if (selectedChannelId === channelId) {
         const nextChannel = channels[0] ?? null;
         if (nextChannel) {
@@ -825,40 +802,10 @@
   </main>
 
   {#if errorMessage}
-    <div
-      class="mobile-bottom-stack-offset fixed bottom-6 left-1/2 z-[80] w-[min(90vw,420px)] -translate-x-1/2 rounded-[var(--radius-md)] border border-[var(--danger-border)] bg-[var(--surface)] px-4 py-3 shadow-lg fade-in"
-      role="status"
-      aria-live="polite"
-    >
-      <div class="flex items-start gap-3">
-        <p
-          class="flex-1 text-[13px] font-medium text-[var(--danger-foreground)]"
-        >
-          {errorMessage}
-        </p>
-        <button
-          onclick={() => {
-            errorMessage = null;
-          }}
-          class="shrink-0 text-[var(--soft-foreground)] opacity-40 hover:opacity-80"
-          aria-label="Dismiss"
-        >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
-      </div>
-    </div>
+    <ErrorToast
+      message={errorMessage}
+      onDismiss={() => (errorMessage = null)}
+    />
   {/if}
 
   <ConfirmationModal

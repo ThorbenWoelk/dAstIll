@@ -1,8 +1,7 @@
 use crate::models::{Channel, ContentStatus, Video};
 
 use super::{
-    ChannelSnapshotData, QueueFilter, Store, StoreError, VideoInsertOutcome,
-    WorkspaceBootstrapData,
+    ChannelSnapshotData, QueueFilter, Store, StoreError, VideoInsertOutcome, WorkspaceBootstrapData,
 };
 
 fn video_key(id: &str) -> String {
@@ -42,13 +41,13 @@ pub async fn insert_video(store: &Store, video: &Video) -> Result<VideoInsertOut
     }
 }
 
-pub async fn bulk_insert_videos(
-    store: &Store,
-    videos: Vec<Video>,
-) -> Result<usize, StoreError> {
+pub async fn bulk_insert_videos(store: &Store, videos: Vec<Video>) -> Result<usize, StoreError> {
     let mut inserted = 0;
     for video in &videos {
-        if matches!(insert_video(store, video).await?, VideoInsertOutcome::Inserted) {
+        if matches!(
+            insert_video(store, video).await?,
+            VideoInsertOutcome::Inserted
+        ) {
             inserted += 1;
         }
     }
@@ -92,9 +91,7 @@ pub async fn list_videos_by_channel(
                 v.transcript_status != ContentStatus::Ready
                     || v.summary_status != ContentStatus::Ready
             }
-            Some(QueueFilter::TranscriptsOnly) => {
-                v.transcript_status != ContentStatus::Ready
-            }
+            Some(QueueFilter::TranscriptsOnly) => v.transcript_status != ContentStatus::Ready,
             Some(QueueFilter::SummariesOnly) => {
                 v.transcript_status == ContentStatus::Ready
                     && v.summary_status != ContentStatus::Ready
@@ -131,7 +128,10 @@ pub async fn list_video_ids_by_channel(
     channel_id: &str,
 ) -> Result<Vec<String>, StoreError> {
     let all = load_all_videos(store).await?;
-    let mut vids: Vec<_> = all.into_iter().filter(|v| v.channel_id == channel_id).collect();
+    let mut vids: Vec<_> = all
+        .into_iter()
+        .filter(|v| v.channel_id == channel_id)
+        .collect();
     vids.sort_by(|a, b| b.published_at.cmp(&a.published_at));
     Ok(vids.into_iter().map(|v| v.id).collect())
 }
@@ -177,17 +177,24 @@ pub async fn list_videos_for_queue_processing(
     Ok(filtered)
 }
 
+async fn update_video_field<F>(store: &Store, video_id: &str, mutate: F) -> Result<(), StoreError>
+where
+    F: FnOnce(&mut Video),
+{
+    let key = video_key(video_id);
+    if let Some(mut video) = store.get_json::<Video>(&key).await? {
+        mutate(&mut video);
+        store.put_json(&key, &video).await?;
+    }
+    Ok(())
+}
+
 pub async fn update_video_transcript_status(
     store: &Store,
     video_id: &str,
     status: ContentStatus,
 ) -> Result<(), StoreError> {
-    let key = video_key(video_id);
-    if let Some(mut video) = store.get_json::<Video>(&key).await? {
-        video.transcript_status = status;
-        store.put_json(&key, &video).await?;
-    }
-    Ok(())
+    update_video_field(store, video_id, |v| v.transcript_status = status).await
 }
 
 pub async fn update_video_summary_status(
@@ -195,12 +202,7 @@ pub async fn update_video_summary_status(
     video_id: &str,
     status: ContentStatus,
 ) -> Result<(), StoreError> {
-    let key = video_key(video_id);
-    if let Some(mut video) = store.get_json::<Video>(&key).await? {
-        video.summary_status = status;
-        store.put_json(&key, &video).await?;
-    }
-    Ok(())
+    update_video_field(store, video_id, |v| v.summary_status = status).await
 }
 
 pub async fn update_video_acknowledged(
@@ -208,33 +210,18 @@ pub async fn update_video_acknowledged(
     video_id: &str,
     acknowledged: bool,
 ) -> Result<(), StoreError> {
-    let key = video_key(video_id);
-    if let Some(mut video) = store.get_json::<Video>(&key).await? {
-        video.acknowledged = acknowledged;
-        store.put_json(&key, &video).await?;
-    }
-    Ok(())
+    update_video_field(store, video_id, |v| v.acknowledged = acknowledged).await
 }
 
-pub async fn increment_video_retry_count(
-    store: &Store,
-    video_id: &str,
-) -> Result<(), StoreError> {
-    let key = video_key(video_id);
-    if let Some(mut video) = store.get_json::<Video>(&key).await? {
-        video.retry_count = video.retry_count.saturating_add(1);
-        store.put_json(&key, &video).await?;
-    }
-    Ok(())
+pub async fn increment_video_retry_count(store: &Store, video_id: &str) -> Result<(), StoreError> {
+    update_video_field(store, video_id, |v| {
+        v.retry_count = v.retry_count.saturating_add(1)
+    })
+    .await
 }
 
 pub async fn reset_video_retry_count(store: &Store, video_id: &str) -> Result<(), StoreError> {
-    let key = video_key(video_id);
-    if let Some(mut video) = store.get_json::<Video>(&key).await? {
-        video.retry_count = 0;
-        store.put_json(&key, &video).await?;
-    }
-    Ok(())
+    update_video_field(store, video_id, |v| v.retry_count = 0).await
 }
 
 async fn build_channel_snapshot_data(
@@ -248,9 +235,16 @@ async fn build_channel_snapshot_data(
 ) -> Result<ChannelSnapshotData, StoreError> {
     let derived_earliest_ready_date =
         get_oldest_ready_video_published_at(store, &channel.id).await?;
-    let videos =
-        list_videos_by_channel(store, &channel.id, limit, offset, is_short, acknowledged, queue_filter)
-            .await?;
+    let videos = list_videos_by_channel(
+        store,
+        &channel.id,
+        limit,
+        offset,
+        is_short,
+        acknowledged,
+        queue_filter,
+    )
+    .await?;
     Ok(ChannelSnapshotData {
         channel,
         derived_earliest_ready_date,
@@ -270,8 +264,16 @@ pub async fn load_channel_snapshot_data(
     let channel = super::channels::get_channel(store, channel_id).await?;
     match channel {
         Some(channel) => Ok(Some(
-            build_channel_snapshot_data(store, channel, limit, offset, is_short, acknowledged, queue_filter)
-                .await?,
+            build_channel_snapshot_data(
+                store,
+                channel,
+                limit,
+                offset,
+                is_short,
+                acknowledged,
+                queue_filter,
+            )
+            .await?,
         )),
         None => Ok(None),
     }
@@ -294,8 +296,16 @@ pub async fn load_workspace_bootstrap_data(
     let selected_channel_id = selected_channel.as_ref().map(|c| c.id.clone());
     let snapshot = match selected_channel {
         Some(channel) => Some(
-            build_channel_snapshot_data(store, channel, limit, offset, is_short, acknowledged, queue_filter)
-                .await?,
+            build_channel_snapshot_data(
+                store,
+                channel,
+                limit,
+                offset,
+                is_short,
+                acknowledged,
+                queue_filter,
+            )
+            .await?,
         ),
         None => None,
     };

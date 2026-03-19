@@ -1,35 +1,21 @@
 <script lang="ts">
   import { page } from "$app/stores";
   import { DOCS_URL } from "$lib/app-config";
-  import type { SectionNavigationSection } from "$lib/section-navigation";
-
-  type NavItem = {
-    section: SectionNavigationSection | "docs";
-    label: string;
-    href: string;
-    external?: boolean;
-  };
-
-  const items: NavItem[] = [
-    { section: "workspace", label: "Workspace", href: "/" },
-    { section: "queue", label: "Queue", href: "/download-queue" },
-    { section: "highlights", label: "Highlights", href: "/highlights" },
-    { section: "docs", label: "Docs", href: DOCS_URL, external: true },
-  ];
+  import ExternalLinkIcon from "$lib/components/icons/ExternalLinkIcon.svelte";
+  import {
+    getSectionNavigationItems,
+    type SectionNavigationSection,
+  } from "$lib/section-navigation";
 
   function resolveCurrentSection(pathname: string): SectionNavigationSection {
-    if (pathname.startsWith("/download-queue")) {
-      return "queue";
-    }
-
-    if (pathname.startsWith("/highlights")) {
-      return "highlights";
-    }
-
+    if (pathname.startsWith("/download-queue")) return "queue";
+    if (pathname.startsWith("/highlights")) return "highlights";
+    if (pathname.startsWith("/chat")) return "chat";
     return "workspace";
   }
 
   let currentSection = $derived(resolveCurrentSection($page.url.pathname));
+  let items = $derived(getSectionNavigationItems(currentSection, DOCS_URL));
 </script>
 
 <nav class="mobile-tab-bar lg:hidden" aria-label="App navigation">
@@ -39,8 +25,8 @@
       target={item.external ? "_blank" : undefined}
       rel={item.external ? "noopener noreferrer" : undefined}
       id={item.section === "docs" ? "mobile-nav-docs-link" : undefined}
-      class={`mobile-tab-item ${!item.external && currentSection === item.section ? "mobile-tab-item--active" : ""}`}
-      aria-current={!item.external && currentSection === item.section ? "page" : undefined}
+      class={`mobile-tab-item ${!item.external && item.active ? "mobile-tab-item--active" : ""}`}
+      aria-current={!item.external && item.active ? "page" : undefined}
     >
       {#if item.section === "workspace"}
         <svg
@@ -86,6 +72,22 @@
           <path d="M9 16h4" />
           <path d="M9 4v4h6V4" />
         </svg>
+      {:else if item.section === "chat"}
+        <svg
+          class="h-5 w-5"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.7"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path
+            d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
+          />
+          <path d="M8 9h8" />
+          <path d="M8 13h5" />
+        </svg>
       {:else if item.section === "docs"}
         <svg
           class="h-5 w-5"
@@ -100,7 +102,12 @@
           <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
         </svg>
       {/if}
-      <span>{item.label}</span>
+      <span class="inline-flex items-center gap-1">
+        {item.label}
+        {#if item.external}
+          <ExternalLinkIcon size={11} className="opacity-70" />
+        {/if}
+      </span>
     </a>
   {/each}
 </nav>

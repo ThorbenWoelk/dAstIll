@@ -2,11 +2,12 @@
 
 ## Product Surfaces
 
-The current product UI is organized into three route-level experiences:
+The current product UI is organized into four route-level experiences:
 
 - main workspace (`/`)
 - download queue (`/download-queue`)
 - highlights (`/highlights`)
+- chat (`/chat`)
 
 ## Main Workspace
 
@@ -33,6 +34,17 @@ The queue surfaces operational backlog and incomplete content states.
 ### Queue verification state
 
 ![Queue check](./images/desktop-queue-check.png)
+
+## Chat
+
+The chat route enables RAG conversations with your video content:
+
+- create and manage multiple conversations
+- ask questions about transcripts and summaries
+- receive AI responses grounded in retrieved source chunks
+- view source attribution for each response
+
+Chat uses the semantic search index to find relevant content before generating responses.
 
 ## Mobile Layouts
 

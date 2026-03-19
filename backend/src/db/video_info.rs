@@ -22,11 +22,8 @@ pub async fn list_video_ids_missing_info(
     limit: usize,
 ) -> Result<Vec<String>, StoreError> {
     let video_keys = store.list_keys("videos/").await?;
-    let info_keys: std::collections::HashSet<String> = store
-        .list_keys("video-info/")
-        .await?
-        .into_iter()
-        .collect();
+    let info_keys: std::collections::HashSet<String> =
+        store.list_keys("video-info/").await?.into_iter().collect();
 
     let mut results = Vec::new();
     for key in video_keys {

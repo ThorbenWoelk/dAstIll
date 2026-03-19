@@ -19,10 +19,16 @@ import type {
   VideoTypeFilter,
   WorkspaceBootstrap,
 } from "./types";
+import {
+  API_BASE,
+  BackendUnavailableError,
+  createAbortError,
+  isAbortError,
+  request,
+} from "./api-client";
 
-const API_BASE =
-  (import.meta as { env?: { VITE_API_BASE?: string } }).env?.VITE_API_BASE ??
-  "http://localhost:3001";
+export { API_BASE, BackendUnavailableError };
+
 const FORMAT_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 const BACKEND_RETRY_DELAY_MS = 1500;
 const GET_CACHE_TTL_MS = 30 * 1000;
@@ -31,26 +37,6 @@ const getResponseCache = new Map<
   { expiresAt: number; value: unknown }
 >();
 const inFlightGetRequests = new Map<string, Promise<unknown>>();
-
-export class BackendUnavailableError extends Error {
-  constructor(message = "Backend is unreachable.") {
-    super(message);
-    this.name = "BackendUnavailableError";
-  }
-}
-
-function isAbortError(error: unknown): boolean {
-  return error instanceof Error && error.name === "AbortError";
-}
-
-function createAbortError(): Error {
-  if (typeof DOMException !== "undefined") {
-    return new DOMException("The operation was aborted.", "AbortError");
-  }
-  const error = new Error("The operation was aborted.");
-  error.name = "AbortError";
-  return error;
-}
 
 function sleep(ms: number, signal?: AbortSignal) {
   return new Promise<void>((resolve, reject) => {
@@ -74,34 +60,6 @@ function sleep(ms: number, signal?: AbortSignal) {
     }
     signal.addEventListener("abort", onAbort, { once: true });
   });
-}
-
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetch(`${API_BASE}${path}`, {
-      headers: {
-        "Content-Type": "application/json",
-      },
-      ...init,
-    });
-  } catch (error) {
-    if (isAbortError(error)) {
-      throw error;
-    }
-    throw new BackendUnavailableError();
-  }
-
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || `Request failed (${response.status})`);
-  }
-
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  return (await response.json()) as T;
 }
 
 function clearGetRequestCache() {

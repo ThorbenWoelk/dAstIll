@@ -2,7 +2,16 @@
 
 ## What dAstIll Is
 
-dAstIll is a YouTube channel intelligence application. It tracks channels, ingests videos, extracts transcripts, generates summaries, evaluates summary quality, and indexes content for full-text or hybrid semantic search.
+dAstIll is a YouTube channel monitoring tool that helps you stop doom-scrolling and start deep-diving. It:
+
+- **Monitors your channels**: Subscribe to YouTube channels, backfill their video history, and auto-refresh for new uploads
+- **Extracts transcripts**: Pulls transcripts from videos so you can search and read instead of watch
+- **Generates AI summaries**: Creates consistent, structured summaries using local or cloud LLMs via Ollama
+- **Evaluates summary quality**: Uses a separate LLM-as-a-judge to score summaries against ground-truth transcripts
+- **Enables search**: Full-text and optional semantic search across all transcripts and summaries
+- **Preserves highlights**: Save and organize important snippets from transcripts and summaries
+
+The goal is to help you quickly identify which videos are worth your time based on AI-generated insights and searchable content.
 
 ## Primary Components
 
@@ -75,4 +84,4 @@ The runtime supports local Ollama endpoints, cloud-backed model names, and expli
 
 ### Semantic search is deployment-sensitive
 
-Local debug runs default semantic search on. Release / production builds default semantic search off unless explicitly enabled.
+Local debug runs default semantic search on. Release / production builds default semantic search off unless explicitly enabled. The default embedding model is **embeddinggemma:latest** for generating vector embeddings via Ollama.

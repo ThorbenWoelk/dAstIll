@@ -1,5 +1,10 @@
 import type { WorkspaceStateSnapshot } from "./channel-workspace";
 import type { QueueTab } from "./types";
+import {
+  isAcknowledgedFilter,
+  isWorkspaceContentMode,
+  isWorkspaceVideoTypeFilter,
+} from "./workspace/types";
 
 type WorkspaceViewState = Pick<
   WorkspaceStateSnapshot,
@@ -15,20 +20,6 @@ type QueueViewState = {
   queueTab: QueueTab;
 };
 
-const CONTENT_MODES = new Set<WorkspaceStateSnapshot["contentMode"]>([
-  "transcript",
-  "summary",
-  "highlights",
-  "info",
-]);
-const VIDEO_TYPE_FILTERS = new Set<WorkspaceStateSnapshot["videoTypeFilter"]>([
-  "all",
-  "long",
-  "short",
-]);
-const ACKNOWLEDGED_FILTERS = new Set<
-  WorkspaceStateSnapshot["acknowledgedFilter"]
->(["all", "unack", "ack"]);
 const QUEUE_TABS = new Set<QueueTab>([
   "transcripts",
   "summaries",
@@ -56,29 +47,14 @@ export function parseWorkspaceViewUrlState(
   if (selectedVideoId) {
     restored.selectedVideoId = selectedVideoId;
   }
-  if (
-    contentMode &&
-    CONTENT_MODES.has(contentMode as WorkspaceStateSnapshot["contentMode"])
-  ) {
-    restored.contentMode = contentMode as WorkspaceStateSnapshot["contentMode"];
+  if (isWorkspaceContentMode(contentMode)) {
+    restored.contentMode = contentMode;
   }
-  if (
-    videoTypeFilter &&
-    VIDEO_TYPE_FILTERS.has(
-      videoTypeFilter as WorkspaceStateSnapshot["videoTypeFilter"],
-    )
-  ) {
-    restored.videoTypeFilter =
-      videoTypeFilter as WorkspaceStateSnapshot["videoTypeFilter"];
+  if (isWorkspaceVideoTypeFilter(videoTypeFilter)) {
+    restored.videoTypeFilter = videoTypeFilter;
   }
-  if (
-    acknowledgedFilter &&
-    ACKNOWLEDGED_FILTERS.has(
-      acknowledgedFilter as WorkspaceStateSnapshot["acknowledgedFilter"],
-    )
-  ) {
-    restored.acknowledgedFilter =
-      acknowledgedFilter as WorkspaceStateSnapshot["acknowledgedFilter"];
+  if (isAcknowledgedFilter(acknowledgedFilter)) {
+    restored.acknowledgedFilter = acknowledgedFilter;
   }
 
   return restored;

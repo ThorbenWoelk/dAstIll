@@ -2,26 +2,16 @@
   import Toggle from "$lib/components/Toggle.svelte";
   import defaultChannelIcon from "$lib/assets/channel-default.svg";
   import type { Channel, QueueTab, Video } from "$lib/types";
-
-  const SWIPE_BACK_THRESHOLD_PX = 72;
-  const SWIPE_BACK_EDGE_PX = 32;
-
-  interface DistillationStatusCopy {
-    kind: "processing" | "queued" | "failed";
-    label: string;
-    detail: string;
-  }
+  import type {
+    DistillationStatusCopy,
+    QueueStats,
+  } from "$lib/workspace/types";
+  import { formatShortDate, formatTimeOnly } from "$lib/utils/date";
+  import { swipeBack } from "$lib/mobile-shell/swipe";
 
   interface QueueListItem {
     video: Video;
     distillationStatus: DistillationStatusCopy;
-  }
-
-  interface QueueStats {
-    total: number;
-    loading: number;
-    pending: number;
-    failed: number;
   }
 
   let {
@@ -55,97 +45,12 @@
     onOpenVideo?: (video: Video) => Promise<void> | void;
     onLoadMoreVideos?: () => Promise<void> | void;
   } = $props();
-
-  let touchGesture = $state<{
-    startX: number;
-    startY: number;
-    edgeStart: boolean;
-    interactive: boolean;
-  } | null>(null);
-
-  const dateFormatter = new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-
-  const syncTimeFormatter = new Intl.DateTimeFormat(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-
-  function isInteractiveSwipeTarget(target: EventTarget | null): boolean {
-    if (!(target instanceof HTMLElement)) {
-      return false;
-    }
-
-    return Boolean(
-      target.closest(
-        "button, a, input, textarea, select, label, [role='button'], [role='tab']",
-      ),
-    );
-  }
-
-  function handleSwipeStart(event: TouchEvent) {
-    if (!mobileVisible || event.touches.length !== 1) {
-      touchGesture = null;
-      return;
-    }
-
-    const touch = event.touches[0];
-    const edgeStart = touch.clientX <= SWIPE_BACK_EDGE_PX;
-    touchGesture = {
-      startX: touch.clientX,
-      startY: touch.clientY,
-      edgeStart,
-      interactive: edgeStart ? false : isInteractiveSwipeTarget(event.target),
-    };
-  }
-
-  function handleSwipeEnd(event: TouchEvent) {
-    if (
-      !touchGesture ||
-      !touchGesture.edgeStart ||
-      touchGesture.interactive ||
-      !mobileVisible ||
-      event.changedTouches.length !== 1
-    ) {
-      touchGesture = null;
-      return;
-    }
-
-    const touch = event.changedTouches[0];
-    const deltaX = touch.clientX - touchGesture.startX;
-    const deltaY = touch.clientY - touchGesture.startY;
-
-    touchGesture = null;
-
-    if (
-      deltaX < SWIPE_BACK_THRESHOLD_PX ||
-      Math.abs(deltaX) <= Math.abs(deltaY) * 1.25
-    ) {
-      return;
-    }
-
-    onBack();
-  }
-
-  function formatDate(value: string) {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "Date unavailable";
-    return dateFormatter.format(date);
-  }
 </script>
 
 <aside
   class={`fade-in stagger-2 flex min-h-0 min-w-0 flex-col border-0 lg:sticky lg:top-4 lg:h-[calc(100vh-4rem)] lg:gap-3 lg:border-r lg:border-[var(--accent-border-soft)] lg:px-5 ${mobileVisible ? "h-full gap-4 p-3" : "hidden lg:flex"}`}
   id="videos"
-  ontouchstart={handleSwipeStart}
-  ontouchend={handleSwipeEnd}
-  ontouchcancel={() => {
-    touchGesture = null;
-  }}
+  use:swipeBack={{ enabled: mobileVisible, onBack }}
 >
   <div class="flex items-center justify-between gap-3 max-lg:flex-nowrap">
     <div class="flex min-w-0 items-center gap-1.5">
@@ -164,7 +69,7 @@
       <span
         class="text-[11px] font-medium text-[var(--soft-foreground)] opacity-60"
       >
-        {syncTimeFormatter.format(lastSyncedAt)}
+        {formatTimeOnly(lastSyncedAt)}
       </span>
     {/if}
   </div>
@@ -333,7 +238,7 @@
                 <span
                   class="text-[11px] font-medium text-[var(--soft-foreground)] opacity-50"
                 >
-                  {formatDate(video.published_at)}
+                  {formatShortDate(video.published_at)}
                 </span>
                 {#if item.distillationStatus.kind === "processing"}
                   <span

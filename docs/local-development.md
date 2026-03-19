@@ -51,22 +51,43 @@ cp backend/.env.example backend/.env
 
 Important variables:
 
-| Variable                          | Purpose                                                                          |
-| --------------------------------- | -------------------------------------------------------------------------------- |
-| `AWS_REGION`                      | AWS region for S3 and S3 Vectors                                                 |
-| `S3_DATA_BUCKET`                  | S3 bucket for data storage                                                       |
-| `S3_VECTOR_BUCKET`                | S3 Vectors bucket for semantic search                                            |
-| `S3_VECTOR_INDEX`                 | S3 Vectors index name for embeddings                                             |
-| `AWS_ROLE_ARN` / `AWS_WIF_AUDIENCE` | Production only: GCP Workload Identity Federation for AWS                      |
-| `YOUTUBE_API_KEY`                 | Optional YouTube Data API access                                                 |
-| `OLLAMA_URL`                      | Ollama endpoint                                                                  |
-| `OLLAMA_MODEL`                    | Primary summarizer model                                                         |
-| `OLLAMA_FALLBACK_MODEL`           | Local fallback used when the primary summarizer is cloud-backed and rate-limited |
-| `SUMMARY_EVALUATOR_MODEL`         | Quality evaluator model - must differ from `OLLAMA_MODEL`                        |
-| `OLLAMA_EMBEDDING_MODEL`          | Search embedding model                                                           |
-| `SEARCH_SEMANTIC_ENABLED`         | Explicit override for semantic search behavior                                   |
-| `SEARCH_AUTO_CREATE_VECTOR_INDEX` | Optional ANN index creation after backlog clears                                 |
-| `SUMMARIZE_PATH`                  | Path to the transcript extraction CLI                                            |
+| Variable                            | Purpose                                                                          |
+| ----------------------------------- | -------------------------------------------------------------------------------- |
+| `AWS_REGION`                        | AWS region for S3 and S3 Vectors                                                 |
+| `S3_DATA_BUCKET`                    | S3 bucket for data storage                                                       |
+| `S3_VECTOR_BUCKET`                  | S3 Vectors bucket for semantic search                                            |
+| `S3_VECTOR_INDEX`                   | S3 Vectors index name for embeddings                                             |
+| `AWS_ROLE_ARN` / `AWS_WIF_AUDIENCE` | Production only: GCP Workload Identity Federation for AWS                        |
+| `YOUTUBE_API_KEY`                   | Optional YouTube Data API access                                                 |
+| `OLLAMA_URL`                        | Ollama endpoint                                                                  |
+| `OLLAMA_API_KEY`                    | API key for Ollama cloud (required when using cloud Ollama URL)                  |
+| `OLLAMA_MODEL`                      | Primary summarizer model                                                         |
+| `OLLAMA_FALLBACK_MODEL`             | Local fallback used when the primary summarizer is cloud-backed and rate-limited |
+| `OLLAMA_CHAT_MODEL`                 | Chat model for RAG conversations (falls back to `OLLAMA_MODEL` if not set)       |
+| `SUMMARY_EVALUATOR_MODEL`           | Quality evaluator model - must differ from `OLLAMA_MODEL`                        |
+| `OLLAMA_EMBEDDING_MODEL`            | Search embedding model (default: embeddinggemma:latest)                          |
+| `SEARCH_SEMANTIC_ENABLED`           | Explicit override for semantic search behavior                                   |
+| `SEARCH_AUTO_CREATE_VECTOR_INDEX`   | Optional ANN index creation after backlog clears                                 |
+| `SUMMARIZE_PATH`                    | Path to the transcript extraction CLI                                            |
+| `LOGFIRE_TOKEN`                     | Optional Logfire token for backend tracing / AI pipeline observability           |
+
+## Logfire Observability
+
+The backend automatically switches to Logfire when `LOGFIRE_TOKEN` is present in `backend/.env`.
+
+Typical setup:
+
+```bash
+cp backend/.env.example backend/.env
+# then uncomment LOGFIRE_TOKEN and paste your token
+```
+
+Behavior:
+
+- with `LOGFIRE_TOKEN` set, backend `tracing` events are sent to Logfire
+- without it, the backend keeps logging locally through `tracing_subscriber`
+- current AI-related logs cover prompt lifecycle, retrieval timings, fallback/rate-limit events, and chat pipeline milestones
+- raw prompt / full response payload logging is not enabled by default
 
 ## Search Defaults
 

@@ -24,26 +24,6 @@ pub enum ContentStatus {
     Failed,
 }
 
-impl ContentStatus {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Pending => "pending",
-            Self::Loading => "loading",
-            Self::Ready => "ready",
-            Self::Failed => "failed",
-        }
-    }
-
-    pub fn from_db_value(s: &str) -> Self {
-        match s {
-            "loading" => Self::Loading,
-            "ready" => Self::Ready,
-            "failed" => Self::Failed,
-            _ => Self::Pending,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Video {
     pub id: String,
@@ -140,22 +120,6 @@ pub enum HighlightSource {
     Summary,
 }
 
-impl HighlightSource {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Transcript => "transcript",
-            Self::Summary => "summary",
-        }
-    }
-
-    pub fn from_db_value(value: &str) -> Self {
-        match value {
-            "summary" => Self::Summary,
-            _ => Self::Transcript,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Highlight {
     pub id: i64,
@@ -208,22 +172,6 @@ pub struct CleanTranscriptResponse {
 pub enum TranscriptRenderMode {
     PlainText,
     Markdown,
-}
-
-impl TranscriptRenderMode {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::PlainText => "plain_text",
-            Self::Markdown => "markdown",
-        }
-    }
-
-    pub fn from_db_value(value: &str) -> Self {
-        match value {
-            "markdown" => Self::Markdown,
-            _ => Self::PlainText,
-        }
-    }
 }
 
 impl Default for TranscriptRenderMode {
@@ -309,4 +257,103 @@ pub struct SearchStatusPayload {
     pub embedded_chunk_count: usize,
     pub vector_index_ready: bool,
     pub retrieval_mode: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChatRole {
+    System,
+    User,
+    Assistant,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChatMessageStatus {
+    Completed,
+    Streaming,
+    Cancelled,
+    Rejected,
+    Failed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChatTitleStatus {
+    Idle,
+    Generating,
+    Ready,
+    Manual,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatSource {
+    pub video_id: String,
+    pub channel_id: String,
+    pub channel_name: String,
+    pub video_title: String,
+    pub source_kind: SearchSourceKind,
+    pub section_title: Option<String>,
+    pub snippet: String,
+    pub score: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retrieval_pass: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatMessage {
+    pub id: String,
+    pub role: ChatRole,
+    pub content: String,
+    #[serde(default)]
+    pub sources: Vec<ChatSource>,
+    pub status: ChatMessageStatus,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatConversationSummary {
+    pub id: String,
+    pub title: Option<String>,
+    pub title_status: ChatTitleStatus,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatConversation {
+    pub id: String,
+    pub title: Option<String>,
+    pub title_status: ChatTitleStatus,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    #[serde(default)]
+    pub messages: Vec<ChatMessage>,
+}
+
+impl From<&ChatConversation> for ChatConversationSummary {
+    fn from(value: &ChatConversation) -> Self {
+        Self {
+            id: value.id.clone(),
+            title: value.title.clone(),
+            title_status: value.title_status,
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateConversationRequest {
+    pub title: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateConversationRequest {
+    pub title: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SendChatMessageRequest {
+    pub content: String,
 }

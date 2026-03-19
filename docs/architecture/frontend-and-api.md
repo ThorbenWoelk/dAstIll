@@ -2,13 +2,14 @@
 
 ## Product Frontend Routes
 
-The SvelteKit app currently exposes three top-level routes:
+The SvelteKit app currently exposes four top-level routes:
 
 | Route             | Purpose                                                                 |
 | ----------------- | ----------------------------------------------------------------------- |
 | `/`               | Main workspace for channels, videos, summaries, transcripts, and search |
 | `/download-queue` | Queue-oriented operational view                                         |
 | `/highlights`     | Cross-video highlight browser                                           |
+| `/chat`           | RAG conversations with video content                                    |
 
 ## Main Workspace Behavior
 
@@ -74,6 +75,14 @@ This keeps the workspace from stitching together too many independent startup re
 - inspect search status
 - rebuild the derived search projection
 
+### Chat
+
+- list conversations
+- create / update / delete conversations
+- stream AI responses via server-sent events
+- cancel in-progress message generation
+- reconnect to ongoing streams
+
 ## Handler Layer Boundaries
 
 The backend handler modules are split by concern:
@@ -83,6 +92,7 @@ The backend handler modules are split by concern:
 - `content.rs` - transcripts, summaries, AI health status
 - `highlights.rs` - highlight CRUD
 - `search.rs` - search queries, status, rebuilds
+- `chat.rs` - conversations, message streaming, RAG context retrieval
 - `query.rs` - shared query parameter types (filters, pagination)
 
 The handlers are thin orchestration points. Durable logic primarily lives in:

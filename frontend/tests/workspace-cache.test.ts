@@ -21,7 +21,8 @@ import {
 function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error("IDB request failed"));
+    request.onerror = () =>
+      reject(request.error ?? new Error("IDB request failed"));
   });
 }
 
@@ -46,7 +47,10 @@ function createVideo(id: string, channelId: string): Video {
   };
 }
 
-function createSnapshot(channelId: string, videoIds: string[]): ChannelSnapshot {
+function createSnapshot(
+  channelId: string,
+  videoIds: string[],
+): ChannelSnapshot {
   return {
     channel_id: channelId,
     sync_depth: {
@@ -106,7 +110,9 @@ describe("workspace cache", () => {
     const channelA = createChannel("alpha");
     const channelB = createChannel("beta");
     await putCachedChannels([channelA, channelB]);
-    await putCachedSnapshot(createSnapshot("alpha", ["video-a-1", "video-a-2"]));
+    await putCachedSnapshot(
+      createSnapshot("alpha", ["video-a-1", "video-a-2"]),
+    );
     await putCachedSnapshot(createSnapshot("beta", ["video-b-1"]));
 
     await removeCachedChannel("alpha");

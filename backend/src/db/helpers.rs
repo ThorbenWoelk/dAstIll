@@ -37,7 +37,7 @@ impl Store {
         }
     }
 
-    pub(crate) async fn put_json<T: Serialize>(
+    pub(crate) async fn put_json<T: Serialize + ?Sized>(
         &self,
         key: &str,
         value: &T,

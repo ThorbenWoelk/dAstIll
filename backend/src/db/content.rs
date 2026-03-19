@@ -13,10 +13,7 @@ fn summary_key(video_id: &str) -> String {
     format!("summaries/{video_id}.json")
 }
 
-pub async fn upsert_transcript(
-    store: &Store,
-    transcript: &Transcript,
-) -> Result<(), StoreError> {
+pub async fn upsert_transcript(store: &Store, transcript: &Transcript) -> Result<(), StoreError> {
     store
         .put_json(&transcript_key(&transcript.video_id), transcript)
         .await
@@ -79,20 +76,9 @@ pub async fn save_manual_transcript(
 }
 
 pub async fn upsert_summary(store: &Store, summary: &Summary) -> Result<(), StoreError> {
-    let key = summary_key(&summary.video_id);
-    let _existing = store.get_json::<Summary>(&key).await?;
-    let merged = Summary {
-        video_id: summary.video_id.clone(),
-        content: summary.content.clone(),
-        model_used: summary.model_used.clone(),
-        quality_score: summary.quality_score,
-        quality_note: summary.quality_note.clone(),
-        quality_model_used: summary.quality_model_used.clone(),
-    };
-
-    // Preserve auto_regen_attempts from existing if not reset
-    // (stored as a separate field we track in the summary JSON)
-    store.put_json(&key, &merged).await
+    store
+        .put_json(&summary_key(&summary.video_id), summary)
+        .await
 }
 
 pub async fn get_summary(store: &Store, video_id: &str) -> Result<Option<Summary>, StoreError> {

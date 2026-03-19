@@ -31,10 +31,18 @@ pub async fn delete_channel(store: &Store, id: &str) -> Result<bool, StoreError>
         if let Some(video) = store.get_json::<crate::models::Video>(key).await? {
             if video.channel_id == id {
                 super::highlights::delete_highlights_for_video(store, &video.id).await?;
-                store.delete_key(&format!("summaries/{}.json", video.id)).await?;
-                store.delete_key(&format!("transcripts/{}.json", video.id)).await?;
-                store.delete_key(&format!("video-info/{}.json", video.id)).await?;
-                store.delete_prefix(&format!("search-sources/{}/", video.id)).await?;
+                store
+                    .delete_key(&format!("summaries/{}.json", video.id))
+                    .await?;
+                store
+                    .delete_key(&format!("transcripts/{}.json", video.id))
+                    .await?;
+                store
+                    .delete_key(&format!("video-info/{}.json", video.id))
+                    .await?;
+                store
+                    .delete_prefix(&format!("search-sources/{}/", video.id))
+                    .await?;
                 super::search::delete_vectors_for_video(store, &video.id).await?;
                 store.delete_key(key).await?;
             }

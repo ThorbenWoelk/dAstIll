@@ -1,5 +1,7 @@
 import type { Summary, Transcript, TranscriptRenderMode } from "$lib/types";
 
+export { formatPublishedAt, formatSyncDate } from "$lib/utils/date";
+
 export interface TranscriptPresentation {
   content: string;
   originalText: string;
@@ -12,15 +14,6 @@ export interface SummaryQualityPresentation {
   modelUsed: string | null;
   qualityModelUsed: string | null;
 }
-
-const publishedAtFormatter = new Intl.DateTimeFormat(undefined, {
-  dateStyle: "long",
-  timeStyle: "short",
-});
-
-const syncDateFormatter = new Intl.DateTimeFormat(undefined, {
-  dateStyle: "long",
-});
 
 export function stripContentPrefix(text: string): string {
   return text.replace(/^(?:Transcript|Summary):\s*/i, "").trimStart();
@@ -60,20 +53,6 @@ export function resolveSummaryQualityPresentation(
     modelUsed: summary.model_used ?? null,
     qualityModelUsed: summary.quality_model_used ?? null,
   };
-}
-
-export function formatPublishedAt(value: string | null | undefined): string {
-  if (!value) return "Unknown";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return publishedAtFormatter.format(date);
-}
-
-export function formatSyncDate(value: string | null | undefined): string {
-  if (!value) return "Unknown";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Unknown";
-  return syncDateFormatter.format(date);
 }
 
 export function hasKnownDuration(

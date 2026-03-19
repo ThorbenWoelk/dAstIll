@@ -6,24 +6,37 @@
     | "revert"
     | "youtube";
 
-  export let icon: ContentActionIcon;
-  export let compact = false;
-  export let disabled = false;
-  export let loading = false;
-  export let label = "";
-  export let tooltip = "";
-  export let tooltipAnchor: string | undefined = undefined;
-  export let tooltipPlacement: string | undefined = undefined;
-  export let href: string | null = null;
-  export let onClick: () => void = () => {};
+  let {
+    icon,
+    compact = false,
+    disabled = false,
+    loading = false,
+    label = "",
+    tooltip = "",
+    tooltipAnchor = undefined,
+    tooltipPlacement = undefined,
+    href = null,
+    onClick = () => {},
+  }: {
+    icon: ContentActionIcon;
+    compact?: boolean;
+    disabled?: boolean;
+    loading?: boolean;
+    label?: string;
+    tooltip?: string;
+    tooltipAnchor?: string | undefined;
+    tooltipPlacement?: string | undefined;
+    href?: string | null;
+    onClick?: () => void;
+  } = $props();
 
   const outlinedButtonClass =
     "inline-flex h-10 w-10 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--border-soft)] bg-[var(--background)] transition-all hover:border-[var(--accent)]/40 hover:text-[var(--accent)] hover:shadow-sm disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40";
   const ghostButtonClass =
     "inline-flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] border border-transparent text-[var(--soft-foreground)] transition-all hover:border-[var(--border-soft)] hover:bg-[var(--muted)]/30 hover:text-[var(--foreground)] disabled:opacity-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40";
 
-  $: buttonClass = compact ? ghostButtonClass : outlinedButtonClass;
-  $: strokeWidth = compact ? "2.2" : "2.5";
+  let buttonClass = $derived(compact ? ghostButtonClass : outlinedButtonClass);
+  let strokeWidth = $derived(compact ? "2.2" : "2.5");
 </script>
 
 {#if href}

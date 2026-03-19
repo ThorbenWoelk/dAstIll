@@ -9,27 +9,27 @@ function presentation(status: AiStatus) {
 }
 
 describe("resolveAiIndicatorPresentation", () => {
-  it("renders cloud availability as green ready state", () => {
+  it("renders cloud availability as the ready state", () => {
     expect(presentation("cloud")).toEqual({
-      dotClass: "bg-green-500",
+      dotClass: "bg-[var(--status-ok)]",
       detail:
         "Primary cloud models are reachable. AI actions will use the cloud path.",
       title: "Cloud models available",
     });
   });
 
-  it("renders local-only fallback as grey degraded state", () => {
+  it("renders local-only fallback as the degraded state", () => {
     expect(presentation("local_only")).toEqual({
-      dotClass: "bg-slate-400",
+      dotClass: "bg-[var(--status-warn)]",
       detail:
         "Cloud models are currently unavailable or cooling down. AI actions will use local fallback models only.",
       title: "Local models only",
     });
   });
 
-  it("renders offline availability as red unavailable state", () => {
+  it("renders offline availability as the unavailable state", () => {
     expect(presentation("offline")).toEqual({
-      dotClass: "bg-red-500",
+      dotClass: "bg-[var(--status-error)]",
       detail:
         "This is a showcase deployment - AI features are turned off. Browsing channels, inspecting summaries, and all other non-AI features are fully functional.",
       title: "Showcase mode",

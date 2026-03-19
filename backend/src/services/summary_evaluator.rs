@@ -1,16 +1,9 @@
-use reqwest::Client;
-use rig::completion::Prompt;
-use rig::prelude::*;
 use serde::Deserialize;
-use std::sync::Arc;
-use std::time::Instant;
 use thiserror::Error;
-use tokio::sync::Semaphore;
 
 use crate::models::{AiStatus, SummaryEvaluationResult};
-use crate::services::http::CloudCooldown;
-use crate::services::ollama::{CooldownStatusPolicy, OllamaCore};
-use crate::services::{is_cloud_model, is_rate_limited};
+use crate::services::http::is_cloud_model;
+use crate::services::ollama::{CooldownStatusPolicy, OllamaCore, OllamaPromptError};
 
 #[derive(Error, Debug)]
 pub enum SummaryEvaluatorError {
@@ -28,39 +21,24 @@ pub struct SummaryEvaluatorService {
     core: OllamaCore,
 }
 
+impl From<OllamaPromptError> for SummaryEvaluatorError {
+    fn from(err: OllamaPromptError) -> Self {
+        match err {
+            OllamaPromptError::NotAvailable => Self::NotAvailable,
+            OllamaPromptError::RequestFailed(e) => Self::RequestFailed(e),
+            OllamaPromptError::GenerationFailed(s) => Self::EvaluationFailed(s),
+            OllamaPromptError::EmptyResponse => {
+                Self::EvaluationFailed("Empty response from evaluator model".to_string())
+            }
+        }
+    }
+}
+
 impl SummaryEvaluatorService {
     pub const MIN_EVALUATOR_PARAMS_B: u16 = 41;
 
-    pub fn with_config(base_url: &str, model: &str) -> Self {
-        Self {
-            core: OllamaCore::new(base_url, model),
-        }
-    }
-
-    pub fn with_client(client: Client, base_url: &str, model: &str) -> Self {
-        Self {
-            core: OllamaCore::with_client(client, base_url, model),
-        }
-    }
-
-    pub fn with_fallback_model(mut self, fallback_model: Option<String>) -> Self {
-        self.core = self.core.with_fallback_model(fallback_model);
-        self
-    }
-
-    pub fn with_api_key(mut self, key: Option<String>) -> Self {
-        self.core = self.core.with_api_key(key);
-        self
-    }
-
-    pub fn with_cloud_cooldown(mut self, cooldown: Arc<CloudCooldown>) -> Self {
-        self.core = self.core.with_cloud_cooldown(cooldown);
-        self
-    }
-
-    pub fn with_ollama_semaphore(mut self, semaphore: Arc<Semaphore>) -> Self {
-        self.core = self.core.with_ollama_semaphore(semaphore);
-        self
+    pub fn new(core: OllamaCore) -> Self {
+        Self { core }
     }
 
     pub fn validate_model_policy(model: &str) -> Result<(), String> {
@@ -176,68 +154,10 @@ Rules:
         preamble: &str,
         prompt: &str,
     ) -> Result<(String, String), SummaryEvaluatorError> {
-        tracing::info!(
-            operation = operation,
-            model = %self.model(),
-            base_url = %self.core.base_url(),
-            prompt_chars = prompt.len(),
-            "starting ollama summary evaluation prompt"
-        );
-        let started = Instant::now();
-        let ollama_client = self
-            .core
-            .build_ollama_client()
-            .map_err(SummaryEvaluatorError::EvaluationFailed)?;
-
-        let is_cloud = self.core.uses_cloud_model();
-        let cooldown_active = self.core.is_cloud_cooldown_active();
-
-        let (response, model_used) = if cooldown_active {
-            return Err(SummaryEvaluatorError::NotAvailable);
-        } else {
-            let _permit = self
-                .core
-                .acquire_local_permit(self.model())
-                .await
-                .map_err(SummaryEvaluatorError::EvaluationFailed)?;
-
-            let agent = ollama_client.agent(self.model()).preamble(preamble).build();
-            match agent.prompt(prompt).await {
-                Ok(resp) => (resp, self.model().to_string()),
-                Err(err) if is_rate_limited(&err) => {
-                    if is_cloud {
-                        self.core.activate_cloud_cooldown();
-                    }
-                    if is_cloud {
-                        tracing::warn!(
-                            operation = operation,
-                            primary_model = %self.model(),
-                            error = %err,
-                            "rate limited - deferring summary evaluation to preserve local capacity"
-                        );
-                        return Err(SummaryEvaluatorError::NotAvailable);
-                    }
-
-                    return Err(err.into());
-                }
-                Err(err) => return Err(err.into()),
-            }
-        };
-        tracing::info!(
-            operation = operation,
-            model = %model_used,
-            response_chars = response.len(),
-            elapsed_ms = started.elapsed().as_millis() as u64,
-            "completed ollama summary evaluation prompt"
-        );
-
-        if response.trim().is_empty() {
-            return Err(SummaryEvaluatorError::EvaluationFailed(
-                "Empty response from evaluator model".to_string(),
-            ));
-        }
-
-        Ok((response, model_used))
+        self.core
+            .prompt_with_fallback(operation, preamble, prompt, CooldownStatusPolicy::Offline)
+            .await
+            .map_err(Into::into)
     }
 }
 
@@ -310,31 +230,37 @@ fn parse_evaluation_response(raw: &str) -> Result<SummaryEvaluationResult, Summa
 mod tests {
     use super::{SummaryEvaluatorService, parse_evaluation_response};
     use crate::models::AiStatus;
+    use crate::services::ollama::OllamaCore;
 
     #[tokio::test]
     async fn is_available_returns_false_for_invalid_url() {
-        let service = SummaryEvaluatorService::with_config("://invalid-url", "qwen3.5:397b-cloud");
+        let service =
+            SummaryEvaluatorService::new(OllamaCore::new("://invalid-url", "qwen3.5:397b-cloud"));
         assert!(!service.is_available().await);
     }
 
     #[test]
     fn indicator_status_reports_cloud_when_cloud_evaluator_is_available() {
-        let service =
-            SummaryEvaluatorService::with_config("http://localhost:11434", "qwen3.5:397b-cloud");
+        let service = SummaryEvaluatorService::new(OllamaCore::new(
+            "http://localhost:11434",
+            "qwen3.5:397b-cloud",
+        ));
         assert_eq!(service.indicator_status(false, true), AiStatus::Cloud);
     }
 
     #[test]
     fn indicator_status_reports_local_only_when_local_evaluator_is_primary() {
-        let service = SummaryEvaluatorService::with_config("http://localhost:11434", "qwen3:8b");
+        let service =
+            SummaryEvaluatorService::new(OllamaCore::new("http://localhost:11434", "qwen3:8b"));
         assert_eq!(service.indicator_status(false, true), AiStatus::LocalOnly);
     }
 
     #[test]
     fn indicator_status_reports_offline_when_cloud_evaluator_is_in_cooldown() {
-        let service =
-            SummaryEvaluatorService::with_config("http://localhost:11434", "qwen3.5:397b-cloud")
-                .with_fallback_model(Some("qwen3:8b".to_string()));
+        let service = SummaryEvaluatorService::new(
+            OllamaCore::new("http://localhost:11434", "qwen3.5:397b-cloud")
+                .with_fallback_model(Some("qwen3:8b".to_string())),
+        );
         assert_eq!(service.indicator_status(true, true), AiStatus::Offline);
     }
 

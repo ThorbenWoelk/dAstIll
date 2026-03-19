@@ -1,13 +1,12 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { clickOutside } from "$lib/actions/click-outside";
+  import CheckIcon from "$lib/components/icons/CheckIcon.svelte";
   import VideoCard from "$lib/components/VideoCard.svelte";
   import { resolveDisplayedSyncDepthIso } from "$lib/sync-depth";
   import type { Channel, SyncDepth, Video, VideoTypeFilter } from "$lib/types";
   import { formatSyncDate } from "$lib/workspace/content";
   import type { AcknowledgedFilter } from "$lib/workspace/types";
-
-  const SWIPE_BACK_THRESHOLD_PX = 72;
-  const SWIPE_BACK_EDGE_PX = 32;
+  import { swipeBack } from "$lib/mobile-shell/swipe";
 
   let {
     mobileVisible = false,
@@ -54,13 +53,6 @@
   } = $props();
 
   let filterMenuOpen = $state(false);
-  let filterMenuContainer = $state<HTMLDivElement | null>(null);
-  let touchGesture = $state<{
-    startX: number;
-    startY: number;
-    edgeStart: boolean;
-    interactive: boolean;
-  } | null>(null);
   let activeFilterLabel = $derived.by(() => {
     const labels: string[] = [];
 
@@ -81,83 +73,10 @@
       : `Video type filter set to ${videoTypeFilter}. Open filter menu.`,
   );
 
-  onMount(() => {
-    const handlePointerDown = (event: PointerEvent) => {
-      if (
-        filterMenuOpen &&
-        filterMenuContainer &&
-        !filterMenuContainer.contains(event.target as Node)
-      ) {
-        filterMenuOpen = false;
-      }
-    };
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-    };
-  });
-
   function handleWindowKeydown(event: KeyboardEvent) {
     if (event.key === "Escape") {
       filterMenuOpen = false;
     }
-  }
-
-  function isInteractiveSwipeTarget(target: EventTarget | null): boolean {
-    if (!(target instanceof HTMLElement)) {
-      return false;
-    }
-
-    return Boolean(
-      target.closest(
-        "button, a, input, textarea, select, label, [role='button'], [role='tab']",
-      ),
-    );
-  }
-
-  function handleSwipeStart(event: TouchEvent) {
-    if (!mobileVisible || event.touches.length !== 1) {
-      touchGesture = null;
-      return;
-    }
-
-    const touch = event.touches[0];
-    const edgeStart = touch.clientX <= SWIPE_BACK_EDGE_PX;
-    touchGesture = {
-      startX: touch.clientX,
-      startY: touch.clientY,
-      edgeStart,
-      interactive: edgeStart ? false : isInteractiveSwipeTarget(event.target),
-    };
-  }
-
-  function handleSwipeEnd(event: TouchEvent) {
-    if (
-      !touchGesture ||
-      !touchGesture.edgeStart ||
-      touchGesture.interactive ||
-      !mobileVisible ||
-      event.changedTouches.length !== 1
-    ) {
-      touchGesture = null;
-      return;
-    }
-
-    const touch = event.changedTouches[0];
-    const deltaX = touch.clientX - touchGesture.startX;
-    const deltaY = touch.clientY - touchGesture.startY;
-
-    touchGesture = null;
-
-    if (
-      deltaX < SWIPE_BACK_THRESHOLD_PX ||
-      Math.abs(deltaX) <= Math.abs(deltaY) * 1.25
-    ) {
-      return;
-    }
-
-    onBack();
   }
 
   async function selectVideoTypeFilter(value: VideoTypeFilter) {
@@ -176,11 +95,7 @@
 <aside
   class={`fade-in stagger-2 flex min-h-0 min-w-0 flex-col border-0 lg:sticky lg:top-4 lg:h-[calc(100vh-4rem)] lg:gap-3 lg:border-r lg:border-[var(--accent-border-soft)] lg:px-5 ${mobileVisible ? "h-full gap-4 p-3" : "hidden lg:flex"}`}
   id="videos"
-  ontouchstart={handleSwipeStart}
-  ontouchend={handleSwipeEnd}
-  ontouchcancel={() => {
-    touchGesture = null;
-  }}
+  use:swipeBack={{ enabled: mobileVisible, onBack }}
 >
   <div class="flex items-center justify-between gap-3 max-lg:flex-nowrap">
     <div class="flex min-w-0 items-center gap-1.5">
@@ -195,7 +110,13 @@
         ></span>
       {/if}
     </div>
-    <div class="relative" bind:this={filterMenuContainer}>
+    <div
+      class="relative"
+      use:clickOutside={{
+        enabled: filterMenuOpen,
+        onClickOutside: () => (filterMenuOpen = false),
+      }}
+    >
       <button
         type="button"
         id="video-filter-button"
@@ -254,18 +175,7 @@
               >
                 <span>All Content</span>
                 {#if videoTypeFilter === "all"}
-                  <svg
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="3"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
+                  <CheckIcon size={12} strokeWidth={3} />
                 {/if}
               </button>
               <button
@@ -277,18 +187,7 @@
               >
                 <span>Full Videos</span>
                 {#if videoTypeFilter === "long"}
-                  <svg
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="3"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
+                  <CheckIcon size={12} strokeWidth={3} />
                 {/if}
               </button>
               <button
@@ -300,18 +199,7 @@
               >
                 <span>Shorts</span>
                 {#if videoTypeFilter === "short"}
-                  <svg
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="3"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
+                  <CheckIcon size={12} strokeWidth={3} />
                 {/if}
               </button>
             </div>
@@ -331,18 +219,7 @@
               >
                 <span>All Statuses</span>
                 {#if acknowledgedFilter === "all"}
-                  <svg
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="3"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
+                  <CheckIcon size={12} strokeWidth={3} />
                 {/if}
               </button>
               <button
@@ -354,18 +231,7 @@
               >
                 <span>Unread</span>
                 {#if acknowledgedFilter === "unack"}
-                  <svg
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="3"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
+                  <CheckIcon size={12} strokeWidth={3} />
                 {/if}
               </button>
               <button
@@ -377,18 +243,7 @@
               >
                 <span>Read</span>
                 {#if acknowledgedFilter === "ack"}
-                  <svg
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="3"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
+                  <CheckIcon size={12} strokeWidth={3} />
                 {/if}
               </button>
             </div>

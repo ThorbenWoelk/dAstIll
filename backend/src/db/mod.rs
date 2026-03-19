@@ -1,4 +1,5 @@
 mod channels;
+mod chat;
 mod content;
 mod helpers;
 mod highlights;
@@ -7,6 +8,7 @@ mod video_info;
 mod videos;
 
 pub use channels::*;
+pub use chat::*;
 pub use content::*;
 pub use highlights::*;
 pub use search::*;

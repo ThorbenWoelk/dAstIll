@@ -19,6 +19,9 @@
   --danger-soft: #fff1f1;
   --danger-border: #f3d1d1;
   --danger-foreground: #b54444;
+  --status-ok: #4a8a5c;
+  --status-warn: #a68a5b;
+  --status-error: #d25a5a;
   --tooltip-bg: rgba(26, 26, 26, 0.92);
   --tooltip-foreground: #ffffff;
   --overlay: rgba(0, 0, 0, 0.4);
@@ -96,6 +99,9 @@
   --danger-soft: rgba(255, 143, 143, 0.12);
   --danger-border: rgba(255, 143, 143, 0.24);
   --danger-foreground: #ffb9b9;
+  --status-ok: #7ac88e;
+  --status-warn: #d4b882;
+  --status-error: #ff8f8f;
   --tooltip-bg: rgba(244, 239, 233, 0.94);
   --tooltip-foreground: #111315;
   --overlay: rgba(0, 0, 0, 0.5);

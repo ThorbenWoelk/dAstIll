@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { clickOutside } from "$lib/actions/click-outside";
+  import CloseIcon from "$lib/components/icons/CloseIcon.svelte";
 
   type Props = {
     detail: string;
@@ -10,14 +11,11 @@
   let { detail, dotClass, title }: Props = $props();
 
   let open = $state(false);
-  let button = $state<HTMLButtonElement | null>(null);
-  let panel = $state<HTMLDivElement | null>(null);
-
   const toneClass = $derived(
-    dotClass.includes("bg-emerald")
-      ? "border-emerald-500/20 bg-emerald-500/8 text-emerald-700 dark:text-emerald-300"
-      : dotClass.includes("bg-amber")
-        ? "border-amber-500/20 bg-amber-500/8 text-amber-700 dark:text-amber-300"
+    dotClass.includes("--status-error")
+      ? "border-[var(--danger-border)] bg-[var(--danger-soft)] text-[var(--danger-foreground)]"
+      : dotClass.includes("--status-warn")
+        ? "border-[var(--border)] bg-[var(--muted)] text-[var(--soft-foreground)]"
         : "border-[var(--accent-border-soft)] bg-[var(--accent-wash)] text-[var(--accent-strong)]",
   );
 
@@ -32,42 +30,31 @@
   function handleKeydown(event: KeyboardEvent) {
     if (event.key === "Escape") close();
   }
-
-  onMount(() => {
-    const handlePointerDown = (event: PointerEvent) => {
-      if (!open) return;
-      const target = event.target as Node;
-      if (button?.contains(target) || panel?.contains(target)) return;
-      close();
-    };
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  });
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
 
-<div class="relative">
+<div
+  class="relative"
+  use:clickOutside={{ enabled: open, onClickOutside: close }}
+>
   <button
-    bind:this={button}
     type="button"
     id="ai-status-pill"
-    class={`inline-flex h-8 items-center justify-center gap-2 rounded-full border px-2.5 text-[10px] font-bold uppercase tracking-[0.12em] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${open ? "border-[var(--accent)]/25 bg-[var(--accent-soft)]/70 text-[var(--accent-strong)]" : "border-[var(--accent-border-soft)] bg-[var(--panel-surface)] text-[var(--soft-foreground)] hover:border-[var(--accent)]/35 hover:text-[var(--foreground)]"}`}
+    class={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${open ? "text-[var(--accent-strong)]" : "hover:text-[var(--foreground)]"}`}
     aria-expanded={open}
     aria-haspopup="dialog"
     aria-label={`AI engine status: ${title}`}
     onclick={toggle}
   >
-    <span class={`h-2 w-2 rounded-full ${dotClass}`}></span>
-    <span class="hidden sm:inline">AI</span>
+    <span class={`h-3 w-3 rounded-full ${dotClass}`}></span>
   </button>
 
   {#if open}
     <div
-      bind:this={panel}
       role="dialog"
       aria-label="AI engine status details"
-      class="fixed left-4 right-4 top-[calc(env(safe-area-inset-top)+4.5rem)] z-[9999] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--accent-border-soft)] bg-[var(--surface-frost-strong)] shadow-2xl backdrop-blur sm:left-auto sm:right-4 sm:top-[calc(env(safe-area-inset-top)+4rem)] sm:w-[22rem]"
+      class="absolute right-0 top-full z-[9999] mt-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--accent-border-soft)] bg-[var(--surface-frost-strong)] shadow-2xl backdrop-blur"
     >
       <div
         class="flex items-start justify-between gap-3 border-b border-[var(--accent-border-soft)] px-4 py-3"
@@ -93,18 +80,7 @@
           aria-label="Close"
           onclick={close}
         >
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.4"
-            stroke-linecap="round"
-          >
-            <path d="M6 6L18 18"></path>
-            <path d="M18 6L6 18"></path>
-          </svg>
+          <CloseIcon size={12} />
         </button>
       </div>
 

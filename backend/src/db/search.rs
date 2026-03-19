@@ -74,7 +74,9 @@ pub async fn clear_search_source(
     source_kind: SearchSourceKind,
 ) -> Result<(), StoreError> {
     delete_vectors_for_source(store, video_id, source_kind).await?;
-    store.delete_key(&search_source_key(video_id, source_kind)).await
+    store
+        .delete_key(&search_source_key(video_id, source_kind))
+        .await
 }
 
 pub async fn get_search_source_state(
@@ -97,7 +99,9 @@ pub async fn list_pending_search_sources(
     let mut transcripts = Vec::new();
 
     for r in all {
-        if r.index_status != "pending" { continue; }
+        if r.index_status != "pending" {
+            continue;
+        }
         let state = SearchSourceState::from(r);
         match state.source_kind {
             SearchSourceKind::Summary => summaries.push(state),
@@ -208,10 +212,21 @@ pub async fn replace_search_chunks(
         let chunk_text_clamped: String = chunk.chunk_text.chars().take(30_000).collect();
         let mut meta_entries: Vec<(&str, Document)> = vec![
             ("video_id", Document::String(video_id.to_string())),
-            ("source_kind", Document::String(source_kind.as_str().to_string())),
+            (
+                "source_kind",
+                Document::String(source_kind.as_str().to_string()),
+            ),
             ("chunk_text", Document::String(chunk_text_clamped)),
-            ("source_generation", Document::Number(aws_smithy_types::Number::Float(current.source_generation as f64))),
-            ("chunk_index", Document::Number(aws_smithy_types::Number::Float(chunk.chunk_index as f64))),
+            (
+                "source_generation",
+                Document::Number(aws_smithy_types::Number::Float(
+                    current.source_generation as f64,
+                )),
+            ),
+            (
+                "chunk_index",
+                Document::Number(aws_smithy_types::Number::Float(chunk.chunk_index as f64)),
+            ),
         ];
         if let Some(ref title) = chunk.section_title {
             meta_entries.push(("section_title", Document::String(title.clone())));
@@ -341,7 +356,10 @@ pub async fn load_search_material(
     video_id: &str,
     source_kind: SearchSourceKind,
 ) -> Result<Option<SearchMaterial>, StoreError> {
-    let Some(video) = store.get_json::<Video>(&format!("videos/{video_id}.json")).await? else {
+    let Some(video) = store
+        .get_json::<Video>(&format!("videos/{video_id}.json"))
+        .await?
+    else {
         return Ok(None);
     };
     let channel_name = store
@@ -351,25 +369,23 @@ pub async fn load_search_material(
         .unwrap_or_default();
 
     let content = match source_kind {
-        SearchSourceKind::Transcript if video.transcript_status == ContentStatus::Ready => {
-            store
-                .get_json::<Transcript>(&format!("transcripts/{video_id}.json"))
-                .await?
-                .and_then(|t| t.raw_text.or(t.formatted_markdown))
-                .unwrap_or_default()
-        }
-        SearchSourceKind::Summary if video.summary_status == ContentStatus::Ready => {
-            store
-                .get_json::<Summary>(&format!("summaries/{video_id}.json"))
-                .await?
-                .map(|s| s.content)
-                .unwrap_or_default()
-        }
+        SearchSourceKind::Transcript if video.transcript_status == ContentStatus::Ready => store
+            .get_json::<Transcript>(&format!("transcripts/{video_id}.json"))
+            .await?
+            .and_then(|t| t.raw_text.or(t.formatted_markdown))
+            .unwrap_or_default(),
+        SearchSourceKind::Summary if video.summary_status == ContentStatus::Ready => store
+            .get_json::<Summary>(&format!("summaries/{video_id}.json"))
+            .await?
+            .map(|s| s.content)
+            .unwrap_or_default(),
         _ => return Ok(None),
     };
 
     let content = content.trim().to_string();
-    if content.is_empty() { return Ok(None); }
+    if content.is_empty() {
+        return Ok(None);
+    }
 
     Ok(Some(SearchMaterial {
         video_id: video_id.to_string(),
@@ -394,21 +410,29 @@ pub async fn list_search_backfill_materials(
     let mut materials = Vec::new();
 
     for video in &all_videos {
-        if materials.len() >= limit { break; }
+        if materials.len() >= limit {
+            break;
+        }
         if video.summary_status == ContentStatus::Ready
             && !indexed.contains(&(video.id.clone(), "summary".to_string()))
         {
-            if let Some(mat) = load_search_material(store, &video.id, SearchSourceKind::Summary).await? {
+            if let Some(mat) =
+                load_search_material(store, &video.id, SearchSourceKind::Summary).await?
+            {
                 materials.push(mat);
             }
         }
     }
     for video in &all_videos {
-        if materials.len() >= limit { break; }
+        if materials.len() >= limit {
+            break;
+        }
         if video.transcript_status == ContentStatus::Ready
             && !indexed.contains(&(video.id.clone(), "transcript".to_string()))
         {
-            if let Some(mat) = load_search_material(store, &video.id, SearchSourceKind::Transcript).await? {
+            if let Some(mat) =
+                load_search_material(store, &video.id, SearchSourceKind::Transcript).await?
+            {
                 materials.push(mat);
             }
         }
@@ -423,8 +447,13 @@ pub async fn list_search_reconciliation_materials(
     let all_sources: Vec<SearchSourceRecord> = store.load_all("search-sources/").await?;
     let mut materials = Vec::new();
 
-    for source in all_sources.iter().filter(|s| s.index_status == "ready" || s.index_status == "failed") {
-        if materials.len() >= limit { break; }
+    for source in all_sources
+        .iter()
+        .filter(|s| s.index_status == "ready" || s.index_status == "failed")
+    {
+        if materials.len() >= limit {
+            break;
+        }
         let kind = SearchSourceKind::from_db_value(&source.source_kind);
         if let Some(mat) = load_search_material(store, &source.video_id, kind).await? {
             materials.push(mat);
@@ -446,7 +475,10 @@ pub async fn list_search_progress_materials(
     let mut materials = Vec::new();
     for video in &all_videos {
         if video.summary_status == ContentStatus::Ready {
-            if let Some(summary) = store.get_json::<Summary>(&format!("summaries/{}.json", video.id)).await? {
+            if let Some(summary) = store
+                .get_json::<Summary>(&format!("summaries/{}.json", video.id))
+                .await?
+            {
                 let content = summary.content.trim().to_string();
                 if !content.is_empty() {
                     let source = source_map.get(&(video.id.clone(), "summary".to_string()));
@@ -461,8 +493,16 @@ pub async fn list_search_progress_materials(
             }
         }
         if video.transcript_status == ContentStatus::Ready {
-            if let Some(transcript) = store.get_json::<Transcript>(&format!("transcripts/{}.json", video.id)).await? {
-                let content = transcript.raw_text.or(transcript.formatted_markdown).unwrap_or_default().trim().to_string();
+            if let Some(transcript) = store
+                .get_json::<Transcript>(&format!("transcripts/{}.json", video.id))
+                .await?
+            {
+                let content = transcript
+                    .raw_text
+                    .or(transcript.formatted_markdown)
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string();
                 if !content.is_empty() {
                     let source = source_map.get(&(video.id.clone(), "transcript".to_string()));
                     materials.push(SearchProgressMaterial {
@@ -488,10 +528,16 @@ pub async fn search_vector_candidates(
     limit: usize,
 ) -> Result<Vec<SearchCandidate>, StoreError> {
     let embedding: Vec<f32> = serde_json::from_str(query_embedding).unwrap_or_default();
-    if embedding.is_empty() { return Ok(Vec::new()); }
+    if embedding.is_empty() {
+        return Ok(Vec::new());
+    }
 
     // Over-fetch to compensate for client-side channel_id filtering
-    let top_k = if channel_id.is_some() { (limit * 3).clamp(10, 100) } else { limit.clamp(1, 100) };
+    let top_k = if channel_id.is_some() {
+        (limit * 3).clamp(10, 100)
+    } else {
+        limit.clamp(1, 100)
+    };
 
     let mut req = store
         .s3v
@@ -505,9 +551,12 @@ pub async fn search_vector_candidates(
     // Server-side filter on source_kind (filterable metadata)
     if let Some(kind) = source_kind {
         req = req.filter(Document::Object(
-            [("source_kind".to_string(), Document::String(kind.as_str().to_string()))]
-                .into_iter()
-                .collect(),
+            [(
+                "source_kind".to_string(),
+                Document::String(kind.as_str().to_string()),
+            )]
+            .into_iter()
+            .collect(),
         ));
     }
 
@@ -522,15 +571,29 @@ pub async fn search_vector_candidates(
     // Collect unique video IDs from results, then fetch only those
     let video_ids: std::collections::HashSet<String> = vectors
         .iter()
-        .filter_map(|v| v.metadata.as_ref().and_then(|m| get_doc_string(m, "video_id")))
+        .filter_map(|v| {
+            v.metadata
+                .as_ref()
+                .and_then(|m| get_doc_string(m, "video_id"))
+        })
         .collect();
 
     let mut video_map: std::collections::HashMap<String, Video> = std::collections::HashMap::new();
-    let mut channel_map: std::collections::HashMap<String, crate::models::Channel> = std::collections::HashMap::new();
+    let mut channel_map: std::collections::HashMap<String, crate::models::Channel> =
+        std::collections::HashMap::new();
     for vid in &video_ids {
-        if let Some(video) = store.get_json::<Video>(&format!("videos/{vid}.json")).await? {
+        if let Some(video) = store
+            .get_json::<Video>(&format!("videos/{vid}.json"))
+            .await?
+        {
             if !channel_map.contains_key(&video.channel_id) {
-                if let Some(ch) = store.get_json::<crate::models::Channel>(&format!("channels/{}.json", video.channel_id)).await? {
+                if let Some(ch) = store
+                    .get_json::<crate::models::Channel>(&format!(
+                        "channels/{}.json",
+                        video.channel_id
+                    ))
+                    .await?
+                {
                     channel_map.insert(ch.id.clone(), ch);
                 }
             }
@@ -547,7 +610,9 @@ pub async fn search_vector_candidates(
         let sk = get_doc_string(meta, "source_kind").unwrap_or_default();
 
         let video = video_map.get(&vid);
-        if channel_id.is_some_and(|f| video.is_none_or(|v| v.channel_id != f)) { continue; }
+        if channel_id.is_some_and(|f| video.is_none_or(|v| v.channel_id != f)) {
+            continue;
+        }
 
         let Some(video) = video else { continue };
         let ch = channel_map.get(&video.channel_id);
@@ -564,7 +629,9 @@ pub async fn search_vector_candidates(
             published_at: video.published_at.to_rfc3339(),
         });
 
-        if candidates.len() >= limit { break; }
+        if candidates.len() >= limit {
+            break;
+        }
     }
     Ok(candidates)
 }
@@ -626,8 +693,10 @@ pub async fn search_fts_candidates(
     }
 
     // Score and filter chunks by query token matches
-    let mut video_cache: std::collections::HashMap<String, Option<Video>> = std::collections::HashMap::new();
-    let mut channel_cache: std::collections::HashMap<String, crate::models::Channel> = std::collections::HashMap::new();
+    let mut video_cache: std::collections::HashMap<String, Option<Video>> =
+        std::collections::HashMap::new();
+    let mut channel_cache: std::collections::HashMap<String, crate::models::Channel> =
+        std::collections::HashMap::new();
     let mut scored: Vec<(SearchCandidate, usize)> = Vec::new();
 
     for (chunk_key, chunk) in all_chunks {
@@ -636,7 +705,10 @@ pub async fn search_fts_candidates(
         }
 
         let text_lower = chunk.chunk_text.to_lowercase();
-        let match_count = query_tokens.iter().filter(|t| text_lower.contains(t.as_str())).count();
+        let match_count = query_tokens
+            .iter()
+            .filter(|t| text_lower.contains(t.as_str()))
+            .count();
         if match_count == 0 {
             continue;
         }
@@ -644,7 +716,9 @@ pub async fn search_fts_candidates(
         let video = match video_cache.entry(chunk.video_id.clone()) {
             std::collections::hash_map::Entry::Occupied(e) => e.get().clone(),
             std::collections::hash_map::Entry::Vacant(e) => {
-                let v = store.get_json::<Video>(&format!("videos/{}.json", chunk.video_id)).await?;
+                let v = store
+                    .get_json::<Video>(&format!("videos/{}.json", chunk.video_id))
+                    .await?;
                 e.insert(v.clone());
                 v
             }
@@ -656,7 +730,10 @@ pub async fn search_fts_candidates(
         }
 
         if !channel_cache.contains_key(&video.channel_id) {
-            if let Some(ch) = store.get_json::<crate::models::Channel>(&format!("channels/{}.json", video.channel_id)).await? {
+            if let Some(ch) = store
+                .get_json::<crate::models::Channel>(&format!("channels/{}.json", video.channel_id))
+                .await?
+            {
                 channel_cache.insert(ch.id.clone(), ch);
             }
         }
@@ -699,7 +776,15 @@ pub async fn search_exact_global_candidates(
     channel_id: Option<&str>,
     limit: usize,
 ) -> Result<Vec<SearchCandidate>, StoreError> {
-    search_vector_candidates(store, query_embedding, embedding_model, source_kind, channel_id, limit).await
+    search_vector_candidates(
+        store,
+        query_embedding,
+        embedding_model,
+        source_kind,
+        channel_id,
+        limit,
+    )
+    .await
 }
 
 pub async fn get_search_source_counts(store: &Store) -> Result<SearchSourceCounts, StoreError> {
@@ -723,7 +808,13 @@ pub async fn get_search_source_counts(store: &Store) -> Result<SearchSourceCount
         })
         .sum();
 
-    Ok(SearchSourceCounts { pending, indexing, ready, failed, total_sources })
+    Ok(SearchSourceCounts {
+        pending,
+        indexing,
+        ready,
+        failed,
+        total_sources,
+    })
 }
 
 pub async fn prune_stale_search_rows(_store: &Store, _limit: usize) -> Result<usize, StoreError> {

@@ -1,4 +1,9 @@
 import type { Channel, QueueTab } from "./types";
+import {
+  isAcknowledgedFilter,
+  isWorkspaceContentMode,
+  isWorkspaceVideoTypeFilter,
+} from "./workspace/types";
 
 export const WORKSPACE_STATE_KEY = "dastill.workspace.state.v1";
 
@@ -37,20 +42,6 @@ interface ChannelDragTransfer {
   setData(type: string, value: string): void;
 }
 
-const CONTENT_MODES = new Set<WorkspaceStateSnapshot["contentMode"]>([
-  "transcript",
-  "summary",
-  "highlights",
-  "info",
-]);
-const VIDEO_TYPE_FILTERS = new Set<WorkspaceStateSnapshot["videoTypeFilter"]>([
-  "all",
-  "long",
-  "short",
-]);
-const ACKNOWLEDGED_FILTERS = new Set<
-  WorkspaceStateSnapshot["acknowledgedFilter"]
->(["all", "unack", "ack"]);
 const CHANNEL_SORT_MODES = new Set<
   NonNullable<WorkspaceStateSnapshot["channelSortMode"]>
 >(["custom", "alpha", "newest"]);
@@ -124,17 +115,13 @@ export function restoreWorkspaceSnapshot(
 
   if (
     options.includeContentMode &&
-    snapshot.contentMode &&
-    CONTENT_MODES.has(snapshot.contentMode)
+    isWorkspaceContentMode(snapshot.contentMode)
   ) {
     restored.contentMode = snapshot.contentMode;
   }
 
   if (options.includeVideoTypeFilter) {
-    if (
-      snapshot.videoTypeFilter &&
-      VIDEO_TYPE_FILTERS.has(snapshot.videoTypeFilter)
-    ) {
+    if (isWorkspaceVideoTypeFilter(snapshot.videoTypeFilter)) {
       restored.videoTypeFilter = snapshot.videoTypeFilter;
     } else if (typeof snapshot.hideShorts === "boolean") {
       restored.videoTypeFilter = snapshot.hideShorts ? "long" : "all";
@@ -143,8 +130,7 @@ export function restoreWorkspaceSnapshot(
 
   if (
     options.includeAcknowledgedFilter &&
-    snapshot.acknowledgedFilter &&
-    ACKNOWLEDGED_FILTERS.has(snapshot.acknowledgedFilter)
+    isAcknowledgedFilter(snapshot.acknowledgedFilter)
   ) {
     restored.acknowledgedFilter = snapshot.acknowledgedFilter;
   }

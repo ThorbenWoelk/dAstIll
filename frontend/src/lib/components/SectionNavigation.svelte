@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { clickOutside } from "$lib/actions/click-outside";
+  import ExternalLinkIcon from "$lib/components/icons/ExternalLinkIcon.svelte";
 
   import {
     getSectionNavigationItems,
@@ -22,8 +23,6 @@
   }: Props = $props();
 
   let open = $state(false);
-  let button = $state<HTMLButtonElement | null>(null);
-  let panel = $state<HTMLDivElement | null>(null);
   let items = $derived(getSectionNavigationItems(currentSection, docsUrl));
   let currentItem = $derived(
     items.find((item) => item.section === currentSection) ?? items[0],
@@ -67,30 +66,18 @@
   function handleKeydown(event: KeyboardEvent) {
     if (event.key === "Escape") close();
   }
-
-  onMount(() => {
-    const handlePointerDown = (event: PointerEvent) => {
-      if (!open) return;
-
-      const target = event.target as Node;
-      if (button?.contains(target) || panel?.contains(target)) return;
-
-      close();
-    };
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  });
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
 
 {#if showMobile}
   <div class="lg:hidden">
-    <div class={mobileWrapperClass}>
+    <div
+      class={mobileWrapperClass}
+      use:clickOutside={{ enabled: open, onClickOutside: close }}
+    >
       {#if open}
         <div
-          bind:this={panel}
           id="section-navigation-menu"
           role="menu"
           aria-label="Sections"
@@ -102,18 +89,20 @@
               target={item.external ? "_blank" : undefined}
               rel={item.external ? "noopener noreferrer" : undefined}
               role="menuitem"
-              class={`rounded-[var(--radius-sm)] px-3 py-2 text-[12px] font-semibold transition-colors ${itemClass(item)}`}
+              class={`flex items-center justify-between gap-2 rounded-[var(--radius-sm)] px-3 py-2 text-[12px] font-semibold transition-colors ${itemClass(item)}`}
               aria-current={item.active ? "page" : undefined}
               onclick={close}
             >
-              {item.label}
+              <span>{item.label}</span>
+              {#if item.external}
+                <ExternalLinkIcon size={14} className="shrink-0 opacity-70" />
+              {/if}
             </a>
           {/each}
         </div>
       {/if}
 
       <button
-        bind:this={button}
         type="button"
         class={mobileButtonClass}
         aria-expanded={open}
@@ -150,10 +139,13 @@
       target={item.external ? "_blank" : undefined}
       rel={item.external ? "noopener noreferrer" : undefined}
       id={item.section === "docs" ? "nav-docs-link" : undefined}
-      class={`rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] transition-all ${pillClass(item)}`}
+      class={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] transition-all ${pillClass(item)}`}
       aria-current={item.active ? "page" : undefined}
     >
-      {item.label}
+      <span>{item.label}</span>
+      {#if item.external}
+        <ExternalLinkIcon size={12} className="shrink-0 opacity-70" />
+      {/if}
     </a>
   {/each}
 </nav>

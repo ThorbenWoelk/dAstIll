@@ -5,7 +5,16 @@ pageClass: overview-page
 
 # Documentation
 
-dAstIll is a YouTube channel intelligence application. This site is the technical reference for how the product is structured today: the user-facing surfaces, the Rust backend, the AI and search pipeline, and the deployment boundaries around them.
+dAstIll monitors your YouTube channels, pulls transcripts, and delivers AI-generated summaries - so you can quickly spot what matters and spend time on the videos worth watching.
+
+**Core capabilities:**
+
+- **Channel tracking**: Subscribe to channels, backfill historical videos, and auto-refresh for new content
+- **AI summarization**: Generate consistent summaries evaluated by an LLM-as-judge for quality
+- **Highlights**: Save important snippets from transcripts and summaries for quick reference
+- **Hybrid search**: Full-text and semantic search across transcripts and summaries with context-aware chunking
+
+This site is the technical reference for how the product is structured: the user-facing surfaces, the Rust backend, the AI and search pipeline, and the deployment boundaries.
 
 <div class="overview-grid">
   <a class="overview-card" href="/local-development">

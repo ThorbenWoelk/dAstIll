@@ -45,17 +45,50 @@ This keeps summary searchability from being starved behind a large transcript ba
 
 ## Chunking Strategy
 
+### Chunking Parameters
+
+| Parameter                     | Value | Purpose                                           |
+| ----------------------------- | ----- | ------------------------------------------------- |
+| `TRANSCRIPT_TARGET_WORDS`     | 300   | Target words per transcript chunk                 |
+| `TRANSCRIPT_OVERLAP_WORDS`    | 40    | Overlap words between consecutive transcript chunks |
+| `SUMMARY_TARGET_WORDS`        | 300   | Target words per summary section chunk            |
+| `EMBEDDING_DIMENSIONS`        | 512   | Vector dimensions for embeddinggemma             |
+| `EMBED_BATCH_SIZE`            | 8     | Chunks per embedding API request                  |
+
 ### Transcript chunking
 
-- paragraph-aware where possible
-- approximately 300 target words
-- approximately 40-word overlap
+Transcript chunking is paragraph-aware and preserves context across chunk boundaries:
+
+1. **Paragraph detection**: Splits input on blank lines to identify natural paragraph boundaries
+2. **Paragraph grouping**: Accumulates paragraphs until adding another would exceed `TRANSCRIPT_TARGET_WORDS` (300)
+3. **Long paragraph handling**: Paragraphs exceeding the target are split into word-based chunks
+4. **Overlap injection**: After completing a chunk, the last `TRANSCRIPT_OVERLAP_WORDS` (40) words are carried forward to prefix the next chunk
+
+This overlap ensures search queries that span chunk boundaries remain discoverable.
 
 ### Summary chunking
 
-- always includes one full-document chunk
-- also creates section-based chunks from markdown headings
-- section chunks are split further only when necessary
+Summary chunking follows a two-tier approach:
+
+1. **Full-document chunk**: Always creates one chunk containing the entire normalized summary text, marked with `is_full_document: true`. This chunk is never split and preserves the complete summary for broad queries.
+
+2. **Section-based chunks**: Parses markdown `## ` headings to identify sections. For each section:
+   - Sections under `SUMMARY_TARGET_WORDS` (300) become single chunks with the section title preserved
+   - Sections over the target are split into word-based chunks (without overlap)
+   - Each chunk carries its `section_title` for filtering and display
+
+Section chunks are marked `is_full_document: false` and enable targeted queries within specific summary sections.
+
+### Chunk Content Normalization
+
+Before chunking, text is normalized:
+
+- removes markdown heading prefixes (`#`, `##`, etc.)
+- removes list markers (`-`, `*`, `1.`, `2)`)
+- collapses whitespace and blank lines into single spaces
+- strips leading/trailing whitespace
+
+This produces clean searchable text without formatting artifacts.
 
 ## Retrieval Modes
 
@@ -77,6 +110,31 @@ If semantic search is disabled:
 - search sources are still chunked and indexed
 - FTS still works
 - `embedded_chunk_count` remains `0`
+
+## Embedding Model
+
+The default embedding model is **embeddinggemma:latest**, configured via `OLLAMA_EMBEDDING_MODEL`. The embedding service:
+
+- calls Ollama's `/api/embed` endpoint
+- batches embedding requests for efficiency (up to 8 chunks per request)
+- validates embedding dimensions match the configured model (512 for embeddinggemma)
+
+The embedding model must be pulled and available in Ollama before semantic search can function.
+
+### Embedding Input Format
+
+Before embedding, each chunk is enriched with metadata to improve semantic retrieval:
+
+```text
+Video: <video_title>
+Channel: <channel_name>
+Source: transcript|summary
+Section: <section_title> (optional, for summary chunks)
+
+<chunk_text>
+```
+
+This context prefix helps the embedding model produce vectors that capture not just the chunk content but its relationship to the video and channel.
 
 ## Query Path
 

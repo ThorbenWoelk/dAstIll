@@ -53,7 +53,7 @@ Tracks one record per `(video_id, source_kind)` pair with:
 
 - `content_hash`
 - `source_generation`
-- `embedding_model`
+- `embedding_model` - stores which embedding model was used (default: embeddinggemma:latest)
 - `index_status`
 - `last_indexed_at`
 - `last_error`
@@ -83,6 +83,44 @@ The `highlights` table stores user-selected snippets:
 - `created_at` - timestamp
 
 Highlights are grouped by channel and video in the `/highlights` route.
+
+## Chat Storage
+
+Chat conversations are stored in S3 as JSON objects, separate from the canonical tables:
+
+| Storage                   | Role                                              |
+| ------------------------- | ------------------------------------------------- |
+| `conversations/index.json`| Conversation list index with titles and timestamps|
+| `conversations/{id}.json` | Full conversation with all messages and sources   |
+
+### Conversation Structure
+
+Each conversation contains:
+
+- `id` - unique identifier
+- `title` - auto-generated or user-set title
+- `created_at` / `updated_at` - timestamps
+- `messages` - ordered list of messages
+
+### Message Structure
+
+Each message includes:
+
+- `id` - unique identifier
+- `role` - `user` or `assistant`
+- `content` - the message text
+- `status` - `pending`, `streaming`, `complete`, or `failed`
+- `sources` - retrieved chunks used for RAG grounding (assistant messages only)
+
+Sources reference the search index and provide attribution for AI responses.
+
+### Why Separate Chat Storage
+
+Chat is intentionally separate from canonical content:
+
+- conversations are ephemeral user interactions, not canonical content
+- messages reference existing search chunks but don't duplicate them
+- conversations can be deleted without affecting transcripts or summaries
 
 ## Why Separate Canonical and Search Tables
 

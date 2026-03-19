@@ -4,6 +4,19 @@ export type AiStatus = "cloud" | "local_only" | "offline";
 export type TranscriptRenderMode = "plain_text" | "markdown";
 export type HighlightSource = "transcript" | "summary";
 export type SearchSourceFilter = "all" | "transcript" | "summary";
+export type ChatRole = "system" | "user" | "assistant";
+export type ChatMessageStatus =
+  | "completed"
+  | "streaming"
+  | "cancelled"
+  | "rejected"
+  | "failed";
+export type ChatTitleStatus = "idle" | "generating" | "ready" | "manual";
+export type ChatRetrievalIntent =
+  | "fact"
+  | "synthesis"
+  | "pattern"
+  | "comparison";
 
 export interface Channel {
   id: string;
@@ -162,4 +175,63 @@ export interface SearchStatus {
   embedded_chunk_count: number;
   vector_index_ready: boolean;
   retrieval_mode: "hybrid_exact" | "hybrid_ann" | "fts_only";
+}
+
+export interface ChatSource {
+  video_id: string;
+  channel_id: string;
+  channel_name: string;
+  video_title: string;
+  source_kind: Exclude<SearchSourceFilter, "all">;
+  section_title?: string | null;
+  snippet: string;
+  score: number;
+  retrieval_pass?: number | null;
+}
+
+export interface ChatRetrievalPlan {
+  intent: ChatRetrievalIntent;
+  label: string;
+  budget: number;
+  max_per_video: number;
+  queries: string[];
+  expansion_queries: string[];
+  rationale?: string | null;
+}
+
+export interface ChatStreamStatus {
+  stage: string;
+  label?: string | null;
+  detail?: string | null;
+  decision?: string | null;
+  plan?: ChatRetrievalPlan | null;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: ChatRole;
+  content: string;
+  sources: ChatSource[];
+  status: ChatMessageStatus;
+  created_at: string;
+}
+
+export interface ChatConversationSummary {
+  id: string;
+  title?: string | null;
+  title_status: ChatTitleStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatConversation extends ChatConversationSummary {
+  messages: ChatMessage[];
+}
+
+export interface CreateConversationRequest {
+  title?: string | null;
+}
+
+export interface SendChatMessageRequest {
+  content: string;
 }

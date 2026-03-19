@@ -12,11 +12,12 @@ describe("getSectionNavigationItems", () => {
       "https://docs.example.com",
     );
 
-    expect(items).toHaveLength(4);
+    expect(items).toHaveLength(5);
     expect(items.map((item) => item.label)).toEqual([
       "Workspace",
       "Queue",
       "Highlights",
+      "Chat",
       "Docs",
     ]);
     expect(items.find((item) => item.section === "queue")?.active).toBe(true);
@@ -37,6 +38,7 @@ describe("getSectionNavigationItems", () => {
       "workspace",
       "queue",
       "highlights",
+      "chat",
     ];
 
     for (const section of sections) {

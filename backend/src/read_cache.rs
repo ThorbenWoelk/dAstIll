@@ -101,14 +101,12 @@ impl ReadCache {
     }
 
     pub async fn get_channels(&self) -> Option<Vec<Channel>> {
-        match self.get(&ReadCacheKey::Channels).await {
-            Some(ReadCacheValue::Channels(channels)) => Some(channels),
-            _ => None,
-        }
+        self.get_typed(&ReadCacheKey::Channels, ReadCacheValue::into_channels)
+            .await
     }
 
     pub async fn set_channels(&self, channels: Vec<Channel>) {
-        self.set(ReadCacheKey::Channels, ReadCacheValue::Channels(channels))
+        self.set_typed(ReadCacheKey::Channels, channels, ReadCacheValue::Channels)
             .await;
     }
 
@@ -116,13 +114,11 @@ impl ReadCache {
         &self,
         key: &WorkspaceBootstrapCacheKey,
     ) -> Option<WorkspaceBootstrapPayload> {
-        match self
-            .get(&ReadCacheKey::WorkspaceBootstrap(key.clone()))
-            .await
-        {
-            Some(ReadCacheValue::WorkspaceBootstrap(payload)) => Some(payload),
-            _ => None,
-        }
+        self.get_typed(
+            &ReadCacheKey::WorkspaceBootstrap(key.clone()),
+            ReadCacheValue::into_workspace_bootstrap,
+        )
+        .await
     }
 
     pub async fn set_workspace_bootstrap(
@@ -130,9 +126,10 @@ impl ReadCache {
         key: WorkspaceBootstrapCacheKey,
         payload: WorkspaceBootstrapPayload,
     ) {
-        self.set(
+        self.set_typed(
             ReadCacheKey::WorkspaceBootstrap(key),
-            ReadCacheValue::WorkspaceBootstrap(payload),
+            payload,
+            ReadCacheValue::WorkspaceBootstrap,
         )
         .await;
     }
@@ -141,10 +138,11 @@ impl ReadCache {
         &self,
         key: &ChannelSnapshotCacheKey,
     ) -> Option<ChannelSnapshotPayload> {
-        match self.get(&ReadCacheKey::ChannelSnapshot(key.clone())).await {
-            Some(ReadCacheValue::ChannelSnapshot(payload)) => Some(payload),
-            _ => None,
-        }
+        self.get_typed(
+            &ReadCacheKey::ChannelSnapshot(key.clone()),
+            ReadCacheValue::into_channel_snapshot,
+        )
+        .await
     }
 
     pub async fn set_channel_snapshot(
@@ -152,42 +150,44 @@ impl ReadCache {
         key: ChannelSnapshotCacheKey,
         payload: ChannelSnapshotPayload,
     ) {
-        self.set(
+        self.set_typed(
             ReadCacheKey::ChannelSnapshot(key),
-            ReadCacheValue::ChannelSnapshot(payload),
+            payload,
+            ReadCacheValue::ChannelSnapshot,
         )
         .await;
     }
 
     pub async fn get_channel_sync_depth(&self, channel_id: &str) -> Option<SyncDepthPayload> {
-        match self
-            .get(&ReadCacheKey::ChannelSyncDepth(channel_id.to_string()))
-            .await
-        {
-            Some(ReadCacheValue::SyncDepth(payload)) => Some(payload),
-            _ => None,
-        }
+        self.get_typed(
+            &ReadCacheKey::ChannelSyncDepth(channel_id.to_string()),
+            ReadCacheValue::into_sync_depth,
+        )
+        .await
     }
 
     pub async fn set_channel_sync_depth(&self, channel_id: String, payload: SyncDepthPayload) {
-        self.set(
+        self.set_typed(
             ReadCacheKey::ChannelSyncDepth(channel_id),
-            ReadCacheValue::SyncDepth(payload),
+            payload,
+            ReadCacheValue::SyncDepth,
         )
         .await;
     }
 
     pub async fn get_search_status(&self) -> Option<SearchStatusPayload> {
-        match self.get(&ReadCacheKey::SearchStatus).await {
-            Some(ReadCacheValue::SearchStatus(payload)) => Some(payload),
-            _ => None,
-        }
+        self.get_typed(
+            &ReadCacheKey::SearchStatus,
+            ReadCacheValue::into_search_status,
+        )
+        .await
     }
 
     pub async fn set_search_status(&self, payload: SearchStatusPayload) {
-        self.set_with_ttl(
+        self.set_typed_with_ttl(
             ReadCacheKey::SearchStatus,
-            ReadCacheValue::SearchStatus(payload),
+            payload,
+            ReadCacheValue::SearchStatus,
             SEARCH_STATUS_CACHE_TTL,
         )
         .await;
@@ -222,6 +222,28 @@ impl ReadCache {
         self.set_with_ttl(key, value, self.ttl).await;
     }
 
+    async fn get_typed<T>(
+        &self,
+        key: &ReadCacheKey,
+        map: fn(ReadCacheValue) -> Option<T>,
+    ) -> Option<T> {
+        self.get(key).await.and_then(map)
+    }
+
+    async fn set_typed<T>(&self, key: ReadCacheKey, value: T, wrap: fn(T) -> ReadCacheValue) {
+        self.set(key, wrap(value)).await;
+    }
+
+    async fn set_typed_with_ttl<T>(
+        &self,
+        key: ReadCacheKey,
+        value: T,
+        wrap: fn(T) -> ReadCacheValue,
+        ttl: Duration,
+    ) {
+        self.set_with_ttl(key, wrap(value), ttl).await;
+    }
+
     async fn set_with_ttl(&self, key: ReadCacheKey, value: ReadCacheValue, ttl: Duration) {
         self.entries.write().await.insert(
             key,
@@ -230,6 +252,43 @@ impl ReadCache {
                 value,
             },
         );
+    }
+}
+
+impl ReadCacheValue {
+    fn into_channels(self) -> Option<Vec<Channel>> {
+        match self {
+            Self::Channels(channels) => Some(channels),
+            _ => None,
+        }
+    }
+
+    fn into_workspace_bootstrap(self) -> Option<WorkspaceBootstrapPayload> {
+        match self {
+            Self::WorkspaceBootstrap(payload) => Some(payload),
+            _ => None,
+        }
+    }
+
+    fn into_channel_snapshot(self) -> Option<ChannelSnapshotPayload> {
+        match self {
+            Self::ChannelSnapshot(payload) => Some(payload),
+            _ => None,
+        }
+    }
+
+    fn into_sync_depth(self) -> Option<SyncDepthPayload> {
+        match self {
+            Self::SyncDepth(payload) => Some(payload),
+            _ => None,
+        }
+    }
+
+    fn into_search_status(self) -> Option<SearchStatusPayload> {
+        match self {
+            Self::SearchStatus(payload) => Some(payload),
+            _ => None,
+        }
     }
 }
 
