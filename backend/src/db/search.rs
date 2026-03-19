@@ -577,12 +577,16 @@ pub async fn search_fts_candidates(
     channel_id: Option<&str>,
     limit: usize,
 ) -> Result<Vec<SearchCandidate>, StoreError> {
+    use crate::services::search::extract_keyword_snippet;
+
     let query_tokens: Vec<String> = query
         .split_whitespace()
         .map(|t| t.trim_matches('"').to_lowercase())
         .filter(|t| !t.is_empty())
         .collect();
-    if query_tokens.is_empty() { return Ok(Vec::new()); }
+    if query_tokens.is_empty() {
+        return Ok(Vec::new());
+    }
 
     #[derive(serde::Deserialize)]
     struct ChunkData {
@@ -594,21 +598,49 @@ pub async fn search_fts_candidates(
 
     let chunk_keys = store.list_keys("search-chunks/").await?;
 
-    // Lazy-loaded video/channel caches (only fetch what we need)
+    // Fetch all chunks concurrently instead of sequentially
+    const MAX_CONCURRENT_FETCHES: usize = 24;
+    let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_FETCHES));
+    let mut set = tokio::task::JoinSet::new();
+
+    for chunk_key in chunk_keys {
+        let store = store.clone();
+        let sem = semaphore.clone();
+        set.spawn(async move {
+            let _permit = sem.acquire_owned().await.ok();
+            store
+                .get_json::<ChunkData>(&chunk_key)
+                .await
+                .map(|opt| opt.map(|chunk| (chunk_key, chunk)))
+        });
+    }
+
+    let mut all_chunks: Vec<(String, ChunkData)> = Vec::new();
+    while let Some(result) = set.join_next().await {
+        match result {
+            Ok(Ok(Some(entry))) => all_chunks.push(entry),
+            Ok(Ok(None)) => {}
+            Ok(Err(err)) => return Err(err),
+            Err(_) => {}
+        }
+    }
+
+    // Score and filter chunks by query token matches
     let mut video_cache: std::collections::HashMap<String, Option<Video>> = std::collections::HashMap::new();
     let mut channel_cache: std::collections::HashMap<String, crate::models::Channel> = std::collections::HashMap::new();
     let mut scored: Vec<(SearchCandidate, usize)> = Vec::new();
 
-    for chunk_key in chunk_keys {
-        let Some(chunk) = store.get_json::<ChunkData>(&chunk_key).await? else { continue };
-
-        if source_kind.is_some_and(|f| chunk.source_kind != f.as_str()) { continue; }
+    for (chunk_key, chunk) in all_chunks {
+        if source_kind.is_some_and(|f| chunk.source_kind != f.as_str()) {
+            continue;
+        }
 
         let text_lower = chunk.chunk_text.to_lowercase();
         let match_count = query_tokens.iter().filter(|t| text_lower.contains(t.as_str())).count();
-        if match_count == 0 { continue; }
+        if match_count == 0 {
+            continue;
+        }
 
-        // Fetch video on demand
         let video = match video_cache.entry(chunk.video_id.clone()) {
             std::collections::hash_map::Entry::Occupied(e) => e.get().clone(),
             std::collections::hash_map::Entry::Vacant(e) => {
@@ -619,9 +651,10 @@ pub async fn search_fts_candidates(
         };
 
         let Some(video) = video else { continue };
-        if channel_id.is_some_and(|f| video.channel_id != f) { continue; }
+        if channel_id.is_some_and(|f| video.channel_id != f) {
+            continue;
+        }
 
-        // Fetch channel on demand
         if !channel_cache.contains_key(&video.channel_id) {
             if let Some(ch) = store.get_json::<crate::models::Channel>(&format!("channels/{}.json", video.channel_id)).await? {
                 channel_cache.insert(ch.id.clone(), ch);
@@ -635,6 +668,8 @@ pub async fn search_fts_candidates(
             .unwrap_or(&chunk_key)
             .to_string();
 
+        let snippet = extract_keyword_snippet(&chunk.chunk_text, &query_tokens);
+
         scored.push((
             SearchCandidate {
                 chunk_id,
@@ -644,7 +679,7 @@ pub async fn search_fts_candidates(
                 video_title: video.title.clone(),
                 source_kind: SearchSourceKind::from_db_value(&chunk.source_kind),
                 section_title: chunk.section_title,
-                chunk_text: chunk.chunk_text,
+                chunk_text: snippet,
                 published_at: video.published_at.to_rfc3339(),
             },
             match_count,

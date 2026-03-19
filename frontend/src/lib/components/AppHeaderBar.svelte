@@ -40,7 +40,7 @@
     <div class="flex min-w-0 items-center gap-3 lg:justify-self-start">
       <a
         href="/"
-        class="text-xl font-bold tracking-tighter text-[var(--foreground)] transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)] sm:text-2xl"
+        class="text-xl font-bold tracking-tighter text-[var(--accent)] transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)] sm:text-2xl"
         aria-label="Go to dAstIll home"
       >
         DASTILL

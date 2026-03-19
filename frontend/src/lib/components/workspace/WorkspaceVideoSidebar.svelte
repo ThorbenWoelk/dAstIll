@@ -6,6 +6,9 @@
   import { formatSyncDate } from "$lib/workspace/content";
   import type { AcknowledgedFilter } from "$lib/workspace/types";
 
+  const SWIPE_BACK_THRESHOLD_PX = 72;
+  const SWIPE_BACK_EDGE_PX = 32;
+
   let {
     mobileVisible = false,
     selectedChannelId = null,
@@ -21,6 +24,7 @@
     acknowledgedFilter = "all",
     syncDepth = null,
     allowLoadedVideoSyncDepthOverride = false,
+    onBack = () => {},
     onSelectVideo = async () => {},
     onLoadMoreVideos = async () => {},
     onVideoTypeFilterChange = async () => {},
@@ -40,6 +44,7 @@
     acknowledgedFilter?: AcknowledgedFilter;
     syncDepth?: SyncDepth | null;
     allowLoadedVideoSyncDepthOverride?: boolean;
+    onBack?: () => void;
     onSelectVideo?: (videoId: string) => Promise<void> | void;
     onLoadMoreVideos?: () => Promise<void> | void;
     onVideoTypeFilterChange?: (value: VideoTypeFilter) => Promise<void> | void;
@@ -50,6 +55,12 @@
 
   let filterMenuOpen = $state(false);
   let filterMenuContainer = $state<HTMLDivElement | null>(null);
+  let touchGesture = $state<{
+    startX: number;
+    startY: number;
+    edgeStart: boolean;
+    interactive: boolean;
+  } | null>(null);
   let activeFilterLabel = $derived.by(() => {
     const labels: string[] = [];
 
@@ -93,6 +104,62 @@
     }
   }
 
+  function isInteractiveSwipeTarget(target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLElement)) {
+      return false;
+    }
+
+    return Boolean(
+      target.closest(
+        "button, a, input, textarea, select, label, [role='button'], [role='tab']",
+      ),
+    );
+  }
+
+  function handleSwipeStart(event: TouchEvent) {
+    if (!mobileVisible || event.touches.length !== 1) {
+      touchGesture = null;
+      return;
+    }
+
+    const touch = event.touches[0];
+    const edgeStart = touch.clientX <= SWIPE_BACK_EDGE_PX;
+    touchGesture = {
+      startX: touch.clientX,
+      startY: touch.clientY,
+      edgeStart,
+      interactive: edgeStart ? false : isInteractiveSwipeTarget(event.target),
+    };
+  }
+
+  function handleSwipeEnd(event: TouchEvent) {
+    if (
+      !touchGesture ||
+      !touchGesture.edgeStart ||
+      touchGesture.interactive ||
+      !mobileVisible ||
+      event.changedTouches.length !== 1
+    ) {
+      touchGesture = null;
+      return;
+    }
+
+    const touch = event.changedTouches[0];
+    const deltaX = touch.clientX - touchGesture.startX;
+    const deltaY = touch.clientY - touchGesture.startY;
+
+    touchGesture = null;
+
+    if (
+      deltaX < SWIPE_BACK_THRESHOLD_PX ||
+      Math.abs(deltaX) <= Math.abs(deltaY) * 1.25
+    ) {
+      return;
+    }
+
+    onBack();
+  }
+
   async function selectVideoTypeFilter(value: VideoTypeFilter) {
     filterMenuOpen = false;
     await onVideoTypeFilterChange(value);
@@ -109,9 +176,14 @@
 <aside
   class={`fade-in stagger-2 flex min-h-0 min-w-0 flex-col border-0 lg:sticky lg:top-4 lg:h-[calc(100vh-4rem)] lg:gap-3 lg:border-r lg:border-[var(--accent-border-soft)] lg:px-5 ${mobileVisible ? "h-full gap-4 p-3" : "hidden lg:flex"}`}
   id="videos"
+  ontouchstart={handleSwipeStart}
+  ontouchend={handleSwipeEnd}
+  ontouchcancel={() => {
+    touchGesture = null;
+  }}
 >
-  <div class="flex flex-wrap items-center justify-between gap-3">
-    <div class="flex min-w-0 items-center gap-2">
+  <div class="flex items-center justify-between gap-3 max-lg:flex-nowrap">
+    <div class="flex min-w-0 items-center gap-1.5">
       <h2 class="text-base font-bold tracking-tight text-[var(--foreground)]">
         Videos
       </h2>

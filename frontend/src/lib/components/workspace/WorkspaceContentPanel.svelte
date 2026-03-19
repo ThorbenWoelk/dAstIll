@@ -27,7 +27,8 @@
     highlights: "Highlights",
     info: "Info",
   };
-  const SWIPE_THRESHOLD_PX = 72;
+  const SWIPE_BACK_THRESHOLD_PX = 72;
+  const SWIPE_BACK_EDGE_PX = 32;
 
   let {
     mobileVisible = false,
@@ -63,6 +64,7 @@
     formattingNotice = null,
     formattingNoticeVideoId = null,
     formattingNoticeTone = "info",
+    onBack = () => {},
     onSetMode = async () => {},
     onStartEdit = () => {},
     onCancelEdit = () => {},
@@ -110,6 +112,7 @@
     formattingNotice?: string | null;
     formattingNoticeVideoId?: string | null;
     formattingNoticeTone?: "info" | "success" | "warning";
+    onBack?: () => void;
     onSetMode?: (mode: WorkspaceContentMode) => Promise<void> | void;
     onStartEdit?: () => void;
     onCancelEdit?: () => void;
@@ -130,6 +133,7 @@
   let touchGesture: {
     startX: number;
     startY: number;
+    edgeStart: boolean;
     interactive: boolean;
   } | null = null;
 
@@ -152,16 +156,19 @@
     }
 
     const touch = event.touches[0];
+    const edgeStart = touch.clientX <= SWIPE_BACK_EDGE_PX;
     touchGesture = {
       startX: touch.clientX,
       startY: touch.clientY,
-      interactive: isInteractiveSwipeTarget(event.target),
+      edgeStart,
+      interactive: edgeStart ? false : isInteractiveSwipeTarget(event.target),
     };
   }
 
   function handleSwipeEnd(event: TouchEvent) {
     if (
       !touchGesture ||
+      !touchGesture.edgeStart ||
       touchGesture.interactive ||
       !mobileVisible ||
       editing ||
@@ -178,28 +185,13 @@
     touchGesture = null;
 
     if (
-      Math.abs(deltaX) < SWIPE_THRESHOLD_PX ||
+      deltaX < SWIPE_BACK_THRESHOLD_PX ||
       Math.abs(deltaX) <= Math.abs(deltaY) * 1.25
     ) {
       return;
     }
 
-    const currentIndex = CONTENT_MODE_ORDER.indexOf(contentMode);
-    if (currentIndex === -1) {
-      return;
-    }
-
-    const nextIndex =
-      deltaX < 0
-        ? Math.min(CONTENT_MODE_ORDER.length - 1, currentIndex + 1)
-        : Math.max(0, currentIndex - 1);
-
-    const nextMode = CONTENT_MODE_ORDER[nextIndex];
-    if (nextMode === contentMode) {
-      return;
-    }
-
-    void onSetMode(nextMode);
+    onBack();
   }
 </script>
 
@@ -213,7 +205,7 @@
       class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between"
     >
       <div class="min-w-0 flex-1" id="content-mode-tabs">
-        <div class="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+        <div class="-mx-4 min-w-0 flex-1 overflow-x-auto px-4 sm:mx-0 sm:px-0">
           <div
             class="flex min-w-max items-center gap-5 border-b border-[var(--accent-border-soft)] pr-4 sm:pr-0"
           >

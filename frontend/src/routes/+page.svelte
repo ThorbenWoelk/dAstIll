@@ -30,7 +30,6 @@
     type TourStep,
   } from "$lib/components/FeatureGuide.svelte";
   import ConfirmationModal from "$lib/components/ConfirmationModal.svelte";
-  import Toggle from "$lib/components/Toggle.svelte";
   import WorkspaceChannelSidebar from "$lib/components/workspace/WorkspaceChannelSidebar.svelte";
   import WorkspaceContentPanel from "$lib/components/workspace/WorkspaceContentPanel.svelte";
   import WorkspaceHeader from "$lib/components/workspace/WorkspaceHeader.svelte";
@@ -684,6 +683,14 @@
     if (restored.channelSortMode) {
       channelSortMode = restored.channelSortMode;
     }
+
+    if (selectedVideoId) {
+      mobileTab = "content";
+    } else if (selectedChannelId) {
+      mobileTab = "videos";
+    } else {
+      mobileTab = "channels";
+    }
   }
 
   function persistViewUrl() {
@@ -845,6 +852,7 @@
       );
       if (!initialChannelId) {
         selectedChannelId = null;
+        mobileTab = "channels";
         clearSelectedVideoState();
         syncDepth = null;
       } else {
@@ -956,6 +964,7 @@
         } else {
           selectedChannelId = null;
           selectedVideoId = null;
+          mobileTab = "channels";
           videos = [];
           contentText = "";
           draft = "";
@@ -1692,27 +1701,16 @@
   <WorkspaceHeader
     {aiIndicator}
     initialSearchStatus={searchStatus}
+    showMobileBack={mobileTab !== "channels"}
+    mobileBackLabel={mobileTab === "content"
+      ? "Back to videos"
+      : "Back to channels"}
+    onMobileBack={() => {
+      mobileTab = mobileTab === "content" ? "videos" : "channels";
+    }}
     onOpenGuide={openGuide}
     onSearchResultSelect={handleSearchResultSelection}
   />
-
-  <div class="px-4 sm:px-2 lg:hidden">
-    <div class="mx-auto max-w-[1440px] pt-1">
-      <Toggle
-        ariaLabel="Workspace panels"
-        options={["channels", "videos", "content"]}
-        value={mobileTab}
-        labels={{
-          channels: "Channels",
-          videos: "Videos",
-          content: "Content",
-        }}
-        onChange={(value) => {
-          mobileTab = value as "channels" | "videos" | "content";
-        }}
-      />
-    </div>
-  </div>
 
   <main
     id="main-content"
@@ -1749,6 +1747,9 @@
       {acknowledgedFilter}
       {syncDepth}
       {allowLoadedVideoSyncDepthOverride}
+      onBack={() => {
+        mobileTab = "channels";
+      }}
       onSelectVideo={(videoId) => selectVideo(videoId, true)}
       onLoadMoreVideos={loadMoreVideos}
       onVideoTypeFilterChange={setVideoTypeFilter}
@@ -1789,6 +1790,9 @@
       {formattingNotice}
       {formattingNoticeVideoId}
       {formattingNoticeTone}
+      onBack={() => {
+        mobileTab = "videos";
+      }}
       onSetMode={setMode}
       onStartEdit={startEdit}
       onCancelEdit={cancelEdit}

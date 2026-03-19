@@ -475,6 +475,41 @@ pub fn truncate_chunk_for_display(text: &str) -> String {
     limit_snippet(&normalize_source_text(text))
 }
 
+pub fn extract_keyword_snippet(text: &str, query_tokens: &[String]) -> String {
+    let normalized = normalize_source_text(text);
+    let total_chars = normalized.chars().count();
+
+    if total_chars <= MAX_SNIPPET_CHARS {
+        return normalized;
+    }
+
+    let lower = normalized.to_lowercase();
+    let match_char_offset = query_tokens
+        .iter()
+        .filter_map(|token| {
+            lower
+                .find(token.as_str())
+                .map(|byte_pos| lower[..byte_pos].chars().count())
+        })
+        .min();
+
+    let Some(match_offset) = match_char_offset else {
+        return limit_snippet(&normalized);
+    };
+
+    let all_chars: Vec<char> = normalized.chars().collect();
+    let half_window = MAX_SNIPPET_CHARS / 2;
+    let window_start = match_offset.saturating_sub(half_window);
+    let window_end = (window_start + MAX_SNIPPET_CHARS).min(total_chars);
+    let window_start = window_end.saturating_sub(MAX_SNIPPET_CHARS);
+
+    let snippet: String = all_chars[window_start..window_end].iter().collect();
+    let prefix = if window_start > 0 { "..." } else { "" };
+    let suffix = if window_end < total_chars { "..." } else { "" };
+
+    format!("{prefix}{}{suffix}", snippet.trim())
+}
+
 fn normalize_source_text(input: &str) -> String {
     input
         .lines()

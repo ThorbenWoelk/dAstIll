@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import {
     getSearchStatus,
     openSearchStatusStream,
@@ -47,11 +47,17 @@
   let {
     aiIndicator = null,
     initialSearchStatus = null,
+    showMobileBack = false,
+    mobileBackLabel = "Back",
+    onMobileBack = () => {},
     onOpenGuide = () => {},
     onSearchResultSelect = async () => {},
   }: {
     aiIndicator?: AiIndicatorPresentation | null;
     initialSearchStatus?: SearchStatus | null;
+    showMobileBack?: boolean;
+    mobileBackLabel?: string;
+    onMobileBack?: () => void;
     onOpenGuide?: () => void;
     onSearchResultSelect?: (
       result: SearchResult,
@@ -63,6 +69,7 @@
   let searchSource = $state<SearchSourceFilter>("all");
   let searchSections = $state<SearchSectionsState>(createEmptySearchSections());
   let searchPanelOpen = $state(false);
+  let mobileSearchOpen = $state(false);
   let searchPanelContainer = $state<HTMLDivElement | null>(null);
   let searchInputElement = $state<HTMLInputElement | null>(null);
   let searchRequestId = 0;
@@ -98,11 +105,17 @@
   onMount(() => {
     const handlePointerDown = (event: PointerEvent) => {
       if (
-        searchPanelOpen &&
         searchPanelContainer &&
         !searchPanelContainer.contains(event.target as Node)
       ) {
-        searchPanelOpen = false;
+        if (mobileSearchOpen) {
+          closeSearchOverlay();
+          return;
+        }
+
+        if (searchPanelOpen) {
+          searchPanelOpen = false;
+        }
       }
     };
 
@@ -290,6 +303,18 @@
     }
   }
 
+  async function openSearchOverlay() {
+    mobileSearchOpen = true;
+    searchPanelOpen = hasRecentSearchState;
+    await tick();
+    searchInputElement?.focus();
+  }
+
+  function closeSearchOverlay() {
+    mobileSearchOpen = false;
+    searchPanelOpen = false;
+  }
+
   function closeSearchPanel() {
     searchPanelOpen = false;
   }
@@ -298,6 +323,10 @@
     if (event.key === "Escape") {
       if (searchLoading) {
         cancelSubmittedSearch();
+      } else if (searchPanelOpen) {
+        searchPanelOpen = false;
+      } else if (mobileSearchOpen) {
+        closeSearchOverlay();
       } else {
         searchPanelOpen = false;
       }
@@ -311,6 +340,7 @@
 
   async function handleResultSelect(result: SearchResult) {
     searchPanelOpen = false;
+    mobileSearchOpen = false;
     await onSearchResultSelect(result, primarySearchSource(result));
   }
 </script>
@@ -480,9 +510,31 @@
       class="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 lg:grid-cols-[minmax(0,1fr)_auto_minmax(18rem,22rem)] lg:gap-6"
     >
       <div class="flex min-w-0 items-center gap-3 lg:justify-self-start">
+        {#if showMobileBack}
+          <button
+            type="button"
+            class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-70 transition-all hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 lg:hidden"
+            onclick={onMobileBack}
+            aria-label={mobileBackLabel}
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.4"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+          </button>
+        {/if}
+
         <a
           href="/"
-          class="text-xl font-bold tracking-tighter text-[var(--foreground)] transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)] sm:text-2xl"
+          class="text-xl font-bold tracking-tighter text-[var(--accent)] transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)] sm:text-2xl"
           aria-label="Go to dAstIll home"
         >
           DASTILL
@@ -518,7 +570,29 @@
         </button>
       </div>
 
-      <div class="justify-self-end lg:hidden">
+      <div class="flex items-center justify-self-end gap-2 lg:hidden">
+        <button
+          type="button"
+          class={`inline-flex h-9 min-w-9 items-center justify-center rounded-full border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${mobileSearchOpen ? "border-[var(--accent)]/25 bg-[var(--accent-soft)] text-[var(--accent-strong)]" : "border-[var(--accent-border-soft)] bg-[var(--panel-surface)] text-[var(--soft-foreground)] hover:border-[var(--accent)]/35 hover:text-[var(--foreground)]"}`}
+          onclick={() => void openSearchOverlay()}
+          aria-label="Open search"
+          aria-expanded={mobileSearchOpen}
+          aria-controls="workspace-search-panel"
+        >
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </button>
         <ThemePanel />
       </div>
 
@@ -530,14 +604,66 @@
         />
       </div>
 
-      <div class="col-span-2 min-w-0 lg:col-span-1 lg:col-start-3">
-        <div class="min-w-0 lg:flex lg:items-center lg:gap-2">
-          {@render searchForm()}
-          <div class="mt-3 hidden shrink-0 lg:mt-0 lg:block">
-            <ThemePanel />
+      {#if mobileSearchOpen}
+        <div class="fixed inset-0 z-[90] lg:hidden">
+          <button
+            type="button"
+            class="absolute inset-0 bg-[var(--overlay)]/60 backdrop-blur-sm"
+            onclick={closeSearchOverlay}
+            aria-label="Close search"
+          ></button>
+          <div
+            class="relative mx-auto flex h-full w-full max-w-[36rem] flex-col px-4 pb-6 pt-[max(1rem,env(safe-area-inset-top))]"
+          >
+            <div
+              class="rounded-[var(--radius-lg)] border border-[var(--accent-border-soft)] bg-[var(--surface-frost-strong)] p-3 shadow-2xl backdrop-blur"
+            >
+              <div class="mb-3 flex items-start justify-between gap-3">
+                <div>
+                  <p
+                    class="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--soft-foreground)] opacity-55"
+                  >
+                    Search
+                  </p>
+                  <p class="mt-1 text-[13px] text-[var(--foreground)]">
+                    Search transcripts and summaries
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-65 transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]"
+                  onclick={closeSearchOverlay}
+                  aria-label="Close search"
+                >
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.6"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                </button>
+              </div>
+              {@render searchForm()}
+            </div>
           </div>
         </div>
-      </div>
+      {:else}
+        <div class="hidden min-w-0 lg:col-span-1 lg:col-start-3 lg:block">
+          <div class="min-w-0 lg:flex lg:items-center lg:gap-2">
+            {@render searchForm()}
+            <div class="mt-3 hidden shrink-0 lg:mt-0 lg:block">
+              <ThemePanel />
+            </div>
+          </div>
+        </div>
+      {/if}
     </div>
   </header>
 </div>
