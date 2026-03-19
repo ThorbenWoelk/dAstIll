@@ -41,7 +41,7 @@
   >
     <!-- Backdrop -->
     <div
-      class="absolute inset-0 bg-[var(--overlay)] backdrop-blur-[2px]"
+      class="absolute inset-0 bg-[var(--overlay)]"
       transition:fade={{ duration: 200 }}
     ></div>
 

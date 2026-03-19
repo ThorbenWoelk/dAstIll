@@ -92,8 +92,8 @@
   --accent-soft: rgba(255, 142, 121, 0.14);
   --accent-strong: #ffb8aa;
   --muted: color-mix(in srgb, #24292f 88%, var(--accent));
-  --border: color-mix(in srgb, #353b43 86%, var(--accent));
-  --border-soft: color-mix(in srgb, #2c3138 78%, var(--accent));
+  --border: color-mix(in srgb, #414952 86%, var(--accent));
+  --border-soft: color-mix(in srgb, #363d45 78%, var(--accent));
   --soft-foreground: #b8b1aa;
   --danger: #ff8f8f;
   --danger-soft: rgba(255, 143, 143, 0.12);
@@ -112,10 +112,10 @@
   --accent-wash: color-mix(in srgb, var(--accent) 12%, var(--surface));
   --accent-wash-strong: color-mix(in srgb, var(--accent) 20%, var(--surface));
   --accent-border-soft: color-mix(in srgb, var(--accent) 34%, var(--border));
-  --panel-surface: color-mix(in srgb, var(--surface) 82%, var(--accent));
+  --panel-surface: color-mix(in srgb, var(--surface) 92%, var(--accent));
   --panel-surface-strong: color-mix(
     in srgb,
-    var(--surface-strong) 76%,
+    var(--surface-strong) 88%,
     var(--accent)
   );
   --shell-gradient-start: color-mix(
@@ -428,6 +428,21 @@ textarea {
   border-color: transparent transparent var(--tooltip-bg) transparent;
 }
 
+[data-tooltip-placement="right"]::before {
+  top: 50%;
+  bottom: auto;
+  left: 100%;
+  transform: translateY(-50%) translateX(2px);
+}
+
+[data-tooltip-placement="right"]::after {
+  top: 50%;
+  bottom: auto;
+  left: 100%;
+  transform: translateY(-50%) translateX(-6px);
+  border-color: transparent var(--tooltip-bg) transparent transparent;
+}
+
 [data-tooltip-anchor="end"]::before {
   left: auto;
   right: 0;
@@ -513,6 +528,14 @@ textarea {
 
 [data-tooltip-placement="bottom"][data-tooltip-anchor="start"]:hover::after {
   transform: translateX(-50%) translateY(0px);
+}
+
+[data-tooltip-placement="right"]:hover::before {
+  transform: translateY(-50%) translateX(8px);
+}
+
+[data-tooltip-placement="right"]:hover::after {
+  transform: translateY(-50%) translateX(0px);
 }
 
 /* Hide tooltips on touch devices */

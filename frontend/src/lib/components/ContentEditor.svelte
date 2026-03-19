@@ -11,6 +11,7 @@
     showFormatAction = false,
     showRegenerateAction = false,
     showRevertAction = false,
+    showEditAction = true,
     canRevert = true,
     youtubeUrl = null,
     onEdit = () => {},
@@ -33,6 +34,7 @@
     showFormatAction?: boolean;
     showRegenerateAction?: boolean;
     showRevertAction?: boolean;
+    showEditAction?: boolean;
     canRevert?: boolean;
     youtubeUrl?: string | null;
     onEdit?: () => void;
@@ -150,99 +152,107 @@
     ></textarea>
   </div>
 {:else}
-  <div class="flex flex-wrap gap-4 items-center">
-    {#if showFormatAction}
-      <ContentActionButton
-        compact
-        icon="format"
-        loading={formatting}
-        disabled={busy || formatting || reverting || !aiAvailable}
-        label={formatActionLabel}
-        tooltip={formatting ? "Formatting…" : formatActionLabel}
-        onClick={onFormat}
-      />
-      {#if showRevertAction}
+  <div class="flex flex-wrap items-center gap-4">
+    <div class="flex flex-wrap items-center gap-4">
+      {#if showFormatAction}
         <ContentActionButton
           compact
-          icon="revert"
-          loading={reverting}
-          disabled={busy || formatting || reverting || !canRevert}
-          label={revertActionLabel}
-          tooltip={reverting ? "Reverting…" : revertActionLabel}
-          onClick={onRevert}
+          icon="format"
+          loading={formatting}
+          disabled={busy || formatting || reverting || !aiAvailable}
+          label={formatActionLabel}
+          tooltip={formatting ? "Formatting…" : formatActionLabel}
+          onClick={onFormat}
+        />
+        {#if showRevertAction}
+          <ContentActionButton
+            compact
+            icon="revert"
+            loading={reverting}
+            disabled={busy || formatting || reverting || !canRevert}
+            label={revertActionLabel}
+            tooltip={reverting ? "Reverting…" : revertActionLabel}
+            onClick={onRevert}
+          />
+        {/if}
+      {/if}
+      {#if showRegenerateAction}
+        <ContentActionButton
+          compact
+          icon="regenerate"
+          loading={regenerating}
+          disabled={busy ||
+            formatting ||
+            regenerating ||
+            reverting ||
+            !aiAvailable}
+          label={regenerateActionLabel}
+          tooltip={regenerating ? "Regenerating…" : regenerateActionLabel}
+          onClick={onRegenerate}
         />
       {/if}
-    {/if}
-    {#if showRegenerateAction}
-      <ContentActionButton
-        compact
-        icon="regenerate"
-        loading={regenerating}
-        disabled={busy ||
-          formatting ||
-          regenerating ||
-          reverting ||
-          !aiAvailable}
-        label={regenerateActionLabel}
-        tooltip={regenerating ? "Regenerating…" : regenerateActionLabel}
-        onClick={onRegenerate}
-      />
-    {/if}
-    {#if youtubeUrl}
-      <ContentActionButton
-        compact
-        icon="youtube"
-        href={youtubeUrl}
-        label="Open video on YouTube"
-        tooltip="Open on YouTube"
-      />
-    {/if}
-    <ContentActionButton
-      compact
-      icon="edit"
-      disabled={busy}
-      label="Edit distillation"
-      tooltip="Edit distillation"
-      tooltipAnchor="end"
-      onClick={onEdit}
-    />
-    {#if onAcknowledgeToggle}
-      <button
-        type="button"
-        class={`inline-flex h-9 items-center gap-2 rounded-full border px-3 text-[11px] font-bold uppercase tracking-[0.08em] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 disabled:cursor-not-allowed disabled:opacity-30 ${
-          acknowledged
-            ? "border-[var(--accent)]/20 bg-[var(--accent-wash-strong)] text-[var(--accent-strong)] shadow-sm"
-            : "border-[var(--accent-border-soft)] bg-[var(--panel-surface)] text-[var(--soft-foreground)] hover:border-[var(--accent)]/30 hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]"
-        }`}
-        data-tooltip={acknowledged ? "Mark as unread" : "Mark as read"}
-        data-tooltip-anchor="end"
-        aria-label={acknowledged ? "Mark as unread" : "Mark as read"}
-        aria-pressed={acknowledged}
-        onclick={onAcknowledgeToggle}
-        disabled={busy}
-      >
-        <span
-          class={`flex h-5 w-5 items-center justify-center rounded-full border transition-all ${
+    </div>
+
+    <div class="ml-auto flex flex-wrap items-center gap-4">
+      {#if youtubeUrl}
+        <ContentActionButton
+          compact
+          icon="youtube"
+          href={youtubeUrl}
+          label="Open video on YouTube"
+          tooltip="Open on YouTube"
+        />
+      {/if}
+      {#if onAcknowledgeToggle}
+        <button
+          type="button"
+          class={`inline-flex h-9 items-center gap-2 rounded-full border px-3 text-[11px] font-bold uppercase tracking-[0.08em] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 disabled:cursor-not-allowed disabled:opacity-30 ${
             acknowledged
-              ? "border-[var(--accent)] bg-[var(--accent)] text-white"
-              : "border-[var(--border-soft)] bg-[var(--background)] text-transparent"
+              ? "border-[var(--accent)]/20 bg-[var(--accent-wash-strong)] text-[var(--accent-strong)] shadow-sm"
+              : "border-[var(--accent-border-soft)] bg-[var(--panel-surface)] text-[var(--soft-foreground)] hover:border-[var(--accent)]/30 hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]"
           }`}
-          aria-hidden="true"
+          data-tooltip={acknowledged ? "Mark as unread" : "Mark as read"}
+          data-tooltip-anchor="end"
+          data-tooltip-placement="bottom"
+          aria-label={acknowledged ? "Mark as unread" : "Mark as read"}
+          aria-pressed={acknowledged}
+          onclick={onAcknowledgeToggle}
+          disabled={busy}
         >
-          <svg
-            class={`h-3 w-3 transition-opacity ${acknowledged ? "opacity-100" : "opacity-0"}`}
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="3.4"
-            stroke-linecap="round"
-            stroke-linejoin="round"
+          <span
+            class={`flex h-5 w-5 items-center justify-center rounded-full border transition-all ${
+              acknowledged
+                ? "border-[var(--accent)] bg-[var(--accent)] text-white"
+                : "border-[var(--border-soft)] bg-[var(--background)] text-transparent"
+            }`}
+            aria-hidden="true"
           >
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
-        </span>
-        <span>{acknowledged ? "Read" : "Unread"}</span>
-      </button>
-    {/if}
+            <svg
+              class={`h-3 w-3 transition-opacity ${acknowledged ? "opacity-100" : "opacity-0"}`}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="3.4"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          </span>
+          <span>{acknowledged ? "Read" : "Unread"}</span>
+        </button>
+      {/if}
+      {#if showEditAction}
+        <ContentActionButton
+          compact
+          icon="edit"
+          disabled={busy}
+          label="Edit distillation"
+          tooltip="Edit distillation"
+          tooltipAnchor="end"
+          onClick={onEdit}
+        />
+      {/if}
+    </div>
   </div>
 {/if}

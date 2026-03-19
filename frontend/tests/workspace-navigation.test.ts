@@ -11,34 +11,34 @@ describe("WORKSPACE_CONTENT_MODE_ORDER", () => {
   it("keeps the mobile tab order stable", () => {
     expect(WORKSPACE_CONTENT_MODE_ORDER).toEqual([
       "info",
-      "transcript",
       "summary",
       "highlights",
+      "transcript",
     ]);
   });
 });
 
 describe("getAdjacentContentMode", () => {
   it("moves backward and forward through the content tabs", () => {
-    expect(getAdjacentContentMode("transcript", "previous")).toBe("info");
+    expect(getAdjacentContentMode("transcript", "previous")).toBe("highlights");
     expect(getAdjacentContentMode("summary", "next")).toBe("highlights");
   });
 
   it("returns null when swiping beyond the first or last tab", () => {
     expect(getAdjacentContentMode("info", "previous")).toBeNull();
-    expect(getAdjacentContentMode("highlights", "next")).toBeNull();
+    expect(getAdjacentContentMode("transcript", "next")).toBeNull();
   });
 });
 
 describe("resolveDefaultContentMode", () => {
-  it("prefers highlights, then summary, then transcript, then info", () => {
+  it("opens the info tab first regardless of available content", () => {
     expect(
       resolveDefaultContentMode({
         hasHighlights: true,
         hasSummary: true,
         hasTranscript: true,
       }),
-    ).toBe("highlights");
+    ).toBe("info");
 
     expect(
       resolveDefaultContentMode({
@@ -46,7 +46,7 @@ describe("resolveDefaultContentMode", () => {
         hasSummary: true,
         hasTranscript: true,
       }),
-    ).toBe("summary");
+    ).toBe("info");
 
     expect(
       resolveDefaultContentMode({
@@ -54,7 +54,7 @@ describe("resolveDefaultContentMode", () => {
         hasSummary: false,
         hasTranscript: true,
       }),
-    ).toBe("transcript");
+    ).toBe("info");
 
     expect(
       resolveDefaultContentMode({
@@ -72,7 +72,7 @@ describe("resolveSwipedContentMode", () => {
   });
 
   it("switches to the previous tab on a strong right swipe", () => {
-    expect(resolveSwipedContentMode("transcript", 80, 8)).toBe("info");
+    expect(resolveSwipedContentMode("transcript", 80, 8)).toBe("highlights");
   });
 
   it("ignores short or mostly vertical swipes", () => {
@@ -82,6 +82,6 @@ describe("resolveSwipedContentMode", () => {
 
   it("stays on the edge tabs when no adjacent tab exists", () => {
     expect(resolveSwipedContentMode("info", 80, 0)).toBeNull();
-    expect(resolveSwipedContentMode("highlights", -80, 0)).toBeNull();
+    expect(resolveSwipedContentMode("transcript", -80, 0)).toBeNull();
   });
 });

@@ -31,10 +31,10 @@
   />
 </svelte:head>
 
-<div class="flex min-h-screen flex-col">
+<div class="flex h-screen flex-col overflow-hidden">
   <MobileViewportInset />
   <ServiceWorkerRegistration />
-  <div class="flex-1">
+  <div class="min-h-0 flex-1">
     {@render children()}
   </div>
   <AppBottomNav />

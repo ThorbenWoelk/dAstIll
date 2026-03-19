@@ -555,114 +555,6 @@
           </button>
         </div>
       {/if}
-      <div
-        class="relative shrink-0"
-        use:clickOutside={{
-          enabled: filterMenuOpen,
-          onClickOutside: () => (filterMenuOpen = false),
-        }}
-      >
-        <button
-          type="button"
-          class={`inline-flex h-7 min-w-7 items-center justify-center gap-1 rounded-full px-1.5 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${hasActiveFilter || filterMenuOpen ? "bg-[var(--accent)] text-white" : "text-[var(--soft-foreground)] opacity-50 hover:opacity-80"}`}
-          onclick={() => {
-            filterMenuOpen = !filterMenuOpen;
-          }}
-          aria-label={hasActiveFilter
-            ? `Filters: ${activeFilterLabel}`
-            : "Open search filters"}
-          aria-haspopup="menu"
-          aria-expanded={filterMenuOpen}
-        >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <line x1="3" y1="6" x2="21" y2="6"></line>
-            <line x1="7" y1="12" x2="17" y2="12"></line>
-            <line x1="10" y1="18" x2="14" y2="18"></line>
-          </svg>
-        </button>
-        {#if filterMenuOpen}
-          <div
-            role="menu"
-            aria-label="Search filters"
-            class="fade-in absolute right-0 top-full z-50 mt-2 w-60 rounded-[var(--radius-md)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface-strong)] shadow-xl"
-          >
-            <div class="space-y-4 p-2">
-              <div class="grid gap-1">
-                <p
-                  class="px-2 pb-1 text-[10px] font-bold text-[var(--soft-foreground)] opacity-50"
-                >
-                  SOURCE
-                </p>
-                {#each sourceOptions as option}
-                  <button
-                    type="button"
-                    role="menuitemradio"
-                    aria-checked={searchSource === option}
-                    class={filterOptionClass(searchSource === option)}
-                    onclick={() => {
-                      searchSource = option;
-                      searchPanelOpen = true;
-                    }}
-                  >
-                    <span>{sourceTip(option)}</span>
-                    {#if searchSource === option}
-                      <CheckIcon size={12} strokeWidth={3} />
-                    {/if}
-                  </button>
-                {/each}
-              </div>
-              <div class="grid gap-1">
-                <p
-                  class="px-2 pb-1 text-[10px] font-bold text-[var(--soft-foreground)] opacity-50"
-                >
-                  MATCH TYPE
-                </p>
-                <button
-                  type="button"
-                  role="menuitemcheckbox"
-                  aria-checked={modeKeyword}
-                  class={filterOptionClass(modeKeyword)}
-                  onclick={() => {
-                    modeKeyword = !modeKeyword;
-                    searchPanelOpen = true;
-                  }}
-                >
-                  <span>{searchModeTip("keyword")}</span>
-                  {#if modeKeyword}
-                    <CheckIcon size={12} strokeWidth={3} />
-                  {/if}
-                </button>
-                {#if semanticSearchEnabled}
-                  <button
-                    type="button"
-                    role="menuitemcheckbox"
-                    aria-checked={modeSemantic}
-                    class={filterOptionClass(modeSemantic)}
-                    onclick={() => {
-                      modeSemantic = !modeSemantic;
-                      searchPanelOpen = true;
-                    }}
-                  >
-                    <span>{searchModeTip("semantic")}</span>
-                    {#if modeSemantic}
-                      <CheckIcon size={12} strokeWidth={3} />
-                    {/if}
-                  </button>
-                {/if}
-              </div>
-            </div>
-          </div>
-        {/if}
-      </div>
       {#if searchLoading}
         <span
           class="h-4 w-4 animate-spin rounded-full border-[1.5px] border-[var(--border)] border-t-[var(--accent)]"
@@ -751,7 +643,7 @@
   <div class="fixed inset-0 z-[90] lg:hidden">
     <button
       type="button"
-      class="absolute inset-0 bg-[var(--overlay)]/60 backdrop-blur-sm"
+      class="absolute inset-0 bg-[var(--overlay)]"
       onclick={closeSearchOverlay}
       aria-label="Close search"
     ></button>
@@ -759,7 +651,7 @@
       class="relative mx-auto flex h-full w-full max-w-[36rem] flex-col px-4 pb-6 pt-[max(1rem,env(safe-area-inset-top))]"
     >
       <div
-        class="rounded-[var(--radius-lg)] border border-[var(--accent-border-soft)] bg-[var(--surface-frost-strong)] p-3 shadow-2xl backdrop-blur"
+        class="rounded-[var(--radius-lg)] border border-[var(--accent-border-soft)] bg-[var(--surface-strong)] p-3 shadow-2xl"
       >
         <div class="mb-3 flex items-start justify-between gap-3">
           <div>

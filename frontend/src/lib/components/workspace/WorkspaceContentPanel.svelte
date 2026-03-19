@@ -61,6 +61,7 @@
     creatingHighlightVideoId = null,
     deletingHighlightId = null,
     canRevertTranscript = false,
+    showRevertTranscriptAction = false,
     formattingNotice = null,
     formattingNoticeVideoId = null,
     formattingNoticeTone = "info",
@@ -109,6 +110,7 @@
     creatingHighlightVideoId?: string | null;
     deletingHighlightId?: number | null;
     canRevertTranscript?: boolean;
+    showRevertTranscriptAction?: boolean;
     formattingNotice?: string | null;
     formattingNoticeVideoId?: string | null;
     formattingNoticeTone?: "info" | "success" | "warning";
@@ -251,11 +253,38 @@
 </script>
 
 <section
-  class={`fade-in stagger-3 relative z-10 flex min-h-0 min-w-0 flex-col overflow-visible border-0 lg:sticky lg:top-4 lg:h-[calc(100vh-4rem)] lg:gap-4 lg:pb-6 lg:pl-5 ${mobileVisible ? "h-full" : "hidden lg:flex"}`}
+  class={`fade-in stagger-3 relative z-10 flex min-h-0 min-w-0 flex-col overflow-visible border-0 lg:h-full lg:gap-4 ${mobileVisible ? "h-full" : "hidden lg:flex"}`}
   id="content-view"
 >
-  <div class="flex flex-col gap-3 px-4 max-lg:pb-1 max-lg:pt-3 sm:px-6 lg:px-0">
+  <div
+    class="flex flex-col gap-3 px-4 max-lg:pb-1 max-lg:pt-3 sm:px-6 lg:hidden"
+  >
     <h2 class="sr-only">Display Content</h2>
+    <div class="flex items-center gap-3">
+      <button
+        type="button"
+        class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]"
+        onclick={onBack}
+        aria-label="Open sidebar"
+      >
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          ><line x1="3" y1="6" x2="21" y2="6" /><line
+            x1="3"
+            y1="12"
+            x2="21"
+            y2="12"
+          /><line x1="3" y1="18" x2="21" y2="18" /></svg
+        >
+      </button>
+    </div>
     <div
       class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between"
     >
@@ -282,7 +311,7 @@
         </div>
       </div>
 
-      {#if selectedVideoId && !loadingContent && !editing && contentMode !== "info" && contentMode !== "highlights"}
+      {#if selectedVideoId && !loadingContent && !editing}
         <div
           id="content-actions"
           class="relative z-20 flex h-10 items-center justify-end self-end lg:shrink-0 lg:self-auto"
@@ -298,7 +327,9 @@
             reverting={revertingContent && revertingVideoId === selectedVideoId}
             showFormatAction={contentMode === "transcript"}
             showRegenerateAction={contentMode === "summary"}
-            showRevertAction={contentMode === "transcript"}
+            showRevertAction={showRevertTranscriptAction}
+            showEditAction={contentMode === "transcript" ||
+              contentMode === "summary"}
             canRevert={canRevertTranscript}
             youtubeUrl={selectedVideoYoutubeUrl}
             value={draft}
@@ -318,7 +349,7 @@
   </div>
 
   <div
-    class="custom-scrollbar mobile-bottom-stack-padding w-full min-h-0 flex-1 overflow-y-auto px-4 max-lg:pt-4 sm:px-6 lg:px-0 lg:pr-4 lg:pb-0"
+    class="custom-scrollbar mobile-bottom-stack-padding w-full min-h-0 flex-1 overflow-y-auto px-4 max-lg:pt-4 sm:px-6 lg:px-8 lg:pt-4 lg:pb-4"
     role="region"
     aria-label="Content panel"
     ontouchstart={handleSwipeStart}
@@ -532,7 +563,7 @@
           reverting={revertingContent && revertingVideoId === selectedVideoId}
           showFormatAction={contentMode === "transcript"}
           showRegenerateAction={contentMode === "summary"}
-          showRevertAction={contentMode === "transcript"}
+          showRevertAction={showRevertTranscriptAction}
           canRevert={canRevertTranscript}
           youtubeUrl={selectedVideoYoutubeUrl}
           value={draft}

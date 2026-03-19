@@ -325,9 +325,9 @@
             {#if loadingVideos || backfillingHistory}
               Loading...
             {:else if hasMore}
-              More
+              Load More
             {:else}
-              Explore History
+              Load History
             {/if}
           </button>
         {/if}

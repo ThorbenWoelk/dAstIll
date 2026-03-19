@@ -14,6 +14,20 @@
 </script>
 
 <div class="space-y-8 pb-20 text-[15px] leading-relaxed">
+  {#if videoInfo?.thumbnail_url}
+    <div
+      class="w-full max-w-[50%] overflow-hidden rounded-[var(--radius-lg)] bg-[var(--muted)]/40 max-sm:max-w-full"
+    >
+      <img
+        src={videoInfo.thumbnail_url}
+        alt={videoInfo?.title || "Video thumbnail"}
+        class="aspect-video w-full object-cover"
+        loading="lazy"
+        referrerpolicy="no-referrer"
+      />
+    </div>
+  {/if}
+
   <h3
     class="text-[20px] font-bold font-serif leading-tight text-[var(--foreground)]"
   >
@@ -57,31 +71,6 @@
       </p>
     </div>
   </div>
-
-  {#if videoInfo?.watch_url}
-    <a
-      href={videoInfo.watch_url}
-      target="_blank"
-      rel="noopener noreferrer"
-      class="group inline-flex items-center gap-2 text-[13px] font-semibold text-[var(--accent)] hover:text-[var(--accent-strong)]"
-    >
-      <span>Open on YouTube</span>
-      <svg
-        width="12"
-        height="12"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2.5"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        class="transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5"
-      >
-        <line x1="7" y1="17" x2="17" y2="7" />
-        <polyline points="7 7 17 7 17 17" />
-      </svg>
-    </a>
-  {/if}
 
   {#if videoInfo?.description}
     <div>

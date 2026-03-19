@@ -53,14 +53,14 @@
   >
     <button
       type="button"
-      class="absolute inset-0 bg-[var(--overlay)]/55 backdrop-blur-[2px]"
+      class="absolute inset-0 bg-[var(--overlay)]"
       aria-label="Close AI engine status"
       onclick={close}
     ></button>
 
     <div
       use:clickOutside={{ enabled: open, onClickOutside: close }}
-      class="relative w-full max-w-sm overflow-hidden rounded-[var(--radius-lg)] border border-[var(--accent-border-soft)] bg-[var(--surface-frost-strong)] shadow-2xl backdrop-blur"
+      class="relative w-full max-w-sm overflow-hidden rounded-[var(--radius-lg)] border border-[var(--accent-border-soft)] bg-[var(--surface-strong)] shadow-2xl"
     >
       <div class="flex items-start justify-between gap-3 px-4 py-4 sm:px-5">
         <div class="min-w-0 space-y-2">

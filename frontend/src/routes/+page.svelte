@@ -30,11 +30,11 @@
   } from "$lib/components/FeatureGuide.svelte";
   import ConfirmationModal from "$lib/components/ConfirmationModal.svelte";
   import ErrorToast from "$lib/components/ErrorToast.svelte";
-  import WorkspaceChannelSidebar from "$lib/components/workspace/WorkspaceChannelSidebar.svelte";
+  import ContentEditor from "$lib/components/ContentEditor.svelte";
   import WorkspaceContentPanel from "$lib/components/workspace/WorkspaceContentPanel.svelte";
-  import WorkspaceHeader from "$lib/components/workspace/WorkspaceHeader.svelte";
-  import WorkspaceMobileTabBar from "$lib/components/workspace/WorkspaceMobileTabBar.svelte";
-  import WorkspaceVideoSidebar from "$lib/components/workspace/WorkspaceVideoSidebar.svelte";
+  import WorkspaceSearchBar from "$lib/components/workspace/WorkspaceSearchBar.svelte";
+  import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
+  import WorkspaceSidebar from "$lib/components/workspace/WorkspaceSidebar.svelte";
   import type {
     AiStatus,
     Channel,
@@ -90,6 +90,13 @@
     mergeWorkspaceViewState,
     parseWorkspaceViewUrlState,
   } from "$lib/view-url";
+  import {
+    buildChannelViewCacheKey,
+    cloneSyncDepthState,
+    cloneVideos,
+    createChannelViewCache,
+    type ChannelSyncDepthState,
+  } from "$lib/channel-view-cache";
   import { channelOrderFromList } from "$lib/workspace/channels";
   import {
     buildOptimisticChannel,
@@ -110,7 +117,10 @@
     mergeVideoHighlights,
     removeVideoHighlightFromState,
   } from "$lib/workspace/highlight-actions";
-  import { resolveDefaultContentMode } from "$lib/workspace/navigation";
+  import {
+    resolveDefaultContentMode,
+    WORKSPACE_CONTENT_MODE_ORDER,
+  } from "$lib/workspace/navigation";
   import {
     type AcknowledgedFilter,
     type ChannelSortMode,
@@ -124,6 +134,23 @@
   const CHANNEL_REFRESH_TTL_MS = 5 * 60 * 1000;
   const SELECTED_VIDEO_SCAN_PAGE_LIMIT = 8;
   const channelLastRefreshedAt = new Map<string, number>();
+
+  type CachedChannelVideoState = {
+    videos: Video[];
+    offset: number;
+    hasMore: boolean;
+    historyExhausted: boolean;
+    backfillingHistory: boolean;
+    allowLoadedVideoSyncDepthOverride: boolean;
+    syncDepth: ChannelSyncDepthState | null;
+  };
+
+  const channelVideoStateCache =
+    createChannelViewCache<CachedChannelVideoState>((state) => ({
+      ...state,
+      videos: cloneVideos(state.videos),
+      syncDepth: cloneSyncDepthState(state.syncDepth),
+    }));
 
   let channels = $state<Channel[]>([]);
   let channelOrder = $state<string[]>([]);
@@ -143,7 +170,7 @@
       body: "All your followed YouTube channels live here. Drag to reorder, search to filter, and use the trash icon to manage.",
       placement: "right",
       prepare: () => {
-        mobileTab = "channels";
+        mobileTab = "browse";
       },
     },
     {
@@ -152,7 +179,7 @@
       body: "Paste any YouTube channel URL, handle, or channel ID and press enter. The channel and its videos are fetched automatically.",
       placement: "bottom",
       prepare: () => {
-        mobileTab = "channels";
+        mobileTab = "browse";
       },
     },
     {
@@ -161,7 +188,7 @@
       body: "Every video from your channels appears here. Select a video to read its transcript, summary, or metadata.",
       placement: "right",
       prepare: () => {
-        mobileTab = "videos";
+        mobileTab = "browse";
       },
     },
     {
@@ -170,7 +197,7 @@
       body: "Filter your video list by type (full videos or shorts) and read status (all, unread, or read). Active filters are shown on the button.",
       placement: "bottom",
       prepare: () => {
-        mobileTab = "videos";
+        mobileTab = "browse";
       },
     },
     {
@@ -257,7 +284,7 @@
       body: "Find detailed guides and references in the docs — everything you need to get the most out of dAstIll.",
       placement: "bottom",
       prepare: () => {
-        mobileTab = "channels";
+        mobileTab = "browse";
       },
       fallbackSelector: "#mobile-nav-docs-link",
     },
@@ -295,14 +322,10 @@
   let summaryModelUsed = $state<string | null>(null);
   let summaryQualityModelUsed = $state<string | null>(null);
   let videoInfo = $state<VideoInfoPayload | null>(null);
-  let syncDepth = $state<{
-    earliest_sync_date: string | null;
-    earliest_sync_date_user_set: boolean;
-    derived_earliest_ready_date: string | null;
-  } | null>(null);
+  let syncDepth = $state<ChannelSyncDepthState | null>(null);
 
   let contentMode = $state<WorkspaceContentMode>("transcript");
-  let mobileTab = $state<"channels" | "videos" | "content">("channels");
+  let mobileTab = $state<"browse" | "content">("browse");
   let contentText = $state("");
   let transcriptRenderMode = $state<TranscriptRenderMode>("plain_text");
   let draftTranscriptRenderMode = $state<TranscriptRenderMode>("plain_text");
@@ -381,6 +404,38 @@
   const selectedVideo = $derived(
     videos.find((video) => video.id === selectedVideoId) ?? null,
   );
+
+  function getChannelViewKey(channelId: string) {
+    return buildChannelViewCacheKey(
+      channelId,
+      videoTypeFilter,
+      acknowledgedFilter,
+    );
+  }
+
+  function restoreCachedChannelVideoState(state: CachedChannelVideoState) {
+    videos = cloneVideos(state.videos);
+    offset = state.offset;
+    hasMore = state.hasMore;
+    historyExhausted = state.historyExhausted;
+    backfillingHistory = state.backfillingHistory;
+    allowLoadedVideoSyncDepthOverride = state.allowLoadedVideoSyncDepthOverride;
+    syncDepth = cloneSyncDepthState(state.syncDepth);
+  }
+
+  $effect(() => {
+    if (!selectedChannelId) return;
+
+    channelVideoStateCache.set(getChannelViewKey(selectedChannelId), {
+      videos: cloneVideos(videos),
+      offset,
+      hasMore,
+      historyExhausted,
+      backfillingHistory,
+      allowLoadedVideoSyncDepthOverride,
+      syncDepth: cloneSyncDepthState(syncDepth),
+    });
+  });
 
   async function loadSyncDepth() {
     if (!selectedChannelId) {
@@ -530,6 +585,11 @@
     selectedVideoId
       ? (originalTranscriptByVideoId[selectedVideoId] ?? null)
       : null,
+  );
+  const hasUpdatedTranscript = $derived(
+    contentMode === "transcript" &&
+      selectedOriginalTranscript !== null &&
+      contentText !== selectedOriginalTranscript,
   );
   const canRevertTranscript = $derived(
     contentMode === "transcript" &&
@@ -729,9 +789,9 @@
     if (selectedVideoId) {
       mobileTab = "content";
     } else if (selectedChannelId) {
-      mobileTab = "videos";
+      mobileTab = "browse";
     } else {
-      mobileTab = "channels";
+      mobileTab = "browse";
     }
   }
 
@@ -888,7 +948,7 @@
       );
       if (!initialChannelId) {
         selectedChannelId = null;
-        mobileTab = "channels";
+        mobileTab = "browse";
         clearSelectedVideoState();
         syncDepth = null;
       } else {
@@ -938,7 +998,6 @@
 
     channels = [optimisticChannel, ...channels];
     channelOrder = [tempId, ...channelOrder];
-    selectedChannelId = tempId;
 
     try {
       const channel = await addChannel(trimmedInput);
@@ -988,7 +1047,7 @@
         } else {
           selectedChannelId = null;
           selectedVideoId = null;
-          mobileTab = "channels";
+          mobileTab = "browse";
           videos = [];
           contentText = "";
           draft = "";
@@ -1015,7 +1074,12 @@
     preferredVideoId: string | null = null,
     fromUserInteraction = false,
   ) {
-    if (fromUserInteraction) mobileTab = "videos";
+    const channelViewKey = getChannelViewKey(channelId);
+    const cachedChannelVideoState = channelVideoStateCache.get(channelViewKey);
+    const hasCachedChannelVideoState =
+      !!cachedChannelVideoState && cachedChannelVideoState.videos.length > 0;
+
+    if (fromUserInteraction) mobileTab = "browse";
     selectedChannelId = channelId;
     clearSelectedVideoState();
     selectedVideoId = preferredVideoId;
@@ -1023,6 +1087,13 @@
     resetVideoInfo();
     editing = false;
     clearFormattingFeedback();
+    if (hasCachedChannelVideoState && cachedChannelVideoState) {
+      restoreCachedChannelVideoState(cachedChannelVideoState);
+      loadingVideos = false;
+      void refreshAndLoadVideos(channelId, false, preferredVideoId, true);
+      return;
+    }
+
     videos = [];
     offset = 0;
     hasMore = true;
@@ -1038,6 +1109,7 @@
     channelId: string,
     bypassTtl = false,
     preferredVideoId: string | null = selectedVideoId,
+    silentInitialSnapshot = false,
   ) {
     const isAck = resolveAcknowledgedParam(acknowledgedFilter);
 
@@ -1047,7 +1119,12 @@
       videoType: videoTypeFilter,
       acknowledged: isAck,
     });
-    await applyChannelSnapshot(channelId, snapshot, preferredVideoId);
+    await applyChannelSnapshot(
+      channelId,
+      snapshot,
+      preferredVideoId,
+      silentInitialSnapshot,
+    );
 
     // Skip YouTube refresh if channel was refreshed recently
     if (
@@ -1708,36 +1785,21 @@
   });
 </script>
 
-<div
-  class="page-shell page-shell--panel-mobile-shell page-shell--with-mobile-nav min-h-screen px-3 py-4 max-lg:px-0 lg:px-6"
+<WorkspaceShell
+  currentSection="workspace"
+  {aiIndicator}
+  onOpenGuide={openGuide}
 >
-  <a
-    href="#main-content"
-    class="skip-link absolute left-4 top-4 z-50 rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white"
-  >
-    Skip to Main Content
-  </a>
-
-  <WorkspaceHeader
-    {aiIndicator}
-    initialSearchStatus={searchStatus}
-    onOpenGuide={openGuide}
-    onSearchResultSelect={handleSearchResultSelection}
-  />
-
-  <WorkspaceMobileTabBar
-    activeTab={mobileTab}
-    onTabChange={(tab) => {
-      mobileTab = tab as typeof mobileTab;
-    }}
-  />
-
-  <main
-    id="main-content"
-    class="panel-shell-main mx-auto mt-0 grid w-full max-w-[1440px] items-start lg:mt-4 lg:grid-cols-[260px_300px_minmax(0,1fr)] lg:gap-0 xl:grid-cols-[280px_340px_minmax(0,1fr)]"
-  >
-    <WorkspaceChannelSidebar
-      mobileVisible={mobileTab === "channels"}
+  {#snippet sidebar({
+    collapsed: sidebarCollapsed,
+    toggle: toggleSidebar,
+    width: sidebarWidth,
+  })}
+    <WorkspaceSidebar
+      collapsed={sidebarCollapsed}
+      width={sidebarWidth}
+      onToggleCollapse={toggleSidebar}
+      mobileVisible={mobileTab === "browse"}
       {channels}
       {selectedChannelId}
       {loadingChannels}
@@ -1747,17 +1809,19 @@
         channelSortMode = nextValue;
       }}
       onAddChannel={handleAddChannel}
-      onSelectChannel={(channelId) => selectChannel(channelId, null, true)}
+      onSelectChannel={(channelId) => {
+        if (channelId === selectedChannelId) {
+          selectedChannelId = null;
+          clearSelectedVideoState();
+          return;
+        }
+        selectChannel(channelId, null, true);
+      }}
       onDeleteChannel={handleDeleteChannel}
       onReorderChannels={reorderChannels}
-    />
-
-    <WorkspaceVideoSidebar
-      mobileVisible={mobileTab === "videos"}
-      {selectedChannelId}
+      {videos}
       {selectedVideoId}
       {selectedChannel}
-      {videos}
       {loadingVideos}
       {refreshingChannel}
       {hasMore}
@@ -1767,73 +1831,204 @@
       {acknowledgedFilter}
       {syncDepth}
       {allowLoadedVideoSyncDepthOverride}
-      onBack={() => {
-        mobileTab = "channels";
-      }}
       onSelectVideo={(videoId) => selectVideo(videoId, true)}
       onLoadMoreVideos={loadMoreVideos}
       onVideoTypeFilterChange={setVideoTypeFilter}
       onAcknowledgedFilterChange={setAcknowledgedFilter}
     />
+  {/snippet}
 
-    <WorkspaceContentPanel
-      mobileVisible={mobileTab === "content"}
-      {selectedChannel}
-      {selectedVideo}
-      {selectedVideoId}
-      {contentMode}
-      {loadingContent}
-      {editing}
-      aiAvailable={aiAvailable ?? false}
-      {summaryQualityScore}
-      {summaryQualityNote}
-      {summaryModelUsed}
-      {summaryQualityModelUsed}
-      {videoInfo}
-      {contentHtml}
-      {contentText}
-      {transcriptRenderMode}
-      {contentHighlights}
-      {selectedVideoHighlights}
-      {selectedVideoYoutubeUrl}
-      {draft}
-      {formattingContent}
-      {formattingVideoId}
-      {regeneratingSummary}
-      {regeneratingVideoId}
-      {revertingContent}
-      {revertingVideoId}
-      {creatingHighlight}
-      {creatingHighlightVideoId}
-      {deletingHighlightId}
-      {canRevertTranscript}
-      {formattingNotice}
-      {formattingNoticeVideoId}
-      {formattingNoticeTone}
-      onBack={() => {
-        mobileTab = "videos";
-      }}
-      onSetMode={setMode}
-      onStartEdit={startEdit}
-      onCancelEdit={cancelEdit}
-      onSaveEdit={saveEdit}
-      onCleanFormatting={cleanFormatting}
-      onRegenerateSummary={regenerateSummaryContent}
-      onRevertTranscript={revertToOriginalTranscript}
-      onDraftChange={(value) => {
-        draft = value;
-      }}
-      onToggleAcknowledge={toggleAcknowledge}
-      onCreateHighlight={saveSelectionHighlight}
-      onDeleteHighlight={deleteExistingHighlight}
-      onShowChannels={() => {
-        mobileTab = "channels";
-      }}
-      onShowVideos={() => {
-        mobileTab = "videos";
-      }}
-    />
-  </main>
+  {#snippet topBar()}
+    <div class="flex items-center gap-6" id="content-mode-tabs">
+      {#each WORKSPACE_CONTENT_MODE_ORDER as mode}
+        <button
+          type="button"
+          class={`-mb-px border-b-2 py-3.5 text-[11px] font-bold uppercase tracking-[0.12em] transition-colors ${
+            contentMode === mode
+              ? "border-[var(--accent)] text-[var(--accent-strong)]"
+              : "border-transparent text-[var(--soft-foreground)] opacity-75 hover:text-[var(--foreground)] hover:opacity-100"
+          }`}
+          aria-pressed={contentMode === mode}
+          onclick={() => void setMode(mode)}
+        >
+          {mode === "transcript"
+            ? "Transcript"
+            : mode === "summary"
+              ? "Summary"
+              : mode === "highlights"
+                ? "Highlights"
+                : "Info"}
+        </button>
+      {/each}
+
+      {#if selectedVideoId && !loadingContent && !editing}
+        <div
+          class="ml-2 border-l border-[var(--border-soft)] pl-4"
+          id="content-actions"
+        >
+          <ContentEditor
+            editing={false}
+            busy={loadingContent}
+            aiAvailable={aiAvailable ?? false}
+            formatting={formattingContent &&
+              formattingVideoId === selectedVideoId}
+            regenerating={regeneratingSummary &&
+              regeneratingVideoId === selectedVideoId}
+            reverting={revertingContent && revertingVideoId === selectedVideoId}
+            showFormatAction={contentMode === "transcript"}
+            showRegenerateAction={contentMode === "summary"}
+            showRevertAction={hasUpdatedTranscript}
+            showEditAction={contentMode === "transcript" ||
+              contentMode === "summary"}
+            canRevert={canRevertTranscript}
+            youtubeUrl={selectedVideoYoutubeUrl}
+            value={draft}
+            acknowledged={selectedVideo?.acknowledged ?? false}
+            onEdit={startEdit}
+            onCancel={cancelEdit}
+            onSave={saveEdit}
+            onFormat={cleanFormatting}
+            onRegenerate={regenerateSummaryContent}
+            onRevert={revertToOriginalTranscript}
+            onChange={(value) => {
+              draft = value;
+            }}
+            onAcknowledgeToggle={toggleAcknowledge}
+          />
+        </div>
+      {/if}
+    </div>
+
+    <div class="flex min-w-0 flex-1 items-center justify-end gap-3">
+      <WorkspaceSearchBar
+        initialSearchStatus={searchStatus}
+        onSearchResultSelect={handleSearchResultSelection}
+      />
+    </div>
+  {/snippet}
+
+  {#if mobileTab === "browse"}
+    <div
+      class="fixed inset-0 z-[80] lg:hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Browse channels"
+    >
+      <button
+        type="button"
+        class="absolute inset-0 bg-[var(--overlay)]"
+        onclick={() => {
+          mobileTab = "content";
+        }}
+        aria-label="Close sidebar"
+      ></button>
+      <div
+        class="relative z-10 h-full w-[min(85vw,20rem)] overflow-hidden border-r border-[var(--accent-border-soft)] bg-[var(--surface-strong)] shadow-2xl"
+      >
+        <WorkspaceSidebar
+          collapsed={false}
+          mobileVisible={true}
+          {channels}
+          {selectedChannelId}
+          {loadingChannels}
+          {addingChannel}
+          {channelSortMode}
+          onChannelSortModeChange={(nextValue) => {
+            channelSortMode = nextValue;
+          }}
+          onAddChannel={handleAddChannel}
+          onSelectChannel={(channelId) => {
+            if (channelId === selectedChannelId) {
+              selectedChannelId = null;
+              clearSelectedVideoState();
+              return;
+            }
+            selectChannel(channelId, null, true);
+          }}
+          onDeleteChannel={handleDeleteChannel}
+          onReorderChannels={reorderChannels}
+          {videos}
+          {selectedVideoId}
+          {selectedChannel}
+          {loadingVideos}
+          {refreshingChannel}
+          {hasMore}
+          {historyExhausted}
+          {backfillingHistory}
+          {videoTypeFilter}
+          {acknowledgedFilter}
+          {syncDepth}
+          {allowLoadedVideoSyncDepthOverride}
+          onSelectVideo={(videoId) => {
+            mobileTab = "content";
+            selectVideo(videoId, true);
+          }}
+          onLoadMoreVideos={loadMoreVideos}
+          onVideoTypeFilterChange={setVideoTypeFilter}
+          onAcknowledgedFilterChange={setAcknowledgedFilter}
+        />
+      </div>
+    </div>
+  {/if}
+
+  <WorkspaceContentPanel
+    mobileVisible={true}
+    {selectedChannel}
+    {selectedVideo}
+    {selectedVideoId}
+    {contentMode}
+    {loadingContent}
+    {editing}
+    aiAvailable={aiAvailable ?? false}
+    {summaryQualityScore}
+    {summaryQualityNote}
+    {summaryModelUsed}
+    {summaryQualityModelUsed}
+    {videoInfo}
+    {contentHtml}
+    {contentText}
+    {transcriptRenderMode}
+    {contentHighlights}
+    {selectedVideoHighlights}
+    {selectedVideoYoutubeUrl}
+    {draft}
+    {formattingContent}
+    {formattingVideoId}
+    {regeneratingSummary}
+    {regeneratingVideoId}
+    {revertingContent}
+    {revertingVideoId}
+    {creatingHighlight}
+    {creatingHighlightVideoId}
+    {deletingHighlightId}
+    {canRevertTranscript}
+    showRevertTranscriptAction={hasUpdatedTranscript}
+    {formattingNotice}
+    {formattingNoticeVideoId}
+    {formattingNoticeTone}
+    onBack={() => {
+      mobileTab = "browse";
+    }}
+    onSetMode={setMode}
+    onStartEdit={startEdit}
+    onCancelEdit={cancelEdit}
+    onSaveEdit={saveEdit}
+    onCleanFormatting={cleanFormatting}
+    onRegenerateSummary={regenerateSummaryContent}
+    onRevertTranscript={revertToOriginalTranscript}
+    onDraftChange={(value) => {
+      draft = value;
+    }}
+    onToggleAcknowledge={toggleAcknowledge}
+    onCreateHighlight={saveSelectionHighlight}
+    onDeleteHighlight={deleteExistingHighlight}
+    onShowChannels={() => {
+      mobileTab = "browse";
+    }}
+    onShowVideos={() => {
+      mobileTab = "browse";
+    }}
+  />
 
   {#if errorMessage}
     <ErrorToast
@@ -1861,4 +2056,4 @@
     onClose={closeGuide}
     onStep={setGuideStep}
   />
-</div>
+</WorkspaceShell>

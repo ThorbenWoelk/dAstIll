@@ -2,28 +2,16 @@ import type { WorkspaceContentMode } from "$lib/workspace/types";
 
 export const WORKSPACE_CONTENT_MODE_ORDER: WorkspaceContentMode[] = [
   "info",
-  "transcript",
   "summary",
   "highlights",
+  "transcript",
 ];
 
-export function resolveDefaultContentMode(options: {
+export function resolveDefaultContentMode(_options: {
   hasHighlights: boolean;
   hasSummary: boolean;
   hasTranscript: boolean;
 }): WorkspaceContentMode {
-  if (options.hasHighlights) {
-    return "highlights";
-  }
-
-  if (options.hasSummary) {
-    return "summary";
-  }
-
-  if (options.hasTranscript) {
-    return "transcript";
-  }
-
   return "info";
 }
 

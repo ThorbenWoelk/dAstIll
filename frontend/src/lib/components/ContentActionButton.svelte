@@ -14,7 +14,7 @@
     label = "",
     tooltip = "",
     tooltipAnchor = undefined,
-    tooltipPlacement = undefined,
+    tooltipPlacement = "bottom",
     href = null,
     onClick = () => {},
   }: {

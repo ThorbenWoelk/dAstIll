@@ -80,34 +80,6 @@
       class="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-r-full bg-[var(--accent)]"
     ></div>
   {/if}
-  {#if draggableEnabled && !showDelete}
-    <div
-      class="hidden shrink-0 items-center justify-center lg:flex"
-      aria-hidden="true"
-    >
-      <div
-        class={`inline-flex h-8 w-6 items-center justify-center rounded-full border transition-all ${dragging ? "border-[var(--accent)]/25 bg-[var(--accent-soft)] text-[var(--accent-strong)]" : "border-transparent text-[var(--soft-foreground)] opacity-35 group-hover:opacity-70"}`}
-      >
-        <svg
-          width="10"
-          height="16"
-          viewBox="0 0 10 16"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.8"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <path d="M2 3h.01"></path>
-          <path d="M2 8h.01"></path>
-          <path d="M2 13h.01"></path>
-          <path d="M8 3h.01"></path>
-          <path d="M8 8h.01"></path>
-          <path d="M8 13h.01"></path>
-        </svg>
-      </div>
-    </div>
-  {/if}
   <div class="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-[var(--muted)]">
     <img
       src={avatarUrl}

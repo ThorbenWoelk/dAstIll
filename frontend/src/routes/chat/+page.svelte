@@ -24,7 +24,7 @@
   import ChatMessageBubble from "$lib/components/chat/ChatMessage.svelte";
   import ChatMessageList from "$lib/components/chat/ChatMessageList.svelte";
   import ChatSidebar from "$lib/components/chat/ChatSidebar.svelte";
-  import WorkspaceHeader from "$lib/components/workspace/WorkspaceHeader.svelte";
+  import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
   import { buildWorkspaceViewHref } from "$lib/view-url";
   import type {
     AiStatus,
@@ -810,28 +810,8 @@
   }
 </script>
 
-<div
-  class="page-shell page-shell--panel-mobile-shell page-shell--with-mobile-nav max-lg:min-h-screen lg:flex lg:h-full lg:flex-col px-3 py-4 max-lg:px-0 lg:px-6"
->
-  <a
-    href="#main-content"
-    class="skip-link absolute left-4 top-4 z-50 rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white"
-  >
-    Skip to Main Content
-  </a>
-
-  <WorkspaceHeader
-    currentSection="chat"
-    {aiIndicator}
-    onOpenGuide={openGuide}
-    onSearchResultSelect={(result, mode) =>
-      void handleSearchResultSelect(result, mode)}
-  />
-
-  <main
-    id="main-content"
-    class="panel-shell-main mx-auto mt-0 grid w-full max-w-[1440px] max-lg:items-start lg:mt-4 lg:flex-1 lg:min-h-0 lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-0 xl:grid-cols-[320px_minmax(0,1fr)]"
-  >
+<WorkspaceShell currentSection="chat" {aiIndicator} onOpenGuide={openGuide}>
+  <div class="flex h-full min-h-0 w-full">
     <div id="conversations-panel">
       {#if mobileTab === "conversations"}
         <div
@@ -842,12 +822,12 @@
         >
           <button
             type="button"
-            class="absolute inset-0 bg-[var(--overlay)]/60 backdrop-blur-sm"
+            class="absolute inset-0 bg-[var(--overlay)]"
             onclick={() => (mobileTab = "content")}
             aria-label="Close conversations"
           ></button>
           <div
-            class="relative z-10 h-full w-[min(85vw,20rem)] overflow-hidden border-r border-[var(--accent-border-soft)] bg-[var(--surface-frost-strong)] shadow-2xl backdrop-blur"
+            class="relative z-10 h-full w-[min(85vw,20rem)] overflow-hidden border-r border-[var(--accent-border-soft)] bg-[var(--surface-strong)] shadow-2xl"
           >
             <ChatSidebar
               mobileVisible={true}
@@ -880,7 +860,7 @@
 
     <section
       id="content-view"
-      class="fade-in stagger-3 relative z-10 flex min-h-0 min-w-0 flex-col overflow-visible lg:h-full lg:gap-4 lg:pb-6 lg:pl-5"
+      class="fade-in stagger-3 relative z-10 flex min-h-0 min-w-0 flex-col overflow-visible lg:h-full lg:gap-4 lg:px-8 lg:pt-4 lg:pb-6"
     >
       <div
         class="flex flex-col gap-3 px-4 max-lg:pb-1 max-lg:pt-3 sm:px-6 lg:px-0"
@@ -1143,7 +1123,7 @@
         />
       </div>
     </section>
-  </main>
+  </div>
 
   <ConfirmationModal
     show={Boolean(deleteConversationId)}
@@ -1164,4 +1144,4 @@
     onClose={closeGuide}
     onStep={setGuideStep}
   />
-</div>
+</WorkspaceShell>

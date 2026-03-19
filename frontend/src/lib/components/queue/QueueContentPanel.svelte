@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Toggle from "$lib/components/Toggle.svelte";
   import { formatSyncDate } from "$lib/workspace/content";
   import type { Channel, QueueTab } from "$lib/types";
   import type { QueueStats } from "$lib/workspace/types";
@@ -15,6 +16,7 @@
     savingSyncDate = false,
     refreshingChannel = false,
     onBack = () => {},
+    onQueueTabChange = () => {},
     onSaveSyncDate = async () => {},
   }: {
     mobileVisible?: boolean;
@@ -27,6 +29,7 @@
     savingSyncDate?: boolean;
     refreshingChannel?: boolean;
     onBack?: () => void;
+    onQueueTabChange?: (value: QueueTab) => void;
     onSaveSyncDate?: (value: string) => Promise<void> | void;
   } = $props();
 
@@ -122,6 +125,21 @@
         >
           {queueTabCopy[queueTab].detail}
         </p>
+      </div>
+
+      <div id="queue-stage-tabs" class="min-w-0 lg:w-auto lg:min-w-[18rem]">
+        <Toggle
+          ariaLabel="Queue tabs"
+          options={["transcripts", "summaries", "evaluations"]}
+          value={queueTab}
+          showIcons={false}
+          labels={{
+            transcripts: "Transcripts",
+            summaries: "Summaries",
+            evaluations: "Evals",
+          }}
+          onChange={(value) => onQueueTabChange(value as QueueTab)}
+        />
       </div>
     </div>
   </div>
