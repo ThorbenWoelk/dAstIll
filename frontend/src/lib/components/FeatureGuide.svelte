@@ -7,6 +7,7 @@
     body: string;
     placement?: "top" | "bottom" | "left" | "right";
     prepare?: () => void;
+    fallbackSelector?: string;
   };
 
   type Props = {
@@ -137,7 +138,10 @@
 
     await tick();
 
-    const el = document.querySelector(s.selector);
+    const primary = document.querySelector(s.selector);
+    const el = primary && primary.getClientRects().length > 0
+      ? primary
+      : (s.fallbackSelector ? document.querySelector(s.fallbackSelector) : null);
     if (!el) {
       // No target found: center card, no spotlight
       spotlightRect = null;

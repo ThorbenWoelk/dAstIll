@@ -149,6 +149,7 @@
       href={item.href}
       target={item.external ? "_blank" : undefined}
       rel={item.external ? "noopener noreferrer" : undefined}
+      id={item.section === "docs" ? "nav-docs-link" : undefined}
       class={`rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] transition-all ${pillClass(item)}`}
       aria-current={item.active ? "page" : undefined}
     >

@@ -136,8 +136,17 @@
     {
       selector: "#videos",
       title: "Video Library",
-      body: "Every video from your channels appears here. Use the filter button to show only long-form, shorts, or unread videos.",
+      body: "Every video from your channels appears here. Select a video to read its transcript, summary, or metadata.",
       placement: "right",
+      prepare: () => {
+        mobileTab = "videos";
+      },
+    },
+    {
+      selector: "#video-filter-button",
+      title: "Filter Options",
+      body: "Filter your video list by type (full videos or shorts) and read status (all, unread, or read). Active filters are shown on the button.",
+      placement: "bottom",
       prepare: () => {
         mobileTab = "videos";
       },
@@ -168,6 +177,18 @@
     },
     {
       selector: "#content-mode-tabs",
+      title: "Highlights Tab",
+      body: "The Highlights tab collects all passages you have saved from transcripts and summaries. Select text in a transcript or summary to create a highlight.",
+      placement: "bottom",
+      prepare: () => {
+        mobileTab = "content";
+        if (contentMode !== "highlights") {
+          void setMode("highlights");
+        }
+      },
+    },
+    {
+      selector: "#content-mode-tabs",
       title: "Info View",
       body: "The Info tab shows video metadata - publish date, duration, description, and thumbnail - pulled directly from YouTube.",
       placement: "bottom",
@@ -181,7 +202,19 @@
     {
       selector: "#content-actions",
       title: "Content Actions",
-      body: "The action bar gives you quick access to: edit the text inline, reformat the transcript with AI, regenerate the summary, jump to the video on YouTube, and mark a video as read.",
+      body: "The action bar gives you quick access to: edit the text inline, reformat the transcript with AI, regenerate the summary, and jump to the video on YouTube.",
+      placement: "bottom",
+      prepare: () => {
+        mobileTab = "content";
+        if (contentMode === "info" || contentMode === "highlights") {
+          void setMode("transcript");
+        }
+      },
+    },
+    {
+      selector: "#content-actions",
+      title: "Mark as Read",
+      body: "Use the checkbox at the end of the action bar to mark a video as read. Read status syncs with the filter in the video sidebar so you can track what you have already reviewed.",
       placement: "bottom",
       prepare: () => {
         mobileTab = "content";
@@ -197,13 +230,14 @@
       placement: "bottom",
     },
     {
-      selector: "#guide-trigger",
+      selector: "#nav-docs-link",
       title: "Documentation",
       body: "Find detailed guides and references in the docs — everything you need to get the most out of dAstIll.",
       placement: "bottom",
       prepare: () => {
         mobileTab = "channels";
       },
+      fallbackSelector: "#mobile-nav-docs-link",
     },
   ];
 

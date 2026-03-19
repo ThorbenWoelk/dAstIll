@@ -198,6 +198,7 @@
     <div class="relative" bind:this={filterMenuContainer}>
       <button
         type="button"
+        id="video-filter-button"
         class={`group flex h-8 min-w-8 items-center justify-center gap-1 rounded-full px-2 transition-all duration-200 ${videoTypeFilter !== "all" || acknowledgedFilter !== "all" || filterMenuOpen ? "bg-[var(--accent)] text-white" : "text-[var(--soft-foreground)] opacity-60 hover:opacity-90"} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 disabled:opacity-20`}
         onclick={() => {
           filterMenuOpen = !filterMenuOpen;
