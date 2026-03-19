@@ -22,7 +22,9 @@
 <button
   type="button"
   class={`group flex w-full min-w-0 gap-3 rounded-[var(--radius-sm)] p-2 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${
-    active ? "bg-[var(--surface)] shadow-sm" : "hover:bg-[var(--surface)]/60"
+    active
+      ? "bg-[var(--accent-wash)] shadow-sm"
+      : "hover:bg-[var(--accent-wash)]"
   }`}
   onclick={onSelect}
 >

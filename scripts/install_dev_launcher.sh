@@ -12,7 +12,7 @@ resources_dir="$contents_dir/Resources"
 launcher_bin="$macos_dir/dastill-dev"
 plist_path="$contents_dir/Info.plist"
 
-icon_svg="$repo_root/assets/dastill-dev-icon.svg"
+icon_png="$repo_root/assets/dastill-dev-icon.png"
 icon_icns="$resources_dir/dastill-dev.icns"
 
 mkdir -p "$HOME/Applications"
@@ -73,13 +73,13 @@ cat > "$plist_path" <<PLIST
 </plist>
 PLIST
 
-if [[ -f "$icon_svg" ]]; then
+if [[ -f "$icon_png" ]]; then
   tmp_dir="$(mktemp -d)"
   trap 'rm -rf "$tmp_dir"' EXIT
   base_png="$tmp_dir/base.png"
   iconset_dir="$tmp_dir/dastill.iconset"
 
-  sips -s format png "$icon_svg" --out "$base_png" >/dev/null
+  cp "$icon_png" "$base_png"
   mkdir -p "$iconset_dir"
 
   sips -z 16 16 "$base_png" --out "$iconset_dir/icon_16x16.png" >/dev/null

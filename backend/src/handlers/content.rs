@@ -64,7 +64,7 @@ pub async fn clean_transcript_formatting(
         input_chars = payload.content.len(),
         "transcript clean formatting requested"
     );
-    require_video(&state, &video_id).await?;
+    let video = require_video(&state, &video_id).await?;
 
     if payload.content.trim().is_empty() {
         tracing::info!(video_id = %video_id, "transcript clean skipped for empty input");
@@ -87,7 +87,7 @@ pub async fn clean_transcript_formatting(
 
     match state
         .summarizer
-        .clean_transcript_formatting(&payload.content)
+        .clean_transcript_formatting(&payload.content, &video_id, &video.channel_id)
         .await
     {
         Ok(result) => Ok(Json(CleanTranscriptResponse {
@@ -330,7 +330,7 @@ pub(crate) async fn ensure_summary(
 
     let (content, model) = state
         .summarizer
-        .summarize(&transcript_text, &video.title)
+        .summarize(&transcript_text, &video.title, video_id, &video.channel_id)
         .await
         .map_err(|e| {
             let error_msg = e.to_string();

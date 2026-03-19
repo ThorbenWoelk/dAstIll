@@ -317,63 +317,14 @@
 
 <svelte:window onkeydown={handleWindowKeydown} />
 
-<header
-  class="mx-auto flex w-full max-w-[1440px] min-w-0 flex-wrap items-start gap-3 px-4 pb-2 sm:px-2 lg:items-center"
->
-  <div class="flex min-w-0 flex-1 items-center gap-3">
-    <a
-      href="/"
-      class="text-xl font-bold tracking-tighter text-[var(--foreground)] transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)] sm:text-2xl"
-      aria-label="Go to dAstIll home"
-    >
-      DASTILL
-    </a>
-    {#if aiIndicator}
-      <AiStatusIndicator
-        detail={aiIndicator.detail}
-        dotClass={aiIndicator.dotClass}
-        title={aiIndicator.title}
-      />
-    {/if}
-    <button
-      type="button"
-      id="guide-trigger"
-      class="inline-flex h-7 w-7 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-40 transition-all hover:bg-[var(--muted)] hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
-      onclick={onOpenGuide}
-      aria-label="Feature guide"
-    >
-      <svg
-        width="14"
-        height="14"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2.2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <circle cx="12" cy="12" r="10"></circle>
-        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
-        <line x1="12" y1="17" x2="12.01" y2="17"></line>
-      </svg>
-    </button>
-  </div>
-
-  <div class="ml-auto flex shrink-0 items-center gap-2">
-    <ThemePanel />
-    <SectionNavigation
-      currentSection="workspace"
-      docsUrl={DOCS_URL}
-      mobileMode="inline"
-    />
-  </div>
-
+{#snippet searchForm()}
   <div
-    class="relative w-full sm:ml-auto sm:w-[23rem] lg:w-[27rem]"
+    id="workspace-search-panel"
+    class="relative w-full lg:max-w-[22rem]"
     bind:this={searchPanelContainer}
   >
     <form
-      class={`flex items-center gap-2 rounded-full border bg-[var(--surface-frost)] px-3 py-2 shadow-sm transition-colors ${searchResultsVisible ? "border-[var(--accent)]/35" : "border-[var(--border-soft)]"}`}
+      class={`flex items-center gap-2 rounded-[var(--radius-md)] border bg-[var(--panel-surface)] px-3 py-2 shadow-sm transition-colors ${searchResultsVisible ? "border-[var(--accent)]/35" : "border-[var(--accent-border-soft)]"}`}
       onsubmit={(event) => {
         event.preventDefault();
         submitSearch();
@@ -458,7 +409,7 @@
       {/if}
       {#if showSubmitHint}
         <span
-          class="shrink-0 rounded-full border border-[var(--border-soft)] bg-[var(--surface)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--soft-foreground)] opacity-70"
+          class="shrink-0 rounded-full border border-[var(--accent-border-soft)] bg-[var(--accent-wash)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--soft-foreground)] opacity-80"
           title="Press Enter or click the search icon to search with semantic ranking when available"
         >
           ask ↵
@@ -467,7 +418,7 @@
         <div class="group relative shrink-0">
           <button
             type="button"
-            class="inline-flex h-5 w-5 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-40 transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+            class="inline-flex h-5 w-5 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-65 transition-opacity hover:bg-[var(--accent-wash)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
             aria-label="Search index status"
           >
             <svg
@@ -486,7 +437,7 @@
             </svg>
           </button>
           <div
-            class="pointer-events-none absolute right-0 top-full z-50 mt-2 w-56 rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-3 opacity-0 shadow-lg transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
+            class="pointer-events-none absolute right-0 top-full z-50 mt-2 w-56 rounded-lg border border-[var(--accent-border-soft)] bg-[var(--panel-surface-strong)] p-3 opacity-0 shadow-lg transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
           >
             <p
               class="text-[11px] font-bold tabular-nums text-[var(--foreground)]"
@@ -521,4 +472,72 @@
       onResultSelect={(result) => void handleResultSelect(result)}
     />
   </div>
-</header>
+{/snippet}
+
+<div class="space-y-3 lg:space-y-0">
+  <header class="mx-auto w-full max-w-[1440px] min-w-0 px-4 pb-2 sm:px-2">
+    <div
+      class="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 lg:grid-cols-[minmax(0,1fr)_auto_minmax(18rem,22rem)] lg:gap-6"
+    >
+      <div class="flex min-w-0 items-center gap-3 lg:justify-self-start">
+        <a
+          href="/"
+          class="text-xl font-bold tracking-tighter text-[var(--foreground)] transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)] sm:text-2xl"
+          aria-label="Go to dAstIll home"
+        >
+          DASTILL
+        </a>
+        {#if aiIndicator}
+          <AiStatusIndicator
+            detail={aiIndicator.detail}
+            dotClass={aiIndicator.dotClass}
+            title={aiIndicator.title}
+          />
+        {/if}
+        <button
+          type="button"
+          id="guide-trigger"
+          class="inline-flex h-8 w-8 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-70 transition-all hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+          onclick={onOpenGuide}
+          aria-label="Feature guide"
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div class="justify-self-end lg:hidden">
+        <ThemePanel />
+      </div>
+
+      <div class="hidden lg:flex lg:justify-center">
+        <SectionNavigation
+          currentSection="workspace"
+          docsUrl={DOCS_URL}
+          showMobile={false}
+        />
+      </div>
+
+      <div class="col-span-2 min-w-0 lg:col-span-1 lg:col-start-3">
+        <div class="min-w-0 lg:flex lg:items-center lg:gap-2">
+          {@render searchForm()}
+          <div class="mt-3 hidden shrink-0 lg:mt-0 lg:block">
+            <ThemePanel />
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+</div>

@@ -1,6 +1,5 @@
 <script lang="ts">
   import ContentEditor from "$lib/components/ContentEditor.svelte";
-  import Toggle from "$lib/components/Toggle.svelte";
   import TranscriptView from "$lib/components/TranscriptView.svelte";
   import type {
     Channel,
@@ -15,6 +14,20 @@
   import WorkspaceHighlightsPanel from "$lib/components/workspace/WorkspaceHighlightsPanel.svelte";
   import WorkspaceSummaryMeta from "$lib/components/workspace/WorkspaceSummaryMeta.svelte";
   import WorkspaceVideoInfoPanel from "$lib/components/workspace/WorkspaceVideoInfoPanel.svelte";
+
+  const CONTENT_MODE_ORDER: WorkspaceContentMode[] = [
+    "transcript",
+    "summary",
+    "highlights",
+    "info",
+  ];
+  const CONTENT_MODE_LABELS: Record<WorkspaceContentMode, string> = {
+    transcript: "Transcript",
+    summary: "Summary",
+    highlights: "Highlights",
+    info: "Info",
+  };
+  const SWIPE_THRESHOLD_PX = 72;
 
   let {
     mobileVisible = false,
@@ -113,60 +126,159 @@
     onShowChannels?: () => void;
     onShowVideos?: () => void;
   } = $props();
+
+  let touchGesture: {
+    startX: number;
+    startY: number;
+    interactive: boolean;
+  } | null = null;
+
+  function isInteractiveSwipeTarget(target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLElement)) {
+      return false;
+    }
+
+    return Boolean(
+      target.closest(
+        "button, a, input, textarea, select, label, [role='button'], [role='tab']",
+      ),
+    );
+  }
+
+  function handleSwipeStart(event: TouchEvent) {
+    if (!mobileVisible || event.touches.length !== 1) {
+      touchGesture = null;
+      return;
+    }
+
+    const touch = event.touches[0];
+    touchGesture = {
+      startX: touch.clientX,
+      startY: touch.clientY,
+      interactive: isInteractiveSwipeTarget(event.target),
+    };
+  }
+
+  function handleSwipeEnd(event: TouchEvent) {
+    if (
+      !touchGesture ||
+      touchGesture.interactive ||
+      !mobileVisible ||
+      editing ||
+      event.changedTouches.length !== 1
+    ) {
+      touchGesture = null;
+      return;
+    }
+
+    const touch = event.changedTouches[0];
+    const deltaX = touch.clientX - touchGesture.startX;
+    const deltaY = touch.clientY - touchGesture.startY;
+
+    touchGesture = null;
+
+    if (
+      Math.abs(deltaX) < SWIPE_THRESHOLD_PX ||
+      Math.abs(deltaX) <= Math.abs(deltaY) * 1.25
+    ) {
+      return;
+    }
+
+    const currentIndex = CONTENT_MODE_ORDER.indexOf(contentMode);
+    if (currentIndex === -1) {
+      return;
+    }
+
+    const nextIndex =
+      deltaX < 0
+        ? Math.min(CONTENT_MODE_ORDER.length - 1, currentIndex + 1)
+        : Math.max(0, currentIndex - 1);
+
+    const nextMode = CONTENT_MODE_ORDER[nextIndex];
+    if (nextMode === contentMode) {
+      return;
+    }
+
+    void onSetMode(nextMode);
+  }
 </script>
 
 <section
-  class={`fade-in stagger-3 relative z-10 flex min-h-0 min-w-0 flex-col overflow-visible border-0 lg:sticky lg:top-4 lg:h-[calc(100vh-4rem)] lg:gap-4 lg:py-6 lg:pl-6 ${mobileVisible ? "h-full" : "hidden lg:flex"}`}
+  class={`fade-in stagger-3 relative z-10 flex min-h-0 min-w-0 flex-col overflow-visible border-0 lg:sticky lg:top-4 lg:h-[calc(100vh-4rem)] lg:gap-4 lg:py-6 lg:pl-5 ${mobileVisible ? "h-full" : "hidden lg:flex"}`}
   id="content-view"
 >
-  <div
-    class="flex flex-wrap items-center justify-between gap-3 px-4 max-lg:pb-1 max-lg:pt-3 sm:px-6 lg:px-0"
-  >
+  <div class="flex flex-col gap-3 px-4 max-lg:pb-1 max-lg:pt-3 sm:px-6 lg:px-0">
     <h2 class="sr-only">Display Content</h2>
-    <div class="flex items-center gap-3 sm:gap-4" id="content-mode-tabs">
-      <Toggle
-        options={["transcript", "summary", "highlights", "info"]}
-        value={contentMode}
-        onChange={(value) => void onSetMode(value as WorkspaceContentMode)}
-      />
-    </div>
-
-    {#if selectedVideoId && !loadingContent && !editing && contentMode !== "info" && contentMode !== "highlights"}
-      <div
-        id="content-actions"
-        class="relative z-20 flex h-10 items-center justify-end"
-      >
-        <ContentEditor
-          editing={false}
-          busy={loadingContent}
-          {aiAvailable}
-          formatting={formattingContent &&
-            formattingVideoId === selectedVideoId}
-          regenerating={regeneratingSummary &&
-            regeneratingVideoId === selectedVideoId}
-          reverting={revertingContent && revertingVideoId === selectedVideoId}
-          showFormatAction={contentMode === "transcript"}
-          showRegenerateAction={contentMode === "summary"}
-          showRevertAction={contentMode === "transcript"}
-          canRevert={canRevertTranscript}
-          youtubeUrl={selectedVideoYoutubeUrl}
-          value={draft}
-          acknowledged={selectedVideo?.acknowledged ?? false}
-          onEdit={onStartEdit}
-          onCancel={onCancelEdit}
-          onSave={onSaveEdit}
-          onFormat={onCleanFormatting}
-          onRegenerate={onRegenerateSummary}
-          onRevert={onRevertTranscript}
-          onChange={(value) => onDraftChange(value)}
-          onAcknowledgeToggle={onToggleAcknowledge}
-        />
+    <div
+      class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between"
+    >
+      <div class="min-w-0 flex-1" id="content-mode-tabs">
+        <div class="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+          <div
+            class="flex min-w-max items-center gap-5 border-b border-[var(--accent-border-soft)] pr-4 sm:pr-0"
+          >
+            {#each CONTENT_MODE_ORDER as mode}
+              <button
+                type="button"
+                class={`-mb-px border-b-2 pb-3 text-[11px] font-bold uppercase tracking-[0.12em] transition-colors ${
+                  contentMode === mode
+                    ? "border-[var(--accent)] text-[var(--accent-strong)]"
+                    : "border-transparent text-[var(--soft-foreground)] opacity-75 hover:text-[var(--foreground)] hover:opacity-100"
+                }`}
+                aria-pressed={contentMode === mode}
+                onclick={() => void onSetMode(mode)}
+              >
+                {CONTENT_MODE_LABELS[mode]}
+              </button>
+            {/each}
+          </div>
+        </div>
       </div>
-    {/if}
+
+      {#if selectedVideoId && !loadingContent && !editing && contentMode !== "info" && contentMode !== "highlights"}
+        <div
+          id="content-actions"
+          class="relative z-20 flex h-10 items-center justify-end self-end lg:shrink-0 lg:self-auto"
+        >
+          <ContentEditor
+            editing={false}
+            busy={loadingContent}
+            {aiAvailable}
+            formatting={formattingContent &&
+              formattingVideoId === selectedVideoId}
+            regenerating={regeneratingSummary &&
+              regeneratingVideoId === selectedVideoId}
+            reverting={revertingContent && revertingVideoId === selectedVideoId}
+            showFormatAction={contentMode === "transcript"}
+            showRegenerateAction={contentMode === "summary"}
+            showRevertAction={contentMode === "transcript"}
+            canRevert={canRevertTranscript}
+            youtubeUrl={selectedVideoYoutubeUrl}
+            value={draft}
+            acknowledged={selectedVideo?.acknowledged ?? false}
+            onEdit={onStartEdit}
+            onCancel={onCancelEdit}
+            onSave={onSaveEdit}
+            onFormat={onCleanFormatting}
+            onRegenerate={onRegenerateSummary}
+            onRevert={onRevertTranscript}
+            onChange={(value) => onDraftChange(value)}
+            onAcknowledgeToggle={onToggleAcknowledge}
+          />
+        </div>
+      {/if}
+    </div>
   </div>
 
   <div
     class="custom-scrollbar mobile-bottom-stack-padding w-full min-h-0 flex-1 overflow-y-auto px-4 max-lg:pt-4 sm:px-6 lg:px-0 lg:pr-4 lg:pb-0"
+    role="region"
+    aria-label="Content panel"
+    ontouchstart={handleSwipeStart}
+    ontouchend={handleSwipeEnd}
+    ontouchcancel={() => {
+      touchGesture = null;
+    }}
   >
     {#if selectedVideoId && !loadingContent && selectedVideo}
       <nav
@@ -210,7 +322,7 @@
         class={`mb-4 flex flex-wrap items-center gap-3 rounded-[var(--radius-md)] border p-4 transition-all duration-500 sm:mb-8 ${
           formattingNoticeTone === "warning"
             ? "border-[var(--accent)]/20 bg-[var(--accent-soft)]/50 text-[var(--accent-strong)]"
-            : "border-[var(--border-soft)] bg-[var(--muted)]/30 text-[var(--soft-foreground)]"
+            : "border-[var(--accent-border-soft)] bg-[var(--accent-wash)] text-[var(--soft-foreground)]"
         }`}
         role="status"
         aria-live="polite"
@@ -259,9 +371,39 @@
       <div
         class="flex h-full flex-col items-center justify-center py-20 text-center"
       >
-        <p class="text-[15px] text-[var(--soft-foreground)] opacity-30">
-          Select a video to view its content.
-        </p>
+        <div
+          class="max-w-[24rem] rounded-[var(--radius-lg)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] px-6 py-8 shadow-sm"
+        >
+          <div
+            class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[var(--accent-soft)]/60 text-[var(--accent-strong)]"
+          >
+            <svg
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path
+                d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"
+              />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="8" y1="13" x2="16" y2="13" />
+              <line x1="8" y1="17" x2="13" y2="17" />
+            </svg>
+          </div>
+          <p class="mt-4 text-[17px] font-semibold text-[var(--foreground)]">
+            Select a video
+          </p>
+          <p class="mt-2 text-[14px] leading-6 text-[var(--soft-foreground)]">
+            Open any video from the library to read its transcript, inspect the
+            summary, and capture highlights.
+          </p>
+        </div>
       </div>
     {:else if loadingContent}
       {@const contentStatus =
@@ -284,6 +426,16 @@
               ? `${contentMode === "summary" ? "Summary" : "Transcript"} generation failed.`
               : `${contentMode === "summary" ? "Summary" : "Transcript"} not yet available.`}
           </p>
+          {#if contentStatus === "failed" && contentMode === "summary"}
+            <button
+              type="button"
+              class="mt-4 rounded-[var(--radius-sm)] border border-[var(--accent-border-soft)] px-3 py-1.5 text-[12px] font-medium text-[var(--soft-foreground)] transition-colors hover:border-[var(--accent)]/40 hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] disabled:opacity-40 disabled:pointer-events-none"
+              disabled={!aiAvailable || regeneratingSummary}
+              onclick={onRegenerateSummary}
+            >
+              {regeneratingSummary ? "Retrying…" : "Retry"}
+            </button>
+          {/if}
         </div>
       {:else}
         <div
@@ -356,6 +508,16 @@
             ? "Summary generation failed."
             : "Summary not yet available."}
         </p>
+        {#if selectedVideo.summary_status === "failed"}
+          <button
+            type="button"
+            class="mt-4 rounded-[var(--radius-sm)] border border-[var(--accent-border-soft)] px-3 py-1.5 text-[12px] font-medium text-[var(--soft-foreground)] transition-colors hover:border-[var(--accent)]/40 hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] disabled:opacity-40 disabled:pointer-events-none"
+            disabled={!aiAvailable || regeneratingSummary}
+            onclick={onRegenerateSummary}
+          >
+            {regeneratingSummary ? "Retrying…" : "Retry"}
+          </button>
+        {/if}
       </div>
     {:else}
       <div class="max-lg:pb-32">

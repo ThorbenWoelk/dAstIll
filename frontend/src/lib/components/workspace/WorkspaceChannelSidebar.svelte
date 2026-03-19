@@ -241,19 +241,17 @@
 </script>
 
 <aside
-  class={`fade-in stagger-1 flex min-h-0 min-w-0 flex-col border-0 lg:sticky lg:top-4 lg:h-[calc(100vh-4rem)] lg:gap-3 lg:border-r lg:border-[var(--border-soft)] lg:pl-2 lg:pr-5 ${mobileVisible ? "h-full gap-4 p-3" : "hidden lg:flex"}`}
+  class={`fade-in stagger-1 flex min-h-0 min-w-0 flex-col border-0 lg:sticky lg:top-4 lg:h-[calc(100vh-4rem)] lg:gap-3 lg:border-r lg:border-[var(--accent-border-soft)] lg:px-5 ${mobileVisible ? "h-full gap-4 p-3" : "hidden lg:flex"}`}
   id="workspace"
 >
   <div class="flex items-center justify-between gap-2">
-    <h2
-      class="text-base font-bold tracking-tight text-[var(--soft-foreground)]"
-    >
+    <h2 class="text-base font-bold tracking-tight text-[var(--foreground)]">
       Channels
     </h2>
     <div class="flex items-center gap-0.5">
       <button
         type="button"
-        class={`inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors ${manageChannels ? "text-[var(--danger)]" : "text-[var(--soft-foreground)] opacity-40 hover:opacity-80"}`}
+        class={`inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors ${manageChannels ? "bg-[var(--accent-wash)] text-[var(--danger)]" : "text-[var(--soft-foreground)] opacity-55 hover:bg-[var(--accent-wash)] hover:opacity-100"}`}
         data-tooltip={manageChannels ? "Exit manage mode" : "Manage channels"}
         onclick={() => {
           manageChannels = !manageChannels;
@@ -277,7 +275,7 @@
       </button>
       <button
         type="button"
-        class={`inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors ${channelSearchOpen ? "text-[var(--accent)]" : "text-[var(--soft-foreground)] opacity-40 hover:opacity-80"}`}
+        class={`inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors ${channelSearchOpen ? "bg-[var(--accent-wash)] text-[var(--accent)]" : "text-[var(--soft-foreground)] opacity-55 hover:bg-[var(--accent-wash)] hover:opacity-100"}`}
         data-tooltip={channelSearchOpen ? "Close search" : "Search channels"}
         onclick={() => {
           channelSearchOpen = !channelSearchOpen;
@@ -303,7 +301,7 @@
       </button>
       <button
         type="button"
-        class={`inline-flex h-7 items-center justify-center gap-1 rounded-full px-1.5 transition-colors lg:w-7 lg:px-0 ${channelSortMode !== "custom" ? "text-[var(--accent)]" : "text-[var(--soft-foreground)] opacity-40 hover:opacity-80"}`}
+        class={`inline-flex h-7 items-center justify-center gap-1 rounded-full px-1.5 transition-colors lg:w-7 lg:px-0 ${channelSortMode !== "custom" ? "bg-[var(--accent-wash)] text-[var(--accent)]" : "text-[var(--soft-foreground)] opacity-55 hover:bg-[var(--accent-wash)] hover:opacity-100"}`}
         data-tooltip={channelSortMode === "custom"
           ? "Sort: Custom"
           : channelSortMode === "alpha"
@@ -364,23 +362,13 @@
             <path d="M18 6v12"></path>
           </svg>
         {/if}
-        <span
-          class="text-[9px] font-bold uppercase tracking-wider lg:hidden"
-          aria-hidden="true"
-        >
-          {channelSortMode === "alpha"
-            ? "A–Z"
-            : channelSortMode === "newest"
-              ? "New"
-              : "Custom"}
-        </span>
       </button>
     </div>
   </div>
 
   {#if channelSearchOpen}
     <div
-      class="flex items-center gap-2 border-b border-[var(--border-soft)] px-1 pb-2 transition-all"
+      class="flex items-center gap-2 border-b border-[var(--accent-border-soft)] px-1 pb-2 transition-all"
     >
       <svg
         width="12"
@@ -431,7 +419,7 @@
 
   <form class="grid" onsubmit={handleChannelSubmit} aria-label="Follow channel">
     <div
-      class="flex min-w-0 items-center gap-2 border-b border-[var(--border-soft)] pb-1 transition-all focus-within:border-[var(--accent)]/40"
+      class="flex min-w-0 items-center gap-2 border-b border-[var(--accent-border-soft)] pb-1 transition-all focus-within:border-[var(--accent)]/40"
     >
       <label for="channel-input" class="sr-only">Add Channel</label>
       <input
@@ -476,17 +464,17 @@
   >
     {#if loadingChannels}
       <div class="space-y-4" role="status" aria-live="polite">
-        {#each Array.from({ length: 4 }) as _, index (index)}
+        {#each Array.from({ length: 7 }) as _, index (index)}
           <div class="flex animate-pulse items-center gap-4 px-3 py-3">
             <div
-              class="h-10 w-10 shrink-0 rounded-full bg-[var(--muted)] opacity-60"
+              class="h-10 w-10 shrink-0 rounded-full bg-[var(--border)] opacity-80"
             ></div>
             <div class="min-w-0 flex-1 space-y-2">
               <div
-                class="h-3 w-3/4 rounded-full bg-[var(--muted)] opacity-60"
+                class="h-3 w-3/4 rounded-full bg-[var(--border)] opacity-80"
               ></div>
               <div
-                class="h-2 w-1/2 rounded-full bg-[var(--muted)] opacity-40"
+                class="h-2 w-1/2 rounded-full bg-[var(--border)] opacity-60"
               ></div>
             </div>
           </div>

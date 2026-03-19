@@ -11,9 +11,15 @@
     currentSection: SectionNavigationSection;
     docsUrl: string;
     mobileMode?: "bottom" | "inline";
+    showMobile?: boolean;
   };
 
-  let { currentSection, docsUrl, mobileMode = "bottom" }: Props = $props();
+  let {
+    currentSection,
+    docsUrl,
+    mobileMode = "bottom",
+    showMobile = true,
+  }: Props = $props();
 
   let open = $state(false);
   let button = $state<HTMLButtonElement | null>(null);
@@ -29,13 +35,13 @@
   );
   let mobilePanelClass = $derived(
     mobileMode === "inline"
-      ? "absolute right-0 top-full z-[70] mt-2 flex w-[min(90vw,16rem)] flex-col gap-1 rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface-strong)] p-1.5 shadow-xl fade-in"
-      : "absolute bottom-full left-1/2 z-[70] mb-2 flex w-[min(90vw,16rem)] -translate-x-1/2 flex-col gap-1 rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface-strong)] p-1.5 shadow-xl fade-in",
+      ? "absolute right-0 top-full z-[70] mt-2 flex w-[min(90vw,16rem)] flex-col gap-1 rounded-[var(--radius-md)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface-strong)] p-1.5 shadow-xl fade-in"
+      : "absolute bottom-full left-1/2 z-[70] mb-2 flex w-[min(90vw,16rem)] -translate-x-1/2 flex-col gap-1 rounded-[var(--radius-md)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface-strong)] p-1.5 shadow-xl fade-in",
   );
   let mobileButtonClass = $derived(
     mobileMode === "inline"
-      ? "inline-flex h-9 min-w-[8.5rem] max-w-[min(13rem,calc(100vw-7rem))] items-center justify-center gap-2 rounded-full border border-[var(--border-soft)] bg-[var(--surface-strong)] px-3.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--foreground)] shadow-sm transition-colors hover:border-[var(--border)]"
-      : "inline-flex h-10 min-w-[9.5rem] max-w-[calc(100vw-2rem)] items-center justify-center gap-2 rounded-full border border-[var(--border-soft)] bg-[var(--surface-strong)] px-4 text-[12px] font-bold uppercase tracking-[0.1em] text-[var(--foreground)] shadow-lg transition-colors hover:border-[var(--border)]",
+      ? "inline-flex h-9 min-w-[8.5rem] max-w-[min(13rem,calc(100vw-7rem))] items-center justify-center gap-2 rounded-full border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] px-3.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--foreground)] shadow-sm transition-colors hover:border-[var(--accent)]/40"
+      : "inline-flex h-10 min-w-[9.5rem] max-w-[calc(100vw-2rem)] items-center justify-center gap-2 rounded-full border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] px-4 text-[12px] font-bold uppercase tracking-[0.1em] text-[var(--foreground)] shadow-lg transition-colors hover:border-[var(--accent)]/40",
   );
 
   function toggle() {
@@ -48,14 +54,14 @@
 
   function itemClass(item: SectionNavigationItem): string {
     return item.active
-      ? "bg-[var(--accent-soft)] text-[var(--accent-strong)]"
-      : "text-[var(--soft-foreground)] opacity-80 hover:bg-[var(--accent-soft)]/45 hover:text-[var(--foreground)]";
+      ? "bg-[var(--accent-wash-strong)] text-[var(--accent-strong)]"
+      : "text-[var(--soft-foreground)] opacity-80 hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]";
   }
 
   function pillClass(item: SectionNavigationItem): string {
     return item.active
-      ? "bg-[var(--accent-soft)] text-[var(--accent-strong)] shadow-sm"
-      : "text-[var(--soft-foreground)] opacity-50 hover:bg-[var(--accent-soft)]/40 hover:text-[var(--foreground)] hover:opacity-100";
+      ? "bg-[var(--accent-wash-strong)] text-[var(--accent-strong)] shadow-sm"
+      : "text-[var(--soft-foreground)] opacity-65 hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] hover:opacity-100";
   }
 
   function handleKeydown(event: KeyboardEvent) {
@@ -79,58 +85,60 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<div class="lg:hidden">
-  <div class={mobileWrapperClass}>
-    {#if open}
-      <div
-        bind:this={panel}
-        id="section-navigation-menu"
-        role="menu"
-        aria-label="Sections"
-        class={mobilePanelClass}
-      >
-        {#each items as item (item.section)}
-          <a
-            href={item.href}
-            target={item.external ? "_blank" : undefined}
-            rel={item.external ? "noopener noreferrer" : undefined}
-            role="menuitem"
-            class={`rounded-[var(--radius-sm)] px-3 py-2 text-[12px] font-semibold transition-colors ${itemClass(item)}`}
-            aria-current={item.active ? "page" : undefined}
-            onclick={close}
-          >
-            {item.label}
-          </a>
-        {/each}
-      </div>
-    {/if}
+{#if showMobile}
+  <div class="lg:hidden">
+    <div class={mobileWrapperClass}>
+      {#if open}
+        <div
+          bind:this={panel}
+          id="section-navigation-menu"
+          role="menu"
+          aria-label="Sections"
+          class={mobilePanelClass}
+        >
+          {#each items as item (item.section)}
+            <a
+              href={item.href}
+              target={item.external ? "_blank" : undefined}
+              rel={item.external ? "noopener noreferrer" : undefined}
+              role="menuitem"
+              class={`rounded-[var(--radius-sm)] px-3 py-2 text-[12px] font-semibold transition-colors ${itemClass(item)}`}
+              aria-current={item.active ? "page" : undefined}
+              onclick={close}
+            >
+              {item.label}
+            </a>
+          {/each}
+        </div>
+      {/if}
 
-    <button
-      bind:this={button}
-      type="button"
-      class={mobileButtonClass}
-      aria-expanded={open}
-      aria-haspopup="menu"
-      aria-controls="section-navigation-menu"
-      aria-label="Open section navigation"
-      onclick={toggle}
-    >
-      <span class="min-w-0 truncate">{currentItem.label}</span>
-      <svg
-        class={`h-3 w-3 shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="3"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"
+      <button
+        bind:this={button}
+        type="button"
+        class={mobileButtonClass}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        aria-controls="section-navigation-menu"
+        aria-label="Open section navigation"
+        onclick={toggle}
       >
-        <path d="m6 9 6 6 6-6" />
-      </svg>
-    </button>
+        <span class="min-w-0 truncate">{currentItem.label}</span>
+        <svg
+          class={`h-3 w-3 shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="3"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+    </div>
   </div>
-</div>
+{/if}
 
 <nav
   class="hidden items-center gap-0.5 lg:flex"

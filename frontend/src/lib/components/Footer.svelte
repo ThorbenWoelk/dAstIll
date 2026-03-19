@@ -31,14 +31,12 @@
 
 <style>
   .site-footer {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: 70;
-    border-top: 1px solid var(--border-soft);
-    background: var(--surface-strong);
-    box-shadow: 0 -12px 30px var(--shadow-soft);
+    border-top: 1px solid var(--accent-border-soft);
+    background: color-mix(
+      in srgb,
+      var(--panel-surface-strong) 88%,
+      transparent
+    );
   }
 
   .footer-inner {
@@ -75,7 +73,7 @@
 
   .footer-link:hover {
     opacity: 1;
-    color: var(--foreground);
+    color: var(--accent-strong);
   }
 
   .footer-link:focus-visible {
@@ -93,34 +91,6 @@
     }
 
     .site-footer.mobile-visible {
-      display: block;
-      top: 0;
-      bottom: auto;
-      left: 0;
-      right: 0;
-      padding-top: env(safe-area-inset-top);
-      border-top: none;
-      border-bottom: 1px solid var(--border-soft);
-      box-shadow: 0 12px 30px var(--shadow-soft);
-      background: var(--surface-strong);
-    }
-
-    .site-footer.mobile-visible .footer-inner {
-      min-height: var(--mobile-footer-height);
-      padding: 0 1rem;
-      justify-content: center;
-      gap: 0.75rem;
-    }
-
-    .site-footer.mobile-visible .footer-copyright {
-      font-size: 0.625rem;
-    }
-
-    .site-footer.mobile-visible .footer-link {
-      font-size: 0.625rem;
-    }
-
-    .site-footer.mobile-visible .footer-link span {
       display: none;
     }
   }

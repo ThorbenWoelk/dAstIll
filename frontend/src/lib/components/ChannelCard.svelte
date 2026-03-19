@@ -55,7 +55,7 @@
   ondrop={onDrop}
   ondragend={onDragEnd}
   class={`group relative flex w-full min-w-0 items-center gap-2.5 rounded-[var(--radius-sm)] px-2 py-2 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${trailingSpaceClass} ${
-    active ? "bg-[var(--surface)]" : "hover:bg-[var(--surface)]/60"
+    active ? "bg-[var(--accent-wash)]" : "hover:bg-[var(--accent-wash)]"
   } ${dragging || loading ? "opacity-40" : ""} ${dragOver ? "ring-2 ring-[var(--accent)]/30" : ""} ${loading ? "animate-pulse" : ""} ${draggableEnabled ? (dragging ? "cursor-grabbing" : "cursor-grab") : ""}`}
   onclick={onSelect}
   disabled={loading}

@@ -50,6 +50,19 @@
 
   let filterMenuOpen = $state(false);
   let filterMenuContainer = $state<HTMLDivElement | null>(null);
+  let activeFilterLabel = $derived.by(() => {
+    const labels: string[] = [];
+
+    if (videoTypeFilter !== "all") {
+      labels.push(videoTypeFilter === "long" ? "Full videos" : "Shorts");
+    }
+
+    if (acknowledgedFilter !== "all") {
+      labels.push(acknowledgedFilter === "ack" ? "Read" : "Unread");
+    }
+
+    return labels.join(" · ");
+  });
 
   let filterMenuLabel = $derived(
     videoTypeFilter === "all"
@@ -94,14 +107,12 @@
 <svelte:window onkeydown={handleWindowKeydown} />
 
 <aside
-  class={`fade-in stagger-2 flex min-h-0 min-w-0 flex-col border-0 lg:sticky lg:top-4 lg:h-[calc(100vh-4rem)] lg:gap-3 lg:border-r lg:border-[var(--border-soft)] lg:px-5 ${mobileVisible ? "h-full gap-4 p-3" : "hidden lg:flex"}`}
+  class={`fade-in stagger-2 flex min-h-0 min-w-0 flex-col border-0 lg:sticky lg:top-4 lg:h-[calc(100vh-4rem)] lg:gap-3 lg:border-r lg:border-[var(--accent-border-soft)] lg:px-5 ${mobileVisible ? "h-full gap-4 p-3" : "hidden lg:flex"}`}
   id="videos"
 >
   <div class="flex flex-wrap items-center justify-between gap-3">
     <div class="flex min-w-0 items-center gap-2">
-      <h2
-        class="text-base font-bold tracking-tight text-[var(--soft-foreground)]"
-      >
+      <h2 class="text-base font-bold tracking-tight text-[var(--foreground)]">
         Videos
       </h2>
       {#if refreshingChannel}
@@ -115,7 +126,7 @@
     <div class="relative" bind:this={filterMenuContainer}>
       <button
         type="button"
-        class={`group flex h-7 w-7 items-center justify-center rounded-full transition-all duration-200 ${videoTypeFilter !== "all" || acknowledgedFilter !== "all" || filterMenuOpen ? "bg-[var(--accent)] text-white" : "text-[var(--soft-foreground)] opacity-40 hover:opacity-80"} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 disabled:opacity-20`}
+        class={`group flex h-8 min-w-8 items-center justify-center gap-1 rounded-full px-2 transition-all duration-200 ${videoTypeFilter !== "all" || acknowledgedFilter !== "all" || filterMenuOpen ? "bg-[var(--accent)] text-white" : "text-[var(--soft-foreground)] opacity-60 hover:opacity-90"} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 disabled:opacity-20`}
         onclick={() => {
           filterMenuOpen = !filterMenuOpen;
         }}
@@ -139,13 +150,20 @@
           <line x1="7" y1="12" x2="17" y2="12"></line>
           <line x1="10" y1="18" x2="14" y2="18"></line>
         </svg>
+        {#if activeFilterLabel}
+          <span
+            class="hidden max-w-[8rem] truncate text-[10px] font-bold uppercase tracking-[0.08em] sm:inline"
+          >
+            {activeFilterLabel}
+          </span>
+        {/if}
       </button>
       {#if filterMenuOpen}
         <div
           id="video-filter-menu"
           role="menu"
           aria-label="Video filters"
-          class="fade-in absolute right-0 top-full z-20 mt-2 w-56 overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface)] shadow-xl"
+          class="fade-in absolute right-0 top-full z-20 mt-2 w-56 overflow-hidden rounded-[var(--radius-md)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface-strong)] shadow-xl"
         >
           <div class="space-y-4 p-2">
             <div class="grid gap-1">
@@ -158,7 +176,7 @@
                 type="button"
                 role="menuitemradio"
                 aria-checked={videoTypeFilter === "all"}
-                class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[13px] font-medium transition-colors ${videoTypeFilter === "all" ? "bg-[var(--accent-soft)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--muted)]/50"}`}
+                class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[13px] font-medium transition-colors ${videoTypeFilter === "all" ? "bg-[var(--accent-wash-strong)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--accent-wash)]"}`}
                 onclick={() => void selectVideoTypeFilter("all")}
               >
                 <span>All Content</span>
@@ -181,7 +199,7 @@
                 type="button"
                 role="menuitemradio"
                 aria-checked={videoTypeFilter === "long"}
-                class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[13px] font-medium transition-colors ${videoTypeFilter === "long" ? "bg-[var(--accent-soft)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--muted)]/50"}`}
+                class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[13px] font-medium transition-colors ${videoTypeFilter === "long" ? "bg-[var(--accent-wash-strong)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--accent-wash)]"}`}
                 onclick={() => void selectVideoTypeFilter("long")}
               >
                 <span>Full Videos</span>
@@ -204,7 +222,7 @@
                 type="button"
                 role="menuitemradio"
                 aria-checked={videoTypeFilter === "short"}
-                class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[13px] font-medium transition-colors ${videoTypeFilter === "short" ? "bg-[var(--accent-soft)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--muted)]/50"}`}
+                class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[13px] font-medium transition-colors ${videoTypeFilter === "short" ? "bg-[var(--accent-wash-strong)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--accent-wash)]"}`}
                 onclick={() => void selectVideoTypeFilter("short")}
               >
                 <span>Shorts</span>
@@ -235,7 +253,7 @@
                 type="button"
                 role="menuitemradio"
                 aria-checked={acknowledgedFilter === "all"}
-                class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[13px] font-medium transition-colors ${acknowledgedFilter === "all" ? "bg-[var(--accent-soft)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--muted)]/50"}`}
+                class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[13px] font-medium transition-colors ${acknowledgedFilter === "all" ? "bg-[var(--accent-wash-strong)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--accent-wash)]"}`}
                 onclick={() => void selectAcknowledgedFilter("all")}
               >
                 <span>All Statuses</span>
@@ -258,7 +276,7 @@
                 type="button"
                 role="menuitemradio"
                 aria-checked={acknowledgedFilter === "unack"}
-                class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[13px] font-medium transition-colors ${acknowledgedFilter === "unack" ? "bg-[var(--accent-soft)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--muted)]/50"}`}
+                class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[13px] font-medium transition-colors ${acknowledgedFilter === "unack" ? "bg-[var(--accent-wash-strong)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--accent-wash)]"}`}
                 onclick={() => void selectAcknowledgedFilter("unack")}
               >
                 <span>Unread</span>
@@ -281,7 +299,7 @@
                 type="button"
                 role="menuitemradio"
                 aria-checked={acknowledgedFilter === "ack"}
-                class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[13px] font-medium transition-colors ${acknowledgedFilter === "ack" ? "bg-[var(--accent-soft)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--muted)]/50"}`}
+                class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[13px] font-medium transition-colors ${acknowledgedFilter === "ack" ? "bg-[var(--accent-wash-strong)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--accent-wash)]"}`}
                 onclick={() => void selectAcknowledgedFilter("ack")}
               >
                 <span>Read</span>
@@ -312,27 +330,51 @@
     aria-busy={loadingVideos}
   >
     {#if loadingVideos && videos.length === 0}
-      {#each Array.from({ length: 3 }) as _, index (index)}
+      {#each Array.from({ length: 5 }) as _, index (index)}
         <article
           class="flex min-h-[14rem] flex-col gap-4 rounded-[var(--radius-md)] bg-[var(--muted)]/30 p-4 animate-pulse"
         >
           <div
-            class="aspect-video rounded-[var(--radius-sm)] bg-[var(--muted)] opacity-60"
+            class="aspect-video rounded-[var(--radius-sm)] bg-[var(--border)] opacity-80"
           ></div>
           <div
-            class="h-4 w-11/12 rounded-full bg-[var(--muted)] opacity-60"
+            class="h-4 w-11/12 rounded-full bg-[var(--border)] opacity-80"
           ></div>
           <div
-            class="h-3 w-2/5 rounded-full bg-[var(--muted)] opacity-40"
+            class="h-3 w-2/5 rounded-full bg-[var(--border)] opacity-60"
           ></div>
         </article>
       {/each}
     {:else if videos.length === 0}
-      <p
-        class="px-1 text-[14px] font-medium italic text-[var(--soft-foreground)] opacity-50"
-      >
-        Waiting for the library to fill.
-      </p>
+      <div class="flex flex-1 items-center justify-center py-12">
+        <div class="max-w-[17rem] text-center">
+          <div
+            class="mx-auto flex h-10 w-10 items-center justify-center text-[var(--soft-foreground)] opacity-65"
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <polygon points="7,5 19,12 7,19" />
+            </svg>
+          </div>
+          <p class="mt-4 text-[15px] font-medium text-[var(--foreground)]">
+            No videos yet
+          </p>
+          <p
+            class="mt-2 text-[13px] leading-6 text-[var(--soft-foreground)] opacity-80"
+          >
+            Select a channel to browse its videos and queue up your next
+            distillation.
+          </p>
+        </div>
+      </div>
     {:else}
       {#each videos as video}
         <VideoCard
@@ -348,7 +390,7 @@
         {#if hasMore || !historyExhausted}
           <button
             type="button"
-            class="w-full rounded-[var(--radius-sm)] border border-[var(--border-soft)] py-2.5 text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--soft-foreground)] transition-all hover:border-[var(--accent)]/40 hover:text-[var(--foreground)] disabled:opacity-30"
+            class="w-full rounded-[var(--radius-sm)] border border-[var(--accent-border-soft)] py-2.5 text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--soft-foreground)] transition-all hover:border-[var(--accent)]/40 hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] disabled:opacity-30"
             onclick={() => void onLoadMoreVideos()}
             disabled={loadingVideos || backfillingHistory}
           >
@@ -364,8 +406,22 @@
 
         {#if videos.length > 0}
           <p
-            class="px-0.5 text-[11px] text-[var(--soft-foreground)] opacity-40"
+            class="flex items-center gap-1.5 px-0.5 text-[11px] text-[var(--soft-foreground)] opacity-60"
           >
+            <svg
+              width="10"
+              height="10"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 6v6l4 2" />
+              <circle cx="12" cy="12" r="9" />
+            </svg>
             Synced to {formatSyncDate(
               resolveDisplayedSyncDepthIso({
                 videos,

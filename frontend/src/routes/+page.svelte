@@ -30,10 +30,10 @@
     type TourStep,
   } from "$lib/components/FeatureGuide.svelte";
   import ConfirmationModal from "$lib/components/ConfirmationModal.svelte";
+  import Toggle from "$lib/components/Toggle.svelte";
   import WorkspaceChannelSidebar from "$lib/components/workspace/WorkspaceChannelSidebar.svelte";
   import WorkspaceContentPanel from "$lib/components/workspace/WorkspaceContentPanel.svelte";
   import WorkspaceHeader from "$lib/components/workspace/WorkspaceHeader.svelte";
-  import WorkspaceMobileTabBar from "$lib/components/workspace/WorkspaceMobileTabBar.svelte";
   import WorkspaceVideoSidebar from "$lib/components/workspace/WorkspaceVideoSidebar.svelte";
   import type {
     AiStatus,
@@ -70,6 +70,15 @@
     mergeHighlightIntoList,
     reconcileOptimisticHighlight,
   } from "$lib/utils/highlights";
+  import {
+    getCachedBootstrapMeta,
+    getCachedChannels,
+    getCachedSnapshot,
+    putCachedBootstrapMeta,
+    putCachedChannels,
+    putCachedSnapshot,
+    removeCachedChannel,
+  } from "$lib/workspace-cache";
   import { resolveOldestLoadedReadyVideoDate } from "$lib/sync-depth";
   import {
     buildWorkspaceViewHref,
@@ -440,6 +449,7 @@
       videos = snapshot.videos;
       offset = snapshot.videos.length;
       hasMore = snapshot.videos.length === limit;
+      void putCachedSnapshot(snapshot);
       await hydrateSelectedVideo(preferredVideoId, isAck);
     } catch (error) {
       if (!silent || !errorMessage) {
@@ -721,11 +731,39 @@
     restoreWorkspaceState();
     workspaceStateHydrated = true;
     void (async () => {
-      try {
-        await loadChannels(null, true);
-      } finally {
-        viewUrlHydrated = true;
+      const selectedChannelIdAtMount = selectedChannelId;
+      const selectedVideoIdAtMount = selectedVideoId;
+
+      const [cachedChannels, cachedSnapshot, cachedMeta] = await Promise.all([
+        getCachedChannels(),
+        selectedChannelIdAtMount
+          ? getCachedSnapshot(selectedChannelIdAtMount)
+          : Promise.resolve(null),
+        getCachedBootstrapMeta(),
+      ]);
+
+      if (cachedChannels && cachedChannels.length > 0) {
+        channels = applySavedChannelOrder(cachedChannels, channelOrder);
+        syncChannelOrderFromList();
       }
+
+      if (cachedMeta) {
+        aiAvailable = cachedMeta.ai_available;
+        aiStatus = cachedMeta.ai_status;
+        searchStatus = cachedMeta.search_status;
+      }
+
+      if (cachedSnapshot && selectedChannelIdAtMount) {
+        await applyChannelSnapshot(
+          selectedChannelIdAtMount,
+          cachedSnapshot,
+          selectedVideoIdAtMount,
+        );
+      }
+
+      void loadChannels(null, true).finally(() => {
+        viewUrlHydrated = true;
+      });
     })();
 
     // Restore guide from URL
@@ -759,6 +797,9 @@
     retryUntilBackendReachable = false,
   ) {
     loadingChannels = true;
+    if (selectedChannelId) {
+      loadingVideos = true;
+    }
     errorMessage = null;
 
     try {
@@ -791,6 +832,12 @@
       searchStatus = bootstrap.search_status;
       channels = applySavedChannelOrder(bootstrap.channels, channelOrder);
       syncChannelOrderFromList();
+      void putCachedChannels(channels);
+      void putCachedBootstrapMeta({
+        ai_available: bootstrap.ai_available,
+        ai_status: bootstrap.ai_status,
+        search_status: bootstrap.search_status,
+      });
       const initialChannelId = resolveInitialChannelSelection(
         channels,
         selectedChannelId,
@@ -826,6 +873,7 @@
       errorMessage = (error as Error).message;
     } finally {
       loadingChannels = false;
+      loadingVideos = false;
     }
   }
 
@@ -868,6 +916,7 @@
         id === tempId ? channel.id : id,
       );
       selectedChannelId = channel.id;
+      void putCachedChannels(channels);
 
       // Load videos for the new channel (bypass TTL since it's brand new)
       await selectChannel(channel.id);
@@ -897,6 +946,7 @@
 
     try {
       await deleteChannel(channelId);
+      void removeCachedChannel(channelId);
       channels = channels.filter((c) => c.id !== channelId);
       channelOrder = channelOrder.filter((id) => id !== channelId);
       if (selectedChannelId === channelId) {
@@ -1337,10 +1387,16 @@
     regeneratingSummary = true;
     regeneratingVideoId = targetVideoId;
     errorMessage = null;
+    videos = videos.map((v) =>
+      v.id === targetVideoId ? { ...v, summary_status: "loading" as const } : v,
+    );
 
     try {
       const summary = await regenerateSummary(targetVideoId);
       invalidateContentCache(targetVideoId, "summary");
+      videos = videos.map((v) =>
+        v.id === targetVideoId ? { ...v, summary_status: "ready" as const } : v,
+      );
       if (selectedVideoId === targetVideoId && contentMode === "summary") {
         contentText = stripContentPrefix(
           summary.content || "Summary unavailable.",
@@ -1350,6 +1406,11 @@
       }
     } catch (error) {
       errorMessage = (error as Error).message;
+      videos = videos.map((v) =>
+        v.id === targetVideoId
+          ? { ...v, summary_status: "failed" as const }
+          : v,
+      );
     } finally {
       regeneratingSummary = false;
       regeneratingVideoId = null;
@@ -1635,6 +1696,24 @@
     onSearchResultSelect={handleSearchResultSelection}
   />
 
+  <div class="px-4 sm:px-2 lg:hidden">
+    <div class="mx-auto max-w-[1440px] pt-1">
+      <Toggle
+        ariaLabel="Workspace panels"
+        options={["channels", "videos", "content"]}
+        value={mobileTab}
+        labels={{
+          channels: "Channels",
+          videos: "Videos",
+          content: "Content",
+        }}
+        onChange={(value) => {
+          mobileTab = value as "channels" | "videos" | "content";
+        }}
+      />
+    </div>
+  </div>
+
   <main
     id="main-content"
     class="panel-shell-main mx-auto mt-0 grid w-full max-w-[1440px] items-start lg:mt-4 lg:grid-cols-[260px_300px_minmax(0,1fr)] lg:gap-0 xl:grid-cols-[280px_340px_minmax(0,1fr)]"
@@ -1731,13 +1810,6 @@
       }}
     />
   </main>
-
-  <WorkspaceMobileTabBar
-    activeTab={mobileTab}
-    onTabChange={(tab) => {
-      mobileTab = tab;
-    }}
-  />
 
   {#if errorMessage}
     <div

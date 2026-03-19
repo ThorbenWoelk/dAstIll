@@ -11,9 +11,9 @@
   --accent: #d33c2a;
   --accent-soft: #fdf2f0;
   --accent-strong: #9e2a1d;
-  --muted: #f2eee8;
-  --border: #e8e2d9;
-  --border-soft: #f0ebe4;
+  --muted: color-mix(in srgb, #f2eee8 86%, var(--accent-soft));
+  --border: color-mix(in srgb, #e8e2d9 88%, var(--accent-soft));
+  --border-soft: color-mix(in srgb, #f0ebe4 80%, var(--accent-soft));
   --soft-foreground: #5a5a5a;
   --danger: #d25a5a;
   --danger-soft: #fff1f1;
@@ -27,6 +27,29 @@
   --shadow-strong: rgba(0, 0, 0, 0.18);
   --noise-opacity: 0.012;
   --color-swatch: #d33c2a;
+  --accent-wash: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  --accent-wash-strong: color-mix(in srgb, var(--accent) 15%, var(--surface));
+  --accent-border-soft: color-mix(
+    in srgb,
+    var(--accent) 28%,
+    var(--border-soft)
+  );
+  --panel-surface: color-mix(in srgb, var(--surface) 78%, var(--accent-soft));
+  --panel-surface-strong: color-mix(
+    in srgb,
+    var(--surface-strong) 72%,
+    var(--accent-soft)
+  );
+  --shell-gradient-start: color-mix(
+    in srgb,
+    var(--background) 92%,
+    var(--accent-soft)
+  );
+  --shell-gradient-end: color-mix(
+    in srgb,
+    var(--background) 97%,
+    var(--accent)
+  );
 
   /* Layout */
   --radius-sm: 8px;
@@ -43,7 +66,6 @@
   --mobile-tab-bar-height: calc(3.5rem + env(safe-area-inset-bottom));
   --mobile-bottom-nav-height: 0px;
   --mobile-bottom-overlay-height: 0px;
-  --mobile-footer-height: 2rem;
   --mobile-viewport-offset-bottom: 0px;
   --mobile-bottom-fixed-height: calc(
     var(--mobile-bottom-nav-height) + var(--mobile-viewport-offset-bottom)
@@ -66,9 +88,9 @@
   --accent: #ff8e79;
   --accent-soft: rgba(255, 142, 121, 0.14);
   --accent-strong: #ffb8aa;
-  --muted: #24292f;
-  --border: #353b43;
-  --border-soft: #2c3138;
+  --muted: color-mix(in srgb, #24292f 88%, var(--accent));
+  --border: color-mix(in srgb, #353b43 86%, var(--accent));
+  --border-soft: color-mix(in srgb, #2c3138 78%, var(--accent));
   --soft-foreground: #b8b1aa;
   --danger: #ff8f8f;
   --danger-soft: rgba(255, 143, 143, 0.12);
@@ -81,6 +103,25 @@
   --shadow-soft: rgba(0, 0, 0, 0.32);
   --shadow-strong: rgba(0, 0, 0, 0.45);
   --noise-opacity: 0.018;
+  --accent-wash: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  --accent-wash-strong: color-mix(in srgb, var(--accent) 20%, var(--surface));
+  --accent-border-soft: color-mix(in srgb, var(--accent) 34%, var(--border));
+  --panel-surface: color-mix(in srgb, var(--surface) 82%, var(--accent));
+  --panel-surface-strong: color-mix(
+    in srgb,
+    var(--surface-strong) 76%,
+    var(--accent)
+  );
+  --shell-gradient-start: color-mix(
+    in srgb,
+    var(--background) 90%,
+    var(--accent)
+  );
+  --shell-gradient-end: color-mix(
+    in srgb,
+    var(--background) 96%,
+    var(--surface)
+  );
 }
 
 @import "tailwindcss";
@@ -176,7 +217,14 @@ body {
     system-ui,
     -apple-system,
     sans-serif;
-  background: var(--background);
+  background:
+    radial-gradient(
+      120% 80% at 50% -10%,
+      var(--shell-gradient-start) 0%,
+      var(--shell-gradient-end) 58%,
+      var(--background) 100%
+    ),
+    var(--background);
   color: var(--foreground);
   min-height: 100vh;
   overflow-x: hidden;
@@ -469,16 +517,16 @@ textarea {
   }
 }
 
-/* Mobile tab bar + footer bottom padding */
+/* Mobile tab bar bottom padding */
 @media (max-width: 1023px) {
   .page-shell {
-    padding-top: calc(var(--mobile-footer-height) + env(safe-area-inset-top));
+    padding-top: max(1rem, env(safe-area-inset-top));
     padding-bottom: calc(var(--mobile-bottom-stack-height) + 2rem);
   }
 
   .page-shell--panel-mobile-shell {
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
     height: 100dvh;
     min-height: 100svh;
     overflow: hidden;
@@ -521,9 +569,14 @@ textarea {
     align-items: center;
     height: var(--mobile-tab-bar-height);
     padding-bottom: env(safe-area-inset-bottom);
-    background: var(--surface-strong);
-    border-top: 1px solid var(--border-soft);
+    background: color-mix(
+      in srgb,
+      var(--panel-surface-strong) 90%,
+      transparent
+    );
+    border-top: 1px solid var(--accent-border-soft);
     box-shadow: 0 -12px 30px var(--shadow-soft);
+    backdrop-filter: blur(10px);
   }
 }
 
@@ -538,18 +591,28 @@ textarea {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--soft-foreground);
-  opacity: 0.4;
+  opacity: 0.72;
+  border-radius: var(--radius-full);
   transition:
+    background-color 200ms,
     color 200ms,
-    opacity 200ms;
+    opacity 200ms,
+    transform 200ms;
   background: none;
   border: none;
   cursor: pointer;
+  text-decoration: none;
 }
 
 .mobile-tab-item--active {
   color: var(--accent);
   opacity: 1;
+  transform: translateY(-1px);
+  background: var(--accent-wash);
+}
+
+.mobile-tab-item--active svg {
+  transform: scale(1.08);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -11,7 +11,7 @@
     updateChannel,
   } from "$lib/api";
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
-  import AiStatusIndicator from "$lib/components/AiStatusIndicator.svelte";
+  import AppHeaderBar from "$lib/components/AppHeaderBar.svelte";
   import FeatureGuide, {
     type TourStep,
   } from "$lib/components/FeatureGuide.svelte";
@@ -35,8 +35,7 @@
   import ChannelCard from "$lib/components/ChannelCard.svelte";
   import { DOCS_URL } from "$lib/app-config";
   import ConfirmationModal from "$lib/components/ConfirmationModal.svelte";
-  import SectionNavigation from "$lib/components/SectionNavigation.svelte";
-  import ThemePanel from "$lib/components/ThemePanel.svelte";
+  import Toggle from "$lib/components/Toggle.svelte";
   import type {
     AiStatus,
     Channel,
@@ -83,7 +82,7 @@
       placement: "bottom",
     },
     {
-      selector: "nav[aria-label='Queue tabs']",
+      selector: "[aria-label='Queue tabs']",
       title: "Queue Tabs",
       body: "Switch between Transcripts, Summaries, and Evaluations to monitor the processing pipeline for each channel.",
       placement: "bottom",
@@ -92,12 +91,12 @@
       },
     },
     {
-      selector: ".footer-link",
-      title: "Open Source",
-      body: "dAstIll is fully open source. Check out the GitHub repository, star the project, or contribute to improve it!",
-      placement: "top",
+      selector: "nav[aria-label='Workspace sections']",
+      title: "Navigate the app",
+      body: "Jump between the workspace, queue, highlights, and docs from the same header navigation used across the app.",
+      placement: "bottom",
       prepare: () => {
-        mobileTab = "channels";
+        mobileTab = "details";
       },
     },
   ];
@@ -730,7 +729,7 @@
 </script>
 
 <div
-  class="page-shell page-shell--panel-mobile-shell page-shell--with-mobile-nav min-h-screen px-4 pb-12 pt-8 sm:px-8 max-lg:px-0"
+  class="page-shell page-shell--panel-mobile-shell page-shell--with-mobile-nav min-h-screen px-4 pb-12 pt-8 sm:px-8 max-lg:px-0 lg:px-6"
 >
   <a
     href="#main-content"
@@ -739,79 +738,50 @@
     Skip to Main Content
   </a>
 
-  <header
-    class="mx-auto flex w-full max-w-[1440px] min-w-0 flex-wrap items-start gap-3 px-4 pb-2 sm:px-2 lg:items-center"
-  >
-    <div class="flex min-w-0 flex-1 items-center gap-3">
-      <a
-        href="/"
-        class="text-xl sm:text-2xl font-bold tracking-tighter text-[var(--foreground)] transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)]"
-        aria-label="Go to dAstIll home"
-      >
-        DASTILL
-      </a>
-      {#if aiIndicator}
-        <AiStatusIndicator
-          detail={aiIndicator.detail}
-          dotClass={aiIndicator.dotClass}
-          title={aiIndicator.title}
-        />
-      {/if}
-      <button
-        type="button"
-        id="guide-trigger"
-        class="inline-flex h-7 w-7 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-40 transition-all hover:opacity-80 hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
-        onclick={openGuide}
-        aria-label="Feature guide"
-      >
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2.2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <circle cx="12" cy="12" r="10"></circle>
-          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
-          <line x1="12" y1="17" x2="12.01" y2="17"></line>
-        </svg>
-      </button>
-    </div>
+  <AppHeaderBar
+    currentSection="queue"
+    docsUrl={DOCS_URL}
+    {aiIndicator}
+    showGuide
+    guideButtonId="guide-trigger"
+    onOpenGuide={openGuide}
+  />
 
-    <div class="ml-auto flex shrink-0 items-center gap-2">
-      <ThemePanel />
-      <SectionNavigation
-        currentSection="queue"
-        docsUrl={DOCS_URL}
-        mobileMode="inline"
+  <div class="px-4 sm:px-2 lg:hidden">
+    <div class="mx-auto max-w-[1440px] pt-1">
+      <Toggle
+        ariaLabel="Queue panels"
+        options={["channels", "details"]}
+        value={mobileTab}
+        labels={{ channels: "Channels", details: "Details" }}
+        onChange={(value) => {
+          mobileTab = value as "channels" | "details";
+        }}
       />
     </div>
-  </header>
+  </div>
 
   <main
     id="main-content"
     class="panel-shell-main mx-auto mt-4 grid w-full max-w-[1440px] gap-0 lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)] items-start max-lg:mt-0"
   >
     <aside
-      class="flex min-h-0 flex-col gap-4 border-0 lg:h-fit lg:pr-5 lg:border-r lg:border-[var(--border-soft)] lg:pl-2 lg:sticky lg:top-4 fade-in stagger-1 {mobileTab !==
+      class="flex min-h-0 flex-col gap-4 border-0 lg:sticky lg:top-4 lg:h-fit lg:border-r lg:border-[var(--accent-border-soft)] lg:px-5 fade-in stagger-1 {mobileTab !==
       'channels'
         ? 'hidden lg:flex'
         : 'h-full p-4 gap-4'}"
     >
       <div class="flex items-center justify-between gap-2">
         <h2
-          class="text-base font-bold tracking-tight text-[var(--soft-foreground)]"
+          class="text-base font-bold tracking-tight text-[var(--foreground)]"
         >
           Channels
         </h2>
         <button
           type="button"
           class="inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors {manageChannels
-            ? 'text-[var(--danger)]'
-            : 'text-[var(--soft-foreground)] opacity-40 hover:opacity-80'}"
+            ? 'bg-[var(--accent-wash)] text-[var(--danger)]'
+            : 'text-[var(--soft-foreground)] opacity-55 hover:bg-[var(--accent-wash)] hover:opacity-100'}"
           data-tooltip={manageChannels ? "Exit manage mode" : "Manage channels"}
           onclick={() => {
             manageChannels = !manageChannels;
@@ -840,17 +810,17 @@
       >
         {#if loadingChannels}
           <div class="space-y-4" role="status" aria-live="polite">
-            {#each Array.from({ length: 4 }) as _, index (index)}
+            {#each Array.from({ length: 7 }) as _, index (index)}
               <div class="flex animate-pulse items-center gap-4 px-3 py-3">
                 <div
-                  class="h-10 w-10 shrink-0 rounded-full bg-[var(--muted)] opacity-60"
+                  class="h-10 w-10 shrink-0 rounded-full bg-[var(--border)] opacity-80"
                 ></div>
                 <div class="min-w-0 flex-1 space-y-2">
                   <div
-                    class="h-3 w-3/4 rounded-full bg-[var(--muted)] opacity-60"
+                    class="h-3 w-3/4 rounded-full bg-[var(--border)] opacity-80"
                   ></div>
                   <div
-                    class="h-2 w-1/2 rounded-full bg-[var(--muted)] opacity-40"
+                    class="h-2 w-1/2 rounded-full bg-[var(--border)] opacity-60"
                   ></div>
                 </div>
               </div>
@@ -886,125 +856,93 @@
     </aside>
 
     <section
-      class="flex min-h-0 min-w-0 flex-col gap-6 overflow-hidden border-0 lg:pl-6 fade-in stagger-2 {mobileTab !==
+      class="flex min-h-0 min-w-0 flex-col gap-6 overflow-hidden border-0 lg:pl-5 fade-in stagger-2 {mobileTab !==
       'details'
         ? 'hidden lg:flex'
         : 'h-full p-4 pt-4'}"
     >
-      <div
-        class="flex flex-wrap items-center justify-between gap-4 pb-3 border-b border-[var(--border-soft)]"
-      >
-        <div class="flex items-center gap-3 min-w-0">
-          <button
-            onclick={() => (mobileTab = "channels")}
-            class="lg:hidden inline-flex items-center gap-2 text-[13px] font-semibold text-[var(--foreground)] transition-transform active:scale-95"
-          >
-            <div
-              class="h-6 w-6 shrink-0 overflow-hidden rounded-full bg-[var(--muted)]"
-            >
-              <img
-                src={selectedChannel?.thumbnail_url || defaultChannelIcon}
-                alt=""
-                class="h-full w-full object-cover"
-              />
-            </div>
-            <span class="truncate"
-              >{selectedChannel ? selectedChannel.name : "None"}</span
-            >
-            <svg
-              class="h-3 w-3 opacity-30 shrink-0"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="3"
-              stroke-linecap="round"
-              stroke-linejoin="round"><path d="m6 9 6 6 6-6" /></svg
-            >
-          </button>
-          <span
-            class="max-lg:hidden flex items-center gap-2 text-[13px] font-semibold text-[var(--foreground)]"
-          >
-            <div
-              class="h-6 w-6 shrink-0 overflow-hidden rounded-full bg-[var(--muted)]"
-            >
-              <img
-                src={selectedChannel?.thumbnail_url || defaultChannelIcon}
-                alt=""
-                class="h-full w-full object-cover"
-              />
-            </div>
-            {selectedChannel ? selectedChannel.name : "None"}
-          </span>
-          <span
-            class="hidden sm:block text-[11px] text-[var(--soft-foreground)] opacity-40"
-          >
-            {#if lastSyncedAt}
-              {syncTimeFormatter.format(lastSyncedAt)}
-            {/if}
-          </span>
-        </div>
-        <div class="flex items-center gap-4 text-[11px] font-bold tabular-nums">
-          <span
-            class="text-[var(--soft-foreground)] opacity-60"
-            data-tooltip="Total">{queueStats.total} items</span
-          >
-          {#if queueStats.loading > 0}
-            <span class="text-amber-600 flex items-center gap-1.5">
-              <span class="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"
-              ></span>
-              {queueStats.loading} active
-            </span>
-          {/if}
-          {#if queueStats.failed > 0}
-            <span class="text-[var(--danger-foreground)]"
-              >{queueStats.failed} failed</span
-            >
-          {/if}
-        </div>
-      </div>
-
-      <nav
-        class="flex gap-0 border-b border-[var(--border-soft)]"
-        aria-label="Queue tabs"
-      >
-        <button
-          type="button"
-          class="px-4 py-2.5 text-[11px] font-bold uppercase tracking-[0.1em] transition-all border-b-2 {queueTab ===
-          'transcripts'
-            ? 'text-[var(--foreground)] border-[var(--foreground)]'
-            : 'text-[var(--soft-foreground)] opacity-50 border-transparent hover:opacity-80'}"
-          onclick={() => (queueTab = "transcripts")}
-          aria-current={queueTab === "transcripts" ? "page" : undefined}
-        >
-          Transcripts
-        </button>
-        <button
-          type="button"
-          class="px-4 py-2.5 text-[11px] font-bold uppercase tracking-[0.1em] transition-all border-b-2 {queueTab ===
-          'summaries'
-            ? 'text-[var(--foreground)] border-[var(--foreground)]'
-            : 'text-[var(--soft-foreground)] opacity-50 border-transparent hover:opacity-80'}"
-          onclick={() => (queueTab = "summaries")}
-          aria-current={queueTab === "summaries" ? "page" : undefined}
-        >
-          Summaries
-        </button>
-        <button
-          type="button"
-          class="px-4 py-2.5 text-[11px] font-bold uppercase tracking-[0.1em] transition-all border-b-2 {queueTab ===
-          'evaluations'
-            ? 'text-[var(--foreground)] border-[var(--foreground)]'
-            : 'text-[var(--soft-foreground)] opacity-50 border-transparent hover:opacity-80'}"
-          onclick={() => (queueTab = "evaluations")}
-          aria-current={queueTab === "evaluations" ? "page" : undefined}
-        >
-          Evaluations
-        </button>
-      </nav>
-
       {#if selectedChannel}
+        <div
+          class="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--accent-border-soft)] pb-3"
+        >
+          <div class="flex min-w-0 items-center gap-3">
+            <button
+              onclick={() => (mobileTab = "channels")}
+              class="inline-flex min-w-0 items-center gap-2 text-[13px] font-semibold text-[var(--foreground)] transition-transform active:scale-95 lg:pointer-events-none"
+            >
+              <div
+                class="h-6 w-6 shrink-0 overflow-hidden rounded-full bg-[var(--muted)]"
+              >
+                <img
+                  src={selectedChannel.thumbnail_url || defaultChannelIcon}
+                  alt=""
+                  class="h-full w-full object-cover"
+                />
+              </div>
+              <span class="truncate">{selectedChannel.name}</span>
+              <svg
+                class="h-3 w-3 shrink-0 opacity-30 lg:hidden"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="3"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
+            <span
+              class="hidden text-[11px] text-[var(--soft-foreground)] opacity-60 sm:block"
+            >
+              {#if lastSyncedAt}
+                {syncTimeFormatter.format(lastSyncedAt)}
+              {/if}
+            </span>
+          </div>
+          <div
+            class="flex items-center gap-4 text-[11px] font-bold tabular-nums"
+          >
+            <span
+              class="text-[var(--soft-foreground)] opacity-70"
+              data-tooltip="Total"
+            >
+              {queueStats.total} items
+            </span>
+            {#if queueStats.loading > 0}
+              <span class="flex items-center gap-1.5 text-amber-600">
+                <span
+                  class="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"
+                ></span>
+                {queueStats.loading} active
+              </span>
+            {/if}
+            {#if queueStats.failed > 0}
+              <span class="text-[var(--danger-foreground)]"
+                >{queueStats.failed} failed</span
+              >
+            {/if}
+          </div>
+        </div>
+
+        <div aria-label="Queue tabs" class="pt-1">
+          <Toggle
+            ariaLabel="Queue tabs"
+            options={["transcripts", "summaries", "evaluations"]}
+            value={queueTab}
+            labels={{
+              transcripts: "Transcripts",
+              summaries: "Summaries",
+              evaluations: "Evaluations",
+            }}
+            onChange={(value) => {
+              queueTab = value as QueueTab;
+            }}
+          />
+        </div>
+
         <div class="flex flex-wrap items-center gap-4 py-2">
-          <div class="flex items-center gap-2 min-w-0">
+          <div class="flex min-w-0 items-center gap-2">
             <p
               class="text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50"
             >
@@ -1014,10 +952,10 @@
               {formatSyncDate(effectiveEarliestSyncDate)}
             </p>
           </div>
-          <div class="flex items-center gap-2 ml-auto">
+          <div class="ml-auto flex items-center gap-2">
             <input
               type="date"
-              class="rounded-[var(--radius-sm)] border border-[var(--border-soft)] bg-[var(--surface)] px-2.5 py-1.5 text-[12px] font-medium focus:outline-none focus:border-[var(--accent)]/40 transition-colors"
+              class="rounded-[var(--radius-sm)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] px-2.5 py-1.5 text-[12px] font-medium transition-colors focus:border-[var(--accent)]/40 focus:outline-none"
               bind:value={earliestSyncDateInput}
               disabled={savingSyncDate}
             />
@@ -1031,30 +969,54 @@
             </button>
           </div>
         </div>
+      {:else}
+        <div
+          class="rounded-[var(--radius-lg)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] px-6 py-8 text-center shadow-sm"
+        >
+          <div
+            class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[var(--accent-soft)]/60 text-[var(--accent-strong)]"
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <rect x="3" y="4" width="6" height="16" rx="1.5" />
+              <rect x="10" y="4" width="5" height="16" rx="1.5" />
+              <rect x="16" y="4" width="5" height="16" rx="1.5" />
+            </svg>
+          </div>
+          <p class="mt-4 text-[16px] font-semibold text-[var(--foreground)]">
+            Select a channel from the sidebar
+          </p>
+          <p class="mt-2 text-[13px] leading-6 text-[var(--soft-foreground)]">
+            Choose any followed channel to inspect transcript, summary, and
+            evaluation processing.
+          </p>
+        </div>
       {/if}
 
       <div
         class="custom-scrollbar mobile-bottom-stack-padding flex-1 overflow-y-auto lg:pb-0"
       >
         {#if !selectedChannelId}
-          <div
-            class="flex flex-col items-center justify-center py-20 text-center"
-          >
-            <p class="text-[15px] text-[var(--soft-foreground)] opacity-30">
-              Select a channel to view its queue.
-            </p>
-          </div>
+          <div class="h-0"></div>
         {:else if loadingVideos && videos.length === 0}
           <div class="space-y-4 mt-4" role="status" aria-live="polite">
-            {#each Array.from({ length: 4 }) as _, index (index)}
+            {#each Array.from({ length: 6 }) as _, index (index)}
               <div
-                class="animate-pulse rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--background)] p-6"
+                class="animate-pulse rounded-[var(--radius-md)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] p-6"
               >
                 <div
-                  class="h-4 w-3/4 rounded-full bg-[var(--muted)] opacity-60"
+                  class="h-4 w-3/4 rounded-full bg-[var(--border)] opacity-80"
                 ></div>
                 <div
-                  class="mt-4 h-3 w-1/4 rounded-full bg-[var(--muted)] opacity-40"
+                  class="mt-4 h-3 w-1/4 rounded-full bg-[var(--border)] opacity-60"
                 ></div>
               </div>
             {/each}
@@ -1072,10 +1034,12 @@
               stroke-width="2.5"
               stroke-linecap="round"
               stroke-linejoin="round"
-              class="text-emerald-500 mb-3"
+              class="mb-3 text-emerald-500"
               ><polyline points="20 6 9 17 4 12" /></svg
             >
-            <p class="text-[14px] text-[var(--soft-foreground)] opacity-50">
+            <p
+              class="text-[14px] font-medium text-[var(--soft-foreground)] opacity-70"
+            >
               Queue is clear.
             </p>
           </div>
@@ -1083,7 +1047,9 @@
           <ul class="mt-2 flex flex-col">
             {#each queuedVideosWithDistillationStatus as item}
               {@const video = item.video}
-              <li class="border-b border-[var(--border-soft)] last:border-b-0">
+              <li
+                class="border-b border-[var(--accent-border-soft)] last:border-b-0"
+              >
                 <button
                   type="button"
                   class="group w-full cursor-pointer py-4 px-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 max-lg:py-3"
@@ -1156,7 +1122,7 @@
           <div class="mt-4 flex justify-center">
             <button
               type="button"
-              class="w-full rounded-[var(--radius-sm)] border border-[var(--border-soft)] py-2.5 text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--soft-foreground)] transition-all hover:border-[var(--accent)]/40 hover:text-[var(--foreground)] disabled:opacity-30"
+              class="w-full rounded-[var(--radius-sm)] border border-[var(--accent-border-soft)] py-2.5 text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--soft-foreground)] transition-all hover:border-[var(--accent)]/40 hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] disabled:opacity-30"
               onclick={() => loadVideos(false)}
               disabled={loadingVideos}
             >
@@ -1167,55 +1133,6 @@
       </div>
     </section>
   </main>
-
-  <nav class="mobile-tab-bar lg:hidden" aria-label="Panel navigation">
-    <button
-      type="button"
-      class="mobile-tab-item {mobileTab === 'channels'
-        ? 'mobile-tab-item--active'
-        : ''}"
-      onclick={() => (mobileTab = "channels")}
-      aria-current={mobileTab === "channels" ? "page" : undefined}
-    >
-      <svg
-        class="h-5 w-5"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.5"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <rect x="3" y="3" width="6" height="18" rx="1.5" />
-        <rect x="15" y="3" width="6" height="18" rx="1.5" />
-        <rect x="9" y="3" width="6" height="18" rx="1.5" />
-      </svg>
-      <span>Channels</span>
-    </button>
-    <button
-      type="button"
-      class="mobile-tab-item {mobileTab === 'details'
-        ? 'mobile-tab-item--active'
-        : ''}"
-      onclick={() => (mobileTab = "details")}
-      aria-current={mobileTab === "details" ? "page" : undefined}
-    >
-      <svg
-        class="h-5 w-5"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.5"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <circle cx="12" cy="12" r="10" />
-        <line x1="12" y1="16" x2="12" y2="12" />
-        <line x1="12" y1="8" x2="12.01" y2="8" />
-      </svg>
-      <span>Details</span>
-    </button>
-  </nav>
 
   {#if errorMessage}
     <div

@@ -2,10 +2,11 @@
   import { onMount } from "svelte";
   import { isAiAvailable, listHighlights } from "$lib/api";
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
-  import AiStatusIndicator from "$lib/components/AiStatusIndicator.svelte";
+  import AppHeaderBar from "$lib/components/AppHeaderBar.svelte";
   import { DOCS_URL } from "$lib/app-config";
-  import SectionNavigation from "$lib/components/SectionNavigation.svelte";
-  import ThemePanel from "$lib/components/ThemePanel.svelte";
+  import FeatureGuide, {
+    type TourStep,
+  } from "$lib/components/FeatureGuide.svelte";
   import type {
     AiStatus,
     HighlightChannelGroup,
@@ -23,9 +24,25 @@
   let groups = $state<HighlightChannelGroup[]>([]);
   let loading = $state(true);
   let errorMessage = $state<string | null>(null);
+  let guideOpen = $state(false);
+  let guideStep = $state(0);
   let aiIndicator = $derived(
     aiStatus ? resolveAiIndicatorPresentation(aiStatus) : null,
   );
+  const tourSteps: TourStep[] = [
+    {
+      selector: "nav[aria-label='Workspace sections']",
+      title: "App navigation",
+      body: "Jump between workspace, queue, highlights, and docs from the same shared header.",
+      placement: "bottom",
+    },
+    {
+      selector: "#main-content",
+      title: "Highlights library",
+      body: "Review saved passages grouped by channel and video, then jump straight back into the workspace for context.",
+      placement: "top",
+    },
+  ];
   const totalHighlights = $derived(
     groups.reduce(
       (sum, channel) =>
@@ -58,6 +75,19 @@
       videoTypeFilter: "all",
       acknowledgedFilter: "all",
     });
+  }
+
+  function openGuide() {
+    guideStep = 0;
+    guideOpen = true;
+  }
+
+  function closeGuide() {
+    guideOpen = false;
+  }
+
+  function setGuideStep(step: number) {
+    guideStep = step;
   }
 
   async function loadPage() {
@@ -95,7 +125,9 @@
   });
 </script>
 
-<div class="page-shell min-h-screen px-3 py-4 max-lg:px-0 lg:px-6">
+<div
+  class="page-shell page-shell--with-mobile-nav min-h-screen px-3 py-4 max-lg:px-0 lg:px-6"
+>
   <a
     href="#main-content"
     class="skip-link absolute left-4 top-4 z-50 rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white"
@@ -103,38 +135,21 @@
     Skip to Main Content
   </a>
 
-  <header
-    class="mx-auto flex w-full max-w-[1440px] min-w-0 flex-wrap items-start gap-3 px-4 pb-2 sm:px-2 lg:items-center"
-  >
-    <div class="flex min-w-0 flex-1 items-center gap-3">
-      <a
-        href="/"
-        class="text-xl sm:text-2xl font-bold tracking-tighter text-[var(--foreground)] transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)]"
-        aria-label="Go to dAstIll home"
-      >
-        DASTILL
-      </a>
-      {#if aiIndicator}
-        <AiStatusIndicator
-          detail={aiIndicator.detail}
-          dotClass={aiIndicator.dotClass}
-          title={aiIndicator.title}
-        />
-      {/if}
-    </div>
-
-    <div class="ml-auto flex shrink-0 items-center gap-2">
-      <ThemePanel />
-      <SectionNavigation currentSection="highlights" docsUrl={DOCS_URL} />
-    </div>
-  </header>
+  <AppHeaderBar
+    currentSection="highlights"
+    docsUrl={DOCS_URL}
+    {aiIndicator}
+    showGuide
+    guideButtonId="guide-trigger"
+    onOpenGuide={openGuide}
+  />
 
   <main
     id="main-content"
-    class="mx-auto mt-4 w-full max-w-[1120px] px-4 pb-28 sm:px-2"
+    class="mx-auto mt-4 w-full max-w-[1440px] px-4 pb-28 sm:px-2"
   >
     <section
-      class="rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--surface-frost)] p-6 shadow-sm"
+      class="rounded-[var(--radius-lg)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] p-6 shadow-sm"
     >
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -165,16 +180,18 @@
 
       {#if loading}
         <div class="mt-8 space-y-4" role="status" aria-live="polite">
-          {#each Array.from({ length: 3 }) as _, index (index)}
+          {#each Array.from({ length: 5 }) as _, index (index)}
             <div
-              class="animate-pulse rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--muted)]/20 p-5"
+              class="animate-pulse rounded-[var(--radius-md)] border border-[var(--accent-border-soft)] bg-[var(--accent-wash)] p-5"
             >
-              <div class="h-4 w-40 rounded-full bg-[var(--muted)]/60"></div>
               <div
-                class="mt-4 h-3 w-3/4 rounded-full bg-[var(--muted)]/50"
+                class="h-4 w-40 rounded-full bg-[var(--border)] opacity-80"
               ></div>
               <div
-                class="mt-2 h-3 w-1/2 rounded-full bg-[var(--muted)]/40"
+                class="mt-4 h-3 w-3/4 rounded-full bg-[var(--border)] opacity-70"
+              ></div>
+              <div
+                class="mt-2 h-3 w-1/2 rounded-full bg-[var(--border)] opacity-55"
               ></div>
             </div>
           {/each}
@@ -187,7 +204,7 @@
         </div>
       {:else if groups.length === 0}
         <div
-          class="mt-8 rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--muted)]/20 px-4 py-5 text-[14px] text-[var(--soft-foreground)] opacity-70"
+          class="mt-8 rounded-[var(--radius-md)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface-strong)] px-4 py-5 text-[14px] text-[var(--soft-foreground)] opacity-70"
         >
           No highlights saved yet. Select text in a transcript or summary to
           start building your library.
@@ -196,7 +213,7 @@
         <div class="mt-8 space-y-8">
           {#each groups as group}
             <section
-              class="rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--background)]/90 p-5"
+              class="rounded-[var(--radius-lg)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] p-5"
             >
               <div class="flex flex-wrap items-center justify-between gap-3">
                 <div class="flex min-w-0 items-center gap-3">
@@ -231,7 +248,7 @@
               <div class="mt-5 space-y-4">
                 {#each group.videos as video}
                   <article
-                    class="rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface-frost-strong)] p-4 shadow-sm"
+                    class="rounded-[var(--radius-md)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface-strong)] p-4 shadow-sm"
                   >
                     <div class="flex flex-col gap-4 sm:flex-row sm:items-start">
                       <div
@@ -268,7 +285,7 @@
                               video.video_id,
                               "highlights",
                             )}
-                            class="inline-flex shrink-0 rounded-full border border-[var(--border)] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--foreground)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                            class="inline-flex shrink-0 rounded-full border border-[var(--accent-border-soft)] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--foreground)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-wash)] hover:text-[var(--accent)]"
                           >
                             Open video
                           </a>
@@ -282,13 +299,13 @@
                                 video.video_id,
                                 highlight.source,
                               )}
-                              class="block rounded-[var(--radius-sm)] border border-[var(--border-soft)] bg-[var(--muted)]/10 px-4 py-3 transition-colors hover:border-[var(--accent)]/35 hover:bg-[var(--accent-soft)]/20"
+                              class="block rounded-[var(--radius-sm)] border border-[var(--accent-border-soft)] bg-[var(--accent-wash)] px-4 py-3 transition-colors hover:border-[var(--accent)]/35 hover:bg-[var(--accent-wash-strong)]"
                             >
                               <div
                                 class="flex flex-wrap items-center justify-between gap-2"
                               >
                                 <span
-                                  class="inline-flex rounded-full bg-[var(--accent-soft)]/60 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--accent-strong)]"
+                                  class="inline-flex rounded-full bg-[var(--accent-wash-strong)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--accent-strong)]"
                                 >
                                   {highlight.source}
                                 </span>
@@ -317,4 +334,13 @@
       {/if}
     </section>
   </main>
+
+  <FeatureGuide
+    open={guideOpen}
+    step={guideStep}
+    steps={tourSteps}
+    docsUrl={DOCS_URL}
+    onClose={closeGuide}
+    onStep={setGuideStep}
+  />
 </div>

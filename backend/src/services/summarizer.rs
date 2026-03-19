@@ -115,11 +115,13 @@ impl SummarizerService {
         &self,
         transcript: &str,
         video_title: &str,
+        video_id: &str,
+        channel_id: &str,
     ) -> Result<(String, String), SummarizerError> {
         let prompt = build_summary_prompt(transcript, video_title);
 
         let (raw, model_used) = self
-            .prompt_model("summary", SUMMARY_PREAMBLE, &prompt)
+            .prompt_model("summary", SUMMARY_PREAMBLE, &prompt, Some(video_id), Some(channel_id))
             .await?;
 
         Ok((strip_summary_title_heading(&raw), model_used))
@@ -129,6 +131,8 @@ impl SummarizerService {
     pub async fn clean_transcript_formatting(
         &self,
         transcript: &str,
+        video_id: &str,
+        channel_id: &str,
     ) -> Result<TranscriptCleanResult, SummarizerError> {
         let started = TokioInstant::now();
         let mut retry_feedback: Option<String> = None;
@@ -155,7 +159,7 @@ impl SummarizerService {
             let remaining = TRANSCRIPT_FORMAT_HARD_TIMEOUT.saturating_sub(elapsed);
             let (response, _model_used) = match timeout(
                 remaining,
-                self.prompt_model(&operation, TRANSCRIPT_CLEAN_PREAMBLE, &prompt),
+                self.prompt_model(&operation, TRANSCRIPT_CLEAN_PREAMBLE, &prompt, Some(video_id), Some(channel_id)),
             )
             .await
             {
@@ -225,9 +229,13 @@ impl SummarizerService {
         operation: &str,
         preamble: &str,
         prompt: &str,
+        video_id: Option<&str>,
+        channel_id: Option<&str>,
     ) -> Result<(String, String), SummarizerError> {
         tracing::info!(
             operation = operation,
+            video_id = video_id.unwrap_or("-"),
+            channel_id = channel_id.unwrap_or("-"),
             model = %self.model(),
             base_url = %self.core.base_url(),
             prompt_chars = prompt.len(),
@@ -307,6 +315,8 @@ impl SummarizerService {
         };
         tracing::info!(
             operation = operation,
+            video_id = video_id.unwrap_or("-"),
+            channel_id = channel_id.unwrap_or("-"),
             model = %model_used,
             response_chars = response.len(),
             elapsed_ms = started.elapsed().as_millis() as u64,
@@ -708,7 +718,7 @@ mod tests {
     #[tokio::test]
     async fn summarize_returns_error_for_invalid_url() {
         let service = SummarizerService::with_config("://invalid-url", "qwen3:8b");
-        let result = service.summarize("test transcript", "test title").await;
+        let result = service.summarize("test transcript", "test title", "test-video", "test-channel").await;
         assert!(result.is_err());
     }
 
@@ -919,7 +929,7 @@ For this team, the recommendation is blue-green because rollback must be instant
 
         let cleaned = timeout(
             Duration::from_secs(240),
-            summarizer.clean_transcript_formatting(transcript),
+            summarizer.clean_transcript_formatting(transcript, "test-video", "test-channel"),
         )
         .await
         .expect("transcript clean timed out")
@@ -965,7 +975,7 @@ and use canary for lower-risk feature rollouts.";
 
         let (summary, model_used) = timeout(
             Duration::from_secs(240),
-            summarizer.summarize(transcript, title),
+            summarizer.summarize(transcript, title, "test-video", "test-channel"),
         )
         .await
         .expect("summary generation timed out")
