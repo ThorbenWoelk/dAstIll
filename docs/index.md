@@ -30,13 +30,6 @@ dAstIll is a YouTube channel intelligence application. This site is the technica
   </a>
 </div>
 
-## Start here
-
-- [System Overview](/architecture/overview) - start with the major components and repo boundaries.
-- [Local Development](/local-development) - run the app and docs locally, including the default ports.
-- [Content Pipeline](/flows/content-pipeline) - follow the ingest-to-search flow end to end.
-- [Deployment and Operations](/operations/deployment) - review the production shape and IaC ownership.
-
 ## What This Site Covers
 
 ### Product and Runtime
@@ -59,11 +52,11 @@ dAstIll is a YouTube channel intelligence application. This site is the technica
 
 ```text
 dAstIll/
-├── backend/     Rust + Axum API, workers, libSQL/Turso access, AI service adapters
+├── backend/     Rust + Axum API, workers, S3 storage, AI service adapters
 ├── frontend/    SvelteKit product UI
 ├── docs/        VitePress documentation frontend
 ├── terraform/   Cloud Run, secrets, and supporting infrastructure
-└── .specs/      Persistent implementation specs and task tracking
+└── specs/       Persistent implementation specs and reference screenshots
 ```
 
 ## Scope

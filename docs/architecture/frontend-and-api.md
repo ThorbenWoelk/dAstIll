@@ -78,13 +78,12 @@ This keeps the workspace from stitching together too many independent startup re
 
 The backend handler modules are split by concern:
 
-- `channels.rs`
-- `videos.rs`
-- `video_info.rs`
-- `content.rs`
-- `highlights.rs`
-- `search.rs`
-- `query.rs`
+- `channels.rs` - channel CRUD, sync, refresh, backfill
+- `videos.rs` - video listing, video info retrieval and enrichment
+- `content.rs` - transcripts, summaries, AI health status
+- `highlights.rs` - highlight CRUD
+- `search.rs` - search queries, status, rebuilds
+- `query.rs` - shared query parameter types (filters, pagination)
 
 The handlers are thin orchestration points. Durable logic primarily lives in:
 

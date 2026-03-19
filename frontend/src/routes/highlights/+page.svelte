@@ -148,9 +148,7 @@
     id="main-content"
     class="mx-auto mt-4 w-full max-w-[1440px] px-4 pb-28 sm:px-2"
   >
-    <section
-      class="rounded-[var(--radius-lg)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] p-6 shadow-sm"
-    >
+    <section>
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p
@@ -203,12 +201,12 @@
           {errorMessage}
         </div>
       {:else if groups.length === 0}
-        <div
-          class="mt-8 rounded-[var(--radius-md)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface-strong)] px-4 py-5 text-[14px] text-[var(--soft-foreground)] opacity-70"
+        <p
+          class="mt-8 px-1 text-[14px] text-[var(--soft-foreground)] opacity-60"
         >
           No highlights saved yet. Select text in a transcript or summary to
           start building your library.
-        </div>
+        </p>
       {:else}
         <div class="mt-8 space-y-8">
           {#each groups as group}

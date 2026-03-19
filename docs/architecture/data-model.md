@@ -60,7 +60,7 @@ Tracks one record per `(video_id, source_kind)` pair with:
 
 ### `search_chunks`
 
-Stores:
+Each chunk is stored as an S3 object with:
 
 - `search_source_id`
 - `source_generation`
@@ -68,7 +68,8 @@ Stores:
 - `section_title`
 - `chunk_text`
 - `token_count`
-- `embedding` (stored in S3 Vectors)
+
+Embeddings are stored separately in S3 Vectors.
 
 ## Highlights
 
@@ -100,7 +101,7 @@ Transcript and summary changes do not inline-rebuild embeddings. They mark the r
 
 ### Search chunks are disposable
 
-If the projection schema changes, the backend can drop and recreate `search_sources`, `search_chunks`, and `search_chunks_fts` while preserving canonical transcript and summary content.
+If the projection schema changes, the backend can drop and recreate `search_sources` and `search_chunks` while preserving canonical transcript and summary content. S3 Vectors embeddings can be rebuilt independently.
 
 ## Counting Search Coverage
 
