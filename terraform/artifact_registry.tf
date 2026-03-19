@@ -18,7 +18,7 @@ resource "google_artifact_registry_repository" "repo" {
     id     = "delete-old-untagged"
     action = "DELETE"
     condition {
-      tag_state = "UNTAGGED"
+      tag_state  = "UNTAGGED"
       older_than = "604800s"
     }
   }

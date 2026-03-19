@@ -696,8 +696,9 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        SearchService, SearchSourceKind, chunk_summary_content, chunk_transcript_content,
-        fuse_ranked_matches, hash_search_content,
+        SearchService, SearchSourceKind, build_embedding_input, chunk_summary_content,
+        chunk_transcript_content, extract_keyword_snippet, fuse_ranked_matches,
+        hash_search_content, truncate_chunk_for_display,
     };
 
     #[derive(Debug, Deserialize)]
@@ -834,6 +835,46 @@ mod tests {
         assert_eq!(chunks.len(), 2);
         assert_eq!(chunks[0].text, "Alpha beta gamma delta.");
         assert_eq!(chunks[1].text, "Second paragraph starts here today.");
+    }
+
+    #[test]
+    fn extract_keyword_snippet_centers_the_matching_region_in_long_text() {
+        let prefix = "alpha ".repeat(120);
+        let suffix = "omega ".repeat(120);
+        let text = format!("{prefix}semantic match appears here{suffix}");
+
+        let snippet = extract_keyword_snippet(&text, &["semantic".to_string()]);
+
+        assert!(snippet.contains("semantic match appears here"));
+        assert!(snippet.starts_with("..."));
+        assert!(snippet.ends_with("..."));
+    }
+
+    #[test]
+    fn truncate_chunk_for_display_normalizes_markdown_noise() {
+        let text = "# Heading\n\n- First point\n- Second point";
+
+        assert_eq!(
+            truncate_chunk_for_display(text),
+            "Heading First point Second point"
+        );
+    }
+
+    #[test]
+    fn build_embedding_input_includes_search_metadata() {
+        let input = build_embedding_input(
+            "Video title",
+            "Channel name",
+            SearchSourceKind::Summary,
+            Some("Overview"),
+            "Key summary text",
+        );
+
+        assert!(input.contains("Video: Video title"));
+        assert!(input.contains("Channel: Channel name"));
+        assert!(input.contains("Source: summary"));
+        assert!(input.contains("Section: Overview"));
+        assert!(input.ends_with("Key summary text"));
     }
 
     #[test]

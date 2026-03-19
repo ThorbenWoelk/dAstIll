@@ -309,10 +309,7 @@ pub(crate) async fn ensure_summary(
             spawn_status_update(state, video_id, StatusField::Summary, next_status);
             (status, message)
         })?;
-    let transcript_text = transcript
-        .raw_text
-        .as_deref()
-        .or(transcript.formatted_markdown.as_deref())
+    let transcript_text = transcript_text(&transcript)
         .unwrap_or("")
         .trim()
         .to_string();
@@ -458,10 +455,13 @@ fn spawn_status_update(
 }
 
 fn transcript_text(transcript: &Transcript) -> Option<&str> {
-    transcript
-        .raw_text
-        .as_deref()
-        .or(transcript.formatted_markdown.as_deref())
+    [
+        transcript.raw_text.as_deref(),
+        transcript.formatted_markdown.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    .find(|content| !content.trim().is_empty())
 }
 
 async fn sync_search_source(
@@ -519,8 +519,8 @@ fn map_transcript_err(
 
 #[cfg(test)]
 mod tests {
-    use super::{MAX_SUMMARY_AUTO_REGEN_ATTEMPTS, should_auto_regenerate_summary};
-    use crate::models::ContentStatus;
+    use super::{MAX_SUMMARY_AUTO_REGEN_ATTEMPTS, should_auto_regenerate_summary, transcript_text};
+    use crate::models::{ContentStatus, Transcript, TranscriptRenderMode};
 
     #[test]
     fn should_auto_regenerate_summary_requires_pending_or_loading_and_low_score() {
@@ -558,5 +558,32 @@ mod tests {
             Some(1),
             MAX_SUMMARY_AUTO_REGEN_ATTEMPTS
         ));
+    }
+
+    #[test]
+    fn transcript_text_falls_back_to_formatted_markdown_when_raw_text_is_blank() {
+        let transcript = Transcript {
+            video_id: "video-123".to_string(),
+            raw_text: Some("   ".to_string()),
+            formatted_markdown: Some("## Section\nUseful formatted text".to_string()),
+            render_mode: TranscriptRenderMode::Markdown,
+        };
+
+        assert_eq!(
+            transcript_text(&transcript),
+            Some("## Section\nUseful formatted text")
+        );
+    }
+
+    #[test]
+    fn transcript_text_prefers_non_empty_raw_text() {
+        let transcript = Transcript {
+            video_id: "video-123".to_string(),
+            raw_text: Some("Raw transcript text".to_string()),
+            formatted_markdown: Some("## Section\nFormatted text".to_string()),
+            render_mode: TranscriptRenderMode::Markdown,
+        };
+
+        assert_eq!(transcript_text(&transcript), Some("Raw transcript text"));
     }
 }

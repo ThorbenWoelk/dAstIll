@@ -308,6 +308,7 @@ mod tests {
     use chrono::Utc;
 
     use super::{ReadCache, VideoListCacheKey, WorkspaceBootstrapCacheKey};
+    use crate::db::QueueFilter;
     use crate::models::{AiStatus, Channel, SearchStatusPayload, WorkspaceBootstrapPayload};
 
     fn sample_channel(id: &str) -> Channel {
@@ -423,5 +424,66 @@ mod tests {
         assert!(cache.get_channels().await.is_none());
         assert!(cache.get_workspace_bootstrap(&key).await.is_none());
         assert!(cache.get_search_status().await.is_none());
+    }
+
+    #[test]
+    fn video_list_cache_key_distinguishes_queue_filters() {
+        let any_incomplete =
+            VideoListCacheKey::new(20, 0, None, None, Some(QueueFilter::AnyIncomplete));
+        let transcripts =
+            VideoListCacheKey::new(20, 0, None, None, Some(QueueFilter::TranscriptsOnly));
+        let summaries = VideoListCacheKey::new(20, 0, None, None, Some(QueueFilter::SummariesOnly));
+        let evaluations =
+            VideoListCacheKey::new(20, 0, None, None, Some(QueueFilter::EvaluationsOnly));
+
+        assert_ne!(any_incomplete, transcripts);
+        assert_ne!(transcripts, summaries);
+        assert_ne!(summaries, evaluations);
+    }
+
+    #[tokio::test]
+    async fn workspace_bootstrap_cache_keeps_entries_separate_by_video_filter() {
+        let cache = ReadCache::new(Duration::from_secs(60));
+        let long_videos_key = WorkspaceBootstrapCacheKey {
+            selected_channel_id: Some("abc".to_string()),
+            video_list: VideoListCacheKey::new(20, 0, Some(false), None, None),
+        };
+        let queued_videos_key = WorkspaceBootstrapCacheKey {
+            selected_channel_id: Some("abc".to_string()),
+            video_list: VideoListCacheKey::new(
+                20,
+                0,
+                Some(false),
+                None,
+                Some(QueueFilter::SummariesOnly),
+            ),
+        };
+
+        let mut long_videos = sample_bootstrap();
+        long_videos.selected_channel_id = Some("long-only".to_string());
+        let mut queued_videos = sample_bootstrap();
+        queued_videos.selected_channel_id = Some("queued-only".to_string());
+
+        cache
+            .set_workspace_bootstrap(long_videos_key.clone(), long_videos)
+            .await;
+        cache
+            .set_workspace_bootstrap(queued_videos_key.clone(), queued_videos)
+            .await;
+
+        assert_eq!(
+            cache
+                .get_workspace_bootstrap(&long_videos_key)
+                .await
+                .and_then(|payload| payload.selected_channel_id),
+            Some("long-only".to_string())
+        );
+        assert_eq!(
+            cache
+                .get_workspace_bootstrap(&queued_videos_key)
+                .await
+                .and_then(|payload| payload.selected_channel_id),
+            Some("queued-only".to_string())
+        );
     }
 }

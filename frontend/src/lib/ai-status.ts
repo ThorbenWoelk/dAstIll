@@ -15,22 +15,21 @@ export function resolveAiIndicatorPresentation(
     case "cloud":
       return {
         dotClass: "bg-[var(--status-ok)]",
-        detail:
-          "Primary cloud models are reachable. AI actions will use the cloud path.",
+        detail: "AI actions will use cloud models.",
         title: "Cloud models available",
       };
     case "local_only":
       return {
         dotClass: "bg-[var(--status-warn)]",
         detail:
-          "Cloud models are currently unavailable or cooling down. AI actions will use local fallback models only.",
+          "Cloud models are unavailable right now. AI actions will use local fallback models.",
         title: "Local models only",
       };
     case "offline":
       return {
         dotClass: "bg-[var(--status-error)]",
         detail:
-          "This is a showcase deployment - AI features are turned off. Browsing channels, inspecting summaries, and all other non-AI features are fully functional.",
+          "This showcase deployment has AI turned off. Everything else remains available.",
         title: "Showcase mode",
       };
   }

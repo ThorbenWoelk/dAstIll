@@ -210,10 +210,12 @@ pub async fn update_video_acknowledged(
 
 #[cfg(test)]
 mod tests {
-    use super::{VideoListParams, cached_video_info_needs_refresh};
+    use chrono::Utc;
+
+    use super::{VideoListParams, cached_video_info_needs_refresh, enrich_video_info};
     use crate::db;
     use crate::handlers::query::{QueueTab, VideoTypeFilter};
-    use crate::models::VideoInfo;
+    use crate::models::{ContentStatus, Video, VideoInfo};
 
     fn build_video_info(
         duration_seconds: Option<u64>,
@@ -231,6 +233,22 @@ mod tests {
             duration_iso8601: duration_iso8601.map(str::to_string),
             duration_seconds,
             view_count: None,
+        }
+    }
+
+    fn build_video() -> Video {
+        Video {
+            id: "video-123".to_string(),
+            channel_id: "channel-123".to_string(),
+            title: "Stored Video Title".to_string(),
+            thumbnail_url: Some("https://example.com/thumb.jpg".to_string()),
+            published_at: Utc::now(),
+            is_short: false,
+            transcript_status: ContentStatus::Ready,
+            summary_status: ContentStatus::Ready,
+            acknowledged: false,
+            retry_count: 0,
+            quality_score: None,
         }
     }
 
@@ -255,6 +273,47 @@ mod tests {
             None,
             Some("PT3M5S"),
         )));
+    }
+
+    #[test]
+    fn enrich_video_info_fills_missing_fields_from_video() {
+        let video = build_video();
+        let mut info = build_video_info(Some(185), Some("PT3M5S"));
+        info.title.clear();
+
+        enrich_video_info(&mut info, &video);
+
+        assert_eq!(info.title, video.title);
+        assert_eq!(info.thumbnail_url, video.thumbnail_url);
+        assert_eq!(info.published_at, Some(video.published_at));
+    }
+
+    #[test]
+    fn enrich_video_info_preserves_fetched_fields_when_present() {
+        let video = build_video();
+        let published_at = Utc::now() - chrono::Duration::days(3);
+        let mut info = VideoInfo {
+            video_id: "video-123".to_string(),
+            watch_url: "https://www.youtube.com/watch?v=video-123".to_string(),
+            title: "Fetched Title".to_string(),
+            description: None,
+            thumbnail_url: Some("https://example.com/fetched-thumb.jpg".to_string()),
+            channel_name: None,
+            channel_id: None,
+            published_at: Some(published_at),
+            duration_iso8601: Some("PT3M5S".to_string()),
+            duration_seconds: Some(185),
+            view_count: None,
+        };
+
+        enrich_video_info(&mut info, &video);
+
+        assert_eq!(info.title, "Fetched Title");
+        assert_eq!(
+            info.thumbnail_url,
+            Some("https://example.com/fetched-thumb.jpg".to_string())
+        );
+        assert_eq!(info.published_at, Some(published_at));
     }
 
     #[test]

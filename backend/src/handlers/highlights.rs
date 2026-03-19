@@ -19,20 +19,14 @@ pub async fn create_highlight(
     Json(payload): Json<CreateHighlightRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     require_video(&state, &video_id).await?;
-
-    if payload.text.trim().is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "Highlight text cannot be empty".to_string(),
-        ));
-    }
+    let highlight_text = validate_highlight_text(&payload.text)?;
 
     let conn = state.db.connect();
     let highlight = db::create_highlight(
         &conn,
         &video_id,
         payload.source,
-        payload.text.trim(),
+        highlight_text,
         &payload.prefix_context,
         &payload.suffix_context,
     )
@@ -74,11 +68,56 @@ pub async fn delete_highlight(
     let deleted = db::delete_highlight(&conn, highlight_id)
         .await
         .map_err(map_db_err)?;
-
-    if !deleted {
-        return Err((StatusCode::NOT_FOUND, "Highlight not found".to_string()));
-    }
+    let status = resolve_delete_highlight_result(deleted)?;
 
     state.read_cache.clear().await;
-    Ok(StatusCode::NO_CONTENT)
+    Ok(status)
+}
+
+fn validate_highlight_text(text: &str) -> Result<&str, (StatusCode, String)> {
+    let text = text.trim();
+    if text.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Highlight text cannot be empty".to_string(),
+        ));
+    }
+
+    Ok(text)
+}
+
+fn resolve_delete_highlight_result(deleted: bool) -> Result<StatusCode, (StatusCode, String)> {
+    if deleted {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err((StatusCode::NOT_FOUND, "Highlight not found".to_string()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::http::StatusCode;
+
+    use super::{resolve_delete_highlight_result, validate_highlight_text};
+
+    #[test]
+    fn validate_highlight_text_trims_and_rejects_blank_values() {
+        assert_eq!(
+            validate_highlight_text("  key point  ").unwrap(),
+            "key point"
+        );
+        assert!(validate_highlight_text("   ").is_err());
+    }
+
+    #[test]
+    fn delete_highlight_result_maps_missing_rows_to_not_found() {
+        assert_eq!(
+            resolve_delete_highlight_result(true).unwrap(),
+            StatusCode::NO_CONTENT
+        );
+        assert_eq!(
+            resolve_delete_highlight_result(false).unwrap_err().0,
+            StatusCode::NOT_FOUND
+        );
+    }
 }

@@ -34,3 +34,9 @@ variable "ollama_api_key" {
   sensitive   = true
   description = "Ollama API key for authenticated cloud endpoints"
 }
+
+variable "logfire_token" {
+  type        = string
+  sensitive   = true
+  description = "Logfire token for production telemetry"
+}

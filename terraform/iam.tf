@@ -24,6 +24,7 @@ locals {
   secret_ids = {
     ollama_api_key  = google_secret_manager_secret.ollama_api_key.id
     youtube_api_key = google_secret_manager_secret.youtube_api_key.id
+    logfire_token   = google_secret_manager_secret.logfire_token.id
   }
 }
 

@@ -11,13 +11,6 @@
   let { detail, dotClass, title }: Props = $props();
 
   let open = $state(false);
-  const toneClass = $derived(
-    dotClass.includes("--status-error")
-      ? "border-[var(--danger-border)] bg-[var(--danger-soft)] text-[var(--danger-foreground)]"
-      : dotClass.includes("--status-warn")
-        ? "border-[var(--border)] bg-[var(--muted)] text-[var(--soft-foreground)]"
-        : "border-[var(--accent-border-soft)] bg-[var(--accent-wash)] text-[var(--accent-strong)]",
-  );
 
   function toggle() {
     open = !open;
@@ -49,23 +42,29 @@
   >
     <span class={`h-3 w-3 rounded-full ${dotClass}`}></span>
   </button>
+</div>
 
-  {#if open}
+{#if open}
+  <div
+    class="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6"
+    role="dialog"
+    aria-modal="true"
+    aria-label="AI engine status"
+  >
+    <button
+      type="button"
+      class="absolute inset-0 bg-[var(--overlay)]/55 backdrop-blur-[2px]"
+      aria-label="Close AI engine status"
+      onclick={close}
+    ></button>
+
     <div
-      role="dialog"
-      aria-label="AI engine status details"
-      class="absolute right-0 top-full z-[9999] mt-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--accent-border-soft)] bg-[var(--surface-frost-strong)] shadow-2xl backdrop-blur"
+      use:clickOutside={{ enabled: open, onClickOutside: close }}
+      class="relative w-full max-w-sm overflow-hidden rounded-[var(--radius-lg)] border border-[var(--accent-border-soft)] bg-[var(--surface-frost-strong)] shadow-2xl backdrop-blur"
     >
-      <div
-        class="flex items-start justify-between gap-3 border-b border-[var(--accent-border-soft)] px-4 py-3"
-      >
-        <div class="min-w-0">
-          <p
-            class="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--soft-foreground)] opacity-60"
-          >
-            AI status
-          </p>
-          <div class="mt-2 flex min-w-0 items-center gap-2">
+      <div class="flex items-start justify-between gap-3 px-4 py-4 sm:px-5">
+        <div class="min-w-0 space-y-2">
+          <div class="flex min-w-0 items-center gap-2">
             <span class={`h-2.5 w-2.5 rounded-full ${dotClass}`}></span>
             <p
               class="truncate text-[13px] font-semibold text-[var(--foreground)]"
@@ -73,6 +72,9 @@
               {title}
             </p>
           </div>
+          <p class="text-[13px] leading-6 text-[var(--soft-foreground)]">
+            {detail}
+          </p>
         </div>
         <button
           type="button"
@@ -83,17 +85,6 @@
           <CloseIcon size={12} />
         </button>
       </div>
-
-      <div class="space-y-3 px-4 py-4">
-        <span
-          class={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] ${toneClass}`}
-        >
-          {title}
-        </span>
-        <p class="text-[13px] leading-6 text-[var(--soft-foreground)]">
-          {detail}
-        </p>
-      </div>
     </div>
-  {/if}
-</div>
+  </div>
+{/if}

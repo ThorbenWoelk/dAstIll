@@ -54,6 +54,7 @@ jobs:
           secrets: |
             YOUTUBE_API_KEY=dastill-youtube-api-key:latest
             OLLAMA_API_KEY=dastill-ollama-api-key:latest
+            LOGFIRE_TOKEN=dastill-logfire-token:latest
           env_vars: |
             AWS_REGION=${{ vars.AWS_REGION }}
             AWS_ROLE_ARN=${{ vars.AWS_ROLE_ARN }}
