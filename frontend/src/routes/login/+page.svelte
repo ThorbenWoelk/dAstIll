@@ -1,8 +1,13 @@
 <script lang="ts">
   import type { ActionData, PageData } from "./$types";
 
-  export let data: PageData;
-  export let form: ActionData | undefined = undefined;
+  let {
+    data,
+    form = undefined,
+  }: {
+    data: PageData;
+    form?: ActionData;
+  } = $props();
 </script>
 
 <svelte:head>

@@ -522,8 +522,7 @@
                       role="menuitemradio"
                       aria-checked={acknowledgedFilter === opt.value}
                       class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[13px] font-medium transition-colors ${acknowledgedFilter === opt.value ? "bg-[var(--accent-wash-strong)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--accent-wash)]"}`}
-                      onclick={() =>
-                        void selectAcknowledgedFilter(opt.value)}
+                      onclick={() => void selectAcknowledgedFilter(opt.value)}
                     >
                       <span>{opt.label}</span>
                       {#if acknowledgedFilter === opt.value}<CheckIcon

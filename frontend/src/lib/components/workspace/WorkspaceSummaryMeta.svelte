@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { renderMarkdown } from "../../utils/markdown";
+
   let {
     score = null,
     note = null,
@@ -80,9 +82,36 @@
       {/if}
     </div>
     {#if note && noteExpanded}
-      <p id="summary-quality-note" class="min-w-0 italic leading-relaxed">
-        "{note}"
-      </p>
+      <div
+        id="summary-quality-note"
+        class="eval-note-markdown min-w-0 italic leading-relaxed"
+      >
+        {@html renderMarkdown(note)}
+      </div>
     {/if}
   </div>
 </div>
+
+<style>
+  .eval-note-markdown :global(ul) {
+    list-style-type: disc;
+    margin-left: 1rem;
+    margin-top: 0.25rem;
+    margin-bottom: 0.5rem;
+  }
+  .eval-note-markdown :global(li) {
+    margin-bottom: 0.125rem;
+  }
+  .eval-note-markdown :global(strong) {
+    display: block;
+    margin-top: 0.5rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 9px;
+    letter-spacing: 0.05em;
+    font-style: normal;
+  }
+  .eval-note-markdown :global(p) {
+    margin-bottom: 0.25rem;
+  }
+</style>

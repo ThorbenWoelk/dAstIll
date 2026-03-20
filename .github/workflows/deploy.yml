@@ -1,9 +1,25 @@
 name: Deploy
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Checks", "Security"]
+    types: [completed]
     branches: ["main"]
   workflow_dispatch:
+    inputs:
+      target:
+        description: Deploy scope
+        type: choice
+        options:
+          - all
+          - backend
+          - docs
+          - frontend
+        default: all
+
+concurrency:
+  group: deploy-${{ github.event.workflow_run.head_sha || github.sha }}-${{ github.event.inputs.target || 'all' }}
+  cancel-in-progress: true
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
@@ -12,19 +28,107 @@ env:
   BACKEND_SERVICE: dastill-backend
   FRONTEND_SERVICE: dastill-frontend
   DOCS_SERVICE: dastill-docs
-  IMAGE_TAG: ${{ github.sha }}
+
+permissions:
+  actions: read
+  contents: read
+  id-token: write
 
 jobs:
-  deploy:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      deploy_sha: ${{ steps.plan.outputs.deploy_sha }}
+      target: ${{ steps.plan.outputs.target }}
+      should_deploy: ${{ steps.plan.outputs.should_deploy }}
+
+    steps:
+      - name: Resolve deploy plan
+        id: plan
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const isManual = context.eventName === 'workflow_dispatch';
+            const deploySha = isManual
+              ? context.sha
+              : context.payload.workflow_run?.head_sha;
+            const target = isManual
+              ? (context.payload.inputs?.target || 'all')
+              : 'all';
+
+            if (isManual) {
+              core.setOutput('deploy_sha', deploySha);
+              core.setOutput('target', target);
+              core.setOutput('should_deploy', 'true');
+              core.notice(`Manual deploy for ${deploySha} targeting ${target}.`);
+              return;
+            }
+
+            const triggeringRun = context.payload.workflow_run;
+            if (
+              !triggeringRun ||
+              triggeringRun.event !== 'push' ||
+              triggeringRun.conclusion !== 'success'
+            ) {
+              core.setOutput('deploy_sha', deploySha || '');
+              core.setOutput('target', target);
+              core.setOutput('should_deploy', 'false');
+              core.notice('Skipping deploy because the triggering workflow run was not a successful push to main.');
+              return;
+            }
+
+            const requiredWorkflows = ['Checks', 'Security'];
+            const runs = await github.paginate(
+              github.rest.actions.listWorkflowRunsForRepo,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                head_sha: deploySha,
+                per_page: 100,
+              },
+            );
+
+            const missing = requiredWorkflows.filter((workflowName) =>
+              !runs.some(
+                (run) =>
+                  run.name === workflowName &&
+                  run.status === 'completed' &&
+                  run.conclusion === 'success' &&
+                  run.event === 'push',
+              ),
+            );
+
+            core.setOutput('deploy_sha', deploySha);
+            core.setOutput('target', target);
+            core.setOutput('should_deploy', missing.length === 0 ? 'true' : 'false');
+
+            if (missing.length > 0) {
+              core.notice(
+                `Waiting for successful workflow runs on ${deploySha}: ${missing.join(', ')}.`,
+              );
+              return;
+            }
+
+            core.notice(`All deploy prerequisites passed for ${deploySha}.`);
+
+  deploy-backend:
+    name: Deploy Backend
+    needs: gate
+    if: needs.gate.outputs.should_deploy == 'true' && (needs.gate.outputs.target == 'all' || needs.gate.outputs.target == 'backend')
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    permissions:
-      contents: read
-      id-token: write
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
+
+    env:
+      IMAGE_TAG: ${{ needs.gate.outputs.deploy_sha }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.gate.outputs.deploy_sha }}
 
       - name: Google Auth
         uses: google-github-actions/auth@v3
@@ -44,7 +148,7 @@ jobs:
           docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/backend:$IMAGE_TAG
 
       - name: Deploy Backend to Cloud Run
-        id: deploy-backend
+        id: deploy
         uses: google-github-actions/deploy-cloudrun@v3
         with:
           service: ${{ env.BACKEND_SERVICE }}
@@ -71,6 +175,36 @@ jobs:
             BACKEND_CORS_ALLOWED_ORIGINS=${{ vars.BACKEND_CORS_ALLOWED_ORIGINS }}
             RUST_LOG=dastill=info,tower_http=info
 
+  deploy-docs:
+    name: Deploy Docs
+    needs: gate
+    if: needs.gate.outputs.should_deploy == 'true' && (needs.gate.outputs.target == 'all' || needs.gate.outputs.target == 'docs')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
+
+    env:
+      IMAGE_TAG: ${{ needs.gate.outputs.deploy_sha }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.gate.outputs.deploy_sha }}
+
+      - name: Google Auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_WIF_SA_EMAIL }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Configure Docker
+        run: gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
+
       - name: Build and Push Docs Image
         run: |
           docker build \
@@ -78,13 +212,86 @@ jobs:
           docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/docs:$IMAGE_TAG
 
       - name: Deploy Docs to Cloud Run
-        id: deploy-docs
+        id: deploy
         uses: google-github-actions/deploy-cloudrun@v3
         with:
           service: ${{ env.DOCS_SERVICE }}
           region: ${{ env.REGION }}
           image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_ID }}/docs:${{ env.IMAGE_TAG }}
           flags: "--allow-unauthenticated --service-account=dastill-docs-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
+
+  resolve-frontend-env:
+    name: Resolve Frontend Environment
+    needs:
+      - gate
+      - deploy-backend
+      - deploy-docs
+    if: always() && needs.gate.outputs.should_deploy == 'true' && (needs.gate.outputs.target == 'all' || needs.gate.outputs.target == 'frontend') && (needs.deploy-backend.result == 'success' || needs.deploy-backend.result == 'skipped') && (needs.deploy-docs.result == 'success' || needs.deploy-docs.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      backend_url: ${{ steps.urls.outputs.backend_url }}
+      docs_url: ${{ steps.urls.outputs.docs_url }}
+
+    steps:
+      - name: Google Auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_WIF_SA_EMAIL }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Resolve deployed service URLs
+        id: urls
+        env:
+          DEPLOYED_BACKEND_URL: ${{ needs.deploy-backend.outputs.url }}
+          DEPLOYED_DOCS_URL: ${{ needs.deploy-docs.outputs.url }}
+        run: |
+          backend_url="$DEPLOYED_BACKEND_URL"
+          docs_url="$DEPLOYED_DOCS_URL"
+
+          if [ -z "$backend_url" ]; then
+            backend_url="$(gcloud run services describe "$BACKEND_SERVICE" --region "$REGION" --format='value(status.url)')"
+          fi
+
+          if [ -z "$docs_url" ]; then
+            docs_url="$(gcloud run services describe "$DOCS_SERVICE" --region "$REGION" --format='value(status.url)')"
+          fi
+
+          echo "backend_url=$backend_url" >> "$GITHUB_OUTPUT"
+          echo "docs_url=$docs_url" >> "$GITHUB_OUTPUT"
+
+  deploy-frontend:
+    name: Deploy Frontend
+    needs:
+      - gate
+      - resolve-frontend-env
+    if: needs.gate.outputs.should_deploy == 'true' && (needs.gate.outputs.target == 'all' || needs.gate.outputs.target == 'frontend')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      IMAGE_TAG: ${{ needs.gate.outputs.deploy_sha }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.gate.outputs.deploy_sha }}
+
+      - name: Google Auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_WIF_SA_EMAIL }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Configure Docker
+        run: gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
 
       - name: Build and Push Frontend Image
         run: |
@@ -93,7 +300,6 @@ jobs:
           docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/frontend:$IMAGE_TAG
 
       - name: Deploy Frontend to Cloud Run
-        id: deploy-frontend
         uses: google-github-actions/deploy-cloudrun@v3
         with:
           service: ${{ env.FRONTEND_SERVICE }}
@@ -105,6 +311,6 @@ jobs:
             APP_SESSION_SECRET=dastill-app-session-secret:latest
             BACKEND_PROXY_TOKEN=dastill-backend-proxy-token:latest
           env_vars: |
-            BACKEND_API_BASE=${{ steps.deploy-backend.outputs.url }}
-            BACKEND_IDENTITY_AUDIENCE=${{ steps.deploy-backend.outputs.url }}
-            PUBLIC_DOCS_URL=${{ steps.deploy-docs.outputs.url }}
+            BACKEND_API_BASE=${{ needs.resolve-frontend-env.outputs.backend_url }}
+            BACKEND_IDENTITY_AUDIENCE=${{ needs.resolve-frontend-env.outputs.backend_url }}
+            PUBLIC_DOCS_URL=${{ needs.resolve-frontend-env.outputs.docs_url }}

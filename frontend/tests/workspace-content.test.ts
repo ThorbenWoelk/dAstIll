@@ -83,7 +83,7 @@ describe("resolveSummaryQualityPresentation", () => {
     const presentation = resolveSummaryQualityPresentation(
       createSummary({
         quality_score: 10.8,
-        quality_note: "  Dense and accurate.  ",
+        quality_note: "  **Faithfulness**: \\n- Dense and accurate.  ",
         model_used: "summary-model",
         quality_model_used: "eval-model",
       }),
@@ -91,7 +91,7 @@ describe("resolveSummaryQualityPresentation", () => {
 
     expect(presentation).toEqual({
       score: 10,
-      note: "Dense and accurate.",
+      note: "**Faithfulness**: \\n- Dense and accurate.",
       modelUsed: "summary-model",
       qualityModelUsed: "eval-model",
     });
