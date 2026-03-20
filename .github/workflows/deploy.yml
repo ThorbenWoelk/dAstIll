@@ -3,13 +3,13 @@ name: Release
 run-name: >-
   ${{
     github.event_name == 'workflow_dispatch'
-      && format('Deploy ({0})', github.event.inputs.target || 'all')
-      || format('Deploy after {0}', github.event.workflow_run.name)
+      && format('Release ({0})', github.event.inputs.target || 'all')
+      || 'Release'
   }}
 
 on:
   workflow_run:
-    workflows: ["Checks", "Security"]
+    workflows: ["Checks"]
     types: [completed]
     branches: ["main"]
   workflow_dispatch:
@@ -86,25 +86,53 @@ jobs:
             }
 
             const requiredWorkflows = ['Checks', 'Security'];
-            const runs = await github.paginate(
-              github.rest.actions.listWorkflowRunsForRepo,
-              {
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                head_sha: deploySha,
-                per_page: 100,
-              },
-            );
+            const deadline = Date.now() + 8 * 60 * 1000;
+            let missing = [...requiredWorkflows];
 
-            const missing = requiredWorkflows.filter((workflowName) =>
-              !runs.some(
-                (run) =>
-                  run.name === workflowName &&
-                  run.status === 'completed' &&
-                  run.conclusion === 'success' &&
-                  run.event === 'push',
-              ),
-            );
+            while (Date.now() < deadline) {
+              const runs = await github.paginate(
+                github.rest.actions.listWorkflowRunsForRepo,
+                {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  head_sha: deploySha,
+                  per_page: 100,
+                },
+              );
+
+              const relevantRuns = runs.filter((run) => run.event === 'push');
+              const failed = requiredWorkflows.find((workflowName) =>
+                relevantRuns.some(
+                  (run) =>
+                    run.name === workflowName &&
+                    run.status === 'completed' &&
+                    run.conclusion !== 'success',
+                ),
+              );
+
+              if (failed) {
+                core.setOutput('deploy_sha', deploySha);
+                core.setOutput('target', target);
+                core.setOutput('should_deploy', 'false');
+                core.notice(`Skipping deploy because ${failed} did not succeed for ${deploySha}.`);
+                return;
+              }
+
+              missing = requiredWorkflows.filter((workflowName) =>
+                !relevantRuns.some(
+                  (run) =>
+                    run.name === workflowName &&
+                    run.status === 'completed' &&
+                    run.conclusion === 'success',
+                ),
+              );
+
+              if (missing.length === 0) {
+                break;
+              }
+
+              await new Promise((resolve) => setTimeout(resolve, 10000));
+            }
 
             core.setOutput('deploy_sha', deploySha);
             core.setOutput('target', target);
