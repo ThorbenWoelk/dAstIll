@@ -160,7 +160,7 @@
     {
       selector: "#workspace",
       title: "Channel Sidebar",
-      body: "Queue now uses the same channel navigation shell as Workspace, including search, sort, add, and reorder controls.",
+      body: "Queue shares the same sidebar shell as Workspace, so channel search, sort, add, and reorder all behave the same way here.",
       placement: "right",
       prepare: () => {
         mobileTab = "browse";
@@ -169,7 +169,7 @@
     {
       selector: "#queue-stage-tabs",
       title: "Queue Stages",
-      body: "Switch between transcript, summary, and evaluation queues while keeping the same workspace-style sidebar navigation.",
+      body: "Switch between transcript, summary, and evaluation backlogs while keeping the same selected channel and shared navigation shell.",
       placement: "bottom",
       prepare: () => {
         mobileTab = "content";
@@ -178,7 +178,7 @@
     {
       selector: "#content-view",
       title: "Queue Insights",
-      body: "The right pane gives you channel-level queue health, sync depth controls, and stage-specific context without leaving Queue.",
+      body: "The right pane keeps queue counts, sync-depth controls, and channel context together so you can work through backlog without leaving Queue.",
       placement: "left",
       prepare: () => {
         mobileTab = "content";
@@ -187,7 +187,7 @@
     {
       selector: "nav[aria-label='Workspace sections']",
       title: "Navigate the app",
-      body: "Queue now shares the same shell and section navigation patterns as Workspace.",
+      body: "Use the shared section navigation to move between workspace, queue, highlights, chat, and docs without losing the overall shell.",
       placement: "bottom",
       prepare: () => {
         mobileTab = selectedChannelId ? "content" : "browse";

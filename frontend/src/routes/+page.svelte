@@ -176,7 +176,7 @@
     {
       selector: "#workspace",
       title: "Channel Sidebar",
-      body: "All your followed YouTube channels live here. Drag to reorder, search to filter, and use the trash icon to manage.",
+      body: "Your subscribed channels live here. Search, sort, reorder, and reveal admin-only management from the same sidebar.",
       placement: "right",
       prepare: () => {
         mobileTab = "browse";
@@ -194,7 +194,7 @@
     {
       selector: "#videos",
       title: "Video Library",
-      body: "Every video from your channels appears here. Select a video to read its transcript, summary, or metadata.",
+      body: "The current channel's videos appear here first, then the list keeps filling in as history catches up. Pick any video to open its transcript, summary, highlights, or metadata.",
       placement: "right",
       prepare: () => {
         mobileTab = "browse";
@@ -212,7 +212,7 @@
     {
       selector: "#content-mode-tabs",
       title: "Transcript View",
-      body: "Each video's transcript is automatically extracted and displayed. This is the raw text of everything said in the video.",
+      body: "Transcript is the reading-first view: raw spoken content, ready for inline cleanup, highlighting, and quick review.",
       placement: "bottom",
       prepare: () => {
         mobileTab = "content";
@@ -224,7 +224,7 @@
     {
       selector: "#content-mode-tabs",
       title: "Summary View",
-      body: "Switch to Summary to see an AI-generated distillation of the video's key points. The model name and a quality score are shown below the text.",
+      body: "Summary gives you the AI distillation of the video, along with the model used and any available quality signal.",
       placement: "bottom",
       prepare: () => {
         mobileTab = "content";
@@ -236,7 +236,7 @@
     {
       selector: "#content-mode-tabs",
       title: "Highlights Tab",
-      body: "The Highlights tab collects all passages you have saved from transcripts and summaries. Select text in a transcript or summary to create a highlight.",
+      body: "Highlights collects the passages you saved from this video. Create them by selecting text in transcript or summary views, then revisit them here.",
       placement: "bottom",
       prepare: () => {
         mobileTab = "content";
@@ -248,7 +248,7 @@
     {
       selector: "#content-mode-tabs",
       title: "Info View",
-      body: "The Info tab shows video metadata - publish date, duration, description, and thumbnail - pulled directly from YouTube.",
+      body: "Info shows the video's metadata — publish date, duration, description, and thumbnail — without leaving the workspace.",
       placement: "bottom",
       prepare: () => {
         mobileTab = "content";
@@ -260,7 +260,7 @@
     {
       selector: "#content-actions",
       title: "Content Actions",
-      body: "The action bar gives you quick access to: edit the text inline, reformat the transcript with AI, regenerate the summary, and jump to the video on YouTube.",
+      body: "The action bar changes with the current view. Use it to edit text, trigger AI cleanup or regeneration, toggle read state, and jump out to YouTube.",
       placement: "bottom",
       prepare: () => {
         mobileTab = "content";
@@ -272,7 +272,7 @@
     {
       selector: "#content-actions",
       title: "Mark as Read",
-      body: "Use the checkbox at the end of the action bar to mark a video as read. Read status syncs with the filter in the video sidebar so you can track what you have already reviewed.",
+      body: "Use the read toggle in the action bar to mark progress. That status flows back into the sidebar filters so you can quickly separate reviewed from unreviewed videos.",
       placement: "bottom",
       prepare: () => {
         mobileTab = "content";
@@ -284,7 +284,7 @@
     {
       selector: "#ai-status-pill",
       title: "AI Status",
-      body: "The colored dot shows AI engine availability. In showcase mode, AI features like formatting and summary generation are disabled, but browsing and reading work fully.",
+      body: "The status pill shows whether AI-backed actions are currently available. Even when AI is degraded, browsing, reading, and navigation still work normally.",
       placement: "bottom",
     },
     {

@@ -30,13 +30,13 @@
     {
       selector: "nav[aria-label='Workspace sections']",
       title: "App navigation",
-      body: "Jump between workspace, queue, highlights, and docs from the same shared header.",
+      body: "Move between workspace, queue, highlights, chat, and docs from the same shared shell.",
       placement: "bottom",
     },
     {
       selector: "#main-content",
       title: "Highlights library",
-      body: "Review saved passages grouped by channel and video, then jump straight back into the workspace for context.",
+      body: "Review saved passages grouped by channel and video, then jump back into the related workspace context when you need the full transcript or summary.",
       placement: "top",
     },
   ];

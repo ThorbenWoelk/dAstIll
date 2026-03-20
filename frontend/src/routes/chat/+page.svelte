@@ -67,13 +67,13 @@
     {
       selector: "nav[aria-label='Workspace sections']",
       title: "Shared navigation",
-      body: "Chat uses the same section header and search entry point as the rest of dAstIll.",
+      body: "Chat lives inside the same shared shell as workspace, queue, highlights, and docs, so moving between surfaces stays consistent.",
       placement: "bottom",
     },
     {
       selector: "#conversations-panel",
       title: "Conversation sidebar",
-      body: "Browse, rename, and delete persistent chats from the left-hand rail.",
+      body: "Browse and rename persistent chats from the sidebar. Admin sign-in unlocks destructive actions such as deleting conversations.",
       placement: "right",
       prepare: () => {
         mobileTab = "conversations";
@@ -82,7 +82,7 @@
     {
       selector: "#content-view",
       title: "Grounded chat pane",
-      body: "Responses stream here with source-backed citations from your indexed library.",
+      body: "Ask questions here and watch grounded answers stream in with source-backed citations from your indexed library.",
       placement: "left",
       prepare: () => {
         mobileTab = "content";

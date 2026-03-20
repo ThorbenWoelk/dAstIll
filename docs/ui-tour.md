@@ -19,6 +19,8 @@ The workspace combines:
 - search with result highlighting
 - acknowledgement tracking
 
+The current shell is optimized for immediacy: subscribed channels render first, the selected channel snapshot loads right after, and content restores without waiting for the entire workspace payload.
+
 ### Desktop workspace
 
 ![Desktop workspace](./images/desktop-1280.png)
@@ -43,6 +45,8 @@ The chat route enables RAG conversations with your video content:
 - ask questions about transcripts and summaries
 - receive AI responses grounded in retrieved source chunks
 - view source attribution for each response
+
+Anonymous visitors can use chat with limits in place, while operator sign-in unlocks admin-only actions such as destructive management.
 
 Chat uses the semantic search index to find relevant content before generating responses.
 
