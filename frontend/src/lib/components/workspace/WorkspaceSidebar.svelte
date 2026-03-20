@@ -4,6 +4,7 @@
     beginChannelDrag,
     completeChannelDrop,
     finishChannelDrag,
+    moveChannelToIndex,
     reorderChannels as reorderChannelList,
     updateChannelDragOver,
   } from "$lib/channel-workspace";
@@ -197,6 +198,37 @@
     );
     if (sourceId) {
       const reordered = reorderChannelList(channels, sourceId, channelId);
+      if (reordered) onReorderChannels(reordered.channelOrder);
+    }
+    draggedChannelId = dragState.draggedChannelId;
+    dragOverChannelId = dragState.dragOverChannelId;
+  }
+
+  function handleChannelListDragOver(event: DragEvent) {
+    event.preventDefault();
+    const lastVisibleChannelId = filteredChannels.at(-1)?.id ?? null;
+    if (!draggedChannelId || !lastVisibleChannelId) {
+      return;
+    }
+
+    dragOverChannelId = lastVisibleChannelId;
+  }
+
+  function handleChannelListDrop(event: DragEvent) {
+    event.preventDefault();
+    const lastVisibleChannelId = filteredChannels.at(-1)?.id ?? null;
+    const lastChannelIndex = channels.length - 1;
+    const { sourceId, dragState } = completeChannelDrop(
+      lastVisibleChannelId,
+      draggedChannelId,
+      event.dataTransfer?.getData("text/plain") || null,
+    );
+    if (sourceId && lastVisibleChannelId && lastChannelIndex >= 0) {
+      const reordered = moveChannelToIndex(
+        channels,
+        sourceId,
+        lastChannelIndex,
+      );
       if (reordered) onReorderChannels(reordered.channelOrder);
     }
     draggedChannelId = dragState.draggedChannelId;
@@ -899,6 +931,14 @@
             </div>
           {/if}
         {/each}
+        {#if manualReorderEnabled && filteredChannels.length > 0}
+          <div
+            class="h-5 shrink-0"
+            aria-hidden="true"
+            ondragover={handleChannelListDragOver}
+            ondrop={handleChannelListDrop}
+          ></div>
+        {/if}
       {/if}
     </div>
   {/if}

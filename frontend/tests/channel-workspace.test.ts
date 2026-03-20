@@ -6,6 +6,7 @@ import {
   finishChannelDrag,
   loadWorkspaceState,
   markChannelRefreshed,
+  moveChannelToIndex,
   prioritizeChannelOrder,
   reorderChannels,
   restoreWorkspaceSnapshot,
@@ -83,6 +84,21 @@ describe("reorderChannels", () => {
     expect(result).toEqual({
       channels: [channel("c"), channel("a"), channel("b")],
       channelOrder: ["c", "a", "b"],
+    });
+  });
+});
+
+describe("moveChannelToIndex", () => {
+  it("moves a dragged channel into the last visible position", () => {
+    const result = moveChannelToIndex(
+      [channel("a"), channel("b"), channel("c")],
+      "a",
+      2,
+    );
+
+    expect(result).toEqual({
+      channels: [channel("b"), channel("c"), channel("a")],
+      channelOrder: ["b", "c", "a"],
     });
   });
 });
