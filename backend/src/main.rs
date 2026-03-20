@@ -328,12 +328,10 @@ async fn main() -> anyhow::Result<()> {
         )
         .route(
             "/api/search/rebuild",
-            post(search::rebuild_search_projection)
-                .layer(middleware::from_fn(require_operator_role))
-                .layer(middleware::from_fn_with_state(
-                    state.clone(),
-                    enforce_expensive_rate_limit,
-                )),
+            post(search::rebuild_search_projection).layer(middleware::from_fn_with_state(
+                state.clone(),
+                enforce_expensive_rate_limit,
+            )),
         )
         .route(
             "/api/workspace/bootstrap",
@@ -361,21 +359,17 @@ async fn main() -> anyhow::Result<()> {
         )
         .route(
             "/api/channels/{id}/refresh",
-            post(channels::refresh_channel_videos)
-                .layer(middleware::from_fn(require_operator_role))
-                .layer(middleware::from_fn_with_state(
-                    state.clone(),
-                    enforce_expensive_rate_limit,
-                )),
+            post(channels::refresh_channel_videos).layer(middleware::from_fn_with_state(
+                state.clone(),
+                enforce_expensive_rate_limit,
+            )),
         )
         .route(
             "/api/channels/{id}/backfill",
-            post(channels::backfill_channel_videos)
-                .layer(middleware::from_fn(require_operator_role))
-                .layer(middleware::from_fn_with_state(
-                    state.clone(),
-                    enforce_expensive_rate_limit,
-                )),
+            post(channels::backfill_channel_videos).layer(middleware::from_fn_with_state(
+                state.clone(),
+                enforce_expensive_rate_limit,
+            )),
         )
         .route(
             "/api/channels/{id}/videos",
@@ -392,12 +386,10 @@ async fn main() -> anyhow::Result<()> {
         )
         .route(
             "/api/videos/info/backfill",
-            post(videos::backfill_video_info)
-                .layer(middleware::from_fn(require_operator_role))
-                .layer(middleware::from_fn_with_state(
-                    state.clone(),
-                    enforce_expensive_rate_limit,
-                )),
+            post(videos::backfill_video_info).layer(middleware::from_fn_with_state(
+                state.clone(),
+                enforce_expensive_rate_limit,
+            )),
         )
         .route("/api/videos/{id}/transcript", get(content::get_transcript))
         .route(
@@ -417,11 +409,10 @@ async fn main() -> anyhow::Result<()> {
         )
         .route(
             "/api/videos/{id}/transcript/clean",
-            post(content::clean_transcript_formatting)
-                .layer(middleware::from_fn_with_state(
-                    state.clone(),
-                    enforce_expensive_rate_limit,
-                )),
+            post(content::clean_transcript_formatting).layer(middleware::from_fn_with_state(
+                state.clone(),
+                enforce_expensive_rate_limit,
+            )),
         )
         .route("/api/videos/{id}/summary", get(content::get_summary))
         .route(
@@ -437,12 +428,10 @@ async fn main() -> anyhow::Result<()> {
         )
         .route(
             "/api/videos/{id}/summary/regenerate",
-            post(content::regenerate_summary)
-                .layer(middleware::from_fn(require_operator_role))
-                .layer(middleware::from_fn_with_state(
-                    state.clone(),
-                    enforce_expensive_rate_limit,
-                )),
+            post(content::regenerate_summary).layer(middleware::from_fn_with_state(
+                state.clone(),
+                enforce_expensive_rate_limit,
+            )),
         )
         .route("/api/highlights", get(highlights::list_highlights))
         .route(
