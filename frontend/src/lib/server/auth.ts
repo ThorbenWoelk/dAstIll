@@ -12,7 +12,6 @@ export interface AuthRuntimeConfig {
   backendApiBase: string;
   backendProxyToken: string;
   backendIdentityAudience?: string;
-  adminPassword: string;
 }
 
 const LOCAL_DEV_BACKEND_API_BASE = "http://localhost:3544";
@@ -103,9 +102,20 @@ function loadAuthRuntimeConfig(): AuthRuntimeConfig {
       "BACKEND_PROXY_TOKEN",
       LOCAL_DEV_BACKEND_PROXY_TOKEN,
     ),
-    adminPassword: requiredPrivateEnv("ADMIN_PASSWORD"),
     ...(backendIdentityAudience ? { backendIdentityAudience } : {}),
   };
+}
+
+function getConfiguredAdminPassword(): string | null {
+  return normalizeConfiguredValue(env.ADMIN_PASSWORD) ?? null;
+}
+
+function requireAdminPassword(): string {
+  const adminPassword = getConfiguredAdminPassword();
+  if (!adminPassword) {
+    throw new Error("ADMIN_PASSWORD must be set");
+  }
+  return adminPassword;
 }
 
 let authRuntimeConfig: AuthRuntimeConfig | null = null;
@@ -116,7 +126,8 @@ export function getAuthRuntimeConfig(): AuthRuntimeConfig {
 }
 
 export function isValidAdminPassword(password: string): boolean {
-  return secureEquals(password, getAuthRuntimeConfig().adminPassword);
+  const adminPassword = getConfiguredAdminPassword();
+  return adminPassword ? secureEquals(password, adminPassword) : false;
 }
 
 export function createAdminSessionToken(): string {
@@ -129,7 +140,7 @@ export function createAdminSessionToken(): string {
   ).toString("base64url");
   const signature = signSessionPayload(
     payload,
-    getAuthRuntimeConfig().adminPassword,
+    requireAdminPassword(),
   ).toString("base64url");
   return `${payload}.${signature}`;
 }
@@ -141,15 +152,17 @@ export function readAdminSession(
     return null;
   }
 
+  const adminPassword = getConfiguredAdminPassword();
+  if (!adminPassword) {
+    return null;
+  }
+
   const [payload, signature, ...rest] = token.split(".");
   if (!payload || !signature || rest.length > 0) {
     return null;
   }
 
-  const expectedSignature = signSessionPayload(
-    payload,
-    getAuthRuntimeConfig().adminPassword,
-  );
+  const expectedSignature = signSessionPayload(payload, adminPassword);
   let providedSignature: Buffer;
   try {
     providedSignature = Buffer.from(signature, "base64url");
