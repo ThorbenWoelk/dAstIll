@@ -14,6 +14,7 @@
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
   import { DOCS_URL } from "$lib/app-config";
   import FeatureGuide from "$lib/components/FeatureGuide.svelte";
+  import type { TourStep } from "$lib/components/FeatureGuide.svelte";
   import ConfirmationModal from "$lib/components/ConfirmationModal.svelte";
   import ErrorToast from "$lib/components/ErrorToast.svelte";
   import QueueContentPanel from "$lib/components/queue/QueueContentPanel.svelte";
@@ -75,7 +76,6 @@
     resolveGuideStepFromUrl,
     writeGuideStepToUrl,
   } from "$lib/utils/guide";
-  import type { TourStep } from "$lib/feature-guide";
 
   const CHANNEL_REFRESH_TTL_MS = 5 * 60 * 1000;
   const limit = 20;
@@ -103,6 +103,14 @@
   ] as const;
 
   type QueueMobileTab = (typeof queueMobileTabs)[number]["value"];
+  const queueMobileTabItems: Array<{ value: string; label: string }> =
+    queueMobileTabs.map((tab) => ({ ...tab }));
+
+  function resolveQueueMobileTab(value: string): QueueMobileTab {
+    return queueMobileTabs.some((tab) => tab.value === value)
+      ? (value as QueueMobileTab)
+      : "browse";
+  }
 
   let channels = $state<Channel[]>([]);
   let channelOrder = $state<string[]>([]);
@@ -810,10 +818,10 @@
   {/snippet}
 
   <WorkspaceMobileTabBar
-    tabs={queueMobileTabs as unknown as Array<{ value: string; label: string }>}
+    tabs={queueMobileTabItems}
     activeTab={mobileTab}
     onTabChange={(tab) => {
-      mobileTab = tab as QueueMobileTab;
+      mobileTab = resolveQueueMobileTab(tab);
     }}
   />
 

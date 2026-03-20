@@ -131,6 +131,11 @@
   let formattingNotice = $derived(content.formattingNotice);
   let formattingNoticeVideoId = $derived(content.formattingNoticeVideoId);
   let formattingNoticeTone = $derived(content.formattingNoticeTone);
+  let contentHighlightSource = $derived.by((): HighlightSource | null =>
+    contentMode === "transcript" || contentMode === "summary"
+      ? contentMode
+      : null,
+  );
 
   let onBack = $derived(actions.onBack);
   let onSetMode = $derived(actions.onSetMode);
@@ -625,10 +630,7 @@
             formattingContent &&
             formattingVideoId === selectedVideoId}
           highlights={contentHighlights}
-          highlightSource={contentMode === "transcript" ||
-          contentMode === "summary"
-            ? (contentMode as HighlightSource)
-            : null}
+          highlightSource={contentHighlightSource}
           highlightEnabled={Boolean(
             selectedVideoId &&
             !loadingContent &&
