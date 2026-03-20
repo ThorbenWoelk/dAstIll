@@ -33,6 +33,24 @@
   import { formatSyncDate } from "$lib/workspace/content";
   import { resolveDisplayedSyncDepthIso } from "$lib/sync-depth";
 
+  const VIDEO_TYPE_OPTIONS: Array<{
+    value: VideoTypeFilter;
+    label: string;
+  }> = [
+    { value: "all", label: "All Content" },
+    { value: "long", label: "Full Videos" },
+    { value: "short", label: "Shorts" },
+  ];
+
+  const ACKNOWLEDGED_FILTER_OPTIONS: Array<{
+    value: AcknowledgedFilter;
+    label: string;
+  }> = [
+    { value: "all", label: "All Statuses" },
+    { value: "unack", label: "Unread" },
+    { value: "ack", label: "Read" },
+  ];
+
   let {
     shell = {
       collapsed: false,
@@ -476,16 +494,13 @@
                   >
                     TYPE
                   </p>
-                  {#each [{ value: "all", label: "All Content" }, { value: "long", label: "Full Videos" }, { value: "short", label: "Shorts" }] as opt}
+                  {#each VIDEO_TYPE_OPTIONS as opt}
                     <button
                       type="button"
                       role="menuitemradio"
                       aria-checked={videoTypeFilter === opt.value}
                       class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[13px] font-medium transition-colors ${videoTypeFilter === opt.value ? "bg-[var(--accent-wash-strong)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--accent-wash)]"}`}
-                      onclick={() =>
-                        void selectVideoTypeFilter(
-                          opt.value as VideoTypeFilter,
-                        )}
+                      onclick={() => void selectVideoTypeFilter(opt.value)}
                     >
                       <span>{opt.label}</span>
                       {#if videoTypeFilter === opt.value}<CheckIcon
@@ -501,16 +516,14 @@
                   >
                     STATUS
                   </p>
-                  {#each [{ value: "all", label: "All Statuses" }, { value: "unack", label: "Unread" }, { value: "ack", label: "Read" }] as opt}
+                  {#each ACKNOWLEDGED_FILTER_OPTIONS as opt}
                     <button
                       type="button"
                       role="menuitemradio"
                       aria-checked={acknowledgedFilter === opt.value}
                       class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[13px] font-medium transition-colors ${acknowledgedFilter === opt.value ? "bg-[var(--accent-wash-strong)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--accent-wash)]"}`}
                       onclick={() =>
-                        void selectAcknowledgedFilter(
-                          opt.value as AcknowledgedFilter,
-                        )}
+                        void selectAcknowledgedFilter(opt.value)}
                     >
                       <span>{opt.label}</span>
                       {#if acknowledgedFilter === opt.value}<CheckIcon

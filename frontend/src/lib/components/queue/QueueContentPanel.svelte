@@ -63,6 +63,10 @@
   async function saveSyncDate() {
     await actions.onSaveSyncDate(localSyncDateInput);
   }
+
+  function handleQueueTabChange(value: string) {
+    return actions.onQueueTabChange(value as QueueTab);
+  }
 </script>
 
 <section
@@ -137,7 +141,7 @@
             summaries: "Summaries",
             evaluations: "Evals",
           }}
-          onChange={(value) => actions.onQueueTabChange(value as QueueTab)}
+          onChange={handleQueueTabChange}
         />
       </div>
     </div>

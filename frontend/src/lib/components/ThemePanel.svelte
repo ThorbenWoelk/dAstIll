@@ -16,6 +16,12 @@
     type ThemeMode,
   } from "$lib/theme";
 
+  const THEME_MODE_OPTIONS: Array<{ id: ThemeMode; label: string }> = [
+    { id: "light", label: "Light" },
+    { id: "dark", label: "Dark" },
+    { id: "system", label: "System" },
+  ];
+
   let { className = "" }: { className?: string } = $props();
 
   let open = $state(false);
@@ -159,12 +165,12 @@
 
     <p class="theme-panel-label theme-panel-label-mode">Mode</p>
     <div class="theme-mode-options">
-      {#each [{ id: "light", label: "Light" }, { id: "dark", label: "Dark" }, { id: "system", label: "System" }] as opt}
+      {#each THEME_MODE_OPTIONS as opt}
         <button
           type="button"
           class="theme-mode-btn"
           class:is-active={mode === opt.id}
-          onclick={() => setMode(opt.id as ThemeMode)}
+          onclick={() => setMode(opt.id)}
         >
           {opt.label}
         </button>

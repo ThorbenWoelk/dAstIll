@@ -103,6 +103,14 @@
   ] as const;
 
   type QueueMobileTab = (typeof queueMobileTabs)[number]["value"];
+  const queueMobileTabItems: Array<{ value: string; label: string }> =
+    queueMobileTabs.map((tab) => ({ ...tab }));
+
+  function resolveQueueMobileTab(value: string): QueueMobileTab {
+    return queueMobileTabs.some((tab) => tab.value === value)
+      ? (value as QueueMobileTab)
+      : "browse";
+  }
 
   let channels = $state<Channel[]>([]);
   let channelOrder = $state<string[]>([]);
@@ -810,10 +818,10 @@
   {/snippet}
 
   <WorkspaceMobileTabBar
-    tabs={queueMobileTabs as unknown as Array<{ value: string; label: string }>}
+    tabs={queueMobileTabItems}
     activeTab={mobileTab}
     onTabChange={(tab) => {
-      mobileTab = tab as QueueMobileTab;
+      mobileTab = resolveQueueMobileTab(tab);
     }}
   />
 
