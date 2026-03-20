@@ -108,9 +108,10 @@ function loadAuthRuntimeConfig(): AuthRuntimeConfig {
   };
 }
 
-const authRuntimeConfig = loadAuthRuntimeConfig();
+let authRuntimeConfig: AuthRuntimeConfig | null = null;
 
 export function getAuthRuntimeConfig(): AuthRuntimeConfig {
+  authRuntimeConfig ??= loadAuthRuntimeConfig();
   return authRuntimeConfig;
 }
 
