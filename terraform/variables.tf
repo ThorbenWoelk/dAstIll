@@ -41,18 +41,6 @@ variable "logfire_token" {
   description = "Logfire token for production telemetry"
 }
 
-variable "app_auth_password" {
-  type        = string
-  sensitive   = true
-  description = "Frontend operator password"
-}
-
-variable "app_session_secret" {
-  type        = string
-  sensitive   = true
-  description = "Frontend session signing secret"
-}
-
 variable "backend_proxy_token" {
   type        = string
   sensitive   = true

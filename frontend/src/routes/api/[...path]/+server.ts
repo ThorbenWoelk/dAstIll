@@ -2,6 +2,8 @@ import type { RequestHandler } from "./$types";
 
 import { getAuthRuntimeConfig } from "$lib/server/auth";
 
+const FRONTEND_PROXY_ROLE = "operator";
+
 const HOP_BY_HOP_HEADERS = new Set([
   "connection",
   "content-length",
@@ -92,7 +94,7 @@ const proxyRequest: RequestHandler = async (event) => {
 
   const headers = copyProxyRequestHeaders(event.request.headers);
   headers.set("x-dastill-proxy-auth", authConfig.backendProxyToken);
-  headers.set("x-dastill-role", event.locals.session?.role ?? "operator");
+  headers.set("x-dastill-role", FRONTEND_PROXY_ROLE);
 
   try {
     headers.set("x-dastill-client-ip", event.getClientAddress());

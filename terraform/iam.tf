@@ -28,8 +28,6 @@ locals {
     backend_proxy_token = google_secret_manager_secret.backend_proxy_token.id
   }
   frontend_secret_ids = {
-    app_auth_password   = google_secret_manager_secret.app_auth_password.id
-    app_session_secret  = google_secret_manager_secret.app_session_secret.id
     backend_proxy_token = google_secret_manager_secret.backend_proxy_token.id
   }
   cicd_secret_ids = merge(local.backend_secret_ids, local.frontend_secret_ids)

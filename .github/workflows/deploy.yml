@@ -307,8 +307,6 @@ jobs:
           image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_ID }}/frontend:${{ env.IMAGE_TAG }}
           flags: "--service-account=dastill-frontend-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
           secrets: |
-            APP_AUTH_PASSWORD=dastill-app-auth-password:latest
-            APP_SESSION_SECRET=dastill-app-session-secret:latest
             BACKEND_PROXY_TOKEN=dastill-backend-proxy-token:latest
           env_vars: |
             BACKEND_API_BASE=${{ needs.resolve-frontend-env.outputs.backend_url }}
