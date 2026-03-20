@@ -4,7 +4,6 @@
   import { onMount, tick } from "svelte";
 
   import { DOCS_URL } from "$lib/app-config";
-  import { isAiAvailable } from "$lib/api";
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
   import {
     cancelConversationGeneration,
@@ -25,6 +24,7 @@
   import ChatMessageList from "$lib/components/chat/ChatMessageList.svelte";
   import ChatSidebar from "$lib/components/chat/ChatSidebar.svelte";
   import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
+  import { createAiStatusPoller } from "$lib/utils/ai-poller";
   import { buildWorkspaceViewHref } from "$lib/view-url";
   import type {
     AiStatus,
@@ -246,11 +246,12 @@
   );
 
   onMount(() => {
-    void Promise.all([loadConversations(), refreshAiStatus()]);
-
-    const aiTimer = window.setInterval(() => {
-      void refreshAiStatus();
-    }, 30000);
+    void loadConversations();
+    const stopAiPoller = createAiStatusPoller({
+      onStatus: (status) => {
+        aiStatus = status.status;
+      },
+    });
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
@@ -263,7 +264,7 @@
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
-      window.clearInterval(aiTimer);
+      stopAiPoller();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       streamController?.abort();
     };
@@ -337,15 +338,6 @@
 
   function setGuideStep(step: number) {
     guideStep = step;
-  }
-
-  async function refreshAiStatus() {
-    try {
-      const status = await isAiAvailable();
-      aiStatus = status.status;
-    } catch {
-      aiStatus = "offline";
-    }
   }
 
   async function handleSearchResultSelect(

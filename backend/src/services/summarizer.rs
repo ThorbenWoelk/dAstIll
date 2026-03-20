@@ -4,10 +4,14 @@ use tokio::time::{Instant as TokioInstant, timeout};
 use tracing::Instrument;
 
 use crate::models::AiStatus;
-use crate::services::ollama::{CooldownStatusPolicy, OllamaCore, OllamaPromptError};
+use crate::services::ollama::{
+    CLOUD_PROMPT_TIMEOUT_SECS, CooldownStatusPolicy, OllamaCore, OllamaPromptError,
+};
 
 pub const MAX_TRANSCRIPT_FORMAT_ATTEMPTS: usize = 5;
-pub const TRANSCRIPT_FORMAT_HARD_TIMEOUT_SECS: u64 = 300;
+pub const TRANSCRIPT_FORMAT_TIMEOUT_HEADROOM_SECS: u64 = 30;
+pub const TRANSCRIPT_FORMAT_HARD_TIMEOUT_SECS: u64 =
+    CLOUD_PROMPT_TIMEOUT_SECS - TRANSCRIPT_FORMAT_TIMEOUT_HEADROOM_SECS;
 const TRANSCRIPT_FORMAT_HARD_TIMEOUT: Duration =
     Duration::from_secs(TRANSCRIPT_FORMAT_HARD_TIMEOUT_SECS);
 
@@ -658,12 +662,13 @@ mod tests {
     use tokio::time::timeout;
 
     use super::{
-        MAX_TRANSCRIPT_FORMAT_ATTEMPTS, SummarizerService, build_clean_transcript_prompt,
-        build_summary_prompt, detect_transcript_mismatch, strip_summary_title_heading,
-        transcript_text_equivalent,
+        MAX_TRANSCRIPT_FORMAT_ATTEMPTS, SummarizerService,
+        TRANSCRIPT_FORMAT_HARD_TIMEOUT_SECS, TRANSCRIPT_FORMAT_TIMEOUT_HEADROOM_SECS,
+        build_clean_transcript_prompt, build_summary_prompt, detect_transcript_mismatch,
+        strip_summary_title_heading, transcript_text_equivalent,
     };
     use crate::models::AiStatus;
-    use crate::services::ollama::OllamaCore;
+    use crate::services::ollama::{CLOUD_PROMPT_TIMEOUT_SECS, OllamaCore};
     use crate::services::summary_evaluator::SummaryEvaluatorService;
 
     #[tokio::test]
@@ -805,6 +810,15 @@ mod tests {
         assert!(prompt.contains("return the original transcript unchanged"));
         assert!(prompt.contains("Compliance feedback from previous attempt:"));
         assert!(prompt.contains("Mismatch at token 2"));
+    }
+
+    #[test]
+    fn transcript_clean_timeout_leaves_response_headroom() {
+        assert_eq!(
+            TRANSCRIPT_FORMAT_HARD_TIMEOUT_SECS + TRANSCRIPT_FORMAT_TIMEOUT_HEADROOM_SECS,
+            CLOUD_PROMPT_TIMEOUT_SECS
+        );
+        assert!(TRANSCRIPT_FORMAT_HARD_TIMEOUT_SECS < CLOUD_PROMPT_TIMEOUT_SECS);
     }
 
     #[test]

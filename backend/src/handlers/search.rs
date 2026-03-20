@@ -16,6 +16,7 @@ use crate::db;
 use crate::models::{
     SearchMatchPayload, SearchResponsePayload, SearchStatusPayload, SearchVideoResultPayload,
 };
+use crate::search_query::{meaningful_search_terms, tokenize_search_terms};
 use crate::services::search::{
     SEARCH_RRF_K, SearchCandidate, SearchSourceKind, fuse_ranked_matches,
     truncate_chunk_for_display, vector_to_json,
@@ -169,7 +170,7 @@ pub async fn search(
     let execution_mode = params.mode.unwrap_or(SearchExecutionMode::Hybrid);
     let run_keyword_search = execution_mode.runs_keyword();
     let run_semantic_search = execution_mode.runs_semantic();
-    let fts_query = build_fts_query(query);
+    let fts_terms = meaningful_search_terms(query);
     let conn = state.db.connect();
     let semantic_enabled = state.search.semantic_enabled();
     let search_model = state.search.model();
@@ -200,12 +201,12 @@ pub async fn search(
     };
 
     let fts_db_started = Instant::now();
-    let fts_candidates = if !run_keyword_search || fts_query.is_empty() {
+    let fts_candidates = if !run_keyword_search || fts_terms.is_empty() {
         Vec::new()
     } else {
         db::search_fts_candidates(
             &conn,
-            &fts_query,
+            query,
             None,
             source.as_source_kind(),
             params.channel_id.as_deref(),
@@ -378,55 +379,6 @@ pub async fn rebuild_search_projection(
         )
         .await;
     Ok(StatusCode::ACCEPTED)
-}
-
-const MAX_FTS_QUERY_TERMS: usize = 4;
-const SEARCH_STOPWORDS: &[&str] = &[
-    "a", "an", "and", "are", "as", "at", "be", "best", "by", "do", "for", "from", "get", "good",
-    "how", "i", "in", "into", "is", "it", "me", "my", "of", "on", "or", "show", "tell", "than",
-    "that", "the", "this", "to", "was", "what", "which", "who", "why", "with", "you", "your",
-];
-const SHORT_TECHNICAL_SEARCH_TERMS: &[&str] = &[
-    "ai", "api", "bi", "ci", "cli", "cpu", "db", "fs", "go", "gpu", "js", "llm", "ml", "qa", "ram",
-    "sdk", "sql", "ssh", "ts", "ui", "ux",
-];
-
-fn tokenize_search_terms(query: &str) -> Vec<String> {
-    query
-        .split(|character: char| {
-            !(character.is_alphanumeric() || matches!(character, '_' | '-' | '.'))
-        })
-        .map(str::trim)
-        .filter(|token| !token.is_empty())
-        .map(str::to_ascii_lowercase)
-        .collect()
-}
-
-fn is_meaningful_search_term(token: &str) -> bool {
-    if token.len() < 2 || SEARCH_STOPWORDS.contains(&token) {
-        return false;
-    }
-
-    token.len() >= 3 || SHORT_TECHNICAL_SEARCH_TERMS.contains(&token)
-}
-
-fn meaningful_search_terms(query: &str) -> Vec<String> {
-    let mut seen = HashSet::new();
-
-    tokenize_search_terms(query)
-        .into_iter()
-        .filter(|token| is_meaningful_search_term(token))
-        .filter(|token| seen.insert(token.clone()))
-        .take(MAX_FTS_QUERY_TERMS)
-        .collect()
-}
-
-fn build_fts_query(query: &str) -> String {
-    meaningful_search_terms(query)
-        .into_iter()
-        .map(|token| format!("\"{token}\""))
-        .collect::<Vec<_>>()
-        .join(" AND ")
 }
 
 fn contains_token_phrase(text: &str, phrase_tokens: &[String]) -> bool {
@@ -684,11 +636,12 @@ fn rank_and_group_candidates(
 #[cfg(test)]
 mod tests {
     use super::{
-        SearchExecutionMode, SearchRetrievalMode, SearchSourceFilter, build_fts_query,
-        group_fts_candidates, group_ranked_candidates, rank_and_group_candidates,
-        rerank_fts_candidates, resolve_requested_retrieval_mode, resolve_search_retrieval_mode,
+        SearchExecutionMode, SearchRetrievalMode, SearchSourceFilter, group_fts_candidates,
+        group_ranked_candidates, rank_and_group_candidates, rerank_fts_candidates,
+        resolve_requested_retrieval_mode, resolve_search_retrieval_mode,
         resolve_semantic_exact_source_kind, resolve_semantic_retrieval_mode,
     };
+    use crate::search_query::build_fts_query;
     use crate::services::search::{SearchCandidate, SearchSourceKind};
 
     fn candidate(chunk_id: &str, video_id: &str, source_kind: SearchSourceKind) -> SearchCandidate {

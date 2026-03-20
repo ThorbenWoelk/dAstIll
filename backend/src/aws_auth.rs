@@ -57,7 +57,7 @@ impl GcpWifCredentialProvider {
             )
         })?;
 
-        let expiration = std::time::SystemTime::try_from(sts_creds.expiration().clone()).ok();
+        let expiration = std::time::SystemTime::try_from(*sts_creds.expiration()).ok();
 
         Ok(Credentials::new(
             sts_creds.access_key_id(),

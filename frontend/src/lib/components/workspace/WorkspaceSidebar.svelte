@@ -12,6 +12,13 @@
   import { clickOutside } from "$lib/actions/click-outside";
   import type { Channel, Video, SyncDepth, VideoTypeFilter } from "$lib/types";
   import type {
+    WorkspaceSidebarChannelActions,
+    WorkspaceSidebarChannelState,
+    WorkspaceSidebarShellProps,
+    WorkspaceSidebarVideoActions,
+    WorkspaceSidebarVideoState,
+  } from "$lib/workspace/component-props";
+  import type {
     AcknowledgedFilter,
     ChannelSortMode,
   } from "$lib/workspace/types";
@@ -26,74 +33,94 @@
   import { resolveDisplayedSyncDepthIso } from "$lib/sync-depth";
 
   let {
-    collapsed = false,
-    width = undefined as number | undefined,
-    onToggleCollapse = () => {},
-    mobileVisible = false,
-
-    channels = [],
-    selectedChannelId = null,
-    loadingChannels = false,
-    addingChannel = false,
-    channelSortMode = "custom" as ChannelSortMode,
-    onChannelSortModeChange = (_next: ChannelSortMode) => {},
-    onAddChannel = async (_input: string) => false as boolean,
-    onSelectChannel = async (_channelId: string) => {},
-    onDeleteChannel = async (_channelId: string) => {},
-    onReorderChannels = (_nextOrder: string[]) => {},
-
-    videos = [],
-    selectedVideoId = null,
-    selectedChannel = null,
-    loadingVideos = false,
-    refreshingChannel = false,
-    hasMore = true,
-    historyExhausted = false,
-    backfillingHistory = false,
-    videoTypeFilter = "all" as VideoTypeFilter,
-    acknowledgedFilter = "all" as AcknowledgedFilter,
-    syncDepth = null,
-    allowLoadedVideoSyncDepthOverride = false,
-    onSelectVideo = async (_videoId: string) => {},
-    onLoadMoreVideos = async () => {},
-    onVideoTypeFilterChange = async (_value: VideoTypeFilter) => {},
-    onAcknowledgedFilterChange = async (_value: AcknowledgedFilter) => {},
+    shell = {
+      collapsed: false,
+      width: undefined,
+      mobileVisible: false,
+      onToggleCollapse: () => {},
+    },
+    channelState = {
+      channels: [],
+      selectedChannelId: null,
+      loadingChannels: false,
+      addingChannel: false,
+      channelSortMode: "custom",
+    },
+    channelActions = {
+      onChannelSortModeChange: (_next: ChannelSortMode) => {},
+      onAddChannel: async (_input: string) => false,
+      onSelectChannel: async (_channelId: string) => {},
+      onDeleteChannel: async (_channelId: string) => {},
+      onReorderChannels: (_nextOrder: string[]) => {},
+    },
+    videoState = {
+      videos: [],
+      selectedVideoId: null,
+      selectedChannel: null,
+      loadingVideos: false,
+      refreshingChannel: false,
+      hasMore: true,
+      historyExhausted: false,
+      backfillingHistory: false,
+      videoTypeFilter: "all",
+      acknowledgedFilter: "all",
+      syncDepth: null,
+      allowLoadedVideoSyncDepthOverride: false,
+    },
+    videoActions = {
+      onSelectVideo: async (_videoId: string) => {},
+      onLoadMoreVideos: async () => {},
+      onVideoTypeFilterChange: async (_value: VideoTypeFilter) => {},
+      onAcknowledgedFilterChange: async (_value: AcknowledgedFilter) => {},
+    },
   }: {
-    collapsed?: boolean;
-    width?: number;
-    onToggleCollapse?: () => void;
-    mobileVisible?: boolean;
-
-    channels?: Channel[];
-    selectedChannelId?: string | null;
-    loadingChannels?: boolean;
-    addingChannel?: boolean;
-    channelSortMode?: ChannelSortMode;
-    onChannelSortModeChange?: (next: ChannelSortMode) => void;
-    onAddChannel?: (input: string) => Promise<boolean> | boolean;
-    onSelectChannel?: (channelId: string) => Promise<void> | void;
-    onDeleteChannel?: (channelId: string) => Promise<void> | void;
-    onReorderChannels?: (nextOrder: string[]) => void;
-
-    videos?: Video[];
-    selectedVideoId?: string | null;
-    selectedChannel?: Channel | null;
-    loadingVideos?: boolean;
-    refreshingChannel?: boolean;
-    hasMore?: boolean;
-    historyExhausted?: boolean;
-    backfillingHistory?: boolean;
-    videoTypeFilter?: VideoTypeFilter;
-    acknowledgedFilter?: AcknowledgedFilter;
-    syncDepth?: SyncDepth | null;
-    allowLoadedVideoSyncDepthOverride?: boolean;
-    onSelectVideo?: (videoId: string) => Promise<void> | void;
-    onLoadMoreVideos?: () => Promise<void> | void;
-    onVideoTypeFilterChange?: (value: VideoTypeFilter) => Promise<void> | void;
-    onAcknowledgedFilterChange?: (
-      value: AcknowledgedFilter,
-    ) => Promise<void> | void;
+    shell?: WorkspaceSidebarShellProps;
+    channelState?: WorkspaceSidebarChannelState;
+    channelActions?: WorkspaceSidebarChannelActions;
+    videoState?: WorkspaceSidebarVideoState;
+    videoActions?: WorkspaceSidebarVideoActions;
   } = $props();
+
+  let collapsed = $derived(shell.collapsed);
+  let width = $derived(shell.width);
+  let onToggleCollapse = $derived(shell.onToggleCollapse);
+  let mobileVisible = $derived(shell.mobileVisible);
+
+  let channels = $derived(channelState.channels);
+  let selectedChannelId = $derived(channelState.selectedChannelId);
+  let loadingChannels = $derived(channelState.loadingChannels);
+  let addingChannel = $derived(channelState.addingChannel);
+  let channelSortMode = $derived(channelState.channelSortMode);
+
+  let onChannelSortModeChange = $derived(
+    channelActions.onChannelSortModeChange,
+  );
+  let onAddChannel = $derived(channelActions.onAddChannel);
+  let onSelectChannel = $derived(channelActions.onSelectChannel);
+  let onDeleteChannel = $derived(channelActions.onDeleteChannel);
+  let onReorderChannels = $derived(channelActions.onReorderChannels);
+
+  let videos = $derived(videoState.videos);
+  let selectedVideoId = $derived(videoState.selectedVideoId);
+  let selectedChannel = $derived(videoState.selectedChannel);
+  let loadingVideos = $derived(videoState.loadingVideos);
+  let refreshingChannel = $derived(videoState.refreshingChannel);
+  let hasMore = $derived(videoState.hasMore);
+  let historyExhausted = $derived(videoState.historyExhausted);
+  let backfillingHistory = $derived(videoState.backfillingHistory);
+  let videoTypeFilter = $derived(videoState.videoTypeFilter);
+  let acknowledgedFilter = $derived(videoState.acknowledgedFilter);
+  let syncDepth = $derived(videoState.syncDepth);
+  let allowLoadedVideoSyncDepthOverride = $derived(
+    videoState.allowLoadedVideoSyncDepthOverride,
+  );
+
+  let onSelectVideo = $derived(videoActions.onSelectVideo);
+  let onLoadMoreVideos = $derived(videoActions.onLoadMoreVideos);
+  let onVideoTypeFilterChange = $derived(videoActions.onVideoTypeFilterChange);
+  let onAcknowledgedFilterChange = $derived(
+    videoActions.onAcknowledgedFilterChange,
+  );
 
   let draggedChannelId = $state<string | null>(null);
   let dragOverChannelId = $state<string | null>(null);

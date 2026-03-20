@@ -1,6 +1,7 @@
 use aws_smithy_types::Document;
 
 use crate::models::{ContentStatus, Summary, Transcript, Video};
+use crate::search_query::meaningful_search_terms;
 use crate::services::search::{SearchCandidate, SearchIndexChunk, SearchSourceKind};
 
 use super::{
@@ -248,7 +249,7 @@ pub async fn replace_search_chunks(
                 .put_vectors()
                 .vector_bucket_name(&store.vector_bucket)
                 .index_name(&store.vector_index)
-                .set_vectors(Some(put_batch.drain(..).collect()))
+                .set_vectors(Some(std::mem::take(&mut put_batch)))
                 .send()
                 .await
                 .map_err(|e| StoreError::S3Vectors(format!("{e:#}")))?;
@@ -646,11 +647,7 @@ pub async fn search_fts_candidates(
 ) -> Result<Vec<SearchCandidate>, StoreError> {
     use crate::services::search::extract_keyword_snippet;
 
-    let query_tokens: Vec<String> = query
-        .split_whitespace()
-        .map(|t| t.trim_matches('"').to_lowercase())
-        .filter(|t| !t.is_empty())
-        .collect();
+    let query_tokens = meaningful_search_terms(query);
     if query_tokens.is_empty() {
         return Ok(Vec::new());
     }

@@ -11,6 +11,8 @@ use tracing::Instrument;
 use crate::models::AiStatus;
 use crate::services::http::{CloudCooldown, build_http_client, is_cloud_model, is_rate_limited};
 
+pub const CLOUD_PROMPT_TIMEOUT_SECS: u64 = 300;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CooldownStatusPolicy {
     UseLocalFallback,
@@ -178,7 +180,7 @@ impl OllamaCore {
             headers.insert(reqwest::header::AUTHORIZATION, val);
             let http_client = reqwest::Client::builder()
                 .user_agent("dastill/0.1")
-                .timeout(std::time::Duration::from_secs(300))
+                .timeout(std::time::Duration::from_secs(CLOUD_PROMPT_TIMEOUT_SECS))
                 .default_headers(headers)
                 .build()
                 .map_err(|e| e.to_string())?;
@@ -347,7 +349,7 @@ mod tests {
 
     use tokio::sync::Semaphore;
 
-    use super::{CooldownStatusPolicy, OllamaCore};
+    use super::{CLOUD_PROMPT_TIMEOUT_SECS, CooldownStatusPolicy, OllamaCore};
     use crate::models::AiStatus;
     use crate::services::http::Cooldown;
 
@@ -399,6 +401,11 @@ mod tests {
         let core = OllamaCore::new("https://cloud.example.com", "glm-5:cloud")
             .with_api_key(Some("test-key-123".to_string()));
         assert!(core.build_ollama_client().is_ok());
+    }
+
+    #[test]
+    fn cloud_prompt_timeout_matches_production_request_budget() {
+        assert_eq!(CLOUD_PROMPT_TIMEOUT_SECS, 300);
     }
 
     #[test]

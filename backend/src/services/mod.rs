@@ -1,3 +1,7 @@
+mod chat_heuristics;
+mod chat_prompt;
+mod chat_ranking;
+
 pub mod chat;
 pub mod fusion;
 pub mod http;

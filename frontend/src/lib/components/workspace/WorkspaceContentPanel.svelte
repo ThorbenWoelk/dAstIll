@@ -10,6 +10,11 @@
     Video,
     VideoInfo,
   } from "$lib/types";
+  import type {
+    WorkspaceContentActions,
+    WorkspaceContentSelection,
+    WorkspaceContentState,
+  } from "$lib/workspace/component-props";
   import type { WorkspaceContentMode } from "$lib/workspace/types";
   import {
     resolveSwipedContentMode,
@@ -31,106 +36,116 @@
   const SWIPE_LOCK_THRESHOLD_PX = 12;
 
   let {
-    mobileVisible = false,
-    selectedChannel = null,
-    selectedVideo = null,
-    selectedVideoId = null,
-    contentMode = "transcript",
-    loadingContent = false,
-    editing = false,
-    aiAvailable = false,
-    summaryQualityScore = null,
-    summaryQualityNote = null,
-    summaryModelUsed = null,
-    summaryQualityModelUsed = null,
-    videoInfo = null,
-    contentHtml = "",
-    contentText = "",
-    transcriptRenderMode = "plain_text",
-    contentHighlights = [],
-    selectedVideoHighlights = [],
-    selectedVideoYoutubeUrl = null,
-    draft = "",
-    formattingContent = false,
-    formattingVideoId = null,
-    regeneratingSummary = false,
-    regeneratingVideoId = null,
-    revertingContent = false,
-    revertingVideoId = null,
-    creatingHighlight = false,
-    creatingHighlightVideoId = null,
-    deletingHighlightId = null,
-    canRevertTranscript = false,
-    showRevertTranscriptAction = false,
-    formattingNotice = null,
-    formattingNoticeVideoId = null,
-    formattingNoticeTone = "info",
-    onBack = () => {},
-    onSetMode = async () => {},
-    onStartEdit = () => {},
-    onCancelEdit = () => {},
-    onSaveEdit = async () => {},
-    onCleanFormatting = async () => {},
-    onRegenerateSummary = async () => {},
-    onRevertTranscript = async () => {},
-    onDraftChange = () => {},
-    onToggleAcknowledge = async () => {},
-    onCreateHighlight = async () => {},
-    onDeleteHighlight = async () => {},
-    onShowChannels = () => {},
-    onShowVideos = () => {},
+    selection = {
+      mobileVisible: false,
+      selectedChannel: null,
+      selectedVideo: null,
+      selectedVideoId: null,
+      contentMode: "transcript",
+    },
+    content = {
+      loadingContent: false,
+      editing: false,
+      aiAvailable: false,
+      summaryQualityScore: null,
+      summaryQualityNote: null,
+      summaryModelUsed: null,
+      summaryQualityModelUsed: null,
+      videoInfo: null,
+      contentHtml: "",
+      contentText: "",
+      transcriptRenderMode: "plain_text",
+      contentHighlights: [],
+      selectedVideoHighlights: [],
+      selectedVideoYoutubeUrl: null,
+      draft: "",
+      formattingContent: false,
+      formattingVideoId: null,
+      regeneratingSummary: false,
+      regeneratingVideoId: null,
+      revertingContent: false,
+      revertingVideoId: null,
+      creatingHighlight: false,
+      creatingHighlightVideoId: null,
+      deletingHighlightId: null,
+      canRevertTranscript: false,
+      showRevertTranscriptAction: false,
+      formattingNotice: null,
+      formattingNoticeVideoId: null,
+      formattingNoticeTone: "info",
+    },
+    actions = {
+      onBack: () => {},
+      onSetMode: async () => {},
+      onStartEdit: () => {},
+      onCancelEdit: () => {},
+      onSaveEdit: async () => {},
+      onCleanFormatting: async () => {},
+      onRegenerateSummary: async () => {},
+      onRevertTranscript: async () => {},
+      onDraftChange: () => {},
+      onToggleAcknowledge: async () => {},
+      onCreateHighlight: async (_payload: CreateHighlightRequest) => {},
+      onDeleteHighlight: async (_highlightId: number) => {},
+      onShowChannels: () => {},
+      onShowVideos: () => {},
+    },
   }: {
-    mobileVisible?: boolean;
-    selectedChannel?: Channel | null;
-    selectedVideo?: Video | null;
-    selectedVideoId?: string | null;
-    contentMode?: WorkspaceContentMode;
-    loadingContent?: boolean;
-    editing?: boolean;
-    aiAvailable?: boolean;
-    summaryQualityScore?: number | null;
-    summaryQualityNote?: string | null;
-    summaryModelUsed?: string | null;
-    summaryQualityModelUsed?: string | null;
-    videoInfo?: VideoInfo | null;
-    contentHtml?: string;
-    contentText?: string;
-    transcriptRenderMode?: TranscriptRenderMode;
-    contentHighlights?: Highlight[];
-    selectedVideoHighlights?: Highlight[];
-    selectedVideoYoutubeUrl?: string | null;
-    draft?: string;
-    formattingContent?: boolean;
-    formattingVideoId?: string | null;
-    regeneratingSummary?: boolean;
-    regeneratingVideoId?: string | null;
-    revertingContent?: boolean;
-    revertingVideoId?: string | null;
-    creatingHighlight?: boolean;
-    creatingHighlightVideoId?: string | null;
-    deletingHighlightId?: number | null;
-    canRevertTranscript?: boolean;
-    showRevertTranscriptAction?: boolean;
-    formattingNotice?: string | null;
-    formattingNoticeVideoId?: string | null;
-    formattingNoticeTone?: "info" | "success" | "warning";
-    onBack?: () => void;
-    onSetMode?: (mode: WorkspaceContentMode) => Promise<void> | void;
-    onStartEdit?: () => void;
-    onCancelEdit?: () => void;
-    onSaveEdit?: () => Promise<void> | void;
-    onCleanFormatting?: () => Promise<void> | void;
-    onRegenerateSummary?: () => Promise<void> | void;
-    onRevertTranscript?: () => Promise<void> | void;
-    onDraftChange?: (value: string) => void;
-    onToggleAcknowledge?: () => Promise<void> | void;
-    onCreateHighlight?: (
-      payload: CreateHighlightRequest,
-    ) => Promise<void> | void;
-    onDeleteHighlight?: (highlightId: number) => Promise<void> | void;
-    onShowChannels?: () => void;
-    onShowVideos?: () => void;
+    selection?: WorkspaceContentSelection;
+    content?: WorkspaceContentState;
+    actions?: WorkspaceContentActions;
   } = $props();
+
+  let mobileVisible = $derived(selection.mobileVisible);
+  let selectedChannel = $derived(selection.selectedChannel);
+  let selectedVideo = $derived(selection.selectedVideo);
+  let selectedVideoId = $derived(selection.selectedVideoId);
+  let contentMode = $derived(selection.contentMode);
+
+  let loadingContent = $derived(content.loadingContent);
+  let editing = $derived(content.editing);
+  let aiAvailable = $derived(content.aiAvailable);
+  let summaryQualityScore = $derived(content.summaryQualityScore);
+  let summaryQualityNote = $derived(content.summaryQualityNote);
+  let summaryModelUsed = $derived(content.summaryModelUsed);
+  let summaryQualityModelUsed = $derived(content.summaryQualityModelUsed);
+  let videoInfo = $derived(content.videoInfo);
+  let contentHtml = $derived(content.contentHtml);
+  let contentText = $derived(content.contentText);
+  let transcriptRenderMode = $derived(content.transcriptRenderMode);
+  let contentHighlights = $derived(content.contentHighlights);
+  let selectedVideoHighlights = $derived(content.selectedVideoHighlights);
+  let selectedVideoYoutubeUrl = $derived(content.selectedVideoYoutubeUrl);
+  let draft = $derived(content.draft);
+  let formattingContent = $derived(content.formattingContent);
+  let formattingVideoId = $derived(content.formattingVideoId);
+  let regeneratingSummary = $derived(content.regeneratingSummary);
+  let regeneratingVideoId = $derived(content.regeneratingVideoId);
+  let revertingContent = $derived(content.revertingContent);
+  let revertingVideoId = $derived(content.revertingVideoId);
+  let creatingHighlight = $derived(content.creatingHighlight);
+  let creatingHighlightVideoId = $derived(content.creatingHighlightVideoId);
+  let deletingHighlightId = $derived(content.deletingHighlightId);
+  let canRevertTranscript = $derived(content.canRevertTranscript);
+  let showRevertTranscriptAction = $derived(content.showRevertTranscriptAction);
+  let formattingNotice = $derived(content.formattingNotice);
+  let formattingNoticeVideoId = $derived(content.formattingNoticeVideoId);
+  let formattingNoticeTone = $derived(content.formattingNoticeTone);
+
+  let onBack = $derived(actions.onBack);
+  let onSetMode = $derived(actions.onSetMode);
+  let onStartEdit = $derived(actions.onStartEdit);
+  let onCancelEdit = $derived(actions.onCancelEdit);
+  let onSaveEdit = $derived(actions.onSaveEdit);
+  let onCleanFormatting = $derived(actions.onCleanFormatting);
+  let onRegenerateSummary = $derived(actions.onRegenerateSummary);
+  let onRevertTranscript = $derived(actions.onRevertTranscript);
+  let onDraftChange = $derived(actions.onDraftChange);
+  let onToggleAcknowledge = $derived(actions.onToggleAcknowledge);
+  let onCreateHighlight = $derived(actions.onCreateHighlight);
+  let onDeleteHighlight = $derived(actions.onDeleteHighlight);
+  let onShowChannels = $derived(actions.onShowChannels);
+  let onShowVideos = $derived(actions.onShowVideos);
 
   let touchGesture: {
     startX: number;

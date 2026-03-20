@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::convert::Infallible;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -17,35 +17,48 @@ use crate::models::{
     ChatConversation, ChatMessage, ChatMessageStatus, ChatRole, ChatSource, ChatTitleStatus,
 };
 use crate::services::ollama::OllamaCore;
-use crate::services::search::{SEARCH_RRF_K, SearchCandidate, truncate_chunk_for_display};
+use crate::services::search::SearchCandidate;
 use crate::services::text::limit_text;
 use crate::state::AppState;
+
+use super::chat_heuristics::{
+    build_plan_label, collect_focus_terms, heuristic_expansion_queries, heuristic_query_variants,
+    is_attributed_preference_query, push_unique_query, recommendation_query_variants,
+    sanitize_queries,
+};
+use super::chat_prompt::{
+    build_grounding_context, build_ollama_messages, build_synthesis_grounding_context,
+};
+use super::chat_ranking::{
+    accumulate_ranked_candidates, assess_coverage, build_video_observation_inputs,
+    count_unique_videos, rank_chat_sources, retrieval_candidate_limit,
+};
 
 const CHAT_SOURCE_LIMIT: usize = 6;
 const CHAT_SYNTHESIS_SOURCE_LIMIT: usize = 12;
 const CHAT_RECOMMENDATION_SOURCE_LIMIT: usize = 14;
 const CHAT_PATTERN_SOURCE_LIMIT: usize = 24;
 const CHAT_COMPARISON_SOURCE_LIMIT: usize = 20;
-const CHAT_HISTORY_LIMIT: usize = 12;
-const CHAT_CONTEXT_MAX_CHARS: usize = 1_400;
+pub(super) const CHAT_HISTORY_LIMIT: usize = 12;
+pub(super) const CHAT_CONTEXT_MAX_CHARS: usize = 1_400;
 const CHAT_TITLE_MAX_CHARS: usize = 80;
 const CHAT_LOG_PREVIEW_MAX_CHARS: usize = 120;
 const CHAT_CLASSIFY_TIMEOUT: Duration = Duration::from_millis(3_000);
 const CHAT_MAX_RETRIEVAL_PASSES: usize = 2;
-const CHAT_DIVERSITY_PENALTY: f32 = 0.3;
-const CHAT_SOURCE_KIND_DIVERSITY_BONUS: f32 = 1.08;
+pub(super) const CHAT_DIVERSITY_PENALTY: f32 = 0.3;
+pub(super) const CHAT_SOURCE_KIND_DIVERSITY_BONUS: f32 = 1.08;
 const CHAT_QUERY_LIMIT_PER_PASS: usize = 3;
-const CHAT_QUERY_LIMIT_TOTAL: usize = 5;
-const CHAT_RETRIEVAL_CANDIDATE_LIMIT_MIN: usize = 8;
-const CHAT_RETRIEVAL_CANDIDATE_LIMIT_MAX: usize = 24;
-const CHAT_SYNTHESIS_VIDEO_LIMIT: usize = 6;
-const CHAT_SYNTHESIS_SOURCES_PER_VIDEO: usize = 3;
+pub(super) const CHAT_QUERY_LIMIT_TOTAL: usize = 5;
+pub(super) const CHAT_RETRIEVAL_CANDIDATE_LIMIT_MIN: usize = 8;
+pub(super) const CHAT_RETRIEVAL_CANDIDATE_LIMIT_MAX: usize = 24;
+pub(super) const CHAT_SYNTHESIS_VIDEO_LIMIT: usize = 6;
+pub(super) const CHAT_SYNTHESIS_SOURCES_PER_VIDEO: usize = 3;
 const CHAT_SYNTHESIS_CONTEXT_MAX_CHARS: usize = 1_200;
-const CHAT_SYNTHESIS_RAW_SOURCE_LIMIT: usize = 8;
+pub(super) const CHAT_SYNTHESIS_RAW_SOURCE_LIMIT: usize = 8;
 
 static NEXT_CHAT_ID: AtomicU64 = AtomicU64::new(1);
 
-const CHAT_SYSTEM_PROMPT: &str = "You are the dAstIll assistant. Answer only from the provided ground-truth excerpts and the visible conversation history. If the excerpts are missing, incomplete, or not directly relevant, say that you cannot answer from the current library. Do not use outside knowledge. Do not invent facts, citations, or timestamps. Be concise but useful. When helpful, mention the relevant video title or channel name from the provided excerpts.";
+pub(super) const CHAT_SYSTEM_PROMPT: &str = "You are the dAstIll assistant. Answer only from the provided ground-truth excerpts and the visible conversation history. If the excerpts are missing, incomplete, or not directly relevant, say that you cannot answer from the current library. Do not use outside knowledge. Do not invent facts, citations, or timestamps. Be concise but useful. When helpful, mention the relevant video title or channel name from the provided excerpts.";
 
 const CHAT_QUERY_PLAN_PROMPT: &str = "Classify the user's grounded library question for retrieval. Return valid JSON only with this shape: {\"intent\":\"fact|synthesis|pattern|comparison\",\"rationale\":\"short explanation\",\"sub_queries\":[\"...\"],\"expansion_queries\":[\"...\"]}. Use the user's wording where possible. Keep each query short. fact: 1 direct query, no expansion. synthesis: 1-2 queries, optional expansion. pattern/comparison: 2-3 initial queries plus 1-2 expansion queries for broader coverage. No markdown or code fences.";
 
@@ -53,7 +66,7 @@ const CHAT_VIDEO_OBSERVATION_PROMPT: &str = "You are distilling grounded evidenc
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-enum ChatQueryIntent {
+pub(super) enum ChatQueryIntent {
     Fact,
     Synthesis,
     Pattern,
@@ -71,7 +84,7 @@ impl ChatQueryIntent {
         }
     }
 
-    fn label(&self) -> &'static str {
+    pub(super) fn label(&self) -> &'static str {
         match self {
             Self::Fact => "fact lookup",
             Self::Synthesis => "targeted synthesis",
@@ -138,16 +151,16 @@ impl ChatStatusPayload {
 }
 
 #[derive(Debug, Clone)]
-struct ChatRetrievalPlan {
-    intent: ChatQueryIntent,
-    label: String,
-    budget: usize,
-    max_per_video: usize,
-    queries: Vec<String>,
-    expansion_queries: Vec<String>,
-    focus_terms: Vec<String>,
-    attributed_preference: bool,
-    rationale: Option<String>,
+pub(super) struct ChatRetrievalPlan {
+    pub(super) intent: ChatQueryIntent,
+    pub(super) label: String,
+    pub(super) budget: usize,
+    pub(super) max_per_video: usize,
+    pub(super) queries: Vec<String>,
+    pub(super) expansion_queries: Vec<String>,
+    pub(super) focus_terms: Vec<String>,
+    pub(super) attributed_preference: bool,
+    pub(super) rationale: Option<String>,
 }
 
 impl ChatRetrievalPlan {
@@ -270,7 +283,7 @@ impl ChatRetrievalPlan {
         }
     }
 
-    fn supports_second_pass(&self) -> bool {
+    pub(super) fn supports_second_pass(&self) -> bool {
         !self.queries_for_pass(2).is_empty()
     }
 }
@@ -423,22 +436,28 @@ impl ActiveChatHandle {
     }
 }
 
-#[derive(Debug, Clone)]
-struct RetrievedChatSource {
-    source: ChatSource,
-    context_text: String,
+impl Default for ActiveChatHandle {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[derive(Debug, Clone)]
-struct AccumulatedSearchCandidate {
-    candidate: SearchCandidate,
-    keyword_score: f32,
-    semantic_score: f32,
-    retrieval_pass: usize,
+pub(super) struct RetrievedChatSource {
+    pub(super) source: ChatSource,
+    pub(super) context_text: String,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct AccumulatedSearchCandidate {
+    pub(super) candidate: SearchCandidate,
+    pub(super) keyword_score: f32,
+    pub(super) semantic_score: f32,
+    pub(super) retrieval_pass: usize,
 }
 
 impl AccumulatedSearchCandidate {
-    fn combined_score(&self) -> f32 {
+    pub(super) fn combined_score(&self) -> f32 {
         match (self.keyword_score > 0.0, self.semantic_score > 0.0) {
             (true, true) => self.keyword_score + self.semantic_score,
             (true, false) => self.keyword_score,
@@ -454,11 +473,21 @@ struct RetrievalPassOutcome {
     assessment: CoverageAssessment,
 }
 
+#[derive(Clone, Copy)]
+struct RetrievalPassRequest<'a> {
+    conversation_id: &'a str,
+    plan: &'a ChatRetrievalPlan,
+    pass: usize,
+    queries: &'a [String],
+    channel_focus_ids: &'a [String],
+    active_chat: &'a ActiveChatHandle,
+}
+
 #[derive(Debug, Clone)]
-struct CoverageAssessment {
-    needs_more: bool,
-    reason: Option<String>,
-    channel_focus_ids: Vec<String>,
+pub(super) struct CoverageAssessment {
+    pub(super) needs_more: bool,
+    pub(super) reason: Option<String>,
+    pub(super) channel_focus_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -468,18 +497,18 @@ struct ChatRetrievalOutcome {
 }
 
 #[derive(Debug, Clone)]
-struct VideoObservation {
-    video_title: String,
-    channel_name: String,
-    summary: String,
+pub(super) struct VideoObservation {
+    pub(super) video_title: String,
+    pub(super) channel_name: String,
+    pub(super) summary: String,
 }
 
 #[derive(Debug, Clone)]
-struct VideoObservationInput {
-    video_id: String,
-    video_title: String,
-    channel_name: String,
-    excerpts: Vec<RetrievedChatSource>,
+pub(super) struct VideoObservationInput {
+    pub(super) video_id: String,
+    pub(super) video_title: String,
+    pub(super) channel_name: String,
+    pub(super) excerpts: Vec<RetrievedChatSource>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -502,9 +531,9 @@ struct OllamaChatRequest {
 }
 
 #[derive(Debug, Serialize)]
-struct OllamaRequestMessage {
-    role: String,
-    content: String,
+pub(super) struct OllamaRequestMessage {
+    pub(super) role: String,
+    pub(super) content: String,
 }
 
 #[derive(Clone)]
@@ -773,13 +802,15 @@ impl ChatService {
             let pass_one = self
                 .run_retrieval_pass(
                     state,
-                    conversation_id,
-                    &plan,
                     &mut pool,
-                    1,
-                    &pass_one_queries,
-                    &[],
-                    active_chat,
+                    RetrievalPassRequest {
+                        conversation_id,
+                        plan: &plan,
+                        pass: 1,
+                        queries: &pass_one_queries,
+                        channel_focus_ids: &[],
+                        active_chat,
+                    },
                 )
                 .await?;
             let mut sources = pass_one.sources;
@@ -806,13 +837,15 @@ impl ChatService {
                 let pass_two = self
                     .run_retrieval_pass(
                         state,
-                        conversation_id,
-                        &plan,
                         &mut pool,
-                        2,
-                        &pass_two_queries,
-                        &assessment.channel_focus_ids,
-                        active_chat,
+                        RetrievalPassRequest {
+                            conversation_id,
+                            plan: &plan,
+                            pass: 2,
+                            queries: &pass_two_queries,
+                            channel_focus_ids: &assessment.channel_focus_ids,
+                            active_chat,
+                        },
                     )
                     .await?;
                 sources = pass_two.sources;
@@ -967,14 +1000,17 @@ impl ChatService {
     async fn run_retrieval_pass(
         &self,
         state: &AppState,
-        conversation_id: &str,
-        plan: &ChatRetrievalPlan,
         pool: &mut HashMap<String, AccumulatedSearchCandidate>,
-        pass: usize,
-        queries: &[String],
-        channel_focus_ids: &[String],
-        active_chat: &ActiveChatHandle,
+        request: RetrievalPassRequest<'_>,
     ) -> Result<RetrievalPassOutcome, String> {
+        let RetrievalPassRequest {
+            conversation_id,
+            plan,
+            pass,
+            queries,
+            channel_focus_ids,
+            active_chat,
+        } = request;
         let span = logfire::span!(
             "chat.retrieve.pass",
             conversation.id = conversation_id.to_string(),
@@ -1596,691 +1632,6 @@ async fn persist_assistant_message(
         .map_err(|error| error.to_string())
 }
 
-fn build_ollama_messages(
-    conversation: &ChatConversation,
-    grounding_context: String,
-) -> Vec<OllamaRequestMessage> {
-    let mut messages = vec![
-        OllamaRequestMessage {
-            role: "system".to_string(),
-            content: CHAT_SYSTEM_PROMPT.to_string(),
-        },
-        OllamaRequestMessage {
-            role: "system".to_string(),
-            content: grounding_context,
-        },
-    ];
-
-    let history = conversation
-        .messages
-        .iter()
-        .rev()
-        .take(CHAT_HISTORY_LIMIT)
-        .cloned()
-        .collect::<Vec<_>>();
-
-    for message in history.into_iter().rev() {
-        messages.push(OllamaRequestMessage {
-            role: match message.role {
-                ChatRole::System => "system",
-                ChatRole::User => "user",
-                ChatRole::Assistant => "assistant",
-            }
-            .to_string(),
-            content: message.content,
-        });
-    }
-
-    messages
-}
-
-fn build_grounding_context(retrieved_sources: &[RetrievedChatSource]) -> String {
-    let mut context = String::from("Ground-truth excerpts for the next answer only:\n\n");
-    for (index, source) in retrieved_sources.iter().enumerate() {
-        let source_number = index + 1;
-        context.push_str(&format!(
-            "[Source {source_number}] Video: {}\nChannel: {}\nType: {}\n",
-            source.source.video_title,
-            source.source.channel_name,
-            source.source.source_kind.as_str(),
-        ));
-        if let Some(section_title) = &source.source.section_title {
-            context.push_str(&format!("Section: {section_title}\n"));
-        }
-        context.push_str(&format!("Excerpt:\n{}\n\n", source.context_text));
-    }
-    context.push_str("If these excerpts are not enough, explicitly say so.");
-    context
-}
-
-fn build_synthesis_grounding_context(
-    prompt: &str,
-    plan: &ChatRetrievalPlan,
-    retrieved_sources: &[RetrievedChatSource],
-    observations: &[VideoObservation],
-) -> String {
-    let mut context = format!(
-        "Question type: {}\nRetrieval budget: {} excerpts (max {} per video)\nOriginal question: {}\n\n",
-        plan.intent.label(),
-        plan.budget,
-        plan.max_per_video,
-        prompt.trim(),
-    );
-    context.push_str(
-        "Intermediate synthesis notes derived only from the raw excerpts below. Treat the raw excerpts as the source of truth.\n\n",
-    );
-
-    for (index, observation) in observations.iter().enumerate() {
-        let number = index + 1;
-        context.push_str(&format!(
-            "[Video note {number}] Video: {}\nChannel: {}\n{}\n\n",
-            observation.video_title,
-            observation.channel_name,
-            observation.summary.trim(),
-        ));
-    }
-
-    context.push_str("Supporting raw excerpts:\n\n");
-    for (index, source) in retrieved_sources
-        .iter()
-        .take(CHAT_SYNTHESIS_RAW_SOURCE_LIMIT)
-        .enumerate()
-    {
-        let source_number = index + 1;
-        context.push_str(&format!(
-            "[Source {source_number}] Video: {}\nChannel: {}\nType: {}\n",
-            source.source.video_title,
-            source.source.channel_name,
-            source.source.source_kind.as_str(),
-        ));
-        if let Some(section_title) = &source.source.section_title {
-            context.push_str(&format!("Section: {section_title}\n"));
-        }
-        context.push_str(&format!("Excerpt:\n{}\n\n", source.context_text));
-    }
-
-    context.push_str(
-        "If the notes and excerpts do not fully support an answer, explain the limitation explicitly.",
-    );
-    context
-}
-
-fn rank_chat_sources(
-    candidates: impl IntoIterator<Item = impl std::borrow::Borrow<AccumulatedSearchCandidate>>,
-    plan: &ChatRetrievalPlan,
-) -> Vec<RetrievedChatSource> {
-    let mut remaining = candidates
-        .into_iter()
-        .map(|candidate| candidate.borrow().clone())
-        .filter(|candidate| candidate.combined_score() > 0.0)
-        .collect::<Vec<_>>();
-    let mut selected = Vec::new();
-    let mut video_counts = HashMap::<String, usize>::new();
-    let mut kind_counts = HashMap::<crate::services::search::SearchSourceKind, usize>::new();
-
-    while selected.len() < plan.budget && !remaining.is_empty() {
-        let best_index = remaining
-            .iter()
-            .enumerate()
-            .max_by(|(_, left), (_, right)| {
-                selection_score(left, &video_counts, &kind_counts, plan)
-                    .total_cmp(&selection_score(right, &video_counts, &kind_counts, plan))
-            })
-            .map(|(index, _)| index)
-            .expect("remaining candidates should not be empty");
-        let candidate = remaining.swap_remove(best_index);
-        let score = selection_score(&candidate, &video_counts, &kind_counts, plan);
-        *video_counts
-            .entry(candidate.candidate.video_id.clone())
-            .or_insert(0) += 1;
-        *kind_counts
-            .entry(candidate.candidate.source_kind)
-            .or_insert(0) += 1;
-        selected.push(RetrievedChatSource {
-            source: ChatSource {
-                video_id: candidate.candidate.video_id.clone(),
-                channel_id: candidate.candidate.channel_id.clone(),
-                channel_name: candidate.candidate.channel_name.clone(),
-                video_title: candidate.candidate.video_title.clone(),
-                source_kind: candidate.candidate.source_kind,
-                section_title: candidate.candidate.section_title.clone(),
-                snippet: truncate_chunk_for_display(&candidate.candidate.chunk_text),
-                score,
-                retrieval_pass: Some(candidate.retrieval_pass),
-            },
-            context_text: limit_text(
-                candidate.candidate.chunk_text.trim(),
-                CHAT_CONTEXT_MAX_CHARS,
-            ),
-        });
-    }
-
-    selected
-}
-
-fn selection_score(
-    candidate: &AccumulatedSearchCandidate,
-    video_counts: &HashMap<String, usize>,
-    kind_counts: &HashMap<crate::services::search::SearchSourceKind, usize>,
-    plan: &ChatRetrievalPlan,
-) -> f32 {
-    let mut score = candidate.combined_score();
-    let video_count = video_counts
-        .get(&candidate.candidate.video_id)
-        .copied()
-        .unwrap_or(0);
-    if video_count >= plan.max_per_video {
-        score *= CHAT_DIVERSITY_PENALTY.powi((video_count + 1 - plan.max_per_video) as i32);
-    }
-
-    let transcript_count = kind_counts
-        .get(&crate::services::search::SearchSourceKind::Transcript)
-        .copied()
-        .unwrap_or(0);
-    let summary_count = kind_counts
-        .get(&crate::services::search::SearchSourceKind::Summary)
-        .copied()
-        .unwrap_or(0);
-    if transcript_count > 0
-        && summary_count == 0
-        && candidate.candidate.source_kind == crate::services::search::SearchSourceKind::Summary
-    {
-        score *= CHAT_SOURCE_KIND_DIVERSITY_BONUS;
-    } else if summary_count > 0
-        && transcript_count == 0
-        && candidate.candidate.source_kind == crate::services::search::SearchSourceKind::Transcript
-    {
-        score *= CHAT_SOURCE_KIND_DIVERSITY_BONUS;
-    }
-
-    if plan.attributed_preference {
-        let preference_score =
-            preference_signal_score(&candidate.candidate.chunk_text, &plan.focus_terms);
-        if preference_score > 0.0 {
-            score *= 1.0 + preference_score;
-        }
-    }
-
-    score
-}
-
-fn retrieval_candidate_limit(budget: usize, query_count: usize, pass: usize) -> usize {
-    let query_count = query_count.max(1);
-    let base = ((budget * 2) / query_count).max(CHAT_RETRIEVAL_CANDIDATE_LIMIT_MIN);
-    let boosted = if pass > 1 { base + 4 } else { base };
-    boosted.clamp(
-        CHAT_RETRIEVAL_CANDIDATE_LIMIT_MIN,
-        CHAT_RETRIEVAL_CANDIDATE_LIMIT_MAX,
-    )
-}
-
-fn accumulate_ranked_candidates(
-    pool: &mut HashMap<String, AccumulatedSearchCandidate>,
-    candidates: &[SearchCandidate],
-    semantic: bool,
-    pass: usize,
-) {
-    for (index, candidate) in candidates.iter().enumerate() {
-        let rank = index + 1;
-        let score = 1.0 / (SEARCH_RRF_K + rank as f32);
-        let entry =
-            pool.entry(candidate.chunk_id.clone())
-                .or_insert_with(|| AccumulatedSearchCandidate {
-                    candidate: candidate.clone(),
-                    keyword_score: 0.0,
-                    semantic_score: 0.0,
-                    retrieval_pass: pass,
-                });
-        if semantic {
-            entry.semantic_score += score;
-        } else {
-            entry.keyword_score += score;
-        }
-        entry.retrieval_pass = entry.retrieval_pass.min(pass);
-        entry.candidate = candidate.clone();
-    }
-}
-
-fn assess_coverage(
-    plan: &ChatRetrievalPlan,
-    sources: &[RetrievedChatSource],
-) -> CoverageAssessment {
-    if sources.is_empty() {
-        return CoverageAssessment {
-            needs_more: false,
-            reason: Some("No grounded excerpts were found.".to_string()),
-            channel_focus_ids: Vec::new(),
-        };
-    }
-
-    let unique_video_count = count_unique_videos(sources);
-    let mut video_counts = HashMap::<String, usize>::new();
-    let mut channel_counts = HashMap::<String, usize>::new();
-    for source in sources {
-        *video_counts
-            .entry(source.source.video_id.clone())
-            .or_insert(0) += 1;
-        *channel_counts
-            .entry(source.source.channel_id.clone())
-            .or_insert(0) += 1;
-    }
-    let dominant_video_count = video_counts.values().copied().max().unwrap_or(0);
-    let unique_channel_count = channel_counts.len();
-
-    if plan.attributed_preference {
-        let direct_evidence_count = count_direct_preference_evidence(sources, &plan.focus_terms);
-        let needs_more = plan.supports_second_pass()
-            && (direct_evidence_count == 0 || (direct_evidence_count < 2 && sources.len() < 8));
-        return CoverageAssessment {
-            needs_more,
-            reason: Some(if direct_evidence_count == 0 {
-                if needs_more {
-                    "The current excerpts mention the topic, but they do not yet contain enough direct recommendation-style language, so the search should broaden.".to_string()
-                } else {
-                    "The current excerpts mention the topic, but they still do not contain a direct recommendation or preference statement.".to_string()
-                }
-            } else if needs_more {
-                format!(
-                    "Found {direct_evidence_count} excerpts with direct preference language, but the evidence is still thin enough to justify a broader pass."
-                )
-            } else {
-                format!(
-                    "Found {direct_evidence_count} excerpts with direct preference language across {unique_video_count} videos."
-                )
-            }),
-            channel_focus_ids: Vec::new(),
-        };
-    }
-
-    match plan.intent {
-        ChatQueryIntent::Fact => CoverageAssessment {
-            needs_more: false,
-            reason: Some("Fact lookup stayed focused on the strongest direct matches.".to_string()),
-            channel_focus_ids: Vec::new(),
-        },
-        ChatQueryIntent::Synthesis => {
-            let needs_more = sources.len() < 6 && plan.supports_second_pass();
-            CoverageAssessment {
-                needs_more,
-                reason: Some(if needs_more {
-                    format!(
-                        "Pass 1 found only {} strong excerpts, so broader synthesis coverage is useful.",
-                        sources.len()
-                    )
-                } else {
-                    format!(
-                        "Pass 1 gathered {} excerpts across {} videos.",
-                        sources.len(),
-                        unique_video_count
-                    )
-                }),
-                channel_focus_ids: Vec::new(),
-            }
-        }
-        ChatQueryIntent::Pattern => {
-            let needs_more = plan.supports_second_pass()
-                && (unique_video_count < 4 || dominant_video_count > plan.max_per_video + 1);
-            CoverageAssessment {
-                needs_more,
-                reason: Some(if needs_more {
-                    format!(
-                        "Pass 1 covered {} videos with heavy concentration in one video, so a broader pass should reduce bias.",
-                        unique_video_count
-                    )
-                } else {
-                    format!(
-                        "Coverage reached {} videos with a balanced spread for pattern analysis.",
-                        unique_video_count
-                    )
-                }),
-                channel_focus_ids: Vec::new(),
-            }
-        }
-        ChatQueryIntent::Comparison => {
-            let dominant_channel_count = channel_counts.values().copied().max().unwrap_or(0);
-            let channel_focus_ids = if unique_channel_count > 1 {
-                channel_counts
-                    .iter()
-                    .filter(|(_, count)| **count < dominant_channel_count)
-                    .map(|(channel_id, _)| channel_id.clone())
-                    .take(2)
-                    .collect::<Vec<_>>()
-            } else {
-                Vec::new()
-            };
-            let needs_more = plan.supports_second_pass()
-                && (unique_channel_count < 2
-                    || dominant_channel_count
-                        > (sources.len().saturating_sub(dominant_channel_count) + 2));
-            CoverageAssessment {
-                needs_more,
-                reason: Some(if needs_more {
-                    if unique_channel_count < 2 {
-                        "Pass 1 did not surface enough distinct channels for a fair comparison."
-                            .to_string()
-                    } else {
-                        "Pass 1 leaned too heavily toward one channel, so the next pass rebalances evidence.".to_string()
-                    }
-                } else {
-                    format!(
-                        "Comparison coverage spans {} channels with enough balance to synthesize.",
-                        unique_channel_count
-                    )
-                }),
-                channel_focus_ids,
-            }
-        }
-    }
-}
-
-fn build_video_observation_inputs(sources: &[RetrievedChatSource]) -> Vec<VideoObservationInput> {
-    let mut groups = Vec::<VideoObservationInput>::new();
-    let mut group_indexes = HashMap::<String, usize>::new();
-
-    for source in sources {
-        if let Some(index) = group_indexes.get(&source.source.video_id).copied() {
-            if groups[index].excerpts.len() < CHAT_SYNTHESIS_SOURCES_PER_VIDEO {
-                groups[index].excerpts.push(source.clone());
-            }
-            continue;
-        }
-
-        if groups.len() >= CHAT_SYNTHESIS_VIDEO_LIMIT {
-            continue;
-        }
-
-        group_indexes.insert(source.source.video_id.clone(), groups.len());
-        groups.push(VideoObservationInput {
-            video_id: source.source.video_id.clone(),
-            video_title: source.source.video_title.clone(),
-            channel_name: source.source.channel_name.clone(),
-            excerpts: vec![source.clone()],
-        });
-    }
-
-    groups
-}
-
-fn count_unique_videos(sources: &[RetrievedChatSource]) -> usize {
-    sources
-        .iter()
-        .map(|source| source.source.video_id.as_str())
-        .collect::<HashSet<_>>()
-        .len()
-}
-
-fn count_direct_preference_evidence(
-    sources: &[RetrievedChatSource],
-    focus_terms: &[String],
-) -> usize {
-    sources
-        .iter()
-        .filter(|source| preference_signal_score(&source.context_text, focus_terms) >= 0.14)
-        .count()
-}
-
-fn preference_signal_score(text: &str, focus_terms: &[String]) -> f32 {
-    let normalized = normalize_for_matching(text);
-    let preference_hits = preference_signal_terms()
-        .iter()
-        .filter(|term| normalized.contains(**term))
-        .count();
-    if preference_hits == 0 {
-        return 0.0;
-    }
-
-    let focus_hits = focus_terms
-        .iter()
-        .filter(|term| normalized.contains(term.as_str()))
-        .count();
-    if !focus_terms.is_empty() && focus_hits == 0 {
-        return 0.0;
-    }
-
-    0.12 + (preference_hits.min(2) as f32 * 0.07) + (focus_hits.min(2) as f32 * 0.04)
-}
-
-fn build_plan_label(intent: ChatQueryIntent, attributed_preference: bool) -> &'static str {
-    if attributed_preference {
-        "Recommendation lookup"
-    } else {
-        match intent {
-            ChatQueryIntent::Fact => "Focused lookup",
-            ChatQueryIntent::Synthesis => "Broader synthesis",
-            ChatQueryIntent::Pattern => "Pattern scan",
-            ChatQueryIntent::Comparison => "Comparison scan",
-        }
-    }
-}
-
-fn is_attributed_preference_query(prompt: &str) -> bool {
-    let normalized = normalize_for_matching(prompt);
-    let has_attribution = normalized.contains("according to ")
-        || normalized.starts_with("what does ")
-        || normalized.starts_with("what do ")
-        || normalized.contains(" does ")
-            && (normalized.contains(" think ")
-                || normalized.contains(" use ")
-                || normalized.contains(" prefer ")
-                || normalized.contains(" recommend "));
-    let has_preference = preference_signal_terms()
-        .iter()
-        .any(|term| normalized.contains(term));
-    has_attribution && has_preference
-}
-
-fn recommendation_query_variants(prompt: &str) -> Vec<String> {
-    let subject = extract_subject_phrase(prompt);
-    let focus = collect_focus_terms(prompt).join(" ");
-    let mut queries = Vec::new();
-
-    if !subject.is_empty() && !focus.is_empty() {
-        queries.push(format!("{subject} {focus} recommendation"));
-        queries.push(format!("{subject} favorite {focus}"));
-        queries.push(format!("{subject} preferred {focus}"));
-        queries.push(format!("{subject} {focus} opinion"));
-        queries.push(format!("{subject} {focus} use"));
-    } else if !focus.is_empty() {
-        queries.push(format!("{focus} recommendation"));
-        queries.push(format!("best {focus}"));
-        queries.push(format!("favorite {focus}"));
-    }
-
-    queries
-}
-
-fn extract_subject_phrase(prompt: &str) -> String {
-    let tokens = tokenize_for_matching(prompt);
-
-    if let Some(index) = tokens.iter().position(|token| token == "according")
-        && tokens.get(index + 1).is_some_and(|token| token == "to")
-    {
-        let subject = tokens
-            .iter()
-            .skip(index + 2)
-            .take_while(|token| !is_boundary_token(token))
-            .take(4)
-            .cloned()
-            .collect::<Vec<_>>();
-        if !subject.is_empty() {
-            return subject.join(" ");
-        }
-    }
-
-    if tokens.starts_with(&["what".to_string(), "does".to_string()]) {
-        let subject = tokens
-            .iter()
-            .skip(2)
-            .take_while(|token| {
-                !matches!(
-                    token.as_str(),
-                    "think" | "recommend" | "prefer" | "use" | "say"
-                )
-            })
-            .take(4)
-            .cloned()
-            .collect::<Vec<_>>();
-        if !subject.is_empty() {
-            return subject.join(" ");
-        }
-    }
-
-    String::new()
-}
-
-fn collect_focus_terms(prompt: &str) -> Vec<String> {
-    let subject_terms = tokenize_for_matching(&extract_subject_phrase(prompt));
-    tokenize_for_matching(prompt)
-        .into_iter()
-        .filter(|token| token.len() > 2)
-        .filter(|token| !is_query_stopword(token))
-        .filter(|token| !subject_terms.contains(token))
-        .take(4)
-        .collect()
-}
-
-fn tokenize_for_matching(input: &str) -> Vec<String> {
-    normalize_for_matching(input)
-        .split_whitespace()
-        .map(ToString::to_string)
-        .collect()
-}
-
-fn normalize_for_matching(input: &str) -> String {
-    input
-        .chars()
-        .map(|char| {
-            if char.is_ascii_alphanumeric() || char.is_whitespace() {
-                char.to_ascii_lowercase()
-            } else {
-                ' '
-            }
-        })
-        .collect()
-}
-
-fn is_boundary_token(token: &str) -> bool {
-    matches!(
-        token,
-        "about" | "for" | "on" | "in" | "with" | "and" | "or" | "vs" | "versus"
-    )
-}
-
-fn is_query_stopword(token: &str) -> bool {
-    matches!(
-        token,
-        "what"
-            | "which"
-            | "who"
-            | "does"
-            | "do"
-            | "did"
-            | "is"
-            | "are"
-            | "the"
-            | "a"
-            | "an"
-            | "according"
-            | "to"
-            | "think"
-            | "opinion"
-            | "best"
-            | "favorite"
-            | "favourite"
-            | "prefer"
-            | "preferred"
-            | "recommend"
-            | "recommendation"
-            | "use"
-            | "uses"
-            | "should"
-            | "i"
-            | "we"
-            | "me"
-    )
-}
-
-fn preference_signal_terms() -> &'static [&'static str] {
-    &[
-        " best ",
-        " favorite ",
-        " favourite ",
-        " prefer ",
-        " preferred ",
-        " recommend ",
-        " recommendation ",
-        " would use ",
-        " i use ",
-        " i choose ",
-        " go with ",
-    ]
-}
-
-fn sanitize_queries(queries: Vec<String>) -> Vec<String> {
-    let mut sanitized = Vec::new();
-    for query in queries {
-        push_unique_query(&mut sanitized, query);
-        if sanitized.len() >= CHAT_QUERY_LIMIT_TOTAL {
-            break;
-        }
-    }
-    sanitized
-}
-
-fn push_unique_query(queries: &mut Vec<String>, query: impl Into<String>) {
-    let query = query.into();
-    let trimmed = query.trim();
-    if trimmed.is_empty() {
-        return;
-    }
-    if queries
-        .iter()
-        .any(|existing| existing.eq_ignore_ascii_case(trimmed))
-    {
-        return;
-    }
-    queries.push(trimmed.to_string());
-}
-
-fn heuristic_query_variants(prompt: &str, intent: ChatQueryIntent) -> Vec<String> {
-    let prompt = prompt.trim();
-    match intent {
-        ChatQueryIntent::Fact => Vec::new(),
-        ChatQueryIntent::Synthesis => vec![format!("{prompt} overview")],
-        ChatQueryIntent::Pattern => vec![
-            format!("{prompt} speaking style"),
-            format!("{prompt} rhetoric examples"),
-            format!("{prompt} tone and phrasing"),
-        ],
-        ChatQueryIntent::Comparison => vec![
-            format!("{prompt} differences"),
-            format!("{prompt} similarities"),
-            format!("{prompt} contrasting viewpoints"),
-        ],
-    }
-}
-
-fn heuristic_expansion_queries(plan: &ChatRetrievalPlan) -> Vec<String> {
-    let base_queries = if plan.attributed_preference {
-        recommendation_query_variants(plan.queries.first().map(String::as_str).unwrap_or_default())
-    } else {
-        heuristic_query_variants(
-            plan.queries.first().map(String::as_str).unwrap_or_default(),
-            plan.intent,
-        )
-    };
-
-    base_queries
-        .into_iter()
-        .filter(|query| {
-            !plan
-                .queries
-                .iter()
-                .any(|existing| existing.eq_ignore_ascii_case(query))
-        })
-        .collect()
-}
-
 fn parse_json_response<T: for<'de> Deserialize<'de>>(response: &str) -> Result<T, String> {
     serde_json::from_str(response)
         .or_else(|_| {
@@ -2327,10 +1678,10 @@ fn generate_chat_id(prefix: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        ChatQueryIntent, ChatQueryPlanResponse, ChatRetrievalPlan, collect_focus_terms,
-        is_attributed_preference_query, recommendation_query_variants,
+    use super::super::chat_heuristics::{
+        collect_focus_terms, is_attributed_preference_query, recommendation_query_variants,
     };
+    use super::{ChatQueryIntent, ChatQueryPlanResponse, ChatRetrievalPlan};
 
     #[test]
     fn attributed_preference_queries_are_detected() {

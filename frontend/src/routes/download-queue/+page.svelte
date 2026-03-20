@@ -26,11 +26,9 @@
     applySavedChannelOrder,
     buildQueueSnapshotOptions,
     loadWorkspaceState,
-    markChannelRefreshed,
     resolveInitialChannelSelection,
     restoreWorkspaceSnapshot,
     saveWorkspaceState,
-    shouldRefreshChannel,
   } from "$lib/channel-workspace";
   import type {
     AiStatus,
@@ -63,6 +61,12 @@
     replaceOptimisticChannel,
     replaceOptimisticChannelId,
   } from "$lib/workspace/channel-actions";
+  import {
+    filterVideosByAcknowledged,
+    filterVideosByType,
+    loadChannelSnapshotWithRefresh,
+    resolveNextChannelSelection,
+  } from "$lib/workspace/route-helpers";
   import {
     resolveAcknowledgedParam,
     type AcknowledgedFilter,
@@ -550,9 +554,9 @@
       channels = removeChannelFromCollection(channels, channelId);
       channelOrder = removeChannelId(channelOrder, channelId);
       if (selectedChannelId === channelId) {
-        const nextChannel = channels[0] ?? null;
-        if (nextChannel) {
-          await selectChannel(nextChannel.id);
+        const nextChannelId = resolveNextChannelSelection(channels, channelId);
+        if (nextChannelId) {
+          await selectChannel(nextChannelId);
         } else {
           selectedChannelId = null;
           videos = [];
@@ -584,37 +588,24 @@
       videoType: videoTypeFilter,
       acknowledged: resolveAcknowledgedParam(acknowledgedFilter),
     };
-    const snapshot = await getChannelSnapshot(channelId, snapshotOptions);
-    await applyChannelSnapshot(channelId, snapshot, silentInitialSnapshot);
-
-    if (
-      !shouldRefreshChannel(
-        channelLastRefreshedAt,
-        channelId,
-        CHANNEL_REFRESH_TTL_MS,
-      )
-    ) {
-      return;
-    }
-
-    refreshingChannel = true;
-    try {
-      await refreshChannel(channelId);
-      markChannelRefreshed(channelLastRefreshedAt, channelId);
-      if (selectedChannelId === channelId) {
-        const refreshedSnapshot = await getChannelSnapshot(
-          channelId,
-          snapshotOptions,
-        );
-        await applyChannelSnapshot(channelId, refreshedSnapshot, true);
-      }
-    } catch (error) {
-      if (!errorMessage) {
-        errorMessage = (error as Error).message;
-      }
-    } finally {
-      refreshingChannel = false;
-    }
+    await loadChannelSnapshotWithRefresh({
+      channelId,
+      refreshedAtByChannel: channelLastRefreshedAt,
+      ttlMs: CHANNEL_REFRESH_TTL_MS,
+      loadSnapshot: () => getChannelSnapshot(channelId, snapshotOptions),
+      applySnapshot: (snapshot, silent = false) =>
+        applyChannelSnapshot(channelId, snapshot, silent),
+      refreshChannel: () => refreshChannel(channelId),
+      shouldReloadAfterRefresh: () => selectedChannelId === channelId,
+      onRefreshingChange: (refreshing) => {
+        refreshingChannel = refreshing;
+      },
+      onError: (message) => {
+        if (!errorMessage) {
+          errorMessage = message;
+        }
+      },
+    });
   }
 
   async function loadVideos(reset = false, silent = false) {
@@ -654,22 +645,14 @@
   async function setVideoTypeFilter(nextValue: VideoTypeFilter) {
     if (videoTypeFilter === nextValue) return;
     videoTypeFilter = nextValue;
-    videos = videos.filter((video) => {
-      if (nextValue === "long") return !video.is_short;
-      if (nextValue === "short") return video.is_short;
-      return true;
-    });
+    videos = filterVideosByType(videos, nextValue);
     await loadVideos(true, true);
   }
 
   async function setAcknowledgedFilter(nextValue: AcknowledgedFilter) {
     if (acknowledgedFilter === nextValue) return;
     acknowledgedFilter = nextValue;
-    videos = videos.filter((video) => {
-      if (nextValue === "ack") return video.acknowledged;
-      if (nextValue === "unack") return !video.acknowledged;
-      return true;
-    });
+    videos = filterVideosByAcknowledged(videos, nextValue);
     await loadVideos(true, true);
   }
 
@@ -745,50 +728,85 @@
       }),
     );
   }
+
+  const queueSidebarChannelState = $derived({
+    channels,
+    selectedChannelId,
+    loadingChannels,
+    addingChannel,
+    channelSortMode,
+  });
+  const queueSidebarVideoState = $derived({
+    videos,
+    selectedVideoId: null,
+    selectedChannel,
+    loadingVideos,
+    refreshingChannel,
+    hasMore,
+    historyExhausted,
+    backfillingHistory,
+    videoTypeFilter,
+    acknowledgedFilter,
+    syncDepth,
+    allowLoadedVideoSyncDepthOverride,
+  });
+  const queueSidebarChannelActions = {
+    onChannelSortModeChange: (nextValue: ChannelSortMode) => {
+      channelSortMode = nextValue;
+    },
+    onAddChannel: handleAddChannel,
+    onSelectChannel: (channelId: string) => {
+      if (channelId === selectedChannelId) {
+        selectedChannelId = null;
+        syncDepth = null;
+        return;
+      }
+      void selectChannel(channelId, true);
+    },
+    onDeleteChannel: handleDeleteChannel,
+    onReorderChannels: reorderChannels,
+  };
+  const queueSidebarVideoActions = {
+    onSelectVideo: openQueuedVideo,
+    onLoadMoreVideos: () => loadVideos(false),
+    onVideoTypeFilterChange: setVideoTypeFilter,
+    onAcknowledgedFilterChange: setAcknowledgedFilter,
+  };
+  const queueContentPanelState = $derived({
+    mobileVisible: true,
+    selectedChannel,
+    selectedChannelId,
+    queueTab,
+    queueStats,
+    effectiveEarliestSyncDate,
+    earliestSyncDateInput,
+    savingSyncDate,
+    refreshingChannel,
+  });
+  const queueContentPanelActions = {
+    onBack: () => {
+      mobileTab = "browse";
+    },
+    onQueueTabChange: (value: QueueTab) => {
+      queueTab = value;
+    },
+    onSaveSyncDate: saveEarliestSyncDate,
+  };
 </script>
 
 <WorkspaceShell currentSection="queue" {aiIndicator} onOpenGuide={openGuide}>
   {#snippet sidebar({ collapsed, toggle, width })}
     <WorkspaceSidebar
-      {collapsed}
-      {width}
-      onToggleCollapse={toggle}
-      mobileVisible={false}
-      {channels}
-      {selectedChannelId}
-      {loadingChannels}
-      {addingChannel}
-      {channelSortMode}
-      onChannelSortModeChange={(nextValue) => {
-        channelSortMode = nextValue;
+      shell={{
+        collapsed,
+        width,
+        mobileVisible: false,
+        onToggleCollapse: toggle,
       }}
-      onAddChannel={handleAddChannel}
-      onSelectChannel={(channelId) => {
-        if (channelId === selectedChannelId) {
-          selectedChannelId = null;
-          syncDepth = null;
-          return;
-        }
-        selectChannel(channelId, true);
-      }}
-      onDeleteChannel={handleDeleteChannel}
-      onReorderChannels={reorderChannels}
-      {videos}
-      selectedVideoId={null}
-      {selectedChannel}
-      {loadingVideos}
-      {refreshingChannel}
-      {hasMore}
-      {historyExhausted}
-      {backfillingHistory}
-      {videoTypeFilter}
-      {acknowledgedFilter}
-      {syncDepth}
-      {allowLoadedVideoSyncDepthOverride}
-      onSelectVideo={openQueuedVideo}
-      onLoadMoreVideos={() => loadVideos(false)}
-      onVideoTypeFilterChange={setVideoTypeFilter}
-      onAcknowledgedFilterChange={setAcknowledgedFilter}
+      channelState={queueSidebarChannelState}
+      channelActions={queueSidebarChannelActions}
+      videoState={queueSidebarVideoState}
+      videoActions={queueSidebarVideoActions}
     />
   {/snippet}
 
@@ -819,65 +837,24 @@
         class="relative z-10 h-full w-[min(85vw,20rem)] overflow-hidden border-r border-[var(--accent-border-soft)] bg-[var(--surface-strong)] shadow-2xl"
       >
         <WorkspaceSidebar
-          collapsed={false}
-          mobileVisible={true}
-          {channels}
-          {selectedChannelId}
-          {loadingChannels}
-          {addingChannel}
-          {channelSortMode}
-          onChannelSortModeChange={(nextValue) => {
-            channelSortMode = nextValue;
+          shell={{
+            collapsed: false,
+            width: undefined,
+            mobileVisible: true,
+            onToggleCollapse: () => {},
           }}
-          onAddChannel={handleAddChannel}
-          onSelectChannel={(channelId) => {
-            if (channelId === selectedChannelId) {
-              selectedChannelId = null;
-              syncDepth = null;
-              return;
-            }
-            selectChannel(channelId, true);
-          }}
-          onDeleteChannel={handleDeleteChannel}
-          onReorderChannels={reorderChannels}
-          {videos}
-          selectedVideoId={null}
-          {selectedChannel}
-          {loadingVideos}
-          {refreshingChannel}
-          {hasMore}
-          {historyExhausted}
-          {backfillingHistory}
-          {videoTypeFilter}
-          {acknowledgedFilter}
-          {syncDepth}
-          {allowLoadedVideoSyncDepthOverride}
-          onSelectVideo={openQueuedVideo}
-          onLoadMoreVideos={() => loadVideos(false)}
-          onVideoTypeFilterChange={setVideoTypeFilter}
-          onAcknowledgedFilterChange={setAcknowledgedFilter}
+          channelState={queueSidebarChannelState}
+          channelActions={queueSidebarChannelActions}
+          videoState={queueSidebarVideoState}
+          videoActions={queueSidebarVideoActions}
         />
       </div>
     </div>
   {/if}
 
   <QueueContentPanel
-    mobileVisible={true}
-    {selectedChannel}
-    {selectedChannelId}
-    {queueTab}
-    {queueStats}
-    {effectiveEarliestSyncDate}
-    {earliestSyncDateInput}
-    {savingSyncDate}
-    {refreshingChannel}
-    onBack={() => {
-      mobileTab = "browse";
-    }}
-    onQueueTabChange={(value) => {
-      queueTab = value;
-    }}
-    onSaveSyncDate={saveEarliestSyncDate}
+    state={queueContentPanelState}
+    actions={queueContentPanelActions}
   />
 
   {#if errorMessage}
