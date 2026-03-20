@@ -32,8 +32,7 @@ export { API_BASE, BackendUnavailableError };
 // Give the backend a small grace window to return a structured timeout response
 // before the browser-level safeguard aborts the request.
 const FORMAT_REQUEST_TIMEOUT_MS = 5 * 60 * 1000 + 15 * 1000;
-const FORMAT_REQUEST_TIMEOUT_MESSAGE =
-  "Formatting took too long to complete.";
+const FORMAT_REQUEST_TIMEOUT_MESSAGE = "Formatting took too long to complete.";
 const BACKEND_RETRY_DELAY_MS = 1500;
 const GET_CACHE_TTL_MS = 30 * 1000;
 const getResponseCache = new Map<

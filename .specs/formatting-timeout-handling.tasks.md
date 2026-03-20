@@ -2,16 +2,16 @@
 
 ## Current State
 
-Production behavior is reproduced. A long transcript formatting request hits `HTTP 504` at about 300.08 seconds, while the browser abort path is configured to fire at 300 seconds exactly.
+Production behavior was reproduced and the mitigation is implemented. Backend transcript formatting now leaves headroom before the 300 second upstream cutoff, the frontend keeps a grace window beyond that limit, and targeted plus broad local validation passed.
 
 ## Steps
 
 - [x] Inspect the production formatting path and locate the timeout boundaries.
 - [x] Reproduce the issue against the live backend with a long transcript payload.
-- [ ] Reduce backend formatting timeout to leave response headroom before the upstream cutoff.
-- [ ] Add frontend grace so backend timeout responses are not masked by the browser abort.
-- [ ] Update timeout copy and add targeted regression tests.
-- [ ] Run format, typecheck, and targeted tests.
+- [x] Reduce backend formatting timeout to leave response headroom before the upstream cutoff.
+- [x] Add frontend grace so backend timeout responses are not masked by the browser abort.
+- [x] Update timeout copy and add targeted regression tests.
+- [x] Run format, typecheck, and targeted tests.
 
 ## Decisions Made During Implementation
 

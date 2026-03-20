@@ -136,7 +136,6 @@
     type WorkspaceContentMode,
   } from "$lib/workspace/types";
   const FORMAT_MAX_TURNS = 5;
-  const FORMAT_HARD_TIMEOUT_MINUTES = 5;
   const CHANNEL_REFRESH_TTL_MS = 5 * 60 * 1000;
   const SELECTED_VIDEO_SCAN_PAGE_LIMIT = 8;
   const channelLastRefreshedAt = new Map<string, number>();
@@ -1565,7 +1564,7 @@
       }
       formattingNoticeTone = "success";
       if (result.timed_out) {
-        formattingNotice = `Formatting stopped after ${FORMAT_HARD_TIMEOUT_MINUTES} minutes. Current transcript was kept. ${attemptsSummary}`;
+        formattingNotice = `Formatting reached the time limit. Current transcript was kept. ${attemptsSummary}`;
         formattingNoticeVideoId = targetVideoId;
         formattingNoticeTone = "warning";
       } else if (!result.preserved_text) {

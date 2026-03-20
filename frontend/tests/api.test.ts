@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import {
+  cleanTranscriptFormatting,
   createHighlight,
   deleteHighlight,
   getChannelSnapshot,
@@ -188,6 +189,20 @@ describe("isAiAvailable", () => {
     }) as typeof fetch;
 
     await expect(isAiAvailable()).resolves.toEqual(payload);
+  });
+});
+
+describe("cleanTranscriptFormatting", () => {
+  it("rewrites aborts into a generic timeout error", async () => {
+    globalThis.fetch = (async () => {
+      const error = new Error("The operation was aborted.");
+      error.name = "AbortError";
+      throw error;
+    }) as typeof fetch;
+
+    await expect(
+      cleanTranscriptFormatting("video-1", "Example transcript"),
+    ).rejects.toThrow("Formatting took too long to complete.");
   });
 });
 

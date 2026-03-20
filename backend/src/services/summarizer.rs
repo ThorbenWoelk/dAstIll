@@ -662,10 +662,10 @@ mod tests {
     use tokio::time::timeout;
 
     use super::{
-        MAX_TRANSCRIPT_FORMAT_ATTEMPTS, SummarizerService,
-        TRANSCRIPT_FORMAT_HARD_TIMEOUT_SECS, TRANSCRIPT_FORMAT_TIMEOUT_HEADROOM_SECS,
-        build_clean_transcript_prompt, build_summary_prompt, detect_transcript_mismatch,
-        strip_summary_title_heading, transcript_text_equivalent,
+        MAX_TRANSCRIPT_FORMAT_ATTEMPTS, SummarizerService, TRANSCRIPT_FORMAT_HARD_TIMEOUT_SECS,
+        TRANSCRIPT_FORMAT_TIMEOUT_HEADROOM_SECS, build_clean_transcript_prompt,
+        build_summary_prompt, detect_transcript_mismatch, strip_summary_title_heading,
+        transcript_text_equivalent,
     };
     use crate::models::AiStatus;
     use crate::services::ollama::{CLOUD_PROMPT_TIMEOUT_SECS, OllamaCore};
