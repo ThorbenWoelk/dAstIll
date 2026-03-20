@@ -205,14 +205,32 @@ export function reorderChannels(
   }
 
   const channelOrder = channels.map((channel) => channel.id);
-  const fromIndex = channelOrder.indexOf(dragId);
   const toIndex = channelOrder.indexOf(targetId);
-  if (fromIndex < 0 || toIndex < 0) {
+  if (toIndex < 0) {
+    return null;
+  }
+
+  return moveChannelToIndex(channels, dragId, toIndex);
+}
+
+export function moveChannelToIndex(
+  channels: Channel[],
+  dragId: string,
+  targetIndex: number,
+): { channels: Channel[]; channelOrder: string[] } | null {
+  const channelOrder = channels.map((channel) => channel.id);
+  const fromIndex = channelOrder.indexOf(dragId);
+  if (
+    fromIndex < 0 ||
+    targetIndex < 0 ||
+    targetIndex >= channelOrder.length ||
+    fromIndex === targetIndex
+  ) {
     return null;
   }
 
   channelOrder.splice(fromIndex, 1);
-  channelOrder.splice(toIndex, 0, dragId);
+  channelOrder.splice(targetIndex, 0, dragId);
 
   const channelsById = new Map(
     channels.map((channel) => [channel.id, channel]),
@@ -257,7 +275,7 @@ export function finishChannelDrag(): ChannelDragState {
 }
 
 export function completeChannelDrop(
-  _channelId: string,
+  _channelId: string | null,
   draggedChannelId: string | null,
   fallbackChannelId: string | null,
 ) {
