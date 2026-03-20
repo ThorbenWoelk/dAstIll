@@ -17,7 +17,7 @@
   } from "$lib/chat-api";
   import ConfirmationModal from "$lib/components/ConfirmationModal.svelte";
   import FeatureGuide from "$lib/components/FeatureGuide.svelte";
-  import type { TourStep } from "$lib/feature-guide";
+  import type { TourStep } from "$lib/components/FeatureGuide.svelte";
   import ChatInput from "$lib/components/chat/ChatInput.svelte";
   import ChatMessageBubble from "$lib/components/chat/ChatMessage.svelte";
   import ChatMessageList from "$lib/components/chat/ChatMessageList.svelte";

@@ -4,6 +4,8 @@
   import Footer from "$lib/components/Footer.svelte";
   import MobileViewportInset from "$lib/components/MobileViewportInset.svelte";
   import ServiceWorkerRegistration from "$lib/components/ServiceWorkerRegistration.svelte";
+
+  let { children } = $props();
 </script>
 
 <svelte:head>
@@ -33,7 +35,7 @@
   <MobileViewportInset />
   <ServiceWorkerRegistration />
   <div class="min-h-0 flex-1">
-    <slot />
+    {@render children()}
   </div>
   <AppBottomNav />
   <Footer />

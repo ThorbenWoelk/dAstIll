@@ -66,6 +66,10 @@
         ? "Regenerate summary"
         : "regenerate (AI engine required)",
   );
+
+  function handleInput(event: Event) {
+    onChange((event.currentTarget as HTMLTextAreaElement).value);
+  }
 </script>
 
 {#if editing}
@@ -146,8 +150,7 @@
           : "bg-[var(--surface)]"
       }`}
       {value}
-      oninput={(event) =>
-        onChange((event.currentTarget as HTMLTextAreaElement).value)}
+      oninput={handleInput}
       placeholder="Refine the distillation here…"
     ></textarea>
   </div>
