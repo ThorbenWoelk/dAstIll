@@ -123,12 +123,15 @@ Scoring guide:
 - 0-2: Summary is mostly hallucinated or almost entirely missing transcript content.
 
 Return strict JSON only with this schema:
-{{"score": <integer 0-10>, "incoherence_note": "<brief note listing specific hallucinations and/or omitted topics, or empty string if none>"}}
+{{"score": <integer 0-10>, "incoherence_note": "<concise, poignant, markdown-formatted note with bullet points, categorized for hallucinations and other suitable categories (e.g., omissions, factual errors)>"}}
 
 Rules:
 - Be harsh. A short, generic summary of a long, detailed transcript should score low.
-- List specific omitted topics or hallucinated claims in incoherence_note.
-- Do not include markdown, comments, or extra keys."#
+- Formatting: Use concise, poignant bullet points. Categorize using bold headers like **Hallucinations**, **Factually Incorrect**, or **Omissions**.
+- Example:
+  **Factually Incorrect**: 
+  - website is 'bugsapplesloves.com', not 'bugs.apple.com'
+- Do not include extra keys, comments, or explain your reasoning outside the JSON."#
         );
 
         let (raw, model_used) = self
@@ -295,13 +298,13 @@ mod tests {
     #[test]
     fn parse_evaluation_response_handles_plain_json() {
         let parsed = parse_evaluation_response(
-            "{\"score\":8,\"incoherence_note\":\"Overstates one claim\"}",
+            "{\"score\":8,\"incoherence_note\":\"**Omissions**:\\n- Overstates one claim\"}",
         )
         .unwrap();
         assert_eq!(parsed.quality_score, 8);
         assert_eq!(
             parsed.quality_note,
-            Some("Overstates one claim".to_string())
+            Some("**Omissions**:\n- Overstates one claim".to_string())
         );
     }
 
