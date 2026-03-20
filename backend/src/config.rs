@@ -30,6 +30,7 @@ pub struct SecurityRuntimeConfig {
     pub allowed_origins: Vec<String>,
     pub baseline_rate_limit_per_minute: u32,
     pub expensive_rate_limit_per_minute: u32,
+    pub anonymous_chat_quota: u32,
 }
 
 impl OllamaRuntimeConfig {
@@ -101,10 +102,13 @@ impl SecurityRuntimeConfig {
             allowed_origins: optional_csv_env("BACKEND_CORS_ALLOWED_ORIGINS")
                 .unwrap_or_else(default_backend_allowed_origins),
             baseline_rate_limit_per_minute: optional_u32_env("BASELINE_RATE_LIMIT_PER_MINUTE")
-                .unwrap_or(60)
+                .unwrap_or(120)
                 .clamp(1, 1_000),
             expensive_rate_limit_per_minute: optional_u32_env("EXPENSIVE_RATE_LIMIT_PER_MINUTE")
-                .unwrap_or(5)
+                .unwrap_or(30)
+                .clamp(1, 1_000),
+            anonymous_chat_quota: optional_u32_env("ANONYMOUS_CHAT_QUOTA")
+                .unwrap_or(30)
                 .clamp(1, 1_000),
         })
     }
@@ -222,6 +226,7 @@ mod tests {
         "BACKEND_CORS_ALLOWED_ORIGINS",
         "BASELINE_RATE_LIMIT_PER_MINUTE",
         "EXPENSIVE_RATE_LIMIT_PER_MINUTE",
+        "ANONYMOUS_CHAT_QUOTA",
     ];
 
     #[test]
@@ -352,8 +357,9 @@ mod tests {
 
         let config = SecurityRuntimeConfig::from_env().expect("security config");
         assert_eq!(config.proxy_token, "local-dev-backend-proxy-token");
-        assert_eq!(config.baseline_rate_limit_per_minute, 60);
-        assert_eq!(config.expensive_rate_limit_per_minute, 5);
+        assert_eq!(config.baseline_rate_limit_per_minute, 120);
+        assert_eq!(config.expensive_rate_limit_per_minute, 30);
+        assert_eq!(config.anonymous_chat_quota, 30);
         assert!(
             config
                 .allowed_origins
@@ -376,6 +382,7 @@ mod tests {
         );
         set_env("BASELINE_RATE_LIMIT_PER_MINUTE", "90");
         set_env("EXPENSIVE_RATE_LIMIT_PER_MINUTE", "7");
+        set_env("ANONYMOUS_CHAT_QUOTA", "12");
 
         let config = SecurityRuntimeConfig::from_env().expect("security config");
         assert_eq!(config.proxy_token, "proxy-secret");
@@ -388,6 +395,7 @@ mod tests {
         );
         assert_eq!(config.baseline_rate_limit_per_minute, 90);
         assert_eq!(config.expensive_rate_limit_per_minute, 7);
+        assert_eq!(config.anonymous_chat_quota, 12);
     }
 
     #[test]

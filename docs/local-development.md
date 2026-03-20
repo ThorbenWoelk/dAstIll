@@ -93,17 +93,15 @@ Behavior:
 
 ## Frontend Auth And Proxy
 
-The browser no longer talks to the backend directly. The SvelteKit frontend authenticates the operator with an app password, stores a signed session cookie, and proxies `/api/*` requests server-to-server.
+The browser no longer talks to the backend directly. The SvelteKit frontend proxies `/api/*` requests server-to-server, treats anonymous visitors as regular users, and upgrades to operator access only after a password-based admin sign-in.
 
 Local defaults when you start with `./start_app.sh`:
 
 | Variable              | Default                         |
 | --------------------- | ------------------------------- |
-| `APP_AUTH_PASSWORD`   | `local-dev-password`            |
-| `APP_SESSION_SECRET`  | `local-dev-session-secret`      |
 | `BACKEND_PROXY_TOKEN` | `local-dev-backend-proxy-token` |
 
-If you run the frontend by itself, copy `frontend/.env.example` to `frontend/.env` and replace the default password and secret values before exposing the app outside your machine.
+If you run the frontend by itself, copy `frontend/.env.example` to `frontend/.env` and set `BACKEND_API_BASE`, `BACKEND_PROXY_TOKEN`, and `PUBLIC_DOCS_URL`. Admin sign-in uses `ADMIN_PASSWORD` from the runtime environment, and the minimal admin entrypoint is `/login`.
 
 ## Search Defaults
 

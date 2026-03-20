@@ -8,6 +8,8 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
@@ -19,6 +21,7 @@ pub const OPERATOR_ROLE: &str = "operator";
 pub const PROXY_AUTH_HEADER: &str = "x-dastill-proxy-auth";
 pub const ROLE_HEADER: &str = "x-dastill-role";
 const X_FORWARDED_FOR_HEADER: &str = "x-forwarded-for";
+const ANONYMOUS_CHAT_QUOTA_MESSAGE: &str = "Anonymous chat quota exceeded";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AccessRole {
@@ -30,6 +33,12 @@ pub enum AccessRole {
 pub struct AuthorizedRequest {
     pub role: AccessRole,
     pub client_key: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AnonymousChatQuotaRecord {
+    count: u32,
+    first_seen_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -154,6 +163,52 @@ fn build_rate_limit_response(retry_after: Duration) -> Response {
     response
 }
 
+fn hash_client_key(client_key: &str) -> String {
+    Sha256::digest(client_key.as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+fn anonymous_chat_quota_key(client_key: &str) -> String {
+    format!("chat-quota/{}.json", hash_client_key(client_key))
+}
+
+fn build_anonymous_chat_quota_response() -> Response {
+    (StatusCode::FORBIDDEN, ANONYMOUS_CHAT_QUOTA_MESSAGE).into_response()
+}
+
+async fn consume_anonymous_chat_quota(state: &AppState, client_key: &str) -> Result<bool, String> {
+    let _lock = state.anonymous_chat_quota_lock.lock().await;
+    let conn = state.db.connect();
+    let storage_key = anonymous_chat_quota_key(client_key);
+    let now = Utc::now();
+    let mut record = conn
+        .get_json::<AnonymousChatQuotaRecord>(&storage_key)
+        .await
+        .map_err(|error| error.to_string())?
+        .unwrap_or_else(|| AnonymousChatQuotaRecord {
+            count: 0,
+            first_seen_at: now,
+        });
+
+    // Reset the window if 24 hours have elapsed since first use in this period.
+    if (now - record.first_seen_at).num_hours() >= 24 {
+        record.count = 0;
+        record.first_seen_at = now;
+    }
+
+    if record.count >= state.security.anonymous_chat_quota {
+        return Ok(false);
+    }
+
+    record.count += 1;
+    conn.put_json(&storage_key, &record)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(true)
+}
+
 fn enforce_rate_limit_for_request(
     state: &AppState,
     request: &Request,
@@ -208,6 +263,42 @@ pub async fn require_operator_role(request: Request, next: Next) -> Response {
     }
 
     next.run(request).await
+}
+
+pub async fn enforce_anonymous_chat_quota(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let authorized = request
+        .extensions()
+        .get::<AuthorizedRequest>()
+        .cloned()
+        .unwrap_or_else(|| AuthorizedRequest {
+            role: resolve_role(request.headers()),
+            client_key: extract_client_key(request.headers()),
+        });
+
+    if authorized.role == AccessRole::Operator {
+        return next.run(request).await;
+    }
+
+    match consume_anonymous_chat_quota(&state, &authorized.client_key).await {
+        Ok(true) => next.run(request).await,
+        Ok(false) => build_anonymous_chat_quota_response(),
+        Err(error) => {
+            tracing::error!(
+                error = %error,
+                client_key_hash = %hash_client_key(&authorized.client_key),
+                "failed to enforce anonymous chat quota"
+            );
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to enforce anonymous chat quota",
+            )
+                .into_response()
+        }
+    }
 }
 
 pub async fn enforce_baseline_rate_limit(
@@ -276,6 +367,7 @@ mod tests {
             allowed_origins: vec![],
             baseline_rate_limit_per_minute: 2,
             expensive_rate_limit_per_minute: 1,
+            anonymous_chat_quota: 10,
         };
         let limiter = RequestRateLimiter::new(&config);
         let now = std::time::Instant::now();
@@ -304,6 +396,7 @@ mod tests {
             allowed_origins: vec![],
             baseline_rate_limit_per_minute: 1,
             expensive_rate_limit_per_minute: 1,
+            anonymous_chat_quota: 10,
         };
         let limiter = RequestRateLimiter::new(&config);
         let start = std::time::Instant::now();

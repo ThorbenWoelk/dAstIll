@@ -77,4 +77,4 @@ The product UI is not a thin shell over CRUD. It reflects multiple backend lifec
 - search indexing coverage
 - acknowledgement state
 
-That is why the backend exposes combined bootstrap and snapshot payloads instead of forcing the frontend to infer everything from fragmented endpoint calls.
+That is why the backend exposes rich snapshot payloads and a combined bootstrap endpoint, even though the main frontend now loads channels first and defers the selected-channel snapshot until after the sidebar is on screen.

@@ -9,6 +9,7 @@ import {
   isAiAvailable,
   listHighlights,
   listChannelsWhenAvailable,
+  refreshChannel,
   resetApiCacheForTests,
   searchContent,
 } from "../src/lib/api";
@@ -265,6 +266,73 @@ describe("getChannelSnapshot", () => {
 
     await getChannelSnapshot("abc", { queueOnly: true });
     expect(attempts).toBe(3);
+  });
+
+  it("refresh invalidates only the refreshed channel reads", async () => {
+    const snapshotPayload = {
+      channel_id: "abc",
+      sync_depth: syncDepth(),
+      videos: [video("queued-1")],
+    };
+    const otherSnapshotPayload = {
+      channel_id: "xyz",
+      sync_depth: syncDepth(),
+      videos: [video("queued-2", "xyz")],
+    };
+    const requests: string[] = [];
+
+    globalThis.fetch = (async (input, init) => {
+      const url = String(input);
+      requests.push(`${init?.method ?? "GET"} ${url}`);
+
+      if (url.includes("/api/channels/abc/refresh")) {
+        return new Response(JSON.stringify({ videos_added: 1 }), {
+          status: 200,
+        });
+      }
+
+      if (url.includes("/api/channels/abc/snapshot")) {
+        return new Response(JSON.stringify(snapshotPayload), { status: 200 });
+      }
+
+      if (url.includes("/api/channels/xyz/snapshot")) {
+        return new Response(JSON.stringify(otherSnapshotPayload), {
+          status: 200,
+        });
+      }
+
+      if (url.includes("/api/channels")) {
+        return new Response(JSON.stringify([channel("abc"), channel("xyz")]), {
+          status: 200,
+        });
+      }
+
+      throw new Error(`Unexpected request: ${url}`);
+    }) as typeof fetch;
+
+    await listChannelsWhenAvailable({ retryDelayMs: 0 });
+    await getChannelSnapshot("abc", { queueOnly: true });
+    await getChannelSnapshot("xyz", { queueOnly: true });
+
+    await refreshChannel("abc");
+
+    await listChannelsWhenAvailable({ retryDelayMs: 0 });
+    await getChannelSnapshot("abc", { queueOnly: true });
+    await getChannelSnapshot("xyz", { queueOnly: true });
+
+    expect(
+      requests.filter((request) => request === "GET /api/channels").length,
+    ).toBe(1);
+    expect(
+      requests.filter((request) =>
+        request.includes("GET /api/channels/abc/snapshot"),
+      ).length,
+    ).toBe(2);
+    expect(
+      requests.filter((request) =>
+        request.includes("GET /api/channels/xyz/snapshot"),
+      ).length,
+    ).toBe(1);
   });
 });
 

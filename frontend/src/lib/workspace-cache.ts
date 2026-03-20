@@ -1,7 +1,7 @@
 import type { Channel, ChannelSnapshot, WorkspaceBootstrap } from "$lib/types";
 
 const DB_NAME = "dastill-workspace-cache";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const BOOTSTRAP_META_KEY = "bootstrap";
 
 type WorkspaceBootstrapMeta = Pick<
@@ -11,6 +11,11 @@ type WorkspaceBootstrapMeta = Pick<
 
 type BootstrapMetaRecord = WorkspaceBootstrapMeta & {
   key: string;
+};
+
+type ViewSnapshotRecord = {
+  key: string;
+  snapshot: ChannelSnapshot;
 };
 
 let workspaceCacheDbPromise: Promise<IDBDatabase> | null = null;
@@ -62,6 +67,10 @@ function openWorkspaceCacheInternal(): Promise<IDBDatabase> {
 
         if (!db.objectStoreNames.contains("meta")) {
           db.createObjectStore("meta", { keyPath: "key" });
+        }
+
+        if (!db.objectStoreNames.contains("view_snapshots")) {
+          db.createObjectStore("view_snapshots", { keyPath: "key" });
         }
       };
 
@@ -164,6 +173,21 @@ export async function getCachedSnapshot(
   }
 }
 
+export async function getCachedViewSnapshot(
+  key: string,
+): Promise<ChannelSnapshot | null> {
+  try {
+    const db = await openWorkspaceCacheInternal();
+    const transaction = db.transaction("view_snapshots", "readonly");
+    const record = await requestToPromise<ViewSnapshotRecord | undefined>(
+      transaction.objectStore("view_snapshots").get(key),
+    );
+    return record?.snapshot ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function putCachedSnapshot(
   snapshot: ChannelSnapshot,
 ): Promise<void> {
@@ -178,6 +202,20 @@ export async function putCachedSnapshot(
       videoStore.put(video);
     }
 
+    await transactionDone(transaction);
+  } catch {
+    return;
+  }
+}
+
+export async function putCachedViewSnapshot(
+  key: string,
+  snapshot: ChannelSnapshot,
+): Promise<void> {
+  try {
+    const db = await openWorkspaceCacheInternal();
+    const transaction = db.transaction("view_snapshots", "readwrite");
+    transaction.objectStore("view_snapshots").put({ key, snapshot });
     await transactionDone(transaction);
   } catch {
     return;
@@ -226,7 +264,7 @@ export async function clearWorkspaceCache(): Promise<void> {
   try {
     const db = await openWorkspaceCacheInternal();
     const transaction = db.transaction(
-      ["channels", "videos", "snapshots", "meta"],
+      ["channels", "videos", "snapshots", "meta", "view_snapshots"],
       "readwrite",
     );
 
@@ -234,6 +272,7 @@ export async function clearWorkspaceCache(): Promise<void> {
     transaction.objectStore("videos").clear();
     transaction.objectStore("snapshots").clear();
     transaction.objectStore("meta").clear();
+    transaction.objectStore("view_snapshots").clear();
 
     await transactionDone(transaction);
   } catch {
@@ -241,17 +280,51 @@ export async function clearWorkspaceCache(): Promise<void> {
   }
 }
 
+async function deleteViewSnapshotsByChannel(
+  snapshotStore: IDBObjectStore,
+  channelId: string,
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const cursorRequest = snapshotStore.openCursor();
+
+    cursorRequest.onsuccess = () => {
+      const cursor = cursorRequest.result;
+      if (!cursor) {
+        resolve();
+        return;
+      }
+
+      const record = cursor.value as ViewSnapshotRecord;
+      if (record.snapshot.channel_id === channelId) {
+        cursor.delete();
+      }
+      cursor.continue();
+    };
+
+    cursorRequest.onerror = () => {
+      reject(
+        cursorRequest.error ??
+          new Error("Failed to delete cached view snapshots"),
+      );
+    };
+  });
+}
+
 export async function removeCachedChannel(channelId: string): Promise<void> {
   try {
     const db = await openWorkspaceCacheInternal();
     const transaction = db.transaction(
-      ["channels", "snapshots", "videos"],
+      ["channels", "snapshots", "videos", "view_snapshots"],
       "readwrite",
     );
 
     transaction.objectStore("channels").delete(channelId);
     transaction.objectStore("snapshots").delete(channelId);
     await deleteVideosByChannel(transaction.objectStore("videos"), channelId);
+    await deleteViewSnapshotsByChannel(
+      transaction.objectStore("view_snapshots"),
+      channelId,
+    );
 
     await transactionDone(transaction);
   } catch {

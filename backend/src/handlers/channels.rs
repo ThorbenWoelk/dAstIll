@@ -507,6 +507,7 @@ mod tests {
             )),
             active_chats: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
             chat_store_lock: Arc::new(tokio::sync::Mutex::new(())),
+            anonymous_chat_quota_lock: Arc::new(tokio::sync::Mutex::new(())),
             cloud_cooldown: cooldown,
             youtube_quota_cooldown: Arc::new(YouTubeQuotaCooldown::youtube_quota()),
             transcript_cooldown: Arc::new(TranscriptCooldown::transcript()),

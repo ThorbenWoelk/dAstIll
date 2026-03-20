@@ -1,5 +1,6 @@
 <script lang="ts">
   import AiStatusIndicator from "$lib/components/AiStatusIndicator.svelte";
+  import ChevronIcon from "$lib/components/icons/ChevronIcon.svelte";
   import ExternalLinkIcon from "$lib/components/icons/ExternalLinkIcon.svelte";
   import { DOCS_URL } from "$lib/app-config";
   import type { AiIndicatorPresentation } from "$lib/ai-status";
@@ -75,33 +76,51 @@
   class="hidden h-full shrink-0 flex-col bg-[var(--panel-surface)] lg:flex"
   style="width: {width}px;"
 >
-  <div
-    class={`flex items-center gap-2 pt-4 pb-1 ${collapsed ? "justify-center px-2" : "px-4"}`}
-  >
-    <a
-      href="/"
-      class={`font-bold tracking-tighter text-[var(--color-swatch)] transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)] ${collapsed ? "text-base" : "text-xl"}`}
-      aria-label="Go to dAstIll home"
-    >
-      {#if collapsed}
-        d<span style="color:var(--soft-foreground);">A</span>
-      {:else}
-        d<span style="color:var(--soft-foreground);">A</span>st<span
-          style="color:var(--soft-foreground);">I</span
-        >ll
-      {/if}
-    </a>
-    {#if aiIndicator && !collapsed}
-      <AiStatusIndicator
-        detail={aiIndicator.detail}
-        dotClass={aiIndicator.dotClass}
-        title={aiIndicator.title}
-      />
-    {/if}
-  </div>
+  {#if collapsed}
+    <div class="flex items-center justify-center px-1.5 pt-3 pb-1">
+      <button
+        type="button"
+        class="inline-flex h-7 w-7 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-60 transition-all hover:bg-[var(--accent-wash)] hover:opacity-100"
+        onclick={onToggleCollapse}
+        aria-label="Expand sidebar"
+      >
+        <ChevronIcon direction="right" />
+      </button>
+    </div>
+  {:else}
+    <div class="flex items-center justify-between gap-3 px-4 pt-3 pb-1">
+      <div class="flex min-w-0 flex-1 items-center gap-2">
+        <a
+          href="/"
+          class="min-w-0 text-xl font-bold tracking-tighter text-[var(--color-swatch)] transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
+          aria-label="Go to dAstIll home"
+        >
+          d<span style="color:var(--soft-foreground);">A</span>st<span
+            style="color:var(--soft-foreground);">I</span
+          >ll
+        </a>
+        {#if aiIndicator}
+          <AiStatusIndicator
+            detail={aiIndicator.detail}
+            dotClass={aiIndicator.dotClass}
+            title={aiIndicator.title}
+          />
+        {/if}
+      </div>
+
+      <button
+        type="button"
+        class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-55 transition-all hover:bg-[var(--accent-wash)] hover:opacity-100"
+        onclick={onToggleCollapse}
+        aria-label="Collapse sidebar"
+      >
+        <ChevronIcon direction="left" />
+      </button>
+    </div>
+  {/if}
 
   <nav
-    class={`mt-3 space-y-0.5 ${collapsed ? "px-1.5" : "px-2"}`}
+    class={`space-y-0.5 ${collapsed ? "mt-1 px-1.5" : "mt-3 px-2"}`}
     aria-label="Sections"
   >
     {#each navItems as item (item.section)}
@@ -154,33 +173,6 @@
   </nav>
 
   <div class="mt-auto flex flex-col gap-1 pb-3 {collapsed ? 'px-1.5' : 'px-2'}">
-    <button
-      type="button"
-      class={`inline-flex items-center gap-2 rounded-[var(--radius-sm)] text-[var(--soft-foreground)] opacity-60 transition-all hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${collapsed ? "justify-center px-0 py-2" : "px-3 py-2"}`}
-      onclick={onToggleCollapse}
-      aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-      data-tooltip={collapsed ? "Expand" : undefined}
-      data-tooltip-placement={collapsed ? "right" : undefined}
-    >
-      <svg
-        width="14"
-        height="14"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2.2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        class={`shrink-0 transition-transform ${collapsed ? "rotate-180" : ""}`}
-        aria-hidden="true"
-      >
-        <path d="M15 18l-6-6 6-6" />
-      </svg>
-      {#if !collapsed}
-        <span class="text-[12px] font-medium">Collapse</span>
-      {/if}
-    </button>
-
     <button
       type="button"
       id="guide-trigger"

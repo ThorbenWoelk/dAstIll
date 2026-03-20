@@ -312,3 +312,5 @@ jobs:
             BACKEND_API_BASE=${{ needs.resolve-frontend-env.outputs.backend_url }}
             BACKEND_IDENTITY_AUDIENCE=${{ needs.resolve-frontend-env.outputs.backend_url }}
             PUBLIC_DOCS_URL=${{ needs.resolve-frontend-env.outputs.docs_url }}
+            PUBLIC_CONTACT_EMAIL=${{ vars.CONTACT_EMAIL }}
+            ADDRESS_HEADER=X-Forwarded-For

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto, replaceState as replacePageState } from "$app/navigation";
-  import { onMount } from "svelte";
+  import { page } from "$app/stores";
+  import { onMount, tick } from "svelte";
   import {
     addChannel,
     backfillChannelVideos,
@@ -13,9 +14,12 @@
     ensureVideoInfo,
     getChannelSnapshot,
     getChannelSyncDepth,
+    getSearchStatus,
+    getVideo,
     getVideoHighlights,
-    getWorkspaceBootstrapWhenAvailable,
     getSummary,
+    isAiAvailable,
+    listChannelsWhenAvailable,
     listVideos,
     refreshChannel,
     regenerateSummary,
@@ -71,10 +75,10 @@
   import {
     getCachedBootstrapMeta,
     getCachedChannels,
-    getCachedSnapshot,
+    getCachedViewSnapshot,
     putCachedBootstrapMeta,
     putCachedChannels,
-    putCachedSnapshot,
+    putCachedViewSnapshot,
     removeCachedChannel,
   } from "$lib/workspace-cache";
   import { resolveOldestLoadedReadyVideoDate } from "$lib/sync-depth";
@@ -321,6 +325,7 @@
   let addingChannel = $state(false);
   let errorMessage = $state<string | null>(null);
   let showDeleteConfirmation = $state(false);
+  let showDeleteAccessPrompt = $state(false);
   let channelIdToDelete = $state<string | null>(null);
   let summaryQualityScore = $state<number | null>(null);
   let summaryQualityNote = $state<string | null>(null);
@@ -344,6 +349,7 @@
   let aiIndicator = $derived(
     aiStatus ? resolveAiIndicatorPresentation(aiStatus) : null,
   );
+  let isOperator = $derived(Boolean($page.data.isOperator));
   let contentHtml = $derived(renderMarkdown(contentRenderText));
   let editing = $state(false);
   let draft = $state("");
@@ -402,12 +408,16 @@
   let acknowledgedFilter = $state<AcknowledgedFilter>("all");
   let workspaceStateHydrated = $state(false);
   let viewUrlHydrated = $state(false);
+  let pendingSelectedVideo = $state<Video | null>(null);
 
   const selectedChannel = $derived(
     channels.find((channel) => channel.id === selectedChannelId) ?? null,
   );
   const selectedVideo = $derived(
-    videos.find((video) => video.id === selectedVideoId) ?? null,
+    videos.find((video) => video.id === selectedVideoId) ??
+      (pendingSelectedVideo?.id === selectedVideoId
+        ? pendingSelectedVideo
+        : null),
   );
 
   function getChannelViewKey(channelId: string) {
@@ -456,12 +466,29 @@
 
   function clearSelectedVideoState() {
     selectedVideoId = null;
+    pendingSelectedVideo = null;
     contentText = "";
     transcriptRenderMode = "plain_text";
     draft = "";
     draftTranscriptRenderMode = "plain_text";
     resetSummaryQuality();
     resetVideoInfo();
+  }
+
+  async function resolvePendingSelectedVideo(
+    videoId: string,
+    channelId: string,
+  ) {
+    try {
+      const video = await getVideo(videoId);
+      if (selectedChannelId !== channelId || selectedVideoId !== videoId) {
+        return null;
+      }
+      pendingSelectedVideo = video;
+      return video;
+    } catch {
+      return null;
+    }
   }
 
   async function hydrateSelectedVideo(
@@ -474,6 +501,7 @@
     }
 
     if (!preferredVideoId) {
+      pendingSelectedVideo = null;
       void selectVideo(videos[0].id);
       return;
     }
@@ -484,6 +512,14 @@
     );
     let scannedPages = 0;
     const targetChannelId = selectedChannelId;
+    const pendingSelectedVideoRequest =
+      hasSelectedVideo || !targetChannelId
+        ? Promise.resolve(null)
+        : resolvePendingSelectedVideo(preferredVideoId, targetChannelId);
+
+    if (!loadingContent && contentText.trim().length === 0) {
+      void loadContent();
+    }
 
     while (
       !hasSelectedVideo &&
@@ -513,13 +549,20 @@
     }
 
     if (!hasSelectedVideo) {
+      const restoredVideo = await pendingSelectedVideoRequest;
+      if (
+        restoredVideo &&
+        selectedChannelId === targetChannelId &&
+        selectedVideoId === preferredVideoId
+      ) {
+        return;
+      }
+
       void selectVideo(videos[0].id);
       return;
     }
 
-    if (!loadingContent && contentText.trim().length === 0) {
-      void loadContent();
-    }
+    pendingSelectedVideo = null;
   }
 
   async function applyChannelSnapshot(
@@ -545,7 +588,10 @@
       videos = snapshot.videos;
       offset = snapshot.videos.length;
       hasMore = snapshot.videos.length === limit;
-      void putCachedSnapshot(snapshot);
+      void putCachedViewSnapshot(
+        buildWorkspaceSnapshotCacheKey(channelId, videoTypeFilter, isAck),
+        snapshot,
+      );
       await hydrateSelectedVideo(preferredVideoId, isAck);
     } catch (error) {
       if (!silent || !errorMessage) {
@@ -684,7 +730,7 @@
   }
 
   async function deleteExistingHighlight(highlightId: number) {
-    if (!selectedVideoId) {
+    if (!selectedVideoId || !isOperator) {
       return;
     }
 
@@ -847,11 +893,18 @@
     void (async () => {
       const selectedChannelIdAtMount = selectedChannelId;
       const selectedVideoIdAtMount = selectedVideoId;
+      const acknowledgedAtMount = resolveAcknowledgedParam(acknowledgedFilter);
 
       const [cachedChannels, cachedSnapshot, cachedMeta] = await Promise.all([
         getCachedChannels(),
         selectedChannelIdAtMount
-          ? getCachedSnapshot(selectedChannelIdAtMount)
+          ? getCachedViewSnapshot(
+              buildWorkspaceSnapshotCacheKey(
+                selectedChannelIdAtMount,
+                videoTypeFilter,
+                acknowledgedAtMount,
+              ),
+            )
           : Promise.resolve(null),
         getCachedBootstrapMeta(),
       ]);
@@ -872,10 +925,13 @@
           selectedChannelIdAtMount,
           cachedSnapshot,
           selectedVideoIdAtMount,
+          true,
         );
       }
 
-      void loadChannels(null, true).finally(() => {
+      void loadChannels(null, true, {
+        silent: Boolean(cachedChannels && cachedChannels.length > 0),
+      }).finally(() => {
         viewUrlHydrated = true;
       });
     })();
@@ -889,6 +945,16 @@
       guideOpen = true;
     }
   });
+
+  function buildWorkspaceSnapshotCacheKey(
+    channelId: string,
+    type: VideoTypeFilter,
+    acknowledged: boolean | undefined,
+  ) {
+    const acknowledgedKey =
+      acknowledged === undefined ? "all" : acknowledged ? "ack" : "unack";
+    return `workspace:${channelId}:type=${type}:ack=${acknowledgedKey}:limit=${limit}`;
+  }
 
   async function handleSearchResultSelection(
     result: SearchResult,
@@ -905,84 +971,127 @@
     }
   }
 
+  async function refreshWorkspaceMeta(options?: { bypassCache?: boolean }) {
+    const [aiResult, searchResult] = await Promise.allSettled([
+      isAiAvailable(),
+      getSearchStatus({ bypassCache: options?.bypassCache }),
+    ]);
+
+    let nextAiAvailable = aiAvailable;
+    let nextAiStatus = aiStatus;
+    let nextSearchStatus = searchStatus;
+
+    if (aiResult.status === "fulfilled") {
+      nextAiAvailable = aiResult.value.available;
+      nextAiStatus = aiResult.value.status;
+      aiAvailable = aiResult.value.available;
+      aiStatus = aiResult.value.status;
+    }
+
+    if (searchResult.status === "fulfilled") {
+      nextSearchStatus = searchResult.value;
+      searchStatus = searchResult.value;
+    }
+
+    if (
+      nextAiAvailable !== null &&
+      nextAiStatus !== null &&
+      nextSearchStatus !== null
+    ) {
+      void putCachedBootstrapMeta({
+        ai_available: nextAiAvailable,
+        ai_status: nextAiStatus,
+        search_status: nextSearchStatus,
+      });
+    }
+  }
+
   async function loadChannels(
     preferredChannelId: string | null = null,
     retryUntilBackendReachable = false,
+    options?: { silent?: boolean },
   ) {
-    loadingChannels = true;
-    if (selectedChannelId) {
-      loadingVideos = true;
+    const silent = options?.silent ?? false;
+    const previousSelectedChannelId = selectedChannelId;
+    const previousSelectedVideoId = selectedVideoId;
+    if (!silent) {
+      loadingChannels = true;
+      errorMessage = null;
     }
-    errorMessage = null;
 
     try {
-      const isAck = resolveAcknowledgedParam(acknowledgedFilter);
-      const bootstrap = retryUntilBackendReachable
-        ? await getWorkspaceBootstrapWhenAvailable({
-            selectedChannelId: preferredChannelId ?? selectedChannelId,
-            limit,
-            offset: 0,
-            videoType: videoTypeFilter,
-            acknowledged: isAck,
-            retryDelayMs: 500,
-          })
-        : await getWorkspaceBootstrapWhenAvailable({
-            selectedChannelId: preferredChannelId ?? selectedChannelId,
-            limit,
-            offset: 0,
-            videoType: videoTypeFilter,
-            acknowledged: isAck,
-            retryDelayMs: 0,
-          });
+      const channelList = await listChannelsWhenAvailable({
+        retryDelayMs: retryUntilBackendReachable ? 500 : 0,
+      });
 
-      aiAvailable = bootstrap.ai_available;
-      aiStatus = bootstrap.ai_status;
-      searchStatus = bootstrap.search_status;
-      channels = applySavedChannelOrder(bootstrap.channels, channelOrder);
+      channels = applySavedChannelOrder(channelList, channelOrder);
       syncChannelOrderFromList();
       void putCachedChannels(channels);
-      void putCachedBootstrapMeta({
-        ai_available: bootstrap.ai_available,
-        ai_status: bootstrap.ai_status,
-        search_status: bootstrap.search_status,
-      });
+      void refreshWorkspaceMeta();
+
       const initialChannelId = resolveInitialChannelSelection(
         channels,
-        selectedChannelId,
-        bootstrap.selected_channel_id ?? preferredChannelId,
+        previousSelectedChannelId,
+        preferredChannelId,
       );
+
       if (!initialChannelId) {
         selectedChannelId = null;
         mobileTab = "browse";
         clearSelectedVideoState();
+        videos = [];
         syncDepth = null;
+        offset = 0;
+        hasMore = true;
+        historyExhausted = false;
+        backfillingHistory = false;
+        allowLoadedVideoSyncDepthOverride = false;
       } else {
         const preferredVideoId =
-          initialChannelId === selectedChannelId ? selectedVideoId : null;
+          initialChannelId === previousSelectedChannelId
+            ? previousSelectedVideoId
+            : null;
+        const canReuseRenderedSnapshot =
+          initialChannelId === previousSelectedChannelId && videos.length > 0;
+
         selectedChannelId = initialChannelId;
         resetSummaryQuality();
         resetVideoInfo();
         editing = false;
         clearFormattingFeedback();
-        if (
-          bootstrap.snapshot &&
-          bootstrap.snapshot.channel_id === initialChannelId
-        ) {
-          await applyChannelSnapshot(
-            initialChannelId,
-            bootstrap.snapshot,
-            preferredVideoId,
-          );
-        } else {
+
+        if (!canReuseRenderedSnapshot) {
           clearSelectedVideoState();
+          selectedVideoId = preferredVideoId;
+          videos = [];
+          offset = 0;
+          hasMore = true;
+          historyExhausted = false;
+          backfillingHistory = false;
+          allowLoadedVideoSyncDepthOverride = false;
           syncDepth = null;
+          if (!silent) {
+            loadingVideos = true;
+          }
         }
+
+        await tick();
+        await refreshAndLoadVideos(
+          initialChannelId,
+          false,
+          preferredVideoId,
+          canReuseRenderedSnapshot,
+        );
       }
     } catch (error) {
-      errorMessage = (error as Error).message;
+      if (!silent || !errorMessage) {
+        errorMessage = (error as Error).message;
+      }
     } finally {
-      loadingChannels = false;
-      loadingVideos = false;
+      if (!silent) {
+        loadingChannels = false;
+        loadingVideos = false;
+      }
     }
   }
 
@@ -1030,12 +1139,17 @@
   }
 
   async function handleDeleteChannel(channelId: string) {
+    if (!isOperator) {
+      showDeleteAccessPrompt = true;
+      return;
+    }
+
     channelIdToDelete = channelId;
     showDeleteConfirmation = true;
   }
 
   async function confirmDeleteChannel() {
-    if (!channelIdToDelete) return;
+    if (!channelIdToDelete || !isOperator) return;
     const channelId = channelIdToDelete;
     showDeleteConfirmation = false;
     channelIdToDelete = null;
@@ -1066,6 +1180,16 @@
   function cancelDeleteChannel() {
     showDeleteConfirmation = false;
     channelIdToDelete = null;
+  }
+
+  function cancelDeleteAccessPrompt() {
+    showDeleteAccessPrompt = false;
+  }
+
+  async function confirmDeleteAccessPrompt() {
+    showDeleteAccessPrompt = false;
+    const redirectTo = `${$page.url.pathname}${$page.url.search}`;
+    await goto(`/login?redirectTo=${encodeURIComponent(redirectTo)}`);
   }
 
   $effect(() => {
@@ -1122,6 +1246,7 @@
       refreshedAtByChannel: channelLastRefreshedAt,
       ttlMs: CHANNEL_REFRESH_TTL_MS,
       bypassTtl,
+      initialSilent: silentInitialSnapshot,
       loadSnapshot: () =>
         getChannelSnapshot(channelId, {
           limit,
@@ -1753,15 +1878,38 @@
     return () => clearInterval(timer);
   });
 
+  function mergeUpdatedChannel(updatedChannel: Channel) {
+    channels = channels.map((channel) =>
+      channel.id === updatedChannel.id ? updatedChannel : channel,
+    );
+  }
+
+  async function openChannelOverview(channelId: string) {
+    await goto(`/channels/${encodeURIComponent(channelId)}`);
+  }
+
+  async function openChannelVideo(
+    channelId: string,
+    videoId: string,
+    switchToContent = false,
+  ) {
+    await selectChannel(channelId, videoId, false);
+    if (switchToContent) {
+      mobileTab = "content";
+    }
+  }
+
   const workspaceSidebarChannelState = $derived({
     channels,
     selectedChannelId,
     loadingChannels,
     addingChannel,
     channelSortMode,
+    canDeleteChannels: isOperator,
   });
   const workspaceSidebarVideoState = $derived({
     videos,
+    pendingSelectedVideo,
     selectedVideoId,
     selectedChannel,
     loadingVideos,
@@ -1787,11 +1935,18 @@
       }
       void selectChannel(channelId, null, true);
     },
+    onOpenChannelOverview: openChannelOverview,
     onDeleteChannel: handleDeleteChannel,
+    onDeleteAccessRequired: () => {
+      showDeleteAccessPrompt = true;
+    },
     onReorderChannels: reorderChannels,
+    onChannelUpdated: mergeUpdatedChannel,
   };
   const workspaceSidebarVideoActions = {
     onSelectVideo: (videoId: string) => void selectVideo(videoId, true),
+    onSelectChannelVideo: (channelId: string, videoId: string) =>
+      void openChannelVideo(channelId, videoId),
     onLoadMoreVideos: loadMoreVideos,
     onVideoTypeFilterChange: setVideoTypeFilter,
     onAcknowledgedFilterChange: setAcknowledgedFilter,
@@ -1802,6 +1957,8 @@
       mobileTab = "content";
       void selectVideo(videoId, true);
     },
+    onSelectChannelVideo: (channelId: string, videoId: string) =>
+      void openChannelVideo(channelId, videoId, true),
   };
   const workspaceContentSelection = $derived({
     mobileVisible: true,
@@ -1841,7 +1998,7 @@
     formattingNoticeVideoId,
     formattingNoticeTone,
   });
-  const workspaceContentActions = {
+  const workspaceContentActions = $derived.by(() => ({
     onBack: () => {
       mobileTab = "browse";
     },
@@ -1857,14 +2014,14 @@
     },
     onToggleAcknowledge: toggleAcknowledge,
     onCreateHighlight: saveSelectionHighlight,
-    onDeleteHighlight: deleteExistingHighlight,
+    onDeleteHighlight: isOperator ? deleteExistingHighlight : undefined,
     onShowChannels: () => {
       mobileTab = "browse";
     },
     onShowVideos: () => {
       mobileTab = "browse";
     },
-  };
+  }));
 </script>
 
 <WorkspaceShell
@@ -1878,6 +2035,7 @@
     width: sidebarWidth,
   })}
     <WorkspaceSidebar
+      videoListMode="per_channel_preview"
       shell={{
         collapsed: sidebarCollapsed,
         width: sidebarWidth,
@@ -1979,6 +2137,7 @@
         class="relative z-10 h-full w-[min(85vw,20rem)] overflow-hidden border-r border-[var(--accent-border-soft)] bg-[var(--surface-strong)] shadow-2xl"
       >
         <WorkspaceSidebar
+          videoListMode="per_channel_preview"
           shell={{
             collapsed: false,
             width: undefined,
@@ -2016,6 +2175,17 @@
     tone="danger"
     onConfirm={confirmDeleteChannel}
     onCancel={cancelDeleteChannel}
+  />
+
+  <ConfirmationModal
+    show={showDeleteAccessPrompt}
+    title="Admin sign-in required"
+    message="Deleting channels is restricted to admins. Sign in to unlock channel management."
+    confirmLabel="Sign in"
+    cancelLabel="Not now"
+    tone="info"
+    onConfirm={confirmDeleteAccessPrompt}
+    onCancel={cancelDeleteAccessPrompt}
   />
 
   <FeatureGuide

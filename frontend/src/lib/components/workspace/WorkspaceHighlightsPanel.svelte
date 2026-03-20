@@ -6,12 +6,14 @@
     selectedVideo = null,
     highlights = [],
     deletingHighlightId = null,
-    onDeleteHighlight = async () => {},
+    onDeleteHighlight = undefined,
   }: {
     selectedVideo?: Video | null;
     highlights?: Highlight[];
     deletingHighlightId?: number | null;
-    onDeleteHighlight?: (highlightId: number) => Promise<void> | void;
+    onDeleteHighlight?:
+      | ((highlightId: number) => Promise<void> | void)
+      | undefined;
   } = $props();
 </script>
 
@@ -61,16 +63,18 @@
               >
                 {formatPublishedAt(highlight.created_at)}
               </span>
-              <button
-                type="button"
-                class="inline-flex items-center rounded-full border border-[var(--border)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] transition-colors hover:border-[var(--danger-border)] hover:text-[var(--danger-foreground)] disabled:cursor-not-allowed disabled:opacity-50"
-                onclick={() => void onDeleteHighlight(highlight.id)}
-                disabled={deletingHighlightId === highlight.id}
-              >
-                {deletingHighlightId === highlight.id
-                  ? "Removing..."
-                  : "Remove"}
-              </button>
+              {#if onDeleteHighlight}
+                <button
+                  type="button"
+                  class="inline-flex items-center rounded-full border border-[var(--border)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] transition-colors hover:border-[var(--danger-border)] hover:text-[var(--danger-foreground)] disabled:cursor-not-allowed disabled:opacity-50"
+                  onclick={() => void onDeleteHighlight(highlight.id)}
+                  disabled={deletingHighlightId === highlight.id}
+                >
+                  {deletingHighlightId === highlight.id
+                    ? "Removing..."
+                    : "Remove"}
+                </button>
+              {/if}
             </div>
           </div>
           <p

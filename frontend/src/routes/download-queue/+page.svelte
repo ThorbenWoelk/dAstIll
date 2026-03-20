@@ -1,5 +1,6 @@
 <script lang="ts">
   import { goto, replaceState as replacePageState } from "$app/navigation";
+  import { page } from "$app/stores";
   import { onMount } from "svelte";
   import {
     addChannel,
@@ -21,6 +22,12 @@
   import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
   import WorkspaceMobileTabBar from "$lib/components/workspace/WorkspaceMobileTabBar.svelte";
   import WorkspaceSidebar from "$lib/components/workspace/WorkspaceSidebar.svelte";
+  import {
+    getCachedChannels,
+    getCachedViewSnapshot,
+    putCachedChannels,
+    putCachedViewSnapshot,
+  } from "$lib/workspace-cache";
   import {
     applySavedChannelOrder,
     buildQueueSnapshotOptions,
@@ -127,6 +134,7 @@
   let acknowledgedFilter = $state<AcknowledgedFilter>("all");
   let errorMessage = $state<string | null>(null);
   let showDeleteConfirmation = $state(false);
+  let showDeleteAccessPrompt = $state(false);
   let channelIdToDelete = $state<string | null>(null);
   let workspaceStateHydrated = $state(false);
   let viewUrlHydrated = $state(false);
@@ -140,6 +148,7 @@
   let aiIndicator = $derived(
     aiStatus ? resolveAiIndicatorPresentation(aiStatus) : null,
   );
+  let isOperator = $derived(Boolean($page.data.isOperator));
   let guideOpen = $state(false);
   let guideStep = $state(0);
   let previousQueueTab = $state<QueueTab>("transcripts");
@@ -317,7 +326,32 @@
 
     void (async () => {
       try {
-        await loadInitial();
+        const selectedChannelIdAtMount = selectedChannelId;
+        const [cachedChannels, cachedSnapshot] = await Promise.all([
+          getCachedChannels(),
+          selectedChannelIdAtMount
+            ? getCachedViewSnapshot(
+                buildQueueSnapshotCacheKey(selectedChannelIdAtMount),
+              )
+            : Promise.resolve(null),
+        ]);
+
+        if (cachedChannels && cachedChannels.length > 0) {
+          channels = applySavedChannelOrder(cachedChannels, channelOrder);
+          syncChannelOrderFromList();
+        }
+
+        if (cachedSnapshot && selectedChannelIdAtMount) {
+          await applyChannelSnapshot(
+            selectedChannelIdAtMount,
+            cachedSnapshot,
+            true,
+          );
+        }
+
+        await loadInitial({
+          silent: Boolean(cachedChannels && cachedChannels.length > 0),
+        });
       } finally {
         viewUrlHydrated = true;
       }
@@ -351,6 +385,13 @@
 
   function setSyncSnapshot() {
     lastSyncedAt = new Date();
+  }
+
+  function buildQueueSnapshotCacheKey(channelId: string) {
+    const acknowledged = resolveAcknowledgedParam(acknowledgedFilter);
+    const acknowledgedKey =
+      acknowledged === undefined ? "all" : acknowledged ? "ack" : "unack";
+    return `queue:${channelId}:tab=${queueTab}:type=${videoTypeFilter}:ack=${acknowledgedKey}:limit=${limit}`;
   }
 
   function syncChannelOrderFromList() {
@@ -432,6 +473,10 @@
       videos = snapshot.videos;
       offset = snapshot.videos.length;
       hasMore = snapshot.videos.length === limit;
+      void putCachedViewSnapshot(
+        buildQueueSnapshotCacheKey(channelId),
+        snapshot,
+      );
       setSyncSnapshot();
     } catch (error) {
       if (!silent || !errorMessage) {
@@ -444,9 +489,12 @@
     }
   }
 
-  async function loadInitial() {
-    loadingChannels = true;
-    errorMessage = null;
+  async function loadInitial(options?: { silent?: boolean }) {
+    const silent = options?.silent ?? false;
+    if (!silent) {
+      loadingChannels = true;
+      errorMessage = null;
+    }
 
     try {
       const channelList = await listChannelsWhenAvailable({
@@ -454,7 +502,10 @@
       });
       channels = applySavedChannelOrder(channelList, channelOrder);
       syncChannelOrderFromList();
-      loadingChannels = false;
+      void putCachedChannels(channels);
+      if (!silent) {
+        loadingChannels = false;
+      }
 
       const initialChannelId = resolveInitialChannelSelection(
         channels,
@@ -469,7 +520,7 @@
         mobileTab = "browse";
       } else {
         selectedChannelId = initialChannelId;
-        void refreshAndLoadVideos(initialChannelId);
+        void refreshAndLoadVideos(initialChannelId, silent);
       }
 
       void refreshAiStatus((status) => {
@@ -478,9 +529,13 @@
         aiStatus = "offline";
       });
     } catch (error) {
-      errorMessage = (error as Error).message;
+      if (!silent || !errorMessage) {
+        errorMessage = (error as Error).message;
+      }
     } finally {
-      loadingChannels = false;
+      if (!silent) {
+        loadingChannels = false;
+      }
     }
   }
 
@@ -546,12 +601,17 @@
   }
 
   async function handleDeleteChannel(channelId: string) {
+    if (!isOperator) {
+      showDeleteAccessPrompt = true;
+      return;
+    }
+
     channelIdToDelete = channelId;
     showDeleteConfirmation = true;
   }
 
   async function confirmDeleteChannel() {
-    if (!channelIdToDelete) return;
+    if (!channelIdToDelete || !isOperator) return;
     const channelId = channelIdToDelete;
     showDeleteConfirmation = false;
     channelIdToDelete = null;
@@ -581,6 +641,16 @@
     channelIdToDelete = null;
   }
 
+  function cancelDeleteAccessPrompt() {
+    showDeleteAccessPrompt = false;
+  }
+
+  async function confirmDeleteAccessPrompt() {
+    showDeleteAccessPrompt = false;
+    const redirectTo = `${$page.url.pathname}${$page.url.search}`;
+    await goto(`/login?redirectTo=${encodeURIComponent(redirectTo)}`);
+  }
+
   function reorderChannels(nextOrder: string[]) {
     channels = applySavedChannelOrder(channels, nextOrder);
     channelOrder = nextOrder;
@@ -599,6 +669,7 @@
       channelId,
       refreshedAtByChannel: channelLastRefreshedAt,
       ttlMs: CHANNEL_REFRESH_TTL_MS,
+      initialSilent: silentInitialSnapshot,
       loadSnapshot: () => getChannelSnapshot(channelId, snapshotOptions),
       applySnapshot: (snapshot, silent = false) =>
         applyChannelSnapshot(channelId, snapshot, silent),
@@ -742,6 +813,7 @@
     loadingChannels,
     addingChannel,
     channelSortMode,
+    canDeleteChannels: isOperator,
   });
   const queueSidebarVideoState = $derived({
     videos,
@@ -771,6 +843,9 @@
       void selectChannel(channelId, true);
     },
     onDeleteChannel: handleDeleteChannel,
+    onDeleteAccessRequired: () => {
+      showDeleteAccessPrompt = true;
+    },
     onReorderChannels: reorderChannels,
   };
   const queueSidebarVideoActions = {
@@ -880,6 +955,17 @@
     tone="danger"
     onConfirm={confirmDeleteChannel}
     onCancel={cancelDeleteChannel}
+  />
+
+  <ConfirmationModal
+    show={showDeleteAccessPrompt}
+    title="Admin sign-in required"
+    message="Deleting channels is restricted to admins. Sign in to unlock channel management."
+    confirmLabel="Sign in"
+    cancelLabel="Not now"
+    tone="info"
+    onConfirm={confirmDeleteAccessPrompt}
+    onCancel={cancelDeleteAccessPrompt}
   />
 
   <FeatureGuide

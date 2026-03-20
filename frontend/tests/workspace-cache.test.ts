@@ -11,10 +11,12 @@ import {
   getCachedBootstrapMeta,
   getCachedChannels,
   getCachedSnapshot,
+  getCachedViewSnapshot,
   openWorkspaceCache,
   putCachedBootstrapMeta,
   putCachedChannels,
   putCachedSnapshot,
+  putCachedViewSnapshot,
   removeCachedChannel,
 } from "../src/lib/workspace-cache";
 
@@ -85,12 +87,14 @@ describe("workspace cache", () => {
   it("returns null for cache misses", async () => {
     expect(await getCachedChannels()).toBeNull();
     expect(await getCachedSnapshot("missing")).toBeNull();
+    expect(await getCachedViewSnapshot("missing")).toBeNull();
     expect(await getCachedBootstrapMeta()).toBeNull();
   });
 
   it("returns stored channels, snapshots, and bootstrap meta", async () => {
     const channels = [createChannel("alpha"), createChannel("beta")];
     const snapshot = createSnapshot("alpha", ["video-a", "video-b"]);
+    const queueSnapshot = createSnapshot("alpha", ["video-q-1"]);
     const meta = {
       ai_available: true,
       ai_status: "cloud" as const,
@@ -99,10 +103,12 @@ describe("workspace cache", () => {
 
     await putCachedChannels(channels);
     await putCachedSnapshot(snapshot);
+    await putCachedViewSnapshot("queue:alpha", queueSnapshot);
     await putCachedBootstrapMeta(meta);
 
     expect(await getCachedChannels()).toEqual(channels);
     expect(await getCachedSnapshot("alpha")).toEqual(snapshot);
+    expect(await getCachedViewSnapshot("queue:alpha")).toEqual(queueSnapshot);
     expect(await getCachedBootstrapMeta()).toEqual(meta);
   });
 
@@ -114,11 +120,23 @@ describe("workspace cache", () => {
       createSnapshot("alpha", ["video-a-1", "video-a-2"]),
     );
     await putCachedSnapshot(createSnapshot("beta", ["video-b-1"]));
+    await putCachedViewSnapshot(
+      "workspace:alpha",
+      createSnapshot("alpha", ["video-a-1"]),
+    );
+    await putCachedViewSnapshot(
+      "queue:beta",
+      createSnapshot("beta", ["video-b-1"]),
+    );
 
     await removeCachedChannel("alpha");
 
     expect(await getCachedSnapshot("alpha")).toBeNull();
     expect(await getCachedSnapshot("beta")).toEqual(
+      createSnapshot("beta", ["video-b-1"]),
+    );
+    expect(await getCachedViewSnapshot("workspace:alpha")).toBeNull();
+    expect(await getCachedViewSnapshot("queue:beta")).toEqual(
       createSnapshot("beta", ["video-b-1"]),
     );
     expect(await getCachedChannels()).toEqual([channelB]);
@@ -150,9 +168,14 @@ describe("workspace cache", () => {
 
     expect(await getCachedChannels()).toBeNull();
     expect(await getCachedSnapshot("alpha")).toBeNull();
+    expect(await getCachedViewSnapshot("alpha")).toBeNull();
     expect(await getCachedBootstrapMeta()).toBeNull();
     await putCachedChannels([createChannel("alpha")]);
     await putCachedSnapshot(createSnapshot("alpha", ["video-a-1"]));
+    await putCachedViewSnapshot(
+      "workspace:alpha",
+      createSnapshot("alpha", ["video-a-1"]),
+    );
     await putCachedBootstrapMeta({
       ai_available: false,
       ai_status: "offline",

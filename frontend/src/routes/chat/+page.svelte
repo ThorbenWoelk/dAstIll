@@ -3,7 +3,7 @@
   import { page } from "$app/stores";
   import { onMount, tick } from "svelte";
 
-  import { DOCS_URL } from "$lib/app-config";
+  import { CONTACT_EMAIL, DOCS_URL } from "$lib/app-config";
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
   import {
     cancelConversationGeneration,
@@ -43,6 +43,7 @@
   let loadingConversation = $state(false);
   let creatingConversation = $state(false);
   let errorMessage = $state<string | null>(null);
+  let anonymousQuotaMessage = $state<string | null>(null);
   let draft = $state("");
   let streamStage = $state("idle");
   let streamStatuses = $state<TimedStatus[]>([]);
@@ -93,6 +94,7 @@
   let promptFromUrl = $derived(
     $page.url.searchParams.get("prompt")?.trim() ?? "",
   );
+  let isOperator = $derived(Boolean($page.data.isOperator));
   let aiIndicator = $derived(
     aiStatus ? resolveAiIndicatorPresentation(aiStatus) : null,
   );
@@ -313,6 +315,12 @@
   });
 
   $effect(() => {
+    if (isOperator && anonymousQuotaMessage) {
+      anonymousQuotaMessage = null;
+    }
+  });
+
+  $effect(() => {
     const conversationId = activeConversation?.id;
     const isGeneratingTitle = activeConversation?.title_status === "generating";
     if (!conversationId || !isGeneratingTitle) {
@@ -448,6 +456,10 @@
   }
 
   async function handleDeleteConversation(conversationId: string) {
+    if (!isOperator) {
+      return;
+    }
+
     deleteConversationId = conversationId;
   }
 
@@ -456,7 +468,7 @@
   }
 
   async function confirmDeleteConversation() {
-    if (!deleteConversationId) {
+    if (!deleteConversationId || !isOperator) {
       return;
     }
 
@@ -490,7 +502,7 @@
 
   async function handleSend(rawValue: string) {
     const content = rawValue.trim();
-    if (!content) {
+    if (!content || (!isOperator && anonymousQuotaMessage)) {
       return;
     }
 
@@ -633,6 +645,11 @@
       const message = (error as Error).message;
       if (message.includes("Active chat not found")) {
         await refreshConversation(conversationId);
+        return;
+      }
+      if (isAnonymousChatQuotaError(message)) {
+        anonymousQuotaMessage = message;
+        errorMessage = null;
         return;
       }
       errorMessage = message;
@@ -799,6 +816,10 @@
         : null,
     });
   }
+
+  function isAnonymousChatQuotaError(message: string) {
+    return message.includes("Anonymous chat quota exceeded");
+  }
 </script>
 
 <WorkspaceShell currentSection="chat" {aiIndicator} onOpenGuide={openGuide}>
@@ -826,6 +847,7 @@
               activeConversationId={requestedConversationId}
               loading={loadingConversations}
               creating={creatingConversation}
+              canDelete={isOperator}
               onCreate={handleCreateConversation}
               onSelect={handleSelectConversation}
               onRename={handleRenameConversation}
@@ -841,6 +863,7 @@
           activeConversationId={requestedConversationId}
           loading={loadingConversations}
           creating={creatingConversation}
+          canDelete={isOperator}
           onCreate={handleCreateConversation}
           onSelect={handleSelectConversation}
           onRename={handleRenameConversation}
@@ -1106,12 +1129,49 @@
       >
         <ChatInput
           bind:value={draft}
-          disabled={loadingConversation || creatingConversation}
+          disabled={loadingConversation ||
+            creatingConversation ||
+            (!isOperator && Boolean(anonymousQuotaMessage))}
           busy={creatingConversation}
           canCancel={Boolean(streamingConversationId)}
           onSubmit={(value) => void handleSend(value)}
           onCancel={() => void handleCancel()}
         />
+        {#if anonymousQuotaMessage && !isOperator}
+          <div
+            class="mt-3 rounded-[var(--radius-md)] bg-[var(--accent-wash)] px-4 py-3"
+          >
+            <p
+              class="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--accent-strong)]"
+            >
+              Preview limit reached
+            </p>
+            <p
+              class="mt-1.5 text-[13px] leading-relaxed text-[var(--foreground)]"
+            >
+              This is a showcase - guest chat is limited to give everyone a
+              chance to try it.
+            </p>
+            {#if CONTACT_EMAIL}
+              <p
+                class="mt-1.5 text-[12px] leading-relaxed text-[var(--soft-foreground)]"
+              >
+                Want to explore further?
+                <a
+                  href="mailto:{CONTACT_EMAIL}"
+                  class="text-[var(--accent)] hover:text-[var(--accent-strong)] transition-colors"
+                  >{CONTACT_EMAIL}</a
+                >
+              </p>
+            {:else}
+              <p
+                class="mt-1.5 text-[12px] leading-relaxed text-[var(--soft-foreground)]"
+              >
+                Feel free to reach out if you'd like to explore further.
+              </p>
+            {/if}
+          </div>
+        {/if}
       </div>
     </section>
   </div>

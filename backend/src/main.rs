@@ -16,8 +16,8 @@ use dastill::handlers::{channels, chat, content, highlights, search, videos};
 use dastill::read_cache::ReadCache;
 use dastill::search_progress::SearchProgress;
 use dastill::security::{
-    build_cors_layer, enforce_baseline_rate_limit, enforce_expensive_rate_limit, rate_limiter,
-    require_operator_role, require_proxy_auth,
+    build_cors_layer, enforce_anonymous_chat_quota, enforce_baseline_rate_limit,
+    enforce_expensive_rate_limit, rate_limiter, require_operator_role, require_proxy_auth,
 };
 use dastill::services::{
     ChatService, Cooldown, OllamaCore, SearchService, SummarizerService, SummaryEvaluatorService,
@@ -220,6 +220,7 @@ async fn main() -> anyhow::Result<()> {
         chat,
         active_chats: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         chat_store_lock: Arc::new(tokio::sync::Mutex::new(())),
+        anonymous_chat_quota_lock: Arc::new(tokio::sync::Mutex::new(())),
         cloud_cooldown,
         youtube_quota_cooldown,
         transcript_cooldown,
@@ -291,14 +292,19 @@ async fn main() -> anyhow::Result<()> {
         )
         .route(
             "/api/chat/conversations/{id}",
-            delete(chat::delete_conversation),
+            delete(chat::delete_conversation).layer(middleware::from_fn(require_operator_role)),
         )
         .route(
             "/api/chat/conversations/{id}/messages",
-            post(chat::send_message).layer(middleware::from_fn_with_state(
-                state.clone(),
-                enforce_expensive_rate_limit,
-            )),
+            post(chat::send_message)
+                .layer(middleware::from_fn_with_state(
+                    state.clone(),
+                    enforce_expensive_rate_limit,
+                ))
+                .layer(middleware::from_fn_with_state(
+                    state.clone(),
+                    enforce_anonymous_chat_quota,
+                )),
         )
         .route(
             "/api/chat/conversations/{id}/stream",
@@ -412,7 +418,6 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/videos/{id}/transcript/clean",
             post(content::clean_transcript_formatting)
-                .layer(middleware::from_fn(require_operator_role))
                 .layer(middleware::from_fn_with_state(
                     state.clone(),
                     enforce_expensive_rate_limit,
@@ -444,7 +449,10 @@ async fn main() -> anyhow::Result<()> {
             "/api/videos/{id}/highlights",
             get(highlights::list_video_highlights).post(highlights::create_highlight),
         )
-        .route("/api/highlights/{id}", delete(highlights::delete_highlight))
+        .route(
+            "/api/highlights/{id}",
+            delete(highlights::delete_highlight).layer(middleware::from_fn(require_operator_role)),
+        )
         .layer(middleware::from_fn_with_state(
             state.clone(),
             enforce_baseline_rate_limit,

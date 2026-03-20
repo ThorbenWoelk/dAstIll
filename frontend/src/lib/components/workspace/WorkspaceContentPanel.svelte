@@ -86,7 +86,7 @@
       onDraftChange: () => {},
       onToggleAcknowledge: async () => {},
       onCreateHighlight: async (_payload: CreateHighlightRequest) => {},
-      onDeleteHighlight: async (_highlightId: number) => {},
+      onDeleteHighlight: undefined,
       onShowChannels: () => {},
       onShowVideos: () => {},
     },

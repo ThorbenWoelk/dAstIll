@@ -71,6 +71,30 @@ function clearGetRequestCache() {
   inFlightGetRequests.clear();
 }
 
+function invalidateGetRequestCache(matcher: (path: string) => boolean) {
+  for (const key of getResponseCache.keys()) {
+    if (matcher(key)) {
+      getResponseCache.delete(key);
+    }
+  }
+
+  for (const key of inFlightGetRequests.keys()) {
+    if (matcher(key)) {
+      inFlightGetRequests.delete(key);
+    }
+  }
+}
+
+function invalidateChannelReadCache(channelId: string) {
+  invalidateGetRequestCache(
+    (path) =>
+      path.startsWith(`/api/channels/${channelId}/snapshot`) ||
+      path.startsWith(`/api/channels/${channelId}/videos`) ||
+      path.startsWith(`/api/channels/${channelId}/sync-depth`) ||
+      path.startsWith("/api/workspace/bootstrap"),
+  );
+}
+
 export function resetApiCacheForTests() {
   clearGetRequestCache();
 }
@@ -274,7 +298,7 @@ export function refreshChannel(id: string) {
   return request<{ videos_added: number }>(`/api/channels/${id}/refresh`, {
     method: "POST",
   }).then((result) => {
-    clearGetRequestCache();
+    invalidateChannelReadCache(id);
     return result;
   });
 }
@@ -296,7 +320,7 @@ export function backfillChannelVideos(id: string, limit = 15, until?: string) {
     `/api/channels/${id}/backfill?${params.toString()}`,
     { method: "POST" },
   ).then((result) => {
-    clearGetRequestCache();
+    invalidateChannelReadCache(id);
     return result;
   });
 }
@@ -333,6 +357,10 @@ export function updateAcknowledged(videoId: string, acknowledged: boolean) {
     clearGetRequestCache();
     return result;
   });
+}
+
+export function getVideo(videoId: string) {
+  return cachedGetRequest<Video>(`/api/videos/${videoId}`);
 }
 
 export function getVideoInfo(videoId: string) {

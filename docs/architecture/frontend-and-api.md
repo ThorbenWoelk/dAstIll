@@ -19,11 +19,20 @@ The main route is responsible for most user-facing behavior:
 - video list filters
 - transcript / summary / info switching
 - search UI
-- workspace bootstrap and refresh logic
+- channels-first startup and refresh logic
 
-## Bootstrap Pattern
+## Startup Pattern
 
-The frontend does **not** reconstruct workspace state from many small requests on first paint. It uses a combined bootstrap request:
+The main workspace now prioritizes first paint responsiveness:
+
+1. load the subscribed channel list first
+2. render the sidebar and current channel selection immediately
+3. fetch the selected channel snapshot right after render
+4. hydrate transcript / summary content once the selected video is known
+
+That keeps the channel list off the critical path for the heavier snapshot payload.
+
+The backend still exposes a combined convenience endpoint:
 
 ```text
 GET /api/workspace/bootstrap
@@ -37,7 +46,7 @@ That payload includes:
 - initial channel snapshot
 - search status
 
-This keeps the workspace from stitching together too many independent startup requests.
+It is still useful for combined consumers and tests, but the product frontend no longer depends on it for first render.
 
 ## Important API Areas
 

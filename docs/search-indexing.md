@@ -163,4 +163,4 @@ At query time the backend:
 - `vector_index_ready`
 - `retrieval_mode`
 
-The workspace bootstrap also includes `search_status` so indexing progress can appear immediately on first render.
+The frontend caches `search_status` and refreshes it independently during startup, so indexing progress can still appear immediately even though the main workspace now loads channels before fetching the selected-channel snapshot.

@@ -1,6 +1,12 @@
 <script lang="ts">
   import { tick } from "svelte";
   import {
+    getChannelSnapshot,
+    listVideos,
+    refreshChannel,
+    updateChannel,
+  } from "$lib/api";
+  import {
     beginChannelDrag,
     completeChannelDrop,
     finishChannelDrag,
@@ -10,6 +16,7 @@
   } from "$lib/channel-workspace";
   import ChannelCard from "$lib/components/ChannelCard.svelte";
   import CheckIcon from "$lib/components/icons/CheckIcon.svelte";
+  import ChevronIcon from "$lib/components/icons/ChevronIcon.svelte";
   import { clickOutside } from "$lib/actions/click-outside";
   import type { Channel, Video, SyncDepth, VideoTypeFilter } from "$lib/types";
   import type {
@@ -51,6 +58,25 @@
     { value: "ack", label: "Read" },
   ];
 
+  const PREVIEW_VISIBLE_VIDEO_COUNT = 5;
+  const PREVIEW_FETCH_LIMIT = PREVIEW_VISIBLE_VIDEO_COUNT + 1;
+  const FULL_FETCH_BATCH = 50;
+
+  type ChannelVideoCollectionLoadMode = "preview" | "all";
+
+  type ChannelVideoCollectionState = {
+    videos: Video[];
+    expanded: boolean;
+    loading: boolean;
+    loadedMode: ChannelVideoCollectionLoadMode | null;
+    hasMoreThanPreview: boolean;
+    filterKey: string | null;
+    requestKey: string | null;
+    syncDepth: SyncDepth | null;
+    earliestSyncDateInput: string;
+    savingSyncDate: boolean;
+  };
+
   let {
     shell = {
       collapsed: false,
@@ -64,16 +90,19 @@
       loadingChannels: false,
       addingChannel: false,
       channelSortMode: "custom",
+      canDeleteChannels: false,
     },
     channelActions = {
       onChannelSortModeChange: (_next: ChannelSortMode) => {},
       onAddChannel: async (_input: string) => false,
       onSelectChannel: async (_channelId: string) => {},
       onDeleteChannel: async (_channelId: string) => {},
+      onDeleteAccessRequired: () => {},
       onReorderChannels: (_nextOrder: string[]) => {},
     },
     videoState = {
       videos: [],
+      pendingSelectedVideo: null,
       selectedVideoId: null,
       selectedChannel: null,
       loadingVideos: false,
@@ -88,16 +117,19 @@
     },
     videoActions = {
       onSelectVideo: async (_videoId: string) => {},
+      onSelectChannelVideo: async (_channelId: string, _videoId: string) => {},
       onLoadMoreVideos: async () => {},
       onVideoTypeFilterChange: async (_value: VideoTypeFilter) => {},
       onAcknowledgedFilterChange: async (_value: AcknowledgedFilter) => {},
     },
+    videoListMode = "selected_channel",
   }: {
     shell?: WorkspaceSidebarShellProps;
     channelState?: WorkspaceSidebarChannelState;
     channelActions?: WorkspaceSidebarChannelActions;
     videoState?: WorkspaceSidebarVideoState;
     videoActions?: WorkspaceSidebarVideoActions;
+    videoListMode?: "selected_channel" | "per_channel_preview";
   } = $props();
 
   let collapsed = $derived(shell.collapsed);
@@ -110,16 +142,25 @@
   let loadingChannels = $derived(channelState.loadingChannels);
   let addingChannel = $derived(channelState.addingChannel);
   let channelSortMode = $derived(channelState.channelSortMode);
+  let canDeleteChannels = $derived(channelState.canDeleteChannels ?? false);
 
   let onChannelSortModeChange = $derived(
     channelActions.onChannelSortModeChange,
   );
   let onAddChannel = $derived(channelActions.onAddChannel);
   let onSelectChannel = $derived(channelActions.onSelectChannel);
+  let onOpenChannelOverview = $derived(channelActions.onOpenChannelOverview);
   let onDeleteChannel = $derived(channelActions.onDeleteChannel);
+  let onDeleteAccessRequired = $derived(
+    channelActions.onDeleteAccessRequired ?? (() => {}),
+  );
   let onReorderChannels = $derived(channelActions.onReorderChannels);
+  let onChannelUpdated = $derived(
+    channelActions.onChannelUpdated ?? (() => {}),
+  );
 
   let videos = $derived(videoState.videos);
+  let pendingSelectedVideo = $derived(videoState.pendingSelectedVideo ?? null);
   let selectedVideoId = $derived(videoState.selectedVideoId);
   let selectedChannel = $derived(videoState.selectedChannel);
   let loadingVideos = $derived(videoState.loadingVideos);
@@ -135,6 +176,7 @@
   );
 
   let onSelectVideo = $derived(videoActions.onSelectVideo);
+  let onSelectChannelVideo = $derived(videoActions.onSelectChannelVideo);
   let onLoadMoreVideos = $derived(videoActions.onLoadMoreVideos);
   let onVideoTypeFilterChange = $derived(videoActions.onVideoTypeFilterChange);
   let onAcknowledgedFilterChange = $derived(
@@ -151,6 +193,10 @@
   let channelInputElement = $state<HTMLInputElement | null>(null);
   let reorderAnnouncement = $state("");
   let filterMenuOpen = $state(false);
+  let syncDatePickerChannelId = $state<string | null>(null);
+  let channelVideoCollections = $state<
+    Record<string, ChannelVideoCollectionState>
+  >({});
 
   let filteredChannels = $derived(
     filterChannels(channels, channelSearchQuery, channelSortMode),
@@ -166,6 +212,244 @@
     if (acknowledgedFilter !== "all")
       labels.push(acknowledgedFilter === "ack" ? "Read" : "Unread");
     return labels.join(" · ");
+  });
+  let showPendingSelectedVideo = $derived(
+    Boolean(
+      pendingSelectedVideo &&
+      selectedVideoId === pendingSelectedVideo.id &&
+      !videos.some((video) => video.id === pendingSelectedVideo.id),
+    ),
+  );
+
+  function createEmptyChannelVideoCollection(): ChannelVideoCollectionState {
+    return {
+      videos: [],
+      expanded: false,
+      loading: false,
+      loadedMode: null,
+      hasMoreThanPreview: false,
+      filterKey: null,
+      requestKey: null,
+      syncDepth: null,
+      earliestSyncDateInput: "",
+      savingSyncDate: false,
+    };
+  }
+
+  function ensureChannelVideoCollection(channelId: string) {
+    return (channelVideoCollections[channelId] ??=
+      createEmptyChannelVideoCollection());
+  }
+
+  function resolveAcknowledgedParam(filter: AcknowledgedFilter) {
+    if (filter === "ack") return true;
+    if (filter === "unack") return false;
+    return undefined;
+  }
+
+  function getChannelVideoCollectionFilterKey() {
+    return `${videoTypeFilter}:${acknowledgedFilter}`;
+  }
+
+  function supportsMode(
+    state: ChannelVideoCollectionState,
+    filterKey: string,
+    mode: ChannelVideoCollectionLoadMode,
+  ) {
+    return (
+      state.filterKey === filterKey &&
+      (state.loadedMode === "all" || state.loadedMode === mode)
+    );
+  }
+
+  function resolveSyncDateInputValue(
+    channel: Channel,
+    syncDepthValue: SyncDepth | null,
+  ) {
+    const effective = channel.earliest_sync_date_user_set
+      ? channel.earliest_sync_date
+      : (syncDepthValue?.derived_earliest_ready_date ??
+        channel.earliest_sync_date ??
+        null);
+
+    return effective ? new Date(effective).toISOString().split("T")[0] : "";
+  }
+
+  function displayedChannelVideos(state: ChannelVideoCollectionState) {
+    return state.expanded
+      ? state.videos
+      : state.videos.slice(0, PREVIEW_VISIBLE_VIDEO_COUNT);
+  }
+
+  async function loadChannelVideoCollection(
+    channel: Channel,
+    mode: ChannelVideoCollectionLoadMode,
+  ) {
+    const state = ensureChannelVideoCollection(channel.id);
+    const filterKey = getChannelVideoCollectionFilterKey();
+
+    if (state.loading && state.filterKey === filterKey) {
+      return;
+    }
+
+    if (supportsMode(state, filterKey, mode)) {
+      return;
+    }
+
+    const requestKey = `${channel.id}:${filterKey}:${mode}:${Date.now()}`;
+    state.loading = true;
+    state.requestKey = requestKey;
+
+    const acknowledged = resolveAcknowledgedParam(acknowledgedFilter);
+    const initialLimit =
+      mode === "all" ? FULL_FETCH_BATCH : PREVIEW_FETCH_LIMIT;
+
+    try {
+      const snapshot = await getChannelSnapshot(channel.id, {
+        limit: initialLimit,
+        offset: 0,
+        videoType: videoTypeFilter,
+        acknowledged,
+      });
+
+      let nextVideos = [...snapshot.videos];
+
+      if (mode === "all") {
+        let nextOffset = nextVideos.length;
+        let nextHasMore = nextVideos.length === FULL_FETCH_BATCH;
+
+        while (nextHasMore) {
+          const batch = await listVideos(
+            channel.id,
+            FULL_FETCH_BATCH,
+            nextOffset,
+            videoTypeFilter,
+            acknowledged,
+          );
+          nextVideos = [...nextVideos, ...batch];
+          nextOffset += batch.length;
+          nextHasMore = batch.length === FULL_FETCH_BATCH;
+        }
+      }
+
+      const current = channelVideoCollections[channel.id];
+      if (!current || current.requestKey !== requestKey) {
+        return;
+      }
+
+      current.videos = nextVideos;
+      current.loadedMode = mode;
+      current.loading = false;
+      current.filterKey = filterKey;
+      current.requestKey = null;
+      current.hasMoreThanPreview =
+        nextVideos.length > PREVIEW_VISIBLE_VIDEO_COUNT;
+      current.syncDepth = snapshot.sync_depth;
+      current.earliestSyncDateInput = resolveSyncDateInputValue(
+        channel,
+        snapshot.sync_depth,
+      );
+    } catch {
+      const current = channelVideoCollections[channel.id];
+      if (!current || current.requestKey !== requestKey) {
+        return;
+      }
+
+      current.loading = false;
+      current.requestKey = null;
+    }
+  }
+
+  async function toggleChannelVideoCollection(channel: Channel) {
+    const state = ensureChannelVideoCollection(channel.id);
+    if (state.expanded) {
+      state.expanded = false;
+      return;
+    }
+
+    state.expanded = true;
+    await loadChannelVideoCollection(channel, "all");
+  }
+
+  async function handleChannelHeaderClick(channelId: string) {
+    if (collapsed) onToggleCollapse();
+    if (onOpenChannelOverview) {
+      await onOpenChannelOverview(channelId);
+      return;
+    }
+
+    await onSelectChannel(channelId);
+  }
+
+  async function handleChannelVideoClick(channelId: string, videoId: string) {
+    if (collapsed) onToggleCollapse();
+    if (onSelectChannelVideo) {
+      await onSelectChannelVideo(channelId, videoId);
+      return;
+    }
+
+    await onSelectVideo(videoId);
+  }
+
+  async function saveChannelSyncDate(channel: Channel) {
+    const state = ensureChannelVideoCollection(channel.id);
+    if (!state.earliestSyncDateInput || state.savingSyncDate) {
+      return;
+    }
+
+    state.savingSyncDate = true;
+
+    try {
+      const updatedChannel = await updateChannel(channel.id, {
+        earliest_sync_date: new Date(state.earliestSyncDateInput).toISOString(),
+        earliest_sync_date_user_set: true,
+      });
+      onChannelUpdated(updatedChannel);
+      await refreshChannel(channel.id);
+      await loadChannelVideoCollection(
+        updatedChannel,
+        state.expanded ? "all" : "preview",
+      );
+    } finally {
+      const current = ensureChannelVideoCollection(channel.id);
+      current.savingSyncDate = false;
+    }
+  }
+
+  $effect(() => {
+    if (videoListMode !== "per_channel_preview") {
+      return;
+    }
+
+    const filterKey = getChannelVideoCollectionFilterKey();
+    const visibleChannelIds = new Set(
+      filteredChannels.map((channel) => channel.id),
+    );
+
+    for (const channel of filteredChannels) {
+      const state = ensureChannelVideoCollection(channel.id);
+      const desiredMode = state.expanded ? "all" : "preview";
+      if (supportsMode(state, filterKey, desiredMode)) {
+        continue;
+      }
+
+      void loadChannelVideoCollection(channel, desiredMode);
+    }
+
+    for (const channelId of Object.keys(channelVideoCollections)) {
+      if (
+        !visibleChannelIds.has(channelId) &&
+        !channels.some((channel) => channel.id === channelId)
+      ) {
+        delete channelVideoCollections[channelId];
+      }
+    }
+  });
+
+  $effect(() => {
+    if (!canDeleteChannels && manageChannels) {
+      manageChannels = false;
+    }
   });
 
   async function handleChannelSubmit(event: SubmitEvent) {
@@ -293,25 +577,8 @@
         class="inline-flex h-7 w-7 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-60 transition-all hover:bg-[var(--accent-wash)] hover:opacity-100"
         onclick={onToggleCollapse}
         aria-label="Expand channel sidebar"
-        data-tooltip="Channels"
-        data-tooltip-placement="right"
       >
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.7"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          ><path d="M15 18l-6-6 6-6" /><line
-            x1="20"
-            y1="4"
-            x2="20"
-            y2="20"
-          /></svg
-        >
+        <ChevronIcon direction="right" />
       </button>
     </div>
 
@@ -366,9 +633,12 @@
         <button
           type="button"
           class={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${manageChannels ? "bg-[var(--accent-wash)] text-[var(--danger)]" : "text-[var(--soft-foreground)] opacity-55 hover:bg-[var(--accent-wash)] hover:opacity-100"}`}
-          data-tooltip={manageChannels ? "Exit manage mode" : "Manage"}
-          data-tooltip-placement="bottom"
           onclick={() => {
+            if (!canDeleteChannels) {
+              onDeleteAccessRequired();
+              return;
+            }
+
             manageChannels = !manageChannels;
           }}
           aria-label={manageChannels ? "Exit manage mode" : "Manage channels"}
@@ -390,8 +660,6 @@
         <button
           type="button"
           class={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${channelInputOpen ? "bg-[var(--accent-wash)] text-[var(--accent)]" : "text-[var(--soft-foreground)] opacity-55 hover:bg-[var(--accent-wash)] hover:opacity-100"}`}
-          data-tooltip={channelInputOpen ? "Close follow" : "Follow channel"}
-          data-tooltip-placement="bottom"
           onclick={() => void toggleChannelInput()}
           aria-label={channelInputOpen
             ? "Close follow channel"
@@ -418,8 +686,6 @@
         <button
           type="button"
           class={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${channelSearchOpen ? "bg-[var(--accent-wash)] text-[var(--accent)]" : "text-[var(--soft-foreground)] opacity-55 hover:bg-[var(--accent-wash)] hover:opacity-100"}`}
-          data-tooltip={channelSearchOpen ? "Close search" : "Search"}
-          data-tooltip-placement="bottom"
           onclick={() => {
             channelSearchOpen = !channelSearchOpen;
             if (!channelSearchOpen) channelSearchQuery = "";
@@ -457,12 +723,11 @@
             onclick={() => {
               filterMenuOpen = !filterMenuOpen;
             }}
-            disabled={!selectedChannelId || loadingVideos}
+            disabled={videoListMode !== "per_channel_preview" &&
+              (!selectedChannelId || loadingVideos)}
             aria-label="Video filters"
             aria-haspopup="menu"
             aria-expanded={filterMenuOpen}
-            data-tooltip="Filters"
-            data-tooltip-placement="bottom"
           >
             <svg
               width="12"
@@ -541,25 +806,8 @@
           class="inline-flex h-6 w-6 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-55 transition-all hover:bg-[var(--accent-wash)] hover:opacity-100"
           onclick={onToggleCollapse}
           aria-label="Collapse sidebar"
-          data-tooltip="Collapse"
-          data-tooltip-placement="bottom"
         >
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            ><path d="M15 18l-6-6 6-6" /><line
-              x1="20"
-              y1="4"
-              x2="20"
-              y2="20"
-            /></svg
-          >
+          <ChevronIcon direction="left" />
         </button>
       </div>
     </div>
@@ -706,10 +954,10 @@
     <div class="sr-only" aria-live="polite">{reorderAnnouncement}</div>
 
     <div
-      class="custom-scrollbar mt-2 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-4"
+      class="custom-scrollbar mt-2 flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-2 pb-4"
       aria-busy={loadingChannels}
     >
-      {#if loadingChannels}
+      {#if loadingChannels && channels.length === 0}
         <div class="space-y-3 px-1" role="status" aria-live="polite">
           {#each Array.from({ length: 6 }) as _, index (index)}
             <div class="flex animate-pulse items-center gap-3 px-2 py-2">
@@ -740,8 +988,28 @@
           No channels match your search.
         </p>
       {:else}
+        {#if loadingChannels}
+          <div
+            class="flex items-center gap-2 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--soft-foreground)] opacity-60"
+            role="status"
+            aria-live="polite"
+          >
+            <span
+              class="h-3 w-3 animate-spin rounded-full border-[1.5px] border-[var(--border)] border-t-[var(--accent)]"
+              aria-hidden="true"
+            ></span>
+            Loading channels
+          </div>
+        {/if}
+
         {#each filteredChannels as channel (channel.id)}
-          {@const isExpanded = selectedChannelId === channel.id}
+          {@const channelVideoCollection =
+            channelVideoCollections[channel.id] ??
+            createEmptyChannelVideoCollection()}
+          {@const isExpanded =
+            videoListMode === "per_channel_preview"
+              ? channelVideoCollection.expanded
+              : selectedChannelId === channel.id}
           {@const dropIndicatorEdge =
             dragOverChannelId === channel.id
               ? resolveChannelDropIndicatorEdge(
@@ -770,7 +1038,7 @@
               </div>
             {/if}
 
-            {#if isExpanded && (refreshingChannel || (loadingVideos && videos.length === 0))}
+            {#if videoListMode !== "per_channel_preview" && isExpanded && (refreshingChannel || (loadingVideos && videos.length === 0))}
               <div class="flex items-center gap-1.5 px-2 pb-1">
                 <span
                   class="h-3 w-3 animate-spin rounded-full border-[1.5px] border-[var(--border)] border-t-[var(--accent)]"
@@ -785,29 +1053,232 @@
             {/if}
 
             <div
-              class={isExpanded ? "sticky top-0 z-10 bg-[var(--surface)]" : ""}
+              class={videoListMode !== "per_channel_preview" && isExpanded
+                ? "sticky top-0 z-10 bg-[var(--surface)]"
+                : ""}
             >
-              <ChannelCard
-                {channel}
-                active={isExpanded}
-                showDelete={manageChannels}
-                draggableEnabled={!mobileVisible && manualReorderEnabled}
-                loading={channel.id.startsWith("temp-")}
-                dragging={draggedChannelId === channel.id}
-                dragOver={dragOverChannelId === channel.id &&
-                  draggedChannelId !== channel.id}
-                onSelect={() => void onSelectChannel(channel.id)}
-                onDragStart={(event) =>
-                  handleChannelDragStart(channel.id, event)}
-                onDragOver={(event) => handleChannelDragOver(channel.id, event)}
-                onDrop={(event) => handleChannelDrop(channel.id, event)}
-                onDragEnd={handleChannelDragEnd}
-                onDelete={() => void onDeleteChannel(channel.id)}
-              />
+              {#if videoListMode === "per_channel_preview"}
+                <div class="flex items-center gap-1.5">
+                  <div class="min-w-0 flex-1">
+                    <ChannelCard
+                      {channel}
+                      active={selectedChannelId === channel.id}
+                      showDelete={canDeleteChannels && manageChannels}
+                      draggableEnabled={!mobileVisible && manualReorderEnabled}
+                      loading={channel.id.startsWith("temp-")}
+                      dragging={draggedChannelId === channel.id}
+                      dragOver={dragOverChannelId === channel.id &&
+                        draggedChannelId !== channel.id}
+                      onSelect={() => void handleChannelHeaderClick(channel.id)}
+                      onDragStart={(event) =>
+                        handleChannelDragStart(channel.id, event)}
+                      onDragOver={(event) =>
+                        handleChannelDragOver(channel.id, event)}
+                      onDrop={(event) => handleChannelDrop(channel.id, event)}
+                      onDragEnd={handleChannelDragEnd}
+                      onDelete={() => void onDeleteChannel(channel.id)}
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    class={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-all hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] ${isExpanded ? "bg-[var(--accent-wash)] text-[var(--accent-strong)]" : "opacity-55"}`}
+                    onclick={() => void toggleChannelVideoCollection(channel)}
+                    aria-label={isExpanded
+                      ? `Collapse ${channel.name} videos`
+                      : `Show all ${channel.name} videos`}
+                  >
+                    <ChevronIcon direction={isExpanded ? "down" : "right"} />
+                  </button>
+                </div>
+              {:else}
+                <ChannelCard
+                  {channel}
+                  active={isExpanded}
+                  showDelete={canDeleteChannels && manageChannels}
+                  draggableEnabled={!mobileVisible && manualReorderEnabled}
+                  loading={channel.id.startsWith("temp-")}
+                  dragging={draggedChannelId === channel.id}
+                  dragOver={dragOverChannelId === channel.id &&
+                    draggedChannelId !== channel.id}
+                  onSelect={() => void onSelectChannel(channel.id)}
+                  onDragStart={(event) =>
+                    handleChannelDragStart(channel.id, event)}
+                  onDragOver={(event) =>
+                    handleChannelDragOver(channel.id, event)}
+                  onDrop={(event) => handleChannelDrop(channel.id, event)}
+                  onDragEnd={handleChannelDragEnd}
+                  onDelete={() => void onDeleteChannel(channel.id)}
+                />
+              {/if}
             </div>
           </div>
 
-          {#if isExpanded}
+          {#if videoListMode === "per_channel_preview"}
+            <div
+              class="mt-1 pb-1"
+              id={selectedChannelId === channel.id ? "videos" : undefined}
+            >
+              {#if channelVideoCollection.loading && channelVideoCollection.videos.length === 0}
+                <div class="space-y-1 px-1" role="status" aria-live="polite">
+                  {#each Array.from({ length: 4 }) as _, i (i)}
+                    <div class="animate-pulse px-2 py-1.5">
+                      <div
+                        class="h-3 w-11/12 rounded-full bg-[var(--border)] opacity-60"
+                      ></div>
+                      <div
+                        class="mt-1 h-2 w-1/3 rounded-full bg-[var(--border)] opacity-40"
+                      ></div>
+                    </div>
+                  {/each}
+                </div>
+              {:else if channelVideoCollection.videos.length === 0}
+                <p
+                  class="px-3 py-2 text-[12px] italic text-[var(--soft-foreground)] opacity-50"
+                >
+                  No videos yet.
+                </p>
+              {:else}
+                {#each displayedChannelVideos(channelVideoCollection) as video (video.id)}
+                  <button
+                    type="button"
+                    class={`group flex w-full items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${selectedVideoId === video.id ? "bg-[var(--accent-wash)]" : "hover:bg-[var(--accent-wash)]"}`}
+                    onclick={() =>
+                      void handleChannelVideoClick(channel.id, video.id)}
+                  >
+                    <div class="min-w-0 flex-1">
+                      <p
+                        class="line-clamp-2 text-[12px] font-medium leading-tight tracking-tight text-[var(--foreground)]"
+                      >
+                        {video.title}
+                      </p>
+                      <div class="mt-0.5 flex items-center gap-1.5">
+                        <span
+                          class="text-[10px] text-[var(--soft-foreground)] opacity-50"
+                          >{formatShortDate(video.published_at)}</span
+                        >
+                        {#if video.transcript_status === "loading" || video.summary_status === "loading"}
+                          <span class="relative flex h-1.5 w-1.5"
+                            ><span
+                              class="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--accent)] opacity-75"
+                            ></span><span
+                              class="relative inline-flex h-1.5 w-1.5 rounded-full bg-[var(--accent)]"
+                            ></span></span
+                          >
+                        {:else if video.transcript_status === "failed" || video.summary_status === "failed"}
+                          <svg
+                            class="text-[var(--danger)]"
+                            width="9"
+                            height="9"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="3"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            ><circle cx="12" cy="12" r="10" /><line
+                              x1="12"
+                              y1="8"
+                              x2="12"
+                              y2="12"
+                            /><line x1="12" y1="16" x2="12.01" y2="16" /></svg
+                          >
+                        {/if}
+                      </div>
+                    </div>
+                  </button>
+                {/each}
+
+                {#if channelVideoCollection.loading}
+                  <p
+                    class="px-2 pt-2 text-[10px] text-[var(--soft-foreground)] opacity-50"
+                  >
+                    Loading videos…
+                  </p>
+                {/if}
+
+                {#if !channelVideoCollection.expanded && channelVideoCollection.hasMoreThanPreview}
+                  <button
+                    type="button"
+                    class="mt-1 w-full rounded-[var(--radius-sm)] py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] transition-all hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] disabled:opacity-30"
+                    onclick={() => void toggleChannelVideoCollection(channel)}
+                    disabled={channelVideoCollection.loading}
+                  >
+                    Show all videos
+                  </button>
+                {/if}
+
+                {#if channelVideoCollection.expanded}
+                  <div class="mt-2 px-2 pb-4">
+                    <div class="flex items-center gap-1.5">
+                      <p
+                        class="text-[10px] text-[var(--soft-foreground)] opacity-50"
+                      >
+                        Synced to {formatSyncDate(
+                          resolveDisplayedSyncDepthIso({
+                            videos: channelVideoCollection.videos,
+                            selectedChannel: channel,
+                            syncDepth: channelVideoCollection.syncDepth,
+                            allowLoadedVideoOverride:
+                              channelVideoCollection.loadedMode === "all",
+                          }),
+                        )}
+                      </p>
+                      <button
+                        type="button"
+                        class="inline-flex h-5 w-5 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-50 transition-all hover:opacity-100 hover:text-[var(--foreground)]"
+                        onclick={() =>
+                          (syncDatePickerChannelId =
+                            syncDatePickerChannelId === channel.id
+                              ? null
+                              : channel.id)}
+                        aria-label="Edit sync date"
+                      >
+                        <svg
+                          width="9"
+                          height="9"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2.2"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          aria-hidden="true"
+                          ><path
+                            d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"
+                          /><path d="m15 5 4 4" /></svg
+                        >
+                      </button>
+                    </div>
+
+                    {#if syncDatePickerChannelId === channel.id}
+                      <div class="mt-2 flex items-center gap-2">
+                        <input
+                          type="date"
+                          class="min-w-0 flex-1 rounded-[var(--radius-sm)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] px-2.5 py-2 text-[12px] font-medium transition-colors focus:border-[var(--accent)]/40 focus:outline-none"
+                          bind:value={
+                            channelVideoCollection.earliestSyncDateInput
+                          }
+                          disabled={channelVideoCollection.savingSyncDate}
+                        />
+                        <button
+                          type="button"
+                          class="rounded-[var(--radius-sm)] bg-[var(--foreground)] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--background)] transition-all hover:bg-[var(--accent-strong)] disabled:opacity-30"
+                          onclick={() => void saveChannelSyncDate(channel)}
+                          disabled={!channelVideoCollection.earliestSyncDateInput ||
+                            channelVideoCollection.savingSyncDate}
+                        >
+                          {channelVideoCollection.savingSyncDate
+                            ? "..."
+                            : "Set"}
+                        </button>
+                      </div>
+                    {/if}
+                  </div>
+                {/if}
+              {/if}
+            </div>
+          {:else if isExpanded}
             <div class="mt-1 pb-1" id="videos">
               {#if loadingVideos && videos.length === 0}
                 <div class="space-y-1 px-1" role="status" aria-live="polite">
@@ -829,6 +1300,35 @@
                   No videos yet.
                 </p>
               {:else}
+                {#if showPendingSelectedVideo && pendingSelectedVideo}
+                  <button
+                    type="button"
+                    class="group flex w-full items-center gap-2 rounded-[var(--radius-sm)] bg-[var(--accent-wash)] px-2 py-1.5 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+                    onclick={() => void onSelectVideo(pendingSelectedVideo.id)}
+                  >
+                    <div class="min-w-0 flex-1">
+                      <p
+                        class="line-clamp-2 text-[12px] font-medium leading-tight tracking-tight text-[var(--foreground)]"
+                      >
+                        {pendingSelectedVideo.title}
+                      </p>
+                      <div class="mt-0.5 flex items-center gap-2">
+                        <span
+                          class="text-[10px] text-[var(--soft-foreground)] opacity-50"
+                          >{formatShortDate(
+                            pendingSelectedVideo.published_at,
+                          )}</span
+                        >
+                        <span
+                          class="text-[10px] font-medium text-[var(--accent-strong)]"
+                        >
+                          Restoring selection…
+                        </span>
+                      </div>
+                    </div>
+                  </button>
+                {/if}
+
                 {#each videos as video (video.id)}
                   <button
                     type="button"
@@ -872,19 +1372,6 @@
                               y2="12"
                             /><line x1="12" y1="16" x2="12.01" y2="16" /></svg
                           >
-                        {:else if video.transcript_status === "ready" && video.summary_status === "ready"}
-                          <svg
-                            class="text-[var(--soft-foreground)] opacity-25"
-                            width="9"
-                            height="9"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="3"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            ><polyline points="20 6 9 17 4 12" /></svg
-                          >
                         {/if}
                       </div>
                     </div>
@@ -910,24 +1397,8 @@
 
                 {#if videos.length > 0}
                   <p
-                    class="mt-1 flex items-center gap-1 px-2 text-[10px] text-[var(--soft-foreground)] opacity-50"
+                    class="mt-1 px-2 text-[10px] text-[var(--soft-foreground)] opacity-50"
                   >
-                    <svg
-                      width="9"
-                      height="9"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2.2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      aria-hidden="true"
-                      ><path d="M12 6v6l4 2" /><circle
-                        cx="12"
-                        cy="12"
-                        r="9"
-                      /></svg
-                    >
                     Synced to {formatSyncDate(
                       resolveDisplayedSyncDepthIso({
                         videos,
@@ -941,6 +1412,12 @@
                 {/if}
               {/if}
             </div>
+          {/if}
+          {#if filteredChannels.indexOf(channel) < filteredChannels.length - 1}
+            <hr
+              class="mx-3 my-1 border-t border-[var(--border-soft)] opacity-40"
+              aria-hidden="true"
+            />
           {/if}
         {/each}
         {#if manualReorderEnabled && filteredChannels.length > 0}

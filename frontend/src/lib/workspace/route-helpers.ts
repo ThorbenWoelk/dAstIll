@@ -10,6 +10,7 @@ type ChannelRefreshWorkflowOptions<TSnapshot> = {
   refreshedAtByChannel: Map<string, number>;
   ttlMs: number;
   bypassTtl?: boolean;
+  initialSilent?: boolean;
   loadSnapshot: () => Promise<TSnapshot>;
   applySnapshot: (snapshot: TSnapshot, silent?: boolean) => Promise<void>;
   refreshChannel: () => Promise<unknown>;
@@ -23,6 +24,7 @@ export async function loadChannelSnapshotWithRefresh<TSnapshot>({
   refreshedAtByChannel,
   ttlMs,
   bypassTtl = false,
+  initialSilent = false,
   loadSnapshot,
   applySnapshot,
   refreshChannel,
@@ -31,7 +33,7 @@ export async function loadChannelSnapshotWithRefresh<TSnapshot>({
   onError,
 }: ChannelRefreshWorkflowOptions<TSnapshot>) {
   const snapshot = await loadSnapshot();
-  await applySnapshot(snapshot, false);
+  await applySnapshot(snapshot, initialSilent);
 
   if (
     !bypassTtl &&

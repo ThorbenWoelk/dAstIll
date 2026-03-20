@@ -30,18 +30,23 @@ export interface WorkspaceSidebarChannelState {
   loadingChannels: boolean;
   addingChannel: boolean;
   channelSortMode: ChannelSortMode;
+  canDeleteChannels?: boolean;
 }
 
 export interface WorkspaceSidebarChannelActions {
   onChannelSortModeChange: (next: ChannelSortMode) => void;
   onAddChannel: (input: string) => Promise<boolean> | boolean;
   onSelectChannel: (channelId: string) => Promise<void> | void;
+  onOpenChannelOverview?: (channelId: string) => Promise<void> | void;
   onDeleteChannel: (channelId: string) => Promise<void> | void;
+  onDeleteAccessRequired?: () => void;
   onReorderChannels: (nextOrder: string[]) => void;
+  onChannelUpdated?: (channel: Channel) => void;
 }
 
 export interface WorkspaceSidebarVideoState {
   videos: Video[];
+  pendingSelectedVideo?: Video | null;
   selectedVideoId: string | null;
   selectedChannel: Channel | null;
   loadingVideos: boolean;
@@ -57,6 +62,10 @@ export interface WorkspaceSidebarVideoState {
 
 export interface WorkspaceSidebarVideoActions {
   onSelectVideo: (videoId: string) => Promise<void> | void;
+  onSelectChannelVideo?: (
+    channelId: string,
+    videoId: string,
+  ) => Promise<void> | void;
   onLoadMoreVideos: () => Promise<void> | void;
   onVideoTypeFilterChange: (value: VideoTypeFilter) => Promise<void> | void;
   onAcknowledgedFilterChange: (
@@ -116,7 +125,7 @@ export interface WorkspaceContentActions {
   onDraftChange: (value: string) => void;
   onToggleAcknowledge: () => Promise<void> | void;
   onCreateHighlight: (payload: CreateHighlightRequest) => Promise<void> | void;
-  onDeleteHighlight: (highlightId: number) => Promise<void> | void;
+  onDeleteHighlight?: (highlightId: number) => Promise<void> | void;
   onShowChannels: () => void;
   onShowVideos: () => void;
 }

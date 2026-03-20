@@ -31,6 +31,7 @@ pub struct AppState {
     pub chat: Arc<ChatService>,
     pub active_chats: Arc<Mutex<HashMap<String, ActiveChatHandle>>>,
     pub chat_store_lock: Arc<Mutex<()>>,
+    pub anonymous_chat_quota_lock: Arc<Mutex<()>>,
     pub cloud_cooldown: Arc<CloudCooldown>,
     pub youtube_quota_cooldown: Arc<YouTubeQuotaCooldown>,
     pub transcript_cooldown: Arc<TranscriptCooldown>,

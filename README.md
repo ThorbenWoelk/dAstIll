@@ -103,7 +103,7 @@ To run the application locally, you will need:
 
    `OLLAMA_MODEL` and `SUMMARY_EVALUATOR_MODEL` must be different. If they match, backend startup exits before serving requests so summary evaluation stays independent from summary generation.
 
-   If you run the frontend separately from `start_app.sh`, copy `frontend/.env.example` to `frontend/.env` and set `APP_AUTH_PASSWORD`, `APP_SESSION_SECRET`, `BACKEND_PROXY_TOKEN`, and `BACKEND_API_BASE`.
+   If you run the frontend separately from `start_app.sh`, copy `frontend/.env.example` to `frontend/.env` and set `BACKEND_PROXY_TOKEN`, `BACKEND_API_BASE`, and `PUBLIC_DOCS_URL`. Admin sign-in uses the runtime `ADMIN_PASSWORD` environment variable.
 
 3. **Understand Search Defaults**:
    `SEARCH_SEMANTIC_ENABLED` overrides the runtime default behavior:
@@ -128,8 +128,8 @@ To run the application locally, you will need:
 
    Detached mode starts a background supervisor, performs the usual health checks in the background, and writes its startup output to `start_app.log`. The service logs remain in `backend.log`, `frontend.log`, and `docs.log`.
 
-5. **Sign In Locally**:
-   The frontend now requires an operator session. When started through `./start_app.sh`, the default local password is `local-dev-password` unless you override `APP_AUTH_PASSWORD` before launching the app.
+5. **Admin Sign-In Locally**:
+   Anonymous browsing remains available by default. Admin-only actions use the minimal `/login` route and require `ADMIN_PASSWORD` to be set in the frontend runtime environment.
 
 ## License
 

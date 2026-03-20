@@ -8,6 +8,7 @@
     mobileVisible = false,
     loading = false,
     creating = false,
+    canDelete = false,
     onCreate = async () => {},
     onSelect = (_conversationId: string) => {},
     onRename = async (_conversationId: string, _title: string) => {},
@@ -18,6 +19,7 @@
     mobileVisible?: boolean;
     loading?: boolean;
     creating?: boolean;
+    canDelete?: boolean;
     onCreate?: () => Promise<void> | void;
     onSelect?: (conversationId: string) => void;
     onRename?: (conversationId: string, title: string) => Promise<void> | void;
@@ -159,27 +161,29 @@
                       <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
                     </svg>
                   </button>
-                  <button
-                    type="button"
-                    class="inline-flex h-7 w-7 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]"
-                    aria-label="Delete conversation"
-                    onclick={() => void onDelete(conversation.id)}
-                  >
-                    <svg
-                      width="12"
-                      height="12"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
+                  {#if canDelete}
+                    <button
+                      type="button"
+                      class="inline-flex h-7 w-7 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]"
+                      aria-label="Delete conversation"
+                      onclick={() => void onDelete(conversation.id)}
                     >
-                      <path d="M3 6h18" />
-                      <path d="M8 6V4h8v2" />
-                      <path d="m19 6-1 14H6L5 6" />
-                    </svg>
-                  </button>
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      >
+                        <path d="M3 6h18" />
+                        <path d="M8 6V4h8v2" />
+                        <path d="m19 6-1 14H6L5 6" />
+                      </svg>
+                    </button>
+                  {/if}
                 </div>
               {/if}
             </div>

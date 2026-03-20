@@ -214,9 +214,6 @@
               ? "border-[var(--accent)]/20 bg-[var(--accent-wash-strong)] text-[var(--accent-strong)] shadow-sm"
               : "border-transparent bg-[var(--panel-surface)] text-[var(--soft-foreground)] hover:border-transparent hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]"
           }`}
-          data-tooltip={acknowledged ? "Mark as unread" : "Mark as read"}
-          data-tooltip-anchor="end"
-          data-tooltip-placement="bottom"
           aria-label={acknowledged ? "Mark as unread" : "Mark as read"}
           aria-pressed={acknowledged}
           onclick={onAcknowledgeToggle}
