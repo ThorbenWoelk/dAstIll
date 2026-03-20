@@ -8,9 +8,7 @@ run-name: >-
   }}
 
 on:
-  workflow_run:
-    workflows: ["Checks"]
-    types: [completed]
+  push:
     branches: ["main"]
   workflow_dispatch:
     inputs:
@@ -25,7 +23,7 @@ on:
         default: all
 
 concurrency:
-  group: deploy-${{ github.event.workflow_run.head_sha || github.sha }}-${{ github.event.inputs.target || 'all' }}
+  group: release-${{ github.sha }}-${{ github.event.inputs.target || 'all' }}
   cancel-in-progress: true
 
 env:
@@ -37,133 +35,35 @@ env:
   DOCS_SERVICE: dastill-docs
 
 permissions:
-  actions: read
   contents: read
   id-token: write
 
 jobs:
-  gate:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    outputs:
-      deploy_sha: ${{ steps.plan.outputs.deploy_sha }}
-      target: ${{ steps.plan.outputs.target }}
-      should_deploy: ${{ steps.plan.outputs.should_deploy }}
+  checks:
+    name: Checks
+    uses: ./.github/workflows/checks.yml
 
-    steps:
-      - name: Resolve deploy plan
-        id: plan
-        uses: actions/github-script@v8
-        with:
-          script: |
-            const isManual = context.eventName === 'workflow_dispatch';
-            const deploySha = isManual
-              ? context.sha
-              : context.payload.workflow_run?.head_sha;
-            const target = isManual
-              ? (context.payload.inputs?.target || 'all')
-              : 'all';
-
-            if (isManual) {
-              core.setOutput('deploy_sha', deploySha);
-              core.setOutput('target', target);
-              core.setOutput('should_deploy', 'true');
-              core.notice(`Manual deploy for ${deploySha} targeting ${target}.`);
-              return;
-            }
-
-            const triggeringRun = context.payload.workflow_run;
-            if (
-              !triggeringRun ||
-              triggeringRun.event !== 'push' ||
-              triggeringRun.conclusion !== 'success'
-            ) {
-              core.setOutput('deploy_sha', deploySha || '');
-              core.setOutput('target', target);
-              core.setOutput('should_deploy', 'false');
-              core.notice('Skipping deploy because the triggering workflow run was not a successful push to main.');
-              return;
-            }
-
-            const requiredWorkflows = ['Checks', 'Security'];
-            const deadline = Date.now() + 8 * 60 * 1000;
-            let missing = [...requiredWorkflows];
-
-            while (Date.now() < deadline) {
-              const runs = await github.paginate(
-                github.rest.actions.listWorkflowRunsForRepo,
-                {
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  head_sha: deploySha,
-                  per_page: 100,
-                },
-              );
-
-              const relevantRuns = runs.filter((run) => run.event === 'push');
-              const failed = requiredWorkflows.find((workflowName) =>
-                relevantRuns.some(
-                  (run) =>
-                    run.name === workflowName &&
-                    run.status === 'completed' &&
-                    run.conclusion !== 'success',
-                ),
-              );
-
-              if (failed) {
-                core.setOutput('deploy_sha', deploySha);
-                core.setOutput('target', target);
-                core.setOutput('should_deploy', 'false');
-                core.notice(`Skipping deploy because ${failed} did not succeed for ${deploySha}.`);
-                return;
-              }
-
-              missing = requiredWorkflows.filter((workflowName) =>
-                !relevantRuns.some(
-                  (run) =>
-                    run.name === workflowName &&
-                    run.status === 'completed' &&
-                    run.conclusion === 'success',
-                ),
-              );
-
-              if (missing.length === 0) {
-                break;
-              }
-
-              await new Promise((resolve) => setTimeout(resolve, 10000));
-            }
-
-            core.setOutput('deploy_sha', deploySha);
-            core.setOutput('target', target);
-            core.setOutput('should_deploy', missing.length === 0 ? 'true' : 'false');
-
-            if (missing.length > 0) {
-              core.notice(
-                `Waiting for successful workflow runs on ${deploySha}: ${missing.join(', ')}.`,
-              );
-              return;
-            }
-
-            core.notice(`All deploy prerequisites passed for ${deploySha}.`);
+  security:
+    name: Security
+    uses: ./.github/workflows/security.yml
 
   deploy-backend:
     name: Deploy Backend
-    needs: gate
-    if: needs.gate.outputs.should_deploy == 'true' && (needs.gate.outputs.target == 'all' || needs.gate.outputs.target == 'backend')
+    needs:
+      - checks
+      - security
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.target == 'all' || github.event.inputs.target == 'backend'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     outputs:
       url: ${{ steps.deploy.outputs.url }}
 
     env:
-      IMAGE_TAG: ${{ needs.gate.outputs.deploy_sha }}
+      IMAGE_TAG: ${{ github.sha }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.gate.outputs.deploy_sha }}
 
       - name: Google Auth
         uses: google-github-actions/auth@v3
@@ -212,21 +112,21 @@ jobs:
 
   deploy-docs:
     name: Deploy Docs
-    needs: gate
-    if: needs.gate.outputs.should_deploy == 'true' && (needs.gate.outputs.target == 'all' || needs.gate.outputs.target == 'docs')
+    needs:
+      - checks
+      - security
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.target == 'all' || github.event.inputs.target == 'docs'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     outputs:
       url: ${{ steps.deploy.outputs.url }}
 
     env:
-      IMAGE_TAG: ${{ needs.gate.outputs.deploy_sha }}
+      IMAGE_TAG: ${{ github.sha }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.gate.outputs.deploy_sha }}
 
       - name: Google Auth
         uses: google-github-actions/auth@v3
@@ -258,10 +158,9 @@ jobs:
   resolve-frontend-env:
     name: Resolve Frontend Environment
     needs:
-      - gate
       - deploy-backend
       - deploy-docs
-    if: always() && needs.gate.outputs.should_deploy == 'true' && (needs.gate.outputs.target == 'all' || needs.gate.outputs.target == 'frontend') && (needs.deploy-backend.result == 'success' || needs.deploy-backend.result == 'skipped') && (needs.deploy-docs.result == 'success' || needs.deploy-docs.result == 'skipped')
+    if: always() && (github.event_name != 'workflow_dispatch' || github.event.inputs.target == 'all' || github.event.inputs.target == 'frontend') && (needs.deploy-backend.result == 'success' || needs.deploy-backend.result == 'skipped') && (needs.deploy-docs.result == 'success' || needs.deploy-docs.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
@@ -301,20 +200,19 @@ jobs:
   deploy-frontend:
     name: Deploy Frontend
     needs:
-      - gate
+      - checks
+      - security
       - resolve-frontend-env
-    if: needs.gate.outputs.should_deploy == 'true' && (needs.gate.outputs.target == 'all' || needs.gate.outputs.target == 'frontend')
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.target == 'all' || github.event.inputs.target == 'frontend'
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
     env:
-      IMAGE_TAG: ${{ needs.gate.outputs.deploy_sha }}
+      IMAGE_TAG: ${{ github.sha }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.gate.outputs.deploy_sha }}
 
       - name: Google Auth
         uses: google-github-actions/auth@v3
