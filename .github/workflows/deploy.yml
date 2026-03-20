@@ -1,4 +1,11 @@
-name: Deploy
+name: Release
+
+run-name: >-
+  ${{
+    github.event_name == 'workflow_dispatch'
+      && format('Deploy ({0})', github.event.inputs.target || 'all')
+      || format('Deploy after {0}', github.event.workflow_run.name)
+  }}
 
 on:
   workflow_run:
