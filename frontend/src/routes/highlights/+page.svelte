@@ -4,10 +4,9 @@
   import { isAiAvailable, listHighlights } from "$lib/api";
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
   import { DOCS_URL } from "$lib/app-config";
-  import FeatureGuide, {
-    type TourStep,
-  } from "$lib/components/FeatureGuide.svelte";
+  import FeatureGuide from "$lib/components/FeatureGuide.svelte";
   import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
+  import type { TourStep } from "$lib/feature-guide";
   import type {
     AiStatus,
     HighlightChannelGroup,

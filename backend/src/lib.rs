@@ -6,6 +6,7 @@ pub mod models;
 pub mod read_cache;
 pub mod search_progress;
 pub mod search_query;
+pub mod security;
 pub mod services;
 pub mod state;
 pub mod workers;

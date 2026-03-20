@@ -3,9 +3,11 @@ use std::sync::Arc;
 
 use tokio::sync::{Mutex, RwLock};
 
+use crate::config::SecurityRuntimeConfig;
 use crate::db::Store;
 use crate::read_cache::ReadCache;
 use crate::search_progress::SearchProgress;
+use crate::security::RequestRateLimiter;
 use crate::services::{
     ActiveChatHandle, ChatService, CloudCooldown, SearchService, SummarizerService,
     SummaryEvaluatorService, TranscriptCooldown, TranscriptService, YouTubeQuotaCooldown,
@@ -16,6 +18,8 @@ use crate::services::{
 pub struct AppState {
     pub db: Store,
     pub read_cache: Arc<ReadCache>,
+    pub security: Arc<SecurityRuntimeConfig>,
+    pub request_rate_limiter: Arc<RequestRateLimiter>,
     pub search_auto_create_vector_index: bool,
     pub search_projection_lock: Arc<RwLock<()>>,
     pub search_progress: Arc<SearchProgress>,

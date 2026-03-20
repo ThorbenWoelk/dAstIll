@@ -50,7 +50,10 @@ start_backend() {
 
 start_frontend() {
 	pushd frontend >/dev/null
-	VITE_API_BASE="http://localhost:$backend_port" \
+	BACKEND_API_BASE="http://localhost:$backend_port" \
+		APP_AUTH_PASSWORD="${APP_AUTH_PASSWORD:-local-dev-password}" \
+		APP_SESSION_SECRET="${APP_SESSION_SECRET:-local-dev-session-secret}" \
+		BACKEND_PROXY_TOKEN="${BACKEND_PROXY_TOKEN:-local-dev-backend-proxy-token}" \
 		bun run dev -- --host 0.0.0.0 --port $frontend_port > >(tee ../frontend.log) 2>&1 &
 	frontend_pid=$!
 	popd >/dev/null

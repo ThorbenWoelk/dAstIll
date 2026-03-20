@@ -1,6 +1,15 @@
-export const API_BASE =
-  (import.meta as { env?: { VITE_API_BASE?: string } }).env?.VITE_API_BASE ??
-  "http://localhost:3001";
+function normalizeApiBase(value?: string) {
+  const normalized = value?.trim();
+  if (!normalized) {
+    return "";
+  }
+
+  return normalized.endsWith("/") ? normalized.slice(0, -1) : normalized;
+}
+
+export const API_BASE = normalizeApiBase(
+  (import.meta as { env?: { VITE_API_BASE?: string } }).env?.VITE_API_BASE,
+);
 
 export class BackendUnavailableError extends Error {
   constructor(message = "Backend is unreachable.") {
@@ -22,10 +31,14 @@ export function createAbortError(): Error {
   return error;
 }
 
+export function resolveApiUrl(path: string): string {
+  return `${API_BASE}${path}`;
+}
+
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(`${API_BASE}${path}`, {
+    response = await fetch(resolveApiUrl(path), {
       headers: {
         "Content-Type": "application/json",
       },

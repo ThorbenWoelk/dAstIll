@@ -47,13 +47,13 @@ This keeps summary searchability from being starved behind a large transcript ba
 
 ### Chunking Parameters
 
-| Parameter                     | Value | Purpose                                           |
-| ----------------------------- | ----- | ------------------------------------------------- |
-| `TRANSCRIPT_TARGET_WORDS`     | 300   | Target words per transcript chunk                 |
-| `TRANSCRIPT_OVERLAP_WORDS`    | 40    | Overlap words between consecutive transcript chunks |
-| `SUMMARY_TARGET_WORDS`        | 300   | Target words per summary section chunk            |
-| `EMBEDDING_DIMENSIONS`        | 512   | Vector dimensions for embeddinggemma             |
-| `EMBED_BATCH_SIZE`            | 8     | Chunks per embedding API request                  |
+| Parameter                  | Value | Purpose                                             |
+| -------------------------- | ----- | --------------------------------------------------- |
+| `TRANSCRIPT_TARGET_WORDS`  | 300   | Target words per transcript chunk                   |
+| `TRANSCRIPT_OVERLAP_WORDS` | 40    | Overlap words between consecutive transcript chunks |
+| `SUMMARY_TARGET_WORDS`     | 300   | Target words per summary section chunk              |
+| `EMBEDDING_DIMENSIONS`     | 512   | Vector dimensions for embeddinggemma                |
+| `EMBED_BATCH_SIZE`         | 8     | Chunks per embedding API request                    |
 
 ### Transcript chunking
 
@@ -94,10 +94,10 @@ This produces clean searchable text without formatting artifacts.
 
 The backend reports one of two retrieval modes:
 
-| Mode           | Meaning                                             |
-| -------------- | --------------------------------------------------- |
-| `fts_only`     | Plain keyword search over chunk text                |
-| `hybrid_ann`   | ANN vector retrieval via S3 Vectors plus FTS fusion |
+| Mode         | Meaning                                             |
+| ------------ | --------------------------------------------------- |
+| `fts_only`   | Plain keyword search over chunk text                |
+| `hybrid_ann` | ANN vector retrieval via S3 Vectors plus FTS fusion |
 
 S3 Vectors provides native ANN search, replacing the previous exact vector rerank mode.
 
