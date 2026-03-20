@@ -81,6 +81,24 @@ pub async fn get_video_info(
             .map_err(map_db_err)?
     };
 
+    let mut cached = cached.ok_or((StatusCode::NOT_FOUND, "Video info not found".to_string()))?;
+    enrich_video_info(&mut cached, &video);
+    Ok(Json(cached))
+}
+
+pub async fn ensure_video_info(
+    State(state): State<AppState>,
+    Path(video_id): Path<String>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let video = require_video(&state, &video_id).await?;
+
+    let cached = {
+        let conn = state.db.connect();
+        db::get_video_info(&conn, &video_id)
+            .await
+            .map_err(map_db_err)?
+    };
+
     if let Some(cached) = cached.as_ref() {
         if !cached_video_info_needs_refresh(cached) {
             return Ok(Json(cached.clone()));

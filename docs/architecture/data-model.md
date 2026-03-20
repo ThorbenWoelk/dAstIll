@@ -39,11 +39,11 @@ Additional video fields:
 
 Search is intentionally modeled as a derived projection stored in S3:
 
-| Storage            | Role                                             |
-| ------------------ | ------------------------------------------------ |
-| `search_sources`   | Per-video, per-source indexing lifecycle state   |
-| `search_chunks`    | Chunked search content stored as S3 objects       |
-| S3 Vectors Index   | Vector embeddings for semantic search             |
+| Storage          | Role                                           |
+| ---------------- | ---------------------------------------------- |
+| `search_sources` | Per-video, per-source indexing lifecycle state |
+| `search_chunks`  | Chunked search content stored as S3 objects    |
+| S3 Vectors Index | Vector embeddings for semantic search          |
 
 S3 Vectors provides managed ANN vector storage and retrieval, eliminating the need for a separate FTS5 table.
 
@@ -88,10 +88,10 @@ Highlights are grouped by channel and video in the `/highlights` route.
 
 Chat conversations are stored in S3 as JSON objects, separate from the canonical tables:
 
-| Storage                   | Role                                              |
-| ------------------------- | ------------------------------------------------- |
-| `conversations/index.json`| Conversation list index with titles and timestamps|
-| `conversations/{id}.json` | Full conversation with all messages and sources   |
+| Storage                    | Role                                               |
+| -------------------------- | -------------------------------------------------- |
+| `conversations/index.json` | Conversation list index with titles and timestamps |
+| `conversations/{id}.json`  | Full conversation with all messages and sources    |
 
 ### Conversation Structure
 

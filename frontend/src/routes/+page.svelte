@@ -8,13 +8,14 @@
     createHighlight,
     deleteHighlight,
     deleteChannel,
+    ensureSummary,
+    ensureTranscript,
+    ensureVideoInfo,
     getChannelSnapshot,
     getChannelSyncDepth,
     getVideoHighlights,
-    getVideoInfo,
     getWorkspaceBootstrapWhenAvailable,
     getSummary,
-    getTranscript,
     listVideos,
     refreshChannel,
     regenerateSummary,
@@ -25,9 +26,8 @@
   } from "$lib/api";
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
   import { DOCS_URL } from "$lib/app-config";
-  import FeatureGuide, {
-    type TourStep,
-  } from "$lib/components/FeatureGuide.svelte";
+  import FeatureGuide from "$lib/components/FeatureGuide.svelte";
+  import type { TourStep } from "$lib/feature-guide";
   import ConfirmationModal from "$lib/components/ConfirmationModal.svelte";
   import ErrorToast from "$lib/components/ErrorToast.svelte";
   import ContentEditor from "$lib/components/ContentEditor.svelte";
@@ -1324,7 +1324,7 @@
 
     try {
       if (targetMode === "transcript") {
-        const transcript = await getTranscript(targetVideoId);
+        const transcript = await ensureTranscript(targetVideoId);
         if (!isCurrentContentRequest(requestId, targetVideoId, targetMode))
           return;
         const presentation = resolveTranscriptPresentation(transcript);
@@ -1350,7 +1350,7 @@
         void hydrateVideoHighlights(targetVideoId);
       } else {
         if (targetMode === "summary") {
-          const summary = await getSummary(targetVideoId);
+          const summary = await ensureSummary(targetVideoId);
           if (!isCurrentContentRequest(requestId, targetVideoId, targetMode))
             return;
           contentText = stripContentPrefix(
@@ -1376,7 +1376,7 @@
           resetSummaryQuality();
           resetVideoInfo();
         } else {
-          const info = await getVideoInfo(targetVideoId);
+          const info = await ensureVideoInfo(targetVideoId);
           if (!isCurrentContentRequest(requestId, targetVideoId, targetMode))
             return;
           videoInfo = info;

@@ -19,27 +19,48 @@ resource "google_service_account" "github_actions_sa" {
   display_name = "${var.app_name} GitHub Actions Service Account"
 }
 
-# Grant access to secrets for backend (runtime) and GitHub Actions (deploy-time binding)
+# Grant access to secrets for runtime services and GitHub Actions (deploy-time binding)
 locals {
-  secret_ids = {
-    ollama_api_key  = google_secret_manager_secret.ollama_api_key.id
-    youtube_api_key = google_secret_manager_secret.youtube_api_key.id
-    logfire_token   = google_secret_manager_secret.logfire_token.id
+  backend_secret_ids = {
+    ollama_api_key      = google_secret_manager_secret.ollama_api_key.id
+    youtube_api_key     = google_secret_manager_secret.youtube_api_key.id
+    logfire_token       = google_secret_manager_secret.logfire_token.id
+    backend_proxy_token = google_secret_manager_secret.backend_proxy_token.id
   }
+  frontend_secret_ids = {
+    app_auth_password   = google_secret_manager_secret.app_auth_password.id
+    app_session_secret  = google_secret_manager_secret.app_session_secret.id
+    backend_proxy_token = google_secret_manager_secret.backend_proxy_token.id
+  }
+  cicd_secret_ids = merge(local.backend_secret_ids, local.frontend_secret_ids)
 }
 
 resource "google_secret_manager_secret_iam_member" "backend_secrets" {
-  for_each  = local.secret_ids
+  for_each  = local.backend_secret_ids
   secret_id = each.value
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.backend_sa.email}"
 }
 
+resource "google_secret_manager_secret_iam_member" "frontend_secrets" {
+  for_each  = local.frontend_secret_ids
+  secret_id = each.value
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.frontend_sa.email}"
+}
+
 resource "google_secret_manager_secret_iam_member" "cicd_secrets" {
-  for_each  = local.secret_ids
+  for_each  = local.cicd_secret_ids
   secret_id = each.value
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.github_actions_sa.email}"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "backend_frontend_invoker" {
+  location = google_cloud_run_v2_service.backend.location
+  name     = google_cloud_run_v2_service.backend.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.frontend_sa.email}"
 }
 
 # CICD Permissions

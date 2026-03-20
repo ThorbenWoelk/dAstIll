@@ -25,6 +25,7 @@ import {
   createAbortError,
   isAbortError,
   request,
+  resolveApiUrl,
 } from "./api-client";
 
 export { API_BASE, BackendUnavailableError };
@@ -338,8 +339,26 @@ export function getVideoInfo(videoId: string) {
   return cachedGetRequest<VideoInfo>(`/api/videos/${videoId}/info`);
 }
 
+export function ensureVideoInfo(videoId: string) {
+  return request<VideoInfo>(`/api/videos/${videoId}/info/ensure`, {
+    method: "POST",
+  }).then((result) => {
+    clearGetRequestCache();
+    return result;
+  });
+}
+
 export function getTranscript(videoId: string) {
   return cachedGetRequest<Transcript>(`/api/videos/${videoId}/transcript`);
+}
+
+export function ensureTranscript(videoId: string) {
+  return request<Transcript>(`/api/videos/${videoId}/transcript/ensure`, {
+    method: "POST",
+  }).then((result) => {
+    clearGetRequestCache();
+    return result;
+  });
 }
 
 export function updateTranscript(
@@ -387,6 +406,15 @@ export async function cleanTranscriptFormatting(
 
 export function getSummary(videoId: string) {
   return cachedGetRequest<Summary>(`/api/videos/${videoId}/summary`);
+}
+
+export function ensureSummary(videoId: string) {
+  return request<Summary>(`/api/videos/${videoId}/summary/ensure`, {
+    method: "POST",
+  }).then((result) => {
+    clearGetRequestCache();
+    return result;
+  });
 }
 
 export function updateSummary(videoId: string, content: string) {
@@ -464,8 +492,7 @@ export function getSearchStatus(options?: { bypassCache?: boolean }) {
 }
 
 export function openSearchStatusStream() {
-  const apiBase = API_BASE.endsWith("/") ? API_BASE.slice(0, -1) : API_BASE;
-  return new EventSource(`${apiBase}/api/search/status/stream`);
+  return new EventSource(resolveApiUrl("/api/search/status/stream"));
 }
 
 export function deleteHighlight(highlightId: number) {

@@ -24,6 +24,14 @@ pub struct ChatRuntimeConfig {
     pub multi_pass_enabled: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SecurityRuntimeConfig {
+    pub proxy_token: String,
+    pub allowed_origins: Vec<String>,
+    pub baseline_rate_limit_per_minute: u32,
+    pub expensive_rate_limit_per_minute: u32,
+}
+
 impl OllamaRuntimeConfig {
     pub fn from_env(search_semantic_enabled: bool) -> Result<Self, String> {
         let url = env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
@@ -83,6 +91,25 @@ impl ChatRuntimeConfig {
     }
 }
 
+impl SecurityRuntimeConfig {
+    pub fn from_env() -> Result<Self, String> {
+        Ok(Self {
+            proxy_token: required_env_with_local_default(
+                "BACKEND_PROXY_TOKEN",
+                "local-dev-backend-proxy-token",
+            )?,
+            allowed_origins: optional_csv_env("BACKEND_CORS_ALLOWED_ORIGINS")
+                .unwrap_or_else(default_backend_allowed_origins),
+            baseline_rate_limit_per_minute: optional_u32_env("BASELINE_RATE_LIMIT_PER_MINUTE")
+                .unwrap_or(60)
+                .clamp(1, 1_000),
+            expensive_rate_limit_per_minute: optional_u32_env("EXPENSIVE_RATE_LIMIT_PER_MINUTE")
+                .unwrap_or(5)
+                .clamp(1, 1_000),
+        })
+    }
+}
+
 fn is_local_url(url: &str) -> bool {
     let host = url
         .strip_prefix("http://")
@@ -120,6 +147,12 @@ fn required_env(key: &str) -> Result<String, String> {
     }
 }
 
+fn required_env_with_local_default(key: &str, local_default: &str) -> Result<String, String> {
+    optional_env(key)
+        .or_else(|| cfg!(debug_assertions).then(|| local_default.to_string()))
+        .ok_or_else(|| format!("{key} must be set"))
+}
+
 fn optional_env(key: &str) -> Option<String> {
     env::var(key).ok().and_then(|value| {
         let trimmed = value.trim();
@@ -128,6 +161,17 @@ fn optional_env(key: &str) -> Option<String> {
         } else {
             Some(trimmed.to_string())
         }
+    })
+}
+
+fn optional_csv_env(key: &str) -> Option<Vec<String>> {
+    optional_env(key).map(|value| {
+        value
+            .split(',')
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
     })
 }
 
@@ -140,12 +184,27 @@ fn optional_bool_env(key: &str) -> Option<bool> {
     })
 }
 
+fn optional_u32_env(key: &str) -> Option<u32> {
+    optional_env(key).and_then(|value| value.parse::<u32>().ok())
+}
+
+fn default_backend_allowed_origins() -> Vec<String> {
+    vec![
+        "http://localhost:3000".to_string(),
+        "http://127.0.0.1:3000".to_string(),
+        "http://localhost:3543".to_string(),
+        "http://127.0.0.1:3543".to_string(),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use std::env;
     use std::sync::{Mutex, OnceLock};
 
-    use super::{ChatRuntimeConfig, OllamaRuntimeConfig, SearchRuntimeConfig};
+    use super::{
+        ChatRuntimeConfig, OllamaRuntimeConfig, SearchRuntimeConfig, SecurityRuntimeConfig,
+    };
 
     static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
@@ -157,6 +216,12 @@ mod tests {
         "OLLAMA_FALLBACK_MODEL",
         "SUMMARY_EVALUATOR_MODEL",
         "OLLAMA_EMBEDDING_MODEL",
+    ];
+    const SECURITY_ENV_KEYS: &[&str] = &[
+        "BACKEND_PROXY_TOKEN",
+        "BACKEND_CORS_ALLOWED_ORIGINS",
+        "BASELINE_RATE_LIMIT_PER_MINUTE",
+        "EXPENSIVE_RATE_LIMIT_PER_MINUTE",
     ];
 
     #[test]
@@ -270,6 +335,59 @@ mod tests {
         assert_eq!(config.fallback_model.as_deref(), Some("qwen3-coder:30b"));
         assert_eq!(config.summary_evaluator_model, "qwen3.5:397b-cloud");
         assert_eq!(config.embedding_model.as_deref(), Some("embeddinggemma"));
+    }
+
+    #[test]
+    fn security_from_env_uses_local_defaults_for_dev() {
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+
+        let _reset = EnvReset::capture(SECURITY_ENV_KEYS);
+        remove_env("BACKEND_PROXY_TOKEN");
+        remove_env("BACKEND_CORS_ALLOWED_ORIGINS");
+        remove_env("BASELINE_RATE_LIMIT_PER_MINUTE");
+        remove_env("EXPENSIVE_RATE_LIMIT_PER_MINUTE");
+
+        let config = SecurityRuntimeConfig::from_env().expect("security config");
+        assert_eq!(config.proxy_token, "local-dev-backend-proxy-token");
+        assert_eq!(config.baseline_rate_limit_per_minute, 60);
+        assert_eq!(config.expensive_rate_limit_per_minute, 5);
+        assert!(
+            config
+                .allowed_origins
+                .contains(&"http://localhost:3543".to_string())
+        );
+    }
+
+    #[test]
+    fn security_from_env_honors_configured_values() {
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+
+        let _reset = EnvReset::capture(SECURITY_ENV_KEYS);
+        set_env("BACKEND_PROXY_TOKEN", "proxy-secret");
+        set_env(
+            "BACKEND_CORS_ALLOWED_ORIGINS",
+            "https://app.example.com,https://ops.example.com",
+        );
+        set_env("BASELINE_RATE_LIMIT_PER_MINUTE", "90");
+        set_env("EXPENSIVE_RATE_LIMIT_PER_MINUTE", "7");
+
+        let config = SecurityRuntimeConfig::from_env().expect("security config");
+        assert_eq!(config.proxy_token, "proxy-secret");
+        assert_eq!(
+            config.allowed_origins,
+            vec![
+                "https://app.example.com".to_string(),
+                "https://ops.example.com".to_string()
+            ]
+        );
+        assert_eq!(config.baseline_rate_limit_per_minute, 90);
+        assert_eq!(config.expensive_rate_limit_per_minute, 7);
     }
 
     #[test]

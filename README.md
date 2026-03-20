@@ -88,6 +88,8 @@ To run the application locally, you will need:
    S3_DATA_BUCKET=your-data-bucket
    S3_VECTOR_BUCKET=your-vectors-bucket
    S3_VECTOR_INDEX=search-chunks
+   BACKEND_PROXY_TOKEN=local-dev-backend-proxy-token
+   BACKEND_CORS_ALLOWED_ORIGINS=http://localhost:3543
    YOUTUBE_API_KEY=optional-api-key
    OLLAMA_URL=http://localhost:11434
    OLLAMA_MODEL=glm-5:cloud
@@ -100,6 +102,8 @@ To run the application locally, you will need:
    ```
 
    `OLLAMA_MODEL` and `SUMMARY_EVALUATOR_MODEL` must be different. If they match, backend startup exits before serving requests so summary evaluation stays independent from summary generation.
+
+   If you run the frontend separately from `start_app.sh`, copy `frontend/.env.example` to `frontend/.env` and set `APP_AUTH_PASSWORD`, `APP_SESSION_SECRET`, `BACKEND_PROXY_TOKEN`, and `BACKEND_API_BASE`.
 
 3. **Understand Search Defaults**:
    `SEARCH_SEMANTIC_ENABLED` overrides the runtime default behavior:
@@ -123,6 +127,9 @@ To run the application locally, you will need:
    ```
 
    Detached mode starts a background supervisor, performs the usual health checks in the background, and writes its startup output to `start_app.log`. The service logs remain in `backend.log`, `frontend.log`, and `docs.log`.
+
+5. **Sign In Locally**:
+   The frontend now requires an operator session. When started through `./start_app.sh`, the default local password is `local-dev-password` unless you override `APP_AUTH_PASSWORD` before launching the app.
 
 ## License
 

@@ -473,9 +473,13 @@ mod tests {
 
     fn test_app_state(db: crate::db::Store) -> AppState {
         let cooldown = Arc::new(CloudCooldown::cloud());
+        let security =
+            Arc::new(crate::config::SecurityRuntimeConfig::from_env().expect("security config"));
         AppState {
             db,
             read_cache: Arc::new(crate::read_cache::ReadCache::default()),
+            security: security.clone(),
+            request_rate_limiter: crate::security::rate_limiter(security.as_ref()),
             search_auto_create_vector_index: false,
             search_projection_lock: Arc::new(RwLock::new(())),
             search_progress: Arc::new(SearchProgress::new(

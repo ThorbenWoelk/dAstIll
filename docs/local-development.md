@@ -57,6 +57,8 @@ Important variables:
 | `S3_DATA_BUCKET`                    | S3 bucket for data storage                                                       |
 | `S3_VECTOR_BUCKET`                  | S3 Vectors bucket for semantic search                                            |
 | `S3_VECTOR_INDEX`                   | S3 Vectors index name for embeddings                                             |
+| `BACKEND_PROXY_TOKEN`               | Shared secret used by the authenticated frontend proxy when it calls the backend |
+| `BACKEND_CORS_ALLOWED_ORIGINS`      | Comma-separated list of browser origins allowed to call the backend directly     |
 | `AWS_ROLE_ARN` / `AWS_WIF_AUDIENCE` | Production only: GCP Workload Identity Federation for AWS                        |
 | `YOUTUBE_API_KEY`                   | Optional YouTube Data API access                                                 |
 | `OLLAMA_URL`                        | Ollama endpoint                                                                  |
@@ -87,7 +89,21 @@ Behavior:
 - with `LOGFIRE_TOKEN` set, backend `tracing` events are sent to Logfire
 - without it, the backend keeps logging locally through `tracing_subscriber`
 - current AI-related logs cover prompt lifecycle, retrieval timings, fallback/rate-limit events, and chat pipeline milestones
-- raw prompt / full response payload logging is not enabled by default
+- raw prompt / generated-title preview logging is not enabled by default
+
+## Frontend Auth And Proxy
+
+The browser no longer talks to the backend directly. The SvelteKit frontend authenticates the operator with an app password, stores a signed session cookie, and proxies `/api/*` requests server-to-server.
+
+Local defaults when you start with `./start_app.sh`:
+
+| Variable              | Default                         |
+| --------------------- | ------------------------------- |
+| `APP_AUTH_PASSWORD`   | `local-dev-password`            |
+| `APP_SESSION_SECRET`  | `local-dev-session-secret`      |
+| `BACKEND_PROXY_TOKEN` | `local-dev-backend-proxy-token` |
+
+If you run the frontend by itself, copy `frontend/.env.example` to `frontend/.env` and replace the default password and secret values before exposing the app outside your machine.
 
 ## Search Defaults
 

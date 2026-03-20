@@ -42,7 +42,6 @@ const CHAT_COMPARISON_SOURCE_LIMIT: usize = 20;
 pub(super) const CHAT_HISTORY_LIMIT: usize = 12;
 pub(super) const CHAT_CONTEXT_MAX_CHARS: usize = 1_400;
 const CHAT_TITLE_MAX_CHARS: usize = 80;
-const CHAT_LOG_PREVIEW_MAX_CHARS: usize = 120;
 const CHAT_CLASSIFY_TIMEOUT: Duration = Duration::from_millis(3_000);
 const CHAT_MAX_RETRIEVAL_PASSES: usize = 2;
 pub(super) const CHAT_DIVERSITY_PENALTY: f32 = 0.3;
@@ -650,7 +649,6 @@ impl ChatService {
             "chat.reply",
             conversation.id = conversation_id.clone(),
             query.chars = prompt.chars().count(),
-            query.preview = limit_text(prompt.trim(), CHAT_LOG_PREVIEW_MAX_CHARS),
         );
 
         async move {
@@ -789,7 +787,6 @@ impl ChatService {
             "chat.retrieve",
             conversation.id = conversation_id.to_string(),
             query.chars = prompt.chars().count(),
-            query.preview = limit_text(prompt.trim(), CHAT_LOG_PREVIEW_MAX_CHARS),
         );
 
         async move {
@@ -892,7 +889,6 @@ impl ChatService {
             "chat.plan",
             conversation.id = conversation_id.to_string(),
             query.chars = prompt.chars().count(),
-            query.preview = limit_text(prompt.trim(), CHAT_LOG_PREVIEW_MAX_CHARS),
             multi_pass_enabled = self.multi_pass_enabled,
         );
 
@@ -1016,7 +1012,6 @@ impl ChatService {
             conversation.id = conversation_id.to_string(),
             retrieval.pass = pass,
             query_count = queries.len(),
-            queries.preview = limit_text(&queries.join(" · "), CHAT_LOG_PREVIEW_MAX_CHARS),
             channel_focus_count = channel_focus_ids.len(),
             plan.label = plan.label.clone(),
         );
@@ -1277,7 +1272,6 @@ impl ChatService {
             conversation.id = conversation_id.to_string(),
             video.id = input.video_id.clone(),
             excerpt_count = input.excerpts.len(),
-            question.preview = limit_text(prompt.trim(), CHAT_LOG_PREVIEW_MAX_CHARS),
         );
 
         async move {
@@ -1517,7 +1511,6 @@ impl ChatService {
             "chat.title",
             conversation.id = conversation_id.clone(),
             prompt.chars = prompt.chars().count(),
-            prompt.preview = limit_text(prompt.trim(), CHAT_LOG_PREVIEW_MAX_CHARS),
         );
 
         async move {
@@ -1540,7 +1533,6 @@ impl ChatService {
 
             tracing::info!(
                 conversation_id = %conversation_id,
-                title = %generated_title,
                 model = %model_used,
                 elapsed_ms = started.elapsed().as_millis() as u64,
                 "chat title generated"

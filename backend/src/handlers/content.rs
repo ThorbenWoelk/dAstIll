@@ -38,6 +38,20 @@ pub async fn get_transcript(
     Path(video_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     tracing::debug!(video_id = %video_id, "transcript requested");
+    require_video(&state, &video_id).await?;
+    let conn = state.db.connect();
+    let transcript = db::get_transcript(&conn, &video_id)
+        .await
+        .map_err(map_db_err)?
+        .ok_or((StatusCode::NOT_FOUND, "Transcript not found".to_string()))?;
+    Ok(Json(transcript))
+}
+
+pub async fn generate_transcript(
+    State(state): State<AppState>,
+    Path(video_id): Path<String>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    tracing::info!(video_id = %video_id, "transcript generation requested");
     let transcript = ensure_transcript(&state, &video_id).await?;
     Ok(Json(transcript))
 }
@@ -145,6 +159,20 @@ pub async fn get_summary(
     Path(video_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     tracing::debug!(video_id = %video_id, "summary requested");
+    require_video(&state, &video_id).await?;
+    let conn = state.db.connect();
+    let summary = db::get_summary(&conn, &video_id)
+        .await
+        .map_err(map_db_err)?
+        .ok_or((StatusCode::NOT_FOUND, "Summary not found".to_string()))?;
+    Ok(Json(summary))
+}
+
+pub async fn generate_summary(
+    State(state): State<AppState>,
+    Path(video_id): Path<String>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    tracing::info!(video_id = %video_id, "summary generation requested");
     let summary = ensure_summary(&state, &video_id).await?;
     Ok(Json(summary))
 }

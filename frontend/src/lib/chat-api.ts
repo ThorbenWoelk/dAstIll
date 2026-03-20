@@ -7,7 +7,7 @@ import type {
   CreateConversationRequest,
   SendChatMessageRequest,
 } from "$lib/types";
-import { API_BASE, createAbortError, request } from "$lib/api-client";
+import { createAbortError, request, resolveApiUrl } from "$lib/api-client";
 
 type ChatStreamHandlers = {
   onStatus?: (status: ChatStreamStatus) => void;
@@ -91,7 +91,7 @@ async function consumeChatStream(
   init: RequestInit,
   handlers: ChatStreamHandlers,
 ) {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await fetch(resolveApiUrl(path), {
     headers: {
       Accept: "text/event-stream",
       ...(init.body ? { "Content-Type": "application/json" } : {}),

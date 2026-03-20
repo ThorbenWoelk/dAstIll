@@ -7,7 +7,7 @@ export default defineConfig({
   cleanUrls: true,
   lastUpdated: false,
   srcExclude: ["README.md"],
-  head: [['link', { rel: 'icon', href: '/favicon.png' }]],
+  head: [["link", { rel: "icon", href: "/favicon.png" }]],
   themeConfig: {
     search: {
       provider: "local",

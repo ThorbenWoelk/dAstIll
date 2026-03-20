@@ -55,6 +55,7 @@ jobs:
             YOUTUBE_API_KEY=dastill-youtube-api-key:latest
             OLLAMA_API_KEY=dastill-ollama-api-key:latest
             LOGFIRE_TOKEN=dastill-logfire-token:latest
+            BACKEND_PROXY_TOKEN=dastill-backend-proxy-token:latest
           env_vars: |
             AWS_REGION=${{ vars.AWS_REGION }}
             AWS_ROLE_ARN=${{ vars.AWS_ROLE_ARN }}
@@ -67,6 +68,7 @@ jobs:
             OLLAMA_EMBEDDING_MODEL=${{ vars.OLLAMA_EMBEDDING_MODEL }}
             SUMMARY_EVALUATOR_MODEL=${{ vars.SUMMARY_EVALUATOR_MODEL }}
             SUMMARIZE_PATH=/usr/local/bin/summarize
+            BACKEND_CORS_ALLOWED_ORIGINS=${{ vars.BACKEND_CORS_ALLOWED_ORIGINS }}
             RUST_LOG=dastill=info,tower_http=info
 
       - name: Build and Push Docs Image
@@ -87,7 +89,6 @@ jobs:
       - name: Build and Push Frontend Image
         run: |
           docker build \
-            --build-arg VITE_API_BASE=${{ steps.deploy-backend.outputs.url }} \
             -t $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/frontend:$IMAGE_TAG ./frontend
           docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/frontend:$IMAGE_TAG
 
@@ -99,5 +100,11 @@ jobs:
           region: ${{ env.REGION }}
           image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_ID }}/frontend:${{ env.IMAGE_TAG }}
           flags: "--service-account=dastill-frontend-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
+          secrets: |
+            APP_AUTH_PASSWORD=dastill-app-auth-password:latest
+            APP_SESSION_SECRET=dastill-app-session-secret:latest
+            BACKEND_PROXY_TOKEN=dastill-backend-proxy-token:latest
           env_vars: |
+            BACKEND_API_BASE=${{ steps.deploy-backend.outputs.url }}
+            BACKEND_IDENTITY_AUDIENCE=${{ steps.deploy-backend.outputs.url }}
             PUBLIC_DOCS_URL=${{ steps.deploy-docs.outputs.url }}

@@ -1,14 +1,7 @@
 <script lang="ts">
   import { tick } from "svelte";
 
-  export type TourStep = {
-    selector: string;
-    title: string;
-    body: string;
-    placement?: "top" | "bottom" | "left" | "right";
-    prepare?: () => void;
-    fallbackSelector?: string;
-  };
+  import type { TourStep } from "$lib/feature-guide";
 
   type Props = {
     open: boolean;

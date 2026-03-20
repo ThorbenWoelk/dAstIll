@@ -2,18 +2,23 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::{
-    Router,
+    Router, middleware,
     routing::{delete, get, post},
 };
-use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{Layer, filter, layer::SubscriberExt, util::SubscriberInitExt};
 
-use dastill::config::{ChatRuntimeConfig, OllamaRuntimeConfig, SearchRuntimeConfig};
+use dastill::config::{
+    ChatRuntimeConfig, OllamaRuntimeConfig, SearchRuntimeConfig, SecurityRuntimeConfig,
+};
 use dastill::db::init_store;
 use dastill::handlers::{channels, chat, content, highlights, search, videos};
 use dastill::read_cache::ReadCache;
 use dastill::search_progress::SearchProgress;
+use dastill::security::{
+    build_cors_layer, enforce_baseline_rate_limit, enforce_expensive_rate_limit, rate_limiter,
+    require_operator_role, require_proxy_auth,
+};
 use dastill::services::{
     ChatService, Cooldown, OllamaCore, SearchService, SummarizerService, SummaryEvaluatorService,
     TranscriptService, YouTubeService, build_http_client,
@@ -79,6 +84,8 @@ async fn main() -> anyhow::Result<()> {
 
     let search_runtime = SearchRuntimeConfig::from_env();
     let chat_runtime = ChatRuntimeConfig::from_env();
+    let security_runtime =
+        Arc::new(SecurityRuntimeConfig::from_env().map_err(|err| anyhow::anyhow!(err))?);
     let summarize_path = std::env::var("SUMMARIZE_PATH")
         .unwrap_or_else(|_| "/opt/homebrew/bin/summarize".to_string());
     let ollama = OllamaRuntimeConfig::from_env(search_runtime.semantic_enabled)
@@ -200,6 +207,8 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState {
         db: pool,
         read_cache: Arc::new(ReadCache::default()),
+        security: security_runtime.clone(),
+        request_rate_limiter: rate_limiter(security_runtime.as_ref()),
         search_auto_create_vector_index: search_runtime.auto_create_vector_index,
         search_projection_lock: Arc::new(tokio::sync::RwLock::new(())),
         search_progress,
@@ -270,8 +279,7 @@ async fn main() -> anyhow::Result<()> {
     spawn_summary_evaluation_worker(state.clone());
     spawn_search_index_worker(state.clone());
 
-    let app = Router::new()
-        .route("/api/health", get(|| async { "ok" }))
+    let protected_api = Router::new()
         .route("/api/health/ai", get(content::health_ai))
         .route(
             "/api/chat/conversations",
@@ -279,17 +287,25 @@ async fn main() -> anyhow::Result<()> {
         )
         .route(
             "/api/chat/conversations/{id}",
-            get(chat::get_conversation)
-                .put(chat::update_conversation)
-                .delete(chat::delete_conversation),
+            get(chat::get_conversation).put(chat::update_conversation),
+        )
+        .route(
+            "/api/chat/conversations/{id}",
+            delete(chat::delete_conversation),
         )
         .route(
             "/api/chat/conversations/{id}/messages",
-            post(chat::send_message),
+            post(chat::send_message).layer(middleware::from_fn_with_state(
+                state.clone(),
+                enforce_expensive_rate_limit,
+            )),
         )
         .route(
             "/api/chat/conversations/{id}/stream",
-            get(chat::reconnect_stream),
+            get(chat::reconnect_stream).layer(middleware::from_fn_with_state(
+                state.clone(),
+                enforce_expensive_rate_limit,
+            )),
         )
         .route(
             "/api/chat/conversations/{id}/cancel",
@@ -299,11 +315,19 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/search/status", get(search::search_status))
         .route(
             "/api/search/status/stream",
-            get(search::search_status_stream),
+            get(search::search_status_stream).layer(middleware::from_fn_with_state(
+                state.clone(),
+                enforce_expensive_rate_limit,
+            )),
         )
         .route(
             "/api/search/rebuild",
-            post(search::rebuild_search_projection),
+            post(search::rebuild_search_projection)
+                .layer(middleware::from_fn(require_operator_role))
+                .layer(middleware::from_fn_with_state(
+                    state.clone(),
+                    enforce_expensive_rate_limit,
+                )),
         )
         .route(
             "/api/workspace/bootstrap",
@@ -315,9 +339,11 @@ async fn main() -> anyhow::Result<()> {
         )
         .route(
             "/api/channels/{id}",
-            get(channels::get_channel)
-                .delete(channels::delete_channel)
-                .put(channels::update_channel),
+            get(channels::get_channel).put(channels::update_channel),
+        )
+        .route(
+            "/api/channels/{id}",
+            delete(channels::delete_channel).layer(middleware::from_fn(require_operator_role)),
         )
         .route(
             "/api/channels/{id}/sync-depth",
@@ -329,11 +355,21 @@ async fn main() -> anyhow::Result<()> {
         )
         .route(
             "/api/channels/{id}/refresh",
-            post(channels::refresh_channel_videos),
+            post(channels::refresh_channel_videos)
+                .layer(middleware::from_fn(require_operator_role))
+                .layer(middleware::from_fn_with_state(
+                    state.clone(),
+                    enforce_expensive_rate_limit,
+                )),
         )
         .route(
             "/api/channels/{id}/backfill",
-            post(channels::backfill_channel_videos),
+            post(channels::backfill_channel_videos)
+                .layer(middleware::from_fn(require_operator_role))
+                .layer(middleware::from_fn_with_state(
+                    state.clone(),
+                    enforce_expensive_rate_limit,
+                )),
         )
         .route(
             "/api/channels/{id}/videos",
@@ -342,12 +378,32 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/videos/{id}", get(videos::get_video))
         .route("/api/videos/{id}/info", get(videos::get_video_info))
         .route(
+            "/api/videos/{id}/info/ensure",
+            post(videos::ensure_video_info).layer(middleware::from_fn_with_state(
+                state.clone(),
+                enforce_expensive_rate_limit,
+            )),
+        )
+        .route(
             "/api/videos/info/backfill",
-            post(videos::backfill_video_info),
+            post(videos::backfill_video_info)
+                .layer(middleware::from_fn(require_operator_role))
+                .layer(middleware::from_fn_with_state(
+                    state.clone(),
+                    enforce_expensive_rate_limit,
+                )),
+        )
+        .route("/api/videos/{id}/transcript", get(content::get_transcript))
+        .route(
+            "/api/videos/{id}/transcript/ensure",
+            post(content::generate_transcript).layer(middleware::from_fn_with_state(
+                state.clone(),
+                enforce_expensive_rate_limit,
+            )),
         )
         .route(
             "/api/videos/{id}/transcript",
-            get(content::get_transcript).put(content::update_transcript),
+            axum::routing::put(content::update_transcript),
         )
         .route(
             "/api/videos/{id}/acknowledged",
@@ -355,15 +411,33 @@ async fn main() -> anyhow::Result<()> {
         )
         .route(
             "/api/videos/{id}/transcript/clean",
-            post(content::clean_transcript_formatting),
+            post(content::clean_transcript_formatting)
+                .layer(middleware::from_fn(require_operator_role))
+                .layer(middleware::from_fn_with_state(
+                    state.clone(),
+                    enforce_expensive_rate_limit,
+                )),
+        )
+        .route("/api/videos/{id}/summary", get(content::get_summary))
+        .route(
+            "/api/videos/{id}/summary/ensure",
+            post(content::generate_summary).layer(middleware::from_fn_with_state(
+                state.clone(),
+                enforce_expensive_rate_limit,
+            )),
         )
         .route(
             "/api/videos/{id}/summary",
-            get(content::get_summary).put(content::update_summary),
+            axum::routing::put(content::update_summary),
         )
         .route(
             "/api/videos/{id}/summary/regenerate",
-            post(content::regenerate_summary),
+            post(content::regenerate_summary)
+                .layer(middleware::from_fn(require_operator_role))
+                .layer(middleware::from_fn_with_state(
+                    state.clone(),
+                    enforce_expensive_rate_limit,
+                )),
         )
         .route("/api/highlights", get(highlights::list_highlights))
         .route(
@@ -371,12 +445,19 @@ async fn main() -> anyhow::Result<()> {
             get(highlights::list_video_highlights).post(highlights::create_highlight),
         )
         .route("/api/highlights/{id}", delete(highlights::delete_highlight))
-        .layer(
-            CorsLayer::new()
-                .allow_origin(Any)
-                .allow_methods(Any)
-                .allow_headers(Any),
-        )
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            enforce_baseline_rate_limit,
+        ))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_proxy_auth,
+        ));
+
+    let app = Router::new()
+        .route("/api/health", get(|| async { "ok" }))
+        .merge(protected_api)
+        .layer(build_cors_layer(security_runtime.as_ref()).map_err(|err| anyhow::anyhow!(err))?)
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 
