@@ -71,6 +71,11 @@ async fn load_all_videos(store: &Store) -> Result<Vec<Video>, StoreError> {
     store.load_all("videos/").await
 }
 
+fn video_visible_in_list(video: &Video, queue_filter: Option<QueueFilter>) -> bool {
+    video.transcript_status == ContentStatus::Ready
+        || matches!(queue_filter, Some(QueueFilter::TranscriptsOnly))
+}
+
 pub async fn list_videos_by_channel(
     store: &Store,
     channel_id: &str,
@@ -86,6 +91,7 @@ pub async fn list_videos_by_channel(
         .filter(|v| v.channel_id == channel_id)
         .filter(|v| is_short.is_none_or(|s| v.is_short == s))
         .filter(|v| acknowledged.is_none_or(|a| v.acknowledged == a))
+        .filter(|v| video_visible_in_list(v, queue_filter))
         .filter(|v| match queue_filter {
             Some(QueueFilter::AnyIncomplete) => {
                 v.transcript_status != ContentStatus::Ready
@@ -314,4 +320,65 @@ pub async fn load_workspace_bootstrap_data(
         selected_channel_id,
         snapshot,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::Utc;
+
+    use super::video_visible_in_list;
+    use crate::db::QueueFilter;
+    use crate::models::{ContentStatus, Video};
+
+    fn build_video(transcript_status: ContentStatus, summary_status: ContentStatus) -> Video {
+        Video {
+            id: "video-123".to_string(),
+            channel_id: "channel-123".to_string(),
+            title: "Video".to_string(),
+            thumbnail_url: None,
+            published_at: Utc::now(),
+            is_short: false,
+            transcript_status,
+            summary_status,
+            acknowledged: false,
+            retry_count: 0,
+            quality_score: None,
+        }
+    }
+
+    #[test]
+    fn regular_lists_hide_videos_without_ready_transcripts() {
+        let video = build_video(ContentStatus::Failed, ContentStatus::Pending);
+
+        assert!(!video_visible_in_list(&video, None));
+        assert!(!video_visible_in_list(
+            &video,
+            Some(QueueFilter::AnyIncomplete)
+        ));
+        assert!(!video_visible_in_list(
+            &video,
+            Some(QueueFilter::SummariesOnly)
+        ));
+    }
+
+    #[test]
+    fn transcript_queue_still_includes_videos_missing_transcripts() {
+        let video = build_video(ContentStatus::Pending, ContentStatus::Pending);
+
+        assert!(video_visible_in_list(
+            &video,
+            Some(QueueFilter::TranscriptsOnly)
+        ));
+    }
+
+    #[test]
+    fn ready_transcripts_remain_visible_everywhere() {
+        let video = build_video(ContentStatus::Ready, ContentStatus::Pending);
+
+        assert!(video_visible_in_list(&video, None));
+        assert!(video_visible_in_list(
+            &video,
+            Some(QueueFilter::AnyIncomplete)
+        ));
+    }
 }

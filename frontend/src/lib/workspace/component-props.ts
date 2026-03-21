@@ -141,6 +141,8 @@ export interface QueueContentPanelState {
   selectedChannelId: string | null;
   queueTab: QueueTab;
   queueStats: QueueStats;
+  failedTranscriptVideos?: Video[];
+  retryingTranscriptVideoId?: string | null;
   effectiveEarliestSyncDate?: string | null;
   earliestSyncDateInput: string;
   savingSyncDate: boolean;
@@ -151,4 +153,5 @@ export interface QueueContentPanelActions {
   onBack: () => void;
   onQueueTabChange: (value: QueueTab) => void;
   onSaveSyncDate: (value: string) => Promise<void> | void;
+  onRetryTranscript?: (videoId: string) => Promise<void> | void;
 }

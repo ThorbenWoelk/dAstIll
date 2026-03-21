@@ -1,5 +1,6 @@
 <script lang="ts">
   import Toggle from "$lib/components/Toggle.svelte";
+  import { formatShortDate } from "$lib/utils/date";
   import { formatSyncDate } from "$lib/workspace/content";
   import type { QueueTab } from "$lib/types";
   import type {
@@ -15,6 +16,8 @@
       selectedChannelId: null,
       queueTab: "transcripts",
       queueStats: { total: 0, loading: 0, pending: 0, failed: 0 },
+      failedTranscriptVideos: [],
+      retryingTranscriptVideoId: null,
       effectiveEarliestSyncDate: null,
       earliestSyncDateInput: "",
       savingSyncDate: false,
@@ -24,6 +27,7 @@
       onBack: () => {},
       onQueueTabChange: () => {},
       onSaveSyncDate: async () => {},
+      onRetryTranscript: async (_videoId: string) => {},
     },
   }: {
     state?: QueueContentPanelState;
@@ -62,6 +66,10 @@
 
   async function saveSyncDate() {
     await actions.onSaveSyncDate(localSyncDateInput);
+  }
+
+  function retryTranscript(videoId: string) {
+    return actions.onRetryTranscript?.(videoId);
   }
 
   function handleQueueTabChange(value: string) {
@@ -303,6 +311,68 @@
             )}.
           </p>
         </article>
+
+        {#if panelState.queueTab === "transcripts" && panelState.failedTranscriptVideos && panelState.failedTranscriptVideos.length > 0}
+          <article
+            class="rounded-[var(--radius-lg)] border border-[var(--danger-border)] bg-[var(--panel-surface)] p-5 shadow-sm"
+          >
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p
+                  class="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-55"
+                >
+                  Failed downloads
+                </p>
+                <p
+                  class="mt-2 text-[18px] font-semibold tracking-tight text-[var(--foreground)]"
+                >
+                  Retry transcript extraction
+                </p>
+              </div>
+
+              <span
+                class="rounded-full border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-1 text-[11px] font-medium text-[var(--danger-foreground)]"
+              >
+                {panelState.failedTranscriptVideos.length} failed
+              </span>
+            </div>
+
+            <div class="mt-5 space-y-3">
+              {#each panelState.failedTranscriptVideos as video (video.id)}
+                <div
+                  class="rounded-[var(--radius-md)] border border-[var(--accent-border-soft)] bg-[var(--surface)] px-4 py-4"
+                >
+                  <div
+                    class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div class="min-w-0">
+                      <p
+                        class="line-clamp-2 text-[14px] font-semibold text-[var(--foreground)]"
+                      >
+                        {video.title}
+                      </p>
+                      <p class="mt-1 text-[12px] text-[var(--soft-foreground)]">
+                        Published {formatShortDate(video.published_at)}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      class="inline-flex items-center justify-center rounded-full bg-[var(--foreground)] px-4 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--background)] transition-all hover:bg-[var(--accent-strong)] disabled:opacity-40"
+                      onclick={() => void retryTranscript(video.id)}
+                      disabled={panelState.retryingTranscriptVideoId ===
+                        video.id}
+                    >
+                      {panelState.retryingTranscriptVideoId === video.id
+                        ? "Retrying"
+                        : "Retry download"}
+                    </button>
+                  </div>
+                </div>
+              {/each}
+            </div>
+          </article>
+        {/if}
       </div>
     {/if}
   </div>

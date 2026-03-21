@@ -5,6 +5,7 @@
   import {
     addChannel,
     deleteChannel,
+    ensureTranscript,
     getChannelSnapshot,
     getChannelSyncDepth,
     listChannelsWhenAvailable,
@@ -145,6 +146,7 @@
   let savingSyncDate = $state(false);
   let refreshingChannel = $state(false);
   let syncDepth = $state<ChannelSyncDepthState | null>(null);
+  let retryingTranscriptVideoId = $state<string | null>(null);
   let aiIndicator = $derived(
     aiStatus ? resolveAiIndicatorPresentation(aiStatus) : null,
   );
@@ -235,6 +237,9 @@
       return false;
     }).length,
   });
+  const failedTranscriptVideos = $derived(
+    queuedVideos.filter((video) => video.transcript_status === "failed"),
+  );
 
   function getQueueChannelViewKey(channelId: string) {
     return buildChannelViewCacheKey(
@@ -754,6 +759,35 @@
     }
   }
 
+  async function retryTranscriptDownload(videoId: string) {
+    if (retryingTranscriptVideoId === videoId) {
+      return;
+    }
+
+    const previousVideos = cloneVideos(videos);
+    retryingTranscriptVideoId = videoId;
+    errorMessage = null;
+    videos = videos.map((video) =>
+      video.id === videoId
+        ? {
+            ...video,
+            transcript_status: "loading" as const,
+            retry_count: 0,
+          }
+        : video,
+    );
+
+    try {
+      await ensureTranscript(videoId);
+    } catch (error) {
+      videos = previousVideos;
+      errorMessage = (error as Error).message;
+    } finally {
+      await loadVideos(true, true);
+      retryingTranscriptVideoId = null;
+    }
+  }
+
   async function openVideoTranscriptInWorkspace(video: Video) {
     if (typeof localStorage !== "undefined") {
       saveWorkspaceState(localStorage, {
@@ -860,6 +894,8 @@
     selectedChannelId,
     queueTab,
     queueStats,
+    failedTranscriptVideos,
+    retryingTranscriptVideoId,
     effectiveEarliestSyncDate,
     earliestSyncDateInput,
     savingSyncDate,
@@ -873,6 +909,7 @@
       queueTab = value;
     },
     onSaveSyncDate: saveEarliestSyncDate,
+    onRetryTranscript: retryTranscriptDownload,
   };
 </script>
 
