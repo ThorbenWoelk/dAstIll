@@ -48,7 +48,7 @@ impl TranscriptService {
                     .arg(&url)
                     .arg("--extract")
                     .arg("--format")
-                    .arg("md")
+                    .arg("text")
                     .output()
             }
         })
@@ -75,47 +75,13 @@ impl TranscriptService {
             return Err(TranscriptError::CommandFailed(stderr.to_string()));
         }
 
-        let formatted = String::from_utf8_lossy(&output.stdout).to_string();
-        tracing::info!(
-            video_id = %video_id,
-            elapsed_ms = started_at.elapsed().as_millis(),
-            markdown_bytes = formatted.len(),
-            "transcript markdown extracted"
-        );
-
-        // Also get raw text version for potential processing
-        let raw_output = tokio::task::spawn_blocking({
-            let path = self.summarize_path.clone();
-            move || {
-                Command::new(&path)
-                    .arg(&video_url)
-                    .arg("--extract")
-                    .arg("--format")
-                    .arg("txt")
-                    .output()
-            }
-        })
-        .await
-        .map_err(|e| TranscriptError::CommandFailed(e.to_string()))??;
-
-        let raw = if raw_output.status.success() {
-            String::from_utf8_lossy(&raw_output.stdout).to_string()
-        } else {
-            let raw_stderr = String::from_utf8_lossy(&raw_output.stderr);
-            tracing::warn!(
-                video_id = %video_id,
-                status = raw_output.status.code().unwrap_or(-1),
-                error_output = %raw_stderr.trim(),
-                "raw text transcript extraction failed - falling back to markdown"
-            );
-            // Fall back to using formatted as raw if txt extraction fails
-            formatted.clone()
-        };
-
+        let raw = String::from_utf8_lossy(&output.stdout).to_string();
+        let formatted = raw.clone();
         tracing::info!(
             video_id = %video_id,
             elapsed_ms = started_at.elapsed().as_millis(),
             raw_bytes = raw.len(),
+            formatted_bytes = formatted.len(),
             "transcript extraction completed"
         );
 
@@ -143,29 +109,14 @@ mod tests {
     use tempfile::tempdir;
 
     #[tokio::test]
-    async fn extract_uses_direct_transcript_extraction_without_llm_formatting() {
+    async fn extract_uses_single_direct_transcript_extraction_without_llm_formatting() {
         let dir = tempdir().expect("temp dir should be created");
         let script_path = dir.path().join("fake_summarize.sh");
         let script = r#"#!/bin/sh
 set -eu
-
-format=""
-prev=""
-for arg in "$@"; do
-  if [ "$prev" = "--format" ]; then
-    format="$arg"
-    break
-  fi
-  prev="$arg"
-done
-
-if [ "$format" = "md" ]; then
-  echo "OPENAI_BASE_URL=${OPENAI_BASE_URL:-}"
-  echo "OPENAI_API_KEY=${OPENAI_API_KEY:-}"
-  echo "ARGS=$*"
-else
-  echo "raw text"
-fi
+echo "OPENAI_BASE_URL=${OPENAI_BASE_URL:-}"
+echo "OPENAI_API_KEY=${OPENAI_API_KEY:-}"
+echo "ARGS=$*"
 "#;
         fs::write(&script_path, script).expect("script should be written");
         let mut perms = fs::metadata(&script_path)
@@ -183,12 +134,12 @@ fi
             .await
             .expect("extract should succeed");
 
-        assert_eq!(raw.trim(), "raw text");
+        assert_eq!(raw, formatted);
         assert!(formatted.contains("OPENAI_BASE_URL="));
         assert!(formatted.contains("OPENAI_API_KEY="));
         assert!(formatted.contains("ARGS="));
         assert!(!formatted.contains("--markdown-mode"));
         assert!(!formatted.contains("--model"));
-        assert!(formatted.contains("--extract --format md"));
+        assert!(formatted.contains("--extract --format text"));
     }
 }

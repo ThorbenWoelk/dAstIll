@@ -15,7 +15,7 @@ COPY . .
 RUN cargo build --release
 
 # Runtime stage
-FROM debian:bookworm-slim
+FROM node:22-bookworm-slim
 
 WORKDIR /usr/local/bin
 
@@ -28,16 +28,16 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Install yt-dlp as a dependency for transcript extraction
+# Install summarize CLI and media helpers used for transcript extraction
+RUN npm install -g @steipete/summarize@0.12.0 && \
+    npm cache clean --force
+
+# Install yt-dlp as a dependency for transcript extraction fallbacks
 RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && \
     chmod a+rx /usr/local/bin/yt-dlp
 
 # Copy the backend binary
 COPY --from=builder /usr/src/app/target/release/dastill .
-
-# Copy the fake summarize script
-COPY scripts/fake_summarize.sh /usr/local/bin/summarize
-RUN chmod +x /usr/local/bin/summarize
 
 # Expose the backend port
 EXPOSE 3001
