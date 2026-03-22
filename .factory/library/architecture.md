@@ -25,12 +25,13 @@ Architectural decisions, patterns discovered, and design constraints.
 
 ## Frontend Data Layer
 
-- All route data loaded client-side in `onMount()` - zero SSR data loading
-- `api.ts`: 30-second in-memory GET response cache with request deduplication
-- `clearGetRequestCache()` wipes entire cache on every mutation (13 call sites)
-- `workspace-cache.ts`: IndexedDB persistence for stale-while-revalidate warm-start
-- `getWorkspaceBootstrap` endpoint exists but is unused on main page
-- Google Fonts loaded via render-blocking stylesheet links (Fraunces+Manrope in layout, stale Inter+Newsreader in app.html)
+- Workspace route now uses SSR bootstrap loading via `src/routes/+page.server.ts` (main page no longer purely client-side)
+- Current SSR bootstrap request forwards `selected_channel_id` + `limit`; URL `type`/`ack` filters are not currently forwarded in server load
+- `api.ts`: 30-second in-memory GET response cache with request deduplication and targeted invalidation helpers for channel/video/highlight mutations
+- `clearGetRequestCache()` remains as a test utility path (`resetApiCacheForTests`), not the primary mutation invalidation strategy
+- `workspace-cache.ts`: IndexedDB persistence for stale-while-revalidate warm-start fallback and returning visits
+- `getWorkspaceBootstrap` endpoint is used for SSR initial load and client-side bootstrap refresh
+- Fraunces + Manrope are self-hosted WOFF2 assets; Google Fonts/Inter/Newsreader CDN references removed
 
 ## Frontend Component Structure
 

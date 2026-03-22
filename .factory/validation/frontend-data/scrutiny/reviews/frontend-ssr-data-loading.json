@@ -1,0 +1,28 @@
+{
+  "featureId": "frontend-ssr-data-loading",
+  "reviewedAt": "2026-03-22T01:32:30Z",
+  "commitId": "b3f6a05",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature correctly introduces SSR bootstrap loading (+page.server.ts), keeps IndexedDB warm-start logic, and consolidates client refresh to the bootstrap endpoint. However, there is a blocking regression in URL-state fidelity: SSR bootstrap does not include video filter query params, so filtered workspace URLs can render an incorrect initial snapshot until hydration refreshes.",
+    "issues": [
+      {
+        "file": "frontend/src/routes/+page.server.ts",
+        "line": 19,
+        "severity": "blocking",
+        "description": "Server load only forwards `channel` and `limit` to `/api/workspace/bootstrap` and never maps URL `type`/`ack` state to backend `video_type`/`acknowledged` params. Evidence: +page.server.ts reads only `channel` (line 19) and sets only `selected_channel_id`/`limit` (lines 24-27); view URL state carries `type` and `ack` (frontend/src/lib/view-url.ts lines 41-43, 71-73), and bootstrap API supports `videoType`/`acknowledged` query forwarding (frontend/src/lib/api.ts lines 257-262, 271-285). Result: filtered URLs can SSR-render an unfiltered snapshot, causing first-paint state mismatch/regression until client refresh completes."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "Shared architecture knowledge is stale after this feature: it still states workspace data is entirely client-side and bootstrap endpoint is unused.",
+      "evidence": ".factory/library/architecture.md currently says 'All route data loaded client-side in onMount() - zero SSR data loading' and 'getWorkspaceBootstrap endpoint exists but is unused', but commit b3f6a05 adds frontend/src/routes/+page.server.ts and uses bootstrap for SSR/client refresh."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed feature frontend-ssr-data-loading (worker session 985d652b-1e75-4696-8433-82203fce360c) using handoff, transcript skeleton, skill definition, and commit b3f6a05 diff. Verdict: fail due to one blocking SSR URL-filter propagation regression; otherwise the SSR bootstrap migration and warm-start fallback implementation are sound."
+}

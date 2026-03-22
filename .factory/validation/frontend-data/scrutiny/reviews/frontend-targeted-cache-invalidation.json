@@ -1,0 +1,28 @@
+{
+  "featureId": "frontend-targeted-cache-invalidation",
+  "reviewedAt": "2026-03-22T01:31:06Z",
+  "commitId": "7b9d937",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Most mutation paths were moved from global cache clears to narrower invalidation helpers, but deleteHighlight leaves stale per-video highlight caches because it does not actually evict /api/videos/{videoId}/highlights entries when videoId is unknown.",
+    "issues": [
+      {
+        "file": "frontend/src/lib/api.ts",
+        "line": 181,
+        "severity": "blocking",
+        "description": "deleteHighlight() calls invalidateHighlightCache() without videoId, but invalidateHighlightCache only evicts per-video highlights when videoId is provided. This leaves cached /api/videos/{videoId}/highlights responses stale after a delete until TTL expiry, violating targeted invalidation correctness for highlight mutations."
+      },
+      {
+        "file": "frontend/tests/api-cache-invalidation.test.ts",
+        "line": 464,
+        "severity": "non_blocking",
+        "description": "The deleteHighlight invalidation test only pre-caches grouped highlights and does not pre-cache/re-check per-video highlights, so it misses the stale-cache regression in /api/videos/{videoId}/highlights." 
+      }
+    ]
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "Review failed due to a blocking cache invalidation bug: deleting a highlight does not invalidate cached per-video highlight lists. Diff and transcript skeleton were reviewed; no additional shared-state gaps were identified."
+}
