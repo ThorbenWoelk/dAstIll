@@ -24,7 +24,7 @@ rss = "2"
 roxmltree = "0.20"
 
 # HTML parsing for channel resolution
-scraper = "0.22"
+scraper = "0.26.0"
 
 # Async utilities
 thiserror = "2"
