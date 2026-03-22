@@ -1,0 +1,32 @@
+commands:
+  install_frontend: cd frontend && bun install
+  install_backend: cd backend && cargo check
+  test_frontend: cd frontend && bun test
+  test_backend: cd backend && cargo test
+  typecheck_frontend: cd frontend && npm run check
+  typecheck_backend: cd backend && cargo check
+  format_check: cd frontend && npm run format:check
+  build_frontend: cd frontend && bun run build
+  build_backend: cd backend && cargo build
+
+services:
+  backend:
+    start: cd backend && RUST_LOG=dastill=info,tower_http=info cargo run 2>&1 | tee ../backend.log &
+    stop: lsof -ti :3544 | xargs kill 2>/dev/null || true
+    healthcheck: curl -sf http://localhost:3544/api/health
+    port: 3544
+    depends_on: []
+
+  frontend:
+    start: cd frontend && bun run dev 2>&1 | tee ../frontend.log &
+    stop: lsof -ti :3543 | xargs kill 2>/dev/null || true
+    healthcheck: curl -sf http://localhost:3543
+    port: 3543
+    depends_on: [backend]
+
+  docs:
+    start: cd docs && bun run dev 2>&1 | tee ../docs.log &
+    stop: lsof -ti :4173 | xargs kill 2>/dev/null || true
+    healthcheck: curl -sf http://localhost:4173
+    port: 4173
+    depends_on: []

@@ -161,8 +161,8 @@
   const tourSteps: TourStep[] = [
     {
       selector: "#workspace",
-      title: "Channel Sidebar",
-      body: "Queue shares the same sidebar shell as Workspace, so channel search, sort, add, and reorder all behave the same way here.",
+      title: "Pick a Channel",
+      body: "Select a channel from the sidebar to see what's being processed. This is the same channel list as the main workspace.",
       placement: "right",
       prepare: () => {
         mobileTab = "browse";
@@ -170,8 +170,8 @@
     },
     {
       selector: "#queue-stage-tabs",
-      title: "Queue Stages",
-      body: "Switch between transcript, summary, and evaluation backlogs while keeping the same selected channel and shared navigation shell.",
+      title: "Processing Stages",
+      body: "Videos go through three stages: transcript download, AI summary generation, and quality check. Switch tabs to see the backlog at each stage.",
       placement: "bottom",
       prepare: () => {
         mobileTab = "content";
@@ -179,20 +179,11 @@
     },
     {
       selector: "#content-view",
-      title: "Queue Insights",
-      body: "The right pane keeps queue counts, sync-depth controls, and channel context together so you can work through backlog without leaving Queue.",
+      title: "Queue Status",
+      body: "See how many videos are waiting at each stage and how far back the history goes. This is where you monitor the progress of your library.",
       placement: "left",
       prepare: () => {
         mobileTab = "content";
-      },
-    },
-    {
-      selector: "nav[aria-label='Workspace sections']",
-      title: "Navigate the app",
-      body: "Use the shared section navigation to move between workspace, queue, highlights, chat, and docs without losing the overall shell.",
-      placement: "bottom",
-      prepare: () => {
-        mobileTab = selectedChannelId ? "content" : "browse";
       },
     },
   ];

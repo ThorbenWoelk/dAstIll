@@ -23,6 +23,7 @@ Testing surface, required testing skills/tools, resource cost classification per
 ## Known Limitations
 
 - `networkidle` wait strategy does NOT work due to persistent SSE connections. Use explicit element waits (`wait --text`, `wait --selector`) or `sleep` delays.
+- `agent-browser network requests` can intermittently return empty or duplicated lines; when that happens, use Performance Resource Timing entries or full exported request logs as fallback evidence.
 - Ollama cloud models may hit rate limits (429). Non-blocking for UI validation but affects chat/summary features.
 - Docs VitePress may crash with double-port bug. Not needed for validation.
 - Protected backend API routes require `x-dastill-proxy-auth: local-dev-backend-proxy-token` for local validation calls.
@@ -64,3 +65,12 @@ Testing surface, required testing skills/tools, resource cost classification per
 - Avoid changing source files; only execute tests and collect outputs/evidence.
 - Use assertion-focused test commands where possible, but ensure coverage for assigned backend assertions.
 - Write report JSON to the assigned flow report path and store command output evidence in mission evidence dir.
+
+## Flow Validator Guidance: browser
+
+- Use only the local app URLs `http://localhost:3543` (frontend) and `http://localhost:3544` (backend API checks if needed).
+- Stay inside your assigned assertion group and avoid broad destructive mutations that can affect other groups.
+- If a mutation is required, prefer creating temporary test data and clean up only what your flow created.
+- Use explicit waits (`wait --selector`, `wait --text`, short `sleep`) instead of `networkidle` due to persistent SSE.
+- Save screenshots, network captures, and extracted DOM evidence under the assigned mission evidence directory.
+- Do not edit application source code; flow validators only test behavior and write evidence/report files.

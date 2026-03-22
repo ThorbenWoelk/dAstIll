@@ -29,14 +29,14 @@
   const tourSteps: TourStep[] = [
     {
       selector: "nav[aria-label='Workspace sections']",
-      title: "App navigation",
-      body: "Move between workspace, queue, highlights, chat, and docs from the same shared shell.",
+      title: "Navigation",
+      body: "Use these tabs to switch between the main workspace, download queue, highlights, chat, and documentation.",
       placement: "bottom",
     },
     {
       selector: "#main-content",
-      title: "Highlights library",
-      body: "Review saved passages grouped by channel and video, then jump back into the related workspace context when you need the full transcript or summary.",
+      title: "All Your Highlights",
+      body: "Every passage you've saved across all videos appears here, organized by channel. Click any highlight to jump back to the full transcript or summary it came from.",
       placement: "top",
     },
   ];

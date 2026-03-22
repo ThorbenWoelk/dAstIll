@@ -66,14 +66,14 @@
   const tourSteps: TourStep[] = [
     {
       selector: "nav[aria-label='Workspace sections']",
-      title: "Shared navigation",
-      body: "Chat lives inside the same shared shell as workspace, queue, highlights, and docs, so moving between surfaces stays consistent.",
+      title: "Navigation",
+      body: "Use these tabs to switch between the main workspace, download queue, highlights, chat, and documentation.",
       placement: "bottom",
     },
     {
       selector: "#conversations-panel",
-      title: "Conversation sidebar",
-      body: "Browse and rename persistent chats from the sidebar. Admin sign-in unlocks destructive actions such as deleting conversations.",
+      title: "Your Conversations",
+      body: "Your chat history lives here. Each conversation is saved automatically, so you can pick up where you left off.",
       placement: "right",
       prepare: () => {
         mobileTab = "conversations";
@@ -81,8 +81,8 @@
     },
     {
       selector: "#content-view",
-      title: "Grounded chat pane",
-      body: "Ask questions here and watch grounded answers stream in with source-backed citations from your indexed library.",
+      title: "Ask About Your Videos",
+      body: "Ask any question about your video library. The AI searches your transcripts and summaries, then answers with references back to the original content.",
       placement: "left",
       prepare: () => {
         mobileTab = "content";
