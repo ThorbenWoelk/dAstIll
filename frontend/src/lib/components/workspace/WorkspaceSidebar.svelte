@@ -356,6 +356,10 @@
 
     const requestKey = `${channel.id}:${filterKey}:${mode}:${Date.now()}`;
     state.loading = true;
+    // Set filter key immediately so $effect re-entry sees loading+filterKey and returns at
+    // the guard above. Otherwise filterKey only appeared after await, causing synchronous
+    // infinite re-entry (Maximum call stack size exceeded).
+    state.filterKey = filterKey;
     state.requestKey = requestKey;
 
     const acknowledged = resolveAcknowledgedParam(acknowledgedFilter);
