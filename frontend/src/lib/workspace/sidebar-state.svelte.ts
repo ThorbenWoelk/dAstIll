@@ -150,8 +150,6 @@ export type SidebarStateOptions = {
     acknowledgedFilter: any,
     includeOptimistic: boolean,
   ) => Promise<Video[]>;
-  onLoadingChannelsChange?: (loading: boolean) => void;
-  onLoadingVideosChange?: (loading: boolean) => void;
   onVideoTypeFilterChange?: (filter: VideoTypeFilter) => void;
   onAcknowledgedFilterChange?: (ack: boolean | undefined) => void;
 };
@@ -432,11 +430,9 @@ export function createSidebarState(
   }
   function setLoadingVideos(v: boolean) {
     loadingVideos = v;
-    options_root.onLoadingVideosChange?.(v);
   }
   function setLoadingChannels(v: boolean) {
     loadingChannels = v;
-    options_root.onLoadingChannelsChange?.(v);
   }
   function setRefreshingChannel(v: boolean) {
     refreshingChannel = v;

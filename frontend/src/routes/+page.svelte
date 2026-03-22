@@ -417,12 +417,6 @@
       });
       history.replaceState(history.state, "", href);
     },
-    onLoadingChannelsChange: (value: boolean) => {
-      sidebarState.setLoadingChannels(value);
-    },
-    onLoadingVideosChange: (value: boolean) => {
-      sidebarState.setLoadingVideos(value);
-    },
     onChannelDeleted: (channelId: string) => {
       if (sidebarState.selectedChannelId === channelId) {
         const nextChannelId = resolveNextChannelSelection(
@@ -677,12 +671,10 @@
       }
 
       const isAck = resolveAcknowledgedParam(sidebarState.acknowledgedFilter);
-      const newSnapshot = await getChannelSnapshot(channelId, {
-        videoType: sidebarState.videoTypeFilter,
-        acknowledged: isAck,
-      });
-      sidebarState.setSyncDepth(newSnapshot.sync_depth);
+      sidebarState.setSyncDepth(snapshot.sync_depth);
       allowLoadedVideoSyncDepthOverride = false;
+      sidebarState.setVideos(snapshot.videos);
+      sidebarState.setOffset(snapshot.videos.length);
       sidebarState.setHasMore(snapshot.videos.length === limit);
       void putCachedViewSnapshot(
         buildWorkspaceSnapshotCacheKey(channelId, videoTypeFilter, isAck),
