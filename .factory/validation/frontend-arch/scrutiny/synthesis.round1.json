@@ -1,0 +1,85 @@
+{
+  "milestone": "frontend-arch",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "cd frontend && bun test; cd backend && cargo test",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "cd frontend && npm run check; cd backend && cargo check",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "cd frontend && npm run format:check",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 4,
+    "passed": 1,
+    "failed": 3,
+    "failedFeatures": [
+      "frontend-extract-sidebar",
+      "frontend-extract-search-guide",
+      "frontend-finalize-code-splitting"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "frontend-extract-sidebar",
+      "severity": "blocking",
+      "description": "Sidebar extraction acceptance criteria not satisfied in reviewed commit: core sidebar state/behavior remains in frontend/src/routes/+page.svelte instead of being moved out as required by the feature contract."
+    },
+    {
+      "featureId": "frontend-extract-search-guide",
+      "severity": "blocking",
+      "description": "No recorded evidence that selecting a search result navigates correctly; verification only showed query entry and popover visibility."
+    },
+    {
+      "featureId": "frontend-extract-search-guide",
+      "severity": "blocking",
+      "description": "Queue-to-workspace verification did not demonstrate required video context preservation (captured URL showed channel only)."
+    },
+    {
+      "featureId": "frontend-extract-search-guide",
+      "severity": "blocking",
+      "description": "Highlights-to-workspace deep-link verification (channel + video + content mode) was not evidenced."
+    },
+    {
+      "featureId": "frontend-finalize-code-splitting",
+      "severity": "blocking",
+      "description": "Chat flow verification missed a required step: no evidence that a message was sent and a streaming response rendered."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": ".factory/skills/svelte-frontend-worker/SKILL.md",
+      "suggestion": "Clarify expected procedure for pre-implemented or verification-only features and define when strict RED-phase failing tests are required vs. when evidence-focused validation is acceptable.",
+      "evidence": "Multiple frontend-arch reviews reported process mismatch: frontend-extract-sidebar noted pre-implemented verification-only completion ambiguity; frontend-extract-search-guide and frontend-finalize-code-splitting both flagged RED guidance mismatch for refactor/verification-oriented work.",
+      "isSystemic": true
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add explicit guidance that feature commits and handoffs must remain tightly feature-scoped and that handoff commit IDs must point to implementation commits (not docs-only follow-ups).",
+      "evidence": "frontend-extract-sidebar review found unrelated route/shared-state edits bundled into the feature commit; frontend-extract-search-guide review found handoff commitId referencing docs commit 7bef9ee while implementation lived in d753e1a.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Architecture docs are stale because they still describe +page.svelte as ~2200 lines.",
+      "reason": "rejected as inaccurate: current file length remains ~2200 lines and the architecture note already reflects current extracted components/lazy-loading state."
+    },
+    {
+      "observation": "RED-phase mismatch in svelte-frontend-worker skill (duplicate report from frontend-finalize-code-splitting).",
+      "reason": "duplicate"
+    }
+  ],
+  "previousRound": null
+}
