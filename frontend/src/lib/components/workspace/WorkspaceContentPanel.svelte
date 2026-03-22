@@ -529,9 +529,9 @@
           : contentMode === "transcript"
             ? selectedVideo?.transcript_status
             : null}
-      {@const isProcessing = contentStatus === "loading" || contentStatus === "pending"}
-      {@const isUnavailable =
-        contentStatus === "failed"}
+      {@const isProcessing =
+        contentStatus === "loading" || contentStatus === "pending"}
+      {@const isUnavailable = contentStatus === "failed"}
       {#if isUnavailable}
         <div
           class="flex h-full flex-col items-center justify-center py-20 text-center"

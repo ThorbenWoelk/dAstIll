@@ -10,6 +10,7 @@ use crate::services::http::YouTubeQuotaCooldown;
 mod atom;
 mod data_api;
 mod innertube;
+pub mod placeholder;
 mod resolve;
 mod rss;
 pub(super) mod video_builder;

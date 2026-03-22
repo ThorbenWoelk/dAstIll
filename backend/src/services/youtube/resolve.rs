@@ -287,7 +287,7 @@ impl YouTubeService {
             title: details
                 .title
                 .unwrap_or_else(|| format!("YouTube video {video_id}")),
-            description: details.description,
+            description: super::placeholder::sanitize_optional_description(details.description),
             thumbnail_url: details.thumbnail_url,
             channel_name: details.channel_name,
             channel_id: details.channel_id,
@@ -388,6 +388,29 @@ impl YouTubeService {
             details.view_count =
                 Self::value_at_path(&player_response, &["videoDetails", "viewCount"])
                     .and_then(Self::extract_u64_from_value);
+        }
+
+        let short_desc =
+            Self::value_at_path(&player_response, &["videoDetails", "shortDescription"])
+                .and_then(Self::extract_string_or_first_string)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned);
+
+        let desc_is_placeholder = details.description.as_deref().map_or(false, |d| {
+            super::placeholder::is_site_wide_placeholder_description(d)
+        });
+
+        if details.description.is_none() || desc_is_placeholder {
+            if let Some(sd) = short_desc {
+                if !super::placeholder::is_site_wide_placeholder_description(&sd) {
+                    details.description = Some(sd);
+                } else if desc_is_placeholder {
+                    details.description = None;
+                }
+            } else if desc_is_placeholder {
+                details.description = None;
+            }
         }
     }
 

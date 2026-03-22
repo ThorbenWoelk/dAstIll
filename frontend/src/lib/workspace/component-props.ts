@@ -9,6 +9,7 @@ import type {
   VideoInfo,
   VideoTypeFilter,
 } from "$lib/types";
+import type { ChannelSyncDepthState } from "$lib/channel-view-cache";
 import type {
   AcknowledgedFilter,
   ChannelSortMode,
@@ -56,7 +57,8 @@ export interface WorkspaceSidebarVideoState {
   backfillingHistory: boolean;
   videoTypeFilter: VideoTypeFilter;
   acknowledgedFilter: AcknowledgedFilter;
-  syncDepth: SyncDepth | null;
+  syncDepth: ChannelSyncDepthState | null;
+  offset: number;
   allowLoadedVideoSyncDepthOverride: boolean;
 }
 

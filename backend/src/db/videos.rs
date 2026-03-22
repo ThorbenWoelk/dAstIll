@@ -197,7 +197,17 @@ pub async fn list_videos_by_channel(
     queue_filter: Option<QueueFilter>,
 ) -> Result<Vec<Video>, StoreError> {
     let all = load_all_videos(store).await?;
-    apply_channel_video_filters(store, &all, channel_id, limit, offset, is_short, acknowledged, queue_filter).await
+    apply_channel_video_filters(
+        store,
+        &all,
+        channel_id,
+        limit,
+        offset,
+        is_short,
+        acknowledged,
+        queue_filter,
+    )
+    .await
 }
 
 pub async fn list_video_ids_by_channel(
@@ -517,7 +527,13 @@ mod tests {
     fn oldest_ready_date_ignores_videos_not_fully_ready() {
         let videos = vec![
             // transcript ready, summary still pending — not fully ready
-            make_video("v1", "ch1", ContentStatus::Ready, ContentStatus::Pending, 30),
+            make_video(
+                "v1",
+                "ch1",
+                ContentStatus::Ready,
+                ContentStatus::Pending,
+                30,
+            ),
             // fully ready but newer
             make_video("v2", "ch1", ContentStatus::Ready, ContentStatus::Ready, 5),
         ];
@@ -528,9 +544,13 @@ mod tests {
 
     #[test]
     fn oldest_ready_date_returns_none_when_no_ready_videos() {
-        let videos = vec![
-            make_video("v1", "ch1", ContentStatus::Pending, ContentStatus::Pending, 1),
-        ];
+        let videos = vec![make_video(
+            "v1",
+            "ch1",
+            ContentStatus::Pending,
+            ContentStatus::Pending,
+            1,
+        )];
         let result = oldest_ready_video_published_at_from_slice(&videos, "ch1");
         assert_eq!(result, None);
     }
@@ -576,9 +596,19 @@ mod tests {
         use crate::db::bulk_insert_videos;
         let store = crate::db::Store::for_test().await;
         let videos: Vec<crate::models::Video> = (0..5)
-            .map(|i| make_video(&format!("bulk-test-{i}"), "ch-bulk", ContentStatus::Pending, ContentStatus::Pending, i))
+            .map(|i| {
+                make_video(
+                    &format!("bulk-test-{i}"),
+                    "ch-bulk",
+                    ContentStatus::Pending,
+                    ContentStatus::Pending,
+                    i,
+                )
+            })
             .collect();
-        let count = bulk_insert_videos(&store, videos).await.expect("bulk_insert should succeed");
+        let count = bulk_insert_videos(&store, videos)
+            .await
+            .expect("bulk_insert should succeed");
         assert_eq!(count, 5);
     }
 
@@ -589,11 +619,21 @@ mod tests {
     async fn get_video_without_summary_skips_summary_fetch() {
         use crate::db::{get_video, insert_video};
         let store = crate::db::Store::for_test().await;
-        let video = make_video("test-no-summary", "ch-test", ContentStatus::Ready, ContentStatus::Ready, 1);
-        insert_video(&store, &video).await.expect("insert should succeed");
+        let video = make_video(
+            "test-no-summary",
+            "ch-test",
+            ContentStatus::Ready,
+            ContentStatus::Ready,
+            1,
+        );
+        insert_video(&store, &video)
+            .await
+            .expect("insert should succeed");
 
         // With include_summary=false, no summary S3 GET is issued.
-        let fetched = get_video(&store, &video.id, false).await.expect("get_video should succeed");
+        let fetched = get_video(&store, &video.id, false)
+            .await
+            .expect("get_video should succeed");
         assert!(fetched.is_some());
         // quality_score must be None since summary was not fetched.
         assert_eq!(fetched.unwrap().quality_score, None);
@@ -615,10 +655,18 @@ mod tests {
             earliest_sync_date: None,
             earliest_sync_date_user_set: false,
         };
-        insert_channel(&store, &channel).await.expect("insert channel");
+        insert_channel(&store, &channel)
+            .await
+            .expect("insert channel");
         insert_video(
             &store,
-            &make_video("snap-v1", &channel.id, ContentStatus::Ready, ContentStatus::Ready, 3),
+            &make_video(
+                "snap-v1",
+                &channel.id,
+                ContentStatus::Ready,
+                ContentStatus::Ready,
+                3,
+            ),
         )
         .await
         .expect("insert video");

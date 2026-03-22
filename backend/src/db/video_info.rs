@@ -1,4 +1,5 @@
 use crate::models::VideoInfo;
+use crate::services::youtube::placeholder::is_site_wide_placeholder_description;
 
 use super::{Store, StoreError};
 
@@ -53,4 +54,34 @@ pub async fn list_video_ids_for_info_refresh(
     let mut sorted = all_videos;
     sorted.sort_by(|a, b| b.published_at.cmp(&a.published_at));
     Ok(sorted.into_iter().take(limit).map(|v| v.id).collect())
+}
+
+/// Stored `video-info` rows whose description is the generic YouTube site blurb (bad scrape).
+pub async fn list_video_ids_with_placeholder_descriptions(
+    store: &Store,
+    limit: usize,
+) -> Result<Vec<String>, StoreError> {
+    let keys = store.list_keys("video-info/").await?;
+    let mut out = Vec::new();
+    for key in keys {
+        if out.len() >= limit {
+            break;
+        }
+        let Some(video_id) = key
+            .strip_prefix("video-info/")
+            .and_then(|s| s.strip_suffix(".json"))
+        else {
+            continue;
+        };
+        if let Some(info) = get_video_info(store, video_id).await? {
+            if info
+                .description
+                .as_deref()
+                .map_or(false, is_site_wide_placeholder_description)
+            {
+                out.push(video_id.to_string());
+            }
+        }
+    }
+    Ok(out)
 }

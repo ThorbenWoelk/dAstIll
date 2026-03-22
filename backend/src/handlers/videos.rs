@@ -22,11 +22,17 @@ pub fn enrich_video_info(info: &mut VideoInfo, video: &Video) {
 }
 
 fn cached_video_info_needs_refresh(info: &VideoInfo) -> bool {
-    info.duration_seconds.is_none()
+    if info.duration_seconds.is_none()
         && info
             .duration_iso8601
             .as_deref()
             .is_none_or(|value| value.trim().is_empty())
+    {
+        return true;
+    }
+    info.description.as_deref().map_or(false, |d| {
+        crate::services::youtube::placeholder::is_site_wide_placeholder_description(d)
+    })
 }
 use super::query::VideoListParams;
 use super::{map_db_err, require_channel, require_video};
@@ -35,6 +41,8 @@ use super::{map_db_err, require_channel, require_video};
 pub struct VideoInfoBackfillParams {
     pub limit: Option<usize>,
     pub force: Option<bool>,
+    /// Re-fetch stored video info rows whose description is a known YouTube site-wide blurb.
+    pub heal_placeholders: Option<bool>,
 }
 
 pub async fn list_channel_videos(
@@ -149,9 +157,14 @@ pub async fn backfill_video_info(
     let limit = params.limit.unwrap_or(100).clamp(1, 1000);
     let force = params.force.unwrap_or(false);
 
+    let heal = params.heal_placeholders.unwrap_or(false);
     let video_ids = {
         let conn = state.db.connect();
-        if force {
+        if heal {
+            db::list_video_ids_with_placeholder_descriptions(&conn, limit)
+                .await
+                .map_err(map_db_err)?
+        } else if force {
             db::list_video_ids_for_info_refresh(&conn, limit)
                 .await
                 .map_err(map_db_err)?
@@ -181,7 +194,9 @@ pub async fn backfill_video_info(
 
         let video = {
             let conn = state.db.connect();
-            db::get_video(&conn, video_id, false).await.map_err(map_db_err)?
+            db::get_video(&conn, video_id, false)
+                .await
+                .map_err(map_db_err)?
         };
 
         if let Some(video) = video {
@@ -205,6 +220,7 @@ pub async fn backfill_video_info(
     Ok(Json(serde_json::json!({
         "requested_limit": limit,
         "force": force,
+        "heal_placeholders": heal,
         "processed": video_ids.len(),
         "updated": updated,
         "failed": failed
@@ -291,6 +307,15 @@ mod tests {
             None,
             Some("PT3M5S"),
         )));
+    }
+
+    #[test]
+    fn cached_video_info_needs_refresh_when_description_is_placeholder() {
+        let mut info = build_video_info(Some(185), Some("PT3M5S"));
+        info.description = Some(
+            "Auf YouTube findest du die angesagtesten Videos und Tracks. Außerdem kannst du eigene Inhalte hochladen und mit Freunden oder gleich der ganzen Welt teilen".to_string(),
+        );
+        assert!(cached_video_info_needs_refresh(&info));
     }
 
     #[test]

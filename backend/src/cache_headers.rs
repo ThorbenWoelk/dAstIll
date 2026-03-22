@@ -170,10 +170,7 @@ mod tests {
 
     #[test]
     fn search_stream_endpoint_returns_no_header() {
-        assert_eq!(
-            cache_control_for_path("/api/search/status/stream"),
-            None
-        );
+        assert_eq!(cache_control_for_path("/api/search/status/stream"), None);
     }
 
     #[test]
@@ -229,10 +226,7 @@ mod tests {
     #[test]
     fn channel_refresh_returns_no_header() {
         // POST endpoint.
-        assert_eq!(
-            cache_control_for_path("/api/channels/UCxxxx/refresh"),
-            None
-        );
+        assert_eq!(cache_control_for_path("/api/channels/UCxxxx/refresh"), None);
     }
 
     #[test]
@@ -386,7 +380,13 @@ mod tests {
     // ── Middleware status-gating ──────────────────────────────────────────────
 
     use super::add_cache_control;
-    use axum::{Router, body::Body, http::{Request, StatusCode}, middleware, routing::get};
+    use axum::{
+        Router,
+        body::Body,
+        http::{Request, StatusCode},
+        middleware,
+        routing::get,
+    };
     use tower::ServiceExt;
 
     #[tokio::test]

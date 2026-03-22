@@ -11,6 +11,11 @@ type ChannelRefreshWorkflowOptions<TSnapshot> = {
   ttlMs: number;
   bypassTtl?: boolean;
   initialSilent?: boolean;
+  /**
+   * When the video list was mutated (e.g. read toggle) while a snapshot was
+   * in flight, skip applying that snapshot so stale data cannot overwrite UI.
+   */
+  getMutationEpoch?: () => number;
   loadSnapshot: () => Promise<TSnapshot>;
   applySnapshot: (snapshot: TSnapshot, silent?: boolean) => Promise<void>;
   refreshChannel: () => Promise<unknown>;
@@ -25,6 +30,7 @@ export async function loadChannelSnapshotWithRefresh<TSnapshot>({
   ttlMs,
   bypassTtl = false,
   initialSilent = false,
+  getMutationEpoch,
   loadSnapshot,
   applySnapshot,
   refreshChannel,
@@ -32,7 +38,11 @@ export async function loadChannelSnapshotWithRefresh<TSnapshot>({
   onRefreshingChange,
   onError,
 }: ChannelRefreshWorkflowOptions<TSnapshot>) {
+  const epochBeforeFirst = getMutationEpoch?.() ?? 0;
   const snapshot = await loadSnapshot();
+  if (getMutationEpoch && getMutationEpoch() !== epochBeforeFirst) {
+    return;
+  }
   await applySnapshot(snapshot, initialSilent);
 
   if (
@@ -50,7 +60,11 @@ export async function loadChannelSnapshotWithRefresh<TSnapshot>({
       return;
     }
 
+    const epochBeforeSecond = getMutationEpoch?.() ?? 0;
     const refreshedSnapshot = await loadSnapshot();
+    if (getMutationEpoch && getMutationEpoch() !== epochBeforeSecond) {
+      return;
+    }
     await applySnapshot(refreshedSnapshot, true);
   } catch (error) {
     onError((error as Error).message);
