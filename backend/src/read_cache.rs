@@ -203,13 +203,21 @@ impl ReadCache {
     /// Evict all cache entries related to a specific channel's data.
     /// Used when a channel's video list changes (acknowledge, transcript/summary status,
     /// refresh, backfill). Leaves the channels list and other channels' entries intact.
+    ///
+    /// Also evicts workspace bootstrap entries keyed with `selected_channel_id=null`,
+    /// because bootstrap resolution maps null to the first channel (fallback behavior),
+    /// which may be the mutated channel, leaving a stale cached payload.
     pub async fn evict_channel(&self, channel_id: &str) {
         let mut entries = self.entries.write().await;
         entries.retain(|key, _| match key {
             ReadCacheKey::ChannelSnapshot(k) => k.channel_id != channel_id,
-            ReadCacheKey::WorkspaceBootstrap(k) => {
-                k.selected_channel_id.as_deref() != Some(channel_id)
-            }
+            ReadCacheKey::WorkspaceBootstrap(k) => match &k.selected_channel_id {
+                // Evict null-keyed entries: null resolves to the first channel via fallback,
+                // so this entry may contain stale data for the mutated channel.
+                None => false,
+                // Keep entries that are explicitly for a different channel.
+                Some(id) => id != channel_id,
+            },
             ReadCacheKey::ChannelSyncDepth(id) => id != channel_id,
             _ => true,
         });
@@ -546,12 +554,14 @@ mod tests {
     #[tokio::test]
     async fn evict_channel_does_not_affect_workspace_bootstrap_for_other_channels() {
         let cache = ReadCache::new(Duration::from_secs(60));
-        // A workspace bootstrap with NO selected channel (e.g., first load with no channel selected)
+        // A workspace bootstrap with NO selected channel (e.g., first load with no channel selected).
+        // Null resolves to the first channel via fallback, so evict_channel must invalidate it
+        // to prevent serving a stale payload after a mutation to that first channel.
         let bootstrap_key_none = WorkspaceBootstrapCacheKey {
             selected_channel_id: None,
             video_list: VideoListCacheKey::new(20, 0, None, None, None),
         };
-        // A workspace bootstrap for channel-b
+        // A workspace bootstrap explicitly for channel-b (a different channel).
         let bootstrap_key_b = WorkspaceBootstrapCacheKey {
             selected_channel_id: Some("channel-b".to_string()),
             video_list: VideoListCacheKey::new(20, 0, None, None, None),
@@ -562,9 +572,16 @@ mod tests {
 
         cache.evict_channel("channel-a").await;
 
-        // Neither was for channel-a, both should remain
-        assert!(cache.get_workspace_bootstrap(&bootstrap_key_none).await.is_some());
-        assert!(cache.get_workspace_bootstrap(&bootstrap_key_b).await.is_some());
+        // The null-keyed entry is evicted because it may resolve to channel-a via fallback.
+        assert!(
+            cache.get_workspace_bootstrap(&bootstrap_key_none).await.is_none(),
+            "null-keyed bootstrap should be evicted (null resolves to first channel via fallback)"
+        );
+        // The channel-b entry is explicitly for a different channel and must remain intact.
+        assert!(
+            cache.get_workspace_bootstrap(&bootstrap_key_b).await.is_some(),
+            "channel-b workspace bootstrap should not be evicted when evicting channel-a"
+        );
     }
 
     #[tokio::test]
