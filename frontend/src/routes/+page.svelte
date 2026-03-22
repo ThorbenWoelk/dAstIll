@@ -14,12 +14,10 @@
     ensureVideoInfo,
     getChannelSnapshot,
     getChannelSyncDepth,
-    getSearchStatus,
     getVideo,
     getVideoHighlights,
     getSummary,
-    isAiAvailable,
-    listChannelsWhenAvailable,
+    getWorkspaceBootstrapWhenAvailable,
     listVideos,
     refreshChannel,
     regenerateSummary,
@@ -73,14 +71,12 @@
     reconcileOptimisticHighlight,
   } from "$lib/utils/highlights";
   import {
-    getCachedBootstrapMeta,
-    getCachedChannels,
-    getCachedViewSnapshot,
     putCachedBootstrapMeta,
     putCachedChannels,
     putCachedViewSnapshot,
     removeCachedChannel,
   } from "$lib/workspace-cache";
+  import { resolveBootstrapOnMount } from "$lib/ssr-bootstrap";
   import { resolveOldestLoadedReadyVideoDate } from "$lib/sync-depth";
   import { createAiStatusPoller } from "$lib/utils/ai-poller";
   import {
@@ -175,8 +171,8 @@
   const tourSteps: TourStep[] = [
     {
       selector: "#workspace",
-      title: "Channel Sidebar",
-      body: "Your subscribed channels live here. Search, sort, reorder, and reveal admin-only management from the same sidebar.",
+      title: "Welcome to dAstIll",
+      body: "dAstIll helps you keep up with YouTube without the doom-scrolling. It pulls transcripts from your favorite channels and creates AI summaries, so you can quickly decide which videos are worth your time.",
       placement: "right",
       prepare: () => {
         mobileTab = "browse";
@@ -184,17 +180,26 @@
     },
     {
       selector: "#channel-input",
-      title: "Follow a Channel",
-      body: "Paste any YouTube channel URL, handle, or channel ID and press enter. The channel and its videos are fetched automatically.",
+      title: "Add a Channel",
+      body: "Paste any YouTube channel URL or handle here and press Enter. dAstIll will fetch the channel and start pulling in its videos automatically.",
       placement: "bottom",
       prepare: () => {
         mobileTab = "browse";
       },
     },
     {
+      selector: "#workspace",
+      title: "Your Channels",
+      body: "All the channels you follow show up here. Click any channel to see its videos. You can search, sort, and drag to reorder them.",
+      placement: "right",
+      prepare: () => {
+        mobileTab = "browse";
+      },
+    },
+    {
       selector: "#videos",
-      title: "Video Library",
-      body: "The current channel's videos appear here first, then the list keeps filling in as history catches up. Pick any video to open its transcript, summary, highlights, or metadata.",
+      title: "Video List",
+      body: "These are the videos from the selected channel, newest first. Older videos keep loading in the background. Click any video to read its content.",
       placement: "right",
       prepare: () => {
         mobileTab = "browse";
@@ -202,8 +207,8 @@
     },
     {
       selector: "#video-filter-button",
-      title: "Filter Options",
-      body: "Filter your video list by type (full videos or shorts) and read status (all, unread, or read). Active filters are shown on the button.",
+      title: "Filter Videos",
+      body: "Narrow the list by type (full videos or Shorts) or by read status (all, unread, read). Useful when a channel has hundreds of uploads.",
       placement: "bottom",
       prepare: () => {
         mobileTab = "browse";
@@ -211,8 +216,8 @@
     },
     {
       selector: "#content-mode-tabs",
-      title: "Transcript View",
-      body: "Transcript is the reading-first view: raw spoken content, ready for inline cleanup, highlighting, and quick review.",
+      title: "Read the Transcript",
+      body: "Every video's spoken content is available as a full transcript you can read at your own pace - much faster than watching the whole video.",
       placement: "bottom",
       prepare: () => {
         mobileTab = "content";
@@ -223,8 +228,8 @@
     },
     {
       selector: "#content-mode-tabs",
-      title: "Summary View",
-      body: "Summary gives you the AI distillation of the video, along with the model used and any available quality signal.",
+      title: "AI Summary",
+      body: "Don't have time for the full transcript? The AI summary gives you the key points in a fraction of the time. This is the fastest way to decide if a video is worth watching.",
       placement: "bottom",
       prepare: () => {
         mobileTab = "content";
@@ -235,8 +240,8 @@
     },
     {
       selector: "#content-mode-tabs",
-      title: "Highlights Tab",
-      body: "Highlights collects the passages you saved from this video. Create them by selecting text in transcript or summary views, then revisit them here.",
+      title: "Your Highlights",
+      body: "Found something worth remembering? Select any text in the transcript or summary and save it as a highlight. All your saved passages for this video appear here.",
       placement: "bottom",
       prepare: () => {
         mobileTab = "content";
@@ -247,8 +252,8 @@
     },
     {
       selector: "#content-mode-tabs",
-      title: "Info View",
-      body: "Info shows the video's metadata — publish date, duration, description, and thumbnail — without leaving the workspace.",
+      title: "Video Details",
+      body: "See the publish date, duration, description, and thumbnail for any video - all without leaving the app.",
       placement: "bottom",
       prepare: () => {
         mobileTab = "content";
@@ -259,8 +264,8 @@
     },
     {
       selector: "#content-actions",
-      title: "Content Actions",
-      body: "The action bar changes with the current view. Use it to edit text, trigger AI cleanup or regeneration, toggle read state, and jump out to YouTube.",
+      title: "Actions",
+      body: "Use these buttons to edit text, clean up formatting with AI, regenerate a summary, or jump straight to the video on YouTube.",
       placement: "bottom",
       prepare: () => {
         mobileTab = "content";
@@ -271,8 +276,8 @@
     },
     {
       selector: "#content-actions",
-      title: "Mark as Read",
-      body: "Use the read toggle in the action bar to mark progress. That status flows back into the sidebar filters so you can quickly separate reviewed from unreviewed videos.",
+      title: "Track What You've Read",
+      body: "Mark videos as read once you've reviewed them, then use the filter to show only unread videos. That way you always know what's new.",
       placement: "bottom",
       prepare: () => {
         mobileTab = "content";
@@ -283,14 +288,14 @@
     },
     {
       selector: "#ai-status-pill",
-      title: "AI Status",
-      body: "The status pill shows whether AI-backed actions are currently available. Even when AI is degraded, browsing, reading, and navigation still work normally.",
+      title: "AI Availability",
+      body: "This indicator shows whether AI features like summaries and chat are online. Browsing, reading, and highlights work even when AI is offline.",
       placement: "bottom",
     },
     {
       selector: "#nav-docs-link",
-      title: "Documentation",
-      body: "Find detailed guides and references in the docs — everything you need to get the most out of dAstIll.",
+      title: "Learn More",
+      body: "Want to go deeper? The documentation covers everything from setup to advanced features.",
       placement: "bottom",
       prepare: () => {
         mobileTab = "browse";
@@ -895,43 +900,58 @@
       const selectedVideoIdAtMount = selectedVideoId;
       const acknowledgedAtMount = resolveAcknowledgedParam(acknowledgedFilter);
 
-      const [cachedChannels, cachedSnapshot, cachedMeta] = await Promise.all([
-        getCachedChannels(),
-        selectedChannelIdAtMount
-          ? getCachedViewSnapshot(
-              buildWorkspaceSnapshotCacheKey(
-                selectedChannelIdAtMount,
-                videoTypeFilter,
-                acknowledgedAtMount,
-              ),
+      // Resolve initial state from server bootstrap (SSR) + IndexedDB warm-start.
+      // IndexedDB is always read here before any network API call (VAL-CROSS-004).
+      const bootstrapResult = await resolveBootstrapOnMount({
+        serverBootstrap: $page.data.bootstrap ?? null,
+        selectedChannelId: selectedChannelIdAtMount,
+        viewSnapshotCacheKey: selectedChannelIdAtMount
+          ? buildWorkspaceSnapshotCacheKey(
+              selectedChannelIdAtMount,
+              videoTypeFilter,
+              acknowledgedAtMount,
             )
-          : Promise.resolve(null),
-        getCachedBootstrapMeta(),
-      ]);
+          : null,
+      });
 
-      if (cachedChannels && cachedChannels.length > 0) {
-        channels = applySavedChannelOrder(cachedChannels, channelOrder);
+      const hasInitialData = Boolean(
+        bootstrapResult.channels && bootstrapResult.channels.length > 0,
+      );
+
+      if (bootstrapResult.channels && bootstrapResult.channels.length > 0) {
+        channels = applySavedChannelOrder(
+          bootstrapResult.channels,
+          channelOrder,
+        );
         syncChannelOrderFromList();
       }
 
-      if (cachedMeta) {
-        aiAvailable = cachedMeta.ai_available;
-        aiStatus = cachedMeta.ai_status;
-        searchStatus = cachedMeta.search_status;
+      if (bootstrapResult.aiAvailable !== null) {
+        aiAvailable = bootstrapResult.aiAvailable;
+      }
+      if (bootstrapResult.aiStatus !== null) {
+        aiStatus = bootstrapResult.aiStatus;
+      }
+      if (bootstrapResult.searchStatus !== null) {
+        searchStatus = bootstrapResult.searchStatus;
       }
 
-      if (cachedSnapshot && selectedChannelIdAtMount) {
+      if (
+        bootstrapResult.snapshot &&
+        selectedChannelIdAtMount &&
+        bootstrapResult.snapshot.channel_id === selectedChannelIdAtMount
+      ) {
         await applyChannelSnapshot(
           selectedChannelIdAtMount,
-          cachedSnapshot,
+          bootstrapResult.snapshot,
           selectedVideoIdAtMount,
           true,
         );
       }
 
-      void loadChannels(null, true, {
-        silent: Boolean(cachedChannels && cachedChannels.length > 0),
-      }).finally(() => {
+      // Background refresh via consolidated bootstrap endpoint (1 API call for
+      // channels + AI status + search status + snapshot — satisfies VAL-DATA-002).
+      void loadBootstrapRefresh({ silent: hasInitialData }).finally(() => {
         viewUrlHydrated = true;
       });
     })();
@@ -971,68 +991,51 @@
     }
   }
 
-  async function refreshWorkspaceMeta(options?: { bypassCache?: boolean }) {
-    const [aiResult, searchResult] = await Promise.allSettled([
-      isAiAvailable(),
-      getSearchStatus({ bypassCache: options?.bypassCache }),
-    ]);
-
-    let nextAiAvailable = aiAvailable;
-    let nextAiStatus = aiStatus;
-    let nextSearchStatus = searchStatus;
-
-    if (aiResult.status === "fulfilled") {
-      nextAiAvailable = aiResult.value.available;
-      nextAiStatus = aiResult.value.status;
-      aiAvailable = aiResult.value.available;
-      aiStatus = aiResult.value.status;
-    }
-
-    if (searchResult.status === "fulfilled") {
-      nextSearchStatus = searchResult.value;
-      searchStatus = searchResult.value;
-    }
-
-    if (
-      nextAiAvailable !== null &&
-      nextAiStatus !== null &&
-      nextSearchStatus !== null
-    ) {
-      void putCachedBootstrapMeta({
-        ai_available: nextAiAvailable,
-        ai_status: nextAiStatus,
-        search_status: nextSearchStatus,
-      });
-    }
-  }
-
-  async function loadChannels(
-    preferredChannelId: string | null = null,
-    retryUntilBackendReachable = false,
-    options?: { silent?: boolean },
-  ) {
+  /**
+   * Background workspace refresh using the consolidated bootstrap endpoint.
+   *
+   * Fetches channels, AI status, search status, and the selected channel
+   * snapshot in a single request (VAL-DATA-002). Replaces the previous
+   * pattern of separate listChannels + refreshWorkspaceMeta + getChannelSnapshot
+   * calls that totalled 3-4 separate API requests.
+   */
+  async function loadBootstrapRefresh(options?: { silent?: boolean }) {
     const silent = options?.silent ?? false;
     const previousSelectedChannelId = selectedChannelId;
     const previousSelectedVideoId = selectedVideoId;
+
     if (!silent) {
       loadingChannels = true;
       errorMessage = null;
     }
 
     try {
-      const channelList = await listChannelsWhenAvailable({
-        retryDelayMs: retryUntilBackendReachable ? 500 : 0,
+      const bootstrap = await getWorkspaceBootstrapWhenAvailable({
+        selectedChannelId: previousSelectedChannelId,
+        videoType: videoTypeFilter,
+        acknowledged: resolveAcknowledgedParam(acknowledgedFilter),
+        limit,
+        retryDelayMs: 500,
       });
 
-      channels = applySavedChannelOrder(channelList, channelOrder);
+      channels = applySavedChannelOrder(bootstrap.channels, channelOrder);
       syncChannelOrderFromList();
       void putCachedChannels(channels);
-      void refreshWorkspaceMeta();
+
+      // Apply AI/search status from the bootstrap response
+      aiAvailable = bootstrap.ai_available;
+      aiStatus = bootstrap.ai_status;
+      searchStatus = bootstrap.search_status;
+      void putCachedBootstrapMeta({
+        ai_available: bootstrap.ai_available,
+        ai_status: bootstrap.ai_status,
+        search_status: bootstrap.search_status,
+      });
 
       const initialChannelId = resolveInitialChannelSelection(
-        channels,
+        bootstrap.channels,
         previousSelectedChannelId,
-        preferredChannelId,
+        null,
       );
 
       if (!initialChannelId) {
@@ -1060,7 +1063,19 @@
         editing = false;
         clearFormattingFeedback();
 
-        if (!canReuseRenderedSnapshot) {
+        if (
+          bootstrap.snapshot &&
+          bootstrap.selected_channel_id === initialChannelId
+        ) {
+          // Bootstrap includes a snapshot for this channel — apply it directly,
+          // avoiding an additional getChannelSnapshot API call.
+          await applyChannelSnapshot(
+            initialChannelId,
+            bootstrap.snapshot,
+            preferredVideoId,
+            canReuseRenderedSnapshot,
+          );
+        } else if (!canReuseRenderedSnapshot) {
           clearSelectedVideoState();
           selectedVideoId = preferredVideoId;
           videos = [];
@@ -1073,15 +1088,14 @@
           if (!silent) {
             loadingVideos = true;
           }
+          await tick();
+          await refreshAndLoadVideos(
+            initialChannelId,
+            false,
+            preferredVideoId,
+            canReuseRenderedSnapshot,
+          );
         }
-
-        await tick();
-        await refreshAndLoadVideos(
-          initialChannelId,
-          false,
-          preferredVideoId,
-          canReuseRenderedSnapshot,
-        );
       }
     } catch (error) {
       if (!silent || !errorMessage) {
