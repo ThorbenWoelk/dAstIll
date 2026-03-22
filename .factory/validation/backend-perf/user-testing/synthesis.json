@@ -1,0 +1,47 @@
+{
+  "milestone": "backend-perf",
+  "round": 1,
+  "status": "fail",
+  "assertionsSummary": {
+    "total": 5,
+    "passed": 2,
+    "failed": 0,
+    "blocked": 3
+  },
+  "passedAssertions": [
+    "VAL-BACKEND-001",
+    "VAL-BACKEND-002"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [
+    {
+      "id": "VAL-BACKEND-003",
+      "blockedBy": "S3-backed ignored integration tests for parallel load/insert fail with S3 dispatch failure in this environment."
+    },
+    {
+      "id": "VAL-BACKEND-004",
+      "blockedBy": "Ignored integration test get_video_without_summary_skips_summary_fetch failed during setup with S3 dispatch failure."
+    },
+    {
+      "id": "VAL-BACKEND-005",
+      "blockedBy": "Ignored integration test channel_snapshot_loads_video_data_once failed during setup with S3 dispatch failure."
+    }
+  ],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Added backend-perf concurrency/isolation guidance and flow-validator sections for backend-api and backend-rust-tests surfaces.",
+      "source": "setup"
+    },
+    {
+      "target": "user-testing.md",
+      "description": "Documented backend auth-header requirement and S3 dispatch-failure limitation for ignored integration tests.",
+      "source": "flow-report"
+    }
+  ],
+  "previousRound": null,
+  "flowReports": [
+    ".factory/validation/backend-perf/user-testing/flows/api-cache-headers.json",
+    ".factory/validation/backend-perf/user-testing/flows/rust-backend-tests.json"
+  ]
+}

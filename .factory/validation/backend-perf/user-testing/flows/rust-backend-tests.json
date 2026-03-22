@@ -1,0 +1,78 @@
+{
+  "groupId": "rust-backend-tests",
+  "testedAt": "2026-03-22T00:38:11Z",
+  "isolation": {
+    "guidanceSection": "backend-rust-tests",
+    "repoRoot": "/Users/thorben.woelk/repos/dAstIll",
+    "missionDir": "/Users/thorben.woelk/.factory/missions/ac6f5cfb-626d-4647-b49e-2397f57cdb1a"
+  },
+  "toolsUsed": [
+    "cargo test",
+    "grep",
+    "read"
+  ],
+  "assertionResults": [
+    {
+      "id": "VAL-BACKEND-002",
+      "status": "pass",
+      "reason": "Scoped cache eviction behavior is confirmed by passing tests read_cache::tests::evict_channel_removes_only_matching_channel_snapshot_entries and read_cache::tests::evict_channel_does_not_affect_workspace_bootstrap_for_other_channels.",
+      "evidence": [
+        "backend-perf/rust-tests/VAL-BACKEND-002-evict-channel-granular.log",
+        "backend-perf/rust-tests/VAL-BACKEND-002-workspace-bootstrap-scope.log"
+      ]
+    },
+    {
+      "id": "VAL-BACKEND-003",
+      "status": "blocked",
+      "reason": "Only semaphore bound was verifiable locally (db::videos::tests::max_concurrent_s3_ops_is_within_cloud_run_bounds passed). Parallel S3 behavior tests db::videos::tests::load_all_parallel_returns_correct_results and db::videos::tests::bulk_insert_parallel_returns_inserted_count failed with S3 dispatch errors, so full assertion validation could not be completed in this environment.",
+      "evidence": [
+        "backend-perf/rust-tests/VAL-BACKEND-003-semaphore-bounds.log",
+        "backend-perf/rust-tests/VAL-BACKEND-003-load-all-parallel.log",
+        "backend-perf/rust-tests/VAL-BACKEND-003-bulk-insert-parallel.log",
+        "backend-perf/rust-tests/db-videos-ignored-tests-list.log"
+      ]
+    },
+    {
+      "id": "VAL-BACKEND-004",
+      "status": "blocked",
+      "reason": "Targeted test db::videos::tests::get_video_without_summary_skips_summary_fetch could not be validated due to S3 dispatch failure during setup (insert should succeed).",
+      "evidence": [
+        "backend-perf/rust-tests/VAL-BACKEND-004-skip-summary-fetch.log",
+        "backend-perf/rust-tests/db-videos-ignored-tests-list.log"
+      ]
+    },
+    {
+      "id": "VAL-BACKEND-005",
+      "status": "blocked",
+      "reason": "Targeted test db::videos::tests::channel_snapshot_loads_video_data_once could not be validated due to S3 dispatch failure during setup (insert channel).",
+      "evidence": [
+        "backend-perf/rust-tests/VAL-BACKEND-005-channel-snapshot-dedup.log",
+        "backend-perf/rust-tests/db-videos-ignored-tests-list.log"
+      ]
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Relevant backend assertions rely on ignored integration tests that require reachable S3; these are not self-contained unit tests in this environment.",
+      "resolved": false,
+      "resolution": "N/A",
+      "affectedAssertions": [
+        "VAL-BACKEND-003",
+        "VAL-BACKEND-004",
+        "VAL-BACKEND-005"
+      ]
+    }
+  ],
+  "blockers": [
+    {
+      "description": "S3-backed ignored tests fail with dispatch failure, preventing runtime validation of parallel load/insert and summary/snapshot integration behavior.",
+      "affectedAssertions": [
+        "VAL-BACKEND-003",
+        "VAL-BACKEND-004",
+        "VAL-BACKEND-005"
+      ],
+      "quickFixAttempted": "Retried each targeted ignored cargo test and captured full stdout/stderr; failures remained reproducible."
+    }
+  ],
+  "overallStatus": "blocked"
+}

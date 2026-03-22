@@ -1,0 +1,59 @@
+{
+  "groupId": "api-cache-headers",
+  "testedAt": "2026-03-22T00:37:50Z",
+  "isolation": {
+    "surface": "backend-api",
+    "baseUrl": "http://localhost:3544",
+    "authHeader": "x-dastill-proxy-auth"
+  },
+  "toolsUsed": ["curl", "python3"],
+  "assertionResults": [
+    {
+      "id": "VAL-BACKEND-001",
+      "status": "pass",
+      "reason": "All required GET endpoints returned Cache-Control headers with max-age/stale-while-revalidate directives, and POST /api/channels returned no Cache-Control header.",
+      "evidence": [
+        "backend-perf/api-cache-headers/get-api-channels-auth.txt",
+        "backend-perf/api-cache-headers/get-api-videos-dsttKIZ3XwA-transcript.txt",
+        "backend-perf/api-cache-headers/get-api-videos-dsttKIZ3XwA-summary.txt",
+        "backend-perf/api-cache-headers/post-api-channels-empty-body.txt",
+        "backend-perf/api-cache-headers/discovery-video-id.txt"
+      ],
+      "checks": [
+        {
+          "request": "GET /api/channels",
+          "status": 200,
+          "cacheControl": "max-age=10, stale-while-revalidate=30",
+          "result": "present"
+        },
+        {
+          "request": "GET /api/videos/dsttKIZ3XwA/transcript",
+          "status": 200,
+          "cacheControl": "max-age=3600, stale-while-revalidate=86400",
+          "result": "present"
+        },
+        {
+          "request": "GET /api/videos/dsttKIZ3XwA/summary",
+          "status": 200,
+          "cacheControl": "max-age=60, stale-while-revalidate=300",
+          "result": "present"
+        },
+        {
+          "request": "POST /api/channels",
+          "status": 422,
+          "cacheControl": null,
+          "result": "absent"
+        }
+      ]
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Requests without x-dastill-proxy-auth returned 401, so authenticated calls were required to validate cache headers on protected endpoints.",
+      "resolved": true,
+      "resolution": "Used local default proxy token header x-dastill-proxy-auth: local-dev-backend-proxy-token."
+    }
+  ],
+  "blockers": [],
+  "overallStatus": "pass"
+}
