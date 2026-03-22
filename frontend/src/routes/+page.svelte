@@ -2050,6 +2050,9 @@
   })}
     <WorkspaceSidebar
       videoListMode="per_channel_preview"
+      initialChannelPreviews={$page.data.channelPreviews ?? {}}
+      initialChannelPreviewsFilterKey={$page.data.channelPreviewsFilterKey ??
+        "all:all"}
       shell={{
         collapsed: sidebarCollapsed,
         width: sidebarWidth,
@@ -2152,6 +2155,9 @@
       >
         <WorkspaceSidebar
           videoListMode="per_channel_preview"
+          initialChannelPreviews={$page.data.channelPreviews ?? {}}
+          initialChannelPreviewsFilterKey={$page.data
+            .channelPreviewsFilterKey ?? "all:all"}
           shell={{
             collapsed: false,
             width: undefined,

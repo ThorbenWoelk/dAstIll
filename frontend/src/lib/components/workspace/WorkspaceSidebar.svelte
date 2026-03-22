@@ -18,7 +18,13 @@
   import CheckIcon from "$lib/components/icons/CheckIcon.svelte";
   import ChevronIcon from "$lib/components/icons/ChevronIcon.svelte";
   import { clickOutside } from "$lib/actions/click-outside";
-  import type { Channel, Video, SyncDepth, VideoTypeFilter } from "$lib/types";
+  import type {
+    Channel,
+    ChannelSnapshot,
+    Video,
+    SyncDepth,
+    VideoTypeFilter,
+  } from "$lib/types";
   import type {
     WorkspaceSidebarChannelActions,
     WorkspaceSidebarChannelState,
@@ -123,6 +129,8 @@
       onAcknowledgedFilterChange: async (_value: AcknowledgedFilter) => {},
     },
     videoListMode = "selected_channel",
+    initialChannelPreviews = {} as Record<string, ChannelSnapshot>,
+    initialChannelPreviewsFilterKey = undefined as string | undefined,
   }: {
     shell?: WorkspaceSidebarShellProps;
     channelState?: WorkspaceSidebarChannelState;
@@ -130,6 +138,22 @@
     videoState?: WorkspaceSidebarVideoState;
     videoActions?: WorkspaceSidebarVideoActions;
     videoListMode?: "selected_channel" | "per_channel_preview";
+    /**
+     * Server-side pre-loaded channel snapshots (keyed by channel id) for the
+     * per_channel_preview mode. When provided and the current filter key matches
+     * `initialChannelPreviewsFilterKey`, the sidebar uses this data directly
+     * instead of making client-side getChannelSnapshot API calls on initial
+     * render (VAL-DATA-002).
+     */
+    initialChannelPreviews?: Record<string, ChannelSnapshot>;
+    /**
+     * The filter key (`"${videoType}:${acknowledgedFilter}"`) used when the
+     * server fetched the channel preview snapshots. The sidebar only uses
+     * pre-loaded data when the current filter key matches this value, preventing
+     * stale data from being shown when the client's filter differs from the
+     * server's filter (e.g. on first render before onMount/restoreWorkspaceState).
+     */
+    initialChannelPreviewsFilterKey?: string;
   } = $props();
 
   let collapsed = $derived(shell.collapsed);
@@ -293,6 +317,37 @@
     }
 
     if (supportsMode(state, filterKey, mode)) {
+      return;
+    }
+
+    // Use server-pre-loaded preview data when available and the filter matches.
+    // The initialChannelPreviewsFilterKey records the filter used server-side.
+    // We only use the pre-loaded snapshot when the current filter key matches
+    // the server's filter key, preventing stale data from appearing (e.g. on
+    // the first client render before onMount/restoreWorkspaceState fires).
+    //
+    // Case 1 (no URL filter, "all:all"): pre-seeded immediately on first render.
+    // Case 2 (URL filter, e.g. "short:all"): skipped on first render ("all:all"
+    //   ≠ "short:all"), then pre-seeded after onMount applies the URL filter.
+    // Either way: 0 client-side getChannelSnapshot calls for pre-loaded channels.
+    if (
+      mode === "preview" &&
+      initialChannelPreviewsFilterKey &&
+      filterKey === initialChannelPreviewsFilterKey &&
+      channel.id in initialChannelPreviews
+    ) {
+      const preloaded = initialChannelPreviews[channel.id];
+      state.videos = preloaded.videos.slice(0, PREVIEW_VISIBLE_VIDEO_COUNT);
+      state.loadedMode = "preview";
+      state.filterKey = filterKey;
+      state.loading = false;
+      state.hasMoreThanPreview =
+        preloaded.videos.length > PREVIEW_VISIBLE_VIDEO_COUNT;
+      state.syncDepth = preloaded.sync_depth;
+      state.earliestSyncDateInput = resolveSyncDateInputValue(
+        channel,
+        preloaded.sync_depth,
+      );
       return;
     }
 
