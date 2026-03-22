@@ -113,7 +113,7 @@ pub async fn add_cache_control(request: Request, next: Next) -> Response {
 
     let mut response = next.run(request).await;
 
-    if method == Method::GET {
+    if method == Method::GET && response.status().is_success() {
         if let Some(value) = cache_control_for_path(&path) {
             if let Ok(header_value) = HeaderValue::from_str(value) {
                 response
@@ -381,5 +381,97 @@ mod tests {
     fn unknown_paths_return_no_header() {
         assert_eq!(cache_control_for_path("/api/unknown"), None);
         assert_eq!(cache_control_for_path("/"), None);
+    }
+
+    // ── Middleware status-gating ──────────────────────────────────────────────
+
+    use super::add_cache_control;
+    use axum::{Router, body::Body, http::{Request, StatusCode}, middleware, routing::get};
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn cache_control_header_added_to_2xx_get_response() {
+        let app = Router::new()
+            .route("/api/channels", get(|| async { StatusCode::OK }))
+            .layer(middleware::from_fn(add_cache_control));
+
+        let request = Request::builder()
+            .method("GET")
+            .uri("/api/channels")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(
+            response.headers().contains_key("cache-control"),
+            "Cache-Control header must be present on 2xx GET response"
+        );
+    }
+
+    #[tokio::test]
+    async fn cache_control_header_not_added_to_4xx_get_response() {
+        let app = Router::new()
+            .route("/api/channels", get(|| async { StatusCode::NOT_FOUND }))
+            .layer(middleware::from_fn(add_cache_control));
+
+        let request = Request::builder()
+            .method("GET")
+            .uri("/api/channels")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert!(
+            !response.headers().contains_key("cache-control"),
+            "Cache-Control header must NOT be present on 4xx GET response"
+        );
+    }
+
+    #[tokio::test]
+    async fn cache_control_header_not_added_to_5xx_get_response() {
+        let app = Router::new()
+            .route(
+                "/api/channels",
+                get(|| async { StatusCode::INTERNAL_SERVER_ERROR }),
+            )
+            .layer(middleware::from_fn(add_cache_control));
+
+        let request = Request::builder()
+            .method("GET")
+            .uri("/api/channels")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(
+            !response.headers().contains_key("cache-control"),
+            "Cache-Control header must NOT be present on 5xx GET response"
+        );
+    }
+
+    #[tokio::test]
+    async fn cache_control_header_not_added_to_post_response() {
+        // POST requests must never get Cache-Control headers, regardless of status.
+        use axum::routing::post;
+
+        let app = Router::new()
+            .route("/api/channels", post(|| async { StatusCode::OK }))
+            .layer(middleware::from_fn(add_cache_control));
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/channels")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(
+            !response.headers().contains_key("cache-control"),
+            "Cache-Control header must NOT be present on POST response"
+        );
     }
 }
