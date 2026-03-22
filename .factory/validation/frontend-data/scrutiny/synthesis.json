@@ -1,7 +1,7 @@
 {
   "milestone": "frontend-data",
-  "round": 1,
-  "status": "fail",
+  "round": 2,
+  "status": "pass",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -20,39 +20,25 @@
     }
   },
   "reviewsSummary": {
-    "total": 3,
-    "passed": 1,
-    "failed": 2,
-    "failedFeatures": [
-      "frontend-ssr-data-loading",
-      "frontend-targeted-cache-invalidation"
-    ]
+    "total": 2,
+    "passed": 2,
+    "failed": 0,
+    "failedFeatures": []
   },
-  "blockingIssues": [
-    {
-      "featureId": "frontend-ssr-data-loading",
-      "severity": "blocking",
-      "description": "SSR load in frontend/src/routes/+page.server.ts does not forward URL filter params (`type`/`ack`) to workspace bootstrap query params (`video_type`/`acknowledged`), causing first-paint filtered URLs to potentially render an unfiltered snapshot until hydration refreshes."
-    },
-    {
-      "featureId": "frontend-targeted-cache-invalidation",
-      "severity": "blocking",
-      "description": "deleteHighlight() invalidates grouped highlight cache but fails to evict cached per-video highlights when videoId is unknown, allowing stale /api/videos/{videoId}/highlights responses to persist until TTL expiry."
-    }
-  ],
+  "blockingIssues": [],
   "appliedUpdates": [
     {
       "target": "library",
-      "description": "Updated .factory/library/architecture.md Frontend Data Layer section to reflect SSR bootstrap usage, targeted frontend cache invalidation, and self-hosted font state.",
-      "sourceFeature": "frontend-ssr-data-loading"
+      "description": "Updated .factory/library/architecture.md to reflect that SSR bootstrap now forwards URL `type` and `ack` filters to backend params (`video_type`, `acknowledged`).",
+      "sourceFeature": "fix-ssr-bootstrap-url-filters"
     }
   ],
   "suggestedGuidanceUpdates": [],
   "rejectedObservations": [
     {
-      "observation": "Skill-procedure adherence mismatch in frontend-font-optimization transcript (library reads not visible while skillFeedback.followedProcedure=true)",
-      "reason": "ambiguous transcript evidence; skeleton may be incomplete and does not conclusively prove procedure violation"
+      "observation": "Shared architecture notes are stale for SSR filter forwarding and can mislead future workers.",
+      "reason": "duplicate observation across both fix reviews; applied once via library update"
     }
   ],
-  "previousRound": null
+  "previousRound": ".factory/validation/frontend-data/scrutiny/synthesis.round1.json"
 }

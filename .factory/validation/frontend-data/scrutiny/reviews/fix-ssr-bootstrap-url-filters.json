@@ -1,0 +1,21 @@
+{
+  "featureId": "fix-ssr-bootstrap-url-filters",
+  "reviewedAt": "2026-03-22T01:46:43Z",
+  "commitId": "4938092",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "This fix directly resolves the prior blocking SSR mismatch. Compared with original commit b3f6a05 (which only forwarded selected_channel_id and limit), commit 4938092 now parses URL `type` and `ack` and forwards them to `/api/workspace/bootstrap` as `video_type` and `acknowledged` respectively. Behavior is constrained to valid, non-default values and is covered by dedicated server-load tests.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "Shared architecture knowledge is now stale for this path: it still states SSR bootstrap does not forward type/ack URL filters.",
+      "evidence": ".factory/library/architecture.md:29 says type/ack filters are not forwarded, but commit 4938092 updates frontend/src/routes/+page.server.ts to forward `type` -> `video_type` and `ack` -> `acknowledged`."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/frontend-data/scrutiny/reviews/frontend-ssr-data-loading.json",
+  "summary": "Reviewed fix feature fix-ssr-bootstrap-url-filters as a rerun after frontend-ssr-data-loading failure. Transcript skeleton, prior review, original commit b3f6a05, and fix commit 4938092 were examined. Verdict: pass — the original blocking issue (missing SSR forwarding of URL filters) is fully addressed, with regression tests added for valid/default/invalid and combined parameter scenarios."
+}

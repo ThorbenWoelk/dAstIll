@@ -26,7 +26,7 @@ Architectural decisions, patterns discovered, and design constraints.
 ## Frontend Data Layer
 
 - Workspace route now uses SSR bootstrap loading via `src/routes/+page.server.ts` (main page no longer purely client-side)
-- Current SSR bootstrap request forwards `selected_channel_id` + `limit`; URL `type`/`ack` filters are not currently forwarded in server load
+- SSR bootstrap request forwards `selected_channel_id`, `limit`, and URL filters (`type` -> `video_type`, `ack` -> `acknowledged`) so first paint matches filtered URLs
 - `api.ts`: 30-second in-memory GET response cache with request deduplication and targeted invalidation helpers for channel/video/highlight mutations
 - `clearGetRequestCache()` remains as a test utility path (`resetApiCacheForTests`), not the primary mutation invalidation strategy
 - `workspace-cache.ts`: IndexedDB persistence for stale-while-revalidate warm-start fallback and returning visits

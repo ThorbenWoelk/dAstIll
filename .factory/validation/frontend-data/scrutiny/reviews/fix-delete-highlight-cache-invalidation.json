@@ -1,0 +1,21 @@
+{
+  "featureId": "fix-delete-highlight-cache-invalidation",
+  "reviewedAt": "2026-03-22T01:46:31Z",
+  "commitId": "e63194e",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix fully addresses the prior blocking issue: deleteHighlight() now evicts grouped highlights and all per-video highlight cache entries when videoId is unavailable, and the new regression test explicitly covers the stale /api/videos/{videoId}/highlights scenario.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "Shared architecture notes are stale for SSR filter forwarding and can mislead future workers.",
+      "evidence": ".factory/library/architecture.md:29 still says URL type/ack filters are not forwarded in server load, but this was fixed by commit 4938092 (fix-ssr-bootstrap-url-filters)."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/frontend-data/scrutiny/reviews/frontend-targeted-cache-invalidation.json",
+  "summary": "Reviewed original failed feature and fix commit. The prior failure (stale per-video highlight caches after deleteHighlight without videoId) is resolved in e63194e, and regression coverage now protects this path."
+}
