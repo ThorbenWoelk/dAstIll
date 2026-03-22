@@ -9,7 +9,11 @@ import type { Video } from "../src/lib/types";
 import type { Channel } from "../src/lib/types";
 
 function makeVideo(
-  overrides: Partial<Video> & { id: string; is_short: boolean; acknowledged: boolean },
+  overrides: Partial<Video> & {
+    id: string;
+    is_short: boolean;
+    acknowledged: boolean;
+  },
 ): Video {
   return {
     published_at: "2024-01-01T00:00:00Z",
@@ -37,8 +41,16 @@ function makeChannel(id: string): Channel {
 }
 
 describe("filterVideosByType", () => {
-  const longVideo = makeVideo({ id: "long-1", is_short: false, acknowledged: false });
-  const shortVideo = makeVideo({ id: "short-1", is_short: true, acknowledged: false });
+  const longVideo = makeVideo({
+    id: "long-1",
+    is_short: false,
+    acknowledged: false,
+  });
+  const shortVideo = makeVideo({
+    id: "short-1",
+    is_short: true,
+    acknowledged: false,
+  });
   const videos = [longVideo, shortVideo];
 
   it("returns all videos when filter is 'all'", () => {
@@ -63,8 +75,16 @@ describe("filterVideosByType", () => {
 });
 
 describe("filterVideosByAcknowledged", () => {
-  const unacknowledgedVideo = makeVideo({ id: "unack-1", is_short: false, acknowledged: false });
-  const acknowledgedVideo = makeVideo({ id: "ack-1", is_short: false, acknowledged: true });
+  const unacknowledgedVideo = makeVideo({
+    id: "unack-1",
+    is_short: false,
+    acknowledged: false,
+  });
+  const acknowledgedVideo = makeVideo({
+    id: "ack-1",
+    is_short: false,
+    acknowledged: true,
+  });
   const videos = [unacknowledgedVideo, acknowledgedVideo];
 
   it("returns all videos when filter is 'all'", () => {
@@ -84,7 +104,9 @@ describe("filterVideosByAcknowledged", () => {
   });
 
   it("returns empty list when no videos match the filter", () => {
-    expect(filterVideosByAcknowledged([acknowledgedVideo], "unack")).toHaveLength(0);
+    expect(
+      filterVideosByAcknowledged([acknowledgedVideo], "unack"),
+    ).toHaveLength(0);
   });
 });
 
@@ -102,7 +124,10 @@ describe("resolveNextChannelSelection", () => {
   });
 
   it("returns the remaining channel when only two channels exist", () => {
-    const result = resolveNextChannelSelection([channelA, channelB], "channel-b");
+    const result = resolveNextChannelSelection(
+      [channelA, channelB],
+      "channel-b",
+    );
     expect(result).toBe("channel-a");
   });
 

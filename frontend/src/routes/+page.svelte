@@ -2,6 +2,7 @@
   import { goto, replaceState as replacePageState } from "$app/navigation";
   import { page } from "$app/stores";
   import { onMount, tick } from "svelte";
+  import type { Component } from "svelte";
   import {
     addChannel,
     backfillChannelVideos,
@@ -28,13 +29,19 @@
   } from "$lib/api";
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
   import { DOCS_URL } from "$lib/app-config";
-  import FeatureGuide from "$lib/components/FeatureGuide.svelte";
   import type { TourStep } from "$lib/components/FeatureGuide.svelte";
   import ContentEditor from "$lib/components/ContentEditor.svelte";
   import WorkspaceContentPanel from "$lib/components/workspace/WorkspaceContentPanel.svelte";
-  import WorkspaceSearchBar from "$lib/components/workspace/WorkspaceSearchBar.svelte";
   import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
   import WorkspaceSidebar from "$lib/components/workspace/WorkspaceSidebar.svelte";
+
+  // Lazy-loaded dynamic components (create Vite code-split boundaries)
+  // WorkspaceSearchBar: eagerly loaded on mount (visible immediately, split for bundle size)
+  // FeatureGuide: truly lazy-loaded only when the guide is first opened
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let WorkspaceSearchBarComponent = $state<Component<any> | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let FeatureGuideComponent = $state<Component<any> | null>(null);
   import type {
     AiStatus,
     Channel,
@@ -960,6 +967,24 @@
     if (restoredGuideStep !== null) {
       guideStep = restoredGuideStep;
       guideOpen = true;
+    }
+
+    // Eagerly load WorkspaceSearchBar on mount (creates a Vite code-split boundary
+    // while ensuring the search bar is available as soon as the component hydrates).
+    void import("$lib/components/workspace/WorkspaceSearchBar.svelte").then(
+      (m) => {
+        WorkspaceSearchBarComponent = m.default;
+      },
+    );
+  });
+
+  // Lazily load FeatureGuide only when the guide tour is first opened.
+  // This creates a true on-demand code-split boundary since the tour is optional.
+  $effect(() => {
+    if (guideOpen && !FeatureGuideComponent) {
+      void import("$lib/components/FeatureGuide.svelte").then((m) => {
+        FeatureGuideComponent = m.default;
+      });
     }
   });
 
@@ -2139,10 +2164,12 @@
     </div>
 
     <div class="flex min-w-0 flex-1 items-center justify-end gap-3">
-      <WorkspaceSearchBar
-        initialSearchStatus={searchStatus}
-        onSearchResultSelect={handleSearchResultSelection}
-      />
+      {#if WorkspaceSearchBarComponent}
+        <WorkspaceSearchBarComponent
+          initialSearchStatus={searchStatus}
+          onSearchResultSelect={handleSearchResultSelection}
+        />
+      {/if}
     </div>
   {/snippet}
 
@@ -2192,12 +2219,14 @@
     overlayActions={workspaceOverlaysActions}
   />
 
-  <FeatureGuide
-    open={guideOpen}
-    step={guideStep}
-    steps={tourSteps}
-    docsUrl={DOCS_URL}
-    onClose={closeGuide}
-    onStep={setGuideStep}
-  />
+  {#if FeatureGuideComponent}
+    <FeatureGuideComponent
+      open={guideOpen}
+      step={guideStep}
+      steps={tourSteps}
+      docsUrl={DOCS_URL}
+      onClose={closeGuide}
+      onStep={setGuideStep}
+    />
+  {/if}
 </WorkspaceShell>
