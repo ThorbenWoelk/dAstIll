@@ -32,7 +32,6 @@ pub async fn create_highlight(
     )
     .await
     .map_err(map_db_err)?;
-    state.read_cache.clear().await;
 
     Ok((StatusCode::CREATED, Json(highlight)))
 }
@@ -70,7 +69,6 @@ pub async fn delete_highlight(
         .map_err(map_db_err)?;
     let status = resolve_delete_highlight_result(deleted)?;
 
-    state.read_cache.clear().await;
     Ok(status)
 }
 

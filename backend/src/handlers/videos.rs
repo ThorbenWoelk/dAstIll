@@ -222,7 +222,7 @@ pub async fn update_video_acknowledged(
         .await
         .map_err(map_db_err)?;
     video.acknowledged = payload.acknowledged;
-    state.read_cache.clear().await;
+    state.read_cache.evict_channel(&video.channel_id).await;
     Ok(Json(video))
 }
 

@@ -161,7 +161,7 @@ pub async fn add_channel(
             .await
             .map_err(map_db_err)?;
     }
-    state.read_cache.clear().await;
+    state.read_cache.evict_channel_list().await;
     tracing::info!(channel_id = %channel.id, channel_name = %channel.name, "channel subscribed");
 
     let db_pool = state.db.clone();
@@ -174,7 +174,7 @@ pub async fn add_channel(
                 let inserted_count = crate::db::bulk_insert_videos(&conn, videos)
                     .await
                     .unwrap_or(0);
-                read_cache.clear().await;
+                read_cache.evict_channel(&channel_id_clone).await;
                 tracing::info!(
                     channel_id = %channel_id_clone,
                     inserted_count,
@@ -280,7 +280,8 @@ pub async fn delete_channel(
     let deleted = db::delete_channel(&conn, &id).await.map_err(map_db_err)?;
 
     if deleted {
-        state.read_cache.clear().await;
+        state.read_cache.evict_channel(&id).await;
+        state.read_cache.evict_channel_list().await;
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err((StatusCode::NOT_FOUND, "Channel not found".to_string()))
@@ -307,7 +308,8 @@ pub async fn update_channel(
             .await
             .map_err(map_db_err)?;
     }
-    state.read_cache.clear().await;
+    state.read_cache.evict_channel(&id).await;
+    state.read_cache.evict_channel_list().await;
 
     Ok(Json(channel))
 }
@@ -386,7 +388,7 @@ pub async fn refresh_channel_videos(
         inserted_count = count,
         "channel refresh inserted new videos"
     );
-    state.read_cache.clear().await;
+    state.read_cache.evict_channel(&id).await;
 
     Ok(Json(serde_json::json!({ "videos_added": count })))
 }
@@ -431,7 +433,7 @@ pub async fn backfill_channel_videos(
         exhausted,
         "channel history backfill complete"
     );
-    state.read_cache.clear().await;
+    state.read_cache.evict_channel(&id).await;
 
     Ok(Json(serde_json::json!({
         "videos_added": added_count,

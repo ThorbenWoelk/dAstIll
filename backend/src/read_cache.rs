@@ -16,6 +16,9 @@ use crate::{
 
 const DEFAULT_READ_CACHE_TTL: Duration = Duration::from_secs(10);
 const SEARCH_STATUS_CACHE_TTL: Duration = Duration::from_secs(30);
+/// Maximum number of entries to keep in the cache.
+/// Prevents unbounded memory growth within Cloud Run's 512Mi limit.
+pub(crate) const MAX_CACHE_SIZE: usize = 512;
 
 #[derive(Clone)]
 pub struct ReadCache {
@@ -197,6 +200,40 @@ impl ReadCache {
         self.entries.write().await.clear();
     }
 
+    /// Evict all cache entries related to a specific channel's data.
+    /// Used when a channel's video list changes (acknowledge, transcript/summary status,
+    /// refresh, backfill). Leaves the channels list and other channels' entries intact.
+    pub async fn evict_channel(&self, channel_id: &str) {
+        let mut entries = self.entries.write().await;
+        entries.retain(|key, _| match key {
+            ReadCacheKey::ChannelSnapshot(k) => k.channel_id != channel_id,
+            ReadCacheKey::WorkspaceBootstrap(k) => {
+                k.selected_channel_id.as_deref() != Some(channel_id)
+            }
+            ReadCacheKey::ChannelSyncDepth(id) => id != channel_id,
+            _ => true,
+        });
+    }
+
+    /// Evict the channels list and all workspace bootstrap entries.
+    /// Used when the set of channels changes (add, delete, update channel metadata).
+    pub async fn evict_channel_list(&self) {
+        let mut entries = self.entries.write().await;
+        entries
+            .retain(|key, _| !matches!(key, ReadCacheKey::Channels | ReadCacheKey::WorkspaceBootstrap(_)));
+    }
+
+    fn evict_expired(entries: &mut HashMap<ReadCacheKey, CacheEntry>) {
+        let now = Instant::now();
+        entries.retain(|_, entry| entry.expires_at > now);
+    }
+
+    /// Returns the current number of entries in the cache (for testing).
+    #[cfg(test)]
+    pub(crate) async fn len(&self) -> usize {
+        self.entries.read().await.len()
+    }
+
     async fn get(&self, key: &ReadCacheKey) -> Option<ReadCacheValue> {
         let now = Instant::now();
         {
@@ -245,7 +282,17 @@ impl ReadCache {
     }
 
     async fn set_with_ttl(&self, key: ReadCacheKey, value: ReadCacheValue, ttl: Duration) {
-        self.entries.write().await.insert(
+        let mut entries = self.entries.write().await;
+        // If inserting a new key would exceed the size limit, evict expired entries first.
+        if !entries.contains_key(&key) && entries.len() >= MAX_CACHE_SIZE {
+            Self::evict_expired(&mut entries);
+        }
+        // If still at capacity after evicting expired entries, skip insertion to
+        // prevent unbounded memory growth within Cloud Run's 512Mi limit.
+        if !entries.contains_key(&key) && entries.len() >= MAX_CACHE_SIZE {
+            return;
+        }
+        entries.insert(
             key,
             CacheEntry {
                 expires_at: Instant::now() + ttl,
@@ -307,7 +354,10 @@ mod tests {
 
     use chrono::Utc;
 
-    use super::{ReadCache, VideoListCacheKey, WorkspaceBootstrapCacheKey};
+    use super::{
+        ChannelSnapshotCacheKey, MAX_CACHE_SIZE, ReadCache, VideoListCacheKey,
+        WorkspaceBootstrapCacheKey,
+    };
     use crate::db::QueueFilter;
     use crate::models::{AiStatus, Channel, SearchStatusPayload, WorkspaceBootstrapPayload};
 
@@ -439,6 +489,145 @@ mod tests {
         assert_ne!(any_incomplete, transcripts);
         assert_ne!(transcripts, summaries);
         assert_ne!(summaries, evaluations);
+    }
+
+    #[tokio::test]
+    async fn evict_channel_removes_only_matching_channel_snapshot_entries() {
+        let cache = ReadCache::new(Duration::from_secs(60));
+        let key_a = ChannelSnapshotCacheKey {
+            channel_id: "channel-a".to_string(),
+            video_list: VideoListCacheKey::new(20, 0, None, None, None),
+        };
+        let key_b = ChannelSnapshotCacheKey {
+            channel_id: "channel-b".to_string(),
+            video_list: VideoListCacheKey::new(20, 0, None, None, None),
+        };
+        let bootstrap_key_a = WorkspaceBootstrapCacheKey {
+            selected_channel_id: Some("channel-a".to_string()),
+            video_list: VideoListCacheKey::new(20, 0, None, None, None),
+        };
+        let bootstrap_key_b = WorkspaceBootstrapCacheKey {
+            selected_channel_id: Some("channel-b".to_string()),
+            video_list: VideoListCacheKey::new(20, 0, None, None, None),
+        };
+
+        // Populate cache for both channels
+        cache.set_channels(vec![sample_channel("channel-a"), sample_channel("channel-b")]).await;
+        cache.set_channel_snapshot(key_a.clone(), crate::models::ChannelSnapshotPayload {
+            channel_id: "channel-a".to_string(),
+            sync_depth: crate::models::SyncDepthPayload { earliest_sync_date: None, earliest_sync_date_user_set: false, derived_earliest_ready_date: None },
+            videos: vec![],
+        }).await;
+        cache.set_channel_snapshot(key_b.clone(), crate::models::ChannelSnapshotPayload {
+            channel_id: "channel-b".to_string(),
+            sync_depth: crate::models::SyncDepthPayload { earliest_sync_date: None, earliest_sync_date_user_set: false, derived_earliest_ready_date: None },
+            videos: vec![],
+        }).await;
+        cache.set_workspace_bootstrap(bootstrap_key_a.clone(), sample_bootstrap()).await;
+        cache.set_workspace_bootstrap(bootstrap_key_b.clone(), sample_bootstrap()).await;
+        cache.set_channel_sync_depth("channel-a".to_string(), crate::models::SyncDepthPayload { earliest_sync_date: None, earliest_sync_date_user_set: false, derived_earliest_ready_date: None }).await;
+
+        // Evict only channel-a
+        cache.evict_channel("channel-a").await;
+
+        // channel-a entries are evicted
+        assert!(cache.get_channel_snapshot(&key_a).await.is_none(), "channel-a snapshot should be evicted");
+        assert!(cache.get_workspace_bootstrap(&bootstrap_key_a).await.is_none(), "channel-a workspace bootstrap should be evicted");
+        assert!(cache.get_channel_sync_depth("channel-a").await.is_none(), "channel-a sync depth should be evicted");
+
+        // channel-b entries are still present
+        assert!(cache.get_channel_snapshot(&key_b).await.is_some(), "channel-b snapshot should remain");
+        assert!(cache.get_workspace_bootstrap(&bootstrap_key_b).await.is_some(), "channel-b workspace bootstrap should remain");
+
+        // channels list is untouched
+        assert!(cache.get_channels().await.is_some(), "channels list should remain after evict_channel");
+    }
+
+    #[tokio::test]
+    async fn evict_channel_does_not_affect_workspace_bootstrap_for_other_channels() {
+        let cache = ReadCache::new(Duration::from_secs(60));
+        // A workspace bootstrap with NO selected channel (e.g., first load with no channel selected)
+        let bootstrap_key_none = WorkspaceBootstrapCacheKey {
+            selected_channel_id: None,
+            video_list: VideoListCacheKey::new(20, 0, None, None, None),
+        };
+        // A workspace bootstrap for channel-b
+        let bootstrap_key_b = WorkspaceBootstrapCacheKey {
+            selected_channel_id: Some("channel-b".to_string()),
+            video_list: VideoListCacheKey::new(20, 0, None, None, None),
+        };
+
+        cache.set_workspace_bootstrap(bootstrap_key_none.clone(), sample_bootstrap()).await;
+        cache.set_workspace_bootstrap(bootstrap_key_b.clone(), sample_bootstrap()).await;
+
+        cache.evict_channel("channel-a").await;
+
+        // Neither was for channel-a, both should remain
+        assert!(cache.get_workspace_bootstrap(&bootstrap_key_none).await.is_some());
+        assert!(cache.get_workspace_bootstrap(&bootstrap_key_b).await.is_some());
+    }
+
+    #[tokio::test]
+    async fn evict_channel_list_removes_channels_and_all_workspace_bootstraps() {
+        let cache = ReadCache::new(Duration::from_secs(60));
+        let key_a = WorkspaceBootstrapCacheKey {
+            selected_channel_id: Some("channel-a".to_string()),
+            video_list: VideoListCacheKey::new(20, 0, None, None, None),
+        };
+        let key_b = WorkspaceBootstrapCacheKey {
+            selected_channel_id: Some("channel-b".to_string()),
+            video_list: VideoListCacheKey::new(20, 0, None, None, None),
+        };
+        let snapshot_key_a = ChannelSnapshotCacheKey {
+            channel_id: "channel-a".to_string(),
+            video_list: VideoListCacheKey::new(20, 0, None, None, None),
+        };
+
+        cache.set_channels(vec![sample_channel("channel-a")]).await;
+        cache.set_workspace_bootstrap(key_a.clone(), sample_bootstrap()).await;
+        cache.set_workspace_bootstrap(key_b.clone(), sample_bootstrap()).await;
+        cache.set_channel_snapshot(snapshot_key_a.clone(), crate::models::ChannelSnapshotPayload {
+            channel_id: "channel-a".to_string(),
+            sync_depth: crate::models::SyncDepthPayload { earliest_sync_date: None, earliest_sync_date_user_set: false, derived_earliest_ready_date: None },
+            videos: vec![],
+        }).await;
+        cache.set_search_status(sample_search_status()).await;
+
+        cache.evict_channel_list().await;
+
+        // Channels list and ALL workspace bootstraps are evicted
+        assert!(cache.get_channels().await.is_none(), "channels list should be evicted");
+        assert!(cache.get_workspace_bootstrap(&key_a).await.is_none(), "workspace bootstrap for channel-a should be evicted");
+        assert!(cache.get_workspace_bootstrap(&key_b).await.is_none(), "workspace bootstrap for channel-b should be evicted");
+
+        // Channel snapshot and search status remain (they don't depend on the channels list)
+        assert!(cache.get_channel_snapshot(&snapshot_key_a).await.is_some(), "channel snapshot should remain");
+        assert!(cache.get_search_status().await.is_some(), "search status should remain");
+    }
+
+    #[tokio::test]
+    async fn bounded_cache_does_not_exceed_max_size_when_full() {
+        // Use a tiny cache size for testing
+        use std::time::Duration;
+        let cache = ReadCache::new(Duration::from_secs(60));
+        // Override max size is not possible via the public API,
+        // so we fill to MAX_CACHE_SIZE using ChannelSyncDepth keys and
+        // verify we can still update an existing key (not a new insertion)
+        // This test verifies the bounded invariant via the public constants.
+        // Fill cache with unique ChannelSyncDepth entries
+        let fill_count = crate::read_cache::MAX_CACHE_SIZE + 10;
+        for i in 0..fill_count {
+            let channel_id = format!("channel-{i}");
+            cache.set_channel_sync_depth(channel_id, crate::models::SyncDepthPayload {
+                earliest_sync_date: None,
+                earliest_sync_date_user_set: false,
+                derived_earliest_ready_date: None,
+            }).await;
+        }
+        // The cache should have at most MAX_CACHE_SIZE entries
+        let entry_count = cache.len().await;
+        assert!(entry_count <= MAX_CACHE_SIZE,
+            "cache size {entry_count} exceeds MAX_CACHE_SIZE {MAX_CACHE_SIZE}");
     }
 
     #[tokio::test]

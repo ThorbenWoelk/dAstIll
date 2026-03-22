@@ -182,14 +182,14 @@ pub async fn regenerate_summary(
     Path(video_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     tracing::info!(video_id = %video_id, "summary regeneration requested");
-    require_video(&state, &video_id).await?;
+    let video = require_video(&state, &video_id).await?;
     {
         let conn = state.db.connect();
         db::delete_summary(&conn, &video_id)
             .await
             .map_err(map_db_err)?;
     }
-    state.read_cache.clear().await;
+    state.read_cache.evict_channel(&video.channel_id).await;
 
     let summary = ensure_summary(&state, &video_id).await?;
     Ok(Json(summary))
@@ -216,7 +216,7 @@ pub(crate) async fn ensure_transcript(
     state: &AppState,
     video_id: &str,
 ) -> Result<Transcript, (StatusCode, String)> {
-    require_video(state, video_id).await?;
+    let video = require_video(state, video_id).await?;
     {
         let conn = state.db.connect();
         if let Some(transcript) = db::get_transcript(&conn, video_id)
@@ -269,7 +269,7 @@ pub(crate) async fn ensure_transcript(
     )
     .await
     .map_err(map_db_err)?;
-    state.read_cache.clear().await;
+    state.read_cache.evict_channel(&video.channel_id).await;
     tracing::info!(video_id = %video_id, "transcript stored - status set to ready");
 
     Ok(transcript)
@@ -400,7 +400,7 @@ pub(crate) async fn ensure_summary(
     )
     .await
     .map_err(map_db_err)?;
-    state.read_cache.clear().await;
+    state.read_cache.evict_channel(&video.channel_id).await;
     tracing::info!(video_id = %video_id, "summary stored - status set to ready");
 
     Ok(summary)
@@ -412,7 +412,7 @@ async fn save_manual_transcript_content(
     content: &str,
     render_mode: Option<TranscriptRenderMode>,
 ) -> Result<Transcript, (StatusCode, String)> {
-    require_video(state, video_id).await?;
+    let video = require_video(state, video_id).await?;
     let conn = state.db.connect();
     let existing_render_mode = db::get_transcript(&conn, video_id)
         .await
@@ -432,7 +432,7 @@ async fn save_manual_transcript_content(
     )
     .await
     .map_err(map_db_err)?;
-    state.read_cache.clear().await;
+    state.read_cache.evict_channel(&video.channel_id).await;
     Ok(transcript)
 }
 
@@ -441,7 +441,7 @@ async fn save_manual_summary_content(
     video_id: &str,
     content: &str,
 ) -> Result<Summary, (StatusCode, String)> {
-    require_video(state, video_id).await?;
+    let video = require_video(state, video_id).await?;
     let conn = state.db.connect();
     let summary = db::save_manual_summary(&conn, video_id, content, Some("manual"))
         .await
@@ -454,7 +454,7 @@ async fn save_manual_summary_content(
     )
     .await
     .map_err(map_db_err)?;
-    state.read_cache.clear().await;
+    state.read_cache.evict_channel(&video.channel_id).await;
     Ok(summary)
 }
 
