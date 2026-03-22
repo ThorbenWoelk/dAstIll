@@ -29,7 +29,6 @@
     updateTranscript,
     updateAcknowledged,
   } from "$lib/api";
-  import type { WorkspaceSidebarVideoState } from "$lib/workspace/component-props";
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
   import { DOCS_URL } from "$lib/app-config";
   import type { TourStep } from "$lib/components/FeatureGuide.svelte";
@@ -586,49 +585,6 @@
       return null;
     }
   }
-
-  const videoState = $derived<WorkspaceSidebarVideoState>({
-    get videos() {
-      return videos;
-    },
-    get pendingSelectedVideo() {
-      return pendingSelectedVideo;
-    },
-    get selectedVideoId() {
-      return selectedVideoId;
-    },
-    get selectedChannel() {
-      return selectedChannel;
-    },
-    get loadingVideos() {
-      return loadingVideos;
-    },
-    get refreshingChannel() {
-      return refreshingChannel;
-    },
-    get hasMore() {
-      return hasMore;
-    },
-    get historyExhausted() {
-      return historyExhausted;
-    },
-    get backfillingHistory() {
-      return backfillingHistory;
-    },
-    get videoTypeFilter() {
-      return videoTypeFilter;
-    },
-    get acknowledgedFilter() {
-      return acknowledgedFilter;
-    },
-    get offset() {
-      return offset;
-    },
-    get syncDepth() {
-      return syncDepth;
-    },
-    allowLoadedVideoSyncDepthOverride: false,
-  });
 
   async function hydrateSelectedVideo(
     preferredVideoId: string | null,
