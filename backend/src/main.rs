@@ -8,6 +8,7 @@ use axum::{
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{Layer, filter, layer::SubscriberExt, util::SubscriberInitExt};
 
+use dastill::cache_headers::add_cache_control;
 use dastill::config::{
     ChatRuntimeConfig, OllamaRuntimeConfig, SearchRuntimeConfig, SecurityRuntimeConfig,
 };
@@ -454,6 +455,7 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .route("/api/health", get(|| async { "ok" }))
         .merge(protected_api)
+        .layer(middleware::from_fn(add_cache_control))
         .layer(build_cors_layer(security_runtime.as_ref()).map_err(|err| anyhow::anyhow!(err))?)
         .layer(TraceLayer::new_for_http())
         .with_state(state);
