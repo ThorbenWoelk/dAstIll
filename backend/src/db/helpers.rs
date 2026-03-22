@@ -1,5 +1,9 @@
+use std::sync::Arc;
+
 use aws_sdk_s3::primitives::ByteStream;
 use serde::{Deserialize, Serialize};
+use tokio::sync::Semaphore;
+use tokio::task::JoinSet;
 
 use super::{Store, StoreError};
 
@@ -104,15 +108,36 @@ impl Store {
         Ok(keys)
     }
 
-    pub(crate) async fn load_all<T: for<'de> Deserialize<'de>>(
+    pub(crate) async fn load_all<T: for<'de> Deserialize<'de> + Send + 'static>(
         &self,
         prefix: &str,
     ) -> Result<Vec<T>, StoreError> {
         let keys = self.list_keys(prefix).await?;
-        let mut items = Vec::with_capacity(keys.len());
+        if keys.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let semaphore = Arc::new(Semaphore::new(super::MAX_CONCURRENT_S3_OPS));
+        let mut join_set: JoinSet<Result<Option<T>, StoreError>> = JoinSet::new();
+
         for key in keys {
-            if let Some(item) = self.get_json::<T>(&key).await? {
-                items.push(item);
+            let store = self.clone();
+            let semaphore = Arc::clone(&semaphore);
+            join_set.spawn(async move {
+                let _permit = semaphore.acquire().await.expect("semaphore closed");
+                store.get_json::<T>(&key).await
+            });
+        }
+
+        let mut items = Vec::new();
+        while let Some(result) = join_set.join_next().await {
+            match result {
+                Ok(Ok(Some(item))) => items.push(item),
+                Ok(Ok(None)) => {}
+                Ok(Err(e)) => return Err(e),
+                Err(e) => {
+                    return Err(StoreError::S3(format!("parallel fetch task error: {e}")));
+                }
             }
         }
         Ok(items)

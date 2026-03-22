@@ -181,7 +181,7 @@ pub async fn backfill_video_info(
 
         let video = {
             let conn = state.db.connect();
-            db::get_video(&conn, video_id).await.map_err(map_db_err)?
+            db::get_video(&conn, video_id, false).await.map_err(map_db_err)?
         };
 
         if let Some(video) = video {

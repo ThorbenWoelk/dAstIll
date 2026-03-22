@@ -7,6 +7,9 @@ mod search;
 mod video_info;
 mod videos;
 
+/// Maximum number of concurrent S3 operations. Chosen for 1 vCPU / 512 MiB Cloud Run.
+pub(crate) const MAX_CONCURRENT_S3_OPS: usize = 12;
+
 pub use channels::*;
 pub use chat::*;
 pub use content::*;

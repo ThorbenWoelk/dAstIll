@@ -44,7 +44,7 @@ pub(crate) async fn require_video(
     video_id: &str,
 ) -> Result<Video, (StatusCode, String)> {
     let conn = state.db.connect();
-    db::get_video(&conn, video_id)
+    db::get_video(&conn, video_id, true)
         .await
         .map_err(map_db_err)?
         .ok_or((StatusCode::NOT_FOUND, "Video not found".to_string()))
