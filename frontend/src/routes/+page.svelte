@@ -18,15 +18,18 @@
     getVideo,
     getVideoHighlights,
     getSummary,
+    getWorkspaceBootstrap,
     getWorkspaceBootstrapWhenAvailable,
+    listChannels,
     listVideos,
     refreshChannel,
     regenerateSummary,
     updateSummary,
+    updateChannel,
     updateTranscript,
     updateAcknowledged,
-    updateChannel,
   } from "$lib/api";
+  import type { WorkspaceSidebarVideoState } from "$lib/workspace/component-props";
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
   import { DOCS_URL } from "$lib/app-config";
   import type { TourStep } from "$lib/components/FeatureGuide.svelte";
@@ -98,6 +101,7 @@
     cloneVideos,
     createChannelViewCache,
     type ChannelSyncDepthState,
+    type ChannelViewCacheKeyPart,
   } from "$lib/channel-view-cache";
   import { channelOrderFromList } from "$lib/workspace/channels";
   import {
@@ -132,6 +136,7 @@
     resolveDefaultContentMode,
     WORKSPACE_CONTENT_MODE_ORDER,
   } from "$lib/workspace/navigation";
+  import { createSidebarState } from "$lib/workspace/sidebar-state.svelte";
   import {
     type AcknowledgedFilter,
     type ChannelSortMode,
@@ -161,13 +166,6 @@
       videos: cloneVideos(state.videos),
       syncDepth: cloneSyncDepthState(state.syncDepth),
     }));
-
-  let channels = $state<Channel[]>([]);
-  let channelOrder = $state<string[]>([]);
-  let videos = $state<Video[]>([]);
-  let selectedChannelId = $state<string | null>(null);
-  let selectedVideoId = $state<string | null>(null);
-  let channelSortMode = $state<ChannelSortMode>("custom");
 
   // -- Guide tour (URL-driven: ?guide=0, ?guide=1, ...) --
   let guideOpen = $state(false);
@@ -325,14 +323,11 @@
     writeGuideStepToUrl(s);
   }
 
-  let loadingChannels = $state(false);
   let aiAvailable = $state<boolean | null>(null);
   let aiStatus = $state<AiStatus | null>(null);
   let searchStatus = $state<SearchStatus | null>(null);
-  let loadingVideos = $state(false);
   let loadingContent = $state(false);
 
-  let addingChannel = $state(false);
   let errorMessage = $state<string | null>(null);
   let showDeleteConfirmation = $state(false);
   let showDeleteAccessPrompt = $state(false);
@@ -342,7 +337,10 @@
   let summaryModelUsed = $state<string | null>(null);
   let summaryQualityModelUsed = $state<string | null>(null);
   let videoInfo = $state<VideoInfoPayload | null>(null);
-  let syncDepth = $state<ChannelSyncDepthState | null>(null);
+
+  let historyExhausted = $state(false);
+  let backfillingHistory = $state(false);
+  let allowLoadedVideoSyncDepthOverride = $state(false);
 
   let contentMode = $state<WorkspaceContentMode>("transcript");
   let mobileTab = $state<"browse" | "content">("browse");
@@ -374,16 +372,7 @@
   let creatingHighlight = $state(false);
   let creatingHighlightVideoId = $state<string | null>(null);
   let deletingHighlightId = $state<number | null>(null);
-  const selectedVideoHighlights = $derived(
-    selectedVideoId ? (videoHighlightsByVideoId[selectedVideoId] ?? []) : [],
-  );
-  const contentHighlights = $derived(
-    contentMode === "transcript" || contentMode === "summary"
-      ? selectedVideoHighlights.filter(
-          (highlight) => highlight.source === (contentMode as HighlightSource),
-        )
-      : [],
-  );
+  // (Moved further down to ensure dependencies are initialized)
   let originalTranscriptByVideoId = $state<Record<string, string>>({});
   const contentCache = new Map<
     string,
@@ -407,45 +396,141 @@
   let contentRequestSeq = 0;
   let activeContentRequestId = 0;
 
-  let offset = $state(0);
-  const limit = 20;
-  let hasMore = $state(true);
-  let historyExhausted = $state(false);
-  let backfillingHistory = $state(false);
-  let allowLoadedVideoSyncDepthOverride = $state(false);
-
-  let videoTypeFilter = $state<VideoTypeFilter>("all");
-  let acknowledgedFilter = $state<AcknowledgedFilter>("all");
   let workspaceStateHydrated = $state(false);
   let viewUrlHydrated = $state(false);
   let pendingSelectedVideo = $state<Video | null>(null);
+  // Sidebar State (using unified composable)
+  const sidebarState = createSidebarState({
+    initialChannelId: $page.data.selectedChannelId,
+    initialVideoId: $page.data.selectedVideoId,
+    initialVideoTypeFilter: $page.data.videoTypeFilter ?? "all",
+    initialAcknowledgedFilter: $page.data.acknowledgedFilter ?? "all",
+    onSelectVideo: (videoId: string) => {
+      sidebarState.setSelectedVideoId(videoId);
+    },
+    onChannelSelected: (channelId: string) => {
+      const href = buildWorkspaceViewHref({
+        selectedChannelId: channelId,
+        selectedVideoId,
+        contentMode,
+        videoTypeFilter: sidebarState.videoTypeFilter,
+        acknowledgedFilter: sidebarState.acknowledgedFilter,
+      });
+      history.replaceState(history.state, "", href);
+    },
+    onLoadingChannelsChange: (value: boolean) => {
+      sidebarState.setLoadingChannels(value);
+    },
+    onLoadingVideosChange: (value: boolean) => {
+      sidebarState.setLoadingVideos(value);
+    },
+    onChannelDeleted: (channelId: string) => {
+      if (sidebarState.selectedChannelId === channelId) {
+        const nextChannelId = resolveNextChannelSelection(
+          sidebarState.channels,
+          channelId,
+        );
+        if (nextChannelId) {
+          void sidebarState.selectChannel(nextChannelId);
+        } else {
+          sidebarState.setSelectedChannelId(null);
+          sidebarState.setSelectedVideoId(null);
+          sidebarState.setVideos([]);
+          sidebarState.setSyncDepth(null);
+          clearSelectedVideoState();
+        }
+      }
+    },
+    onVideoTypeFilterChange: (value: VideoTypeFilter) => {
+      const href = buildWorkspaceViewHref({
+        selectedChannelId: sidebarState.selectedChannelId,
+        selectedVideoId,
+        contentMode,
+        videoTypeFilter: value,
+        acknowledgedFilter: sidebarState.acknowledgedFilter,
+      });
+      history.replaceState(history.state, "", href);
+    },
+    onAcknowledgedFilterChange: (value: boolean | undefined) => {
+      const ack: AcknowledgedFilter =
+        value === true ? "ack" : value === false ? "unack" : "all";
+      const href = buildWorkspaceViewHref({
+        selectedChannelId: sidebarState.selectedChannelId,
+        selectedVideoId,
+        contentMode,
+        videoTypeFilter: sidebarState.videoTypeFilter,
+        acknowledgedFilter: ack,
+      });
+      history.replaceState(history.state, "", href);
+    },
+  });
 
-  const selectedChannel = $derived(
-    channels.find((channel) => channel.id === selectedChannelId) ?? null,
-  );
+  // Backward compatibility aliases for existing UI logic
+  // (We use getters to stay reactive to the sidebar state)
+  const channels = $derived(sidebarState.channels);
+  const selectedChannelId = $derived(sidebarState.selectedChannelId);
+  const selectedChannel = $derived(sidebarState.selectedChannel);
+  const loadingChannels = $derived(sidebarState.loadingChannels);
+  const addingChannel = $derived(sidebarState.addingChannel);
+  const videos = $derived(sidebarState.videos);
+  const loadingVideos = $derived(sidebarState.loadingVideos);
+  const refreshingChannel = $derived(sidebarState.refreshingChannel);
+  const backfillingVideos = $derived(sidebarState.backfillingHistory);
+  const selectedVideoId = $derived(sidebarState.selectedVideoId);
   const selectedVideo = $derived(
     videos.find((video) => video.id === selectedVideoId) ??
       (pendingSelectedVideo?.id === selectedVideoId
         ? pendingSelectedVideo
         : null),
   );
+  const selectedVideoHighlights = $derived(
+    selectedVideoId ? (videoHighlightsByVideoId[selectedVideoId] ?? []) : [],
+  );
+  const contentHighlights = $derived(
+    contentMode === "transcript" || contentMode === "summary"
+      ? selectedVideoHighlights.filter(
+          (highlight) => highlight.source === (contentMode as HighlightSource),
+        )
+      : [],
+  );
+  const videoTypeFilter = $derived(sidebarState.videoTypeFilter);
+  const acknowledgedFilter = $derived(sidebarState.acknowledgedFilter);
+  const syncDepth = $derived(sidebarState.syncDepth);
+  const limit = $derived(sidebarState.limit);
+  const offset = $derived(sidebarState.offset);
+  const hasMore = $derived(sidebarState.hasMore);
+
+  // Legacy state being moved/removed:
+  // let loadingVideos = $state(false); // REMOVED
+  // REMOVED
+  // ... (others removed similarly)
+
+  // REMOVED DUPLICATE let selectedVideoId declaration
+  // selectedVideo derived moved up
 
   function getChannelViewKey(channelId: string) {
+    const d = sidebarState.videoState.syncDepth;
+    const syncKey = d
+      ? `${d.earliest_sync_date ?? ""}:${d.earliest_sync_date_user_set}:${d.derived_earliest_ready_date ?? ""}`
+      : "";
     return buildChannelViewCacheKey(
       channelId,
-      videoTypeFilter,
-      acknowledgedFilter,
+      sidebarState.videoState.backfillingHistory,
+      sidebarState.videoState.videoTypeFilter,
+      sidebarState.videoState.acknowledgedFilter,
+      sidebarState.videoState.offset,
+      syncKey,
     );
   }
 
   function restoreCachedChannelVideoState(state: CachedChannelVideoState) {
-    videos = cloneVideos(state.videos);
-    offset = state.offset;
-    hasMore = state.hasMore;
+    sidebarState.setVideos(cloneVideos(state.videos));
+    sidebarState.setOffset(state.offset);
+    sidebarState.setHasMore(state.hasMore);
     historyExhausted = state.historyExhausted;
     backfillingHistory = state.backfillingHistory;
     allowLoadedVideoSyncDepthOverride = state.allowLoadedVideoSyncDepthOverride;
-    syncDepth = cloneSyncDepthState(state.syncDepth);
+    sidebarState.setSyncDepth(cloneSyncDepthState(state.syncDepth));
   }
 
   $effect(() => {
@@ -464,18 +549,19 @@
 
   async function loadSyncDepth() {
     if (!selectedChannelId) {
-      syncDepth = null;
+      sidebarState.setSyncDepth(null);
       return;
     }
     try {
-      syncDepth = await getChannelSyncDepth(selectedChannelId);
+      const depth = await getChannelSyncDepth(selectedChannelId);
+      sidebarState.setSyncDepth(depth as ChannelSyncDepthState);
     } catch {
-      syncDepth = null;
+      sidebarState.setSyncDepth(null);
     }
   }
 
   function clearSelectedVideoState() {
-    selectedVideoId = null;
+    sidebarState.setSelectedVideoId(null);
     pendingSelectedVideo = null;
     contentText = "";
     transcriptRenderMode = "plain_text";
@@ -501,6 +587,49 @@
     }
   }
 
+  const videoState = $derived<WorkspaceSidebarVideoState>({
+    get videos() {
+      return videos;
+    },
+    get pendingSelectedVideo() {
+      return pendingSelectedVideo;
+    },
+    get selectedVideoId() {
+      return selectedVideoId;
+    },
+    get selectedChannel() {
+      return selectedChannel;
+    },
+    get loadingVideos() {
+      return loadingVideos;
+    },
+    get refreshingChannel() {
+      return refreshingChannel;
+    },
+    get hasMore() {
+      return hasMore;
+    },
+    get historyExhausted() {
+      return historyExhausted;
+    },
+    get backfillingHistory() {
+      return backfillingHistory;
+    },
+    get videoTypeFilter() {
+      return videoTypeFilter;
+    },
+    get acknowledgedFilter() {
+      return acknowledgedFilter;
+    },
+    get offset() {
+      return offset;
+    },
+    get syncDepth() {
+      return syncDepth;
+    },
+    allowLoadedVideoSyncDepthOverride: false,
+  });
+
   async function hydrateSelectedVideo(
     preferredVideoId: string | null,
     acknowledged: boolean | undefined,
@@ -516,7 +645,7 @@
       return;
     }
 
-    selectedVideoId = preferredVideoId;
+    sidebarState.setSelectedVideoId(preferredVideoId);
     let hasSelectedVideo = videos.some(
       (video) => video.id === preferredVideoId,
     );
@@ -533,28 +662,28 @@
 
     while (
       !hasSelectedVideo &&
-      hasMore &&
+      sidebarState.hasMore &&
       scannedPages < SELECTED_VIDEO_SCAN_PAGE_LIMIT &&
       targetChannelId &&
-      selectedChannelId === targetChannelId &&
+      sidebarState.selectedChannelId === targetChannelId &&
       selectedVideoId === preferredVideoId
     ) {
       const next = await listVideos(
         targetChannelId,
-        limit,
-        offset,
-        videoTypeFilter,
+        sidebarState.limit,
+        sidebarState.offset,
+        sidebarState.videoTypeFilter,
         acknowledged,
       );
       scannedPages += 1;
       if (next.length === 0) {
-        hasMore = false;
+        sidebarState.setHasMore(false);
         break;
       }
 
-      videos = [...videos, ...next];
-      offset += next.length;
-      hasMore = next.length === limit;
+      sidebarState.setVideos([...videos, ...next]);
+      sidebarState.setOffset(offset + next.length);
+      sidebarState.setHasMore(next.length === limit);
       hasSelectedVideo = videos.some((video) => video.id === preferredVideoId);
     }
 
@@ -582,22 +711,23 @@
     silent = false,
   ) {
     if (!silent) {
-      loadingVideos = true;
+      sidebarState.setLoadingVideos(true);
+      sidebarState.setSelectedVideoId(null);
       errorMessage = null;
     }
-
     try {
       if (selectedChannelId !== channelId) {
         return;
       }
 
-      const isAck = resolveAcknowledgedParam(acknowledgedFilter);
-
-      syncDepth = snapshot.sync_depth;
+      const isAck = resolveAcknowledgedParam(sidebarState.acknowledgedFilter);
+      const newSnapshot = await getChannelSnapshot(channelId, {
+        videoType: sidebarState.videoTypeFilter,
+        acknowledged: isAck,
+      });
+      sidebarState.setSyncDepth(newSnapshot.sync_depth);
       allowLoadedVideoSyncDepthOverride = false;
-      videos = snapshot.videos;
-      offset = snapshot.videos.length;
-      hasMore = snapshot.videos.length === limit;
+      sidebarState.setHasMore(snapshot.videos.length === limit);
       void putCachedViewSnapshot(
         buildWorkspaceSnapshotCacheKey(channelId, videoTypeFilter, isAck),
         snapshot,
@@ -609,7 +739,7 @@
       }
     } finally {
       if (!silent) {
-        loadingVideos = false;
+        sidebarState.setLoadingVideos(false);
       }
     }
   }
@@ -629,11 +759,13 @@
       oldest < currentEarliest;
     if (!shouldPushBack) return;
 
-    const updated = await updateChannel(selectedChannelId, {
+    const updated = await updateChannel(sidebarState.selectedChannelId!, {
       earliest_sync_date: oldest.toISOString(),
     });
-    channels = channels.map((channel) =>
-      channel.id === selectedChannelId ? updated : channel,
+    sidebarState.setChannels(
+      sidebarState.channels.map((channel) =>
+        channel.id === sidebarState.selectedChannelId ? updated : channel,
+      ),
     );
     void loadSyncDepth();
   }
@@ -759,7 +891,7 @@
   }
 
   function syncChannelOrderFromList() {
-    channelOrder = channelOrderFromList(channels);
+    sidebarState.setChannelOrder(channelOrderFromList(sidebarState.channels));
   }
 
   function applySummaryQuality(summary: SummaryPayload) {
@@ -823,10 +955,10 @@
     );
 
     if ("selectedChannelId" in restored) {
-      selectedChannelId = restored.selectedChannelId ?? null;
+      sidebarState.setSelectedChannelId(restored.selectedChannelId ?? null);
     }
     if ("selectedVideoId" in restored) {
-      selectedVideoId = restored.selectedVideoId ?? null;
+      sidebarState.setSelectedVideoId(restored.selectedVideoId ?? null);
     }
     if (restored.contentMode && isWorkspaceContentMode(restored.contentMode)) {
       contentMode = restored.contentMode;
@@ -835,21 +967,18 @@
       restored.videoTypeFilter &&
       isWorkspaceVideoTypeFilter(restored.videoTypeFilter)
     ) {
-      videoTypeFilter = restored.videoTypeFilter;
+      sidebarState.setVideoTypeFilter(restored.videoTypeFilter);
     }
     if (restored.acknowledgedFilter) {
-      acknowledgedFilter = restored.acknowledgedFilter;
-    }
-    if (restored.channelOrder) {
-      channelOrder = restored.channelOrder;
+      sidebarState.setAcknowledgedFilter(restored.acknowledgedFilter);
     }
     if (restored.channelSortMode) {
-      channelSortMode = restored.channelSortMode;
+      sidebarState.setChannelSortMode(restored.channelSortMode);
     }
 
-    if (selectedVideoId) {
+    if (sidebarState.selectedVideoId) {
       mobileTab = "content";
-    } else if (selectedChannelId) {
+    } else if (sidebarState.selectedChannelId) {
       mobileTab = "browse";
     } else {
       mobileTab = "browse";
@@ -859,11 +988,11 @@
   function persistViewUrl() {
     if (!viewUrlHydrated || typeof window === "undefined") return;
     const nextHref = buildWorkspaceViewHref({
-      selectedChannelId,
-      selectedVideoId,
+      selectedChannelId: sidebarState.selectedChannelId,
+      selectedVideoId: sidebarState.selectedVideoId,
       contentMode,
-      videoTypeFilter,
-      acknowledgedFilter,
+      videoTypeFilter: sidebarState.videoTypeFilter,
+      acknowledgedFilter: sidebarState.acknowledgedFilter,
     });
     const nextUrl = new URL(nextHref, window.location.origin);
     if (
@@ -872,19 +1001,19 @@
     ) {
       return;
     }
-    replacePageState(nextUrl, window.history.state);
+    history.replaceState(history.state, "", nextUrl);
   }
 
   function persistWorkspaceState() {
     if (!workspaceStateHydrated || typeof localStorage === "undefined") return;
     const snapshot: WorkspaceStateSnapshot = {
-      selectedChannelId,
-      selectedVideoId,
+      selectedChannelId: sidebarState.selectedChannelId,
+      selectedVideoId: sidebarState.selectedVideoId,
       contentMode,
-      videoTypeFilter,
-      acknowledgedFilter,
-      channelOrder,
-      channelSortMode,
+      videoTypeFilter: sidebarState.videoTypeFilter,
+      acknowledgedFilter: sidebarState.acknowledgedFilter,
+      channelOrder: sidebarState.channelOrder,
+      channelSortMode: sidebarState.channelSortMode,
     };
     saveWorkspaceState(localStorage, snapshot);
   }
@@ -910,10 +1039,10 @@
       const bootstrapResult = await resolveBootstrapOnMount({
         serverBootstrap: $page.data.bootstrap ?? null,
         selectedChannelId: selectedChannelIdAtMount,
-        viewSnapshotCacheKey: selectedChannelIdAtMount
+        viewSnapshotCacheKey: sidebarState.selectedChannelId
           ? buildWorkspaceSnapshotCacheKey(
-              selectedChannelIdAtMount,
-              videoTypeFilter,
+              sidebarState.selectedChannelId,
+              sidebarState.videoTypeFilter,
               acknowledgedAtMount,
             )
           : null,
@@ -924,9 +1053,11 @@
       );
 
       if (bootstrapResult.channels && bootstrapResult.channels.length > 0) {
-        channels = applySavedChannelOrder(
-          bootstrapResult.channels,
-          channelOrder,
+        sidebarState.setChannels(
+          applySavedChannelOrder(
+            bootstrapResult.channels,
+            sidebarState.channelOrder,
+          ),
         );
         syncChannelOrderFromList();
       }
@@ -1028,22 +1159,24 @@
     const previousSelectedVideoId = selectedVideoId;
 
     if (!silent) {
-      loadingChannels = true;
+      sidebarState.setLoadingChannels(true);
       errorMessage = null;
     }
 
     try {
       const bootstrap = await getWorkspaceBootstrapWhenAvailable({
         selectedChannelId: previousSelectedChannelId,
-        videoType: videoTypeFilter,
-        acknowledged: resolveAcknowledgedParam(acknowledgedFilter),
+        videoType: sidebarState.videoTypeFilter,
+        acknowledged: resolveAcknowledgedParam(sidebarState.acknowledgedFilter),
         limit,
         retryDelayMs: 500,
       });
 
-      channels = applySavedChannelOrder(bootstrap.channels, channelOrder);
+      sidebarState.setChannels(
+        applySavedChannelOrder(bootstrap.channels, sidebarState.channelOrder),
+      );
       syncChannelOrderFromList();
-      void putCachedChannels(channels);
+      void putCachedChannels(sidebarState.channels);
 
       // Apply AI/search status from the bootstrap response
       aiAvailable = bootstrap.ai_available;
@@ -1062,13 +1195,13 @@
       );
 
       if (!initialChannelId) {
-        selectedChannelId = null;
+        sidebarState.setSelectedChannelId(null);
         mobileTab = "browse";
         clearSelectedVideoState();
-        videos = [];
-        syncDepth = null;
-        offset = 0;
-        hasMore = true;
+        sidebarState.setVideos([]);
+        sidebarState.setSyncDepth(null);
+        sidebarState.setOffset(0);
+        sidebarState.setHasMore(true);
         historyExhausted = false;
         backfillingHistory = false;
         allowLoadedVideoSyncDepthOverride = false;
@@ -1078,9 +1211,10 @@
             ? previousSelectedVideoId
             : null;
         const canReuseRenderedSnapshot =
-          initialChannelId === previousSelectedChannelId && videos.length > 0;
+          initialChannelId === previousSelectedChannelId &&
+          sidebarState.videos.length > 0;
 
-        selectedChannelId = initialChannelId;
+        sidebarState.setSelectedChannelId(initialChannelId);
         resetSummaryQuality();
         resetVideoInfo();
         editing = false;
@@ -1100,16 +1234,16 @@
           );
         } else if (!canReuseRenderedSnapshot) {
           clearSelectedVideoState();
-          selectedVideoId = preferredVideoId;
-          videos = [];
-          offset = 0;
-          hasMore = true;
+          sidebarState.setSelectedVideoId(preferredVideoId);
+          sidebarState.setVideos([]);
+          sidebarState.setOffset(0);
+          sidebarState.setHasMore(true);
           historyExhausted = false;
           backfillingHistory = false;
           allowLoadedVideoSyncDepthOverride = false;
-          syncDepth = null;
+          sidebarState.setSyncDepth(null);
           if (!silent) {
-            loadingVideos = true;
+            sidebarState.setLoadingVideos(true);
           }
           await tick();
           await refreshAndLoadVideos(
@@ -1126,52 +1260,60 @@
       }
     } finally {
       if (!silent) {
-        loadingChannels = false;
-        loadingVideos = false;
+        sidebarState.setLoadingChannels(false);
+        sidebarState.setLoadingVideos(false);
       }
     }
   }
 
-  function reorderChannels(nextOrder: string[]) {
-    channels = applySavedChannelOrder(channels, nextOrder);
-    channelOrder = nextOrder;
+  async function reorderChannels(nextOrder: string[]) {
+    sidebarState.setChannelOrder(nextOrder);
+    // ... rest of reorder logic if needed, or simply let sidebar handle it
+  }
+  async function initChannels() {
+    sidebarState.setLoadingChannels(true);
+    try {
+      const bootstrap = await getWorkspaceBootstrap();
+      if (bootstrap) {
+        sidebarState.setChannels(bootstrap.channels);
+      }
+    } catch (error) {
+      errorMessage = (error as Error).message;
+    } finally {
+      sidebarState.setLoadingChannels(false);
+    }
   }
   async function handleAddChannel(input: string) {
     if (!input.trim()) return false;
 
     const { optimisticChannel, tempId, trimmedInput } =
       buildOptimisticChannel(input);
-    addingChannel = true;
+    sidebarState.setAddingChannel(false);
     errorMessage = null;
 
     const previousChannels = [...channels];
     const previousSelectedId = selectedChannelId;
 
-    channels = [optimisticChannel, ...channels];
-    channelOrder = [tempId, ...channelOrder];
+    sidebarState.addOptimisticChannel(optimisticChannel);
 
     try {
       const channel = await addChannel(trimmedInput);
 
-      channels = replaceOptimisticChannel(channels, tempId, channel);
-      channelOrder = replaceOptimisticChannelId(
-        channelOrder,
-        tempId,
-        channel.id,
+      sidebarState.setChannels(
+        replaceOptimisticChannel(sidebarState.channels, tempId, channel),
       );
-      selectedChannelId = channel.id;
-      void putCachedChannels(channels);
+      sidebarState.replaceOptimisticChannelId(tempId, channel.id);
+      sidebarState.setSelectedChannelId(channel.id);
 
       await selectChannel(channel.id);
       return true;
     } catch (error) {
-      channels = previousChannels;
-      selectedChannelId = previousSelectedId;
-      syncChannelOrderFromList();
+      sidebarState.setChannels(previousChannels);
+      sidebarState.setSelectedChannelId(previousSelectedId);
       errorMessage = (error as Error).message;
       return false;
     } finally {
-      addingChannel = false;
+      sidebarState.setAddingChannel(false);
     }
   }
 
@@ -1181,23 +1323,22 @@
       return;
     }
 
-    channelIdToDelete = channelId;
-    showDeleteConfirmation = true;
+    sidebarState.setChannelIdToDelete(channelId);
+    sidebarState.setShowDeleteConfirmation(true);
   }
 
   async function confirmDeleteChannel() {
-    if (!channelIdToDelete || !isOperator) return;
-    const channelId = channelIdToDelete;
-    showDeleteConfirmation = false;
-    channelIdToDelete = null;
+    if (!sidebarState.channelIdToDelete || !isOperator) return;
+    const channelId = sidebarState.channelIdToDelete;
+    const channelViewKey = getChannelViewKey(channelId);
+    sidebarState.setShowDeleteConfirmation(false);
+    sidebarState.setChannelIdToDelete(null);
 
     // Optimistic removal — snapshot state, remove immediately, revert on error
-    const previousChannels = [...channels];
-    const previousChannelOrder = [...channelOrder];
-    const previousSelectedChannelId = selectedChannelId;
+    const previousChannels = [...sidebarState.channels];
+    const previousSelectedChannelId = sidebarState.selectedChannelId;
 
-    channels = removeChannelFromCollection(channels, channelId);
-    channelOrder = removeChannelId(channelOrder, channelId);
+    sidebarState.removeChannel(channelId);
 
     if (selectedChannelId === channelId) {
       const nextChannelId = resolveNextChannelSelection(
@@ -1207,10 +1348,10 @@
       if (nextChannelId) {
         await selectChannel(nextChannelId);
       } else {
-        selectedChannelId = null;
-        selectedVideoId = null;
+        sidebarState.setSelectedChannelId(null);
+        sidebarState.setSelectedVideoId(null);
         mobileTab = "browse";
-        videos = [];
+        sidebarState.setVideos([]);
         contentText = "";
         draft = "";
       }
@@ -1219,18 +1360,18 @@
     try {
       await deleteChannel(channelId);
       void removeCachedChannel(channelId);
+      channelVideoStateCache.delete(channelViewKey);
     } catch (error) {
       // Revert optimistic removal on failure
-      channels = previousChannels;
-      channelOrder = previousChannelOrder;
-      selectedChannelId = previousSelectedChannelId;
+      sidebarState.setChannels(previousChannels);
+      sidebarState.setSelectedChannelId(previousSelectedChannelId);
       errorMessage = (error as Error).message;
     }
   }
 
   function cancelDeleteChannel() {
-    showDeleteConfirmation = false;
-    channelIdToDelete = null;
+    sidebarState.setShowDeleteConfirmation(false);
+    sidebarState.setChannelIdToDelete(null);
   }
 
   function cancelDeleteAccessPrompt() {
@@ -1244,46 +1385,42 @@
   }
 
   $effect(() => {
-    if (!selectedChannelId) {
-      syncDepth = null;
+    if (!sidebarState.selectedChannelId) {
+      sidebarState.setSyncDepth(null);
     }
   });
 
   async function selectChannel(
-    channelId: string,
-    preferredVideoId: string | null = null,
-    fromUserInteraction = false,
+    channelId: string | null,
+    videoId: string | null = null,
+    scroll = true,
   ) {
+    if (sidebarState.selectedChannelId === channelId && !videoId) return;
+
+    sidebarState.setSelectedChannelId(channelId);
+    if (!channelId) return;
+
     const channelViewKey = getChannelViewKey(channelId);
     const cachedChannelVideoState = channelVideoStateCache.get(channelViewKey);
     const hasCachedChannelVideoState =
       !!cachedChannelVideoState && cachedChannelVideoState.videos.length > 0;
 
-    if (fromUserInteraction) mobileTab = "browse";
-    selectedChannelId = channelId;
-    clearSelectedVideoState();
-    selectedVideoId = preferredVideoId;
-    resetSummaryQuality();
-    resetVideoInfo();
-    editing = false;
     clearFormattingFeedback();
     if (hasCachedChannelVideoState && cachedChannelVideoState) {
       restoreCachedChannelVideoState(cachedChannelVideoState);
-      loadingVideos = false;
-      void refreshAndLoadVideos(channelId, false, preferredVideoId, true);
+      sidebarState.setLoadingVideos(false);
+      void refreshAndLoadVideos(channelId, false, videoId, true);
       return;
     }
 
-    videos = [];
-    offset = 0;
-    hasMore = true;
+    sidebarState.setVideos([]);
+    sidebarState.setOffset(0);
+    sidebarState.setHasMore(true);
     historyExhausted = false;
     backfillingHistory = false;
     allowLoadedVideoSyncDepthOverride = false;
-    await refreshAndLoadVideos(channelId, false, preferredVideoId);
+    await refreshAndLoadVideos(channelId, false, videoId);
   }
-
-  let refreshingChannel = $state(false);
 
   async function refreshAndLoadVideos(
     channelId: string,
@@ -1298,19 +1435,21 @@
       ttlMs: CHANNEL_REFRESH_TTL_MS,
       bypassTtl,
       initialSilent: silentInitialSnapshot,
+      getMutationEpoch: () => sidebarState.getVideoListMutationEpoch(),
       loadSnapshot: () =>
         getChannelSnapshot(channelId, {
           limit,
-          offset: 0,
+          offset,
           videoType: videoTypeFilter,
           acknowledged: isAck,
         }),
       applySnapshot: (snapshot, silent = false) =>
         applyChannelSnapshot(channelId, snapshot, preferredVideoId, silent),
       refreshChannel: () => refreshChannel(channelId),
-      shouldReloadAfterRefresh: () => selectedChannelId === channelId,
-      onRefreshingChange: (refreshing) => {
-        refreshingChannel = refreshing;
+      shouldReloadAfterRefresh: () =>
+        sidebarState.selectedChannelId === channelId,
+      onRefreshingChange: (refreshing: boolean) => {
+        sidebarState.setRefreshingChannel(refreshing);
       },
       onError: (message) => {
         if (!errorMessage) {
@@ -1322,41 +1461,65 @@
 
   async function loadVideos(reset = false, silent = false) {
     if (!selectedChannelId) return;
-    if (loadingVideos && !silent) return;
+    if (!sidebarState.selectedChannelId) return;
+    if (sidebarState.loadingVideos && !silent) return;
 
-    if (!silent) loadingVideos = true;
+    if (!silent) sidebarState.setLoadingVideos(true);
     if (!silent) errorMessage = null;
 
     try {
-      const isAck = resolveAcknowledgedParam(acknowledgedFilter);
+      const isAck = resolveAcknowledgedParam(sidebarState.acknowledgedFilter);
       const list = await listVideos(
-        selectedChannelId,
+        sidebarState.selectedChannelId,
         limit,
-        reset ? 0 : offset,
-        videoTypeFilter,
+        reset ? 0 : sidebarState.offset,
+        sidebarState.videoTypeFilter,
         isAck,
       );
-      videos = reset ? list : [...videos, ...list];
-      offset = (reset ? 0 : offset) + list.length;
-      hasMore = list.length === limit;
+
+      if (
+        !sidebarState.isCurrentSelection(
+          sidebarState.selectedChannelId,
+          sidebarState.selectedVideoId,
+        )
+      )
+        return;
+
+      if (reset) {
+        sidebarState.setVideos(list);
+        sidebarState.setOffset(list.length);
+      } else {
+        sidebarState.setVideos([...sidebarState.videos, ...list]);
+        sidebarState.setOffset(sidebarState.offset + list.length);
+      }
+      sidebarState.setHasMore(list.length === limit);
       if (reset) {
         allowLoadedVideoSyncDepthOverride = false;
       }
 
       if (reset) {
-        await hydrateSelectedVideo(selectedVideoId, isAck);
+        await hydrateSelectedVideo(sidebarState.selectedVideoId, isAck);
       }
     } catch (error) {
-      if (!silent || !errorMessage) errorMessage = (error as Error).message;
+      if (!silent || !errorMessage) {
+        errorMessage = (error as Error).message;
+      }
     } finally {
-      if (!silent) loadingVideos = false;
+      if (!silent) {
+        sidebarState.setLoadingVideos(false);
+      }
     }
   }
 
   async function loadMoreVideos() {
-    if (!selectedChannelId || loadingVideos || backfillingHistory) return;
+    if (
+      !sidebarState.selectedChannelId ||
+      sidebarState.loadingVideos ||
+      backfillingHistory
+    )
+      return;
 
-    if (hasMore) {
+    if (sidebarState.hasMore) {
       await loadVideos(false);
       allowLoadedVideoSyncDepthOverride = true;
       await syncEarliestDateFromLoadedVideos();
@@ -1368,7 +1531,10 @@
 
     try {
       // Try to backfill a batch of 50
-      const result = await backfillChannelVideos(selectedChannelId, 50);
+      const result = await backfillChannelVideos(
+        sidebarState.selectedChannelId,
+        50,
+      );
 
       // Use the explicit flag from backend to know if we hit the actual end of YouTube results
       if (result.exhausted) {
@@ -1386,16 +1552,21 @@
     }
   }
 
-  async function selectVideo(videoId: string, fromUserInteraction = false) {
+  async function selectVideo(
+    videoId: string | null,
+    fromUserInteraction = false,
+  ) {
     if (fromUserInteraction) mobileTab = "content";
     if (videoId === selectedVideoId) return;
-    selectedVideoId = videoId;
+    sidebarState.setSelectedVideoId(videoId);
     contentText = "";
     draft = "";
-    const video = videos.find((v) => v.id === videoId);
-    const cachedHighlights = videoHighlightsByVideoId[videoId];
+    const video = videoId ? videos.find((v) => v.id === videoId) : null;
+    const cachedHighlights = videoId ? videoHighlightsByVideoId[videoId] : null;
     const highlights =
-      cachedHighlights ?? (await hydrateVideoHighlights(videoId)) ?? [];
+      videoId && cachedHighlights
+        ? cachedHighlights
+        : ((videoId ? await hydrateVideoHighlights(videoId) : []) ?? []);
     if (selectedVideoId !== videoId) return;
     contentMode = resolveDefaultContentMode({
       hasHighlights: highlights.length > 0,
@@ -1509,10 +1680,7 @@
         transcriptRenderMode = presentation.renderMode;
         draftTranscriptRenderMode = presentation.renderMode;
         if (!(targetVideoId in originalTranscriptByVideoId)) {
-          originalTranscriptByVideoId = {
-            ...originalTranscriptByVideoId,
-            [targetVideoId]: originalTranscript,
-          };
+          originalTranscriptByVideoId[targetVideoId] = originalTranscript;
         }
         // Cache the transcript
         const entry = contentCache.get(targetVideoId) ?? {};
@@ -1535,7 +1703,10 @@
           applySummaryQuality(summary);
           // Cache the summary
           const entry = contentCache.get(targetVideoId) ?? {};
-          entry.summary = { text: contentText, quality: summary };
+          (entry as any).summary = {
+            text: contentText,
+            quality: summary as any,
+          };
           contentCache.set(targetVideoId, entry);
           resetVideoInfo();
           void hydrateVideoHighlights(targetVideoId);
@@ -1642,17 +1813,28 @@
     regeneratingSummary = true;
     regeneratingVideoId = targetVideoId;
     errorMessage = null;
-    videos = videos.map((v) =>
-      v.id === targetVideoId ? { ...v, summary_status: "loading" as const } : v,
+    sidebarState.setVideos(
+      sidebarState.videos.map((v) =>
+        v.id === targetVideoId
+          ? { ...v, summary_status: "loading" as const }
+          : v,
+      ),
     );
 
     try {
       const summary = await regenerateSummary(targetVideoId);
       invalidateContentCache(targetVideoId, "summary");
-      videos = videos.map((v) =>
-        v.id === targetVideoId ? { ...v, summary_status: "ready" as const } : v,
+      sidebarState.setVideos(
+        sidebarState.videos.map((v) =>
+          v.id === targetVideoId
+            ? { ...v, summary_status: "ready" as const }
+            : v,
+        ),
       );
-      if (selectedVideoId === targetVideoId && contentMode === "summary") {
+      if (
+        sidebarState.selectedVideoId === targetVideoId &&
+        contentMode === "summary"
+      ) {
         contentText = stripContentPrefix(
           summary.content || "Summary unavailable.",
         );
@@ -1661,10 +1843,12 @@
       }
     } catch (error) {
       errorMessage = (error as Error).message;
-      videos = videos.map((v) =>
-        v.id === targetVideoId
-          ? { ...v, summary_status: "failed" as const }
-          : v,
+      sidebarState.setVideos(
+        sidebarState.videos.map((v) =>
+          v.id === targetVideoId
+            ? { ...v, summary_status: "failed" as const }
+            : v,
+        ),
       );
     } finally {
       regeneratingSummary = false;
@@ -1699,7 +1883,7 @@
       if (startedInEditMode) {
         if (
           activeFormattingRequest === requestId &&
-          selectedVideoId === targetVideoId &&
+          sidebarState.selectedVideoId === targetVideoId &&
           editing
         ) {
           draft = result.content;
@@ -1824,60 +2008,77 @@
   }
 
   async function setVideoTypeFilter(nextValue: VideoTypeFilter) {
-    if (videoTypeFilter === nextValue) return;
-    videoTypeFilter = nextValue;
-    videos = filterVideosByType(videos, nextValue);
+    if (sidebarState.videoTypeFilter === nextValue) return;
+    sidebarState.setVideoTypeFilter(nextValue);
+    sidebarState.setVideos(filterVideosByType(sidebarState.videos, nextValue));
     await loadVideos(true, true);
   }
 
   async function setAcknowledgedFilter(nextValue: AcknowledgedFilter) {
-    if (acknowledgedFilter === nextValue) return;
-    acknowledgedFilter = nextValue;
-    videos = filterVideosByAcknowledged(videos, nextValue);
+    if (sidebarState.acknowledgedFilter === nextValue) return;
+    sidebarState.setAcknowledgedFilter(nextValue);
+    sidebarState.setVideos(
+      filterVideosByAcknowledged(sidebarState.videos, nextValue),
+    );
     await loadVideos(true, true);
   }
 
   function matchesAcknowledgedFilter(video: Video) {
-    if (acknowledgedFilter === "ack") return video.acknowledged;
-    if (acknowledgedFilter === "unack") return !video.acknowledged;
+    if (sidebarState.acknowledgedFilter === "ack") return video.acknowledged;
+    if (sidebarState.acknowledgedFilter === "unack") return !video.acknowledged;
     return true;
   }
 
   async function toggleAcknowledge() {
-    if (!selectedVideoId) return;
-    const video = videos.find((v) => v.id === selectedVideoId);
+    if (!sidebarState.selectedVideoId) return;
+    const video = sidebarState.videos.find(
+      (v) => v.id === sidebarState.selectedVideoId,
+    );
     if (!video) return;
 
     errorMessage = null;
 
-    const previousVideos = [...videos];
+    const previousVideos = [...sidebarState.videos];
     const newAcknowledged = !video.acknowledged;
-    const targetVideoId = selectedVideoId;
+    const targetVideoId = sidebarState.selectedVideoId;
+
+    // Invalidate in-flight snapshot applies so they cannot overwrite this toggle.
+    sidebarState.bumpVideoListMutationEpoch();
 
     // Optimistic update — flip state immediately, no loading indicator
-    videos = applyOptimisticAcknowledge(videos, targetVideoId, newAcknowledged);
+    sidebarState.setVideos(
+      applyOptimisticAcknowledge(
+        sidebarState.videos,
+        targetVideoId,
+        newAcknowledged,
+      ),
+    );
 
     try {
       const updated = await updateAcknowledged(targetVideoId, newAcknowledged);
-      videos = videos
-        .map((v) => (v.id === updated.id ? updated : v))
-        .filter(matchesAcknowledgedFilter);
+      sidebarState.setVideos(
+        sidebarState.videos
+          .map((v) => (v.id === updated.id ? updated : v))
+          .filter(matchesAcknowledgedFilter),
+      );
 
-      const stillSelected = videos.some((v) => v.id === selectedVideoId);
+      const stillSelected = sidebarState.videos.some(
+        (v) => v.id === sidebarState.selectedVideoId,
+      );
       if (!stillSelected) {
         editing = false;
-        clearFormattingFeedback();
-        if (videos.length === 0) {
-          selectedVideoId = null;
+        clearFormattingFeedbackState();
+        if (sidebarState.videos.length === 0) {
+          sidebarState.setSelectedVideoId(null);
           contentText = "";
           draft = "";
         } else {
-          await selectVideo(videos[0].id);
+          await selectVideo(sidebarState.videos[0].id);
         }
       }
     } catch (error) {
       // Revert optimistic update on failure
-      videos = previousVideos;
+      sidebarState.setVideos(previousVideos);
       errorMessage = (error as Error).message;
     }
   }
@@ -1933,8 +2134,10 @@
   });
 
   function mergeUpdatedChannel(updatedChannel: Channel) {
-    channels = channels.map((channel) =>
-      channel.id === updatedChannel.id ? updatedChannel : channel,
+    sidebarState.setChannels(
+      sidebarState.channels.map((channel) =>
+        channel.id === updatedChannel.id ? updatedChannel : channel,
+      ),
     );
   }
 
@@ -1947,73 +2150,12 @@
     videoId: string,
     switchToContent = false,
   ) {
-    await selectChannel(channelId, videoId, false);
+    await sidebarState.selectChannel(channelId, videoId);
     if (switchToContent) {
       mobileTab = "content";
     }
   }
 
-  const workspaceSidebarChannelState = $derived({
-    channels,
-    selectedChannelId,
-    loadingChannels,
-    addingChannel,
-    channelSortMode,
-    canDeleteChannels: isOperator,
-  });
-  const workspaceSidebarVideoState = $derived({
-    videos,
-    pendingSelectedVideo,
-    selectedVideoId,
-    selectedChannel,
-    loadingVideos,
-    refreshingChannel,
-    hasMore,
-    historyExhausted,
-    backfillingHistory,
-    videoTypeFilter,
-    acknowledgedFilter,
-    syncDepth,
-    allowLoadedVideoSyncDepthOverride,
-  });
-  const workspaceSidebarChannelActions = {
-    onChannelSortModeChange: (nextValue: ChannelSortMode) => {
-      channelSortMode = nextValue;
-    },
-    onAddChannel: handleAddChannel,
-    onSelectChannel: (channelId: string) => {
-      if (channelId === selectedChannelId) {
-        selectedChannelId = null;
-        clearSelectedVideoState();
-        return;
-      }
-      void selectChannel(channelId, null, true);
-    },
-    onOpenChannelOverview: openChannelOverview,
-    onDeleteChannel: handleDeleteChannel,
-    onDeleteAccessRequired: () => {
-      showDeleteAccessPrompt = true;
-    },
-    onReorderChannels: reorderChannels,
-    onChannelUpdated: mergeUpdatedChannel,
-  };
-  const workspaceSidebarVideoActions = {
-    onSelectVideo: (videoId: string) => void selectVideo(videoId, true),
-    onSelectChannelVideo: (channelId: string, videoId: string) =>
-      void openChannelVideo(channelId, videoId),
-    onLoadMoreVideos: loadMoreVideos,
-    onVideoTypeFilterChange: setVideoTypeFilter,
-    onAcknowledgedFilterChange: setAcknowledgedFilter,
-  };
-  const mobileWorkspaceSidebarVideoActions = {
-    ...workspaceSidebarVideoActions,
-    onSelectVideo: (videoId: string) => {
-      mobileTab = "content";
-      void selectVideo(videoId, true);
-    },
-    onSelectChannelVideo: (channelId: string, videoId: string) =>
-      void openChannelVideo(channelId, videoId, true),
-  };
   const workspaceContentSelection = $derived({
     mobileVisible: true,
     selectedChannel,
@@ -2097,29 +2239,24 @@
   {aiIndicator}
   onOpenGuide={openGuide}
 >
-  {#snippet sidebar({
-    collapsed: sidebarCollapsed,
-    toggle: toggleSidebar,
-    width: sidebarWidth,
-  })}
+  {#snippet sidebar(shell)}
     <WorkspaceSidebar
       videoListMode="per_channel_preview"
       initialChannelPreviews={$page.data.channelPreviews ?? {}}
       initialChannelPreviewsFilterKey={$page.data.channelPreviewsFilterKey ??
         "all:all"}
       shell={{
-        collapsed: sidebarCollapsed,
-        width: sidebarWidth,
+        collapsed: shell.collapsed,
+        width: shell.width,
         mobileVisible: mobileTab === "browse",
-        onToggleCollapse: toggleSidebar,
+        onToggleCollapse: shell.toggle,
       }}
-      channelState={workspaceSidebarChannelState}
-      channelActions={workspaceSidebarChannelActions}
-      videoState={workspaceSidebarVideoState}
-      videoActions={workspaceSidebarVideoActions}
+      channelState={sidebarState.channelState}
+      channelActions={sidebarState.channelActions}
+      videoState={sidebarState.videoState}
+      videoActions={sidebarState.videoActions}
     />
   {/snippet}
-
   {#snippet topBar()}
     <div class="flex items-center gap-6" id="content-mode-tabs">
       {#each WORKSPACE_CONTENT_MODE_ORDER as mode}
@@ -2180,7 +2317,6 @@
         </div>
       {/if}
     </div>
-
     <div class="flex min-w-0 flex-1 items-center justify-end gap-3">
       {#if WorkspaceSearchBarComponent}
         <WorkspaceSearchBarComponent
@@ -2209,22 +2345,15 @@
       <div
         class="relative z-10 h-full w-[min(85vw,20rem)] overflow-hidden border-r border-[var(--accent-border-soft)] bg-[var(--surface-strong)] shadow-2xl"
       >
-        <WorkspaceSidebar
-          videoListMode="per_channel_preview"
-          initialChannelPreviews={$page.data.channelPreviews ?? {}}
-          initialChannelPreviewsFilterKey={$page.data
-            .channelPreviewsFilterKey ?? "all:all"}
-          shell={{
+        {#if sidebar}
+          {@render sidebar({
             collapsed: false,
-            width: undefined,
-            mobileVisible: true,
-            onToggleCollapse: () => {},
-          }}
-          channelState={workspaceSidebarChannelState}
-          channelActions={workspaceSidebarChannelActions}
-          videoState={workspaceSidebarVideoState}
-          videoActions={mobileWorkspaceSidebarVideoActions}
-        />
+            width: 0,
+            toggle: () => {
+              mobileTab = "content";
+            },
+          })}
+        {/if}
       </div>
     </div>
   {/if}

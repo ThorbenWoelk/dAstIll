@@ -121,6 +121,7 @@
       videoTypeFilter: "all",
       acknowledgedFilter: "all",
       syncDepth: null,
+      offset: 0,
       allowLoadedVideoSyncDepthOverride: false,
     },
     videoActions = {
@@ -1201,7 +1202,7 @@
                     </div>
                   {/each}
                 </div>
-              {:else if channelVideoCollection.videos.length === 0}
+              {:else if channelVideoCollection.videos.length === 0 && !channelVideoCollection.requestKey}
                 <p
                   class="px-3 py-2 text-[12px] italic text-[var(--soft-foreground)] opacity-50"
                 >
@@ -1364,7 +1365,7 @@
                     </div>
                   {/each}
                 </div>
-              {:else if videos.length === 0}
+              {:else if videos.length === 0 && !refreshingChannel}
                 <p
                   class="px-3 py-2 text-[12px] italic text-[var(--soft-foreground)] opacity-50"
                 >

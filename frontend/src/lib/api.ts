@@ -42,6 +42,13 @@ const getResponseCache = new Map<
 >();
 const inFlightGetRequests = new Map<string, Promise<unknown>>();
 
+/** Bumped when a path is invalidated so in-flight GET completions cannot repopulate stale cache. */
+const pathGetCacheEpoch = new Map<string, number>();
+
+function bumpPathGetCacheEpoch(path: string) {
+  pathGetCacheEpoch.set(path, (pathGetCacheEpoch.get(path) ?? 0) + 1);
+}
+
 function sleep(ms: number, signal?: AbortSignal) {
   return new Promise<void>((resolve, reject) => {
     const timeoutId = setTimeout(() => {
@@ -69,19 +76,27 @@ function sleep(ms: number, signal?: AbortSignal) {
 function clearGetRequestCache() {
   getResponseCache.clear();
   inFlightGetRequests.clear();
+  pathGetCacheEpoch.clear();
 }
 
 function invalidateGetRequestCache(matcher: (path: string) => boolean) {
+  const toBump = new Set<string>();
   for (const key of getResponseCache.keys()) {
     if (matcher(key)) {
       getResponseCache.delete(key);
+      toBump.add(key);
     }
   }
 
   for (const key of inFlightGetRequests.keys()) {
     if (matcher(key)) {
       inFlightGetRequests.delete(key);
+      toBump.add(key);
     }
+  }
+
+  for (const key of toBump) {
+    bumpPathGetCacheEpoch(key);
   }
 }
 
@@ -216,8 +231,13 @@ async function cachedGetRequest<T>(
     return (await inFlight) as T;
   }
 
+  const epochAtRequestStart = pathGetCacheEpoch.get(path) ?? 0;
   const pendingRequest = request<T>(path)
     .then((value) => {
+      if ((pathGetCacheEpoch.get(path) ?? 0) !== epochAtRequestStart) {
+        inFlightGetRequests.delete(path);
+        return value;
+      }
       getResponseCache.set(path, {
         expiresAt: Date.now() + GET_CACHE_TTL_MS,
         value,

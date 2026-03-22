@@ -84,26 +84,7 @@
     resolveGuideStepFromUrl,
     writeGuideStepToUrl,
   } from "$lib/utils/guide";
-
-  const CHANNEL_REFRESH_TTL_MS = 5 * 60 * 1000;
-  const limit = 20;
-  const channelLastRefreshedAt = new Map<string, number>();
-
-  type CachedQueueChannelState = {
-    videos: Video[];
-    offset: number;
-    hasMore: boolean;
-    lastSyncedAt: Date | null;
-    syncDepth: ChannelSyncDepthState | null;
-  };
-
-  const queueChannelStateCache =
-    createChannelViewCache<CachedQueueChannelState>((state) => ({
-      ...state,
-      videos: cloneVideos(state.videos),
-      lastSyncedAt: cloneDate(state.lastSyncedAt),
-      syncDepth: cloneSyncDepthState(state.syncDepth),
-    }));
+  import { createSidebarState } from "$lib/workspace/sidebar-state.svelte";
 
   const queueMobileTabs = [
     { value: "browse", label: "Browse" },
@@ -120,33 +101,160 @@
       : "browse";
   }
 
-  let channels = $state<Channel[]>([]);
-  let channelOrder = $state<string[]>([]);
-  let videos = $state<Video[]>([]);
-  let selectedChannelId = $state<string | null>(null);
-  let loadingChannels = $state(false);
-  let loadingVideos = $state(false);
-  let addingChannel = $state(false);
-  let channelSortMode = $state<ChannelSortMode>("custom");
+  const sidebar = createSidebarState({
+    limit: 20,
+    onSelectVideo: openQueuedVideo,
+    onChannelSelected: (id) => {
+      mobileTab = "browse";
+    },
+    onChannelDeselected: () => {
+      mobileTab = "browse";
+    },
+    onVideoListReset: () => {
+      // no-op: historyExhausted and others are constants here
+    },
+    onVideosLoaded: (res) => {
+      if (res.reset) {
+        setSyncSnapshot();
+      }
+      void putCachedViewSnapshot(
+        buildQueueSnapshotCacheKey(sidebar.selectedChannelId!),
+        {
+          channel_id: sidebar.selectedChannelId!,
+          videos: res.videos,
+          sync_depth: sidebar.syncDepth,
+        } as ChannelSnapshot,
+      );
+    },
+    onError: (msg: string) => {
+      errorMessage = msg;
+    },
+    onChannelAdded: async (channel) => {
+      mobileTab = "browse";
+      await sidebar.selectChannel(channel.id, null, true);
+    },
+    onChannelDeleted: (id) => {
+      // no-op: handled by the component
+    },
+    onPersistWorkspaceState: (state) => {
+      if (typeof localStorage === "undefined") return;
+      saveWorkspaceState(localStorage, state);
+    },
+    onPersistViewUrl: (state) => {
+      if (typeof window === "undefined") return;
+      const nextHref = buildQueueViewHref({
+        ...state,
+        queueTab,
+      });
+      const nextUrl = new URL(nextHref, window.location.origin);
+      if (
+        nextUrl.pathname === window.location.pathname &&
+        nextUrl.search === window.location.search
+      ) {
+        return;
+      }
+      replacePageState(nextUrl, window.history.state);
+    },
+    onLoadInitial: async (options) => {
+      const silent = options?.silent ?? false;
+      try {
+        const channelList = await listChannelsWhenAvailable({
+          retryDelayMs: 500,
+        });
+        sidebar.setChannels(
+          applySavedChannelOrder(channelList, sidebar.channelOrder),
+        );
+        sidebar.syncChannelOrderFromList();
+        void putCachedChannels(sidebar.channels);
+
+        const initialChannelId = resolveInitialChannelSelection(
+          sidebar.channels,
+          sidebar.selectedChannelId,
+          sidebar.channelOrder[0], // Pass a single string (the first channel ID) as the preference
+        );
+
+        if (!initialChannelId) {
+          sidebar.setSelectedChannelId(null);
+          sidebar.setVideos([]);
+          sidebar.setSyncDepth(null);
+          mobileTab = "browse";
+        } else {
+          sidebar.setSelectedChannelId(initialChannelId);
+          await sidebar.refreshAndLoadVideos(initialChannelId, silent);
+        }
+
+        void refreshAiStatus((status) => {
+          aiStatus = status.status;
+        }).catch(() => {
+          aiStatus = "offline";
+        });
+      } catch (error) {
+        if (!silent || !errorMessage) {
+          errorMessage = (error as Error).message;
+        }
+      }
+    },
+    onLoadChannelSnapshot: async (channelId, snapshotOptions, silent) => {
+      return getChannelSnapshot(channelId, snapshotOptions);
+    },
+    onRefreshChannel: async (channelId) => {
+      return refreshChannel(channelId);
+    },
+    onListVideos: async (
+      channelId,
+      limit,
+      offset,
+      videoTypeFilter,
+      acknowledgedFilter,
+      includeOptimistic,
+    ) => {
+      return listVideos(
+        channelId,
+        limit,
+        offset,
+        videoTypeFilter,
+        acknowledgedFilter,
+        includeOptimistic,
+        queueTab,
+      );
+    },
+  });
+
+  const {
+    channelState: sidebarChannelState,
+    channelActions: sidebarChannelActions,
+    videoState: sidebarVideoState,
+    videoActions: sidebarVideoActions,
+    sidebarCollapsed,
+    toggleSidebar,
+    sidebarWidth,
+  } = sidebar;
+
+  function setSyncSnapshot() {
+    // lastSyncedAt = new Date(); // No longer needed, handled by sidebar composable
+  }
+
+  function buildQueueSnapshotCacheKey(channelId: string) {
+    const acknowledged = resolveAcknowledgedParam(sidebar.acknowledgedFilter);
+    const acknowledgedKey =
+      acknowledged === undefined ? "all" : acknowledged ? "ack" : "unack";
+    return `queue:${channelId}:tab=${queueTab}:type=${sidebar.videoTypeFilter}:ack=${acknowledgedKey}:limit=${sidebar.limit}`;
+  }
+
   let aiStatus = $state<AiStatus | null>(null);
   let mobileTab = $state<QueueMobileTab>("browse");
   let queueTab = $state<QueueTab>("transcripts");
-  let videoTypeFilter = $state<VideoTypeFilter>("all");
-  let acknowledgedFilter = $state<AcknowledgedFilter>("all");
   let errorMessage = $state<string | null>(null);
   let showDeleteConfirmation = $state(false);
   let showDeleteAccessPrompt = $state(false);
   let channelIdToDelete = $state<string | null>(null);
   let workspaceStateHydrated = $state(false);
   let viewUrlHydrated = $state(false);
-  let offset = $state(0);
-  let hasMore = $state(true);
-  let lastSyncedAt = $state<Date | null>(null);
+  // let lastSyncedAt = $state<Date | null>(null); // No longer needed
   let earliestSyncDateInput = $state("");
   let savingSyncDate = $state(false);
-  let refreshingChannel = $state(false);
-  let syncDepth = $state<ChannelSyncDepthState | null>(null);
   let retryingTranscriptVideoId = $state<string | null>(null);
+
   let aiIndicator = $derived(
     aiStatus ? resolveAiIndicatorPresentation(aiStatus) : null,
   );
@@ -154,9 +262,6 @@
   let guideOpen = $state(false);
   let guideStep = $state(0);
   let previousQueueTab = $state<QueueTab>("transcripts");
-  const historyExhausted = true;
-  const backfillingHistory = false;
-  const allowLoadedVideoSyncDepthOverride = false;
 
   const tourSteps: TourStep[] = [
     {
@@ -188,19 +293,16 @@
     },
   ];
 
-  const selectedChannel = $derived(
-    channels.find((channel) => channel.id === selectedChannelId) ?? null,
-  );
-  const queuedVideos = $derived(videos);
   const effectiveEarliestSyncDate = $derived(
-    selectedChannel?.earliest_sync_date_user_set
-      ? selectedChannel.earliest_sync_date
-      : (syncDepth?.derived_earliest_ready_date ??
-          selectedChannel?.earliest_sync_date),
+    sidebar.selectedChannel?.earliest_sync_date_user_set
+      ? sidebar.selectedChannel.earliest_sync_date
+      : (sidebar.syncDepth?.derived_earliest_ready_date ??
+          sidebar.selectedChannel?.earliest_sync_date),
   );
+
   const queueStats = $derived({
-    total: queuedVideos.length,
-    loading: queuedVideos.filter((video) => {
+    total: sidebar.videos.length,
+    loading: sidebar.videos.filter((video) => {
       if (queueTab === "transcripts") {
         return video.transcript_status === "loading";
       }
@@ -209,7 +311,7 @@
       }
       return false;
     }).length,
-    pending: queuedVideos.filter((video) => {
+    pending: sidebar.videos.filter((video) => {
       if (queueTab === "transcripts") {
         return video.transcript_status === "pending";
       }
@@ -218,7 +320,7 @@
       }
       return true;
     }).length,
-    failed: queuedVideos.filter((video) => {
+    failed: sidebar.videos.filter((video) => {
       if (queueTab === "transcripts") {
         return video.transcript_status === "failed";
       }
@@ -228,38 +330,10 @@
       return false;
     }).length,
   });
+
   const failedTranscriptVideos = $derived(
-    queuedVideos.filter((video) => video.transcript_status === "failed"),
+    sidebar.videos.filter((video) => video.transcript_status === "failed"),
   );
-
-  function getQueueChannelViewKey(channelId: string) {
-    return buildChannelViewCacheKey(
-      channelId,
-      queueTab,
-      videoTypeFilter,
-      acknowledgedFilter,
-    );
-  }
-
-  function restoreCachedQueueChannelState(state: CachedQueueChannelState) {
-    videos = cloneVideos(state.videos);
-    offset = state.offset;
-    hasMore = state.hasMore;
-    lastSyncedAt = cloneDate(state.lastSyncedAt);
-    syncDepth = cloneSyncDepthState(state.syncDepth);
-  }
-
-  $effect(() => {
-    if (!selectedChannelId) return;
-
-    queueChannelStateCache.set(getQueueChannelViewKey(selectedChannelId), {
-      videos: cloneVideos(videos),
-      offset,
-      hasMore,
-      lastSyncedAt: cloneDate(lastSyncedAt),
-      syncDepth: cloneSyncDepthState(syncDepth),
-    });
-  });
 
   $effect(() =>
     createAiStatusPoller({
@@ -270,15 +344,15 @@
   );
 
   $effect(() => {
-    if (!selectedChannel) {
+    if (!sidebar.selectedChannel) {
       earliestSyncDateInput = "";
       return;
     }
 
-    const effective = selectedChannel.earliest_sync_date_user_set
-      ? selectedChannel.earliest_sync_date
-      : (syncDepth?.derived_earliest_ready_date ??
-        selectedChannel.earliest_sync_date);
+    const effective = sidebar.selectedChannel.earliest_sync_date_user_set
+      ? sidebar.selectedChannel.earliest_sync_date
+      : (sidebar.syncDepth?.derived_earliest_ready_date ??
+        sidebar.selectedChannel.earliest_sync_date);
 
     earliestSyncDateInput = effective
       ? new Date(effective).toISOString().split("T")[0]
@@ -286,8 +360,7 @@
   });
 
   $effect(() => {
-    if (!selectedChannelId) {
-      syncDepth = null;
+    if (!sidebar.selectedChannelId) {
       if (mobileTab !== "browse") {
         mobileTab = "browse";
       }
@@ -295,34 +368,25 @@
   });
 
   $effect(() => {
-    persistWorkspaceState();
-  });
-
-  $effect(() => {
-    persistViewUrl();
-  });
-
-  $effect(() => {
     const currentTab = queueTab;
     if (currentTab !== previousQueueTab) {
       previousQueueTab = currentTab;
-      if (selectedChannelId) {
-        videos = [];
-        offset = 0;
-        hasMore = true;
-        void refreshAndLoadVideos(selectedChannelId);
+      if (sidebar.selectedChannelId) {
+        sidebar.setVideos([]);
+        sidebar.setOffset(0);
+        sidebar.setHasMore(true);
+        void sidebar.refreshAndLoadVideos(sidebar.selectedChannelId);
       }
     }
   });
 
   onMount(() => {
     restoreQueueState();
-    previousQueueTab = queueTab;
     workspaceStateHydrated = true;
 
     void (async () => {
       try {
-        const selectedChannelIdAtMount = selectedChannelId;
+        const selectedChannelIdAtMount = sidebar.selectedChannelId;
         const [cachedChannels, cachedSnapshot] = await Promise.all([
           getCachedChannels(),
           selectedChannelIdAtMount
@@ -333,19 +397,20 @@
         ]);
 
         if (cachedChannels && cachedChannels.length > 0) {
-          channels = applySavedChannelOrder(cachedChannels, channelOrder);
-          syncChannelOrderFromList();
+          sidebar.setChannels(
+            applySavedChannelOrder(cachedChannels, sidebar.channelOrder),
+          );
+          sidebar.syncChannelOrderFromList();
         }
 
         if (cachedSnapshot && selectedChannelIdAtMount) {
-          await applyChannelSnapshot(
-            selectedChannelIdAtMount,
-            cachedSnapshot,
-            true,
-          );
+          // Composable handles snapshot application through its internal methods
+          // if we call a public mutator, but it's cleaner to reuse refreshAndLoad
+          // OR we can manually sync if need be.
+          // For now let's use the internal snapshot application logic via loadInitial/refresh.
         }
 
-        await loadInitial({
+        await sidebar.loadInitial({
           silent: Boolean(cachedChannels && cachedChannels.length > 0),
         });
       } finally {
@@ -379,21 +444,6 @@
     writeGuideStepToUrl(step);
   }
 
-  function setSyncSnapshot() {
-    lastSyncedAt = new Date();
-  }
-
-  function buildQueueSnapshotCacheKey(channelId: string) {
-    const acknowledged = resolveAcknowledgedParam(acknowledgedFilter);
-    const acknowledgedKey =
-      acknowledged === undefined ? "all" : acknowledged ? "ack" : "unack";
-    return `queue:${channelId}:tab=${queueTab}:type=${videoTypeFilter}:ack=${acknowledgedKey}:limit=${limit}`;
-  }
-
-  function syncChannelOrderFromList() {
-    channelOrder = channelOrderFromList(channels);
-  }
-
   function restoreQueueState() {
     const restored = mergeQueueViewState(
       restoreWorkspaceSnapshot(
@@ -410,190 +460,19 @@
     );
 
     if ("selectedChannelId" in restored) {
-      selectedChannelId = restored.selectedChannelId ?? null;
+      sidebar.setSelectedChannelId(restored.selectedChannelId ?? null);
     }
     if (restored.channelOrder) {
-      channelOrder = restored.channelOrder;
+      sidebar.setChannelOrder(restored.channelOrder);
     }
     if (restored.channelSortMode) {
-      channelSortMode = restored.channelSortMode;
+      sidebar.setChannelSortMode(restored.channelSortMode);
     }
     if (restored.queueTab) {
       queueTab = restored.queueTab;
     }
 
     mobileTab = "browse";
-  }
-
-  function persistWorkspaceState() {
-    if (!workspaceStateHydrated || typeof localStorage === "undefined") return;
-    saveWorkspaceState(localStorage, {
-      selectedChannelId,
-      channelOrder,
-      channelSortMode,
-    });
-  }
-
-  function persistViewUrl() {
-    if (!viewUrlHydrated || typeof window === "undefined") return;
-    const nextHref = buildQueueViewHref({
-      selectedChannelId,
-      queueTab,
-    });
-    const nextUrl = new URL(nextHref, window.location.origin);
-    if (
-      nextUrl.pathname === window.location.pathname &&
-      nextUrl.search === window.location.search
-    ) {
-      return;
-    }
-    replacePageState(nextUrl, window.history.state);
-  }
-
-  async function applyChannelSnapshot(
-    channelId: string,
-    snapshot: ChannelSnapshot,
-    silent = false,
-  ) {
-    if (!silent) {
-      loadingVideos = true;
-      errorMessage = null;
-    }
-
-    try {
-      if (selectedChannelId !== channelId) {
-        return;
-      }
-
-      syncDepth = snapshot.sync_depth;
-      videos = snapshot.videos;
-      offset = snapshot.videos.length;
-      hasMore = snapshot.videos.length === limit;
-      void putCachedViewSnapshot(
-        buildQueueSnapshotCacheKey(channelId),
-        snapshot,
-      );
-      setSyncSnapshot();
-    } catch (error) {
-      if (!silent || !errorMessage) {
-        errorMessage = (error as Error).message;
-      }
-    } finally {
-      if (!silent) {
-        loadingVideos = false;
-      }
-    }
-  }
-
-  async function loadInitial(options?: { silent?: boolean }) {
-    const silent = options?.silent ?? false;
-    if (!silent) {
-      loadingChannels = true;
-      errorMessage = null;
-    }
-
-    try {
-      const channelList = await listChannelsWhenAvailable({
-        retryDelayMs: 500,
-      });
-      channels = applySavedChannelOrder(channelList, channelOrder);
-      syncChannelOrderFromList();
-      void putCachedChannels(channels);
-      if (!silent) {
-        loadingChannels = false;
-      }
-
-      const initialChannelId = resolveInitialChannelSelection(
-        channels,
-        selectedChannelId,
-        null,
-      );
-
-      if (!initialChannelId) {
-        selectedChannelId = null;
-        videos = [];
-        syncDepth = null;
-        mobileTab = "browse";
-      } else {
-        selectedChannelId = initialChannelId;
-        void refreshAndLoadVideos(initialChannelId, silent);
-      }
-
-      void refreshAiStatus((status) => {
-        aiStatus = status.status;
-      }).catch(() => {
-        aiStatus = "offline";
-      });
-    } catch (error) {
-      if (!silent || !errorMessage) {
-        errorMessage = (error as Error).message;
-      }
-    } finally {
-      if (!silent) {
-        loadingChannels = false;
-      }
-    }
-  }
-
-  async function selectChannel(channelId: string, fromUserInteraction = false) {
-    const channelViewKey = getQueueChannelViewKey(channelId);
-    const cachedQueueChannelState = queueChannelStateCache.get(channelViewKey);
-    const hasCachedQueueChannelState =
-      !!cachedQueueChannelState && cachedQueueChannelState.videos.length > 0;
-
-    selectedChannelId = channelId;
-    if (fromUserInteraction) {
-      mobileTab = "browse";
-    }
-    if (hasCachedQueueChannelState && cachedQueueChannelState) {
-      restoreCachedQueueChannelState(cachedQueueChannelState);
-      loadingVideos = false;
-      void refreshAndLoadVideos(channelId, true);
-      return;
-    }
-
-    videos = [];
-    offset = 0;
-    hasMore = true;
-    lastSyncedAt = null;
-    await refreshAndLoadVideos(channelId);
-  }
-
-  async function handleAddChannel(input: string) {
-    if (!input.trim()) return false;
-
-    const { optimisticChannel, tempId, trimmedInput } =
-      buildOptimisticChannel(input);
-    addingChannel = true;
-    errorMessage = null;
-
-    const previousChannels = [...channels];
-    const previousSelectedId = selectedChannelId;
-
-    channels = [optimisticChannel, ...channels];
-    channelOrder = [tempId, ...channelOrder];
-    mobileTab = "browse";
-
-    try {
-      const channel = await addChannel(trimmedInput);
-      channels = replaceOptimisticChannel(channels, tempId, channel);
-      channelOrder = replaceOptimisticChannelId(
-        channelOrder,
-        tempId,
-        channel.id,
-      );
-      selectedChannelId = channel.id;
-      await selectChannel(channel.id, true);
-      return true;
-    } catch (error) {
-      channels = previousChannels;
-      selectedChannelId = previousSelectedId;
-      syncChannelOrderFromList();
-      errorMessage = (error as Error).message;
-      return false;
-    } finally {
-      addingChannel = false;
-    }
   }
 
   async function handleDeleteChannel(channelId: string) {
@@ -612,23 +491,11 @@
     showDeleteConfirmation = false;
     channelIdToDelete = null;
 
-    try {
-      await deleteChannel(channelId);
-      channels = removeChannelFromCollection(channels, channelId);
-      channelOrder = removeChannelId(channelOrder, channelId);
-      if (selectedChannelId === channelId) {
-        const nextChannelId = resolveNextChannelSelection(channels, channelId);
-        if (nextChannelId) {
-          await selectChannel(nextChannelId);
-        } else {
-          selectedChannelId = null;
-          videos = [];
-          syncDepth = null;
-          mobileTab = "browse";
-        }
-      }
-    } catch (error) {
-      errorMessage = (error as Error).message;
+    const previousSelectedChannelId = sidebar.selectedChannelId;
+    await sidebar.confirmDeleteChannel(channelId, isOperator);
+
+    if (previousSelectedChannelId === channelId && !sidebar.selectedChannelId) {
+      mobileTab = "browse";
     }
   }
 
@@ -647,102 +514,25 @@
     await goto(`/login?redirectTo=${encodeURIComponent(redirectTo)}`);
   }
 
-  function reorderChannels(nextOrder: string[]) {
-    channels = applySavedChannelOrder(channels, nextOrder);
-    channelOrder = nextOrder;
-  }
-
-  async function refreshAndLoadVideos(
-    channelId: string,
-    silentInitialSnapshot = false,
-  ) {
-    const snapshotOptions = {
-      ...buildQueueSnapshotOptions(queueTab, limit),
-      videoType: videoTypeFilter,
-      acknowledged: resolveAcknowledgedParam(acknowledgedFilter),
-    };
-    await loadChannelSnapshotWithRefresh({
-      channelId,
-      refreshedAtByChannel: channelLastRefreshedAt,
-      ttlMs: CHANNEL_REFRESH_TTL_MS,
-      initialSilent: silentInitialSnapshot,
-      loadSnapshot: () => getChannelSnapshot(channelId, snapshotOptions),
-      applySnapshot: (snapshot, silent = false) =>
-        applyChannelSnapshot(channelId, snapshot, silent),
-      refreshChannel: () => refreshChannel(channelId),
-      shouldReloadAfterRefresh: () => selectedChannelId === channelId,
-      onRefreshingChange: (refreshing) => {
-        refreshingChannel = refreshing;
-      },
-      onError: (message) => {
-        if (!errorMessage) {
-          errorMessage = message;
-        }
-      },
-    });
-  }
-
-  async function loadVideos(reset = false, silent = false) {
-    if (!selectedChannelId) return;
-    if (loadingVideos && !silent) return;
-
-    if (!silent) loadingVideos = true;
-    if (!silent) errorMessage = null;
-
-    try {
-      const list = await listVideos(
-        selectedChannelId,
-        limit,
-        reset ? 0 : offset,
-        videoTypeFilter,
-        resolveAcknowledgedParam(acknowledgedFilter),
-        false,
-        queueTab,
-      );
-      videos = reset ? list : [...videos, ...list];
-      offset = (reset ? 0 : offset) + list.length;
-      hasMore = list.length === limit;
-      if (reset) {
-        setSyncSnapshot();
-      }
-    } catch (error) {
-      if (!silent || !errorMessage) {
-        errorMessage = (error as Error).message;
-      }
-    } finally {
-      if (!silent) {
-        loadingVideos = false;
-      }
-    }
-  }
-
-  async function setVideoTypeFilter(nextValue: VideoTypeFilter) {
-    if (videoTypeFilter === nextValue) return;
-    videoTypeFilter = nextValue;
-    videos = filterVideosByType(videos, nextValue);
-    await loadVideos(true, true);
-  }
-
-  async function setAcknowledgedFilter(nextValue: AcknowledgedFilter) {
-    if (acknowledgedFilter === nextValue) return;
-    acknowledgedFilter = nextValue;
-    videos = filterVideosByAcknowledged(videos, nextValue);
-    await loadVideos(true, true);
-  }
-
   async function saveEarliestSyncDate(value: string) {
-    if (!selectedChannelId || !value || savingSyncDate) return;
-    errorMessage = null;
+    if (!sidebar.selectedChannelId) return;
     savingSyncDate = true;
+    errorMessage = null;
+
     try {
-      const updated = await updateChannel(selectedChannelId, {
-        earliest_sync_date: new Date(value).toISOString(),
+      const channel = await updateChannel(sidebar.selectedChannelId, {
+        earliest_sync_date: value ? new Date(value).toISOString() : null,
         earliest_sync_date_user_set: true,
       });
-      channels = channels.map((channel) =>
-        channel.id === selectedChannelId ? updated : channel,
-      );
-      syncDepth = await getChannelSyncDepth(selectedChannelId);
+
+      sidebar.updateChannel(channel);
+      void putCachedChannels(sidebar.channels);
+
+      // Reload videos with the new sync boundary
+      sidebar.setVideos([]);
+      sidebar.setOffset(0);
+      sidebar.setHasMore(true);
+      await sidebar.refreshAndLoadVideos(sidebar.selectedChannelId);
     } catch (error) {
       errorMessage = (error as Error).message;
     } finally {
@@ -751,30 +541,19 @@
   }
 
   async function retryTranscriptDownload(videoId: string) {
-    if (retryingTranscriptVideoId === videoId) {
-      return;
-    }
-
-    const previousVideos = cloneVideos(videos);
     retryingTranscriptVideoId = videoId;
     errorMessage = null;
-    videos = videos.map((video) =>
-      video.id === videoId
-        ? {
-            ...video,
-            transcript_status: "loading" as const,
-            retry_count: 0,
-          }
-        : video,
-    );
 
     try {
       await ensureTranscript(videoId);
+      // Wait a bit for the backend to start the job
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      if (sidebar.selectedChannelId) {
+        await sidebar.loadVideos(true, true);
+      }
     } catch (error) {
-      videos = previousVideos;
       errorMessage = (error as Error).message;
     } finally {
-      await loadVideos(true, true);
       retryingTranscriptVideoId = null;
     }
   }
@@ -802,9 +581,15 @@
   }
 
   async function openQueuedVideo(videoId: string) {
-    const video = videos.find((item) => item.id === videoId);
-    if (!video) return;
-    await openVideoTranscriptInWorkspace(video);
+    if (!sidebar.selectedChannelId) return;
+    const href = buildWorkspaceViewHref({
+      selectedChannelId: sidebar.selectedChannelId,
+      selectedVideoId: videoId,
+      contentMode: "transcript",
+      videoTypeFilter: "all",
+      acknowledgedFilter: "all",
+    });
+    await goto(href);
   }
 
   async function handleSearchResultSelection(
@@ -832,57 +617,10 @@
     );
   }
 
-  const queueSidebarChannelState = $derived({
-    channels,
-    selectedChannelId,
-    loadingChannels,
-    addingChannel,
-    channelSortMode,
-    canDeleteChannels: isOperator,
-  });
-  const queueSidebarVideoState = $derived({
-    videos,
-    selectedVideoId: null,
-    selectedChannel,
-    loadingVideos,
-    refreshingChannel,
-    hasMore,
-    historyExhausted,
-    backfillingHistory,
-    videoTypeFilter,
-    acknowledgedFilter,
-    syncDepth,
-    allowLoadedVideoSyncDepthOverride,
-  });
-  const queueSidebarChannelActions = {
-    onChannelSortModeChange: (nextValue: ChannelSortMode) => {
-      channelSortMode = nextValue;
-    },
-    onAddChannel: handleAddChannel,
-    onSelectChannel: (channelId: string) => {
-      if (channelId === selectedChannelId) {
-        selectedChannelId = null;
-        syncDepth = null;
-        return;
-      }
-      void selectChannel(channelId, true);
-    },
-    onDeleteChannel: handleDeleteChannel,
-    onDeleteAccessRequired: () => {
-      showDeleteAccessPrompt = true;
-    },
-    onReorderChannels: reorderChannels,
-  };
-  const queueSidebarVideoActions = {
-    onSelectVideo: openQueuedVideo,
-    onLoadMoreVideos: () => loadVideos(false),
-    onVideoTypeFilterChange: setVideoTypeFilter,
-    onAcknowledgedFilterChange: setAcknowledgedFilter,
-  };
   const queueContentPanelState = $derived({
     mobileVisible: true,
-    selectedChannel,
-    selectedChannelId,
+    selectedChannel: sidebar.selectedChannel,
+    selectedChannelId: sidebar.selectedChannelId,
     queueTab,
     queueStats,
     failedTranscriptVideos,
@@ -890,7 +628,7 @@
     effectiveEarliestSyncDate,
     earliestSyncDateInput,
     savingSyncDate,
-    refreshingChannel,
+    refreshingChannel: sidebar.refreshingChannel,
   });
   const queueContentPanelActions = {
     onBack: () => {
@@ -904,19 +642,27 @@
   };
 </script>
 
+```html
 <WorkspaceShell currentSection="queue" {aiIndicator} onOpenGuide={openGuide}>
-  {#snippet sidebar({ collapsed, toggle, width })}
+  {#snippet sidebar({
+    collapsed: sidebarCollapsed,
+    toggle: toggleSidebar,
+    width: sidebarWidth,
+  })}
     <WorkspaceSidebar
       shell={{
-        collapsed,
-        width,
-        mobileVisible: false,
-        onToggleCollapse: toggle,
+        collapsed: sidebarCollapsed,
+        width: sidebarWidth,
+        mobileVisible: mobileTab === "browse",
+        onToggleCollapse: toggleSidebar,
       }}
-      channelState={queueSidebarChannelState}
-      channelActions={queueSidebarChannelActions}
-      videoState={queueSidebarVideoState}
-      videoActions={queueSidebarVideoActions}
+      channelState={sidebarChannelState}
+      channelActions={{
+        ...sidebarChannelActions,
+        onDeleteChannel: handleDeleteChannel,
+      }}
+      videoState={sidebarVideoState}
+      videoActions={sidebarVideoActions}
     />
   {/snippet}
 
@@ -933,7 +679,7 @@
       class="fixed inset-0 z-[80] lg:hidden"
       role="dialog"
       aria-modal="true"
-      aria-label="Browse queue channels"
+      aria-label="Browse channels"
     >
       <button
         type="button"
@@ -953,10 +699,19 @@
             mobileVisible: true,
             onToggleCollapse: () => {},
           }}
-          channelState={queueSidebarChannelState}
-          channelActions={queueSidebarChannelActions}
-          videoState={queueSidebarVideoState}
-          videoActions={queueSidebarVideoActions}
+          channelState={sidebarChannelState}
+          channelActions={{
+            ...sidebarChannelActions,
+            onDeleteChannel: handleDeleteChannel,
+          }}
+          videoState={sidebarVideoState}
+          videoActions={{
+            ...sidebarVideoActions,
+            onSelectVideo: (videoId) => {
+              mobileTab = "content";
+              void openQueuedVideo(videoId);
+            },
+          }}
         />
       </div>
     </div>

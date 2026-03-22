@@ -227,8 +227,12 @@ impl ReadCache {
     /// Used when the set of channels changes (add, delete, update channel metadata).
     pub async fn evict_channel_list(&self) {
         let mut entries = self.entries.write().await;
-        entries
-            .retain(|key, _| !matches!(key, ReadCacheKey::Channels | ReadCacheKey::WorkspaceBootstrap(_)));
+        entries.retain(|key, _| {
+            !matches!(
+                key,
+                ReadCacheKey::Channels | ReadCacheKey::WorkspaceBootstrap(_)
+            )
+        });
     }
 
     fn evict_expired(entries: &mut HashMap<ReadCacheKey, CacheEntry>) {
@@ -520,35 +524,95 @@ mod tests {
         };
 
         // Populate cache for both channels
-        cache.set_channels(vec![sample_channel("channel-a"), sample_channel("channel-b")]).await;
-        cache.set_channel_snapshot(key_a.clone(), crate::models::ChannelSnapshotPayload {
-            channel_id: "channel-a".to_string(),
-            sync_depth: crate::models::SyncDepthPayload { earliest_sync_date: None, earliest_sync_date_user_set: false, derived_earliest_ready_date: None },
-            videos: vec![],
-        }).await;
-        cache.set_channel_snapshot(key_b.clone(), crate::models::ChannelSnapshotPayload {
-            channel_id: "channel-b".to_string(),
-            sync_depth: crate::models::SyncDepthPayload { earliest_sync_date: None, earliest_sync_date_user_set: false, derived_earliest_ready_date: None },
-            videos: vec![],
-        }).await;
-        cache.set_workspace_bootstrap(bootstrap_key_a.clone(), sample_bootstrap()).await;
-        cache.set_workspace_bootstrap(bootstrap_key_b.clone(), sample_bootstrap()).await;
-        cache.set_channel_sync_depth("channel-a".to_string(), crate::models::SyncDepthPayload { earliest_sync_date: None, earliest_sync_date_user_set: false, derived_earliest_ready_date: None }).await;
+        cache
+            .set_channels(vec![
+                sample_channel("channel-a"),
+                sample_channel("channel-b"),
+            ])
+            .await;
+        cache
+            .set_channel_snapshot(
+                key_a.clone(),
+                crate::models::ChannelSnapshotPayload {
+                    channel_id: "channel-a".to_string(),
+                    sync_depth: crate::models::SyncDepthPayload {
+                        earliest_sync_date: None,
+                        earliest_sync_date_user_set: false,
+                        derived_earliest_ready_date: None,
+                    },
+                    videos: vec![],
+                },
+            )
+            .await;
+        cache
+            .set_channel_snapshot(
+                key_b.clone(),
+                crate::models::ChannelSnapshotPayload {
+                    channel_id: "channel-b".to_string(),
+                    sync_depth: crate::models::SyncDepthPayload {
+                        earliest_sync_date: None,
+                        earliest_sync_date_user_set: false,
+                        derived_earliest_ready_date: None,
+                    },
+                    videos: vec![],
+                },
+            )
+            .await;
+        cache
+            .set_workspace_bootstrap(bootstrap_key_a.clone(), sample_bootstrap())
+            .await;
+        cache
+            .set_workspace_bootstrap(bootstrap_key_b.clone(), sample_bootstrap())
+            .await;
+        cache
+            .set_channel_sync_depth(
+                "channel-a".to_string(),
+                crate::models::SyncDepthPayload {
+                    earliest_sync_date: None,
+                    earliest_sync_date_user_set: false,
+                    derived_earliest_ready_date: None,
+                },
+            )
+            .await;
 
         // Evict only channel-a
         cache.evict_channel("channel-a").await;
 
         // channel-a entries are evicted
-        assert!(cache.get_channel_snapshot(&key_a).await.is_none(), "channel-a snapshot should be evicted");
-        assert!(cache.get_workspace_bootstrap(&bootstrap_key_a).await.is_none(), "channel-a workspace bootstrap should be evicted");
-        assert!(cache.get_channel_sync_depth("channel-a").await.is_none(), "channel-a sync depth should be evicted");
+        assert!(
+            cache.get_channel_snapshot(&key_a).await.is_none(),
+            "channel-a snapshot should be evicted"
+        );
+        assert!(
+            cache
+                .get_workspace_bootstrap(&bootstrap_key_a)
+                .await
+                .is_none(),
+            "channel-a workspace bootstrap should be evicted"
+        );
+        assert!(
+            cache.get_channel_sync_depth("channel-a").await.is_none(),
+            "channel-a sync depth should be evicted"
+        );
 
         // channel-b entries are still present
-        assert!(cache.get_channel_snapshot(&key_b).await.is_some(), "channel-b snapshot should remain");
-        assert!(cache.get_workspace_bootstrap(&bootstrap_key_b).await.is_some(), "channel-b workspace bootstrap should remain");
+        assert!(
+            cache.get_channel_snapshot(&key_b).await.is_some(),
+            "channel-b snapshot should remain"
+        );
+        assert!(
+            cache
+                .get_workspace_bootstrap(&bootstrap_key_b)
+                .await
+                .is_some(),
+            "channel-b workspace bootstrap should remain"
+        );
 
         // channels list is untouched
-        assert!(cache.get_channels().await.is_some(), "channels list should remain after evict_channel");
+        assert!(
+            cache.get_channels().await.is_some(),
+            "channels list should remain after evict_channel"
+        );
     }
 
     #[tokio::test]
@@ -567,19 +631,29 @@ mod tests {
             video_list: VideoListCacheKey::new(20, 0, None, None, None),
         };
 
-        cache.set_workspace_bootstrap(bootstrap_key_none.clone(), sample_bootstrap()).await;
-        cache.set_workspace_bootstrap(bootstrap_key_b.clone(), sample_bootstrap()).await;
+        cache
+            .set_workspace_bootstrap(bootstrap_key_none.clone(), sample_bootstrap())
+            .await;
+        cache
+            .set_workspace_bootstrap(bootstrap_key_b.clone(), sample_bootstrap())
+            .await;
 
         cache.evict_channel("channel-a").await;
 
         // The null-keyed entry is evicted because it may resolve to channel-a via fallback.
         assert!(
-            cache.get_workspace_bootstrap(&bootstrap_key_none).await.is_none(),
+            cache
+                .get_workspace_bootstrap(&bootstrap_key_none)
+                .await
+                .is_none(),
             "null-keyed bootstrap should be evicted (null resolves to first channel via fallback)"
         );
         // The channel-b entry is explicitly for a different channel and must remain intact.
         assert!(
-            cache.get_workspace_bootstrap(&bootstrap_key_b).await.is_some(),
+            cache
+                .get_workspace_bootstrap(&bootstrap_key_b)
+                .await
+                .is_some(),
             "channel-b workspace bootstrap should not be evicted when evicting channel-a"
         );
     }
@@ -601,25 +675,53 @@ mod tests {
         };
 
         cache.set_channels(vec![sample_channel("channel-a")]).await;
-        cache.set_workspace_bootstrap(key_a.clone(), sample_bootstrap()).await;
-        cache.set_workspace_bootstrap(key_b.clone(), sample_bootstrap()).await;
-        cache.set_channel_snapshot(snapshot_key_a.clone(), crate::models::ChannelSnapshotPayload {
-            channel_id: "channel-a".to_string(),
-            sync_depth: crate::models::SyncDepthPayload { earliest_sync_date: None, earliest_sync_date_user_set: false, derived_earliest_ready_date: None },
-            videos: vec![],
-        }).await;
+        cache
+            .set_workspace_bootstrap(key_a.clone(), sample_bootstrap())
+            .await;
+        cache
+            .set_workspace_bootstrap(key_b.clone(), sample_bootstrap())
+            .await;
+        cache
+            .set_channel_snapshot(
+                snapshot_key_a.clone(),
+                crate::models::ChannelSnapshotPayload {
+                    channel_id: "channel-a".to_string(),
+                    sync_depth: crate::models::SyncDepthPayload {
+                        earliest_sync_date: None,
+                        earliest_sync_date_user_set: false,
+                        derived_earliest_ready_date: None,
+                    },
+                    videos: vec![],
+                },
+            )
+            .await;
         cache.set_search_status(sample_search_status()).await;
 
         cache.evict_channel_list().await;
 
         // Channels list and ALL workspace bootstraps are evicted
-        assert!(cache.get_channels().await.is_none(), "channels list should be evicted");
-        assert!(cache.get_workspace_bootstrap(&key_a).await.is_none(), "workspace bootstrap for channel-a should be evicted");
-        assert!(cache.get_workspace_bootstrap(&key_b).await.is_none(), "workspace bootstrap for channel-b should be evicted");
+        assert!(
+            cache.get_channels().await.is_none(),
+            "channels list should be evicted"
+        );
+        assert!(
+            cache.get_workspace_bootstrap(&key_a).await.is_none(),
+            "workspace bootstrap for channel-a should be evicted"
+        );
+        assert!(
+            cache.get_workspace_bootstrap(&key_b).await.is_none(),
+            "workspace bootstrap for channel-b should be evicted"
+        );
 
         // Channel snapshot and search status remain (they don't depend on the channels list)
-        assert!(cache.get_channel_snapshot(&snapshot_key_a).await.is_some(), "channel snapshot should remain");
-        assert!(cache.get_search_status().await.is_some(), "search status should remain");
+        assert!(
+            cache.get_channel_snapshot(&snapshot_key_a).await.is_some(),
+            "channel snapshot should remain"
+        );
+        assert!(
+            cache.get_search_status().await.is_some(),
+            "search status should remain"
+        );
     }
 
     #[tokio::test]
@@ -635,16 +737,23 @@ mod tests {
         let fill_count = crate::read_cache::MAX_CACHE_SIZE + 10;
         for i in 0..fill_count {
             let channel_id = format!("channel-{i}");
-            cache.set_channel_sync_depth(channel_id, crate::models::SyncDepthPayload {
-                earliest_sync_date: None,
-                earliest_sync_date_user_set: false,
-                derived_earliest_ready_date: None,
-            }).await;
+            cache
+                .set_channel_sync_depth(
+                    channel_id,
+                    crate::models::SyncDepthPayload {
+                        earliest_sync_date: None,
+                        earliest_sync_date_user_set: false,
+                        derived_earliest_ready_date: None,
+                    },
+                )
+                .await;
         }
         // The cache should have at most MAX_CACHE_SIZE entries
         let entry_count = cache.len().await;
-        assert!(entry_count <= MAX_CACHE_SIZE,
-            "cache size {entry_count} exceeds MAX_CACHE_SIZE {MAX_CACHE_SIZE}");
+        assert!(
+            entry_count <= MAX_CACHE_SIZE,
+            "cache size {entry_count} exceeds MAX_CACHE_SIZE {MAX_CACHE_SIZE}"
+        );
     }
 
     #[tokio::test]

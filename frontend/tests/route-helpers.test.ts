@@ -76,4 +76,36 @@ describe("loadChannelSnapshotWithRefresh", () => {
     ]);
     expect(refreshedAtByChannel.has("channel-1")).toBe(true);
   });
+
+  it("skips applying snapshot when mutation epoch changes during load", async () => {
+    const events: string[] = [];
+    let epoch = 0;
+
+    await loadChannelSnapshotWithRefresh({
+      channelId: "channel-1",
+      refreshedAtByChannel: new Map(),
+      ttlMs: 60_000,
+      getMutationEpoch: () => epoch,
+      loadSnapshot: async () => {
+        events.push("load");
+        epoch += 1;
+        return { id: "snapshot-1" };
+      },
+      applySnapshot: async (snapshot) => {
+        events.push(`apply:${snapshot.id}`);
+      },
+      refreshChannel: async () => {
+        events.push("refresh");
+      },
+      shouldReloadAfterRefresh: () => true,
+      onRefreshingChange: (refreshing) => {
+        events.push(`refreshing:${refreshing}`);
+      },
+      onError: (message) => {
+        events.push(`error:${message}`);
+      },
+    });
+
+    expect(events).toEqual(["load"]);
+  });
 });

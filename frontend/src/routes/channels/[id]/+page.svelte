@@ -403,6 +403,7 @@
     videoTypeFilter,
     acknowledgedFilter,
     syncDepth,
+    offset: 0,
     allowLoadedVideoSyncDepthOverride: false,
   });
   const overviewSidebarChannelActions = {
