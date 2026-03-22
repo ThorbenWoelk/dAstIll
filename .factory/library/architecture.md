@@ -35,7 +35,11 @@ Architectural decisions, patterns discovered, and design constraints.
 
 ## Frontend Component Structure
 
-- Main page (+page.svelte): ~2200 lines, 50+ state variables, handles all workspace logic inline
+- Main page (+page.svelte): ~2200 lines, 50+ state variables, handles all workspace logic inline; WorkspaceSidebar and WorkspaceContentPanel are extracted
 - Routes: / (workspace), /highlights, /download-queue, /chat, /channels/[id], /login, /logout
 - Service worker: no-op passthrough (sw.js)
 - AI status polling: duplicated across routes (shared poller + highlights' own setInterval)
+- `WorkspaceSidebar.svelte` (~58KB): fully extracted sidebar with channel list, video list, filters, drag-reorder; uses `WorkspaceSidebarChannelState/Actions` and `WorkspaceSidebarVideoState/Actions` props
+- `WorkspaceContentPanel.svelte`: extracted content panel with content mode tabs (Transcript/Summary/Highlights/Info), content display area, content actions, loading states, AND workspace-level overlays (ErrorToast + ConfirmationModals via `WorkspaceOverlaysState/Actions` props)
+- `src/lib/workspace/component-props.ts`: interface definitions for all workspace component prop types (sidebar, content panel, overlays)
+- `src/lib/workspace/overlays.ts`: `hasActiveOverlay()` utility for checking if any workspace overlay is currently visible
