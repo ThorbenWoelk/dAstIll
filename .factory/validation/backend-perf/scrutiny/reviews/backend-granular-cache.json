@@ -1,0 +1,44 @@
+{
+  "featureId": "backend-granular-cache",
+  "reviewedAt": "2026-03-22T00:18:20Z",
+  "commitId": "e04df31",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Targeted eviction and bounded cache plumbing are implemented, but channel-scoped eviction misses a real dependent cache key path: workspace bootstrap entries cached with `selected_channel_id = null` are not evicted even when they contain the mutated channel snapshot.",
+    "issues": [
+      {
+        "file": "backend/src/read_cache.rs",
+        "line": 211,
+        "severity": "blocking",
+        "description": "`evict_channel` only evicts `WorkspaceBootstrap` keys where `selected_channel_id == Some(channel_id)`. However, the cache key is built from request params (`backend/src/handlers/channels.rs:69`), and `null` requests are valid; `load_workspace_bootstrap_data` then resolves `null` to the first channel (`backend/src/db/videos.rs:369-374`). Result: mutating that auto-selected channel can leave stale bootstrap payloads in cache until TTL expiry."
+      },
+      {
+        "file": "backend/src/read_cache.rs",
+        "line": 547,
+        "severity": "non_blocking",
+        "description": "`evict_channel_does_not_affect_workspace_bootstrap_for_other_channels` asserts that `selected_channel_id: None` bootstrap entries must survive `evict_channel`. This test bakes in the stale-default-bootstrap behavior above, so the suite currently protects a regression-prone invalidation rule."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "Shared architecture notes are stale for backend cache behavior after this feature.",
+      "evidence": ".factory/library/architecture.md:19 still says read cache uses global `clear()` on every mutation (14 call sites), but commit e04df31 replaces this with scoped eviction methods."
+    },
+    {
+      "area": "conventions",
+      "observation": "The distinction between workspace bootstrap cache key (`params.selected_channel_id`) and resolved selected channel (fallback to first channel) is not documented, yet it is critical for correct invalidation design.",
+      "evidence": "backend/src/handlers/channels.rs:69 uses param-based key; backend/src/db/videos.rs:369-374 resolves `None` to `channels.first()` for payload selection."
+    },
+    {
+      "area": "skills",
+      "observation": "The Rust backend skill requires explicit RED proof (new tests fail first), but transcript/handoff evidence shows tests and implementation landed in one pass while still marked as followed procedure.",
+      "evidence": ".factory/skills/rust-backend-worker/SKILL.md:28-34 requires RED failure; handoff file line 68 says tests and implementation were added in one pass and suggests tightening this guidance."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Review failed due to a blocking invalidation gap: channel mutations do not evict cached workspace bootstrap entries keyed with `selected_channel_id = null`, even though those entries may contain the mutated channel via fallback selection."
+}

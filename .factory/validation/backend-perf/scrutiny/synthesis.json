@@ -1,0 +1,65 @@
+{
+  "milestone": "backend-perf",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "cd backend && cargo test; cd frontend && bun test",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "cd backend && cargo check; cd frontend && npm run check",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "cd frontend && npm run format:check",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 3,
+    "passed": 1,
+    "failed": 2,
+    "failedFeatures": [
+      "backend-granular-cache",
+      "backend-cache-headers"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "backend-granular-cache",
+      "severity": "blocking",
+      "description": "read_cache::evict_channel does not evict workspace bootstrap entries keyed with selected_channel_id=null, even though bootstrap resolution can map null to the mutated channel via first-channel fallback, leaving stale bootstrap payloads until TTL expiry."
+    },
+    {
+      "featureId": "backend-cache-headers",
+      "severity": "blocking",
+      "description": "cache_headers middleware adds Cache-Control for GET routes without response-status gating, allowing transient error responses (e.g., 404/401/429) to be cached and potentially serving stale negative states after data becomes available."
+    }
+  ],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "description": "Updated .factory/library/architecture.md backend data-layer notes to reflect current bounded-parallel S3 loading, targeted cache eviction, summary-skip video fetch behavior, channel snapshot deduplication, and workspace bootstrap key/selection invalidation nuance.",
+      "sourceFeature": "backend-parallel-s3-ops"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": ".factory/skills/rust-backend-worker/SKILL.md",
+      "suggestion": "Refine strict RED-step wording to explicitly allow service-dependent/backend integration paths where deterministic failing-first tests are impractical, while still requiring clear test intent and evidence.",
+      "evidence": "This mismatch was independently observed in reviews for backend-parallel-s3-ops, backend-granular-cache, and backend-cache-headers.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Shared architecture notes are stale for backend cache behavior after this feature.",
+      "reason": "duplicate"
+    }
+  ],
+  "previousRound": null
+}

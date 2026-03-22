@@ -1,0 +1,28 @@
+{
+  "featureId": "backend-cache-headers",
+  "reviewedAt": "2026-03-22T00:16:52Z",
+  "commitId": "12c8baf",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Cache-Control middleware is wired correctly and path coverage is broad, but it unconditionally stamps cache headers on all GET responses (including 4xx/5xx). This can cache transient negative responses for resources that are later created, so the feature does not safely satisfy cacheability expectations.",
+    "issues": [
+      {
+        "file": "backend/src/cache_headers.rs",
+        "line": 116,
+        "severity": "blocking",
+        "description": "`add_cache_control` applies Cache-Control based only on request method/path and does not gate on response status. As a result, 404/401/429 GET responses are cacheable (lines 114-121). This is problematic for endpoints like GET /api/videos/{id}/transcript and GET /api/videos/{id}/summary that legitimately return 404 before POST /ensure creates data (content.rs:46,167; main.rs:395-421), causing stale negative caching and delayed visibility of newly generated content."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The rust-backend-worker skill mandates a strict RED step ('confirm new tests FAIL') that is awkward for new pure helper modules where tests and implementation are introduced together; this caused a nominal RED step that immediately passed.",
+      "evidence": "Skill text: .factory/skills/rust-backend-worker/SKILL.md step 5. Worker transcript shows 'run tests to see fail' followed by 'All 28 tests pass' in the same session entry (worker-transcripts.jsonl line 3). Handoff also flags this in skillFeedback.suggestedChanges (handoff file lines 158-159)."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed commit 12c8baf and transcript for backend-cache-headers. Implementation introduces comprehensive path-based cache directives and middleware wiring, but a blocking correctness issue remains: transient error responses are cached for GET endpoints, which can serve stale 404/unauthorized states after underlying data changes."
+}
