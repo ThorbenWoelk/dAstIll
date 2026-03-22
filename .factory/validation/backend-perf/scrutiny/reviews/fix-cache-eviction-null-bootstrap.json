@@ -1,0 +1,21 @@
+{
+  "featureId": "fix-cache-eviction-null-bootstrap",
+  "reviewedAt": "2026-03-22T00:30:38Z",
+  "commitId": "37be6ab",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix directly resolves the prior blocking invalidation gap: `evict_channel` now evicts `WorkspaceBootstrap` entries keyed with `selected_channel_id = null` while preserving explicitly different channel keys. The updated eviction test now asserts null-key eviction and different-channel retention. Reviewing both e04df31 and 37be6ab together shows the stale-null-bootstrap issue is addressed without introducing cache-eviction regressions.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "Procedure adherence tracking for rust-backend-worker appears permissive: the skill requires full validation including `cargo build`, but the fix transcript records only `cargo test` and `cargo check` while `skillFeedback.followedProcedure` is still true.",
+      "evidence": ".factory/skills/rust-backend-worker/SKILL.md (Work Procedure step 7) vs transcript skeleton for workerSessionId fa79b9cb-0f1f-43df-ac31-364d16f8d5f0 (commands shown: cargo test, cargo check, then commit)."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/backend-perf/scrutiny/reviews/backend-granular-cache.json",
+  "summary": "PASS: The fix fully addresses the previously blocking stale workspace-bootstrap null-key eviction bug and updates tests to enforce the corrected behavior; no code-level blocking or non-blocking defects were found in the fix."
+}

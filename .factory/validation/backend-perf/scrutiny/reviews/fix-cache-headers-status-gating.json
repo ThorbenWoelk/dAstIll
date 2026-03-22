@@ -1,0 +1,21 @@
+{
+  "featureId": "fix-cache-headers-status-gating",
+  "reviewedAt": "2026-03-22T00:30:31Z",
+  "commitId": "40a5f6a",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix directly resolves the prior blocking issue by gating Cache-Control injection to successful GET responses only, and adds middleware-level tests proving header presence for 2xx and absence for 4xx/5xx and POST. Compared against the original feature commit, the behavior now prevents stale negative cache states without altering path-based header policies for successful responses.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The rust-backend-worker skill requires `cargo build` in full validation, but the feature verification steps and this worker run only `cargo test`/`cargo check`; this mismatch creates ambiguous completion criteria.",
+      "evidence": ".factory/skills/rust-backend-worker/SKILL.md Work Procedure step 7 lists `cargo build`; handoff 2026-03-22T00-28-07-291Z__fix-cache-headers-status-gating__3679924d-5000-4694-8be2-c3a00476a944.json verification.commandsRun includes `cd backend && cargo test cache_headers`, `cd backend && cargo test`, and `cd backend && cargo check` only."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/backend-perf/scrutiny/reviews/backend-cache-headers.json",
+  "summary": "PASS: reviewed transcript skeleton, original failure report, and both original/fix diffs. Commit 40a5f6a fully addresses the blocking status-gating defect identified in backend-cache-headers by restricting Cache-Control injection to 2xx GET responses and adding targeted regression tests, with no new blocking regressions found."
+}
