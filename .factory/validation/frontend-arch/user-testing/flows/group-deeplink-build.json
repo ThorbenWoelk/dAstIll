@@ -1,0 +1,66 @@
+{
+  "groupId": "group-deeplink-build",
+  "milestone": "frontend-arch",
+  "testedAt": "2026-03-22T04:16:52Z",
+  "isolation": {
+    "frontendUrl": "http://localhost:3543",
+    "backendUrl": "http://localhost:3544",
+    "browserSession": "flow-deeplink-build-ac6f5cfb"
+  },
+  "toolsUsed": [
+    "agent-browser",
+    "bun"
+  ],
+  "assertionResults": [
+    {
+      "id": "VAL-ARCH-001",
+      "title": "Production build produces multiple JS chunks",
+      "status": "pass",
+      "reason": "`bun run build` completed successfully and produced 28 distinct client app JS chunk/node/entry files (>=3 required).",
+      "evidencePaths": [
+        "frontend-arch/group-deeplink-build/VAL-ARCH-001-build-output.txt",
+        "frontend-arch/group-deeplink-build/VAL-ARCH-001-client-js-chunks.txt"
+      ]
+    },
+    {
+      "id": "VAL-QUEUE-002",
+      "title": "Queue-to-workspace navigation preserves context",
+      "status": "pass",
+      "reason": "From `/download-queue`, clicking queue video `Where Should You Deploy In 2026?` navigated to workspace URL containing matching deep-link params for channel/video/context.",
+      "evidencePaths": [
+        "frontend-arch/group-deeplink-build/VAL-QUEUE-002-download-queue-before-click.png",
+        "frontend-arch/group-deeplink-build/VAL-QUEUE-002-after-video-click.png",
+        "frontend-arch/group-deeplink-build/VAL-QUEUE-002-url-before.txt",
+        "frontend-arch/group-deeplink-build/VAL-QUEUE-002-url-after.txt",
+        "frontend-arch/group-deeplink-build/VAL-QUEUE-002-console-errors.txt",
+        "frontend-arch/group-deeplink-build/VAL-QUEUE-002-network.txt"
+      ]
+    },
+    {
+      "id": "VAL-CROSS-002",
+      "title": "Highlights-to-workspace deep navigation",
+      "status": "pass",
+      "reason": "From `/highlights`, clicking the highlight deep link navigated to workspace with `channel`, `video`, and `content=transcript` URL params matching the highlight target.",
+      "evidencePaths": [
+        "frontend-arch/group-deeplink-build/VAL-CROSS-002-highlights-before-click.png",
+        "frontend-arch/group-deeplink-build/VAL-CROSS-002-after-highlight-click.png",
+        "frontend-arch/group-deeplink-build/VAL-CROSS-002-url-before.txt",
+        "frontend-arch/group-deeplink-build/VAL-CROSS-002-url-after.txt",
+        "frontend-arch/group-deeplink-build/VAL-CROSS-002-console-errors.txt",
+        "frontend-arch/group-deeplink-build/VAL-CROSS-002-network.txt"
+      ]
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Element refs changed after queue page refresh; an initial click attempt timed out.",
+      "resolved": true,
+      "resolution": "Re-captured annotated screenshot/snapshot and used refreshed element refs.",
+      "affectedAssertions": [
+        "VAL-QUEUE-002"
+      ]
+    }
+  ],
+  "blockers": [],
+  "overallStatus": "pass"
+}

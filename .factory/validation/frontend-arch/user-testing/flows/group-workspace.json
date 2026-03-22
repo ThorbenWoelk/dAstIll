@@ -1,0 +1,104 @@
+{
+  "groupId": "group-workspace",
+  "milestone": "frontend-arch",
+  "testedAt": "2026-03-22T04:17:26Z",
+  "isolation": {
+    "frontendUrl": "http://localhost:3543",
+    "backendUrl": "http://localhost:3544",
+    "browserSession": "flow-workspace-ac6f5cfb"
+  },
+  "toolsUsed": ["agent-browser"],
+  "assertionResults": [
+    {
+      "id": "VAL-ARCH-002",
+      "title": "Sidebar renders with channels and video list",
+      "status": "pass",
+      "reason": "Workspace sidebar rendered channel controls and a populated video list; selecting channel entries kept the video list visible and interactive.",
+      "logs": {
+        "consoleErrors": "none",
+        "urlObserved": "http://localhost:3543/?channel=UCbRP3c757lWg9M-U7TyEkXA&video=mVKxygo5Sdo&content=transcript&type=all&ack=all"
+      },
+      "evidencePaths": [
+        "frontend-arch/group-workspace/VAL-ARCH-002-sidebar-videos.png",
+        "frontend-arch/group-workspace/VAL-ARCH-002-channel-selected-videos.png",
+        "frontend-arch/group-workspace/VAL-ARCH-002-lastweekttonight-channel-videos.png"
+      ]
+    },
+    {
+      "id": "VAL-ARCH-003",
+      "title": "Content mode tabs switch correctly",
+      "status": "pass",
+      "reason": "With a selected video, Info/Summary/Highlights/Transcript tabs all switched successfully and rendered corresponding content states.",
+      "logs": {
+        "consoleErrors": "none"
+      },
+      "evidencePaths": [
+        "frontend-arch/group-workspace/VAL-ARCH-003-tab-transcript.png",
+        "frontend-arch/group-workspace/VAL-ARCH-003-tab-summary.png",
+        "frontend-arch/group-workspace/VAL-ARCH-003-tab-highlights.png",
+        "frontend-arch/group-workspace/VAL-ARCH-003-tab-info.png"
+      ]
+    },
+    {
+      "id": "VAL-ARCH-004",
+      "title": "Search bar opens and returns results",
+      "status": "pass",
+      "reason": "Search accepted query, rendered results panel, and selecting a result navigated to the matching video context in workspace.",
+      "logs": {
+        "consoleErrors": "none",
+        "beforeUrl": "http://localhost:3543/?channel=UCbRP3c757lWg9M-U7TyEkXA&video=nsqGI1VAYbU&content=info&type=all&ack=all",
+        "afterUrl": "http://localhost:3543/?channel=UCbRP3c757lWg9M-U7TyEkXA&video=mVKxygo5Sdo&content=transcript&type=all&ack=all",
+        "network": "GET /api/search?q=cloudflare&limit=8&mode=keyword, GET /api/search?q=cloudflare&limit=8&mode=semantic"
+      },
+      "evidencePaths": [
+        "frontend-arch/group-workspace/VAL-ARCH-004-search-results-popover.png",
+        "frontend-arch/group-workspace/VAL-ARCH-004-search-results-after-submit.png",
+        "frontend-arch/group-workspace/VAL-ARCH-004-post-selection-state.png"
+      ]
+    },
+    {
+      "id": "VAL-ARCH-006",
+      "title": "No visible loading jank from lazy-loaded components",
+      "status": "pass",
+      "reason": "After hard refresh, workspace shell remained visible through initial and stable captures; performance entries reported first-contentful-paint at ~1028ms and CLS=0.",
+      "logs": {
+        "consoleErrors": "none",
+        "performance": "{\"paint\":[{\"name\":\"first-paint\",\"startTime\":1028},{\"name\":\"first-contentful-paint\",\"startTime\":1028}],\"cls\":0,\"shiftCount\":0,\"readyState\":\"complete\"}"
+      },
+      "evidencePaths": [
+        "frontend-arch/group-workspace/VAL-ARCH-006-post-refresh-initial.png",
+        "frontend-arch/group-workspace/VAL-ARCH-006-post-refresh-stable.png"
+      ]
+    },
+    {
+      "id": "VAL-ARCH-007",
+      "title": "Modals and error toast still function",
+      "status": "pass",
+      "reason": "Modal surfaced correctly during privileged channel-delete attempt (Sign in / Not now). Error toast rendered when mutation was attempted offline and was dismissible.",
+      "logs": {
+        "consoleErrors": "none"
+      },
+      "evidencePaths": [
+        "frontend-arch/group-workspace/VAL-ARCH-007-confirmation-modal.png",
+        "frontend-arch/group-workspace/VAL-ARCH-007-error-toast-visible.png",
+        "frontend-arch/group-workspace/VAL-ARCH-007-error-toast-dismissed.png"
+      ]
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Search results did not appear on typing alone; submitting the query was required to open the results panel.",
+      "resolved": true,
+      "resolution": "Used Submit search action after entering query.",
+      "affectedAssertions": ["VAL-ARCH-004"]
+    },
+    {
+      "description": "Delete-channel action for non-operator surfaced sign-in modal instead of destructive confirmation.",
+      "resolved": true,
+      "resolution": "Used this modal as modal evidence, then triggered offline mutation to validate error toast behavior.",
+      "affectedAssertions": ["VAL-ARCH-007"]
+    }
+  ],
+  "blockers": [],
+  "overallStatus": "pass"
+}

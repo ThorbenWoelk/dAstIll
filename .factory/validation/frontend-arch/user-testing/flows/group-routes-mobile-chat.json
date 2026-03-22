@@ -1,0 +1,96 @@
+{
+  "groupId": "group-routes-mobile-chat",
+  "milestone": "frontend-arch",
+  "testedAt": "2026-03-22T04:21:29Z",
+  "isolation": {
+    "frontendUrl": "http://localhost:3543",
+    "backendUrl": "http://localhost:3544",
+    "sessionName": "flow-routes-mobile-chat-ac6f5cfb",
+    "missionDir": "/Users/thorben.woelk/.factory/missions/ac6f5cfb-626d-4647-b49e-2397f57cdb1a"
+  },
+  "toolsUsed": [
+    "agent-browser"
+  ],
+  "assertionResults": [
+    {
+      "id": "VAL-ARCH-005",
+      "status": "pass",
+      "reason": "At mobile viewport 390x844, bottom navigation is visible, sidebar overlay opens from the mobile control, and content/browse mobile state toggling is evidenced across captured states.",
+      "evidencePaths": [
+        "frontend-arch/group-routes-mobile-chat/VAL-ARCH-005-mobile-bottom-nav.png",
+        "frontend-arch/group-routes-mobile-chat/VAL-ARCH-005-mobile-sidebar-overlay.png",
+        "frontend-arch/group-routes-mobile-chat/VAL-ARCH-005-mobile-content-toggle.png",
+        "frontend-arch/group-routes-mobile-chat/VAL-ARCH-005-errors.txt"
+      ]
+    },
+    {
+      "id": "VAL-CHAT-001",
+      "status": "pass",
+      "reason": "On /chat, existing conversations loaded, a new conversation was created, a message was sent, and an AI response rendered in the conversation pane with no JS errors.",
+      "evidencePaths": [
+        "frontend-arch/group-routes-mobile-chat/VAL-CHAT-001-chat-loaded.png",
+        "frontend-arch/group-routes-mobile-chat/VAL-CHAT-001-new-conversation.png",
+        "frontend-arch/group-routes-mobile-chat/VAL-CHAT-001-response-rendered.png",
+        "frontend-arch/group-routes-mobile-chat/VAL-CHAT-001-chat-body.txt",
+        "frontend-arch/group-routes-mobile-chat/VAL-CHAT-001-network-perf.json",
+        "frontend-arch/group-routes-mobile-chat/VAL-CHAT-001-errors.txt"
+      ]
+    },
+    {
+      "id": "VAL-CROSS-001",
+      "status": "pass",
+      "reason": "Starting at /, navigation links successfully reached Queue, Highlights, Chat, and returned to Workspace; all routes rendered normally with no JS errors.",
+      "evidencePaths": [
+        "frontend-arch/group-routes-mobile-chat/VAL-CROSS-001-workspace.png",
+        "frontend-arch/group-routes-mobile-chat/VAL-CROSS-001-queue.png",
+        "frontend-arch/group-routes-mobile-chat/VAL-CROSS-001-highlights.png",
+        "frontend-arch/group-routes-mobile-chat/VAL-CROSS-001-chat.png",
+        "frontend-arch/group-routes-mobile-chat/VAL-CROSS-001-errors.txt"
+      ]
+    },
+    {
+      "id": "VAL-CROSS-003",
+      "status": "pass",
+      "reason": "After clearing site data, first-visit navigation to / showed a meaningful shell (nav/aside/main present), first-contentful-paint recorded at 1176ms, body/heading fonts resolved to Manrope/Fraunces, and no chunk-load/JS errors were captured.",
+      "evidencePaths": [
+        "frontend-arch/group-routes-mobile-chat/VAL-CROSS-003-shell-500ms.png",
+        "frontend-arch/group-routes-mobile-chat/VAL-CROSS-003-shell-2000ms.png",
+        "frontend-arch/group-routes-mobile-chat/VAL-CROSS-003-metrics.json",
+        "frontend-arch/group-routes-mobile-chat/VAL-CROSS-003-errors.txt"
+      ]
+    },
+    {
+      "id": "VAL-CROSS-005",
+      "status": "pass",
+      "reason": "Workspace state persisted across route transitions: selected channel, video, content mode, and filters in URL params were unchanged before and after navigating away to Queue and back.",
+      "evidencePaths": [
+        "frontend-arch/group-routes-mobile-chat/VAL-CROSS-005-state-before-nav.png",
+        "frontend-arch/group-routes-mobile-chat/VAL-CROSS-005-away-queue.png",
+        "frontend-arch/group-routes-mobile-chat/VAL-CROSS-005-state-after-return.png",
+        "frontend-arch/group-routes-mobile-chat/VAL-CROSS-005-url-before.txt",
+        "frontend-arch/group-routes-mobile-chat/VAL-CROSS-005-url-after.txt",
+        "frontend-arch/group-routes-mobile-chat/VAL-CROSS-005-errors.txt"
+      ]
+    }
+  ],
+  "frictions": [
+    {
+      "description": "agent-browser network request log returned 'No requests captured' despite active API traffic.",
+      "resolved": true,
+      "resolution": "Used Performance Resource Timing via browser evaluate as fallback network evidence (VAL-CHAT-001-network-perf.json).",
+      "affectedAssertions": [
+        "VAL-CHAT-001"
+      ]
+    },
+    {
+      "description": "In mobile sidebar overlay, direct clicks on some close/collapse refs were intermittently reported as blocked due overlapping interactive layers.",
+      "resolved": true,
+      "resolution": "Used alternate interaction (Escape) and captured separate mobile state screenshots for bottom nav, overlay-open, and toggled content state.",
+      "affectedAssertions": [
+        "VAL-ARCH-005"
+      ]
+    }
+  ],
+  "blockers": [],
+  "overallStatus": "pass"
+}
