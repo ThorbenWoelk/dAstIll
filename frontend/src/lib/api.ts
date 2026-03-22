@@ -171,15 +171,22 @@ function invalidateVideoInfoCache(videoId: string) {
 }
 
 /**
- * Invalidates highlight-related caches. Optionally scoped to a specific
- * video's per-video highlight list when the videoId is known.
+ * Invalidates highlight-related caches. When videoId is known, only the
+ * specific video's per-video highlight list is evicted. When videoId is
+ * unknown (e.g. highlight deleted from /highlights page where videoId is not
+ * in context), ALL per-video highlight caches are evicted so stale entries
+ * never linger.
  */
 function invalidateHighlightCache(videoId?: string) {
   invalidateGetRequestCache((path) => {
     if (path === "/api/highlights" || path.startsWith("/api/highlights/"))
       return true;
-    if (videoId && path.startsWith(`/api/videos/${videoId}/highlights`))
-      return true;
+    if (videoId) {
+      if (path.startsWith(`/api/videos/${videoId}/highlights`)) return true;
+    } else {
+      // videoId unknown — evict all per-video highlight lists
+      if (/^\/api\/videos\/[^/]+\/highlights/.test(path)) return true;
+    }
     return false;
   });
 }

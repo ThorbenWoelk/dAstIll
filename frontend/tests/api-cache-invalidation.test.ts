@@ -434,6 +434,57 @@ describe("createHighlight targeted invalidation", () => {
 // ---------------------------------------------------------------------------
 
 describe("deleteHighlight targeted invalidation", () => {
+  it("also evicts per-video highlight caches when videoId is not in context (regression)", async () => {
+    const groups = highlightGroups();
+    const perVideoHighlights = [highlight(1, "vid-1")];
+    const requests: string[] = [];
+
+    globalThis.fetch = (async (input, init) => {
+      const url = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      requests.push(`${method} ${url}`);
+
+      if (method === "DELETE" && url.includes("/api/highlights/1")) {
+        return new Response(null, { status: 204 });
+      }
+      if (url.includes("/api/videos/vid-1/highlights")) {
+        return new Response(JSON.stringify(perVideoHighlights), {
+          status: 200,
+        });
+      }
+      if (url.includes("/api/highlights")) {
+        return new Response(JSON.stringify(groups), { status: 200 });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    }) as typeof fetch;
+
+    // Pre-cache: grouped highlights and per-video highlights for vid-1
+    await listHighlights();
+    await getVideoHighlights("vid-1");
+
+    expect(requests.length).toBe(2);
+
+    // deleteHighlight does NOT pass videoId to invalidateHighlightCache —
+    // the fix must evict all per-video highlight caches in that case.
+    await deleteHighlight(1);
+
+    // Re-fetch — both caches must have been evicted
+    await listHighlights();
+    await getVideoHighlights("vid-1");
+
+    const groupedFetches = requests.filter(
+      (r) => r.includes("GET") && r.endsWith("/api/highlights"),
+    ).length;
+    const perVideoFetches = requests.filter(
+      (r) => r.includes("GET") && r.includes("/api/videos/vid-1/highlights"),
+    ).length;
+
+    // Grouped highlights: pre-cache + after invalidation
+    expect(groupedFetches).toBe(2);
+    // Per-video highlights: pre-cache + after invalidation (regression check)
+    expect(perVideoFetches).toBe(2);
+  });
+
   it("only invalidates highlight caches, not channel snapshots or AI health", async () => {
     const snapshotA = snapshot("chan-a", "vid-1");
     const ai = aiHealth();
