@@ -30,8 +30,6 @@
   import { DOCS_URL } from "$lib/app-config";
   import FeatureGuide from "$lib/components/FeatureGuide.svelte";
   import type { TourStep } from "$lib/components/FeatureGuide.svelte";
-  import ConfirmationModal from "$lib/components/ConfirmationModal.svelte";
-  import ErrorToast from "$lib/components/ErrorToast.svelte";
   import ContentEditor from "$lib/components/ContentEditor.svelte";
   import WorkspaceContentPanel from "$lib/components/workspace/WorkspaceContentPanel.svelte";
   import WorkspaceSearchBar from "$lib/components/workspace/WorkspaceSearchBar.svelte";
@@ -47,7 +45,6 @@
     SearchResult,
     SearchStatus,
     Summary as SummaryPayload,
-    Transcript as TranscriptPayload,
     TranscriptRenderMode,
     VideoInfo as VideoInfoPayload,
     Video,
@@ -2036,6 +2033,20 @@
       mobileTab = "browse";
     },
   }));
+  const workspaceOverlaysState = $derived({
+    errorMessage,
+    showDeleteConfirmation,
+    showDeleteAccessPrompt,
+  });
+  const workspaceOverlaysActions = {
+    onDismissError: () => {
+      errorMessage = null;
+    },
+    onConfirmDelete: confirmDeleteChannel,
+    onCancelDelete: cancelDeleteChannel,
+    onConfirmAccessPrompt: confirmDeleteAccessPrompt,
+    onCancelAccessPrompt: cancelDeleteAccessPrompt,
+  };
 </script>
 
 <WorkspaceShell
@@ -2177,35 +2188,8 @@
     selection={workspaceContentSelection}
     content={workspaceContentState}
     actions={workspaceContentActions}
-  />
-
-  {#if errorMessage}
-    <ErrorToast
-      message={errorMessage}
-      onDismiss={() => (errorMessage = null)}
-    />
-  {/if}
-
-  <ConfirmationModal
-    show={showDeleteConfirmation}
-    title="Remove Channel?"
-    message="Are you sure you want to remove this channel? All its downloaded transcripts and summaries will be permanently deleted."
-    confirmLabel="Delete"
-    cancelLabel="Keep"
-    tone="danger"
-    onConfirm={confirmDeleteChannel}
-    onCancel={cancelDeleteChannel}
-  />
-
-  <ConfirmationModal
-    show={showDeleteAccessPrompt}
-    title="Admin sign-in required"
-    message="Deleting channels is restricted to admins. Sign in to unlock channel management."
-    confirmLabel="Sign in"
-    cancelLabel="Not now"
-    tone="info"
-    onConfirm={confirmDeleteAccessPrompt}
-    onCancel={cancelDeleteAccessPrompt}
+    overlays={workspaceOverlaysState}
+    overlayActions={workspaceOverlaysActions}
   />
 
   <FeatureGuide

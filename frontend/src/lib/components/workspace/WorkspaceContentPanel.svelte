@@ -1,5 +1,7 @@
 <script lang="ts">
+  import ConfirmationModal from "$lib/components/ConfirmationModal.svelte";
   import ContentEditor from "$lib/components/ContentEditor.svelte";
+  import ErrorToast from "$lib/components/ErrorToast.svelte";
   import TranscriptView from "$lib/components/TranscriptView.svelte";
   import type {
     Channel,
@@ -14,6 +16,8 @@
     WorkspaceContentActions,
     WorkspaceContentSelection,
     WorkspaceContentState,
+    WorkspaceOverlaysActions,
+    WorkspaceOverlaysState,
   } from "$lib/workspace/component-props";
   import type { WorkspaceContentMode } from "$lib/workspace/types";
   import {
@@ -42,6 +46,18 @@
       selectedVideo: null,
       selectedVideoId: null,
       contentMode: "transcript",
+    },
+    overlays = {
+      errorMessage: null,
+      showDeleteConfirmation: false,
+      showDeleteAccessPrompt: false,
+    },
+    overlayActions = {
+      onDismissError: () => {},
+      onConfirmDelete: () => {},
+      onCancelDelete: () => {},
+      onConfirmAccessPrompt: async () => {},
+      onCancelAccessPrompt: () => {},
     },
     content = {
       loadingContent: false,
@@ -92,6 +108,8 @@
     },
   }: {
     selection?: WorkspaceContentSelection;
+    overlays?: WorkspaceOverlaysState;
+    overlayActions?: WorkspaceOverlaysActions;
     content?: WorkspaceContentState;
     actions?: WorkspaceContentActions;
   } = $props();
@@ -647,3 +665,32 @@
     {/if}
   </div>
 </section>
+
+{#if overlays.errorMessage}
+  <ErrorToast
+    message={overlays.errorMessage}
+    onDismiss={overlayActions.onDismissError}
+  />
+{/if}
+
+<ConfirmationModal
+  show={overlays.showDeleteConfirmation}
+  title="Remove Channel?"
+  message="Are you sure you want to remove this channel? All its downloaded transcripts and summaries will be permanently deleted."
+  confirmLabel="Delete"
+  cancelLabel="Keep"
+  tone="danger"
+  onConfirm={overlayActions.onConfirmDelete}
+  onCancel={overlayActions.onCancelDelete}
+/>
+
+<ConfirmationModal
+  show={overlays.showDeleteAccessPrompt}
+  title="Admin sign-in required"
+  message="Deleting channels is restricted to admins. Sign in to unlock channel management."
+  confirmLabel="Sign in"
+  cancelLabel="Not now"
+  tone="info"
+  onConfirm={overlayActions.onConfirmAccessPrompt}
+  onCancel={overlayActions.onCancelAccessPrompt}
+/>

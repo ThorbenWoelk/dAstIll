@@ -130,6 +130,20 @@ export interface WorkspaceContentActions {
   onShowVideos: () => void;
 }
 
+export interface WorkspaceOverlaysState {
+  errorMessage: string | null;
+  showDeleteConfirmation: boolean;
+  showDeleteAccessPrompt: boolean;
+}
+
+export interface WorkspaceOverlaysActions {
+  onDismissError: () => void;
+  onConfirmDelete: () => void;
+  onCancelDelete: () => void;
+  onConfirmAccessPrompt: () => Promise<void> | void;
+  onCancelAccessPrompt: () => void;
+}
+
 export interface QueueListItem {
   video: Video;
   distillationStatus: DistillationStatusCopy;
