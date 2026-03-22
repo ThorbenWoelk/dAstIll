@@ -85,6 +85,11 @@ function invalidateGetRequestCache(matcher: (path: string) => boolean) {
   }
 }
 
+/**
+ * Invalidates cache entries for a specific channel's reads (snapshot, videos,
+ * sync-depth) and the workspace bootstrap. Used after per-channel mutations
+ * such as refresh, backfill, and acknowledge toggle.
+ */
 function invalidateChannelReadCache(channelId: string) {
   invalidateGetRequestCache(
     (path) =>
@@ -93,6 +98,90 @@ function invalidateChannelReadCache(channelId: string) {
       path.startsWith(`/api/channels/${channelId}/sync-depth`) ||
       path.startsWith("/api/workspace/bootstrap"),
   );
+}
+
+/**
+ * Invalidates the channel list and workspace bootstrap. Used after mutations
+ * that add channels (the new channel changes the global list).
+ */
+function invalidateChannelListCache() {
+  invalidateGetRequestCache(
+    (path) =>
+      path === "/api/channels" || path.startsWith("/api/workspace/bootstrap"),
+  );
+}
+
+/**
+ * Invalidates all reads for a specific channel plus the channel list and
+ * bootstrap. Used after mutations that update or delete a channel.
+ */
+function invalidateChannelAndListCache(channelId: string) {
+  invalidateGetRequestCache(
+    (path) =>
+      path === "/api/channels" ||
+      path.startsWith(`/api/channels/${channelId}/`) ||
+      path.startsWith("/api/workspace/bootstrap"),
+  );
+}
+
+/**
+ * Invalidates the transcript content cache for a video, plus any channel
+ * snapshots and video lists that reflect transcript_status.
+ */
+function invalidateVideoTranscriptCache(videoId: string) {
+  invalidateGetRequestCache((path) => {
+    if (path.startsWith(`/api/videos/${videoId}/transcript`)) return true;
+    // Channel snapshots and video lists include transcript_status
+    if (
+      path.startsWith("/api/channels/") &&
+      (path.includes("/snapshot") || path.includes("/videos?"))
+    )
+      return true;
+    if (path.startsWith("/api/workspace/bootstrap")) return true;
+    return false;
+  });
+}
+
+/**
+ * Invalidates the summary content cache for a video, plus any channel
+ * snapshots and video lists that reflect summary_status.
+ */
+function invalidateVideoSummaryCache(videoId: string) {
+  invalidateGetRequestCache((path) => {
+    if (path.startsWith(`/api/videos/${videoId}/summary`)) return true;
+    // Channel snapshots and video lists include summary_status
+    if (
+      path.startsWith("/api/channels/") &&
+      (path.includes("/snapshot") || path.includes("/videos?"))
+    )
+      return true;
+    if (path.startsWith("/api/workspace/bootstrap")) return true;
+    return false;
+  });
+}
+
+/**
+ * Invalidates the video info cache. Info changes do not affect video status
+ * fields in channel snapshots or video lists.
+ */
+function invalidateVideoInfoCache(videoId: string) {
+  invalidateGetRequestCache((path) =>
+    path.startsWith(`/api/videos/${videoId}/info`),
+  );
+}
+
+/**
+ * Invalidates highlight-related caches. Optionally scoped to a specific
+ * video's per-video highlight list when the videoId is known.
+ */
+function invalidateHighlightCache(videoId?: string) {
+  invalidateGetRequestCache((path) => {
+    if (path === "/api/highlights" || path.startsWith("/api/highlights/"))
+      return true;
+    if (videoId && path.startsWith(`/api/videos/${videoId}/highlights`))
+      return true;
+    return false;
+  });
 }
 
 export function resetApiCacheForTests() {
@@ -266,7 +355,7 @@ export function addChannel(input: string) {
     method: "POST",
     body: JSON.stringify({ input }),
   }).then((result) => {
-    clearGetRequestCache();
+    invalidateChannelListCache();
     return result;
   });
 }
@@ -276,7 +365,7 @@ export function updateChannel(id: string, payload: Partial<Channel>) {
     method: "PUT",
     body: JSON.stringify(payload),
   }).then((result) => {
-    clearGetRequestCache();
+    invalidateChannelAndListCache(id);
     return result;
   });
 }
@@ -285,7 +374,7 @@ export function deleteChannel(id: string) {
   return request<void>(`/api/channels/${id}`, {
     method: "DELETE",
   }).then((result) => {
-    clearGetRequestCache();
+    invalidateChannelAndListCache(id);
     return result;
   });
 }
@@ -354,7 +443,8 @@ export function updateAcknowledged(videoId: string, acknowledged: boolean) {
     method: "PUT",
     body: JSON.stringify({ acknowledged }),
   }).then((result) => {
-    clearGetRequestCache();
+    // The returned Video includes channel_id — invalidate only that channel's reads
+    invalidateChannelReadCache(result.channel_id);
     return result;
   });
 }
@@ -371,7 +461,7 @@ export function ensureVideoInfo(videoId: string) {
   return request<VideoInfo>(`/api/videos/${videoId}/info/ensure`, {
     method: "POST",
   }).then((result) => {
-    clearGetRequestCache();
+    invalidateVideoInfoCache(videoId);
     return result;
   });
 }
@@ -384,7 +474,7 @@ export function ensureTranscript(videoId: string) {
   return request<Transcript>(`/api/videos/${videoId}/transcript/ensure`, {
     method: "POST",
   }).then((result) => {
-    clearGetRequestCache();
+    invalidateVideoTranscriptCache(videoId);
     return result;
   });
 }
@@ -398,7 +488,7 @@ export function updateTranscript(
     method: "PUT",
     body: JSON.stringify({ content, render_mode: renderMode }),
   }).then((result) => {
-    clearGetRequestCache();
+    invalidateVideoTranscriptCache(videoId);
     return result;
   });
 }
@@ -440,7 +530,7 @@ export function ensureSummary(videoId: string) {
   return request<Summary>(`/api/videos/${videoId}/summary/ensure`, {
     method: "POST",
   }).then((result) => {
-    clearGetRequestCache();
+    invalidateVideoSummaryCache(videoId);
     return result;
   });
 }
@@ -450,7 +540,7 @@ export function updateSummary(videoId: string, content: string) {
     method: "PUT",
     body: JSON.stringify({ content }),
   }).then((result) => {
-    clearGetRequestCache();
+    invalidateVideoSummaryCache(videoId);
     return result;
   });
 }
@@ -459,7 +549,7 @@ export function regenerateSummary(videoId: string) {
   return request<Summary>(`/api/videos/${videoId}/summary/regenerate`, {
     method: "POST",
   }).then((result) => {
-    clearGetRequestCache();
+    invalidateVideoSummaryCache(videoId);
     return result;
   });
 }
@@ -480,7 +570,7 @@ export function createHighlight(
     method: "POST",
     body: JSON.stringify(payload),
   }).then((result) => {
-    clearGetRequestCache();
+    invalidateHighlightCache(videoId);
     return result;
   });
 }
@@ -527,7 +617,9 @@ export function deleteHighlight(highlightId: number) {
   return request<void>(`/api/highlights/${highlightId}`, {
     method: "DELETE",
   }).then((result) => {
-    clearGetRequestCache();
+    // videoId is not available from the highlight ID alone — invalidate all
+    // highlight endpoints (grouped list and any per-video lists)
+    invalidateHighlightCache();
     return result;
   });
 }
