@@ -326,7 +326,9 @@ async function retryWhenBackendAvailable<T>(
     retryDelayMs?: number;
   },
 ) {
-  const retryDelayMs = options?.retryDelayMs ?? BACKEND_RETRY_DELAY_MS;
+  let attempt = 0;
+  const baseDelayMs = options?.retryDelayMs ?? BACKEND_RETRY_DELAY_MS;
+  const MAX_DELAY_MS = 30000;
 
   for (;;) {
     try {
@@ -335,7 +337,10 @@ async function retryWhenBackendAvailable<T>(
       if (!isBackendUnavailableError(error)) {
         throw error;
       }
-      await sleep(retryDelayMs);
+      const exponentialDelay = baseDelayMs * Math.pow(2, attempt);
+      const delayMs = Math.min(exponentialDelay, MAX_DELAY_MS);
+      await sleep(delayMs);
+      attempt++;
     }
   }
 }

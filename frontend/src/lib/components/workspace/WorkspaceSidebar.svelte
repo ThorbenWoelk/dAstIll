@@ -2,6 +2,8 @@
   import { tick } from "svelte";
   import {
     getChannelSnapshot,
+    getTranscript,
+    getVideo,
     listVideos,
     refreshChannel,
     updateChannel,
@@ -616,6 +618,18 @@
     if (collapsed) onToggleCollapse();
     void onSelectChannel(channelId);
   }
+
+  let hoverPrefetchTimer: ReturnType<typeof setTimeout> | null = null;
+  function handleVideoMouseEnter(videoId: string) {
+    if (hoverPrefetchTimer) clearTimeout(hoverPrefetchTimer);
+    hoverPrefetchTimer = setTimeout(() => {
+      void getTranscript(videoId).catch(() => {});
+      void getVideo(videoId).catch(() => {});
+    }, 200);
+  }
+  function handleVideoMouseLeave() {
+    if (hoverPrefetchTimer) clearTimeout(hoverPrefetchTimer);
+  }
 </script>
 
 <svelte:window onkeydown={handleWindowKeydown} />
@@ -1200,6 +1214,8 @@
                     class={`group flex w-full items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${selectedVideoId === video.id ? "bg-[var(--accent-wash)]" : "hover:bg-[var(--accent-wash)]"}`}
                     onclick={() =>
                       void handleChannelVideoClick(channel.id, video.id)}
+                    onmouseenter={() => handleVideoMouseEnter(video.id)}
+                    onmouseleave={handleVideoMouseLeave}
                   >
                     <div class="min-w-0 flex-1">
                       <p
@@ -1389,6 +1405,8 @@
                     type="button"
                     class={`group flex w-full items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${selectedVideoId === video.id ? "bg-[var(--accent-wash)]" : "hover:bg-[var(--accent-wash)]"}`}
                     onclick={() => void onSelectVideo(video.id)}
+                    onmouseenter={() => handleVideoMouseEnter(video.id)}
+                    onmouseleave={handleVideoMouseLeave}
                   >
                     <div class="min-w-0 flex-1">
                       <p

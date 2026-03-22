@@ -3,6 +3,7 @@
   import { onMount } from "svelte";
   import { isAiAvailable, listHighlights } from "$lib/api";
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
+  import { createAiStatusPoller } from "$lib/utils/ai-poller";
   import { DOCS_URL } from "$lib/app-config";
   import FeatureGuide from "$lib/components/FeatureGuide.svelte";
   import type { TourStep } from "$lib/components/FeatureGuide.svelte";
@@ -115,17 +116,12 @@
   onMount(() => {
     void loadPage();
 
-    const timer = setInterval(() => {
-      void isAiAvailable()
-        .then((status) => {
-          aiStatus = status.status;
-        })
-        .catch(() => {
-          aiStatus = "offline";
-        });
-    }, 30000);
-
-    return () => clearInterval(timer);
+    return createAiStatusPoller({
+      intervalMs: 30000,
+      onStatus: (payload) => {
+        aiStatus = payload.status;
+      },
+    });
   });
 </script>
 
