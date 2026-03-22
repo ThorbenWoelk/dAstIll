@@ -1,0 +1,70 @@
+{
+  "groupId": "browser-cache-invalidation",
+  "testedAt": "2026-03-22T02:00:00Z",
+  "isolation": {
+    "appBaseUrl": "http://localhost:3543",
+    "missionDir": "/Users/thorben.woelk/.factory/missions/ac6f5cfb-626d-4647-b49e-2397f57cdb1a",
+    "browserSession": "val-data-005-cache",
+    "assertionIds": ["VAL-DATA-005"]
+  },
+  "toolsUsed": ["agent-browser"],
+  "assertions": [
+    {
+      "id": "VAL-DATA-005",
+      "title": "Targeted frontend cache invalidation",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Acknowledge toggle mutation on workspace video (Mark as read/unread) with controlled pre/post cache probes",
+          "expected": "Mutation endpoint and related channel snapshot cache are invalidated; unrelated cached reads remain cached",
+          "observed": "Observed PUT /api/videos/QwShVo0zfuk/acknowledged and refreshed GET /api/channels/UCbRP3c757lWg9M-U7TyEkXA/snapshot?limit=20&offset=0&video_type=all after re-read; no GET /api/channels and no GET for unrelated channel snapshot key"
+        },
+        {
+          "action": "Transcript ensure mutation by selecting a different video while transcript mode is active, then controlled re-reads",
+          "expected": "Transcript ensure invalidates transcript and related snapshot caches while leaving unrelated cached reads intact",
+          "observed": "Observed POST /api/videos/nsqGI1VAYbU/transcript/ensure, GET /api/videos/nsqGI1VAYbU/transcript, and snapshot refresh GETs on re-read; no GET /api/channels in the controlled probe"
+        },
+        {
+          "action": "Highlight delete mutation (UI remove + controlled delete probe) with post-mutation re-reads",
+          "expected": "Only highlight caches are invalidated/refreshed; unrelated endpoints remain cached",
+          "observed": "Observed DELETE /api/highlights/{id}, followed by GET /api/highlights and GET /api/videos/QwShVo0zfuk/highlights on re-read; no GET /api/channels and no GET /api/videos/nsqGI1VAYbU/transcript in controlled probe"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "frontend-data/browser-cache-invalidation/VAL-DATA-005-workspace-initial.png",
+          "frontend-data/browser-cache-invalidation/VAL-DATA-005-ack-toggle-view.png",
+          "frontend-data/browser-cache-invalidation/VAL-DATA-005-transcript-view.png",
+          "frontend-data/browser-cache-invalidation/VAL-DATA-005-highlight-before-delete.png",
+          "frontend-data/browser-cache-invalidation/VAL-DATA-005-highlight-after-delete.png"
+        ],
+        "consoleErrors": "none (frontend-data/browser-cache-invalidation/VAL-DATA-005-console-errors.txt)",
+        "network": [
+          "frontend-data/browser-cache-invalidation/VAL-DATA-005-ack-controlled-network.txt",
+          "frontend-data/browser-cache-invalidation/VAL-DATA-005-transcript-controlled-network.txt",
+          "frontend-data/browser-cache-invalidation/VAL-DATA-005-highlight-controlled-network.txt",
+          "frontend-data/browser-cache-invalidation/VAL-DATA-005-ack-mutation-network.txt",
+          "frontend-data/browser-cache-invalidation/VAL-DATA-005-transcript-ensure-network.txt",
+          "frontend-data/browser-cache-invalidation/VAL-DATA-005-highlight-delete-network.txt"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "agent-browser network log reports duplicate entries per request (fetch/other), so endpoint presence/absence was used as the stable signal rather than raw counts.",
+      "resolved": true,
+      "resolution": "Used controlled warm-cache -> mutate -> post-read flows and evaluated endpoint set differences.",
+      "affectedAssertions": ["VAL-DATA-005"]
+    },
+    {
+      "description": "The /highlights route initially showed zero highlights due previously cached empty highlight data in session state during setup.",
+      "resolved": true,
+      "resolution": "Created test highlights via in-browser API module and validated deletion from workspace highlight controls plus controlled delete probe.",
+      "affectedAssertions": ["VAL-DATA-005"]
+    }
+  ],
+  "blockers": [],
+  "summary": "VAL-DATA-005 passed. Across acknowledge toggle, transcript ensure, and highlight delete mutations, related caches were refreshed while controlled unrelated cached reads (e.g., /api/channels, unrelated transcript key) were not re-requested."
+}

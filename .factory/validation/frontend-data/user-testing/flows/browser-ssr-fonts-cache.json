@@ -1,0 +1,102 @@
+{
+  "groupId": "browser-ssr-fonts-cache",
+  "testedAt": "2026-03-22T01:55:38Z",
+  "isolation": {
+    "missionDir": "/Users/thorben.woelk/.factory/missions/ac6f5cfb-626d-4647-b49e-2397f57cdb1a",
+    "frontendUrl": "http://localhost:3543",
+    "backendUrl": "http://localhost:3544",
+    "browserSession": "browser-ssr-fonts-cache-3543",
+    "assignedAssertions": [
+      "VAL-DATA-001",
+      "VAL-DATA-002",
+      "VAL-DATA-003",
+      "VAL-DATA-004",
+      "VAL-DATA-006",
+      "VAL-CROSS-004"
+    ]
+  },
+  "toolsUsed": [
+    "agent-browser"
+  ],
+  "assertionResults": [
+    {
+      "id": "VAL-DATA-001",
+      "status": "pass",
+      "reason": "SSR DOM checks found nav/main/aside and workspace shell markers in raw HTML, and the workspace shell is visibly rendered.",
+      "evidencePaths": [
+        "frontend-data/browser-ssr-fonts-cache/VAL-DATA-001-workspace-shell.png",
+        "frontend-data/browser-ssr-fonts-cache/VAL-DATA-001-ssr-structure.json",
+        "frontend-data/browser-ssr-fonts-cache/VAL-DATA-001-raw-html.html",
+        "frontend-data/browser-ssr-fonts-cache/browser-errors.txt"
+      ]
+    },
+    {
+      "id": "VAL-DATA-002",
+      "status": "fail",
+      "reason": "Initial page resource entries included 5 API requests (health, bootstrap, and 3 channel snapshot fetches), exceeding the expected 1-2 consolidated initial data requests.",
+      "evidencePaths": [
+        "frontend-data/browser-ssr-fonts-cache/VAL-DATA-002-performance-api-entries.json",
+        "frontend-data/browser-ssr-fonts-cache/VAL-DATA-002-network-requests-after-reload.txt",
+        "frontend-data/browser-ssr-fonts-cache/VAL-DATA-002-api-requests-after-reload.txt",
+        "frontend-data/browser-ssr-fonts-cache/VAL-DATA-002-initial-load.png",
+        "frontend-data/browser-ssr-fonts-cache/browser-errors.txt"
+      ]
+    },
+    {
+      "id": "VAL-DATA-003",
+      "status": "pass",
+      "reason": "No render-blocking Google Fonts stylesheet links were present in document head.",
+      "evidencePaths": [
+        "frontend-data/browser-ssr-fonts-cache/VAL-DATA-003-google-font-stylesheets.json",
+        "frontend-data/browser-ssr-fonts-cache/VAL-DATA-003-004-workspace.png",
+        "frontend-data/browser-ssr-fonts-cache/browser-errors.txt"
+      ]
+    },
+    {
+      "id": "VAL-DATA-004",
+      "status": "pass",
+      "reason": "No Inter/Newsreader references were found in raw HTML, DOM HTML, @font-face families, or font resource URLs; only Manrope/Fraunces families were present.",
+      "evidencePaths": [
+        "frontend-data/browser-ssr-fonts-cache/VAL-DATA-004-font-family-audit-v2.json",
+        "frontend-data/browser-ssr-fonts-cache/VAL-DATA-001-raw-html.html",
+        "frontend-data/browser-ssr-fonts-cache/VAL-DATA-003-004-workspace.png",
+        "frontend-data/browser-ssr-fonts-cache/browser-errors.txt"
+      ]
+    },
+    {
+      "id": "VAL-DATA-006",
+      "status": "pass",
+      "reason": "Computed styles show Manrope body + Fraunces headings, visible text was present immediately after reload, and CLS was 0 with no layout-shift entries.",
+      "evidencePaths": [
+        "frontend-data/browser-ssr-fonts-cache/VAL-DATA-006-font-render-immediate.png",
+        "frontend-data/browser-ssr-fonts-cache/VAL-DATA-006-font-render-stable.png",
+        "frontend-data/browser-ssr-fonts-cache/VAL-DATA-006-font-computed-and-cls.json",
+        "frontend-data/browser-ssr-fonts-cache/browser-errors.txt"
+      ]
+    },
+    {
+      "id": "VAL-CROSS-004",
+      "status": "pass",
+      "reason": "Returning reload rendered channel content with no loading text, IndexedDB workspace cache was present, and reload timing showed first-contentful-paint before API responses with cache-hit transfer sizes of 0 on initial fetches.",
+      "evidencePaths": [
+        "frontend-data/browser-ssr-fonts-cache/VAL-CROSS-004-indexeddb-state.json",
+        "frontend-data/browser-ssr-fonts-cache/VAL-CROSS-004-reload-immediate.png",
+        "frontend-data/browser-ssr-fonts-cache/VAL-CROSS-004-reload-stable.png",
+        "frontend-data/browser-ssr-fonts-cache/VAL-CROSS-004-reload-metrics-v2.json",
+        "frontend-data/browser-ssr-fonts-cache/browser-errors.txt"
+      ]
+    }
+  ],
+  "frictions": [
+    {
+      "description": "`agent-browser network requests` returned no entries immediately after first navigation in this session.",
+      "resolved": true,
+      "resolution": "Captured API request evidence using Performance Resource Timing entries and an explicit reload network capture file.",
+      "affectedAssertions": [
+        "VAL-DATA-002"
+      ]
+    }
+  ],
+  "blockers": [],
+  "overallStatus": "fail"
+}

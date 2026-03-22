@@ -1,0 +1,21 @@
+{
+  "milestone": "frontend-data",
+  "round": 2,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-DATA-002"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": ".factory/validation/frontend-data/user-testing/synthesis.round1.json",
+  "flowReports": [
+    ".factory/validation/frontend-data/user-testing/flows/browser-initial-requests-r2.json"
+  ]
+}

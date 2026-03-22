@@ -1,0 +1,64 @@
+{
+  "groupId": "browser-auth-queue",
+  "testedAt": "2026-03-22T01:56:10Z",
+  "isolation": {
+    "missionDir": "/Users/thorben.woelk/.factory/missions/ac6f5cfb-626d-4647-b49e-2397f57cdb1a",
+    "frontendUrl": "http://localhost:3543",
+    "browserSession": "flow-auth-queue-ac6f5cfb",
+    "assignedAssertions": [
+      "VAL-AUTH-001",
+      "VAL-QUEUE-001"
+    ]
+  },
+  "toolsUsed": [
+    "agent-browser"
+  ],
+  "assertionResults": [
+    {
+      "id": "VAL-AUTH-001",
+      "status": "pass",
+      "reason": "Login flow behaved correctly: invalid password showed \"Invalid password.\", valid password \"change-me\" redirected to workspace, and operator-only destructive controls (Delete channel) were visible after login.",
+      "evidencePaths": [
+        "frontend-data/browser-auth-queue/VAL-AUTH-001-login-form.png",
+        "frontend-data/browser-auth-queue/VAL-AUTH-001-invalid-password.png",
+        "frontend-data/browser-auth-queue/VAL-AUTH-001-success-operator-workspace.png",
+        "frontend-data/browser-auth-queue/VAL-AUTH-001-network-summary.log",
+        "frontend-data/browser-auth-queue/VAL-AUTH-001-console-errors.log"
+      ]
+    },
+    {
+      "id": "VAL-QUEUE-001",
+      "status": "pass",
+      "reason": "On /download-queue, selecting channels updated queue content and switching tabs (Transcripts → Summaries → Evals) refreshed queue data and URL queue params accordingly.",
+      "evidencePaths": [
+        "frontend-data/browser-auth-queue/VAL-QUEUE-001-queue-transcripts-loaded.png",
+        "frontend-data/browser-auth-queue/VAL-QUEUE-001-channel-selected-transcripts.png",
+        "frontend-data/browser-auth-queue/VAL-QUEUE-001-summaries-tab.png",
+        "frontend-data/browser-auth-queue/VAL-QUEUE-001-evals-tab.png",
+        "frontend-data/browser-auth-queue/VAL-QUEUE-001-network-summary.log",
+        "frontend-data/browser-auth-queue/VAL-QUEUE-001-console-errors.log"
+      ]
+    }
+  ],
+  "frictions": [
+    {
+      "description": "`wait --text \"Download queue\"` timed out because that exact heading text was not rendered on the page.",
+      "resolved": true,
+      "resolution": "Validated queue navigation/state via URL checks, interactive snapshots, tab selection state, and screenshots instead of relying on that text selector.",
+      "affectedAssertions": [
+        "VAL-QUEUE-001"
+      ]
+    },
+    {
+      "description": "`agent-browser network requests --filter ...` intermittently returned no lines despite captured traffic.",
+      "resolved": true,
+      "resolution": "Exported full captured requests and produced concise summary logs via `rg` for assertion-specific network evidence.",
+      "affectedAssertions": [
+        "VAL-AUTH-001",
+        "VAL-QUEUE-001"
+      ]
+    }
+  ],
+  "blockers": [],
+  "overallStatus": "pass"
+}

@@ -1,0 +1,44 @@
+{
+  "groupId": "browser-initial-requests-r2",
+  "testedAt": "2026-03-22T02:47:38Z",
+  "isolation": {
+    "missionDir": "/Users/thorben.woelk/.factory/missions/ac6f5cfb-626d-4647-b49e-2397f57cdb1a",
+    "frontendUrl": "http://localhost:3543",
+    "backendUrl": "http://localhost:3544",
+    "browserSession": "val-data-002-r2",
+    "surface": "browser",
+    "assignedAssertions": [
+      "VAL-DATA-002"
+    ]
+  },
+  "toolsUsed": [
+    "agent-browser"
+  ],
+  "assertionResults": [
+    {
+      "id": "VAL-DATA-002",
+      "status": "pass",
+      "reason": "Initial workspace load used consolidated bootstrap fetching: Performance Resource Timing shows exactly 2 API resource entries (1x /api/workspace/bootstrap and 1x /api/health/ai) with 0 channel snapshot requests, satisfying the 1-2 initial workspace request expectation and eliminating 3+ per-channel snapshot fetches.",
+      "evidencePaths": [
+        "frontend-data/browser-initial-requests-r2/VAL-DATA-002-initial-load-annotated.png",
+        "frontend-data/browser-initial-requests-r2/VAL-DATA-002-initial-request-summary.json",
+        "frontend-data/browser-initial-requests-r2/VAL-DATA-002-performance-api-resources-raw.txt",
+        "frontend-data/browser-initial-requests-r2/VAL-DATA-002-network-requests-after-reload.txt",
+        "frontend-data/browser-initial-requests-r2/VAL-DATA-002-network-requests.txt",
+        "frontend-data/browser-initial-requests-r2/VAL-DATA-002-console-errors.txt"
+      ]
+    }
+  ],
+  "frictions": [
+    {
+      "description": "`agent-browser network requests` returned no entries right after first navigation, and reload capture included duplicated health/SSE lines.",
+      "resolved": true,
+      "resolution": "Used Performance Resource Timing extraction as primary evidence for initial request counting and kept network logs as supplemental evidence.",
+      "affectedAssertions": [
+        "VAL-DATA-002"
+      ]
+    }
+  ],
+  "blockers": [],
+  "overallStatus": "pass"
+}
