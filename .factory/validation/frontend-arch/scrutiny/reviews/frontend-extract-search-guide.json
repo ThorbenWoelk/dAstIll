@@ -1,0 +1,45 @@
+{
+  "featureId": "frontend-extract-search-guide",
+  "reviewedAt": "2026-03-22T03:47:20Z",
+  "commitId": "7bef9ee",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The dynamic import implementation itself is sound (see d753e1a for +page.svelte extraction/lazy-loading), but required behavior coverage is incomplete in the recorded verification evidence, leaving blocking acceptance gaps for search/guide cross-route flows.",
+    "issues": [
+      {
+        "file": "/Users/thorben.woelk/.factory/missions/ac6f5cfb-626d-4647-b49e-2397f57cdb1a/handoffs/2026-03-22T03-31-22-768Z__frontend-extract-search-guide__c365cbb5-063b-4e76-9693-3779c5ea0121.json",
+        "line": 42,
+        "severity": "blocking",
+        "description": "Expected behavior requires search result selection to navigate correctly, but the recorded check only confirms query entry and popover visibility after Enter; no result-selection navigation step is evidenced."
+      },
+      {
+        "file": "/Users/thorben.woelk/.factory/missions/ac6f5cfb-626d-4647-b49e-2397f57cdb1a/handoffs/2026-03-22T03-31-22-768Z__frontend-extract-search-guide__c365cbb5-063b-4e76-9693-3779c5ea0121.json",
+        "line": 55,
+        "severity": "blocking",
+        "description": "Queue-to-workspace verification claims video-context preservation, but the captured URL only includes `channel` (no selected video id), so the required channel+video context preservation is not demonstrated."
+      },
+      {
+        "file": "/Users/thorben.woelk/.factory/missions/ac6f5cfb-626d-4647-b49e-2397f57cdb1a/handoffs/2026-03-22T03-31-22-768Z__frontend-extract-search-guide__c365cbb5-063b-4e76-9693-3779c5ea0121.json",
+        "line": 58,
+        "severity": "blocking",
+        "description": "Expected behavior requires highlights-to-workspace deep navigation (channel, video, content mode), but the recorded evidence only states that the Highlights page loaded with no highlights and does not include a deep-link navigation check."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Feature handoff commit traceability is ambiguous: the recorded `commitId` points to a docs-only commit rather than the feature implementation commit.",
+      "evidence": "Handoff commitId is `7bef9ee` at handoff line 6; `git show --stat 7bef9ee` changes only `.factory/library/architecture.md`, while implementation changes for this feature are in `d753e1a` (updates +page.svelte and frontend tests)."
+    },
+    {
+      "area": "skills",
+      "observation": "The frontend worker skill's strict RED guidance can lead to tests that are not tightly coupled to the changed behavior for refactor/lazy-load features.",
+      "evidence": "Skill requires 'Write failing tests first (RED)' at `.factory/skills/svelte-frontend-worker/SKILL.md:30`; transcript line 21 shows `workspace-guide.test.ts` was added and passing before dynamic-import implementation steps, so the RED phase did not validate the actual lazy-load/search-flow changes."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail. Core code changes for lazy-loading SearchBar/GuideTour exist, but blocking acceptance evidence gaps remain: no demonstrated search-result selection navigation, no demonstrated queue video-context preservation, and no demonstrated highlights deep-link navigation back to workspace."
+}

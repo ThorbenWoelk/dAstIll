@@ -1,0 +1,44 @@
+{
+  "featureId": "frontend-extract-sidebar",
+  "reviewedAt": "2026-03-22T03:43:23Z",
+  "commitId": "fe47323",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The commit adds helper tests and unrelated route-copy/shared-state files, but it does not implement the sidebar extraction required by the feature contract. Sidebar state/actions remain in +page.svelte, and the file is unchanged in size versus the parent commit.",
+    "issues": [
+      {
+        "file": "frontend/src/routes/+page.svelte",
+        "line": 163,
+        "severity": "blocking",
+        "description": "Feature contract requires moving sidebar state/derived values/functions out of +page.svelte into WorkspaceSidebar, but +page.svelte still owns core sidebar state and behavior (e.g., selectedChannelId/selectedVideoId filters and sidebar action handlers), indicating extraction is incomplete for this feature run."
+      },
+      {
+        "file": "frontend/src/routes/download-queue/+page.svelte",
+        "line": 161,
+        "severity": "non_blocking",
+        "description": "This sidebar feature commit includes unrelated tour-copy changes (chat/download-queue/highlights), which increases regression/traceability risk for a feature intended to focus on workspace sidebar extraction."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The svelte-frontend-worker procedure does not clearly define what to do when a feature is already implemented before the worker session starts, which led to a verification-only run being marked complete for an implementation feature.",
+      "evidence": "Handoff skillFeedback suggested updating RED guidance for pre-implemented features; commit fe47323 did not change +page.svelte or WorkspaceSidebar.svelte."
+    },
+    {
+      "area": "conventions",
+      "observation": "Shared guidance does not explicitly enforce narrow, feature-scoped commits, allowing unrelated edits to be bundled with feature work.",
+      "evidence": "git show --stat fe47323 includes sidebar test additions plus unrelated route tour-copy edits and .factory infrastructure/library files."
+    },
+    {
+      "area": "knowledge",
+      "observation": "There is an expectation mismatch between feature acceptance criteria and documented architecture state for workspace page size/extraction completeness.",
+      "evidence": "Feature expectedBehavior requires '+page.svelte is measurably shorter after extraction', while .factory/library/architecture.md still documents main +page.svelte as '~2200 lines' with inline workspace logic."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail: required sidebar extraction criteria were not satisfied by commit fe47323; the commit primarily adds helper tests and unrelated edits while core sidebar state/logic remains in +page.svelte."
+}

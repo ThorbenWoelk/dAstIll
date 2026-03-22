@@ -1,0 +1,28 @@
+{
+  "featureId": "frontend-finalize-code-splitting",
+  "reviewedAt": "2026-03-22T03:42:24Z",
+  "commitId": "7bef9ee",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Feature validation evidence covers chunking, route navigation, mobile behavior, and workspace state persistence, but misses a required chat-flow verification step.",
+    "issues": [
+      {
+        "file": "/Users/thorben.woelk/.factory/missions/ac6f5cfb-626d-4647-b49e-2397f57cdb1a/handoffs/2026-03-22T03-39-32-569Z__frontend-finalize-code-splitting__fdb1f346-05f6-4c51-b328-e7d5fe342834.json",
+        "line": 55,
+        "severity": "blocking",
+        "description": "The feature requires verifying chat messages send and streaming responses render, but the recorded check only confirms the chat page loads with conversations and a visible message input."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The svelte-frontend-worker procedure enforces RED-phase failing tests even for verification-only features, which does not fit this feature type.",
+      "evidence": "/Users/thorben.woelk/repos/dAstIll/.factory/skills/svelte-frontend-worker/SKILL.md:30 requires 'Write failing tests first (RED)'; handoff feedback flags this mismatch at /Users/thorben.woelk/.factory/missions/ac6f5cfb-626d-4647-b49e-2397f57cdb1a/handoffs/2026-03-22T03-39-32-569Z__frontend-finalize-code-splitting__fdb1f346-05f6-4c51-b328-e7d5fe342834.json:92."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail. A blocking requirement-coverage gap remains: no evidence that chat message sending and streamed response rendering were validated."
+}
