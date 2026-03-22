@@ -101,6 +101,7 @@
   } from "$lib/channel-view-cache";
   import { channelOrderFromList } from "$lib/workspace/channels";
   import {
+    applyOptimisticAcknowledge,
     buildOptimisticChannel,
     removeChannelFromCollection,
     removeChannelId,
@@ -1190,25 +1191,39 @@
     showDeleteConfirmation = false;
     channelIdToDelete = null;
 
+    // Optimistic removal — snapshot state, remove immediately, revert on error
+    const previousChannels = [...channels];
+    const previousChannelOrder = [...channelOrder];
+    const previousSelectedChannelId = selectedChannelId;
+
+    channels = removeChannelFromCollection(channels, channelId);
+    channelOrder = removeChannelId(channelOrder, channelId);
+
+    if (selectedChannelId === channelId) {
+      const nextChannelId = resolveNextChannelSelection(
+        previousChannels,
+        channelId,
+      );
+      if (nextChannelId) {
+        await selectChannel(nextChannelId);
+      } else {
+        selectedChannelId = null;
+        selectedVideoId = null;
+        mobileTab = "browse";
+        videos = [];
+        contentText = "";
+        draft = "";
+      }
+    }
+
     try {
       await deleteChannel(channelId);
       void removeCachedChannel(channelId);
-      channels = removeChannelFromCollection(channels, channelId);
-      channelOrder = removeChannelId(channelOrder, channelId);
-      if (selectedChannelId === channelId) {
-        const nextChannelId = resolveNextChannelSelection(channels, channelId);
-        if (nextChannelId) {
-          await selectChannel(nextChannelId);
-        } else {
-          selectedChannelId = null;
-          selectedVideoId = null;
-          mobileTab = "browse";
-          videos = [];
-          contentText = "";
-          draft = "";
-        }
-      }
     } catch (error) {
+      // Revert optimistic removal on failure
+      channels = previousChannels;
+      channelOrder = previousChannelOrder;
+      selectedChannelId = previousSelectedChannelId;
       errorMessage = (error as Error).message;
     }
   }
@@ -1833,14 +1848,17 @@
     const video = videos.find((v) => v.id === selectedVideoId);
     if (!video) return;
 
-    loadingContent = true;
     errorMessage = null;
 
+    const previousVideos = [...videos];
+    const newAcknowledged = !video.acknowledged;
+    const targetVideoId = selectedVideoId;
+
+    // Optimistic update — flip state immediately, no loading indicator
+    videos = applyOptimisticAcknowledge(videos, targetVideoId, newAcknowledged);
+
     try {
-      const updated = await updateAcknowledged(
-        selectedVideoId,
-        !video.acknowledged,
-      );
+      const updated = await updateAcknowledged(targetVideoId, newAcknowledged);
       videos = videos
         .map((v) => (v.id === updated.id ? updated : v))
         .filter(matchesAcknowledgedFilter);
@@ -1858,9 +1876,9 @@
         }
       }
     } catch (error) {
+      // Revert optimistic update on failure
+      videos = previousVideos;
       errorMessage = (error as Error).message;
-    } finally {
-      loadingContent = false;
     }
   }
 

@@ -1,4 +1,17 @@
-import type { Channel } from "$lib/types";
+import type { Channel, Video } from "$lib/types";
+
+/**
+ * Returns a new video list with the given video's `acknowledged` field flipped
+ * to the given value. Used for the optimistic acknowledge toggle — call this
+ * before the API request and restore the previous list on error.
+ */
+export function applyOptimisticAcknowledge(
+  videos: Video[],
+  videoId: string,
+  acknowledged: boolean,
+): Video[] {
+  return videos.map((v) => (v.id === videoId ? { ...v, acknowledged } : v));
+}
 
 export function buildOptimisticChannel(input: string) {
   const trimmedInput = input.trim();
