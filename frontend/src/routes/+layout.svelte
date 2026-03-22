@@ -17,16 +17,6 @@
     name="description"
     content="dAstIll - follow channels, process transcripts, evaluate summary quality, and manage your video distillation workspace."
   />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link
-    rel="preconnect"
-    href="https://fonts.gstatic.com"
-    crossorigin="anonymous"
-  />
-  <link
-    rel="stylesheet"
-    href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,100..900;1,9..144,100..900&family=Manrope:wght@200..800&display=swap"
-  />
 </svelte:head>
 
 <div class="flex h-screen flex-col overflow-hidden">
