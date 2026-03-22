@@ -43,7 +43,7 @@ describe("hasActiveOverlay", () => {
     expect(hasActiveOverlay(state)).toBe(true);
   });
 
-  it("returns false when errorMessage is empty string", () => {
+  it("returns false when errorMessage is null", () => {
     const state = makeOverlaysState({ errorMessage: null });
     expect(hasActiveOverlay(state)).toBe(false);
   });

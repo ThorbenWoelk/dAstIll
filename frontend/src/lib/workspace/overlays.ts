@@ -6,7 +6,7 @@ import type { WorkspaceOverlaysState } from "$lib/workspace/component-props";
  */
 export function hasActiveOverlay(state: WorkspaceOverlaysState): boolean {
   return (
-    state.errorMessage !== null ||
+    !!state.errorMessage ||
     state.showDeleteConfirmation ||
     state.showDeleteAccessPrompt
   );
