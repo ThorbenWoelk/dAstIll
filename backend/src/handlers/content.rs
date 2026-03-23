@@ -12,6 +12,7 @@ use crate::models::{
 };
 use crate::services::search::{SearchSourceKind, hash_search_content};
 use crate::services::summarizer::{MAX_TRANSCRIPT_FORMAT_ATTEMPTS, SummarizerError};
+use crate::services::youtube::placeholder::is_site_wide_placeholder_description;
 use crate::state::AppState;
 
 use super::{map_db_err, require_video};
@@ -212,6 +213,17 @@ pub async fn update_summary(
     Ok(Json(summary))
 }
 
+/// Returns false for empty transcripts and YouTube site-wide placeholder blurbs that were
+/// accidentally stored before the Firecrawl fallback was disabled.
+fn is_valid_cached_transcript(transcript: &Transcript) -> bool {
+    let text = transcript
+        .raw_text
+        .as_deref()
+        .or(transcript.formatted_markdown.as_deref())
+        .unwrap_or("");
+    !text.trim().is_empty() && !is_site_wide_placeholder_description(text)
+}
+
 pub(crate) async fn ensure_transcript(
     state: &AppState,
     video_id: &str,
@@ -223,9 +235,16 @@ pub(crate) async fn ensure_transcript(
             .await
             .map_err(map_db_err)?
         {
-            let _ = db::update_video_transcript_status(&conn, video_id, ContentStatus::Ready).await;
-            tracing::debug!(video_id = %video_id, "transcript cache hit");
-            return Ok(transcript);
+            if is_valid_cached_transcript(&transcript) {
+                let _ =
+                    db::update_video_transcript_status(&conn, video_id, ContentStatus::Ready).await;
+                tracing::debug!(video_id = %video_id, "transcript cache hit");
+                return Ok(transcript);
+            }
+            tracing::warn!(
+                video_id = %video_id,
+                "cached transcript is invalid (site-wide blurb or empty) - discarding and re-fetching"
+            );
         }
 
         db::update_video_transcript_status(&conn, video_id, ContentStatus::Loading)
@@ -547,8 +566,62 @@ fn map_transcript_err(
 
 #[cfg(test)]
 mod tests {
-    use super::{MAX_SUMMARY_AUTO_REGEN_ATTEMPTS, should_auto_regenerate_summary, transcript_text};
+    use super::{
+        MAX_SUMMARY_AUTO_REGEN_ATTEMPTS, is_valid_cached_transcript, should_auto_regenerate_summary,
+        transcript_text,
+    };
     use crate::models::{ContentStatus, Transcript, TranscriptRenderMode};
+
+    fn make_transcript(raw: Option<&str>, formatted: Option<&str>) -> Transcript {
+        Transcript {
+            video_id: "vid1".to_string(),
+            raw_text: raw.map(ToOwned::to_owned),
+            formatted_markdown: formatted.map(ToOwned::to_owned),
+            render_mode: TranscriptRenderMode::PlainText,
+        }
+    }
+
+    #[test]
+    fn valid_cached_transcript_accepts_real_content() {
+        let t = make_transcript(Some("Hello world, this is a transcript."), None);
+        assert!(is_valid_cached_transcript(&t));
+    }
+
+    #[test]
+    fn valid_cached_transcript_rejects_youtube_site_wide_blurb_in_raw_text() {
+        let t = make_transcript(
+            Some("Enjoy the videos and music you love, upload original content, and share it all with friends, family, and the world on YouTube.\n"),
+            None,
+        );
+        assert!(!is_valid_cached_transcript(&t));
+    }
+
+    #[test]
+    fn valid_cached_transcript_rejects_youtube_site_wide_blurb_in_formatted_markdown() {
+        let t = make_transcript(
+            None,
+            Some("Enjoy the videos and music you love, upload original content, and share it all with friends, family, and the world on YouTube.\n"),
+        );
+        assert!(!is_valid_cached_transcript(&t));
+    }
+
+    #[test]
+    fn valid_cached_transcript_rejects_empty_raw_text() {
+        let t = make_transcript(Some("   "), None);
+        assert!(!is_valid_cached_transcript(&t));
+    }
+
+    #[test]
+    fn valid_cached_transcript_rejects_all_none() {
+        let t = make_transcript(None, None);
+        assert!(!is_valid_cached_transcript(&t));
+    }
+
+    #[test]
+    fn valid_cached_transcript_falls_back_to_formatted_when_raw_is_none() {
+        let t = make_transcript(None, Some("Actual transcript content here."));
+        assert!(is_valid_cached_transcript(&t));
+    }
 
     #[test]
     fn should_auto_regenerate_summary_requires_pending_or_loading_and_low_score() {

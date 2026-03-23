@@ -2,6 +2,8 @@ use std::process::Command;
 use std::time::Instant;
 use thiserror::Error;
 
+use crate::services::youtube::placeholder::is_site_wide_placeholder_description;
+
 #[derive(Error, Debug)]
 pub enum TranscriptError {
     #[error("Transcript extraction failed: {0}")]
@@ -39,16 +41,27 @@ impl TranscriptService {
 
         tracing::info!(video_id = %video_id, "running summarize --extract for transcript");
 
-        // Run summarize with --extract to get just the transcript
+        // Flags rationale:
+        // --youtube auto   explicit mode; tries captionTracks/youtubei first
+        // --extract        print raw transcript and exit, no LLM summarization
+        // --format text    plain text output (not markdown)
+        // --plain          strip ANSI/OSC terminal formatting from stdout
+        // --firecrawl off  disable web-scraping fallback that silently returns the YouTube
+        //                  site-wide og:description blurb when captions are unavailable
         let output = tokio::task::spawn_blocking({
             let path = self.summarize_path.clone();
             let url = video_url.clone();
             move || {
                 Command::new(&path)
                     .arg(&url)
+                    .arg("--youtube")
+                    .arg("auto")
                     .arg("--extract")
                     .arg("--format")
                     .arg("text")
+                    .arg("--plain")
+                    .arg("--firecrawl")
+                    .arg("off")
                     .output()
             }
         })
@@ -76,6 +89,27 @@ impl TranscriptService {
         }
 
         let raw = String::from_utf8_lossy(&output.stdout).to_string();
+
+        // summarize prefixes transcript output with "Transcript:\n"; strip it.
+        let raw = raw
+            .strip_prefix("Transcript:\n")
+            .unwrap_or(&raw)
+            .to_string();
+
+        if raw.trim().is_empty() {
+            // Exit 0 with no content means captions simply aren't available for this video.
+            tracing::info!(video_id = %video_id, "summarize returned empty output - no captions available");
+            return Err(TranscriptError::NoTranscript);
+        }
+
+        if is_site_wide_placeholder_description(&raw) {
+            tracing::warn!(
+                video_id = %video_id,
+                "summarize returned YouTube site-wide blurb instead of transcript"
+            );
+            return Err(TranscriptError::NoTranscript);
+        }
+
         let formatted = raw.clone();
         tracing::info!(
             video_id = %video_id,
@@ -109,6 +143,169 @@ mod tests {
     use tempfile::tempdir;
 
     #[tokio::test]
+    async fn extract_returns_command_failed_on_non_zero_exit() {
+        let dir = tempdir().expect("temp dir should be created");
+        let script_path = dir.path().join("fake_summarize.sh");
+        let script = "#!/bin/sh\necho 'something went wrong' >&2\nexit 1\n";
+        fs::write(&script_path, script).expect("script should be written");
+        let mut perms = fs::metadata(&script_path)
+            .expect("metadata should be readable")
+            .permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&script_path, perms).expect("script should be executable");
+
+        let service = TranscriptService::with_path(
+            script_path.to_str().expect("script path should be utf-8"),
+        );
+
+        let err = service
+            .extract("abc123def45")
+            .await
+            .expect_err("should fail on non-zero exit");
+
+        assert!(
+            matches!(err, super::TranscriptError::CommandFailed(_)),
+            "expected CommandFailed, got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn extract_detects_rate_limit_from_stderr() {
+        let dir = tempdir().expect("temp dir should be created");
+        let script_path = dir.path().join("fake_summarize.sh");
+        let script = "#!/bin/sh\necho 'Error: rate limit exceeded (429)' >&2\nexit 1\n";
+        fs::write(&script_path, script).expect("script should be written");
+        let mut perms = fs::metadata(&script_path)
+            .expect("metadata should be readable")
+            .permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&script_path, perms).expect("script should be executable");
+
+        let service = TranscriptService::with_path(
+            script_path.to_str().expect("script path should be utf-8"),
+        );
+
+        let err = service
+            .extract("abc123def45")
+            .await
+            .expect_err("should fail on rate limit");
+
+        assert!(
+            matches!(err, super::TranscriptError::RateLimited),
+            "expected RateLimited, got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn extract_detects_no_transcript_from_stderr() {
+        let dir = tempdir().expect("temp dir should be created");
+        let script_path = dir.path().join("fake_summarize.sh");
+        let script = "#!/bin/sh\necho 'Error: no transcript available for this video' >&2\nexit 1\n";
+        fs::write(&script_path, script).expect("script should be written");
+        let mut perms = fs::metadata(&script_path)
+            .expect("metadata should be readable")
+            .permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&script_path, perms).expect("script should be executable");
+
+        let service = TranscriptService::with_path(
+            script_path.to_str().expect("script path should be utf-8"),
+        );
+
+        let err = service
+            .extract("abc123def45")
+            .await
+            .expect_err("should fail when no transcript");
+
+        assert!(
+            matches!(err, super::TranscriptError::NoTranscript),
+            "expected NoTranscript, got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn extract_rejects_empty_output_as_no_transcript() {
+        let dir = tempdir().expect("temp dir should be created");
+        let script_path = dir.path().join("fake_summarize.sh");
+        // Mimics summarize exiting 0 with only whitespace when captions are unavailable.
+        let script = "#!/bin/sh\nprintf '\\n'\n";
+        fs::write(&script_path, script).expect("script should be written");
+        let mut perms = fs::metadata(&script_path)
+            .expect("metadata should be readable")
+            .permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&script_path, perms).expect("script should be executable");
+
+        let service = TranscriptService::with_path(
+            script_path.to_str().expect("script path should be utf-8"),
+        );
+
+        let err = service
+            .extract("abc123def45")
+            .await
+            .expect_err("should fail when output is empty");
+
+        assert!(
+            matches!(err, super::TranscriptError::NoTranscript),
+            "expected NoTranscript, got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn extract_strips_transcript_header_prefix() {
+        let dir = tempdir().expect("temp dir should be created");
+        let script_path = dir.path().join("fake_summarize.sh");
+        let script = "#!/bin/sh\nprintf 'Transcript:\\nHello world.\\n'\n";
+        fs::write(&script_path, script).expect("script should be written");
+        let mut perms = fs::metadata(&script_path)
+            .expect("metadata should be readable")
+            .permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&script_path, perms).expect("script should be executable");
+
+        let service = TranscriptService::with_path(
+            script_path.to_str().expect("script path should be utf-8"),
+        );
+
+        let (raw, _) = service
+            .extract("abc123def45")
+            .await
+            .expect("extract should succeed");
+
+        assert_eq!(raw, "Hello world.\n");
+        assert!(!raw.starts_with("Transcript:"));
+    }
+
+    #[tokio::test]
+    async fn extract_rejects_youtube_site_wide_blurb() {
+        let dir = tempdir().expect("temp dir should be created");
+        let script_path = dir.path().join("fake_summarize.sh");
+        let script = r#"#!/bin/sh
+echo "Enjoy the videos and music you love, upload original content, and share it all with friends, family, and the world on YouTube."
+"#;
+        fs::write(&script_path, script).expect("script should be written");
+        let mut perms = fs::metadata(&script_path)
+            .expect("metadata should be readable")
+            .permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&script_path, perms).expect("script should be executable");
+
+        let service = TranscriptService::with_path(
+            script_path.to_str().expect("script path should be utf-8"),
+        );
+
+        let err = service
+            .extract("abc123def45")
+            .await
+            .expect_err("should fail when output is a site-wide placeholder");
+
+        assert!(
+            matches!(err, super::TranscriptError::NoTranscript),
+            "expected NoTranscript, got {err:?}"
+        );
+    }
+
+    #[tokio::test]
     async fn extract_uses_single_direct_transcript_extraction_without_llm_formatting() {
         let dir = tempdir().expect("temp dir should be created");
         let script_path = dir.path().join("fake_summarize.sh");
@@ -140,6 +337,6 @@ echo "ARGS=$*"
         assert!(formatted.contains("ARGS="));
         assert!(!formatted.contains("--markdown-mode"));
         assert!(!formatted.contains("--model"));
-        assert!(formatted.contains("--extract --format text"));
+        assert!(formatted.contains("--youtube auto --extract --format text --plain --firecrawl off"));
     }
 }
