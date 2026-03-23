@@ -653,7 +653,7 @@
       shell={{
         collapsed: sidebarCollapsed,
         width: sidebarWidth,
-        mobileVisible: mobileTab === "browse",
+        mobileVisible: false,
         onToggleCollapse: toggleSidebar,
       }}
       channelState={sidebarChannelState}

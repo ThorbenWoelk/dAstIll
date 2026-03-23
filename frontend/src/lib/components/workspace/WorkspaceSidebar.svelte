@@ -641,8 +641,10 @@
 
 <aside
   id="workspace"
-  class={`fade-in flex flex-col bg-[var(--surface)] ${mobileVisible ? "h-full" : "hidden lg:flex"} lg:h-full lg:shrink-0`}
-  style="width: {width ?? (collapsed ? 52 : 280)}px;"
+  class={`fade-in flex flex-col bg-[var(--surface)] ${mobileVisible ? "h-full w-full min-w-0" : "hidden lg:flex"} lg:h-full lg:shrink-0`}
+  style={mobileVisible
+    ? undefined
+    : `width: ${width ?? (collapsed ? 52 : 280)}px;`}
 >
   {#if collapsed}
     <div class="flex items-center justify-center px-1.5 pt-3 pb-1">

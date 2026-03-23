@@ -2196,7 +2196,7 @@
       shell={{
         collapsed: shell.collapsed,
         width: shell.width,
-        mobileVisible: mobileTab === "browse",
+        mobileVisible: shell.mobileVisible ?? false,
         onToggleCollapse: shell.toggle,
       }}
       channelState={sidebarState.channelState}
@@ -2300,6 +2300,7 @@
             toggle: () => {
               mobileTab = "content";
             },
+            mobileVisible: true,
           })}
         {/if}
       </div>

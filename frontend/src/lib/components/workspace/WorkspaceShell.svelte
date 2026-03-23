@@ -26,7 +26,14 @@
     onOpenGuide?: () => void;
     topBar?: Snippet;
     sidebar?: Snippet<
-      [{ collapsed: boolean; toggle: () => void; width: number }]
+      [
+        {
+          collapsed: boolean;
+          toggle: () => void;
+          width: number;
+          mobileVisible?: boolean;
+        },
+      ]
     >;
     children: Snippet;
   } = $props();

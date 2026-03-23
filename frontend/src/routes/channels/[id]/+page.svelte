@@ -450,7 +450,7 @@
       shell={{
         collapsed,
         width,
-        mobileVisible: mobileTab === "browse",
+        mobileVisible: false,
         onToggleCollapse: toggle,
       }}
       channelState={overviewSidebarChannelState}
