@@ -20,7 +20,8 @@ const SEARCH_EMBED_REQUEST_TIMEOUT: Duration = Duration::from_secs(90);
 const MAX_ERROR_DETAIL_CHARS: usize = 240;
 const MAX_SNIPPET_CHARS: usize = 420;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, ts_rs::TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 #[serde(rename_all = "snake_case")]
 pub enum SearchSourceKind {
     Transcript,

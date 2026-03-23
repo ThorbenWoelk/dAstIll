@@ -30,7 +30,7 @@ fn cached_video_info_needs_refresh(info: &VideoInfo) -> bool {
     {
         return true;
     }
-    info.description.as_deref().map_or(false, |d| {
+    info.description.as_deref().is_some_and(|d| {
         crate::services::youtube::placeholder::is_site_wide_placeholder_description(d)
     })
 }
@@ -53,9 +53,8 @@ pub async fn list_channel_videos(
     require_channel(&state, &channel_id).await?;
 
     tracing::info!("video_type filter: {:?}", params.video_type);
-    let conn = state.db.connect();
     let videos = db::list_videos_by_channel(
-        &conn,
+        &state.db,
         &channel_id,
         params.limit_or_default(),
         params.offset_or_default(),
@@ -83,8 +82,7 @@ pub async fn get_video_info(
     let video = require_video(&state, &video_id).await?;
 
     let cached = {
-        let conn = state.db.connect();
-        db::get_video_info(&conn, &video_id)
+            db::get_video_info(&state.db, &video_id)
             .await
             .map_err(map_db_err)?
     };
@@ -101,8 +99,7 @@ pub async fn ensure_video_info(
     let video = require_video(&state, &video_id).await?;
 
     let cached = {
-        let conn = state.db.connect();
-        db::get_video_info(&conn, &video_id)
+            db::get_video_info(&state.db, &video_id)
             .await
             .map_err(map_db_err)?
     };
@@ -116,8 +113,7 @@ pub async fn ensure_video_info(
     match state.youtube.fetch_video_info(&video_id).await {
         Ok(mut info) => {
             enrich_video_info(&mut info, &video);
-            let conn = state.db.connect();
-            db::upsert_video_info(&conn, &info)
+                    db::upsert_video_info(&state.db, &info)
                 .await
                 .map_err(map_db_err)?;
             Ok(Json(info))
@@ -159,17 +155,16 @@ pub async fn backfill_video_info(
 
     let heal = params.heal_placeholders.unwrap_or(false);
     let video_ids = {
-        let conn = state.db.connect();
-        if heal {
-            db::list_video_ids_with_placeholder_descriptions(&conn, limit)
+            if heal {
+            db::list_video_ids_with_placeholder_descriptions(&state.db, limit)
                 .await
                 .map_err(map_db_err)?
         } else if force {
-            db::list_video_ids_for_info_refresh(&conn, limit)
+            db::list_video_ids_for_info_refresh(&state.db, limit)
                 .await
                 .map_err(map_db_err)?
         } else {
-            db::list_video_ids_missing_info(&conn, limit)
+            db::list_video_ids_missing_info(&state.db, limit)
                 .await
                 .map_err(map_db_err)?
         }
@@ -193,8 +188,7 @@ pub async fn backfill_video_info(
         };
 
         let video = {
-            let conn = state.db.connect();
-            db::get_video(&conn, video_id, false)
+                    db::get_video(&state.db, video_id, false)
                 .await
                 .map_err(map_db_err)?
         };
@@ -203,8 +197,7 @@ pub async fn backfill_video_info(
             enrich_video_info(&mut info, &video);
         }
 
-        let conn = state.db.connect();
-        match db::upsert_video_info(&conn, &info).await {
+            match db::upsert_video_info(&state.db, &info).await {
             Ok(_) => updated += 1,
             Err(err) => {
                 failed += 1;
@@ -233,8 +226,7 @@ pub async fn update_video_acknowledged(
     Json(payload): Json<crate::models::UpdateAcknowledgedRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let mut video = require_video(&state, &video_id).await?;
-    let conn = state.db.connect();
-    db::update_video_acknowledged(&conn, &video_id, payload.acknowledged)
+    db::update_video_acknowledged(&state.db, &video_id, payload.acknowledged)
         .await
         .map_err(map_db_err)?;
     video.acknowledged = payload.acknowledged;

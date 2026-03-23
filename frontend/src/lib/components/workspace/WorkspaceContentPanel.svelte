@@ -80,8 +80,7 @@
       draft: "",
       formattingContent: false,
       formattingVideoId: null,
-      regeneratingSummary: false,
-      regeneratingVideoId: null,
+      regeneratingSummaryVideoIds: [],
       revertingContent: false,
       revertingVideoId: null,
       resettingVideo: false,
@@ -143,8 +142,15 @@
   let draft = $derived(content.draft);
   let formattingContent = $derived(content.formattingContent);
   let formattingVideoId = $derived(content.formattingVideoId);
-  let regeneratingSummary = $derived(content.regeneratingSummary);
-  let regeneratingVideoId = $derived(content.regeneratingVideoId);
+  let regeneratingSummaryVideoIds = $derived(
+    content.regeneratingSummaryVideoIds,
+  );
+  let summaryRegeneratingForSelection = $derived(
+    Boolean(
+      selectedVideoId &&
+        regeneratingSummaryVideoIds.includes(selectedVideoId),
+    ),
+  );
   let revertingContent = $derived(content.revertingContent);
   let revertingVideoId = $derived(content.revertingVideoId);
   let resettingVideo = $derived(content.resettingVideo);
@@ -371,8 +377,7 @@
             {aiAvailable}
             formatting={formattingContent &&
               formattingVideoId === selectedVideoId}
-            regenerating={regeneratingSummary &&
-              regeneratingVideoId === selectedVideoId}
+            regenerating={summaryRegeneratingForSelection}
             reverting={revertingContent && revertingVideoId === selectedVideoId}
             resetting={resettingVideo && resettingVideoId === selectedVideoId}
             showFormatAction={contentMode === "transcript"}
@@ -562,10 +567,10 @@
             <button
               type="button"
               class="mt-4 rounded-[var(--radius-sm)] border border-[var(--accent-border-soft)] px-3 py-1.5 text-[12px] font-medium text-[var(--soft-foreground)] transition-colors hover:border-[var(--accent)]/40 hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] disabled:opacity-40 disabled:pointer-events-none"
-              disabled={!aiAvailable || regeneratingSummary}
+              disabled={!aiAvailable || summaryRegeneratingForSelection}
               onclick={onRegenerateSummary}
             >
-              {regeneratingSummary ? "Retrying…" : "Retry"}
+              {summaryRegeneratingForSelection ? "Retrying…" : "Retry"}
             </button>
           {/if}
         </div>
@@ -613,8 +618,7 @@
           {aiAvailable}
           formatting={formattingContent &&
             formattingVideoId === selectedVideoId}
-          regenerating={regeneratingSummary &&
-            regeneratingVideoId === selectedVideoId}
+          regenerating={summaryRegeneratingForSelection}
           reverting={revertingContent && revertingVideoId === selectedVideoId}
           resetting={resettingVideo && resettingVideoId === selectedVideoId}
           showFormatAction={contentMode === "transcript"}
@@ -675,10 +679,10 @@
             <button
               type="button"
               class="mt-4 rounded-[var(--radius-sm)] border border-[var(--accent-border-soft)] px-3 py-1.5 text-[12px] font-medium text-[var(--soft-foreground)] transition-colors hover:border-[var(--accent)]/40 hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] disabled:opacity-40 disabled:pointer-events-none"
-              disabled={!aiAvailable || regeneratingSummary}
+              disabled={!aiAvailable || summaryRegeneratingForSelection}
               onclick={onRegenerateSummary}
             >
-              {regeneratingSummary ? "Retrying…" : "Retry"}
+              {summaryRegeneratingForSelection ? "Retrying…" : "Retry"}
             </button>
           {/if}
         </div>

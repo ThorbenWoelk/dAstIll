@@ -23,9 +23,9 @@
   import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
   import WorkspaceMobileTabBar from "$lib/components/workspace/WorkspaceMobileTabBar.svelte";
   import WorkspaceSidebar from "$lib/components/workspace/WorkspaceSidebar.svelte";
+  import { resolveBootstrapOnMount } from "$lib/ssr-bootstrap";
   import {
-    getCachedChannels,
-    getCachedViewSnapshot,
+    putCachedBootstrapMeta,
     putCachedChannels,
     putCachedViewSnapshot,
   } from "$lib/workspace-cache";
@@ -387,31 +387,67 @@
     void (async () => {
       try {
         const selectedChannelIdAtMount = sidebar.selectedChannelId;
-        const [cachedChannels, cachedSnapshot] = await Promise.all([
-          getCachedChannels(),
-          selectedChannelIdAtMount
-            ? getCachedViewSnapshot(
-                buildQueueSnapshotCacheKey(selectedChannelIdAtMount),
-              )
-            : Promise.resolve(null),
-        ]);
 
-        if (cachedChannels && cachedChannels.length > 0) {
+        const bootstrapResult = await resolveBootstrapOnMount({
+          serverBootstrap: $page.data.bootstrap ?? null,
+          selectedChannelId: selectedChannelIdAtMount,
+          viewSnapshotCacheKey: selectedChannelIdAtMount
+            ? buildQueueSnapshotCacheKey(selectedChannelIdAtMount)
+            : null,
+        });
+
+        const hasInitialData = Boolean(
+          bootstrapResult.channels && bootstrapResult.channels.length > 0,
+        );
+
+        if (bootstrapResult.channels && bootstrapResult.channels.length > 0) {
           sidebar.setChannels(
-            applySavedChannelOrder(cachedChannels, sidebar.channelOrder),
+            applySavedChannelOrder(
+              bootstrapResult.channels,
+              sidebar.channelOrder,
+            ),
           );
           sidebar.syncChannelOrderFromList();
         }
 
-        if (cachedSnapshot && selectedChannelIdAtMount) {
-          // Composable handles snapshot application through its internal methods
-          // if we call a public mutator, but it's cleaner to reuse refreshAndLoad
-          // OR we can manually sync if need be.
-          // For now let's use the internal snapshot application logic via loadInitial/refresh.
+        if (bootstrapResult.aiStatus !== null) {
+          aiStatus = bootstrapResult.aiStatus;
+        }
+        if (
+          bootstrapResult.aiAvailable !== null &&
+          bootstrapResult.aiStatus !== null &&
+          bootstrapResult.searchStatus !== null
+        ) {
+          void putCachedBootstrapMeta({
+            ai_available: bootstrapResult.aiAvailable,
+            ai_status: bootstrapResult.aiStatus,
+            search_status: bootstrapResult.searchStatus,
+          });
+        }
+
+        if (
+          bootstrapResult.snapshot &&
+          selectedChannelIdAtMount &&
+          bootstrapResult.snapshot.channel_id === selectedChannelIdAtMount
+        ) {
+          sidebar.setSyncDepth(bootstrapResult.snapshot.sync_depth);
+          sidebar.setVideos(bootstrapResult.snapshot.videos);
+          sidebar.setOffset(bootstrapResult.snapshot.videos.length);
+          sidebar.setHasMore(
+            bootstrapResult.snapshot.videos.length === sidebar.limit,
+          );
+          void putCachedViewSnapshot(
+            buildQueueSnapshotCacheKey(selectedChannelIdAtMount),
+            {
+              channel_id: selectedChannelIdAtMount,
+              videos: bootstrapResult.snapshot.videos,
+              sync_depth: bootstrapResult.snapshot.sync_depth,
+            },
+          );
         }
 
         await sidebar.loadInitial({
-          silent: Boolean(cachedChannels && cachedChannels.length > 0),
+          silent: hasInitialData,
         });
       } finally {
         viewUrlHydrated = true;
@@ -582,6 +618,7 @@
 
   async function openQueuedVideo(videoId: string) {
     if (!sidebar.selectedChannelId) return;
+    sidebar.setSelectedVideoId(videoId);
     const href = buildWorkspaceViewHref({
       selectedChannelId: sidebar.selectedChannelId,
       selectedVideoId: videoId,
@@ -642,7 +679,6 @@
   };
 </script>
 
-```html
 <WorkspaceShell currentSection="queue" {aiIndicator} onOpenGuide={openGuide}>
   {#snippet sidebar({
     collapsed: sidebarCollapsed,
@@ -650,6 +686,11 @@
     width: sidebarWidth,
   })}
     <WorkspaceSidebar
+      videoListMode="per_channel_preview"
+      initialChannelPreviews={$page.data.channelPreviews ?? {}}
+      initialChannelPreviewsFilterKey={$page.data.channelPreviewsFilterKey ??
+        `all:all:${queueTab}`}
+      channelSnapshotQueueTab={queueTab}
       shell={{
         collapsed: sidebarCollapsed,
         width: sidebarWidth,
@@ -693,6 +734,11 @@
         class="relative z-10 h-full w-[min(85vw,20rem)] overflow-hidden border-r border-[var(--accent-border-soft)] bg-[var(--surface-strong)] shadow-2xl"
       >
         <WorkspaceSidebar
+          videoListMode="per_channel_preview"
+          initialChannelPreviews={$page.data.channelPreviews ?? {}}
+          initialChannelPreviewsFilterKey={$page.data
+            .channelPreviewsFilterKey ?? `all:all:${queueTab}`}
+          channelSnapshotQueueTab={queueTab}
           shell={{
             collapsed: false,
             width: undefined,

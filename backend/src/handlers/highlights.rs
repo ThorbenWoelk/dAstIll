@@ -21,9 +21,8 @@ pub async fn create_highlight(
     require_video(&state, &video_id).await?;
     let highlight_text = validate_highlight_text(&payload.text)?;
 
-    let conn = state.db.connect();
     let highlight = db::create_highlight(
-        &conn,
+        &state.db,
         &video_id,
         payload.source,
         highlight_text,
@@ -42,8 +41,7 @@ pub async fn list_video_highlights(
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     require_video(&state, &video_id).await?;
 
-    let conn = state.db.connect();
-    let highlights = db::list_video_highlights(&conn, &video_id)
+    let highlights = db::list_video_highlights(&state.db, &video_id)
         .await
         .map_err(map_db_err)?;
     Ok(Json(highlights))
@@ -52,8 +50,7 @@ pub async fn list_video_highlights(
 pub async fn list_highlights(
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let conn = state.db.connect();
-    let grouped: Vec<HighlightChannelGroup> = db::list_highlights_grouped(&conn)
+    let grouped: Vec<HighlightChannelGroup> = db::list_highlights_grouped(&state.db)
         .await
         .map_err(map_db_err)?;
     Ok(Json(grouped))
@@ -63,8 +60,7 @@ pub async fn delete_highlight(
     State(state): State<AppState>,
     Path(highlight_id): Path<i64>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let conn = state.db.connect();
-    let deleted = db::delete_highlight(&conn, highlight_id)
+    let deleted = db::delete_highlight(&state.db, highlight_id)
         .await
         .map_err(map_db_err)?;
     let status = resolve_delete_highlight_result(deleted)?;

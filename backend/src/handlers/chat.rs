@@ -22,8 +22,7 @@ use super::map_db_err;
 pub async fn list_conversations(
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let conn = state.db.connect();
-    let conversations = db::list_conversations(&conn).await.map_err(map_db_err)?;
+    let conversations = db::list_conversations(&state.db).await.map_err(map_db_err)?;
     Ok(Json(conversations))
 }
 
@@ -35,8 +34,7 @@ pub async fn create_conversation(
     mark_manual_title_on_create(&mut conversation);
 
     let _lock = state.chat_store_lock.lock().await;
-    let conn = state.db.connect();
-    db::upsert_conversation(&conn, &conversation)
+    db::upsert_conversation(&state.db, &conversation)
         .await
         .map_err(map_db_err)?;
     Ok((StatusCode::CREATED, Json(conversation)))
@@ -46,8 +44,7 @@ pub async fn get_conversation(
     State(state): State<AppState>,
     Path(conversation_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let conn = state.db.connect();
-    let conversation = db::get_conversation(&conn, &conversation_id)
+    let conversation = db::get_conversation(&state.db, &conversation_id)
         .await
         .map_err(map_db_err)?
         .ok_or((StatusCode::NOT_FOUND, "Conversation not found".to_string()))?;
@@ -62,15 +59,14 @@ pub async fn update_conversation(
     let title = validate_conversation_title(&payload.title)?;
 
     let _lock = state.chat_store_lock.lock().await;
-    let conn = state.db.connect();
-    let Some(mut conversation) = db::get_conversation(&conn, &conversation_id)
+    let Some(mut conversation) = db::get_conversation(&state.db, &conversation_id)
         .await
         .map_err(map_db_err)?
     else {
         return Err((StatusCode::NOT_FOUND, "Conversation not found".to_string()));
     };
     apply_manual_conversation_title(&mut conversation, title, Utc::now());
-    db::upsert_conversation(&conn, &conversation)
+    db::upsert_conversation(&state.db, &conversation)
         .await
         .map_err(map_db_err)?;
     Ok(Json(conversation))
@@ -85,8 +81,7 @@ pub async fn delete_conversation(
     }
 
     let _lock = state.chat_store_lock.lock().await;
-    let conn = state.db.connect();
-    db::delete_conversation(&conn, &conversation_id)
+    db::delete_conversation(&state.db, &conversation_id)
         .await
         .map_err(map_db_err)?;
     Ok(StatusCode::NO_CONTENT)
@@ -185,8 +180,7 @@ async fn store_user_message(
     prompt: &str,
 ) -> Result<(ChatConversation, bool), (StatusCode, String)> {
     let _lock = state.chat_store_lock.lock().await;
-    let conn = state.db.connect();
-    let Some(mut conversation) = db::get_conversation(&conn, conversation_id)
+    let Some(mut conversation) = db::get_conversation(&state.db, conversation_id)
         .await
         .map_err(map_db_err)?
     else {
@@ -201,7 +195,7 @@ async fn store_user_message(
         provisional_title,
         Utc::now(),
     );
-    db::upsert_conversation(&conn, &conversation)
+    db::upsert_conversation(&state.db, &conversation)
         .await
         .map_err(map_db_err)?;
     Ok((conversation, should_auto_name))

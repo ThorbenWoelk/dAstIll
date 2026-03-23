@@ -23,6 +23,7 @@
   import type {
     Channel,
     ChannelSnapshot,
+    QueueTab,
     Video,
     SyncDepth,
     VideoTypeFilter,
@@ -134,6 +135,8 @@
     videoListMode = "selected_channel",
     initialChannelPreviews = {} as Record<string, ChannelSnapshot>,
     initialChannelPreviewsFilterKey = undefined as string | undefined,
+    /** When set (download queue), snapshot and list APIs use queue_tab so in-progress work appears. */
+    channelSnapshotQueueTab = undefined as QueueTab | undefined,
   }: {
     shell?: WorkspaceSidebarShellProps;
     channelState?: WorkspaceSidebarChannelState;
@@ -150,13 +153,12 @@
      */
     initialChannelPreviews?: Record<string, ChannelSnapshot>;
     /**
-     * The filter key (`"${videoType}:${acknowledgedFilter}"`) used when the
-     * server fetched the channel preview snapshots. The sidebar only uses
-     * pre-loaded data when the current filter key matches this value, preventing
-     * stale data from being shown when the client's filter differs from the
-     * server's filter (e.g. on first render before onMount/restoreWorkspaceState).
+     * The filter key (`"${videoType}:${acknowledgedFilter}:${queueSegment}"`,
+     * queueSegment `default` or the active queue tab) used when the server
+     * fetched the channel preview snapshots.
      */
     initialChannelPreviewsFilterKey?: string;
+    channelSnapshotQueueTab?: QueueTab;
   } = $props();
 
   let collapsed = $derived(shell.collapsed);
@@ -275,7 +277,8 @@
   }
 
   function getChannelVideoCollectionFilterKey() {
-    return `${videoTypeFilter}:${acknowledgedFilter}`;
+    const queueSegment = channelSnapshotQueueTab ?? "default";
+    return `${videoTypeFilter}:${acknowledgedFilter}:${queueSegment}`;
   }
 
   function supportsMode(
@@ -372,6 +375,7 @@
         offset: 0,
         videoType: videoTypeFilter,
         acknowledged,
+        queueTab: channelSnapshotQueueTab,
       });
 
       let nextVideos = [...snapshot.videos];
@@ -387,6 +391,8 @@
             nextOffset,
             videoTypeFilter,
             acknowledged,
+            false,
+            channelSnapshotQueueTab,
           );
           nextVideos = [...nextVideos, ...batch];
           nextOffset += batch.length;

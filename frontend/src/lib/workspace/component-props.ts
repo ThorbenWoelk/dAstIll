@@ -62,8 +62,16 @@ export interface WorkspaceSidebarVideoState {
   allowLoadedVideoSyncDepthOverride: boolean;
 }
 
+/** When `forceReload` is true, the route should load content even if `videoId` is already selected (e.g. after `selectChannel` set the id). */
+export type WorkspaceVideoSelectContext = {
+  forceReload?: boolean;
+};
+
 export interface WorkspaceSidebarVideoActions {
-  onSelectVideo: (videoId: string) => Promise<void> | void;
+  onSelectVideo: (
+    videoId: string,
+    context?: WorkspaceVideoSelectContext,
+  ) => Promise<void> | void;
   onSelectChannelVideo?: (
     channelId: string,
     videoId: string,
@@ -101,8 +109,8 @@ export interface WorkspaceContentState {
   draft: string;
   formattingContent: boolean;
   formattingVideoId: string | null;
-  regeneratingSummary: boolean;
-  regeneratingVideoId: string | null;
+  /** Video ids with an in-flight summary regeneration (supports concurrent retries). */
+  regeneratingSummaryVideoIds: string[];
   revertingContent: boolean;
   revertingVideoId: string | null;
   resettingVideo: boolean;

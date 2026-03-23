@@ -397,7 +397,7 @@ impl YouTubeService {
                 .filter(|value| !value.is_empty())
                 .map(ToOwned::to_owned);
 
-        let desc_is_placeholder = details.description.as_deref().map_or(false, |d| {
+        let desc_is_placeholder = details.description.as_deref().is_some_and(|d| {
             super::placeholder::is_site_wide_placeholder_description(d)
         });
 

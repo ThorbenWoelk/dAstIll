@@ -364,8 +364,7 @@
   let draft = $state("");
   let formattingContent = $state(false);
   let formattingVideoId = $state<string | null>(null);
-  let regeneratingSummary = $state(false);
-  let regeneratingVideoId = $state<string | null>(null);
+  let regeneratingSummaryVideoIds = $state<string[]>([]);
   let revertingContent = $state(false);
   let revertingVideoId = $state<string | null>(null);
   let resettingVideo = $state(false);
@@ -408,8 +407,8 @@
     initialVideoId: $page.data.selectedVideoId,
     initialVideoTypeFilter: $page.data.videoTypeFilter ?? "all",
     initialAcknowledgedFilter: $page.data.acknowledgedFilter ?? "all",
-    onSelectVideo: (videoId: string) => {
-      sidebarState.setSelectedVideoId(videoId);
+    onSelectVideo: (videoId: string, context?: { forceReload?: boolean }) => {
+      void selectVideo(videoId, true, context?.forceReload ?? false);
     },
     onChannelSelected: (channelId: string) => {
       const href = buildWorkspaceViewHref({
@@ -1507,9 +1506,10 @@
   async function selectVideo(
     videoId: string | null,
     fromUserInteraction = false,
+    forceReload = false,
   ) {
     if (fromUserInteraction) mobileTab = "content";
-    if (videoId === selectedVideoId) return;
+    if (!forceReload && videoId === selectedVideoId) return;
     sidebarState.setSelectedVideoId(videoId);
     contentText = "";
     draft = "";
@@ -1762,8 +1762,10 @@
     if (!selectedVideoId || contentMode !== "summary") return;
     const targetVideoId = selectedVideoId;
 
-    regeneratingSummary = true;
-    regeneratingVideoId = targetVideoId;
+    regeneratingSummaryVideoIds = [
+      ...regeneratingSummaryVideoIds.filter((id) => id !== targetVideoId),
+      targetVideoId,
+    ];
     errorMessage = null;
     sidebarState.setVideos(
       sidebarState.videos.map((v) =>
@@ -1803,8 +1805,9 @@
         ),
       );
     } finally {
-      regeneratingSummary = false;
-      regeneratingVideoId = null;
+      regeneratingSummaryVideoIds = regeneratingSummaryVideoIds.filter(
+        (id) => id !== targetVideoId,
+      );
     }
   }
 
@@ -1819,7 +1822,11 @@
     sidebarState.setVideos(
       sidebarState.videos.map((v) =>
         v.id === targetVideoId
-          ? { ...v, transcript_status: "pending" as const, summary_status: "pending" as const }
+          ? {
+              ...v,
+              transcript_status: "pending" as const,
+              summary_status: "pending" as const,
+            }
           : v,
       ),
     );
@@ -2163,8 +2170,7 @@
     draft,
     formattingContent,
     formattingVideoId,
-    regeneratingSummary,
-    regeneratingVideoId,
+    regeneratingSummaryVideoIds,
     revertingContent,
     revertingVideoId,
     resettingVideo,
@@ -2237,7 +2243,7 @@
       videoListMode="per_channel_preview"
       initialChannelPreviews={$page.data.channelPreviews ?? {}}
       initialChannelPreviewsFilterKey={$page.data.channelPreviewsFilterKey ??
-        "all:all"}
+        "all:all:default"}
       shell={{
         collapsed: shell.collapsed,
         width: shell.width,
@@ -2284,8 +2290,10 @@
             aiAvailable={aiAvailable ?? false}
             formatting={formattingContent &&
               formattingVideoId === selectedVideoId}
-            regenerating={regeneratingSummary &&
-              regeneratingVideoId === selectedVideoId}
+            regenerating={Boolean(
+              selectedVideoId &&
+                regeneratingSummaryVideoIds.includes(selectedVideoId),
+            )}
             reverting={revertingContent && revertingVideoId === selectedVideoId}
             resetting={resettingVideo && resettingVideoId === selectedVideoId}
             showFormatAction={contentMode === "transcript"}
@@ -2303,7 +2311,9 @@
             onFormat={cleanFormatting}
             onRegenerate={regenerateSummaryContent}
             onRevert={revertToOriginalTranscript}
-            onReset={() => { showResetVideoConfirmation = true; }}
+            onReset={() => {
+              showResetVideoConfirmation = true;
+            }}
             onChange={(value) => {
               draft = value;
             }}

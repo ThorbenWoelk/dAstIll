@@ -77,7 +77,7 @@ pub async fn list_video_ids_with_placeholder_descriptions(
             if info
                 .description
                 .as_deref()
-                .map_or(false, is_site_wide_placeholder_description)
+                .is_some_and(is_site_wide_placeholder_description)
             {
                 out.push(video_id.to_string());
             }

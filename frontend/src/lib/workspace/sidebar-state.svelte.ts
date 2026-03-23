@@ -35,6 +35,7 @@ import type {
   WorkspaceSidebarVideoState,
   WorkspaceSidebarChannelActions,
   WorkspaceSidebarChannelState,
+  WorkspaceVideoSelectContext,
 } from "$lib/workspace/component-props";
 import {
   buildOptimisticChannel,
@@ -72,7 +73,10 @@ export type SidebarStateOptions = {
    * Called when a video is clicked in the sidebar. Route provides the handler
    * (workspace: select in-place; queue: navigate to workspace).
    */
-  onSelectVideo: (videoId: string) => Promise<void> | void;
+  onSelectVideo: (
+    videoId: string,
+    context?: WorkspaceVideoSelectContext,
+  ) => Promise<void> | void;
 
   initialChannelId?: string | null;
   initialVideoId?: string | null;
@@ -758,17 +762,17 @@ export function createSidebarState(
   });
 
   const videoActions: WorkspaceSidebarVideoActions = {
-    onSelectVideo: (videoId: string) => {
-      setSelectedVideoId(videoId);
-      void options_root.onSelectVideo(videoId);
+    onSelectVideo: (videoId: string, context?: WorkspaceVideoSelectContext) => {
+      void options_root.onSelectVideo(videoId, context);
     },
     onLoadMoreVideos: () => loadVideos(false),
     onVideoTypeFilterChange: setVideoTypeFilterAndReload,
     onAcknowledgedFilterChange: setAcknowledgedFilterAndReload,
     onSelectChannelVideo: (channelId: string, videoId: string) => {
-      void selectChannel(channelId, videoId, true);
-      setSelectedVideoId(videoId);
-      void options_root.onSelectVideo(videoId);
+      void (async () => {
+        await selectChannel(channelId, videoId, true);
+        void options_root.onSelectVideo(videoId, { forceReload: true });
+      })();
     },
   };
 

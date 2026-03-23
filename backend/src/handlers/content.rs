@@ -40,8 +40,7 @@ pub async fn get_transcript(
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     tracing::debug!(video_id = %video_id, "transcript requested");
     require_video(&state, &video_id).await?;
-    let conn = state.db.connect();
-    let transcript = db::get_transcript(&conn, &video_id)
+    let transcript = db::get_transcript(&state.db, &video_id)
         .await
         .map_err(map_db_err)?
         .ok_or((StatusCode::NOT_FOUND, "Transcript not found".to_string()))?;
@@ -161,8 +160,7 @@ pub async fn get_summary(
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     tracing::debug!(video_id = %video_id, "summary requested");
     require_video(&state, &video_id).await?;
-    let conn = state.db.connect();
-    let summary = db::get_summary(&conn, &video_id)
+    let summary = db::get_summary(&state.db, &video_id)
         .await
         .map_err(map_db_err)?
         .ok_or((StatusCode::NOT_FOUND, "Summary not found".to_string()))?;
@@ -185,8 +183,7 @@ pub async fn regenerate_summary(
     tracing::info!(video_id = %video_id, "summary regeneration requested");
     let video = require_video(&state, &video_id).await?;
     {
-        let conn = state.db.connect();
-        db::delete_summary(&conn, &video_id)
+            db::delete_summary(&state.db, &video_id)
             .await
             .map_err(map_db_err)?;
     }
@@ -204,22 +201,21 @@ pub async fn reset_video(
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     tracing::info!(video_id = %video_id, "video reset requested");
     let video = require_video(&state, &video_id).await?;
-    let conn = state.db.connect();
 
-    db::delete_transcript(&conn, &video_id)
+    db::delete_transcript(&state.db, &video_id)
         .await
         .map_err(map_db_err)?;
-    db::delete_summary(&conn, &video_id)
+    db::delete_summary(&state.db, &video_id)
         .await
         .map_err(map_db_err)?;
     // Reset regen counter so the queue won't skip re-generation thinking it already tried.
-    db::reset_summary_auto_regen_attempts(&conn, &video_id)
+    db::reset_summary_auto_regen_attempts(&state.db, &video_id)
         .await
         .map_err(map_db_err)?;
-    db::update_video_transcript_status(&conn, &video_id, ContentStatus::Pending)
+    db::update_video_transcript_status(&state.db, &video_id, ContentStatus::Pending)
         .await
         .map_err(map_db_err)?;
-    db::update_video_summary_status(&conn, &video_id, ContentStatus::Pending)
+    db::update_video_summary_status(&state.db, &video_id, ContentStatus::Pending)
         .await
         .map_err(map_db_err)?;
 
@@ -263,14 +259,13 @@ pub(crate) async fn ensure_transcript(
 ) -> Result<Transcript, (StatusCode, String)> {
     let video = require_video(state, video_id).await?;
     {
-        let conn = state.db.connect();
-        if let Some(transcript) = db::get_transcript(&conn, video_id)
+            if let Some(transcript) = db::get_transcript(&state.db, video_id)
             .await
             .map_err(map_db_err)?
         {
             if is_valid_cached_transcript(&transcript) {
                 let _ =
-                    db::update_video_transcript_status(&conn, video_id, ContentStatus::Ready).await;
+                    db::update_video_transcript_status(&state.db, video_id, ContentStatus::Ready).await;
                 tracing::debug!(video_id = %video_id, "transcript cache hit");
                 return Ok(transcript);
             }
@@ -280,7 +275,7 @@ pub(crate) async fn ensure_transcript(
             );
         }
 
-        db::update_video_transcript_status(&conn, video_id, ContentStatus::Loading)
+        db::update_video_transcript_status(&state.db, video_id, ContentStatus::Loading)
             .await
             .map_err(map_db_err)?;
         tracing::info!(video_id = %video_id, "transcript queued - status set to loading");
@@ -306,15 +301,14 @@ pub(crate) async fn ensure_transcript(
         render_mode: TranscriptRenderMode::PlainText,
     };
 
-    let conn = state.db.connect();
-    db::upsert_transcript(&conn, &transcript)
+    db::upsert_transcript(&state.db, &transcript)
         .await
         .map_err(map_db_err)?;
-    db::update_video_transcript_status(&conn, video_id, ContentStatus::Ready)
+    db::update_video_transcript_status(&state.db, video_id, ContentStatus::Ready)
         .await
         .map_err(map_db_err)?;
     sync_search_source(
-        &conn,
+        &state.db,
         video_id,
         SearchSourceKind::Transcript,
         transcript_text(&transcript),
@@ -333,9 +327,8 @@ pub(crate) async fn ensure_summary(
 ) -> Result<Summary, (StatusCode, String)> {
     let video = require_video(state, video_id).await?;
     {
-        let conn = state.db.connect();
-        if let Some(summary) = db::get_summary(&conn, video_id).await.map_err(map_db_err)? {
-            let auto_regen_attempts = db::get_summary_auto_regen_attempts(&conn, video_id)
+            if let Some(summary) = db::get_summary(&state.db, video_id).await.map_err(map_db_err)? {
+            let auto_regen_attempts = db::get_summary_auto_regen_attempts(&state.db, video_id)
                 .await
                 .map_err(map_db_err)?;
             if should_auto_regenerate_summary(
@@ -343,7 +336,7 @@ pub(crate) async fn ensure_summary(
                 summary.quality_score,
                 auto_regen_attempts,
             ) {
-                db::increment_summary_auto_regen_attempts(&conn, video_id)
+                db::increment_summary_auto_regen_attempts(&state.db, video_id)
                     .await
                     .map_err(map_db_err)?;
                 tracing::info!(
@@ -355,21 +348,20 @@ pub(crate) async fn ensure_summary(
                 );
             } else {
                 let _ =
-                    db::update_video_summary_status(&conn, video_id, ContentStatus::Ready).await;
+                    db::update_video_summary_status(&state.db, video_id, ContentStatus::Ready).await;
                 tracing::debug!(video_id = %video_id, "summary cache hit");
                 return Ok(summary);
             }
         }
 
-        db::update_video_summary_status(&conn, video_id, ContentStatus::Loading)
+        db::update_video_summary_status(&state.db, video_id, ContentStatus::Loading)
             .await
             .map_err(map_db_err)?;
         tracing::info!(video_id = %video_id, "summary queued - status set to loading");
     }
 
     if !state.summarizer.is_available().await {
-        let conn = state.db.connect();
-        db::update_video_summary_status(&conn, video_id, ContentStatus::Failed)
+            db::update_video_summary_status(&state.db, video_id, ContentStatus::Failed)
             .await
             .map_err(map_db_err)?;
         return Err((
@@ -395,8 +387,7 @@ pub(crate) async fn ensure_summary(
         .to_string();
 
     if transcript_text.is_empty() {
-        let conn = state.db.connect();
-        db::update_video_summary_status(&conn, video_id, ContentStatus::Failed)
+            db::update_video_summary_status(&state.db, video_id, ContentStatus::Failed)
             .await
             .map_err(map_db_err)?;
         return Err((
@@ -437,15 +428,14 @@ pub(crate) async fn ensure_summary(
         quality_model_used: None,
     };
 
-    let conn = state.db.connect();
-    db::upsert_summary(&conn, &summary)
+    db::upsert_summary(&state.db, &summary)
         .await
         .map_err(map_db_err)?;
-    db::update_video_summary_status(&conn, video_id, ContentStatus::Ready)
+    db::update_video_summary_status(&state.db, video_id, ContentStatus::Ready)
         .await
         .map_err(map_db_err)?;
     sync_search_source(
-        &conn,
+        &state.db,
         video_id,
         SearchSourceKind::Summary,
         Some(summary.content.as_str()),
@@ -465,19 +455,18 @@ async fn save_manual_transcript_content(
     render_mode: Option<TranscriptRenderMode>,
 ) -> Result<Transcript, (StatusCode, String)> {
     let video = require_video(state, video_id).await?;
-    let conn = state.db.connect();
-    let existing_render_mode = db::get_transcript(&conn, video_id)
+    let existing_render_mode = db::get_transcript(&state.db, video_id)
         .await
         .map_err(map_db_err)?
         .map(|transcript| transcript.render_mode);
     let effective_render_mode = render_mode
         .or(existing_render_mode)
         .unwrap_or(TranscriptRenderMode::PlainText);
-    let transcript = db::save_manual_transcript(&conn, video_id, content, effective_render_mode)
+    let transcript = db::save_manual_transcript(&state.db, video_id, content, effective_render_mode)
         .await
         .map_err(map_db_err)?;
     sync_search_source(
-        &conn,
+        &state.db,
         video_id,
         SearchSourceKind::Transcript,
         transcript_text(&transcript),
@@ -494,12 +483,11 @@ async fn save_manual_summary_content(
     content: &str,
 ) -> Result<Summary, (StatusCode, String)> {
     let video = require_video(state, video_id).await?;
-    let conn = state.db.connect();
-    let summary = db::save_manual_summary(&conn, video_id, content, Some("manual"))
+    let summary = db::save_manual_summary(&state.db, video_id, content, Some("manual"))
         .await
         .map_err(map_db_err)?;
     sync_search_source(
-        &conn,
+        &state.db,
         video_id,
         SearchSourceKind::Summary,
         Some(summary.content.as_str()),
@@ -524,12 +512,11 @@ fn spawn_status_update(
     let state = state.clone();
     let video_id = video_id.to_string();
     tokio::spawn(async move {
-        let conn = state.db.connect();
-        let _ = match field {
+            let _ = match field {
             StatusField::Transcript => {
-                db::update_video_transcript_status(&conn, &video_id, status).await
+                db::update_video_transcript_status(&state.db, &video_id, status).await
             }
-            StatusField::Summary => db::update_video_summary_status(&conn, &video_id, status).await,
+            StatusField::Summary => db::update_video_summary_status(&state.db, &video_id, status).await,
         };
     });
 }

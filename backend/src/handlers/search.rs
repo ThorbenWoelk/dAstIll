@@ -171,7 +171,6 @@ pub async fn search(
     let run_keyword_search = execution_mode.runs_keyword();
     let run_semantic_search = execution_mode.runs_semantic();
     let fts_terms = meaningful_search_terms(query);
-    let conn = state.db.connect();
     let semantic_enabled = state.search.semantic_enabled();
     let search_model = state.search.model();
     let search_status = state.search_progress.snapshot();
@@ -205,7 +204,7 @@ pub async fn search(
         Vec::new()
     } else {
         db::search_fts_candidates(
-            &conn,
+            &state.db,
             query,
             None,
             source.as_source_kind(),
@@ -251,7 +250,7 @@ pub async fn search(
                 let candidates = match retrieval_mode {
                     SearchRetrievalMode::HybridExact => {
                         db::search_exact_global_candidates(
-                            &conn,
+                            &state.db,
                             &query_embedding_json,
                             search_model,
                             resolve_semantic_exact_source_kind(source),
@@ -262,7 +261,7 @@ pub async fn search(
                     }
                     SearchRetrievalMode::HybridAnn => {
                         db::search_vector_candidates(
-                            &conn,
+                            &state.db,
                             &query_embedding_json,
                             search_model,
                             source.as_source_kind(),
@@ -363,11 +362,10 @@ pub async fn rebuild_search_projection(
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let _projection_guard = state.search_projection_lock.write().await;
-    let conn = state.db.connect();
-    db::reset_search_projection(&conn)
+    db::reset_search_projection(&state.db)
         .await
         .map_err(map_db_err)?;
-    let materials = db::list_search_progress_materials(&conn)
+    let materials = db::list_search_progress_materials(&state.db)
         .await
         .map_err(map_db_err)?;
     state

@@ -1,9 +1,11 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use crate::services::search::SearchSourceKind;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct Channel {
     pub id: String,
     pub handle: Option<String>,
@@ -15,7 +17,8 @@ pub struct Channel {
     pub earliest_sync_date_user_set: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 #[serde(rename_all = "snake_case")]
 pub enum ContentStatus {
     Pending,
@@ -24,7 +27,8 @@ pub enum ContentStatus {
     Failed,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct Video {
     pub id: String,
     pub channel_id: String,
@@ -37,11 +41,12 @@ pub struct Video {
     pub acknowledged: bool,
     #[serde(default)]
     pub retry_count: u8,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub quality_score: Option<u8>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct VideoInfo {
     pub video_id: String,
     pub watch_url: String,
@@ -56,7 +61,8 @@ pub struct VideoInfo {
     pub view_count: Option<u64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct Transcript {
     pub video_id: String,
     pub raw_text: Option<String>,
@@ -65,7 +71,8 @@ pub struct Transcript {
     pub render_mode: TranscriptRenderMode,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct Summary {
     pub video_id: String,
     pub content: String,
@@ -75,7 +82,8 @@ pub struct Summary {
     pub quality_model_used: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct SummaryEvaluationJob {
     pub video_id: String,
     pub video_title: String,
@@ -83,44 +91,51 @@ pub struct SummaryEvaluationJob {
     pub summary_content: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct SummaryEvaluationResult {
     pub quality_score: u8,
     pub quality_note: Option<String>,
     pub quality_model_used: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct AddChannelRequest {
     pub input: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct UpdateChannelRequest {
     pub earliest_sync_date: Option<DateTime<Utc>>,
     pub earliest_sync_date_user_set: Option<bool>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct UpdateContentRequest {
     pub content: String,
     #[serde(default)]
     pub render_mode: Option<TranscriptRenderMode>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct UpdateAcknowledgedRequest {
     pub acknowledged: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 #[serde(rename_all = "snake_case")]
 pub enum HighlightSource {
     Transcript,
     Summary,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct Highlight {
     pub id: i64,
     pub video_id: String,
@@ -131,7 +146,8 @@ pub struct Highlight {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct CreateHighlightRequest {
     pub source: HighlightSource,
     pub text: String,
@@ -141,7 +157,8 @@ pub struct CreateHighlightRequest {
     pub suffix_context: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct HighlightVideoGroup {
     pub video_id: String,
     pub title: String,
@@ -150,7 +167,8 @@ pub struct HighlightVideoGroup {
     pub highlights: Vec<Highlight>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct HighlightChannelGroup {
     pub channel_id: String,
     pub channel_name: String,
@@ -158,7 +176,8 @@ pub struct HighlightChannelGroup {
     pub videos: Vec<HighlightVideoGroup>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct CleanTranscriptResponse {
     pub content: String,
     pub preserved_text: bool,
@@ -167,7 +186,8 @@ pub struct CleanTranscriptResponse {
     pub timed_out: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 #[serde(rename_all = "snake_case")]
 pub enum TranscriptRenderMode {
     PlainText,
@@ -180,7 +200,8 @@ impl Default for TranscriptRenderMode {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 #[serde(rename_all = "snake_case")]
 pub enum AiStatus {
     Cloud,
@@ -188,27 +209,31 @@ pub enum AiStatus {
     Offline,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct AiHealthPayload {
     pub available: bool,
     pub status: AiStatus,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct SyncDepthPayload {
     pub earliest_sync_date: Option<String>,
     pub earliest_sync_date_user_set: bool,
     pub derived_earliest_ready_date: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct ChannelSnapshotPayload {
     pub channel_id: String,
     pub sync_depth: SyncDepthPayload,
     pub videos: Vec<Video>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct WorkspaceBootstrapPayload {
     pub ai_available: bool,
     pub ai_status: AiStatus,
@@ -218,7 +243,8 @@ pub struct WorkspaceBootstrapPayload {
     pub search_status: SearchStatusPayload,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct SearchMatchPayload {
     pub source: SearchSourceKind,
     pub section_title: Option<String>,
@@ -226,7 +252,8 @@ pub struct SearchMatchPayload {
     pub score: f32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct SearchVideoResultPayload {
     pub video_id: String,
     pub channel_id: String,
@@ -236,14 +263,16 @@ pub struct SearchVideoResultPayload {
     pub matches: Vec<SearchMatchPayload>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct SearchResponsePayload {
     pub query: String,
     pub source: String,
     pub results: Vec<SearchVideoResultPayload>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct SearchStatusPayload {
     pub available: bool,
     pub model: String,
@@ -259,7 +288,8 @@ pub struct SearchStatusPayload {
     pub retrieval_mode: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 #[serde(rename_all = "snake_case")]
 pub enum ChatRole {
     System,
@@ -267,7 +297,8 @@ pub enum ChatRole {
     Assistant,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 #[serde(rename_all = "snake_case")]
 pub enum ChatMessageStatus {
     Completed,
@@ -277,7 +308,8 @@ pub enum ChatMessageStatus {
     Failed,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 #[serde(rename_all = "snake_case")]
 pub enum ChatTitleStatus {
     Idle,
@@ -286,7 +318,8 @@ pub enum ChatTitleStatus {
     Manual,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct ChatSource {
     pub video_id: String,
     pub channel_id: String,
@@ -296,11 +329,13 @@ pub struct ChatSource {
     pub section_title: Option<String>,
     pub snippet: String,
     pub score: f32,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    #[ts(optional)]
     pub retrieval_pass: Option<usize>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct ChatMessage {
     pub id: String,
     pub role: ChatRole,
@@ -311,7 +346,8 @@ pub struct ChatMessage {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct ChatConversationSummary {
     pub id: String,
     pub title: Option<String>,
@@ -320,7 +356,8 @@ pub struct ChatConversationSummary {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct ChatConversation {
     pub id: String,
     pub title: Option<String>,
@@ -343,17 +380,20 @@ impl From<&ChatConversation> for ChatConversationSummary {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct CreateConversationRequest {
     pub title: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct UpdateConversationRequest {
     pub title: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct SendChatMessageRequest {
     pub content: String,
 }

@@ -187,7 +187,7 @@ async fn consume_anonymous_chat_quota(state: &AppState, client_key: &str) -> Res
         .get_json::<AnonymousChatQuotaRecord>(&storage_key)
         .await
         .map_err(|error| error.to_string())?
-        .unwrap_or_else(|| AnonymousChatQuotaRecord {
+        .unwrap_or(AnonymousChatQuotaRecord {
             count: 0,
             first_seen_at: now,
         });

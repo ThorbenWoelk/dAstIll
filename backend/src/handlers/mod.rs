@@ -32,8 +32,7 @@ pub(crate) async fn require_channel(
     state: &AppState,
     channel_id: &str,
 ) -> Result<Channel, (StatusCode, String)> {
-    let conn = state.db.connect();
-    db::get_channel(&conn, channel_id)
+    db::get_channel(&state.db, channel_id)
         .await
         .map_err(map_db_err)?
         .ok_or((StatusCode::NOT_FOUND, "Channel not found".to_string()))
@@ -43,8 +42,7 @@ pub(crate) async fn require_video(
     state: &AppState,
     video_id: &str,
 ) -> Result<Video, (StatusCode, String)> {
-    let conn = state.db.connect();
-    db::get_video(&conn, video_id, true)
+    db::get_video(&state.db, video_id, true)
         .await
         .map_err(map_db_err)?
         .ok_or((StatusCode::NOT_FOUND, "Video not found".to_string()))
