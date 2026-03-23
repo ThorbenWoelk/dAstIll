@@ -176,7 +176,11 @@
      */
     initialChannelPreviewsFilterKey?: string;
     channelSnapshotQueueTab?: QueueTab;
-    videoAcknowledgeSync?: { seq: number; video: Video } | null;
+    videoAcknowledgeSync?: {
+      seq: number;
+      video: Video;
+      confirmed: boolean;
+    } | null;
   } = $props();
 
   let collapsed = $derived(shell.collapsed);
@@ -416,6 +420,7 @@
         videoType: videoTypeFilter,
         acknowledged,
         queueTab: channelSnapshotQueueTab,
+        bypassCache: force,
       });
 
       let nextVideos = [...snapshot.videos];
@@ -433,6 +438,7 @@
             acknowledged,
             false,
             channelSnapshotQueueTab,
+            force,
           );
           nextVideos = [...nextVideos, ...batch];
           nextOffset += batch.length;
@@ -534,7 +540,7 @@
       return;
     }
     lastAppliedVideoAcknowledgeSeq = sync.seq;
-    const { video } = sync;
+    const { video, confirmed } = sync;
     const state = channelVideoCollections[video.channel_id];
     if (!state) {
       return;
@@ -543,6 +549,13 @@
     const byType = filterVideosByType(merged, videoTypeFilter);
     const filtered = filterVideosByAcknowledged(byType, acknowledgedFilter);
     state.videos = filtered;
+
+    // Optimistic updates must not trigger a snapshot refetch: the GET cache is
+    // still populated until updateAcknowledged completes and invalidates it, so
+    // a forced load would overwrite the filtered list with stale rows.
+    if (!confirmed) {
+      return;
+    }
 
     const ch = channels.find((c) => c.id === video.channel_id);
     if (!ch) {

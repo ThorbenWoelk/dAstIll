@@ -465,7 +465,12 @@
   });
 
   let videoAcknowledgeSeq = 0;
-  let videoAcknowledgeSync = $state<{ seq: number; video: Video } | null>(null);
+  let videoAcknowledgeSync = $state<{
+    seq: number;
+    video: Video;
+    /** When false, only merge into per-channel lists; do not refetch (refetch would hit stale GET cache before PUT invalidates). */
+    confirmed: boolean;
+  } | null>(null);
 
   // Backward compatibility aliases for existing UI logic
   // (We use getters to stay reactive to the sidebar state)
@@ -2053,6 +2058,7 @@
     videoAcknowledgeSync = {
       seq: videoAcknowledgeSeq,
       video: optimisticVideo,
+      confirmed: false,
     };
 
     if (
@@ -2079,7 +2085,11 @@
       );
 
       videoAcknowledgeSeq += 1;
-      videoAcknowledgeSync = { seq: videoAcknowledgeSeq, video: updated };
+      videoAcknowledgeSync = {
+        seq: videoAcknowledgeSeq,
+        video: updated,
+        confirmed: true,
+      };
 
       const stillSelected = sidebarState.videos.some(
         (v) => v.id === sidebarState.selectedVideoId,
@@ -2102,7 +2112,11 @@
       const reverted = previousVideos.find((v) => v.id === targetVideoId);
       if (reverted) {
         videoAcknowledgeSeq += 1;
-        videoAcknowledgeSync = { seq: videoAcknowledgeSeq, video: reverted };
+        videoAcknowledgeSync = {
+          seq: videoAcknowledgeSeq,
+          video: reverted,
+          confirmed: true,
+        };
       }
       errorMessage = (error as Error).message;
     }

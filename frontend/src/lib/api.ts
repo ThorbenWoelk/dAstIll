@@ -481,6 +481,7 @@ export function listVideos(
   acknowledged?: boolean,
   queueOnly = false,
   queueTab?: QueueTab,
+  bypassCache?: boolean,
 ) {
   const params = new URLSearchParams({
     limit: `${limit}`,
@@ -494,6 +495,7 @@ export function listVideos(
   });
   return cachedGetRequest<Video[]>(
     `/api/channels/${channelId}/videos?${params.toString()}`,
+    bypassCache ? { bypassCache: true } : undefined,
   );
 }
 
