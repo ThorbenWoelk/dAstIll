@@ -12,6 +12,7 @@
 
 import {
   addChannel,
+  addVideo,
   deleteChannel,
   getChannelSnapshot,
   listChannelsWhenAvailable,
@@ -59,6 +60,7 @@ import type {
   Video,
   VideoTypeFilter,
 } from "$lib/types";
+import { looksLikeYouTubeVideoInput } from "$lib/utils/youtube-input";
 import { putCachedChannels } from "$lib/workspace-cache";
 
 const CHANNEL_REFRESH_TTL_MS = 5 * 60 * 1000;
@@ -82,6 +84,13 @@ export type SidebarStateOptions = {
   initialVideoId?: string | null;
   initialVideoTypeFilter?: VideoTypeFilter;
   initialAcknowledgedFilter?: AcknowledgedFilter;
+
+  /**
+   * Optional: called when the user activates a channel row header (expanded
+   * sidebar). Use for navigation to a channel overview route; when omitted,
+   * the header falls back to `onSelectChannel`.
+   */
+  onOpenChannelOverview?: (channelId: string) => Promise<void> | void;
 
   /**
    * Optional: called when a channel is selected. Route can use this to reset
@@ -238,6 +247,7 @@ export type SidebarStateResult = {
   reorderChannels: (nextOrder: string[]) => void;
   setVideoTypeFilterAndReload: (value: VideoTypeFilter) => Promise<void>;
   setAcknowledgedFilterAndReload: (value: AcknowledgedFilter) => Promise<void>;
+  clearAllFiltersAndReload: () => Promise<void>;
   /** After local video list mutations (e.g. read toggle), bump so stale snapshots are not applied. */
   bumpVideoListMutationEpoch: () => void;
   getVideoListMutationEpoch: () => number;
@@ -623,6 +633,13 @@ export function createSidebarState(
     await loadVideos(true, true);
   }
 
+  async function clearAllFiltersAndReload() {
+    if (videoTypeFilter === "all" && acknowledgedFilter === "all") return;
+    videoTypeFilter = "all";
+    acknowledgedFilter = "all";
+    await loadVideos(true, true);
+  }
+
   // --- Channel CRUD ---
 
   async function handleAddChannel(input: string): Promise<boolean> {
@@ -630,6 +647,36 @@ export function createSidebarState(
 
     addingChannel = true;
     options_root.onError?.("");
+
+    const submittedInput = input.trim();
+
+    if (looksLikeYouTubeVideoInput(submittedInput)) {
+      try {
+        const result = await addVideo(submittedInput);
+        const refreshedChannels = applySavedChannelOrder(
+          await listChannelsWhenAvailable({
+            retryDelayMs: 500,
+          }),
+          channelOrder,
+        );
+        channels = refreshedChannels;
+        syncChannelOrderFromList();
+        const cacheChannels =
+          options_root.cacheChannels ??
+          ((chs: Channel[]) => void putCachedChannels(chs));
+        cacheChannels(channels);
+
+        selectedChannelId = result.target_channel_id;
+        await selectChannel(result.target_channel_id, result.video.id, true);
+        await options_root.onSelectVideo(result.video.id, { forceReload: true });
+        return true;
+      } catch (error) {
+        options_root.onError?.((error as Error).message);
+        return false;
+      } finally {
+        addingChannel = false;
+      }
+    }
 
     const previousChannels = [...channels];
     const previousSelectedId = selectedChannelId;
@@ -741,7 +788,9 @@ export function createSidebarState(
     },
     onReorderChannels: reorderChannels,
     onChannelUpdated: updateChannel,
-    onOpenChannelOverview: (id: string) => {}, // To be provided by route if needed
+    ...(options_root.onOpenChannelOverview
+      ? { onOpenChannelOverview: options_root.onOpenChannelOverview }
+      : {}),
     onDeleteAccessRequired: () => {}, // To be provided by route if needed
   };
 
@@ -768,6 +817,7 @@ export function createSidebarState(
     onLoadMoreVideos: () => loadVideos(false),
     onVideoTypeFilterChange: setVideoTypeFilterAndReload,
     onAcknowledgedFilterChange: setAcknowledgedFilterAndReload,
+    onClearAllFilters: clearAllFiltersAndReload,
     onSelectChannelVideo: (channelId: string, videoId: string) => {
       void (async () => {
         await selectChannel(channelId, videoId, true);
@@ -924,8 +974,9 @@ export function createSidebarState(
     confirmDeleteChannel,
     syncChannelOrderFromList,
     reorderChannels,
-    setVideoTypeFilterAndReload,
-    setAcknowledgedFilterAndReload,
+  setVideoTypeFilterAndReload,
+  setAcknowledgedFilterAndReload,
+  clearAllFiltersAndReload,
     bumpVideoListMutationEpoch,
     getVideoListMutationEpoch: () => videoListMutationEpoch,
     updateChannel,

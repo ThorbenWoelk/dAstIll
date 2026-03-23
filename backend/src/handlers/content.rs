@@ -15,7 +15,7 @@ use crate::services::summarizer::{MAX_TRANSCRIPT_FORMAT_ATTEMPTS, SummarizerErro
 use crate::services::youtube::placeholder::is_site_wide_placeholder_description;
 use crate::state::AppState;
 
-use super::{map_db_err, require_video};
+use super::{evict_video_scope_cache, map_db_err, require_video};
 
 pub(crate) const MIN_SUMMARY_QUALITY_SCORE_FOR_ACCEPTANCE: u8 = 7;
 pub(crate) const MAX_SUMMARY_AUTO_REGEN_ATTEMPTS: u8 = 2;
@@ -183,11 +183,11 @@ pub async fn regenerate_summary(
     tracing::info!(video_id = %video_id, "summary regeneration requested");
     let video = require_video(&state, &video_id).await?;
     {
-            db::delete_summary(&state.db, &video_id)
+        db::delete_summary(&state.db, &video_id)
             .await
             .map_err(map_db_err)?;
     }
-    state.read_cache.evict_channel(&video.channel_id).await;
+    evict_video_scope_cache(&state, &video.channel_id).await?;
 
     let summary = ensure_summary(&state, &video_id).await?;
     Ok(Json(summary))
@@ -219,7 +219,7 @@ pub async fn reset_video(
         .await
         .map_err(map_db_err)?;
 
-    state.read_cache.evict_channel(&video.channel_id).await;
+    evict_video_scope_cache(&state, &video.channel_id).await?;
     tracing::info!(video_id = %video_id, "video reset complete - transcript and summary wiped, status pending");
 
     Ok(StatusCode::NO_CONTENT)
@@ -259,13 +259,14 @@ pub(crate) async fn ensure_transcript(
 ) -> Result<Transcript, (StatusCode, String)> {
     let video = require_video(state, video_id).await?;
     {
-            if let Some(transcript) = db::get_transcript(&state.db, video_id)
+        if let Some(transcript) = db::get_transcript(&state.db, video_id)
             .await
             .map_err(map_db_err)?
         {
             if is_valid_cached_transcript(&transcript) {
                 let _ =
-                    db::update_video_transcript_status(&state.db, video_id, ContentStatus::Ready).await;
+                    db::update_video_transcript_status(&state.db, video_id, ContentStatus::Ready)
+                        .await;
                 tracing::debug!(video_id = %video_id, "transcript cache hit");
                 return Ok(transcript);
             }
@@ -282,11 +283,12 @@ pub(crate) async fn ensure_transcript(
     }
 
     tracing::info!(video_id = %video_id, "starting transcript download");
-    let (raw, formatted) = state
-        .transcript
-        .extract(video_id)
-        .await
-        .map_err(|e| map_transcript_err(state, video_id, e))?;
+    let (raw, formatted) = match state.transcript.extract(video_id).await {
+        Ok(pair) => pair,
+        Err(err) => {
+            return Err(apply_transcript_error(state, video_id, err).await);
+        }
+    };
     tracing::info!(
         video_id = %video_id,
         raw_bytes = raw.len(),
@@ -315,7 +317,7 @@ pub(crate) async fn ensure_transcript(
     )
     .await
     .map_err(map_db_err)?;
-    state.read_cache.evict_channel(&video.channel_id).await;
+    evict_video_scope_cache(state, &video.channel_id).await?;
     tracing::info!(video_id = %video_id, "transcript stored - status set to ready");
 
     Ok(transcript)
@@ -327,7 +329,10 @@ pub(crate) async fn ensure_summary(
 ) -> Result<Summary, (StatusCode, String)> {
     let video = require_video(state, video_id).await?;
     {
-            if let Some(summary) = db::get_summary(&state.db, video_id).await.map_err(map_db_err)? {
+        if let Some(summary) = db::get_summary(&state.db, video_id)
+            .await
+            .map_err(map_db_err)?
+        {
             let auto_regen_attempts = db::get_summary_auto_regen_attempts(&state.db, video_id)
                 .await
                 .map_err(map_db_err)?;
@@ -347,8 +352,8 @@ pub(crate) async fn ensure_summary(
                     "summary auto-regeneration requested"
                 );
             } else {
-                let _ =
-                    db::update_video_summary_status(&state.db, video_id, ContentStatus::Ready).await;
+                let _ = db::update_video_summary_status(&state.db, video_id, ContentStatus::Ready)
+                    .await;
                 tracing::debug!(video_id = %video_id, "summary cache hit");
                 return Ok(summary);
             }
@@ -361,7 +366,7 @@ pub(crate) async fn ensure_summary(
     }
 
     if !state.summarizer.is_available().await {
-            db::update_video_summary_status(&state.db, video_id, ContentStatus::Failed)
+        db::update_video_summary_status(&state.db, video_id, ContentStatus::Failed)
             .await
             .map_err(map_db_err)?;
         return Err((
@@ -370,24 +375,27 @@ pub(crate) async fn ensure_summary(
         ));
     }
 
-    let transcript = ensure_transcript(state, video_id)
-        .await
-        .map_err(|(status, message)| {
+    let transcript = match ensure_transcript(state, video_id).await {
+        Ok(t) => t,
+        Err((status, message)) => {
             let next_status = if status == StatusCode::TOO_MANY_REQUESTS {
                 ContentStatus::Pending
             } else {
                 ContentStatus::Failed
             };
-            spawn_status_update(state, video_id, StatusField::Summary, next_status);
-            (status, message)
-        })?;
+            db::update_video_summary_status(&state.db, video_id, next_status)
+                .await
+                .map_err(map_db_err)?;
+            return Err((status, message));
+        }
+    };
     let transcript_text = transcript_text(&transcript)
         .unwrap_or("")
         .trim()
         .to_string();
 
     if transcript_text.is_empty() {
-            db::update_video_summary_status(&state.db, video_id, ContentStatus::Failed)
+        db::update_video_summary_status(&state.db, video_id, ContentStatus::Failed)
             .await
             .map_err(map_db_err)?;
         return Err((
@@ -396,11 +404,13 @@ pub(crate) async fn ensure_summary(
         ));
     }
 
-    let (content, model) = state
+    let summarize_result = state
         .summarizer
         .summarize(&transcript_text, &video.title, video_id, &video.channel_id)
-        .await
-        .map_err(|e| {
+        .await;
+    let (content, model) = match summarize_result {
+        Ok(pair) => pair,
+        Err(e) => {
             let error_msg = e.to_string();
             let status = if error_msg.contains("rate limited") || error_msg.contains("429") {
                 StatusCode::TOO_MANY_REQUESTS
@@ -414,9 +424,12 @@ pub(crate) async fn ensure_summary(
                 ContentStatus::Failed
             };
 
-            spawn_status_update(state, video_id, StatusField::Summary, next_status);
-            (status, error_msg)
-        })?;
+            db::update_video_summary_status(&state.db, video_id, next_status)
+                .await
+                .map_err(map_db_err)?;
+            return Err((status, error_msg));
+        }
+    };
     tracing::info!(video_id = %video_id, "summary generation completed");
 
     let summary = Summary {
@@ -442,7 +455,7 @@ pub(crate) async fn ensure_summary(
     )
     .await
     .map_err(map_db_err)?;
-    state.read_cache.evict_channel(&video.channel_id).await;
+    evict_video_scope_cache(state, &video.channel_id).await?;
     tracing::info!(video_id = %video_id, "summary stored - status set to ready");
 
     Ok(summary)
@@ -462,9 +475,10 @@ async fn save_manual_transcript_content(
     let effective_render_mode = render_mode
         .or(existing_render_mode)
         .unwrap_or(TranscriptRenderMode::PlainText);
-    let transcript = db::save_manual_transcript(&state.db, video_id, content, effective_render_mode)
-        .await
-        .map_err(map_db_err)?;
+    let transcript =
+        db::save_manual_transcript(&state.db, video_id, content, effective_render_mode)
+            .await
+            .map_err(map_db_err)?;
     sync_search_source(
         &state.db,
         video_id,
@@ -473,7 +487,7 @@ async fn save_manual_transcript_content(
     )
     .await
     .map_err(map_db_err)?;
-    state.read_cache.evict_channel(&video.channel_id).await;
+    evict_video_scope_cache(state, &video.channel_id).await?;
     Ok(transcript)
 }
 
@@ -494,31 +508,8 @@ async fn save_manual_summary_content(
     )
     .await
     .map_err(map_db_err)?;
-    state.read_cache.evict_channel(&video.channel_id).await;
+    evict_video_scope_cache(state, &video.channel_id).await?;
     Ok(summary)
-}
-
-enum StatusField {
-    Transcript,
-    Summary,
-}
-
-fn spawn_status_update(
-    state: &AppState,
-    video_id: &str,
-    field: StatusField,
-    status: ContentStatus,
-) {
-    let state = state.clone();
-    let video_id = video_id.to_string();
-    tokio::spawn(async move {
-            let _ = match field {
-            StatusField::Transcript => {
-                db::update_video_transcript_status(&state.db, &video_id, status).await
-            }
-            StatusField::Summary => db::update_video_summary_status(&state.db, &video_id, status).await,
-        };
-    });
 }
 
 fn transcript_text(transcript: &Transcript) -> Option<&str> {
@@ -546,7 +537,11 @@ async fn sync_search_source(
     }
 }
 
-fn map_transcript_err(
+/// Persist transcript status after extraction failure **before** returning to callers
+/// (e.g. the queue worker) that increment `retry_count`. A previous `tokio::spawn` here
+/// raced S3 writes and left rows stuck in `loading` with `retry_count >= MAX`, which
+/// `next_queue_task` then skips forever.
+async fn apply_transcript_error(
     state: &AppState,
     video_id: &str,
     err: crate::services::transcript::TranscriptError,
@@ -579,7 +574,13 @@ fn map_transcript_err(
         _ => ContentStatus::Failed,
     };
 
-    spawn_status_update(state, video_id, StatusField::Transcript, next_status);
+    if let Err(e) = db::update_video_transcript_status(&state.db, video_id, next_status).await {
+        tracing::error!(
+            video_id = %video_id,
+            error = %e,
+            "failed to persist transcript status after extraction error"
+        );
+    }
 
     (status, err.to_string())
 }
@@ -587,8 +588,8 @@ fn map_transcript_err(
 #[cfg(test)]
 mod tests {
     use super::{
-        MAX_SUMMARY_AUTO_REGEN_ATTEMPTS, is_valid_cached_transcript, should_auto_regenerate_summary,
-        transcript_text,
+        MAX_SUMMARY_AUTO_REGEN_ATTEMPTS, is_valid_cached_transcript,
+        should_auto_regenerate_summary, transcript_text,
     };
     use crate::models::{ContentStatus, Transcript, TranscriptRenderMode};
 
@@ -610,7 +611,9 @@ mod tests {
     #[test]
     fn valid_cached_transcript_rejects_youtube_site_wide_blurb_in_raw_text() {
         let t = make_transcript(
-            Some("Enjoy the videos and music you love, upload original content, and share it all with friends, family, and the world on YouTube.\n"),
+            Some(
+                "Enjoy the videos and music you love, upload original content, and share it all with friends, family, and the world on YouTube.\n",
+            ),
             None,
         );
         assert!(!is_valid_cached_transcript(&t));
@@ -620,7 +623,9 @@ mod tests {
     fn valid_cached_transcript_rejects_youtube_site_wide_blurb_in_formatted_markdown() {
         let t = make_transcript(
             None,
-            Some("Enjoy the videos and music you love, upload original content, and share it all with friends, family, and the world on YouTube.\n"),
+            Some(
+                "Enjoy the videos and music you love, upload original content, and share it all with friends, family, and the world on YouTube.\n",
+            ),
         );
         assert!(!is_valid_cached_transcript(&t));
     }

@@ -459,7 +459,13 @@
       });
       history.replaceState(history.state, "", href);
     },
+    onOpenChannelOverview: async (channelId: string) => {
+      await goto(`/channels/${encodeURIComponent(channelId)}`);
+    },
   });
+
+  let videoAcknowledgeSeq = 0;
+  let videoAcknowledgeSync = $state<{ seq: number; video: Video } | null>(null);
 
   // Backward compatibility aliases for existing UI logic
   // (We use getters to stay reactive to the sidebar state)
@@ -823,11 +829,16 @@
   }
 
   async function deleteExistingHighlight(highlightId: number) {
-    if (!selectedVideoId || !isOperator) {
+    const targetVideoId =
+      selectedVideoId ??
+      Object.keys(videoHighlightsByVideoId).find((videoId) =>
+        (videoHighlightsByVideoId[videoId] ?? []).some(
+          (h) => Number(h.id) === highlightId,
+        ),
+      );
+    if (!targetVideoId) {
       return;
     }
-
-    const targetVideoId = selectedVideoId;
     deletingHighlightId = highlightId;
     errorMessage = null;
 
@@ -2023,6 +2034,7 @@
     errorMessage = null;
 
     const previousVideos = [...sidebarState.videos];
+    const previousSelectedVideoId = sidebarState.selectedVideoId;
     const newAcknowledged = !video.acknowledged;
     const targetVideoId = sidebarState.selectedVideoId;
 
@@ -2030,13 +2042,33 @@
     sidebarState.bumpVideoListMutationEpoch();
 
     // Optimistic update — flip state immediately, no loading indicator
-    sidebarState.setVideos(
-      applyOptimisticAcknowledge(
-        sidebarState.videos,
-        targetVideoId,
-        newAcknowledged,
-      ),
-    );
+    const optimisticVideo = { ...video, acknowledged: newAcknowledged };
+    const optimisticList = applyOptimisticAcknowledge(
+      sidebarState.videos,
+      targetVideoId,
+      newAcknowledged,
+    ).filter(matchesAcknowledgedFilter);
+    sidebarState.setVideos(optimisticList);
+    videoAcknowledgeSeq += 1;
+    videoAcknowledgeSync = {
+      seq: videoAcknowledgeSeq,
+      video: optimisticVideo,
+    };
+
+    if (
+      previousSelectedVideoId &&
+      !optimisticList.some((v) => v.id === previousSelectedVideoId)
+    ) {
+      editing = false;
+      clearFormattingFeedbackState();
+      if (optimisticList.length === 0) {
+        sidebarState.setSelectedVideoId(null);
+        contentText = "";
+        draft = "";
+      } else {
+        await selectVideo(optimisticList[0].id);
+      }
+    }
 
     try {
       const updated = await updateAcknowledged(targetVideoId, newAcknowledged);
@@ -2045,6 +2077,9 @@
           .map((v) => (v.id === updated.id ? updated : v))
           .filter(matchesAcknowledgedFilter),
       );
+
+      videoAcknowledgeSeq += 1;
+      videoAcknowledgeSync = { seq: videoAcknowledgeSeq, video: updated };
 
       const stillSelected = sidebarState.videos.some(
         (v) => v.id === sidebarState.selectedVideoId,
@@ -2063,6 +2098,12 @@
     } catch (error) {
       // Revert optimistic update on failure
       sidebarState.setVideos(previousVideos);
+      sidebarState.setSelectedVideoId(previousSelectedVideoId);
+      const reverted = previousVideos.find((v) => v.id === targetVideoId);
+      if (reverted) {
+        videoAcknowledgeSeq += 1;
+        videoAcknowledgeSync = { seq: videoAcknowledgeSeq, video: reverted };
+      }
       errorMessage = (error as Error).message;
     }
   }
@@ -2123,10 +2164,6 @@
         channel.id === updatedChannel.id ? updatedChannel : channel,
       ),
     );
-  }
-
-  async function openChannelOverview(channelId: string) {
-    await goto(`/channels/${encodeURIComponent(channelId)}`);
   }
 
   async function openChannelVideo(
@@ -2196,7 +2233,7 @@
     },
     onToggleAcknowledge: toggleAcknowledge,
     onCreateHighlight: saveSelectionHighlight,
-    onDeleteHighlight: isOperator ? deleteExistingHighlight : undefined,
+    onDeleteHighlight: deleteExistingHighlight,
     onShowChannels: () => {
       mobileTab = "browse";
     },
@@ -2236,6 +2273,7 @@
   {#snippet sidebar(shell)}
     <WorkspaceSidebar
       videoListMode="per_channel_preview"
+      addSourceErrorMessage={errorMessage}
       initialChannelPreviews={$page.data.channelPreviews ?? {}}
       initialChannelPreviewsFilterKey={$page.data.channelPreviewsFilterKey ??
         "all:all:default"}
@@ -2249,6 +2287,7 @@
       channelActions={sidebarState.channelActions}
       videoState={sidebarState.videoState}
       videoActions={sidebarState.videoActions}
+      videoAcknowledgeSync={videoAcknowledgeSync}
     />
   {/snippet}
   {#snippet topBar()}

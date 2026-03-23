@@ -81,6 +81,7 @@ export interface WorkspaceSidebarVideoActions {
   onAcknowledgedFilterChange: (
     value: AcknowledgedFilter,
   ) => Promise<void> | void;
+  onClearAllFilters?: () => Promise<void> | void;
 }
 
 export interface WorkspaceContentSelection {

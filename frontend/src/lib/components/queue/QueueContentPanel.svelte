@@ -95,7 +95,7 @@
       {/if}
     </div>
     <div
-      class="flex flex-col gap-2 border-b border-[var(--accent-border-soft)] pb-3 lg:flex-row lg:items-end lg:justify-between"
+      class="flex flex-col gap-2 border-b border-[var(--border-soft)] pb-3 lg:flex-row lg:items-end lg:justify-between"
     >
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-2 lg:hidden">
@@ -169,130 +169,111 @@
         class="flex h-full flex-col items-center justify-center py-20 text-center"
       >
         <div
-          class="max-w-[24rem] rounded-[var(--radius-lg)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] px-6 py-8 shadow-sm"
+          class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[var(--accent-soft)]/60 text-[var(--accent-strong)]"
         >
-          <div
-            class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[var(--accent-soft)]/60 text-[var(--accent-strong)]"
+          <svg
+            width="22"
+            height="22"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
           >
-            <svg
-              width="22"
-              height="22"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <rect x="3" y="4" width="6" height="16" rx="1.5" />
-              <rect x="10" y="4" width="5" height="16" rx="1.5" />
-              <rect x="16" y="4" width="5" height="16" rx="1.5" />
-            </svg>
-          </div>
-          <p class="mt-4 text-[17px] font-semibold text-[var(--foreground)]">
-            Select a channel
-          </p>
-          <p class="mt-2 text-[14px] leading-6 text-[var(--soft-foreground)]">
-            Choose a channel to inspect queue health, sync depth, and current
-            processing activity.
-          </p>
+            <rect x="3" y="4" width="6" height="16" rx="1.5" />
+            <rect x="10" y="4" width="5" height="16" rx="1.5" />
+            <rect x="16" y="4" width="5" height="16" rx="1.5" />
+          </svg>
         </div>
+        <p class="mt-4 text-[17px] font-semibold text-[var(--foreground)]">
+          Select a channel
+        </p>
+        <p class="mt-2 max-w-[22rem] text-[14px] leading-6 text-[var(--soft-foreground)]">
+          Choose a channel to inspect queue health, sync depth, and current
+          processing activity.
+        </p>
       </div>
     {:else}
-      <div class="flex flex-wrap gap-2 pb-4">
-        <span
-          class="rounded-full border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] px-3 py-1 text-[11px] font-medium text-[var(--soft-foreground)]"
-        >
-          {panelState.queueStats.total} items
-        </span>
-        <span
-          class="rounded-full border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] px-3 py-1 text-[11px] font-medium text-[var(--soft-foreground)]"
-        >
-          {panelState.queueStats.pending} waiting
-        </span>
-        {#if panelState.queueStats.loading > 0}
-          <span
-            class="rounded-full border border-amber-500/25 bg-amber-500/10 px-3 py-1 text-[11px] font-medium text-amber-700"
-          >
-            {panelState.queueStats.loading} active
-          </span>
-        {/if}
-        {#if panelState.queueStats.failed > 0}
-          <span
-            class="rounded-full border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-1 text-[11px] font-medium text-[var(--danger-foreground)]"
-          >
-            {panelState.queueStats.failed} failed
-          </span>
-        {/if}
-      </div>
+      <div class="flex flex-col gap-8 pb-24">
 
-      <div class="grid gap-4 pb-24">
-        <article
-          class="rounded-[var(--radius-lg)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] p-5 shadow-sm"
-        >
+        <!-- Stats row -->
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+          <span class="text-[13px] font-semibold text-[var(--foreground)]">
+            {panelState.queueStats.total} items
+          </span>
+          <span class="text-[13px] text-[var(--soft-foreground)]">
+            {panelState.queueStats.pending} waiting
+          </span>
+          {#if panelState.queueStats.loading > 0}
+            <span class="rounded-full bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-400">
+              {panelState.queueStats.loading} active
+            </span>
+          {/if}
+          {#if panelState.queueStats.failed > 0}
+            <span class="rounded-full bg-[var(--danger-soft)] px-2.5 py-0.5 text-[11px] font-semibold text-[var(--danger-foreground)]">
+              {panelState.queueStats.failed} failed
+            </span>
+          {/if}
+        </div>
+
+        <!-- Stage info -->
+        <div>
           <p
             class="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-55"
           >
             Current stage
           </p>
           <p
-            class="mt-2 text-[18px] font-semibold tracking-tight text-[var(--foreground)]"
+            class="mt-2 text-[17px] font-semibold tracking-tight text-[var(--foreground)]"
           >
             {queueTabCopy[panelState.queueTab].title}
           </p>
-          <p class="mt-3 text-[13px] leading-6 text-[var(--soft-foreground)]">
-            {queueTabCopy[panelState.queueTab].detail}
-          </p>
 
-          <div
-            class="mt-5 rounded-[var(--radius-md)] border border-[var(--accent-border-soft)] bg-[var(--surface-frost)] px-4 py-3"
-          >
-            <p
-              class="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-55"
-            >
-              Effective sync from
-            </p>
-            <p class="mt-2 text-[14px] font-semibold text-[var(--foreground)]">
-              {formatSyncDate(panelState.effectiveEarliestSyncDate)}
-            </p>
+          <div class="mt-4 grid grid-cols-2 gap-x-6 gap-y-4">
+            <div>
+              <p
+                class="mb-1 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50"
+              >
+                Sync from
+              </p>
+              <p class="text-[13px] font-semibold text-[var(--foreground)]">
+                {formatSyncDate(panelState.effectiveEarliestSyncDate)}
+              </p>
+            </div>
           </div>
 
           {#if panelState.refreshingChannel}
-            <div
-              class="mt-5 flex items-center gap-2 rounded-[var(--radius-md)] border border-[var(--accent-border-soft)] bg-[var(--accent-wash)]/70 px-4 py-3 text-[12px] text-[var(--soft-foreground)]"
-            >
+            <p class="mt-4 flex items-center gap-2 text-[12px] text-[var(--soft-foreground)]">
               <span
-                class="h-3 w-3 animate-spin rounded-full border-[1.5px] border-[var(--border)] border-t-[var(--accent)]"
+                class="h-3 w-3 shrink-0 animate-spin rounded-full border-[1.5px] border-[var(--border)] border-t-[var(--accent)]"
               ></span>
               Refreshing channel state in the background.
-            </div>
+            </p>
           {/if}
 
           {#if panelState.queueStats.total === 0}
-            <div
-              class="mt-5 rounded-[var(--radius-md)] border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-[12px] text-[var(--soft-foreground)]"
-            >
+            <p class="mt-4 text-[12px] text-[var(--soft-foreground)] opacity-70">
               Everything for this stage is currently clear.
-            </div>
+            </p>
           {/if}
-        </article>
+        </div>
 
-        <article
-          class="rounded-[var(--radius-lg)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] p-5 shadow-sm"
-        >
+        <!-- Sync depth -->
+        <div class="border-t border-[var(--border-soft)] pt-6">
           <p
             class="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-55"
           >
             Sync depth
           </p>
-          <p class="mt-2 text-[15px] font-semibold text-[var(--foreground)]">
+          <p class="mt-2 text-[14px] font-semibold text-[var(--foreground)]">
             Control how far back this queue should sync.
           </p>
-          <div class="mt-4 flex items-center gap-2">
+          <div class="mt-3 flex items-center gap-2">
             <input
               type="date"
-              class="min-w-0 flex-1 rounded-[var(--radius-sm)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] px-2.5 py-2 text-[12px] font-medium transition-colors focus:border-[var(--accent)]/40 focus:outline-none"
+              class="min-w-0 flex-1 rounded-[var(--radius-sm)] border border-[var(--border-soft)] bg-transparent px-2.5 py-2 text-[12px] font-medium transition-colors focus:border-[var(--accent)]/40 focus:outline-none"
               bind:value={localSyncDateInput}
               disabled={panelState.savingSyncDate}
             />
@@ -305,74 +286,62 @@
               {panelState.savingSyncDate ? "..." : "Set"}
             </button>
           </div>
-          <p class="mt-3 text-[12px] leading-6 text-[var(--soft-foreground)]">
-            Current boundary: {formatSyncDate(
-              panelState.effectiveEarliestSyncDate,
-            )}.
+          <p class="mt-2 text-[12px] text-[var(--soft-foreground)]">
+            Current boundary: {formatSyncDate(panelState.effectiveEarliestSyncDate)}.
           </p>
-        </article>
+        </div>
 
+        <!-- Failed downloads -->
         {#if panelState.queueTab === "transcripts" && panelState.failedTranscriptVideos && panelState.failedTranscriptVideos.length > 0}
-          <article
-            class="rounded-[var(--radius-lg)] border border-[var(--danger-border)] bg-[var(--panel-surface)] p-5 shadow-sm"
-          >
-            <div class="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p
-                  class="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-55"
-                >
-                  Failed downloads
-                </p>
-                <p
-                  class="mt-2 text-[18px] font-semibold tracking-tight text-[var(--foreground)]"
-                >
-                  Retry transcript extraction
-                </p>
-              </div>
-
+          <div class="border-t border-[var(--border-soft)] pt-6">
+            <div class="flex items-center justify-between gap-3">
+              <p
+                class="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-55"
+              >
+                Failed downloads
+              </p>
               <span
-                class="rounded-full border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-1 text-[11px] font-medium text-[var(--danger-foreground)]"
+                class="rounded-full bg-[var(--danger-soft)] px-2.5 py-0.5 text-[11px] font-semibold text-[var(--danger-foreground)]"
               >
                 {panelState.failedTranscriptVideos.length} failed
               </span>
             </div>
+            <p class="mt-2 text-[14px] font-semibold text-[var(--foreground)]">
+              Retry transcript extraction
+            </p>
 
-            <div class="mt-5 space-y-3">
+            <div class="mt-4 space-y-0">
               {#each panelState.failedTranscriptVideos as video (video.id)}
                 <div
-                  class="rounded-[var(--radius-md)] border border-[var(--accent-border-soft)] bg-[var(--surface)] px-4 py-4"
+                  class="flex flex-col gap-3 border-t border-[var(--border-soft)] py-4 first:border-t-0 sm:flex-row sm:items-center sm:justify-between"
                 >
-                  <div
-                    class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div class="min-w-0">
-                      <p
-                        class="line-clamp-2 text-[14px] font-semibold text-[var(--foreground)]"
-                      >
-                        {video.title}
-                      </p>
-                      <p class="mt-1 text-[12px] text-[var(--soft-foreground)]">
-                        Published {formatShortDate(video.published_at)}
-                      </p>
-                    </div>
-
-                    <button
-                      type="button"
-                      class="inline-flex items-center justify-center rounded-full bg-[var(--foreground)] px-4 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--background)] transition-all hover:bg-[var(--accent-strong)] disabled:opacity-40"
-                      onclick={() => void retryTranscript(video.id)}
-                      disabled={panelState.retryingTranscriptVideoId ===
-                        video.id}
+                  <div class="min-w-0">
+                    <p
+                      class="line-clamp-2 text-[14px] font-semibold text-[var(--foreground)]"
                     >
-                      {panelState.retryingTranscriptVideoId === video.id
-                        ? "Retrying"
-                        : "Retry download"}
-                    </button>
+                      {video.title}
+                    </p>
+                    <p class="mt-0.5 text-[12px] text-[var(--soft-foreground)]">
+                      Published {formatShortDate(video.published_at)}
+                    </p>
                   </div>
+
+                  <button
+                    type="button"
+                    class="inline-flex shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] px-4 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--background)] transition-all hover:bg-[var(--accent-strong)] disabled:opacity-40"
+                    onclick={() => void retryTranscript(video.id)}
+                    disabled={panelState.retryingTranscriptVideoId === video.id}
+                  >
+                    {panelState.retryingTranscriptVideoId === video.id
+                      ? "Retrying"
+                      : "Retry"}
+                  </button>
                 </div>
               {/each}
             </div>
-          </article>
+          </div>
         {/if}
+
       </div>
     {/if}
   </div>

@@ -1,11 +1,13 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
   import { onMount } from "svelte";
-  import { isAiAvailable, listHighlights } from "$lib/api";
+  import { deleteHighlight, isAiAvailable, listHighlights } from "$lib/api";
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
   import { createAiStatusPoller } from "$lib/utils/ai-poller";
   import { DOCS_URL } from "$lib/app-config";
+  import ErrorToast from "$lib/components/ErrorToast.svelte";
   import FeatureGuide from "$lib/components/FeatureGuide.svelte";
+  import TrashIcon from "$lib/components/icons/TrashIcon.svelte";
   import type { TourStep } from "$lib/components/FeatureGuide.svelte";
   import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
   import type {
@@ -16,11 +18,14 @@
   } from "$lib/types";
   import { buildWorkspaceViewHref } from "$lib/view-url";
   import { formatShortDate } from "$lib/utils/date";
+  import { removeHighlightFromGroups } from "$lib/utils/highlights";
 
   let aiStatus = $state<AiStatus | null>(null);
   let groups = $state<HighlightChannelGroup[]>([]);
   let loading = $state(true);
   let errorMessage = $state<string | null>(null);
+  let deletingHighlightId = $state<number | null>(null);
+  let deleteError = $state<string | null>(null);
 
   let guideOpen = $state(false);
   let guideStep = $state(0);
@@ -110,6 +115,19 @@
       errorMessage = (error as Error).message;
     } finally {
       loading = false;
+    }
+  }
+
+  async function removeHighlightEntry(highlightId: number) {
+    deletingHighlightId = highlightId;
+    deleteError = null;
+    try {
+      await deleteHighlight(highlightId);
+      groups = removeHighlightFromGroups(groups, highlightId);
+    } catch (error) {
+      deleteError = (error as Error).message;
+    } finally {
+      deletingHighlightId = null;
     }
   }
 
@@ -283,34 +301,56 @@
 
                         <div class="mt-4 space-y-3">
                           {#each video.highlights as highlight (highlight.id)}
-                            <a
-                              href={buildVideoHref(
-                                group.channel_id,
-                                video.video_id,
-                                highlight.source,
-                              )}
-                              class="block rounded-[var(--radius-sm)] border border-[var(--accent-border-soft)] bg-[var(--accent-wash)] px-4 py-3 transition-colors hover:border-[var(--accent)]/35 hover:bg-[var(--accent-wash-strong)]"
+                            {@const hid = Number(highlight.id)}
+                            <div
+                              class="relative rounded-[var(--radius-sm)] border border-[var(--accent-border-soft)] bg-[var(--accent-wash)] transition-colors hover:border-[var(--accent)]/35 hover:bg-[var(--accent-wash-strong)]"
                             >
-                              <div
-                                class="flex flex-wrap items-center justify-between gap-2"
+                              <a
+                                href={buildVideoHref(
+                                  group.channel_id,
+                                  video.video_id,
+                                  highlight.source,
+                                )}
+                                class="block px-4 py-3 pr-14 text-[var(--foreground)]"
                               >
-                                <span
-                                  class="inline-flex rounded-full bg-[var(--accent-wash-strong)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--accent-strong)]"
+                                <div
+                                  class="flex flex-wrap items-center justify-between gap-2"
                                 >
-                                  {highlight.source}
-                                </span>
-                                <span
-                                  class="text-[11px] text-[var(--soft-foreground)] opacity-50"
+                                  <span
+                                    class="inline-flex rounded-full bg-[var(--accent-wash-strong)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--accent-strong)]"
+                                  >
+                                    {highlight.source}
+                                  </span>
+                                  <span
+                                    class="text-[11px] text-[var(--soft-foreground)] opacity-50"
+                                  >
+                                    Saved {formatShortDate(
+                                      highlight.created_at,
+                                    )}
+                                  </span>
+                                </div>
+                                <p
+                                  class="mt-3 whitespace-pre-wrap text-[15px] leading-relaxed"
                                 >
-                                  Saved {formatShortDate(highlight.created_at)}
-                                </span>
-                              </div>
-                              <p
-                                class="mt-3 whitespace-pre-wrap text-[15px] leading-relaxed text-[var(--foreground)]"
+                                  {highlight.text}
+                                </p>
+                              </a>
+                              <button
+                                type="button"
+                                class="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--danger)] disabled:cursor-not-allowed disabled:opacity-50"
+                                disabled={deletingHighlightId === hid}
+                                onclick={() => void removeHighlightEntry(hid)}
+                                aria-label="Delete highlight"
                               >
-                                {highlight.text}
-                              </p>
-                            </a>
+                                <TrashIcon
+                                  size={14}
+                                  strokeWidth={2.2}
+                                  class={deletingHighlightId === hid
+                                    ? "animate-pulse"
+                                    : ""}
+                                />
+                              </button>
+                            </div>
                           {/each}
                         </div>
                       </div>
@@ -333,4 +373,13 @@
     onClose={closeGuide}
     onStep={setGuideStep}
   />
+
+  {#if deleteError}
+    <ErrorToast
+      message={deleteError}
+      onDismiss={() => {
+        deleteError = null;
+      }}
+    />
+  {/if}
 </WorkspaceShell>

@@ -5,6 +5,12 @@ use crate::models::VideoInfo;
 
 use super::{WatchMetadata, WatchVideoDetails, YouTubeError, YouTubeService};
 
+fn video_info_missing_channel_identity(info: &VideoInfo) -> bool {
+    info.channel_id
+        .as_deref()
+        .is_none_or(|channel_id| channel_id.trim().is_empty())
+}
+
 impl YouTubeService {
     pub(crate) async fn resolve_from_url(
         &self,
@@ -274,28 +280,70 @@ impl YouTubeService {
             .send()
             .await?;
 
-        if !response.status().is_success() {
+        let mut info = if response.status().is_success() {
+            let html = response.text().await?;
+            let details = Self::extract_video_details_from_watch_html(&html);
+
+            VideoInfo {
+                video_id: video_id.to_string(),
+                watch_url,
+                title: details
+                    .title
+                    .unwrap_or_else(|| format!("YouTube video {video_id}")),
+                description: super::placeholder::sanitize_optional_description(details.description),
+                thumbnail_url: details.thumbnail_url,
+                channel_name: details.channel_name,
+                channel_id: details.channel_id,
+                published_at: details.published_at,
+                duration_iso8601: details.duration_iso8601,
+                duration_seconds: details.duration_seconds,
+                view_count: details.view_count,
+            }
+        } else if let Some(api_key) = self.api_key.as_deref() {
+            return self.fetch_video_info_from_data_api(video_id, api_key).await;
+        } else {
             return Err(YouTubeError::ChannelNotFound);
+        };
+
+        if video_info_missing_channel_identity(&info) {
+            let cooldown_active = self
+                .quota_cooldown
+                .as_ref()
+                .is_some_and(|cd| cd.is_active());
+
+            if let Some(api_key) = self.api_key.as_deref() {
+                if !cooldown_active {
+                    if let Ok(data_api_info) =
+                        self.fetch_video_info_from_data_api(video_id, api_key).await
+                    {
+                        if video_info_missing_channel_identity(&info) {
+                            info.channel_id = data_api_info.channel_id.clone();
+                            info.channel_name = data_api_info.channel_name.clone();
+                        }
+                        if info.description.is_none() {
+                            info.description = data_api_info.description.clone();
+                        }
+                        if info.thumbnail_url.is_none() {
+                            info.thumbnail_url = data_api_info.thumbnail_url.clone();
+                        }
+                        if info.published_at.is_none() {
+                            info.published_at = data_api_info.published_at;
+                        }
+                        if info.duration_iso8601.is_none() {
+                            info.duration_iso8601 = data_api_info.duration_iso8601.clone();
+                        }
+                        if info.duration_seconds.is_none() {
+                            info.duration_seconds = data_api_info.duration_seconds;
+                        }
+                        if info.view_count.is_none() {
+                            info.view_count = data_api_info.view_count;
+                        }
+                    }
+                }
+            }
         }
 
-        let html = response.text().await?;
-        let details = Self::extract_video_details_from_watch_html(&html);
-
-        Ok(VideoInfo {
-            video_id: video_id.to_string(),
-            watch_url,
-            title: details
-                .title
-                .unwrap_or_else(|| format!("YouTube video {video_id}")),
-            description: super::placeholder::sanitize_optional_description(details.description),
-            thumbnail_url: details.thumbnail_url,
-            channel_name: details.channel_name,
-            channel_id: details.channel_id,
-            published_at: details.published_at,
-            duration_iso8601: details.duration_iso8601,
-            duration_seconds: details.duration_seconds,
-            view_count: details.view_count,
-        })
+        Ok(info)
     }
 
     fn extract_video_details_from_watch_html(html: &str) -> WatchVideoDetails {
@@ -397,9 +445,10 @@ impl YouTubeService {
                 .filter(|value| !value.is_empty())
                 .map(ToOwned::to_owned);
 
-        let desc_is_placeholder = details.description.as_deref().is_some_and(|d| {
-            super::placeholder::is_site_wide_placeholder_description(d)
-        });
+        let desc_is_placeholder = details
+            .description
+            .as_deref()
+            .is_some_and(|d| super::placeholder::is_site_wide_placeholder_description(d));
 
         if details.description.is_none() || desc_is_placeholder {
             if let Some(sd) = short_desc {
@@ -705,5 +754,39 @@ impl YouTubeService {
         }
 
         if matched_unit { Some(total) } else { None }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::models::VideoInfo;
+
+    use super::video_info_missing_channel_identity;
+
+    fn build_video_info(channel_id: Option<&str>) -> VideoInfo {
+        VideoInfo {
+            video_id: "video-123".to_string(),
+            watch_url: "https://www.youtube.com/watch?v=video-123".to_string(),
+            title: "Video".to_string(),
+            description: None,
+            thumbnail_url: None,
+            channel_name: None,
+            channel_id: channel_id.map(str::to_string),
+            published_at: None,
+            duration_iso8601: None,
+            duration_seconds: None,
+            view_count: None,
+        }
+    }
+
+    #[test]
+    fn missing_channel_identity_detects_absent_or_blank_channel_ids() {
+        assert!(video_info_missing_channel_identity(&build_video_info(None)));
+        assert!(video_info_missing_channel_identity(&build_video_info(
+            Some("   ")
+        )));
+        assert!(!video_info_missing_channel_identity(&build_video_info(
+            Some("UC1234567890123456789012")
+        )));
     }
 }

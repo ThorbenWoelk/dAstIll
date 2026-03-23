@@ -1,4 +1,5 @@
 import type {
+  AddVideoResult,
   AiHealthResponse,
   Channel,
   ChannelSnapshot,
@@ -231,27 +232,42 @@ async function cachedGetRequest<T>(
     return (await inFlight) as T;
   }
 
-  const epochAtRequestStart = pathGetCacheEpoch.get(path) ?? 0;
-  const pendingRequest = request<T>(path)
-    .then((value) => {
-      if ((pathGetCacheEpoch.get(path) ?? 0) !== epochAtRequestStart) {
-        inFlightGetRequests.delete(path);
-        return value;
+  const pendingRequest = (async (): Promise<T> => {
+    const MAX_EPOCH_RETRIES = 32;
+    try {
+      for (let attempt = 0; attempt < MAX_EPOCH_RETRIES; attempt++) {
+        const epochAtRequestStart = pathGetCacheEpoch.get(path) ?? 0;
+        const value = await request<T>(path);
+        if ((pathGetCacheEpoch.get(path) ?? 0) === epochAtRequestStart) {
+          getResponseCache.set(path, {
+            expiresAt: Date.now() + GET_CACHE_TTL_MS,
+            value,
+          });
+          return value;
+        }
+        // Path was invalidated while the GET was in flight — do not return stale
+        // data to callers (e.g. snapshot refetch after mark-as-read).
       }
-      getResponseCache.set(path, {
-        expiresAt: Date.now() + GET_CACHE_TTL_MS,
-        value,
-      });
+      throw new Error(`GET ${path}: cache epoch kept changing; giving up`);
+    } finally {
       inFlightGetRequests.delete(path);
-      return value;
-    })
-    .catch((error) => {
-      inFlightGetRequests.delete(path);
-      throw error;
-    });
+    }
+  })().catch((error) => {
+    inFlightGetRequests.delete(path);
+    throw error;
+  });
 
   inFlightGetRequests.set(path, pendingRequest as Promise<unknown>);
   return pendingRequest;
+}
+
+function invalidateAllChannelReads() {
+  invalidateGetRequestCache(
+    (path) =>
+      path === "/api/channels" ||
+      path.startsWith("/api/channels/") ||
+      path.startsWith("/api/workspace/bootstrap"),
+  );
 }
 
 export function listChannels() {
@@ -388,6 +404,17 @@ export function addChannel(input: string) {
     body: JSON.stringify({ input }),
   }).then((result) => {
     invalidateChannelListCache();
+    return result;
+  });
+}
+
+export function addVideo(input: string) {
+  return request<AddVideoResult>("/api/videos", {
+    method: "POST",
+    body: JSON.stringify({ input }),
+  }).then((result) => {
+    invalidateAllChannelReads();
+    invalidateVideoInfoCache(result.video.id);
     return result;
   });
 }

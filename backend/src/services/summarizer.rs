@@ -16,7 +16,8 @@ const TRANSCRIPT_FORMAT_HARD_TIMEOUT: Duration =
     Duration::from_secs(TRANSCRIPT_FORMAT_HARD_TIMEOUT_SECS);
 
 const SUMMARY_PREAMBLE: &str = "You are a meticulous, comprehensive transcript-grounded summarizer. \
-    Your summaries must capture ALL key points from the transcript - never skip or gloss over content. \
+    Your summaries must capture all substantive key points from the transcript; do not skip or gloss over editorial content. \
+    If you are confident a portion is a paid promotion, sponsor read, or standalone ad segment, you may omit it from the summary. \
     Use only facts explicitly present in the provided transcript and title. Never invent details. \
     Scale summary length proportionally to transcript length.";
 const TRANSCRIPT_CLEAN_PREAMBLE: &str = "You are a deterministic transcript formatter. Preserve transcript body tokens exactly and only improve layout.";
@@ -340,7 +341,7 @@ fn build_summary_prompt(transcript: &str, video_title: &str) -> String {
     } else if word_count < 5000 {
         "This is a long transcript. Provide a detailed, comprehensive summary. Use sub-sections under Key Points if the video covers multiple distinct topics. Every argument, example, and conclusion in the transcript should be reflected."
     } else {
-        "This is a very long transcript. Provide an extensive, well-structured summary. Use sub-sections and group related points by theme. Leave nothing out - every significant topic, argument, example, data point, and conclusion must appear in the summary."
+        "This is a very long transcript. Provide an extensive, well-structured summary. Use sub-sections and group related points by theme. Cover every significant editorial topic, argument, example, data point, and conclusion (confidently identified sponsor or ad segments may be omitted as described in the task rules)."
     };
 
     format!(
@@ -354,7 +355,11 @@ Transcript (authoritative source - {word_count} words):
 Length guidance: {length_guidance}
 
 Task:
-Create a comprehensive markdown summary grounded only in the transcript. The summary must capture ALL key points, arguments, examples, and conclusions from the transcript. Nothing should be skipped or glossed over.
+Create a comprehensive markdown summary grounded only in the transcript. The summary must capture all substantive key points, arguments, examples, and conclusions from the editorial content. Do not skip or gloss over meaningful parts of the main discussion.
+
+Sponsor and ad segments:
+- If you are confident that a contiguous stretch of the transcript is a paid promotion, sponsor read, discount pitch, or standalone ad break (clear verbal patterns, isolated product pitch, typical use-code or affiliate pitches, explicit sponsored-by style framing), you may leave it out of the summary entirely.
+- When in doubt, include the material briefly rather than risk dropping real content.
 
 Reliability rules:
 - Use only information explicitly present in the transcript and title.
@@ -371,7 +376,7 @@ Output format (exact section headings):
 Factual overview paragraph covering the video's main subject, context, and purpose. Scale length with transcript length (2-3 sentences for short videos, a full paragraph for long ones).
 
 ## Key Points
-Cover every distinct topic, argument, or segment from the transcript. Group related points under descriptive sub-headings if the video covers multiple themes. Each point must include the actual substance - not just a label but the specific claim, reasoning, or evidence from the transcript.
+Cover every distinct editorial topic, argument, or segment from the transcript (omit confidently identified sponsor or ad-only stretches). Group related points under descriptive sub-headings if the video covers multiple themes. Each point must include the actual substance - not just a label but the specific claim, reasoning, or evidence from the transcript.
 
 - **Point name**: transcript-grounded explanation with specifics (names, numbers, examples mentioned).
 - **Point name**: transcript-grounded explanation with specifics.
@@ -784,6 +789,7 @@ mod tests {
         assert!(prompt.contains("## Takeaways"));
         assert!(prompt.contains("## Overview"));
         assert!(prompt.contains("Length guidance:"));
+        assert!(prompt.contains("Sponsor and ad segments:"));
     }
 
     #[test]

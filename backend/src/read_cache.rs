@@ -540,6 +540,7 @@ mod tests {
                         earliest_sync_date_user_set: false,
                         derived_earliest_ready_date: None,
                     },
+                    channel_video_count: 0,
                     videos: vec![],
                 },
             )
@@ -554,6 +555,7 @@ mod tests {
                         earliest_sync_date_user_set: false,
                         derived_earliest_ready_date: None,
                     },
+                    channel_video_count: 0,
                     videos: vec![],
                 },
             )
@@ -691,6 +693,7 @@ mod tests {
                         earliest_sync_date_user_set: false,
                         derived_earliest_ready_date: None,
                     },
+                    channel_video_count: 0,
                     videos: vec![],
                 },
             )

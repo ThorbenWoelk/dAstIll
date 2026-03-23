@@ -1,9 +1,10 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
-use crate::models::{Channel, ContentStatus, Video};
+use crate::models::{Channel, ContentStatus, OTHERS_CHANNEL_ID, OTHERS_CHANNEL_NAME, Video};
 
 use super::{
     ChannelSnapshotData, QueueFilter, Store, StoreError, VideoInsertOutcome, WorkspaceBootstrapData,
@@ -111,6 +112,51 @@ fn video_visible_in_list(video: &Video, queue_filter: Option<QueueFilter>) -> bo
         || matches!(queue_filter, Some(QueueFilter::TranscriptsOnly))
 }
 
+fn video_matches_channel_scope(
+    video: &Video,
+    channel_id: &str,
+    subscribed_channel_ids: &HashSet<String>,
+) -> bool {
+    if channel_id == OTHERS_CHANNEL_ID {
+        !subscribed_channel_ids.contains(&video.channel_id)
+    } else {
+        video.channel_id == channel_id
+    }
+}
+
+fn build_virtual_others_channel() -> Channel {
+    Channel {
+        id: OTHERS_CHANNEL_ID.to_string(),
+        handle: None,
+        name: OTHERS_CHANNEL_NAME.to_string(),
+        thumbnail_url: None,
+        added_at: chrono::Utc::now(),
+        earliest_sync_date: None,
+        earliest_sync_date_user_set: false,
+    }
+}
+
+fn subscribed_channel_ids(channels: &[Channel]) -> HashSet<String> {
+    channels.iter().map(|channel| channel.id.clone()).collect()
+}
+
+pub async fn has_unsubscribed_channel_videos(store: &Store) -> Result<bool, StoreError> {
+    let channels = super::channels::list_channels(store).await?;
+    let subscribed = subscribed_channel_ids(&channels);
+    let all_videos = load_all_videos(store).await?;
+    Ok(all_videos
+        .iter()
+        .any(|video| video_matches_channel_scope(video, OTHERS_CHANNEL_ID, &subscribed)))
+}
+
+pub async fn list_channels_with_virtual_others(store: &Store) -> Result<Vec<Channel>, StoreError> {
+    let mut channels = super::channels::list_channels(store).await?;
+    if has_unsubscribed_channel_videos(store).await? {
+        channels.push(build_virtual_others_channel());
+    }
+    Ok(channels)
+}
+
 /// Compute the oldest `published_at` date across fully-ready videos in a
 /// channel, using an already-loaded slice — avoids an extra S3 round-trip
 /// when the caller has already fetched the video list.
@@ -129,6 +175,21 @@ fn oldest_ready_video_published_at_from_slice(
         .min()
 }
 
+fn oldest_ready_video_published_at_for_scope(
+    videos: &[Video],
+    channel_id: &str,
+    subscribed_channel_ids: &HashSet<String>,
+) -> Option<chrono::DateTime<chrono::Utc>> {
+    videos
+        .iter()
+        .filter(|v| video_matches_channel_scope(v, channel_id, subscribed_channel_ids))
+        .filter(|v| {
+            v.transcript_status == ContentStatus::Ready && v.summary_status == ContentStatus::Ready
+        })
+        .map(|v| v.published_at)
+        .min()
+}
+
 /// Apply channel-scoped filtering, sorting, and pagination to a pre-loaded
 /// video slice.  The caller is responsible for loading the full video list
 /// (via `load_all_videos`) before calling this function so multiple callers
@@ -137,6 +198,7 @@ async fn apply_channel_video_filters(
     store: &Store,
     all_videos: &[Video],
     channel_id: &str,
+    subscribed_channel_ids: &HashSet<String>,
     limit: usize,
     offset: usize,
     is_short: Option<bool>,
@@ -145,7 +207,7 @@ async fn apply_channel_video_filters(
 ) -> Result<Vec<Video>, StoreError> {
     let mut filtered: Vec<Video> = all_videos
         .iter()
-        .filter(|v| v.channel_id == channel_id)
+        .filter(|v| video_matches_channel_scope(v, channel_id, subscribed_channel_ids))
         .filter(|v| is_short.is_none_or(|s| v.is_short == s))
         .filter(|v| acknowledged.is_none_or(|a| v.acknowledged == a))
         .filter(|v| video_visible_in_list(v, queue_filter))
@@ -197,10 +259,13 @@ pub async fn list_videos_by_channel(
     queue_filter: Option<QueueFilter>,
 ) -> Result<Vec<Video>, StoreError> {
     let all = load_all_videos(store).await?;
+    let channels = super::channels::list_channels(store).await?;
+    let subscribed = subscribed_channel_ids(&channels);
     apply_channel_video_filters(
         store,
         &all,
         channel_id,
+        &subscribed,
         limit,
         offset,
         is_short,
@@ -215,9 +280,11 @@ pub async fn list_video_ids_by_channel(
     channel_id: &str,
 ) -> Result<Vec<String>, StoreError> {
     let all = load_all_videos(store).await?;
+    let channels = super::channels::list_channels(store).await?;
+    let subscribed = subscribed_channel_ids(&channels);
     let mut vids: Vec<_> = all
         .into_iter()
-        .filter(|v| v.channel_id == channel_id)
+        .filter(|v| video_matches_channel_scope(v, channel_id, &subscribed))
         .collect();
     vids.sort_by(|a, b| b.published_at.cmp(&a.published_at));
     Ok(vids.into_iter().map(|v| v.id).collect())
@@ -303,12 +370,50 @@ pub async fn reset_video_retry_count(store: &Store, video_id: &str) -> Result<()
     update_video_field(store, video_id, |v| v.retry_count = 0).await
 }
 
+/// Repair stale `loading` rows and re-queue videos that hit `max_retries` (excluded from
+/// [`list_videos_for_queue_processing`]). Used once at worker startup after fixing async
+/// status races so existing S3 objects recover without manual edits.
+pub(crate) fn apply_heal_queue_video_fields(video: &mut Video, max_retries: u8) -> bool {
+    if video.transcript_status == ContentStatus::Ready
+        && video.summary_status == ContentStatus::Ready
+    {
+        return false;
+    }
+    if video.retry_count < max_retries {
+        return false;
+    }
+    if video.transcript_status == ContentStatus::Loading {
+        video.transcript_status = ContentStatus::Failed;
+    }
+    if video.transcript_status == ContentStatus::Ready
+        && video.summary_status == ContentStatus::Loading
+    {
+        video.summary_status = ContentStatus::Failed;
+    }
+    video.retry_count = 0;
+    true
+}
+
+pub async fn heal_queue_videos(store: &Store, max_retries: u8) -> Result<usize, StoreError> {
+    let all = load_all_videos(store).await?;
+    let mut healed = 0usize;
+    for mut video in all {
+        if !apply_heal_queue_video_fields(&mut video, max_retries) {
+            continue;
+        }
+        store.put_json(&video_key(&video.id), &video).await?;
+        healed += 1;
+    }
+    Ok(healed)
+}
+
 /// Build a channel snapshot, loading video data from S3 **exactly once** and
 /// deriving both the oldest-ready date and the filtered/sorted video list
 /// from the same in-memory slice.
 async fn build_channel_snapshot_data(
     store: &Store,
     channel: Channel,
+    subscribed_channel_ids: &HashSet<String>,
     limit: usize,
     offset: usize,
     is_short: Option<bool>,
@@ -319,12 +424,18 @@ async fn build_channel_snapshot_data(
     let all_videos = load_all_videos(store).await?;
 
     let derived_earliest_ready_date =
-        oldest_ready_video_published_at_from_slice(&all_videos, &channel.id);
+        oldest_ready_video_published_at_for_scope(&all_videos, &channel.id, subscribed_channel_ids);
+
+    let channel_video_count = all_videos
+        .iter()
+        .filter(|v| video_matches_channel_scope(v, &channel.id, subscribed_channel_ids))
+        .count();
 
     let videos = apply_channel_video_filters(
         store,
         &all_videos,
         &channel.id,
+        subscribed_channel_ids,
         limit,
         offset,
         is_short,
@@ -336,6 +447,7 @@ async fn build_channel_snapshot_data(
     Ok(ChannelSnapshotData {
         channel,
         derived_earliest_ready_date,
+        channel_video_count,
         videos,
     })
 }
@@ -349,12 +461,38 @@ pub async fn load_channel_snapshot_data(
     acknowledged: Option<bool>,
     queue_filter: Option<QueueFilter>,
 ) -> Result<Option<ChannelSnapshotData>, StoreError> {
-    let channel = super::channels::get_channel(store, channel_id).await?;
+    let stored_channels = super::channels::list_channels(store).await?;
+    let subscribed = subscribed_channel_ids(&stored_channels);
+
+    if channel_id == OTHERS_CHANNEL_ID {
+        if !has_unsubscribed_channel_videos(store).await? {
+            return Ok(None);
+        }
+
+        return Ok(Some(
+            build_channel_snapshot_data(
+                store,
+                build_virtual_others_channel(),
+                &subscribed,
+                limit,
+                offset,
+                is_short,
+                acknowledged,
+                queue_filter,
+            )
+            .await?,
+        ));
+    }
+
+    let channel = stored_channels
+        .into_iter()
+        .find(|channel| channel.id == channel_id);
     match channel {
         Some(channel) => Ok(Some(
             build_channel_snapshot_data(
                 store,
                 channel,
+                &subscribed,
                 limit,
                 offset,
                 is_short,
@@ -376,7 +514,14 @@ pub async fn load_workspace_bootstrap_data(
     acknowledged: Option<bool>,
     queue_filter: Option<QueueFilter>,
 ) -> Result<WorkspaceBootstrapData, StoreError> {
-    let channels = super::channels::list_channels(store).await?;
+    let channels = list_channels_with_virtual_others(store).await?;
+    let subscribed = subscribed_channel_ids(
+        &channels
+            .iter()
+            .filter(|channel| channel.id != OTHERS_CHANNEL_ID)
+            .cloned()
+            .collect::<Vec<_>>(),
+    );
     let selected_channel = preferred_channel_id
         .and_then(|id| channels.iter().find(|c| c.id == id))
         .cloned()
@@ -387,6 +532,7 @@ pub async fn load_workspace_bootstrap_data(
             build_channel_snapshot_data(
                 store,
                 channel,
+                &subscribed,
                 limit,
                 offset,
                 is_short,
@@ -408,7 +554,12 @@ pub async fn load_workspace_bootstrap_data(
 mod tests {
     use chrono::{Duration, Utc};
 
-    use super::{oldest_ready_video_published_at_from_slice, video_visible_in_list};
+    use std::collections::HashSet;
+
+    use super::{
+        oldest_ready_video_published_at_from_slice, video_matches_channel_scope,
+        video_visible_in_list,
+    };
     use crate::db::{MAX_CONCURRENT_S3_OPS, QueueFilter};
     use crate::models::{ContentStatus, Video};
 
@@ -426,6 +577,48 @@ mod tests {
             retry_count: 0,
             quality_score: None,
         }
+    }
+
+    #[test]
+    fn heal_queue_clears_stale_loading_and_resets_retries() {
+        let mut v = build_video(ContentStatus::Loading, ContentStatus::Pending);
+        v.retry_count = 3;
+        assert!(super::apply_heal_queue_video_fields(&mut v, 3));
+        assert_eq!(v.transcript_status, ContentStatus::Failed);
+        assert_eq!(v.retry_count, 0);
+    }
+
+    #[test]
+    fn heal_queue_fixes_summary_loading_with_exhausted_retries() {
+        let mut v = build_video(ContentStatus::Ready, ContentStatus::Loading);
+        v.retry_count = 3;
+        assert!(super::apply_heal_queue_video_fields(&mut v, 3));
+        assert_eq!(v.summary_status, ContentStatus::Failed);
+        assert_eq!(v.retry_count, 0);
+    }
+
+    #[test]
+    fn heal_queue_resets_exhausted_failed_transcripts() {
+        let mut v = build_video(ContentStatus::Failed, ContentStatus::Pending);
+        v.retry_count = 3;
+        assert!(super::apply_heal_queue_video_fields(&mut v, 3));
+        assert_eq!(v.transcript_status, ContentStatus::Failed);
+        assert_eq!(v.retry_count, 0);
+    }
+
+    #[test]
+    fn heal_queue_skips_complete_videos() {
+        let mut v = build_video(ContentStatus::Ready, ContentStatus::Ready);
+        v.retry_count = 3;
+        assert!(!super::apply_heal_queue_video_fields(&mut v, 3));
+        assert_eq!(v.retry_count, 3);
+    }
+
+    #[test]
+    fn heal_queue_skips_when_below_retry_cap() {
+        let mut v = build_video(ContentStatus::Loading, ContentStatus::Pending);
+        v.retry_count = 2;
+        assert!(!super::apply_heal_queue_video_fields(&mut v, 3));
     }
 
     // ---------------------------------------------------------------------------
@@ -465,6 +658,30 @@ mod tests {
         assert!(video_visible_in_list(
             &video,
             Some(QueueFilter::AnyIncomplete)
+        ));
+    }
+
+    #[test]
+    fn others_scope_includes_only_unsubscribed_channel_videos() {
+        let unsubscribed_video = Video {
+            channel_id: "UC_UNSUBSCRIBED".to_string(),
+            ..build_video(ContentStatus::Ready, ContentStatus::Ready)
+        };
+        let subscribed_video = Video {
+            channel_id: "UC_SUBSCRIBED".to_string(),
+            ..build_video(ContentStatus::Ready, ContentStatus::Ready)
+        };
+        let subscribed = HashSet::from(["UC_SUBSCRIBED".to_string()]);
+
+        assert!(video_matches_channel_scope(
+            &unsubscribed_video,
+            "__others__",
+            &subscribed
+        ));
+        assert!(!video_matches_channel_scope(
+            &subscribed_video,
+            "__others__",
+            &subscribed
         ));
     }
 

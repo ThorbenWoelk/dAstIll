@@ -39,6 +39,7 @@ function makeSnapshot(channelId: string): ChannelSnapshot {
   return {
     channel_id: channelId,
     sync_depth: makeSyncDepth(),
+    channel_video_count: 0,
     videos: [],
   };
 }

@@ -19,6 +19,7 @@
   import ChannelCard from "$lib/components/ChannelCard.svelte";
   import CheckIcon from "$lib/components/icons/CheckIcon.svelte";
   import ChevronIcon from "$lib/components/icons/ChevronIcon.svelte";
+  import TrashIcon from "$lib/components/icons/TrashIcon.svelte";
   import { clickOutside } from "$lib/actions/click-outside";
   import type {
     Channel,
@@ -28,6 +29,7 @@
     SyncDepth,
     VideoTypeFilter,
   } from "$lib/types";
+  import { OTHERS_CHANNEL_ID } from "$lib/types";
   import type {
     WorkspaceSidebarChannelActions,
     WorkspaceSidebarChannelState,
@@ -46,6 +48,10 @@
     resolveChannelDropIndicatorEdge,
   } from "$lib/workspace/channels";
   import { formatShortDate } from "$lib/utils/date";
+  import {
+    filterVideosByAcknowledged,
+    filterVideosByType,
+  } from "$lib/workspace/route-helpers";
   import { formatSyncDate } from "$lib/workspace/content";
   import { resolveDisplayedSyncDepthIso } from "$lib/sync-depth";
 
@@ -79,6 +85,8 @@
     loading: boolean;
     loadedMode: ChannelVideoCollectionLoadMode | null;
     hasMoreThanPreview: boolean;
+    /** Total videos for the channel from the last snapshot (unfiltered); null before first load. */
+    channelVideoCount: number | null;
     filterKey: string | null;
     requestKey: string | null;
     syncDepth: SyncDepth | null;
@@ -133,10 +141,18 @@
       onAcknowledgedFilterChange: async (_value: AcknowledgedFilter) => {},
     },
     videoListMode = "selected_channel",
+    addSourceErrorMessage = null as string | null,
     initialChannelPreviews = {} as Record<string, ChannelSnapshot>,
     initialChannelPreviewsFilterKey = undefined as string | undefined,
     /** When set (download queue), snapshot and list APIs use queue_tab so in-progress work appears. */
     channelSnapshotQueueTab = undefined as QueueTab | undefined,
+    /**
+     * When `videoListMode` is `per_channel_preview`, the visible list lives in
+     * `channelVideoCollections`, not `videoState.videos`. Parent bumps `seq` after
+     * acknowledge toggles so this component can merge the server (or optimistic)
+     * video and re-apply type + read filters.
+     */
+    videoAcknowledgeSync = null,
   }: {
     shell?: WorkspaceSidebarShellProps;
     channelState?: WorkspaceSidebarChannelState;
@@ -144,6 +160,7 @@
     videoState?: WorkspaceSidebarVideoState;
     videoActions?: WorkspaceSidebarVideoActions;
     videoListMode?: "selected_channel" | "per_channel_preview";
+    addSourceErrorMessage?: string | null;
     /**
      * Server-side pre-loaded channel snapshots (keyed by channel id) for the
      * per_channel_preview mode. When provided and the current filter key matches
@@ -159,6 +176,7 @@
      */
     initialChannelPreviewsFilterKey?: string;
     channelSnapshotQueueTab?: QueueTab;
+    videoAcknowledgeSync?: { seq: number; video: Video } | null;
   } = $props();
 
   let collapsed = $derived(shell.collapsed);
@@ -211,6 +229,7 @@
   let onAcknowledgedFilterChange = $derived(
     videoActions.onAcknowledgedFilterChange,
   );
+  let onClearAllFilters = $derived(videoActions.onClearAllFilters);
 
   let draggedChannelId = $state<string | null>(null);
   let dragOverChannelId = $state<string | null>(null);
@@ -226,6 +245,8 @@
   let channelVideoCollections = $state<
     Record<string, ChannelVideoCollectionState>
   >({});
+
+  let lastAppliedVideoAcknowledgeSeq = $state(0);
 
   let filteredChannels = $derived(
     filterChannels(channels, channelSearchQuery, channelSortMode),
@@ -257,12 +278,23 @@
       loading: false,
       loadedMode: null,
       hasMoreThanPreview: false,
+      channelVideoCount: null,
       filterKey: null,
       requestKey: null,
       syncDepth: null,
       earliestSyncDateInput: "",
       savingSyncDate: false,
     };
+  }
+
+  function channelListEmptyCaption(channelVideoCount: number | null): string {
+    if (channelVideoCount === null) {
+      return "Nothing to show.";
+    }
+    if (channelVideoCount === 0) {
+      return "No videos yet.";
+    }
+    return "Nothing matches the current filters.";
   }
 
   function ensureChannelVideoCollection(channelId: string) {
@@ -311,18 +343,24 @@
       : state.videos.slice(0, PREVIEW_VISIBLE_VIDEO_COUNT);
   }
 
+  function isVirtualChannel(channel: Channel) {
+    return channel.id === OTHERS_CHANNEL_ID;
+  }
+
   async function loadChannelVideoCollection(
     channel: Channel,
     mode: ChannelVideoCollectionLoadMode,
+    options?: { force?: boolean },
   ) {
+    const force = options?.force ?? false;
     const state = ensureChannelVideoCollection(channel.id);
     const filterKey = getChannelVideoCollectionFilterKey();
 
-    if (state.loading && state.filterKey === filterKey) {
+    if (state.loading && state.filterKey === filterKey && !force) {
       return;
     }
 
-    if (supportsMode(state, filterKey, mode)) {
+    if (!force && supportsMode(state, filterKey, mode)) {
       return;
     }
 
@@ -337,6 +375,7 @@
     //   ≠ "short:all"), then pre-seeded after onMount applies the URL filter.
     // Either way: 0 client-side getChannelSnapshot calls for pre-loaded channels.
     if (
+      !force &&
       mode === "preview" &&
       initialChannelPreviewsFilterKey &&
       filterKey === initialChannelPreviewsFilterKey &&
@@ -349,6 +388,7 @@
       state.loading = false;
       state.hasMoreThanPreview =
         preloaded.videos.length > PREVIEW_VISIBLE_VIDEO_COUNT;
+      state.channelVideoCount = preloaded.channel_video_count ?? null;
       state.syncDepth = preloaded.sync_depth;
       state.earliestSyncDateInput = resolveSyncDateInputValue(
         channel,
@@ -412,6 +452,7 @@
       current.requestKey = null;
       current.hasMoreThanPreview =
         nextVideos.length > PREVIEW_VISIBLE_VIDEO_COUNT;
+      current.channelVideoCount = snapshot.channel_video_count;
       current.syncDepth = snapshot.sync_depth;
       current.earliestSyncDateInput = resolveSyncDateInputValue(
         channel,
@@ -439,14 +480,14 @@
     await loadChannelVideoCollection(channel, "all");
   }
 
-  async function handleChannelHeaderClick(channelId: string) {
+  async function handleChannelHeaderClick(channel: Channel) {
     if (collapsed) onToggleCollapse();
-    if (onOpenChannelOverview) {
-      await onOpenChannelOverview(channelId);
+    if (onOpenChannelOverview && !isVirtualChannel(channel)) {
+      await onOpenChannelOverview(channel.id);
       return;
     }
 
-    await onSelectChannel(channelId);
+    await onSelectChannel(channel.id);
   }
 
   async function handleChannelVideoClick(channelId: string, videoId: string) {
@@ -483,6 +524,43 @@
       current.savingSyncDate = false;
     }
   }
+
+  $effect(() => {
+    if (videoListMode !== "per_channel_preview") {
+      return;
+    }
+    const sync = videoAcknowledgeSync;
+    if (!sync || sync.seq <= lastAppliedVideoAcknowledgeSeq) {
+      return;
+    }
+    lastAppliedVideoAcknowledgeSeq = sync.seq;
+    const { video } = sync;
+    const state = channelVideoCollections[video.channel_id];
+    if (!state) {
+      return;
+    }
+    const merged = state.videos.map((v) => (v.id === video.id ? video : v));
+    const byType = filterVideosByType(merged, videoTypeFilter);
+    const filtered = filterVideosByAcknowledged(byType, acknowledgedFilter);
+    state.videos = filtered;
+
+    const ch = channels.find((c) => c.id === video.channel_id);
+    if (!ch) {
+      return;
+    }
+
+    // Collapsed preview only loads one API page. Client-side filtering drops rows
+    // when read state changes; re-fetch the first page so the next matches fill
+    // the preview (same as filter changes).
+    if (!state.expanded) {
+      void loadChannelVideoCollection(ch, "preview", { force: true });
+      return;
+    }
+
+    if (filtered.length === 0) {
+      void loadChannelVideoCollection(ch, "all", { force: true });
+    }
+  });
 
   $effect(() => {
     if (videoListMode !== "per_channel_preview") {
@@ -621,6 +699,16 @@
     await onAcknowledgedFilterChange(value);
   }
 
+  async function clearAllFilters() {
+    filterMenuOpen = false;
+    if (onClearAllFilters) {
+      await onClearAllFilters();
+    } else {
+      await onVideoTypeFilterChange("all");
+      await onAcknowledgedFilterChange("all");
+    }
+  }
+
   function handleWindowKeydown(event: KeyboardEvent) {
     if (event.key === "Escape") filterMenuOpen = false;
   }
@@ -725,27 +813,15 @@
           }}
           aria-label={manageChannels ? "Exit manage mode" : "Manage channels"}
         >
-          <svg
-            width="11"
-            height="11"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            ><path d="M3 6h18" /><path
-              d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"
-            /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg
-          >
+          <TrashIcon size={11} strokeWidth={2.5} />
         </button>
         <button
           type="button"
           class={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${channelInputOpen ? "bg-[var(--accent-wash)] text-[var(--accent)]" : "text-[var(--soft-foreground)] opacity-55 hover:bg-[var(--accent-wash)] hover:opacity-100"}`}
           onclick={() => void toggleChannelInput()}
           aria-label={channelInputOpen
-            ? "Close follow channel"
-            : "Follow channel"}
+            ? "Close add source"
+            : "Add channel or video"}
         >
           <svg
             width="11"
@@ -880,6 +956,18 @@
                   {/each}
                 </div>
               </div>
+              {#if videoTypeFilter !== "all" || acknowledgedFilter !== "all"}
+                <div class="border-t border-[var(--border-soft)] px-2 py-1.5">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    class="w-full rounded-[var(--radius-sm)] px-3 py-1.5 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-[var(--danger)] opacity-75 transition-colors hover:bg-[var(--accent-wash)] hover:opacity-100"
+                    onclick={() => void clearAllFilters()}
+                  >
+                    Clear filters
+                  </button>
+                </div>
+              {/if}
             </div>
           {/if}
         </div>
@@ -898,12 +986,12 @@
       <form
         class="mx-4 mt-2"
         onsubmit={handleChannelSubmit}
-        aria-label="Follow channel"
+        aria-label="Add channel or video"
       >
         <div
           class="flex min-w-0 items-center gap-2 border-b border-[var(--accent-border-soft)] pb-1 transition-all focus-within:border-[var(--accent)]/40"
         >
-          <label for="channel-input" class="sr-only">Add Channel</label>
+          <label for="channel-input" class="sr-only">Add Channel Or Video</label>
           <input
             id="channel-input"
             bind:this={channelInputElement}
@@ -911,14 +999,14 @@
             autocomplete="off"
             spellcheck={false}
             class="min-w-0 flex-1 bg-transparent py-1.5 text-[13px] font-medium placeholder:text-[var(--soft-foreground)] placeholder:opacity-40 focus-visible:outline-none"
-            placeholder="Paste handle or URL"
+            placeholder="Paste handle, channel URL, or video link"
             bind:value={channelInput}
           />
           <button
             type="submit"
             class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[var(--foreground)] transition-all hover:bg-[var(--accent-wash)] hover:text-[var(--accent-strong)] disabled:opacity-20"
             disabled={!channelInput.trim() || addingChannel}
-            aria-label="Follow channel"
+            aria-label="Add channel or video"
           >
             <svg
               width="12"
@@ -938,6 +1026,11 @@
             >
           </button>
         </div>
+        {#if addSourceErrorMessage}
+          <p class="mt-2 text-[11px] font-medium text-[var(--danger)] opacity-80">
+            {addSourceErrorMessage}
+          </p>
+        {/if}
       </form>
     {/if}
 
@@ -1145,13 +1238,17 @@
                     <ChannelCard
                       {channel}
                       active={selectedChannelId === channel.id}
-                      showDelete={canDeleteChannels && manageChannels}
-                      draggableEnabled={!mobileVisible && manualReorderEnabled}
+                      showDelete={canDeleteChannels &&
+                        manageChannels &&
+                        !isVirtualChannel(channel)}
+                      draggableEnabled={!mobileVisible &&
+                        manualReorderEnabled &&
+                        !isVirtualChannel(channel)}
                       loading={channel.id.startsWith("temp-")}
                       dragging={draggedChannelId === channel.id}
                       dragOver={dragOverChannelId === channel.id &&
                         draggedChannelId !== channel.id}
-                      onSelect={() => void handleChannelHeaderClick(channel.id)}
+                      onSelect={() => void handleChannelHeaderClick(channel)}
                       onDragStart={(event) =>
                         handleChannelDragStart(channel.id, event)}
                       onDragOver={(event) =>
@@ -1177,8 +1274,12 @@
                 <ChannelCard
                   {channel}
                   active={isExpanded}
-                  showDelete={canDeleteChannels && manageChannels}
-                  draggableEnabled={!mobileVisible && manualReorderEnabled}
+                  showDelete={canDeleteChannels &&
+                    manageChannels &&
+                    !isVirtualChannel(channel)}
+                  draggableEnabled={!mobileVisible &&
+                    manualReorderEnabled &&
+                    !isVirtualChannel(channel)}
                   loading={channel.id.startsWith("temp-")}
                   dragging={draggedChannelId === channel.id}
                   dragOver={dragOverChannelId === channel.id &&
@@ -1218,7 +1319,9 @@
                 <p
                   class="px-3 py-2 text-[12px] italic text-[var(--soft-foreground)] opacity-50"
                 >
-                  No videos yet.
+                  {channelListEmptyCaption(
+                    channelVideoCollection.channelVideoCount,
+                  )}
                 </p>
               {:else}
                 {#each displayedChannelVideos(channelVideoCollection) as video (video.id)}
@@ -1292,76 +1395,72 @@
                   </button>
                 {/if}
 
-                {#if channelVideoCollection.expanded}
-                  <div class="mt-2 px-2 pb-4">
-                    <div class="flex items-center gap-1.5">
-                      <p
-                        class="text-[10px] text-[var(--soft-foreground)] opacity-50"
-                      >
-                        Synced to {formatSyncDate(
-                          resolveDisplayedSyncDepthIso({
-                            videos: channelVideoCollection.videos,
-                            selectedChannel: channel,
-                            syncDepth: channelVideoCollection.syncDepth,
-                            allowLoadedVideoOverride:
-                              channelVideoCollection.loadedMode === "all",
-                          }),
-                        )}
-                      </p>
-                      <button
-                        type="button"
-                        class="inline-flex h-5 w-5 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-50 transition-all hover:opacity-100 hover:text-[var(--foreground)]"
-                        onclick={() =>
-                          (syncDatePickerChannelId =
-                            syncDatePickerChannelId === channel.id
-                              ? null
-                              : channel.id)}
-                        aria-label="Edit sync date"
-                      >
-                        <svg
-                          width="9"
-                          height="9"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2.2"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          aria-hidden="true"
-                          ><path
-                            d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"
-                          /><path d="m15 5 4 4" /></svg
-                        >
-                      </button>
-                    </div>
-
-                    {#if syncDatePickerChannelId === channel.id}
-                      <div class="mt-2 flex items-center gap-2">
-                        <input
-                          type="date"
-                          class="min-w-0 flex-1 rounded-[var(--radius-sm)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] px-2.5 py-2 text-[12px] font-medium transition-colors focus:border-[var(--accent)]/40 focus:outline-none"
-                          bind:value={
-                            channelVideoCollection.earliestSyncDateInput
-                          }
-                          disabled={channelVideoCollection.savingSyncDate}
-                        />
-                        <button
-                          type="button"
-                          class="rounded-[var(--radius-sm)] bg-[var(--foreground)] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--background)] transition-all hover:bg-[var(--accent-strong)] disabled:opacity-30"
-                          onclick={() => void saveChannelSyncDate(channel)}
-                          disabled={!channelVideoCollection.earliestSyncDateInput ||
-                            channelVideoCollection.savingSyncDate}
-                        >
-                          {channelVideoCollection.savingSyncDate
-                            ? "..."
-                            : "Set"}
-                        </button>
-                      </div>
-                    {/if}
-                  </div>
-                {/if}
               {/if}
             </div>
+
+            {#if channelVideoCollection.expanded && channelVideoCollection.loadedMode === "all" && !isVirtualChannel(channel)}
+              <div class="mt-2 px-2 pb-4">
+                <div class="flex items-center gap-1.5">
+                  <p
+                    class="text-[10px] text-[var(--soft-foreground)] opacity-50"
+                  >
+                    Synced to {formatSyncDate(
+                      resolveDisplayedSyncDepthIso({
+                        videos: channelVideoCollection.videos,
+                        selectedChannel: channel,
+                        syncDepth: channelVideoCollection.syncDepth,
+                        allowLoadedVideoOverride: true,
+                      }),
+                    )}
+                  </p>
+                  <button
+                    type="button"
+                    class="inline-flex h-5 w-5 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-50 transition-all hover:opacity-100 hover:text-[var(--foreground)]"
+                    onclick={() =>
+                      (syncDatePickerChannelId =
+                        syncDatePickerChannelId === channel.id
+                          ? null
+                          : channel.id)}
+                    aria-label="Edit sync date"
+                  >
+                    <svg
+                      width="9"
+                      height="9"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                      ><path
+                        d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"
+                      /><path d="m15 5 4 4" /></svg
+                    >
+                  </button>
+                </div>
+
+                {#if syncDatePickerChannelId === channel.id}
+                  <div class="mt-2 flex items-center gap-2">
+                    <input
+                      type="date"
+                      class="min-w-0 flex-1 rounded-[var(--radius-sm)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] px-2.5 py-2 text-[12px] font-medium transition-colors focus:border-[var(--accent)]/40 focus:outline-none"
+                      bind:value={channelVideoCollection.earliestSyncDateInput}
+                      disabled={channelVideoCollection.savingSyncDate}
+                    />
+                    <button
+                      type="button"
+                      class="rounded-[var(--radius-sm)] bg-[var(--foreground)] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--background)] transition-all hover:bg-[var(--accent-strong)] disabled:opacity-30"
+                      onclick={() => void saveChannelSyncDate(channel)}
+                      disabled={!channelVideoCollection.earliestSyncDateInput ||
+                        channelVideoCollection.savingSyncDate}
+                    >
+                      {channelVideoCollection.savingSyncDate ? "..." : "Set"}
+                    </button>
+                  </div>
+                {/if}
+              </div>
+            {/if}
           {:else if isExpanded}
             <div class="mt-1 pb-1" id="videos">
               {#if loadingVideos && videos.length === 0}

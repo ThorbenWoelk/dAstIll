@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use serde::Deserialize;
 
-use crate::models::Video;
+use crate::models::{Video, VideoInfo};
 
 use super::video_builder::build_pending_video;
 use super::{YouTubeError, YouTubeService};
@@ -66,7 +66,115 @@ struct DataApiThumbnail {
     url: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct DataApiVideoItem {
+    snippet: Option<DataApiVideoSnippet>,
+    #[serde(rename = "contentDetails")]
+    content_details: Option<DataApiVideoContentDetails>,
+    statistics: Option<DataApiVideoStatistics>,
+}
+
+#[derive(Deserialize)]
+struct DataApiVideoSnippet {
+    title: Option<String>,
+    description: Option<String>,
+    #[serde(rename = "channelTitle")]
+    channel_title: Option<String>,
+    #[serde(rename = "channelId")]
+    channel_id: Option<String>,
+    #[serde(rename = "publishedAt")]
+    published_at: Option<String>,
+    thumbnails: Option<DataApiThumbnails>,
+}
+
+#[derive(Deserialize)]
+struct DataApiVideoContentDetails {
+    duration: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct DataApiVideoStatistics {
+    #[serde(rename = "viewCount")]
+    view_count: Option<String>,
+}
+
 impl YouTubeService {
+    pub(crate) async fn fetch_video_info_from_data_api(
+        &self,
+        video_id: &str,
+        api_key: &str,
+    ) -> Result<VideoInfo, YouTubeError> {
+        let response = self
+            .client
+            .get("https://www.googleapis.com/youtube/v3/videos")
+            .query(&[
+                ("part", "snippet,contentDetails,statistics"),
+                ("id", video_id),
+                ("maxResults", "1"),
+                ("key", api_key),
+            ])
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            tracing::warn!(
+                video_id = %video_id,
+                status = %status,
+                body = %body,
+                "Data API video info request failed"
+            );
+            if Self::is_quota_exceeded(&body) {
+                if let Some(cd) = &self.quota_cooldown {
+                    cd.activate();
+                }
+            }
+            return Err(YouTubeError::ChannelNotFound);
+        }
+
+        let payload: DataApiListResponse<DataApiVideoItem> =
+            response.json().await.map_err(YouTubeError::FetchError)?;
+        let item = payload
+            .items
+            .unwrap_or_default()
+            .into_iter()
+            .next()
+            .ok_or(YouTubeError::ChannelNotFound)?;
+
+        let snippet = item.snippet.ok_or(YouTubeError::ChannelNotFound)?;
+        let content_details = item.content_details;
+        let statistics = item.statistics;
+        let duration_iso8601 = content_details.and_then(|details| details.duration);
+
+        Ok(VideoInfo {
+            video_id: video_id.to_string(),
+            watch_url: format!("https://www.youtube.com/watch?v={video_id}"),
+            title: snippet
+                .title
+                .filter(|title| !title.trim().is_empty())
+                .unwrap_or_else(|| format!("YouTube video {video_id}")),
+            description: crate::services::youtube::placeholder::sanitize_optional_description(
+                snippet.description,
+            ),
+            thumbnail_url: Self::pick_data_api_thumbnail_url(snippet.thumbnails.as_ref()),
+            channel_name: snippet.channel_title.filter(|name| !name.trim().is_empty()),
+            channel_id: snippet.channel_id.filter(|id| !id.trim().is_empty()),
+            published_at: snippet
+                .published_at
+                .as_deref()
+                .and_then(Self::parse_any_datetime),
+            duration_seconds: duration_iso8601
+                .as_deref()
+                .and_then(parse_iso8601_duration_seconds),
+            duration_iso8601,
+            view_count: statistics
+                .and_then(|stats| stats.view_count)
+                .as_deref()
+                .and_then(parse_u64),
+        })
+    }
+
     pub(crate) async fn fetch_videos_from_data_api(
         &self,
         channel_id: &str,
@@ -266,4 +374,53 @@ impl YouTubeService {
             .or_else(|| thumbs.default.as_ref().and_then(|thumb| thumb.url.as_ref()))
             .map(ToOwned::to_owned)
     }
+}
+
+fn parse_iso8601_duration_seconds(value: &str) -> Option<u64> {
+    if !value.starts_with('P') {
+        return None;
+    }
+
+    let mut total = 0u64;
+    let mut in_time = false;
+    let mut current = String::new();
+    let mut matched_unit = false;
+
+    for ch in value.chars().skip(1) {
+        if ch == 'T' {
+            in_time = true;
+            continue;
+        }
+        if ch.is_ascii_digit() {
+            current.push(ch);
+            continue;
+        }
+        if current.is_empty() {
+            continue;
+        }
+
+        let amount = current.parse::<u64>().ok()?;
+        match ch {
+            'D' => total = total.saturating_add(amount.saturating_mul(86_400)),
+            'H' => total = total.saturating_add(amount.saturating_mul(3_600)),
+            'M' if in_time => total = total.saturating_add(amount.saturating_mul(60)),
+            'S' => total = total.saturating_add(amount),
+            _ => return None,
+        }
+        current.clear();
+        matched_unit = true;
+    }
+
+    if matched_unit { Some(total) } else { None }
+}
+
+fn parse_u64(value: &str) -> Option<u64> {
+    let digits = value
+        .chars()
+        .filter(|ch| ch.is_ascii_digit())
+        .collect::<String>();
+    if digits.is_empty() {
+        return None;
+    }
+    digits.parse::<u64>().ok()
 }

@@ -376,6 +376,7 @@ async fn main() -> anyhow::Result<()> {
             "/api/channels/{id}/videos",
             get(videos::list_channel_videos),
         )
+        .route("/api/videos", post(videos::add_manual_video))
         .route("/api/videos/{id}", get(videos::get_video))
         .route("/api/videos/{id}/info", get(videos::get_video_info))
         .route(
@@ -446,10 +447,7 @@ async fn main() -> anyhow::Result<()> {
             "/api/videos/{id}/highlights",
             get(highlights::list_video_highlights).post(highlights::create_highlight),
         )
-        .route(
-            "/api/highlights/{id}",
-            delete(highlights::delete_highlight).layer(middleware::from_fn(require_operator_role)),
-        )
+        .route("/api/highlights/{id}", delete(highlights::delete_highlight))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             enforce_baseline_rate_limit,

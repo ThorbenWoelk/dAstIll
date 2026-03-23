@@ -121,6 +121,7 @@ describe("getWorkspaceBootstrap", () => {
       snapshot: {
         channel_id: "abc",
         sync_depth: syncDepth(),
+        channel_video_count: 1,
         videos: [video("vid-1")],
       },
     };
@@ -159,6 +160,7 @@ describe("getWorkspaceBootstrap", () => {
       snapshot: {
         channel_id: "abc",
         sync_depth: syncDepth(),
+        channel_video_count: 1,
         videos: [video("vid-1")],
       },
     };
@@ -212,6 +214,7 @@ describe("getChannelSnapshot", () => {
     const payload = {
       channel_id: "abc",
       sync_depth: syncDepth(),
+      channel_video_count: 1,
       videos: [video("queued-1")],
     };
     let requestedUrl = "";
@@ -238,6 +241,7 @@ describe("getChannelSnapshot", () => {
     const payload = {
       channel_id: "abc",
       sync_depth: syncDepth(),
+      channel_video_count: 1,
       videos: [video("queued-1")],
     };
     let attempts = 0;
@@ -272,11 +276,13 @@ describe("getChannelSnapshot", () => {
     const snapshotPayload = {
       channel_id: "abc",
       sync_depth: syncDepth(),
+      channel_video_count: 1,
       videos: [video("queued-1")],
     };
     const otherSnapshotPayload = {
       channel_id: "xyz",
       sync_depth: syncDepth(),
+      channel_video_count: 1,
       videos: [video("queued-2", "xyz")],
     };
     const requests: string[] = [];

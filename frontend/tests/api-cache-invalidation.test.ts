@@ -65,6 +65,7 @@ function snapshot(channelId: string, videoId: string): ChannelSnapshot {
   return {
     channel_id: channelId,
     sync_depth: syncDepth(),
+    channel_video_count: 1,
     videos: [video(videoId, channelId)],
   };
 }
@@ -172,6 +173,53 @@ describe("updateAcknowledged targeted invalidation", () => {
     expect(chanBFetches).toBe(1);
     // AI health: only pre-cache (unrelated to acknowledge)
     expect(aiFetches).toBe(1);
+  });
+
+  it("re-fetches when a GET completes after invalidation instead of applying stale data", async () => {
+    const snapshotStale = snapshot("chan-a", "vid-1");
+    const snapshotFresh: ChannelSnapshot = {
+      ...snapshotStale,
+      videos: [],
+    };
+    let releaseFirst: () => void;
+    const firstBarrier = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let chanASnapshotGets = 0;
+    const requests: string[] = [];
+
+    globalThis.fetch = (async (input, init) => {
+      const url = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      requests.push(`${method} ${url}`);
+
+      if (url.includes("/acknowledged")) {
+        return new Response(
+          JSON.stringify({ ...video("vid-1", "chan-a"), acknowledged: true }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/api/channels/chan-a/snapshot")) {
+        chanASnapshotGets += 1;
+        if (chanASnapshotGets === 1) {
+          await firstBarrier;
+          return new Response(JSON.stringify(snapshotStale), { status: 200 });
+        }
+        return new Response(JSON.stringify(snapshotFresh), { status: 200 });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    }) as typeof fetch;
+
+    const pendingSnapshot = getChannelSnapshot("chan-a");
+    await updateAcknowledged("vid-1", true);
+    releaseFirst!();
+    const result = await pendingSnapshot;
+
+    expect(result.videos).toEqual([]);
+    const chanAGets = requests.filter(
+      (r) => r.includes("GET") && r.includes("/api/channels/chan-a/snapshot"),
+    );
+    expect(chanAGets.length).toBe(2);
   });
 });
 

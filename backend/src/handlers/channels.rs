@@ -42,6 +42,7 @@ fn build_snapshot_payload(
             &snapshot.channel,
             snapshot.derived_earliest_ready_date,
         ),
+        channel_video_count: snapshot.channel_video_count,
         videos: snapshot.videos,
     }
 }
@@ -54,7 +55,9 @@ pub async fn list_channels(
         return Ok(Json(channels));
     }
 
-    let channels = db::list_channels(&state.db).await.map_err(map_db_err)?;
+    let channels = db::list_channels_with_virtual_others(&state.db)
+        .await
+        .map_err(map_db_err)?;
     state.read_cache.set_channels(channels.clone()).await;
     Ok(Json(channels))
 }
@@ -154,11 +157,15 @@ pub async fn add_channel(
     };
 
     {
-            db::insert_channel(&state.db, &channel)
+        db::insert_channel(&state.db, &channel)
             .await
             .map_err(map_db_err)?;
     }
     state.read_cache.evict_channel_list().await;
+    state
+        .read_cache
+        .evict_channel(crate::models::OTHERS_CHANNEL_ID)
+        .await;
     tracing::info!(channel_id = %channel.id, channel_name = %channel.name, "channel subscribed");
 
     let db_pool = state.db.clone();
@@ -270,7 +277,9 @@ pub async fn delete_channel(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let deleted = db::delete_channel(&state.db, &id).await.map_err(map_db_err)?;
+    let deleted = db::delete_channel(&state.db, &id)
+        .await
+        .map_err(map_db_err)?;
 
     if deleted {
         state.read_cache.evict_channel(&id).await;
@@ -296,7 +305,7 @@ pub async fn update_channel(
     }
 
     {
-            db::insert_channel(&state.db, &channel)
+        db::insert_channel(&state.db, &channel)
             .await
             .map_err(map_db_err)?;
     }
@@ -324,7 +333,7 @@ pub async fn refresh_channel_videos(
         .map_err(map_internal_err)?;
 
     let mut count = {
-            db::bulk_insert_videos(&state.db, videos)
+        db::bulk_insert_videos(&state.db, videos)
             .await
             .map_err(map_db_err)?
     };
@@ -332,7 +341,7 @@ pub async fn refresh_channel_videos(
     if let Some(until) = earliest_sync_date {
         for round in 0..REFRESH_BACKFILL_MAX_ROUNDS {
             let known_video_ids = {
-                            db::list_video_ids_by_channel(&state.db, &id)
+                db::list_video_ids_by_channel(&state.db, &id)
                     .await
                     .map_err(map_db_err)?
                     .into_iter()
@@ -351,7 +360,7 @@ pub async fn refresh_channel_videos(
                 .map_err(map_internal_err)?;
 
             let added = {
-                            db::bulk_insert_videos(&state.db, backfill_videos)
+                db::bulk_insert_videos(&state.db, backfill_videos)
                     .await
                     .map_err(map_db_err)?
             };
@@ -393,7 +402,7 @@ pub async fn backfill_channel_videos(
 
     require_channel(&state, &id).await?;
     let known_video_ids = {
-            db::list_video_ids_by_channel(&state.db, &id)
+        db::list_video_ids_by_channel(&state.db, &id)
             .await
             .map_err(map_db_err)?
             .into_iter()

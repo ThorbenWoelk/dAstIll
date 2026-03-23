@@ -200,7 +200,8 @@ mod tests {
     async fn extract_detects_no_transcript_from_stderr() {
         let dir = tempdir().expect("temp dir should be created");
         let script_path = dir.path().join("fake_summarize.sh");
-        let script = "#!/bin/sh\necho 'Error: no transcript available for this video' >&2\nexit 1\n";
+        let script =
+            "#!/bin/sh\necho 'Error: no transcript available for this video' >&2\nexit 1\n";
         fs::write(&script_path, script).expect("script should be written");
         let mut perms = fs::metadata(&script_path)
             .expect("metadata should be readable")
@@ -337,6 +338,8 @@ echo "ARGS=$*"
         assert!(formatted.contains("ARGS="));
         assert!(!formatted.contains("--markdown-mode"));
         assert!(!formatted.contains("--model"));
-        assert!(formatted.contains("--youtube auto --extract --format text --plain --firecrawl off"));
+        assert!(
+            formatted.contains("--youtube auto --extract --format text --plain --firecrawl off")
+        );
     }
 }

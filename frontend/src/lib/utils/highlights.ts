@@ -191,7 +191,7 @@ export function removeHighlightFromGroups(
         .map((video) => ({
           ...video,
           highlights: video.highlights.filter(
-            (highlight) => highlight.id !== highlightId,
+            (highlight) => Number(highlight.id) !== highlightId,
           ),
         }))
         .filter((video) => video.highlights.length > 0),

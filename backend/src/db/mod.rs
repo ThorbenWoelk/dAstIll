@@ -86,6 +86,8 @@ impl Store {
 pub struct ChannelSnapshotData {
     pub channel: Channel,
     pub derived_earliest_ready_date: Option<chrono::DateTime<chrono::Utc>>,
+    /// Total videos stored for this channel (no type / read / queue filters).
+    pub channel_video_count: usize,
     pub videos: Vec<Video>,
 }
 

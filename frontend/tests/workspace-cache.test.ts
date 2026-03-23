@@ -60,6 +60,7 @@ function createSnapshot(
       earliest_sync_date_user_set: false,
       derived_earliest_ready_date: null,
     },
+    channel_video_count: videoIds.length,
     videos: videoIds.map((videoId) => createVideo(videoId, channelId)),
   };
 }

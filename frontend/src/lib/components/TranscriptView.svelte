@@ -5,6 +5,7 @@
     HighlightSource,
   } from "$lib/types";
   import HighlighterIcon from "$lib/components/icons/HighlighterIcon.svelte";
+  import TrashIcon from "$lib/components/icons/TrashIcon.svelte";
   import {
     buildHighlightDraft,
     resolveHighlightRanges,
@@ -420,7 +421,7 @@
       class={`absolute z-40 shadow-lg transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
         tooltip.kind === "create"
           ? "inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--accent)]/30 bg-[var(--foreground)] text-white hover:bg-[var(--accent-strong)]"
-          : "inline-flex items-center gap-2 rounded-full border border-[var(--danger-border)] bg-[var(--surface)] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--danger-foreground)] hover:border-[var(--danger)] hover:bg-[var(--danger-soft)]"
+          : "inline-flex h-10 w-10 items-center justify-center rounded-full bg-[var(--surface)] text-[var(--soft-foreground)] hover:bg-[var(--danger-soft)] hover:text-[var(--danger)]"
       }`}
       style={`top: ${tooltip.top}px; left: ${tooltip.left}px; transform: translateX(-50%);`}
       onmousedown={(event) => event.preventDefault()}
@@ -432,31 +433,21 @@
         : deletingHighlightId === tooltip.highlightId}
       aria-label={tooltip.kind === "create"
         ? "Save selected text as a highlight"
-        : "Remove this highlight"}
-      title={tooltip.kind === "create" ? "Save highlight" : "Remove highlight"}
+        : "Delete highlight"}
+      title={tooltip.kind === "create" ? "Save highlight" : "Delete highlight"}
     >
       {#if tooltip.kind === "create"}
         <HighlighterIcon
           class={`h-4 w-4 ${creatingHighlight ? "animate-pulse" : ""}`}
         />
       {:else}
-        <svg
-          class="h-3.5 w-3.5"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2.2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M3 6h18" />
-          <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-          <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
-          <path d="M10 11v6" />
-          <path d="M14 11v6" />
-        </svg>
-        {deletingHighlightId === tooltip.highlightId ? "Removing..." : "Remove"}
+        <TrashIcon
+          size={16}
+          strokeWidth={2.2}
+          class={deletingHighlightId === tooltip.highlightId
+            ? "animate-pulse"
+            : ""}
+        />
       {/if}
     </button>
   {/if}

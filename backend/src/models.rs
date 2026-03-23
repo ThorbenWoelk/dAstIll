@@ -4,6 +4,9 @@ use ts_rs::TS;
 
 use crate::services::search::SearchSourceKind;
 
+pub const OTHERS_CHANNEL_ID: &str = "__others__";
+pub const OTHERS_CHANNEL_NAME: &str = "Others";
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct Channel {
@@ -103,6 +106,20 @@ pub struct SummaryEvaluationResult {
 #[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct AddChannelRequest {
     pub input: String,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
+pub struct AddVideoRequest {
+    pub input: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
+pub struct AddVideoResponse {
+    pub video: Video,
+    pub target_channel_id: String,
+    pub already_exists: bool,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -229,6 +246,8 @@ pub struct SyncDepthPayload {
 pub struct ChannelSnapshotPayload {
     pub channel_id: String,
     pub sync_depth: SyncDepthPayload,
+    /// Total videos stored for this channel (no type / read / queue filters).
+    pub channel_video_count: usize,
     pub videos: Vec<Video>,
 }
 

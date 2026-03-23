@@ -49,6 +49,21 @@ pub fn spawn_queue_worker(state: AppState) {
             );
             let mut backoff_state = PollBackoffState::default();
 
+            match db::heal_queue_videos(&state.db, MAX_DISTILLATION_RETRIES).await {
+                Ok(n) if n > 0 => {
+                    tracing::info!(
+                        healed = n,
+                        "queue worker healed stuck loading rows or exhausted retries"
+                    );
+                    state.read_cache.clear().await;
+                }
+                Ok(_) => {}
+                Err(err) => tracing::error!(
+                    error = %err,
+                    "queue worker startup heal failed"
+                ),
+            }
+
             loop {
                 let queue = {
                     let conn = state.db.connect();

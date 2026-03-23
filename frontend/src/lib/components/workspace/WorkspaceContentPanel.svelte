@@ -169,6 +169,16 @@
       : null,
   );
 
+  /** Snapshot row or loaded meta shows summary artifacts exist; list status can lag behind. */
+  let summaryArtifactsKnown = $derived.by((): boolean => {
+    if (typeof selectedVideo?.quality_score === "number") return true;
+    if (summaryQualityScore !== null) return true;
+    if (summaryQualityNote !== null) return true;
+    if (summaryModelUsed !== null) return true;
+    if (summaryQualityModelUsed !== null) return true;
+    return false;
+  });
+
   let onBack = $derived(actions.onBack);
   let onSetMode = $derived(actions.onSetMode);
   let onStartEdit = $derived(actions.onStartEdit);
@@ -549,8 +559,6 @@
           : contentMode === "transcript"
             ? selectedVideo?.transcript_status
             : null}
-      {@const isProcessing =
-        contentStatus === "loading" || contentStatus === "pending"}
       {@const isUnavailable = contentStatus === "failed"}
       {#if isUnavailable}
         <div
@@ -595,9 +603,7 @@
           >
             {contentStatus === "pending"
               ? `Queued for ${contentMode}...`
-              : isProcessing
-                ? `Processing ${contentMode}...`
-                : `Loading ${contentMode}...`}
+              : `Loading ${contentMode}...`}
           </p>
         </div>
       {/if}
@@ -663,7 +669,9 @@
           >
             {selectedVideo.summary_status === "pending"
               ? "Queued for summary..."
-              : "Processing summary..."}
+              : summaryArtifactsKnown
+                ? "Loading summary..."
+                : "Generating summary..."}
           </p>
         </div>
       {:else}

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import TrashIcon from "$lib/components/icons/TrashIcon.svelte";
   import type { ChatConversationSummary } from "$lib/types";
   import { formatRelativeTime } from "$lib/utils/date";
 
@@ -164,24 +165,11 @@
                   {#if canDelete}
                     <button
                       type="button"
-                      class="inline-flex h-7 w-7 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]"
+                      class="inline-flex h-8 w-8 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--danger)]"
                       aria-label="Delete conversation"
                       onclick={() => void onDelete(conversation.id)}
                     >
-                      <svg
-                        width="12"
-                        height="12"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                      >
-                        <path d="M3 6h18" />
-                        <path d="M8 6V4h8v2" />
-                        <path d="m19 6-1 14H6L5 6" />
-                      </svg>
+                      <TrashIcon size={12} strokeWidth={2} />
                     </button>
                   {/if}
                 </div>

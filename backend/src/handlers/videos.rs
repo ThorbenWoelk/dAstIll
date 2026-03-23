@@ -4,10 +4,75 @@ use axum::{
     http::StatusCode,
     response::IntoResponse,
 };
+use chrono::Utc;
+use std::collections::HashSet;
 
 use crate::db;
-use crate::models::{Video, VideoInfo};
+use crate::models::{
+    AddVideoRequest, AddVideoResponse, ContentStatus, OTHERS_CHANNEL_ID, Video, VideoInfo,
+};
 use crate::state::AppState;
+
+fn resolve_manual_video_target_channel_id(
+    video_channel_id: &str,
+    subscribed_channel_ids: &HashSet<String>,
+) -> String {
+    if subscribed_channel_ids.contains(video_channel_id) {
+        video_channel_id.to_string()
+    } else {
+        OTHERS_CHANNEL_ID.to_string()
+    }
+}
+
+fn is_valid_youtube_video_id(candidate: &str) -> bool {
+    candidate.len() == 11
+        && candidate
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+}
+
+fn parse_manual_video_id(input: &str) -> Option<String> {
+    let trimmed = input.trim();
+    if is_valid_youtube_video_id(trimmed) {
+        return Some(trimmed.to_string());
+    }
+
+    let url = reqwest::Url::parse(trimmed).ok()?;
+    let host = url.host_str()?.to_ascii_lowercase();
+
+    if host == "youtu.be" {
+        return url
+            .path_segments()?
+            .next()
+            .filter(|segment| is_valid_youtube_video_id(segment))
+            .map(str::to_string);
+    }
+
+    let is_youtube_host = matches!(
+        host.as_str(),
+        "youtube.com" | "www.youtube.com" | "m.youtube.com"
+    );
+    if !is_youtube_host {
+        return None;
+    }
+
+    let path = url.path().trim_matches('/');
+    if path == "watch" {
+        return url
+            .query_pairs()
+            .find_map(|(key, value)| (key == "v").then(|| value.into_owned()))
+            .filter(|value| is_valid_youtube_video_id(value));
+    }
+
+    let mut segments = path.split('/');
+    match segments.next() {
+        Some("shorts" | "embed" | "live") => segments
+            .next()
+            .filter(|segment| is_valid_youtube_video_id(segment))
+            .map(str::to_string),
+        _ => None,
+    }
+}
 
 pub fn enrich_video_info(info: &mut VideoInfo, video: &Video) {
     if info.thumbnail_url.is_none() {
@@ -35,7 +100,7 @@ fn cached_video_info_needs_refresh(info: &VideoInfo) -> bool {
     })
 }
 use super::query::VideoListParams;
-use super::{map_db_err, require_channel, require_video};
+use super::{evict_video_scope_cache, map_db_err, require_channel, require_video};
 
 #[derive(Debug, serde::Deserialize)]
 pub struct VideoInfoBackfillParams {
@@ -50,7 +115,14 @@ pub async fn list_channel_videos(
     Path(channel_id): Path<String>,
     Query(params): Query<VideoListParams>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    require_channel(&state, &channel_id).await?;
+    if channel_id != OTHERS_CHANNEL_ID {
+        require_channel(&state, &channel_id).await?;
+    } else if !db::has_unsubscribed_channel_videos(&state.db)
+        .await
+        .map_err(map_db_err)?
+    {
+        return Err((StatusCode::NOT_FOUND, "Channel not found".to_string()));
+    }
 
     tracing::info!("video_type filter: {:?}", params.video_type);
     let videos = db::list_videos_by_channel(
@@ -68,6 +140,87 @@ pub async fn list_channel_videos(
     Ok(Json(videos))
 }
 
+pub async fn add_manual_video(
+    State(state): State<AppState>,
+    Json(payload): Json<AddVideoRequest>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let input = payload.input.trim();
+    let video_id = parse_manual_video_id(input).ok_or((
+        StatusCode::BAD_REQUEST,
+        "Enter a YouTube video URL, shorts URL, or 11-character video ID.".to_string(),
+    ))?;
+
+    let subscribed_channel_ids = db::list_channels(&state.db)
+        .await
+        .map_err(map_db_err)?
+        .into_iter()
+        .map(|channel| channel.id)
+        .collect::<HashSet<_>>();
+
+    if let Some(existing_video) = db::get_video(&state.db, &video_id, false)
+        .await
+        .map_err(map_db_err)?
+    {
+        let target_channel_id = resolve_manual_video_target_channel_id(
+            &existing_video.channel_id,
+            &subscribed_channel_ids,
+        );
+        return Ok((
+            StatusCode::OK,
+            Json(AddVideoResponse {
+                video: existing_video,
+                target_channel_id,
+                already_exists: true,
+            }),
+        ));
+    }
+
+    let info = state
+        .youtube
+        .fetch_video_info(&video_id)
+        .await
+        .map_err(|err| (StatusCode::BAD_REQUEST, err.to_string()))?;
+    let channel_id = info.channel_id.clone().ok_or((
+        StatusCode::BAD_REQUEST,
+        "Could not determine the video's channel.".to_string(),
+    ))?;
+    let is_short = state.youtube.fetch_is_short_flag(&video_id).await;
+    let video = Video {
+        id: video_id.clone(),
+        channel_id: channel_id.clone(),
+        title: info.title.clone(),
+        thumbnail_url: info.thumbnail_url.clone(),
+        published_at: info.published_at.unwrap_or_else(Utc::now),
+        is_short,
+        transcript_status: ContentStatus::Pending,
+        summary_status: ContentStatus::Pending,
+        acknowledged: false,
+        retry_count: 0,
+        quality_score: None,
+    };
+
+    db::insert_video(&state.db, &video)
+        .await
+        .map_err(map_db_err)?;
+    db::upsert_video_info(&state.db, &info)
+        .await
+        .map_err(map_db_err)?;
+
+    let target_channel_id =
+        resolve_manual_video_target_channel_id(&channel_id, &subscribed_channel_ids);
+    evict_video_scope_cache(&state, &channel_id).await?;
+    state.read_cache.evict_channel_list().await;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(AddVideoResponse {
+            video,
+            target_channel_id,
+            already_exists: false,
+        }),
+    ))
+}
+
 pub async fn get_video(
     State(state): State<AppState>,
     Path(video_id): Path<String>,
@@ -82,7 +235,7 @@ pub async fn get_video_info(
     let video = require_video(&state, &video_id).await?;
 
     let cached = {
-            db::get_video_info(&state.db, &video_id)
+        db::get_video_info(&state.db, &video_id)
             .await
             .map_err(map_db_err)?
     };
@@ -99,7 +252,7 @@ pub async fn ensure_video_info(
     let video = require_video(&state, &video_id).await?;
 
     let cached = {
-            db::get_video_info(&state.db, &video_id)
+        db::get_video_info(&state.db, &video_id)
             .await
             .map_err(map_db_err)?
     };
@@ -113,7 +266,7 @@ pub async fn ensure_video_info(
     match state.youtube.fetch_video_info(&video_id).await {
         Ok(mut info) => {
             enrich_video_info(&mut info, &video);
-                    db::upsert_video_info(&state.db, &info)
+            db::upsert_video_info(&state.db, &info)
                 .await
                 .map_err(map_db_err)?;
             Ok(Json(info))
@@ -155,7 +308,7 @@ pub async fn backfill_video_info(
 
     let heal = params.heal_placeholders.unwrap_or(false);
     let video_ids = {
-            if heal {
+        if heal {
             db::list_video_ids_with_placeholder_descriptions(&state.db, limit)
                 .await
                 .map_err(map_db_err)?
@@ -188,7 +341,7 @@ pub async fn backfill_video_info(
         };
 
         let video = {
-                    db::get_video(&state.db, video_id, false)
+            db::get_video(&state.db, video_id, false)
                 .await
                 .map_err(map_db_err)?
         };
@@ -197,7 +350,7 @@ pub async fn backfill_video_info(
             enrich_video_info(&mut info, &video);
         }
 
-            match db::upsert_video_info(&state.db, &info).await {
+        match db::upsert_video_info(&state.db, &info).await {
             Ok(_) => updated += 1,
             Err(err) => {
                 failed += 1;
@@ -230,15 +383,20 @@ pub async fn update_video_acknowledged(
         .await
         .map_err(map_db_err)?;
     video.acknowledged = payload.acknowledged;
-    state.read_cache.evict_channel(&video.channel_id).await;
+    evict_video_scope_cache(&state, &video.channel_id).await?;
     Ok(Json(video))
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use chrono::Utc;
 
-    use super::{VideoListParams, cached_video_info_needs_refresh, enrich_video_info};
+    use super::{
+        VideoListParams, cached_video_info_needs_refresh, enrich_video_info,
+        resolve_manual_video_target_channel_id,
+    };
     use crate::db;
     use crate::handlers::query::{QueueTab, VideoTypeFilter};
     use crate::models::{ContentStatus, Video, VideoInfo};
@@ -386,5 +544,25 @@ mod tests {
         assert_eq!(params.offset_or_default(), 0);
         assert_eq!(params.is_short_filter(), Some(true));
         assert_eq!(params.queue_filter(), Some(db::QueueFilter::SummariesOnly));
+    }
+
+    #[test]
+    fn manual_video_targets_subscribed_channel_when_available() {
+        let subscribed = HashSet::from(["UC_SUBSCRIBED".to_string()]);
+
+        assert_eq!(
+            resolve_manual_video_target_channel_id("UC_SUBSCRIBED", &subscribed),
+            "UC_SUBSCRIBED"
+        );
+    }
+
+    #[test]
+    fn manual_video_targets_others_when_channel_is_not_subscribed() {
+        let subscribed = HashSet::from(["UC_SUBSCRIBED".to_string()]);
+
+        assert_eq!(
+            resolve_manual_video_target_channel_id("UC_OTHER", &subscribed),
+            "__others__"
+        );
     }
 }

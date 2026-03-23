@@ -18,6 +18,8 @@ export type ChatRetrievalIntent =
   | "pattern"
   | "comparison";
 
+export const OTHERS_CHANNEL_ID = "__others__";
+
 export interface Channel {
   id: string;
   handle?: string | null;
@@ -37,6 +39,8 @@ export interface SyncDepth {
 export interface ChannelSnapshot {
   channel_id: string;
   sync_depth: SyncDepth;
+  /** Total videos for this channel in storage (ignores type / read / queue filters). */
+  channel_video_count: number;
   videos: Video[];
 }
 
@@ -68,6 +72,12 @@ export interface Video {
   acknowledged: boolean;
   retry_count?: number;
   quality_score?: number | null;
+}
+
+export interface AddVideoResult {
+  video: Video;
+  target_channel_id: string;
+  already_exists: boolean;
 }
 
 export interface Transcript {

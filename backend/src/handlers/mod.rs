@@ -47,3 +47,24 @@ pub(crate) async fn require_video(
         .map_err(map_db_err)?
         .ok_or((StatusCode::NOT_FOUND, "Video not found".to_string()))
 }
+
+pub(crate) async fn evict_video_scope_cache(
+    state: &AppState,
+    channel_id: &str,
+) -> Result<(), (StatusCode, String)> {
+    let is_subscribed = db::get_channel(&state.db, channel_id)
+        .await
+        .map_err(map_db_err)?
+        .is_some();
+
+    if is_subscribed {
+        state.read_cache.evict_channel(channel_id).await;
+    } else {
+        state
+            .read_cache
+            .evict_channel(crate::models::OTHERS_CHANNEL_ID)
+            .await;
+    }
+
+    Ok(())
+}

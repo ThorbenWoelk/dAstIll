@@ -22,7 +22,9 @@ use super::map_db_err;
 pub async fn list_conversations(
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let conversations = db::list_conversations(&state.db).await.map_err(map_db_err)?;
+    let conversations = db::list_conversations(&state.db)
+        .await
+        .map_err(map_db_err)?;
     Ok(Json(conversations))
 }
 

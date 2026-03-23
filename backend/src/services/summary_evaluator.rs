@@ -110,13 +110,14 @@ Axis 1 - Faithfulness (no hallucination):
 - Penalize any invented names, numbers, claims, or conclusions not in the transcript.
 - Penalize vague or generic statements that could apply to any video (e.g. "the speaker discusses interesting topics").
 
-Axis 2 - Completeness (no omission):
-- Every significant topic, argument, example, and conclusion in the transcript must appear in the summary, at minimum as a higher-level statement.
-- For a {transcript_word_count}-word transcript, a summary with only 2-3 bullet points is almost certainly incomplete.
-- Mentally walk through the transcript section by section and check each is represented.
+Axis 2 - Completeness (no omission of editorial content):
+- Every significant topic, argument, example, and conclusion in the substantive (non-ad) parts of the transcript must appear in the summary, at minimum as a higher-level statement.
+- Do not treat omission as incomplete when the summary skips transcript portions you confidently identify as paid promotions, sponsor reads, discount pitches, or standalone ad segments (e.g. explicit sponsorship framing, isolated product pitch, use-code style copy) while the main editorial arc is covered.
+- For a {transcript_word_count}-word transcript, a summary with only 2-3 bullet points is almost certainly incomplete (unless almost the entire transcript is clearly non-editorial ad copy).
+- Mentally walk through the transcript section by section and check each editorial segment is represented.
 
 Scoring guide:
-- 10: Fully faithful AND fully complete. No hallucinations, no omissions.
+- 10: Fully faithful AND fully complete on editorial substance. No hallucinations, no unjustified omissions of main content.
 - 8-9: Minor omissions or minor imprecisions, but all major points covered.
 - 5-7: Several points missing or some unsupported claims.
 - 3-4: Major gaps - large sections of transcript content not reflected in summary.
@@ -126,7 +127,7 @@ Return strict JSON only with this schema:
 {{"score": <integer 0-10>, "incoherence_note": "<concise, poignant, markdown-formatted note with bullet points, categorized for hallucinations and other suitable categories (e.g., omissions, factual errors)>"}}
 
 Rules:
-- Be harsh. A short, generic summary of a long, detailed transcript should score low.
+- Be harsh. A short, generic summary of a long, detailed editorial transcript should score low.
 - Formatting: Use concise, poignant bullet points. Categorize using bold headers like **Hallucinations**, **Factually Incorrect**, or **Omissions**.
 - Example:
   **Factually Incorrect**: 
@@ -137,7 +138,7 @@ Rules:
         let (raw, model_used) = self
             .prompt_model(
                 "summary_quality_evaluation",
-                "You are a strict, skeptical evaluator. You check summaries for two failure modes: hallucination (claims not in the transcript) and omission (transcript content missing from the summary). You penalize both equally. A short generic summary of a long detailed transcript is a failing summary.",
+                "You are a strict, skeptical evaluator. You check summaries for two failure modes: hallucination (claims not in the transcript) and omission (substantive transcript content missing from the summary). You penalize both equally. Omission of confidently identifiable sponsor or ad segments does not count against completeness. A short generic summary of a long detailed editorial transcript is a failing summary.",
                 &prompt,
             )
             .await?;

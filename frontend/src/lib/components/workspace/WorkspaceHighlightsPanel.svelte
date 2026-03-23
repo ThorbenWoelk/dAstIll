@@ -1,4 +1,5 @@
 <script lang="ts">
+  import TrashIcon from "$lib/components/icons/TrashIcon.svelte";
   import type { Highlight, Video } from "$lib/types";
   import { formatPublishedAt } from "$lib/workspace/content";
 
@@ -66,13 +67,18 @@
               {#if onDeleteHighlight}
                 <button
                   type="button"
-                  class="inline-flex items-center rounded-full border border-[var(--border)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] transition-colors hover:border-[var(--danger-border)] hover:text-[var(--danger-foreground)] disabled:cursor-not-allowed disabled:opacity-50"
+                  class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--danger)] disabled:cursor-not-allowed disabled:opacity-50"
                   onclick={() => void onDeleteHighlight(highlight.id)}
                   disabled={deletingHighlightId === highlight.id}
+                  aria-label="Delete highlight"
                 >
-                  {deletingHighlightId === highlight.id
-                    ? "Removing..."
-                    : "Remove"}
+                  <TrashIcon
+                    size={14}
+                    strokeWidth={2.2}
+                    class={deletingHighlightId === highlight.id
+                      ? "animate-pulse"
+                      : ""}
+                  />
                 </button>
               {/if}
             </div>

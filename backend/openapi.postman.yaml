@@ -1,0 +1,1527 @@
+openapi: 3.0.3
+info:
+  title: dAstIll Backend API
+  version: 0.1.0
+  description: |
+    Import this file into Postman as an OpenAPI definition.
+
+    Notes:
+    - `GET /api/health` is public.
+    - All other `/api/*` endpoints require `x-dastill-proxy-auth`.
+    - Some destructive routes additionally require `x-dastill-role: operator`.
+    - SSE endpoints return `text/event-stream`.
+servers:
+  - url: http://localhost:3001
+    description: Local backend
+tags:
+  - name: Health
+  - name: Workspace
+  - name: Channels
+  - name: Videos
+  - name: Content
+  - name: Search
+  - name: Chat
+  - name: Highlights
+security:
+  - ProxyAuth: []
+paths:
+  /api/health:
+    get:
+      tags: [Health]
+      summary: Basic health check
+      security: []
+      responses:
+        "200":
+          description: Plain text health response
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: ok
+  /api/health/ai:
+    get:
+      tags: [Health]
+      summary: AI availability status
+      responses:
+        "200":
+          description: AI health payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiHealthPayload"
+        default:
+          $ref: "#/components/responses/StringError"
+  /api/workspace/bootstrap:
+    get:
+      tags: [Workspace]
+      summary: Bootstrap workspace data for the UI
+      parameters:
+        - $ref: "#/components/parameters/SelectedChannelId"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/IncludeShorts"
+        - $ref: "#/components/parameters/VideoType"
+        - $ref: "#/components/parameters/Acknowledged"
+        - $ref: "#/components/parameters/QueueOnly"
+        - $ref: "#/components/parameters/QueueTab"
+      responses:
+        "200":
+          description: Workspace bootstrap payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceBootstrapPayload"
+        default:
+          $ref: "#/components/responses/StringError"
+  /api/channels:
+    get:
+      tags: [Channels]
+      summary: List channels
+      responses:
+        "200":
+          description: Channels
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Channel"
+        default:
+          $ref: "#/components/responses/StringError"
+    post:
+      tags: [Channels]
+      summary: Add a channel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddChannelRequest"
+      responses:
+        "201":
+          description: Created channel
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+        default:
+          $ref: "#/components/responses/StringError"
+  /api/channels/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ChannelId"
+    get:
+      tags: [Channels]
+      summary: Get channel
+      responses:
+        "200":
+          description: Channel
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+        default:
+          $ref: "#/components/responses/StringError"
+    put:
+      tags: [Channels]
+      summary: Update channel sync settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateChannelRequest"
+      responses:
+        "200":
+          description: Updated channel
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+        default:
+          $ref: "#/components/responses/StringError"
+    delete:
+      tags: [Channels]
+      summary: Delete channel
+      description: "Requires `x-dastill-role: operator`."
+      security:
+        - ProxyAuth: []
+          OperatorRole: []
+      responses:
+        "204":
+          description: Channel deleted
+        default:
+          $ref: "#/components/responses/StringError"
+  /api/channels/{id}/sync-depth:
+    parameters:
+      - $ref: "#/components/parameters/ChannelId"
+    get:
+      tags: [Channels]
+      summary: Get channel sync depth
+      responses:
+        "200":
+          description: Sync depth
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncDepthPayload"
+        default:
+          $ref: "#/components/responses/StringError"
+  /api/channels/{id}/snapshot:
+    parameters:
+      - $ref: "#/components/parameters/ChannelId"
+      - $ref: "#/components/parameters/Limit"
+      - $ref: "#/components/parameters/Offset"
+      - $ref: "#/components/parameters/IncludeShorts"
+      - $ref: "#/components/parameters/VideoType"
+      - $ref: "#/components/parameters/Acknowledged"
+      - $ref: "#/components/parameters/QueueOnly"
+      - $ref: "#/components/parameters/QueueTab"
+    get:
+      tags: [Channels]
+      summary: Get channel snapshot with filtered videos
+      responses:
+        "200":
+          description: Channel snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelSnapshotPayload"
+        default:
+          $ref: "#/components/responses/StringError"
+  /api/channels/{id}/refresh:
+    parameters:
+      - $ref: "#/components/parameters/ChannelId"
+    post:
+      tags: [Channels]
+      summary: Refresh latest videos for a channel
+      responses:
+        "200":
+          description: Refresh result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideosAddedResponse"
+        default:
+          $ref: "#/components/responses/StringError"
+  /api/channels/{id}/backfill:
+    parameters:
+      - $ref: "#/components/parameters/ChannelId"
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 15
+      - name: until
+        in: query
+        description: RFC3339 timestamp
+        schema:
+          type: string
+          format: date-time
+    post:
+      tags: [Channels]
+      summary: Backfill older videos for a channel
+      responses:
+        "200":
+          description: Backfill result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelBackfillResponse"
+        default:
+          $ref: "#/components/responses/StringError"
+  /api/channels/{id}/videos:
+    parameters:
+      - $ref: "#/components/parameters/ChannelId"
+      - $ref: "#/components/parameters/Limit"
+      - $ref: "#/components/parameters/Offset"
+      - $ref: "#/components/parameters/IncludeShorts"
+      - $ref: "#/components/parameters/VideoType"
+      - $ref: "#/components/parameters/Acknowledged"
+      - $ref: "#/components/parameters/QueueOnly"
+      - $ref: "#/components/parameters/QueueTab"
+    get:
+      tags: [Videos]
+      summary: List videos for a channel
+      responses:
+        "200":
+          description: Videos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Video"
+        default:
+          $ref: "#/components/responses/StringError"
+  /api/videos/{id}:
+    parameters:
+      - $ref: "#/components/parameters/VideoId"
+    get:
+      tags: [Videos]
+      summary: Get video
+      responses:
+        "200":
+          description: Video
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Video"
+        default:
+          $ref: "#/components/responses/StringError"
+  /api/videos/{id}/info:
+    parameters:
+      - $ref: "#/components/parameters/VideoId"
+    get:
+      tags: [Videos]
+      summary: Get stored video info
+      responses:
+        "200":
+          description: Video info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoInfo"
+        default:
+          $ref: "#/components/responses/StringError"
+  /api/videos/{id}/info/ensure:
+    parameters:
+      - $ref: "#/components/parameters/VideoId"
+    post:
+      tags: [Videos]
+      summary: Fetch video info if missing or stale
+      responses:
+        "200":
+          description: Video info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoInfo"
+        default:
+          $ref: "#/components/responses/StringError"
+  /api/videos/info/backfill:
+    post:
+      tags: [Videos]
+      summary: Backfill video info rows
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+        - name: force
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: heal_placeholders
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Backfill result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoInfoBackfillResponse"
+        default:
+          $ref: "#/components/responses/StringError"
+  /api/videos/{id}/acknowledged:
+    parameters:
+      - $ref: "#/components/parameters/VideoId"
+    put:
+      tags: [Videos]
+      summary: Update acknowledged state
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAcknowledgedRequest"
+      responses:
+        "200":
+          description: Updated video
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Video"
+        default:
+          $ref: "#/components/responses/StringError"
+  /api/videos/{id}/transcript:
+    parameters:
+      - $ref: "#/components/parameters/VideoId"
+    get:
+      tags: [Content]
+      summary: Get transcript
+      responses:
+        "200":
+          description: Transcript
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transcript"
+        default:
+          $ref: "#/components/responses/StringError"
+    put:
+      tags: [Content]
+      summary: Save transcript manually
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateContentRequest"
+      responses:
+        "200":
+          description: Transcript
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transcript"
+        default:
+          $ref: "#/components/responses/StringError"
+  /api/videos/{id}/transcript/ensure:
+    parameters:
+      - $ref: "#/components/parameters/VideoId"
+    post:
+      tags: [Content]
+      summary: Generate or fetch transcript
+      responses:
+        "200":
+          description: Transcript
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transcript"
+        default:
+          $ref: "#/components/responses/StringError"
+  /api/videos/{id}/transcript/clean:
+    parameters:
+      - $ref: "#/components/parameters/VideoId"
+    post:
+      tags: [Content]
+      summary: Clean transcript formatting with AI
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateContentRequest"
+      responses:
+        "200":
+          description: Cleaning result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CleanTranscriptResponse"
+        default:
+          $ref: "#/components/responses/StringError"
+  /api/videos/{id}/summary:
+    parameters:
+      - $ref: "#/components/parameters/VideoId"
+    get:
+      tags: [Content]
+      summary: Get summary
+      responses:
+        "200":
+          description: Summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Summary"
+        default:
+          $ref: "#/components/responses/StringError"
+    put:
+      tags: [Content]
+      summary: Save summary manually
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateContentRequest"
+      responses:
+        "200":
+          description: Summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Summary"
+        default:
+          $ref: "#/components/responses/StringError"
+  /api/videos/{id}/summary/ensure:
+    parameters:
+      - $ref: "#/components/parameters/VideoId"
+    post:
+      tags: [Content]
+      summary: Generate or fetch summary
+      responses:
+        "200":
+          description: Summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Summary"
+        default:
+          $ref: "#/components/responses/StringError"
+  /api/videos/{id}/summary/regenerate:
+    parameters:
+      - $ref: "#/components/parameters/VideoId"
+    post:
+      tags: [Content]
+      summary: Force summary regeneration
+      responses:
+        "200":
+          description: Summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Summary"
+        default:
+          $ref: "#/components/responses/StringError"
+  /api/videos/{id}/reset:
+    parameters:
+      - $ref: "#/components/parameters/VideoId"
+    post:
+      tags: [Content]
+      summary: Reset transcript and summary processing state
+      responses:
+        "204":
+          description: Video reset
+        default:
+          $ref: "#/components/responses/StringError"
+  /api/search:
+    get:
+      tags: [Search]
+      summary: Search transcripts and summaries
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: source
+          in: query
+          schema:
+            $ref: "#/components/schemas/SearchSourceFilter"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 25
+            default: 8
+        - name: channel_id
+          in: query
+          schema:
+            type: string
+        - name: mode
+          in: query
+          schema:
+            $ref: "#/components/schemas/SearchExecutionMode"
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResponsePayload"
+        default:
+          $ref: "#/components/responses/StringError"
+  /api/search/status:
+    get:
+      tags: [Search]
+      summary: Current search indexing status
+      responses:
+        "200":
+          description: Search status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchStatusPayload"
+        default:
+          $ref: "#/components/responses/StringError"
+  /api/search/status/stream:
+    get:
+      tags: [Search]
+      summary: Stream search indexing status updates
+      responses:
+        "200":
+          description: Server-sent events of `SearchStatusPayload`
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              examples:
+                sample:
+                  value: |
+                    data: {"available":true,"model":"nomic-embed-text","dimensions":512,"pending":0,"indexing":0,"ready":12,"failed":0,"total_sources":12,"total_chunk_count":44,"embedded_chunk_count":44,"vector_index_ready":true,"retrieval_mode":"hybrid_ann"}
+
+        default:
+          $ref: "#/components/responses/StringError"
+  /api/search/rebuild:
+    post:
+      tags: [Search]
+      summary: Rebuild the search projection
+      responses:
+        "202":
+          description: Rebuild accepted
+        default:
+          $ref: "#/components/responses/StringError"
+  /api/chat/conversations:
+    get:
+      tags: [Chat]
+      summary: List chat conversations
+      responses:
+        "200":
+          description: Conversation summaries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChatConversationSummary"
+        default:
+          $ref: "#/components/responses/StringError"
+    post:
+      tags: [Chat]
+      summary: Create a chat conversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateConversationRequest"
+      responses:
+        "201":
+          description: Created conversation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatConversation"
+        default:
+          $ref: "#/components/responses/StringError"
+  /api/chat/conversations/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ConversationId"
+    get:
+      tags: [Chat]
+      summary: Get one chat conversation
+      responses:
+        "200":
+          description: Conversation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatConversation"
+        default:
+          $ref: "#/components/responses/StringError"
+    put:
+      tags: [Chat]
+      summary: Rename a chat conversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateConversationRequest"
+      responses:
+        "200":
+          description: Updated conversation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatConversation"
+        default:
+          $ref: "#/components/responses/StringError"
+    delete:
+      tags: [Chat]
+      summary: Delete a chat conversation
+      description: "Requires `x-dastill-role: operator`."
+      security:
+        - ProxyAuth: []
+          OperatorRole: []
+      responses:
+        "204":
+          description: Conversation deleted
+        default:
+          $ref: "#/components/responses/StringError"
+  /api/chat/conversations/{id}/messages:
+    parameters:
+      - $ref: "#/components/parameters/ConversationId"
+    post:
+      tags: [Chat]
+      summary: Send a chat message and receive an SSE stream
+      description: |
+        Returns server-sent events with named events:
+        - `status`
+        - `sources`
+        - `token`
+        - `done`
+        - `error`
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendChatMessageRequest"
+      responses:
+        "200":
+          description: Chat response stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              examples:
+                sample:
+                  value: |
+                    event: status
+                    data: {"stage":"planning","label":"Planning answer"}
+
+                    event: token
+                    data: {"token":"Hello"}
+
+                    event: done
+                    data: {"message":{"id":"msg_1","role":"assistant","content":"Hello world","sources":[],"status":"completed","created_at":"2026-03-23T12:00:00Z"}}
+
+        default:
+          $ref: "#/components/responses/StringError"
+  /api/chat/conversations/{id}/stream:
+    parameters:
+      - $ref: "#/components/parameters/ConversationId"
+    get:
+      tags: [Chat]
+      summary: Reconnect to an active chat SSE stream
+      responses:
+        "200":
+          description: Chat response stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        default:
+          $ref: "#/components/responses/StringError"
+  /api/chat/conversations/{id}/cancel:
+    parameters:
+      - $ref: "#/components/parameters/ConversationId"
+    post:
+      tags: [Chat]
+      summary: Cancel an active chat response
+      responses:
+        "202":
+          description: Cancellation accepted
+        default:
+          $ref: "#/components/responses/StringError"
+  /api/highlights:
+    get:
+      tags: [Highlights]
+      summary: List all highlights grouped by channel and video
+      responses:
+        "200":
+          description: Grouped highlights
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HighlightChannelGroup"
+        default:
+          $ref: "#/components/responses/StringError"
+  /api/videos/{id}/highlights:
+    parameters:
+      - $ref: "#/components/parameters/VideoId"
+    get:
+      tags: [Highlights]
+      summary: List highlights for a video
+      responses:
+        "200":
+          description: Video highlights
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Highlight"
+        default:
+          $ref: "#/components/responses/StringError"
+    post:
+      tags: [Highlights]
+      summary: Create a highlight for a video
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateHighlightRequest"
+      responses:
+        "201":
+          description: Created highlight
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Highlight"
+        default:
+          $ref: "#/components/responses/StringError"
+  /api/highlights/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+    delete:
+      tags: [Highlights]
+      summary: Delete a highlight
+      responses:
+        "204":
+          description: Highlight deleted
+        default:
+          $ref: "#/components/responses/StringError"
+components:
+  securitySchemes:
+    ProxyAuth:
+      type: apiKey
+      in: header
+      name: x-dastill-proxy-auth
+      description: Required for all protected endpoints.
+    OperatorRole:
+      type: apiKey
+      in: header
+      name: x-dastill-role
+      description: Set to `operator` for operator-only endpoints.
+    ClientIp:
+      type: apiKey
+      in: header
+      name: x-dastill-client-ip
+      description: Optional stable client identifier used for rate limiting and anonymous chat quota.
+  parameters:
+    ChannelId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    VideoId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    ConversationId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    SelectedChannelId:
+      name: selected_channel_id
+      in: query
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 0
+        maximum: 100
+        default: 20
+    Offset:
+      name: offset
+      in: query
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    IncludeShorts:
+      name: include_shorts
+      in: query
+      schema:
+        type: boolean
+        default: true
+    VideoType:
+      name: video_type
+      in: query
+      schema:
+        $ref: "#/components/schemas/VideoTypeFilter"
+    Acknowledged:
+      name: acknowledged
+      in: query
+      schema:
+        type: boolean
+    QueueOnly:
+      name: queue_only
+      in: query
+      schema:
+        type: boolean
+    QueueTab:
+      name: queue_tab
+      in: query
+      schema:
+        $ref: "#/components/schemas/QueueTab"
+  responses:
+    StringError:
+      description: Error message returned as plain text
+      content:
+        text/plain:
+          schema:
+            type: string
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+  schemas:
+    ApiError:
+      type: object
+      properties:
+        error:
+          type: string
+      additionalProperties: true
+      example:
+        error: Something went wrong
+    ContentStatus:
+      type: string
+      enum: [pending, loading, ready, failed]
+    TranscriptRenderMode:
+      type: string
+      enum: [plain_text, markdown]
+    HighlightSource:
+      type: string
+      enum: [transcript, summary]
+    AiStatus:
+      type: string
+      enum: [cloud, local_only, offline]
+    SearchSourceKind:
+      type: string
+      enum: [transcript, summary]
+    SearchSourceFilter:
+      type: string
+      enum: [all, transcript, summary]
+    SearchExecutionMode:
+      type: string
+      enum: [keyword, semantic, hybrid]
+    VideoTypeFilter:
+      type: string
+      enum: [all, long, short]
+    QueueTab:
+      type: string
+      enum: [transcripts, summaries, evaluations]
+    ChatRole:
+      type: string
+      enum: [system, user, assistant]
+    ChatMessageStatus:
+      type: string
+      enum: [completed, streaming, cancelled, rejected, failed]
+    ChatTitleStatus:
+      type: string
+      enum: [idle, generating, ready, manual]
+    Channel:
+      type: object
+      required:
+        - id
+        - name
+        - added_at
+        - earliest_sync_date_user_set
+      properties:
+        id:
+          type: string
+        handle:
+          type: string
+          nullable: true
+        name:
+          type: string
+        thumbnail_url:
+          type: string
+          nullable: true
+        added_at:
+          type: string
+          format: date-time
+        earliest_sync_date:
+          type: string
+          format: date-time
+          nullable: true
+        earliest_sync_date_user_set:
+          type: boolean
+    Video:
+      type: object
+      required:
+        - id
+        - channel_id
+        - title
+        - published_at
+        - is_short
+        - transcript_status
+        - summary_status
+        - acknowledged
+        - retry_count
+      properties:
+        id:
+          type: string
+        channel_id:
+          type: string
+        title:
+          type: string
+        thumbnail_url:
+          type: string
+          nullable: true
+        published_at:
+          type: string
+          format: date-time
+        is_short:
+          type: boolean
+        transcript_status:
+          $ref: "#/components/schemas/ContentStatus"
+        summary_status:
+          $ref: "#/components/schemas/ContentStatus"
+        acknowledged:
+          type: boolean
+        retry_count:
+          type: integer
+          minimum: 0
+          maximum: 255
+        quality_score:
+          type: integer
+          minimum: 0
+          maximum: 255
+          nullable: true
+    VideoInfo:
+      type: object
+      required:
+        - video_id
+        - watch_url
+        - title
+      properties:
+        video_id:
+          type: string
+        watch_url:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        thumbnail_url:
+          type: string
+          nullable: true
+        channel_name:
+          type: string
+          nullable: true
+        channel_id:
+          type: string
+          nullable: true
+        published_at:
+          type: string
+          format: date-time
+          nullable: true
+        duration_iso8601:
+          type: string
+          nullable: true
+        duration_seconds:
+          type: integer
+          format: int64
+          nullable: true
+        view_count:
+          type: integer
+          format: int64
+          nullable: true
+    Transcript:
+      type: object
+      required:
+        - video_id
+        - render_mode
+      properties:
+        video_id:
+          type: string
+        raw_text:
+          type: string
+          nullable: true
+        formatted_markdown:
+          type: string
+          nullable: true
+        render_mode:
+          $ref: "#/components/schemas/TranscriptRenderMode"
+    Summary:
+      type: object
+      required:
+        - video_id
+        - content
+      properties:
+        video_id:
+          type: string
+        content:
+          type: string
+        model_used:
+          type: string
+          nullable: true
+        quality_score:
+          type: integer
+          nullable: true
+        quality_note:
+          type: string
+          nullable: true
+        quality_model_used:
+          type: string
+          nullable: true
+    AddChannelRequest:
+      type: object
+      required: [input]
+      properties:
+        input:
+          type: string
+          description: YouTube channel URL, handle, or ID
+    UpdateChannelRequest:
+      type: object
+      properties:
+        earliest_sync_date:
+          type: string
+          format: date-time
+          nullable: true
+        earliest_sync_date_user_set:
+          type: boolean
+          nullable: true
+    UpdateContentRequest:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+        render_mode:
+          $ref: "#/components/schemas/TranscriptRenderMode"
+    UpdateAcknowledgedRequest:
+      type: object
+      required: [acknowledged]
+      properties:
+        acknowledged:
+          type: boolean
+    Highlight:
+      type: object
+      required:
+        - id
+        - video_id
+        - source
+        - text
+        - prefix_context
+        - suffix_context
+        - created_at
+      properties:
+        id:
+          type: integer
+          format: int64
+        video_id:
+          type: string
+        source:
+          $ref: "#/components/schemas/HighlightSource"
+        text:
+          type: string
+        prefix_context:
+          type: string
+        suffix_context:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    CreateHighlightRequest:
+      type: object
+      required:
+        - source
+        - text
+      properties:
+        source:
+          $ref: "#/components/schemas/HighlightSource"
+        text:
+          type: string
+        prefix_context:
+          type: string
+          default: ""
+        suffix_context:
+          type: string
+          default: ""
+    HighlightVideoGroup:
+      type: object
+      required:
+        - video_id
+        - title
+        - published_at
+        - highlights
+      properties:
+        video_id:
+          type: string
+        title:
+          type: string
+        thumbnail_url:
+          type: string
+          nullable: true
+        published_at:
+          type: string
+          format: date-time
+        highlights:
+          type: array
+          items:
+            $ref: "#/components/schemas/Highlight"
+    HighlightChannelGroup:
+      type: object
+      required:
+        - channel_id
+        - channel_name
+        - videos
+      properties:
+        channel_id:
+          type: string
+        channel_name:
+          type: string
+        channel_thumbnail_url:
+          type: string
+          nullable: true
+        videos:
+          type: array
+          items:
+            $ref: "#/components/schemas/HighlightVideoGroup"
+    CleanTranscriptResponse:
+      type: object
+      required:
+        - content
+        - preserved_text
+        - attempts_used
+        - max_attempts
+        - timed_out
+      properties:
+        content:
+          type: string
+        preserved_text:
+          type: boolean
+        attempts_used:
+          type: integer
+        max_attempts:
+          type: integer
+        timed_out:
+          type: boolean
+    AiHealthPayload:
+      type: object
+      required:
+        - available
+        - status
+      properties:
+        available:
+          type: boolean
+        status:
+          $ref: "#/components/schemas/AiStatus"
+    SyncDepthPayload:
+      type: object
+      required:
+        - earliest_sync_date_user_set
+      properties:
+        earliest_sync_date:
+          type: string
+          nullable: true
+        earliest_sync_date_user_set:
+          type: boolean
+        derived_earliest_ready_date:
+          type: string
+          nullable: true
+    ChannelSnapshotPayload:
+      type: object
+      required:
+        - channel_id
+        - sync_depth
+        - channel_video_count
+        - videos
+      properties:
+        channel_id:
+          type: string
+        sync_depth:
+          $ref: "#/components/schemas/SyncDepthPayload"
+        channel_video_count:
+          type: integer
+        videos:
+          type: array
+          items:
+            $ref: "#/components/schemas/Video"
+    WorkspaceBootstrapPayload:
+      type: object
+      required:
+        - ai_available
+        - ai_status
+        - channels
+        - search_status
+      properties:
+        ai_available:
+          type: boolean
+        ai_status:
+          $ref: "#/components/schemas/AiStatus"
+        channels:
+          type: array
+          items:
+            $ref: "#/components/schemas/Channel"
+        selected_channel_id:
+          type: string
+          nullable: true
+        snapshot:
+          allOf:
+            - $ref: "#/components/schemas/ChannelSnapshotPayload"
+          nullable: true
+        search_status:
+          $ref: "#/components/schemas/SearchStatusPayload"
+    SearchMatchPayload:
+      type: object
+      required:
+        - source
+        - snippet
+        - score
+      properties:
+        source:
+          $ref: "#/components/schemas/SearchSourceKind"
+        section_title:
+          type: string
+          nullable: true
+        snippet:
+          type: string
+        score:
+          type: number
+          format: float
+    SearchVideoResultPayload:
+      type: object
+      required:
+        - video_id
+        - channel_id
+        - channel_name
+        - video_title
+        - published_at
+        - matches
+      properties:
+        video_id:
+          type: string
+        channel_id:
+          type: string
+        channel_name:
+          type: string
+        video_title:
+          type: string
+        published_at:
+          type: string
+        matches:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchMatchPayload"
+    SearchResponsePayload:
+      type: object
+      required:
+        - query
+        - source
+        - results
+      properties:
+        query:
+          type: string
+        source:
+          type: string
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchVideoResultPayload"
+    SearchStatusPayload:
+      type: object
+      required:
+        - available
+        - model
+        - dimensions
+        - pending
+        - indexing
+        - ready
+        - failed
+        - total_sources
+        - total_chunk_count
+        - embedded_chunk_count
+        - vector_index_ready
+        - retrieval_mode
+      properties:
+        available:
+          type: boolean
+        model:
+          type: string
+        dimensions:
+          type: integer
+        pending:
+          type: integer
+        indexing:
+          type: integer
+        ready:
+          type: integer
+        failed:
+          type: integer
+        total_sources:
+          type: integer
+        total_chunk_count:
+          type: integer
+        embedded_chunk_count:
+          type: integer
+        vector_index_ready:
+          type: boolean
+        retrieval_mode:
+          type: string
+    ChatSource:
+      type: object
+      required:
+        - video_id
+        - channel_id
+        - channel_name
+        - video_title
+        - source_kind
+        - snippet
+        - score
+      properties:
+        video_id:
+          type: string
+        channel_id:
+          type: string
+        channel_name:
+          type: string
+        video_title:
+          type: string
+        source_kind:
+          $ref: "#/components/schemas/SearchSourceKind"
+        section_title:
+          type: string
+          nullable: true
+        snippet:
+          type: string
+        score:
+          type: number
+          format: float
+        retrieval_pass:
+          type: integer
+          nullable: true
+    ChatMessage:
+      type: object
+      required:
+        - id
+        - role
+        - content
+        - sources
+        - status
+        - created_at
+      properties:
+        id:
+          type: string
+        role:
+          $ref: "#/components/schemas/ChatRole"
+        content:
+          type: string
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatSource"
+        status:
+          $ref: "#/components/schemas/ChatMessageStatus"
+        created_at:
+          type: string
+          format: date-time
+    ChatConversationSummary:
+      type: object
+      required:
+        - id
+        - title_status
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+          nullable: true
+        title_status:
+          $ref: "#/components/schemas/ChatTitleStatus"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ChatConversation:
+      type: object
+      required:
+        - id
+        - title_status
+        - created_at
+        - updated_at
+        - messages
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+          nullable: true
+        title_status:
+          $ref: "#/components/schemas/ChatTitleStatus"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatMessage"
+    CreateConversationRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          nullable: true
+    UpdateConversationRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+    SendChatMessageRequest:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+    VideosAddedResponse:
+      type: object
+      required: [videos_added]
+      properties:
+        videos_added:
+          type: integer
+    ChannelBackfillResponse:
+      type: object
+      required:
+        - videos_added
+        - fetched_count
+        - exhausted
+      properties:
+        videos_added:
+          type: integer
+        fetched_count:
+          type: integer
+        exhausted:
+          type: boolean
+    VideoInfoBackfillResponse:
+      type: object
+      required:
+        - requested_limit
+        - force
+        - heal_placeholders
+        - processed
+        - updated
+        - failed
+      properties:
+        requested_limit:
+          type: integer
+        force:
+          type: boolean
+        heal_placeholders:
+          type: boolean
+        processed:
+          type: integer
+        updated:
+          type: integer
+        failed:
+          type: integer

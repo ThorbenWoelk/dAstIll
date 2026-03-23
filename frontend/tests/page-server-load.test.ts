@@ -89,6 +89,7 @@ function makeChannelSnapshot(
       earliest_sync_date_user_set: false,
       derived_earliest_ready_date: null,
     },
+    channel_video_count: videoCount,
     videos: Array.from({ length: videoCount }, (_, i) => ({
       id: `vid-${channelId}-${i}`,
       channel_id: channelId,

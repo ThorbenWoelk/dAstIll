@@ -121,6 +121,7 @@
         buildQueueSnapshotCacheKey(sidebar.selectedChannelId!),
         {
           channel_id: sidebar.selectedChannelId!,
+          channel_video_count: res.videos.length,
           videos: res.videos,
           sync_depth: sidebar.syncDepth,
         } as ChannelSnapshot,
@@ -217,6 +218,9 @@
         includeOptimistic,
         queueTab,
       );
+    },
+    onOpenChannelOverview: async (channelId: string) => {
+      await goto(`/channels/${encodeURIComponent(channelId)}`);
     },
   });
 
@@ -440,6 +444,7 @@
             buildQueueSnapshotCacheKey(selectedChannelIdAtMount),
             {
               channel_id: selectedChannelIdAtMount,
+              channel_video_count: bootstrapResult.snapshot.channel_video_count,
               videos: bootstrapResult.snapshot.videos,
               sync_depth: bootstrapResult.snapshot.sync_depth,
             },
@@ -687,6 +692,7 @@
   })}
     <WorkspaceSidebar
       videoListMode="per_channel_preview"
+        addSourceErrorMessage={errorMessage}
       initialChannelPreviews={$page.data.channelPreviews ?? {}}
       initialChannelPreviewsFilterKey={$page.data.channelPreviewsFilterKey ??
         `all:all:${queueTab}`}
@@ -735,6 +741,7 @@
       >
         <WorkspaceSidebar
           videoListMode="per_channel_preview"
+            addSourceErrorMessage={errorMessage}
           initialChannelPreviews={$page.data.channelPreviews ?? {}}
           initialChannelPreviewsFilterKey={$page.data
             .channelPreviewsFilterKey ?? `all:all:${queueTab}`}
