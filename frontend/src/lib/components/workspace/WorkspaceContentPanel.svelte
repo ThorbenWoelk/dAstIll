@@ -51,6 +51,7 @@
       errorMessage: null,
       showDeleteConfirmation: false,
       showDeleteAccessPrompt: false,
+      showResetVideoConfirmation: false,
     },
     overlayActions = {
       onDismissError: () => {},
@@ -58,6 +59,8 @@
       onCancelDelete: () => {},
       onConfirmAccessPrompt: async () => {},
       onCancelAccessPrompt: () => {},
+      onConfirmResetVideo: async () => {},
+      onCancelResetVideo: () => {},
     },
     content = {
       loadingContent: false,
@@ -81,6 +84,8 @@
       regeneratingVideoId: null,
       revertingContent: false,
       revertingVideoId: null,
+      resettingVideo: false,
+      resettingVideoId: null,
       creatingHighlight: false,
       creatingHighlightVideoId: null,
       deletingHighlightId: null,
@@ -99,6 +104,7 @@
       onCleanFormatting: async () => {},
       onRegenerateSummary: async () => {},
       onRevertTranscript: async () => {},
+      onResetVideo: async () => {},
       onDraftChange: () => {},
       onToggleAcknowledge: async () => {},
       onCreateHighlight: async (_payload: CreateHighlightRequest) => {},
@@ -141,6 +147,8 @@
   let regeneratingVideoId = $derived(content.regeneratingVideoId);
   let revertingContent = $derived(content.revertingContent);
   let revertingVideoId = $derived(content.revertingVideoId);
+  let resettingVideo = $derived(content.resettingVideo);
+  let resettingVideoId = $derived(content.resettingVideoId);
   let creatingHighlight = $derived(content.creatingHighlight);
   let creatingHighlightVideoId = $derived(content.creatingHighlightVideoId);
   let deletingHighlightId = $derived(content.deletingHighlightId);
@@ -163,12 +171,15 @@
   let onCleanFormatting = $derived(actions.onCleanFormatting);
   let onRegenerateSummary = $derived(actions.onRegenerateSummary);
   let onRevertTranscript = $derived(actions.onRevertTranscript);
+  let onResetVideo = $derived(actions.onResetVideo);
   let onDraftChange = $derived(actions.onDraftChange);
   let onToggleAcknowledge = $derived(actions.onToggleAcknowledge);
   let onCreateHighlight = $derived(actions.onCreateHighlight);
   let onDeleteHighlight = $derived(actions.onDeleteHighlight);
   let onShowChannels = $derived(actions.onShowChannels);
   let onShowVideos = $derived(actions.onShowVideos);
+
+  let showResetConfirm = $state(false);
 
   let touchGesture: {
     startX: number;
@@ -363,6 +374,7 @@
             regenerating={regeneratingSummary &&
               regeneratingVideoId === selectedVideoId}
             reverting={revertingContent && revertingVideoId === selectedVideoId}
+            resetting={resettingVideo && resettingVideoId === selectedVideoId}
             showFormatAction={contentMode === "transcript"}
             showRegenerateAction={contentMode === "summary"}
             showRevertAction={showRevertTranscriptAction}
@@ -378,6 +390,9 @@
             onFormat={onCleanFormatting}
             onRegenerate={onRegenerateSummary}
             onRevert={onRevertTranscript}
+            onReset={() => {
+              showResetConfirm = true;
+            }}
             onChange={(value) => onDraftChange(value)}
             onAcknowledgeToggle={onToggleAcknowledge}
           />
@@ -601,6 +616,7 @@
           regenerating={regeneratingSummary &&
             regeneratingVideoId === selectedVideoId}
           reverting={revertingContent && revertingVideoId === selectedVideoId}
+          resetting={resettingVideo && resettingVideoId === selectedVideoId}
           showFormatAction={contentMode === "transcript"}
           showRegenerateAction={contentMode === "summary"}
           showRevertAction={showRevertTranscriptAction}
@@ -614,6 +630,9 @@
           onFormat={onCleanFormatting}
           onRegenerate={onRegenerateSummary}
           onRevert={onRevertTranscript}
+          onReset={() => {
+            showResetConfirm = true;
+          }}
           onChange={(value) => onDraftChange(value)}
           onAcknowledgeToggle={onToggleAcknowledge}
         />
@@ -721,4 +740,21 @@
   tone="info"
   onConfirm={overlayActions.onConfirmAccessPrompt}
   onCancel={overlayActions.onCancelAccessPrompt}
+/>
+
+<ConfirmationModal
+  show={showResetConfirm || overlays.showResetVideoConfirmation}
+  title="Regenerate from scratch?"
+  message="This will permanently delete the transcript and summary for this video. They will be re-generated automatically."
+  confirmLabel="Reset"
+  cancelLabel="Cancel"
+  tone="danger"
+  onConfirm={async () => {
+    showResetConfirm = false;
+    await overlayActions.onConfirmResetVideo();
+  }}
+  onCancel={() => {
+    showResetConfirm = false;
+    overlayActions.onCancelResetVideo();
+  }}
 />

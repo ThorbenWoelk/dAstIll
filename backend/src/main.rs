@@ -434,6 +434,13 @@ async fn main() -> anyhow::Result<()> {
                 enforce_expensive_rate_limit,
             )),
         )
+        .route(
+            "/api/videos/{id}/reset",
+            post(content::reset_video).layer(middleware::from_fn_with_state(
+                state.clone(),
+                enforce_expensive_rate_limit,
+            )),
+        )
         .route("/api/highlights", get(highlights::list_highlights))
         .route(
             "/api/videos/{id}/highlights",

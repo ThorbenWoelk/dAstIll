@@ -24,6 +24,7 @@
     listVideos,
     refreshChannel,
     regenerateSummary,
+    resetVideo,
     updateSummary,
     updateChannel,
     updateTranscript,
@@ -330,6 +331,7 @@
   let errorMessage = $state<string | null>(null);
   let showDeleteConfirmation = $state(false);
   let showDeleteAccessPrompt = $state(false);
+  let showResetVideoConfirmation = $state(false);
   let channelIdToDelete = $state<string | null>(null);
   let summaryQualityScore = $state<number | null>(null);
   let summaryQualityNote = $state<string | null>(null);
@@ -366,6 +368,8 @@
   let regeneratingVideoId = $state<string | null>(null);
   let revertingContent = $state(false);
   let revertingVideoId = $state<string | null>(null);
+  let resettingVideo = $state(false);
+  let resettingVideoId = $state<string | null>(null);
   let videoHighlightsByVideoId = $state<Record<string, Highlight[]>>({});
   let nextOptimisticHighlightId = -1;
   let creatingHighlight = $state(false);
@@ -1804,6 +1808,36 @@
     }
   }
 
+  async function resetVideoContent() {
+    if (!selectedVideoId) return;
+    const targetVideoId = selectedVideoId;
+
+    resettingVideo = true;
+    resettingVideoId = targetVideoId;
+    errorMessage = null;
+
+    sidebarState.setVideos(
+      sidebarState.videos.map((v) =>
+        v.id === targetVideoId
+          ? { ...v, transcript_status: "pending" as const, summary_status: "pending" as const }
+          : v,
+      ),
+    );
+    invalidateContentCache(targetVideoId, "transcript");
+    invalidateContentCache(targetVideoId, "summary");
+    contentText = "";
+    draft = "";
+
+    try {
+      await resetVideo(targetVideoId);
+    } catch (error) {
+      errorMessage = (error as Error).message;
+    } finally {
+      resettingVideo = false;
+      resettingVideoId = null;
+    }
+  }
+
   async function cleanFormatting() {
     if (!selectedVideoId || contentMode !== "transcript") return;
     const targetVideoId = selectedVideoId;
@@ -2133,6 +2167,8 @@
     regeneratingVideoId,
     revertingContent,
     revertingVideoId,
+    resettingVideo,
+    resettingVideoId,
     creatingHighlight,
     creatingHighlightVideoId,
     deletingHighlightId,
@@ -2153,6 +2189,7 @@
     onCleanFormatting: cleanFormatting,
     onRegenerateSummary: regenerateSummaryContent,
     onRevertTranscript: revertToOriginalTranscript,
+    onResetVideo: resetVideoContent,
     onDraftChange: (value: string) => {
       draft = value;
     },
@@ -2170,6 +2207,7 @@
     errorMessage,
     showDeleteConfirmation,
     showDeleteAccessPrompt,
+    showResetVideoConfirmation,
   });
   const workspaceOverlaysActions = {
     onDismissError: () => {
@@ -2179,6 +2217,13 @@
     onCancelDelete: cancelDeleteChannel,
     onConfirmAccessPrompt: confirmDeleteAccessPrompt,
     onCancelAccessPrompt: cancelDeleteAccessPrompt,
+    onConfirmResetVideo: async () => {
+      showResetVideoConfirmation = false;
+      await resetVideoContent();
+    },
+    onCancelResetVideo: () => {
+      showResetVideoConfirmation = false;
+    },
   };
 </script>
 
@@ -2242,6 +2287,7 @@
             regenerating={regeneratingSummary &&
               regeneratingVideoId === selectedVideoId}
             reverting={revertingContent && revertingVideoId === selectedVideoId}
+            resetting={resettingVideo && resettingVideoId === selectedVideoId}
             showFormatAction={contentMode === "transcript"}
             showRegenerateAction={contentMode === "summary"}
             showRevertAction={hasUpdatedTranscript}
@@ -2257,6 +2303,7 @@
             onFormat={cleanFormatting}
             onRegenerate={regenerateSummaryContent}
             onRevert={revertToOriginalTranscript}
+            onReset={() => { showResetVideoConfirmation = true; }}
             onChange={(value) => {
               draft = value;
             }}

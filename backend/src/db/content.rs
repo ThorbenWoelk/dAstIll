@@ -141,6 +141,17 @@ pub async fn get_summary_auto_regen_attempts(
     Ok(meta.map(|m| m.attempts).unwrap_or(0))
 }
 
+pub async fn reset_summary_auto_regen_attempts(
+    store: &Store,
+    video_id: &str,
+) -> Result<(), StoreError> {
+    store
+        .delete_key(&format!("meta/auto-regen-attempts/{video_id}"))
+        .await
+        .ok();
+    Ok(())
+}
+
 pub async fn increment_summary_auto_regen_attempts(
     store: &Store,
     video_id: &str,
@@ -159,6 +170,16 @@ pub async fn increment_summary_auto_regen_attempts(
 pub async fn delete_summary(store: &Store, video_id: &str) -> Result<bool, StoreError> {
     super::search::clear_search_source(store, video_id, SearchSourceKind::Summary).await?;
     let key = summary_key(video_id);
+    let exists = store.key_exists(&key).await?;
+    if exists {
+        store.delete_key(&key).await?;
+    }
+    Ok(exists)
+}
+
+pub async fn delete_transcript(store: &Store, video_id: &str) -> Result<bool, StoreError> {
+    super::search::clear_search_source(store, video_id, SearchSourceKind::Transcript).await?;
+    let key = transcript_key(video_id);
     let exists = store.key_exists(&key).await?;
     if exists {
         store.delete_key(&key).await?;

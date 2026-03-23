@@ -105,6 +105,8 @@ export interface WorkspaceContentState {
   regeneratingVideoId: string | null;
   revertingContent: boolean;
   revertingVideoId: string | null;
+  resettingVideo: boolean;
+  resettingVideoId: string | null;
   creatingHighlight: boolean;
   creatingHighlightVideoId: string | null;
   deletingHighlightId: number | null;
@@ -124,6 +126,7 @@ export interface WorkspaceContentActions {
   onCleanFormatting: () => Promise<void> | void;
   onRegenerateSummary: () => Promise<void> | void;
   onRevertTranscript: () => Promise<void> | void;
+  onResetVideo: () => Promise<void> | void;
   onDraftChange: (value: string) => void;
   onToggleAcknowledge: () => Promise<void> | void;
   onCreateHighlight: (payload: CreateHighlightRequest) => Promise<void> | void;
@@ -136,6 +139,7 @@ export interface WorkspaceOverlaysState {
   errorMessage: string | null;
   showDeleteConfirmation: boolean;
   showDeleteAccessPrompt: boolean;
+  showResetVideoConfirmation: boolean;
 }
 
 export interface WorkspaceOverlaysActions {
@@ -144,6 +148,8 @@ export interface WorkspaceOverlaysActions {
   onCancelDelete: () => void;
   onConfirmAccessPrompt: () => Promise<void> | void;
   onCancelAccessPrompt: () => void;
+  onConfirmResetVideo: () => Promise<void> | void;
+  onCancelResetVideo: () => void;
 }
 
 export interface QueueListItem {

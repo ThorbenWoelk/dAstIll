@@ -586,6 +586,15 @@ export function regenerateSummary(videoId: string) {
   });
 }
 
+export function resetVideo(videoId: string) {
+  return request<void>(`/api/videos/${videoId}/reset`, {
+    method: "POST",
+  }).then(() => {
+    invalidateVideoTranscriptCache(videoId);
+    invalidateVideoSummaryCache(videoId);
+  });
+}
+
 export function listHighlights() {
   return cachedGetRequest<HighlightChannelGroup[]>("/api/highlights");
 }

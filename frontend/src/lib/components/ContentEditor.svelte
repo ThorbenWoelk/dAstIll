@@ -8,6 +8,7 @@
     formatting = false,
     regenerating = false,
     reverting = false,
+    resetting = false,
     showFormatAction = false,
     showRegenerateAction = false,
     showRevertAction = false,
@@ -20,6 +21,7 @@
     onFormat = () => {},
     onRegenerate = () => {},
     onRevert = () => {},
+    onReset = undefined,
     onChange = (_: string) => {},
     onAcknowledgeToggle = undefined,
     acknowledged = false,
@@ -31,6 +33,7 @@
     formatting?: boolean;
     regenerating?: boolean;
     reverting?: boolean;
+    resetting?: boolean;
     showFormatAction?: boolean;
     showRegenerateAction?: boolean;
     showRevertAction?: boolean;
@@ -43,6 +46,7 @@
     onFormat?: () => void;
     onRegenerate?: () => void;
     onRevert?: () => void;
+    onReset?: (() => void) | undefined;
     onChange?: (next: string) => void;
     onAcknowledgeToggle?: (() => void) | undefined;
     acknowledged?: boolean;
@@ -122,6 +126,21 @@
         />
       {/if}
       <div class="ml-auto flex items-center gap-2">
+        {#if onReset}
+          <button
+            type="button"
+            class="inline-flex h-8 w-8 items-center justify-center rounded-full text-[var(--danger)] opacity-50 transition-all hover:bg-[var(--danger)]/10 hover:opacity-100 disabled:pointer-events-none disabled:opacity-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--danger)]/30"
+            aria-label="Reset video - wipe transcript and summary"
+            disabled={busy || resetting}
+            onclick={onReset}
+          >
+            {#if resetting}
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+            {:else}
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+            {/if}
+          </button>
+        {/if}
         <button
           type="button"
           class="rounded-full bg-[var(--foreground)] px-5 py-2 text-[11px] font-bold uppercase tracking-[0.1em] text-white transition-all hover:bg-[var(--accent-strong)] disabled:opacity-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
@@ -205,6 +224,21 @@
           label="Open video on YouTube"
           tooltip="Open on YouTube"
         />
+      {/if}
+      {#if onReset}
+        <button
+          type="button"
+          class="inline-flex h-8 w-8 items-center justify-center rounded-full text-[var(--danger)] opacity-40 transition-all hover:bg-[var(--danger)]/10 hover:opacity-100 disabled:pointer-events-none disabled:opacity-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--danger)]/30"
+          aria-label="Reset video - wipe transcript and summary"
+          disabled={busy || resetting}
+          onclick={onReset}
+        >
+          {#if resetting}
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+          {:else}
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+          {/if}
+        </button>
       {/if}
       {#if onAcknowledgeToggle}
         <button

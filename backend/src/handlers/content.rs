@@ -196,6 +196,39 @@ pub async fn regenerate_summary(
     Ok(Json(summary))
 }
 
+/// Wipe transcript, summary, quality metadata, and search vectors for a video,
+/// then reset its status fields to `pending` so the queue re-processes it from scratch.
+pub async fn reset_video(
+    State(state): State<AppState>,
+    Path(video_id): Path<String>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    tracing::info!(video_id = %video_id, "video reset requested");
+    let video = require_video(&state, &video_id).await?;
+    let conn = state.db.connect();
+
+    db::delete_transcript(&conn, &video_id)
+        .await
+        .map_err(map_db_err)?;
+    db::delete_summary(&conn, &video_id)
+        .await
+        .map_err(map_db_err)?;
+    // Reset regen counter so the queue won't skip re-generation thinking it already tried.
+    db::reset_summary_auto_regen_attempts(&conn, &video_id)
+        .await
+        .map_err(map_db_err)?;
+    db::update_video_transcript_status(&conn, &video_id, ContentStatus::Pending)
+        .await
+        .map_err(map_db_err)?;
+    db::update_video_summary_status(&conn, &video_id, ContentStatus::Pending)
+        .await
+        .map_err(map_db_err)?;
+
+    state.read_cache.evict_channel(&video.channel_id).await;
+    tracing::info!(video_id = %video_id, "video reset complete - transcript and summary wiped, status pending");
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub async fn health_ai(State(state): State<AppState>) -> impl IntoResponse {
     let available = state.summarizer.is_available().await;
     let status = state
