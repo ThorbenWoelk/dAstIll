@@ -377,7 +377,7 @@ describe("+page.server.ts load — channel preview pre-loading (VAL-DATA-002)", 
       fetch,
       url: createUrl({ type: "short", ack: "unack" }),
     });
-    expect(result.channelPreviewsFilterKey).toBe("short:unack");
+    expect(result.channelPreviewsFilterKey).toBe("short:unack:default");
   });
 
   it("returns channelPreviewsFilterKey as all:all when no URL filter params", async () => {
@@ -385,7 +385,7 @@ describe("+page.server.ts load — channel preview pre-loading (VAL-DATA-002)", 
     const bootstrap = makeBootstrapWithChannels(["ch-1"]);
     const { fetch } = createSmartMockFetch(bootstrap);
     const result = await load({ fetch, url: createUrl() });
-    expect(result.channelPreviewsFilterKey).toBe("all:all");
+    expect(result.channelPreviewsFilterKey).toBe("all:all:default");
   });
 
   it("returns channelPreviewsFilterKey as all:all for invalid filter params", async () => {
@@ -396,7 +396,7 @@ describe("+page.server.ts load — channel preview pre-loading (VAL-DATA-002)", 
       fetch,
       url: createUrl({ type: "invalid", ack: "invalid" }),
     });
-    expect(result.channelPreviewsFilterKey).toBe("all:all");
+    expect(result.channelPreviewsFilterKey).toBe("all:all:default");
   });
 
   it("handles individual channel snapshot fetch failures gracefully", async () => {
