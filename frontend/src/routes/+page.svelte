@@ -1520,11 +1520,6 @@
         ? cachedHighlights
         : ((videoId ? await hydrateVideoHighlights(videoId) : []) ?? []);
     if (selectedVideoId !== videoId) return;
-    contentMode = resolveDefaultContentMode({
-      hasHighlights: highlights.length > 0,
-      hasSummary: video?.summary_status === "ready",
-      hasTranscript: video?.transcript_status === "ready",
-    });
     resetSummaryQuality();
     resetVideoInfo();
     editing = false;

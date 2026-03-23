@@ -48,7 +48,7 @@ jobs:
 
       - name: Frontend Test
         working-directory: frontend
-        run: bun test
+        run: bun run test
 
   docs:
     name: Docs
