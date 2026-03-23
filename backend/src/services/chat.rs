@@ -42,7 +42,9 @@ const CHAT_COMPARISON_SOURCE_LIMIT: usize = 20;
 pub(super) const CHAT_HISTORY_LIMIT: usize = 12;
 pub(super) const CHAT_CONTEXT_MAX_CHARS: usize = 1_400;
 const CHAT_TITLE_MAX_CHARS: usize = 80;
-const CHAT_CLASSIFY_TIMEOUT: Duration = Duration::from_millis(3_000);
+// Planner calls go through the same cloud-backed prompt path as generation, so
+// a 3s budget is too aggressive for non-trivial classification queries.
+const CHAT_CLASSIFY_TIMEOUT: Duration = Duration::from_secs(15);
 const CHAT_MAX_RETRIEVAL_PASSES: usize = 2;
 pub(super) const CHAT_DIVERSITY_PENALTY: f32 = 0.3;
 pub(super) const CHAT_SOURCE_KIND_DIVERSITY_BONUS: f32 = 1.08;
@@ -1673,7 +1675,8 @@ mod tests {
     use super::super::chat_heuristics::{
         collect_focus_terms, is_attributed_preference_query, recommendation_query_variants,
     };
-    use super::{ChatQueryIntent, ChatQueryPlanResponse, ChatRetrievalPlan};
+    use super::{CHAT_CLASSIFY_TIMEOUT, ChatQueryIntent, ChatQueryPlanResponse, ChatRetrievalPlan};
+    use crate::services::ollama::CLOUD_PROMPT_TIMEOUT_SECS;
 
     #[test]
     fn attributed_preference_queries_are_detected() {
@@ -1728,5 +1731,11 @@ mod tests {
         assert!(focus_terms.contains(&"database".to_string()));
         assert!(!focus_terms.contains(&"theo".to_string()));
         assert!(!focus_terms.contains(&"best".to_string()));
+    }
+
+    #[test]
+    fn planner_timeout_allows_slow_cloud_classification() {
+        assert!(CHAT_CLASSIFY_TIMEOUT.as_secs() >= 15);
+        assert!(CHAT_CLASSIFY_TIMEOUT.as_secs() < CLOUD_PROMPT_TIMEOUT_SECS);
     }
 }
