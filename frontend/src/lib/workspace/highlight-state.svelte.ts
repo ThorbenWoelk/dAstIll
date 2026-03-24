@@ -1,8 +1,4 @@
-import {
-  createHighlight,
-  deleteHighlight,
-  getVideoHighlights,
-} from "$lib/api";
+import { createHighlight, deleteHighlight, getVideoHighlights } from "$lib/api";
 import type {
   CreateHighlightRequest,
   Highlight,

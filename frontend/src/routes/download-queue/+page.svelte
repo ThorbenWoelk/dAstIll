@@ -647,7 +647,7 @@
   })}
     <WorkspaceSidebar
       videoListMode="per_channel_preview"
-        addSourceErrorMessage={errorMessage}
+      addSourceErrorMessage={errorMessage}
       initialChannelPreviews={$page.data.channelPreviews ?? {}}
       initialChannelPreviewsFilterKey={$page.data.channelPreviewsFilterKey ??
         `all:all:${queueTab}`}
@@ -694,7 +694,7 @@
       >
         <WorkspaceSidebar
           videoListMode="per_channel_preview"
-            addSourceErrorMessage={errorMessage}
+          addSourceErrorMessage={errorMessage}
           initialChannelPreviews={$page.data.channelPreviews ?? {}}
           initialChannelPreviewsFilterKey={$page.data
             .channelPreviewsFilterKey ?? `all:all:${queueTab}`}

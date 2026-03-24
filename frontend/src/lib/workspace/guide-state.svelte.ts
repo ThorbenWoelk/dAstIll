@@ -6,10 +6,7 @@
  * route-specific - this only handles the state machine.
  */
 
-import {
-  resolveGuideStepFromUrl,
-  writeGuideStepToUrl,
-} from "$lib/utils/guide";
+import { resolveGuideStepFromUrl, writeGuideStepToUrl } from "$lib/utils/guide";
 
 export type GuideState = {
   readonly isOpen: boolean;

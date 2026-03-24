@@ -33,6 +33,16 @@ pub struct SecurityRuntimeConfig {
     pub anonymous_chat_quota: u32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DatabricksRuntimeConfig {
+    pub host: String,
+    pub token: String,
+    pub warehouse_id: String,
+    pub catalog: String,
+    pub schema: String,
+    pub bronze_table: String,
+}
+
 impl OllamaRuntimeConfig {
     pub fn from_env(search_semantic_enabled: bool) -> Result<Self, String> {
         let url = env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
@@ -111,6 +121,29 @@ impl SecurityRuntimeConfig {
                 .unwrap_or(30)
                 .clamp(1, 1_000),
         })
+    }
+}
+
+impl DatabricksRuntimeConfig {
+    pub fn from_env() -> Result<Option<Self>, String> {
+        let host = optional_env("DATABRICKS_HOST");
+        let token = optional_env("DATABRICKS_TOKEN");
+        let warehouse_id = optional_env("DATABRICKS_WAREHOUSE_ID");
+
+        if host.is_none() && token.is_none() && warehouse_id.is_none() {
+            return Ok(None);
+        }
+
+        Ok(Some(Self {
+            host: host.ok_or_else(|| "DATABRICKS_HOST must be set".to_string())?,
+            token: token.ok_or_else(|| "DATABRICKS_TOKEN must be set".to_string())?,
+            warehouse_id: warehouse_id
+                .ok_or_else(|| "DATABRICKS_WAREHOUSE_ID must be set".to_string())?,
+            catalog: optional_env("DATABRICKS_CATALOG").unwrap_or_else(|| "workspace".to_string()),
+            schema: optional_env("DATABRICKS_SCHEMA").unwrap_or_else(|| "sandbox".to_string()),
+            bronze_table: optional_env("DATABRICKS_BRONZE_TABLE")
+                .unwrap_or_else(|| "bronze_app_events".to_string()),
+        }))
     }
 }
 
@@ -207,7 +240,8 @@ mod tests {
     use std::sync::{Mutex, OnceLock};
 
     use super::{
-        ChatRuntimeConfig, OllamaRuntimeConfig, SearchRuntimeConfig, SecurityRuntimeConfig,
+        ChatRuntimeConfig, DatabricksRuntimeConfig, OllamaRuntimeConfig, SearchRuntimeConfig,
+        SecurityRuntimeConfig,
     };
 
     static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -227,6 +261,14 @@ mod tests {
         "BASELINE_RATE_LIMIT_PER_MINUTE",
         "EXPENSIVE_RATE_LIMIT_PER_MINUTE",
         "ANONYMOUS_CHAT_QUOTA",
+    ];
+    const DATABRICKS_ENV_KEYS: &[&str] = &[
+        "DATABRICKS_HOST",
+        "DATABRICKS_TOKEN",
+        "DATABRICKS_WAREHOUSE_ID",
+        "DATABRICKS_CATALOG",
+        "DATABRICKS_SCHEMA",
+        "DATABRICKS_BRONZE_TABLE",
     ];
 
     #[test]
@@ -579,6 +621,61 @@ mod tests {
         assert!(is_local_url("http://0.0.0.0:11434"));
         assert!(!is_local_url("https://ollama.cloud.example.com"));
         assert!(!is_local_url("http://10.0.0.5:11434"));
+    }
+
+    #[test]
+    fn databricks_config_is_optional_when_unset() {
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+
+        let _reset = EnvReset::capture(DATABRICKS_ENV_KEYS);
+        for key in DATABRICKS_ENV_KEYS {
+            remove_env(key);
+        }
+
+        let config = DatabricksRuntimeConfig::from_env().expect("config parse");
+        assert!(config.is_none());
+    }
+
+    #[test]
+    fn databricks_config_requires_complete_credentials() {
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+
+        let _reset = EnvReset::capture(DATABRICKS_ENV_KEYS);
+        set_env("DATABRICKS_HOST", "https://dbc.example.com");
+        remove_env("DATABRICKS_TOKEN");
+        set_env("DATABRICKS_WAREHOUSE_ID", "warehouse-123");
+
+        let err = DatabricksRuntimeConfig::from_env().expect_err("missing token should fail");
+        assert!(err.contains("DATABRICKS_TOKEN"));
+    }
+
+    #[test]
+    fn databricks_config_uses_defaults_for_catalog_schema_and_table() {
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+
+        let _reset = EnvReset::capture(DATABRICKS_ENV_KEYS);
+        set_env("DATABRICKS_HOST", "https://dbc.example.com");
+        set_env("DATABRICKS_TOKEN", "dapi-test");
+        set_env("DATABRICKS_WAREHOUSE_ID", "warehouse-123");
+        remove_env("DATABRICKS_CATALOG");
+        remove_env("DATABRICKS_SCHEMA");
+        remove_env("DATABRICKS_BRONZE_TABLE");
+
+        let config = DatabricksRuntimeConfig::from_env()
+            .expect("config parse")
+            .expect("config should be present");
+        assert_eq!(config.catalog, "workspace");
+        assert_eq!(config.schema, "sandbox");
+        assert_eq!(config.bronze_table, "bronze_app_events");
     }
 
     struct EnvReset {

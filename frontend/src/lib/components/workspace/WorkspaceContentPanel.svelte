@@ -147,8 +147,7 @@
   );
   let summaryRegeneratingForSelection = $derived(
     Boolean(
-      selectedVideoId &&
-        regeneratingSummaryVideoIds.includes(selectedVideoId),
+      selectedVideoId && regeneratingSummaryVideoIds.includes(selectedVideoId),
     ),
   );
   let revertingContent = $derived(content.revertingContent);

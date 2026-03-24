@@ -22,6 +22,8 @@
   import ChatMessageBubble from "$lib/components/chat/ChatMessage.svelte";
   import ChatMessageList from "$lib/components/chat/ChatMessageList.svelte";
   import ChatSidebar from "$lib/components/chat/ChatSidebar.svelte";
+  import ChatSuggestions from "$lib/components/chat/ChatSuggestions.svelte";
+  import ChevronIcon from "$lib/components/icons/ChevronIcon.svelte";
   import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
   import { createAiStatusPoller } from "$lib/utils/ai-poller";
   import { buildWorkspaceViewHref } from "$lib/view-url";
@@ -62,6 +64,16 @@
   let guideStep = $state(0);
   let messagesViewport = $state<HTMLDivElement | null>(null);
   let streamController: AbortController | null = null;
+
+  /** When true, new tokens and layout growth keep the viewport pinned to the bottom. */
+  let stickyScroll = $state(true);
+  let nearBottom = $state(true);
+
+  const CHAT_STARTER_PROMPTS = [
+    "What topics come up most across my library?",
+    "Summarize recent additions I should watch first.",
+    "Find mentions of a topic I care about",
+  ] as const;
 
   const tourSteps: TourStep[] = [
     {
@@ -246,6 +258,14 @@
       : [],
   );
 
+  let showJumpToLatest = $derived(!nearBottom && currentMessages.length > 0);
+  let showStarterSuggestions = $derived(
+    !loadingConversation &&
+      !creatingConversation &&
+      currentMessages.length === 0 &&
+      !anonymousQuotaMessage,
+  );
+
   onMount(() => {
     void loadConversations();
     const stopAiPoller = createAiStatusPoller({
@@ -397,6 +417,7 @@
         clearStreamState();
         upsertConversationSummary(conversation);
         mobileTab = "content";
+        stickyScroll = true;
         await scrollToBottom("auto");
       }
     } catch (error) {
@@ -557,6 +578,7 @@
       messages: [...conversation.messages, userMessage, assistantMessage],
     };
     upsertConversationSummary(activeConversation);
+    stickyScroll = true;
     await scrollToBottom();
 
     await startStream(
@@ -612,6 +634,7 @@
         },
         onSources: (sources) => {
           patchStreamingMessage({ sources });
+          void scrollToBottomIfPinned();
         },
         onToken: (token) => {
           if (!streamGenerationStartedAt) {
@@ -621,7 +644,7 @@
           patchStreamingMessage({
             content: `${streamingMessage()?.content ?? ""}${token}`,
           });
-          void scrollToBottom();
+          void scrollToBottomIfPinned();
         },
         onDone: (message) => {
           streamDoneAt = Date.now();
@@ -774,12 +797,47 @@
     };
   }
 
+  function handleMessagesScroll() {
+    const el = messagesViewport;
+    if (!el) {
+      return;
+    }
+    const threshold = 80;
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const atBottom = distance <= threshold;
+    nearBottom = atBottom;
+    stickyScroll = atBottom;
+  }
+
+  function scrollToBottomIfPinned() {
+    if (!stickyScroll) {
+      return;
+    }
+    void scrollToBottom("auto");
+  }
+
   async function scrollToBottom(behavior: ScrollBehavior = "smooth") {
     await tick();
-    messagesViewport?.scrollTo({
-      top: messagesViewport.scrollHeight,
-      behavior,
+    const el = messagesViewport;
+    if (!el) {
+      return;
+    }
+    const reduceMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const effectiveBehavior: ScrollBehavior =
+      reduceMotion && behavior === "smooth" ? "auto" : behavior;
+    el.scrollTo({
+      top: el.scrollHeight,
+      behavior: effectiveBehavior,
     });
+    await tick();
+    requestAnimationFrame(() => handleMessagesScroll());
+  }
+
+  async function jumpToLatest() {
+    stickyScroll = true;
+    await scrollToBottom("smooth");
   }
 
   function clearStreamState() {
@@ -1075,58 +1133,86 @@
         </div>
       {/snippet}
 
-      <div
-        bind:this={messagesViewport}
-        class="custom-scrollbar mobile-bottom-stack-padding w-full min-h-0 flex-1 overflow-y-auto px-4 max-lg:pt-4 sm:px-6 lg:px-0 lg:pr-4 lg:pb-0"
-        role="region"
-        aria-label="Chat conversation"
-      >
-        {#if !activeConversation || currentMessages.length === 0}
-          {#if showConversationMeta}
-            <div class="mb-4">
-              {@render conversationMeta()}
-            </div>
-          {/if}
-          <ChatMessageList
-            messages={currentMessages}
-            loadingMessageId={streamingMessageId}
-            empty={true}
-          />
-        {:else if conversationMetaInsertIndex >= 0}
-          <div class="space-y-4">
-            {#each messagesBeforeConversationMeta as message (message.id)}
-              <ChatMessageBubble
-                {message}
-                loading={streamingMessageId === message.id}
-              />
-            {/each}
+      <div class="relative flex min-h-0 w-full flex-1 flex-col">
+        <div
+          bind:this={messagesViewport}
+          class="custom-scrollbar mobile-bottom-stack-padding min-h-0 flex-1 overflow-y-auto px-4 max-lg:pt-4 sm:px-6 lg:px-0 lg:pr-4 lg:pb-0"
+          role="region"
+          aria-label="Chat conversation"
+          onscroll={handleMessagesScroll}
+        >
+          {#if !activeConversation || currentMessages.length === 0}
+            {#if showConversationMeta}
+              <div class="mb-4">
+                {@render conversationMeta()}
+              </div>
+            {/if}
+            <ChatMessageList
+              messages={currentMessages}
+              loadingMessageId={streamingMessageId}
+              empty={true}
+            />
+          {:else if conversationMetaInsertIndex >= 0}
+            <div class="flex flex-col gap-8">
+              {#each messagesBeforeConversationMeta as message (message.id)}
+                <ChatMessageBubble
+                  {message}
+                  loading={streamingMessageId === message.id}
+                />
+              {/each}
 
-            {@render conversationMeta()}
-
-            {#each messagesAfterConversationMeta as message (message.id)}
-              <ChatMessageBubble
-                {message}
-                loading={streamingMessageId === message.id}
-              />
-            {/each}
-          </div>
-        {:else}
-          <ChatMessageList
-            messages={currentMessages}
-            loadingMessageId={streamingMessageId}
-            empty={false}
-          />
-          {#if showConversationMeta}
-            <div class="mt-4">
               {@render conversationMeta()}
+
+              {#each messagesAfterConversationMeta as message (message.id)}
+                <ChatMessageBubble
+                  {message}
+                  loading={streamingMessageId === message.id}
+                />
+              {/each}
             </div>
+          {:else}
+            <ChatMessageList
+              messages={currentMessages}
+              loadingMessageId={streamingMessageId}
+              empty={false}
+            />
+            {#if showConversationMeta}
+              <div class="mt-4">
+                {@render conversationMeta()}
+              </div>
+            {/if}
           {/if}
+        </div>
+
+        {#if showJumpToLatest}
+          <button
+            type="button"
+            class="absolute bottom-4 left-1/2 z-10 inline-flex h-9 -translate-x-1/2 items-center gap-2 rounded-full border border-[var(--accent-border-soft)] bg-[var(--surface-frost)] px-3.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--foreground)] shadow-sm backdrop-blur-[10px] transition-colors hover:bg-[var(--accent-wash)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 motion-reduce:transition-none"
+            onclick={() => void jumpToLatest()}
+            aria-label="Jump to latest messages"
+          >
+            <ChevronIcon
+              direction="down"
+              size={14}
+              className="text-[var(--accent)]"
+            />
+            Latest
+          </button>
         {/if}
       </div>
 
       <div
         class="border-t border-[var(--accent-border-soft)] px-4 py-4 sm:px-6 lg:px-0 lg:pr-4"
       >
+        {#if showStarterSuggestions}
+          <ChatSuggestions
+            suggestions={CHAT_STARTER_PROMPTS}
+            disabled={Boolean(streamingConversationId) || loadingConversation}
+            onPick={(value) => {
+              draft = value;
+            }}
+          />
+        {/if}
         <ChatInput
           bind:value={draft}
           disabled={loadingConversation ||

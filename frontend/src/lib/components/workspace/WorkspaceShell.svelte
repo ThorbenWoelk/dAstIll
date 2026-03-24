@@ -120,12 +120,28 @@
     sidebarWidth = sidebarCollapsed ? SIDEBAR_DEFAULT : SIDEBAR_MIN;
     persist();
   }
+
+  /** Fragment links update the hash but do not move focus: `<main>` is not focusable by default, and the app shell uses overflow-hidden so the window does not scroll. */
+  function skipToMainContent(event: Event) {
+    event.preventDefault();
+    const main = document.getElementById("main-content");
+    if (!main) return;
+    const { pathname, search } = window.location;
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${pathname}${search}#main-content`,
+    );
+    main.focus({ preventScroll: false });
+    main.scrollIntoView({ block: "nearest", behavior: "auto" });
+  }
 </script>
 
 <div class="flex h-full">
   <a
     href="#main-content"
     class="skip-link absolute left-4 top-4 z-50 rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white"
+    onclick={skipToMainContent}
   >
     Skip to Main Content
   </a>
@@ -172,7 +188,11 @@
       </header>
     {/if}
 
-    <main id="main-content" class="min-h-0 flex-1 overflow-hidden">
+    <main
+      id="main-content"
+      tabindex="-1"
+      class="min-h-0 flex-1 overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
+    >
       {@render children()}
     </main>
   </div>

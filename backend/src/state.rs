@@ -9,9 +9,9 @@ use crate::read_cache::ReadCache;
 use crate::search_progress::SearchProgress;
 use crate::security::RequestRateLimiter;
 use crate::services::{
-    ActiveChatHandle, ChatService, CloudCooldown, SearchService, SummarizerService,
-    SummaryEvaluatorService, TranscriptCooldown, TranscriptService, YouTubeQuotaCooldown,
-    YouTubeService,
+    ActiveChatHandle, ChatService, CloudCooldown, DatabricksSqlService, SearchService,
+    SummarizerService, SummaryEvaluatorService, TranscriptCooldown, TranscriptService,
+    YouTubeQuotaCooldown, YouTubeService,
 };
 
 #[derive(Clone)]
@@ -29,6 +29,7 @@ pub struct AppState {
     pub summary_evaluator: Arc<SummaryEvaluatorService>,
     pub search: Arc<SearchService>,
     pub chat: Arc<ChatService>,
+    pub analytics: Option<Arc<DatabricksSqlService>>,
     pub active_chats: Arc<Mutex<HashMap<String, ActiveChatHandle>>>,
     pub chat_store_lock: Arc<Mutex<()>>,
     pub anonymous_chat_quota_lock: Arc<Mutex<()>>,

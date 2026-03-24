@@ -94,6 +94,12 @@
     mergeWorkspaceViewState,
     parseWorkspaceViewUrlState,
   } from "$lib/view-url";
+  import { track } from "$lib/analytics/tracker";
+  import {
+    closeSummarySession,
+    openSummarySession,
+    isSummarySessionOpen,
+  } from "$lib/analytics/read-time";
   import {
     buildChannelViewCacheKey,
     cloneSyncDepthState,
@@ -382,7 +388,11 @@
         text: string;
         renderMode: TranscriptRenderMode;
       };
-      summary?: { text: string; quality: SummaryPayload };
+      summary?: {
+        text: string;
+        quality: SummaryPayload;
+        trackingId: string;
+      };
       info?: VideoInfoPayload;
     }
   >();
@@ -407,7 +417,7 @@
     initialVideoTypeFilter: $page.data.videoTypeFilter ?? "all",
     initialAcknowledgedFilter: $page.data.acknowledgedFilter ?? "all",
     onSelectVideo: (videoId: string, context?: { forceReload?: boolean }) => {
-      void selectVideo(videoId, true, context?.forceReload ?? false);
+      return selectVideo(videoId, true, context?.forceReload ?? false);
     },
     onChannelSelected: (channelId: string) => {
       const href = buildWorkspaceViewHref({
@@ -692,6 +702,11 @@
       sidebarState.setVideos(snapshot.videos);
       sidebarState.setOffset(snapshot.videos.length);
       sidebarState.setHasMore(snapshot.videos.length === limit);
+      track({
+        event: "channel_snapshot_loaded",
+        channel_id: channelId,
+        video_count: snapshot.channel_video_count,
+      });
       void putCachedViewSnapshot(
         buildWorkspaceSnapshotCacheKey(channelId, videoTypeFilter, isAck),
         snapshot,
@@ -826,6 +841,14 @@
           highlight,
         ),
       );
+      if (selectedChannelId) {
+        track({
+          event: "highlight_created",
+          video_id: targetVideoId,
+          channel_id: selectedChannelId,
+          source: payload.source,
+        });
+      }
     } catch (error) {
       removeVideoHighlight(targetVideoId, optimisticHighlight.id);
       errorMessage = (error as Error).message;
@@ -869,6 +892,43 @@
     summaryQualityNote = presentation.note;
     summaryModelUsed = presentation.modelUsed;
     summaryQualityModelUsed = presentation.qualityModelUsed;
+  }
+
+  function hashSummarySignature(value: string) {
+    let hash = 2166136261;
+    for (let index = 0; index < value.length; index += 1) {
+      hash ^= value.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(16).padStart(8, "0");
+  }
+
+  function deriveSummaryTrackingId(summary: SummaryPayload) {
+    const signature = [
+      summary.video_id,
+      summary.model_used ?? "",
+      summary.content ?? "",
+    ].join("\u001f");
+    return `${summary.video_id}:${hashSummarySignature(signature)}`;
+  }
+
+  function syncSummaryTrackingSession(
+    summary: SummaryPayload,
+    videoId: string,
+    channelId: string,
+  ) {
+    const trackingId = deriveSummaryTrackingId(summary);
+    if (isSummarySessionOpen(videoId, trackingId)) {
+      return trackingId;
+    }
+
+    closeSummarySession();
+    openSummarySession({
+      video_id: videoId,
+      channel_id: channelId,
+      summary_id: trackingId,
+    });
+    return trackingId;
   }
 
   function resetSummaryQuality() {
@@ -1157,9 +1217,15 @@
         search_status: bootstrap.search_status,
       });
 
+      // Selection may have changed while the bootstrap request was in flight (e.g.
+      // user clicked a video in another channel). Resolve channel/video from
+      // current state so we do not overwrite the new selection with stale data.
+      const selectionChannelId = sidebarState.selectedChannelId;
+      const selectionVideoId = sidebarState.selectedVideoId;
+
       const initialChannelId = resolveInitialChannelSelection(
         bootstrap.channels,
-        previousSelectedChannelId,
+        selectionChannelId ?? previousSelectedChannelId,
         null,
       );
 
@@ -1176,11 +1242,11 @@
         allowLoadedVideoSyncDepthOverride = false;
       } else {
         const preferredVideoId =
-          initialChannelId === previousSelectedChannelId
-            ? previousSelectedVideoId
+          initialChannelId === selectionChannelId
+            ? selectionVideoId
             : null;
         const canReuseRenderedSnapshot =
-          initialChannelId === previousSelectedChannelId &&
+          initialChannelId === selectionChannelId &&
           sidebarState.videos.length > 0;
 
         sidebarState.setSelectedChannelId(initialChannelId);
@@ -1528,7 +1594,18 @@
   ) {
     if (fromUserInteraction) mobileTab = "content";
     if (!forceReload && videoId === selectedVideoId) return;
+    // Close any open summary session when switching videos.
+    if (contentMode === "summary" && selectedVideoId) {
+      closeSummarySession();
+    }
     sidebarState.setSelectedVideoId(videoId);
+    if (videoId && selectedChannelId) {
+      track({
+        event: "video_opened",
+        video_id: videoId,
+        channel_id: selectedChannelId,
+      });
+    }
     contentText = "";
     draft = "";
     const video = videoId ? videos.find((v) => v.id === videoId) : null;
@@ -1549,7 +1626,20 @@
     mode: "transcript" | "summary" | "highlights" | "info",
   ) {
     if (contentMode === mode) return;
+    const previousMode = contentMode;
+    if (previousMode === "summary" && selectedVideoId) {
+      closeSummarySession();
+    }
     contentMode = mode;
+    if (selectedVideoId && selectedChannelId) {
+      track({
+        event: "content_mode_changed",
+        video_id: selectedVideoId,
+        channel_id: selectedChannelId,
+        from_mode: previousMode,
+        to_mode: mode,
+      });
+    }
     resetSummaryQuality();
     resetVideoInfo();
     editing = false;
@@ -1611,6 +1701,13 @@
       if (targetMode === "summary" && cached.summary) {
         contentText = cached.summary.text;
         applySummaryQuality(cached.summary.quality);
+        if (selectedChannelId) {
+          syncSummaryTrackingSession(
+            cached.summary.quality,
+            targetVideoId,
+            selectedChannelId,
+          );
+        }
         resetVideoInfo();
         draft = contentText;
         if (videoHighlightsByVideoId[targetVideoId] === undefined) {
@@ -1636,10 +1733,31 @@
 
     try {
       if (targetMode === "transcript") {
-        const transcript = await ensureTranscript(targetVideoId);
+        if (selectedChannelId) {
+          track({
+            event: "transcript_ensure_requested",
+            video_id: targetVideoId,
+            channel_id: selectedChannelId,
+          });
+        }
+        let transcriptSuccess = false;
+        let transcript;
+        try {
+          transcript = await ensureTranscript(targetVideoId);
+          transcriptSuccess = true;
+        } finally {
+          if (selectedChannelId) {
+            track({
+              event: "transcript_ensure_completed",
+              video_id: targetVideoId,
+              channel_id: selectedChannelId,
+              success: transcriptSuccess,
+            });
+          }
+        }
         if (!isCurrentContentRequest(requestId, targetVideoId, targetMode))
           return;
-        const presentation = resolveTranscriptPresentation(transcript);
+        const presentation = resolveTranscriptPresentation(transcript!);
         const originalTranscript = presentation.originalText;
         contentText = presentation.content;
         transcriptRenderMode = presentation.renderMode;
@@ -1667,11 +1785,19 @@
               summary.content || "Summary unavailable.",
             );
             applySummaryQuality(summary);
+            const trackingId = selectedChannelId
+              ? syncSummaryTrackingSession(
+                  summary,
+                  targetVideoId,
+                  selectedChannelId,
+                )
+              : deriveSummaryTrackingId(summary);
             // Cache the summary
             const entry = contentCache.get(targetVideoId) ?? {};
             (entry as any).summary = {
               text: contentText,
               quality: summary as any,
+              trackingId,
             };
             contentCache.set(targetVideoId, entry);
             resetVideoInfo();
@@ -1775,6 +1901,9 @@
         );
         invalidateContentCache(targetVideoId, "summary");
         applySummaryQuality(summary);
+        if (selectedChannelId && contentMode === "summary") {
+          syncSummaryTrackingSession(summary, targetVideoId, selectedChannelId);
+        }
         resetVideoInfo();
       }
       editing = false;
@@ -1820,6 +1949,9 @@
           summary.content || "Summary unavailable.",
         );
         applySummaryQuality(summary);
+        if (selectedChannelId) {
+          syncSummaryTrackingSession(summary, targetVideoId, selectedChannelId);
+        }
         draft = contentText;
       }
     } catch (error) {
@@ -2099,6 +2231,14 @@
           .map((v) => (v.id === updated.id ? updated : v))
           .filter(matchesAcknowledgedFilter),
       );
+      if (selectedChannelId) {
+        track({
+          event: "video_acknowledged_changed",
+          video_id: targetVideoId,
+          channel_id: selectedChannelId,
+          acknowledged: newAcknowledged,
+        });
+      }
 
       videoAcknowledgeSeq += 1;
       videoAcknowledgeSync = {
@@ -2317,7 +2457,7 @@
       channelActions={sidebarState.channelActions}
       videoState={sidebarState.videoState}
       videoActions={sidebarState.videoActions}
-      videoAcknowledgeSync={videoAcknowledgeSync}
+      {videoAcknowledgeSync}
     />
   {/snippet}
   {#snippet topBar()}
@@ -2356,7 +2496,7 @@
               formattingVideoId === selectedVideoId}
             regenerating={Boolean(
               selectedVideoId &&
-                regeneratingSummaryVideoIds.includes(selectedVideoId),
+              regeneratingSummaryVideoIds.includes(selectedVideoId),
             )}
             reverting={revertingContent && revertingVideoId === selectedVideoId}
             resetting={resettingVideo && resettingVideoId === selectedVideoId}

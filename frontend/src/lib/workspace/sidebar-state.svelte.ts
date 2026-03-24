@@ -545,7 +545,11 @@ export function createSidebarState(
       getMutationEpoch: () => videoListMutationEpoch,
       loadSnapshot: () =>
         options_root.onLoadChannelSnapshot
-          ? options_root.onLoadChannelSnapshot(channelId, snapshotOptions, silent)
+          ? options_root.onLoadChannelSnapshot(
+              channelId,
+              snapshotOptions,
+              silent,
+            )
           : getChannelSnapshot(channelId, snapshotOptions),
       applySnapshot: (snapshot, snapshotSilent = false) =>
         applyChannelSnapshot(channelId, snapshot, snapshotSilent),
@@ -691,7 +695,9 @@ export function createSidebarState(
 
         selectedChannelId = result.target_channel_id;
         await selectChannel(result.target_channel_id, result.video.id, true);
-        await options_root.onSelectVideo(result.video.id, { forceReload: true });
+        await options_root.onSelectVideo(result.video.id, {
+          forceReload: true,
+        });
         return true;
       } catch (error) {
         options_root.onError?.((error as Error).message);
@@ -844,11 +850,9 @@ export function createSidebarState(
     onVideoTypeFilterChange: setVideoTypeFilterAndReload,
     onAcknowledgedFilterChange: setAcknowledgedFilterAndReload,
     onClearAllFilters: clearAllFiltersAndReload,
-    onSelectChannelVideo: (channelId: string, videoId: string) => {
-      void (async () => {
-        await selectChannel(channelId, videoId, true);
-        void options_root.onSelectVideo(videoId, { forceReload: true });
-      })();
+    onSelectChannelVideo: async (channelId: string, videoId: string) => {
+      await selectChannel(channelId, videoId, true);
+      await options_root.onSelectVideo(videoId, { forceReload: true });
     },
   };
 
@@ -1000,9 +1004,9 @@ export function createSidebarState(
     confirmDeleteChannel,
     syncChannelOrderFromList,
     reorderChannels,
-  setVideoTypeFilterAndReload,
-  setAcknowledgedFilterAndReload,
-  clearAllFiltersAndReload,
+    setVideoTypeFilterAndReload,
+    setAcknowledgedFilterAndReload,
+    clearAllFiltersAndReload,
     bumpVideoListMutationEpoch,
     getVideoListMutationEpoch: () => videoListMutationEpoch,
     updateChannel,

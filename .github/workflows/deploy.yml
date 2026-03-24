@@ -95,6 +95,7 @@ jobs:
             OLLAMA_API_KEY=dastill-ollama-api-key:latest
             LOGFIRE_TOKEN=dastill-logfire-token:latest
             BACKEND_PROXY_TOKEN=dastill-backend-proxy-token:latest
+            DATABRICKS_TOKEN=dastill-databricks-token:latest
           env_vars: |
             AWS_REGION=${{ vars.AWS_REGION }}
             AWS_ROLE_ARN=${{ vars.AWS_ROLE_ARN }}
@@ -108,6 +109,11 @@ jobs:
             SUMMARY_EVALUATOR_MODEL=${{ vars.SUMMARY_EVALUATOR_MODEL }}
             SUMMARIZE_PATH=/usr/local/bin/summarize
             BACKEND_CORS_ALLOWED_ORIGINS=${{ vars.BACKEND_CORS_ALLOWED_ORIGINS }}
+            DATABRICKS_HOST=${{ vars.DATABRICKS_HOST }}
+            DATABRICKS_WAREHOUSE_ID=${{ vars.DATABRICKS_WAREHOUSE_ID }}
+            DATABRICKS_CATALOG=${{ vars.DATABRICKS_CATALOG }}
+            DATABRICKS_SCHEMA=${{ vars.DATABRICKS_SCHEMA }}
+            DATABRICKS_BRONZE_TABLE=${{ vars.DATABRICKS_BRONZE_TABLE }}
             GCP_PROJECT_ID=${{ env.PROJECT_ID }}
             RUST_LOG=dastill=info,tower_http=info
 

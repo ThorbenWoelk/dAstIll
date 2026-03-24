@@ -3,6 +3,7 @@ mod chat_prompt;
 mod chat_ranking;
 
 pub mod chat;
+pub mod databricks;
 pub mod fusion;
 pub mod http;
 pub mod ollama;
@@ -14,6 +15,7 @@ pub mod transcript;
 pub mod youtube;
 
 pub use chat::{ActiveChatHandle, ChatService};
+pub use databricks::DatabricksSqlService;
 pub use http::{
     CloudCooldown, Cooldown, TranscriptCooldown, YouTubeQuotaCooldown, build_http_client,
     is_cloud_model, is_rate_limited,

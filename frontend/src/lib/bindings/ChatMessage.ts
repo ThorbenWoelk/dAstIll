@@ -3,4 +3,11 @@ import type { ChatMessageStatus } from "./ChatMessageStatus";
 import type { ChatRole } from "./ChatRole";
 import type { ChatSource } from "./ChatSource";
 
-export type ChatMessage = { id: string, role: ChatRole, content: string, sources: Array<ChatSource>, status: ChatMessageStatus, created_at: string, };
+export type ChatMessage = {
+  id: string;
+  role: ChatRole;
+  content: string;
+  sources: Array<ChatSource>;
+  status: ChatMessageStatus;
+  created_at: string;
+};

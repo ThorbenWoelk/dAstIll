@@ -4,4 +4,11 @@ import type { Channel } from "./Channel";
 import type { ChannelSnapshotPayload } from "./ChannelSnapshotPayload";
 import type { SearchStatusPayload } from "./SearchStatusPayload";
 
-export type WorkspaceBootstrapPayload = { ai_available: boolean, ai_status: AiStatus, channels: Array<Channel>, selected_channel_id: string | null, snapshot: ChannelSnapshotPayload | null, search_status: SearchStatusPayload, };
+export type WorkspaceBootstrapPayload = {
+  ai_available: boolean;
+  ai_status: AiStatus;
+  channels: Array<Channel>;
+  selected_channel_id: string | null;
+  snapshot: ChannelSnapshotPayload | null;
+  search_status: SearchStatusPayload;
+};

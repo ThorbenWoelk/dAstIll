@@ -503,6 +503,7 @@ mod tests {
             chat: Arc::new(ChatService::new(
                 OllamaCore::new("://invalid-url", "qwen3:8b").with_cloud_cooldown(cooldown.clone()),
             )),
+            analytics: None,
             active_chats: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
             chat_store_lock: Arc::new(tokio::sync::Mutex::new(())),
             anonymous_chat_quota_lock: Arc::new(tokio::sync::Mutex::new(())),

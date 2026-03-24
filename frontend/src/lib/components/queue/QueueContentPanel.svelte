@@ -192,14 +192,15 @@
         <p class="mt-4 text-[17px] font-semibold text-[var(--foreground)]">
           Select a channel
         </p>
-        <p class="mt-2 max-w-[22rem] text-[14px] leading-6 text-[var(--soft-foreground)]">
+        <p
+          class="mt-2 max-w-[22rem] text-[14px] leading-6 text-[var(--soft-foreground)]"
+        >
           Choose a channel to inspect queue health, sync depth, and current
           processing activity.
         </p>
       </div>
     {:else}
       <div class="flex flex-col gap-8 pb-24">
-
         <!-- Stats row -->
         <div class="flex flex-wrap items-center gap-x-4 gap-y-1.5">
           <span class="text-[13px] font-semibold text-[var(--foreground)]">
@@ -209,12 +210,16 @@
             {panelState.queueStats.pending} waiting
           </span>
           {#if panelState.queueStats.loading > 0}
-            <span class="rounded-full bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-400">
+            <span
+              class="rounded-full bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-400"
+            >
               {panelState.queueStats.loading} active
             </span>
           {/if}
           {#if panelState.queueStats.failed > 0}
-            <span class="rounded-full bg-[var(--danger-soft)] px-2.5 py-0.5 text-[11px] font-semibold text-[var(--danger-foreground)]">
+            <span
+              class="rounded-full bg-[var(--danger-soft)] px-2.5 py-0.5 text-[11px] font-semibold text-[var(--danger-foreground)]"
+            >
               {panelState.queueStats.failed} failed
             </span>
           {/if}
@@ -247,7 +252,9 @@
           </div>
 
           {#if panelState.refreshingChannel}
-            <p class="mt-4 flex items-center gap-2 text-[12px] text-[var(--soft-foreground)]">
+            <p
+              class="mt-4 flex items-center gap-2 text-[12px] text-[var(--soft-foreground)]"
+            >
               <span
                 class="h-3 w-3 shrink-0 animate-spin rounded-full border-[1.5px] border-[var(--border)] border-t-[var(--accent)]"
               ></span>
@@ -256,7 +263,9 @@
           {/if}
 
           {#if panelState.queueStats.total === 0}
-            <p class="mt-4 text-[12px] text-[var(--soft-foreground)] opacity-70">
+            <p
+              class="mt-4 text-[12px] text-[var(--soft-foreground)] opacity-70"
+            >
               Everything for this stage is currently clear.
             </p>
           {/if}
@@ -291,7 +300,9 @@
             </div>
           {/if}
           <p class="mt-2 text-[12px] text-[var(--soft-foreground)]">
-            Current boundary: {formatSyncDate(panelState.effectiveEarliestSyncDate)}.
+            Current boundary: {formatSyncDate(
+              panelState.effectiveEarliestSyncDate,
+            )}.
           </p>
         </div>
 
@@ -335,7 +346,8 @@
                       type="button"
                       class="inline-flex shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] px-4 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--background)] transition-all hover:bg-[var(--accent-strong)] disabled:opacity-40"
                       onclick={() => void retryTranscript(video.id)}
-                      disabled={panelState.retryingTranscriptVideoId === video.id}
+                      disabled={panelState.retryingTranscriptVideoId ===
+                        video.id}
                     >
                       {panelState.retryingTranscriptVideoId === video.id
                         ? "Retrying"
@@ -347,7 +359,6 @@
             </div>
           </div>
         {/if}
-
       </div>
     {/if}
   </div>

@@ -1033,7 +1033,8 @@
         <div
           class="flex min-w-0 items-center gap-2 border-b border-[var(--accent-border-soft)] pb-1 transition-all focus-within:border-[var(--accent)]/40"
         >
-          <label for="channel-input" class="sr-only">Add Channel Or Video</label>
+          <label for="channel-input" class="sr-only">Add Channel Or Video</label
+          >
           <input
             id="channel-input"
             bind:this={channelInputElement}
@@ -1069,7 +1070,9 @@
           </button>
         </div>
         {#if addSourceErrorMessage}
-          <p class="mt-2 text-[11px] font-medium text-[var(--danger)] opacity-80">
+          <p
+            class="mt-2 text-[11px] font-medium text-[var(--danger)] opacity-80"
+          >
             {addSourceErrorMessage}
           </p>
         {/if}
@@ -1436,7 +1439,6 @@
                     Show all videos
                   </button>
                 {/if}
-
               {/if}
             </div>
 

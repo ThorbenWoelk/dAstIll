@@ -7,7 +7,13 @@ import { loadWorkspaceBootstrapPageData } from "$lib/server/load-workspace-boots
  */
 export const load: PageServerLoad = async (event) => {
   if (event.isDataRequest) {
-    return { bootstrap: null, channelPreviews: {}, channelPreviewsFilterKey: "all:all:transcripts" };
+    return {
+      bootstrap: null,
+      channelPreviews: {},
+      channelPreviewsFilterKey: "all:all:transcripts",
+    };
   }
-  return loadWorkspaceBootstrapPageData(event, { ssrQueueTabDefault: "transcripts" });
+  return loadWorkspaceBootstrapPageData(event, {
+    ssrQueueTabDefault: "transcripts",
+  });
 };

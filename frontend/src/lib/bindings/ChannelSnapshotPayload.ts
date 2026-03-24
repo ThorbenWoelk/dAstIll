@@ -2,8 +2,12 @@
 import type { SyncDepthPayload } from "./SyncDepthPayload";
 import type { Video } from "./Video";
 
-export type ChannelSnapshotPayload = { channel_id: string, sync_depth: SyncDepthPayload, 
-/**
- * Total videos stored for this channel (no type / read / queue filters).
- */
-channel_video_count: number, videos: Array<Video>, };
+export type ChannelSnapshotPayload = {
+  channel_id: string;
+  sync_depth: SyncDepthPayload;
+  /**
+   * Total videos stored for this channel (no type / read / queue filters).
+   */
+  channel_video_count: number;
+  videos: Array<Video>;
+};

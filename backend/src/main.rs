@@ -10,10 +10,11 @@ use tracing_subscriber::{Layer, filter, layer::SubscriberExt, util::SubscriberIn
 
 use dastill::cache_headers::add_cache_control;
 use dastill::config::{
-    ChatRuntimeConfig, OllamaRuntimeConfig, SearchRuntimeConfig, SecurityRuntimeConfig,
+    ChatRuntimeConfig, DatabricksRuntimeConfig, OllamaRuntimeConfig, SearchRuntimeConfig,
+    SecurityRuntimeConfig,
 };
 use dastill::db::init_store;
-use dastill::handlers::{channels, chat, content, highlights, search, videos};
+use dastill::handlers::{analytics, channels, chat, content, highlights, search, videos};
 use dastill::read_cache::ReadCache;
 use dastill::search_progress::SearchProgress;
 use dastill::security::{
@@ -21,8 +22,8 @@ use dastill::security::{
     enforce_expensive_rate_limit, rate_limiter, require_operator_role, require_proxy_auth,
 };
 use dastill::services::{
-    ChatService, Cooldown, OllamaCore, SearchService, SummarizerService, SummaryEvaluatorService,
-    TranscriptService, YouTubeService, build_http_client,
+    ChatService, Cooldown, DatabricksSqlService, OllamaCore, SearchService, SummarizerService,
+    SummaryEvaluatorService, TranscriptService, YouTubeService, build_http_client,
 };
 use dastill::state::AppState;
 use dastill::workers::{
@@ -90,6 +91,8 @@ async fn main() -> anyhow::Result<()> {
 
     let search_runtime = SearchRuntimeConfig::from_env();
     let chat_runtime = ChatRuntimeConfig::from_env();
+    let databricks_runtime =
+        DatabricksRuntimeConfig::from_env().map_err(|err| anyhow::anyhow!(err))?;
     let security_runtime =
         Arc::new(SecurityRuntimeConfig::from_env().map_err(|err| anyhow::anyhow!(err))?);
     let summarize_path = std::env::var("SUMMARIZE_PATH")
@@ -154,6 +157,8 @@ async fn main() -> anyhow::Result<()> {
     .map_err(|e| anyhow::anyhow!(e))?;
 
     let client = build_http_client();
+    let analytics = databricks_runtime
+        .map(|config| Arc::new(DatabricksSqlService::new(client.clone(), config)));
     let cloud_cooldown = Arc::new(Cooldown::cloud());
     let youtube_quota_cooldown = Arc::new(Cooldown::youtube_quota());
     let transcript_cooldown = Arc::new(Cooldown::transcript());
@@ -230,6 +235,7 @@ async fn main() -> anyhow::Result<()> {
         summary_evaluator,
         search,
         chat,
+        analytics,
         active_chats: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         chat_store_lock: Arc::new(tokio::sync::Mutex::new(())),
         anonymous_chat_quota_lock: Arc::new(tokio::sync::Mutex::new(())),
@@ -459,6 +465,7 @@ async fn main() -> anyhow::Result<()> {
             get(highlights::list_video_highlights).post(highlights::create_highlight),
         )
         .route("/api/highlights/{id}", delete(highlights::delete_highlight))
+        .route("/api/analytics/events", post(analytics::ingest_events))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             enforce_baseline_rate_limit,
