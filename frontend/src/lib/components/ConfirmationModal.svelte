@@ -105,7 +105,7 @@
           </button>
           <button
             type="button"
-            class="inline-flex w-full items-center justify-center rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface)] px-6 py-3 text-[12px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] transition-all hover:bg-[var(--muted)]/30 sm:w-auto"
+            class="inline-flex w-full items-center justify-center rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface)] px-6 py-3 text-[12px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] transition-all hover:bg-[var(--muted)] sm:w-auto"
             onclick={onCancel}
           >
             {cancelLabel}

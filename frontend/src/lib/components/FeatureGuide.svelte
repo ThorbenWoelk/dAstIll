@@ -21,7 +21,6 @@
 
   let { open, step, steps, docsUrl, onClose, onStep }: Props = $props();
 
-  let spotlightRect = $state<DOMRect | null>(null);
   let cardEl = $state<HTMLDivElement | null>(null);
   let cardStyle = $state("");
   let placement = $state<"top" | "bottom" | "left" | "right">("bottom");
@@ -146,8 +145,7 @@
           ? document.querySelector(s.fallbackSelector)
           : null;
     if (!el) {
-      // No target found: center card, no spotlight
-      spotlightRect = null;
+      // No target found: center card
       if (cardEl) {
         const cr = cardEl.getBoundingClientRect();
         cardStyle = `top:${window.innerHeight / 2 - cr.height / 2}px;left:${window.innerWidth / 2 - cr.width / 2}px`;
@@ -159,8 +157,6 @@
     el.scrollIntoView({ behavior: "instant", block: "nearest" });
 
     const rect = el.getBoundingClientRect();
-    spotlightRect = rect;
-
     if (cardEl) {
       const cr = cardEl.getBoundingClientRect();
       const result = computePosition(rect, cr, s.placement ?? "bottom");
@@ -212,21 +208,7 @@
         onClose();
       }
     }}
-    style={spotlightRect
-      ? `--sr-x:${spotlightRect.left - PADDING}px;--sr-y:${spotlightRect.top - PADDING}px;--sr-w:${spotlightRect.width + PADDING * 2}px;--sr-h:${spotlightRect.height + PADDING * 2}px`
-      : ""}
-    class:tour-overlay--no-target={!spotlightRect}
   >
-    <!-- Spotlight ring -->
-    {#if spotlightRect}
-      <div
-        class="tour-spotlight"
-        style="top:{spotlightRect.top - PADDING}px;left:{spotlightRect.left -
-          PADDING}px;width:{spotlightRect.width +
-          PADDING * 2}px;height:{spotlightRect.height + PADDING * 2}px"
-      ></div>
-    {/if}
-
     <!-- Card -->
     <div class="tour-card" bind:this={cardEl} style={cardStyle}>
       <!-- Step counter + close -->
@@ -335,33 +317,8 @@
     position: fixed;
     inset: 0;
     z-index: 10000;
-    background: transparent;
-    animation: tour-in 250ms ease forwards;
-  }
-
-  /* Dark scrim with a rectangular cutout via clip-path */
-  .tour-overlay::before {
-    content: "";
-    position: fixed;
-    inset: 0;
     background: var(--overlay-strong);
-    clip-path: polygon(
-      /* outer rectangle */ 0% 0%,
-      100% 0%,
-      100% 100%,
-      0% 100%,
-      0% 0%,
-      /* inner cutout (counter-clockwise) */ var(--sr-x) var(--sr-y),
-      var(--sr-x) calc(var(--sr-y) + var(--sr-h)),
-      calc(var(--sr-x) + var(--sr-w)) calc(var(--sr-y) + var(--sr-h)),
-      calc(var(--sr-x) + var(--sr-w)) var(--sr-y),
-      var(--sr-x) var(--sr-y)
-    );
-    transition: clip-path 180ms cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  .tour-overlay--no-target::before {
-    clip-path: none;
+    animation: tour-in 250ms ease forwards;
   }
 
   @keyframes tour-in {
@@ -371,18 +328,6 @@
     to {
       opacity: 1;
     }
-  }
-
-  .tour-spotlight {
-    position: fixed;
-    z-index: 10001;
-    border-radius: 12px;
-    border: 2px solid var(--surface-frost-strong);
-    box-shadow:
-      0 0 0 2px var(--accent),
-      0 0 24px 4px color-mix(in srgb, var(--accent) 18%, transparent);
-    pointer-events: none;
-    transition: all 180ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .tour-card {
@@ -520,7 +465,7 @@
   }
 
   .tour-nav-back {
-    background: none;
+    background: var(--surface-strong);
     color: var(--soft-foreground);
     opacity: 0.5;
   }
@@ -569,12 +514,8 @@
   @media (prefers-reduced-motion: reduce) {
     .tour-overlay,
     .tour-card-body,
-    .tour-spotlight,
     .tour-card {
       animation: none !important;
-      transition: none !important;
-    }
-    .tour-overlay::before {
       transition: none !important;
     }
   }

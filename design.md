@@ -59,6 +59,12 @@ All pages (Workspace, Queue, Highlights) must share the same `AppShell` structur
 - **Tooltips**: `[data-tooltip]` attribute. 10px uppercase bold, fully opaque background. No transparency and no blur/filter effects.
 - **Popups / Modals / Overlays**: Must be fully opaque surfaces. Do not use transparent backgrounds, frosted/glass effects, `backdrop-filter`, or `-webkit-backdrop-filter`.
 
+### Opaque Overlay Rule (Strict)
+- Every popup, popover, drawer, tour card, and modal must render with **opaque** colors only.
+- Backdrops/scrims must also be opaque - no alpha colors (`rgba`, `/xx` opacity utility backgrounds, `transparent`, or color-mix results that introduce transparency).
+- Use solid design tokens for these layers: `--surface`, `--surface-strong`, `--surface-overlay`, `--surface-overlay-strong`, `--tooltip-bg`.
+- If a popup-style component needs depth, use spacing and solid tone contrast first; avoid translucency tricks.
+
 ---
 
 ## Design Debt (P0/P1)

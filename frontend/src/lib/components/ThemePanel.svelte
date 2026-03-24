@@ -313,7 +313,7 @@
     padding: 0.35rem 0.5rem;
     border-radius: var(--radius-sm);
     border: 1px solid var(--border-soft);
-    background: transparent;
+    background: var(--surface);
     color: var(--soft-foreground);
     font-size: 0.7rem;
     font-weight: 600;

@@ -153,8 +153,8 @@
   --status-error: #d25a5a;
   --tooltip-bg: #1a1a1a;
   --tooltip-foreground: #ffffff;
-  --overlay: rgba(0, 0, 0, 0.4);
-  --overlay-strong: rgba(0, 0, 0, 0.45);
+  --overlay: var(--surface-overlay);
+  --overlay-strong: var(--surface-overlay-strong);
   --shadow-soft: rgba(0, 0, 0, 0.12);
   --shadow-strong: rgba(0, 0, 0, 0.18);
   --noise-opacity: 0.012;
@@ -237,8 +237,8 @@
   --status-error: #ff8f8f;
   --tooltip-bg: #f4efe9;
   --tooltip-foreground: #111315;
-  --overlay: rgba(0, 0, 0, 0.5);
-  --overlay-strong: rgba(0, 0, 0, 0.58);
+  --overlay: var(--surface-overlay);
+  --overlay-strong: var(--surface-overlay-strong);
   --shadow-soft: rgba(0, 0, 0, 0.32);
   --shadow-strong: rgba(0, 0, 0, 0.45);
   --noise-opacity: 0.018;

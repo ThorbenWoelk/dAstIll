@@ -52,7 +52,7 @@
 
     const regex = new RegExp(`(${terms.join("|")})`, "gi");
     return escapedText.replace(regex, (match) => {
-      return `<mark class="rounded-[2px] bg-[var(--accent)]/20 px-0.5 font-semibold text-[var(--accent-strong)]">${match}</mark>`;
+      return `<mark class="rounded-[2px] bg-[var(--accent-soft)] px-0.5 font-semibold text-[var(--accent-strong)]">${match}</mark>`;
     });
   }
 
@@ -181,7 +181,7 @@
                 <div class="grid gap-3">
                   {#each Array.from({ length: 2 }) as _, index (index)}
                     <article
-                      class="flex min-h-[8rem] flex-col gap-3 rounded-[var(--radius-md)] bg-[var(--muted)]/30 p-4 animate-pulse"
+                      class="flex min-h-[8rem] flex-col gap-3 rounded-[var(--radius-md)] bg-[var(--muted)] p-4 animate-pulse"
                     >
                       <div
                         class="h-3 w-1/4 rounded-full bg-[var(--muted)] opacity-50"
@@ -200,7 +200,7 @@
                 </div>
               {:else if sections[mode].error}
                 <p
-                  class="rounded-[var(--radius-sm)] border border-[var(--danger)]/20 bg-[var(--danger)]/8 px-3 py-2 text-[13px] font-medium text-[var(--danger-foreground)]"
+                  class="rounded-[var(--radius-sm)] border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-2 text-[13px] font-medium text-[var(--danger-foreground)]"
                 >
                   {sections[mode].error}
                 </p>
@@ -215,7 +215,7 @@
                   {#each sections[mode].results as result}
                     <button
                       type="button"
-                      class="group flex w-full flex-col gap-3 rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface-frost)] p-4 text-left transition-colors hover:border-[var(--accent)]/45 hover:bg-[var(--surface-strong)]"
+                      class="group flex w-full flex-col gap-3 rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface-frost)] p-4 text-left transition-colors hover:border-[var(--accent-border-soft)] hover:bg-[var(--surface-strong)]"
                       onclick={() => onResultSelect(result)}
                     >
                       <div class="flex items-start justify-between gap-3">
@@ -245,7 +245,7 @@
                       <div class="grid gap-2">
                         {#each result.matches as match}
                           <div
-                            class="rounded-[var(--radius-sm)] bg-[var(--muted)]/55 px-3 py-2"
+                            class="rounded-[var(--radius-sm)] bg-[var(--muted)] px-3 py-2"
                           >
                             <div
                               class="mb-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--soft-foreground)] opacity-75"
