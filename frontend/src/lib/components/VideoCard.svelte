@@ -17,13 +17,13 @@
   type="button"
   class={`group flex w-full min-w-0 gap-3 rounded-[var(--radius-sm)] p-2 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${
     active
-      ? "bg-[var(--accent-wash)] shadow-sm"
+      ? "bg-[var(--accent-wash)] shadow-sm hover:bg-[var(--accent-wash-strong)]"
       : "hover:bg-[var(--accent-wash)]"
   }`}
   onclick={onSelect}
 >
   <div
-    class="w-[88px] shrink-0 aspect-video overflow-hidden rounded-[6px] bg-[var(--muted)] relative"
+    class="relative aspect-video w-[88px] shrink-0 overflow-hidden rounded-[var(--radius-sm)] bg-[var(--muted)]"
   >
     {#if video.thumbnail_url}
       <img
@@ -44,33 +44,33 @@
   </div>
   <div class="flex min-w-0 flex-1 flex-col justify-center gap-1">
     <p
-      class="line-clamp-2 text-[13px] font-semibold leading-[1.35] tracking-tight text-[var(--foreground)]"
+      class="line-clamp-2 text-[14px] font-semibold leading-[1.35] tracking-tight text-[var(--foreground)]"
     >
       {video.title}
     </p>
     <div class="flex items-center gap-2">
       <p
-        class="text-[11px] font-medium text-[var(--soft-foreground)] opacity-50"
+        class="text-[12px] font-medium text-[var(--soft-foreground)] opacity-50"
       >
         {formatShortDate(video.published_at)}
       </p>
-      <div class="text-[9px] font-bold tracking-[0.04em]">
+      <div class="text-[8px] font-bold tracking-[0.04em]">
         {#if video.transcript_status === "loading" || video.summary_status === "loading"}
           <span class="text-[var(--accent)] flex items-center gap-1">
-            <span class="relative flex h-1.5 w-1.5">
+            <span class="relative flex h-2 w-2">
               <span
                 class="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--accent)] opacity-75"
               ></span>
               <span
-                class="relative inline-flex rounded-full h-1.5 w-1.5 bg-[var(--accent)]"
+                class="relative inline-flex h-2 w-2 rounded-full bg-[var(--accent)]"
               ></span>
             </span>
           </span>
         {:else if video.transcript_status === "failed" || video.summary_status === "failed"}
           <span class="text-[var(--danger)] flex items-center gap-1">
             <svg
-              width="9"
-              height="9"
+              width="8"
+              height="8"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -88,8 +88,8 @@
         {:else if video.transcript_status === "ready" && video.summary_status === "ready"}
           <span class="text-[var(--soft-foreground)] opacity-25">
             <svg
-              width="9"
-              height="9"
+              width="8"
+              height="8"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"

@@ -31,11 +31,12 @@
   } = $props();
 
   const outlinedButtonClass =
-    "inline-flex h-10 w-10 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--border-soft)] bg-[var(--background)] transition-all hover:border-[var(--accent)]/40 hover:text-[var(--accent)] hover:shadow-sm disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40";
+    "inline-flex h-10 w-10 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--border-soft)] bg-[var(--background)] transition-all hover:border-[var(--accent)]/40 hover:text-[var(--accent)] hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40";
   const ghostButtonClass =
-    "inline-flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] border border-transparent text-[var(--soft-foreground)] transition-all hover:border-[var(--border-soft)] hover:bg-[var(--muted)]/30 hover:text-[var(--foreground)] disabled:opacity-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40";
+    "inline-flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] border border-transparent text-[var(--soft-foreground)] transition-all hover:border-[var(--border-soft)] hover:bg-[var(--muted)]/30 hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40";
 
   let buttonClass = $derived(compact ? ghostButtonClass : outlinedButtonClass);
+  let buttonStateClass = $derived(loading && !disabled ? "cursor-wait" : "");
   let strokeWidth = $derived(compact ? "2.2" : "2.5");
 </script>
 
@@ -68,7 +69,7 @@
 {:else}
   <button
     type="button"
-    class={buttonClass}
+    class={`${buttonClass} ${buttonStateClass}`}
     onclick={onClick}
     {disabled}
     aria-label={label}

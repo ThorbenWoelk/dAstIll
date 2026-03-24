@@ -1,4 +1,4 @@
-FROM node:20-slim AS base
+FROM node:20.20.0-slim AS base
 
 WORKDIR /app
 
@@ -17,7 +17,7 @@ RUN bun install --frozen-lockfile
 COPY . .
 RUN bun run build
 
-FROM nginx:1.27-alpine AS runtime
+FROM nginx:1.28.2-alpine AS runtime
 
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder /app/.vitepress/dist /usr/share/nginx/html

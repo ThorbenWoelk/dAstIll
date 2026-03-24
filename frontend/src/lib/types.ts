@@ -196,6 +196,8 @@ export interface ChatSource {
   section_title?: string | null;
   snippet: string;
   score: number;
+  /** Indexed search chunk id; used with cite= for deep links. */
+  chunk_id: string;
   retrieval_pass?: number | null;
 }
 
@@ -207,6 +209,8 @@ export interface ChatRetrievalPlan {
   queries: string[];
   expansion_queries: string[];
   rationale?: string | null;
+  /** When true, the server answered from conversation only (no new retrieval). */
+  skip_retrieval?: boolean;
 }
 
 export interface ChatStreamStatus {

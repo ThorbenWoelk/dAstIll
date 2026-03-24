@@ -34,7 +34,7 @@
   <button
     type="button"
     id="ai-status-pill"
-    class={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${open ? "text-[var(--accent-strong)]" : "hover:text-[var(--foreground)]"}`}
+    class={`inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-[var(--soft-foreground)] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${open ? "bg-[var(--accent-wash)] text-[var(--accent-strong)]" : "hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]"}`}
     aria-expanded={open}
     aria-haspopup="dialog"
     aria-label={`AI engine status: ${title}`}
@@ -67,12 +67,12 @@
           <div class="flex min-w-0 items-center gap-2">
             <span class={`h-2.5 w-2.5 rounded-full ${dotClass}`}></span>
             <p
-              class="truncate text-[13px] font-semibold text-[var(--foreground)]"
+              class="truncate text-[14px] font-semibold text-[var(--foreground)]"
             >
               {title}
             </p>
           </div>
-          <p class="text-[13px] leading-6 text-[var(--soft-foreground)]">
+          <p class="text-[14px] leading-6 text-[var(--soft-foreground)]">
             {detail}
           </p>
         </div>

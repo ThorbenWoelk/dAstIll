@@ -14,9 +14,6 @@
     updateChannel,
   } from "$lib/api";
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
-  import { DOCS_URL } from "$lib/app-config";
-  import FeatureGuide from "$lib/components/FeatureGuide.svelte";
-  import type { TourStep } from "$lib/components/FeatureGuide.svelte";
   import ErrorToast from "$lib/components/ErrorToast.svelte";
   import QueueContentPanel from "$lib/components/queue/QueueContentPanel.svelte";
   import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
@@ -79,10 +76,6 @@
     type ChannelSortMode,
   } from "$lib/workspace/types";
   import { createAiStatusPoller, refreshAiStatus } from "$lib/utils/ai-poller";
-  import {
-    resolveGuideStepFromUrl,
-    writeGuideStepToUrl,
-  } from "$lib/utils/guide";
   import { createSidebarState } from "$lib/workspace/sidebar-state.svelte";
 
   const queueMobileTabs = [
@@ -252,39 +245,7 @@
   let aiIndicator = $derived(
     aiStatus ? resolveAiIndicatorPresentation(aiStatus) : null,
   );
-  let guideOpen = $state(false);
-  let guideStep = $state(0);
   let previousQueueTab = $state<QueueTab>("transcripts");
-
-  const tourSteps: TourStep[] = [
-    {
-      selector: "#workspace",
-      title: "Pick a Channel",
-      body: "Select a channel from the sidebar to see what's being processed. This is the same channel list as the main workspace.",
-      placement: "right",
-      prepare: () => {
-        mobileTab = "browse";
-      },
-    },
-    {
-      selector: "#queue-stage-tabs",
-      title: "Processing Stages",
-      body: "Videos go through three stages: transcript download, AI summary generation, and quality check. Switch tabs to see the backlog at each stage.",
-      placement: "bottom",
-      prepare: () => {
-        mobileTab = "content";
-      },
-    },
-    {
-      selector: "#content-view",
-      title: "Queue Status",
-      body: "See how many videos are waiting at each stage and how far back the history goes. This is where you monitor the progress of your library.",
-      placement: "left",
-      prepare: () => {
-        mobileTab = "content";
-      },
-    },
-  ];
 
   const effectiveEarliestSyncDate = $derived(
     sidebar.selectedChannel?.earliest_sync_date_user_set
@@ -374,6 +335,12 @@
   });
 
   onMount(() => {
+    const guideParam = new URL(window.location.href).searchParams.get("guide");
+    if (guideParam !== null) {
+      void goto(`/?guide=${guideParam}`, { replaceState: true });
+      return;
+    }
+
     restoreQueueState();
     workspaceStateHydrated = true;
 
@@ -447,31 +414,10 @@
         viewUrlHydrated = true;
       }
     })();
-
-    const restoredGuideStep = resolveGuideStepFromUrl(
-      new URL(window.location.href),
-      tourSteps.length,
-    );
-    if (restoredGuideStep !== null) {
-      guideStep = restoredGuideStep;
-      guideOpen = true;
-    }
   });
 
   function openGuide() {
-    guideStep = 0;
-    guideOpen = true;
-    writeGuideStepToUrl(0);
-  }
-
-  function closeGuide() {
-    guideOpen = false;
-    writeGuideStepToUrl(null);
-  }
-
-  function setGuideStep(step: number) {
-    guideStep = step;
-    writeGuideStepToUrl(step);
+    void goto("/?guide=0");
   }
 
   function restoreQueueState() {
@@ -733,13 +679,4 @@
       onDismiss={() => (errorMessage = null)}
     />
   {/if}
-
-  <FeatureGuide
-    open={guideOpen}
-    step={guideStep}
-    steps={tourSteps}
-    docsUrl={DOCS_URL}
-    onClose={closeGuide}
-    onStep={setGuideStep}
-  />
 </WorkspaceShell>

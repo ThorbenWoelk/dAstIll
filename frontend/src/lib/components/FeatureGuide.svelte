@@ -6,8 +6,12 @@
     title: string;
     body: string;
     placement?: "top" | "bottom" | "left" | "right";
-    prepare?: () => void;
+    /** Runs before measuring targets; may be async (e.g. select a row so the anchor exists). */
+    prepare?: () => void | Promise<void>;
+    /** @deprecated Prefer `fallbackSelectors` */
     fallbackSelector?: string;
+    /** Tried in order after `selector` until an element has a non-empty layout rect. */
+    fallbackSelectors?: string[];
   };
 
   type Props = {
@@ -27,6 +31,13 @@
 
   const PADDING = 8;
   const CARD_GAP = 12;
+  const TARGET_CLASS = "tour-step-target";
+
+  function clearTourTarget() {
+    for (const node of document.querySelectorAll(`.${TARGET_CLASS}`)) {
+      node.classList.remove(TARGET_CLASS);
+    }
+  }
 
   function nextStep() {
     if (step < steps.length - 1) {
@@ -129,21 +140,32 @@
     };
   }
 
+  function resolveTarget(s: TourStep): Element | null {
+    const chain = [
+      s.selector,
+      s.fallbackSelector,
+      ...(s.fallbackSelectors ?? []),
+    ].filter((x): x is string => typeof x === "string" && x.length > 0);
+    for (const sel of chain) {
+      const node = document.querySelector(sel);
+      if (node && node.getClientRects().length > 0) {
+        return node;
+      }
+    }
+    return null;
+  }
+
   async function positionCard() {
     if (!open || !steps[step]) return;
 
     const s = steps[step];
-    s.prepare?.();
-
+    await Promise.resolve(s.prepare?.());
+    await tick();
     await tick();
 
-    const primary = document.querySelector(s.selector);
-    const el =
-      primary && primary.getClientRects().length > 0
-        ? primary
-        : s.fallbackSelector
-          ? document.querySelector(s.fallbackSelector)
-          : null;
+    clearTourTarget();
+
+    const el = resolveTarget(s);
     if (!el) {
       // No target found: center card
       if (cardEl) {
@@ -152,6 +174,8 @@
       }
       return;
     }
+
+    el.classList.add(TARGET_CLASS);
 
     // Snap element into view instantly (no smooth scroll lag)
     el.scrollIntoView({ behavior: "instant", block: "nearest" });
@@ -168,6 +192,8 @@
   $effect(() => {
     if (open && steps[step]) {
       void positionCard();
+    } else if (!open) {
+      clearTourTarget();
     }
   });
 
@@ -317,7 +343,9 @@
     position: fixed;
     inset: 0;
     z-index: 10000;
-    background: var(--overlay-strong);
+    /* Fixed dark scrim — never use a surface variable here or it will bleed into
+       opaque surfaces like the filter popup when someone tweaks surface tokens. */
+    background: rgba(0, 0, 0, 0.5);
     animation: tour-in 250ms ease forwards;
   }
 
@@ -518,5 +546,16 @@
       animation: none !important;
       transition: none !important;
     }
+  }
+
+  /* Lift target above the overlay scrim so it appears unveiled in the spotlight. */
+  :global(.tour-step-target) {
+    position: relative;
+    z-index: 10001;
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 25%, transparent);
+    border-radius: var(--radius-sm);
+    transition: all 200ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 </style>

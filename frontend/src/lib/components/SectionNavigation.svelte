@@ -34,12 +34,12 @@
   );
   let mobilePanelClass = $derived(
     mobileMode === "inline"
-      ? "absolute right-0 top-full z-[70] mt-2 flex w-[min(90vw,16rem)] flex-col gap-1 rounded-[var(--radius-md)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface-strong)] p-1.5 shadow-xl fade-in"
-      : "absolute bottom-full left-1/2 z-[70] mb-2 flex w-[min(90vw,16rem)] -translate-x-1/2 flex-col gap-1 rounded-[var(--radius-md)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface-strong)] p-1.5 shadow-xl fade-in",
+      ? "absolute right-0 top-full z-[70] mt-2 flex w-[min(90vw,16rem)] flex-col gap-1 rounded-[var(--radius-md)] border border-[var(--accent-border-soft)] bg-[var(--surface-strong)] p-2 shadow-xl popover-rise"
+      : "absolute bottom-full left-1/2 z-[70] mb-2 flex w-[min(90vw,16rem)] -translate-x-1/2 flex-col gap-1 rounded-[var(--radius-md)] border border-[var(--accent-border-soft)] bg-[var(--surface-strong)] p-2 shadow-xl popover-rise",
   );
   let mobileButtonClass = $derived(
     mobileMode === "inline"
-      ? "inline-flex h-9 min-w-[8.5rem] max-w-[min(13rem,calc(100vw-7rem))] items-center justify-center gap-2 rounded-full border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] px-3.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--foreground)] shadow-sm transition-colors hover:border-[var(--accent)]/40"
+      ? "inline-flex h-9 min-w-[8.5rem] max-w-[min(13rem,calc(100vw-7rem))] items-center justify-center gap-2 rounded-full border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] px-4 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--foreground)] shadow-sm transition-colors hover:border-[var(--accent)]/40"
       : "inline-flex h-10 min-w-[9.5rem] max-w-[calc(100vw-2rem)] items-center justify-center gap-2 rounded-full border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] px-4 text-[12px] font-bold uppercase tracking-[0.1em] text-[var(--foreground)] shadow-lg transition-colors hover:border-[var(--accent)]/40",
   );
 
@@ -129,17 +129,14 @@
   </div>
 {/if}
 
-<nav
-  class="hidden items-center gap-0.5 lg:flex"
-  aria-label="Workspace sections"
->
+<nav class="hidden items-center gap-1 lg:flex" aria-label="Workspace sections">
   {#each items as item (item.section)}
     <a
       href={item.href}
       target={item.external ? "_blank" : undefined}
       rel={item.external ? "noopener noreferrer" : undefined}
       id={item.section === "docs" ? "nav-docs-link" : undefined}
-      class={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] transition-all ${pillClass(item)}`}
+      class={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-[11px] font-bold uppercase tracking-[0.1em] transition-all ${pillClass(item)}`}
       aria-current={item.active ? "page" : undefined}
     >
       <span>{item.label}</span>

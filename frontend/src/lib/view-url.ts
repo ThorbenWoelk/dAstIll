@@ -15,6 +15,12 @@ type WorkspaceViewState = Pick<
   | "acknowledgedFilter"
 >;
 
+/** Same as workspace view plus optional deep-link fields for chat citations. */
+export type WorkspaceViewHrefParams = WorkspaceViewState & {
+  citeQuery?: string | null;
+  chunkId?: string | null;
+};
+
 type QueueViewState = {
   selectedChannelId: string | null;
   queueTab: QueueTab;
@@ -60,7 +66,7 @@ export function parseWorkspaceViewUrlState(
   return restored;
 }
 
-export function buildWorkspaceViewHref(state: WorkspaceViewState) {
+export function buildWorkspaceViewHref(state: WorkspaceViewHrefParams) {
   const params = new URLSearchParams();
   if (state.selectedChannelId) {
     params.set("channel", state.selectedChannelId);
@@ -71,6 +77,12 @@ export function buildWorkspaceViewHref(state: WorkspaceViewState) {
   params.set("content", state.contentMode);
   params.set("type", state.videoTypeFilter);
   params.set("ack", state.acknowledgedFilter);
+  if (state.chunkId) {
+    params.set("chunk", state.chunkId);
+  }
+  if (state.citeQuery) {
+    params.set("cite", state.citeQuery);
+  }
   const query = params.toString();
   return query ? `/?${query}` : "/";
 }

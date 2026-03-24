@@ -124,6 +124,8 @@ export interface WorkspaceContentState {
   formattingNotice: string | null;
   formattingNoticeVideoId: string | null;
   formattingNoticeTone: "info" | "success" | "warning";
+  /** When set, transcript/summary view scrolls to this excerpt text once (from `cite` URL param). */
+  citationScrollText: string | null;
 }
 
 export interface WorkspaceContentActions {
@@ -142,6 +144,8 @@ export interface WorkspaceContentActions {
   onDeleteHighlight?: (highlightId: number) => Promise<void> | void;
   onShowChannels: () => void;
   onShowVideos: () => void;
+  /** Called after citation deep-link scroll succeeds; should strip `cite` / `chunk` from the URL. */
+  onCitationScrollConsumed?: () => void;
 }
 
 export interface WorkspaceOverlaysState {

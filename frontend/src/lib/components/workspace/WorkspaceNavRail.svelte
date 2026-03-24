@@ -15,6 +15,9 @@
     collapsed = false,
     width = 180,
     onOpenGuide = () => {},
+    onOpenShortcuts = () => {
+      window.dispatchEvent(new CustomEvent("dastill:open-shortcuts"));
+    },
     onToggleCollapse = () => {},
   }: {
     currentSection?: SectionNavigationSection;
@@ -22,6 +25,7 @@
     collapsed?: boolean;
     width?: number;
     onOpenGuide?: () => void;
+    onOpenShortcuts?: () => void;
     onToggleCollapse?: () => void;
   } = $props();
 
@@ -122,6 +126,7 @@
   {/if}
 
   <nav
+    id="app-section-nav-rail"
     class={`space-y-0.5 ${collapsed ? "mt-1 px-1.5" : "mt-3 px-2"}`}
     aria-label="Sections"
   >
@@ -133,8 +138,14 @@
         rel={item.external ? "noopener noreferrer" : undefined}
         data-sveltekit-preload-code={item.external ? undefined : "viewport"}
         data-sveltekit-preload-data={item.external ? undefined : "tap"}
-        id={item.section === "docs" ? "nav-docs-link" : undefined}
-        class={`flex items-center gap-2.5 rounded-[var(--radius-sm)] transition-colors ${
+        id={item.section === "docs"
+          ? "nav-docs-link"
+          : item.section === "chat"
+            ? "nav-chat-link"
+            : item.section === "workspace"
+              ? "nav-workspace-link"
+              : undefined}
+        class={`flex items-center gap-2 rounded-[var(--radius-sm)] transition-colors ${
           collapsed ? "justify-center px-0 py-2" : "px-3 py-2"
         } ${
           item.active
@@ -162,12 +173,12 @@
           {/each}
         </svg>
         {#if !collapsed}
-          <span class="min-w-0 truncate text-[13px] font-medium"
+          <span class="min-w-0 truncate text-[14px] font-medium"
             >{item.label}</span
           >
           {#if item.external}
             <ExternalLinkIcon
-              size={11}
+              size={12}
               className="ml-auto shrink-0 opacity-50"
             />
           {/if}
@@ -204,6 +215,34 @@
       </svg>
       {#if !collapsed}
         <span class="text-[12px] font-medium">Guide</span>
+      {/if}
+    </button>
+    <button
+      type="button"
+      id="keyboard-shortcuts-trigger"
+      class={`inline-flex items-center gap-2 rounded-[var(--radius-sm)] text-[var(--soft-foreground)] opacity-60 transition-all hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${collapsed ? "justify-center px-0 py-2" : "px-3 py-2"}`}
+      onclick={onOpenShortcuts}
+      aria-label="Keyboard shortcuts"
+      data-tooltip={collapsed ? "Shortcuts" : undefined}
+      data-tooltip-placement={collapsed ? "right" : undefined}
+    >
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        class="shrink-0"
+        aria-hidden="true"
+      >
+        <rect x="2" y="6" width="20" height="12" rx="2" />
+        <path d="M6 10h.01M10 10h.01M14 10h.01" />
+      </svg>
+      {#if !collapsed}
+        <span class="text-[12px] font-medium">Shortcuts</span>
       {/if}
     </button>
   </div>

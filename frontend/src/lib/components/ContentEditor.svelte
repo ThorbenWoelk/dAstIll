@@ -292,10 +292,11 @@
       {#if onAcknowledgeToggle}
         <button
           type="button"
-          class={`inline-flex h-9 items-center gap-2 rounded-full border px-3 text-[11px] font-bold uppercase tracking-[0.08em] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 disabled:cursor-not-allowed disabled:opacity-30 ${
+          id="mark-read-toggle"
+          class={`inline-flex h-9 items-center gap-2 rounded-full px-2 text-[11px] font-bold uppercase tracking-[0.08em] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 disabled:cursor-not-allowed disabled:opacity-30 hover:bg-[var(--accent-wash)] ${
             acknowledged
-              ? "border-[var(--accent)]/20 bg-[var(--accent-wash-strong)] text-[var(--accent-strong)] shadow-sm"
-              : "border-transparent bg-[var(--panel-surface)] text-[var(--soft-foreground)] hover:border-transparent hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]"
+              ? "text-[var(--foreground)]"
+              : "text-[var(--soft-foreground)] hover:text-[var(--foreground)]"
           }`}
           aria-label={acknowledged ? "Mark as unread" : "Mark as read"}
           aria-pressed={acknowledged}
@@ -303,10 +304,10 @@
           disabled={busy}
         >
           <span
-            class={`flex h-5 w-5 items-center justify-center rounded-full border transition-all ${
+            class={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-all ${
               acknowledged
                 ? "border-[var(--accent)] bg-[var(--accent)] text-white"
-                : "border-transparent bg-[var(--background)] text-transparent"
+                : "border-[var(--border)] bg-transparent text-transparent"
             }`}
             aria-hidden="true"
           >

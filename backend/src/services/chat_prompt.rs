@@ -1,18 +1,30 @@
 use crate::models::{ChatConversation, ChatRole};
 
 use super::chat::{
-    CHAT_HISTORY_LIMIT, CHAT_SYNTHESIS_RAW_SOURCE_LIMIT, CHAT_SYSTEM_PROMPT, ChatRetrievalPlan,
+    CHAT_HISTORY_LIMIT, CHAT_SYSTEM_PROMPT, CHAT_SYSTEM_PROMPT_CONVERSATION_TURN, ChatRetrievalPlan,
     OllamaRequestMessage, RetrievedChatSource, VideoObservation,
 };
+
+const GROUNDING_CITATION_FOOTER: &str = "\n---\nInline citations: Use [1], [2], … in your answer for the same [Source N] as above (one chunk per index). Place brackets right after the phrase they support.";
+
+pub(super) fn synthesis_raw_limit_for_plan(plan: &ChatRetrievalPlan) -> usize {
+    plan.budget.min(48).max(8)
+}
 
 pub(super) fn build_ollama_messages(
     conversation: &ChatConversation,
     grounding_context: String,
+    conversation_only: bool,
 ) -> Vec<OllamaRequestMessage> {
+    let system_primary = if conversation_only {
+        CHAT_SYSTEM_PROMPT_CONVERSATION_TURN
+    } else {
+        CHAT_SYSTEM_PROMPT
+    };
     let mut messages = vec![
         OllamaRequestMessage {
             role: "system".to_string(),
-            content: CHAT_SYSTEM_PROMPT.to_string(),
+            content: system_primary.to_string(),
         },
         OllamaRequestMessage {
             role: "system".to_string(),
@@ -59,7 +71,12 @@ pub(super) fn build_grounding_context(retrieved_sources: &[RetrievedChatSource])
         context.push_str(&format!("Excerpt:\n{}\n\n", source.context_text));
     }
     context.push_str("If these excerpts are not enough, explicitly say so.");
+    context.push_str(GROUNDING_CITATION_FOOTER);
     context
+}
+
+pub(super) fn build_conversation_only_grounding() -> String {
+    "No new library excerpts are attached for this turn. Answer using the conversation history only. If the question clearly requires fresh evidence from the indexed library, say that briefly and suggest the user ask in a way that triggers a library search.".to_string()
 }
 
 pub(super) fn build_synthesis_grounding_context(
@@ -67,6 +84,7 @@ pub(super) fn build_synthesis_grounding_context(
     plan: &ChatRetrievalPlan,
     retrieved_sources: &[RetrievedChatSource],
     observations: &[VideoObservation],
+    raw_excerpt_limit: usize,
 ) -> String {
     let mut context = format!(
         "Question type: {}\nRetrieval budget: {} excerpts (max {} per video)\nOriginal question: {}\n\n",
@@ -92,7 +110,7 @@ pub(super) fn build_synthesis_grounding_context(
     context.push_str("Supporting raw excerpts:\n\n");
     for (index, source) in retrieved_sources
         .iter()
-        .take(CHAT_SYNTHESIS_RAW_SOURCE_LIMIT)
+        .take(raw_excerpt_limit)
         .enumerate()
     {
         let source_number = index + 1;
@@ -111,5 +129,6 @@ pub(super) fn build_synthesis_grounding_context(
     context.push_str(
         "If the notes and excerpts do not fully support an answer, explain the limitation explicitly.",
     );
+    context.push_str(GROUNDING_CITATION_FOOTER);
     context
 }

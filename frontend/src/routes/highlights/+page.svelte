@@ -4,11 +4,8 @@
   import { deleteHighlight, isAiAvailable, listHighlights } from "$lib/api";
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
   import { createAiStatusPoller } from "$lib/utils/ai-poller";
-  import { DOCS_URL } from "$lib/app-config";
   import ErrorToast from "$lib/components/ErrorToast.svelte";
-  import FeatureGuide from "$lib/components/FeatureGuide.svelte";
   import TrashIcon from "$lib/components/icons/TrashIcon.svelte";
-  import type { TourStep } from "$lib/components/FeatureGuide.svelte";
   import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
   import type {
     AiStatus,
@@ -27,25 +24,9 @@
   let deletingHighlightId = $state<number | null>(null);
   let deleteError = $state<string | null>(null);
 
-  let guideOpen = $state(false);
-  let guideStep = $state(0);
   let aiIndicator = $derived(
     aiStatus ? resolveAiIndicatorPresentation(aiStatus) : null,
   );
-  const tourSteps: TourStep[] = [
-    {
-      selector: "nav[aria-label='Workspace sections']",
-      title: "Navigation",
-      body: "Use these tabs to switch between the main workspace, download queue, highlights, chat, and documentation.",
-      placement: "bottom",
-    },
-    {
-      selector: "#main-content",
-      title: "All Your Highlights",
-      body: "Every passage you've saved across all videos appears here, organized by channel. Click any highlight to jump back to the full transcript or summary it came from.",
-      placement: "top",
-    },
-  ];
   const totalHighlights = $derived(
     groups.reduce(
       (sum, channel) =>
@@ -73,16 +54,7 @@
   }
 
   function openGuide() {
-    guideStep = 0;
-    guideOpen = true;
-  }
-
-  function closeGuide() {
-    guideOpen = false;
-  }
-
-  function setGuideStep(step: number) {
-    guideStep = step;
+    void goto("/?guide=0");
   }
 
   async function handleSearchResultSelect(
@@ -132,6 +104,12 @@
   }
 
   onMount(() => {
+    const guideParam = new URL(window.location.href).searchParams.get("guide");
+    if (guideParam !== null) {
+      void goto(`/?guide=${guideParam}`, { replaceState: true });
+      return () => {};
+    }
+
     void loadPage();
 
     return createAiStatusPoller({
@@ -150,39 +128,23 @@
 >
   <section
     id="content-view"
-    class="fade-in stagger-3 relative z-10 flex h-full min-h-0 min-w-0 flex-col overflow-visible lg:gap-4 lg:px-8 lg:pt-6 lg:pb-6"
+    class="fade-in stagger-3 relative z-10 flex h-full min-h-0 min-w-0 flex-col overflow-visible lg:gap-4 lg:px-8 lg:pb-6"
   >
     <div
-      class="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--accent-border-soft)] px-4 py-4 sm:px-6 lg:px-0"
+      class="flex h-12 shrink-0 items-center justify-between border-b border-[var(--border-soft)]/50 px-4 sm:px-6 lg:px-0"
     >
-      <div>
-        <p
-          class="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--soft-foreground)] opacity-50"
+      <span
+        class="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-55"
+      >
+        Highlights
+      </span>
+      {#if !loading}
+        <span
+          class="text-[11px] font-medium text-[var(--soft-foreground)] opacity-40"
         >
-          Library
-        </p>
-        <h1
-          class="mt-2 font-serif text-[32px] font-bold tracking-tight text-[var(--foreground)]"
-        >
-          Highlights
-        </h1>
-        <p class="mt-2 text-[13px] text-[var(--soft-foreground)]">
-          Saved passages across your indexed transcripts and summaries.
-        </p>
-      </div>
-
-      <div class="text-right">
-        <p
-          class="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--soft-foreground)] opacity-50"
-        >
-          Saved passages
-        </p>
-        <p
-          class="mt-2 text-[28px] font-bold tracking-tight text-[var(--foreground)]"
-        >
-          {totalHighlights}
-        </p>
-      </div>
+          {totalHighlights} saved
+        </span>
+      {/if}
     </div>
 
     <div
@@ -317,7 +279,7 @@
                                   class="flex flex-wrap items-center justify-between gap-2"
                                 >
                                   <span
-                                    class="inline-flex rounded-full bg-[var(--accent-wash-strong)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--accent-strong)]"
+                                    class="inline-flex rounded-full bg-[var(--accent-wash-strong)] px-2 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--accent-strong)]"
                                   >
                                     {highlight.source}
                                   </span>
@@ -364,15 +326,6 @@
       {/if}
     </div>
   </section>
-
-  <FeatureGuide
-    open={guideOpen}
-    step={guideStep}
-    steps={tourSteps}
-    docsUrl={DOCS_URL}
-    onClose={closeGuide}
-    onStep={setGuideStep}
-  />
 
   {#if deleteError}
     <ErrorToast

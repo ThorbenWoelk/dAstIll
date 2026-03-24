@@ -537,7 +537,7 @@
           >
             {selectedChannel ? selectedChannel.name : "Channel overview"}
           </h1>
-          <p class="mt-2 text-[13px] text-[var(--soft-foreground)]">
+          <p class="mt-2 text-[14px] text-[var(--soft-foreground)]">
             {#if selectedChannel}
               {selectedChannel.handle ?? selectedChannel.id}
             {:else}
@@ -640,7 +640,7 @@
                 )}
               </p>
               <p
-                class="mt-3 max-w-2xl text-[13px] leading-6 text-[var(--soft-foreground)]"
+                class="mt-3 max-w-2xl text-[14px] leading-6 text-[var(--soft-foreground)]"
               >
                 Control how far back this channel should sync inside the shared
                 workspace. Newer videos stay surfaced automatically once
@@ -659,13 +659,13 @@
               <div class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
                 <input
                   type="date"
-                  class="min-w-0 flex-1 rounded-full border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] px-4 py-2.5 text-[13px] font-medium transition-colors focus:border-[var(--accent)]/40 focus:outline-none"
+                  class="min-w-0 flex-1 rounded-full border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] px-4 py-2 text-[14px] font-medium transition-colors focus:border-[var(--accent)]/40 focus:outline-none"
                   bind:value={earliestSyncDateInput}
                   disabled={savingSyncDate}
                 />
                 <button
                   type="button"
-                  class="inline-flex items-center justify-center rounded-full bg-[var(--foreground)] px-4 py-2.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--background)] transition-all hover:bg-[var(--accent-strong)] disabled:opacity-40"
+                  class="inline-flex items-center justify-center rounded-full bg-[var(--foreground)] px-4 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--background)] transition-all hover:bg-[var(--accent-strong)] disabled:opacity-40"
                   onclick={() => void saveSyncDate()}
                   disabled={!earliestSyncDateInput || savingSyncDate}
                 >
@@ -685,7 +685,7 @@
                 Details
               </p>
 
-              <dl class="mt-4 space-y-4 text-[13px]">
+              <dl class="mt-4 space-y-4 text-[14px]">
                 <div>
                   <dt class="text-[var(--soft-foreground)] opacity-70">
                     Handle

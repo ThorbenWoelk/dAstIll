@@ -1,5 +1,5 @@
 # Shared base with Bun available for deterministic installs.
-FROM node:20-slim AS base
+FROM node:20.20.0-slim AS base
 
 WORKDIR /app
 
@@ -32,7 +32,7 @@ RUN bun x svelte-kit sync
 RUN bun run build
 
 # Runtime stage
-FROM node:20-slim AS runtime
+FROM node:20.20.0-slim AS runtime
 
 WORKDIR /app
 ENV NODE_ENV=production

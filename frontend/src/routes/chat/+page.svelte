@@ -3,7 +3,7 @@
   import { page } from "$app/stores";
   import { onMount, tick } from "svelte";
 
-  import { CONTACT_EMAIL, DOCS_URL } from "$lib/app-config";
+  import { CONTACT_EMAIL } from "$lib/app-config";
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
   import {
     cancelConversationGeneration,
@@ -16,8 +16,6 @@
     sendConversationMessage,
   } from "$lib/chat-api";
   import ConfirmationModal from "$lib/components/ConfirmationModal.svelte";
-  import FeatureGuide from "$lib/components/FeatureGuide.svelte";
-  import type { TourStep } from "$lib/components/FeatureGuide.svelte";
   import ChatInput from "$lib/components/chat/ChatInput.svelte";
   import ChatMessageBubble from "$lib/components/chat/ChatMessage.svelte";
   import ChatMessageList from "$lib/components/chat/ChatMessageList.svelte";
@@ -60,8 +58,8 @@
   let hydratedConversationId = $state<string | null>(null);
   let handledPromptKey = $state<string | null>(null);
   let deleteConversationId = $state<string | null>(null);
-  let guideOpen = $state(false);
-  let guideStep = $state(0);
+  /** Incremented when starting a new conversation so the prompt bar receives focus. */
+  let chatInputFocusSignal = $state(0);
   let messagesViewport = $state<HTMLDivElement | null>(null);
   let streamController: AbortController | null = null;
 
@@ -74,33 +72,6 @@
     "Summarize recent additions I should watch first.",
     "Find mentions of a topic I care about",
   ] as const;
-
-  const tourSteps: TourStep[] = [
-    {
-      selector: "nav[aria-label='Workspace sections']",
-      title: "Navigation",
-      body: "Use these tabs to switch between the main workspace, download queue, highlights, chat, and documentation.",
-      placement: "bottom",
-    },
-    {
-      selector: "#conversations-panel",
-      title: "Your Conversations",
-      body: "Your chat history lives here. Each conversation is saved automatically, so you can pick up where you left off.",
-      placement: "right",
-      prepare: () => {
-        mobileTab = "conversations";
-      },
-    },
-    {
-      selector: "#content-view",
-      title: "Ask About Your Videos",
-      body: "Ask any question about your video library. The AI searches your transcripts and summaries, then answers with references back to the original content.",
-      placement: "left",
-      prepare: () => {
-        mobileTab = "content";
-      },
-    },
-  ];
 
   let requestedConversationId = $derived($page.url.searchParams.get("id"));
   let promptFromUrl = $derived(
@@ -124,7 +95,11 @@
   );
   let streamPlanLabel = $derived(visibleStreamPlan?.label ?? null);
   let streamUsedExpansionQueries = $derived(
-    streamStatuses.some((status) => status.stage === "retrieving_pass_2"),
+    streamStatuses.some(
+      (status) =>
+        status.stage === "retrieving_pass_2" ||
+        status.stage === "retrieving_pass_3",
+    ),
   );
   let streamDisplayedQueries = $derived(
     visibleStreamPlan
@@ -267,6 +242,12 @@
   );
 
   onMount(() => {
+    const guideParam = new URL(window.location.href).searchParams.get("guide");
+    if (guideParam !== null) {
+      void goto(`/?guide=${guideParam}`, { replaceState: true });
+      return () => {};
+    }
+
     void loadConversations();
     const stopAiPoller = createAiStatusPoller({
       onStatus: (status) => {
@@ -284,7 +265,30 @@
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
+    const onChatNewConversation = () => {
+      if (creatingConversation) {
+        return;
+      }
+      void handleCreateConversation();
+    };
+    const onChatFocusComposer = () => {
+      chatInputFocusSignal += 1;
+    };
+    window.addEventListener(
+      "dastill:chat-new-conversation",
+      onChatNewConversation,
+    );
+    window.addEventListener("dastill:chat-focus-composer", onChatFocusComposer);
+
     return () => {
+      window.removeEventListener(
+        "dastill:chat-new-conversation",
+        onChatNewConversation,
+      );
+      window.removeEventListener(
+        "dastill:chat-focus-composer",
+        onChatFocusComposer,
+      );
       stopAiPoller();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       streamController?.abort();
@@ -355,16 +359,7 @@
   });
 
   function openGuide() {
-    guideStep = 0;
-    guideOpen = true;
-  }
-
-  function closeGuide() {
-    guideOpen = false;
-  }
-
-  function setGuideStep(step: number) {
-    guideStep = step;
+    void goto("/?guide=0");
   }
 
   async function handleSearchResultSelect(
@@ -454,6 +449,8 @@
       mobileTab = "content";
       hydratedConversationId = conversation.id;
       await navigateToConversation(conversation.id);
+      chatInputFocusSignal += 1;
+      await tick();
     } catch (error) {
       errorMessage = (error as Error).message;
     } finally {
@@ -476,11 +473,7 @@
     }
   }
 
-  async function handleDeleteConversation(conversationId: string) {
-    if (!isOperator) {
-      return;
-    }
-
+  function handleDeleteConversation(conversationId: string) {
     deleteConversationId = conversationId;
   }
 
@@ -489,7 +482,7 @@
   }
 
   async function confirmDeleteConversation() {
-    if (!deleteConversationId || !isOperator) {
+    if (!deleteConversationId) {
       return;
     }
 
@@ -905,7 +898,7 @@
               activeConversationId={requestedConversationId}
               loading={loadingConversations}
               creating={creatingConversation}
-              canDelete={isOperator}
+              canDelete={true}
               onCreate={handleCreateConversation}
               onSelect={handleSelectConversation}
               onRename={handleRenameConversation}
@@ -921,7 +914,7 @@
           activeConversationId={requestedConversationId}
           loading={loadingConversations}
           creating={creatingConversation}
-          canDelete={isOperator}
+          canDelete={true}
           onCreate={handleCreateConversation}
           onSelect={handleSelectConversation}
           onRename={handleRenameConversation}
@@ -971,7 +964,7 @@
           </div>
           {#if streamingConversationId}
             <span
-              class="h-3 w-3 animate-spin rounded-full border-[1.5px] border-[var(--border)] border-t-[var(--accent)]"
+              class="h-3 w-3 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--accent)]"
               role="status"
               aria-label="Generating response"
             ></span>
@@ -991,7 +984,7 @@
               {activeConversation?.title ?? "New conversation"}
             </p>
             <p
-              class="mt-2 max-w-[34rem] text-[13px] leading-6 text-[var(--soft-foreground)]"
+              class="mt-2 max-w-[34rem] text-[14px] leading-6 text-[var(--soft-foreground)]"
             >
               {activeConversation?.title_status === "generating"
                 ? "AI is naming this chat while the conversation stays available in the background."
@@ -1016,7 +1009,7 @@
                 </p>
                 {#if streamBannerDetail}
                   <p
-                    class="mt-0.5 text-[11px] leading-relaxed text-[var(--soft-foreground)]"
+                    class="mt-1 text-[12px] leading-relaxed text-[var(--soft-foreground)]"
                   >
                     {streamBannerDetail}
                   </p>
@@ -1056,7 +1049,7 @@
                   <div class="mt-2 flex flex-wrap gap-2">
                     {#each streamDisplayedQueries as query}
                       <span
-                        class="rounded-full border border-[var(--accent-border-soft)] bg-[var(--surface-frost)] px-2.5 py-1 text-[11px] text-[var(--foreground)]"
+                        class="rounded-full border border-[var(--accent-border-soft)] bg-[var(--surface-strong)] px-2 py-1 text-[11px] text-[var(--foreground)]"
                       >
                         {query}
                       </span>
@@ -1067,7 +1060,7 @@
 
               {#if streamCoverageSummary}
                 <div
-                  class="mt-3 rounded-[var(--radius-sm)] bg-[var(--surface-frost)] px-3 py-2"
+                  class="mt-3 rounded-[var(--radius-sm)] bg-[var(--surface-strong)] px-3 py-2"
                 >
                   <p
                     class="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-70"
@@ -1084,7 +1077,7 @@
 
               {#if streamPrimaryDecision}
                 <div
-                  class="mt-3 rounded-[var(--radius-sm)] bg-[var(--surface-frost)] px-3 py-2"
+                  class="mt-3 rounded-[var(--radius-sm)] bg-[var(--surface-strong)] px-3 py-2"
                 >
                   <p
                     class="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-70"
@@ -1187,7 +1180,7 @@
         {#if showJumpToLatest}
           <button
             type="button"
-            class="absolute bottom-4 left-1/2 z-10 inline-flex h-9 -translate-x-1/2 items-center gap-2 rounded-full border border-[var(--accent-border-soft)] bg-[var(--surface-frost)] px-3.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--foreground)] shadow-sm backdrop-blur-[10px] transition-colors hover:bg-[var(--accent-wash)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 motion-reduce:transition-none"
+            class="absolute bottom-4 left-1/2 z-10 inline-flex h-9 -translate-x-1/2 items-center gap-2 rounded-full border border-[var(--accent-border-soft)] bg-[var(--surface-strong)] px-4 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--foreground)] shadow-sm transition-colors hover:bg-[var(--accent-wash)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 motion-reduce:transition-none"
             onclick={() => void jumpToLatest()}
             aria-label="Jump to latest messages"
           >
@@ -1215,10 +1208,11 @@
         {/if}
         <ChatInput
           bind:value={draft}
+          focusSignal={chatInputFocusSignal}
           disabled={loadingConversation ||
             creatingConversation ||
             (!isOperator && Boolean(anonymousQuotaMessage))}
-          busy={creatingConversation}
+          busy={Boolean(streamingConversationId) || creatingConversation}
           canCancel={Boolean(streamingConversationId)}
           onSubmit={(value) => void handleSend(value)}
           onCancel={() => void handleCancel()}
@@ -1233,25 +1227,27 @@
               Preview limit reached
             </p>
             <p
-              class="mt-1.5 text-[13px] leading-relaxed text-[var(--foreground)]"
+              class="mt-2 text-[14px] leading-relaxed text-[var(--foreground)]"
             >
               This is a showcase - guest chat is limited to give everyone a
               chance to try it.
             </p>
             {#if CONTACT_EMAIL}
               <p
-                class="mt-1.5 text-[12px] leading-relaxed text-[var(--soft-foreground)]"
+                class="mt-2 text-[12px] leading-relaxed text-[var(--soft-foreground)]"
               >
                 Want to explore further?
                 <a
                   href="mailto:{CONTACT_EMAIL}"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   class="text-[var(--accent)] hover:text-[var(--accent-strong)] transition-colors"
                   >{CONTACT_EMAIL}</a
                 >
               </p>
             {:else}
               <p
-                class="mt-1.5 text-[12px] leading-relaxed text-[var(--soft-foreground)]"
+                class="mt-2 text-[12px] leading-relaxed text-[var(--soft-foreground)]"
               >
                 Feel free to reach out if you'd like to explore further.
               </p>
@@ -1271,14 +1267,5 @@
     tone="danger"
     onConfirm={() => void confirmDeleteConversation()}
     onCancel={cancelDeleteConversation}
-  />
-
-  <FeatureGuide
-    open={guideOpen}
-    step={guideStep}
-    steps={tourSteps}
-    docsUrl={DOCS_URL}
-    onClose={closeGuide}
-    onStep={setGuideStep}
   />
 </WorkspaceShell>

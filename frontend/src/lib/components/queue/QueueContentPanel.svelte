@@ -90,7 +90,7 @@
       </h2>
       {#if panelState.refreshingChannel}
         <span
-          class="h-3 w-3 animate-spin rounded-full border-[1.5px] border-[var(--border)] border-t-[var(--accent)]"
+          class="h-3 w-3 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--accent)]"
           role="status"
           aria-label="Refreshing queue status"
         ></span>
@@ -134,7 +134,7 @@
             : "Queue overview"}
         </p>
         <p
-          class="mt-2 max-w-[34rem] text-[13px] leading-6 text-[var(--soft-foreground)]"
+          class="mt-2 max-w-[34rem] text-[14px] leading-6 text-[var(--soft-foreground)]"
         >
           {queueTabCopy[panelState.queueTab].detail}
         </p>
@@ -203,22 +203,22 @@
       <div class="flex flex-col gap-8 pb-24">
         <!-- Stats row -->
         <div class="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-          <span class="text-[13px] font-semibold text-[var(--foreground)]">
+          <span class="text-[14px] font-semibold text-[var(--foreground)]">
             {panelState.queueStats.total} items
           </span>
-          <span class="text-[13px] text-[var(--soft-foreground)]">
+          <span class="text-[14px] text-[var(--soft-foreground)]">
             {panelState.queueStats.pending} waiting
           </span>
           {#if panelState.queueStats.loading > 0}
             <span
-              class="rounded-full bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-400"
+              class="rounded-full bg-amber-500/10 px-2 py-1 text-[11px] font-semibold text-amber-700 dark:text-amber-400"
             >
               {panelState.queueStats.loading} active
             </span>
           {/if}
           {#if panelState.queueStats.failed > 0}
             <span
-              class="rounded-full bg-[var(--danger-soft)] px-2.5 py-0.5 text-[11px] font-semibold text-[var(--danger-foreground)]"
+              class="rounded-full bg-[var(--danger-soft)] px-2 py-1 text-[11px] font-semibold text-[var(--danger-foreground)]"
             >
               {panelState.queueStats.failed} failed
             </span>
@@ -245,7 +245,7 @@
               >
                 Sync from
               </p>
-              <p class="text-[13px] font-semibold text-[var(--foreground)]">
+              <p class="text-[14px] font-semibold text-[var(--foreground)]">
                 {formatSyncDate(panelState.effectiveEarliestSyncDate)}
               </p>
             </div>
@@ -256,7 +256,7 @@
               class="mt-4 flex items-center gap-2 text-[12px] text-[var(--soft-foreground)]"
             >
               <span
-                class="h-3 w-3 shrink-0 animate-spin rounded-full border-[1.5px] border-[var(--border)] border-t-[var(--accent)]"
+                class="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--accent)]"
               ></span>
               Refreshing channel state in the background.
             </p>
@@ -285,7 +285,7 @@
             <div class="mt-3 flex items-center gap-2">
               <input
                 type="date"
-                class="min-w-0 flex-1 rounded-[var(--radius-sm)] border border-[var(--border-soft)] bg-transparent px-2.5 py-2 text-[12px] font-medium transition-colors focus:border-[var(--accent)]/40 focus:outline-none"
+                class="min-w-0 flex-1 rounded-[var(--radius-sm)] border border-[var(--border-soft)] bg-transparent px-3 py-2 text-[12px] font-medium transition-colors focus:border-[var(--accent)]/40 focus:outline-none"
                 bind:value={localSyncDateInput}
                 disabled={panelState.savingSyncDate}
               />
@@ -316,7 +316,7 @@
                 Failed downloads
               </p>
               <span
-                class="rounded-full bg-[var(--danger-soft)] px-2.5 py-0.5 text-[11px] font-semibold text-[var(--danger-foreground)]"
+                class="rounded-full bg-[var(--danger-soft)] px-2 py-1 text-[11px] font-semibold text-[var(--danger-foreground)]"
               >
                 {panelState.failedTranscriptVideos.length} failed
               </span>
@@ -336,7 +336,7 @@
                     >
                       {video.title}
                     </p>
-                    <p class="mt-0.5 text-[12px] text-[var(--soft-foreground)]">
+                    <p class="mt-1 text-[12px] text-[var(--soft-foreground)]">
                       Published {formatShortDate(video.published_at)}
                     </p>
                   </div>

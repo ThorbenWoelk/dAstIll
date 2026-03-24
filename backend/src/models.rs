@@ -348,6 +348,9 @@ pub struct ChatSource {
     pub section_title: Option<String>,
     pub snippet: String,
     pub score: f32,
+    /// Stable id for the indexed transcript/summary chunk (search excerpt).
+    #[serde(default)]
+    pub chunk_id: String,
     #[serde(default)]
     #[ts(optional)]
     pub retrieval_pass: Option<usize>,

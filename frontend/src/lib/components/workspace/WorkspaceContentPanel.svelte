@@ -27,6 +27,7 @@
   import WorkspaceHighlightsPanel from "$lib/components/workspace/WorkspaceHighlightsPanel.svelte";
   import WorkspaceSummaryMeta from "$lib/components/workspace/WorkspaceSummaryMeta.svelte";
   import WorkspaceVideoInfoPanel from "$lib/components/workspace/WorkspaceVideoInfoPanel.svelte";
+  import { shouldRetryReadySummaryLoad } from "$lib/workspace/content";
 
   const CONTENT_MODE_LABELS: Record<WorkspaceContentMode, string> = {
     transcript: "Transcript",
@@ -93,6 +94,7 @@
       formattingNotice: null,
       formattingNoticeVideoId: null,
       formattingNoticeTone: "info",
+      citationScrollText: null,
     },
     actions = {
       onBack: () => {},
@@ -110,6 +112,7 @@
       onDeleteHighlight: undefined,
       onShowChannels: () => {},
       onShowVideos: () => {},
+      onCitationScrollConsumed: undefined,
     },
   }: {
     selection?: WorkspaceContentSelection;
@@ -162,21 +165,22 @@
   let formattingNotice = $derived(content.formattingNotice);
   let formattingNoticeVideoId = $derived(content.formattingNoticeVideoId);
   let formattingNoticeTone = $derived(content.formattingNoticeTone);
+  let citationScrollText = $derived(content.citationScrollText ?? null);
   let contentHighlightSource = $derived.by((): HighlightSource | null =>
     contentMode === "transcript" || contentMode === "summary"
       ? contentMode
       : null,
   );
 
-  /** Snapshot row or loaded meta shows summary artifacts exist; list status can lag behind. */
-  let summaryArtifactsKnown = $derived.by((): boolean => {
-    if (typeof selectedVideo?.quality_score === "number") return true;
-    if (summaryQualityScore !== null) return true;
-    if (summaryQualityNote !== null) return true;
-    if (summaryModelUsed !== null) return true;
-    if (summaryQualityModelUsed !== null) return true;
-    return false;
-  });
+  let summaryBodyRetrying = $derived.by((): boolean =>
+    shouldRetryReadySummaryLoad({
+      contentMode,
+      selectedVideo,
+      contentText,
+      loadingContent,
+      editing,
+    }),
+  );
 
   let onBack = $derived(actions.onBack);
   let onSetMode = $derived(actions.onSetMode);
@@ -193,6 +197,7 @@
   let onDeleteHighlight = $derived(actions.onDeleteHighlight);
   let onShowChannels = $derived(actions.onShowChannels);
   let onShowVideos = $derived(actions.onShowVideos);
+  let onCitationScrollConsumed = $derived(actions.onCitationScrollConsumed);
 
   let showResetConfirm = $state(false);
 
@@ -352,7 +357,7 @@
     <div
       class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between"
     >
-      <div class="min-w-0 flex-1" id="content-mode-tabs">
+      <div class="min-w-0 flex-1" id="workspace-tabs-mobile">
         <div class="-mx-4 min-w-0 flex-1 overflow-x-auto px-4 sm:mx-0 sm:px-0">
           <div
             class="flex min-w-max items-center gap-5 border-b border-[var(--accent-border-soft)] pr-4 sm:pr-0"
@@ -565,10 +570,12 @@
           role="status"
           aria-live="polite"
         >
-          <p class="text-[13px] text-[var(--soft-foreground)] opacity-40">
-            {contentStatus === "failed"
-              ? `${contentMode === "summary" ? "Summary" : "Transcript"} generation failed.`
-              : `${contentMode === "summary" ? "Summary" : "Transcript"} not yet available.`}
+          <p class="text-[14px] text-[var(--soft-foreground)] opacity-40">
+            {contentMode === "summary"
+              ? "Summary not available."
+              : contentStatus === "failed"
+                ? "Transcript generation failed."
+                : "Transcript not yet available."}
           </p>
           {#if contentStatus === "failed" && contentMode === "summary"}
             <button
@@ -600,9 +607,13 @@
           <p
             class="pt-10 text-center text-[10px] font-bold uppercase tracking-[0.4em] text-[var(--accent)]"
           >
-            {contentStatus === "pending"
-              ? `Queued for ${contentMode}...`
-              : `Loading ${contentMode}...`}
+            {contentMode === "summary"
+              ? contentStatus === "pending"
+                ? "Summary queued and being generated..."
+                : "Summary is loading..."
+              : contentStatus === "pending"
+                ? `Queued for ${contentMode}...`
+                : `Loading ${contentMode}...`}
           </p>
         </div>
       {/if}
@@ -646,8 +657,8 @@
           onAcknowledgeToggle={onToggleAcknowledge}
         />
       </div>
-    {:else if contentMode === "summary" && selectedVideo && selectedVideo.summary_status !== "ready" && !contentText.trim()}
-      {#if selectedVideo.summary_status === "pending" || selectedVideo.summary_status === "loading"}
+    {:else if contentMode === "summary" && selectedVideo && (selectedVideo.summary_status !== "ready" || summaryBodyRetrying) && !contentText.trim()}
+      {#if selectedVideo.summary_status === "pending" || selectedVideo.summary_status === "loading" || summaryBodyRetrying}
         <div
           class="mt-4 space-y-8 animate-pulse"
           role="status"
@@ -666,21 +677,19 @@
           <p
             class="pt-10 text-center text-[10px] font-bold uppercase tracking-[0.4em] text-[var(--accent)]"
           >
-            {selectedVideo.summary_status === "pending"
-              ? "Queued for summary..."
-              : summaryArtifactsKnown
-                ? "Loading summary..."
-                : "Generating summary..."}
+            {summaryBodyRetrying
+              ? "Summary is loading..."
+              : selectedVideo.summary_status === "pending"
+                ? "Summary queued and being generated..."
+                : "Summary is loading..."}
           </p>
         </div>
       {:else}
         <div
           class="flex h-full flex-col items-center justify-center py-20 text-center"
         >
-          <p class="text-[13px] text-[var(--soft-foreground)] opacity-40">
-            {selectedVideo.summary_status === "failed"
-              ? "Summary generation failed."
-              : "Summary not yet available."}
+          <p class="text-[14px] text-[var(--soft-foreground)] opacity-40">
+            Summary not available.
           </p>
           {#if selectedVideo.summary_status === "failed"}
             <button
@@ -718,6 +727,8 @@
           {deletingHighlightId}
           {onCreateHighlight}
           {onDeleteHighlight}
+          {citationScrollText}
+          {onCitationScrollConsumed}
         />
       </div>
     {/if}

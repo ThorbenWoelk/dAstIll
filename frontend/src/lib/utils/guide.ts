@@ -1,3 +1,6 @@
+/** Keep in sync with the workspace `tourSteps` array length in `routes/+page.svelte`. */
+export const WORKSPACE_GUIDE_STEP_COUNT = 13;
+
 export function resolveGuideStepFromUrl(
   url: URL,
   stepCount: number,

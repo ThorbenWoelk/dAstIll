@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -27,7 +27,8 @@ use super::chat_heuristics::{
     sanitize_queries,
 };
 use super::chat_prompt::{
-    build_grounding_context, build_ollama_messages, build_synthesis_grounding_context,
+    build_conversation_only_grounding, build_grounding_context, build_ollama_messages,
+    build_synthesis_grounding_context, synthesis_raw_limit_for_plan,
 };
 use super::chat_ranking::{
     accumulate_ranked_candidates, assess_coverage, build_video_observation_inputs,
@@ -45,23 +46,41 @@ const CHAT_TITLE_MAX_CHARS: usize = 80;
 // Planner calls go through the same cloud-backed prompt path as generation, so
 // a 3s budget is too aggressive for non-trivial classification queries.
 const CHAT_CLASSIFY_TIMEOUT: Duration = Duration::from_secs(15);
-const CHAT_MAX_RETRIEVAL_PASSES: usize = 2;
+const CHAT_MAX_RETRIEVAL_PASSES: usize = 3;
 pub(super) const CHAT_DIVERSITY_PENALTY: f32 = 0.3;
 pub(super) const CHAT_SOURCE_KIND_DIVERSITY_BONUS: f32 = 1.08;
 const CHAT_QUERY_LIMIT_PER_PASS: usize = 3;
 pub(super) const CHAT_QUERY_LIMIT_TOTAL: usize = 5;
 pub(super) const CHAT_RETRIEVAL_CANDIDATE_LIMIT_MIN: usize = 8;
-pub(super) const CHAT_RETRIEVAL_CANDIDATE_LIMIT_MAX: usize = 24;
+pub(super) const CHAT_RETRIEVAL_CANDIDATE_LIMIT_MAX: usize = 48;
 pub(super) const CHAT_SYNTHESIS_VIDEO_LIMIT: usize = 6;
 pub(super) const CHAT_SYNTHESIS_SOURCES_PER_VIDEO: usize = 3;
 const CHAT_SYNTHESIS_CONTEXT_MAX_CHARS: usize = 1_200;
-pub(super) const CHAT_SYNTHESIS_RAW_SOURCE_LIMIT: usize = 8;
 
 static NEXT_CHAT_ID: AtomicU64 = AtomicU64::new(1);
 
-pub(super) const CHAT_SYSTEM_PROMPT: &str = "You are the dAstIll assistant. Answer only from the provided ground-truth excerpts and the visible conversation history. If the excerpts are missing, incomplete, or not directly relevant, say that you cannot answer from the current library. Do not use outside knowledge. Do not invent facts, citations, or timestamps. Be concise but useful. When helpful, mention the relevant video title or channel name from the provided excerpts.";
+pub(super) const CHAT_SYSTEM_PROMPT: &str = "You are the dAstIll assistant. Answer only from the provided ground-truth excerpts and the visible conversation history. If the excerpts are missing, incomplete, or not directly relevant, say that you cannot answer from the current library. Do not use outside knowledge. Do not invent facts, citations, or timestamps. Be concise but useful.\n\nCitation signal (when excerpts are attached): Ground-truth is numbered [Source 1], [Source 2], … in order; each number is one indexed chunk (transcript or summary). For every claim drawn from excerpt N, put the same index in brackets immediately after the words it supports, with no space before the bracket, e.g. …planted a backdoor.[1] or …across two videos.[1][3]. The UI turns each [N] into a link to that chunk; numbers must match the excerpt list.";
 
-const CHAT_QUERY_PLAN_PROMPT: &str = "Classify the user's grounded library question for retrieval. Return valid JSON only with this shape: {\"intent\":\"fact|synthesis|pattern|comparison\",\"rationale\":\"short explanation\",\"sub_queries\":[\"...\"],\"expansion_queries\":[\"...\"]}. Use the user's wording where possible. Keep each query short. fact: 1 direct query, no expansion. synthesis: 1-2 queries, optional expansion. pattern/comparison: 2-3 initial queries plus 1-2 expansion queries for broader coverage. No markdown or code fences.";
+pub(super) const CHAT_SYSTEM_PROMPT_CONVERSATION_TURN: &str = "You are the dAstIll assistant. For this turn, no new transcript excerpts were retrieved. Answer using the visible conversation history and the user's question. If the question clearly requires new evidence from the indexed library, say that briefly. Be concise. Do not invent facts, citations, or timestamps.";
+
+const CHAT_PLANNER_CONVERSATION_MAX_CHARS: usize = 6_000;
+
+const CHAT_QUERY_PLAN_PROMPT: &str = r#"Classify the user's grounded library question for retrieval.
+
+You receive a block labeled RECENT CONVERSATION followed by CURRENT USER MESSAGE.
+
+Return valid JSON only with this shape:
+{"needs_retrieval":true|false,"intent":"fact|synthesis|pattern|comparison","rationale":"short explanation","sub_queries":["..."],"expansion_queries":["..."]}
+
+needs_retrieval:
+- false only when CURRENT USER MESSAGE can be answered from prior turns without new library search (clarifications, rephrasing, short follow-ups about what was already said).
+- true when the user asks for new facts from videos, new topics, comparisons needing evidence, or there is no prior assistant reply to rely on.
+
+If needs_retrieval is false, sub_queries and expansion_queries may be empty arrays.
+
+intent: fact: 1 direct query, no expansion. synthesis: 1-2 queries, optional expansion. pattern/comparison: 2-3 initial queries plus 1-2 expansion queries for broader coverage.
+
+Use the user's wording where possible. Keep each query short. No markdown or code fences."#;
 
 const CHAT_VIDEO_OBSERVATION_PROMPT: &str = "You are distilling grounded evidence for a later answer. Use only the supplied excerpts. Return exactly two concise bullet points describing observations relevant to the user's question. If the excerpts are weak, say that the evidence from this video is limited.";
 
@@ -109,6 +128,8 @@ struct ChatRetrievalPlanVisibility {
     expansion_queries: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     rationale: Option<String>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    skip_retrieval: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -162,6 +183,8 @@ pub(super) struct ChatRetrievalPlan {
     pub(super) focus_terms: Vec<String>,
     pub(super) attributed_preference: bool,
     pub(super) rationale: Option<String>,
+    /// When true, retrieval is skipped and the model answers from conversation history only.
+    pub(super) skip_retrieval: bool,
 }
 
 impl ChatRetrievalPlan {
@@ -181,6 +204,7 @@ impl ChatRetrievalPlan {
             focus_terms: collect_focus_terms(prompt),
             attributed_preference,
             rationale,
+            skip_retrieval: false,
         }
     }
 
@@ -195,6 +219,8 @@ impl ChatRetrievalPlan {
         if attributed_preference && matches!(intent, ChatQueryIntent::Fact) {
             intent = ChatQueryIntent::Synthesis;
         }
+
+        let skip_retrieval = response.needs_retrieval == Some(false);
 
         let (mut budget, mut max_per_video) = match intent {
             ChatQueryIntent::Fact => (CHAT_SOURCE_LIMIT, 3),
@@ -254,6 +280,7 @@ impl ChatRetrievalPlan {
             } else {
                 response.rationale.and_then(|value| trim_to_option(&value))
             },
+            skip_retrieval,
         }
     }
 
@@ -266,6 +293,7 @@ impl ChatRetrievalPlan {
             queries: self.queries.clone(),
             expansion_queries: self.expansion_queries.clone(),
             rationale: self.rationale.clone(),
+            skip_retrieval: self.skip_retrieval,
         }
     }
 
@@ -280,6 +308,25 @@ impl ChatRetrievalPlan {
                 queries.truncate(CHAT_QUERY_LIMIT_PER_PASS);
                 queries
             }
+            3 => {
+                let mut extra = heuristic_expansion_queries(self);
+                let mut seen: HashSet<String> = self
+                    .queries
+                    .iter()
+                    .chain(self.expansion_queries.iter())
+                    .map(|q| q.trim().to_ascii_lowercase())
+                    .collect();
+                extra.retain(|q| {
+                    let key = q.trim().to_ascii_lowercase();
+                    if key.is_empty() || seen.contains(&key) {
+                        return false;
+                    }
+                    seen.insert(key);
+                    true
+                });
+                extra.truncate(CHAT_QUERY_LIMIT_PER_PASS);
+                extra
+            }
             _ => Vec::new(),
         }
     }
@@ -287,10 +334,25 @@ impl ChatRetrievalPlan {
     pub(super) fn supports_second_pass(&self) -> bool {
         !self.queries_for_pass(2).is_empty()
     }
+
+    pub(super) fn supports_third_pass(&self) -> bool {
+        self.budget >= 16
+            && matches!(
+                self.intent,
+                ChatQueryIntent::Pattern | ChatQueryIntent::Comparison
+            )
+            && !self.queries_for_pass(3).is_empty()
+    }
+
+    pub(super) fn synthesis_video_cap(&self) -> usize {
+        let scaled = (self.budget / 3).max(CHAT_SYNTHESIS_VIDEO_LIMIT);
+        scaled.min(24)
+    }
 }
 
 #[derive(Debug, Deserialize)]
 struct ChatQueryPlanResponse {
+    needs_retrieval: Option<bool>,
     intent: Option<String>,
     rationale: Option<String>,
     sub_queries: Option<Vec<String>>,
@@ -713,9 +775,46 @@ impl ChatService {
         prompt: &str,
         active_chat: &ActiveChatHandle,
     ) -> Result<ChatMessage, String> {
+        let mut plan = self
+            .plan_retrieval(conversation, &conversation.id, prompt, active_chat)
+            .await;
+
+        if plan.skip_retrieval && !conversation_has_prior_assistant(conversation) {
+            tracing::warn!(
+                conversation_id = %conversation.id,
+                "planner requested conversation-only turn without prior assistant context; running retrieval"
+            );
+            plan.skip_retrieval = false;
+        }
+
+        if plan.skip_retrieval {
+            active_chat
+                .emit(ChatStreamEvent::Status {
+                    status: ChatStatusPayload::new("generating", "Answering from the conversation")
+                        .with_detail("No new library search for this turn."),
+                })
+                .await;
+            let grounding = build_conversation_only_grounding();
+            let mut cancel_rx = active_chat.subscribe_cancel();
+            let content = self
+                .stream_ollama_reply(
+                    conversation,
+                    grounding,
+                    active_chat,
+                    &mut cancel_rx,
+                    true,
+                )
+                .await?;
+            return Ok(self.build_assistant_message(
+                content,
+                Vec::new(),
+                ChatMessageStatus::Completed,
+            ));
+        }
+
         let retrieval_started = Instant::now();
         let retrieval = self
-            .retrieve_sources_adaptive(state, &conversation.id, prompt, active_chat)
+            .retrieve_sources_with_plan(state, &conversation.id, prompt, plan, active_chat)
             .await?;
         let retrieved_sources = retrieval.sources;
         tracing::info!(
@@ -766,7 +865,13 @@ impl ChatService {
         let mut cancel_rx = active_chat.subscribe_cancel();
         let reply_started = Instant::now();
         let content = self
-            .stream_ollama_reply(conversation, grounding_context, active_chat, &mut cancel_rx)
+            .stream_ollama_reply(
+                conversation,
+                grounding_context,
+                active_chat,
+                &mut cancel_rx,
+                false,
+            )
             .await?;
         tracing::info!(
             conversation_id = %conversation.id,
@@ -778,11 +883,12 @@ impl ChatService {
         Ok(self.build_assistant_message(content, sources, ChatMessageStatus::Completed))
     }
 
-    async fn retrieve_sources_adaptive(
+    async fn retrieve_sources_with_plan(
         &self,
         state: &AppState,
         conversation_id: &str,
         prompt: &str,
+        plan: ChatRetrievalPlan,
         active_chat: &ActiveChatHandle,
     ) -> Result<ChatRetrievalOutcome, String> {
         let span = logfire::span!(
@@ -792,9 +898,6 @@ impl ChatService {
         );
 
         async move {
-            let plan = self
-                .plan_retrieval(conversation_id, prompt, active_chat)
-                .await;
             let mut pool = HashMap::<String, AccumulatedSearchCandidate>::new();
 
             let pass_one_queries = plan.queries_for_pass(1);
@@ -852,6 +955,42 @@ impl ChatService {
                 pass_count = 2;
             }
 
+            if CHAT_MAX_RETRIEVAL_PASSES > 2
+                && self.multi_pass_enabled
+                && assessment.needs_more
+                && plan.supports_third_pass()
+            {
+                let mut status =
+                    ChatStatusPayload::new("retrieving_pass_3", "Deepening evidence")
+                        .with_detail(format!(
+                            "After pass 2: {} excerpts across {} videos.",
+                            sources.len(),
+                            count_unique_videos(&sources)
+                        ));
+                if let Some(reason) = &assessment.reason {
+                    status = status.with_decision(reason.clone());
+                }
+                active_chat.emit(ChatStreamEvent::Status { status }).await;
+                let pass_three_queries = plan.queries_for_pass(3);
+                let pass_three = self
+                    .run_retrieval_pass(
+                        state,
+                        &mut pool,
+                        RetrievalPassRequest {
+                            conversation_id,
+                            plan: &plan,
+                            pass: 3,
+                            queries: &pass_three_queries,
+                            channel_focus_ids: &assessment.channel_focus_ids,
+                            active_chat,
+                        },
+                    )
+                    .await?;
+                sources = pass_three.sources;
+                assessment = pass_three.assessment;
+                pass_count = 3;
+            }
+
             if let Some(reason) = assessment.reason {
                 active_chat
                     .emit(ChatStreamEvent::Status {
@@ -883,6 +1022,7 @@ impl ChatService {
 
     async fn plan_retrieval(
         &self,
+        conversation: &ChatConversation,
         conversation_id: &str,
         prompt: &str,
         active_chat: &ActiveChatHandle,
@@ -896,35 +1036,13 @@ impl ChatService {
 
         async move {
             let prompt = prompt.trim();
-            if !self.multi_pass_enabled {
-                let plan = ChatRetrievalPlan::fallback(
-                    prompt,
-                    Some("Adaptive retrieval disabled; using direct synthesis.".to_string()),
-                );
-                tracing::info!(
-                    conversation_id = conversation_id,
-                    intent = %plan.intent.label(),
-                    plan_label = %plan.label,
-                    budget = plan.budget,
-                    query_count = plan.queries.len(),
-                    expansion_query_count = plan.expansion_queries.len(),
-                    "chat retrieval planning bypassed"
-                );
-                active_chat
-                    .emit(ChatStreamEvent::Status {
-                        status: ChatStatusPayload::new("classifying", "Using direct search")
-                            .with_detail("Adaptive planning is disabled for this runtime.")
-                            .with_plan(plan.visibility()),
-                    })
-                    .await;
-                return plan;
-            }
+            let planner_input = format_conversation_for_planner(conversation, prompt);
 
             active_chat
                 .emit(ChatStreamEvent::Status {
                     status: ChatStatusPayload::new("classifying", "Planning search")
                         .with_detail(
-                            "Deciding whether this needs a focused lookup or broader evidence gathering.",
+                            "Deciding whether this needs a focused lookup, broader evidence, or only prior context.",
                         ),
                 })
                 .await;
@@ -934,13 +1052,13 @@ impl ChatService {
                 self.core.prompt_with_fallback(
                     "chat_query_plan",
                     CHAT_QUERY_PLAN_PROMPT,
-                    prompt,
+                    &planner_input,
                     crate::services::ollama::CooldownStatusPolicy::UseLocalFallback,
                 ),
             )
             .await;
 
-            let plan = match planned {
+            let mut plan = match planned {
                 Ok(Ok((response, _))) => {
                     match parse_json_response::<ChatQueryPlanResponse>(&response) {
                         Ok(payload) => ChatRetrievalPlan::from_response(prompt, payload),
@@ -964,6 +1082,14 @@ impl ChatService {
                 ),
             };
 
+            if !self.multi_pass_enabled && !plan.skip_retrieval {
+                let rationale = plan.rationale.clone().or(Some(
+                    "Adaptive multi-pass retrieval is disabled; using a single direct search."
+                        .to_string(),
+                ));
+                plan = ChatRetrievalPlan::fallback(prompt, rationale);
+            }
+
             tracing::info!(
                 conversation_id = conversation_id,
                 intent = %plan.intent.label(),
@@ -973,6 +1099,7 @@ impl ChatService {
                 query_count = plan.queries.len(),
                 expansion_query_count = plan.expansion_queries.len(),
                 attributed_preference = plan.attributed_preference,
+                skip_retrieval = plan.skip_retrieval,
                 "chat retrieval plan resolved"
             );
 
@@ -1211,7 +1338,7 @@ impl ChatService {
                 })
                 .await;
 
-            let observation_inputs = build_video_observation_inputs(sources);
+            let observation_inputs = build_video_observation_inputs(sources, plan.synthesis_video_cap());
             let mut observations = Vec::new();
             for input in observation_inputs {
                 match self
@@ -1257,6 +1384,7 @@ impl ChatService {
                 plan,
                 sources,
                 &observations,
+                synthesis_raw_limit_for_plan(plan),
             ))
         }
         .instrument(span)
@@ -1328,6 +1456,7 @@ impl ChatService {
         grounding_context: String,
         active_chat: &ActiveChatHandle,
         cancel_rx: &mut watch::Receiver<bool>,
+        conversation_only: bool,
     ) -> Result<String, String> {
         // Cloud LLMs can take many minutes to stream a full response; override
         // the 20s default client timeout with one that covers the whole generation.
@@ -1343,7 +1472,7 @@ impl ChatService {
         );
 
         async move {
-            let messages = build_ollama_messages(conversation, grounding_context);
+            let messages = build_ollama_messages(conversation, grounding_context, conversation_only);
             let request = OllamaChatRequest {
                 model: self.model().to_string(),
                 messages,
@@ -1670,6 +1799,31 @@ fn generate_chat_id(prefix: &str) -> String {
     )
 }
 
+fn conversation_has_prior_assistant(conversation: &ChatConversation) -> bool {
+    conversation
+        .messages
+        .iter()
+        .any(|message| message.role == ChatRole::Assistant)
+}
+
+fn format_conversation_for_planner(conversation: &ChatConversation, current_prompt: &str) -> String {
+    let mut lines = Vec::new();
+    for message in conversation.messages.iter() {
+        let label = match message.role {
+            ChatRole::User => "User",
+            ChatRole::Assistant => "Assistant",
+            ChatRole::System => continue,
+        };
+        lines.push(format!("{label}: {}", message.content.trim()));
+    }
+    let transcript = lines.join("\n");
+    let capped = limit_text(&transcript, CHAT_PLANNER_CONVERSATION_MAX_CHARS);
+    format!(
+        "RECENT CONVERSATION:\n{capped}\n\nCURRENT USER MESSAGE:\n{}",
+        current_prompt.trim()
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::chat_heuristics::{
@@ -1696,6 +1850,7 @@ mod tests {
         let plan = ChatRetrievalPlan::from_response(
             "what is the best database according to theo?",
             ChatQueryPlanResponse {
+                needs_retrieval: Some(true),
                 intent: Some("fact".to_string()),
                 rationale: Some("single fact lookup".to_string()),
                 sub_queries: Some(vec!["best database according to Theo".to_string()]),

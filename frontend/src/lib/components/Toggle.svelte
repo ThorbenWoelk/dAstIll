@@ -30,9 +30,9 @@
       type="button"
       role="tab"
       aria-selected={value === option}
-      class={`flex h-7 flex-none items-center gap-1.5 rounded-full border px-3 text-[11px] font-bold uppercase tracking-[0.1em] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30 ${
+      class={`flex h-7 flex-none items-center gap-1 rounded-full border px-3 text-[11px] font-bold uppercase tracking-[0.1em] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30 ${
         value === option
-          ? "border-transparent bg-[var(--accent-wash-strong)] text-[var(--accent-strong)] shadow-sm"
+          ? "cursor-default border-transparent bg-[var(--accent-wash-strong)] text-[var(--accent-strong)] shadow-sm"
           : "border-transparent text-[var(--soft-foreground)] opacity-90 hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] hover:opacity-100"
       }`}
       onclick={() => onChange(option)}
@@ -40,7 +40,7 @@
       {#if showIcons}
         {#if option === "transcript" || option === "transcripts"}
           <svg
-            class="size-[11px] shrink-0"
+            class="size-3 shrink-0"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -57,7 +57,7 @@
           </svg>
         {:else if option === "summary" || option === "summaries"}
           <svg
-            class="size-[11px] shrink-0"
+            class="size-3 shrink-0"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -71,10 +71,10 @@
             <line x1="14" y1="16" x2="3" y2="16" />
           </svg>
         {:else if option === "highlights"}
-          <HighlighterIcon size={11} strokeWidth={2.5} class="shrink-0" />
+          <HighlighterIcon size={12} strokeWidth={2.5} class="shrink-0" />
         {:else if option === "info" || option === "evaluations"}
           <svg
-            class="size-[11px] shrink-0"
+            class="size-3 shrink-0"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -88,7 +88,7 @@
           </svg>
         {:else if option === "channels"}
           <svg
-            class="size-[11px] shrink-0"
+            class="size-3 shrink-0"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -102,7 +102,7 @@
           </svg>
         {:else if option === "videos"}
           <svg
-            class="size-[11px] shrink-0"
+            class="size-3 shrink-0"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -114,7 +114,7 @@
           </svg>
         {:else if option === "content" || option === "details"}
           <svg
-            class="size-[11px] shrink-0"
+            class="size-3 shrink-0"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"

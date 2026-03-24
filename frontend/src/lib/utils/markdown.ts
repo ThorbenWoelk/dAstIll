@@ -113,3 +113,23 @@ export function renderMarkdown(
   });
   return DOMPurify.sanitize(typeof html === "string" ? html : "");
 }
+
+/** Like {@link renderMarkdown}, but adds `target` and `rel` on all anchors for external navigation. */
+export function renderMarkdownForChat(
+  input: string,
+  options: RenderMarkdownOptions = {},
+) {
+  const hook = (node: Node) => {
+    if (node.nodeType !== 1) return;
+    const el = node as Element;
+    if (el.tagName !== "A" || !el.hasAttribute("href")) return;
+    el.setAttribute("target", "_blank");
+    el.setAttribute("rel", "noopener noreferrer");
+  };
+  DOMPurify.addHook("afterSanitizeAttributes", hook);
+  try {
+    return renderMarkdown(input, options);
+  } finally {
+    DOMPurify.removeHook("afterSanitizeAttributes", hook);
+  }
+}

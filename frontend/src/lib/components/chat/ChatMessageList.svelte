@@ -29,7 +29,7 @@
       >
         Ask questions grounded in your indexed library
       </h2>
-      <p class="text-[13px] leading-relaxed text-[var(--soft-foreground)]">
+      <p class="text-[14px] leading-relaxed text-[var(--soft-foreground)]">
         Answers stream from the local model and cite transcript and summary
         sources they rely on.
       </p>

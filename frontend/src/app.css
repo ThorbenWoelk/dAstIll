@@ -438,6 +438,21 @@ textarea {
   -webkit-tap-highlight-color: transparent;
 }
 
+a[href],
+[role="button"] {
+  cursor: pointer;
+}
+
+[disabled],
+:disabled {
+  cursor: not-allowed;
+}
+
+[aria-busy="true"] button,
+[aria-busy="true"] input {
+  cursor: wait;
+}
+
 .search-input::-webkit-search-decoration,
 .search-input::-webkit-search-cancel-button,
 .search-input::-webkit-search-results-button,
@@ -497,6 +512,32 @@ textarea {
   }
 }
 
+/* Sidebar shell: opacity-only fade so position:fixed children (e.g. video filter popup)
+   stay viewport-anchored. transform-based animations create a new containing block. */
+.fade-in-opacity {
+  animation: fade-in-opacity 400ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 0;
+}
+
+@keyframes fade-in-opacity {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Menus, popovers, toasts: never animate opacity (avoids see-through over page content). */
+.popover-rise {
+  animation: popover-rise 500ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes popover-rise {
+  from {
+    transform: translateY(10px);
+  }
+  to {
+    transform: none;
+  }
+}
+
 .stagger-1 {
   animation-delay: 80ms;
 }
@@ -518,7 +559,7 @@ textarea {
   bottom: 100%;
   left: 50%;
   transform: translateX(-50%) translateY(-2px);
-  padding: 5px 9px;
+  padding: 4px 8px;
   background: var(--tooltip-bg);
   color: var(--tooltip-foreground);
   font-size: 10px;
@@ -531,7 +572,7 @@ textarea {
   text-align: center;
   text-wrap: balance;
   line-height: 1.3;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   opacity: 0;
   pointer-events: none;
   transition: all 150ms cubic-bezier(0.16, 1, 0.3, 1);
@@ -737,11 +778,7 @@ textarea {
     align-items: center;
     height: var(--mobile-tab-bar-height);
     padding-bottom: env(safe-area-inset-bottom);
-    background: color-mix(
-      in srgb,
-      var(--panel-surface-strong) 90%,
-      transparent
-    );
+    background: var(--panel-surface-strong);
     border-top: 1px solid var(--accent-border-soft);
     box-shadow: 0 -12px 30px var(--shadow-soft);
   }
@@ -751,8 +788,8 @@ textarea {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  padding: 6px 16px;
+  gap: 4px;
+  padding: 8px 16px;
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
@@ -780,6 +817,23 @@ textarea {
 
 .mobile-tab-item--active svg {
   transform: scale(1.08);
+}
+
+/* Chat assistant: citation markers as superscript links */
+.chat-cite-sup {
+  font-size: 0.68em;
+  font-weight: 600;
+  line-height: 0;
+  vertical-align: super;
+}
+
+.chat-cite-sup .chat-cite-ref {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.chat-cite-sup .chat-cite-ref:hover {
+  text-decoration: underline;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -52,21 +52,16 @@
   class={`fade-in stagger-1 flex min-h-0 min-w-0 flex-col border-0 lg:h-full lg:gap-3 lg:border-r lg:border-[var(--accent-border-soft)] lg:px-5 ${mobileVisible ? "h-full gap-4 p-3" : "hidden lg:flex"}`}
 >
   <div
-    class="flex items-center justify-between gap-3 border-b border-[var(--accent-border-soft)] px-1 pb-3 pt-1"
+    class="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-[var(--border-soft)]/50 px-1"
   >
-    <div>
-      <p
-        class="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--soft-foreground)]"
-      >
-        Conversations
-      </p>
-      <p class="mt-1 text-[13px] text-[var(--foreground)]">
-        Persistent chat history
-      </p>
-    </div>
+    <span
+      class="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-55"
+    >
+      Conversations
+    </span>
     <button
       type="button"
-      class="inline-flex h-9 items-center justify-center rounded-full border border-[var(--accent)]/15 bg-[var(--accent-wash-strong)] px-3 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--accent-strong)] transition-colors hover:bg-[var(--accent)]/15 disabled:cursor-not-allowed disabled:opacity-55"
+      class="inline-flex h-7 items-center justify-center rounded-full border border-[var(--accent)]/15 bg-[var(--accent-wash-strong)] px-3 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--accent-strong)] transition-colors hover:bg-[var(--accent)]/15 disabled:cursor-not-allowed disabled:opacity-55"
       disabled={creating}
       onclick={() => void onCreate()}
     >

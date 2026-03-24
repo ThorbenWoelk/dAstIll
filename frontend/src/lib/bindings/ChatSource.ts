@@ -10,5 +10,6 @@ export type ChatSource = {
   section_title: string | null;
   snippet: string;
   score: number;
+  chunk_id: string;
   retrieval_pass?: number;
 };

@@ -18,7 +18,11 @@
   let items = $derived(getSectionNavigationItems(currentSection, DOCS_URL));
 </script>
 
-<nav class="mobile-tab-bar lg:hidden" aria-label="App navigation">
+<nav
+  id="app-section-nav-mobile"
+  class="mobile-tab-bar lg:hidden"
+  aria-label="App navigation"
+>
   {#each items as item}
     <a
       href={item.href}
@@ -26,7 +30,13 @@
       rel={item.external ? "noopener noreferrer" : undefined}
       data-sveltekit-preload-code={item.external ? undefined : "viewport"}
       data-sveltekit-preload-data={item.external ? undefined : "tap"}
-      id={item.section === "docs" ? "mobile-nav-docs-link" : undefined}
+      id={item.section === "docs"
+        ? "mobile-nav-docs-link"
+        : item.section === "chat"
+          ? "mobile-nav-chat-link"
+          : item.section === "workspace"
+            ? "mobile-nav-workspace-link"
+            : undefined}
       class={`mobile-tab-item ${!item.external && item.active ? "mobile-tab-item--active" : ""}`}
       aria-current={!item.external && item.active ? "page" : undefined}
     >

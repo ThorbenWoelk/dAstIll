@@ -26,9 +26,9 @@
     aria-live="polite"
   >
     <svg
-      class={`mt-0.5 ${note && noteExpanded ? "row-span-2" : ""}`}
-      width="11"
-      height="11"
+      class={`mt-1 ${note && noteExpanded ? "row-span-2" : ""}`}
+      width="12"
+      height="12"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"

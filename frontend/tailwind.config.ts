@@ -13,6 +13,13 @@ const config: Config = {
         muted: "var(--muted)",
         border: "var(--border)",
       },
+      spacing: {
+        xs: "var(--space-xs)",
+        sm: "var(--space-sm)",
+        md: "var(--space-md)",
+        lg: "var(--space-lg)",
+        xl: "var(--space-xl)",
+      },
       borderRadius: {
         card: "1.5rem",
       },

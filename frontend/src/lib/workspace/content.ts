@@ -1,4 +1,9 @@
-import type { Summary, Transcript, TranscriptRenderMode } from "$lib/types";
+import type {
+  Summary,
+  Transcript,
+  TranscriptRenderMode,
+  Video,
+} from "$lib/types";
 
 export { formatPublishedAt, formatSyncDate } from "$lib/utils/date";
 
@@ -53,6 +58,22 @@ export function resolveSummaryQualityPresentation(
     modelUsed: summary.model_used ?? null,
     qualityModelUsed: summary.quality_model_used ?? null,
   };
+}
+
+export function shouldRetryReadySummaryLoad(params: {
+  contentMode: "transcript" | "summary" | "highlights" | "info";
+  selectedVideo: Pick<Video, "summary_status"> | null | undefined;
+  contentText: string;
+  loadingContent: boolean;
+  editing: boolean;
+}): boolean {
+  return (
+    params.contentMode === "summary" &&
+    params.selectedVideo?.summary_status === "ready" &&
+    !params.contentText.trim() &&
+    !params.loadingContent &&
+    !params.editing
+  );
 }
 
 export function hasKnownDuration(

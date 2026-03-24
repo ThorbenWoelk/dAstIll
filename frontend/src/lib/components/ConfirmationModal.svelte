@@ -97,7 +97,7 @@
         <div class="mt-8 flex flex-col gap-2 sm:flex-row-reverse sm:gap-3">
           <button
             type="button"
-            class={`inline-flex w-full items-center justify-center rounded-[var(--radius-md)] px-6 py-3 text-[12px] font-bold uppercase tracking-[0.1em] text-white transition-all sm:w-auto ${tone === "danger" ? "" : "bg-[var(--accent)] hover:bg-[var(--accent-strong)] shadow-lg shadow-[var(--accent)]/20"}`}
+            class={`inline-flex w-full items-center justify-center rounded-[var(--radius-md)] px-6 py-3 text-[12px] font-bold uppercase tracking-[0.1em] text-white transition-all sm:w-auto ${tone === "danger" ? "" : "bg-[var(--accent)] hover:bg-[var(--accent-strong)] shadow-lg"}`}
             class:tone-danger={tone === "danger"}
             onclick={onConfirm}
           >
@@ -119,7 +119,7 @@
 <style>
   .tone-danger {
     background: var(--danger);
-    box-shadow: 0 18px 36px color-mix(in srgb, var(--danger) 24%, transparent);
+    box-shadow: 0 18px 36px var(--shadow-strong);
   }
 
   .tone-danger:hover {

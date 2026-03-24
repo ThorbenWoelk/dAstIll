@@ -6,9 +6,10 @@ import {
   hasKnownDuration,
   resolveSummaryQualityPresentation,
   resolveTranscriptPresentation,
+  shouldRetryReadySummaryLoad,
   stripContentPrefix,
 } from "../src/lib/workspace/content";
-import type { Summary, Transcript } from "../src/lib/types";
+import type { Summary, Transcript, Video } from "../src/lib/types";
 
 function createTranscript(overrides: Partial<Transcript> = {}): Transcript {
   return {
@@ -28,6 +29,20 @@ function createSummary(overrides: Partial<Summary> = {}): Summary {
     quality_note: null,
     model_used: null,
     quality_model_used: null,
+    ...overrides,
+  };
+}
+
+function createVideo(overrides: Partial<Video> = {}): Video {
+  return {
+    id: "video-1",
+    channel_id: "channel-1",
+    title: "Video",
+    published_at: "2026-03-01T10:15:00.000Z",
+    is_short: false,
+    transcript_status: "ready",
+    summary_status: "pending",
+    acknowledged: false,
     ...overrides,
   };
 }
@@ -104,6 +119,32 @@ describe("resolveSummaryQualityPresentation", () => {
       modelUsed: null,
       qualityModelUsed: null,
     });
+  });
+});
+
+describe("shouldRetryReadySummaryLoad", () => {
+  it("retries when summary status is ready but the pane is still empty", () => {
+    expect(
+      shouldRetryReadySummaryLoad({
+        contentMode: "summary",
+        selectedVideo: createVideo({ summary_status: "ready" }),
+        contentText: "",
+        loadingContent: false,
+        editing: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not retry while summary content is already present", () => {
+    expect(
+      shouldRetryReadySummaryLoad({
+        contentMode: "summary",
+        selectedVideo: createVideo({ summary_status: "ready" }),
+        contentText: "Loaded summary",
+        loadingContent: false,
+        editing: false,
+      }),
+    ).toBe(false);
   });
 });
 

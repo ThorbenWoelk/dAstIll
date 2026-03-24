@@ -9,7 +9,7 @@ use crate::services::text::limit_text;
 use super::chat::{
     AccumulatedSearchCandidate, CHAT_CONTEXT_MAX_CHARS, CHAT_DIVERSITY_PENALTY,
     CHAT_RETRIEVAL_CANDIDATE_LIMIT_MAX, CHAT_RETRIEVAL_CANDIDATE_LIMIT_MIN,
-    CHAT_SOURCE_KIND_DIVERSITY_BONUS, CHAT_SYNTHESIS_SOURCES_PER_VIDEO, CHAT_SYNTHESIS_VIDEO_LIMIT,
+    CHAT_SOURCE_KIND_DIVERSITY_BONUS, CHAT_SYNTHESIS_SOURCES_PER_VIDEO,
     ChatQueryIntent, ChatRetrievalPlan, CoverageAssessment, RetrievedChatSource,
     VideoObservationInput,
 };
@@ -56,6 +56,7 @@ pub(super) fn rank_chat_sources(
                 section_title: candidate.candidate.section_title.clone(),
                 snippet: truncate_chunk_for_display(&candidate.candidate.chunk_text),
                 score,
+                chunk_id: candidate.candidate.chunk_id.clone(),
                 retrieval_pass: Some(candidate.retrieval_pass),
             },
             context_text: limit_text(
@@ -71,7 +72,11 @@ pub(super) fn rank_chat_sources(
 pub(super) fn retrieval_candidate_limit(budget: usize, query_count: usize, pass: usize) -> usize {
     let query_count = query_count.max(1);
     let base = ((budget * 2) / query_count).max(CHAT_RETRIEVAL_CANDIDATE_LIMIT_MIN);
-    let boosted = if pass > 1 { base + 4 } else { base };
+    let boosted = if pass > 1 {
+        base + 4 + (pass.saturating_sub(1) * 2)
+    } else {
+        base
+    };
     boosted.clamp(
         CHAT_RETRIEVAL_CANDIDATE_LIMIT_MIN,
         CHAT_RETRIEVAL_CANDIDATE_LIMIT_MAX,
@@ -236,6 +241,7 @@ pub(super) fn assess_coverage(
 
 pub(super) fn build_video_observation_inputs(
     sources: &[RetrievedChatSource],
+    max_videos: usize,
 ) -> Vec<VideoObservationInput> {
     let mut groups = Vec::<VideoObservationInput>::new();
     let mut group_indexes = HashMap::<String, usize>::new();
@@ -248,7 +254,7 @@ pub(super) fn build_video_observation_inputs(
             continue;
         }
 
-        if groups.len() >= CHAT_SYNTHESIS_VIDEO_LIMIT {
+        if groups.len() >= max_videos {
             continue;
         }
 

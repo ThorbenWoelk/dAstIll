@@ -306,11 +306,9 @@ async fn main() -> anyhow::Result<()> {
         )
         .route(
             "/api/chat/conversations/{id}",
-            get(chat::get_conversation).put(chat::update_conversation),
-        )
-        .route(
-            "/api/chat/conversations/{id}",
-            delete(chat::delete_conversation).layer(middleware::from_fn(require_operator_role)),
+            get(chat::get_conversation)
+                .put(chat::update_conversation)
+                .delete(chat::delete_conversation),
         )
         .route(
             "/api/chat/conversations/{id}/messages",

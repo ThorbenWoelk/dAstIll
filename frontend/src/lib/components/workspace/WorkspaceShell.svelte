@@ -182,7 +182,7 @@
   <div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
     {#if topBar}
       <header
-        class="hidden shrink-0 items-center justify-between gap-4 border-b border-[var(--border-soft)]/50 bg-[var(--surface)] px-6 py-2 lg:flex"
+        class="hidden h-12 shrink-0 items-center justify-between gap-4 border-b border-[var(--border-soft)]/50 bg-[var(--surface)] px-6 lg:flex"
       >
         {@render topBar()}
       </header>

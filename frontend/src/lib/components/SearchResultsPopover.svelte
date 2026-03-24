@@ -117,7 +117,7 @@
         >
           Search
         </p>
-        <p class="mt-1 text-[13px] text-[var(--foreground)]">
+        <p class="mt-1 text-[14px] text-[var(--foreground)]">
           {#if pendingQuery}
             Searching for <span class="font-semibold">{activeQueryLabel()}</span
             >
@@ -200,7 +200,7 @@
                 </div>
               {:else if sections[mode].error}
                 <p
-                  class="rounded-[var(--radius-sm)] border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-2 text-[13px] font-medium text-[var(--danger-foreground)]"
+                  class="rounded-[var(--radius-sm)] border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-2 text-[14px] font-medium text-[var(--danger-foreground)]"
                 >
                   {sections[mode].error}
                 </p>
@@ -262,7 +262,7 @@
                               {/if}
                             </div>
                             <p
-                              class="text-[13px] leading-6 text-[var(--foreground)]"
+                              class="text-[14px] leading-6 text-[var(--foreground)]"
                             >
                               {@html renderSearchText(
                                 match.snippet,

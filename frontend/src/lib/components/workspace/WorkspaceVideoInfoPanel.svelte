@@ -41,7 +41,7 @@
       >
         Published
       </p>
-      <p class="font-semibold text-[13px]">
+      <p class="font-semibold text-[14px]">
         {formatPublishedAt(videoInfo?.published_at)}
       </p>
     </div>
@@ -52,7 +52,7 @@
         >
           Duration
         </p>
-        <p class="font-semibold text-[13px]">
+        <p class="font-semibold text-[14px]">
           {formatDuration(
             videoInfo?.duration_seconds,
             videoInfo?.duration_iso8601,
@@ -66,7 +66,7 @@
       >
         Channel
       </p>
-      <p class="truncate font-semibold text-[13px]">
+      <p class="truncate font-semibold text-[14px]">
         {videoInfo?.channel_name || "Unknown"}
       </p>
     </div>

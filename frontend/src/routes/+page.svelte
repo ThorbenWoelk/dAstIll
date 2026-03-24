@@ -87,6 +87,7 @@
   import { createAiStatusPoller } from "$lib/utils/ai-poller";
   import {
     resolveGuideStepFromUrl,
+    WORKSPACE_GUIDE_STEP_COUNT,
     writeGuideStepToUrl,
   } from "$lib/utils/guide";
   import {
@@ -126,6 +127,7 @@
   import {
     resolveSummaryQualityPresentation,
     resolveTranscriptPresentation,
+    shouldRetryReadySummaryLoad,
     stripContentPrefix,
   } from "$lib/workspace/content";
   import {
@@ -175,142 +177,6 @@
   // -- Guide tour (URL-driven: ?guide=0, ?guide=1, ...) --
   let guideOpen = $state(false);
   let guideStep = $state(0);
-
-  const tourSteps: TourStep[] = [
-    {
-      selector: "#workspace",
-      title: "Welcome to dAstIll",
-      body: "dAstIll helps you keep up with YouTube without the doom-scrolling. It pulls transcripts from your favorite channels and creates AI summaries, so you can quickly decide which videos are worth your time.",
-      placement: "right",
-      prepare: () => {
-        mobileTab = "browse";
-      },
-    },
-    {
-      selector: "#channel-input",
-      title: "Add a Channel",
-      body: "Paste any YouTube channel URL or handle here and press Enter. dAstIll will fetch the channel and start pulling in its videos automatically.",
-      placement: "bottom",
-      prepare: () => {
-        mobileTab = "browse";
-      },
-    },
-    {
-      selector: "#workspace",
-      title: "Your Channels",
-      body: "All the channels you follow show up here. Click any channel to see its videos. You can search, sort, and drag to reorder them.",
-      placement: "right",
-      prepare: () => {
-        mobileTab = "browse";
-      },
-    },
-    {
-      selector: "#videos",
-      title: "Video List",
-      body: "These are the videos from the selected channel, newest first. Older videos keep loading in the background. Click any video to read its content.",
-      placement: "right",
-      prepare: () => {
-        mobileTab = "browse";
-      },
-    },
-    {
-      selector: "#video-filter-button",
-      title: "Filter Videos",
-      body: "Narrow the list by type (full videos or Shorts) or by read status (all, unread, read). Useful when a channel has hundreds of uploads.",
-      placement: "bottom",
-      prepare: () => {
-        mobileTab = "browse";
-      },
-    },
-    {
-      selector: "#content-mode-tabs",
-      title: "Read the Transcript",
-      body: "Every video's spoken content is available as a full transcript you can read at your own pace - much faster than watching the whole video.",
-      placement: "bottom",
-      prepare: () => {
-        mobileTab = "content";
-        if (contentMode !== "transcript") {
-          void setMode("transcript");
-        }
-      },
-    },
-    {
-      selector: "#content-mode-tabs",
-      title: "AI Summary",
-      body: "Don't have time for the full transcript? The AI summary gives you the key points in a fraction of the time. This is the fastest way to decide if a video is worth watching.",
-      placement: "bottom",
-      prepare: () => {
-        mobileTab = "content";
-        if (contentMode !== "summary") {
-          void setMode("summary");
-        }
-      },
-    },
-    {
-      selector: "#content-mode-tabs",
-      title: "Your Highlights",
-      body: "Found something worth remembering? Select any text in the transcript or summary and save it as a highlight. All your saved passages for this video appear here.",
-      placement: "bottom",
-      prepare: () => {
-        mobileTab = "content";
-        if (contentMode !== "highlights") {
-          void setMode("highlights");
-        }
-      },
-    },
-    {
-      selector: "#content-mode-tabs",
-      title: "Video Details",
-      body: "See the publish date, duration, description, and thumbnail for any video - all without leaving the app.",
-      placement: "bottom",
-      prepare: () => {
-        mobileTab = "content";
-        if (contentMode !== "info") {
-          void setMode("info");
-        }
-      },
-    },
-    {
-      selector: "#content-actions",
-      title: "Actions",
-      body: "Use these buttons to edit text, clean up formatting with AI, regenerate a summary, or jump straight to the video on YouTube.",
-      placement: "bottom",
-      prepare: () => {
-        mobileTab = "content";
-        if (contentMode === "info" || contentMode === "highlights") {
-          void setMode("transcript");
-        }
-      },
-    },
-    {
-      selector: "#content-actions",
-      title: "Track What You've Read",
-      body: "Mark videos as read once you've reviewed them, then use the filter to show only unread videos. That way you always know what's new.",
-      placement: "bottom",
-      prepare: () => {
-        mobileTab = "content";
-        if (contentMode === "info" || contentMode === "highlights") {
-          void setMode("transcript");
-        }
-      },
-    },
-    {
-      selector: "#ai-status-pill",
-      title: "AI Availability",
-      body: "This indicator shows whether AI features like summaries and chat are online. Browsing, reading, and highlights work even when AI is offline.",
-      placement: "bottom",
-    },
-    {
-      selector: "#nav-docs-link",
-      title: "Learn More",
-      body: "Want to go deeper? The documentation covers everything from setup to advanced features.",
-      placement: "bottom",
-      prepare: () => {
-        mobileTab = "browse";
-      },
-      fallbackSelector: "#mobile-nav-docs-link",
-    },
-  ];
 
   function openGuide() {
     guideStep = 0;
@@ -931,6 +797,23 @@
     return trackingId;
   }
 
+  function cacheLoadedSummary(summary: SummaryPayload, videoId: string) {
+    const summaryText = stripContentPrefix(
+      summary.content || "Summary unavailable.",
+    );
+    const trackingId = selectedChannelId
+      ? syncSummaryTrackingSession(summary, videoId, selectedChannelId)
+      : deriveSummaryTrackingId(summary);
+    const entry = contentCache.get(videoId) ?? {};
+    (entry as any).summary = {
+      text: summaryText,
+      quality: summary as any,
+      trackingId,
+    };
+    contentCache.set(videoId, entry);
+    return summaryText;
+  }
+
   function resetSummaryQuality() {
     const nextState = resetSummaryQualityState();
     summaryQualityScore = nextState.score;
@@ -1123,7 +1006,7 @@
 
     const restoredGuideStep = resolveGuideStepFromUrl(
       new URL(window.location.href),
-      tourSteps.length,
+      WORKSPACE_GUIDE_STEP_COUNT,
     );
     if (restoredGuideStep !== null) {
       guideStep = restoredGuideStep;
@@ -1242,9 +1125,7 @@
         allowLoadedVideoSyncDepthOverride = false;
       } else {
         const preferredVideoId =
-          initialChannelId === selectionChannelId
-            ? selectionVideoId
-            : null;
+          initialChannelId === selectionChannelId ? selectionVideoId : null;
         const canReuseRenderedSnapshot =
           initialChannelId === selectionChannelId &&
           sidebarState.videos.length > 0;
@@ -1647,6 +1528,183 @@
     await loadContent();
   }
 
+  async function tourPrepareFirstVideoIfNeeded() {
+    mobileTab = "content";
+    await tick();
+    if (!selectedVideoId && selectedChannelId && videos.length > 0) {
+      await selectVideo(videos[0].id, false, false);
+    }
+    await tick();
+  }
+
+  async function tourPrepareOpenAddChannel() {
+    mobileTab = "browse";
+    await tick();
+    document.getElementById("tour-add-channel")?.click();
+    await tick();
+    await tick();
+  }
+
+  const TAB_STRIP_TOUR = [
+    "#workspace-tabs-mobile",
+    "#workspace-tabs-desktop",
+    "#content-view",
+  ] as const;
+
+  const tourSteps: TourStep[] = [
+    {
+      selector: "#workspace",
+      title: "Welcome to dAstIll",
+      body: "dAstIll helps you keep up with YouTube without the doom-scrolling. It pulls transcripts from your favorite channels and creates AI summaries, so you can quickly decide which videos are worth your time. This column is your channel library.",
+      placement: "right",
+      prepare: () => {
+        mobileTab = "browse";
+      },
+    },
+    {
+      selector: "#main-content",
+      title: "Section I - Main overview",
+      body: "This main area is where transcripts and summaries appear once a video is open. Next: add a channel on the left, then use the tab strip for Transcript and Summary, and Chat in the rail for library-wide questions.",
+      placement: "left",
+      prepare: () => {
+        mobileTab = "content";
+      },
+      fallbackSelectors: ["#content-view"],
+    },
+    {
+      selector: "#channel-input",
+      title: "Add a Channel",
+      body: "Paste a URL or handle here (we opened this field for you). If it was already open, use the + control in the Channels row. New uploads are tracked automatically.",
+      placement: "bottom",
+      prepare: () => {
+        void tourPrepareOpenAddChannel();
+      },
+      fallbackSelectors: ["#tour-add-channel", "#tour-library-tools"],
+    },
+    {
+      selector: "#workspace-tabs-mobile",
+      title: "Read the Transcript",
+      body: "These tabs switch Transcript, Summary, Highlights, and Info. Pick Transcript for full spoken text. (Mobile uses this strip; desktop uses the same strip in the header.)",
+      placement: "bottom",
+      prepare: async () => {
+        await tourPrepareFirstVideoIfNeeded();
+        if (contentMode !== "transcript") {
+          await setMode("transcript");
+        }
+      },
+      fallbackSelectors: [...TAB_STRIP_TOUR],
+    },
+    {
+      selector: "#workspace-tabs-mobile",
+      title: "AI Summary",
+      body: "The Summary tab shows the distilled version so you can decide if the full video is still worth watching.",
+      placement: "bottom",
+      prepare: async () => {
+        await tourPrepareFirstVideoIfNeeded();
+        if (contentMode !== "summary") {
+          await setMode("summary");
+        }
+      },
+      fallbackSelectors: [...TAB_STRIP_TOUR],
+    },
+    {
+      selector: "#nav-chat-link",
+      title: "AI Chat",
+      body: "Open Chat from here (bottom bar on small screens). You get an LLM with retrieval over your transcripts and summaries, with citations and history. It opens as its own screen.",
+      placement: "right",
+      prepare: () => {
+        mobileTab = "browse";
+      },
+      fallbackSelectors: ["#mobile-nav-chat-link"],
+    },
+    {
+      selector: "#tour-library-tools",
+      title: "Section II - Deep dive and other features",
+      body: "This Channels row has search, sort, and the video filter. The list and sync status are below. Next we focus the filter, then the sync line under the list.",
+      placement: "bottom",
+      prepare: () => {
+        mobileTab = "browse";
+      },
+      fallbackSelectors: ["#workspace"],
+    },
+    {
+      selector: "#video-filter-button",
+      title: "Filter the list",
+      body: "Filter by video type and by read status. It lives in the Channels row you just saw.",
+      placement: "bottom",
+      prepare: () => {
+        mobileTab = "browse";
+      },
+      fallbackSelectors: ["#tour-library-tools", "#workspace"],
+    },
+    {
+      selector: "#channel-history-sync",
+      title: "History and sync",
+      body: "Under the list, Synced to shows how far back indexing goes. Load More or Load History pulls older rows when available.",
+      placement: "top",
+      prepare: () => {
+        mobileTab = "browse";
+      },
+      fallbackSelectors: ["#videos", "#tour-library-tools", "#workspace"],
+    },
+    {
+      selector: "#mark-read-toggle",
+      title: "Mark as read",
+      body: "Read / Unread sits with the other actions above the transcript or summary when a video is open. Use it with the read filter in the library.",
+      placement: "bottom",
+      prepare: async () => {
+        if (contentMode === "info" || contentMode === "highlights") {
+          await setMode("transcript");
+        }
+        await tourPrepareFirstVideoIfNeeded();
+      },
+      fallbackSelectors: [
+        "#content-actions",
+        "#workspace-tabs-mobile",
+        "#workspace-tabs-desktop",
+        "#content-view",
+      ],
+    },
+    {
+      selector: "#workspace-tabs-mobile",
+      title: "Your Highlights",
+      body: "Select text in the transcript or summary to save a highlight. This tab lists clips for the current video.",
+      placement: "bottom",
+      prepare: async () => {
+        await tourPrepareFirstVideoIfNeeded();
+        if (contentMode !== "highlights") {
+          await setMode("highlights");
+        }
+      },
+      fallbackSelectors: [...TAB_STRIP_TOUR],
+    },
+    {
+      selector: "#ai-status-pill",
+      title: "AI availability",
+      body: "This dot beside the logo shows whether the AI backend is reachable for summaries and chat. Reading still works without it.",
+      placement: "bottom",
+      prepare: () => {
+        mobileTab = "browse";
+      },
+      fallbackSelectors: [
+        "a[aria-label='Go to dAstIll home']",
+        "#nav-workspace-link",
+        "#mobile-nav-workspace-link",
+      ],
+    },
+    {
+      selector: "#guide-trigger",
+      title: "Come back to this guide any time",
+      body: "Reopen this tour from Guide at the bottom of the left rail on wide layouts. Docs are linked in the rail and the bottom bar for full reference.",
+      placement: "right",
+      prepare: () => {
+        mobileTab = "browse";
+      },
+      fallbackSelectors: ["#workspace"],
+    },
+  ];
+  // Keep WORKSPACE_GUIDE_STEP_COUNT in $lib/utils/guide.ts equal to tourSteps.length.
+
   function invalidateContentCache(
     videoId: string,
     mode?: "transcript" | "summary" | "info",
@@ -1781,25 +1839,8 @@
             const summary = await getSummary(targetVideoId);
             if (!isCurrentContentRequest(requestId, targetVideoId, targetMode))
               return;
-            contentText = stripContentPrefix(
-              summary.content || "Summary unavailable.",
-            );
+            contentText = cacheLoadedSummary(summary, targetVideoId);
             applySummaryQuality(summary);
-            const trackingId = selectedChannelId
-              ? syncSummaryTrackingSession(
-                  summary,
-                  targetVideoId,
-                  selectedChannelId,
-                )
-              : deriveSummaryTrackingId(summary);
-            // Cache the summary
-            const entry = contentCache.get(targetVideoId) ?? {};
-            (entry as any).summary = {
-              text: contentText,
-              quality: summary as any,
-              trackingId,
-            };
-            contentCache.set(targetVideoId, entry);
             resetVideoInfo();
             void hydrateVideoHighlights(targetVideoId);
           } catch (error) {
@@ -2295,6 +2336,14 @@
         editing
       )
         return;
+      if (!contentText.trim()) {
+        contentText = cacheLoadedSummary(summary, targetVideoId);
+        draft = contentText;
+        resetVideoInfo();
+        if (videoHighlightsByVideoId[targetVideoId] === undefined) {
+          void hydrateVideoHighlights(targetVideoId);
+        }
+      }
       applySummaryQuality(summary);
     } catch {
       // Keep previous quality state if background refresh fails.
@@ -2322,9 +2371,20 @@
       return;
     }
 
+    const needsReadySummaryRetry = shouldRetryReadySummaryLoad({
+      contentMode,
+      selectedVideo,
+      contentText,
+      loadingContent,
+      editing,
+    });
+    const intervalMs = needsReadySummaryRetry ? 2000 : 7000;
+    if (needsReadySummaryRetry) {
+      void refreshSummaryQuality();
+    }
     const timer = setInterval(() => {
       void refreshSummaryQuality();
-    }, 7000);
+    }, intervalMs);
     return () => clearInterval(timer);
   });
 
@@ -2354,6 +2414,37 @@
     selectedVideoId,
     contentMode,
   });
+
+  /** From `cite` query param; scroll runs in TranscriptView when content matches `video`. */
+  const citationScrollText = $derived.by(() => {
+    const url = $page.url;
+    const cite = url.searchParams.get("cite")?.trim();
+    if (!cite) {
+      return null;
+    }
+    if (loadingContent) {
+      return null;
+    }
+    const videoParam = url.searchParams.get("video")?.trim();
+    if (videoParam && selectedVideoId && videoParam !== selectedVideoId) {
+      return null;
+    }
+    return cite;
+  });
+
+  function onCitationScrollConsumed() {
+    const url = new URL($page.url.href);
+    if (!url.searchParams.has("cite") && !url.searchParams.has("chunk")) {
+      return;
+    }
+    url.searchParams.delete("cite");
+    url.searchParams.delete("chunk");
+    replacePageState(
+      `${url.pathname}${url.search}${url.hash}`,
+      window.history.state,
+    );
+  }
+
   const workspaceContentState = $derived({
     loadingContent,
     editing,
@@ -2385,6 +2476,7 @@
     formattingNotice,
     formattingNoticeVideoId,
     formattingNoticeTone,
+    citationScrollText,
   });
   const workspaceContentActions = $derived.by(() => ({
     onBack: () => {
@@ -2410,6 +2502,7 @@
     onShowVideos: () => {
       mobileTab = "browse";
     },
+    onCitationScrollConsumed,
   }));
   const workspaceOverlaysState = $derived({
     errorMessage,
@@ -2453,19 +2546,28 @@
         mobileVisible: shell.mobileVisible ?? false,
         onToggleCollapse: shell.toggle,
       }}
-      channelState={sidebarState.channelState}
-      channelActions={sidebarState.channelActions}
+      channelState={{
+        ...sidebarState.channelState,
+        canDeleteChannels: isOperator,
+      }}
+      channelActions={{
+        ...sidebarState.channelActions,
+        onDeleteChannel: handleDeleteChannel,
+        onDeleteAccessRequired: () => {
+          showDeleteAccessPrompt = true;
+        },
+      }}
       videoState={sidebarState.videoState}
       videoActions={sidebarState.videoActions}
       {videoAcknowledgeSync}
     />
   {/snippet}
   {#snippet topBar()}
-    <div class="flex items-center gap-6" id="content-mode-tabs">
+    <div class="flex items-center gap-6" id="workspace-tabs-desktop">
       {#each WORKSPACE_CONTENT_MODE_ORDER as mode}
         <button
           type="button"
-          class={`-mb-px border-b-2 py-3.5 text-[11px] font-bold uppercase tracking-[0.12em] transition-colors ${
+          class={`-mb-px inline-flex h-6 items-center border-b-2 text-[11px] font-bold uppercase tracking-[0.12em] transition-colors ${
             contentMode === mode
               ? "border-[var(--accent)] text-[var(--accent-strong)]"
               : "border-transparent text-[var(--soft-foreground)] opacity-75 hover:text-[var(--foreground)] hover:opacity-100"

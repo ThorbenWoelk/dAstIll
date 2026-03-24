@@ -44,6 +44,22 @@ describe("buildWorkspaceViewHref", () => {
       }),
     ).toBe("/?channel=abc&video=vid-1&content=highlights&type=all&ack=all");
   });
+
+  it("includes chunk and cite for chat citation deep links", () => {
+    expect(
+      buildWorkspaceViewHref({
+        selectedChannelId: "abc",
+        selectedVideoId: "vid-1",
+        contentMode: "transcript",
+        videoTypeFilter: "all",
+        acknowledgedFilter: "all",
+        chunkId: "idx-42",
+        citeQuery: "hello world",
+      }),
+    ).toBe(
+      "/?channel=abc&video=vid-1&content=transcript&type=all&ack=all&chunk=idx-42&cite=hello+world",
+    );
+  });
 });
 
 describe("mergeWorkspaceViewState", () => {

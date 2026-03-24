@@ -30,7 +30,7 @@
       >
         Sign in
       </h1>
-      <p class="text-[13px] leading-6 text-[var(--soft-foreground)]">
+      <p class="text-[14px] leading-6 text-[var(--soft-foreground)]">
         Enter the admin password to unlock operator actions.
       </p>
     </div>

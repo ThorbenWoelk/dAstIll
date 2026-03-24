@@ -54,7 +54,7 @@
         >
           <div class="flex flex-wrap items-center justify-between gap-2">
             <span
-              class="inline-flex rounded-full bg-[var(--accent-soft)]/60 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--accent-strong)]"
+              class="inline-flex rounded-full bg-[var(--accent-soft)]/60 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--accent-strong)]"
             >
               {highlight.source}
             </span>

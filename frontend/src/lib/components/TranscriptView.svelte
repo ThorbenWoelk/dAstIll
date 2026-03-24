@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from "svelte";
   import type {
     CreateHighlightRequest,
     Highlight,
@@ -11,6 +12,7 @@
     resolveHighlightRanges,
     resolveTooltipPosition,
   } from "$lib/utils/highlights";
+  import { scrollToCitationInArticle } from "$lib/utils/citation-scroll";
 
   type Props = {
     html?: string;
@@ -28,6 +30,8 @@
     onDeleteHighlight?:
       | ((highlightId: number) => Promise<void> | void)
       | undefined;
+    citationScrollText?: string | null;
+    onCitationScrollConsumed?: () => void;
   };
 
   let {
@@ -42,6 +46,8 @@
     deletingHighlightId = null,
     onCreateHighlight = undefined,
     onDeleteHighlight = undefined,
+    citationScrollText = null,
+    onCitationScrollConsumed = undefined,
   }: Props = $props();
 
   let containerElement = $state<HTMLDivElement | null>(null);
@@ -322,6 +328,33 @@
       return;
     }
     applyHighlights();
+  });
+
+  $effect(() => {
+    html;
+    text;
+    mode;
+    highlights;
+    citationScrollText;
+    formatting;
+    if (
+      !citationScrollText?.trim() ||
+      !articleElement ||
+      formatting ||
+      typeof document === "undefined"
+    ) {
+      return;
+    }
+    const query = citationScrollText.trim();
+    void tick().then(() => {
+      requestAnimationFrame(() => {
+        if (!articleElement) return;
+        const ok = scrollToCitationInArticle(articleElement, query);
+        if (ok) {
+          onCitationScrollConsumed?.();
+        }
+      });
+    });
   });
 
   $effect(() => {
