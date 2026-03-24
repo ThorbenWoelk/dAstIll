@@ -213,7 +213,7 @@ fn enforce_rate_limit_for_request(
     state: &AppState,
     request: &Request,
     tier: RateLimitTier,
-) -> Result<(), Response> {
+) -> Result<(), Box<Response>> {
     let client_key = request
         .extensions()
         .get::<AuthorizedRequest>()
@@ -223,7 +223,7 @@ fn enforce_rate_limit_for_request(
     state
         .request_rate_limiter
         .enforce(tier, &client_key, Instant::now())
-        .map_err(build_rate_limit_response)
+        .map_err(|error| Box::new(build_rate_limit_response(error)))
 }
 
 pub async fn require_proxy_auth(
@@ -308,7 +308,7 @@ pub async fn enforce_baseline_rate_limit(
 ) -> Response {
     match enforce_rate_limit_for_request(&state, &request, RateLimitTier::Baseline) {
         Ok(()) => next.run(request).await,
-        Err(response) => response,
+        Err(response) => *response,
     }
 }
 
@@ -319,7 +319,7 @@ pub async fn enforce_expensive_rate_limit(
 ) -> Response {
     match enforce_rate_limit_for_request(&state, &request, RateLimitTier::Expensive) {
         Ok(()) => next.run(request).await,
-        Err(response) => response,
+        Err(response) => *response,
     }
 }
 

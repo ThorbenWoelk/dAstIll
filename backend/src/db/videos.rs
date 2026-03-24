@@ -118,6 +118,15 @@ fn oldest_ready_video_published_at_for_scope(
         .min()
 }
 
+#[derive(Clone, Copy)]
+struct VideoListOptions {
+    limit: usize,
+    offset: usize,
+    is_short: Option<bool>,
+    acknowledged: Option<bool>,
+    queue_filter: Option<QueueFilter>,
+}
+
 /// Apply channel-scoped filtering, sorting, and pagination to a pre-loaded
 /// video slice.  The caller is responsible for loading the full video list
 /// (via `load_all_videos`) before calling this function so multiple callers
@@ -127,19 +136,15 @@ async fn apply_channel_video_filters(
     all_videos: &[Video],
     channel_id: &str,
     subscribed_channel_ids: &HashSet<String>,
-    limit: usize,
-    offset: usize,
-    is_short: Option<bool>,
-    acknowledged: Option<bool>,
-    queue_filter: Option<QueueFilter>,
+    options: VideoListOptions,
 ) -> Result<Vec<Video>, StoreError> {
     let mut filtered: Vec<Video> = all_videos
         .iter()
         .filter(|v| video_matches_channel_scope(v, channel_id, subscribed_channel_ids))
-        .filter(|v| is_short.is_none_or(|s| v.is_short == s))
-        .filter(|v| acknowledged.is_none_or(|a| v.acknowledged == a))
-        .filter(|v| video_visible_in_list(v, queue_filter))
-        .filter(|v| match queue_filter {
+        .filter(|v| options.is_short.is_none_or(|s| v.is_short == s))
+        .filter(|v| options.acknowledged.is_none_or(|a| v.acknowledged == a))
+        .filter(|v| video_visible_in_list(v, options.queue_filter))
+        .filter(|v| match options.queue_filter {
             Some(QueueFilter::AnyIncomplete) => {
                 v.transcript_status != ContentStatus::Ready
                     || v.summary_status != ContentStatus::Ready
@@ -161,7 +166,7 @@ async fn apply_channel_video_filters(
     filtered.sort_by(|a, b| b.published_at.cmp(&a.published_at));
 
     // Attach quality scores for evaluation filter
-    if queue_filter == Some(QueueFilter::EvaluationsOnly) {
+    if options.queue_filter == Some(QueueFilter::EvaluationsOnly) {
         let mut result = Vec::new();
         for v in &filtered {
             let summary = store
@@ -174,7 +179,11 @@ async fn apply_channel_video_filters(
         filtered = result;
     }
 
-    Ok(filtered.into_iter().skip(offset).take(limit).collect())
+    Ok(filtered
+        .into_iter()
+        .skip(options.offset)
+        .take(options.limit)
+        .collect())
 }
 
 pub async fn list_videos_by_channel(
@@ -189,18 +198,14 @@ pub async fn list_videos_by_channel(
     let all = load_all_videos(store).await?;
     let channels = super::channels::list_channels(store).await?;
     let subscribed = subscribed_channel_ids(&channels);
-    apply_channel_video_filters(
-        store,
-        &all,
-        channel_id,
-        &subscribed,
+    let options = VideoListOptions {
         limit,
         offset,
         is_short,
         acknowledged,
         queue_filter,
-    )
-    .await
+    };
+    apply_channel_video_filters(store, &all, channel_id, &subscribed, options).await
 }
 
 pub async fn list_video_ids_by_channel(
@@ -301,11 +306,7 @@ async fn build_channel_snapshot_data(
     store: &Store,
     channel: Channel,
     subscribed_channel_ids: &HashSet<String>,
-    limit: usize,
-    offset: usize,
-    is_short: Option<bool>,
-    acknowledged: Option<bool>,
-    queue_filter: Option<QueueFilter>,
+    options: VideoListOptions,
 ) -> Result<ChannelSnapshotData, StoreError> {
     // Load all videos for the whole store once — both derived values share this slice.
     let all_videos = load_all_videos(store).await?;
@@ -323,11 +324,7 @@ async fn build_channel_snapshot_data(
         &all_videos,
         &channel.id,
         subscribed_channel_ids,
-        limit,
-        offset,
-        is_short,
-        acknowledged,
-        queue_filter,
+        options,
     )
     .await?;
 
@@ -350,6 +347,13 @@ pub async fn load_channel_snapshot_data(
 ) -> Result<Option<ChannelSnapshotData>, StoreError> {
     let stored_channels = super::channels::list_channels(store).await?;
     let subscribed = subscribed_channel_ids(&stored_channels);
+    let options = VideoListOptions {
+        limit,
+        offset,
+        is_short,
+        acknowledged,
+        queue_filter,
+    };
 
     if channel_id == OTHERS_CHANNEL_ID {
         if !has_unsubscribed_channel_videos(store).await? {
@@ -361,11 +365,7 @@ pub async fn load_channel_snapshot_data(
                 store,
                 build_virtual_others_channel(),
                 &subscribed,
-                limit,
-                offset,
-                is_short,
-                acknowledged,
-                queue_filter,
+                options,
             )
             .await?,
         ));
@@ -376,17 +376,7 @@ pub async fn load_channel_snapshot_data(
         .find(|channel| channel.id == channel_id);
     match channel {
         Some(channel) => Ok(Some(
-            build_channel_snapshot_data(
-                store,
-                channel,
-                &subscribed,
-                limit,
-                offset,
-                is_short,
-                acknowledged,
-                queue_filter,
-            )
-            .await?,
+            build_channel_snapshot_data(store, channel, &subscribed, options).await?,
         )),
         None => Ok(None),
     }
@@ -402,6 +392,13 @@ pub async fn load_workspace_bootstrap_data(
     queue_filter: Option<QueueFilter>,
 ) -> Result<WorkspaceBootstrapData, StoreError> {
     let channels = list_channels_with_virtual_others(store).await?;
+    let options = VideoListOptions {
+        limit,
+        offset,
+        is_short,
+        acknowledged,
+        queue_filter,
+    };
     let subscribed = subscribed_channel_ids(
         &channels
             .iter()
@@ -415,19 +412,9 @@ pub async fn load_workspace_bootstrap_data(
         .or_else(|| channels.first().cloned());
     let selected_channel_id = selected_channel.as_ref().map(|c| c.id.clone());
     let snapshot = match selected_channel {
-        Some(channel) => Some(
-            build_channel_snapshot_data(
-                store,
-                channel,
-                &subscribed,
-                limit,
-                offset,
-                is_short,
-                acknowledged,
-                queue_filter,
-            )
-            .await?,
-        ),
+        Some(channel) => {
+            Some(build_channel_snapshot_data(store, channel, &subscribed, options).await?)
+        }
         None => None,
     };
     Ok(WorkspaceBootstrapData {
@@ -578,14 +565,16 @@ mod tests {
 
     #[test]
     fn max_concurrent_s3_ops_is_within_cloud_run_bounds() {
+        let max_concurrent_s3_ops = std::hint::black_box(MAX_CONCURRENT_S3_OPS);
+
         // Must be between 8 and 16 for 1 vCPU / 512 MiB Cloud Run
         assert!(
-            MAX_CONCURRENT_S3_OPS >= 8,
-            "semaphore bound too low: {MAX_CONCURRENT_S3_OPS}"
+            max_concurrent_s3_ops >= 8,
+            "semaphore bound too low: {max_concurrent_s3_ops}"
         );
         assert!(
-            MAX_CONCURRENT_S3_OPS <= 16,
-            "semaphore bound too high: {MAX_CONCURRENT_S3_OPS}"
+            max_concurrent_s3_ops <= 16,
+            "semaphore bound too high: {max_concurrent_s3_ops}"
         );
     }
 

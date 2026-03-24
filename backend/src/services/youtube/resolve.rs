@@ -448,7 +448,7 @@ impl YouTubeService {
         let desc_is_placeholder = details
             .description
             .as_deref()
-            .is_some_and(|d| super::placeholder::is_site_wide_placeholder_description(d));
+            .is_some_and(super::placeholder::is_site_wide_placeholder_description);
 
         if details.description.is_none() || desc_is_placeholder {
             if let Some(sd) = short_desc {

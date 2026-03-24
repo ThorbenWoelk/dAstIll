@@ -820,11 +820,15 @@ mod tests {
 
     #[test]
     fn transcript_clean_timeout_leaves_response_headroom() {
+        let hard_timeout_secs = std::hint::black_box(TRANSCRIPT_FORMAT_HARD_TIMEOUT_SECS);
+        let timeout_headroom_secs = std::hint::black_box(TRANSCRIPT_FORMAT_TIMEOUT_HEADROOM_SECS);
+        let cloud_prompt_timeout_secs = std::hint::black_box(CLOUD_PROMPT_TIMEOUT_SECS);
+
         assert_eq!(
-            TRANSCRIPT_FORMAT_HARD_TIMEOUT_SECS + TRANSCRIPT_FORMAT_TIMEOUT_HEADROOM_SECS,
-            CLOUD_PROMPT_TIMEOUT_SECS
+            hard_timeout_secs + timeout_headroom_secs,
+            cloud_prompt_timeout_secs
         );
-        assert!(TRANSCRIPT_FORMAT_HARD_TIMEOUT_SECS < CLOUD_PROMPT_TIMEOUT_SECS);
+        assert!(hard_timeout_secs < cloud_prompt_timeout_secs);
     }
 
     #[test]
