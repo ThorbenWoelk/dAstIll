@@ -26,27 +26,31 @@ pub async fn delete_channel(store: &Store, id: &str) -> Result<bool, StoreError>
         return Ok(false);
     }
 
-    let video_keys = store.list_keys("videos/").await?;
-    for key in &video_keys {
-        if let Some(video) = store.get_json::<crate::models::Video>(key).await? {
-            if video.channel_id == id {
-                super::highlights::delete_highlights_for_video(store, &video.id).await?;
-                store
-                    .delete_key(&format!("summaries/{}.json", video.id))
-                    .await?;
-                store
-                    .delete_key(&format!("transcripts/{}.json", video.id))
-                    .await?;
-                store
-                    .delete_key(&format!("video-info/{}.json", video.id))
-                    .await?;
-                store
-                    .delete_prefix(&format!("search-sources/{}/", video.id))
-                    .await?;
-                super::search::delete_vectors_for_video(store, &video.id).await?;
-                store.delete_key(key).await?;
-            }
+    let all_videos = super::videos::load_all_videos(store).await?;
+    for video in all_videos {
+        if video.channel_id != id {
+            continue;
         }
+
+        super::highlights::delete_highlights_for_video(store, &video.id).await?;
+        store
+            .delete_key(&format!("summaries/{}.json", video.id))
+            .await?;
+        store
+            .delete_key(&format!("transcripts/{}.json", video.id))
+            .await?;
+        store
+            .delete_key(&format!("video-info/{}.json", video.id))
+            .await?;
+        store
+            .delete_prefix(&format!("search-sources/{}/", video.id))
+            .await?;
+        super::search::delete_vectors_for_video(store, &video.id).await?;
+
+        // Legacy cleanup for pre-Firestore video rows.
+        store
+            .delete_key(&format!("videos/{}.json", video.id))
+            .await?;
     }
 
     store.delete_key(&channel_key(id)).await?;

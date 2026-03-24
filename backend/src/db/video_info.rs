@@ -22,22 +22,16 @@ pub async fn list_video_ids_missing_info(
     store: &Store,
     limit: usize,
 ) -> Result<Vec<String>, StoreError> {
-    let video_keys = store.list_keys("videos/").await?;
+    let all_videos = super::videos::load_all_videos(store).await?;
     let info_keys: std::collections::HashSet<String> =
         store.list_keys("video-info/").await?.into_iter().collect();
 
     let mut results = Vec::new();
-    for key in video_keys {
-        let video_id = key
-            .strip_prefix("videos/")
-            .and_then(|s| s.strip_suffix(".json"))
-            .unwrap_or_default();
-        if video_id.is_empty() {
-            continue;
-        }
+    for video in all_videos {
+        let video_id = video.id;
         let info_key = format!("video-info/{video_id}.json");
         if !info_keys.contains(&info_key) {
-            results.push(video_id.to_string());
+            results.push(video_id);
             if results.len() >= limit {
                 break;
             }
@@ -50,7 +44,7 @@ pub async fn list_video_ids_for_info_refresh(
     store: &Store,
     limit: usize,
 ) -> Result<Vec<String>, StoreError> {
-    let all_videos: Vec<crate::models::Video> = store.load_all("videos/").await?;
+    let all_videos = super::videos::load_all_videos(store).await?;
     let mut sorted = all_videos;
     sorted.sort_by(|a, b| b.published_at.cmp(&a.published_at));
     Ok(sorted.into_iter().take(limit).map(|v| v.id).collect())

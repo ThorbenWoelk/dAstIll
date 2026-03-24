@@ -108,8 +108,8 @@ pub async fn list_highlights_grouped(
         return Ok(Vec::new());
     }
 
-    let all_videos: Vec<Video> = store.load_all("videos/").await?;
-    let all_channels: Vec<crate::models::Channel> = store.load_all("channels/").await?;
+    let all_videos: Vec<Video> = super::videos::load_all_videos(store).await?;
+    let all_channels: Vec<crate::models::Channel> = super::channels::list_channels(store).await?;
 
     let video_map: std::collections::HashMap<&str, &Video> =
         all_videos.iter().map(|v| (v.id.as_str(), v)).collect();

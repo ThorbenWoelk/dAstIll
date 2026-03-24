@@ -279,6 +279,7 @@ pub(crate) async fn ensure_transcript(
         db::update_video_transcript_status(&state.db, video_id, ContentStatus::Loading)
             .await
             .map_err(map_db_err)?;
+        evict_video_scope_cache_by_video_id(state, video_id).await;
         tracing::info!(video_id = %video_id, "transcript queued - status set to loading");
     }
 
@@ -387,6 +388,7 @@ async fn ensure_summary_internal(
         db::update_video_summary_status(&state.db, video_id, ContentStatus::Loading)
             .await
             .map_err(map_db_err)?;
+        evict_video_scope_cache_by_video_id(state, video_id).await;
         tracing::info!(video_id = %video_id, "summary queued - status set to loading");
     }
 
@@ -394,6 +396,7 @@ async fn ensure_summary_internal(
         db::update_video_summary_status(&state.db, video_id, ContentStatus::Failed)
             .await
             .map_err(map_db_err)?;
+        evict_video_scope_cache_by_video_id(state, video_id).await;
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
             "Ollama not available".to_string(),
@@ -411,6 +414,7 @@ async fn ensure_summary_internal(
             db::update_video_summary_status(&state.db, video_id, next_status)
                 .await
                 .map_err(map_db_err)?;
+            evict_video_scope_cache_by_video_id(state, video_id).await;
             return Err((status, message));
         }
     };
@@ -423,6 +427,7 @@ async fn ensure_summary_internal(
         db::update_video_summary_status(&state.db, video_id, ContentStatus::Failed)
             .await
             .map_err(map_db_err)?;
+        evict_video_scope_cache_by_video_id(state, video_id).await;
         return Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             "Transcript content missing".to_string(),
@@ -452,6 +457,7 @@ async fn ensure_summary_internal(
             db::update_video_summary_status(&state.db, video_id, next_status)
                 .await
                 .map_err(map_db_err)?;
+            evict_video_scope_cache_by_video_id(state, video_id).await;
             return Err((status, error_msg));
         }
     };
@@ -605,9 +611,18 @@ async fn apply_transcript_error(
             error = %e,
             "failed to persist transcript status after extraction error"
         );
+    } else {
+        evict_video_scope_cache_by_video_id(state, video_id).await;
     }
 
     (status, err.to_string())
+}
+
+async fn evict_video_scope_cache_by_video_id(state: &AppState, video_id: &str) {
+    let Ok(Some(video)) = db::get_video(&state.db, video_id, false).await else {
+        return;
+    };
+    let _ = evict_video_scope_cache(state, &video.channel_id).await;
 }
 
 #[cfg(test)]

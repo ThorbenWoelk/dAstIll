@@ -148,6 +148,12 @@ export type SidebarStateOptions = {
     channelOrder: string[];
     channelSortMode: ChannelSortMode;
   }) => void;
+  /**
+   * Optional dynamic scope segment for in-memory per-channel view cache keys.
+   * Use this when one route has multiple logical list scopes (e.g. queue tabs)
+   * so cached state cannot bleed across scopes.
+   */
+  getViewCacheScopeKey?: () => string;
   onPersistViewUrl?: (state: { selectedChannelId: string | null }) => void;
   onLoadInitial?: (options?: { silent?: boolean }) => Promise<void>;
   onLoadChannelSnapshot?: (
@@ -382,6 +388,7 @@ export function createSidebarState(
   function getVideoStateKey(channelId: string) {
     return buildChannelViewCacheKey(
       channelId,
+      options_root.getViewCacheScopeKey?.() ?? "default",
       videoTypeFilter,
       acknowledgedFilter,
     );
@@ -524,6 +531,12 @@ export function createSidebarState(
 
   async function refreshAndLoadVideos(channelId: string, silent = false) {
     const isAck = resolveAcknowledgedParam(acknowledgedFilter);
+    const snapshotOptions = {
+      limit,
+      offset: 0,
+      videoType: videoTypeFilter,
+      acknowledged: isAck,
+    };
     await loadChannelSnapshotWithRefresh({
       channelId,
       refreshedAtByChannel: channelLastRefreshedAt,
@@ -531,15 +544,15 @@ export function createSidebarState(
       initialSilent: silent,
       getMutationEpoch: () => videoListMutationEpoch,
       loadSnapshot: () =>
-        getChannelSnapshot(channelId, {
-          limit,
-          offset: 0,
-          videoType: videoTypeFilter,
-          acknowledged: isAck,
-        }),
+        options_root.onLoadChannelSnapshot
+          ? options_root.onLoadChannelSnapshot(channelId, snapshotOptions, silent)
+          : getChannelSnapshot(channelId, snapshotOptions),
       applySnapshot: (snapshot, snapshotSilent = false) =>
         applyChannelSnapshot(channelId, snapshot, snapshotSilent),
-      refreshChannel: () => refreshChannel(channelId),
+      refreshChannel: () =>
+        options_root.onRefreshChannel
+          ? options_root.onRefreshChannel(channelId)
+          : refreshChannel(channelId),
       shouldReloadAfterRefresh: () => selectedChannelId === channelId,
       onRefreshingChange: (r) => {
         refreshingChannel = r;
@@ -560,13 +573,22 @@ export function createSidebarState(
 
     try {
       const isAck = resolveAcknowledgedParam(acknowledgedFilter);
-      const list = await listVideos(
-        selectedChannelId,
-        limit,
-        reset ? 0 : offset,
-        videoTypeFilter,
-        isAck,
-      );
+      const list = options_root.onListVideos
+        ? await options_root.onListVideos(
+            selectedChannelId,
+            limit,
+            reset ? 0 : offset,
+            videoTypeFilter,
+            isAck,
+            false,
+          )
+        : await listVideos(
+            selectedChannelId,
+            limit,
+            reset ? 0 : offset,
+            videoTypeFilter,
+            isAck,
+          );
       videos = reset ? list : [...videos, ...list];
       offset = (reset ? 0 : offset) + list.length;
       hasMore = list.length === limit;

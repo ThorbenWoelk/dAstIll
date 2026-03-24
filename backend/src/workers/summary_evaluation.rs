@@ -31,6 +31,28 @@ pub(super) fn should_run_summary_evaluation(
     }
 }
 
+async fn evict_video_scope_cache(state: &AppState, video_id: &str) {
+    let conn = state.db.connect();
+    let Ok(Some(video)) = db::get_video(&conn, video_id, false).await else {
+        return;
+    };
+
+    let is_subscribed = db::get_channel(&conn, &video.channel_id)
+        .await
+        .ok()
+        .flatten()
+        .is_some();
+
+    if is_subscribed {
+        state.read_cache.evict_channel(&video.channel_id).await;
+    } else {
+        state
+            .read_cache
+            .evict_channel(crate::models::OTHERS_CHANNEL_ID)
+            .await;
+    }
+}
+
 pub fn spawn_summary_evaluation_worker(state: AppState) {
     let span = logfire::span!(
         "worker.eval",
@@ -114,6 +136,7 @@ pub fn spawn_summary_evaluation_worker(state: AppState) {
                                     result.quality_model_used.as_deref(),
                                 )
                                 .await;
+                                evict_video_scope_cache(&state, &job.video_id).await;
 
                                 tracing::info!(
                                     video_id = %job.video_id,
@@ -142,6 +165,7 @@ pub fn spawn_summary_evaluation_worker(state: AppState) {
                                                 "failed to queue low-quality summary regeneration"
                                             );
                                         } else {
+                                            evict_video_scope_cache(&state, &job.video_id).await;
                                             tracing::info!(
                                                 video_id = %job.video_id,
                                                 score = result.quality_score,

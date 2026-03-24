@@ -357,10 +357,7 @@ pub async fn load_search_material(
     video_id: &str,
     source_kind: SearchSourceKind,
 ) -> Result<Option<SearchMaterial>, StoreError> {
-    let Some(video) = store
-        .get_json::<Video>(&format!("videos/{video_id}.json"))
-        .await?
-    else {
+    let Some(video) = super::videos::get_video(store, video_id, false).await? else {
         return Ok(None);
     };
     let channel_name = store
@@ -407,7 +404,7 @@ pub async fn list_search_backfill_materials(
         .map(|s| (s.video_id.clone(), s.source_kind.clone()))
         .collect();
 
-    let all_videos: Vec<Video> = store.load_all("videos/").await?;
+    let all_videos: Vec<Video> = super::videos::load_all_videos(store).await?;
     let mut materials = Vec::new();
 
     for video in &all_videos {
@@ -466,7 +463,7 @@ pub async fn list_search_reconciliation_materials(
 pub async fn list_search_progress_materials(
     store: &Store,
 ) -> Result<Vec<SearchProgressMaterial>, StoreError> {
-    let all_videos: Vec<Video> = store.load_all("videos/").await?;
+    let all_videos: Vec<Video> = super::videos::load_all_videos(store).await?;
     let all_sources: Vec<SearchSourceRecord> = store.load_all("search-sources/").await?;
     let source_map: std::collections::HashMap<(String, String), &SearchSourceRecord> = all_sources
         .iter()
@@ -583,10 +580,7 @@ pub async fn search_vector_candidates(
     let mut channel_map: std::collections::HashMap<String, crate::models::Channel> =
         std::collections::HashMap::new();
     for vid in &video_ids {
-        if let Some(video) = store
-            .get_json::<Video>(&format!("videos/{vid}.json"))
-            .await?
-        {
+        if let Some(video) = super::videos::get_video(store, vid, false).await? {
             if !channel_map.contains_key(&video.channel_id) {
                 if let Some(ch) = store
                     .get_json::<crate::models::Channel>(&format!(
@@ -713,9 +707,7 @@ pub async fn search_fts_candidates(
         let video = match video_cache.entry(chunk.video_id.clone()) {
             std::collections::hash_map::Entry::Occupied(e) => e.get().clone(),
             std::collections::hash_map::Entry::Vacant(e) => {
-                let v = store
-                    .get_json::<Video>(&format!("videos/{}.json", chunk.video_id))
-                    .await?;
+                let v = super::videos::get_video(store, &chunk.video_id, false).await?;
                 e.insert(v.clone());
                 v
             }
@@ -796,7 +788,7 @@ pub async fn get_search_source_counts(store: &Store) -> Result<SearchSourceCount
             _ => {}
         }
     }
-    let all_videos: Vec<Video> = store.load_all("videos/").await?;
+    let all_videos: Vec<Video> = super::videos::load_all_videos(store).await?;
     let total_sources: usize = all_videos
         .iter()
         .map(|v| {

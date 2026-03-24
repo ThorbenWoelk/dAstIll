@@ -102,6 +102,7 @@
 
   const sidebar = createSidebarState({
     limit: 20,
+    getViewCacheScopeKey: () => `queue:${queueTab}`,
     onSelectVideo: openQueuedVideo,
     onChannelSelected: (id) => {
       mobileTab = "browse";

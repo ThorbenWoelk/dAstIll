@@ -79,6 +79,7 @@ async fn scan_all_channels_for_gaps(state: &AppState) {
         .await
         {
             Ok(inserted) if inserted > 0 => {
+                state.read_cache.evict_channel(&channel.id).await;
                 tracing::info!(
                     channel_id = %channel.id,
                     inserted,

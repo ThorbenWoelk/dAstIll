@@ -47,6 +47,7 @@ async fn refresh_all_channels(state: &AppState) {
                         let conn = state.db.connect();
                         let n = db::bulk_insert_videos(&conn, videos).await.unwrap_or(0);
                         if n > 0 {
+                            state.read_cache.evict_channel(&channel.id).await;
                             tracing::info!(
                                 channel_id = %channel.id,
                                 new_videos = n,

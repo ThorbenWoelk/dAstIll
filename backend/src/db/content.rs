@@ -202,9 +202,7 @@ pub async fn list_summaries_pending_quality_eval(
             continue;
         }
 
-        let video = store
-            .get_json::<crate::models::Video>(&format!("videos/{}.json", summary.video_id))
-            .await?;
+        let video = super::videos::get_video(store, &summary.video_id, false).await?;
         let Some(video) = video else { continue };
         if video.transcript_status != ContentStatus::Ready
             || video.summary_status != ContentStatus::Ready

@@ -22,7 +22,7 @@ pub async fn get_video(
     super::firestore_videos::fs_get_video(store, id, include_summary).await
 }
 
-async fn load_all_videos(store: &Store) -> Result<Vec<Video>, StoreError> {
+pub(crate) async fn load_all_videos(store: &Store) -> Result<Vec<Video>, StoreError> {
     let videos: Vec<Video> = store
         .firestore
         .fluent()
