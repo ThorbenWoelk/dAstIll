@@ -60,6 +60,7 @@ import type {
   Video,
   VideoTypeFilter,
 } from "$lib/types";
+import { OTHERS_CHANNEL_ID } from "$lib/types";
 import { looksLikeYouTubeVideoInput } from "$lib/utils/youtube-input";
 import { putCachedChannels } from "$lib/workspace-cache";
 
@@ -774,6 +775,9 @@ export function createSidebarState(
     },
     onAddChannel: handleAddChannel,
     onSelectChannel: (channelId) => {
+      if (channelId === OTHERS_CHANNEL_ID) {
+        return;
+      }
       if (channelId === selectedChannelId) {
         selectedChannelId = null;
         syncDepth = null;

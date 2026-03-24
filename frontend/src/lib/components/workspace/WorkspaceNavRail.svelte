@@ -92,6 +92,8 @@
       <div class="flex min-w-0 flex-1 items-center gap-2">
         <a
           href="/"
+          data-sveltekit-preload-code="viewport"
+          data-sveltekit-preload-data="tap"
           class="min-w-0 text-xl font-bold tracking-tighter text-[var(--color-swatch)] transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
           aria-label="Go to dAstIll home"
         >
@@ -129,6 +131,8 @@
         href={item.href}
         target={item.external ? "_blank" : undefined}
         rel={item.external ? "noopener noreferrer" : undefined}
+        data-sveltekit-preload-code={item.external ? undefined : "viewport"}
+        data-sveltekit-preload-data={item.external ? undefined : "tap"}
         id={item.section === "docs" ? "nav-docs-link" : undefined}
         class={`flex items-center gap-2.5 rounded-[var(--radius-sm)] transition-colors ${
           collapsed ? "justify-center px-0 py-2" : "px-3 py-2"

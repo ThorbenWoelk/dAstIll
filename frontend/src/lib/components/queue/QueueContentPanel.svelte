@@ -10,6 +10,7 @@
   import { swipeBack } from "$lib/mobile-shell/swipe";
 
   let {
+    readOnly = false,
     state: panelState = {
       mobileVisible: false,
       selectedChannel: null,
@@ -30,6 +31,7 @@
       onRetryTranscript: async (_videoId: string) => {},
     },
   }: {
+    readOnly?: boolean;
     state?: QueueContentPanelState;
     actions?: QueueContentPanelActions;
   } = $props();
@@ -270,22 +272,24 @@
           <p class="mt-2 text-[14px] font-semibold text-[var(--foreground)]">
             Control how far back this queue should sync.
           </p>
-          <div class="mt-3 flex items-center gap-2">
-            <input
-              type="date"
-              class="min-w-0 flex-1 rounded-[var(--radius-sm)] border border-[var(--border-soft)] bg-transparent px-2.5 py-2 text-[12px] font-medium transition-colors focus:border-[var(--accent)]/40 focus:outline-none"
-              bind:value={localSyncDateInput}
-              disabled={panelState.savingSyncDate}
-            />
-            <button
-              type="button"
-              class="rounded-[var(--radius-sm)] bg-[var(--foreground)] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--background)] transition-all hover:bg-[var(--accent-strong)] disabled:opacity-30"
-              onclick={() => void saveSyncDate()}
-              disabled={!localSyncDateInput || panelState.savingSyncDate}
-            >
-              {panelState.savingSyncDate ? "..." : "Set"}
-            </button>
-          </div>
+          {#if !readOnly}
+            <div class="mt-3 flex items-center gap-2">
+              <input
+                type="date"
+                class="min-w-0 flex-1 rounded-[var(--radius-sm)] border border-[var(--border-soft)] bg-transparent px-2.5 py-2 text-[12px] font-medium transition-colors focus:border-[var(--accent)]/40 focus:outline-none"
+                bind:value={localSyncDateInput}
+                disabled={panelState.savingSyncDate}
+              />
+              <button
+                type="button"
+                class="rounded-[var(--radius-sm)] bg-[var(--foreground)] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--background)] transition-all hover:bg-[var(--accent-strong)] disabled:opacity-30"
+                onclick={() => void saveSyncDate()}
+                disabled={!localSyncDateInput || panelState.savingSyncDate}
+              >
+                {panelState.savingSyncDate ? "..." : "Set"}
+              </button>
+            </div>
+          {/if}
           <p class="mt-2 text-[12px] text-[var(--soft-foreground)]">
             Current boundary: {formatSyncDate(panelState.effectiveEarliestSyncDate)}.
           </p>
@@ -326,16 +330,18 @@
                     </p>
                   </div>
 
-                  <button
-                    type="button"
-                    class="inline-flex shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] px-4 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--background)] transition-all hover:bg-[var(--accent-strong)] disabled:opacity-40"
-                    onclick={() => void retryTranscript(video.id)}
-                    disabled={panelState.retryingTranscriptVideoId === video.id}
-                  >
-                    {panelState.retryingTranscriptVideoId === video.id
-                      ? "Retrying"
-                      : "Retry"}
-                  </button>
+                  {#if !readOnly}
+                    <button
+                      type="button"
+                      class="inline-flex shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] px-4 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--background)] transition-all hover:bg-[var(--accent-strong)] disabled:opacity-40"
+                      onclick={() => void retryTranscript(video.id)}
+                      disabled={panelState.retryingTranscriptVideoId === video.id}
+                    >
+                      {panelState.retryingTranscriptVideoId === video.id
+                        ? "Retrying"
+                        : "Retry"}
+                    </button>
+                  {/if}
                 </div>
               {/each}
             </div>

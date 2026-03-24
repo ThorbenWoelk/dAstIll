@@ -133,10 +133,10 @@
   --foreground: #1a1a1a;
   --surface: #ffffff;
   --surface-strong: #ffffff;
-  --surface-frost: rgba(255, 255, 255, 0.84);
-  --surface-frost-strong: rgba(255, 255, 255, 0.94);
-  --surface-overlay: rgba(250, 249, 246, 0.85);
-  --surface-overlay-strong: rgba(255, 255, 255, 0.9);
+  --surface-frost: #ffffff;
+  --surface-frost-strong: #ffffff;
+  --surface-overlay: #faf9f6;
+  --surface-overlay-strong: #ffffff;
   --accent: #d33c2a;
   --accent-soft: #fdf2f0;
   --accent-strong: #9e2a1d;
@@ -151,7 +151,7 @@
   --status-ok: #4a8a5c;
   --status-warn: #a68a5b;
   --status-error: #d25a5a;
-  --tooltip-bg: rgba(26, 26, 26, 0.92);
+  --tooltip-bg: #1a1a1a;
   --tooltip-foreground: #ffffff;
   --overlay: rgba(0, 0, 0, 0.4);
   --overlay-strong: rgba(0, 0, 0, 0.45);
@@ -205,6 +205,10 @@
   --mobile-bottom-stack-height: calc(
     var(--mobile-bottom-fixed-height) + var(--mobile-bottom-overlay-height)
   );
+
+  /* Saved text highlights (transcript / summary) */
+  --reader-highlight-bg: color-mix(in srgb, rgb(248 231 162) 84%, white);
+  --reader-highlight-bg-hover: color-mix(in srgb, rgb(244 221 136) 88%, white);
 }
 
 .dark {
@@ -213,10 +217,10 @@
   --foreground: #f4efe9;
   --surface: #181b1f;
   --surface-strong: #1d2126;
-  --surface-frost: rgba(29, 33, 38, 0.84);
-  --surface-frost-strong: rgba(29, 33, 38, 0.94);
-  --surface-overlay: rgba(17, 19, 21, 0.86);
-  --surface-overlay-strong: rgba(24, 27, 31, 0.92);
+  --surface-frost: #1d2126;
+  --surface-frost-strong: #1d2126;
+  --surface-overlay: #111315;
+  --surface-overlay-strong: #181b1f;
   --accent: #ff8e79;
   --accent-soft: rgba(255, 142, 121, 0.14);
   --accent-strong: #ffb8aa;
@@ -231,7 +235,7 @@
   --status-ok: #7ac88e;
   --status-warn: #d4b882;
   --status-error: #ff8f8f;
-  --tooltip-bg: rgba(244, 239, 233, 0.94);
+  --tooltip-bg: #f4efe9;
   --tooltip-foreground: #111315;
   --overlay: rgba(0, 0, 0, 0.5);
   --overlay-strong: rgba(0, 0, 0, 0.58);
@@ -255,6 +259,13 @@
   --shell-gradient-end: color-mix(
     in srgb,
     var(--background) 96%,
+    var(--surface)
+  );
+
+  --reader-highlight-bg: color-mix(in srgb, var(--accent) 32%, var(--surface));
+  --reader-highlight-bg-hover: color-mix(
+    in srgb,
+    var(--accent) 44%,
     var(--surface)
   );
 }
@@ -461,7 +472,7 @@ textarea {
 }
 
 .prose mark {
-  background: color-mix(in srgb, rgb(248 231 162) 84%, white);
+  background: var(--reader-highlight-bg);
   color: inherit;
   padding: 0;
   border-radius: 2px;
@@ -509,7 +520,6 @@ textarea {
   transform: translateX(-50%) translateY(-2px);
   padding: 5px 9px;
   background: var(--tooltip-bg);
-  backdrop-filter: blur(4px);
   color: var(--tooltip-foreground);
   font-size: 10px;
   font-weight: 700;
@@ -734,7 +744,6 @@ textarea {
     );
     border-top: 1px solid var(--accent-border-soft);
     box-shadow: 0 -12px 30px var(--shadow-soft);
-    backdrop-filter: blur(10px);
   }
 }
 

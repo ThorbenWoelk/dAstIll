@@ -56,7 +56,8 @@ All pages (Workspace, Queue, Highlights) must share the same `AppShell` structur
 - **Hover**: `--accent-wash` background + nudge color toward `--foreground`.
 - **Active/Selected**: `--accent-soft` background + `--accent-strong` text.
 - **Animations**: `fade-in` (500ms, translateY 10px → 0). Stagger increments of 80ms.
-- **Tooltips**: `[data-tooltip]` attribute. 10px uppercase bold, dark glass background with blur.
+- **Tooltips**: `[data-tooltip]` attribute. 10px uppercase bold, fully opaque background. No transparency and no blur/filter effects.
+- **Popups / Modals / Overlays**: Must be fully opaque surfaces. Do not use transparent backgrounds, frosted/glass effects, `backdrop-filter`, or `-webkit-backdrop-filter`.
 
 ---
 

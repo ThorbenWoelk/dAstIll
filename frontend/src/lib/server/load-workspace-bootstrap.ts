@@ -8,13 +8,6 @@ const QUEUE_TAB_VALUES = new Set<string>([
   "evaluations",
 ]);
 
-/**
- * Number of videos to pre-load per channel for the sidebar preview.
- * Must match WorkspaceSidebar's PREVIEW_FETCH_LIMIT constant
- * (PREVIEW_VISIBLE_VIDEO_COUNT + 1 = 5 + 1 = 6).
- */
-const CHANNEL_PREVIEW_LIMIT = 6;
-
 export type WorkspaceBootstrapPageData = {
   bootstrap: WorkspaceBootstrap | null;
   channelPreviews: Record<string, ChannelSnapshot>;
@@ -100,43 +93,9 @@ export async function loadWorkspaceBootstrapPageData(
 
     const bootstrap = (await response.json()) as WorkspaceBootstrap;
 
+    // Do not block navigation on N per-channel preview snapshot fetches.
+    // The sidebar progressively loads previews on the client after paint.
     const channelPreviews: Record<string, ChannelSnapshot> = {};
-
-    if (bootstrap.channels.length > 0) {
-      const previewParams = new URLSearchParams();
-      previewParams.set("limit", `${CHANNEL_PREVIEW_LIMIT}`);
-      previewParams.set("offset", "0");
-      if (typeParam && VALID_VIDEO_TYPES.has(typeParam)) {
-        previewParams.set("video_type", typeParam);
-      }
-      if (ackParam === "ack") {
-        previewParams.set("acknowledged", "true");
-      } else if (ackParam === "unack") {
-        previewParams.set("acknowledged", "false");
-      }
-      if (effectiveQueueTab) {
-        previewParams.set("queue_tab", effectiveQueueTab);
-      }
-
-      const snapshotResults = await Promise.allSettled(
-        bootstrap.channels.map((channel) =>
-          fetch(
-            `/api/channels/${channel.id}/snapshot?${previewParams.toString()}`,
-          ).then((r) =>
-            r.ok
-              ? (r.json() as Promise<ChannelSnapshot>)
-              : Promise.reject(new Error(`${r.status}`)),
-          ),
-        ),
-      );
-
-      bootstrap.channels.forEach((channel, i) => {
-        const result = snapshotResults[i];
-        if (result.status === "fulfilled") {
-          channelPreviews[channel.id] = result.value;
-        }
-      });
-    }
 
     const previewVideoType =
       typeParam && VALID_VIDEO_TYPES.has(typeParam) ? typeParam : "all";

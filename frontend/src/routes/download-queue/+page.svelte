@@ -17,7 +17,6 @@
   import { DOCS_URL } from "$lib/app-config";
   import FeatureGuide from "$lib/components/FeatureGuide.svelte";
   import type { TourStep } from "$lib/components/FeatureGuide.svelte";
-  import ConfirmationModal from "$lib/components/ConfirmationModal.svelte";
   import ErrorToast from "$lib/components/ErrorToast.svelte";
   import QueueContentPanel from "$lib/components/queue/QueueContentPanel.svelte";
   import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
@@ -220,19 +219,12 @@
       );
     },
     onOpenChannelOverview: async (channelId: string) => {
-      await goto(`/channels/${encodeURIComponent(channelId)}`);
+      // Switch UI immediately; load selected channel queue data in background.
+      sidebar.setSelectedChannelId(channelId);
+      mobileTab = "content";
+      void sidebar.selectChannel(channelId, null, true);
     },
   });
-
-  const {
-    channelState: sidebarChannelState,
-    channelActions: sidebarChannelActions,
-    videoState: sidebarVideoState,
-    videoActions: sidebarVideoActions,
-    sidebarCollapsed,
-    toggleSidebar,
-    sidebarWidth,
-  } = sidebar;
 
   function setSyncSnapshot() {
     // lastSyncedAt = new Date(); // No longer needed, handled by sidebar composable
@@ -249,9 +241,6 @@
   let mobileTab = $state<QueueMobileTab>("browse");
   let queueTab = $state<QueueTab>("transcripts");
   let errorMessage = $state<string | null>(null);
-  let showDeleteConfirmation = $state(false);
-  let showDeleteAccessPrompt = $state(false);
-  let channelIdToDelete = $state<string | null>(null);
   let workspaceStateHydrated = $state(false);
   let viewUrlHydrated = $state(false);
   // let lastSyncedAt = $state<Date | null>(null); // No longer needed
@@ -262,7 +251,6 @@
   let aiIndicator = $derived(
     aiStatus ? resolveAiIndicatorPresentation(aiStatus) : null,
   );
-  let isOperator = $derived(Boolean($page.data.isOperator));
   let guideOpen = $state(false);
   let guideStep = $state(0);
   let previousQueueTab = $state<QueueTab>("transcripts");
@@ -516,45 +504,6 @@
     mobileTab = "browse";
   }
 
-  async function handleDeleteChannel(channelId: string) {
-    if (!isOperator) {
-      showDeleteAccessPrompt = true;
-      return;
-    }
-
-    channelIdToDelete = channelId;
-    showDeleteConfirmation = true;
-  }
-
-  async function confirmDeleteChannel() {
-    if (!channelIdToDelete || !isOperator) return;
-    const channelId = channelIdToDelete;
-    showDeleteConfirmation = false;
-    channelIdToDelete = null;
-
-    const previousSelectedChannelId = sidebar.selectedChannelId;
-    await sidebar.confirmDeleteChannel(channelId, isOperator);
-
-    if (previousSelectedChannelId === channelId && !sidebar.selectedChannelId) {
-      mobileTab = "browse";
-    }
-  }
-
-  function cancelDeleteChannel() {
-    showDeleteConfirmation = false;
-    channelIdToDelete = null;
-  }
-
-  function cancelDeleteAccessPrompt() {
-    showDeleteAccessPrompt = false;
-  }
-
-  async function confirmDeleteAccessPrompt() {
-    showDeleteAccessPrompt = false;
-    const redirectTo = `${$page.url.pathname}${$page.url.search}`;
-    await goto(`/login?redirectTo=${encodeURIComponent(redirectTo)}`);
-  }
-
   async function saveEarliestSyncDate(value: string) {
     if (!sidebar.selectedChannelId) return;
     savingSyncDate = true;
@@ -682,13 +631,18 @@
     onSaveSyncDate: saveEarliestSyncDate,
     onRetryTranscript: retryTranscriptDownload,
   };
+
+  const shellCollapsed = $derived(sidebar.sidebarCollapsed);
+  const shellWidth = $derived(sidebar.sidebarWidth);
+  const shellToggleSidebar = sidebar.toggleSidebar;
+  const queueSidebar = sidebar;
 </script>
 
 <WorkspaceShell currentSection="queue" {aiIndicator} onOpenGuide={openGuide}>
   {#snippet sidebar({
-    collapsed: sidebarCollapsed,
-    toggle: toggleSidebar,
-    width: sidebarWidth,
+    collapsed: shellCollapsed,
+    toggle: shellToggleSidebar,
+    width: shellWidth,
   })}
     <WorkspaceSidebar
       videoListMode="per_channel_preview"
@@ -697,19 +651,17 @@
       initialChannelPreviewsFilterKey={$page.data.channelPreviewsFilterKey ??
         `all:all:${queueTab}`}
       channelSnapshotQueueTab={queueTab}
+      readOnly={true}
       shell={{
-        collapsed: sidebarCollapsed,
-        width: sidebarWidth,
+        collapsed: shellCollapsed,
+        width: shellWidth,
         mobileVisible: false,
-        onToggleCollapse: toggleSidebar,
+        onToggleCollapse: shellToggleSidebar,
       }}
-      channelState={sidebarChannelState}
-      channelActions={{
-        ...sidebarChannelActions,
-        onDeleteChannel: handleDeleteChannel,
-      }}
-      videoState={sidebarVideoState}
-      videoActions={sidebarVideoActions}
+      channelState={queueSidebar.channelState}
+      channelActions={queueSidebar.channelActions}
+      videoState={queueSidebar.videoState}
+      videoActions={queueSidebar.videoActions}
     />
   {/snippet}
 
@@ -746,20 +698,18 @@
           initialChannelPreviewsFilterKey={$page.data
             .channelPreviewsFilterKey ?? `all:all:${queueTab}`}
           channelSnapshotQueueTab={queueTab}
+          readOnly={true}
           shell={{
             collapsed: false,
             width: undefined,
             mobileVisible: true,
             onToggleCollapse: () => {},
           }}
-          channelState={sidebarChannelState}
-          channelActions={{
-            ...sidebarChannelActions,
-            onDeleteChannel: handleDeleteChannel,
-          }}
-          videoState={sidebarVideoState}
+          channelState={queueSidebar.channelState}
+          channelActions={queueSidebar.channelActions}
+          videoState={queueSidebar.videoState}
           videoActions={{
-            ...sidebarVideoActions,
+            ...queueSidebar.videoActions,
             onSelectVideo: (videoId) => {
               mobileTab = "content";
               void openQueuedVideo(videoId);
@@ -771,6 +721,7 @@
   {/if}
 
   <QueueContentPanel
+    readOnly={true}
     state={queueContentPanelState}
     actions={queueContentPanelActions}
   />
@@ -781,28 +732,6 @@
       onDismiss={() => (errorMessage = null)}
     />
   {/if}
-
-  <ConfirmationModal
-    show={showDeleteConfirmation}
-    title="Remove Channel?"
-    message="Are you sure you want to remove this channel? All its downloaded transcripts and summaries will be permanently deleted."
-    confirmLabel="Delete"
-    cancelLabel="Keep"
-    tone="danger"
-    onConfirm={confirmDeleteChannel}
-    onCancel={cancelDeleteChannel}
-  />
-
-  <ConfirmationModal
-    show={showDeleteAccessPrompt}
-    title="Admin sign-in required"
-    message="Deleting channels is restricted to admins. Sign in to unlock channel management."
-    confirmLabel="Sign in"
-    cancelLabel="Not now"
-    tone="info"
-    onConfirm={confirmDeleteAccessPrompt}
-    onCancel={cancelDeleteAccessPrompt}
-  />
 
   <FeatureGuide
     open={guideOpen}

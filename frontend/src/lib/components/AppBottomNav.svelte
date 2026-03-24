@@ -24,6 +24,8 @@
       href={item.href}
       target={item.external ? "_blank" : undefined}
       rel={item.external ? "noopener noreferrer" : undefined}
+      data-sveltekit-preload-code={item.external ? undefined : "viewport"}
+      data-sveltekit-preload-data={item.external ? undefined : "tap"}
       id={item.section === "docs" ? "mobile-nav-docs-link" : undefined}
       class={`mobile-tab-item ${!item.external && item.active ? "mobile-tab-item--active" : ""}`}
       aria-current={!item.external && item.active ? "page" : undefined}

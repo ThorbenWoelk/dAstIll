@@ -345,8 +345,6 @@
     position: fixed;
     inset: 0;
     background: var(--overlay-strong);
-    backdrop-filter: blur(2px);
-    -webkit-backdrop-filter: blur(2px);
     clip-path: polygon(
       /* outer rectangle */ 0% 0%,
       100% 0%,

@@ -36,6 +36,17 @@ export function resolveApiUrl(path: string): string {
 }
 
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const method = (init?.method ?? "GET").toUpperCase();
+  // Backend sets short Cache-Control on channel snapshots/lists; the browser HTTP
+  // cache is separate from our JS GET cache. Without this, a refetch after
+  // mark-as-read can briefly serve a stale cached GET and undo client updates.
+  const cache: RequestCache | undefined =
+    init?.cache !== undefined
+      ? init.cache
+      : method === "GET" || method === "HEAD"
+        ? "no-store"
+        : undefined;
+
   let response: Response;
   try {
     response = await fetch(resolveApiUrl(path), {
@@ -43,6 +54,7 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
         "Content-Type": "application/json",
       },
       ...init,
+      cache,
     });
   } catch (error) {
     if (isAbortError(error)) {

@@ -10,7 +10,6 @@
     createHighlight,
     deleteHighlight,
     deleteChannel,
-    ensureSummary,
     ensureTranscript,
     ensureVideoInfo,
     getChannelSnapshot,
@@ -620,7 +619,10 @@
         ? Promise.resolve(null)
         : resolvePendingSelectedVideo(preferredVideoId, targetChannelId);
 
-    if (!loadingContent && contentText.trim().length === 0) {
+    if (!loadingContent) {
+      // Keep selected row and rendered content in lockstep after refresh/rehydration.
+      // Even when contentText is non-empty, it may belong to the previously selected
+      // video, so always reload for the restored selectedVideoId.
       void loadContent();
     }
 
@@ -1657,22 +1659,36 @@
         void hydrateVideoHighlights(targetVideoId);
       } else {
         if (targetMode === "summary") {
-          const summary = await ensureSummary(targetVideoId);
-          if (!isCurrentContentRequest(requestId, targetVideoId, targetMode))
-            return;
-          contentText = stripContentPrefix(
-            summary.content || "Summary unavailable.",
-          );
-          applySummaryQuality(summary);
-          // Cache the summary
-          const entry = contentCache.get(targetVideoId) ?? {};
-          (entry as any).summary = {
-            text: contentText,
-            quality: summary as any,
-          };
-          contentCache.set(targetVideoId, entry);
-          resetVideoInfo();
-          void hydrateVideoHighlights(targetVideoId);
+          try {
+            const summary = await getSummary(targetVideoId);
+            if (!isCurrentContentRequest(requestId, targetVideoId, targetMode))
+              return;
+            contentText = stripContentPrefix(
+              summary.content || "Summary unavailable.",
+            );
+            applySummaryQuality(summary);
+            // Cache the summary
+            const entry = contentCache.get(targetVideoId) ?? {};
+            (entry as any).summary = {
+              text: contentText,
+              quality: summary as any,
+            };
+            contentCache.set(targetVideoId, entry);
+            resetVideoInfo();
+            void hydrateVideoHighlights(targetVideoId);
+          } catch (error) {
+            if (!isCurrentContentRequest(requestId, targetVideoId, targetMode))
+              return;
+            const message = (error as Error).message || "";
+            // Queue owns summary generation; navigation stays read-only.
+            if (message.includes("Summary not found")) {
+              contentText = "";
+              resetSummaryQuality();
+              resetVideoInfo();
+            } else {
+              throw error;
+            }
+          }
         } else if (targetMode === "highlights") {
           const highlights = await hydrateVideoHighlights(targetVideoId, {
             showError: true,

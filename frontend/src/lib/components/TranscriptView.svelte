@@ -420,7 +420,7 @@
       type="button"
       class={`absolute z-40 shadow-lg transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
         tooltip.kind === "create"
-          ? "inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--accent)]/30 bg-[var(--foreground)] text-white hover:bg-[var(--accent-strong)]"
+          ? "inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--accent)]/30 bg-[var(--foreground)] text-[var(--background)] hover:bg-[var(--accent-strong)] hover:text-[var(--background)]"
           : "inline-flex h-10 w-10 items-center justify-center rounded-full bg-[var(--surface)] text-[var(--soft-foreground)] hover:bg-[var(--danger-soft)] hover:text-[var(--danger)]"
       }`}
       style={`top: ${tooltip.top}px; left: ${tooltip.left}px; transform: translateX(-50%);`}
@@ -466,7 +466,7 @@
 
   :global(.prose mark.reader-highlight),
   :global(mark.reader-highlight) {
-    background: color-mix(in srgb, rgb(248 231 162) 84%, white);
+    background: var(--reader-highlight-bg);
     border-radius: 0.18em;
     box-decoration-break: clone;
     -webkit-box-decoration-break: clone;
@@ -477,6 +477,6 @@
   }
 
   :global(mark.reader-highlight:hover) {
-    background: color-mix(in srgb, rgb(244 221 136) 88%, white);
+    background: var(--reader-highlight-bg-hover);
   }
 </style>

@@ -141,6 +141,7 @@
       onAcknowledgedFilterChange: async (_value: AcknowledgedFilter) => {},
     },
     videoListMode = "selected_channel",
+    readOnly = false,
     addSourceErrorMessage = null as string | null,
     initialChannelPreviews = {} as Record<string, ChannelSnapshot>,
     initialChannelPreviewsFilterKey = undefined as string | undefined,
@@ -160,6 +161,7 @@
     videoState?: WorkspaceSidebarVideoState;
     videoActions?: WorkspaceSidebarVideoActions;
     videoListMode?: "selected_channel" | "per_channel_preview";
+    readOnly?: boolean;
     addSourceErrorMessage?: string | null;
     /**
      * Server-side pre-loaded channel snapshots (keyed by channel id) for the
@@ -267,6 +269,9 @@
       labels.push(acknowledgedFilter === "ack" ? "Read" : "Unread");
     return labels.join(" · ");
   });
+  let hasActiveVideoFilters = $derived(
+    videoTypeFilter !== "all" || acknowledgedFilter !== "all",
+  );
   let showPendingSelectedVideo = $derived(
     Boolean(
       pendingSelectedVideo &&
@@ -298,12 +303,21 @@
     if (channelVideoCount === 0) {
       return "No videos yet.";
     }
-    return "Nothing matches the current filters.";
+    if (hasActiveVideoFilters) {
+      return "Nothing matches the current filters.";
+    }
+    return "Nothing to show.";
   }
 
   function ensureChannelVideoCollection(channelId: string) {
-    return (channelVideoCollections[channelId] ??=
-      createEmptyChannelVideoCollection());
+    const existingCollection = channelVideoCollections[channelId];
+    if (existingCollection) {
+      return existingCollection;
+    }
+
+    const nextCollection = createEmptyChannelVideoCollection();
+    channelVideoCollections[channelId] = nextCollection;
+    return nextCollection;
   }
 
   function resolveAcknowledgedParam(filter: AcknowledgedFilter) {
@@ -486,14 +500,17 @@
     await loadChannelVideoCollection(channel, "all");
   }
 
-  async function handleChannelHeaderClick(channel: Channel) {
+  function handleChannelHeaderClick(channel: Channel) {
     if (collapsed) onToggleCollapse();
+    if (isVirtualChannel(channel)) {
+      return;
+    }
     if (onOpenChannelOverview && !isVirtualChannel(channel)) {
-      await onOpenChannelOverview(channel.id);
+      void onOpenChannelOverview(channel.id);
       return;
     }
 
-    await onSelectChannel(channel.id);
+    void onSelectChannel(channel.id);
   }
 
   async function handleChannelVideoClick(channelId: string, videoId: string) {
@@ -602,6 +619,13 @@
       ) {
         delete channelVideoCollections[channelId];
       }
+    }
+  });
+
+  $effect(() => {
+    if (readOnly) {
+      manageChannels = false;
+      channelInputOpen = false;
     }
   });
 
@@ -728,6 +752,9 @@
 
   function handleChannelClick(channelId: string) {
     if (collapsed) onToggleCollapse();
+    if (channelId === OTHERS_CHANNEL_ID) {
+      return;
+    }
     void onSelectChannel(channelId);
   }
 
@@ -813,47 +840,49 @@
         Channels
       </span>
       <div class="flex items-center gap-0.5">
-        <button
-          type="button"
-          class={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${manageChannels ? "bg-[var(--accent-wash)] text-[var(--danger)]" : "text-[var(--soft-foreground)] opacity-55 hover:bg-[var(--accent-wash)] hover:opacity-100"}`}
-          onclick={() => {
-            if (!canDeleteChannels) {
-              onDeleteAccessRequired();
-              return;
-            }
+        {#if !readOnly}
+          <button
+            type="button"
+            class={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${manageChannels ? "bg-[var(--accent-wash)] text-[var(--danger)]" : "text-[var(--soft-foreground)] opacity-55 hover:bg-[var(--accent-wash)] hover:opacity-100"}`}
+            onclick={() => {
+              if (!canDeleteChannels) {
+                onDeleteAccessRequired();
+                return;
+              }
 
-            manageChannels = !manageChannels;
-          }}
-          aria-label={manageChannels ? "Exit manage mode" : "Manage channels"}
-        >
-          <TrashIcon size={11} strokeWidth={2.5} />
-        </button>
-        <button
-          type="button"
-          class={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${channelInputOpen ? "bg-[var(--accent-wash)] text-[var(--accent)]" : "text-[var(--soft-foreground)] opacity-55 hover:bg-[var(--accent-wash)] hover:opacity-100"}`}
-          onclick={() => void toggleChannelInput()}
-          aria-label={channelInputOpen
-            ? "Close add source"
-            : "Add channel or video"}
-        >
-          <svg
-            width="11"
-            height="11"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            class={`transition-transform ${channelInputOpen ? "rotate-45" : ""}`}
-            ><line x1="12" y1="5" x2="12" y2="19" /><line
-              x1="5"
-              y1="12"
-              x2="19"
-              y2="12"
-            /></svg
+              manageChannels = !manageChannels;
+            }}
+            aria-label={manageChannels ? "Exit manage mode" : "Manage channels"}
           >
-        </button>
+            <TrashIcon size={11} strokeWidth={2.5} />
+          </button>
+          <button
+            type="button"
+            class={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${channelInputOpen ? "bg-[var(--accent-wash)] text-[var(--accent)]" : "text-[var(--soft-foreground)] opacity-55 hover:bg-[var(--accent-wash)] hover:opacity-100"}`}
+            onclick={() => void toggleChannelInput()}
+            aria-label={channelInputOpen
+              ? "Close add source"
+              : "Add channel or video"}
+          >
+            <svg
+              width="11"
+              height="11"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class={`transition-transform ${channelInputOpen ? "rotate-45" : ""}`}
+              ><line x1="12" y1="5" x2="12" y2="19" /><line
+                x1="5"
+                y1="12"
+                x2="19"
+                y2="12"
+              /></svg
+            >
+          </button>
+        {/if}
         <button
           type="button"
           class={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${channelSearchOpen ? "bg-[var(--accent-wash)] text-[var(--accent)]" : "text-[var(--soft-foreground)] opacity-55 hover:bg-[var(--accent-wash)] hover:opacity-100"}`}
