@@ -117,7 +117,9 @@ pub fn spawn_queue_worker(state: AppState) {
                             }
                             QueueTask::Summary => {
                                 tracing::info!(video_id = %video.id, "queue worker ensuring summary");
-                                content::ensure_summary(&state, &video.id).await.map(|_| ())
+                                content::ensure_summary_for_queue(&state, &video.id)
+                                    .await
+                                    .map(|_| ())
                             }
                             QueueTask::Skip => {
                                 tracing::debug!(video_id = %video.id, "queue worker skipping video");

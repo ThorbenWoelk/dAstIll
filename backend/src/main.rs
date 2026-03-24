@@ -36,6 +36,11 @@ fn should_send_to_logfire(target: &str) -> bool {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Install the rustls crypto provider before any TLS usage (required by rustls 0.23+)
+    rustls::crypto::aws_lc_rs::default_provider()
+        .install_default()
+        .expect("failed to install rustls crypto provider");
+
     // Load .env if present (simple key=value parsing, no external crate)
     if let Ok(contents) = std::fs::read_to_string(".env") {
         for line in contents.lines() {
@@ -132,9 +137,15 @@ async fn main() -> anyhow::Result<()> {
     let s3_client = aws_sdk_s3::Client::new(&aws_config);
     let s3v_client = aws_sdk_s3vectors::Client::new(&aws_config);
 
+    let gcp_project_id = std::env::var("GCP_PROJECT_ID")
+        .map_err(|_| anyhow::anyhow!("GCP_PROJECT_ID must be set"))?;
+    tracing::info!(project = %gcp_project_id, "connecting to Firestore");
+    let firestore_db = firestore::FirestoreDb::new(&gcp_project_id).await?;
+
     let pool = init_store(
         s3_client,
         s3v_client,
+        firestore_db,
         data_bucket,
         vector_bucket,
         vector_index,

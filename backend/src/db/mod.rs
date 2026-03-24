@@ -1,6 +1,7 @@
 mod channels;
 mod chat;
 mod content;
+pub(crate) mod firestore_videos;
 mod helpers;
 mod highlights;
 mod search;
@@ -13,6 +14,7 @@ pub(crate) const MAX_CONCURRENT_S3_OPS: usize = 12;
 pub use channels::*;
 pub use chat::*;
 pub use content::*;
+pub use firestore_videos::*;
 pub use highlights::*;
 pub use search::*;
 pub use video_info::*;
@@ -54,6 +56,7 @@ impl From<serde_json::Error> for StoreError {
 pub struct Store {
     pub(crate) s3: aws_sdk_s3::Client,
     pub(crate) s3v: aws_sdk_s3vectors::Client,
+    pub(crate) firestore: firestore::FirestoreDb,
     pub(crate) data_bucket: String,
     pub(crate) vector_bucket: String,
     pub(crate) vector_index: String,
@@ -69,9 +72,15 @@ impl Store {
         let config = aws_config::load_from_env().await;
         let s3 = aws_sdk_s3::Client::new(&config);
         let s3v = aws_sdk_s3vectors::Client::new(&config);
+        let gcp_project =
+            std::env::var("GCP_PROJECT_ID").unwrap_or_else(|_| "dastill-test".to_string());
+        let firestore = firestore::FirestoreDb::new(&gcp_project)
+            .await
+            .expect("failed to create Firestore client for tests");
         Store {
             s3,
             s3v,
+            firestore,
             data_bucket: std::env::var("S3_DATA_BUCKET")
                 .unwrap_or_else(|_| "dastill-test".to_string()),
             vector_bucket: std::env::var("S3_VECTOR_BUCKET")
@@ -200,6 +209,7 @@ pub enum QueueFilter {
 pub async fn init_store(
     s3: aws_sdk_s3::Client,
     s3v: aws_sdk_s3vectors::Client,
+    firestore: firestore::FirestoreDb,
     data_bucket: String,
     vector_bucket: String,
     vector_index: String,
@@ -207,6 +217,7 @@ pub async fn init_store(
     Ok(Store {
         s3,
         s3v,
+        firestore,
         data_bucket,
         vector_bucket,
         vector_index,
