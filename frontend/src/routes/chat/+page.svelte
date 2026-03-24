@@ -809,7 +809,7 @@
     void scrollToBottom("auto");
   }
 
-  async function scrollToBottom(behavior: ScrollBehavior = "smooth") {
+  async function scrollToBottom(behavior: "auto" | "smooth" = "smooth") {
     await tick();
     const el = messagesViewport;
     if (!el) {
@@ -818,7 +818,7 @@
     const reduceMotion =
       typeof window !== "undefined" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const effectiveBehavior: ScrollBehavior =
+    const effectiveBehavior: "auto" | "smooth" =
       reduceMotion && behavior === "smooth" ? "auto" : behavior;
     el.scrollTo({
       top: el.scrollHeight,

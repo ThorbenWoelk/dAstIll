@@ -201,6 +201,16 @@
 
   let showResetConfirm = $state(false);
 
+  async function confirmResetVideo() {
+    showResetConfirm = false;
+    await overlayActions.onConfirmResetVideo();
+  }
+
+  function cancelResetVideo() {
+    showResetConfirm = false;
+    overlayActions.onCancelResetVideo();
+  }
+
   let touchGesture: {
     startX: number;
     startY: number;
@@ -771,12 +781,6 @@
   confirmLabel="Reset"
   cancelLabel="Cancel"
   tone="danger"
-  onConfirm={async () => {
-    showResetConfirm = false;
-    await overlayActions.onConfirmResetVideo();
-  }}
-  onCancel={() => {
-    showResetConfirm = false;
-    overlayActions.onCancelResetVideo();
-  }}
+  onConfirm={confirmResetVideo}
+  onCancel={cancelResetVideo}
 />

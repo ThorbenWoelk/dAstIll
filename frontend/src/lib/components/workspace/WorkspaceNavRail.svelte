@@ -138,6 +138,7 @@
         rel={item.external ? "noopener noreferrer" : undefined}
         data-sveltekit-preload-code={item.external ? undefined : "viewport"}
         data-sveltekit-preload-data={item.external ? undefined : "tap"}
+        data-tour-target={item.section === "chat" ? "nav-chat" : undefined}
         id={item.section === "docs"
           ? "nav-docs-link"
           : item.section === "chat"

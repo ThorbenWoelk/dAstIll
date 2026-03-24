@@ -43,7 +43,6 @@ import {
   removeChannelFromCollection,
   removeChannelId,
   replaceOptimisticChannel,
-  replaceOptimisticChannelId,
 } from "$lib/workspace/channel-actions";
 import { channelOrderFromList } from "$lib/workspace/channels";
 import {
@@ -158,16 +157,17 @@ export type SidebarStateOptions = {
   onLoadInitial?: (options?: { silent?: boolean }) => Promise<void>;
   onLoadChannelSnapshot?: (
     channelId: string,
-    snapshotOptions: any,
+    snapshotOptions: Parameters<typeof getChannelSnapshot>[1],
     silent: boolean,
   ) => Promise<ChannelSnapshot>;
-  onRefreshChannel?: (channelId: string) => Promise<any>;
+  onRefreshChannel?: (channelId: string) => Promise<{ videos_added: number }>;
   onListVideos?: (
     channelId: string,
     limit: number,
     offset: number,
     videoTypeFilter: VideoTypeFilter,
-    acknowledgedFilter: any,
+    /** Resolved from `AcknowledgedFilter` via `resolveAcknowledgedParam`. */
+    acknowledged: boolean | undefined,
     includeOptimistic: boolean,
   ) => Promise<Video[]>;
   onVideoTypeFilterChange?: (filter: VideoTypeFilter) => void;
@@ -366,7 +366,7 @@ export function createSidebarState(
   let showDeleteConfirmation = $state(false);
 
   let sidebarCollapsed = $state(false);
-  let sidebarWidth = $state<number | undefined>(undefined);
+  const sidebarWidth = $state<number | undefined>(undefined);
 
   /** Incremented when the client mutates the video list so in-flight snapshots are ignored. */
   let videoListMutationEpoch = 0;

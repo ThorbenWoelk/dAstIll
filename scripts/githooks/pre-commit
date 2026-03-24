@@ -50,6 +50,29 @@ else
     echo "✅ No Python files staged, skipping Python checks"
 fi
 
+# Frontend: Prettier + ESLint (staged source only)
+STAGED_FRONTEND_REL=$(git diff --cached --name-only --diff-filter=ACM | grep -E '^frontend/.*\.(ts|js|mjs|cjs|svelte|css)$' | sed 's|^frontend/||' || true)
+if [[ -n "$STAGED_FRONTEND_REL" ]]; then
+    if ! command -v bun &> /dev/null; then
+        echo "❌ bun not found. Install bun to commit frontend changes."
+        exit 1
+    fi
+    echo "🎨 Checking frontend formatting (Prettier)..."
+    # shellcheck disable=SC2086
+    if ! (cd frontend && bunx prettier --check $STAGED_FRONTEND_REL); then
+        echo "❌ Prettier check failed. Run 'cd frontend && bun run format' (or bunx prettier --write <files>)."
+        exit 1
+    fi
+    echo "🔧 Running ESLint on staged frontend files..."
+    # shellcheck disable=SC2086
+    if ! (cd frontend && bunx eslint $STAGED_FRONTEND_REL); then
+        echo "❌ ESLint failed. Fix the issues above (try: cd frontend && bun run lint:fix)."
+        exit 1
+    fi
+else
+    echo "✅ No staged frontend .ts/.js/.svelte/.css under frontend/, skipping Prettier/ESLint"
+fi
+
 # Frontend Audit
 FRONTEND_STAGED=$(git diff --cached --name-only | grep -E '^frontend/(package\.json|bun\.lock|bun\.lockb)$')
 if [[ -n "$FRONTEND_STAGED" ]]; then

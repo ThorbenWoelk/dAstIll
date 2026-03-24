@@ -3,7 +3,6 @@ import type {
   CreateHighlightRequest,
   Highlight,
   QueueTab,
-  SyncDepth,
   TranscriptRenderMode,
   Video,
   VideoInfo,

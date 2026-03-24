@@ -57,7 +57,7 @@
     if (!open) return;
     if (event.key === "Escape") {
       event.preventDefault();
-      onClose();
+      nextStep();
     }
     if (event.key === "ArrowRight" || event.key === "ArrowDown") {
       event.preventDefault();
@@ -147,9 +147,11 @@
       ...(s.fallbackSelectors ?? []),
     ].filter((x): x is string => typeof x === "string" && x.length > 0);
     for (const sel of chain) {
-      const node = document.querySelector(sel);
-      if (node && node.getClientRects().length > 0) {
-        return node;
+      const matches = document.querySelectorAll(sel);
+      for (const node of matches) {
+        if (node instanceof Element && node.getClientRects().length > 0) {
+          return node;
+        }
       }
     }
     return null;
@@ -162,6 +164,7 @@
     await Promise.resolve(s.prepare?.());
     await tick();
     await tick();
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
 
     clearTourTarget();
 
@@ -221,22 +224,34 @@
     aria-label="Feature guide"
     tabindex="-1"
     onclick={(e) => {
-      if (e.target === e.currentTarget) onClose();
+      if (e.target === e.currentTarget) nextStep();
     }}
     onkeydown={(e) => {
       if (e.key === "Escape") {
-        onClose();
+        e.preventDefault();
+        nextStep();
       }
       if (
         (e.key === "Enter" || e.key === " ") &&
         e.target === e.currentTarget
       ) {
-        onClose();
+        e.preventDefault();
+        nextStep();
       }
     }}
   >
-    <!-- Card -->
-    <div class="tour-card" bind:this={cardEl} style={cardStyle}>
+    <!-- Card: click outside buttons/links advances (same as backdrop); X is the only exit control. -->
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <div
+      class="tour-card"
+      bind:this={cardEl}
+      style={cardStyle}
+      onclick={(e) => {
+        const t = e.target;
+        if (t instanceof Element && t.closest("button, a")) return;
+        nextStep();
+      }}
+    >
       <!-- Step counter + close -->
       <div class="tour-card-header">
         <div class="tour-card-counter">
@@ -552,10 +567,7 @@
   :global(.tour-step-target) {
     position: relative;
     z-index: 10001;
-    outline: 2px solid var(--accent);
-    outline-offset: 3px;
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 25%, transparent);
     border-radius: var(--radius-sm);
-    transition: all 200ms cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 50%, transparent);
   }
 </style>

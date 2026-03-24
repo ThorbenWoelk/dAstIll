@@ -246,7 +246,7 @@ describe("getChannelSnapshot", () => {
     };
     let attempts = 0;
 
-    globalThis.fetch = (async (input, init) => {
+    globalThis.fetch = (async (input, _init) => {
       attempts += 1;
       if (String(input).includes("/acknowledged")) {
         return new Response(

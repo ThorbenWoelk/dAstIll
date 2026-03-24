@@ -32,8 +32,9 @@
     const vw = window.innerWidth;
     const vh = window.innerHeight;
 
-    const railOk =
-      Boolean(lg && railRect && railRect.width >= 32 && railRect.height >= 48);
+    const railOk = Boolean(
+      lg && railRect && railRect.width >= 32 && railRect.height >= 48,
+    );
 
     const mobileOk = Boolean(
       mobileRect && mobileRect.width >= 80 && mobileRect.height >= 16,
@@ -42,9 +43,7 @@
     if (railOk && railRect) {
       const maxW = Math.max(200, vw - railRect.right - gap * 2);
       const centerY = railRect.top + railRect.height / 2;
-      const top = Math.round(
-        Math.min(Math.max(12, centerY), vh - 12),
-      );
+      const top = Math.round(Math.min(Math.max(12, centerY), vh - 12));
       return [
         `left:${Math.round(railRect.right + gap)}px`,
         `top:${top}px`,

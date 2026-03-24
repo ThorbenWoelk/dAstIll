@@ -87,7 +87,6 @@
   import { createAiStatusPoller } from "$lib/utils/ai-poller";
   import {
     resolveGuideStepFromUrl,
-    WORKSPACE_GUIDE_STEP_COUNT,
     writeGuideStepToUrl,
   } from "$lib/utils/guide";
   import {
@@ -804,13 +803,15 @@
     const trackingId = selectedChannelId
       ? syncSummaryTrackingSession(summary, videoId, selectedChannelId)
       : deriveSummaryTrackingId(summary);
-    const entry = contentCache.get(videoId) ?? {};
-    (entry as any).summary = {
-      text: summaryText,
-      quality: summary as any,
-      trackingId,
-    };
-    contentCache.set(videoId, entry);
+    const prev = contentCache.get(videoId);
+    contentCache.set(videoId, {
+      ...prev,
+      summary: {
+        text: summaryText,
+        quality: summary,
+        trackingId,
+      },
+    });
     return summaryText;
   }
 
@@ -1006,7 +1007,7 @@
 
     const restoredGuideStep = resolveGuideStepFromUrl(
       new URL(window.location.href),
-      WORKSPACE_GUIDE_STEP_COUNT,
+      tourSteps.length,
     );
     if (restoredGuideStep !== null) {
       guideStep = restoredGuideStep;
@@ -1562,19 +1563,9 @@
       },
     },
     {
-      selector: "#main-content",
-      title: "Section I - Main overview",
-      body: "This main area is where transcripts and summaries appear once a video is open. Next: add a channel on the left, then use the tab strip for Transcript and Summary, and Chat in the rail for library-wide questions.",
-      placement: "left",
-      prepare: () => {
-        mobileTab = "content";
-      },
-      fallbackSelectors: ["#content-view"],
-    },
-    {
       selector: "#channel-input",
       title: "Add a Channel",
-      body: "Paste a URL or handle here (we opened this field for you). If it was already open, use the + control in the Channels row. New uploads are tracked automatically.",
+      body: "Paste a URL or handle here to subscribe to a channel. New uploads are tracked automatically.",
       placement: "bottom",
       prepare: () => {
         void tourPrepareOpenAddChannel();
@@ -1584,7 +1575,7 @@
     {
       selector: "#workspace-tabs-mobile",
       title: "Read the Transcript",
-      body: "These tabs switch Transcript, Summary, Highlights, and Info. Pick Transcript for full spoken text. (Mobile uses this strip; desktop uses the same strip in the header.)",
+      body: "Every video's spoken content is available as a full transcript you can read at your own pace.",
       placement: "bottom",
       prepare: async () => {
         await tourPrepareFirstVideoIfNeeded();
@@ -1608,29 +1599,34 @@
       fallbackSelectors: [...TAB_STRIP_TOUR],
     },
     {
-      selector: "#nav-chat-link",
+      selector: '[data-tour-target="nav-chat"]',
       title: "AI Chat",
-      body: "Open Chat from here (bottom bar on small screens). You get an LLM with retrieval over your transcripts and summaries, with citations and history. It opens as its own screen.",
+      body: "Chat with your library. Our agentic RAG-based LLM system let's you ask questions about specific videos and will even do deep research for you.",
       placement: "right",
       prepare: () => {
         mobileTab = "browse";
       },
-      fallbackSelectors: ["#mobile-nav-chat-link"],
+      fallbackSelectors: [
+        "#nav-chat-link",
+        "#mobile-nav-chat-link",
+        "#app-section-nav-rail a[href='/chat']",
+        "#app-section-nav-mobile a[href='/chat']",
+      ],
     },
     {
-      selector: "#tour-library-tools",
-      title: "Section II - Deep dive and other features",
-      body: "This Channels row has search, sort, and the video filter. The list and sync status are below. Next we focus the filter, then the sync line under the list.",
+      selector: "#workspace",
+      title: "Other features",
+      body: "Search, sort, and filter videos. Set earliest date to sync from and load more videos to go further back in time.",
       placement: "bottom",
       prepare: () => {
         mobileTab = "browse";
       },
-      fallbackSelectors: ["#workspace"],
+      fallbackSelectors: ["#tour-library-tools"],
     },
     {
       selector: "#video-filter-button",
       title: "Filter the list",
-      body: "Filter by video type and by read status. It lives in the Channels row you just saw.",
+      body: "Filter by video type and by read status.",
       placement: "bottom",
       prepare: () => {
         mobileTab = "browse";
@@ -1703,7 +1699,6 @@
       fallbackSelectors: ["#workspace"],
     },
   ];
-  // Keep WORKSPACE_GUIDE_STEP_COUNT in $lib/utils/guide.ts equal to tourSteps.length.
 
   function invalidateContentCache(
     videoId: string,

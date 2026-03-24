@@ -1,9 +1,5 @@
 import { createHighlight, deleteHighlight, getVideoHighlights } from "$lib/api";
-import type {
-  CreateHighlightRequest,
-  Highlight,
-  HighlightSource,
-} from "$lib/types";
+import type { CreateHighlightRequest, Highlight } from "$lib/types";
 import {
   buildOptimisticHighlight,
   reconcileOptimisticHighlight,

@@ -84,10 +84,10 @@ describe("optimistic acknowledge toggle", () => {
     const initialVideos = [video];
 
     let resolveApi!: (v: Video) => void;
-    let rejectApi!: (err: Error) => void;
+    let _rejectApi!: (err: Error) => void;
     const deferred = new Promise<Video>((res, rej) => {
       resolveApi = res;
-      rejectApi = rej;
+      _rejectApi = rej;
     });
 
     // Simulate optimistic update before calling API
@@ -182,10 +182,10 @@ describe("optimistic delete channel", () => {
     const channelOrder = ["ch-a", "ch-b", "ch-c"];
 
     let resolveApi!: () => void;
-    let rejectApi!: (err: Error) => void;
+    let _rejectApi!: (err: Error) => void;
     const deferred = new Promise<void>((res, rej) => {
       resolveApi = res;
-      rejectApi = rej;
+      _rejectApi = rej;
     });
 
     // Snapshot for rollback
@@ -193,8 +193,8 @@ describe("optimistic delete channel", () => {
     const previousChannelOrder = [...channelOrder];
 
     // Optimistic removal
-    let currentChannels = removeChannelFromCollection(channels, "ch-b");
-    let currentOrder = removeChannelId(channelOrder, "ch-b");
+    const currentChannels = removeChannelFromCollection(channels, "ch-b");
+    const currentOrder = removeChannelId(channelOrder, "ch-b");
 
     // Channel is removed immediately
     expect(currentChannels).toHaveLength(2);
@@ -269,17 +269,15 @@ describe("optimistic add channel", () => {
     const channels = [makeChannel("existing-1")];
 
     let resolveApi!: (ch: Channel) => void;
-    let rejectApi!: (err: Error) => void;
+    let _rejectApi!: (err: Error) => void;
     const deferred = new Promise<Channel>((res, rej) => {
       resolveApi = res;
-      rejectApi = rej;
+      _rejectApi = rej;
     });
 
-    const { optimisticChannel, tempId, trimmedInput } = buildOptimisticChannel(
+    const { optimisticChannel, tempId } = buildOptimisticChannel(
       "https://youtube.com/@newchannel",
     );
-
-    const previousChannels = [...channels];
     let currentChannels = [optimisticChannel, ...channels];
     let currentOrder = [tempId, ...channels.map((c) => c.id)];
 
@@ -343,6 +341,7 @@ describe("optimistic add channel", () => {
 
     expect(currentChannels).toHaveLength(1);
     expect(currentChannels[0].id).toBe("existing-1");
+    expect(currentOrder).toEqual(channels.map((c) => c.id));
     expect(errors).toContain("Channel not found");
   });
 });
@@ -357,10 +356,10 @@ describe("optimistic highlight create", () => {
     let currentHighlights: Highlight[] = [existingHighlight];
 
     let resolveApi!: (h: Highlight) => void;
-    let rejectApi!: (err: Error) => void;
+    let _rejectApi!: (err: Error) => void;
     const deferred = new Promise<Highlight>((res, rej) => {
       resolveApi = res;
-      rejectApi = rej;
+      _rejectApi = rej;
     });
 
     const payload = makeHighlightPayload("This is an important point");
@@ -435,9 +434,7 @@ describe("optimistic highlight create", () => {
     try {
       await deferred;
     } catch (error) {
-      currentHighlights = currentHighlights.filter(
-        (h) => h.id !== optimisticId,
-      );
+      currentHighlights = previousHighlights;
       errors.push((error as Error).message);
     }
 

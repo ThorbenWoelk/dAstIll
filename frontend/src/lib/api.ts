@@ -24,7 +24,6 @@ import {
   API_BASE,
   BackendUnavailableError,
   createAbortError,
-  isAbortError,
   request,
   resolveApiUrl,
 } from "./api-client";
