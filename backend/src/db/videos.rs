@@ -1,8 +1,4 @@
 use std::collections::HashSet;
-use std::sync::Arc;
-
-use tokio::sync::Semaphore;
-use tokio::task::JoinSet;
 
 use crate::models::{Channel, ContentStatus, OTHERS_CHANNEL_ID, OTHERS_CHANNEL_NAME, Video};
 
@@ -10,101 +6,33 @@ use super::{
     ChannelSnapshotData, QueueFilter, Store, StoreError, VideoInsertOutcome, WorkspaceBootstrapData,
 };
 
-fn video_key(id: &str) -> String {
-    format!("videos/{id}.json")
-}
-
 pub async fn insert_video(store: &Store, video: &Video) -> Result<VideoInsertOutcome, StoreError> {
-    let existing = store.get_json::<Video>(&video_key(&video.id)).await?;
-    let already_exists = existing.is_some();
-
-    let merged = if let Some(existing) = existing {
-        Video {
-            id: video.id.clone(),
-            channel_id: video.channel_id.clone(),
-            title: video.title.clone(),
-            thumbnail_url: video.thumbnail_url.clone(),
-            published_at: video.published_at,
-            is_short: video.is_short,
-            transcript_status: existing.transcript_status,
-            summary_status: existing.summary_status,
-            acknowledged: existing.acknowledged,
-            retry_count: existing.retry_count,
-            quality_score: existing.quality_score,
-        }
-    } else {
-        video.clone()
-    };
-
-    store.put_json(&video_key(&video.id), &merged).await?;
-
-    if already_exists {
-        tracing::debug!(video_id = %video.id, title = %video.title, "found existing video");
-        Ok(VideoInsertOutcome::Existing)
-    } else {
-        tracing::info!(video_id = %video.id, title = %video.title, "inserted new video");
-        Ok(VideoInsertOutcome::Inserted)
-    }
+    super::firestore_videos::fs_insert_video(store, video).await
 }
 
 pub async fn bulk_insert_videos(store: &Store, videos: Vec<Video>) -> Result<usize, StoreError> {
-    if videos.is_empty() {
-        return Ok(0);
-    }
-
-    let semaphore = Arc::new(Semaphore::new(super::MAX_CONCURRENT_S3_OPS));
-    let mut join_set: JoinSet<Result<VideoInsertOutcome, StoreError>> = JoinSet::new();
-
-    for video in videos {
-        let store = store.connect();
-        let semaphore = Arc::clone(&semaphore);
-        join_set.spawn(async move {
-            let _permit = semaphore.acquire().await.expect("semaphore closed");
-            insert_video(&store, &video).await
-        });
-    }
-
-    let mut inserted = 0;
-    while let Some(result) = join_set.join_next().await {
-        match result {
-            Ok(Ok(VideoInsertOutcome::Inserted)) => inserted += 1,
-            Ok(Ok(VideoInsertOutcome::Existing)) => {}
-            Ok(Err(e)) => return Err(e),
-            Err(e) => {
-                return Err(StoreError::S3(format!("parallel insert task error: {e}")));
-            }
-        }
-    }
-
-    Ok(inserted)
+    super::firestore_videos::fs_bulk_insert_videos(store, videos).await
 }
 
-/// Fetch a single video by ID.
-///
-/// When `include_summary` is `true` the S3 summary object is also fetched
-/// to populate `quality_score`.  Pass `false` for list-view callers that do
-/// not need the quality score, saving one S3 GET per call.
 pub async fn get_video(
     store: &Store,
     id: &str,
     include_summary: bool,
 ) -> Result<Option<Video>, StoreError> {
-    let mut video: Option<Video> = store.get_json(&video_key(id)).await?;
-    if include_summary {
-        if let Some(ref mut v) = video {
-            if let Some(summary) = store
-                .get_json::<crate::models::Summary>(&format!("summaries/{id}.json"))
-                .await?
-            {
-                v.quality_score = summary.quality_score;
-            }
-        }
-    }
-    Ok(video)
+    super::firestore_videos::fs_get_video(store, id, include_summary).await
 }
 
 async fn load_all_videos(store: &Store) -> Result<Vec<Video>, StoreError> {
-    store.load_all("videos/").await
+    let videos: Vec<Video> = store
+        .firestore
+        .fluent()
+        .select()
+        .from(super::firestore_videos::COLLECTION)
+        .obj()
+        .query()
+        .await
+        .map_err(|e| StoreError::Other(format!("Firestore error: {e}")))?;
+    Ok(videos)
 }
 
 fn video_visible_in_list(video: &Video, queue_filter: Option<QueueFilter>) -> bool {
@@ -303,36 +231,7 @@ pub async fn list_videos_for_queue_processing(
     limit: usize,
     max_retries: u8,
 ) -> Result<Vec<Video>, StoreError> {
-    let all = load_all_videos(store).await?;
-    let mut filtered: Vec<Video> = all
-        .into_iter()
-        .filter(|v| {
-            (matches!(
-                v.transcript_status,
-                ContentStatus::Pending | ContentStatus::Loading | ContentStatus::Failed
-            ) || (v.transcript_status == ContentStatus::Ready
-                && matches!(
-                    v.summary_status,
-                    ContentStatus::Pending | ContentStatus::Loading | ContentStatus::Failed
-                )))
-                && v.retry_count < max_retries
-        })
-        .collect();
-    filtered.sort_by(|a, b| b.published_at.cmp(&a.published_at));
-    filtered.truncate(limit);
-    Ok(filtered)
-}
-
-async fn update_video_field<F>(store: &Store, video_id: &str, mutate: F) -> Result<(), StoreError>
-where
-    F: FnOnce(&mut Video),
-{
-    let key = video_key(video_id);
-    if let Some(mut video) = store.get_json::<Video>(&key).await? {
-        mutate(&mut video);
-        store.put_json(&key, &video).await?;
-    }
-    Ok(())
+    super::firestore_videos::fs_list_videos_for_queue_processing(store, limit, max_retries).await
 }
 
 pub async fn update_video_transcript_status(
@@ -340,7 +239,7 @@ pub async fn update_video_transcript_status(
     video_id: &str,
     status: ContentStatus,
 ) -> Result<(), StoreError> {
-    update_video_field(store, video_id, |v| v.transcript_status = status).await
+    super::firestore_videos::fs_update_video_transcript_status(store, video_id, status).await
 }
 
 pub async fn update_video_summary_status(
@@ -348,7 +247,7 @@ pub async fn update_video_summary_status(
     video_id: &str,
     status: ContentStatus,
 ) -> Result<(), StoreError> {
-    update_video_field(store, video_id, |v| v.summary_status = status).await
+    super::firestore_videos::fs_update_video_summary_status(store, video_id, status).await
 }
 
 pub async fn update_video_acknowledged(
@@ -356,18 +255,15 @@ pub async fn update_video_acknowledged(
     video_id: &str,
     acknowledged: bool,
 ) -> Result<(), StoreError> {
-    update_video_field(store, video_id, |v| v.acknowledged = acknowledged).await
+    super::firestore_videos::fs_update_video_acknowledged(store, video_id, acknowledged).await
 }
 
 pub async fn increment_video_retry_count(store: &Store, video_id: &str) -> Result<(), StoreError> {
-    update_video_field(store, video_id, |v| {
-        v.retry_count = v.retry_count.saturating_add(1)
-    })
-    .await
+    super::firestore_videos::fs_increment_video_retry_count(store, video_id).await
 }
 
 pub async fn reset_video_retry_count(store: &Store, video_id: &str) -> Result<(), StoreError> {
-    update_video_field(store, video_id, |v| v.retry_count = 0).await
+    super::firestore_videos::fs_reset_video_retry_count(store, video_id).await
 }
 
 /// Repair stale `loading` rows and re-queue videos that hit `max_retries` (excluded from
@@ -395,16 +291,7 @@ pub(crate) fn apply_heal_queue_video_fields(video: &mut Video, max_retries: u8) 
 }
 
 pub async fn heal_queue_videos(store: &Store, max_retries: u8) -> Result<usize, StoreError> {
-    let all = load_all_videos(store).await?;
-    let mut healed = 0usize;
-    for mut video in all {
-        if !apply_heal_queue_video_fields(&mut video, max_retries) {
-            continue;
-        }
-        store.put_json(&video_key(&video.id), &video).await?;
-        healed += 1;
-    }
-    Ok(healed)
+    super::firestore_videos::fs_heal_queue_videos(store, max_retries).await
 }
 
 /// Build a channel snapshot, loading video data from S3 **exactly once** and
