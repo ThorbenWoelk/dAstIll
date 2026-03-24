@@ -290,82 +290,34 @@ describe("+page.server.ts load — URL filter forwarding", () => {
 });
 
 describe("+page.server.ts load — channel preview pre-loading (VAL-DATA-002)", () => {
-  it("fetches channel preview snapshots for all channels in bootstrap", async () => {
+  // Channel previews are now loaded client-side after paint.
+  // The server load returns an empty channelPreviews object and only
+  // fetches the bootstrap — no per-channel snapshot requests.
+
+  it("makes only the bootstrap fetch — no snapshot fetches", async () => {
     const load = await importLoad();
     const bootstrap = makeBootstrapWithChannels(["ch-1", "ch-2", "ch-3"]);
     const { fetch, calls } = createSmartMockFetch(bootstrap);
     await load({ fetch, url: createUrl() });
-    // 1 bootstrap + 3 channel snapshot fetches
-    expect(calls).toHaveLength(4);
+    expect(calls).toHaveLength(1);
     const snapshotCalls = calls.filter((c) =>
       c.url.pathname.includes("/snapshot"),
     );
-    expect(snapshotCalls).toHaveLength(3);
+    expect(snapshotCalls).toHaveLength(0);
   });
 
-  it("returns channelPreviews keyed by channel id", async () => {
+  it("returns empty channelPreviews regardless of channels in bootstrap", async () => {
     const load = await importLoad();
     const bootstrap = makeBootstrapWithChannels(["ch-1", "ch-2"]);
     const { fetch } = createSmartMockFetch(bootstrap);
     const result = await load({ fetch, url: createUrl() });
-    expect(result.channelPreviews).toBeDefined();
-    expect(Object.keys(result.channelPreviews)).toHaveLength(2);
-    expect(result.channelPreviews["ch-1"]).toBeDefined();
-    expect(result.channelPreviews["ch-2"]).toBeDefined();
-  });
-
-  it("uses limit=6 for channel preview fetches (matches sidebar PREVIEW_FETCH_LIMIT)", async () => {
-    const load = await importLoad();
-    const bootstrap = makeBootstrapWithChannels(["ch-1"]);
-    const { fetch, calls } = createSmartMockFetch(bootstrap);
-    await load({ fetch, url: createUrl() });
-    const previewCall = calls.find((c) => c.url.pathname.includes("/snapshot"));
-    expect(previewCall).toBeDefined();
-    expect(previewCall!.url.searchParams.get("limit")).toBe("6");
-  });
-
-  it("uses offset=0 for channel preview fetches", async () => {
-    const load = await importLoad();
-    const bootstrap = makeBootstrapWithChannels(["ch-1"]);
-    const { fetch, calls } = createSmartMockFetch(bootstrap);
-    await load({ fetch, url: createUrl() });
-    const previewCall = calls.find((c) => c.url.pathname.includes("/snapshot"));
-    expect(previewCall!.url.searchParams.get("offset")).toBe("0");
-  });
-
-  it("forwards type filter to channel preview snapshot fetches", async () => {
-    const load = await importLoad();
-    const bootstrap = makeBootstrapWithChannels(["ch-1"]);
-    const { fetch, calls } = createSmartMockFetch(bootstrap);
-    await load({ fetch, url: createUrl({ type: "short" }) });
-    const previewCall = calls.find((c) => c.url.pathname.includes("/snapshot"));
-    expect(previewCall!.url.searchParams.get("video_type")).toBe("short");
-  });
-
-  it("forwards ack filter to channel preview snapshot fetches", async () => {
-    const load = await importLoad();
-    const bootstrap = makeBootstrapWithChannels(["ch-1"]);
-    const { fetch, calls } = createSmartMockFetch(bootstrap);
-    await load({ fetch, url: createUrl({ ack: "ack" }) });
-    const previewCall = calls.find((c) => c.url.pathname.includes("/snapshot"));
-    expect(previewCall!.url.searchParams.get("acknowledged")).toBe("true");
-  });
-
-  it("omits filters from channel preview fetches when not specified", async () => {
-    const load = await importLoad();
-    const bootstrap = makeBootstrapWithChannels(["ch-1"]);
-    const { fetch, calls } = createSmartMockFetch(bootstrap);
-    await load({ fetch, url: createUrl() });
-    const previewCall = calls.find((c) => c.url.pathname.includes("/snapshot"));
-    expect(previewCall!.url.searchParams.has("video_type")).toBe(false);
-    expect(previewCall!.url.searchParams.has("acknowledged")).toBe(false);
+    expect(result.channelPreviews).toEqual({});
   });
 
   it("returns empty channelPreviews when bootstrap has no channels", async () => {
     const load = await importLoad();
-    const { fetch, calls } = createMockFetch(); // returns channels: []
+    const { fetch, calls } = createMockFetch();
     const result = await load({ fetch, url: createUrl() });
-    // Only bootstrap fetch, no snapshot fetches
     expect(calls).toHaveLength(1);
     expect(result.channelPreviews).toEqual({});
   });
@@ -398,68 +350,5 @@ describe("+page.server.ts load — channel preview pre-loading (VAL-DATA-002)", 
       url: createUrl({ type: "invalid", ack: "invalid" }),
     });
     expect(result.channelPreviewsFilterKey).toBe("all:all:default");
-  });
-
-  it("handles individual channel snapshot fetch failures gracefully", async () => {
-    const load = await importLoad();
-    const bootstrap = makeBootstrapWithChannels(["ch-1", "ch-2"]);
-    const calls: CapturedCall[] = [];
-    // ch-1 snapshot fails, ch-2 succeeds
-    const mockFetch = async (input: string | URL | Request) => {
-      const url = new URL(
-        typeof input === "string"
-          ? input
-          : input instanceof URL
-            ? input.href
-            : input.url,
-        "http://localhost",
-      );
-      calls.push({ url });
-
-      const snapshotMatch = url.pathname.match(
-        /^\/api\/channels\/([^/]+)\/snapshot$/,
-      );
-      if (snapshotMatch) {
-        const channelId = snapshotMatch[1];
-        if (channelId === "ch-1") {
-          return new Response("error", { status: 500 });
-        }
-        return new Response(JSON.stringify(makeChannelSnapshot(channelId)), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      return new Response(JSON.stringify(bootstrap), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    };
-    const result = await load({
-      fetch: mockFetch as unknown as typeof fetch,
-      url: createUrl(),
-    });
-    // ch-2 snapshot is available, ch-1 is omitted (failed gracefully)
-    expect(result.channelPreviews["ch-2"]).toBeDefined();
-    expect(result.channelPreviews["ch-1"]).toBeUndefined();
-    expect(result.bootstrap).not.toBeNull();
-  });
-
-  it("channel preview fetches are made in parallel (all channels fetched)", async () => {
-    const load = await importLoad();
-    const channelIds = ["ch-1", "ch-2", "ch-3", "ch-4", "ch-5"];
-    const bootstrap = makeBootstrapWithChannels(channelIds);
-    const { fetch, calls } = createSmartMockFetch(bootstrap);
-    await load({ fetch, url: createUrl() });
-    // Verify all 5 channels got their snapshot fetched
-    const snapshotCalls = calls.filter((c) =>
-      c.url.pathname.includes("/snapshot"),
-    );
-    const fetchedChannelIds = snapshotCalls.map((c) => {
-      const match = c.url.pathname.match(/\/channels\/([^/]+)\/snapshot/);
-      return match?.[1];
-    });
-    for (const id of channelIds) {
-      expect(fetchedChannelIds).toContain(id);
-    }
   });
 });
