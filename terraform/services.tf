@@ -5,6 +5,7 @@ resource "google_project_service" "services" {
     "secretmanager.googleapis.com",
     "iam.googleapis.com",
     "cloudresourcemanager.googleapis.com",
+    "firestore.googleapis.com",
   ])
 
   service            = each.key

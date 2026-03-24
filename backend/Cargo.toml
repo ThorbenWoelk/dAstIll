@@ -46,6 +46,10 @@ aws-sdk-sts = "1"
 aws-smithy-types = "1"
 aws-credential-types = "1.2.11"
 
+# Google Cloud Firestore
+firestore = "0.48"
+rustls = { version = "0.23", features = ["aws-lc-rs"] }
+
 [dev-dependencies]
 tempfile = "3"
 tower = "0.5"

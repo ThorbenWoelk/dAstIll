@@ -75,6 +75,13 @@ resource "google_project_iam_member" "cloud_run_admin" {
   member  = "serviceAccount:${google_service_account.github_actions_sa.email}"
 }
 
+# Grant Firestore access to the backend service account
+resource "google_project_iam_member" "backend_firestore" {
+  project = var.project_id
+  role    = "roles/datastore.user"
+  member  = "serviceAccount:${google_service_account.backend_sa.email}"
+}
+
 output "backend_sa_unique_id" {
   value = google_service_account.backend_sa.unique_id
 }
