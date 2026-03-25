@@ -18,18 +18,28 @@ pub enum TranscriptError {
 
 pub struct TranscriptService {
     summarize_path: String,
+    ytdlp_path: String,
 }
 
 impl TranscriptService {
     pub fn new() -> Self {
         Self {
             summarize_path: "/opt/homebrew/bin/summarize".to_string(),
+            ytdlp_path: "/usr/local/bin/yt-dlp".to_string(),
         }
     }
 
-    pub fn with_path(path: &str) -> Self {
+    pub fn with_path(summarize_path: &str) -> Self {
         Self {
-            summarize_path: path.to_string(),
+            summarize_path: summarize_path.to_string(),
+            ytdlp_path: "/usr/local/bin/yt-dlp".to_string(),
+        }
+    }
+
+    pub fn with_paths(summarize_path: &str, ytdlp_path: &str) -> Self {
+        Self {
+            summarize_path: summarize_path.to_string(),
+            ytdlp_path: ytdlp_path.to_string(),
         }
     }
 
@@ -97,17 +107,13 @@ impl TranscriptService {
             .to_string();
 
         if raw.trim().is_empty() {
-            // Exit 0 with no content means captions simply aren't available for this video.
-            tracing::info!(video_id = %video_id, "summarize returned empty output - no captions available");
-            return Err(TranscriptError::NoTranscript);
+            tracing::info!(video_id = %video_id, "summarize returned empty output - trying yt-dlp fallback");
+            return self.extract_with_ytdlp(video_id).await;
         }
 
         if is_site_wide_placeholder_description(&raw) {
-            tracing::warn!(
-                video_id = %video_id,
-                "summarize returned YouTube site-wide blurb instead of transcript"
-            );
-            return Err(TranscriptError::NoTranscript);
+            tracing::warn!(video_id = %video_id, "summarize returned YouTube site-wide blurb - trying yt-dlp fallback");
+            return self.extract_with_ytdlp(video_id).await;
         }
 
         let formatted = raw.clone();
@@ -122,10 +128,122 @@ impl TranscriptService {
         Ok((raw, formatted))
     }
 
+    /// Fallback transcript extraction using yt-dlp with the iOS YouTube client.
+    /// Called when `summarize` exits 0 with empty output (GCP IP blocking).
+    /// Uses `--extractor-args youtube:player_client=ios` to hit YouTube's mobile API,
+    /// which uses different endpoints and is less likely to be blocked on cloud IPs.
+    async fn extract_with_ytdlp(
+        &self,
+        video_id: &str,
+    ) -> Result<(String, String), TranscriptError> {
+        if !std::path::Path::new(&self.ytdlp_path).exists() {
+            tracing::debug!(
+                video_id = %video_id,
+                path = %self.ytdlp_path,
+                "yt-dlp not found, skipping fallback"
+            );
+            return Err(TranscriptError::NoTranscript);
+        }
+
+        tracing::info!(video_id = %video_id, "running yt-dlp fallback for transcript");
+
+        let tmp_dir = std::env::temp_dir().join(format!("ytdlp_{video_id}"));
+        let _ = std::fs::create_dir_all(&tmp_dir);
+        let output_template = tmp_dir.join("%(id)s").to_string_lossy().to_string();
+        let url = format!("https://www.youtube.com/watch?v={video_id}");
+        let ytdlp_path = self.ytdlp_path.clone();
+
+        let _ = tokio::task::spawn_blocking({
+            let url = url.clone();
+            let template = output_template.clone();
+            move || {
+                Command::new(&ytdlp_path)
+                    .arg(&url)
+                    .arg("--skip-download")
+                    .arg("--write-auto-subs")
+                    .arg("--sub-lang")
+                    .arg("en")
+                    .arg("--sub-format")
+                    .arg("json3")
+                    .arg("-o")
+                    .arg(&template)
+                    .arg("--quiet")
+                    .arg("--no-warnings")
+                    // iOS client uses mobile API endpoints, bypassing web-scraper blocking on GCP IPs.
+                    .arg("--extractor-args")
+                    .arg("youtube:player_client=ios")
+                    .output()
+            }
+        })
+        .await;
+
+        // Search the tmp dir for any *.json3 file yt-dlp may have written.
+        let json3_content = std::fs::read_dir(&tmp_dir)
+            .ok()
+            .and_then(|entries| {
+                entries
+                    .filter_map(|e| e.ok())
+                    .find(|e| {
+                        e.path()
+                            .extension()
+                            .map(|ext| ext == "json3")
+                            .unwrap_or(false)
+                    })
+                    .and_then(|e| std::fs::read_to_string(e.path()).ok())
+            })
+            .unwrap_or_default();
+
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+
+        if json3_content.trim().is_empty() {
+            tracing::info!(video_id = %video_id, "yt-dlp returned no captions");
+            return Err(TranscriptError::NoTranscript);
+        }
+
+        let raw = parse_json3_transcript(&json3_content);
+        if raw.trim().is_empty() {
+            tracing::info!(video_id = %video_id, "yt-dlp json3 parsed to empty text");
+            return Err(TranscriptError::NoTranscript);
+        }
+
+        tracing::info!(video_id = %video_id, bytes = raw.len(), "yt-dlp transcript extracted");
+        Ok((raw.clone(), raw))
+    }
+
     /// Check if summarize CLI is available.
     pub fn is_available(&self) -> bool {
         std::path::Path::new(&self.summarize_path).exists()
     }
+}
+
+/// Parse YouTube's json3 subtitle format into plain text.
+/// Each event's `segs` contain unique new text (no rolling-window duplication).
+fn parse_json3_transcript(content: &str) -> String {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(content) else {
+        return String::new();
+    };
+    let Some(events) = value["events"].as_array() else {
+        return String::new();
+    };
+    let mut parts: Vec<String> = Vec::new();
+    for event in events {
+        if let Some(segs) = event["segs"].as_array() {
+            for seg in segs {
+                if let Some(utf8) = seg["utf8"].as_str() {
+                    let text = utf8.replace('\n', " ");
+                    let text = text.trim();
+                    if !text.is_empty() {
+                        parts.push(text.to_string());
+                    }
+                }
+            }
+        }
+    }
+    parts
+        .join(" ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 impl Default for TranscriptService {
