@@ -14,7 +14,7 @@ use dastill::config::{
     SecurityRuntimeConfig,
 };
 use dastill::db::init_store;
-use dastill::handlers::{analytics, channels, chat, content, highlights, search, videos};
+use dastill::handlers::{analytics, channels, chat, content, highlights, preferences, search, videos};
 use dastill::read_cache::ReadCache;
 use dastill::search_progress::SearchProgress;
 use dastill::security::{
@@ -97,6 +97,8 @@ async fn main() -> anyhow::Result<()> {
         Arc::new(SecurityRuntimeConfig::from_env().map_err(|err| anyhow::anyhow!(err))?);
     let summarize_path = std::env::var("SUMMARIZE_PATH")
         .unwrap_or_else(|_| "/opt/homebrew/bin/summarize".to_string());
+    let ytdlp_path = std::env::var("YTDLP_PATH")
+        .unwrap_or_else(|_| "/usr/local/bin/yt-dlp".to_string());
     let ollama = OllamaRuntimeConfig::from_env(search_runtime.semantic_enabled)
         .map_err(|err| anyhow::anyhow!(err))?;
     if std::env::var("SUMMARY_EVALUATOR_FALLBACK_MODEL").is_ok() {
@@ -175,7 +177,7 @@ async fn main() -> anyhow::Result<()> {
         Ok(None) => tracing::info!("YOUTUBE_API_KEY is not configured - using fallback sources"),
         Err(err) => tracing::warn!(error = %err, "could not validate YOUTUBE_API_KEY on startup"),
     }
-    let transcript = Arc::new(TranscriptService::with_path(&summarize_path));
+    let transcript = Arc::new(TranscriptService::with_paths(&summarize_path, &ytdlp_path));
     let ollama_semaphore = Arc::new(tokio::sync::Semaphore::new(1));
     let search_ollama_semaphore = Arc::new(tokio::sync::Semaphore::new(1));
 
@@ -333,6 +335,10 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/chat/conversations/{id}/cancel",
             post(chat::cancel_message),
+        )
+        .route(
+            "/api/preferences",
+            get(preferences::get_preferences).put(preferences::save_preferences),
         )
         .route("/api/search", get(search::search))
         .route("/api/search/status", get(search::search_status))

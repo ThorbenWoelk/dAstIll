@@ -48,7 +48,7 @@
       selectedChannel: null,
       selectedVideo: null,
       selectedVideoId: null,
-      contentMode: "transcript",
+      contentMode: "info",
     },
     overlays = {
       errorMessage: null,

@@ -1,5 +1,6 @@
 import type { WorkspaceStateSnapshot } from "./channel-workspace";
-import type { QueueTab } from "./types";
+import type { QueueTab, VideoTypeFilter } from "./types";
+import type { AcknowledgedFilter } from "./workspace/types";
 import {
   isAcknowledgedFilter,
   isWorkspaceContentMode,
@@ -21,10 +22,16 @@ export type WorkspaceViewHrefParams = WorkspaceViewState & {
   chunkId?: string | null;
 };
 
-type QueueViewState = {
+export type QueueViewState = {
   selectedChannelId: string | null;
   queueTab: QueueTab;
+  selectedVideoId?: string | null;
+  videoTypeFilter?: VideoTypeFilter;
+  acknowledgedFilter?: AcknowledgedFilter;
 };
+
+/** Params for building a queue URL (defaults match sidebar defaults). */
+export type QueueViewHrefParams = QueueViewState;
 
 const QUEUE_TABS = new Set<QueueTab>([
   "transcripts",
@@ -101,6 +108,9 @@ export function parseQueueViewUrlState(url: URL): Partial<QueueViewState> {
   const restored: Partial<QueueViewState> = {};
   const selectedChannelId = parseNonEmptyParam(url, "channel");
   const queueTab = parseNonEmptyParam(url, "queue");
+  const selectedVideoId = parseNonEmptyParam(url, "video");
+  const videoTypeFilter = parseNonEmptyParam(url, "type");
+  const acknowledgedFilter = parseNonEmptyParam(url, "ack");
 
   if (selectedChannelId) {
     restored.selectedChannelId = selectedChannelId;
@@ -108,16 +118,30 @@ export function parseQueueViewUrlState(url: URL): Partial<QueueViewState> {
   if (queueTab && QUEUE_TABS.has(queueTab as QueueTab)) {
     restored.queueTab = queueTab as QueueTab;
   }
+  if (selectedVideoId) {
+    restored.selectedVideoId = selectedVideoId;
+  }
+  if (isWorkspaceVideoTypeFilter(videoTypeFilter)) {
+    restored.videoTypeFilter = videoTypeFilter;
+  }
+  if (isAcknowledgedFilter(acknowledgedFilter)) {
+    restored.acknowledgedFilter = acknowledgedFilter;
+  }
 
   return restored;
 }
 
-export function buildQueueViewHref(state: QueueViewState) {
+export function buildQueueViewHref(state: QueueViewHrefParams) {
   const params = new URLSearchParams();
   if (state.selectedChannelId) {
     params.set("channel", state.selectedChannelId);
   }
   params.set("queue", state.queueTab);
+  if (state.selectedVideoId) {
+    params.set("video", state.selectedVideoId);
+  }
+  params.set("type", state.videoTypeFilter ?? "all");
+  params.set("ack", state.acknowledgedFilter ?? "all");
   return `/download-queue?${params.toString()}`;
 }
 

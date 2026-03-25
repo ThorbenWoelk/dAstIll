@@ -74,7 +74,7 @@ export type SidebarStateOptions = {
 
   /**
    * Called when a video is clicked in the sidebar. Route provides the handler
-   * (workspace: select in-place; queue: navigate to workspace).
+   * (workspace: select in-place; queue: focus item in the queue panel).
    */
   onSelectVideo: (
     videoId: string,
@@ -625,6 +625,11 @@ export function createSidebarState(
     selectedChannelId = channelId;
     if (videoId) {
       selectedVideoId = videoId;
+    } else {
+      // Channel overview: keep selection in sync with the active channel. Leaving
+      // the previous video id causes stale matches (wrong list until load) or
+      // odd queue detail while the sidebar shows a new channel.
+      selectedVideoId = null;
     }
     options_root.onChannelSelected?.(channelId);
 

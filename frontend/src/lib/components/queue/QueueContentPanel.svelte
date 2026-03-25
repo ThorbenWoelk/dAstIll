@@ -2,7 +2,7 @@
   import Toggle from "$lib/components/Toggle.svelte";
   import { formatShortDate } from "$lib/utils/date";
   import { formatSyncDate } from "$lib/workspace/content";
-  import type { QueueTab } from "$lib/types";
+  import type { ContentStatus, QueueTab, Video } from "$lib/types";
   import type {
     QueueContentPanelActions,
     QueueContentPanelState,
@@ -17,6 +17,8 @@
       mobileVisible: false,
       selectedChannel: null,
       selectedChannelId: null,
+      selectedVideoId: null,
+      selectedQueueVideo: null,
       queueTab: "transcripts",
       queueStats: { total: 0, loading: 0, pending: 0, failed: 0 },
       failedTranscriptVideos: [],
@@ -31,6 +33,8 @@
       onQueueTabChange: () => {},
       onSaveSyncDate: async () => {},
       onRetryTranscript: async (_videoId: string) => {},
+      onClearSelectedVideo: () => {},
+      onOpenVideoInWorkspace: async (_video: Video) => {},
     },
   }: {
     readOnly?: boolean;
@@ -79,6 +83,13 @@
 
   function handleQueueTabChange(value: string) {
     return actions.onQueueTabChange(value as QueueTab);
+  }
+
+  function statusLabel(status: ContentStatus): string {
+    if (status === "pending") return "Waiting";
+    if (status === "loading") return "In progress";
+    if (status === "ready") return "Complete";
+    return "Failed";
   }
 </script>
 
@@ -206,6 +217,123 @@
       </div>
     {:else}
       <div class="flex flex-col gap-8 pb-24">
+        {#if panelState.selectedVideoId && panelState.selectedQueueVideo}
+          {@const v = panelState.selectedQueueVideo}
+          <div class="flex flex-col gap-3">
+            <div class="flex flex-wrap items-start justify-between gap-2">
+              <p
+                class="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-55"
+              >
+                Selected queue item
+              </p>
+              {#if actions.onClearSelectedVideo}
+                <button
+                  type="button"
+                  class="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] transition-colors hover:text-[var(--foreground)]"
+                  onclick={() => actions.onClearSelectedVideo?.()}
+                >
+                  Clear
+                </button>
+              {/if}
+            </div>
+            <p
+              class="text-[15px] font-semibold leading-snug tracking-tight text-[var(--foreground)]"
+            >
+              {v.title}
+            </p>
+            <p class="text-[12px] text-[var(--soft-foreground)]">
+              Published {formatShortDate(v.published_at)}
+            </p>
+            <dl
+              class="mt-1 grid gap-3 border-t border-[var(--border-soft)] pt-4 sm:grid-cols-2"
+            >
+              <div>
+                <dt
+                  class="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50"
+                >
+                  Transcript
+                </dt>
+                <dd
+                  class="mt-1 text-[14px] font-semibold text-[var(--foreground)]"
+                >
+                  {statusLabel(v.transcript_status)}
+                </dd>
+              </div>
+              <div>
+                <dt
+                  class="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50"
+                >
+                  Summary
+                </dt>
+                <dd
+                  class="mt-1 text-[14px] font-semibold text-[var(--foreground)]"
+                >
+                  {statusLabel(v.summary_status)}
+                </dd>
+              </div>
+              {#if panelState.queueTab === "evaluations"}
+                <div class="sm:col-span-2">
+                  <dt
+                    class="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50"
+                  >
+                    Quality score
+                  </dt>
+                  <dd
+                    class="mt-1 text-[14px] font-semibold text-[var(--foreground)]"
+                  >
+                    {v.quality_score != null && v.quality_score !== undefined
+                      ? String(v.quality_score)
+                      : "Not scored yet"}
+                  </dd>
+                </div>
+              {/if}
+            </dl>
+            <div class="flex flex-wrap gap-2 pt-1">
+              {#if panelState.queueTab === "transcripts" && v.transcript_status === "failed" && !readOnly}
+                <button
+                  type="button"
+                  class="inline-flex items-center justify-center rounded-full bg-[var(--foreground)] px-4 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--background)] transition-all hover:bg-[var(--accent-strong)] disabled:opacity-40"
+                  onclick={() => void actions.onRetryTranscript?.(v.id)}
+                  disabled={panelState.retryingTranscriptVideoId === v.id}
+                >
+                  {panelState.retryingTranscriptVideoId === v.id
+                    ? "Retrying"
+                    : "Retry download"}
+                </button>
+              {/if}
+              {#if actions.onOpenVideoInWorkspace}
+                <button
+                  type="button"
+                  class="inline-flex items-center justify-center rounded-full px-4 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--accent-strong)] transition-colors hover:bg-[var(--accent-wash)]"
+                  onclick={() => void actions.onOpenVideoInWorkspace?.(v)}
+                >
+                  Open in workspace
+                </button>
+              {/if}
+            </div>
+          </div>
+        {:else if panelState.selectedVideoId && !panelState.selectedQueueVideo}
+          <div
+            class="flex flex-col gap-2 rounded-[var(--radius-sm)] bg-[var(--muted)]/40 px-3 py-3"
+          >
+            <p class="text-[13px] font-semibold text-[var(--foreground)]">
+              Video not in the current queue list
+            </p>
+            <p class="text-[12px] text-[var(--soft-foreground)]">
+              Reload the channel or change filters, or clear the selection.
+            </p>
+            {#if actions.onClearSelectedVideo}
+              <button
+                type="button"
+                class="self-start text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--accent-strong)]"
+                onclick={() => actions.onClearSelectedVideo?.()}
+              >
+                Clear selection
+              </button>
+            {/if}
+          </div>
+        {/if}
+
         <!-- Stats row -->
         <div class="flex flex-wrap items-center gap-x-4 gap-y-1.5">
           <span class="text-[14px] font-semibold text-[var(--foreground)]">

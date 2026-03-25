@@ -260,3 +260,8 @@ export interface SendChatMessageRequest {
   /** Ollama cloud model id from chat config; server picks default if omitted. */
   model?: string;
 }
+
+export interface UserPreferences {
+  channel_order: string[];
+  channel_sort_mode: "custom" | "alpha" | "newest";
+}

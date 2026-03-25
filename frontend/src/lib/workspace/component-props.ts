@@ -175,6 +175,10 @@ export interface QueueContentPanelState {
   mobileVisible: boolean;
   selectedChannel: Channel | null;
   selectedChannelId: string | null;
+  /** Sidebar selection; drives detail panel when set. */
+  selectedVideoId?: string | null;
+  /** Resolved from the current queue list; null if not loaded or not in list. */
+  selectedQueueVideo?: Video | null;
   queueTab: QueueTab;
   queueStats: QueueStats;
   failedTranscriptVideos?: Video[];
@@ -190,4 +194,6 @@ export interface QueueContentPanelActions {
   onQueueTabChange: (value: QueueTab) => void;
   onSaveSyncDate: (value: string) => Promise<void> | void;
   onRetryTranscript?: (videoId: string) => Promise<void> | void;
+  onClearSelectedVideo?: () => void;
+  onOpenVideoInWorkspace?: (video: Video) => void | Promise<void>;
 }

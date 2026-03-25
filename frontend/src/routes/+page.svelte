@@ -16,6 +16,7 @@
     ensureVideoInfo,
     getChannelSnapshot,
     getChannelSyncDepth,
+    getPreferences,
     getVideo,
     getVideoHighlights,
     getSummary,
@@ -26,6 +27,7 @@
     refreshChannel,
     regenerateSummary,
     resetVideo,
+    savePreferences,
     updateSummary,
     updateChannel,
     updateTranscript,
@@ -160,6 +162,7 @@
   const CHANNEL_REFRESH_TTL_MS = 5 * 60 * 1000;
   const SELECTED_VIDEO_SCAN_PAGE_LIMIT = 8;
   const channelLastRefreshedAt = new Map<string, number>();
+  let preferencesSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
   type CachedChannelVideoState = {
     videos: Video[];
@@ -224,7 +227,7 @@
   const MIN_BACKFILL_INTERVAL_MS = 2100;
   let lastBackfillRequestAtMs = 0;
 
-  let contentMode = $state<WorkspaceContentMode>("transcript");
+  let contentMode = $state<WorkspaceContentMode>("info");
   /** Matches Tailwind `lg` (mobile-only UI). Used to avoid racing desktop channel snapshot loads. */
   let mobileViewportMq = $state(false);
   let mobileBrowseOpen = $state(true);
@@ -300,9 +303,12 @@
       return selectVideo(videoId, true, context?.forceReload ?? false);
     },
     onChannelSelected: (channelId: string) => {
+      if (!sidebarState.selectedVideoId) {
+        clearSelectedVideoState();
+      }
       const href = buildWorkspaceViewHref({
         selectedChannelId: channelId,
-        selectedVideoId,
+        selectedVideoId: sidebarState.selectedVideoId,
         contentMode,
         videoTypeFilter: sidebarState.videoTypeFilter,
         acknowledgedFilter: sidebarState.acknowledgedFilter,
@@ -956,6 +962,16 @@
       channelSortMode: sidebarState.channelSortMode,
     };
     saveWorkspaceState(localStorage, snapshot);
+    // Debounce-persist channel order + sort mode to the backend so it survives
+    // across devices/browsers. 1 s delay avoids bursting on rapid reorders.
+    if (preferencesSaveTimer) clearTimeout(preferencesSaveTimer);
+    preferencesSaveTimer = setTimeout(() => {
+      void savePreferences({
+        channel_order: sidebarState.channelOrder,
+        channel_sort_mode: sidebarState.channelSortMode,
+      });
+      preferencesSaveTimer = null;
+    }, 1000);
   }
 
   $effect(() => {
@@ -993,18 +1009,33 @@
       const acknowledgedAtMount = resolveAcknowledgedParam(acknowledgedFilter);
 
       // Resolve initial state from server bootstrap (SSR) + IndexedDB warm-start.
-      // IndexedDB is always read here before any network API call (VAL-CROSS-004).
-      const bootstrapResult = await resolveBootstrapOnMount({
-        serverBootstrap: $page.data.bootstrap ?? null,
-        selectedChannelId: selectedChannelIdAtMount,
-        viewSnapshotCacheKey: sidebarState.selectedChannelId
-          ? buildWorkspaceSnapshotCacheKey(
-              sidebarState.selectedChannelId,
-              sidebarState.videoTypeFilter,
-              acknowledgedAtMount,
-            )
-          : null,
-      });
+      // Fetch preferences in parallel so the API channel order is available before
+      // channels are rendered (VAL-CROSS-004).
+      const [bootstrapResult, apiPreferences] = await Promise.all([
+        resolveBootstrapOnMount({
+          serverBootstrap: $page.data.bootstrap ?? null,
+          selectedChannelId: selectedChannelIdAtMount,
+          viewSnapshotCacheKey: sidebarState.selectedChannelId
+            ? buildWorkspaceSnapshotCacheKey(
+                sidebarState.selectedChannelId,
+                sidebarState.videoTypeFilter,
+                acknowledgedAtMount,
+              )
+            : null,
+        }),
+        getPreferences().catch(() => null),
+      ]);
+
+      // Apply API preferences — override localStorage channel order when the
+      // backend has a non-empty saved order (cross-device persistence).
+      if (apiPreferences) {
+        if (apiPreferences.channel_order.length > 0) {
+          sidebarState.setChannelOrder(apiPreferences.channel_order);
+        }
+        sidebarState.setChannelSortMode(
+          apiPreferences.channel_sort_mode as ChannelSortMode,
+        );
+      }
 
       const hasInitialData = Boolean(
         bootstrapResult.channels && bootstrapResult.channels.length > 0,
@@ -1362,6 +1393,10 @@
 
     sidebarState.setSelectedChannelId(channelId);
     if (!channelId) return;
+
+    if (!videoId) {
+      clearSelectedVideoState();
+    }
 
     const channelViewKey = getChannelViewKey(channelId);
     const cachedChannelVideoState = channelVideoStateCache.get(channelViewKey);
