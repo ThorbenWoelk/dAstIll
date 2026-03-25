@@ -64,6 +64,14 @@
   function handleAvatarError() {
     avatarLoadFailed = true;
   }
+
+  function handleDeleteKeydown(e: KeyboardEvent) {
+    if (e.key === "Enter" || e.key === " ") {
+      e.stopPropagation();
+      e.preventDefault();
+      onDelete(e);
+    }
+  }
 </script>
 
 <button
@@ -118,13 +126,7 @@
           e.stopPropagation();
           onDelete(e);
         }}
-        onkeydown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.stopPropagation();
-            e.preventDefault();
-            onDelete(e);
-          }
-        }}
+        onkeydown={handleDeleteKeydown}
         aria-label="Delete channel"
       >
         <TrashIcon size={13} strokeWidth={2.5} />
@@ -149,13 +151,7 @@
           e.stopPropagation();
           onDelete(e);
         }}
-        onkeydown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.stopPropagation();
-            e.preventDefault();
-            onDelete(e);
-          }
-        }}
+        onkeydown={handleDeleteKeydown}
         aria-label="Delete channel"
       >
         <TrashIcon size={14} strokeWidth={2.5} />

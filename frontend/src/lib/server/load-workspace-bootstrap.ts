@@ -21,6 +21,11 @@ export type LoadWorkspaceBootstrapOptions = {
    * Used as the tab when the URL has no `queue` query (aligns with client default).
    */
   ssrQueueTabDefault?: QueueTab;
+  /**
+   * Unified download-queue view: `queue_only` without `queue_tab` (any incomplete
+   * transcript or summary). Mutually exclusive with `ssrQueueTabDefault` for SSR.
+   */
+  ssrQueueUnified?: boolean;
 };
 
 function parseQueueTabFromUrl(
@@ -51,11 +56,13 @@ export async function loadWorkspaceBootstrapPageData(
   const selectedChannelId = url.searchParams.get("channel") ?? null;
   const typeParam = url.searchParams.get("type");
   const ackParam = url.searchParams.get("ack");
-  const effectiveQueueTab = parseQueueTabFromUrl(
-    url,
-    options?.ssrQueueTabDefault,
-  );
-  const queueSegment = queueSegmentForFilterKey(effectiveQueueTab);
+  const unified = options?.ssrQueueUnified === true;
+  const effectiveQueueTab = unified
+    ? undefined
+    : parseQueueTabFromUrl(url, options?.ssrQueueTabDefault);
+  const queueSegment = unified
+    ? "unified"
+    : queueSegmentForFilterKey(effectiveQueueTab);
   const fallbackFilterKey = `all:all:${queueSegment}`;
 
   try {
@@ -75,7 +82,9 @@ export async function loadWorkspaceBootstrapPageData(
       params.set("acknowledged", "false");
     }
 
-    if (effectiveQueueTab) {
+    if (unified) {
+      params.set("queue_only", "true");
+    } else if (effectiveQueueTab) {
       params.set("queue_tab", effectiveQueueTab);
     }
 

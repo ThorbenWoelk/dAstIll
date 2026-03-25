@@ -55,7 +55,7 @@
           <p
             class="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-70"
           >
-            How I checked
+            Search strategy
           </p>
           {#if streamPlanLabel}
             <p class="mt-1 text-[12px] font-semibold text-[var(--foreground)]">

@@ -2,7 +2,6 @@ import type {
   Channel,
   CreateHighlightRequest,
   Highlight,
-  QueueTab,
   TranscriptRenderMode,
   Video,
   VideoInfo,
@@ -179,7 +178,6 @@ export interface QueueContentPanelState {
   selectedVideoId?: string | null;
   /** Resolved from the current queue list; null if not loaded or not in list. */
   selectedQueueVideo?: Video | null;
-  queueTab: QueueTab;
   queueStats: QueueStats;
   failedTranscriptVideos?: Video[];
   retryingTranscriptVideoId?: string | null;
@@ -191,7 +189,6 @@ export interface QueueContentPanelState {
 
 export interface QueueContentPanelActions {
   onBack: () => void;
-  onQueueTabChange: (value: QueueTab) => void;
   onSaveSyncDate: (value: string) => Promise<void> | void;
   onRetryTranscript?: (videoId: string) => Promise<void> | void;
   onClearSelectedVideo?: () => void;

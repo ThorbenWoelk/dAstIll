@@ -163,6 +163,8 @@
   const SELECTED_VIDEO_SCAN_PAGE_LIMIT = 8;
   const channelLastRefreshedAt = new Map<string, number>();
   let preferencesSaveTimer: ReturnType<typeof setTimeout> | null = null;
+  /** When false, skip PUT /api/preferences so a fast debounce cannot overwrite the server before GET preferences returns. */
+  let preferencesHydrated = $state(false);
 
   type CachedChannelVideoState = {
     videos: Video[];
@@ -964,6 +966,7 @@
     saveWorkspaceState(localStorage, snapshot);
     // Debounce-persist channel order + sort mode to the backend so it survives
     // across devices/browsers. 1 s delay avoids bursting on rapid reorders.
+    if (!preferencesHydrated) return;
     if (preferencesSaveTimer) clearTimeout(preferencesSaveTimer);
     preferencesSaveTimer = setTimeout(() => {
       void savePreferences({
@@ -1004,81 +1007,86 @@
       persistViewUrl();
     }, 0);
     void (async () => {
-      const selectedChannelIdAtMount = selectedChannelId;
-      const selectedVideoIdAtMount = selectedVideoId;
-      const acknowledgedAtMount = resolveAcknowledgedParam(acknowledgedFilter);
+      try {
+        const selectedChannelIdAtMount = selectedChannelId;
+        const selectedVideoIdAtMount = selectedVideoId;
+        const acknowledgedAtMount =
+          resolveAcknowledgedParam(acknowledgedFilter);
 
-      // Resolve initial state from server bootstrap (SSR) + IndexedDB warm-start.
-      // Fetch preferences in parallel so the API channel order is available before
-      // channels are rendered (VAL-CROSS-004).
-      const [bootstrapResult, apiPreferences] = await Promise.all([
-        resolveBootstrapOnMount({
-          serverBootstrap: $page.data.bootstrap ?? null,
-          selectedChannelId: selectedChannelIdAtMount,
-          viewSnapshotCacheKey: sidebarState.selectedChannelId
-            ? buildWorkspaceSnapshotCacheKey(
-                sidebarState.selectedChannelId,
-                sidebarState.videoTypeFilter,
-                acknowledgedAtMount,
-              )
-            : null,
-        }),
-        getPreferences().catch(() => null),
-      ]);
+        // Resolve initial state from server bootstrap (SSR) + IndexedDB warm-start.
+        // Fetch preferences in parallel so the API channel order is available before
+        // channels are rendered (VAL-CROSS-004).
+        const [bootstrapResult, apiPreferences] = await Promise.all([
+          resolveBootstrapOnMount({
+            serverBootstrap: $page.data.bootstrap ?? null,
+            selectedChannelId: selectedChannelIdAtMount,
+            viewSnapshotCacheKey: sidebarState.selectedChannelId
+              ? buildWorkspaceSnapshotCacheKey(
+                  sidebarState.selectedChannelId,
+                  sidebarState.videoTypeFilter,
+                  acknowledgedAtMount,
+                )
+              : null,
+          }),
+          getPreferences().catch(() => null),
+        ]);
 
-      // Apply API preferences — override localStorage channel order when the
-      // backend has a non-empty saved order (cross-device persistence).
-      if (apiPreferences) {
-        if (apiPreferences.channel_order.length > 0) {
-          sidebarState.setChannelOrder(apiPreferences.channel_order);
+        // Apply API preferences — override localStorage channel order when the
+        // backend has a non-empty saved order (cross-device persistence).
+        if (apiPreferences) {
+          if (apiPreferences.channel_order.length > 0) {
+            sidebarState.setChannelOrder(apiPreferences.channel_order);
+          }
+          sidebarState.setChannelSortMode(
+            apiPreferences.channel_sort_mode as ChannelSortMode,
+          );
         }
-        sidebarState.setChannelSortMode(
-          apiPreferences.channel_sort_mode as ChannelSortMode,
+
+        const hasInitialData = Boolean(
+          bootstrapResult.channels && bootstrapResult.channels.length > 0,
         );
-      }
 
-      const hasInitialData = Boolean(
-        bootstrapResult.channels && bootstrapResult.channels.length > 0,
-      );
+        if (bootstrapResult.channels && bootstrapResult.channels.length > 0) {
+          sidebarState.setChannels(
+            applySavedChannelOrder(
+              bootstrapResult.channels,
+              sidebarState.channelOrder,
+            ),
+          );
+          syncChannelOrderFromList();
+        }
 
-      if (bootstrapResult.channels && bootstrapResult.channels.length > 0) {
-        sidebarState.setChannels(
-          applySavedChannelOrder(
-            bootstrapResult.channels,
-            sidebarState.channelOrder,
-          ),
-        );
-        syncChannelOrderFromList();
-      }
+        if (bootstrapResult.aiAvailable !== null) {
+          aiAvailable = bootstrapResult.aiAvailable;
+        }
+        if (bootstrapResult.aiStatus !== null) {
+          aiStatus = bootstrapResult.aiStatus;
+        }
+        if (bootstrapResult.searchStatus !== null) {
+          searchStatus = bootstrapResult.searchStatus;
+        }
 
-      if (bootstrapResult.aiAvailable !== null) {
-        aiAvailable = bootstrapResult.aiAvailable;
-      }
-      if (bootstrapResult.aiStatus !== null) {
-        aiStatus = bootstrapResult.aiStatus;
-      }
-      if (bootstrapResult.searchStatus !== null) {
-        searchStatus = bootstrapResult.searchStatus;
-      }
+        if (
+          bootstrapResult.snapshot &&
+          selectedChannelIdAtMount &&
+          bootstrapResult.snapshot.channel_id === selectedChannelIdAtMount
+        ) {
+          await applyChannelSnapshot(
+            selectedChannelIdAtMount,
+            bootstrapResult.snapshot,
+            selectedVideoIdAtMount,
+            true,
+          );
+        }
 
-      if (
-        bootstrapResult.snapshot &&
-        selectedChannelIdAtMount &&
-        bootstrapResult.snapshot.channel_id === selectedChannelIdAtMount
-      ) {
-        await applyChannelSnapshot(
-          selectedChannelIdAtMount,
-          bootstrapResult.snapshot,
-          selectedVideoIdAtMount,
-          true,
-        );
+        // Background refresh via consolidated bootstrap endpoint (1 API call for
+        // channels + AI status + search status + snapshot — satisfies VAL-DATA-002).
+        void loadBootstrapRefresh({ silent: hasInitialData }).finally(() => {
+          viewUrlHydrated = true;
+        });
+      } finally {
+        preferencesHydrated = true;
       }
-
-      // Background refresh via consolidated bootstrap endpoint (1 API call for
-      // channels + AI status + search status + snapshot — satisfies VAL-DATA-002).
-      void loadBootstrapRefresh({ silent: hasInitialData }).finally(() => {
-        viewUrlHydrated = true;
-      });
     })();
 
     const restoredGuideStep = resolveGuideStepFromUrl(

@@ -10,10 +10,10 @@ export const load: PageServerLoad = async (event) => {
     return {
       bootstrap: null,
       channelPreviews: {},
-      channelPreviewsFilterKey: "all:all:transcripts",
+      channelPreviewsFilterKey: "all:all:unified",
     };
   }
   return loadWorkspaceBootstrapPageData(event, {
-    ssrQueueTabDefault: "transcripts",
+    ssrQueueUnified: true,
   });
 };

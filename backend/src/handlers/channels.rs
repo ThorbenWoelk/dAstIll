@@ -14,7 +14,7 @@ use crate::models::{AddChannelRequest, Channel, UpdateChannelRequest};
 use crate::read_cache::{ChannelSnapshotCacheKey, VideoListCacheKey, WorkspaceBootstrapCacheKey};
 use crate::state::AppState;
 
-use super::{map_db_err, map_internal_err, require_channel};
+use super::{map_db_err, require_channel};
 
 #[derive(Deserialize)]
 pub struct BackfillParams {
@@ -330,7 +330,7 @@ pub async fn refresh_channel_videos(
         .youtube
         .fetch_videos(&id)
         .await
-        .map_err(map_internal_err)?;
+        .map_err(map_db_err)?;
 
     let mut count = {
         db::bulk_insert_videos(&state.db, videos)
@@ -357,7 +357,7 @@ pub async fn refresh_channel_videos(
                     Some(until),
                 )
                 .await
-                .map_err(map_internal_err)?;
+                .map_err(map_db_err)?;
 
             let added = {
                 db::bulk_insert_videos(&state.db, backfill_videos)
@@ -414,7 +414,7 @@ pub async fn backfill_channel_videos(
         .youtube
         .fetch_videos_backfill_missing(&id, &known_video_ids, batch_limit, params.until)
         .await
-        .map_err(map_internal_err)?;
+        .map_err(map_db_err)?;
 
     let fetched_count = videos.len();
     let added_count = db::bulk_insert_videos(&state.db, videos)

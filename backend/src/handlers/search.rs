@@ -23,7 +23,7 @@ use crate::services::search::{
 };
 use crate::state::AppState;
 
-use super::{map_db_err, map_internal_err};
+use super::map_db_err;
 
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -225,7 +225,7 @@ pub async fn search(
         None => Vec::new(),
         Some(retrieval_mode) => {
             let Some(search_model) = search_model else {
-                return Err(map_internal_err("search embedding model is not configured"));
+                return Err(map_db_err("search embedding model is not configured"));
             };
             let embedding_started = Instant::now();
             let embedding = match state.search.embed_texts(&[query.to_string()]).await {

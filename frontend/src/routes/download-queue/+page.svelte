@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { browser } from "$app/environment";
   import { goto, replaceState as replacePageState } from "$app/navigation";
   import { page } from "$app/stores";
   import { onMount } from "svelte";
@@ -28,7 +29,6 @@
   } from "$lib/workspace-cache";
   import {
     applySavedChannelOrder,
-    buildQueueSnapshotOptions,
     loadWorkspaceState,
     resolveInitialChannelSelection,
     restoreWorkspaceSnapshot,
@@ -38,7 +38,6 @@
     AiStatus,
     Channel,
     ChannelSnapshot,
-    QueueTab,
     SearchResult,
     VideoTypeFilter,
     Video,
@@ -82,9 +81,20 @@
   import { createSidebarState } from "$lib/workspace/sidebar-state.svelte";
   import { mobileBottomBar } from "$lib/mobile-navigation/mobileBottomBar";
 
+  /** Transcript or summary still running for unified queue visibility. */
+  function videoPipelineInFlight(video: Video): boolean {
+    return (
+      video.transcript_status === "pending" ||
+      video.transcript_status === "loading" ||
+      (video.transcript_status === "ready" &&
+        (video.summary_status === "pending" ||
+          video.summary_status === "loading"))
+    );
+  }
+
   const sidebar = createSidebarState({
     limit: 20,
-    getViewCacheScopeKey: () => `queue:${queueTab}`,
+    getViewCacheScopeKey: () => "queue",
     onSelectVideo: openQueuedVideo,
     onChannelSelected: (_id) => {},
     onChannelDeselected: () => {},
@@ -160,7 +170,6 @@
       return getChannelSnapshot(channelId, {
         ...snapshotOptions,
         queueOnly: true,
-        queueTab,
       });
     },
     onRefreshChannel: async (channelId) => {
@@ -181,7 +190,7 @@
         videoTypeFilter,
         acknowledgedFilter,
         true,
-        queueTab,
+        undefined,
       );
     },
     onOpenChannelOverview: async (channelId: string) => {
@@ -199,11 +208,10 @@
     const acknowledged = resolveAcknowledgedParam(sidebar.acknowledgedFilter);
     const acknowledgedKey =
       acknowledged === undefined ? "all" : acknowledged ? "ack" : "unack";
-    return `queue:${channelId}:tab=${queueTab}:type=${sidebar.videoTypeFilter}:ack=${acknowledgedKey}:limit=${sidebar.limit}`;
+    return `queue:${channelId}:type=${sidebar.videoTypeFilter}:ack=${acknowledgedKey}:limit=${sidebar.limit}`;
   }
 
   let aiStatus = $state<AiStatus | null>(null);
-  let queueTab = $state<QueueTab>("transcripts");
   let errorMessage = $state<string | null>(null);
   let workspaceStateHydrated = $state(false);
   let viewUrlHydrated = $state(false);
@@ -213,12 +221,12 @@
   let earliestSyncDateInput = $state("");
   let savingSyncDate = $state(false);
   let retryingTranscriptVideoId = $state<string | null>(null);
+  /** Bumped after each silent list refresh so desktop per-channel queue lists reload. */
+  let queueVideoRefreshTick = $state(0);
 
   let aiIndicator = $derived(
     aiStatus ? resolveAiIndicatorPresentation(aiStatus) : null,
   );
-  let previousQueueTab = $state<QueueTab>("transcripts");
-
   const effectiveEarliestSyncDate = $derived(
     sidebar.selectedChannel?.earliest_sync_date_user_set
       ? sidebar.selectedChannel.earliest_sync_date
@@ -228,38 +236,67 @@
 
   const queueStats = $derived({
     total: sidebar.videos.length,
-    loading: sidebar.videos.filter((video) => {
-      if (queueTab === "transcripts") {
-        return video.transcript_status === "loading";
-      }
-      if (queueTab === "summaries") {
-        return video.summary_status === "loading";
-      }
-      return false;
-    }).length,
-    pending: sidebar.videos.filter((video) => {
-      if (queueTab === "transcripts") {
-        return video.transcript_status === "pending";
-      }
-      if (queueTab === "summaries") {
-        return video.summary_status === "pending";
-      }
-      return true;
-    }).length,
-    failed: sidebar.videos.filter((video) => {
-      if (queueTab === "transcripts") {
-        return video.transcript_status === "failed";
-      }
-      if (queueTab === "summaries") {
-        return video.summary_status === "failed";
-      }
-      return false;
-    }).length,
+    loading: sidebar.videos.filter(
+      (video) =>
+        video.transcript_status === "loading" ||
+        video.summary_status === "loading",
+    ).length,
+    pending: sidebar.videos.filter(
+      (video) =>
+        video.transcript_status === "pending" ||
+        (video.transcript_status === "ready" &&
+          video.summary_status === "pending"),
+    ).length,
+    failed: sidebar.videos.filter(
+      (video) =>
+        video.transcript_status === "failed" ||
+        video.summary_status === "failed",
+    ).length,
   });
 
   const failedTranscriptVideos = $derived(
     sidebar.videos.filter((video) => video.transcript_status === "failed"),
   );
+
+  const queueRefreshCadence = $derived.by(
+    (): "off" | "fast" | "slow" | "idle" => {
+      if (!browser) return "off";
+      if (!sidebar.selectedChannelId) return "off";
+      if (sidebar.loadingVideos) return "off";
+      const vids = sidebar.videos;
+      if (vids.some(videoPipelineInFlight)) return "fast";
+      if (vids.length > 0) return "slow";
+      return "idle";
+    },
+  );
+
+  const queueRefreshIntervalMs = $derived(
+    queueRefreshCadence === "fast"
+      ? 3000
+      : queueRefreshCadence === "slow"
+        ? 8000
+        : queueRefreshCadence === "idle"
+          ? 12000
+          : 0,
+  );
+
+  $effect(() => {
+    const ms = queueRefreshIntervalMs;
+    if (ms === 0) return;
+
+    const timer = window.setInterval(() => {
+      void (async () => {
+        await sidebar.loadVideos(true, true);
+        queueVideoRefreshTick += 1;
+        const sel = sidebar.selectedVideoId;
+        if (sel && !sidebar.videos.some((v) => v.id === sel)) {
+          sidebar.setSelectedVideoId(null);
+        }
+      })();
+    }, ms);
+
+    return () => window.clearInterval(timer);
+  });
 
   const galleryChannelPreviews = $derived.by(() => {
     const base = {
@@ -301,20 +338,6 @@
       : "";
   });
 
-  $effect(() => {
-    const currentTab = queueTab;
-    if (currentTab !== previousQueueTab) {
-      previousQueueTab = currentTab;
-      sidebar.setSelectedVideoId(null);
-      if (sidebar.selectedChannelId) {
-        sidebar.setVideos([]);
-        sidebar.setOffset(0);
-        sidebar.setHasMore(true);
-        void sidebar.refreshAndLoadVideos(sidebar.selectedChannelId);
-      }
-    }
-  });
-
   let previousQueueChannelId = $state<string | null>(null);
   $effect(() => {
     const id = sidebar.selectedChannelId;
@@ -353,7 +376,6 @@
     }
     const nextHref = buildQueueViewHref({
       selectedChannelId: sidebar.selectedChannelId,
-      queueTab,
       selectedVideoId: sidebar.selectedVideoId,
       videoTypeFilter: sidebar.videoTypeFilter,
       acknowledgedFilter: sidebar.acknowledgedFilter,
@@ -479,9 +501,6 @@
     if (restored.channelSortMode) {
       sidebar.setChannelSortMode(restored.channelSortMode);
     }
-    if (restored.queueTab) {
-      queueTab = restored.queueTab;
-    }
     if (typeof restored.selectedVideoId === "string") {
       sidebar.setSelectedVideoId(restored.selectedVideoId);
     }
@@ -497,7 +516,6 @@
     ) {
       sidebar.setAcknowledgedFilter(restored.acknowledgedFilter);
     }
-    previousQueueTab = queueTab;
   }
 
   async function saveEarliestSyncDate(value: string) {
@@ -608,7 +626,6 @@
     selectedChannelId: sidebar.selectedChannelId,
     selectedVideoId: sidebar.selectedVideoId,
     selectedQueueVideo,
-    queueTab,
     queueStats,
     failedTranscriptVideos,
     retryingTranscriptVideoId,
@@ -619,9 +636,6 @@
   });
   const queueContentPanelActions = {
     onBack: () => {},
-    onQueueTabChange: (value: QueueTab) => {
-      queueTab = value;
-    },
     onSaveSyncDate: saveEarliestSyncDate,
     onRetryTranscript: retryTranscriptDownload,
     onClearSelectedVideo: () => sidebar.setSelectedVideoId(null),
@@ -686,8 +700,9 @@
       addSourceErrorMessage={errorMessage}
       initialChannelPreviews={$page.data.channelPreviews ?? {}}
       initialChannelPreviewsFilterKey={$page.data.channelPreviewsFilterKey ??
-        `all:all:${queueTab}`}
-      channelSnapshotQueueTab={queueTab}
+        "all:all:unified"}
+      channelQueueSnapshotUnified={true}
+      {queueVideoRefreshTick}
       readOnly={true}
       shell={{
         collapsed: shellCollapsed,
@@ -714,7 +729,7 @@
           void queueSidebar.selectChannel(channelId);
         }}
         channelPreviews={galleryChannelPreviews}
-        {queueTab}
+        queueUnifiedSummary={true}
       />
       <div
         class="min-h-0 flex-1 overflow-hidden border-t border-[var(--border-soft)]/50"
@@ -724,8 +739,9 @@
           addSourceErrorMessage={errorMessage}
           initialChannelPreviews={$page.data.channelPreviews ?? {}}
           initialChannelPreviewsFilterKey={$page.data
-            .channelPreviewsFilterKey ?? `all:all:${queueTab}`}
-          channelSnapshotQueueTab={queueTab}
+            .channelPreviewsFilterKey ?? "all:all:unified"}
+          channelQueueSnapshotUnified={true}
+          {queueVideoRefreshTick}
           readOnly={true}
           shell={{
             collapsed: false,

@@ -100,7 +100,7 @@ fn cached_video_info_needs_refresh(info: &VideoInfo) -> bool {
     })
 }
 use super::query::VideoListParams;
-use super::{evict_video_scope_cache, map_db_err, require_channel, require_video};
+use super::{evict_video_scope_cache, map_db_err, require_channel, require_present, require_video};
 
 #[derive(Debug, serde::Deserialize)]
 pub struct VideoInfoBackfillParams {
@@ -240,7 +240,7 @@ pub async fn get_video_info(
             .map_err(map_db_err)?
     };
 
-    let mut cached = cached.ok_or((StatusCode::NOT_FOUND, "Video info not found".to_string()))?;
+    let mut cached = require_present(cached, "Video info not found")?;
     enrich_video_info(&mut cached, &video);
     Ok(Json(cached))
 }

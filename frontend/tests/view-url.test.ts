@@ -94,14 +94,13 @@ describe("mergeWorkspaceViewState", () => {
 });
 
 describe("parseQueueViewUrlState", () => {
-  it("restores the selected queue channel and tab from query params", () => {
+  it("restores the selected queue channel from query params", () => {
     const url = new URL(
       "https://example.com/download-queue?channel=abc&queue=summaries",
     );
 
     expect(parseQueueViewUrlState(url)).toEqual({
       selectedChannelId: "abc",
-      queueTab: "summaries",
     });
   });
 
@@ -112,7 +111,6 @@ describe("parseQueueViewUrlState", () => {
 
     expect(parseQueueViewUrlState(url)).toEqual({
       selectedChannelId: "abc",
-      queueTab: "evaluations",
       selectedVideoId: "vid-9",
       videoTypeFilter: "short",
       acknowledgedFilter: "ack",
@@ -133,26 +131,22 @@ describe("buildQueueViewHref", () => {
     expect(
       buildQueueViewHref({
         selectedChannelId: "abc",
-        queueTab: "evaluations",
         selectedVideoId: null,
         videoTypeFilter: "all",
         acknowledgedFilter: "all",
       }),
-    ).toBe("/download-queue?channel=abc&queue=evaluations&type=all&ack=all");
+    ).toBe("/download-queue?channel=abc&type=all&ack=all");
   });
 
   it("includes optional video and non-default filters", () => {
     expect(
       buildQueueViewHref({
         selectedChannelId: "abc",
-        queueTab: "transcripts",
         selectedVideoId: "vid-1",
         videoTypeFilter: "long",
         acknowledgedFilter: "unack",
       }),
-    ).toBe(
-      "/download-queue?channel=abc&queue=transcripts&video=vid-1&type=long&ack=unack",
-    );
+    ).toBe("/download-queue?channel=abc&video=vid-1&type=long&ack=unack");
   });
 });
 
@@ -167,14 +161,12 @@ describe("mergeQueueViewState", () => {
         },
         {
           selectedChannelId: "url-channel",
-          queueTab: "summaries",
         },
       ),
     ).toEqual({
       selectedChannelId: "url-channel",
       channelOrder: ["saved-channel"],
       channelSortMode: "alpha",
-      queueTab: "summaries",
     });
   });
 });

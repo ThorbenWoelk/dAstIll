@@ -16,18 +16,31 @@ use crate::{
     state::AppState,
 };
 
-pub(crate) fn map_db_err(err: crate::db::StoreError) -> (axum::http::StatusCode, String) {
+pub(crate) fn map_db_err(err: impl std::fmt::Display) -> (axum::http::StatusCode, String) {
     (
         axum::http::StatusCode::INTERNAL_SERVER_ERROR,
         err.to_string(),
     )
 }
 
-pub(crate) fn map_internal_err(err: impl std::fmt::Display) -> (axum::http::StatusCode, String) {
-    (
-        axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-        err.to_string(),
-    )
+/// Returns `NOT_FOUND` if `opt` is `None`, otherwise unwraps it.
+pub(crate) fn require_present<T>(
+    opt: Option<T>,
+    msg: &str,
+) -> Result<T, (StatusCode, String)> {
+    opt.ok_or_else(|| (StatusCode::NOT_FOUND, msg.to_string()))
+}
+
+/// Trims `text` and returns an error with `error_msg` if the result is empty.
+pub(crate) fn validate_nonempty<'a>(
+    text: &'a str,
+    error_msg: &str,
+) -> Result<&'a str, (StatusCode, String)> {
+    let text = text.trim();
+    if text.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, error_msg.to_string()));
+    }
+    Ok(text)
 }
 
 pub(crate) async fn require_channel(

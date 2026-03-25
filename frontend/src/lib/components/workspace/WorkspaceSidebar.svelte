@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { browser } from "$app/environment";
   import { tick } from "svelte";
   import { slide } from "svelte/transition";
   import {
@@ -134,6 +135,15 @@
     /** When set (download queue), snapshot and list APIs use queue_tab so in-progress work appears. */
     channelSnapshotQueueTab = undefined as QueueTab | undefined,
     /**
+     * When true (download queue, unified pipeline view), snapshot/list use
+     * `queue_only` without `queue_tab` (any incomplete transcript or summary).
+     */
+    channelQueueSnapshotUnified = false,
+    /**
+     * When bumped (download queue), forces reload of expanded per-channel queue lists.
+     */
+    queueVideoRefreshTick = 0,
+    /**
      * When `videoListMode` is `per_channel_preview`, the visible list lives in
      * `channelVideoCollections`, not `videoState.videos`. Parent bumps `seq` after
      * acknowledge toggles so this component can merge the server (or optimistic)
@@ -169,6 +179,8 @@
      */
     initialChannelPreviewsFilterKey?: string;
     channelSnapshotQueueTab?: QueueTab;
+    channelQueueSnapshotUnified?: boolean;
+    queueVideoRefreshTick?: number;
     videoAcknowledgeSync?: {
       seq: number;
       video: Video;
@@ -339,7 +351,11 @@
   }
 
   function getChannelVideoCollectionFilterKey() {
-    const queueSegment = channelSnapshotQueueTab ?? "default";
+    const queueSegment = channelSnapshotQueueTab
+      ? channelSnapshotQueueTab
+      : channelQueueSnapshotUnified
+        ? "unified"
+        : "default";
     return `${videoTypeFilter}:${acknowledgedFilter}:${queueSegment}`;
   }
 
@@ -432,6 +448,8 @@
     const acknowledged = resolveAcknowledgedParam(acknowledgedFilter);
     const initialLimit =
       mode === "all" ? FULL_FETCH_BATCH : PREVIEW_FETCH_LIMIT;
+    const queueOnly =
+      Boolean(channelSnapshotQueueTab) || channelQueueSnapshotUnified;
 
     try {
       const snapshot = await getChannelSnapshot(channel.id, {
@@ -439,7 +457,7 @@
         offset: 0,
         videoType: videoTypeFilter,
         acknowledged,
-        queueOnly: channelSnapshotQueueTab ? true : undefined,
+        queueOnly: queueOnly ? true : undefined,
         queueTab: channelSnapshotQueueTab,
         bypassCache: force,
       });
@@ -457,7 +475,7 @@
             nextOffset,
             videoTypeFilter,
             acknowledged,
-            Boolean(channelSnapshotQueueTab),
+            queueOnly,
             channelSnapshotQueueTab,
             force,
           );
@@ -496,6 +514,20 @@
       current.requestKey = null;
     }
   }
+
+  $effect(() => {
+    if (!browser || !channelQueueSnapshotUnified) return;
+    const refreshTick = queueVideoRefreshTick;
+    if (refreshTick === 0) return;
+    if (videoListMode !== "per_channel_preview") return;
+
+    for (const channel of channels) {
+      const state = channelVideoCollections[channel.id];
+      if (!state?.expanded) continue;
+      const mode = state.loadedMode === "preview" ? "preview" : "all";
+      void loadChannelVideoCollection(channel, mode, { force: true });
+    }
+  });
 
   async function toggleChannelVideoCollection(channel: Channel) {
     const state = ensureChannelVideoCollection(channel.id);

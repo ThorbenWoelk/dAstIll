@@ -1,6 +1,6 @@
 <script lang="ts">
   import defaultChannelIcon from "$lib/assets/channel-default.svg";
-  import type { Channel, ChannelSnapshot, QueueTab } from "$lib/types";
+  import type { Channel, ChannelSnapshot } from "$lib/types";
   import { queueStageCardSummary } from "$lib/workspace/queue-stage-card-summary";
 
   import { tick } from "svelte";
@@ -12,9 +12,9 @@
     onAddChannel,
     addingChannel = false,
     addSourceErrorMessage = null as string | null,
-    /** When set with `queueTab`, cards show per-stage queue counts from each snapshot. */
+    /** When set with `queueUnifiedSummary`, cards show pipeline queue counts from each snapshot. */
     channelPreviews = undefined as Record<string, ChannelSnapshot> | undefined,
-    queueTab = undefined as QueueTab | undefined,
+    queueUnifiedSummary = false,
   }: {
     channels: Channel[];
     selectedChannelId: string | null;
@@ -24,7 +24,7 @@
     addingChannel?: boolean;
     addSourceErrorMessage?: string | null;
     channelPreviews?: Record<string, ChannelSnapshot>;
-    queueTab?: QueueTab;
+    queueUnifiedSummary?: boolean;
   } = $props();
 
   let addFormOpen = $state(false);
@@ -160,8 +160,8 @@
         {@const thumbFetchPriority = active || index < 4 ? "high" : "auto"}
         {@const preview = channelPreviews?.[channel.id]}
         {@const queueLine =
-          queueTab && preview
-            ? queueStageCardSummary(preview.videos, queueTab)
+          queueUnifiedSummary && preview
+            ? queueStageCardSummary(preview.videos, "unified")
             : null}
         <button
           use:registerCard={channel.id}

@@ -15,7 +15,6 @@ import {
   shouldRefreshChannel,
   updateChannelDragOver,
 } from "../src/lib/channel-workspace";
-import type { QueueTab } from "../src/lib/types";
 import type { Channel } from "../src/lib/types";
 
 function channel(id: string): Channel {
@@ -229,14 +228,10 @@ describe("channel refresh helpers", () => {
 });
 
 describe("buildQueueSnapshotOptions", () => {
-  it.each(["transcripts", "summaries", "evaluations"] satisfies QueueTab[])(
-    "preserves the active %s tab in queue snapshot requests",
-    (queueTab) => {
-      expect(buildQueueSnapshotOptions(queueTab, 20, 5)).toEqual({
-        limit: 20,
-        offset: 5,
-        queueTab,
-      });
-    },
-  );
+  it("returns limit and offset for queue snapshot requests", () => {
+    expect(buildQueueSnapshotOptions(20, 5)).toEqual({
+      limit: 20,
+      offset: 5,
+    });
+  });
 });

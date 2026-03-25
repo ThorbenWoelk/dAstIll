@@ -454,10 +454,6 @@
       return;
     }
 
-    if (isEditableShortcutTarget(event.target)) {
-      return;
-    }
-
     if (event.metaKey && !event.ctrlKey && !event.altKey && event.key === "k") {
       event.preventDefault();
       void focusSearchBar("search");
@@ -473,6 +469,11 @@
     ) {
       event.preventDefault();
       void toggleSubmitMode();
+      return;
+    }
+
+    // For all other shortcuts: do not interfere while the user is typing.
+    if (isEditableShortcutTarget(event.target)) {
       return;
     }
   }

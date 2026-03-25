@@ -11,7 +11,7 @@ use crate::{
     state::AppState,
 };
 
-use super::{map_db_err, require_video};
+use super::{map_db_err, require_video, validate_nonempty};
 
 pub async fn create_highlight(
     State(state): State<AppState>,
@@ -19,7 +19,7 @@ pub async fn create_highlight(
     Json(payload): Json<CreateHighlightRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     require_video(&state, &video_id).await?;
-    let highlight_text = validate_highlight_text(&payload.text)?;
+    let highlight_text = validate_nonempty(&payload.text, "Highlight text cannot be empty")?;
 
     let highlight = db::create_highlight(
         &state.db,
@@ -68,18 +68,6 @@ pub async fn delete_highlight(
     Ok(status)
 }
 
-fn validate_highlight_text(text: &str) -> Result<&str, (StatusCode, String)> {
-    let text = text.trim();
-    if text.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "Highlight text cannot be empty".to_string(),
-        ));
-    }
-
-    Ok(text)
-}
-
 fn resolve_delete_highlight_result(deleted: bool) -> Result<StatusCode, (StatusCode, String)> {
     if deleted {
         Ok(StatusCode::NO_CONTENT)
@@ -92,16 +80,7 @@ fn resolve_delete_highlight_result(deleted: bool) -> Result<StatusCode, (StatusC
 mod tests {
     use axum::http::StatusCode;
 
-    use super::{resolve_delete_highlight_result, validate_highlight_text};
-
-    #[test]
-    fn validate_highlight_text_trims_and_rejects_blank_values() {
-        assert_eq!(
-            validate_highlight_text("  key point  ").unwrap(),
-            "key point"
-        );
-        assert!(validate_highlight_text("   ").is_err());
-    }
+    use super::resolve_delete_highlight_result;
 
     #[test]
     fn delete_highlight_result_maps_missing_rows_to_not_found() {

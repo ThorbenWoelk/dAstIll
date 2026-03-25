@@ -1,4 +1,4 @@
-import type { Channel, QueueTab } from "./types";
+import type { Channel } from "./types";
 import {
   isAcknowledgedFilter,
   isWorkspaceContentMode,
@@ -307,14 +307,9 @@ export function markChannelRefreshed(
   refreshedAtByChannel.set(channelId, now);
 }
 
-export function buildQueueSnapshotOptions(
-  queueTab: QueueTab,
-  limit: number,
-  offset = 0,
-) {
+export function buildQueueSnapshotOptions(limit: number, offset = 0) {
   return {
     limit,
     offset,
-    queueTab,
   };
 }

@@ -21,7 +21,7 @@ use crate::{
     state::AppState,
 };
 
-use super::map_db_err;
+use super::{map_db_err, require_present, validate_nonempty};
 
 pub async fn chat_client_config(State(state): State<AppState>) -> impl IntoResponse {
     Json(state.chat.chat_client_config())
@@ -56,8 +56,8 @@ pub async fn get_conversation(
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let conversation = db::get_conversation(&state.db, &conversation_id)
         .await
-        .map_err(map_db_err)?
-        .ok_or((StatusCode::NOT_FOUND, "Conversation not found".to_string()))?;
+        .map_err(map_db_err)
+        .and_then(|opt| require_present(opt, "Conversation not found"))?;
     Ok(Json(conversation))
 }
 
@@ -66,7 +66,7 @@ pub async fn update_conversation(
     Path(conversation_id): Path<String>,
     Json(payload): Json<UpdateConversationRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let title = validate_conversation_title(&payload.title)?;
+    let title = validate_nonempty(&payload.title, "Conversation title must not be empty")?;
 
     let _lock = state.chat_store_lock.lock().await;
     let Some(mut conversation) = db::get_conversation(&state.db, &conversation_id)
@@ -263,18 +263,6 @@ fn mark_manual_title_on_create(conversation: &mut ChatConversation) {
     }
 }
 
-fn validate_conversation_title(title: &str) -> Result<&str, (StatusCode, String)> {
-    let title = title.trim();
-    if title.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "Conversation title must not be empty".to_string(),
-        ));
-    }
-
-    Ok(title)
-}
-
 fn apply_manual_conversation_title(
     conversation: &mut ChatConversation,
     title: &str,
@@ -291,8 +279,9 @@ mod tests {
 
     use super::{
         apply_manual_conversation_title, apply_user_message_to_conversation,
-        mark_manual_title_on_create, validate_conversation_title,
+        mark_manual_title_on_create,
     };
+    use crate::handlers::validate_nonempty;
     use crate::models::{
         ChatConversation, ChatMessage, ChatMessageStatus, ChatRole, ChatTitleStatus,
     };
@@ -403,12 +392,12 @@ mod tests {
     }
 
     #[test]
-    fn validate_conversation_title_trims_and_rejects_blank_values() {
+    fn validate_nonempty_trims_and_rejects_blank_values() {
         assert_eq!(
-            validate_conversation_title("  Useful title  ").unwrap(),
+            validate_nonempty("  Useful title  ", "must not be empty").unwrap(),
             "Useful title"
         );
-        assert!(validate_conversation_title("   ").is_err());
+        assert!(validate_nonempty("   ", "must not be empty").is_err());
     }
 
     #[test]

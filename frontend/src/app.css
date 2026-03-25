@@ -279,6 +279,13 @@
 @import "tailwindcss";
 @plugin '@tailwindcss/typography';
 
+@utility focus-ring {
+  &:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+}
+
 /* ── Color schemes: light (unlayered to beat Tailwind layers) ── */
 :root[data-color="ember"] {
   --accent: #d33c2a;

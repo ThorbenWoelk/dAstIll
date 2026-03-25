@@ -58,6 +58,13 @@ pub enum SummarizerError {
     },
 }
 
+impl SummarizerError {
+    pub fn is_rate_limited(&self) -> bool {
+        let msg = self.to_string();
+        msg.contains("rate limited") || msg.contains("429")
+    }
+}
+
 pub struct SummarizerService {
     core: OllamaCore,
 }

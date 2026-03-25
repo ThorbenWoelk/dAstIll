@@ -1,5 +1,5 @@
 import type { WorkspaceStateSnapshot } from "./channel-workspace";
-import type { QueueTab, VideoTypeFilter } from "./types";
+import type { VideoTypeFilter } from "./types";
 import type { AcknowledgedFilter } from "./workspace/types";
 import {
   isAcknowledgedFilter,
@@ -24,7 +24,6 @@ export type WorkspaceViewHrefParams = WorkspaceViewState & {
 
 export type QueueViewState = {
   selectedChannelId: string | null;
-  queueTab: QueueTab;
   selectedVideoId?: string | null;
   videoTypeFilter?: VideoTypeFilter;
   acknowledgedFilter?: AcknowledgedFilter;
@@ -32,12 +31,6 @@ export type QueueViewState = {
 
 /** Params for building a queue URL (defaults match sidebar defaults). */
 export type QueueViewHrefParams = QueueViewState;
-
-const QUEUE_TABS = new Set<QueueTab>([
-  "transcripts",
-  "summaries",
-  "evaluations",
-]);
 
 function parseNonEmptyParam(url: URL, key: string) {
   const value = url.searchParams.get(key)?.trim();
@@ -107,16 +100,12 @@ export function mergeWorkspaceViewState(
 export function parseQueueViewUrlState(url: URL): Partial<QueueViewState> {
   const restored: Partial<QueueViewState> = {};
   const selectedChannelId = parseNonEmptyParam(url, "channel");
-  const queueTab = parseNonEmptyParam(url, "queue");
   const selectedVideoId = parseNonEmptyParam(url, "video");
   const videoTypeFilter = parseNonEmptyParam(url, "type");
   const acknowledgedFilter = parseNonEmptyParam(url, "ack");
 
   if (selectedChannelId) {
     restored.selectedChannelId = selectedChannelId;
-  }
-  if (queueTab && QUEUE_TABS.has(queueTab as QueueTab)) {
-    restored.queueTab = queueTab as QueueTab;
   }
   if (selectedVideoId) {
     restored.selectedVideoId = selectedVideoId;
@@ -136,7 +125,6 @@ export function buildQueueViewHref(state: QueueViewHrefParams) {
   if (state.selectedChannelId) {
     params.set("channel", state.selectedChannelId);
   }
-  params.set("queue", state.queueTab);
   if (state.selectedVideoId) {
     params.set("video", state.selectedVideoId);
   }

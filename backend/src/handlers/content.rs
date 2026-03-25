@@ -15,7 +15,7 @@ use crate::services::summarizer::{MAX_TRANSCRIPT_FORMAT_ATTEMPTS, SummarizerErro
 use crate::services::youtube::placeholder::is_site_wide_placeholder_description;
 use crate::state::AppState;
 
-use super::{evict_video_scope_cache, map_db_err, require_video};
+use super::{evict_video_scope_cache, map_db_err, require_present, require_video};
 
 pub(crate) const MIN_SUMMARY_QUALITY_SCORE_FOR_ACCEPTANCE: u8 = 7;
 pub(crate) const MAX_SUMMARY_AUTO_REGEN_ATTEMPTS: u8 = 2;
@@ -42,8 +42,8 @@ pub async fn get_transcript(
     require_video(&state, &video_id).await?;
     let transcript = db::get_transcript(&state.db, &video_id)
         .await
-        .map_err(map_db_err)?
-        .ok_or((StatusCode::NOT_FOUND, "Transcript not found".to_string()))?;
+        .map_err(map_db_err)
+        .and_then(|opt| require_present(opt, "Transcript not found"))?;
     Ok(Json(transcript))
 }
 
@@ -162,8 +162,8 @@ pub async fn get_summary(
     require_video(&state, &video_id).await?;
     let summary = db::get_summary(&state.db, &video_id)
         .await
-        .map_err(map_db_err)?
-        .ok_or((StatusCode::NOT_FOUND, "Summary not found".to_string()))?;
+        .map_err(map_db_err)
+        .and_then(|opt| require_present(opt, "Summary not found"))?;
     Ok(Json(summary))
 }
 
@@ -385,18 +385,12 @@ async fn ensure_summary_internal(
             }
         }
 
-        db::update_video_summary_status(&state.db, video_id, ContentStatus::Loading)
-            .await
-            .map_err(map_db_err)?;
-        evict_video_scope_cache_by_video_id(state, video_id).await;
+        set_summary_status_and_evict(state, video_id, ContentStatus::Loading).await?;
         tracing::info!(video_id = %video_id, "summary queued - status set to loading");
     }
 
     if !state.summarizer.is_available().await {
-        db::update_video_summary_status(&state.db, video_id, ContentStatus::Failed)
-            .await
-            .map_err(map_db_err)?;
-        evict_video_scope_cache_by_video_id(state, video_id).await;
+        set_summary_status_and_evict(state, video_id, ContentStatus::Failed).await?;
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
             "Ollama not available".to_string(),
@@ -406,15 +400,12 @@ async fn ensure_summary_internal(
     let transcript = match ensure_transcript(state, video_id).await {
         Ok(t) => t,
         Err((status, message)) => {
-            let next_status = if status == StatusCode::TOO_MANY_REQUESTS {
+            let content_status = if status == StatusCode::TOO_MANY_REQUESTS {
                 ContentStatus::Pending
             } else {
                 ContentStatus::Failed
             };
-            db::update_video_summary_status(&state.db, video_id, next_status)
-                .await
-                .map_err(map_db_err)?;
-            evict_video_scope_cache_by_video_id(state, video_id).await;
+            set_summary_status_and_evict(state, video_id, content_status).await?;
             return Err((status, message));
         }
     };
@@ -424,10 +415,7 @@ async fn ensure_summary_internal(
         .to_string();
 
     if transcript_text.is_empty() {
-        db::update_video_summary_status(&state.db, video_id, ContentStatus::Failed)
-            .await
-            .map_err(map_db_err)?;
-        evict_video_scope_cache_by_video_id(state, video_id).await;
+        set_summary_status_and_evict(state, video_id, ContentStatus::Failed).await?;
         return Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             "Transcript content missing".to_string(),
@@ -441,24 +429,9 @@ async fn ensure_summary_internal(
     let (content, model) = match summarize_result {
         Ok(pair) => pair,
         Err(e) => {
-            let error_msg = e.to_string();
-            let status = if error_msg.contains("rate limited") || error_msg.contains("429") {
-                StatusCode::TOO_MANY_REQUESTS
-            } else {
-                StatusCode::INTERNAL_SERVER_ERROR
-            };
-
-            let next_status = if status == StatusCode::TOO_MANY_REQUESTS {
-                ContentStatus::Pending
-            } else {
-                ContentStatus::Failed
-            };
-
-            db::update_video_summary_status(&state.db, video_id, next_status)
-                .await
-                .map_err(map_db_err)?;
-            evict_video_scope_cache_by_video_id(state, video_id).await;
-            return Err((status, error_msg));
+            let (http_status, content_status) = summarizer_error_statuses(&e);
+            set_summary_status_and_evict(state, video_id, content_status).await?;
+            return Err((http_status, e.to_string()));
         }
     };
     tracing::info!(video_id = %video_id, "summary generation completed");
@@ -616,6 +589,28 @@ async fn apply_transcript_error(
     }
 
     (status, err.to_string())
+}
+
+/// Updates the summary status and immediately evicts the cache for that video's scope.
+async fn set_summary_status_and_evict(
+    state: &AppState,
+    video_id: &str,
+    status: ContentStatus,
+) -> Result<(), (StatusCode, String)> {
+    db::update_video_summary_status(&state.db, video_id, status)
+        .await
+        .map_err(map_db_err)?;
+    evict_video_scope_cache_by_video_id(state, video_id).await;
+    Ok(())
+}
+
+/// Maps a summarizer error to the HTTP status and content status to persist.
+fn summarizer_error_statuses(e: &SummarizerError) -> (StatusCode, ContentStatus) {
+    if e.is_rate_limited() {
+        (StatusCode::TOO_MANY_REQUESTS, ContentStatus::Pending)
+    } else {
+        (StatusCode::INTERNAL_SERVER_ERROR, ContentStatus::Failed)
+    }
 }
 
 async fn evict_video_scope_cache_by_video_id(state: &AppState, video_id: &str) {

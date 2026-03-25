@@ -25,6 +25,7 @@
     WORKSPACE_CONTENT_MODE_ORDER,
   } from "$lib/workspace/navigation";
   import ChevronIcon from "$lib/components/icons/ChevronIcon.svelte";
+  import LoadingSkeleton from "$lib/components/LoadingSkeleton.svelte";
   import WorkspaceHighlightsPanel from "$lib/components/workspace/WorkspaceHighlightsPanel.svelte";
   import WorkspaceSummaryMeta from "$lib/components/workspace/WorkspaceSummaryMeta.svelte";
   import WorkspaceVideoInfoPanel from "$lib/components/workspace/WorkspaceVideoInfoPanel.svelte";
@@ -590,33 +591,15 @@
           {/if}
         </div>
       {:else}
-        <div
-          class="mt-4 space-y-8 animate-pulse"
-          role="status"
-          aria-live="polite"
-        >
-          <div
-            class="h-10 w-3/5 rounded-[var(--radius-sm)] bg-[var(--muted)]/60"
-          ></div>
-          <div class="space-y-4 pt-4">
-            <div class="h-4 w-full rounded-full bg-[var(--muted)]/50"></div>
-            <div class="h-4 w-11/12 rounded-full bg-[var(--muted)]/50"></div>
-            <div class="h-4 w-10/12 rounded-full bg-[var(--muted)]/50"></div>
-            <div class="h-4 w-full rounded-full bg-[var(--muted)]/50"></div>
-            <div class="h-4 w-3/4 rounded-full bg-[var(--muted)]/50"></div>
-          </div>
-          <p
-            class="pt-10 text-center text-[10px] font-bold uppercase tracking-[0.4em] text-[var(--accent)]"
-          >
-            {contentMode === "summary"
-              ? contentStatus === "pending"
-                ? "Summary queued and being generated..."
-                : "Summary is loading..."
-              : contentStatus === "pending"
-                ? `Queued for ${contentMode}...`
-                : `Loading ${contentMode}...`}
-          </p>
-        </div>
+        <LoadingSkeleton
+          message={contentMode === "summary"
+            ? contentStatus === "pending"
+              ? "Summary queued and being generated..."
+              : "Summary is loading..."
+            : contentStatus === "pending"
+              ? `Queued for ${contentMode}...`
+              : `Loading ${contentMode}...`}
+        />
       {/if}
     {:else if contentMode === "highlights"}
       <WorkspaceHighlightsPanel
@@ -660,31 +643,12 @@
       </div>
     {:else if contentMode === "summary" && selectedVideo && (selectedVideo.summary_status !== "ready" || summaryBodyRetrying) && !contentText.trim()}
       {#if selectedVideo.summary_status === "pending" || selectedVideo.summary_status === "loading" || summaryBodyRetrying}
-        <div
-          class="mt-4 space-y-8 animate-pulse"
-          role="status"
-          aria-live="polite"
-        >
-          <div
-            class="h-10 w-3/5 rounded-[var(--radius-sm)] bg-[var(--muted)]/60"
-          ></div>
-          <div class="space-y-4 pt-4">
-            <div class="h-4 w-full rounded-full bg-[var(--muted)]/50"></div>
-            <div class="h-4 w-11/12 rounded-full bg-[var(--muted)]/50"></div>
-            <div class="h-4 w-10/12 rounded-full bg-[var(--muted)]/50"></div>
-            <div class="h-4 w-full rounded-full bg-[var(--muted)]/50"></div>
-            <div class="h-4 w-3/4 rounded-full bg-[var(--muted)]/50"></div>
-          </div>
-          <p
-            class="pt-10 text-center text-[10px] font-bold uppercase tracking-[0.4em] text-[var(--accent)]"
-          >
-            {summaryBodyRetrying
-              ? "Summary is loading..."
-              : selectedVideo.summary_status === "pending"
-                ? "Summary queued and being generated..."
-                : "Summary is loading..."}
-          </p>
-        </div>
+        <LoadingSkeleton
+          message={summaryBodyRetrying ||
+          selectedVideo.summary_status === "loading"
+            ? "Summary is loading..."
+            : "Summary queued and being generated..."}
+        />
       {:else}
         <div
           class="flex h-full flex-col items-center justify-center py-20 text-center"
