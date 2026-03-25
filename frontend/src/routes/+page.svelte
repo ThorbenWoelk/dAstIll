@@ -2485,29 +2485,41 @@
 
   async function toggleAcknowledge() {
     if (!sidebarState.selectedVideoId) return;
-    const video = sidebarState.videos.find(
-      (v) => v.id === sidebarState.selectedVideoId,
+    const targetVideoId = sidebarState.selectedVideoId;
+    const videoFromList = sidebarState.videos.find(
+      (v) => v.id === targetVideoId,
     );
+    const video =
+      videoFromList ??
+      (pendingSelectedVideo?.id === targetVideoId
+        ? pendingSelectedVideo
+        : null);
     if (!video) return;
 
     errorMessage = null;
 
     const previousVideos = [...sidebarState.videos];
+    const previousPendingSelectedVideo = pendingSelectedVideo;
     const previousSelectedVideoId = sidebarState.selectedVideoId;
     const newAcknowledged = !video.acknowledged;
-    const targetVideoId = sidebarState.selectedVideoId;
 
     // Invalidate in-flight snapshot applies so they cannot overwrite this toggle.
     sidebarState.bumpVideoListMutationEpoch();
 
     // Optimistic update — flip state immediately, no loading indicator
     const optimisticVideo = { ...video, acknowledged: newAcknowledged };
-    const optimisticList = applyOptimisticAcknowledge(
-      sidebarState.videos,
-      targetVideoId,
-      newAcknowledged,
-    ).filter(matchesAcknowledgedFilter);
-    sidebarState.setVideos(optimisticList);
+    const optimisticList = videoFromList
+      ? applyOptimisticAcknowledge(
+          sidebarState.videos,
+          targetVideoId,
+          newAcknowledged,
+        ).filter(matchesAcknowledgedFilter)
+      : previousVideos;
+    if (videoFromList) {
+      sidebarState.setVideos(optimisticList);
+    } else {
+      pendingSelectedVideo = optimisticVideo;
+    }
     videoAcknowledgeSeq += 1;
     videoAcknowledgeSync = {
       seq: videoAcknowledgeSeq,
@@ -2515,28 +2527,42 @@
       confirmed: false,
     };
 
-    if (
+    const selectionDroppedFromFilter = Boolean(
       previousSelectedVideoId &&
-      !optimisticList.some((v) => v.id === previousSelectedVideoId)
-    ) {
+      (videoFromList
+        ? !optimisticList.some((v) => v.id === previousSelectedVideoId)
+        : !matchesAcknowledgedFilter(optimisticVideo)),
+    );
+    if (selectionDroppedFromFilter) {
       editing = false;
       clearFormattingFeedbackState();
-      if (optimisticList.length === 0) {
+      if (videoFromList) {
+        if (optimisticList.length === 0) {
+          sidebarState.setSelectedVideoId(null);
+          contentText = "";
+          draft = "";
+        } else {
+          await selectVideo(optimisticList[0].id);
+        }
+      } else {
         sidebarState.setSelectedVideoId(null);
+        pendingSelectedVideo = null;
         contentText = "";
         draft = "";
-      } else {
-        await selectVideo(optimisticList[0].id);
       }
     }
 
     try {
       const updated = await updateAcknowledged(targetVideoId, newAcknowledged);
-      sidebarState.setVideos(
-        sidebarState.videos
-          .map((v) => (v.id === updated.id ? updated : v))
-          .filter(matchesAcknowledgedFilter),
-      );
+      if (videoFromList) {
+        sidebarState.setVideos(
+          sidebarState.videos
+            .map((v) => (v.id === updated.id ? updated : v))
+            .filter(matchesAcknowledgedFilter),
+        );
+      } else if (!selectionDroppedFromFilter) {
+        pendingSelectedVideo = updated;
+      }
       if (selectedChannelId) {
         track({
           event: "video_acknowledged_changed",
@@ -2553,9 +2579,12 @@
         confirmed: true,
       };
 
-      const stillSelected = sidebarState.videos.some(
-        (v) => v.id === sidebarState.selectedVideoId,
-      );
+      const stillSelected =
+        sidebarState.selectedVideoId != null &&
+        (sidebarState.videos.some(
+          (v) => v.id === sidebarState.selectedVideoId,
+        ) ||
+          pendingSelectedVideo?.id === sidebarState.selectedVideoId);
       if (!stillSelected) {
         editing = false;
         clearFormattingFeedbackState();
@@ -2568,10 +2597,14 @@
         }
       }
     } catch (error) {
-      // Revert optimistic update on failure
       sidebarState.setVideos(previousVideos);
       sidebarState.setSelectedVideoId(previousSelectedVideoId);
-      const reverted = previousVideos.find((v) => v.id === targetVideoId);
+      pendingSelectedVideo = previousPendingSelectedVideo;
+      const reverted =
+        previousVideos.find((v) => v.id === targetVideoId) ??
+        (previousPendingSelectedVideo?.id === targetVideoId
+          ? previousPendingSelectedVideo
+          : null);
       if (reverted) {
         videoAcknowledgeSeq += 1;
         videoAcknowledgeSync = {
