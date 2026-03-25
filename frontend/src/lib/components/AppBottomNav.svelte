@@ -5,18 +5,37 @@
   import {
     getSectionNavigationItems,
     goHintKeyForSection,
-    type SectionNavigationSection,
   } from "$lib/section-navigation";
+  import type { SectionNavigationItem } from "$lib/section-navigation";
+  import { resolveCurrentSectionFromPathname } from "$lib/mobile-navigation/resolveCurrentSectionFromPathname";
 
-  function resolveCurrentSection(pathname: string): SectionNavigationSection {
-    if (pathname.startsWith("/download-queue")) return "queue";
-    if (pathname.startsWith("/highlights")) return "highlights";
-    if (pathname.startsWith("/chat")) return "chat";
-    return "workspace";
-  }
-
-  let currentSection = $derived(resolveCurrentSection($page.url.pathname));
+  let currentSection = $derived(
+    resolveCurrentSectionFromPathname($page.url.pathname),
+  );
   let items = $derived(getSectionNavigationItems(currentSection, DOCS_URL));
+  const centerSlotSection = "queue";
+
+  const bottomOrder: Array<SectionNavigationItem["section"]> = [
+    "workspace",
+    "highlights",
+    "queue",
+    "chat",
+    "docs",
+  ];
+
+  let orderedItems = $derived(
+    [...items].sort(
+      (a, b) => bottomOrder.indexOf(a.section) - bottomOrder.indexOf(b.section),
+    ),
+  );
+
+  function resolveYouTubeRoleLabel(section: SectionNavigationItem["section"]) {
+    if (section === "workspace") return "Home";
+    if (section === "highlights") return "Shorts";
+    if (section === "queue") return "Create";
+    if (section === "chat") return "Chat";
+    return "Docs";
+  }
 </script>
 
 <nav
@@ -25,7 +44,7 @@
   aria-label="App navigation"
   data-go-hint-key="M"
 >
-  {#each items as item}
+  {#each orderedItems as item}
     <a
       href={item.href}
       target={item.external ? "_blank" : undefined}
@@ -41,8 +60,13 @@
           : item.section === "workspace"
             ? "mobile-nav-workspace-link"
             : undefined}
-      class={`mobile-tab-item ${!item.external && item.active ? "mobile-tab-item--active" : ""}`}
+      class={`mobile-tab-item ${
+        item.section === centerSlotSection ? "mobile-tab-item--center" : ""
+      } ${!item.external && item.active ? "mobile-tab-item--active" : ""}`}
       aria-current={!item.external && item.active ? "page" : undefined}
+      aria-label={item.external
+        ? `${resolveYouTubeRoleLabel(item.section)} (external)`
+        : resolveYouTubeRoleLabel(item.section)}
     >
       {#if item.section === "workspace"}
         <svg
@@ -50,13 +74,13 @@
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
-          stroke-width="1.6"
+          stroke-width="1.8"
           stroke-linecap="round"
           stroke-linejoin="round"
         >
-          <rect x="3" y="4" width="6" height="16" rx="1.5" />
-          <rect x="10" y="4" width="5" height="16" rx="1.5" />
-          <rect x="16" y="4" width="5" height="16" rx="1.5" />
+          <path d="M3 10.5 12 3l9 7.5" />
+          <path d="M6.5 10.5V21h11V10.5" />
+          <path d="M10 21v-6h4v6" />
         </svg>
       {:else if item.section === "queue"}
         <svg
@@ -64,14 +88,13 @@
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
-          stroke-width="1.7"
+          stroke-width="1.8"
           stroke-linecap="round"
           stroke-linejoin="round"
         >
-          <path d="M4 7h16" />
-          <path d="M4 12h12" />
-          <path d="M4 17h9" />
-          <circle cx="18" cy="17" r="2" />
+          <circle cx="12" cy="12" r="9" />
+          <path d="M8.5 12h7" />
+          <path d="M12 8.5v7" />
         </svg>
       {:else if item.section === "highlights"}
         <svg
@@ -79,14 +102,13 @@
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
-          stroke-width="1.7"
+          stroke-width="1.8"
           stroke-linecap="round"
           stroke-linejoin="round"
         >
-          <path d="M7 4h10l2 4v10a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8z" />
-          <path d="M9 12h6" />
-          <path d="M9 16h4" />
-          <path d="M9 4v4h6V4" />
+          <path d="M9 7h10v10H9z" />
+          <path d="M5 7l4-2v14l-4-2z" />
+          <path d="M12 10l2 2-2 2" />
         </svg>
       {:else if item.section === "chat"}
         <svg
@@ -94,7 +116,7 @@
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
-          stroke-width="1.7"
+          stroke-width="1.8"
           stroke-linecap="round"
           stroke-linejoin="round"
         >
@@ -110,7 +132,7 @@
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
-          stroke-width="1.7"
+          stroke-width="1.8"
           stroke-linecap="round"
           stroke-linejoin="round"
         >
@@ -118,8 +140,8 @@
           <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
         </svg>
       {/if}
-      <span class="inline-flex items-center gap-1">
-        {item.label}
+      <span class="mobile-tab-item-label inline-flex items-center gap-1">
+        {resolveYouTubeRoleLabel(item.section)}
         {#if item.external}
           <ExternalLinkIcon size={11} className="opacity-70" />
         {/if}

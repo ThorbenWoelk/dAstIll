@@ -21,24 +21,26 @@
 <div class="px-4 sm:px-2 lg:hidden">
   <div class="mx-auto max-w-[1440px] pt-1">
     <nav
-      class="grid gap-1 rounded-[var(--radius-full)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] p-1 shadow-sm"
+      class="flex gap-1 overflow-x-auto rounded-[var(--radius-full)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] p-1 shadow-sm"
       aria-label="Workspace panels"
-      style={`grid-template-columns: repeat(${tabs.length}, minmax(0, 1fr));`}
+      style="scroll-snap-type: x mandatory"
     >
-      {#each tabs as tab}
-        <button
-          type="button"
-          class={`min-w-0 rounded-[var(--radius-full)] px-2 py-2 text-[10px] font-bold uppercase tracking-[0.08em] transition-all ${
-            activeTab === tab.value
-              ? "bg-[var(--accent-wash-strong)] text-[var(--accent-strong)] shadow-sm"
-              : "text-[var(--soft-foreground)] opacity-80 hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]"
-          }`}
-          onclick={() => onTabChange(tab.value)}
-          aria-current={activeTab === tab.value ? "page" : undefined}
-        >
-          <span class="block truncate">{tab.label}</span>
-        </button>
-      {/each}
+      <div class="flex min-w-max flex-nowrap gap-1">
+        {#each tabs as tab}
+          <button
+            type="button"
+            class={`min-w-max scroll-snap-align-start rounded-[var(--radius-full)] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.08em] transition-colors ${
+              activeTab === tab.value
+                ? "border-b-2 border-[var(--accent)] text-[var(--accent-strong)]"
+                : "border-b-2 border-transparent text-[var(--soft-foreground)] opacity-80 hover:text-[var(--foreground)]"
+            }`}
+            onclick={() => onTabChange(tab.value)}
+            aria-current={activeTab === tab.value ? "page" : undefined}
+          >
+            <span class="block truncate">{tab.label}</span>
+          </button>
+        {/each}
+      </div>
     </nav>
   </div>
 </div>

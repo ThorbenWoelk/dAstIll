@@ -82,6 +82,30 @@ jobs:
           docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/backend:$IMAGE_TAG ./backend
           docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/backend:$IMAGE_TAG
 
+      # Mount DATABRICKS_TOKEN only when Databricks is configured. Otherwise Cloud Run
+      # still resolves :latest and fails if the secret has no enabled versions.
+      - name: Prepare backend Cloud Run secrets
+        id: backend_secrets
+        env:
+          DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+        run: |
+          set -euo pipefail
+          trimmed="$(printf '%s' "$DATABRICKS_HOST" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+          {
+            echo 'YOUTUBE_API_KEY=dastill-youtube-api-key:latest'
+            echo 'OLLAMA_API_KEY=dastill-ollama-api-key:latest'
+            echo 'LOGFIRE_TOKEN=dastill-logfire-token:latest'
+            echo 'BACKEND_PROXY_TOKEN=dastill-backend-proxy-token:latest'
+            if [ -n "$trimmed" ]; then
+              echo 'DATABRICKS_TOKEN=dastill-databricks-token:latest'
+            fi
+          } > /tmp/backend_cr_secrets.txt
+          {
+            echo 'secrets<<CR_SECRETS_EOF'
+            cat /tmp/backend_cr_secrets.txt
+            echo 'CR_SECRETS_EOF'
+          } >> "$GITHUB_OUTPUT"
+
       - name: Deploy Backend to Cloud Run
         id: deploy
         uses: google-github-actions/deploy-cloudrun@v3
@@ -90,12 +114,9 @@ jobs:
           region: ${{ env.REGION }}
           image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_ID }}/backend:${{ env.IMAGE_TAG }}
           flags: "--service-account=dastill-backend-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
-          secrets: |
-            YOUTUBE_API_KEY=dastill-youtube-api-key:latest
-            OLLAMA_API_KEY=dastill-ollama-api-key:latest
-            LOGFIRE_TOKEN=dastill-logfire-token:latest
-            BACKEND_PROXY_TOKEN=dastill-backend-proxy-token:latest
-            DATABRICKS_TOKEN=dastill-databricks-token:latest
+          # Quote so newlines from the prior step are preserved for deploy-cloudrun.
+          secrets: "${{ steps.backend_secrets.outputs.secrets }}"
+          secrets_update_strategy: overwrite
           env_vars: |
             AWS_REGION=${{ vars.AWS_REGION }}
             AWS_ROLE_ARN=${{ vars.AWS_ROLE_ARN }}

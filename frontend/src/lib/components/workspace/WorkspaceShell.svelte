@@ -18,6 +18,7 @@
     currentSection = "workspace" as SectionNavigationSection,
     aiIndicator = null,
     onOpenGuide = () => {},
+    mobileTopBar,
     topBar,
     sidebar,
     children,
@@ -25,6 +26,7 @@
     currentSection?: SectionNavigationSection;
     aiIndicator?: AiIndicatorPresentation | null;
     onOpenGuide?: () => void;
+    mobileTopBar?: Snippet;
     topBar?: Snippet;
     sidebar?: Snippet<
       [
@@ -177,6 +179,13 @@
   {/if}
 
   <div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+    {#if mobileTopBar}
+      <header
+        class="flex h-12 shrink-0 items-center justify-between gap-4 border-b border-[var(--border-soft)]/50 bg-[var(--surface)] px-4 lg:hidden"
+      >
+        {@render mobileTopBar()}
+      </header>
+    {/if}
     {#if topBar}
       <header
         class="hidden h-12 shrink-0 items-center justify-between gap-4 border-b border-[var(--border-soft)]/50 bg-[var(--surface)] px-6 lg:flex"

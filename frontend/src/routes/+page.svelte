@@ -34,6 +34,7 @@
   import { DOCS_URL } from "$lib/app-config";
   import type { TourStep } from "$lib/components/FeatureGuide.svelte";
   import WorkspaceContentPanel from "$lib/components/workspace/WorkspaceContentPanel.svelte";
+  import MobileYouTubeTopNav from "$lib/components/mobile/MobileYouTubeTopNav.svelte";
   import WorkspaceDesktopTopBar from "$lib/components/workspace/WorkspaceDesktopTopBar.svelte";
   import WorkspaceMobileBrowseOverlay from "$lib/components/workspace/WorkspaceMobileBrowseOverlay.svelte";
   import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
@@ -2537,6 +2538,9 @@
       videoActions={sidebarState.videoActions}
       {videoAcknowledgeSync}
     />
+  {/snippet}
+  {#snippet mobileTopBar()}
+    <MobileYouTubeTopNav />
   {/snippet}
   {#snippet topBar()}
     <WorkspaceDesktopTopBar

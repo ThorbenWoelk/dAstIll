@@ -513,6 +513,26 @@
       class="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--accent-border-soft)] px-4 py-4 sm:px-6 lg:px-0"
     >
       <div class="flex min-w-0 items-center gap-4">
+        <button
+          type="button"
+          class="inline-flex h-10 w-10 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-70 transition hover:bg-[var(--accent-wash)] hover:opacity-100 lg:hidden"
+          aria-label="Back to workspace"
+          onclick={() => void goto("/")}
+        >
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+        </button>
         <div
           class="h-14 w-14 shrink-0 overflow-hidden rounded-full bg-[var(--muted)]"
         >
@@ -528,16 +548,18 @@
 
         <div class="min-w-0">
           <p
-            class="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--soft-foreground)] opacity-50"
+            class="hidden text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--soft-foreground)] opacity-50 sm:block"
           >
             Workspace
           </p>
           <h1
-            class="mt-2 font-serif text-[32px] font-bold tracking-tight text-[var(--foreground)]"
+            class="mt-1 font-serif text-[22px] font-bold tracking-tight text-[var(--foreground)] sm:mt-2 sm:text-[32px]"
           >
             {selectedChannel ? selectedChannel.name : "Channel overview"}
           </h1>
-          <p class="mt-2 text-[14px] text-[var(--soft-foreground)]">
+          <p
+            class="mt-1 text-[13px] text-[var(--soft-foreground)] sm:mt-2 sm:text-[14px]"
+          >
             {#if selectedChannel}
               {selectedChannel.handle ?? selectedChannel.id}
             {:else}
