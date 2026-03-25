@@ -300,6 +300,7 @@ async fn main() -> anyhow::Result<()> {
 
     let protected_api = Router::new()
         .route("/api/health/ai", get(content::health_ai))
+        .route("/api/chat/config", get(chat::chat_client_config))
         .route(
             "/api/chat/conversations",
             get(chat::list_conversations).post(chat::create_conversation),

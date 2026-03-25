@@ -366,6 +366,22 @@ pub struct ChatMessage {
     pub sources: Vec<ChatSource>,
     pub status: ChatMessageStatus,
     pub created_at: DateTime<Utc>,
+    /// Ollama model id used for this assistant turn (final answer), when applicable.
+    #[serde(default)]
+    #[ts(optional)]
+    pub model: Option<String>,
+    /// Prompt token count from the streaming API final chunk, when provided.
+    #[serde(default)]
+    #[ts(optional)]
+    pub prompt_tokens: Option<u64>,
+    /// Generated token count from the streaming API final chunk, when provided.
+    #[serde(default)]
+    #[ts(optional)]
+    pub completion_tokens: Option<u64>,
+    /// Wall time reported by Ollama for the generate call (nanoseconds), when provided.
+    #[serde(default)]
+    #[ts(optional)]
+    pub total_duration_ns: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -421,4 +437,24 @@ pub struct SendChatMessageRequest {
     /// When true, retrieval uses the maximum excerpt budget and multi-query passes so the model can synthesize across much more of the library.
     #[serde(default)]
     pub deep_research: bool,
+    /// Ollama cloud model id from [`ChatClientConfig::models`]. When omitted, the server default cloud model is used.
+    #[serde(default)]
+    #[ts(optional)]
+    pub model: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
+pub struct ChatModelOption {
+    pub id: String,
+    pub label: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
+pub struct ChatClientConfig {
+    /// Default cloud model id when the client omits `model` on send.
+    pub default_model: String,
+    /// Curated Ollama cloud models the client may offer in a selector.
+    pub models: Vec<ChatModelOption>,
 }

@@ -2,5 +2,12 @@
 
 export type SendChatMessageRequest = {
   content: string;
-  deep_research?: boolean;
+  /**
+   * When true, retrieval uses the maximum excerpt budget and multi-query passes so the model can synthesize across much more of the library.
+   */
+  deep_research: boolean;
+  /**
+   * Ollama cloud model id from [`ChatClientConfig::models`]. When omitted, the server default cloud model is used.
+   */
+  model?: string;
 };

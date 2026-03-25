@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick } from "svelte";
+  import { isEditableShortcutTarget } from "$lib/utils/keyboard-shortcuts";
 
   export type TourStep = {
     selector: string;
@@ -28,6 +29,13 @@
   let cardEl = $state<HTMLDivElement | null>(null);
   let cardStyle = $state("");
   let placement = $state<"top" | "bottom" | "left" | "right">("bottom");
+  /** Viewport hole (px) so scrim leaves the step target fully bright; null = full dim. */
+  let tourSpotlight = $state<{
+    top: number;
+    left: number;
+    right: number;
+    bottom: number;
+  } | null>(null);
 
   const PADDING = 8;
   const CARD_GAP = 12;
@@ -53,9 +61,27 @@
     }
   }
 
+  /**
+   * Only skip tour Enter when (1) focus is in the card (Next/Back/pips handle Enter natively)
+   * or (2) user is typing in a field. Do not treat page buttons/links/tabs as "interactive"
+   * for this purpose — those often match the highlighted step and would block Enter otherwise.
+   */
+  function shouldSuppressEnterForTour(
+    eventTarget: EventTarget | null,
+  ): boolean {
+    if (!(eventTarget instanceof Element)) return false;
+    if (eventTarget.closest(".tour-card")) return true;
+    if (isEditableShortcutTarget(eventTarget)) return true;
+    return false;
+  }
+
   function handleKeydown(event: KeyboardEvent) {
     if (!open) return;
     if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+    }
+    if (event.key === "Enter" && !shouldSuppressEnterForTour(event.target)) {
       event.preventDefault();
       nextStep();
     }
@@ -167,6 +193,7 @@
     await new Promise<void>((r) => requestAnimationFrame(() => r()));
 
     clearTourTarget();
+    tourSpotlight = null;
 
     const el = resolveTarget(s);
     if (!el) {
@@ -190,6 +217,16 @@
       cardStyle = result.style;
       placement = result.placement;
     }
+
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const l = Math.max(0, rect.left - PADDING);
+    const t = Math.max(0, rect.top - PADDING);
+    const r = Math.min(vw, rect.right + PADDING);
+    const b = Math.min(vh, rect.bottom + PADDING);
+    if (r > l && b > t) {
+      tourSpotlight = { top: t, left: l, right: r, bottom: b };
+    }
   }
 
   $effect(() => {
@@ -197,6 +234,7 @@
       void positionCard();
     } else if (!open) {
       clearTourTarget();
+      tourSpotlight = null;
     }
   });
 
@@ -215,21 +253,17 @@
 <svelte:window onkeydown={handleKeydown} />
 
 {#if open && steps[step]}
-  <!-- Overlay with spotlight cutout via clip-path -->
   <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
   <div
-    class="tour-overlay"
+    class="tour-root"
     role="dialog"
     aria-modal="true"
     aria-label="Feature guide"
     tabindex="-1"
-    onclick={(e) => {
-      if (e.target === e.currentTarget) nextStep();
-    }}
     onkeydown={(e) => {
       if (e.key === "Escape") {
         e.preventDefault();
-        nextStep();
+        onClose();
       }
       if (
         (e.key === "Enter" || e.key === " ") &&
@@ -240,18 +274,36 @@
       }
     }}
   >
-    <!-- Card: click outside buttons/links advances (same as backdrop); X is the only exit control. -->
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <div
-      class="tour-card"
-      bind:this={cardEl}
-      style={cardStyle}
-      onclick={(e) => {
-        const t = e.target;
-        if (t instanceof Element && t.closest("button, a")) return;
-        nextStep();
-      }}
-    >
+    <!-- Four scrim strips leave a true viewport hole so the target stays full brightness (not dimmed by opacity). -->
+    {#if tourSpotlight}
+      <div
+        class="tour-scrim tour-scrim--top"
+        style="height:{tourSpotlight.top}px"
+        aria-hidden="true"
+      ></div>
+      <div
+        class="tour-scrim tour-scrim--left"
+        style="top:{tourSpotlight.top}px;width:{tourSpotlight.left}px;height:{tourSpotlight.bottom -
+          tourSpotlight.top}px"
+        aria-hidden="true"
+      ></div>
+      <div
+        class="tour-scrim tour-scrim--right"
+        style="top:{tourSpotlight.top}px;left:{tourSpotlight.right}px;height:{tourSpotlight.bottom -
+          tourSpotlight.top}px"
+        aria-hidden="true"
+      ></div>
+      <div
+        class="tour-scrim tour-scrim--bottom"
+        style="top:{tourSpotlight.bottom}px"
+        aria-hidden="true"
+      ></div>
+    {:else}
+      <div class="tour-scrim tour-scrim--full" aria-hidden="true"></div>
+    {/if}
+
+    <!-- Card: use Next / keyboard; backdrop clicks do not advance. -->
+    <div class="tour-card" bind:this={cardEl} style={cardStyle}>
       <!-- Step counter + close -->
       <div class="tour-card-header">
         <div class="tour-card-counter">
@@ -354,14 +406,44 @@
 {/if}
 
 <style>
-  .tour-overlay {
+  .tour-root {
     position: fixed;
     inset: 0;
     z-index: 10000;
+    pointer-events: none;
+    animation: tour-in 250ms ease forwards;
+  }
+
+  .tour-scrim {
+    position: absolute;
+    pointer-events: auto;
     /* Fixed dark scrim — never use a surface variable here or it will bleed into
        opaque surfaces like the filter popup when someone tweaks surface tokens. */
     background: rgba(0, 0, 0, 0.5);
-    animation: tour-in 250ms ease forwards;
+  }
+
+  .tour-scrim--full {
+    inset: 0;
+  }
+
+  .tour-scrim--top {
+    top: 0;
+    left: 0;
+    right: 0;
+  }
+
+  .tour-scrim--left {
+    left: 0;
+  }
+
+  .tour-scrim--right {
+    right: 0;
+  }
+
+  .tour-scrim--bottom {
+    left: 0;
+    right: 0;
+    bottom: 0;
   }
 
   @keyframes tour-in {
@@ -375,7 +457,8 @@
 
   .tour-card {
     position: fixed;
-    z-index: 10002;
+    z-index: 1;
+    pointer-events: auto;
     width: min(360px, calc(100vw - 24px));
     background: var(--surface);
     border-radius: 16px;
@@ -555,7 +638,7 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .tour-overlay,
+    .tour-root,
     .tour-card-body,
     .tour-card {
       animation: none !important;
@@ -563,11 +646,14 @@
     }
   }
 
-  /* Lift target above the overlay scrim so it appears unveiled in the spotlight. */
+  /* Ring the step target; scrim hole keeps content at full brightness. */
   :global(.tour-step-target) {
     position: relative;
-    z-index: 10001;
+    z-index: 1;
     border-radius: var(--radius-sm);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 50%, transparent);
+    box-shadow:
+      0 0 0 2px var(--accent),
+      0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent),
+      0 12px 40px color-mix(in srgb, var(--foreground) 12%, transparent);
   }
 </style>

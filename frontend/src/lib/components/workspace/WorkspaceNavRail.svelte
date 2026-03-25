@@ -141,6 +141,7 @@
     id="app-section-nav-rail"
     class={`space-y-0.5 ${collapsed ? "mt-1 px-1.5" : "mt-3 px-2"}`}
     aria-label="Sections"
+    data-go-hint-key="M"
   >
     {#each navItems as item (item.section)}
       {@const icon = navIcon(item.section)}

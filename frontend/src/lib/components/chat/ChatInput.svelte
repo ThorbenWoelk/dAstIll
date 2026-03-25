@@ -1,11 +1,15 @@
 <script lang="ts">
   import { tick } from "svelte";
 
+  import ChevronIcon from "$lib/components/icons/ChevronIcon.svelte";
+
   const MAX_TEXTAREA_HEIGHT = 160;
 
   let {
     value = $bindable(""),
     deepResearch = $bindable(false),
+    selectedModelId = $bindable(""),
+    modelOptions = [],
     disabled = false,
     busy = false,
     canCancel = false,
@@ -16,6 +20,8 @@
   }: {
     value?: string;
     deepResearch?: boolean;
+    selectedModelId?: string;
+    modelOptions?: { id: string; label: string }[];
     disabled?: boolean;
     busy?: boolean;
     canCancel?: boolean;
@@ -166,115 +172,116 @@
   let ariaLabel = $derived(
     canCancel ? "Cancel generation" : busy ? "Sending" : "Send message",
   );
+  let modelSelectDisabled = $derived(
+    disabled || busy || modelOptions.length === 0,
+  );
+
+  $effect(() => {
+    if (modelOptions.length === 0) {
+      return;
+    }
+    if (
+      !selectedModelId ||
+      !modelOptions.some((opt) => opt.id === selectedModelId)
+    ) {
+      selectedModelId = modelOptions[0].id;
+    }
+  });
 </script>
 
 <form
-  class="rounded-[var(--radius-lg)] bg-[var(--panel-surface)] px-3 py-2 shadow-sm"
+  class="rounded-[var(--radius-lg)] bg-[var(--panel-surface)] px-3 py-3 shadow-sm"
   aria-busy={busy}
   onsubmit={(event) => {
     event.preventDefault();
     submit();
   }}
 >
-  <div class="mb-2 flex flex-wrap items-center gap-2">
-    <button
-      type="button"
-      class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.06em] transition-colors duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)] disabled:pointer-events-none disabled:opacity-50 {deepResearch
-        ? 'bg-[var(--accent-soft)] text-[var(--accent-strong)]'
-        : 'bg-[var(--accent-wash)]/80 text-[var(--accent)] hover:bg-[var(--accent-wash)]'}"
-      aria-pressed={deepResearch}
-      aria-label={deepResearch ? "Deep research on" : "Deep research off"}
-      data-tooltip={deepResearch
-        ? "Maximum library retrieval for this message"
-        : "Search more of your library (slower, richer context)"}
-      disabled={disabled || busy}
-      onclick={() => {
-        deepResearch = !deepResearch;
-      }}
-    >
-      <svg
-        viewBox="0 0 24 24"
-        class="h-3.5 w-3.5 shrink-0"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"
-      >
-        <path d="M4 19h4" />
-        <path d="M6 19v-2" />
-        <path d="M8 17h8" />
-        <path d="M10 17V9l4-2 2 6-4 2" />
-        <path d="m14 7 3-3" />
-        <circle cx="17.5" cy="4.5" r="1.5" />
-      </svg>
-      Deep research
-    </button>
-  </div>
-  <div class="flex items-end gap-2">
-    <textarea
-      bind:value
-      bind:this={textareaElement}
-      rows="1"
-      class="min-h-10 max-h-40 flex-1 resize-none overflow-y-hidden break-words bg-transparent px-1 py-2 text-[14px] leading-5 text-[var(--foreground)] placeholder:text-[var(--soft-foreground)] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-      placeholder="Ask about your indexed transcripts and summaries…"
-      wrap="soft"
-      {disabled}
-      oninput={syncTextareaHeight}
-      onkeydown={handleKeydown}
-    ></textarea>
+  <textarea
+    bind:value
+    bind:this={textareaElement}
+    rows="1"
+    class="mb-3 min-h-10 max-h-40 w-full resize-none overflow-y-hidden break-words bg-transparent px-1 py-2 text-[14px] leading-5 text-[var(--foreground)] placeholder:text-[var(--soft-foreground)] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+    placeholder="Ask about your indexed transcripts and summaries…"
+    wrap="soft"
+    {disabled}
+    oninput={syncTextareaHeight}
+    onkeydown={handleKeydown}
+  ></textarea>
 
-    {#if canCancel}
+  <div
+    class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-2"
+  >
+    <div class="flex min-w-0 flex-wrap items-center gap-2">
+      <div
+        class="relative min-w-0 max-w-full sm:max-w-[min(100%,22rem)]"
+        title="Ollama cloud model for this message"
+      >
+        <select
+          bind:value={selectedModelId}
+          class="w-full min-w-[10rem] cursor-pointer appearance-none rounded-full bg-[var(--accent-wash)]/60 py-1.5 pl-2.5 pr-8 text-[11px] font-bold uppercase tracking-[0.06em] text-[var(--foreground)] transition-colors duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)] disabled:cursor-not-allowed disabled:opacity-50"
+          aria-label="Ollama cloud model"
+          disabled={modelSelectDisabled}
+        >
+          {#if modelOptions.length === 0}
+            <option value="">Loading…</option>
+          {:else}
+            {#each modelOptions as option (option.id)}
+              <option value={option.id}>{option.label}</option>
+            {/each}
+          {/if}
+        </select>
+        <span
+          class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[var(--soft-foreground)]"
+          aria-hidden="true"
+        >
+          <ChevronIcon direction="down" size={12} />
+        </span>
+      </div>
       <button
         type="button"
-        class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
-        onclick={onCancel}
-        aria-label={ariaLabel}
+        class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.06em] transition-colors duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)] disabled:pointer-events-none disabled:opacity-50 {deepResearch
+          ? 'bg-[var(--accent-soft)] text-[var(--accent-strong)]'
+          : 'bg-[var(--accent-wash)]/80 text-[var(--accent)] hover:bg-[var(--accent-wash)]'}"
+        aria-pressed={deepResearch}
+        aria-label={deepResearch ? "Deep research on" : "Deep research off"}
+        data-tooltip={deepResearch
+          ? "Maximum library retrieval for this message"
+          : "Search more of your library (slower, richer context)"}
+        disabled={disabled || busy}
+        onclick={() => {
+          deepResearch = !deepResearch;
+        }}
       >
         <svg
           viewBox="0 0 24 24"
-          class="h-4 w-4"
+          class="h-3.5 w-3.5 shrink-0"
           fill="none"
           stroke="currentColor"
           stroke-width="2"
           stroke-linecap="round"
+          stroke-linejoin="round"
           aria-hidden="true"
         >
-          <path d="M18 6 6 18M6 6l12 12" />
+          <path d="M4 19h4" />
+          <path d="M6 19v-2" />
+          <path d="M8 17h8" />
+          <path d="M10 17V9l4-2 2 6-4 2" />
+          <path d="m14 7 3-3" />
+          <circle cx="17.5" cy="4.5" r="1.5" />
         </svg>
+        Deep research
       </button>
-    {:else}
-      <button
-        type="submit"
-        class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)] disabled:cursor-not-allowed disabled:opacity-50"
-        disabled={actionDisabled}
-        aria-label={ariaLabel}
-      >
-        {#if busy}
-          <svg
-            viewBox="0 0 24 24"
-            class="h-4 w-4 animate-spin"
-            aria-hidden="true"
-          >
-            <circle
-              cx="12"
-              cy="12"
-              r="9"
-              fill="none"
-              stroke="currentColor"
-              stroke-opacity="0.25"
-              stroke-width="2"
-            />
-            <path
-              d="M12 3a9 9 0 0 1 9 9"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-            />
-          </svg>
-        {:else}
+    </div>
+
+    <div class="flex items-end justify-end gap-2">
+      {#if canCancel}
+        <button
+          type="button"
+          class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
+          onclick={onCancel}
+          aria-label={ariaLabel}
+        >
           <svg
             viewBox="0 0 24 24"
             class="h-4 w-4"
@@ -282,14 +289,58 @@
             stroke="currentColor"
             stroke-width="2"
             stroke-linecap="round"
-            stroke-linejoin="round"
             aria-hidden="true"
           >
-            <path d="M22 2 11 13" />
-            <path d="M22 2 15 22l-4-9-9-4Z" />
+            <path d="M18 6 6 18M6 6l12 12" />
           </svg>
-        {/if}
-      </button>
-    {/if}
+        </button>
+      {:else}
+        <button
+          type="submit"
+          class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)] disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={actionDisabled}
+          aria-label={ariaLabel}
+        >
+          {#if busy}
+            <svg
+              viewBox="0 0 24 24"
+              class="h-4 w-4 animate-spin"
+              aria-hidden="true"
+            >
+              <circle
+                cx="12"
+                cy="12"
+                r="9"
+                fill="none"
+                stroke="currentColor"
+                stroke-opacity="0.25"
+                stroke-width="2"
+              />
+              <path
+                d="M12 3a9 9 0 0 1 9 9"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+              />
+            </svg>
+          {:else}
+            <svg
+              viewBox="0 0 24 24"
+              class="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M22 2 11 13" />
+              <path d="M22 2 15 22l-4-9-9-4Z" />
+            </svg>
+          {/if}
+        </button>
+      {/if}
+    </div>
   </div>
 </form>

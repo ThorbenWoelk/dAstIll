@@ -118,3 +118,14 @@ Thin (4px), `--border` thumb, transparent track, `--soft-foreground` on hover.
 
 - Do not chain formatting, typecheck, tests, and build into one long `&&` command.
 - Run validators step-by-step as separate commands and report progress after each step so long-running checks do not appear stuck and can be interrupted safely.
+
+## Pre-commit checks (after implementation)
+
+Always run the repository pre-commit script after implementation and before treating work as verified. Do not bypass it.
+
+1. **Stage the files you changed.** The script only checks staged paths (same as a real commit).
+2. From the repository root: `bash scripts/githooks/pre-commit`
+
+What runs depends on what is staged (see `scripts/githooks/pre-commit` for the full logic): Python `ruff check` / `ruff format --check` and sometimes `pytest`; frontend Prettier and ESLint on staged `frontend/` sources; `bun audit` when `package.json` or lockfiles are staged; `cargo audit` when `backend/Cargo.toml` or `Cargo.lock` are staged.
+
+If you must verify without keeping those paths staged, run the equivalent commands from that script against your edits so outcomes match the hook.

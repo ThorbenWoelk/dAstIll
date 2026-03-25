@@ -12,6 +12,7 @@
     cancelConversationGeneration,
     createConversation,
     deleteConversation,
+    getChatClientConfig,
     getConversation,
     listConversations,
     reconnectConversationStream,
@@ -32,6 +33,7 @@
   import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
   import { createAiStatusPoller } from "$lib/utils/ai-poller";
   import { buildWorkspaceViewHref } from "$lib/view-url";
+  import type { ChatClientConfig } from "$lib/bindings/ChatClientConfig";
   import type {
     AiStatus,
     ChatConversation,
@@ -42,6 +44,23 @@
   } from "$lib/types";
 
   type TimedStatus = ChatStreamStatus & { receivedAt: number };
+
+  const chatModelStorageKey = "dastill.chat.cloudModel";
+
+  function pickInitialChatModelId(cfg: ChatClientConfig): string {
+    try {
+      const stored = localStorage.getItem(chatModelStorageKey)?.trim();
+      if (stored && cfg.models.some((entry) => entry.id === stored)) {
+        return stored;
+      }
+    } catch {
+      /* ignore */
+    }
+    if (cfg.models.some((entry) => entry.id === cfg.default_model)) {
+      return cfg.default_model;
+    }
+    return cfg.models[0]?.id ?? "";
+  }
 
   let conversations = $state<ChatConversationSummary[]>([]);
   let activeConversation = $state<ChatConversation | null>(null);
@@ -67,6 +86,8 @@
   let deleteConversationId = $state<string | null>(null);
   /** Incremented when starting a new conversation so the prompt bar receives focus. */
   let chatInputFocusSignal = $state(0);
+  let chatClientConfig = $state<ChatClientConfig | null>(null);
+  let selectedChatModelId = $state("");
   let messagesViewport = $state<HTMLDivElement | null>(null);
   let streamController: AbortController | null = null;
 
@@ -138,6 +159,27 @@
         ) ?? null)
       : null,
   );
+  /** URL points at a thread that is not yet reflected in activeConversation (during fetch). */
+  let showThreadPlaceholderLoading = $derived(
+    Boolean(
+      requestedConversationId &&
+      loadingConversation &&
+      (!activeConversation ||
+        activeConversation.id !== requestedConversationId),
+    ),
+  );
+  let headerConversationTitle = $derived.by(() => {
+    if (activeConversation?.id === requestedConversationId) {
+      return activeConversation.title ?? "New conversation";
+    }
+    if (requestedConversationId) {
+      const summary = conversations.find(
+        (c) => c.id === requestedConversationId,
+      );
+      return summary?.title ?? "Conversation";
+    }
+    return "New conversation";
+  });
   let streamBanner = $derived(
     pendingReconnectConversationId
       ? "Reconnecting to active response…"
@@ -250,6 +292,15 @@
     }
 
     void loadConversations();
+    void getChatClientConfig()
+      .then((cfg) => {
+        chatClientConfig = cfg;
+        selectedChatModelId = pickInitialChatModelId(cfg);
+      })
+      .catch(() => {
+        chatClientConfig = null;
+        selectedChatModelId = "";
+      });
     const stopAiPoller = createAiStatusPoller({
       onStatus: (status) => {
         aiStatus = status.status;
@@ -297,8 +348,30 @@
   });
 
   $effect(() => {
+    const id = selectedChatModelId;
+    if (!id) {
+      return;
+    }
+    try {
+      localStorage.setItem(chatModelStorageKey, id);
+    } catch {
+      /* ignore */
+    }
+  });
+
+  function abortActiveChatStream() {
+    streamController?.abort();
+    streamController = null;
+    streamingConversationId = null;
+    streamingMessageId = null;
+    streamStage = "idle";
+  }
+
+  $effect(() => {
     const conversationId = requestedConversationId;
     if (!conversationId) {
+      abortActiveChatStream();
+      clearStreamState();
       activeConversation = null;
       hydratedConversationId = null;
       return;
@@ -404,6 +477,13 @@
   ) {
     if (!options?.quiet) {
       loadingConversation = true;
+      if (
+        requestedConversationId === conversationId &&
+        activeConversation !== null &&
+        activeConversation.id !== conversationId
+      ) {
+        activeConversation = null;
+      }
     }
 
     try {
@@ -442,6 +522,7 @@
   async function handleCreateConversation() {
     creatingConversation = true;
     errorMessage = null;
+    abortActiveChatStream();
     clearStreamState();
     try {
       const conversation = await createConversation();
@@ -499,6 +580,7 @@
       if (activeConversation?.id === conversationId) {
         activeConversation = null;
         hydratedConversationId = null;
+        abortActiveChatStream();
         clearStreamState();
         const nextConversation = conversations[0];
         await navigateToConversation(nextConversation?.id ?? null);
@@ -510,6 +592,7 @@
 
   async function handleSelectConversation(conversationId: string) {
     errorMessage = null;
+    abortActiveChatStream();
     clearStreamState();
     mobileTab = "content";
     await navigateToConversation(conversationId);
@@ -580,7 +663,11 @@
       (signal, handlers) =>
         sendConversationMessage(
           conversation.id,
-          { content, deep_research: deepResearch },
+          {
+            content,
+            deep_research: deepResearch,
+            ...(selectedChatModelId ? { model: selectedChatModelId } : {}),
+          },
           handlers,
           {
             signal,
@@ -844,6 +931,7 @@
     streamStartedAt = null;
     streamGenerationStartedAt = null;
     streamDoneAt = null;
+    streamStage = "idle";
   }
 
   function appendStreamStatus(status: ChatStreamStatus) {
@@ -918,8 +1006,10 @@
       <ChatContentSectionHeader
         onOpenConversationsMobile={() => (mobileTab = "conversations")}
         {streamingConversationId}
-        conversationTitle={activeConversation?.title ?? "New conversation"}
-        titleStatus={activeConversation?.title_status}
+        conversationTitle={headerConversationTitle}
+        titleStatus={activeConversation?.id === requestedConversationId
+          ? activeConversation.title_status
+          : undefined}
       />
 
       <div class="relative flex min-h-0 w-full flex-1 flex-col">
@@ -930,7 +1020,19 @@
           aria-label="Chat conversation"
           onscroll={handleMessagesScroll}
         >
-          {#if !activeConversation || currentMessages.length === 0}
+          {#if showThreadPlaceholderLoading}
+            <div
+              class="flex min-h-[12rem] flex-col items-center justify-center px-4 py-12"
+              role="status"
+              aria-live="polite"
+            >
+              <p
+                class="text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--soft-foreground)]"
+              >
+                Loading conversation
+              </p>
+            </div>
+          {:else if !activeConversation || currentMessages.length === 0}
             {#if showConversationMeta}
               <div class="mb-4">
                 <ChatConversationMeta
@@ -1035,6 +1137,8 @@
         <ChatInput
           bind:value={draft}
           bind:deepResearch
+          bind:selectedModelId={selectedChatModelId}
+          modelOptions={chatClientConfig?.models ?? []}
           focusSignal={chatInputFocusSignal}
           disabled={loadingConversation ||
             creatingConversation ||

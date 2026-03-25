@@ -10,6 +10,9 @@ export type ChatSource = {
   section_title: string | null;
   snippet: string;
   score: number;
+  /**
+   * Stable id for the indexed transcript/summary chunk (search excerpt).
+   */
   chunk_id: string;
   retrieval_pass?: number;
 };

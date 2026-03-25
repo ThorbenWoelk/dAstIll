@@ -36,16 +36,16 @@ pub(crate) const CHAT_SYSTEM_PROMPT_CONVERSATION_TURN: &str = "You are the dAstI
 
 pub(crate) const CHAT_PLANNER_CONVERSATION_MAX_CHARS: usize = 6_000;
 
-pub(crate) const CHAT_QUERY_PLAN_PROMPT: &str = r#"Classify the user's grounded library question for retrieval.
+pub(crate) const CHAT_QUERY_PLAN_PROMPT: &str = r#"Classify the user's message for whether the indexed video library must be searched on this turn.
 
-You receive a block labeled RECENT CONVERSATION followed by CURRENT USER MESSAGE.
+You receive a block labeled RECENT CONVERSATION (possibly empty) followed by CURRENT USER MESSAGE.
 
 Return valid JSON only with this shape:
 {"needs_retrieval":true|false,"intent":"fact|synthesis|pattern|comparison","rationale":"short explanation","sub_queries":["..."],"expansion_queries":["..."]}
 
 needs_retrieval:
-- false only when CURRENT USER MESSAGE can be answered from prior turns without new library search (clarifications, rephrasing, short follow-ups about what was already said).
-- true when the user asks for new facts from videos, new topics, comparisons needing evidence, or there is no prior assistant reply to rely on.
+- false when no new library search is needed: (a) clarifications or follow-ups that only rely on what was already said in RECENT CONVERSATION, or (b) pure greetings, thanks, goodbyes, or other small talk with no question about video, channel, or transcript content. Use false for (b) even when RECENT CONVERSATION is empty (first message).
+- true when the user wants facts, summaries, themes, or comparisons from the indexed library, names a topic to look up, or otherwise clearly needs grounded excerpts.
 
 If needs_retrieval is false, sub_queries and expansion_queries may be empty arrays.
 

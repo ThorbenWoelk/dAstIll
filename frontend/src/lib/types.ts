@@ -230,6 +230,11 @@ export interface ChatMessage {
   sources: ChatSource[];
   status: ChatMessageStatus;
   created_at: string;
+  /** Set on assistant turns produced by the configured chat model. */
+  model?: string;
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_duration_ns?: number;
 }
 
 export interface ChatConversationSummary {
@@ -252,4 +257,6 @@ export interface SendChatMessageRequest {
   content: string;
   /** Ask the backend to use maximum library retrieval for this message. */
   deep_research?: boolean;
+  /** Ollama cloud model id from chat config; server picks default if omitted. */
+  model?: string;
 }

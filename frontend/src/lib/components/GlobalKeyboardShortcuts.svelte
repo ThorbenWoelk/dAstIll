@@ -11,7 +11,7 @@
     armGoSequence,
     clearGoSequence,
     computeGoHintBadgeStyles,
-    focusMainContentRegion,
+    focusSectionTabsNav,
     shouldIgnoreGlobalShortcutNavigation,
     type GoHintBadge,
     type GoSequenceState,
@@ -153,7 +153,7 @@
           window.open(DOCS_URL, "_blank", "noopener,noreferrer");
         },
         m: () => {
-          focusMainContentRegion();
+          focusSectionTabsNav();
         },
         u: () => {
           window.dispatchEvent(new CustomEvent("dastill:open-guide"));

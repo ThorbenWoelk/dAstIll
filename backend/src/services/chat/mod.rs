@@ -1,6 +1,8 @@
+mod cloud_models;
 mod constants;
 mod intent;
 
+pub use cloud_models::{default_chat_cloud_model_id, is_chat_cloud_model_choice};
 pub(crate) use constants::*;
 pub use intent::ChatQueryIntent;
 
@@ -563,6 +565,27 @@ struct OllamaChatResponse {
     message: Option<OllamaChatMessage>,
     done: bool,
     error: Option<String>,
+    #[serde(default)]
+    prompt_eval_count: Option<u64>,
+    #[serde(default)]
+    eval_count: Option<u64>,
+    #[serde(default)]
+    total_duration: Option<u64>,
+}
+
+#[derive(Debug, Clone)]
+struct OllamaStreamStats {
+    prompt_eval_count: Option<u64>,
+    eval_count: Option<u64>,
+    total_duration_ns: Option<u64>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct GenerationMeta {
+    pub(crate) model: String,
+    pub(crate) prompt_tokens: Option<u64>,
+    pub(crate) completion_tokens: Option<u64>,
+    pub(crate) total_duration_ns: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -581,6 +604,17 @@ struct OllamaChatRequest {
 pub(super) struct OllamaRequestMessage {
     pub(super) role: String,
     pub(super) content: String,
+}
+
+/// Inputs for [`ChatService::spawn_reply`], grouped to stay within `clippy::too_many_arguments`.
+pub struct SpawnReplyJob {
+    pub state: AppState,
+    pub conversation: ChatConversation,
+    pub prompt: String,
+    pub should_auto_name: bool,
+    pub deep_research: bool,
+    pub reply_model: String,
+    pub active_chat: ActiveChatHandle,
 }
 
 #[derive(Clone)]
@@ -604,6 +638,21 @@ impl ChatService {
 
     pub fn model(&self) -> &str {
         self.core.model()
+    }
+
+    pub fn chat_client_config(&self) -> crate::models::ChatClientConfig {
+        let default_model = cloud_models::default_chat_cloud_model_id(self.model());
+        let models = cloud_models::CHAT_CLOUD_MODEL_CHOICES
+            .iter()
+            .map(|entry| crate::models::ChatModelOption {
+                id: entry.id.to_string(),
+                label: entry.label.to_string(),
+            })
+            .collect();
+        crate::models::ChatClientConfig {
+            default_model,
+            models,
+        }
     }
 
     pub async fn is_available(&self) -> bool {
@@ -630,14 +679,19 @@ impl ChatService {
             sources: Vec::new(),
             status: ChatMessageStatus::Completed,
             created_at: Utc::now(),
+            model: None,
+            prompt_tokens: None,
+            completion_tokens: None,
+            total_duration_ns: None,
         }
     }
 
-    pub fn build_assistant_message(
+    pub(crate) fn build_assistant_message(
         &self,
         content: String,
         sources: Vec<ChatSource>,
         status: ChatMessageStatus,
+        generation: Option<GenerationMeta>,
     ) -> ChatMessage {
         ChatMessage {
             id: generate_chat_id("msg"),
@@ -646,6 +700,23 @@ impl ChatService {
             sources,
             status,
             created_at: Utc::now(),
+            model: generation.as_ref().map(|meta| meta.model.clone()),
+            prompt_tokens: generation.as_ref().and_then(|meta| meta.prompt_tokens),
+            completion_tokens: generation.as_ref().and_then(|meta| meta.completion_tokens),
+            total_duration_ns: generation.as_ref().and_then(|meta| meta.total_duration_ns),
+        }
+    }
+
+    fn assistant_generation_meta(
+        &self,
+        reply_model: &str,
+        terminal: Option<OllamaStreamStats>,
+    ) -> GenerationMeta {
+        GenerationMeta {
+            model: reply_model.to_string(),
+            prompt_tokens: terminal.as_ref().and_then(|s| s.prompt_eval_count),
+            completion_tokens: terminal.as_ref().and_then(|s| s.eval_count),
+            total_duration_ns: terminal.as_ref().and_then(|s| s.total_duration_ns),
         }
     }
 
@@ -653,16 +724,17 @@ impl ChatService {
         trim_to_option(content).map(|value| limit_text(&value, CHAT_TITLE_MAX_CHARS))
     }
 
-    pub fn spawn_reply(
-        &self,
-        state: AppState,
-        conversation: ChatConversation,
-        prompt: String,
-        should_auto_name: bool,
-        deep_research: bool,
-        active_chat: ActiveChatHandle,
-    ) {
+    pub fn spawn_reply(&self, job: SpawnReplyJob) {
         let service = self.clone();
+        let SpawnReplyJob {
+            state,
+            conversation,
+            prompt,
+            should_auto_name,
+            deep_research,
+            reply_model,
+            active_chat,
+        } = job;
         tokio::spawn(async move {
             if should_auto_name {
                 let naming_service = service.clone();
@@ -681,7 +753,14 @@ impl ChatService {
             }
 
             service
-                .run_reply(state, conversation, prompt, deep_research, active_chat)
+                .run_reply(
+                    state,
+                    conversation,
+                    prompt,
+                    deep_research,
+                    reply_model,
+                    active_chat,
+                )
                 .await;
         });
     }
@@ -692,6 +771,7 @@ impl ChatService {
         conversation: ChatConversation,
         prompt: String,
         deep_research: bool,
+        reply_model: String,
         active_chat: ActiveChatHandle,
     ) {
         let conversation_id = conversation.id.clone();
@@ -703,7 +783,14 @@ impl ChatService {
 
         async move {
             let reply_result = self
-                .generate_reply(&state, &conversation, &prompt, deep_research, &active_chat)
+                .generate_reply(
+                    &state,
+                    &conversation,
+                    &prompt,
+                    deep_research,
+                    &reply_model,
+                    &active_chat,
+                )
                 .await;
 
             match reply_result {
@@ -727,6 +814,7 @@ impl ChatService {
                             "Response cancelled.".to_string(),
                             Vec::new(),
                             ChatMessageStatus::Cancelled,
+                            None,
                         );
                         let _ = persist_assistant_message(&state, &conversation_id, &message).await;
                         active_chat.emit(ChatStreamEvent::Done { message }).await;
@@ -739,6 +827,7 @@ impl ChatService {
                         "I ran into an error while generating that answer.".to_string(),
                         Vec::new(),
                         ChatMessageStatus::Failed,
+                        None,
                     );
                     let _ = persist_assistant_message(&state, &conversation_id, &message).await;
                     active_chat
@@ -760,9 +849,10 @@ impl ChatService {
         conversation: &ChatConversation,
         prompt: &str,
         deep_research: bool,
+        reply_model: &str,
         active_chat: &ActiveChatHandle,
     ) -> Result<ChatMessage, String> {
-        let mut plan = self
+        let plan = self
             .plan_retrieval(
                 conversation,
                 &conversation.id,
@@ -771,14 +861,6 @@ impl ChatService {
                 active_chat,
             )
             .await;
-
-        if plan.skip_retrieval && !conversation_has_prior_assistant(conversation) {
-            tracing::warn!(
-                conversation_id = %conversation.id,
-                "planner requested conversation-only turn without prior assistant context; running retrieval"
-            );
-            plan.skip_retrieval = false;
-        }
 
         if plan.skip_retrieval {
             active_chat
@@ -789,13 +871,21 @@ impl ChatService {
                 .await;
             let grounding = build_conversation_only_grounding();
             let mut cancel_rx = active_chat.subscribe_cancel();
-            let content = self
-                .stream_ollama_reply(conversation, grounding, active_chat, &mut cancel_rx, true)
+            let (content, terminal_stats) = self
+                .stream_ollama_reply(
+                    conversation,
+                    grounding,
+                    active_chat,
+                    &mut cancel_rx,
+                    true,
+                    reply_model,
+                )
                 .await?;
             return Ok(self.build_assistant_message(
                 content,
                 Vec::new(),
                 ChatMessageStatus::Completed,
+                Some(self.assistant_generation_meta(reply_model, terminal_stats)),
             ));
         }
 
@@ -818,6 +908,7 @@ impl ChatService {
                     .to_string(),
                 Vec::new(),
                 ChatMessageStatus::Rejected,
+                None,
             ));
         }
 
@@ -856,13 +947,14 @@ impl ChatService {
 
         let mut cancel_rx = active_chat.subscribe_cancel();
         let reply_started = Instant::now();
-        let content = self
+        let (content, terminal_stats) = self
             .stream_ollama_reply(
                 conversation,
                 grounding_context,
                 active_chat,
                 &mut cancel_rx,
                 false,
+                reply_model,
             )
             .await?;
         tracing::info!(
@@ -872,7 +964,12 @@ impl ChatService {
             "chat response generated"
         );
 
-        Ok(self.build_assistant_message(content, sources, ChatMessageStatus::Completed))
+        Ok(self.build_assistant_message(
+            content,
+            sources,
+            ChatMessageStatus::Completed,
+            Some(self.assistant_generation_meta(reply_model, terminal_stats)),
+        ))
     }
 
     async fn retrieve_sources_with_plan(
@@ -1455,16 +1552,19 @@ impl ChatService {
         active_chat: &ActiveChatHandle,
         cancel_rx: &mut watch::Receiver<bool>,
         conversation_only: bool,
-    ) -> Result<String, String> {
+        reply_model: &str,
+    ) -> Result<(String, Option<OllamaStreamStats>), String> {
         // Cloud LLMs can take many minutes to stream a full response; override
         // the 20s default client timeout with one that covers the whole generation.
         const STREAM_TIMEOUT: Duration = Duration::from_secs(30 * 60);
         const MAX_ATTEMPTS: usize = 3;
 
+        let reply_model = reply_model.to_string();
+
         let span = logfire::span!(
             "chat.generate",
             conversation.id = conversation.id.clone(),
-            model = self.model().to_string(),
+            model = reply_model.clone(),
             history_count = conversation.messages.len().min(CHAT_HISTORY_LIMIT),
             grounding_chars = grounding_context.chars().count(),
         );
@@ -1472,14 +1572,14 @@ impl ChatService {
         async move {
             let messages = build_ollama_messages(conversation, grounding_context, conversation_only);
             let request = OllamaChatRequest {
-                model: self.model().to_string(),
+                model: reply_model.clone(),
                 messages,
                 stream: true,
             };
 
             let _permit = self
                 .core
-                .acquire_local_permit(self.model())
+                .acquire_local_permit(reply_model.as_str())
                 .await
                 .map_err(|error| error.to_string())?;
 
@@ -1489,7 +1589,7 @@ impl ChatService {
                 if attempt > 1 {
                     tracing::warn!(
                         conversation_id = %conversation.id,
-                        model = %self.model(),
+                        model = %reply_model,
                         attempt,
                         error = %last_error,
                         "chat stream failed, retrying"
@@ -1580,14 +1680,19 @@ impl ChatService {
                                 }
                                 if payload.done {
                                     let content = content.trim().to_string();
+                                    let stats = OllamaStreamStats {
+                                        prompt_eval_count: payload.prompt_eval_count,
+                                        eval_count: payload.eval_count,
+                                        total_duration_ns: payload.total_duration,
+                                    };
                                     tracing::info!(
                                         conversation_id = %conversation.id,
-                                        model = %self.model(),
+                                        model = %reply_model,
                                         response_chars = content.chars().count(),
                                         token_event_count,
                                         "chat streaming response complete"
                                     );
-                                    return Ok(content);
+                                    return Ok((content, Some(stats)));
                                 }
                             }
                         }
@@ -1597,6 +1702,9 @@ impl ChatService {
                 if !pending.trim().is_empty() {
                     let payload = serde_json::from_str::<OllamaChatResponse>(pending.trim())
                         .map_err(|error| format!("Failed to parse Ollama chat stream tail: {error}"))?;
+                    if let Some(error) = payload.error.filter(|value| !value.trim().is_empty()) {
+                        return Err(error);
+                    }
                     if let Some(token) = payload
                         .message
                         .as_ref()
@@ -1611,17 +1719,35 @@ impl ChatService {
                             })
                             .await;
                     }
+                    let tail_stats = if payload.done {
+                        Some(OllamaStreamStats {
+                            prompt_eval_count: payload.prompt_eval_count,
+                            eval_count: payload.eval_count,
+                            total_duration_ns: payload.total_duration,
+                        })
+                    } else {
+                        None
+                    };
+                    let content = content.trim().to_string();
+                    tracing::info!(
+                        conversation_id = %conversation.id,
+                        model = %reply_model,
+                        response_chars = content.chars().count(),
+                        token_event_count,
+                        "chat streaming response complete"
+                    );
+                    return Ok((content, tail_stats));
                 }
 
                 let content = content.trim().to_string();
                 tracing::info!(
                     conversation_id = %conversation.id,
-                    model = %self.model(),
+                    model = %reply_model,
                     response_chars = content.chars().count(),
                     token_event_count,
                     "chat streaming response complete"
                 );
-                return Ok(content);
+                return Ok((content, None));
             }
 
             Err(last_error)
@@ -1795,13 +1921,6 @@ fn generate_chat_id(prefix: &str) -> String {
         Utc::now().timestamp_millis(),
         NEXT_CHAT_ID.fetch_add(1, Ordering::Relaxed)
     )
-}
-
-fn conversation_has_prior_assistant(conversation: &ChatConversation) -> bool {
-    conversation
-        .messages
-        .iter()
-        .any(|message| message.role == ChatRole::Assistant)
 }
 
 fn format_conversation_for_planner(

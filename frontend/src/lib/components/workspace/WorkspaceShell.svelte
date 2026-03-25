@@ -187,7 +187,6 @@
 
     <main
       id="main-content"
-      data-go-hint-key="M"
       tabindex="-1"
       class="min-h-0 flex-1 overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
     >

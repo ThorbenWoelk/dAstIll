@@ -86,6 +86,11 @@ pub(crate) fn cache_control_for_path(path: &str) -> Option<&'static str> {
         return Some(MODERATE);
     }
 
+    // Chat client configuration (model id for UI).
+    if path == "/api/chat/config" {
+        return Some(SHORT);
+    }
+
     // Chat conversations.
     if path == "/api/chat/conversations" {
         return Some(SHORT);
@@ -318,6 +323,14 @@ mod tests {
     }
 
     // ── Chat ─────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn chat_config_returns_short_max_age() {
+        assert_eq!(
+            cache_control_for_path("/api/chat/config"),
+            Some("max-age=10, stale-while-revalidate=30")
+        );
+    }
 
     #[test]
     fn chat_conversations_list_returns_short_max_age() {

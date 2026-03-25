@@ -1,3 +1,4 @@
+import type { ChatClientConfig } from "$lib/bindings/ChatClientConfig";
 import type {
   ChatConversation,
   ChatConversationSummary,
@@ -16,6 +17,10 @@ type ChatStreamHandlers = {
   onDone?: (message: ChatMessage) => void;
   onError?: (message: string) => void;
 };
+
+export function getChatClientConfig() {
+  return request<ChatClientConfig>("/api/chat/config");
+}
 
 export function listConversations() {
   return request<ChatConversationSummary[]>("/api/chat/conversations");

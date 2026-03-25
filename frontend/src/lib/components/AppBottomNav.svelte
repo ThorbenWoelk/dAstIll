@@ -23,6 +23,7 @@
   id="app-section-nav-mobile"
   class="mobile-tab-bar lg:hidden"
   aria-label="App navigation"
+  data-go-hint-key="M"
 >
   {#each items as item}
     <a

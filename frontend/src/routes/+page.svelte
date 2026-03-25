@@ -1556,7 +1556,12 @@
     {
       selector: "#workspace",
       title: "Welcome to dAstIll",
-      body: "dAstIll helps you keep up with YouTube without the doom-scrolling. It pulls transcripts from your favorite channels and creates AI summaries, so you can quickly decide which videos are worth your time. This column is your channel library.",
+      body:
+        "dAstIll helps you keep up with YouTube without the doom-scrolling. " +
+        "It pulls transcripts from your favorite channels and creates AI summaries, " +
+        "so you can quickly decide which videos are worth your time. " +
+        "Note: This is a showcase app. It's not intended to be a production-ready multi-user application. " +
+        "In fact, the business model of YouTube prevent this from ever becoming that. I'm just having fun with it.",
       placement: "right",
       prepare: () => {
         mobileTab = "browse";
@@ -1624,29 +1629,9 @@
       fallbackSelectors: ["#tour-library-tools"],
     },
     {
-      selector: "#video-filter-button",
-      title: "Filter the list",
-      body: "Filter by video type and by read status.",
-      placement: "bottom",
-      prepare: () => {
-        mobileTab = "browse";
-      },
-      fallbackSelectors: ["#tour-library-tools", "#workspace"],
-    },
-    {
-      selector: "#channel-history-sync",
-      title: "History and sync",
-      body: "Under the list, Synced to shows how far back indexing goes. Load More or Load History pulls older rows when available.",
-      placement: "top",
-      prepare: () => {
-        mobileTab = "browse";
-      },
-      fallbackSelectors: ["#videos", "#tour-library-tools", "#workspace"],
-    },
-    {
       selector: "#mark-read-toggle",
       title: "Mark as read",
-      body: "Read / Unread sits with the other actions above the transcript or summary when a video is open. Use it with the read filter in the library.",
+      body: "Tip: Use it with the read filter in the library to get that sweet dopamine feeling of progress.",
       placement: "bottom",
       prepare: async () => {
         if (contentMode === "info" || contentMode === "highlights") {

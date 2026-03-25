@@ -10,4 +10,20 @@ export type ChatMessage = {
   sources: Array<ChatSource>;
   status: ChatMessageStatus;
   created_at: string;
+  /**
+   * Ollama model id used for this assistant turn (final answer), when applicable.
+   */
+  model?: string;
+  /**
+   * Prompt token count from the streaming API final chunk, when provided.
+   */
+  prompt_tokens?: bigint;
+  /**
+   * Generated token count from the streaming API final chunk, when provided.
+   */
+  completion_tokens?: bigint;
+  /**
+   * Wall time reported by Ollama for the generate call (nanoseconds), when provided.
+   */
+  total_duration_ns?: bigint;
 };

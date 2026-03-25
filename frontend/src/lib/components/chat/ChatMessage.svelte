@@ -8,6 +8,7 @@
     sourceWorkspaceHref,
   } from "$lib/utils/chat-citations";
   import { renderMarkdownForChat } from "$lib/utils/markdown";
+  import { formatAssistantResponseStats } from "$lib/utils/chat-response-stats";
 
   let {
     message,
@@ -38,6 +39,10 @@
 
   let showCompactSources = $derived(
     isAssistant && message.sources.length > 0 && !citedInText && !loading,
+  );
+
+  let responseStatsLine = $derived(
+    formatAssistantResponseStats(message, { loading }),
   );
 
   async function copyContent() {
@@ -150,6 +155,14 @@
         </p>
       {/if}
     </div>
+
+    {#if responseStatsLine}
+      <p
+        class="pl-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--soft-foreground)]"
+      >
+        {responseStatsLine}
+      </p>
+    {/if}
 
     {#if showCompactSources}
       <div

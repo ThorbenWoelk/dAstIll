@@ -91,7 +91,8 @@ export function buildShortcutManual(
         },
         {
           keys: "G M",
-          description: "Move focus to main content region",
+          description:
+            "Focus section tabs (Tab or arrow keys to move between sections)",
         },
         {
           keys: "G U",
@@ -163,12 +164,12 @@ export function buildShortcutManual(
           description: "Previous step",
         },
         {
-          keys: "Arrow right or Arrow down",
+          keys: "Enter, Arrow right, or Arrow down",
           description: "Next step",
         },
         {
           keys: "Escape",
-          description: "Next step (same as clicking outside the card)",
+          description: "Close guide",
         },
       ],
     },
@@ -184,7 +185,7 @@ export const GO_SEQUENCE_HINTS: readonly { key: string; label: string }[] = [
   { key: "H", label: "Highlights" },
   { key: "C", label: "Chat" },
   { key: "D", label: "Docs" },
-  { key: "M", label: "Main content" },
+  { key: "M", label: "Section tabs" },
   { key: "U", label: "Feature guide" },
 ] as const;
 
@@ -200,7 +201,7 @@ export type GoHintBadge = {
 
 /**
  * One badge per visible `[data-go-hint-key]` target: beside rail rows (desktop),
- * above tab items (mobile), top-left on main, or fallback U above the tab bar.
+ * above tab items (mobile), or fallback U above the tab bar.
  */
 export function computeGoHintBadgeStyles(): GoHintBadge[] {
   if (typeof document === "undefined") {
@@ -219,15 +220,12 @@ export function computeGoHintBadgeStyles(): GoHintBadge[] {
 
     const r = el.getBoundingClientRect();
     const inMobileNav = Boolean(el.closest("#app-section-nav-mobile"));
-    const isMain = el.id === "main-content";
 
     let style: string;
     if (inMobileNav) {
       const top = Math.max(6, r.top - 20);
       const cx = r.left + r.width / 2;
       style = `left:${Math.round(cx)}px;top:${Math.round(top)}px;transform:translateX(-50%)`;
-    } else if (isMain) {
-      style = `left:${Math.round(r.left + 12)}px;top:${Math.round(r.top + 12)}px`;
     } else {
       const gap = 8;
       style = `left:${Math.round(r.right + gap)}px;top:${Math.round(r.top + r.height / 2)}px;transform:translateY(-50%)`;
@@ -277,7 +275,38 @@ export function armGoSequence(
   }, GO_SEQUENCE_MS);
 }
 
-export function focusMainContentRegion(): void {
+/** Focus the visible section tab bar (mobile bottom nav or desktop rail) for keyboard navigation. */
+export function focusSectionTabsNav(): void {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  const pickTab = (root: HTMLElement | null): HTMLElement | null => {
+    if (!root || root.getClientRects().length === 0) {
+      return null;
+    }
+    const current = root.querySelector<HTMLElement>("a[aria-current='page']");
+    if (current) {
+      return current;
+    }
+    return root.querySelector<HTMLElement>("a[href]");
+  };
+
+  const mobile = document.getElementById("app-section-nav-mobile");
+  const mobileTab = pickTab(mobile);
+  if (mobileTab) {
+    mobileTab.focus({ preventScroll: false });
+    mobile?.scrollIntoView({ block: "nearest", behavior: "auto" });
+    return;
+  }
+
+  const rail = document.getElementById("app-section-nav-rail");
+  const railTab = pickTab(rail);
+  if (railTab) {
+    railTab.focus({ preventScroll: false });
+    return;
+  }
+
   const main = document.getElementById("main-content");
   if (!main) {
     return;

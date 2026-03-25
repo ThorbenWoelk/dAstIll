@@ -14,10 +14,18 @@ use crate::{
         ChatConversation, ChatMessage, ChatRole, ChatTitleStatus, CreateConversationRequest,
         SendChatMessageRequest, UpdateConversationRequest,
     },
+    services::{
+        SpawnReplyJob,
+        chat::{default_chat_cloud_model_id, is_chat_cloud_model_choice},
+    },
     state::AppState,
 };
 
 use super::map_db_err;
+
+pub async fn chat_client_config(State(state): State<AppState>) -> impl IntoResponse {
+    Json(state.chat.chat_client_config())
+}
 
 pub async fn list_conversations(
     State(state): State<AppState>,
@@ -116,6 +124,23 @@ pub async fn send_message(
         handle
     };
 
+    let reply_model = match payload
+        .model
+        .as_deref()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+    {
+        Some(id) if is_chat_cloud_model_choice(id) => id.to_string(),
+        Some(_) => {
+            state.active_chats.lock().await.remove(&conversation_id);
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Unknown chat model. Pick a cloud model from the selector.".to_string(),
+            ));
+        }
+        None => default_chat_cloud_model_id(state.chat.model()),
+    };
+
     let maybe_conversation = store_user_message(&state, &conversation_id, prompt).await;
     let (conversation, should_auto_name) = match maybe_conversation {
         Ok(value) => value,
@@ -125,14 +150,15 @@ pub async fn send_message(
         }
     };
 
-    state.chat.spawn_reply(
-        state.clone(),
+    state.chat.spawn_reply(SpawnReplyJob {
+        state: state.clone(),
         conversation,
-        prompt.to_string(),
+        prompt: prompt.to_string(),
         should_auto_name,
-        payload.deep_research,
-        active_chat.clone(),
-    );
+        deep_research: payload.deep_research,
+        reply_model,
+        active_chat: active_chat.clone(),
+    });
 
     Ok(sse_response(active_chat).await)
 }
@@ -291,6 +317,10 @@ mod tests {
             sources: Vec::new(),
             status: ChatMessageStatus::Completed,
             created_at: Utc::now(),
+            model: None,
+            prompt_tokens: None,
+            completion_tokens: None,
+            total_duration_ns: None,
         }
     }
 

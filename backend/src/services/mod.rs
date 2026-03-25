@@ -14,7 +14,7 @@ pub mod text;
 pub mod transcript;
 pub mod youtube;
 
-pub use chat::{ActiveChatHandle, ChatService};
+pub use chat::{ActiveChatHandle, ChatService, SpawnReplyJob};
 pub use databricks::DatabricksSqlService;
 pub use http::{
     CloudCooldown, Cooldown, TranscriptCooldown, YouTubeQuotaCooldown, build_http_client,
