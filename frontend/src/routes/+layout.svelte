@@ -1,7 +1,6 @@
 <script lang="ts">
   import "../app.css";
   import AppBottomNav from "$lib/components/AppBottomNav.svelte";
-  import Footer from "$lib/components/Footer.svelte";
   import GlobalKeyboardShortcuts from "$lib/components/GlobalKeyboardShortcuts.svelte";
   import MobileViewportInset from "$lib/components/MobileViewportInset.svelte";
   import ServiceWorkerRegistration from "$lib/components/ServiceWorkerRegistration.svelte";
@@ -28,5 +27,4 @@
     <slot />
   </div>
   <AppBottomNav />
-  <Footer />
 </div>

@@ -13,6 +13,15 @@ const STATEMENT_POLL_INTERVAL_MS: u64 = 500;
 const STATEMENT_MAX_POLLS: usize = 600;
 const INGEST_QUEUE_CAPACITY: usize = 256;
 const INGEST_RETRY_DELAYS_MS: [u64; 5] = [1_000, 5_000, 15_000, 30_000, 60_000];
+/// When Databricks returns quota, rate limits, or warehouse capacity errors, avoid tight retry loops.
+const INGEST_QUOTA_RETRY_DELAYS_MS: [u64; 6] = [
+    900_000,    // 15 min
+    1_800_000,  // 30 min
+    3_600_000,  // 1 h
+    7_200_000,  // 2 h
+    14_400_000, // 4 h
+    28_800_000, // 8 h
+];
 /// Databricks SQL warehouses reject statement requests with more than 256 named parameters (HTTP 400).
 /// See https://github.com/databricks/databricks-sql-nodejs/issues/308
 const MAX_NAMED_PARAMETERS_PER_STATEMENT: usize = 256;
@@ -100,10 +109,12 @@ impl DatabricksSqlService {
                 Ok(()) => return,
                 Err(error) => {
                     if let Some(delay_ms) = retry_delay_ms(attempt, &error) {
+                        let quota_backoff = should_use_quota_style_backoff(&error);
                         tracing::warn!(
                             error = %error,
                             attempt = attempt + 1,
                             retry_in_ms = delay_ms,
+                            quota_style_backoff = quota_backoff,
                             "analytics Databricks ingest failed; retrying in background"
                         );
                         tokio::time::sleep(Duration::from_millis(delay_ms)).await;
@@ -530,7 +541,67 @@ fn row_named_param_count(row: &AnalyticsInsertRow) -> usize {
     n
 }
 
+/// HTTP 429, documented quota error classes, or warehouse messages that imply no quick recovery.
+fn should_use_quota_style_backoff(error: &DatabricksSqlError) -> bool {
+    match error {
+        DatabricksSqlError::ApiStatus { status, body } => {
+            api_response_suggests_quota_style_backoff(*status, body)
+        }
+        DatabricksSqlError::StatementFailed { message, .. } => {
+            message_suggests_quota_style_backoff(message)
+        }
+        _ => false,
+    }
+}
+
+fn api_response_suggests_quota_style_backoff(status: reqwest::StatusCode, body: &str) -> bool {
+    if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        return true;
+    }
+    message_suggests_quota_style_backoff(body)
+}
+
+fn message_suggests_quota_style_backoff(text: &str) -> bool {
+    let compact: String = text.chars().filter(|c| !c.is_whitespace()).collect();
+    let lower = compact.to_ascii_lowercase();
+
+    if lower.contains("api_quota_exceeded") || lower.contains("dc_api_quota_exceeded") {
+        return true;
+    }
+    if lower.contains("resource_exhausted") {
+        return true;
+    }
+
+    let haystack = text.to_ascii_lowercase();
+    if haystack.contains("too many requests") || haystack.contains("rate limit") {
+        return true;
+    }
+    if haystack.contains("throttl") {
+        return true;
+    }
+    if haystack.contains("quota") && (haystack.contains("exceed") || haystack.contains("limit")) {
+        return true;
+    }
+    if haystack.contains("daily") && haystack.contains("limit") {
+        return true;
+    }
+
+    // Warehouse / serverless capacity (400 BAD_REQUEST); retrying every few seconds wastes API calls.
+    if haystack.contains("no longer eligible") && haystack.contains("serverless") {
+        return true;
+    }
+
+    false
+}
+
 fn retry_delay_ms(attempt: usize, error: &DatabricksSqlError) -> Option<u64> {
+    if should_use_quota_style_backoff(error) {
+        if attempt >= INGEST_QUOTA_RETRY_DELAYS_MS.len() {
+            return None;
+        }
+        return Some(INGEST_QUOTA_RETRY_DELAYS_MS[attempt]);
+    }
+
     if attempt >= INGEST_RETRY_DELAYS_MS.len() {
         return None;
     }
@@ -551,10 +622,51 @@ fn retry_delay_ms(attempt: usize, error: &DatabricksSqlError) -> Option<u64> {
 mod tests {
     use serde_json::Value;
 
+    use reqwest::StatusCode;
+
     use super::{
         MAX_NAMED_PARAMETERS_PER_STATEMENT, build_insert_parameters, build_insert_rows,
-        build_insert_statement, row_named_param_count, stable_event_id,
+        build_insert_statement, retry_delay_ms, row_named_param_count, stable_event_id,
     };
+
+    #[test]
+    fn retry_delay_uses_long_backoff_on_http_429() {
+        let err = super::DatabricksSqlError::ApiStatus {
+            status: StatusCode::TOO_MANY_REQUESTS,
+            body: "{}".to_string(),
+        };
+        assert_eq!(retry_delay_ms(0, &err), Some(900_000));
+        assert_eq!(retry_delay_ms(5, &err), Some(28_800_000));
+        assert_eq!(retry_delay_ms(6, &err), None);
+    }
+
+    #[test]
+    fn retry_delay_uses_long_backoff_on_api_quota_body() {
+        let err = super::DatabricksSqlError::ApiStatus {
+            status: StatusCode::BAD_REQUEST,
+            body: r#"{"error_code":"API_QUOTA_EXCEEDED","message":"limit"}"#.to_string(),
+        };
+        assert_eq!(retry_delay_ms(0, &err), Some(900_000));
+    }
+
+    #[test]
+    fn retry_delay_uses_long_backoff_on_serverless_ineligible_message() {
+        let err = super::DatabricksSqlError::ApiStatus {
+            status: StatusCode::BAD_REQUEST,
+            body: r#"{"message":"Cannot start warehouse since workspace is no longer eligible for Serverless Compute"}"#
+                .to_string(),
+        };
+        assert_eq!(retry_delay_ms(0, &err), Some(900_000));
+    }
+
+    #[test]
+    fn retry_delay_uses_short_backoff_on_unclassified_400() {
+        let err = super::DatabricksSqlError::ApiStatus {
+            status: StatusCode::BAD_REQUEST,
+            body: r#"{"error_code":"BAD_REQUEST","message":"Invalid parameter"}"#.to_string(),
+        };
+        assert_eq!(retry_delay_ms(0, &err), Some(1_000));
+    }
 
     #[test]
     fn build_insert_rows_derives_stable_event_id_when_missing() {

@@ -476,17 +476,14 @@
     await loadChannelVideoCollection(channel, "all");
   }
 
-  function handleChannelHeaderClick(channel: Channel) {
-    if (collapsed) onToggleCollapse();
+  async function handlePerChannelPreviewSelect(channel: Channel) {
     if (isVirtualChannel(channel)) {
       return;
     }
-    if (onOpenChannelOverview && !isVirtualChannel(channel)) {
+    await toggleChannelVideoCollection(channel);
+    if (onOpenChannelOverview) {
       void onOpenChannelOverview(channel.id);
-      return;
     }
-
-    void onSelectChannel(channel.id);
   }
 
   async function handleChannelVideoClick(channelId: string, videoId: string) {
@@ -1168,10 +1165,7 @@
                   dragging={draggedChannelId === channel.id}
                   dragOver={dragOverChannelId === channel.id &&
                     draggedChannelId !== channel.id}
-                  onSelect={() => {
-                    if (!isVirtualChannel(channel))
-                      void toggleChannelVideoCollection(channel);
-                  }}
+                  onSelect={() => void handlePerChannelPreviewSelect(channel)}
                   onDragStart={(event) =>
                     handleChannelDragStart(channel.id, event)}
                   onDragOver={(event) =>

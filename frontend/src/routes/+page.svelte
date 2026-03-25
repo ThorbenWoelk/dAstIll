@@ -871,6 +871,9 @@
     if (restored.channelSortMode) {
       sidebarState.setChannelSortMode(restored.channelSortMode);
     }
+    if (Array.isArray(restored.channelOrder)) {
+      sidebarState.setChannelOrder(restored.channelOrder);
+    }
 
     if (sidebarState.selectedVideoId) {
       mobileTab = "content";
@@ -1183,10 +1186,6 @@
     }
   }
 
-  async function reorderChannels(nextOrder: string[]) {
-    sidebarState.setChannelOrder(nextOrder);
-    // ... rest of reorder logic if needed, or simply let sidebar handle it
-  }
   async function initChannels() {
     sidebarState.setLoadingChannels(true);
     try {
