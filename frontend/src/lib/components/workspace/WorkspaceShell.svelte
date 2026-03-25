@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { replaceState } from "$app/navigation";
   import { onMount } from "svelte";
   import type { Snippet } from "svelte";
   import type { AiIndicatorPresentation } from "$lib/ai-status";
@@ -127,11 +128,7 @@
     const main = document.getElementById("main-content");
     if (!main) return;
     const { pathname, search } = window.location;
-    window.history.replaceState(
-      window.history.state,
-      "",
-      `${pathname}${search}#main-content`,
-    );
+    replaceState(`${pathname}${search}#main-content`, window.history.state);
     main.focus({ preventScroll: false });
     main.scrollIntoView({ block: "nearest", behavior: "auto" });
   }
@@ -190,6 +187,7 @@
 
     <main
       id="main-content"
+      data-go-hint-key="M"
       tabindex="-1"
       class="min-h-0 flex-1 overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
     >

@@ -4,6 +4,7 @@
   import ExternalLinkIcon from "$lib/components/icons/ExternalLinkIcon.svelte";
   import {
     getSectionNavigationItems,
+    goHintKeyForSection,
     type SectionNavigationSection,
   } from "$lib/section-navigation";
 
@@ -31,6 +32,7 @@
       data-sveltekit-preload-code={item.external ? undefined : "viewport"}
       data-sveltekit-preload-data={item.external ? undefined : "tap"}
       data-tour-target={item.section === "chat" ? "nav-chat" : undefined}
+      data-go-hint-key={goHintKeyForSection(item.section)}
       id={item.section === "docs"
         ? "mobile-nav-docs-link"
         : item.section === "chat"

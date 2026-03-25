@@ -5,6 +5,7 @@
 
   let {
     value = $bindable(""),
+    deepResearch = $bindable(false),
     disabled = false,
     busy = false,
     canCancel = false,
@@ -14,6 +15,7 @@
     onCancel = () => {},
   }: {
     value?: string;
+    deepResearch?: boolean;
     disabled?: boolean;
     busy?: boolean;
     canCancel?: boolean;
@@ -174,6 +176,42 @@
     submit();
   }}
 >
+  <div class="mb-2 flex flex-wrap items-center gap-2">
+    <button
+      type="button"
+      class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.06em] transition-colors duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)] disabled:pointer-events-none disabled:opacity-50 {deepResearch
+        ? 'bg-[var(--accent-soft)] text-[var(--accent-strong)]'
+        : 'bg-[var(--accent-wash)]/80 text-[var(--accent)] hover:bg-[var(--accent-wash)]'}"
+      aria-pressed={deepResearch}
+      aria-label={deepResearch ? "Deep research on" : "Deep research off"}
+      data-tooltip={deepResearch
+        ? "Maximum library retrieval for this message"
+        : "Search more of your library (slower, richer context)"}
+      disabled={disabled || busy}
+      onclick={() => {
+        deepResearch = !deepResearch;
+      }}
+    >
+      <svg
+        viewBox="0 0 24 24"
+        class="h-3.5 w-3.5 shrink-0"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M4 19h4" />
+        <path d="M6 19v-2" />
+        <path d="M8 17h8" />
+        <path d="M10 17V9l4-2 2 6-4 2" />
+        <path d="m14 7 3-3" />
+        <circle cx="17.5" cy="4.5" r="1.5" />
+      </svg>
+      Deep research
+    </button>
+  </div>
   <div class="flex items-end gap-2">
     <textarea
       bind:value

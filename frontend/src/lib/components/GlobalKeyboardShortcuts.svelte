@@ -1,95 +1,54 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
   import { page } from "$app/stores";
-  import { onMount, tick } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
   import { get } from "svelte/store";
   import { fade } from "svelte/transition";
 
   import { DOCS_URL } from "$lib/app-config";
   import KeyboardShortcutsModal from "$lib/components/KeyboardShortcutsModal.svelte";
   import {
-    GO_SEQUENCE_HINTS,
     armGoSequence,
     clearGoSequence,
+    computeGoHintBadgeStyles,
     focusMainContentRegion,
     shouldIgnoreGlobalShortcutNavigation,
+    type GoHintBadge,
     type GoSequenceState,
   } from "$lib/utils/keyboard-shortcuts";
 
   let showManual = $state(false);
   let showGoHints = $state(false);
-  let goHintsLayoutStyle = $state("");
+  let goHintPositions = $state<GoHintBadge[]>([]);
   const goState: GoSequenceState = { pending: false, timeoutId: null };
-
-  /** Places the popover beside the desktop section rail or above the mobile tab bar. */
-  function computeGoHintsLayoutStyle(): string {
-    const lg = window.matchMedia("(min-width: 1024px)").matches;
-    const rail = document.getElementById("app-section-nav-rail");
-    const mobile = document.getElementById("app-section-nav-mobile");
-    const railRect = rail?.getBoundingClientRect();
-    const mobileRect = mobile?.getBoundingClientRect();
-    const gap = 10;
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-
-    const railOk = Boolean(
-      lg && railRect && railRect.width >= 32 && railRect.height >= 48,
-    );
-
-    const mobileOk = Boolean(
-      mobileRect && mobileRect.width >= 80 && mobileRect.height >= 16,
-    );
-
-    if (railOk && railRect) {
-      const maxW = Math.max(200, vw - railRect.right - gap * 2);
-      const centerY = railRect.top + railRect.height / 2;
-      const top = Math.round(Math.min(Math.max(12, centerY), vh - 12));
-      return [
-        `left:${Math.round(railRect.right + gap)}px`,
-        `top:${top}px`,
-        "transform:translateY(-50%)",
-        `width:min(18rem,${Math.round(maxW)}px)`,
-        "max-height:min(24rem,calc(100vh - 24px))",
-      ].join(";");
-    }
-
-    if (mobileOk && mobileRect) {
-      const bottom = Math.round(vh - mobileRect.top + gap);
-      return [
-        "left:50%",
-        `bottom:${bottom}px`,
-        "transform:translateX(-50%)",
-        "width:min(22rem,calc(100vw - 2rem))",
-      ].join(";");
-    }
-
-    return [
-      "left:50%",
-      "transform:translateX(-50%)",
-      "bottom:calc(var(--mobile-tab-bar-height) + var(--space-md))",
-      "width:min(22rem,calc(100vw - 2rem))",
-    ].join(";");
-  }
 
   $effect(() => {
     if (!showGoHints || typeof document === "undefined") {
-      goHintsLayoutStyle = "";
+      untrack(() => {
+        goHintPositions = [];
+      });
       return;
     }
 
-    const update = () => {
-      goHintsLayoutStyle = computeGoHintsLayoutStyle();
+    const sync = () => {
+      untrack(() => {
+        goHintPositions = computeGoHintBadgeStyles();
+      });
     };
 
-    update();
-    void tick().then(update);
-    window.addEventListener("resize", update);
+    sync();
+    void tick().then(sync);
+    const id = requestAnimationFrame(sync);
+    window.addEventListener("resize", sync);
+    window.addEventListener("scroll", sync, true);
     const mq = window.matchMedia("(min-width: 1024px)");
-    mq.addEventListener("change", update);
+    mq.addEventListener("change", sync);
 
     return () => {
-      window.removeEventListener("resize", update);
-      mq.removeEventListener("change", update);
+      cancelAnimationFrame(id);
+      window.removeEventListener("resize", sync);
+      window.removeEventListener("scroll", sync, true);
+      mq.removeEventListener("change", sync);
     };
   });
 
@@ -196,6 +155,9 @@
         m: () => {
           focusMainContentRegion();
         },
+        u: () => {
+          window.dispatchEvent(new CustomEvent("dastill:open-guide"));
+        },
       };
       const action = goActions[k];
       dismissGoSequence();
@@ -242,40 +204,24 @@
 
 {#if showGoHints}
   <div
-    class="pointer-events-none fixed z-[105]"
-    style={goHintsLayoutStyle}
-    transition:fade={{ duration: 200 }}
+    class="pointer-events-none fixed inset-0 z-[105]"
+    transition:fade={{ duration: 160 }}
     role="status"
     aria-live="polite"
-    aria-atomic="true"
+    aria-label="Go navigation: press a highlighted letter"
   >
-    <div
-      class="pointer-events-none max-h-[min(24rem,calc(100vh-24px))] overflow-y-auto rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface-frost)] px-4 py-3 shadow-[var(--shadow-soft)] backdrop-blur-[10px]"
+    {#each goHintPositions as hint, i (`${hint.key}-${i}`)}
+      <kbd
+        class="fixed z-[106] inline-flex min-h-[1.5rem] min-w-[1.5rem] items-center justify-center rounded-[var(--radius-sm)] border border-[var(--accent-border-soft)] bg-[var(--surface-frost)] px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-[var(--accent-strong)] shadow-[var(--shadow-soft)] backdrop-blur-[10px]"
+        style={hint.style}
+        transition:fade={{ duration: 140 }}>{hint.key}</kbd
+      >
+    {/each}
+    <p
+      class="fixed bottom-[max(1rem,calc(var(--mobile-tab-bar-height,0px)+0.75rem))] left-1/2 z-[106] -translate-x-1/2 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--soft-foreground)] opacity-70"
     >
-      <p
-        class="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-80"
-      >
-        Go to
-      </p>
-      <ul class="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
-        {#each GO_SEQUENCE_HINTS as hint (hint.key)}
-          <li class="flex items-center gap-2">
-            <kbd
-              class="inline-flex min-w-[1.75rem] justify-center rounded-[var(--radius-sm)] border border-[var(--border-soft)] bg-[var(--muted)] px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-[var(--foreground)]"
-              >{hint.key}</kbd
-            >
-            <span class="text-[12px] font-medium text-[var(--foreground)]"
-              >{hint.label}</span
-            >
-          </li>
-        {/each}
-      </ul>
-      <p
-        class="mt-3 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--soft-foreground)] opacity-55"
-      >
-        Esc to cancel
-      </p>
-    </div>
+      Esc to cancel
+    </p>
   </div>
 {/if}
 

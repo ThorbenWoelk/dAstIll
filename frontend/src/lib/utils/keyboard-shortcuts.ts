@@ -93,6 +93,10 @@ export function buildShortcutManual(
           keys: "G M",
           description: "Move focus to main content region",
         },
+        {
+          keys: "G U",
+          description: "Open feature guide tour",
+        },
       ],
     },
     {
@@ -150,6 +154,11 @@ export function buildShortcutManual(
       title: "Feature guide tour",
       rows: [
         {
+          keys: "G U",
+          description:
+            "Open feature guide (press G for hints, then U within a second)",
+        },
+        {
           keys: "Arrow left or Arrow up",
           description: "Previous step",
         },
@@ -159,7 +168,7 @@ export function buildShortcutManual(
         },
         {
           keys: "Escape",
-          description: "Close guide",
+          description: "Next step (same as clicking outside the card)",
         },
       ],
     },
@@ -176,12 +185,73 @@ export const GO_SEQUENCE_HINTS: readonly { key: string; label: string }[] = [
   { key: "C", label: "Chat" },
   { key: "D", label: "Docs" },
   { key: "M", label: "Main content" },
+  { key: "U", label: "Feature guide" },
 ] as const;
 
 export type GoSequenceState = {
   pending: boolean;
   timeoutId: ReturnType<typeof setTimeout> | null;
 };
+
+export type GoHintBadge = {
+  key: string;
+  style: string;
+};
+
+/**
+ * One badge per visible `[data-go-hint-key]` target: beside rail rows (desktop),
+ * above tab items (mobile), top-left on main, or fallback U above the tab bar.
+ */
+export function computeGoHintBadgeStyles(): GoHintBadge[] {
+  if (typeof document === "undefined") {
+    return [];
+  }
+
+  const isLg = window.matchMedia("(min-width: 1024px)").matches;
+  const nodes = document.querySelectorAll<HTMLElement>("[data-go-hint-key]");
+  const out: GoHintBadge[] = [];
+  const seen = new Set<string>();
+
+  for (const el of nodes) {
+    const key = el.dataset.goHintKey?.trim();
+    if (!key) continue;
+    if (el.getClientRects().length === 0) continue;
+
+    const r = el.getBoundingClientRect();
+    const inMobileNav = Boolean(el.closest("#app-section-nav-mobile"));
+    const isMain = el.id === "main-content";
+
+    let style: string;
+    if (inMobileNav) {
+      const top = Math.max(6, r.top - 20);
+      const cx = r.left + r.width / 2;
+      style = `left:${Math.round(cx)}px;top:${Math.round(top)}px;transform:translateX(-50%)`;
+    } else if (isMain) {
+      style = `left:${Math.round(r.left + 12)}px;top:${Math.round(r.top + 12)}px`;
+    } else {
+      const gap = 8;
+      style = `left:${Math.round(r.right + gap)}px;top:${Math.round(r.top + r.height / 2)}px;transform:translateY(-50%)`;
+    }
+
+    out.push({ key, style });
+    seen.add(key);
+  }
+
+  if (!isLg && !seen.has("U")) {
+    const mobile = document.getElementById("app-section-nav-mobile");
+    const r = mobile?.getBoundingClientRect();
+    if (r && r.width > 0 && r.height > 0) {
+      const cx = r.left + r.width * 0.9;
+      const top = Math.max(6, r.top - 20);
+      out.push({
+        key: "U",
+        style: `left:${Math.round(cx)}px;top:${Math.round(top)}px;transform:translateX(-50%)`,
+      });
+    }
+  }
+
+  return out;
+}
 
 export function clearGoSequence(state: GoSequenceState): void {
   state.pending = false;

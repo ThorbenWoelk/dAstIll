@@ -1,0 +1,216 @@
+{
+  "pages": [
+    {
+      "name": "summary_consumption",
+      "displayName": "Summary Consumption",
+      "layout": [
+        {
+          "widget": {
+            "name": "kpi_total_sessions",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "consumption_kpis",
+                  "fields": [
+                    { "name": "total_sessions", "expression": "`total_sessions`" }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": { "fieldName": "total_sessions", "displayAs": "number" }
+              },
+              "frame": { "showTitle": true, "title": "Total Reading Sessions" }
+            }
+          },
+          "position": { "x": 0, "y": 0, "width": 2, "height": 3 }
+        },
+        {
+          "widget": {
+            "name": "kpi_avg_active_time",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "consumption_kpis",
+                  "fields": [
+                    { "name": "avg_active_time_sec", "expression": "`avg_active_time_sec`" }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": { "fieldName": "avg_active_time_sec", "displayAs": "number" }
+              },
+              "frame": { "showTitle": true, "title": "Avg Active Read Time (s)" }
+            }
+          },
+          "position": { "x": 2, "y": 0, "width": 2, "height": 3 }
+        },
+        {
+          "widget": {
+            "name": "kpi_avg_scroll_depth",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "consumption_kpis",
+                  "fields": [
+                    { "name": "avg_scroll_depth_pct", "expression": "`avg_scroll_depth_pct`" }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": { "fieldName": "avg_scroll_depth_pct", "displayAs": "number" }
+              },
+              "frame": { "showTitle": true, "title": "Avg Scroll Depth (%)" }
+            }
+          },
+          "position": { "x": 4, "y": 0, "width": 2, "height": 3 }
+        },
+        {
+          "widget": {
+            "name": "bar_top_summaries",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "top_summaries",
+                  "fields": [
+                    { "name": "summary_id", "expression": "`summary_id`" },
+                    { "name": "avg_engagement_score", "expression": "`avg_engagement_score`" }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "summary_id",
+                  "scale": { "type": "categorical" },
+                  "title": "Summary (Video ID)"
+                },
+                "y": {
+                  "fieldName": "avg_engagement_score",
+                  "scale": { "type": "quantitative" },
+                  "title": "Avg Engagement Score"
+                }
+              },
+              "frame": { "showTitle": true, "title": "Top Summaries by Engagement Score (Top 20)" }
+            }
+          },
+          "position": { "x": 0, "y": 3, "width": 6, "height": 8 }
+        },
+        {
+          "widget": {
+            "name": "line_daily_sessions",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "consumption_trend",
+                  "fields": [
+                    { "name": "event_date", "expression": "`event_date`" },
+                    { "name": "session_count", "expression": "`session_count`" },
+                    { "name": "avg_active_time_sec", "expression": "`avg_active_time_sec`" }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "event_date",
+                  "scale": { "type": "temporal" },
+                  "title": "Date"
+                },
+                "y": {
+                  "fieldName": "session_count",
+                  "scale": { "type": "quantitative" },
+                  "title": "Sessions"
+                }
+              },
+              "frame": { "showTitle": true, "title": "Daily Summary Reading Sessions" }
+            }
+          },
+          "position": { "x": 0, "y": 11, "width": 6, "height": 5 }
+        },
+        {
+          "widget": {
+            "name": "table_top_summaries_detail",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "top_summaries",
+                  "fields": [
+                    { "name": "summary_id", "expression": "`summary_id`" },
+                    { "name": "channel_id", "expression": "`channel_id`" },
+                    { "name": "session_count", "expression": "`session_count`" },
+                    { "name": "avg_active_time_sec", "expression": "`avg_active_time_sec`" },
+                    { "name": "avg_scroll_depth_pct", "expression": "`avg_scroll_depth_pct`" },
+                    { "name": "avg_engagement_score", "expression": "`avg_engagement_score`" }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  { "fieldName": "summary_id",          "title": "Summary (Video ID)",    "type": "string" },
+                  { "fieldName": "channel_id",          "title": "Channel",               "type": "string" },
+                  { "fieldName": "session_count",       "title": "Sessions",              "type": "integer" },
+                  { "fieldName": "avg_active_time_sec", "title": "Avg Active Time (s)",   "type": "float" },
+                  { "fieldName": "avg_scroll_depth_pct","title": "Avg Scroll Depth (%)",  "type": "float" },
+                  { "fieldName": "avg_engagement_score","title": "Avg Engagement Score",  "type": "float" }
+                ]
+              },
+              "frame": { "showTitle": true, "title": "Top Summaries - Full Detail (Top 20)" }
+            }
+          },
+          "position": { "x": 0, "y": 16, "width": 6, "height": 8 }
+        }
+      ]
+    }
+  ],
+  "datasets": [
+    {
+      "name": "consumption_kpis",
+      "displayName": "Consumption KPIs",
+      "query": "SELECT\n  COUNT(*) AS total_sessions,\n  ROUND(AVG(active_time_ms) / 1000.0, 1) AS avg_active_time_sec,\n  ROUND(AVG(max_scroll_depth_pct), 0) AS avg_scroll_depth_pct,\n  ROUND(AVG(engagement_score)) AS avg_engagement_score\nFROM analytics.gold_summary_consumption"
+    },
+    {
+      "name": "top_summaries",
+      "displayName": "Top Summaries by Engagement",
+      "query": "SELECT\n  summary_id,\n  channel_id,\n  COUNT(*) AS session_count,\n  ROUND(AVG(active_time_ms) / 1000.0, 1) AS avg_active_time_sec,\n  ROUND(AVG(max_scroll_depth_pct), 0) AS avg_scroll_depth_pct,\n  ROUND(AVG(engagement_score)) AS avg_engagement_score\nFROM analytics.gold_summary_consumption\nGROUP BY summary_id, channel_id\nORDER BY avg_engagement_score DESC NULLS LAST\nLIMIT 20"
+    },
+    {
+      "name": "consumption_trend",
+      "displayName": "Daily Consumption Trend",
+      "query": "SELECT\n  event_date,\n  COUNT(*) AS session_count,\n  ROUND(AVG(active_time_ms) / 1000.0, 1) AS avg_active_time_sec\nFROM analytics.gold_summary_consumption\nGROUP BY event_date\nORDER BY event_date"
+    }
+  ]
+}

@@ -88,6 +88,8 @@ check_ollama_models() {
 		exit 1
 	fi
 
+	echo "Ollama: checking models from $env_file"
+
 	local available
 	available=$(ollama list 2>/dev/null | awk 'NR>1 {print $1}') || {
 		echo "Error: failed to query ollama - is it running?"
@@ -96,6 +98,7 @@ check_ollama_models() {
 
 	local model_vars=(OLLAMA_MODEL OLLAMA_FALLBACK_MODEL SUMMARY_EVALUATOR_MODEL OLLAMA_EMBEDDING_MODEL)
 	local missing=()
+	local verified=0
 
 	for var in "${model_vars[@]}"; do
 		local model
@@ -109,6 +112,9 @@ check_ollama_models() {
 
 		if ! echo "$available" | grep -qxF "$model"; then
 			missing+=("$var=$model")
+		else
+			printf '  %-28s %s\n' "$var" "$model"
+			verified=$((verified + 1))
 		fi
 	done
 
@@ -122,7 +128,10 @@ check_ollama_models() {
 		exit 1
 	fi
 
-	echo "All ollama models verified."
+	if (( verified == 0 )); then
+		echo "  (no OLLAMA_* model variables set; nothing to verify)"
+	fi
+	echo "Ollama: ok ($verified model(s) present locally)"
 }
 
 check_ollama_models

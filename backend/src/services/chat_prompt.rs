@@ -1,14 +1,14 @@
 use crate::models::{ChatConversation, ChatRole};
 
 use super::chat::{
-    CHAT_HISTORY_LIMIT, CHAT_SYSTEM_PROMPT, CHAT_SYSTEM_PROMPT_CONVERSATION_TURN, ChatRetrievalPlan,
-    OllamaRequestMessage, RetrievedChatSource, VideoObservation,
+    CHAT_HISTORY_LIMIT, CHAT_SYSTEM_PROMPT, CHAT_SYSTEM_PROMPT_CONVERSATION_TURN,
+    ChatRetrievalPlan, OllamaRequestMessage, RetrievedChatSource, VideoObservation,
 };
 
 const GROUNDING_CITATION_FOOTER: &str = "\n---\nInline citations: Use [1], [2], … in your answer for the same [Source N] as above (one chunk per index). Place brackets right after the phrase they support.";
 
 pub(super) fn synthesis_raw_limit_for_plan(plan: &ChatRetrievalPlan) -> usize {
-    plan.budget.min(48).max(8)
+    plan.budget.clamp(8, 48)
 }
 
 pub(super) fn build_ollama_messages(
@@ -108,11 +108,7 @@ pub(super) fn build_synthesis_grounding_context(
     }
 
     context.push_str("Supporting raw excerpts:\n\n");
-    for (index, source) in retrieved_sources
-        .iter()
-        .take(raw_excerpt_limit)
-        .enumerate()
-    {
+    for (index, source) in retrieved_sources.iter().take(raw_excerpt_limit).enumerate() {
         let source_number = index + 1;
         context.push_str(&format!(
             "[Source {source_number}] Video: {}\nChannel: {}\nType: {}\n",

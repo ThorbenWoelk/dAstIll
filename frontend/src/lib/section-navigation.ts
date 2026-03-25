@@ -12,6 +12,20 @@ export type SectionNavigationItem = {
   external: boolean;
 };
 
+/** Letter shown next to a section row after pressing G (go navigation chord). */
+export function goHintKeyForSection(
+  section: SectionNavigationSection | "docs",
+): string {
+  const keys: Record<SectionNavigationSection | "docs", string> = {
+    workspace: "W",
+    queue: "Q",
+    highlights: "H",
+    chat: "C",
+    docs: "D",
+  };
+  return keys[section];
+}
+
 export function getSectionNavigationItems(
   currentSection: SectionNavigationSection,
   docsUrl: string,

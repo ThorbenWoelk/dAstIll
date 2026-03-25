@@ -1484,6 +1484,10 @@ components:
       properties:
         content:
           type: string
+        deep_research:
+          type: boolean
+          default: false
+          description: Use maximum retrieval budget and broader search passes for this message.
     VideosAddedResponse:
       type: object
       required: [videos_added]

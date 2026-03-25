@@ -418,4 +418,7 @@ pub struct UpdateConversationRequest {
 #[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct SendChatMessageRequest {
     pub content: String,
+    /// When true, retrieval uses the maximum excerpt budget and multi-query passes so the model can synthesize across much more of the library.
+    #[serde(default)]
+    pub deep_research: bool,
 }

@@ -1,0 +1,259 @@
+{
+  "pages": [
+    {
+      "name": "acknowledgment_highlights",
+      "displayName": "Acknowledgment and Highlights",
+      "layout": [
+        {
+          "widget": {
+            "name": "kpi_total_videos",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "engagement_kpis",
+                  "fields": [
+                    { "name": "total_videos", "expression": "`total_videos`" }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": { "fieldName": "total_videos", "displayAs": "number" }
+              },
+              "frame": { "showTitle": true, "title": "Total Videos Tracked" }
+            }
+          },
+          "position": { "x": 0, "y": 0, "width": 2, "height": 3 }
+        },
+        {
+          "widget": {
+            "name": "kpi_acknowledged",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "engagement_kpis",
+                  "fields": [
+                    { "name": "acknowledged_count", "expression": "`acknowledged_count`" }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": { "fieldName": "acknowledged_count", "displayAs": "number" }
+              },
+              "frame": { "showTitle": true, "title": "Videos Acknowledged" }
+            }
+          },
+          "position": { "x": 2, "y": 0, "width": 2, "height": 3 }
+        },
+        {
+          "widget": {
+            "name": "kpi_highlights",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "engagement_kpis",
+                  "fields": [
+                    { "name": "total_highlights", "expression": "`total_highlights`" }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": { "fieldName": "total_highlights", "displayAs": "number" }
+              },
+              "frame": { "showTitle": true, "title": "Total Highlights Created" }
+            }
+          },
+          "position": { "x": 4, "y": 0, "width": 2, "height": 3 }
+        },
+        {
+          "widget": {
+            "name": "bar_tier_distribution",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "engagement_tier_distribution",
+                  "fields": [
+                    { "name": "engagement_tier", "expression": "`engagement_tier`" },
+                    { "name": "video_count", "expression": "`video_count`" }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "engagement_tier",
+                  "scale": { "type": "categorical" },
+                  "title": "Engagement Tier"
+                },
+                "y": {
+                  "fieldName": "video_count",
+                  "scale": { "type": "quantitative" },
+                  "title": "Videos"
+                }
+              },
+              "frame": { "showTitle": true, "title": "Videos by Engagement Tier" }
+            }
+          },
+          "position": { "x": 0, "y": 3, "width": 3, "height": 6 }
+        },
+        {
+          "widget": {
+            "name": "bar_highlights_by_channel",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "highlights_by_channel",
+                  "fields": [
+                    { "name": "channel_id", "expression": "`channel_id`" },
+                    { "name": "total_highlights", "expression": "`total_highlights`" }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "channel_id",
+                  "scale": { "type": "categorical" },
+                  "title": "Channel"
+                },
+                "y": {
+                  "fieldName": "total_highlights",
+                  "scale": { "type": "quantitative" },
+                  "title": "Total Highlights"
+                }
+              },
+              "frame": { "showTitle": true, "title": "Highlights by Channel" }
+            }
+          },
+          "position": { "x": 3, "y": 3, "width": 3, "height": 6 }
+        },
+        {
+          "widget": {
+            "name": "line_ack_trend",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ack_trend",
+                  "fields": [
+                    { "name": "event_date", "expression": "`event_date`" },
+                    { "name": "acknowledgment_count", "expression": "`acknowledgment_count`" }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "event_date",
+                  "scale": { "type": "temporal" },
+                  "title": "Date"
+                },
+                "y": {
+                  "fieldName": "acknowledgment_count",
+                  "scale": { "type": "quantitative" },
+                  "title": "Acknowledgments"
+                }
+              },
+              "frame": { "showTitle": true, "title": "Daily Acknowledgments" }
+            }
+          },
+          "position": { "x": 0, "y": 9, "width": 6, "height": 5 }
+        },
+        {
+          "widget": {
+            "name": "table_top_highlighted",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "top_highlighted_videos",
+                  "fields": [
+                    { "name": "video_id", "expression": "`video_id`" },
+                    { "name": "channel_id", "expression": "`channel_id`" },
+                    { "name": "highlight_count", "expression": "`highlight_count`" },
+                    { "name": "engagement_tier", "expression": "`engagement_tier`" },
+                    { "name": "acknowledged", "expression": "`acknowledged`" }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  { "fieldName": "video_id",       "title": "Video ID",       "type": "string" },
+                  { "fieldName": "channel_id",     "title": "Channel",        "type": "string" },
+                  { "fieldName": "highlight_count","title": "Highlights",     "type": "integer" },
+                  { "fieldName": "engagement_tier","title": "Tier",           "type": "string" },
+                  { "fieldName": "acknowledged",   "title": "Acknowledged",   "type": "string" }
+                ]
+              },
+              "frame": { "showTitle": true, "title": "Most Highlighted Videos (Top 20)" }
+            }
+          },
+          "position": { "x": 0, "y": 14, "width": 6, "height": 8 }
+        }
+      ]
+    }
+  ],
+  "datasets": [
+    {
+      "name": "engagement_kpis",
+      "displayName": "Engagement KPIs",
+      "query": "SELECT\n  COUNT(*) AS total_videos,\n  SUM(CASE WHEN is_acknowledged THEN 1 ELSE 0 END) AS acknowledged_count,\n  SUM(highlight_count) AS total_highlights,\n  ROUND(SUM(CASE WHEN is_acknowledged THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) AS ack_rate_pct\nFROM analytics.gold_engagement_progression"
+    },
+    {
+      "name": "engagement_tier_distribution",
+      "displayName": "Engagement Tier Distribution",
+      "query": "SELECT\n  engagement_tier,\n  COUNT(*) AS video_count\nFROM analytics.gold_engagement_progression\nGROUP BY engagement_tier\nORDER BY video_count DESC"
+    },
+    {
+      "name": "highlights_by_channel",
+      "displayName": "Highlights by Channel",
+      "query": "SELECT\n  channel_id,\n  SUM(highlight_count) AS total_highlights,\n  COUNT(DISTINCT video_id) AS videos_with_highlights,\n  ROUND(SUM(highlight_count) * 1.0 / COUNT(DISTINCT video_id), 2) AS highlights_per_video\nFROM analytics.gold_engagement_progression\nWHERE highlight_count > 0\nGROUP BY channel_id\nORDER BY total_highlights DESC"
+    },
+    {
+      "name": "ack_trend",
+      "displayName": "Daily Acknowledgment Trend",
+      "query": "SELECT\n  DATE(first_acknowledged_at) AS event_date,\n  COUNT(*) AS acknowledgment_count\nFROM analytics.gold_engagement_progression\nWHERE is_acknowledged = TRUE\n  AND first_acknowledged_at IS NOT NULL\nGROUP BY DATE(first_acknowledged_at)\nORDER BY event_date"
+    },
+    {
+      "name": "top_highlighted_videos",
+      "displayName": "Top Highlighted Videos",
+      "query": "SELECT\n  video_id,\n  channel_id,\n  highlight_count,\n  engagement_tier,\n  CASE WHEN is_acknowledged THEN 'Yes' ELSE 'No' END AS acknowledged\nFROM analytics.gold_engagement_progression\nWHERE highlight_count > 0\nORDER BY highlight_count DESC\nLIMIT 20"
+    }
+  ]
+}

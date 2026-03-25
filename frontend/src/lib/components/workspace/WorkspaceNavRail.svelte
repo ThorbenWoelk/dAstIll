@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { onMount } from "svelte";
+
   import AiStatusIndicator from "$lib/components/AiStatusIndicator.svelte";
   import ChevronIcon from "$lib/components/icons/ChevronIcon.svelte";
   import ExternalLinkIcon from "$lib/components/icons/ExternalLinkIcon.svelte";
@@ -6,6 +8,7 @@
   import type { AiIndicatorPresentation } from "$lib/ai-status";
   import {
     getSectionNavigationItems,
+    goHintKeyForSection,
     type SectionNavigationSection,
   } from "$lib/section-navigation";
 
@@ -30,6 +33,15 @@
   } = $props();
 
   let navItems = $derived(getSectionNavigationItems(currentSection, DOCS_URL));
+
+  onMount(() => {
+    const onOpenGuideEvent = () => {
+      onOpenGuide();
+    };
+    window.addEventListener("dastill:open-guide", onOpenGuideEvent);
+    return () =>
+      window.removeEventListener("dastill:open-guide", onOpenGuideEvent);
+  });
 
   function navIcon(section: string): { viewBox: string; paths: string[] } {
     switch (section) {
@@ -139,6 +151,7 @@
         data-sveltekit-preload-code={item.external ? undefined : "viewport"}
         data-sveltekit-preload-data={item.external ? undefined : "tap"}
         data-tour-target={item.section === "chat" ? "nav-chat" : undefined}
+        data-go-hint-key={goHintKeyForSection(item.section)}
         id={item.section === "docs"
           ? "nav-docs-link"
           : item.section === "chat"
@@ -192,6 +205,7 @@
     <button
       type="button"
       id="guide-trigger"
+      data-go-hint-key="U"
       class={`inline-flex items-center gap-2 rounded-[var(--radius-sm)] text-[var(--soft-foreground)] opacity-60 transition-all hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${collapsed ? "justify-center px-0 py-2" : "px-3 py-2"}`}
       onclick={onOpenGuide}
       aria-label="Feature guide"

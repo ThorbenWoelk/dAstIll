@@ -211,6 +211,8 @@ export interface ChatRetrievalPlan {
   rationale?: string | null;
   /** When true, the server answered from conversation only (no new retrieval). */
   skip_retrieval?: boolean;
+  /** When true, this turn used the app’s maximum excerpt budget and wider query fan-out. */
+  deep_research?: boolean;
 }
 
 export interface ChatStreamStatus {
@@ -248,4 +250,6 @@ export interface CreateConversationRequest {
 
 export interface SendChatMessageRequest {
   content: string;
+  /** Ask the backend to use maximum library retrieval for this message. */
+  deep_research?: boolean;
 }

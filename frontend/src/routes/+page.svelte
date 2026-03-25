@@ -2,6 +2,7 @@
   import { goto, replaceState as replacePageState } from "$app/navigation";
   import { page } from "$app/stores";
   import { onMount, tick } from "svelte";
+  import { SvelteMap } from "svelte/reactivity";
   import type { Component } from "svelte";
   import {
     addChannel,
@@ -32,8 +33,9 @@
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
   import { DOCS_URL } from "$lib/app-config";
   import type { TourStep } from "$lib/components/FeatureGuide.svelte";
-  import ContentEditor from "$lib/components/ContentEditor.svelte";
   import WorkspaceContentPanel from "$lib/components/workspace/WorkspaceContentPanel.svelte";
+  import WorkspaceDesktopTopBar from "$lib/components/workspace/WorkspaceDesktopTopBar.svelte";
+  import WorkspaceMobileBrowseOverlay from "$lib/components/workspace/WorkspaceMobileBrowseOverlay.svelte";
   import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
   import WorkspaceSidebar from "$lib/components/workspace/WorkspaceSidebar.svelte";
 
@@ -138,11 +140,8 @@
     mergeVideoHighlights,
     removeVideoHighlightFromState,
   } from "$lib/workspace/highlight-actions";
-  import {
-    resolveDefaultContentMode,
-    WORKSPACE_CONTENT_MODE_ORDER,
-  } from "$lib/workspace/navigation";
   import { createSidebarState } from "$lib/workspace/sidebar-state.svelte";
+  import { deriveSummaryTrackingId } from "$lib/workspace/summary-tracking-id";
   import {
     type AcknowledgedFilter,
     type ChannelSortMode,
@@ -246,7 +245,7 @@
   let deletingHighlightId = $state<number | null>(null);
   // (Moved further down to ensure dependencies are initialized)
   let originalTranscriptByVideoId = $state<Record<string, string>>({});
-  const contentCache = new Map<
+  const contentCache = new SvelteMap<
     string,
     {
       transcript?: {
@@ -273,6 +272,8 @@
   let activeContentRequestId = 0;
 
   let workspaceStateHydrated = $state(false);
+  /** SvelteKit's replaceState throws until the client router has started; sidebar restore runs in onMount before that. */
+  let shallowUrlSyncReady = $state(false);
   let viewUrlHydrated = $state(false);
   let pendingSelectedVideo = $state<Video | null>(null);
   // Sidebar State (using unified composable)
@@ -292,7 +293,7 @@
         videoTypeFilter: sidebarState.videoTypeFilter,
         acknowledgedFilter: sidebarState.acknowledgedFilter,
       });
-      history.replaceState(history.state, "", href);
+      replaceWorkspaceUrl(href);
     },
     onChannelDeleted: (channelId: string) => {
       if (sidebarState.selectedChannelId === channelId) {
@@ -319,7 +320,7 @@
         videoTypeFilter: value,
         acknowledgedFilter: sidebarState.acknowledgedFilter,
       });
-      history.replaceState(history.state, "", href);
+      replaceWorkspaceUrl(href);
     },
     onAcknowledgedFilterChange: (value: boolean | undefined) => {
       const ack: AcknowledgedFilter =
@@ -331,7 +332,7 @@
         videoTypeFilter: sidebarState.videoTypeFilter,
         acknowledgedFilter: ack,
       });
-      history.replaceState(history.state, "", href);
+      replaceWorkspaceUrl(href);
     },
     onOpenChannelOverview: async (channelId: string) => {
       await goto(`/channels/${encodeURIComponent(channelId)}`);
@@ -759,24 +760,6 @@
     summaryQualityModelUsed = presentation.qualityModelUsed;
   }
 
-  function hashSummarySignature(value: string) {
-    let hash = 2166136261;
-    for (let index = 0; index < value.length; index += 1) {
-      hash ^= value.charCodeAt(index);
-      hash = Math.imul(hash, 16777619);
-    }
-    return (hash >>> 0).toString(16).padStart(8, "0");
-  }
-
-  function deriveSummaryTrackingId(summary: SummaryPayload) {
-    const signature = [
-      summary.video_id,
-      summary.model_used ?? "",
-      summary.content ?? "",
-    ].join("\u001f");
-    return `${summary.video_id}:${hashSummarySignature(signature)}`;
-  }
-
   function syncSummaryTrackingSession(
     summary: SummaryPayload,
     videoId: string,
@@ -898,8 +881,28 @@
     }
   }
 
+  function replaceWorkspaceUrl(href: string) {
+    if (!shallowUrlSyncReady || typeof window === "undefined") return;
+    const nextUrl = new URL(href, window.location.origin);
+    if (
+      nextUrl.pathname === window.location.pathname &&
+      nextUrl.search === window.location.search
+    ) {
+      return;
+    }
+    replacePageState(
+      `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`,
+      history.state,
+    );
+  }
+
   function persistViewUrl() {
-    if (!viewUrlHydrated || typeof window === "undefined") return;
+    if (
+      !viewUrlHydrated ||
+      !shallowUrlSyncReady ||
+      typeof window === "undefined"
+    )
+      return;
     const nextHref = buildWorkspaceViewHref({
       selectedChannelId: sidebarState.selectedChannelId,
       selectedVideoId: sidebarState.selectedVideoId,
@@ -907,14 +910,7 @@
       videoTypeFilter: sidebarState.videoTypeFilter,
       acknowledgedFilter: sidebarState.acknowledgedFilter,
     });
-    const nextUrl = new URL(nextHref, window.location.origin);
-    if (
-      nextUrl.pathname === window.location.pathname &&
-      nextUrl.search === window.location.search
-    ) {
-      return;
-    }
-    history.replaceState(history.state, "", nextUrl);
+    replaceWorkspaceUrl(nextHref);
   }
 
   function persistWorkspaceState() {
@@ -942,6 +938,10 @@
   onMount(() => {
     restoreWorkspaceState();
     workspaceStateHydrated = true;
+    setTimeout(() => {
+      shallowUrlSyncReady = true;
+      persistViewUrl();
+    }, 0);
     void (async () => {
       const selectedChannelIdAtMount = selectedChannelId;
       const selectedVideoIdAtMount = selectedVideoId;
@@ -1664,7 +1664,7 @@
     {
       selector: "#workspace-tabs-mobile",
       title: "Your Highlights",
-      body: "Select text in the transcript or summary to save a highlight. This tab lists clips for the current video.",
+      body: "Found something worth remembering? Select any text in the transcript or summary and save it as a highlight. All your saved passages for this video appear here.",
       placement: "bottom",
       prepare: async () => {
         await tourPrepareFirstVideoIfNeeded();
@@ -1691,7 +1691,7 @@
     {
       selector: "#guide-trigger",
       title: "Come back to this guide any time",
-      body: "Reopen this tour from Guide at the bottom of the left rail on wide layouts. Docs are linked in the rail and the bottom bar for full reference.",
+      body: "Reopen this guide at any time.",
       placement: "right",
       prepare: () => {
         mobileTab = "browse";
@@ -2434,10 +2434,7 @@
     }
     url.searchParams.delete("cite");
     url.searchParams.delete("chunk");
-    replacePageState(
-      `${url.pathname}${url.search}${url.hash}`,
-      window.history.state,
-    );
+    replaceWorkspaceUrl(`${url.pathname}${url.search}${url.hash}`);
   }
 
   const workspaceContentState = $derived({
@@ -2558,112 +2555,57 @@
     />
   {/snippet}
   {#snippet topBar()}
-    <div class="flex items-center gap-6" id="workspace-tabs-desktop">
-      {#each WORKSPACE_CONTENT_MODE_ORDER as mode}
-        <button
-          type="button"
-          class={`-mb-px inline-flex h-6 items-center border-b-2 text-[11px] font-bold uppercase tracking-[0.12em] transition-colors ${
-            contentMode === mode
-              ? "border-[var(--accent)] text-[var(--accent-strong)]"
-              : "border-transparent text-[var(--soft-foreground)] opacity-75 hover:text-[var(--foreground)] hover:opacity-100"
-          }`}
-          aria-pressed={contentMode === mode}
-          onclick={() => void setMode(mode)}
-        >
-          {mode === "transcript"
-            ? "Transcript"
-            : mode === "summary"
-              ? "Summary"
-              : mode === "highlights"
-                ? "Highlights"
-                : "Info"}
-        </button>
-      {/each}
-
-      {#if selectedVideoId && !loadingContent && !editing}
-        <div
-          class="ml-2 border-l border-[var(--border-soft)] pl-4"
-          id="content-actions"
-        >
-          <ContentEditor
-            editing={false}
-            busy={loadingContent}
-            aiAvailable={aiAvailable ?? false}
-            formatting={formattingContent &&
-              formattingVideoId === selectedVideoId}
-            regenerating={Boolean(
-              selectedVideoId &&
-              regeneratingSummaryVideoIds.includes(selectedVideoId),
-            )}
-            reverting={revertingContent && revertingVideoId === selectedVideoId}
-            resetting={resettingVideo && resettingVideoId === selectedVideoId}
-            showFormatAction={contentMode === "transcript"}
-            showRegenerateAction={contentMode === "summary"}
-            showRevertAction={hasUpdatedTranscript}
-            showEditAction={contentMode === "transcript" ||
-              contentMode === "summary"}
-            canRevert={canRevertTranscript}
-            youtubeUrl={selectedVideoYoutubeUrl}
-            value={draft}
-            acknowledged={selectedVideo?.acknowledged ?? false}
-            onEdit={startEdit}
-            onCancel={cancelEdit}
-            onSave={saveEdit}
-            onFormat={cleanFormatting}
-            onRegenerate={regenerateSummaryContent}
-            onRevert={revertToOriginalTranscript}
-            onReset={() => {
-              showResetVideoConfirmation = true;
-            }}
-            onChange={(value) => {
-              draft = value;
-            }}
-            onAcknowledgeToggle={toggleAcknowledge}
+    <WorkspaceDesktopTopBar
+      {contentMode}
+      onSetMode={setMode}
+      {selectedVideoId}
+      {loadingContent}
+      {editing}
+      {hasUpdatedTranscript}
+      {formattingContent}
+      {formattingVideoId}
+      {regeneratingSummaryVideoIds}
+      {revertingContent}
+      {revertingVideoId}
+      {resettingVideo}
+      {resettingVideoId}
+      aiAvailable={aiAvailable ?? false}
+      {canRevertTranscript}
+      {selectedVideoYoutubeUrl}
+      {draft}
+      selectedVideoAcknowledged={selectedVideo?.acknowledged ?? false}
+      onEdit={startEdit}
+      onCancel={cancelEdit}
+      onSave={saveEdit}
+      onFormat={cleanFormatting}
+      onRegenerate={regenerateSummaryContent}
+      onRevert={revertToOriginalTranscript}
+      onRequestResetVideo={() => {
+        showResetVideoConfirmation = true;
+      }}
+      onDraftChange={(value) => {
+        draft = value;
+      }}
+      onAcknowledgeToggle={toggleAcknowledge}
+    >
+      {#snippet searchBar()}
+        {#if WorkspaceSearchBarComponent}
+          <WorkspaceSearchBarComponent
+            initialSearchStatus={searchStatus}
+            onSearchResultSelect={handleSearchResultSelection}
           />
-        </div>
-      {/if}
-    </div>
-    <div class="flex min-w-0 flex-1 items-center justify-end gap-3">
-      {#if WorkspaceSearchBarComponent}
-        <WorkspaceSearchBarComponent
-          initialSearchStatus={searchStatus}
-          onSearchResultSelect={handleSearchResultSelection}
-        />
-      {/if}
-    </div>
+        {/if}
+      {/snippet}
+    </WorkspaceDesktopTopBar>
   {/snippet}
 
-  {#if mobileTab === "browse"}
-    <div
-      class="fixed inset-0 z-[80] lg:hidden"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Browse channels"
-    >
-      <button
-        type="button"
-        class="absolute inset-0 bg-[var(--overlay)]"
-        onclick={() => {
-          mobileTab = "content";
-        }}
-        aria-label="Close sidebar"
-      ></button>
-      <div
-        class="relative z-10 h-full w-[min(85vw,20rem)] overflow-hidden border-r border-[var(--accent-border-soft)] bg-[var(--surface-strong)] shadow-2xl"
-      >
-        {#if sidebar}
-          {@render sidebar({
-            collapsed: false,
-            width: 0,
-            toggle: () => {
-              mobileTab = "content";
-            },
-            mobileVisible: true,
-          })}
-        {/if}
-      </div>
-    </div>
-  {/if}
+  <WorkspaceMobileBrowseOverlay
+    open={mobileTab === "browse"}
+    {sidebar}
+    onClose={() => {
+      mobileTab = "content";
+    }}
+  />
 
   <WorkspaceContentPanel
     selection={workspaceContentSelection}

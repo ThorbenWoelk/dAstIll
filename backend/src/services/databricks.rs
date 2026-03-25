@@ -13,6 +13,9 @@ const STATEMENT_POLL_INTERVAL_MS: u64 = 500;
 const STATEMENT_MAX_POLLS: usize = 600;
 const INGEST_QUEUE_CAPACITY: usize = 256;
 const INGEST_RETRY_DELAYS_MS: [u64; 5] = [1_000, 5_000, 15_000, 30_000, 60_000];
+/// Databricks SQL warehouses reject statement requests with more than 256 named parameters (HTTP 400).
+/// See https://github.com/databricks/databricks-sql-nodejs/issues/308
+const MAX_NAMED_PARAMETERS_PER_STATEMENT: usize = 256;
 
 #[derive(Clone)]
 pub struct DatabricksSqlService {
@@ -50,9 +53,34 @@ impl DatabricksSqlService {
             return Ok(());
         }
 
-        let statement = build_insert_statement(&self.full_table_name(), &rows);
-        let parameters = build_insert_parameters(&rows);
-        self.execute_statement(&statement, parameters).await
+        let table = self.full_table_name();
+        let mut start = 0usize;
+        while start < rows.len() {
+            let mut param_count = 0usize;
+            let mut end = start;
+            while end < rows.len() {
+                let row_params = row_named_param_count(&rows[end]);
+                if param_count + row_params > MAX_NAMED_PARAMETERS_PER_STATEMENT {
+                    break;
+                }
+                param_count += row_params;
+                end += 1;
+            }
+
+            if end == start {
+                // Safety: one row uses at most nine parameters, well under the server limit.
+                end = start + 1;
+            }
+
+            let chunk = &rows[start..end];
+            let statement = build_insert_statement(&table, chunk);
+            let parameters = build_insert_parameters(chunk);
+            self.execute_statement("insert_events", &statement, parameters)
+                .await?;
+            start = end;
+        }
+
+        Ok(())
     }
 
     fn spawn_worker(&self, mut receiver: mpsc::Receiver<Vec<Value>>) {
@@ -105,7 +133,8 @@ impl DatabricksSqlService {
             quote_ident(&self.config.catalog),
             quote_ident(&self.config.schema)
         );
-        self.execute_statement(&schema_stmt, Vec::new()).await?;
+        self.execute_statement("create_schema", &schema_stmt, Vec::new())
+            .await?;
 
         let create_table_stmt = format!(
             "CREATE TABLE IF NOT EXISTS {} (
@@ -121,7 +150,7 @@ impl DatabricksSqlService {
             ) USING DELTA",
             self.full_table_name()
         );
-        self.execute_statement(&create_table_stmt, Vec::new())
+        self.execute_statement("create_table", &create_table_stmt, Vec::new())
             .await?;
 
         *initialized = true;
@@ -130,6 +159,7 @@ impl DatabricksSqlService {
 
     async fn execute_statement(
         &self,
+        operation: &'static str,
         statement: &str,
         parameters: Vec<StatementParameter>,
     ) -> Result<(), DatabricksSqlError> {
@@ -137,12 +167,15 @@ impl DatabricksSqlService {
             "{}/api/2.0/sql/statements",
             self.config.host.trim_end_matches('/')
         );
+        let parameter_count = parameters.len();
         let response = self
             .client
             .post(url)
             .bearer_auth(&self.config.token)
             .json(&ExecuteStatementRequest {
                 warehouse_id: &self.config.warehouse_id,
+                catalog: Some(self.config.catalog.as_str()),
+                schema: Some(self.config.schema.as_str()),
                 statement,
                 wait_timeout: "0s",
                 on_wait_timeout: "CONTINUE",
@@ -155,6 +188,14 @@ impl DatabricksSqlService {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
+            tracing::warn!(
+                operation,
+                parameter_count,
+                statement_len = statement.len(),
+                status = %status,
+                body = %body,
+                "databricks executeStatement HTTP error"
+            );
             return Err(DatabricksSqlError::ApiStatus { status, body });
         }
 
@@ -259,6 +300,10 @@ struct AnalyticsInsertRow {
 #[derive(Debug, Serialize)]
 struct ExecuteStatementRequest<'a> {
     warehouse_id: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    catalog: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    schema: Option<&'a str>,
     statement: &'a str,
     wait_timeout: &'a str,
     on_wait_timeout: &'a str,
@@ -461,6 +506,30 @@ fn quote_ident(value: &str) -> String {
     format!("`{}`", value.replace('`', "``"))
 }
 
+/// Count of named parameters Databricks will receive for one insert row (NULL optionals omit params).
+fn row_named_param_count(row: &AnalyticsInsertRow) -> usize {
+    let mut n = 3usize;
+    if row.event_time.is_some() {
+        n += 1;
+    }
+    if row.event_name.is_some() {
+        n += 1;
+    }
+    if row.session_id.is_some() {
+        n += 1;
+    }
+    if row.channel_id.is_some() {
+        n += 1;
+    }
+    if row.video_id.is_some() {
+        n += 1;
+    }
+    if row.summary_id.is_some() {
+        n += 1;
+    }
+    n
+}
+
 fn retry_delay_ms(attempt: usize, error: &DatabricksSqlError) -> Option<u64> {
     if attempt >= INGEST_RETRY_DELAYS_MS.len() {
         return None;
@@ -480,8 +549,11 @@ fn retry_delay_ms(attempt: usize, error: &DatabricksSqlError) -> Option<u64> {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::Value;
+
     use super::{
-        build_insert_parameters, build_insert_rows, build_insert_statement, stable_event_id,
+        MAX_NAMED_PARAMETERS_PER_STATEMENT, build_insert_parameters, build_insert_rows,
+        build_insert_statement, row_named_param_count, stable_event_id,
     };
 
     #[test]
@@ -525,5 +597,63 @@ mod tests {
         let params = build_insert_parameters(&rows);
         assert!(params.iter().any(|param| param.name == "video_id_0"));
         assert!(!params.iter().any(|param| param.name == "summary_id_0"));
+    }
+
+    #[test]
+    fn row_named_param_count_matches_insert_parameters_len() {
+        let rows = build_insert_rows(&[serde_json::json!({
+            "event": "summary_opened",
+            "ts": "2026-03-24T10:11:12Z",
+            "session_id": "session-1",
+            "video_id": "video-1",
+            "channel_id": "channel-1",
+            "summary_id": "summary-1"
+        })])
+        .expect("rows");
+        assert_eq!(
+            row_named_param_count(&rows[0]),
+            build_insert_parameters(&rows).len()
+        );
+    }
+
+    #[test]
+    fn insert_chunking_keeps_each_statement_under_named_parameter_cap() {
+        let events: Vec<Value> = (0..40)
+            .map(|i| {
+                serde_json::json!({
+                    "event": "video_opened",
+                    "ts": "2026-01-01T00:00:00Z",
+                    "session_id": format!("session-{i}"),
+                    "channel_id": "channel-1",
+                    "video_id": "video-1",
+                    "summary_id": "summary-1"
+                })
+            })
+            .collect();
+        let rows = build_insert_rows(&events).expect("rows");
+
+        let mut start = 0usize;
+        while start < rows.len() {
+            let mut param_count = 0usize;
+            let mut end = start;
+            while end < rows.len() {
+                let row_params = row_named_param_count(&rows[end]);
+                if param_count + row_params > MAX_NAMED_PARAMETERS_PER_STATEMENT {
+                    break;
+                }
+                param_count += row_params;
+                end += 1;
+            }
+            if end == start {
+                end = start + 1;
+            }
+            let chunk = &rows[start..end];
+            let n = build_insert_parameters(chunk).len();
+            assert!(
+                n <= MAX_NAMED_PARAMETERS_PER_STATEMENT,
+                "chunk would exceed Databricks cap: {n} > {MAX_NAMED_PARAMETERS_PER_STATEMENT}"
+            );
+            start = end;
+        }
     }
 }

@@ -1,0 +1,256 @@
+{
+  "pages": [
+    {
+      "name": "processing_efficiency",
+      "displayName": "Processing Efficiency",
+      "layout": [
+        {
+          "widget": {
+            "name": "kpi_total_requests",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "processing_kpis",
+                  "fields": [
+                    { "name": "total_requests", "expression": "`total_requests`" }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": { "fieldName": "total_requests", "displayAs": "number" }
+              },
+              "frame": { "showTitle": true, "title": "Total Requests" }
+            }
+          },
+          "position": { "x": 0, "y": 0, "width": 2, "height": 3 }
+        },
+        {
+          "widget": {
+            "name": "kpi_success_rate",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "processing_kpis",
+                  "fields": [
+                    { "name": "success_rate_pct", "expression": "`success_rate_pct`" }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": { "fieldName": "success_rate_pct", "displayAs": "number" }
+              },
+              "frame": { "showTitle": true, "title": "Success Rate (%)" }
+            }
+          },
+          "position": { "x": 2, "y": 0, "width": 2, "height": 3 }
+        },
+        {
+          "widget": {
+            "name": "kpi_avg_duration",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "processing_kpis",
+                  "fields": [
+                    { "name": "avg_success_duration_ms", "expression": "`avg_success_duration_ms`" }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": { "fieldName": "avg_success_duration_ms", "displayAs": "number" }
+              },
+              "frame": { "showTitle": true, "title": "Avg Success Duration (ms)" }
+            }
+          },
+          "position": { "x": 4, "y": 0, "width": 2, "height": 3 }
+        },
+        {
+          "widget": {
+            "name": "bar_duration_by_channel",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "processing_by_channel",
+                  "fields": [
+                    { "name": "channel_id", "expression": "`channel_id`" },
+                    { "name": "avg_duration_ms", "expression": "`avg_duration_ms`" }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "channel_id",
+                  "scale": { "type": "categorical" },
+                  "title": "Channel"
+                },
+                "y": {
+                  "fieldName": "avg_duration_ms",
+                  "scale": { "type": "quantitative" },
+                  "title": "Avg Duration (ms)"
+                }
+              },
+              "frame": { "showTitle": true, "title": "Avg Processing Duration by Channel" }
+            }
+          },
+          "position": { "x": 0, "y": 3, "width": 4, "height": 6 }
+        },
+        {
+          "widget": {
+            "name": "bar_success_by_channel",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "processing_by_channel",
+                  "fields": [
+                    { "name": "channel_id", "expression": "`channel_id`" },
+                    { "name": "success_rate_pct", "expression": "`success_rate_pct`" }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "channel_id",
+                  "scale": { "type": "categorical" },
+                  "title": "Channel"
+                },
+                "y": {
+                  "fieldName": "success_rate_pct",
+                  "scale": { "type": "quantitative" },
+                  "title": "Success Rate (%)"
+                }
+              },
+              "frame": { "showTitle": true, "title": "Success Rate by Channel (%)" }
+            }
+          },
+          "position": { "x": 4, "y": 3, "width": 2, "height": 6 }
+        },
+        {
+          "widget": {
+            "name": "line_daily_requests",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "processing_trend",
+                  "fields": [
+                    { "name": "event_date", "expression": "`event_date`" },
+                    { "name": "request_count", "expression": "`request_count`" },
+                    { "name": "success_count", "expression": "`success_count`" },
+                    { "name": "failure_count", "expression": "`failure_count`" }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "event_date",
+                  "scale": { "type": "temporal" },
+                  "title": "Date"
+                },
+                "y": {
+                  "fieldName": "request_count",
+                  "scale": { "type": "quantitative" },
+                  "title": "Requests"
+                }
+              },
+              "frame": { "showTitle": true, "title": "Daily Transcript Requests" }
+            }
+          },
+          "position": { "x": 0, "y": 9, "width": 6, "height": 5 }
+        },
+        {
+          "widget": {
+            "name": "table_slowest_videos",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "slowest_videos",
+                  "fields": [
+                    { "name": "video_id", "expression": "`video_id`" },
+                    { "name": "channel_id", "expression": "`channel_id`" },
+                    { "name": "duration_ms", "expression": "`duration_ms`" },
+                    { "name": "p95_duration_ms", "expression": "`p95_duration_ms`" },
+                    { "name": "requested_at", "expression": "`requested_at`" }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  { "fieldName": "video_id",       "title": "Video ID",         "type": "string" },
+                  { "fieldName": "channel_id",     "title": "Channel",          "type": "string" },
+                  { "fieldName": "duration_ms",    "title": "Duration (ms)",    "type": "integer" },
+                  { "fieldName": "p95_duration_ms","title": "P95 Duration (ms)","type": "integer" },
+                  { "fieldName": "requested_at",   "title": "Requested At",     "type": "string" }
+                ]
+              },
+              "frame": { "showTitle": true, "title": "Slowest Successful Videos (Top 20)" }
+            }
+          },
+          "position": { "x": 0, "y": 14, "width": 6, "height": 8 }
+        }
+      ]
+    }
+  ],
+  "datasets": [
+    {
+      "name": "processing_kpis",
+      "displayName": "Processing KPIs",
+      "query": "SELECT\n  COUNT(*) AS total_requests,\n  ROUND(SUM(CASE WHEN success THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) AS success_rate_pct,\n  ROUND(AVG(CASE WHEN success AND processing_duration_ms IS NOT NULL THEN processing_duration_ms END)) AS avg_success_duration_ms\nFROM analytics.gold_processing_efficiency"
+    },
+    {
+      "name": "processing_by_channel",
+      "displayName": "Processing by Channel",
+      "query": "SELECT\n  channel_id,\n  COUNT(*) AS total_requests,\n  ROUND(SUM(CASE WHEN success THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) AS success_rate_pct,\n  ROUND(AVG(CASE WHEN success AND processing_duration_ms IS NOT NULL THEN processing_duration_ms END)) AS avg_duration_ms,\n  ROUND(PERCENTILE_APPROX(CASE WHEN success AND processing_duration_ms IS NOT NULL THEN processing_duration_ms END, 0.95)) AS p95_duration_ms\nFROM analytics.gold_processing_efficiency\nGROUP BY channel_id\nORDER BY avg_duration_ms DESC NULLS LAST"
+    },
+    {
+      "name": "processing_trend",
+      "displayName": "Daily Processing Trend",
+      "query": "SELECT\n  event_date,\n  COUNT(*) AS request_count,\n  SUM(CASE WHEN success THEN 1 ELSE 0 END) AS success_count,\n  SUM(CASE WHEN NOT success THEN 1 ELSE 0 END) AS failure_count\nFROM analytics.gold_processing_efficiency\nGROUP BY event_date\nORDER BY event_date"
+    },
+    {
+      "name": "slowest_videos",
+      "displayName": "Slowest Videos",
+      "query": "SELECT\n  video_id,\n  channel_id,\n  ROUND(processing_duration_ms) AS duration_ms,\n  ROUND(processing_duration_ms) AS p95_duration_ms,\n  DATE_FORMAT(requested_at, 'yyyy-MM-dd HH:mm') AS requested_at\nFROM analytics.gold_processing_efficiency\nWHERE success = TRUE\n  AND processing_duration_ms IS NOT NULL\nORDER BY processing_duration_ms DESC NULLS LAST\nLIMIT 20"
+    }
+  ]
+}

@@ -9,9 +9,8 @@ use crate::services::text::limit_text;
 use super::chat::{
     AccumulatedSearchCandidate, CHAT_CONTEXT_MAX_CHARS, CHAT_DIVERSITY_PENALTY,
     CHAT_RETRIEVAL_CANDIDATE_LIMIT_MAX, CHAT_RETRIEVAL_CANDIDATE_LIMIT_MIN,
-    CHAT_SOURCE_KIND_DIVERSITY_BONUS, CHAT_SYNTHESIS_SOURCES_PER_VIDEO,
-    ChatQueryIntent, ChatRetrievalPlan, CoverageAssessment, RetrievedChatSource,
-    VideoObservationInput,
+    CHAT_SOURCE_KIND_DIVERSITY_BONUS, CHAT_SYNTHESIS_SOURCES_PER_VIDEO, ChatQueryIntent,
+    ChatRetrievalPlan, CoverageAssessment, RetrievedChatSource, VideoObservationInput,
 };
 use super::chat_heuristics::preference_signal_score;
 

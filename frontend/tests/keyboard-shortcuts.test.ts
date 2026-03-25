@@ -4,6 +4,7 @@ import {
   armGoSequence,
   buildShortcutManual,
   clearGoSequence,
+  computeGoHintBadgeStyles,
   isApplePlatform,
   isEditableShortcutTarget,
   isInsideModalDialog,
@@ -94,6 +95,13 @@ describe("go sequence helpers", () => {
   });
 });
 
+describe("computeGoHintBadgeStyles", () => {
+  it("returns no badges when there are no marked elements", () => {
+    document.body.replaceChildren();
+    expect(computeGoHintBadgeStyles()).toEqual([]);
+  });
+});
+
 describe("buildShortcutManual", () => {
   it("includes core sections for Cmd label", () => {
     const groups = buildShortcutManual("Cmd");
@@ -103,6 +111,9 @@ describe("buildShortcutManual", () => {
     expect(titles).toContain("Chat");
     const everywhere = groups.find((g) => g.title === "Everywhere");
     expect(everywhere?.rows.some((r) => r.keys.includes("G W"))).toBe(true);
+    expect(everywhere?.rows.some((r) => r.keys.includes("G U"))).toBe(true);
+    const guideTour = groups.find((g) => g.title === "Feature guide tour");
+    expect(guideTour?.rows[0]?.keys).toBe("G U");
   });
 });
 

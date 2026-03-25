@@ -2,8 +2,19 @@ import { describe, expect, it } from "bun:test";
 
 import {
   getSectionNavigationItems,
+  goHintKeyForSection,
   type SectionNavigationSection,
 } from "../src/lib/section-navigation";
+
+describe("goHintKeyForSection", () => {
+  it("maps each section to its go chord letter", () => {
+    expect(goHintKeyForSection("workspace")).toBe("W");
+    expect(goHintKeyForSection("queue")).toBe("Q");
+    expect(goHintKeyForSection("highlights")).toBe("H");
+    expect(goHintKeyForSection("chat")).toBe("C");
+    expect(goHintKeyForSection("docs")).toBe("D");
+  });
+});
 
 describe("getSectionNavigationItems", () => {
   it("marks the active internal section and preserves the docs link", () => {

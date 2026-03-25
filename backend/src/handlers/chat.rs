@@ -130,6 +130,7 @@ pub async fn send_message(
         conversation,
         prompt.to_string(),
         should_auto_name,
+        payload.deep_research,
         active_chat.clone(),
     );
 

@@ -23,5 +23,5 @@ export function writeGuideStepToUrl(step: number | null) {
     url.searchParams.set("guide", String(step));
   }
 
-  window.history.replaceState({}, "", url);
+  window.history.replaceState(window.history.state, "", url);
 }

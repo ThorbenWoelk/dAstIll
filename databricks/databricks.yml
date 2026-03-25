@@ -1,0 +1,86 @@
+bundle:
+  name: dastill-analytics
+
+variables:
+  catalog:
+    description: Unity Catalog catalog name.
+    default: workspace
+
+  schema:
+    description: Schema where the pipeline writes Silver/Gold tables.
+    default: analytics
+
+  bronze_schema:
+    description: >-
+      Schema where the backend writes the Bronze bronze_app_events table.
+      Defaults to the same schema as Silver/Gold. Override if the backend
+      writes to a separate schema.
+    default: analytics
+
+  warehouse_id:
+    description: >-
+      SQL warehouse ID for dashboard queries.
+      Find it in Databricks: SQL Warehouses > your warehouse > Connection Details > HTTP Path.
+
+# Workspace host is read from DATABRICKS_HOST env var or ~/.databrickscfg.
+workspace:
+  root_path: /Shared/.bundle/${bundle.name}/${bundle.target}
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      root_path: /Users/${workspace.current_user.userName}/.bundle/${bundle.name}/dev
+    variables:
+      schema: analytics_dev
+
+  prod:
+    mode: production
+
+resources:
+  pipelines:
+    analytics_transformations:
+      name: "[dAstIll] Analytics Transformations"
+      catalog: ${var.catalog}
+      target: ${var.schema}
+      serverless: true
+      channel: CURRENT
+      continuous: false
+      # bronze_table tells the Silver stage where to read Bronze events from.
+      # Format: catalog.schema.bronze_app_events
+      configuration:
+        bronze_table: ${var.catalog}.${var.bronze_schema}.bronze_app_events
+      libraries:
+        - notebook:
+            path: ./pipelines/00_silver.sql
+        - notebook:
+            path: ./pipelines/01_gold_processing.sql
+        - notebook:
+            path: ./pipelines/02_gold_engagement.sql
+        - notebook:
+            path: ./pipelines/03_gold_consumption.sql
+
+  dashboards:
+    processing_efficiency:
+      display_name: "[dAstIll] Processing Efficiency"
+      file_path: ./dashboards/processing_efficiency.lvdash.json
+      warehouse_id: ${var.warehouse_id}
+      embed_credentials: false
+
+    acknowledgment_highlights:
+      display_name: "[dAstIll] Acknowledgment and Highlights"
+      file_path: ./dashboards/acknowledgment_highlights.lvdash.json
+      warehouse_id: ${var.warehouse_id}
+      embed_credentials: false
+
+    summary_consumption:
+      display_name: "[dAstIll] Summary Consumption"
+      file_path: ./dashboards/summary_consumption.lvdash.json
+      warehouse_id: ${var.warehouse_id}
+      embed_credentials: false
+
+sync:
+  paths:
+    - pipelines
+    - dashboards

@@ -2,9 +2,12 @@
   import { goto } from "$app/navigation";
   import { page } from "$app/stores";
   import { onMount, tick } from "svelte";
+  import { SvelteURLSearchParams } from "svelte/reactivity";
 
-  import { CONTACT_EMAIL } from "$lib/app-config";
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
+  import { isAnonymousChatQuotaError } from "$lib/chat/anonymous-quota";
+  import type { ChatStreamTiming } from "$lib/chat/conversation-meta";
+  import { CHAT_STARTER_PROMPTS } from "$lib/chat/starter-prompts";
   import {
     cancelConversationGeneration,
     createConversation,
@@ -16,9 +19,13 @@
     sendConversationMessage,
   } from "$lib/chat-api";
   import ConfirmationModal from "$lib/components/ConfirmationModal.svelte";
+  import ChatAnonymousQuotaNotice from "$lib/components/chat/ChatAnonymousQuotaNotice.svelte";
+  import ChatContentSectionHeader from "$lib/components/chat/ChatContentSectionHeader.svelte";
+  import ChatConversationMeta from "$lib/components/chat/ChatConversationMeta.svelte";
   import ChatInput from "$lib/components/chat/ChatInput.svelte";
   import ChatMessageBubble from "$lib/components/chat/ChatMessage.svelte";
   import ChatMessageList from "$lib/components/chat/ChatMessageList.svelte";
+  import ChatMobileConversationsOverlay from "$lib/components/chat/ChatMobileConversationsOverlay.svelte";
   import ChatSidebar from "$lib/components/chat/ChatSidebar.svelte";
   import ChatSuggestions from "$lib/components/chat/ChatSuggestions.svelte";
   import ChevronIcon from "$lib/components/icons/ChevronIcon.svelte";
@@ -35,7 +42,6 @@
   } from "$lib/types";
 
   type TimedStatus = ChatStreamStatus & { receivedAt: number };
-  type StreamTiming = { label: string; durationMs: number };
 
   let conversations = $state<ChatConversationSummary[]>([]);
   let activeConversation = $state<ChatConversation | null>(null);
@@ -45,6 +51,7 @@
   let errorMessage = $state<string | null>(null);
   let anonymousQuotaMessage = $state<string | null>(null);
   let draft = $state("");
+  let deepResearch = $state(false);
   let streamStage = $state("idle");
   let streamStatuses = $state<TimedStatus[]>([]);
   let streamStartedAt = $state<number | null>(null);
@@ -66,12 +73,6 @@
   /** When true, new tokens and layout growth keep the viewport pinned to the bottom. */
   let stickyScroll = $state(true);
   let nearBottom = $state(true);
-
-  const CHAT_STARTER_PROMPTS = [
-    "What topics come up most across my library?",
-    "Summarize recent additions I should watch first.",
-    "Find mentions of a topic I care about",
-  ] as const;
 
   let requestedConversationId = $derived($page.url.searchParams.get("id"));
   let promptFromUrl = $derived(
@@ -153,13 +154,13 @@
       ? "Waiting to resume the live response stream."
       : (latestStreamStatus?.detail ?? null),
   );
-  let streamTimings = $derived.by((): StreamTiming[] => {
+  let streamTimings = $derived.by((): ChatStreamTiming[] => {
     if (!streamStartedAt) return [];
     const retrievalComplete = [...streamStatuses]
       .reverse()
       .find((s) => s.stage === "retrieving_complete");
     if (!retrievalComplete) return [];
-    const timings: StreamTiming[] = [
+    const timings: ChatStreamTiming[] = [
       {
         label: "Retrieval",
         durationMs: retrievalComplete.receivedAt - streamStartedAt,
@@ -577,9 +578,14 @@
     await startStream(
       conversation.id,
       (signal, handlers) =>
-        sendConversationMessage(conversation.id, { content }, handlers, {
-          signal,
-        }),
+        sendConversationMessage(
+          conversation.id,
+          { content, deep_research: deepResearch },
+          handlers,
+          {
+            signal,
+          },
+        ),
       { resetStreamingMessage: false },
     );
   }
@@ -707,7 +713,7 @@
     conversationId: string | null,
     options?: { prompt?: string | null },
   ) {
-    const params = new URLSearchParams($page.url.searchParams);
+    const params = new SvelteURLSearchParams($page.url.searchParams);
 
     if (conversationId) {
       params.set("id", conversationId);
@@ -867,46 +873,28 @@
         : null,
     });
   }
-
-  function isAnonymousChatQuotaError(message: string) {
-    return message.includes("Anonymous chat quota exceeded");
-  }
 </script>
 
 <WorkspaceShell currentSection="chat" {aiIndicator} onOpenGuide={openGuide}>
   <div class="flex h-full min-h-0 w-full">
     <div id="conversations-panel">
-      {#if mobileTab === "conversations"}
-        <div
-          class="fixed inset-0 z-[80] lg:hidden"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Conversations"
-        >
-          <button
-            type="button"
-            class="absolute inset-0 bg-[var(--overlay)]"
-            onclick={() => (mobileTab = "content")}
-            aria-label="Close conversations"
-          ></button>
-          <div
-            class="relative z-10 h-full w-[min(85vw,20rem)] overflow-hidden border-r border-[var(--accent-border-soft)] bg-[var(--surface-strong)] shadow-2xl"
-          >
-            <ChatSidebar
-              mobileVisible={true}
-              {conversations}
-              activeConversationId={requestedConversationId}
-              loading={loadingConversations}
-              creating={creatingConversation}
-              canDelete={true}
-              onCreate={handleCreateConversation}
-              onSelect={handleSelectConversation}
-              onRename={handleRenameConversation}
-              onDelete={handleDeleteConversation}
-            />
-          </div>
-        </div>
-      {/if}
+      <ChatMobileConversationsOverlay
+        open={mobileTab === "conversations"}
+        onClose={() => (mobileTab = "content")}
+      >
+        <ChatSidebar
+          mobileVisible={true}
+          {conversations}
+          activeConversationId={requestedConversationId}
+          loading={loadingConversations}
+          creating={creatingConversation}
+          canDelete={true}
+          onCreate={handleCreateConversation}
+          onSelect={handleSelectConversation}
+          onRename={handleRenameConversation}
+          onDelete={handleDeleteConversation}
+        />
+      </ChatMobileConversationsOverlay>
 
       <div class="hidden lg:flex lg:h-full">
         <ChatSidebar
@@ -927,204 +915,12 @@
       id="content-view"
       class="fade-in stagger-3 relative z-10 flex min-h-0 min-w-0 flex-col overflow-visible lg:h-full lg:gap-4 lg:px-8 lg:pt-4 lg:pb-6"
     >
-      <div
-        class="flex flex-col gap-3 px-4 max-lg:pb-1 max-lg:pt-3 sm:px-6 lg:px-0"
-      >
-        <div class="flex items-center justify-between gap-3">
-          <div class="flex items-center gap-2">
-            <button
-              type="button"
-              class="inline-flex h-8 items-center justify-center gap-2 rounded-full px-3 text-[12px] font-semibold text-[var(--soft-foreground)] transition-all hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 lg:hidden"
-              onclick={() => (mobileTab = "conversations")}
-              aria-label="Open conversations"
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <path
-                  d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
-                />
-                <path d="M8 9h8" />
-                <path d="M8 13h5" />
-              </svg>
-              <span>History</span>
-            </button>
-            <h2
-              class="text-base font-bold tracking-tight text-[var(--foreground)]"
-            >
-              Chat
-            </h2>
-          </div>
-          {#if streamingConversationId}
-            <span
-              class="h-3 w-3 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--accent)]"
-              role="status"
-              aria-label="Generating response"
-            ></span>
-          {/if}
-        </div>
-
-        <div class="border-b border-[var(--accent-border-soft)] pb-3">
-          <div class="min-w-0">
-            <p
-              class="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--soft-foreground)] opacity-55"
-            >
-              Grounded conversation
-            </p>
-            <p
-              class="mt-1 truncate text-[20px] font-semibold tracking-tight text-[var(--foreground)]"
-            >
-              {activeConversation?.title ?? "New conversation"}
-            </p>
-            <p
-              class="mt-2 max-w-[34rem] text-[14px] leading-6 text-[var(--soft-foreground)]"
-            >
-              {activeConversation?.title_status === "generating"
-                ? "AI is naming this chat while the conversation stays available in the background."
-                : "Ask questions grounded in indexed transcripts and summaries, with source-backed answers streamed into this pane."}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {#snippet conversationMeta()}
-        <div class="space-y-3">
-          {#if streamBanner}
-            <div
-              class="flex items-start gap-2 rounded-[var(--radius-md)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] px-3 py-2 text-[12px] text-[var(--soft-foreground)]"
-            >
-              <span
-                class="h-2 w-2 animate-pulse rounded-full bg-[var(--accent)]"
-              ></span>
-              <div class="min-w-0">
-                <p class="font-medium text-[var(--foreground)]">
-                  {streamBanner}
-                </p>
-                {#if streamBannerDetail}
-                  <p
-                    class="mt-1 text-[12px] leading-relaxed text-[var(--soft-foreground)]"
-                  >
-                    {streamBannerDetail}
-                  </p>
-                {/if}
-              </div>
-            </div>
-          {/if}
-
-          {#if streamTraceVisible}
-            <div
-              class="rounded-[var(--radius-md)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] px-3 py-3 text-[12px] text-[var(--soft-foreground)]"
-            >
-              <div class="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p
-                    class="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-70"
-                  >
-                    How I checked
-                  </p>
-                  {#if streamPlanLabel}
-                    <p
-                      class="mt-1 text-[12px] font-semibold text-[var(--foreground)]"
-                    >
-                      {streamPlanLabel}
-                    </p>
-                  {/if}
-                </div>
-              </div>
-
-              {#if streamDisplayedQueries.length > 0}
-                <div class="mt-3">
-                  <p
-                    class="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-70"
-                  >
-                    Searches run
-                  </p>
-                  <div class="mt-2 flex flex-wrap gap-2">
-                    {#each streamDisplayedQueries as query}
-                      <span
-                        class="rounded-full border border-[var(--accent-border-soft)] bg-[var(--surface-strong)] px-2 py-1 text-[11px] text-[var(--foreground)]"
-                      >
-                        {query}
-                      </span>
-                    {/each}
-                  </div>
-                </div>
-              {/if}
-
-              {#if streamCoverageSummary}
-                <div
-                  class="mt-3 rounded-[var(--radius-sm)] bg-[var(--surface-strong)] px-3 py-2"
-                >
-                  <p
-                    class="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-70"
-                  >
-                    Coverage
-                  </p>
-                  <p
-                    class="mt-1 text-[11px] leading-relaxed text-[var(--foreground)]"
-                  >
-                    {streamCoverageSummary}
-                  </p>
-                </div>
-              {/if}
-
-              {#if streamPrimaryDecision}
-                <div
-                  class="mt-3 rounded-[var(--radius-sm)] bg-[var(--surface-strong)] px-3 py-2"
-                >
-                  <p
-                    class="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-70"
-                  >
-                    Why this approach
-                  </p>
-                  <p
-                    class="mt-1 text-[11px] leading-relaxed text-[var(--foreground)]"
-                  >
-                    {streamPrimaryDecision}
-                  </p>
-                </div>
-              {/if}
-
-              {#if streamTimings.length > 0}
-                <div
-                  class="mt-3 border-t border-[var(--accent-border-soft)] pt-3"
-                >
-                  <p
-                    class="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-70"
-                  >
-                    Timings
-                  </p>
-                  <div class="mt-2 flex flex-wrap gap-x-5 gap-y-1">
-                    {#each streamTimings as timing}
-                      <span class="text-[11px] text-[var(--soft-foreground)]">
-                        <span class="font-semibold text-[var(--foreground)]"
-                          >{timing.label}</span
-                        >
-                        {(timing.durationMs / 1000).toFixed(1)}s
-                      </span>
-                    {/each}
-                  </div>
-                </div>
-              {/if}
-            </div>
-          {/if}
-
-          {#if errorMessage}
-            <div
-              class="rounded-[var(--radius-md)] border border-amber-500/20 bg-amber-500/8 px-3 py-2 text-[12px] text-amber-200"
-            >
-              {errorMessage}
-            </div>
-          {/if}
-        </div>
-      {/snippet}
+      <ChatContentSectionHeader
+        onOpenConversationsMobile={() => (mobileTab = "conversations")}
+        {streamingConversationId}
+        conversationTitle={activeConversation?.title ?? "New conversation"}
+        titleStatus={activeConversation?.title_status}
+      />
 
       <div class="relative flex min-h-0 w-full flex-1 flex-col">
         <div
@@ -1137,7 +933,17 @@
           {#if !activeConversation || currentMessages.length === 0}
             {#if showConversationMeta}
               <div class="mb-4">
-                {@render conversationMeta()}
+                <ChatConversationMeta
+                  {streamBanner}
+                  {streamBannerDetail}
+                  {streamTraceVisible}
+                  {streamPlanLabel}
+                  {streamDisplayedQueries}
+                  {streamCoverageSummary}
+                  {streamPrimaryDecision}
+                  {streamTimings}
+                  {errorMessage}
+                />
               </div>
             {/if}
             <ChatMessageList
@@ -1154,7 +960,17 @@
                 />
               {/each}
 
-              {@render conversationMeta()}
+              <ChatConversationMeta
+                {streamBanner}
+                {streamBannerDetail}
+                {streamTraceVisible}
+                {streamPlanLabel}
+                {streamDisplayedQueries}
+                {streamCoverageSummary}
+                {streamPrimaryDecision}
+                {streamTimings}
+                {errorMessage}
+              />
 
               {#each messagesAfterConversationMeta as message (message.id)}
                 <ChatMessageBubble
@@ -1171,7 +987,17 @@
             />
             {#if showConversationMeta}
               <div class="mt-4">
-                {@render conversationMeta()}
+                <ChatConversationMeta
+                  {streamBanner}
+                  {streamBannerDetail}
+                  {streamTraceVisible}
+                  {streamPlanLabel}
+                  {streamDisplayedQueries}
+                  {streamCoverageSummary}
+                  {streamPrimaryDecision}
+                  {streamTimings}
+                  {errorMessage}
+                />
               </div>
             {/if}
           {/if}
@@ -1208,6 +1034,7 @@
         {/if}
         <ChatInput
           bind:value={draft}
+          bind:deepResearch
           focusSignal={chatInputFocusSignal}
           disabled={loadingConversation ||
             creatingConversation ||
@@ -1218,41 +1045,7 @@
           onCancel={() => void handleCancel()}
         />
         {#if anonymousQuotaMessage && !isOperator}
-          <div
-            class="mt-3 rounded-[var(--radius-md)] bg-[var(--accent-wash)] px-4 py-3"
-          >
-            <p
-              class="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--accent-strong)]"
-            >
-              Preview limit reached
-            </p>
-            <p
-              class="mt-2 text-[14px] leading-relaxed text-[var(--foreground)]"
-            >
-              This is a showcase - guest chat is limited to give everyone a
-              chance to try it.
-            </p>
-            {#if CONTACT_EMAIL}
-              <p
-                class="mt-2 text-[12px] leading-relaxed text-[var(--soft-foreground)]"
-              >
-                Want to explore further?
-                <a
-                  href="mailto:{CONTACT_EMAIL}"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="text-[var(--accent)] hover:text-[var(--accent-strong)] transition-colors"
-                  >{CONTACT_EMAIL}</a
-                >
-              </p>
-            {:else}
-              <p
-                class="mt-2 text-[12px] leading-relaxed text-[var(--soft-foreground)]"
-              >
-                Feel free to reach out if you'd like to explore further.
-              </p>
-            {/if}
-          </div>
+          <ChatAnonymousQuotaNotice />
         {/if}
       </div>
     </section>
