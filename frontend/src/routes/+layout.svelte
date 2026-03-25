@@ -1,9 +1,27 @@
 <script lang="ts">
   import "../app.css";
+  import { afterNavigate } from "$app/navigation";
   import AppBottomNav from "$lib/components/AppBottomNav.svelte";
   import GlobalKeyboardShortcuts from "$lib/components/GlobalKeyboardShortcuts.svelte";
   import MobileViewportInset from "$lib/components/MobileViewportInset.svelte";
   import ServiceWorkerRegistration from "$lib/components/ServiceWorkerRegistration.svelte";
+  import { mobileBottomBar } from "$lib/mobile-navigation/mobileBottomBar";
+
+  /** Routes that own `mobileBottomBar` via local `$effect`; others default to section nav. */
+  afterNavigate(({ to }) => {
+    if (!to) return;
+    const path = to.url.pathname;
+    if (
+      path === "/" ||
+      path.startsWith("/channels/") ||
+      path === "/highlights" ||
+      path === "/download-queue" ||
+      path === "/chat"
+    ) {
+      return;
+    }
+    mobileBottomBar.set({ kind: "sections" });
+  });
 </script>
 
 <svelte:head>

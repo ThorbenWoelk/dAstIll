@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from "svelte";
   import { page } from "$app/stores";
   import ExternalLinkIcon from "$lib/components/icons/ExternalLinkIcon.svelte";
   import CloseIcon from "$lib/components/icons/CloseIcon.svelte";
@@ -10,6 +11,15 @@
   import { tick } from "svelte";
   import { resolveCurrentSectionFromPathname } from "$lib/mobile-navigation/resolveCurrentSectionFromPathname";
   import { shouldCloseDrawerForKey } from "$lib/mobile-navigation/drawerKeyboard";
+  import { mobileBottomBar } from "$lib/mobile-navigation/mobileBottomBar";
+
+  let { trailing }: { trailing?: Snippet } = $props();
+
+  /** Section links already appear in the bottom tab bar; omit them here to avoid duplication. */
+  let bar = $derived($mobileBottomBar);
+  let showSectionLinksInDrawer = $derived(
+    bar.kind !== "sections" && bar.kind !== "sectionsWithVideoFilter",
+  );
 
   let currentSection = $derived(
     resolveCurrentSectionFromPathname($page.url.pathname),
@@ -30,9 +40,13 @@
     ),
   );
 
+  let firstItem = $derived(orderedItems[0] ?? null);
+  let remainingItems = $derived(firstItem ? orderedItems.slice(1) : []);
+
   let open = $state(false);
   let triggerEl = $state<HTMLButtonElement | null>(null);
-  let firstLinkEl = $state<HTMLAnchorElement | null>(null);
+  let firstSectionLinkEl = $state<HTMLAnchorElement | null>(null);
+  let drawerFooterGitHubEl = $state<HTMLAnchorElement | null>(null);
 
   let drawerId = "mobile-section-drawer";
   let drawerMenuId = "mobile-section-drawer-menu";
@@ -46,7 +60,11 @@
   async function openDrawer() {
     open = true;
     await tick();
-    firstLinkEl?.focus({ preventScroll: false });
+    if (showSectionLinksInDrawer) {
+      firstSectionLinkEl?.focus({ preventScroll: false });
+    } else {
+      drawerFooterGitHubEl?.focus({ preventScroll: false });
+    }
   }
 
   function handleKeydown(event: KeyboardEvent) {
@@ -61,47 +79,57 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<div class="flex w-full items-center justify-between gap-3">
-  <button
-    type="button"
-    bind:this={triggerEl}
-    class="inline-flex h-10 w-10 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-80 transition hover:bg-[var(--accent-wash)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
-    aria-label="Open navigation"
-    aria-expanded={open}
-    aria-controls={drawerId}
-    onclick={() => void openDrawer()}
-  >
-    <!-- Hamburger -->
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2.1"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
+<div class="grid w-full grid-cols-[auto_1fr_auto] items-center gap-2">
+  <div class="flex justify-start">
+    <button
+      type="button"
+      bind:this={triggerEl}
+      class="inline-flex h-10 w-10 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-80 transition hover:bg-[var(--accent-wash)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+      aria-label={showSectionLinksInDrawer ? "Open navigation" : "Open menu"}
+      aria-expanded={open}
+      aria-controls={drawerId}
+      onclick={() => void openDrawer()}
     >
-      <path d="M4 7h16" />
-      <path d="M4 12h16" />
-      <path d="M4 17h16" />
-    </svg>
-  </button>
+      <!-- Hamburger -->
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2.1"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M4 7h16" />
+        <path d="M4 12h16" />
+        <path d="M4 17h16" />
+      </svg>
+    </button>
+  </div>
 
-  <a
-    href="/"
-    class="min-w-0 text-base font-bold tracking-tighter text-[var(--color-swatch)] transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
-    data-sveltekit-preload-data="tap"
-    data-sveltekit-preload-code="viewport"
-    aria-label="Go to dAstIll home"
-  >
-    d<span style="color:var(--soft-foreground);">A</span>st<span
-      style="color:var(--soft-foreground);">I</span
-    >ll
-  </a>
+  <div class="flex min-w-0 justify-center">
+    <a
+      href="/"
+      class="min-w-0 text-base font-bold tracking-tighter text-[var(--color-swatch)] transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
+      data-sveltekit-preload-data="tap"
+      data-sveltekit-preload-code="viewport"
+      aria-label="Go to dAstIll home"
+    >
+      d<span style="color:var(--soft-foreground);">A</span>st<span
+        style="color:var(--soft-foreground);">I</span
+      >ll
+    </a>
+  </div>
 
-  <div class="w-10" aria-hidden="true"></div>
+  <div class="flex min-w-0 justify-end">
+    {#if trailing}
+      {@render trailing()}
+    {:else}
+      <div class="w-10" aria-hidden="true"></div>
+    {/if}
+  </div>
 </div>
 
 {#if open}
@@ -110,7 +138,7 @@
     class="fixed inset-0 z-[95] lg:hidden"
     role="dialog"
     aria-modal="true"
-    aria-label="Navigation menu"
+    aria-label={showSectionLinksInDrawer ? "Navigation menu" : "Menu"}
   >
     <button
       type="button"
@@ -120,16 +148,11 @@
     ></button>
 
     <div
-      class="relative h-full w-[min(85vw,20rem)] overflow-hidden border-r border-[var(--accent-border-soft)] bg-[var(--surface-strong)] shadow-2xl"
+      class="relative flex h-full w-[min(85vw,20rem)] flex-col overflow-hidden border-r border-[var(--accent-border-soft)] bg-[var(--surface-strong)] shadow-2xl"
     >
       <div
-        class="flex items-center justify-between gap-3 border-b border-[var(--accent-border-soft)]/70 px-4 py-3"
+        class="flex shrink-0 items-center justify-end border-b border-[var(--accent-border-soft)]/70 px-3 py-2"
       >
-        <div
-          class="min-w-0 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--soft-foreground)] opacity-70"
-        >
-          Menu
-        </div>
         <button
           type="button"
           class="inline-flex h-9 w-9 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-80 transition hover:bg-[var(--accent-wash)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
@@ -142,87 +165,135 @@
 
       <nav
         id={drawerMenuId}
-        class="h-full overflow-y-auto p-3"
-        aria-label="Sections"
+        class="min-h-0 flex-1 overflow-y-auto p-3"
+        aria-label={showSectionLinksInDrawer ? "Sections" : "About"}
       >
-        <!-- Home group -->
-        <div class="px-2 pb-2 pt-1">
-          <div
-            class="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-60"
-          >
-            Home
+        {#if showSectionLinksInDrawer}
+          <div class="px-2 pb-2 pt-1">
+            <div
+              class="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-60"
+            >
+              Sections
+            </div>
           </div>
-        </div>
 
-        {#each orderedItems.filter((i) => i.section === "workspace") as item}
-          <a
-            bind:this={firstLinkEl}
-            href={item.href}
-            target={item.external ? "_blank" : undefined}
-            rel={item.external ? "noopener noreferrer" : undefined}
-            role="menuitem"
-            class={`flex items-center justify-between gap-2 rounded-[var(--radius-sm)] px-3 py-2 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface-strong)] ${
-              item.active
-                ? "bg-[var(--accent-wash-strong)] text-[var(--accent-strong)]"
-                : "text-[var(--soft-foreground)] opacity-80 hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]"
-            }`}
-            aria-current={item.active ? "page" : undefined}
-            onclick={closeDrawer}
-            data-tour-target={item.section === "chat" ? "nav-chat" : undefined}
-            id={item.section === "docs"
-              ? "mobile-nav-docs-link"
-              : item.section === "chat"
-                ? "mobile-nav-chat-link"
-                : item.section === "workspace"
-                  ? "mobile-nav-workspace-link"
-                  : undefined}
-            data-sveltekit-preload-code={item.external ? undefined : "viewport"}
-            data-sveltekit-preload-data={item.external ? undefined : "tap"}
-          >
-            <span class="min-w-0 truncate">{item.label}</span>
-          </a>
-        {/each}
+          {#if firstItem}
+            <a
+              bind:this={firstSectionLinkEl}
+              href={firstItem.href}
+              target={firstItem.external ? "_blank" : undefined}
+              rel={firstItem.external ? "noopener noreferrer" : undefined}
+              role="menuitem"
+              class={`flex items-center justify-between gap-2 rounded-[var(--radius-sm)] px-3 py-2 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface-strong)] ${
+                firstItem.active
+                  ? "bg-[var(--accent-wash-strong)] text-[var(--accent-strong)]"
+                  : "text-[var(--soft-foreground)] opacity-80 hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]"
+              }`}
+              aria-current={firstItem.active ? "page" : undefined}
+              onclick={closeDrawer}
+              data-tour-target={firstItem.section === "chat"
+                ? "nav-chat"
+                : undefined}
+              id={firstItem.section === "docs"
+                ? "mobile-nav-docs-link"
+                : firstItem.section === "chat"
+                  ? "mobile-nav-chat-link"
+                  : firstItem.section === "workspace"
+                    ? "mobile-nav-workspace-link"
+                    : undefined}
+              data-sveltekit-preload-code={firstItem.external
+                ? undefined
+                : "viewport"}
+              data-sveltekit-preload-data={firstItem.external
+                ? undefined
+                : "tap"}
+            >
+              <span class="min-w-0 truncate">{firstItem.label}</span>
+              {#if firstItem.external}
+                <ExternalLinkIcon size={14} className="shrink-0 opacity-70" />
+              {/if}
+            </a>
+          {/if}
 
-        <!-- Docs group -->
-        <div class="px-2 pb-2 pt-5">
-          <div
-            class="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-60"
-          >
-            Docs
+          {#each remainingItems as item (item.section)}
+            <a
+              href={item.href}
+              target={item.external ? "_blank" : undefined}
+              rel={item.external ? "noopener noreferrer" : undefined}
+              role="menuitem"
+              class={`flex items-center justify-between gap-2 rounded-[var(--radius-sm)] px-3 py-2 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface-strong)] ${
+                item.active
+                  ? "bg-[var(--accent-wash-strong)] text-[var(--accent-strong)]"
+                  : "text-[var(--soft-foreground)] opacity-80 hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]"
+              }`}
+              aria-current={item.active ? "page" : undefined}
+              onclick={closeDrawer}
+              data-tour-target={item.section === "chat"
+                ? "nav-chat"
+                : undefined}
+              id={item.section === "docs"
+                ? "mobile-nav-docs-link"
+                : item.section === "chat"
+                  ? "mobile-nav-chat-link"
+                  : item.section === "workspace"
+                    ? "mobile-nav-workspace-link"
+                    : undefined}
+              data-sveltekit-preload-code={item.external
+                ? undefined
+                : "viewport"}
+              data-sveltekit-preload-data={item.external ? undefined : "tap"}
+            >
+              <span class="min-w-0 truncate">{item.label}</span>
+              {#if item.external}
+                <ExternalLinkIcon size={14} className="shrink-0 opacity-70" />
+              {/if}
+            </a>
+          {/each}
+        {:else}
+          <div class="px-2 pb-3 pt-1">
+            <p
+              class="text-[12px] leading-relaxed text-[var(--soft-foreground)] opacity-80"
+            >
+              Move between app areas using the tab bar at the bottom of the
+              screen.
+            </p>
           </div>
-        </div>
-
-        {#each orderedItems.filter((i) => i.section === "docs") as item}
-          <a
-            href={item.href}
-            target={item.external ? "_blank" : undefined}
-            rel={item.external ? "noopener noreferrer" : undefined}
-            role="menuitem"
-            class={`flex items-center justify-between gap-2 rounded-[var(--radius-sm)] px-3 py-2 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface-strong)] ${
-              item.active
-                ? "bg-[var(--accent-wash-strong)] text-[var(--accent-strong)]"
-                : "text-[var(--soft-foreground)] opacity-80 hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]"
-            }`}
-            aria-current={item.active ? "page" : undefined}
-            onclick={closeDrawer}
-            data-tour-target={item.section === "chat" ? "nav-chat" : undefined}
-            id={item.section === "docs"
-              ? "mobile-nav-docs-link"
-              : item.section === "chat"
-                ? "mobile-nav-chat-link"
-                : item.section === "workspace"
-                  ? "mobile-nav-workspace-link"
-                  : undefined}
-            data-sveltekit-preload-code={item.external ? undefined : "viewport"}
-            data-sveltekit-preload-data={item.external ? undefined : "tap"}
-          >
-            <span class="min-w-0 truncate">{item.label}</span>
-            {#if item.external}
-              <ExternalLinkIcon size={14} className="shrink-0 opacity-70" />
-            {/if}
-          </a>
-        {/each}
+        {/if}
       </nav>
+
+      <div
+        class="shrink-0 border-t border-[var(--accent-border-soft)]/50 px-3 py-3"
+      >
+        <a
+          bind:this={drawerFooterGitHubEl}
+          href="https://github.com/ThorbenWoelk/dAstIll"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="inline-flex w-full items-center gap-2 rounded-[var(--radius-sm)] px-3 py-2 text-[var(--soft-foreground)] opacity-60 transition-all hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+          onclick={closeDrawer}
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            class="shrink-0"
+            aria-hidden="true"
+          >
+            <path
+              d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"
+            />
+          </svg>
+          <span class="min-w-0 truncate text-[12px] font-medium">GitHub</span>
+        </a>
+        <div class="mt-2">
+          <span
+            class="text-[12px] font-medium leading-snug text-[var(--soft-foreground)] opacity-60"
+          >
+            &copy; {new Date().getFullYear()} Thorben Woelk.
+          </span>
+        </div>
+      </div>
     </div>
   </div>
 {/if}

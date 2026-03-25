@@ -6,6 +6,8 @@
   import { createAiStatusPoller } from "$lib/utils/ai-poller";
   import ErrorToast from "$lib/components/ErrorToast.svelte";
   import TrashIcon from "$lib/components/icons/TrashIcon.svelte";
+  import defaultChannelIcon from "$lib/assets/channel-default.svg";
+  import MobileYouTubeTopNav from "$lib/components/mobile/MobileYouTubeTopNav.svelte";
   import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
   import type {
     AiStatus,
@@ -16,6 +18,7 @@
   import { buildWorkspaceViewHref } from "$lib/view-url";
   import { formatShortDate } from "$lib/utils/date";
   import { removeHighlightFromGroups } from "$lib/utils/highlights";
+  import { mobileBottomBar } from "$lib/mobile-navigation/mobileBottomBar";
 
   let aiStatus = $state<AiStatus | null>(null);
   let groups = $state<HighlightChannelGroup[]>([]);
@@ -119,6 +122,13 @@
       },
     });
   });
+
+  $effect(() => {
+    mobileBottomBar.set({ kind: "hidden" });
+    return () => {
+      mobileBottomBar.set({ kind: "sections" });
+    };
+  });
 </script>
 
 <WorkspaceShell
@@ -126,12 +136,15 @@
   {aiIndicator}
   onOpenGuide={openGuide}
 >
+  {#snippet mobileTopBar()}
+    <MobileYouTubeTopNav />
+  {/snippet}
   <section
     id="content-view"
     class="fade-in stagger-3 relative z-10 flex h-full min-h-0 min-w-0 flex-col overflow-visible lg:gap-4 lg:px-8 lg:pb-6"
   >
     <div
-      class="flex h-12 shrink-0 items-center justify-between border-b border-[var(--border-soft)]/50 px-4 sm:px-6 lg:px-0"
+      class="flex h-10 shrink-0 items-center justify-between border-b border-[var(--border-soft)]/50 px-3 sm:px-6 lg:h-12 lg:px-0"
     >
       <span
         class="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-55"
@@ -148,22 +161,22 @@
     </div>
 
     <div
-      class="custom-scrollbar mobile-bottom-stack-padding w-full min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 lg:px-0 lg:pr-4 lg:pb-0"
+      class="custom-scrollbar mobile-bottom-stack-padding w-full min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-6 lg:px-0 lg:py-4 lg:pr-4 lg:pb-0"
     >
       {#if loading}
-        <div class="space-y-4" role="status" aria-live="polite">
+        <div class="space-y-3 lg:space-y-4" role="status" aria-live="polite">
           {#each Array.from({ length: 5 }) as _, index (index)}
             <div
-              class="animate-pulse rounded-[var(--radius-md)] border border-[var(--accent-border-soft)] bg-[var(--accent-wash)] p-5"
+              class="animate-pulse rounded-[var(--radius-sm)] bg-[var(--muted)]/40 p-3 lg:rounded-[var(--radius-md)] lg:border lg:border-[var(--accent-border-soft)] lg:bg-[var(--accent-wash)] lg:p-5"
             >
               <div
-                class="h-4 w-40 rounded-full bg-[var(--border)] opacity-80"
+                class="h-3 w-32 rounded-full bg-[var(--border)] opacity-80 lg:h-4 lg:w-40"
               ></div>
               <div
-                class="mt-4 h-3 w-3/4 rounded-full bg-[var(--border)] opacity-70"
+                class="mt-3 h-2.5 w-11/12 rounded-full bg-[var(--border)] opacity-70 lg:mt-4 lg:h-3"
               ></div>
               <div
-                class="mt-2 h-3 w-1/2 rounded-full bg-[var(--border)] opacity-55"
+                class="mt-2 h-2.5 w-2/3 rounded-full bg-[var(--border)] opacity-55 lg:h-3"
               ></div>
             </div>
           {/each}
@@ -175,78 +188,88 @@
           {errorMessage}
         </div>
       {:else if groups.length === 0}
-        <p class="px-1 text-[14px] text-[var(--soft-foreground)] opacity-60">
+        <p
+          class="px-0.5 text-[13px] leading-relaxed text-[var(--soft-foreground)] opacity-60 lg:text-[14px]"
+        >
           No highlights saved yet. Select text in a transcript or summary to
           start building your library.
         </p>
       {:else}
-        <div class="space-y-8">
+        <div class="space-y-6 lg:space-y-8">
           {#each groups as group}
             <section
-              class="rounded-[var(--radius-lg)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] p-5"
+              class="border-b border-[var(--border-soft)]/50 pb-6 last:border-b-0 last:pb-0 lg:rounded-[var(--radius-lg)] lg:border lg:border-[var(--accent-border-soft)] lg:bg-[var(--panel-surface)] lg:p-5 lg:pb-5"
             >
-              <div class="flex flex-wrap items-center justify-between gap-3">
-                <div class="flex min-w-0 items-center gap-3">
-                  <div
-                    class="h-11 w-11 shrink-0 overflow-hidden rounded-full bg-[var(--muted)]"
+              <div class="flex min-w-0 items-center gap-2.5 lg:gap-3">
+                <div
+                  class="h-7 w-7 shrink-0 overflow-hidden rounded-full bg-[var(--muted)] lg:h-10 lg:w-10"
+                >
+                  <img
+                    src={group.channel_thumbnail_url || defaultChannelIcon}
+                    alt={group.channel_name}
+                    class="h-full w-full object-cover"
+                    loading="lazy"
+                    referrerpolicy="no-referrer"
+                  />
+                </div>
+                <div class="min-w-0">
+                  <p
+                    class="truncate text-[14px] font-semibold leading-tight text-[var(--foreground)] lg:text-[17px]"
                   >
-                    {#if group.channel_thumbnail_url}
-                      <img
-                        src={group.channel_thumbnail_url}
-                        alt={group.channel_name}
-                        class="h-full w-full object-cover"
-                      />
-                    {/if}
-                  </div>
-                  <div class="min-w-0">
-                    <p
-                      class="truncate text-[18px] font-semibold text-[var(--foreground)]"
-                    >
-                      {group.channel_name}
-                    </p>
-                    <p
-                      class="text-[12px] text-[var(--soft-foreground)] opacity-55"
-                    >
-                      {group.videos.length} video{group.videos.length === 1
-                        ? ""
-                        : "s"}
-                    </p>
-                  </div>
+                    {group.channel_name}
+                  </p>
+                  <p
+                    class="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50 lg:text-[12px] lg:font-medium lg:normal-case lg:tracking-normal lg:opacity-55"
+                  >
+                    {group.videos.length} video{group.videos.length === 1
+                      ? ""
+                      : "s"}
+                  </p>
                 </div>
               </div>
 
-              <div class="mt-5 space-y-4">
+              <div class="mt-4 space-y-5 lg:mt-5 lg:space-y-4">
                 {#each group.videos as video}
                   <article
-                    class="rounded-[var(--radius-md)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface-strong)] p-4 shadow-sm"
+                    class="border-b border-[var(--border-soft)]/35 pb-5 last:border-b-0 last:pb-0 lg:rounded-[var(--radius-md)] lg:border lg:border-[var(--accent-border-soft)] lg:bg-[var(--panel-surface-strong)] lg:p-4 lg:shadow-sm lg:last:border-[var(--accent-border-soft)]"
                   >
-                    <div class="flex flex-col gap-4 sm:flex-row sm:items-start">
+                    <div
+                      class="flex flex-col gap-3 lg:flex-row lg:items-start lg:gap-4"
+                    >
                       <div
-                        class="aspect-video w-full overflow-hidden rounded-[var(--radius-sm)] bg-[var(--muted)] sm:w-[220px]"
+                        class="hidden w-[200px] shrink-0 overflow-hidden rounded-[var(--radius-sm)] bg-[var(--muted)] lg:block xl:w-[220px]"
                       >
                         {#if video.thumbnail_url}
-                          <img
-                            src={video.thumbnail_url}
-                            alt={video.title}
-                            class="h-full w-full object-cover"
-                          />
+                          <div class="aspect-video w-full">
+                            <img
+                              src={video.thumbnail_url}
+                              alt={video.title}
+                              class="h-full w-full object-cover"
+                              loading="lazy"
+                              referrerpolicy="no-referrer"
+                            />
+                          </div>
+                        {:else}
+                          <div
+                            class="aspect-video w-full bg-[var(--muted)]"
+                          ></div>
                         {/if}
                       </div>
 
                       <div class="min-w-0 flex-1">
                         <div
-                          class="flex flex-wrap items-start justify-between gap-3"
+                          class="flex flex-wrap items-start justify-between gap-2 gap-y-1"
                         >
-                          <div class="min-w-0">
+                          <div class="min-w-0 flex-1">
                             <h2
-                              class="text-[18px] font-semibold leading-tight text-[var(--foreground)]"
+                              class="line-clamp-2 text-[14px] font-semibold leading-snug text-[var(--foreground)] lg:line-clamp-none lg:text-[17px] lg:leading-tight"
                             >
                               {video.title}
                             </h2>
                             <p
-                              class="mt-1 text-[12px] text-[var(--soft-foreground)] opacity-55"
+                              class="mt-0.5 text-[11px] text-[var(--soft-foreground)] opacity-55"
                             >
-                              Released {formatShortDate(video.published_at)}
+                              {formatShortDate(video.published_at)}
                             </p>
                           </div>
                           <a
@@ -255,17 +278,17 @@
                               video.video_id,
                               "highlights",
                             )}
-                            class="inline-flex shrink-0 rounded-full border border-[var(--accent-border-soft)] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--foreground)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-wash)] hover:text-[var(--accent)]"
+                            class="inline-flex shrink-0 rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--accent-strong)] transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] lg:border lg:border-[var(--accent-border-soft)] lg:px-3 lg:py-1.5 lg:text-[var(--foreground)] lg:hover:border-[var(--accent)] lg:hover:text-[var(--accent)]"
                           >
-                            Open video
+                            Open
                           </a>
                         </div>
 
-                        <div class="mt-4 space-y-3">
+                        <div class="mt-3 space-y-2 lg:mt-4 lg:space-y-3">
                           {#each video.highlights as highlight (highlight.id)}
                             {@const hid = Number(highlight.id)}
                             <div
-                              class="relative rounded-[var(--radius-sm)] border border-[var(--accent-border-soft)] bg-[var(--accent-wash)] transition-colors hover:border-[var(--accent)]/35 hover:bg-[var(--accent-wash-strong)]"
+                              class="relative rounded-[var(--radius-sm)] border-l-2 border-[var(--accent)]/40 bg-[var(--accent-wash)]/60 pl-3 pr-11 py-2.5 transition-colors hover:bg-[var(--accent-wash)] lg:border lg:border-[var(--accent-border-soft)] lg:border-l-[var(--accent-border-soft)] lg:bg-[var(--accent-wash)] lg:pl-4 lg:pr-14 lg:py-3 lg:hover:border-[var(--accent)]/35"
                             >
                               <a
                                 href={buildVideoHref(
@@ -273,33 +296,31 @@
                                   video.video_id,
                                   highlight.source,
                                 )}
-                                class="block px-4 py-3 pr-14 text-[var(--foreground)]"
+                                class="block text-[var(--foreground)]"
                               >
                                 <div
-                                  class="flex flex-wrap items-center justify-between gap-2"
+                                  class="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5"
                                 >
                                   <span
-                                    class="inline-flex rounded-full bg-[var(--accent-wash-strong)] px-2 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--accent-strong)]"
+                                    class="text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--accent-strong)] lg:inline-flex lg:rounded-full lg:bg-[var(--accent-wash-strong)] lg:px-2 lg:py-1 lg:text-[10px]"
                                   >
                                     {highlight.source}
                                   </span>
                                   <span
-                                    class="text-[11px] text-[var(--soft-foreground)] opacity-50"
+                                    class="text-[10px] text-[var(--soft-foreground)] opacity-50 lg:text-[11px]"
                                   >
-                                    Saved {formatShortDate(
-                                      highlight.created_at,
-                                    )}
+                                    {formatShortDate(highlight.created_at)}
                                   </span>
                                 </div>
                                 <p
-                                  class="mt-3 whitespace-pre-wrap text-[15px] leading-relaxed"
+                                  class="mt-2 line-clamp-6 whitespace-pre-wrap text-[13px] leading-snug lg:line-clamp-none lg:mt-3 lg:text-[15px] lg:leading-relaxed"
                                 >
                                   {highlight.text}
                                 </p>
                               </a>
                               <button
                                 type="button"
-                                class="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--danger)] disabled:cursor-not-allowed disabled:opacity-50"
+                                class="absolute right-1 top-1.5 inline-flex h-7 w-7 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash-strong)] hover:text-[var(--danger)] disabled:cursor-not-allowed disabled:opacity-50 lg:right-2 lg:top-2 lg:h-8 lg:w-8"
                                 disabled={deletingHighlightId === hid}
                                 onclick={() => void removeHighlightEntry(hid)}
                                 aria-label="Delete highlight"

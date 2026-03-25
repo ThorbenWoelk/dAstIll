@@ -11,6 +11,8 @@
 
   let {
     readOnly = false,
+    /** When true, hides the mobile "Back" control and swipe-back (single-column queue layout). */
+    hideMobileBack = false,
     state: panelState = {
       mobileVisible: false,
       selectedChannel: null,
@@ -32,6 +34,7 @@
     },
   }: {
     readOnly?: boolean;
+    hideMobileBack?: boolean;
     state?: QueueContentPanelState;
     actions?: QueueContentPanelActions;
   } = $props();
@@ -100,27 +103,29 @@
       class="flex flex-col gap-2 border-b border-[var(--border-soft)] pb-3 lg:flex-row lg:items-end lg:justify-between"
     >
       <div class="min-w-0 flex-1">
-        <div class="flex items-center gap-2 lg:hidden">
-          <button
-            type="button"
-            class="inline-flex items-center gap-2 text-[12px] font-semibold text-[var(--foreground)] opacity-80"
-            onclick={actions.onBack}
-          >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.6"
-              stroke-linecap="round"
-              stroke-linejoin="round"
+        {#if !hideMobileBack}
+          <div class="flex items-center gap-2 lg:hidden">
+            <button
+              type="button"
+              class="inline-flex items-center gap-2 text-[12px] font-semibold text-[var(--foreground)] opacity-80"
+              onclick={actions.onBack}
             >
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
-            Back to queue
-          </button>
-        </div>
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.6"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+              Back to queue
+            </button>
+          </div>
+        {/if}
         <p
           class="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--soft-foreground)] opacity-55"
         >
@@ -162,7 +167,7 @@
     role="region"
     aria-label="Queue content panel"
     use:swipeBack={{
-      enabled: panelState.mobileVisible,
+      enabled: panelState.mobileVisible && !hideMobileBack,
       onBack: actions.onBack,
     }}
   >

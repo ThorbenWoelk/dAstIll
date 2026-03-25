@@ -54,7 +54,8 @@
     {/if}
   </div>
 
-  <div class="border-b border-[var(--accent-border-soft)] pb-3">
+  <p class="sr-only lg:hidden">{conversationTitle}</p>
+  <div class="hidden border-b border-[var(--accent-border-soft)] pb-3 lg:block">
     <div class="min-w-0">
       <p
         class="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--soft-foreground)] opacity-55"

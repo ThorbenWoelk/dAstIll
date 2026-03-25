@@ -123,6 +123,7 @@
       onAcknowledgedFilterChange: async (_value: AcknowledgedFilter) => {},
     },
     videoListMode = "selected_channel",
+    hideChannelUi = false,
     readOnly = false,
     addSourceErrorMessage = null as string | null,
     initialChannelPreviews = {} as Record<string, ChannelSnapshot>,
@@ -143,6 +144,7 @@
     videoState?: WorkspaceSidebarVideoState;
     videoActions?: WorkspaceSidebarVideoActions;
     videoListMode?: "selected_channel" | "per_channel_preview";
+    hideChannelUi?: boolean;
     readOnly?: boolean;
     addSourceErrorMessage?: string | null;
     /**
@@ -174,6 +176,7 @@
 
   let channels = $derived(channelState.channels);
   let selectedChannelId = $derived(channelState.selectedChannelId);
+  let channelUiHidden = $derived(hideChannelUi);
   let loadingChannels = $derived(channelState.loadingChannels);
   let addingChannel = $derived(channelState.addingChannel);
   let channelSortMode = $derived(channelState.channelSortMode);
@@ -239,6 +242,14 @@
   let filteredChannels = $derived(
     filterChannels(channels, channelSearchQuery, channelSortMode),
   );
+  let renderChannels = $derived.by((): Channel[] => {
+    if (!channelUiHidden) return filteredChannels;
+    if (!selectedChannelId) return [];
+    const selected = channels.find(
+      (channel) => channel.id === selectedChannelId,
+    );
+    return selected ? [selected] : [];
+  });
   let visibleChannelIds = $derived(channelOrderFromList(filteredChannels));
   let manualReorderEnabled = $derived(
     canManualReorderChannels(channelSortMode, channelSearchQuery),
@@ -731,7 +742,151 @@
     ? undefined
     : `width: ${width ?? (collapsed ? 52 : 280)}px;`}
 >
-  {#if collapsed}
+  {#if channelUiHidden}
+    <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div
+        class="custom-scrollbar min-h-0 flex-1 overflow-y-auto px-3 pb-4 pt-3"
+        aria-busy={loadingVideos}
+      >
+        {#if !selectedChannelId}
+          <p
+            class="px-2 py-2 text-[14px] font-medium italic text-[var(--soft-foreground)] opacity-55"
+          >
+            Pick a channel above.
+          </p>
+        {:else if loadingVideos && videos.length === 0}
+          <div class="space-y-1 px-1" role="status" aria-live="polite">
+            {#each Array.from({ length: 6 }) as _, i (i)}
+              <div class="animate-pulse px-2 py-1.5">
+                <div
+                  class="h-3 w-11/12 rounded-full bg-[var(--border)] opacity-60"
+                ></div>
+                <div
+                  class="mt-1 h-2 w-1/3 rounded-full bg-[var(--border)] opacity-40"
+                ></div>
+              </div>
+            {/each}
+          </div>
+        {:else if videos.length === 0 && !refreshingChannel}
+          <p
+            class="px-2 py-2 text-[14px] font-medium italic text-[var(--soft-foreground)] opacity-55"
+          >
+            No videos yet.
+          </p>
+        {:else}
+          {#if showPendingSelectedVideo && pendingSelectedVideo}
+            <button
+              type="button"
+              class="group flex w-full items-center gap-2 rounded-[var(--radius-sm)] bg-[var(--accent-wash)] px-2 py-1.5 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+              onclick={() => void onSelectVideo(pendingSelectedVideo.id)}
+            >
+              <div class="min-w-0 flex-1">
+                <p
+                  class="line-clamp-2 text-[12px] font-medium leading-tight tracking-tight text-[var(--foreground)]"
+                >
+                  {pendingSelectedVideo.title}
+                </p>
+                <div class="mt-1 flex items-center gap-2">
+                  <span
+                    class="text-[10px] text-[var(--soft-foreground)] opacity-50"
+                    >{formatShortDate(pendingSelectedVideo.published_at)}</span
+                  >
+                  <span
+                    class="text-[10px] font-medium text-[var(--accent-strong)]"
+                  >
+                    Restoring selection…
+                  </span>
+                </div>
+              </div>
+            </button>
+          {/if}
+
+          {#each videos as video (video.id)}
+            <button
+              type="button"
+              class={`group flex w-full items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${selectedVideoId === video.id ? "bg-[var(--accent-wash)]" : "hover:bg-[var(--accent-wash)]"}`}
+              onclick={() => void onSelectVideo(video.id)}
+              onmouseenter={() => handleVideoMouseEnter(video.id)}
+              onmouseleave={handleVideoMouseLeave}
+            >
+              <div class="min-w-0 flex-1">
+                <p
+                  class="line-clamp-2 text-[12px] font-medium leading-tight tracking-tight text-[var(--foreground)]"
+                >
+                  {video.title}
+                </p>
+                <div class="mt-1 flex items-center gap-2">
+                  <span
+                    class="text-[10px] text-[var(--soft-foreground)] opacity-50"
+                    >{formatShortDate(video.published_at)}</span
+                  >
+                  {#if video.transcript_status === "loading" || video.summary_status === "loading"}
+                    <span class="relative flex h-2 w-2"
+                      ><span
+                        class="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--accent)] opacity-75"
+                      ></span><span
+                        class="relative inline-flex h-2 w-2 rounded-full bg-[var(--accent)]"
+                      ></span></span
+                    >
+                  {:else if video.transcript_status === "failed" || video.summary_status === "failed"}
+                    <svg
+                      class="text-[var(--danger)]"
+                      width="8"
+                      height="8"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="3"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      ><circle cx="12" cy="12" r="10" /><line
+                        x1="12"
+                        y1="8"
+                        x2="12"
+                        y2="12"
+                      /><line x1="12" y1="16" x2="12.01" y2="16" /></svg
+                    >
+                  {/if}
+                </div>
+              </div>
+            </button>
+          {/each}
+
+          {#if hasMore || !historyExhausted}
+            <button
+              type="button"
+              class="mt-2 w-full rounded-[var(--radius-sm)] py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] transition-all hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] disabled:opacity-30"
+              onclick={() => void onLoadMoreVideos()}
+              disabled={loadingVideos || backfillingHistory}
+            >
+              {#if loadingVideos || backfillingHistory}
+                Loading...
+              {:else if hasMore}
+                Load More
+              {:else}
+                Load History
+              {/if}
+            </button>
+          {/if}
+
+          {#if videos.length > 0 && selectedChannel}
+            <p
+              class="mt-2 px-2 text-[10px] text-[var(--soft-foreground)] opacity-55"
+            >
+              Synced to {formatSyncDate(
+                resolveDisplayedSyncDepthIso({
+                  videos,
+                  selectedChannel,
+                  syncDepth,
+                  allowLoadedVideoOverride: allowLoadedVideoSyncDepthOverride,
+                }),
+              )}
+            </p>
+          {/if}
+        {/if}
+      </div>
+    </div>
+  {:else if collapsed}
     <div class="flex items-center justify-center px-2 pt-3 pb-1">
       <button
         type="button"
@@ -1097,7 +1252,7 @@
           </div>
         {/if}
 
-        {#each filteredChannels as channel (channel.id)}
+        {#each renderChannels as channel (channel.id)}
           {@const channelVideoCollection =
             channelVideoCollections[channel.id] ??
             createEmptyChannelVideoCollection()}
@@ -1147,56 +1302,60 @@
               </div>
             {/if}
 
-            <div
-              class={videoListMode !== "per_channel_preview" && isExpanded
-                ? "sticky top-0 z-10 bg-[var(--surface)]"
-                : ""}
-            >
-              {#if videoListMode === "per_channel_preview"}
-                <ChannelCard
-                  {channel}
-                  active={isExpanded}
-                  expanded={isVirtualChannel(channel) ? undefined : isExpanded}
-                  showDelete={canDeleteChannels && !isVirtualChannel(channel)}
-                  draggableEnabled={!mobileVisible &&
-                    manualReorderEnabled &&
-                    !isVirtualChannel(channel)}
-                  loading={channel.id.startsWith("temp-")}
-                  dragging={draggedChannelId === channel.id}
-                  dragOver={dragOverChannelId === channel.id &&
-                    draggedChannelId !== channel.id}
-                  onSelect={() => void handlePerChannelPreviewSelect(channel)}
-                  onDragStart={(event) =>
-                    handleChannelDragStart(channel.id, event)}
-                  onDragOver={(event) =>
-                    handleChannelDragOver(channel.id, event)}
-                  onDrop={(event) => handleChannelDrop(channel.id, event)}
-                  onDragEnd={handleChannelDragEnd}
-                  onDelete={() => void onDeleteChannel(channel.id)}
-                />
-              {:else}
-                <ChannelCard
-                  {channel}
-                  active={isExpanded}
-                  showDelete={canDeleteChannels && !isVirtualChannel(channel)}
-                  draggableEnabled={!mobileVisible &&
-                    manualReorderEnabled &&
-                    !isVirtualChannel(channel)}
-                  loading={channel.id.startsWith("temp-")}
-                  dragging={draggedChannelId === channel.id}
-                  dragOver={dragOverChannelId === channel.id &&
-                    draggedChannelId !== channel.id}
-                  onSelect={() => void onSelectChannel(channel.id)}
-                  onDragStart={(event) =>
-                    handleChannelDragStart(channel.id, event)}
-                  onDragOver={(event) =>
-                    handleChannelDragOver(channel.id, event)}
-                  onDrop={(event) => handleChannelDrop(channel.id, event)}
-                  onDragEnd={handleChannelDragEnd}
-                  onDelete={() => void onDeleteChannel(channel.id)}
-                />
-              {/if}
-            </div>
+            {#if !channelUiHidden}
+              <div
+                class={videoListMode !== "per_channel_preview" && isExpanded
+                  ? "sticky top-0 z-10 bg-[var(--surface)]"
+                  : ""}
+              >
+                {#if videoListMode === "per_channel_preview"}
+                  <ChannelCard
+                    {channel}
+                    active={isExpanded}
+                    expanded={isVirtualChannel(channel)
+                      ? undefined
+                      : isExpanded}
+                    showDelete={canDeleteChannels && !isVirtualChannel(channel)}
+                    draggableEnabled={!mobileVisible &&
+                      manualReorderEnabled &&
+                      !isVirtualChannel(channel)}
+                    loading={channel.id.startsWith("temp-")}
+                    dragging={draggedChannelId === channel.id}
+                    dragOver={dragOverChannelId === channel.id &&
+                      draggedChannelId !== channel.id}
+                    onSelect={() => void handlePerChannelPreviewSelect(channel)}
+                    onDragStart={(event) =>
+                      handleChannelDragStart(channel.id, event)}
+                    onDragOver={(event) =>
+                      handleChannelDragOver(channel.id, event)}
+                    onDrop={(event) => handleChannelDrop(channel.id, event)}
+                    onDragEnd={handleChannelDragEnd}
+                    onDelete={() => void onDeleteChannel(channel.id)}
+                  />
+                {:else}
+                  <ChannelCard
+                    {channel}
+                    active={isExpanded}
+                    showDelete={canDeleteChannels && !isVirtualChannel(channel)}
+                    draggableEnabled={!mobileVisible &&
+                      manualReorderEnabled &&
+                      !isVirtualChannel(channel)}
+                    loading={channel.id.startsWith("temp-")}
+                    dragging={draggedChannelId === channel.id}
+                    dragOver={dragOverChannelId === channel.id &&
+                      draggedChannelId !== channel.id}
+                    onSelect={() => void onSelectChannel(channel.id)}
+                    onDragStart={(event) =>
+                      handleChannelDragStart(channel.id, event)}
+                    onDragOver={(event) =>
+                      handleChannelDragOver(channel.id, event)}
+                    onDrop={(event) => handleChannelDrop(channel.id, event)}
+                    onDragEnd={handleChannelDragEnd}
+                    onDelete={() => void onDeleteChannel(channel.id)}
+                  />
+                {/if}
+              </div>
+            {/if}
           </div>
 
           {#if videoListMode === "per_channel_preview" && isExpanded}

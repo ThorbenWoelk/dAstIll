@@ -15,9 +15,9 @@
 
 {#if empty}
   <div
-    class="flex min-h-[18rem] flex-col items-center justify-center px-4 py-12 text-center"
+    class="flex min-h-0 flex-col items-center justify-center px-4 py-12 text-center max-lg:py-0 lg:min-h-[18rem]"
   >
-    <div class="max-w-md space-y-3">
+    <div class="max-w-md space-y-3 max-lg:hidden">
       <p
         class="text-[12px] font-bold uppercase tracking-[0.14em] text-[var(--soft-foreground)]"
       >

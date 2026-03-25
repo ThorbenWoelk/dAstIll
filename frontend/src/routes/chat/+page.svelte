@@ -30,7 +30,9 @@
   import ChatSidebar from "$lib/components/chat/ChatSidebar.svelte";
   import ChatSuggestions from "$lib/components/chat/ChatSuggestions.svelte";
   import ChevronIcon from "$lib/components/icons/ChevronIcon.svelte";
+  import MobileYouTubeTopNav from "$lib/components/mobile/MobileYouTubeTopNav.svelte";
   import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
+  import { mobileBottomBar } from "$lib/mobile-navigation/mobileBottomBar";
   import { createAiStatusPoller } from "$lib/utils/ai-poller";
   import { buildWorkspaceViewHref } from "$lib/view-url";
   import type { ChatClientConfig } from "$lib/bindings/ChatClientConfig";
@@ -961,9 +963,19 @@
         : null,
     });
   }
+
+  $effect(() => {
+    mobileBottomBar.set({ kind: "hidden" });
+    return () => {
+      mobileBottomBar.set({ kind: "sections" });
+    };
+  });
 </script>
 
 <WorkspaceShell currentSection="chat" {aiIndicator} onOpenGuide={openGuide}>
+  {#snippet mobileTopBar()}
+    <MobileYouTubeTopNav />
+  {/snippet}
   <div class="flex h-full min-h-0 w-full">
     <div id="conversations-panel">
       <ChatMobileConversationsOverlay

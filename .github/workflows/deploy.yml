@@ -269,6 +269,8 @@ jobs:
           flags: "--service-account=dastill-frontend-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
           secrets: |
             BACKEND_PROXY_TOKEN=dastill-backend-proxy-token:latest
+          # Overwrite drops legacy secret mounts (e.g. app-auth / app-session) that no longer have IAM.
+          secrets_update_strategy: overwrite
           env_vars: |
             BACKEND_API_BASE=${{ needs.resolve-frontend-env.outputs.backend_url }}
             BACKEND_IDENTITY_AUDIENCE=${{ needs.resolve-frontend-env.outputs.backend_url }}

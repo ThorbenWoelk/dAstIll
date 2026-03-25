@@ -14,7 +14,7 @@
   } from "$lib/api";
   import ConfirmationModal from "$lib/components/ConfirmationModal.svelte";
   import ErrorToast from "$lib/components/ErrorToast.svelte";
-  import WorkspaceMobileTabBar from "$lib/components/workspace/WorkspaceMobileTabBar.svelte";
+  import MobileYouTubeTopNav from "$lib/components/mobile/MobileYouTubeTopNav.svelte";
   import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
   import WorkspaceSidebar from "$lib/components/workspace/WorkspaceSidebar.svelte";
   import {
@@ -35,15 +35,11 @@
   import { buildWorkspaceViewHref } from "$lib/view-url";
   import { channelOrderFromList } from "$lib/workspace/channels";
   import { formatSyncDate } from "$lib/workspace/content";
+  import { mobileBottomBar } from "$lib/mobile-navigation/mobileBottomBar";
   import type {
     AcknowledgedFilter,
     ChannelSortMode,
   } from "$lib/workspace/types";
-
-  const mobileTabItems = [
-    { value: "browse", label: "Channels" },
-    { value: "content", label: "Overview" },
-  ];
 
   let channels = $state<Channel[]>([]);
   let syncDepth = $state<SyncDepth | null>(null);
@@ -56,8 +52,19 @@
   let showDeleteConfirmation = $state(false);
   let showDeleteAccessPrompt = $state(false);
   let channelIdToDelete = $state<string | null>(null);
-  let mobileTab = $state<"browse" | "content">("content");
+  let mobileChannelsDrawerOpen = $state(false);
   let workspaceStateHydrated = $state(false);
+
+  $effect(() => {
+    if (mobileChannelsDrawerOpen) {
+      mobileBottomBar.set({ kind: "sections" });
+    } else {
+      mobileBottomBar.set({ kind: "hidden" });
+    }
+    return () => {
+      mobileBottomBar.set({ kind: "sections" });
+    };
+  });
   let channelOrder = $state<string[]>([]);
   let channelSortMode = $state<ChannelSortMode>("custom");
   let videoTypeFilter = $state<VideoTypeFilter>("all");
@@ -225,7 +232,7 @@
       if (channelOrder.length === 0) {
         channelOrder = channelOrderFromList(nextChannels);
       }
-      mobileTab = "content";
+      mobileChannelsDrawerOpen = false;
       await goto(`/channels/${encodeURIComponent(addedChannel.id)}`);
       return true;
     } catch (error) {
@@ -237,7 +244,7 @@
   }
 
   async function openChannelOverview(channelId: string) {
-    mobileTab = "content";
+    mobileChannelsDrawerOpen = false;
     if (channelId === selectedChannelId) {
       return;
     }
@@ -444,6 +451,9 @@
 </script>
 
 <WorkspaceShell currentSection="workspace" {aiIndicator}>
+  {#snippet mobileTopBar()}
+    <MobileYouTubeTopNav />
+  {/snippet}
   {#snippet sidebar({ collapsed, toggle, width })}
     <WorkspaceSidebar
       videoListMode="per_channel_preview"
@@ -461,15 +471,7 @@
     />
   {/snippet}
 
-  <WorkspaceMobileTabBar
-    tabs={mobileTabItems}
-    activeTab={mobileTab}
-    onTabChange={(tab) => {
-      mobileTab = tab === "browse" ? "browse" : "content";
-    }}
-  />
-
-  {#if mobileTab === "browse"}
+  {#if mobileChannelsDrawerOpen}
     <div
       class="fixed inset-0 z-[80] lg:hidden"
       role="dialog"
@@ -480,7 +482,7 @@
         type="button"
         class="absolute inset-0 bg-[var(--overlay)]"
         onclick={() => {
-          mobileTab = "content";
+          mobileChannelsDrawerOpen = false;
         }}
         aria-label="Close sidebar"
       ></button>
@@ -512,7 +514,7 @@
     <div
       class="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--accent-border-soft)] px-4 py-4 sm:px-6 lg:px-0"
     >
-      <div class="flex min-w-0 items-center gap-4">
+      <div class="flex min-w-0 items-center gap-2 sm:gap-4">
         <button
           type="button"
           class="inline-flex h-10 w-10 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-70 transition hover:bg-[var(--accent-wash)] hover:opacity-100 lg:hidden"
@@ -531,6 +533,30 @@
             aria-hidden="true"
           >
             <path d="M15 18l-6-6 6-6" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          class="inline-flex h-10 w-10 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-70 transition hover:bg-[var(--accent-wash)] hover:opacity-100 lg:hidden"
+          aria-label="Open channel list"
+          onclick={() => {
+            mobileChannelsDrawerOpen = true;
+          }}
+        >
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M4 7h16" />
+            <path d="M4 12h16" />
+            <path d="M4 17h16" />
           </svg>
         </button>
         <div

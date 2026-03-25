@@ -240,9 +240,9 @@
       </div>
       <button
         type="button"
-        class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.06em] transition-colors duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)] disabled:pointer-events-none disabled:opacity-50 {deepResearch
-          ? 'bg-[var(--accent-soft)] text-[var(--accent-strong)]'
-          : 'bg-[var(--accent-wash)]/80 text-[var(--accent)] hover:bg-[var(--accent-wash)]'}"
+        class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.06em] transition-colors duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)] disabled:pointer-events-none disabled:opacity-50 {deepResearch
+          ? 'border-[var(--accent)]/25 bg-[var(--accent-soft)] text-[var(--accent-strong)] shadow-sm'
+          : 'border-transparent bg-transparent text-[var(--soft-foreground)] hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]'}"
         aria-pressed={deepResearch}
         aria-label={deepResearch ? "Deep research on" : "Deep research off"}
         data-tooltip={deepResearch

@@ -15,9 +15,10 @@
   } from "$lib/api";
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
   import ErrorToast from "$lib/components/ErrorToast.svelte";
+  import MobileChannelGallery from "$lib/components/mobile/MobileChannelGallery.svelte";
+  import MobileYouTubeTopNav from "$lib/components/mobile/MobileYouTubeTopNav.svelte";
   import QueueContentPanel from "$lib/components/queue/QueueContentPanel.svelte";
   import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
-  import WorkspaceMobileTabBar from "$lib/components/workspace/WorkspaceMobileTabBar.svelte";
   import WorkspaceSidebar from "$lib/components/workspace/WorkspaceSidebar.svelte";
   import { resolveBootstrapOnMount } from "$lib/ssr-bootstrap";
   import {
@@ -77,32 +78,14 @@
   } from "$lib/workspace/types";
   import { createAiStatusPoller, refreshAiStatus } from "$lib/utils/ai-poller";
   import { createSidebarState } from "$lib/workspace/sidebar-state.svelte";
-
-  const queueMobileTabs = [
-    { value: "browse", label: "Browse" },
-    { value: "content", label: "Content" },
-  ] as const;
-
-  type QueueMobileTab = (typeof queueMobileTabs)[number]["value"];
-  const queueMobileTabItems: Array<{ value: string; label: string }> =
-    queueMobileTabs.map((tab) => ({ ...tab }));
-
-  function resolveQueueMobileTab(value: string): QueueMobileTab {
-    return queueMobileTabs.some((tab) => tab.value === value)
-      ? (value as QueueMobileTab)
-      : "browse";
-  }
+  import { mobileBottomBar } from "$lib/mobile-navigation/mobileBottomBar";
 
   const sidebar = createSidebarState({
     limit: 20,
     getViewCacheScopeKey: () => `queue:${queueTab}`,
     onSelectVideo: openQueuedVideo,
-    onChannelSelected: (id) => {
-      mobileTab = "browse";
-    },
-    onChannelDeselected: () => {
-      mobileTab = "browse";
-    },
+    onChannelSelected: (_id) => {},
+    onChannelDeselected: () => {},
     onVideoListReset: () => {
       // no-op: historyExhausted and others are constants here
     },
@@ -124,7 +107,6 @@
       errorMessage = msg;
     },
     onChannelAdded: async (channel) => {
-      mobileTab = "browse";
       await sidebar.selectChannel(channel.id, null, true);
     },
     onChannelDeleted: (id) => {
@@ -171,7 +153,6 @@
           sidebar.setSelectedChannelId(null);
           sidebar.setVideos([]);
           sidebar.setSyncDepth(null);
-          mobileTab = "browse";
         } else {
           sidebar.setSelectedChannelId(initialChannelId);
           await sidebar.refreshAndLoadVideos(initialChannelId, silent);
@@ -215,7 +196,6 @@
     onOpenChannelOverview: async (channelId: string) => {
       // Switch UI immediately; load selected channel queue data in background.
       sidebar.setSelectedChannelId(channelId);
-      mobileTab = "content";
       void sidebar.selectChannel(channelId, null, true);
     },
   });
@@ -232,7 +212,6 @@
   }
 
   let aiStatus = $state<AiStatus | null>(null);
-  let mobileTab = $state<QueueMobileTab>("browse");
   let queueTab = $state<QueueTab>("transcripts");
   let errorMessage = $state<string | null>(null);
   let workspaceStateHydrated = $state(false);
@@ -289,6 +268,22 @@
     sidebar.videos.filter((video) => video.transcript_status === "failed"),
   );
 
+  const galleryChannelPreviews = $derived.by(() => {
+    const base = {
+      ...($page.data.channelPreviews ?? {}),
+    } as Record<string, ChannelSnapshot>;
+    const sid = sidebar.selectedChannelId;
+    if (sid && sidebar.syncDepth) {
+      base[sid] = {
+        channel_id: sid,
+        sync_depth: sidebar.syncDepth,
+        channel_video_count: sidebar.videos.length,
+        videos: sidebar.videos,
+      };
+    }
+    return base;
+  });
+
   $effect(() =>
     createAiStatusPoller({
       onStatus: (status) => {
@@ -311,14 +306,6 @@
     earliestSyncDateInput = effective
       ? new Date(effective).toISOString().split("T")[0]
       : "";
-  });
-
-  $effect(() => {
-    if (!sidebar.selectedChannelId) {
-      if (mobileTab !== "browse") {
-        mobileTab = "browse";
-      }
-    }
   });
 
   $effect(() => {
@@ -447,8 +434,6 @@
     if (restored.queueTab) {
       queueTab = restored.queueTab;
     }
-
-    mobileTab = "browse";
   }
 
   async function saveEarliestSyncDate(value: string) {
@@ -569,9 +554,7 @@
     refreshingChannel: sidebar.refreshingChannel,
   });
   const queueContentPanelActions = {
-    onBack: () => {
-      mobileTab = "browse";
-    },
+    onBack: () => {},
     onQueueTabChange: (value: QueueTab) => {
       queueTab = value;
     },
@@ -583,9 +566,47 @@
   const shellWidth = $derived(sidebar.sidebarWidth);
   const shellToggleSidebar = sidebar.toggleSidebar;
   const queueSidebar = sidebar;
+
+  async function clearQueueBrowseVideoFilters() {
+    const actions = queueSidebar.videoActions;
+    if (actions.onClearAllFilters) {
+      await actions.onClearAllFilters();
+    } else {
+      await actions.onVideoTypeFilterChange("all");
+      await actions.onAcknowledgedFilterChange("all");
+    }
+  }
+
+  const queueBrowseFilterDisabled = $derived(
+    !queueSidebar.selectedChannelId || queueSidebar.videoState.loadingVideos,
+  );
+
+  $effect(() => {
+    if (sidebar.selectedChannelId) {
+      mobileBottomBar.set({
+        kind: "sectionsWithVideoFilter",
+        filter: {
+          videoTypeFilter: sidebar.videoState.videoTypeFilter,
+          acknowledgedFilter: sidebar.videoState.acknowledgedFilter,
+          disabled: queueBrowseFilterDisabled,
+          onSelectVideoType: sidebar.videoActions.onVideoTypeFilterChange,
+          onSelectAcknowledged: sidebar.videoActions.onAcknowledgedFilterChange,
+          onClearAllFilters: clearQueueBrowseVideoFilters,
+        },
+      });
+    } else {
+      mobileBottomBar.set({ kind: "sections" });
+    }
+    return () => {
+      mobileBottomBar.set({ kind: "sections" });
+    };
+  });
 </script>
 
 <WorkspaceShell currentSection="queue" {aiIndicator} onOpenGuide={openGuide}>
+  {#snippet mobileTopBar()}
+    <MobileYouTubeTopNav />
+  {/snippet}
   {#snippet sidebar({
     collapsed: shellCollapsed,
     toggle: shellToggleSidebar,
@@ -612,34 +633,25 @@
     />
   {/snippet}
 
-  <WorkspaceMobileTabBar
-    tabs={queueMobileTabItems}
-    activeTab={mobileTab}
-    onTabChange={(tab) => {
-      mobileTab = resolveQueueMobileTab(tab);
-    }}
-  />
-
-  {#if mobileTab === "browse"}
-    <div
-      class="fixed inset-0 z-[80] lg:hidden"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Browse channels"
-    >
-      <button
-        type="button"
-        class="absolute inset-0 bg-[var(--overlay)]"
-        onclick={() => {
-          mobileTab = "content";
+  <div
+    class="flex h-full min-h-0 flex-col lg:flex-row"
+    aria-label="Download queue"
+  >
+    <div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden lg:hidden">
+      <MobileChannelGallery
+        channels={queueSidebar.channels}
+        selectedChannelId={queueSidebar.selectedChannelId}
+        onSelectChannel={(channelId) => {
+          void queueSidebar.selectChannel(channelId);
         }}
-        aria-label="Close sidebar"
-      ></button>
+        channelPreviews={galleryChannelPreviews}
+        {queueTab}
+      />
       <div
-        class="relative z-10 h-full w-[min(85vw,20rem)] overflow-hidden border-r border-[var(--accent-border-soft)] bg-[var(--surface-strong)] shadow-2xl"
+        class="min-h-0 flex-1 overflow-hidden border-t border-[var(--border-soft)]/50"
       >
         <WorkspaceSidebar
-          videoListMode="per_channel_preview"
+          videoListMode="selected_channel"
           addSourceErrorMessage={errorMessage}
           initialChannelPreviews={$page.data.channelPreviews ?? {}}
           initialChannelPreviewsFilterKey={$page.data
@@ -652,26 +664,36 @@
             mobileVisible: true,
             onToggleCollapse: () => {},
           }}
-          channelState={queueSidebar.channelState}
+          channelState={{
+            ...queueSidebar.channelState,
+            channels: queueSidebar.channels,
+            selectedChannelId: queueSidebar.selectedChannelId,
+            canDeleteChannels: false,
+          }}
           channelActions={queueSidebar.channelActions}
           videoState={queueSidebar.videoState}
           videoActions={{
             ...queueSidebar.videoActions,
             onSelectVideo: (videoId) => {
-              mobileTab = "content";
               void openQueuedVideo(videoId);
             },
           }}
+          hideChannelUi
         />
       </div>
     </div>
-  {/if}
 
-  <QueueContentPanel
-    readOnly={true}
-    state={queueContentPanelState}
-    actions={queueContentPanelActions}
-  />
+    <div
+      class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden lg:min-w-0"
+    >
+      <QueueContentPanel
+        hideMobileBack
+        readOnly={true}
+        state={queueContentPanelState}
+        actions={queueContentPanelActions}
+      />
+    </div>
+  </div>
 
   {#if errorMessage}
     <ErrorToast

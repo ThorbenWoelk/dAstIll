@@ -23,7 +23,10 @@
               "version": 2,
               "widgetType": "counter",
               "encodings": {
-                "value": { "fieldName": "total_videos", "displayAs": "number" }
+                "value": {
+                  "fieldName": "total_videos",
+                  "displayName": "total_videos"
+                }
               },
               "frame": { "showTitle": true, "title": "Total Videos Tracked" }
             }
@@ -49,7 +52,10 @@
               "version": 2,
               "widgetType": "counter",
               "encodings": {
-                "value": { "fieldName": "acknowledged_count", "displayAs": "number" }
+                "value": {
+                  "fieldName": "acknowledged_count",
+                  "displayName": "acknowledged_count"
+                }
               },
               "frame": { "showTitle": true, "title": "Videos Acknowledged" }
             }
@@ -75,7 +81,10 @@
               "version": 2,
               "widgetType": "counter",
               "encodings": {
-                "value": { "fieldName": "total_highlights", "displayAs": "number" }
+                "value": {
+                  "fieldName": "total_highlights",
+                  "displayName": "total_highlights"
+                }
               },
               "frame": { "showTitle": true, "title": "Total Highlights Created" }
             }
@@ -94,23 +103,23 @@
                     { "name": "engagement_tier", "expression": "`engagement_tier`" },
                     { "name": "video_count", "expression": "`video_count`" }
                   ],
-                  "disaggregated": false
+                  "disaggregated": true
                 }
               }
             ],
             "spec": {
-              "version": 2,
+              "version": 3,
               "widgetType": "bar",
               "encodings": {
                 "x": {
                   "fieldName": "engagement_tier",
                   "scale": { "type": "categorical" },
-                  "title": "Engagement Tier"
+                  "displayName": "Engagement Tier"
                 },
                 "y": {
                   "fieldName": "video_count",
                   "scale": { "type": "quantitative" },
-                  "title": "Videos"
+                  "displayName": "Videos"
                 }
               },
               "frame": { "showTitle": true, "title": "Videos by Engagement Tier" }
@@ -130,23 +139,23 @@
                     { "name": "channel_id", "expression": "`channel_id`" },
                     { "name": "total_highlights", "expression": "`total_highlights`" }
                   ],
-                  "disaggregated": false
+                  "disaggregated": true
                 }
               }
             ],
             "spec": {
-              "version": 2,
+              "version": 3,
               "widgetType": "bar",
               "encodings": {
                 "x": {
                   "fieldName": "channel_id",
                   "scale": { "type": "categorical" },
-                  "title": "Channel"
+                  "displayName": "Channel"
                 },
                 "y": {
                   "fieldName": "total_highlights",
                   "scale": { "type": "quantitative" },
-                  "title": "Total Highlights"
+                  "displayName": "Total Highlights"
                 }
               },
               "frame": { "showTitle": true, "title": "Highlights by Channel" }
@@ -166,23 +175,23 @@
                     { "name": "event_date", "expression": "`event_date`" },
                     { "name": "acknowledgment_count", "expression": "`acknowledgment_count`" }
                   ],
-                  "disaggregated": false
+                  "disaggregated": true
                 }
               }
             ],
             "spec": {
-              "version": 2,
+              "version": 3,
               "widgetType": "line",
               "encodings": {
                 "x": {
                   "fieldName": "event_date",
                   "scale": { "type": "temporal" },
-                  "title": "Date"
+                  "displayName": "Date"
                 },
                 "y": {
                   "fieldName": "acknowledgment_count",
                   "scale": { "type": "quantitative" },
-                  "title": "Acknowledgments"
+                  "displayName": "Acknowledgments"
                 }
               },
               "frame": { "showTitle": true, "title": "Daily Acknowledgments" }
@@ -205,7 +214,7 @@
                     { "name": "engagement_tier", "expression": "`engagement_tier`" },
                     { "name": "acknowledged", "expression": "`acknowledged`" }
                   ],
-                  "disaggregated": false
+                  "disaggregated": true
                 }
               }
             ],
@@ -214,11 +223,41 @@
               "widgetType": "table",
               "encodings": {
                 "columns": [
-                  { "fieldName": "video_id",       "title": "Video ID",       "type": "string" },
-                  { "fieldName": "channel_id",     "title": "Channel",        "type": "string" },
-                  { "fieldName": "highlight_count","title": "Highlights",     "type": "integer" },
-                  { "fieldName": "engagement_tier","title": "Tier",           "type": "string" },
-                  { "fieldName": "acknowledged",   "title": "Acknowledged",   "type": "string" }
+                  {
+                    "fieldName": "video_id",
+                    "title": "Video ID",
+                    "displayName": "Video ID",
+                    "displayAs": "string",
+                    "type": "string"
+                  },
+                  {
+                    "fieldName": "channel_id",
+                    "title": "Channel",
+                    "displayName": "Channel",
+                    "displayAs": "string",
+                    "type": "string"
+                  },
+                  {
+                    "fieldName": "highlight_count",
+                    "title": "Highlights",
+                    "displayName": "Highlights",
+                    "displayAs": "number",
+                    "type": "integer"
+                  },
+                  {
+                    "fieldName": "engagement_tier",
+                    "title": "Tier",
+                    "displayName": "Tier",
+                    "displayAs": "string",
+                    "type": "string"
+                  },
+                  {
+                    "fieldName": "acknowledged",
+                    "title": "Acknowledged",
+                    "displayName": "Acknowledged",
+                    "displayAs": "string",
+                    "type": "string"
+                  }
                 ]
               },
               "frame": { "showTitle": true, "title": "Most Highlighted Videos (Top 20)" }
@@ -233,27 +272,27 @@
     {
       "name": "engagement_kpis",
       "displayName": "Engagement KPIs",
-      "query": "SELECT\n  COUNT(*) AS total_videos,\n  SUM(CASE WHEN is_acknowledged THEN 1 ELSE 0 END) AS acknowledged_count,\n  SUM(highlight_count) AS total_highlights,\n  ROUND(SUM(CASE WHEN is_acknowledged THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) AS ack_rate_pct\nFROM analytics.gold_engagement_progression"
+      "query": "SELECT\n  COUNT(*) AS total_videos,\n  SUM(CASE WHEN is_acknowledged THEN 1 ELSE 0 END) AS acknowledged_count,\n  SUM(highlight_count) AS total_highlights,\n  ROUND(SUM(CASE WHEN is_acknowledged THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) AS ack_rate_pct\nFROM analytics_dev.gold_engagement_progression"
     },
     {
       "name": "engagement_tier_distribution",
       "displayName": "Engagement Tier Distribution",
-      "query": "SELECT\n  engagement_tier,\n  COUNT(*) AS video_count\nFROM analytics.gold_engagement_progression\nGROUP BY engagement_tier\nORDER BY video_count DESC"
+      "query": "SELECT\n  engagement_tier,\n  COUNT(*) AS video_count\nFROM analytics_dev.gold_engagement_progression\nGROUP BY engagement_tier\nORDER BY video_count DESC"
     },
     {
       "name": "highlights_by_channel",
       "displayName": "Highlights by Channel",
-      "query": "SELECT\n  channel_id,\n  SUM(highlight_count) AS total_highlights,\n  COUNT(DISTINCT video_id) AS videos_with_highlights,\n  ROUND(SUM(highlight_count) * 1.0 / COUNT(DISTINCT video_id), 2) AS highlights_per_video\nFROM analytics.gold_engagement_progression\nWHERE highlight_count > 0\nGROUP BY channel_id\nORDER BY total_highlights DESC"
+      "query": "SELECT\n  channel_id,\n  SUM(highlight_count) AS total_highlights,\n  COUNT(DISTINCT video_id) AS videos_with_highlights,\n  ROUND(SUM(highlight_count) * 1.0 / COUNT(DISTINCT video_id), 2) AS highlights_per_video\nFROM analytics_dev.gold_engagement_progression\nWHERE highlight_count > 0\nGROUP BY channel_id\nORDER BY total_highlights DESC"
     },
     {
       "name": "ack_trend",
       "displayName": "Daily Acknowledgment Trend",
-      "query": "SELECT\n  DATE(first_acknowledged_at) AS event_date,\n  COUNT(*) AS acknowledgment_count\nFROM analytics.gold_engagement_progression\nWHERE is_acknowledged = TRUE\n  AND first_acknowledged_at IS NOT NULL\nGROUP BY DATE(first_acknowledged_at)\nORDER BY event_date"
+      "query": "SELECT\n  DATE(first_acknowledged_at) AS event_date,\n  COUNT(*) AS acknowledgment_count\nFROM analytics_dev.gold_engagement_progression\nWHERE is_acknowledged = TRUE\n  AND first_acknowledged_at IS NOT NULL\nGROUP BY DATE(first_acknowledged_at)\nORDER BY event_date"
     },
     {
       "name": "top_highlighted_videos",
       "displayName": "Top Highlighted Videos",
-      "query": "SELECT\n  video_id,\n  channel_id,\n  highlight_count,\n  engagement_tier,\n  CASE WHEN is_acknowledged THEN 'Yes' ELSE 'No' END AS acknowledged\nFROM analytics.gold_engagement_progression\nWHERE highlight_count > 0\nORDER BY highlight_count DESC\nLIMIT 20"
+      "query": "SELECT\n  video_id,\n  channel_id,\n  highlight_count,\n  engagement_tier,\n  CASE WHEN is_acknowledged THEN 'Yes' ELSE 'No' END AS acknowledged\nFROM analytics_dev.gold_engagement_progression\nWHERE highlight_count > 0\nORDER BY highlight_count DESC\nLIMIT 20"
     }
   ]
 }

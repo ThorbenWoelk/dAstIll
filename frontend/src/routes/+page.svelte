@@ -35,8 +35,8 @@
   import type { TourStep } from "$lib/components/FeatureGuide.svelte";
   import WorkspaceContentPanel from "$lib/components/workspace/WorkspaceContentPanel.svelte";
   import MobileYouTubeTopNav from "$lib/components/mobile/MobileYouTubeTopNav.svelte";
+  import MobileHomeBrowseOverlay from "$lib/components/mobile/MobileHomeBrowseOverlay.svelte";
   import WorkspaceDesktopTopBar from "$lib/components/workspace/WorkspaceDesktopTopBar.svelte";
-  import WorkspaceMobileBrowseOverlay from "$lib/components/workspace/WorkspaceMobileBrowseOverlay.svelte";
   import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
   import WorkspaceSidebar from "$lib/components/workspace/WorkspaceSidebar.svelte";
 
@@ -143,6 +143,7 @@
   } from "$lib/workspace/highlight-actions";
   import { createSidebarState } from "$lib/workspace/sidebar-state.svelte";
   import { deriveSummaryTrackingId } from "$lib/workspace/summary-tracking-id";
+  import { mobileBottomBar } from "$lib/mobile-navigation/mobileBottomBar";
   import {
     type AcknowledgedFilter,
     type ChannelSortMode,
@@ -214,7 +215,7 @@
   let allowLoadedVideoSyncDepthOverride = $state(false);
 
   let contentMode = $state<WorkspaceContentMode>("transcript");
-  let mobileTab = $state<"browse" | "content">("browse");
+  let mobileBrowseOpen = $state(true);
   let contentText = $state("");
   let transcriptRenderMode = $state<TranscriptRenderMode>("plain_text");
   let draftTranscriptRenderMode = $state<TranscriptRenderMode>("plain_text");
@@ -877,11 +878,11 @@
     }
 
     if (sidebarState.selectedVideoId) {
-      mobileTab = "content";
+      mobileBrowseOpen = false;
     } else if (sidebarState.selectedChannelId) {
-      mobileTab = "browse";
+      mobileBrowseOpen = true;
     } else {
-      mobileTab = "browse";
+      mobileBrowseOpen = true;
     }
   }
 
@@ -1119,7 +1120,7 @@
 
       if (!initialChannelId) {
         sidebarState.setSelectedChannelId(null);
-        mobileTab = "browse";
+        mobileBrowseOpen = true;
         clearSelectedVideoState();
         sidebarState.setVideos([]);
         sidebarState.setSyncDepth(null);
@@ -1267,7 +1268,7 @@
       } else {
         sidebarState.setSelectedChannelId(null);
         sidebarState.setSelectedVideoId(null);
-        mobileTab = "browse";
+        mobileBrowseOpen = true;
         sidebarState.setVideos([]);
         contentText = "";
         draft = "";
@@ -1474,7 +1475,7 @@
     fromUserInteraction = false,
     forceReload = false,
   ) {
-    if (fromUserInteraction) mobileTab = "content";
+    if (fromUserInteraction) mobileBrowseOpen = false;
     if (!forceReload && videoId === selectedVideoId) return;
     // Close any open summary session when switching videos.
     if (contentMode === "summary" && selectedVideoId) {
@@ -1530,7 +1531,7 @@
   }
 
   async function tourPrepareFirstVideoIfNeeded() {
-    mobileTab = "content";
+    mobileBrowseOpen = false;
     await tick();
     if (!selectedVideoId && selectedChannelId && videos.length > 0) {
       await selectVideo(videos[0].id, false, false);
@@ -1539,7 +1540,7 @@
   }
 
   async function tourPrepareOpenAddChannel() {
-    mobileTab = "browse";
+    mobileBrowseOpen = true;
     await tick();
     document.getElementById("tour-add-channel")?.click();
     await tick();
@@ -1564,7 +1565,7 @@
         "In fact, the business model of YouTube prevent this from ever becoming that. I'm just having fun with it.",
       placement: "right",
       prepare: () => {
-        mobileTab = "browse";
+        mobileBrowseOpen = true;
       },
     },
     {
@@ -1609,7 +1610,7 @@
       body: "Chat with your library. Our agentic RAG-based LLM system let's you ask questions about specific videos and will even do deep research for you.",
       placement: "right",
       prepare: () => {
-        mobileTab = "browse";
+        mobileBrowseOpen = true;
       },
       fallbackSelectors: [
         "#nav-chat-link",
@@ -1624,7 +1625,7 @@
       body: "Search, sort, and filter videos. Set earliest date to sync from and load more videos to go further back in time.",
       placement: "bottom",
       prepare: () => {
-        mobileTab = "browse";
+        mobileBrowseOpen = true;
       },
       fallbackSelectors: ["#tour-library-tools"],
     },
@@ -1665,7 +1666,7 @@
       body: "This dot beside the logo shows whether the AI backend is reachable for summaries and chat. Reading still works without it.",
       placement: "bottom",
       prepare: () => {
-        mobileTab = "browse";
+        mobileBrowseOpen = true;
       },
       fallbackSelectors: [
         "a[aria-label='Go to dAstIll home']",
@@ -1679,7 +1680,7 @@
       body: "Reopen this guide at any time.",
       placement: "right",
       prepare: () => {
-        mobileTab = "browse";
+        mobileBrowseOpen = true;
       },
       fallbackSelectors: ["#workspace"],
     },
@@ -1990,6 +1991,64 @@
       );
     }
   }
+
+  $effect(() => {
+    if (mobileBrowseOpen) {
+      mobileBottomBar.set({
+        kind: "sectionsWithVideoFilter",
+        filter: {
+          videoTypeFilter: sidebarState.videoState.videoTypeFilter,
+          acknowledgedFilter: sidebarState.videoState.acknowledgedFilter,
+          disabled: browseFilterDisabled,
+          onSelectVideoType: sidebarState.videoActions.onVideoTypeFilterChange,
+          onSelectAcknowledged:
+            sidebarState.videoActions.onAcknowledgedFilterChange,
+          onClearAllFilters: clearBrowseVideoFilters,
+        },
+      });
+      return () => {
+        mobileBottomBar.set({ kind: "sections" });
+      };
+    }
+
+    const inVideoDetail =
+      !mobileBrowseOpen && Boolean(selectedVideoId) && !editing;
+    if (!inVideoDetail) {
+      mobileBottomBar.set({ kind: "sections" });
+    } else {
+      mobileBottomBar.set({
+        kind: "videoActions",
+        youtubeUrl: selectedVideoYoutubeUrl,
+        showRegenerate: contentMode === "summary",
+        regenerating: selectedVideoId
+          ? regeneratingSummaryVideoIds.includes(selectedVideoId)
+          : false,
+        aiAvailable: aiAvailable ?? false,
+        onRegenerate: regenerateSummaryContent,
+        showFormatAction: contentMode === "transcript",
+        formatting: formattingContent && formattingVideoId === selectedVideoId,
+        onFormat: cleanFormatting,
+        showRevertAction: hasUpdatedTranscript,
+        reverting: revertingContent && revertingVideoId === selectedVideoId,
+        canRevert: canRevertTranscript,
+        onRevert: revertToOriginalTranscript,
+        busy: loadingContent,
+        onRequestResetVideo: () => {
+          showResetVideoConfirmation = true;
+        },
+        resetting: resettingVideo && resettingVideoId === selectedVideoId,
+        showAcknowledgeToggle: true,
+        acknowledged: selectedVideo?.acknowledged ?? false,
+        onAcknowledgeToggle: toggleAcknowledge,
+        showEditAction:
+          contentMode === "transcript" || contentMode === "summary",
+        onEdit: startEdit,
+      });
+    }
+    return () => {
+      mobileBottomBar.set({ kind: "sections" });
+    };
+  });
 
   async function resetVideoContent() {
     if (!selectedVideoId) return;
@@ -2383,9 +2442,23 @@
   ) {
     await sidebarState.selectChannel(channelId, videoId);
     if (switchToContent) {
-      mobileTab = "content";
+      mobileBrowseOpen = false;
     }
   }
+
+  async function clearBrowseVideoFilters() {
+    const actions = sidebarState.videoActions;
+    if (actions.onClearAllFilters) {
+      await actions.onClearAllFilters();
+    } else {
+      await actions.onVideoTypeFilterChange("all");
+      await actions.onAcknowledgedFilterChange("all");
+    }
+  }
+
+  const browseFilterDisabled = $derived(
+    !sidebarState.selectedChannelId || sidebarState.videoState.loadingVideos,
+  );
 
   const workspaceContentSelection = $derived({
     mobileVisible: true,
@@ -2457,7 +2530,7 @@
   });
   const workspaceContentActions = $derived.by(() => ({
     onBack: () => {
-      mobileTab = "browse";
+      mobileBrowseOpen = true;
     },
     onSetMode: setMode,
     onStartEdit: startEdit,
@@ -2474,10 +2547,10 @@
     onCreateHighlight: saveSelectionHighlight,
     onDeleteHighlight: deleteExistingHighlight,
     onShowChannels: () => {
-      mobileTab = "browse";
+      mobileBrowseOpen = true;
     },
     onShowVideos: () => {
-      mobileTab = "browse";
+      mobileBrowseOpen = true;
     },
     onCitationScrollConsumed,
   }));
@@ -2587,12 +2660,31 @@
     </WorkspaceDesktopTopBar>
   {/snippet}
 
-  <WorkspaceMobileBrowseOverlay
-    open={mobileTab === "browse"}
-    {sidebar}
-    onClose={() => {
-      mobileTab = "content";
+  <MobileHomeBrowseOverlay
+    open={mobileBrowseOpen}
+    channels={sidebarState.channels}
+    selectedChannelId={sidebarState.selectedChannelId}
+    onSelectChannel={(channelId) => {
+      void sidebarState.selectChannel(channelId);
     }}
+    onClose={() => {
+      mobileBrowseOpen = false;
+    }}
+    channelState={{
+      ...sidebarState.channelState,
+      canDeleteChannels: isOperator,
+    }}
+    channelActions={{
+      ...sidebarState.channelActions,
+      onDeleteChannel: handleDeleteChannel,
+      onDeleteAccessRequired: () => {
+        showDeleteAccessPrompt = true;
+      },
+    }}
+    videoState={sidebarState.videoState}
+    videoActions={sidebarState.videoActions}
+    canDeleteChannels={isOperator}
+    addSourceErrorMessage={errorMessage}
   />
 
   <WorkspaceContentPanel

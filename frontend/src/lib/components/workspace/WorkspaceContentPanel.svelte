@@ -24,6 +24,7 @@
     resolveSwipedContentMode,
     WORKSPACE_CONTENT_MODE_ORDER,
   } from "$lib/workspace/navigation";
+  import ChevronIcon from "$lib/components/icons/ChevronIcon.svelte";
   import WorkspaceHighlightsPanel from "$lib/components/workspace/WorkspaceHighlightsPanel.svelte";
   import WorkspaceSummaryMeta from "$lib/components/workspace/WorkspaceSummaryMeta.svelte";
   import WorkspaceVideoInfoPanel from "$lib/components/workspace/WorkspaceVideoInfoPanel.svelte";
@@ -123,6 +124,7 @@
   } = $props();
 
   let mobileVisible = $derived(selection.mobileVisible);
+  /** Mobile uses `AppBottomNav` for video actions; this strip is desktop-only (see `max-lg:hidden`). */
   let selectedChannel = $derived(selection.selectedChannel);
   let selectedVideo = $derived(selection.selectedVideo);
   let selectedVideoId = $derived(selection.selectedVideoId);
@@ -344,24 +346,9 @@
         type="button"
         class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]"
         onclick={onBack}
-        aria-label="Open sidebar"
+        aria-label="Back"
       >
-        <svg
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          ><line x1="3" y1="6" x2="21" y2="6" /><line
-            x1="3"
-            y1="12"
-            x2="21"
-            y2="12"
-          /><line x1="3" y1="18" x2="21" y2="18" /></svg
-        >
+        <ChevronIcon direction="left" size={18} strokeWidth={2.2} />
       </button>
     </div>
     <div
@@ -393,7 +380,7 @@
       {#if selectedVideoId && !loadingContent && !editing}
         <div
           id="content-actions"
-          class="relative z-20 flex h-10 items-center justify-end self-end lg:shrink-0 lg:self-auto"
+          class="relative z-20 flex h-10 max-lg:hidden items-center justify-end self-end lg:shrink-0 lg:self-auto"
         >
           <ContentEditor
             editing={false}
