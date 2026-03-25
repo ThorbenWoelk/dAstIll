@@ -15,6 +15,7 @@ import type {
   SyncDepth,
   Transcript,
   TranscriptRenderMode,
+  UserPreferences,
   Video,
   VideoInfo,
   VideoTypeFilter,
@@ -691,5 +692,17 @@ export function deleteHighlight(highlightId: number) {
     // highlight endpoints (grouped list and any per-video lists)
     invalidateHighlightCache();
     return result;
+  });
+}
+
+export function getPreferences() {
+  return request<UserPreferences>("/api/preferences");
+}
+
+export function savePreferences(preferences: UserPreferences) {
+  return request<void>("/api/preferences", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(preferences),
   });
 }

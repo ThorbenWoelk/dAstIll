@@ -102,6 +102,21 @@ pub struct SummaryEvaluationResult {
     pub quality_model_used: Option<String>,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
+pub struct UserPreferences {
+    /// Ordered list of channel IDs for the "custom" sort mode.
+    #[serde(default)]
+    pub channel_order: Vec<String>,
+    /// Which sort mode is active: "custom", "alpha", or "newest".
+    #[serde(default = "default_channel_sort_mode")]
+    pub channel_sort_mode: String,
+}
+
+fn default_channel_sort_mode() -> String {
+    "custom".to_string()
+}
+
 #[derive(Debug, Deserialize, TS)]
 #[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct AddChannelRequest {

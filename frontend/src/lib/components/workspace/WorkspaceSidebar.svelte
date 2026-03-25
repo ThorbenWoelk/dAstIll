@@ -439,6 +439,7 @@
         offset: 0,
         videoType: videoTypeFilter,
         acknowledged,
+        queueOnly: channelSnapshotQueueTab ? true : undefined,
         queueTab: channelSnapshotQueueTab,
         bypassCache: force,
       });
@@ -456,7 +457,7 @@
             nextOffset,
             videoTypeFilter,
             acknowledged,
-            false,
+            Boolean(channelSnapshotQueueTab),
             channelSnapshotQueueTab,
             force,
           );

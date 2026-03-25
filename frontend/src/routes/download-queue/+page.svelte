@@ -72,6 +72,8 @@
     resolveNextChannelSelection,
   } from "$lib/workspace/route-helpers";
   import {
+    isAcknowledgedFilter,
+    isWorkspaceVideoTypeFilter,
     resolveAcknowledgedParam,
     type AcknowledgedFilter,
     type ChannelSortMode,
@@ -116,21 +118,6 @@
       if (typeof localStorage === "undefined") return;
       saveWorkspaceState(localStorage, state);
     },
-    onPersistViewUrl: (state) => {
-      if (typeof window === "undefined") return;
-      const nextHref = buildQueueViewHref({
-        ...state,
-        queueTab,
-      });
-      const nextUrl = new URL(nextHref, window.location.origin);
-      if (
-        nextUrl.pathname === window.location.pathname &&
-        nextUrl.search === window.location.search
-      ) {
-        return;
-      }
-      replacePageState(nextUrl, window.history.state);
-    },
     onLoadInitial: async (options) => {
       const silent = options?.silent ?? false;
       try {
@@ -170,7 +157,11 @@
       }
     },
     onLoadChannelSnapshot: async (channelId, snapshotOptions, silent) => {
-      return getChannelSnapshot(channelId, snapshotOptions);
+      return getChannelSnapshot(channelId, {
+        ...snapshotOptions,
+        queueOnly: true,
+        queueTab,
+      });
     },
     onRefreshChannel: async (channelId) => {
       return refreshChannel(channelId);
@@ -181,7 +172,7 @@
       offset,
       videoTypeFilter,
       acknowledgedFilter,
-      includeOptimistic,
+      _includeOptimistic,
     ) => {
       return listVideos(
         channelId,
@@ -189,7 +180,7 @@
         offset,
         videoTypeFilter,
         acknowledgedFilter,
-        includeOptimistic,
+        true,
         queueTab,
       );
     },
@@ -216,6 +207,8 @@
   let errorMessage = $state<string | null>(null);
   let workspaceStateHydrated = $state(false);
   let viewUrlHydrated = $state(false);
+  /** Mirrors workspace: replaceState is unsafe until after the client router is ready. */
+  let queueUrlSyncReady = $state(false);
   // let lastSyncedAt = $state<Date | null>(null); // No longer needed
   let earliestSyncDateInput = $state("");
   let savingSyncDate = $state(false);
@@ -312,6 +305,7 @@
     const currentTab = queueTab;
     if (currentTab !== previousQueueTab) {
       previousQueueTab = currentTab;
+      sidebar.setSelectedVideoId(null);
       if (sidebar.selectedChannelId) {
         sidebar.setVideos([]);
         sidebar.setOffset(0);
@@ -319,6 +313,56 @@
         void sidebar.refreshAndLoadVideos(sidebar.selectedChannelId);
       }
     }
+  });
+
+  let previousQueueChannelId = $state<string | null>(null);
+  $effect(() => {
+    const id = sidebar.selectedChannelId;
+    if (
+      previousQueueChannelId !== null &&
+      id !== null &&
+      previousQueueChannelId !== id
+    ) {
+      sidebar.setSelectedVideoId(null);
+    }
+    previousQueueChannelId = id;
+  });
+
+  function replaceQueueUrl(href: string) {
+    if (!queueUrlSyncReady || typeof window === "undefined") return;
+    const nextUrl = new URL(href, window.location.origin);
+    if (
+      nextUrl.pathname === window.location.pathname &&
+      nextUrl.search === window.location.search
+    ) {
+      return;
+    }
+    replacePageState(
+      `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`,
+      window.history.state,
+    );
+  }
+
+  function persistQueueViewUrl() {
+    if (
+      !viewUrlHydrated ||
+      !queueUrlSyncReady ||
+      typeof window === "undefined"
+    ) {
+      return;
+    }
+    const nextHref = buildQueueViewHref({
+      selectedChannelId: sidebar.selectedChannelId,
+      queueTab,
+      selectedVideoId: sidebar.selectedVideoId,
+      videoTypeFilter: sidebar.videoTypeFilter,
+      acknowledgedFilter: sidebar.acknowledgedFilter,
+    });
+    replaceQueueUrl(nextHref);
+  }
+
+  $effect(() => {
+    persistQueueViewUrl();
   });
 
   onMount(() => {
@@ -330,6 +374,10 @@
 
     restoreQueueState();
     workspaceStateHydrated = true;
+    setTimeout(() => {
+      queueUrlSyncReady = true;
+      persistQueueViewUrl();
+    }, 0);
 
     void (async () => {
       try {
@@ -434,6 +482,22 @@
     if (restored.queueTab) {
       queueTab = restored.queueTab;
     }
+    if (typeof restored.selectedVideoId === "string") {
+      sidebar.setSelectedVideoId(restored.selectedVideoId);
+    }
+    if (
+      restored.videoTypeFilter &&
+      isWorkspaceVideoTypeFilter(restored.videoTypeFilter)
+    ) {
+      sidebar.setVideoTypeFilter(restored.videoTypeFilter);
+    }
+    if (
+      restored.acknowledgedFilter &&
+      isAcknowledgedFilter(restored.acknowledgedFilter)
+    ) {
+      sidebar.setAcknowledgedFilter(restored.acknowledgedFilter);
+    }
+    previousQueueTab = queueTab;
   }
 
   async function saveEarliestSyncDate(value: string) {
@@ -485,7 +549,7 @@
       saveWorkspaceState(localStorage, {
         selectedChannelId: video.channel_id,
         selectedVideoId: video.id,
-        contentMode: "transcript",
+        contentMode: "info",
         videoTypeFilter: "all",
         acknowledgedFilter: "all",
       });
@@ -495,24 +559,16 @@
       buildWorkspaceViewHref({
         selectedChannelId: video.channel_id,
         selectedVideoId: video.id,
-        contentMode: "transcript",
+        contentMode: "info",
         videoTypeFilter: "all",
         acknowledgedFilter: "all",
       }),
     );
   }
 
-  async function openQueuedVideo(videoId: string) {
+  function openQueuedVideo(videoId: string) {
     if (!sidebar.selectedChannelId) return;
     sidebar.setSelectedVideoId(videoId);
-    const href = buildWorkspaceViewHref({
-      selectedChannelId: sidebar.selectedChannelId,
-      selectedVideoId: videoId,
-      contentMode: "transcript",
-      videoTypeFilter: "all",
-      acknowledgedFilter: "all",
-    });
-    await goto(href);
   }
 
   async function handleSearchResultSelection(
@@ -540,10 +596,18 @@
     );
   }
 
+  const selectedQueueVideo = $derived(
+    sidebar.selectedVideoId
+      ? (sidebar.videos.find((v) => v.id === sidebar.selectedVideoId) ?? null)
+      : null,
+  );
+
   const queueContentPanelState = $derived({
     mobileVisible: true,
     selectedChannel: sidebar.selectedChannel,
     selectedChannelId: sidebar.selectedChannelId,
+    selectedVideoId: sidebar.selectedVideoId,
+    selectedQueueVideo,
     queueTab,
     queueStats,
     failedTranscriptVideos,
@@ -560,6 +624,8 @@
     },
     onSaveSyncDate: saveEarliestSyncDate,
     onRetryTranscript: retryTranscriptDownload,
+    onClearSelectedVideo: () => sidebar.setSelectedVideoId(null),
+    onOpenVideoInWorkspace: openVideoTranscriptInWorkspace,
   };
 
   const shellCollapsed = $derived(sidebar.sidebarCollapsed);
@@ -577,8 +643,11 @@
     }
   }
 
+  // Use primitive sidebar fields, not `videoState`: the derived `videoState` object
+  // changes on every video list update and would retrigger this effect constantly,
+  // spamming `mobileBottomBar.set` and breaking taps on section nav (mobile).
   const queueBrowseFilterDisabled = $derived(
-    !queueSidebar.selectedChannelId || queueSidebar.videoState.loadingVideos,
+    !queueSidebar.selectedChannelId || queueSidebar.loadingVideos,
   );
 
   $effect(() => {
@@ -586,8 +655,8 @@
       mobileBottomBar.set({
         kind: "sectionsWithVideoFilter",
         filter: {
-          videoTypeFilter: sidebar.videoState.videoTypeFilter,
-          acknowledgedFilter: sidebar.videoState.acknowledgedFilter,
+          videoTypeFilter: sidebar.videoTypeFilter,
+          acknowledgedFilter: sidebar.acknowledgedFilter,
           disabled: queueBrowseFilterDisabled,
           onSelectVideoType: sidebar.videoActions.onVideoTypeFilterChange,
           onSelectAcknowledged: sidebar.videoActions.onAcknowledgedFilterChange,
@@ -672,12 +741,7 @@
           }}
           channelActions={queueSidebar.channelActions}
           videoState={queueSidebar.videoState}
-          videoActions={{
-            ...queueSidebar.videoActions,
-            onSelectVideo: (videoId) => {
-              void openQueuedVideo(videoId);
-            },
-          }}
+          videoActions={queueSidebar.videoActions}
           hideChannelUi
         />
       </div>

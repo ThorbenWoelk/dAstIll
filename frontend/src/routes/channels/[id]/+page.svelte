@@ -257,7 +257,7 @@
       saveWorkspaceState(localStorage, {
         selectedChannelId: channelId,
         selectedVideoId: videoId,
-        contentMode: "transcript",
+        contentMode: "info",
         videoTypeFilter,
         acknowledgedFilter,
         channelOrder,
@@ -269,7 +269,7 @@
       buildWorkspaceViewHref({
         selectedChannelId: channelId,
         selectedVideoId: videoId,
-        contentMode: "transcript",
+        contentMode: "info",
         videoTypeFilter,
         acknowledgedFilter,
       }),

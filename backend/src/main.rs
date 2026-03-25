@@ -14,7 +14,7 @@ use dastill::config::{
     SecurityRuntimeConfig,
 };
 use dastill::db::init_store;
-use dastill::handlers::{analytics, channels, chat, content, highlights, search, videos};
+use dastill::handlers::{analytics, channels, chat, content, highlights, preferences, search, videos};
 use dastill::read_cache::ReadCache;
 use dastill::search_progress::SearchProgress;
 use dastill::security::{
@@ -335,6 +335,10 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/chat/conversations/{id}/cancel",
             post(chat::cancel_message),
+        )
+        .route(
+            "/api/preferences",
+            get(preferences::get_preferences).put(preferences::save_preferences),
         )
         .route("/api/search", get(search::search))
         .route("/api/search/status", get(search::search_status))

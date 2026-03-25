@@ -105,6 +105,20 @@ describe("parseQueueViewUrlState", () => {
     });
   });
 
+  it("restores video selection and browse filters from query params", () => {
+    const url = new URL(
+      "https://example.com/download-queue?channel=abc&queue=evaluations&video=vid-9&type=short&ack=ack",
+    );
+
+    expect(parseQueueViewUrlState(url)).toEqual({
+      selectedChannelId: "abc",
+      queueTab: "evaluations",
+      selectedVideoId: "vid-9",
+      videoTypeFilter: "short",
+      acknowledgedFilter: "ack",
+    });
+  });
+
   it("ignores invalid queue params", () => {
     const url = new URL(
       "https://example.com/download-queue?channel=&queue=wat",
@@ -120,8 +134,25 @@ describe("buildQueueViewHref", () => {
       buildQueueViewHref({
         selectedChannelId: "abc",
         queueTab: "evaluations",
+        selectedVideoId: null,
+        videoTypeFilter: "all",
+        acknowledgedFilter: "all",
       }),
-    ).toBe("/download-queue?channel=abc&queue=evaluations");
+    ).toBe("/download-queue?channel=abc&queue=evaluations&type=all&ack=all");
+  });
+
+  it("includes optional video and non-default filters", () => {
+    expect(
+      buildQueueViewHref({
+        selectedChannelId: "abc",
+        queueTab: "transcripts",
+        selectedVideoId: "vid-1",
+        videoTypeFilter: "long",
+        acknowledgedFilter: "unack",
+      }),
+    ).toBe(
+      "/download-queue?channel=abc&queue=transcripts&video=vid-1&type=long&ack=unack",
+    );
   });
 });
 
