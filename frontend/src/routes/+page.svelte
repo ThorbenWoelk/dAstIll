@@ -223,7 +223,7 @@
   let backfillingHistory = $state(false);
   let allowLoadedVideoSyncDepthOverride = $state(false);
   /**
-   * Default backend expensive limit is 30/min per client (`EXPENSIVE_RATE_LIMIT_PER_MINUTE`).
+   * Default backend expensive limit is 120/min per client (`EXPENSIVE_RATE_LIMIT_PER_MINUTE`).
    * Space POST /backfill calls so mobile auto-load does not burst 429s.
    */
   const MIN_BACKFILL_INTERVAL_MS = 2100;

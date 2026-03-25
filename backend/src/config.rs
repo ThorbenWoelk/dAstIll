@@ -111,11 +111,14 @@ impl SecurityRuntimeConfig {
             )?,
             allowed_origins: optional_csv_env("BACKEND_CORS_ALLOWED_ORIGINS")
                 .unwrap_or_else(default_backend_allowed_origins),
+            // Baseline applies to almost all API routes; SPAs with polling and parallel loads
+            // need a generous default (120/min was routinely exceeded by a single user).
             baseline_rate_limit_per_minute: optional_u32_env("BASELINE_RATE_LIMIT_PER_MINUTE")
-                .unwrap_or(120)
+                .unwrap_or(600)
                 .clamp(1, 1_000),
+            // Expensive tier stacks with baseline for AI/chat/search mutations and streams.
             expensive_rate_limit_per_minute: optional_u32_env("EXPENSIVE_RATE_LIMIT_PER_MINUTE")
-                .unwrap_or(30)
+                .unwrap_or(120)
                 .clamp(1, 1_000),
             anonymous_chat_quota: optional_u32_env("ANONYMOUS_CHAT_QUOTA")
                 .unwrap_or(30)
@@ -399,8 +402,8 @@ mod tests {
 
         let config = SecurityRuntimeConfig::from_env().expect("security config");
         assert_eq!(config.proxy_token, "local-dev-backend-proxy-token");
-        assert_eq!(config.baseline_rate_limit_per_minute, 120);
-        assert_eq!(config.expensive_rate_limit_per_minute, 30);
+        assert_eq!(config.baseline_rate_limit_per_minute, 600);
+        assert_eq!(config.expensive_rate_limit_per_minute, 120);
         assert_eq!(config.anonymous_chat_quota, 30);
         assert!(
             config

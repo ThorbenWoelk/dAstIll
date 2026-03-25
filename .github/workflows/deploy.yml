@@ -124,6 +124,8 @@ jobs:
             S3_DATA_BUCKET=${{ vars.S3_DATA_BUCKET }}
             S3_VECTOR_BUCKET=${{ vars.S3_VECTOR_BUCKET }}
             S3_VECTOR_INDEX=${{ vars.S3_VECTOR_INDEX }}
+            # Release builds default semantic search off; default to on when unset (embedding + vector buckets are configured above).
+            SEARCH_SEMANTIC_ENABLED=${{ vars.SEARCH_SEMANTIC_ENABLED || 'true' }}
             OLLAMA_URL=${{ vars.OLLAMA_URL }}
             OLLAMA_MODEL=${{ vars.OLLAMA_MODEL }}
             OLLAMA_EMBEDDING_MODEL=${{ vars.OLLAMA_EMBEDDING_MODEL }}
