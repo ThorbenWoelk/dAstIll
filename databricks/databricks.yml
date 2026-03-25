@@ -12,10 +12,9 @@ variables:
 
   bronze_schema:
     description: >-
-      Schema where the backend writes the Bronze bronze_app_events table.
-      Defaults to the same schema as Silver/Gold. Override if the backend
-      writes to a separate schema.
-    default: analytics
+      Schema where the backend writes Bronze (must match DATABRICKS_SCHEMA).
+      Backend default is sandbox (see backend/src/config.rs).
+    default: sandbox
 
   warehouse_id:
     description: >-
@@ -34,11 +33,24 @@ targets:
       root_path: /Users/${workspace.current_user.userName}/.bundle/${bundle.name}/dev
     variables:
       schema: analytics_dev
+      # Bronze stays where the backend writes (typically sandbox); Silver/Gold use analytics_dev.
 
   prod:
     mode: production
+    variables:
+      # Match GitHub Actions / Cloud Run DATABRICKS_SCHEMA when not sandbox.
+      bronze_schema: analytics
 
 resources:
+  jobs:
+    analytics_transformations_refresh:
+      name: "[dAstIll] Analytics Transformations Refresh"
+      tasks:
+        - task_key: run_pipeline
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.analytics_transformations.id}
+            full_refresh: false
+
   pipelines:
     analytics_transformations:
       name: "[dAstIll] Analytics Transformations"
@@ -47,19 +59,19 @@ resources:
       serverless: true
       channel: CURRENT
       continuous: false
-      # bronze_table tells the Silver stage where to read Bronze events from.
+      # bronze_table: Unity Catalog three-level name for Bronze events (read by 00_app_events_silver.sql).
       # Format: catalog.schema.bronze_app_events
       configuration:
         bronze_table: ${var.catalog}.${var.bronze_schema}.bronze_app_events
       libraries:
-        - notebook:
-            path: ./pipelines/00_silver.sql
-        - notebook:
-            path: ./pipelines/01_gold_processing.sql
-        - notebook:
-            path: ./pipelines/02_gold_engagement.sql
-        - notebook:
-            path: ./pipelines/03_gold_consumption.sql
+        - file:
+            path: ./pipelines/00_app_events_silver.sql
+        - file:
+            path: ./pipelines/01_processing_gold.sql
+        - file:
+            path: ./pipelines/02_engagement_gold.sql
+        - file:
+            path: ./pipelines/03_consumption_gold.sql
 
   dashboards:
     processing_efficiency:

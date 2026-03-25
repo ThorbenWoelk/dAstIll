@@ -1,16 +1,7 @@
--- Databricks notebook source
--- Spark Declarative Pipeline: Gold - Engagement Progression
+-- Gold: engagement progression (acknowledgment, highlights, opens).
 --
--- One row per (video, channel). Captures the latest acknowledgment state,
--- total highlight count, and an engagement tier for funnel analysis.
---
--- Tiers (highest to lowest):
---   acknowledged_and_highlighted
---   acknowledged
---   opened
---   unseen
-
--- COMMAND ----------
+-- One row per (video, channel). Tiers (high to low): acknowledged_and_highlighted,
+-- acknowledged, opened, unseen.
 
 CREATE OR REFRESH MATERIALIZED VIEW gold_engagement_progression
 COMMENT "Acknowledgment and highlights progression: one row per (video, channel) with engagement tier."

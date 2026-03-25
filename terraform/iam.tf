@@ -21,6 +21,10 @@ resource "google_service_account" "github_actions_sa" {
 
 # Grant access to secrets for runtime services and GitHub Actions (deploy-time binding)
 locals {
+  databricks_secret_resource_id = try(
+    google_secret_manager_secret.databricks_token[0].id,
+    data.google_secret_manager_secret.databricks_token[0].id,
+  )
   backend_secret_ids = {
     ollama_api_key      = google_secret_manager_secret.ollama_api_key.id
     youtube_api_key     = google_secret_manager_secret.youtube_api_key.id
@@ -31,6 +35,19 @@ locals {
     backend_proxy_token = google_secret_manager_secret.backend_proxy_token.id
   }
   cicd_secret_ids = merge(local.backend_secret_ids, local.frontend_secret_ids)
+}
+
+# Explicit bindings so Cloud Run (backend SA) and deploy (GitHub SA) can read DATABRICKS_TOKEN.
+resource "google_secret_manager_secret_iam_member" "backend_databricks_token" {
+  secret_id = local.databricks_secret_resource_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.backend_sa.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "cicd_databricks_token" {
+  secret_id = local.databricks_secret_resource_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.github_actions_sa.email}"
 }
 
 resource "google_secret_manager_secret_iam_member" "backend_secrets" {

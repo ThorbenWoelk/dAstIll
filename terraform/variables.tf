@@ -46,3 +46,10 @@ variable "backend_proxy_token" {
   sensitive   = true
   description = "Shared proxy secret for frontend-to-backend requests"
 }
+
+variable "databricks_token" {
+  type        = string
+  sensitive   = true
+  default     = ""
+  description = "Databricks PAT. If non-empty, Terraform manages the secret version in Secret Manager. If empty, only IAM is managed and the databricks-token secret must already exist."
+}

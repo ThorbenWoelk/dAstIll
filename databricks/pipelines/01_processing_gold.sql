@@ -1,11 +1,7 @@
--- Databricks notebook source
--- Spark Declarative Pipeline: Gold - Processing Efficiency
+-- Gold: processing efficiency (transcript_ensure_requested vs transcript_ensure_completed).
 --
--- Pairs transcript_ensure_requested with transcript_ensure_completed within the
--- same (video, channel, session). One row per processing attempt.
--- Null processing_duration_ms means the request is still pending or was dropped.
-
--- COMMAND ----------
+-- One row per (video, channel, session) for the latest request (see QUALIFY).
+-- Null processing_duration_ms: pending or dropped completion.
 
 CREATE OR REFRESH MATERIALIZED VIEW gold_processing_efficiency
 COMMENT "Content processing efficiency: one row per transcript processing attempt with duration and success flag."

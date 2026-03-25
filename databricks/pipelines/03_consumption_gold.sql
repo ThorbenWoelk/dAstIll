@@ -1,16 +1,8 @@
--- Databricks notebook source
--- Spark Declarative Pipeline: Gold - Summary Consumption
+-- Lakeflow Spark Declarative Pipeline - SQL source (bundle: libraries.file, not a notebook).
+-- Gold: summary consumption (read depth and engagement score per session).
 --
--- One row per summary reading session. Prefers summary_closed events for accurate
--- read_time_ms; falls back to the latest summary_heartbeat for sessions where close
--- delivery was not reliable (e.g., hard tab close on mobile).
---
--- Primary ranking metric:
---   engagement_score = active_time_ms * (1 + scroll_depth / 100)
--- Weights credible reading time by scroll coverage. Use this over raw read_time_ms,
--- which inflates with idle tabs and backgrounded sessions.
-
--- COMMAND ----------
+-- Prefers summary_closed; falls back to summary_heartbeat aggregates when close is missing.
+-- engagement_score = active_time_ms * (1 + scroll_depth / 100).
 
 CREATE OR REFRESH MATERIALIZED VIEW gold_summary_consumption
 COMMENT "Summary reading attention: one row per session with active_time_ms, scroll depth, and engagement score."

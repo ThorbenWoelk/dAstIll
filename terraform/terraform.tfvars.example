@@ -5,6 +5,8 @@ aws_region              = "eu-central-1"
 youtube_api_key         = "your-youtube-api-key"
 logfire_token           = "your-logfire-token"
 backend_proxy_token     = "replace-with-a-long-random-proxy-token"
+# Optional: set to let Terraform store the PAT; omit or "" if the secret already exists in GCP.
+# databricks_token     = "your-databricks-personal-access-token"
 ollama_url              = "https://your-ollama-proxy.com"
 ollama_model            = "glm-5:cloud"
 summary_evaluator_model = "glm-5:cloud"
