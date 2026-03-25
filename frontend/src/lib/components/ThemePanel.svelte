@@ -22,7 +22,14 @@
     { id: "system", label: "System" },
   ];
 
-  let { className = "" }: { className?: string } = $props();
+  let {
+    className = "",
+    variant = "default",
+  }: {
+    className?: string;
+    /** Inline block for drawers (no popover trigger). */
+    variant?: "default" | "inline";
+  } = $props();
 
   let open = $state(false);
   let mode = $state<ThemeMode>("system");
@@ -86,100 +93,118 @@
   });
 </script>
 
-<div
-  class="theme-panel-wrapper {className}"
-  use:clickOutside={{
-    enabled: open,
-    onClickOutside: () => {
-      open = false;
-    },
-  }}
->
-  <button
-    bind:this={triggerEl}
-    type="button"
-    class="theme-panel-trigger"
-    aria-label="Appearance settings"
-    aria-expanded={open}
-    onclick={() => (open = !open)}
-  >
-    {#if isDark}
-      <svg
-        width="18"
-        height="18"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <path d="M20.5 14.1A8.5 8.5 0 0 1 9.9 3.5a8.5 8.5 0 1 0 10.6 10.6Z"
-        ></path>
-      </svg>
-    {:else}
-      <svg
-        width="18"
-        height="18"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <circle cx="12" cy="12" r="4.25"></circle>
-        <path d="M12 2.75v2.5"></path>
-        <path d="M12 18.75v2.5"></path>
-        <path d="m5.47 5.47 1.77 1.77"></path>
-        <path d="m16.76 16.76 1.77 1.77"></path>
-        <path d="M2.75 12h2.5"></path>
-        <path d="M18.75 12h2.5"></path>
-        <path d="m5.47 18.53 1.77-1.77"></path>
-        <path d="m16.76 7.24 1.77-1.77"></path>
-      </svg>
-    {/if}
-    <span class="theme-panel-swatch" aria-hidden="true"></span>
-  </button>
+{#snippet themeFields()}
+  <p class="theme-panel-label">Accent</p>
+  <div class="theme-color-options">
+    {#each COLOR_SCHEMES as scheme}
+      <button
+        type="button"
+        class="theme-color-btn"
+        class:is-active={color === scheme.id}
+        style="--swatch: {scheme.swatch}"
+        aria-label={scheme.label}
+        title={scheme.label}
+        onclick={() => setColor(scheme.id)}
+      ></button>
+    {/each}
+  </div>
 
+  <p class="theme-panel-label theme-panel-label-mode">Mode</p>
+  <div class="theme-mode-options">
+    {#each THEME_MODE_OPTIONS as opt}
+      <button
+        type="button"
+        class="theme-mode-btn"
+        class:is-active={mode === opt.id}
+        onclick={() => setMode(opt.id)}
+      >
+        {opt.label}
+      </button>
+    {/each}
+  </div>
+{/snippet}
+
+{#if variant === "inline"}
   <div
-    class="theme-panel"
-    class:is-open={open}
-    role="dialog"
+    class="theme-panel-inline {className}"
+    role="group"
     aria-label="Appearance"
   >
-    <p class="theme-panel-label">Accent</p>
-    <div class="theme-color-options">
-      {#each COLOR_SCHEMES as scheme}
-        <button
-          type="button"
-          class="theme-color-btn"
-          class:is-active={color === scheme.id}
-          style="--swatch: {scheme.swatch}"
-          aria-label={scheme.label}
-          title={scheme.label}
-          onclick={() => setColor(scheme.id)}
-        ></button>
-      {/each}
-    </div>
-
-    <p class="theme-panel-label theme-panel-label-mode">Mode</p>
-    <div class="theme-mode-options">
-      {#each THEME_MODE_OPTIONS as opt}
-        <button
-          type="button"
-          class="theme-mode-btn"
-          class:is-active={mode === opt.id}
-          onclick={() => setMode(opt.id)}
+    {@render themeFields()}
+  </div>
+{:else}
+  <div
+    class="theme-panel-wrapper {className}"
+    use:clickOutside={{
+      enabled: open,
+      onClickOutside: () => {
+        open = false;
+      },
+    }}
+  >
+    <button
+      bind:this={triggerEl}
+      type="button"
+      class="theme-panel-trigger"
+      aria-label="Appearance settings"
+      aria-expanded={open}
+      onclick={() => (open = !open)}
+    >
+      {#if isDark}
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
         >
-          {opt.label}
-        </button>
-      {/each}
+          <path d="M20.5 14.1A8.5 8.5 0 0 1 9.9 3.5a8.5 8.5 0 1 0 10.6 10.6Z"
+          ></path>
+        </svg>
+      {:else}
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <circle cx="12" cy="12" r="4.25"></circle>
+          <path d="M12 2.75v2.5"></path>
+          <path d="M12 18.75v2.5"></path>
+          <path d="m5.47 5.47 1.77 1.77"></path>
+          <path d="m16.76 16.76 1.77 1.77"></path>
+          <path d="M2.75 12h2.5"></path>
+          <path d="M18.75 12h2.5"></path>
+          <path d="m5.47 18.53 1.77-1.77"></path>
+          <path d="m16.76 7.24 1.77-1.77"></path>
+        </svg>
+      {/if}
+      <span class="theme-panel-swatch" aria-hidden="true"></span>
+    </button>
+
+    <div
+      class="theme-panel"
+      class:is-open={open}
+      role="dialog"
+      aria-label="Appearance"
+    >
+      {@render themeFields()}
     </div>
   </div>
-</div>
+{/if}
 
 <style>
+  .theme-panel-inline {
+    width: 100%;
+  }
+
   .theme-panel-wrapper {
     position: relative;
   }

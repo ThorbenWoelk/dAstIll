@@ -124,6 +124,8 @@
     },
     videoListMode = "selected_channel",
     hideChannelUi = false,
+    /** When true with `hideChannelUi`, hides Load More / Load History (parent loads everything). */
+    suppressVideoLoadMoreButton = false,
     readOnly = false,
     addSourceErrorMessage = null as string | null,
     initialChannelPreviews = {} as Record<string, ChannelSnapshot>,
@@ -145,6 +147,7 @@
     videoActions?: WorkspaceSidebarVideoActions;
     videoListMode?: "selected_channel" | "per_channel_preview";
     hideChannelUi?: boolean;
+    suppressVideoLoadMoreButton?: boolean;
     readOnly?: boolean;
     addSourceErrorMessage?: string | null;
     /**
@@ -177,6 +180,7 @@
   let channels = $derived(channelState.channels);
   let selectedChannelId = $derived(channelState.selectedChannelId);
   let channelUiHidden = $derived(hideChannelUi);
+  let suppressLoadMoreButton = $derived(suppressVideoLoadMoreButton);
   let loadingChannels = $derived(channelState.loadingChannels);
   let addingChannel = $derived(channelState.addingChannel);
   let channelSortMode = $derived(channelState.channelSortMode);
@@ -852,7 +856,7 @@
             </button>
           {/each}
 
-          {#if hasMore || !historyExhausted}
+          {#if !suppressLoadMoreButton && (hasMore || !historyExhausted)}
             <button
               type="button"
               class="mt-2 w-full rounded-[var(--radius-sm)] py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] transition-all hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] disabled:opacity-30"

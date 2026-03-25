@@ -1,5 +1,5 @@
-# Build stage for the Rust backend
-FROM rust:1.93.1-slim-bookworm AS builder
+# Build stage for the Rust backend (mirror.gcr.io reduces Docker Hub flakes on CI runners)
+FROM mirror.gcr.io/library/rust:1.93.1-slim-bookworm AS builder
 
 WORKDIR /usr/src/app
 
@@ -15,7 +15,7 @@ COPY . .
 RUN cargo build --release
 
 # Runtime stage
-FROM node:22.20.0-bookworm-slim
+FROM mirror.gcr.io/library/node:22.20.0-bookworm-slim
 
 WORKDIR /usr/local/bin
 

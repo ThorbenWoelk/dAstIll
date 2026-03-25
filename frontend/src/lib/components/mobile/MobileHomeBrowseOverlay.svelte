@@ -91,6 +91,7 @@
           {initialChannelPreviewsFilterKey}
           {channelSnapshotQueueTab}
           hideChannelUi
+          suppressVideoLoadMoreButton
         />
       </div>
     </div>

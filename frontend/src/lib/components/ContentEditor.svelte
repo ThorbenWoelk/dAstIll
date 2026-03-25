@@ -293,18 +293,14 @@
         <button
           type="button"
           id="mark-read-toggle"
-          class={`inline-flex h-9 items-center gap-2 rounded-full px-2 text-[11px] font-bold uppercase tracking-[0.08em] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 disabled:cursor-not-allowed disabled:opacity-30 hover:bg-[var(--accent-wash)] ${
-            acknowledged
-              ? "text-[var(--foreground)]"
-              : "text-[var(--soft-foreground)] hover:text-[var(--foreground)]"
-          }`}
+          class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-all hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 disabled:cursor-not-allowed disabled:opacity-30"
           aria-label={acknowledged ? "Mark as unread" : "Mark as read"}
           aria-pressed={acknowledged}
           onclick={onAcknowledgeToggle}
           disabled={busy}
         >
           <span
-            class={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-all ${
+            class={`flex h-5 w-5 items-center justify-center rounded-full border transition-all ${
               acknowledged
                 ? "border-[var(--accent)] bg-[var(--accent)] text-white"
                 : "border-[var(--border)] bg-transparent text-transparent"
@@ -323,7 +319,6 @@
               <polyline points="20 6 9 17 4 12" />
             </svg>
           </span>
-          <span>{acknowledged ? "Read" : "Unread"}</span>
         </button>
       {/if}
       {#if showEditAction}

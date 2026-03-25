@@ -44,6 +44,7 @@
   let {
     selection = {
       mobileVisible: false,
+      mobileBackInTopBar: false,
       selectedChannel: null,
       selectedVideo: null,
       selectedVideoId: null,
@@ -124,6 +125,7 @@
   } = $props();
 
   let mobileVisible = $derived(selection.mobileVisible);
+  let mobileBackInTopBar = $derived(selection.mobileBackInTopBar ?? false);
   /** Mobile uses `AppBottomNav` for video actions; this strip is desktop-only (see `max-lg:hidden`). */
   let selectedChannel = $derived(selection.selectedChannel);
   let selectedVideo = $derived(selection.selectedVideo);
@@ -341,16 +343,18 @@
     class="flex flex-col gap-3 px-4 max-lg:pb-1 max-lg:pt-3 sm:px-6 lg:hidden"
   >
     <h2 class="sr-only">Display Content</h2>
-    <div class="flex items-center gap-3">
-      <button
-        type="button"
-        class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]"
-        onclick={onBack}
-        aria-label="Back"
-      >
-        <ChevronIcon direction="left" size={18} strokeWidth={2.2} />
-      </button>
-    </div>
+    {#if !mobileBackInTopBar}
+      <div class="flex items-center gap-3">
+        <button
+          type="button"
+          class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]"
+          onclick={onBack}
+          aria-label="Back"
+        >
+          <ChevronIcon direction="left" size={18} strokeWidth={2.2} />
+        </button>
+      </div>
+    {/if}
     <div
       class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between"
     >

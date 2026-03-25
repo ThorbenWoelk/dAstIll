@@ -119,10 +119,10 @@
 </script>
 
 <div class="lg:hidden">
-  <div class="flex items-stretch gap-2 pl-4 pr-2 pt-3">
+  <div class="pl-4 pr-2 pt-3">
     <div
       bind:this={scrollerEl}
-      class="custom-scrollbar flex min-w-0 max-w-full flex-1 flex-nowrap gap-3 overflow-x-auto pb-3 [-ms-overflow-style:none] [scrollbar-width:none] [scroll-padding-inline:1rem] [&::-webkit-scrollbar]:hidden"
+      class="custom-scrollbar flex min-w-0 max-w-full flex-nowrap gap-2 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [scroll-padding-inline:1rem] [&::-webkit-scrollbar]:hidden"
       style="scroll-snap-type: x mandatory"
       aria-label="Channels"
     >
@@ -137,7 +137,7 @@
         <button
           use:registerCard={channel.id}
           type="button"
-          class={`group relative snap-center flex w-[78vw] max-w-[20rem] shrink-0 flex-col overflow-hidden rounded-[var(--radius-lg)] bg-[var(--surface-strong)] shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${
+          class={`group relative snap-center flex w-[64vw] max-w-[14rem] shrink-0 flex-col overflow-hidden rounded-[var(--radius-md)] bg-[var(--surface-strong)] shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${
             active
               ? "ring-1 ring-[var(--accent)]/25"
               : "hover:bg-[var(--panel-surface)]"
@@ -146,7 +146,7 @@
           aria-current={active ? "true" : undefined}
           aria-label={channel.name}
         >
-          <div class="relative h-28 w-full bg-[var(--muted)]">
+          <div class="relative h-20 w-full bg-[var(--muted)]">
             <img
               src={thumb ?? defaultChannelIcon}
               alt={channel.name}
@@ -161,10 +161,10 @@
               aria-hidden="true"
             ></div>
           </div>
-          <div class="flex min-w-0 flex-1 flex-col gap-1 px-4 py-3">
+          <div class="flex min-w-0 flex-1 flex-col gap-1 px-3 py-2">
             <div class="min-w-0">
               <div
-                class="truncate text-[15px] font-semibold text-[var(--foreground)]"
+                class="truncate text-[13px] font-semibold leading-tight text-[var(--foreground)]"
               >
                 {channel.name}
               </div>
@@ -185,36 +185,39 @@
           </div>
         </button>
       {/each}
-    </div>
 
-    {#if onAddChannel}
-      <div class="flex shrink-0 flex-col items-center justify-center pb-3">
-        <button
-          type="button"
-          class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 {addFormOpen
-            ? 'bg-[var(--accent-wash)] text-[var(--foreground)]'
-            : ''}"
-          onclick={() => void toggleAddForm()}
-          aria-label={addFormOpen ? "Close add channel" : "Add channel"}
-          aria-expanded={addFormOpen}
+      {#if onAddChannel}
+        <div
+          class="flex w-9 shrink-0 snap-center flex-col items-center justify-center self-stretch pr-2"
+          role="presentation"
         >
-          <svg
-            width="22"
-            height="22"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
+          <button
+            type="button"
+            class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 {addFormOpen
+              ? 'bg-[var(--accent-wash)] text-[var(--foreground)]'
+              : ''}"
+            onclick={() => void toggleAddForm()}
+            aria-label={addFormOpen ? "Close add channel" : "Add channel"}
+            aria-expanded={addFormOpen}
           >
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-        </button>
-      </div>
-    {/if}
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+          </button>
+        </div>
+      {/if}
+    </div>
   </div>
 
   {#if onAddChannel && addFormOpen}

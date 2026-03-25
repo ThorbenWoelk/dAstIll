@@ -10,6 +10,7 @@
   import type { SectionNavigationItem } from "$lib/section-navigation";
   import { resolveCurrentSectionFromPathname } from "$lib/mobile-navigation/resolveCurrentSectionFromPathname";
   import { mobileBottomBar } from "$lib/mobile-navigation/mobileBottomBar";
+  import { mobileWorkspaceBrowseIntent } from "$lib/mobile-navigation/mobileWorkspaceBrowseIntent";
   import WorkspaceSidebarVideoFilterControl from "$lib/components/workspace/WorkspaceSidebarVideoFilterControl.svelte";
 
   let currentSection = $derived(
@@ -190,18 +191,14 @@
         <button
           type="button"
           id="mark-read-toggle-mobile-footer"
-          class={`inline-flex h-9 items-center gap-2 rounded-full px-2 text-[11px] font-bold uppercase tracking-[0.08em] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 disabled:cursor-not-allowed disabled:opacity-30 hover:bg-[var(--accent-wash)] ${
-            bar.acknowledged
-              ? "text-[var(--foreground)]"
-              : "text-[var(--soft-foreground)] hover:text-[var(--foreground)]"
-          }`}
+          class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-all hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 disabled:cursor-not-allowed disabled:opacity-30"
           aria-label={bar.acknowledged ? "Mark as unread" : "Mark as read"}
           aria-pressed={bar.acknowledged}
           onclick={() => bar.onAcknowledgeToggle()}
           disabled={bar.busy}
         >
           <span
-            class={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-all ${
+            class={`flex h-5 w-5 items-center justify-center rounded-full border transition-all ${
               bar.acknowledged
                 ? "border-[var(--accent)] bg-[var(--accent)] text-white"
                 : "border-[var(--border)] bg-transparent text-transparent"
@@ -220,7 +217,6 @@
               <polyline points="20 6 9 17 4 12" />
             </svg>
           </span>
-          <span>{bar.acknowledged ? "Read" : "Unread"}</span>
         </button>
       {/if}
       {#if bar.showEditAction}
@@ -243,6 +239,11 @@
         href={item.href}
         target={item.external ? "_blank" : undefined}
         rel={item.external ? "noopener noreferrer" : undefined}
+        onclick={() => {
+          if (item.section === "workspace") {
+            mobileWorkspaceBrowseIntent.set(true);
+          }
+        }}
         data-sveltekit-preload-code={item.external ? undefined : "viewport"}
         data-sveltekit-preload-data={item.external ? undefined : "tap"}
         data-tour-target={item.section === "chat" ? "nav-chat" : undefined}

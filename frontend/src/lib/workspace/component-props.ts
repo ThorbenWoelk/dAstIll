@@ -85,6 +85,8 @@ export interface WorkspaceSidebarVideoActions {
 
 export interface WorkspaceContentSelection {
   mobileVisible: boolean;
+  /** When true, back lives in `MobileYouTubeTopNav` (not inline under the tabs). */
+  mobileBackInTopBar?: boolean;
   selectedChannel: Channel | null;
   selectedVideo: Video | null;
   selectedVideoId: string | null;

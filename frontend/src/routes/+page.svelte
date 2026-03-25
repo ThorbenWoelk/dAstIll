@@ -39,6 +39,7 @@
   import WorkspaceDesktopTopBar from "$lib/components/workspace/WorkspaceDesktopTopBar.svelte";
   import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
   import WorkspaceSidebar from "$lib/components/workspace/WorkspaceSidebar.svelte";
+  import WorkspaceSidebarVideoFilterControl from "$lib/components/workspace/WorkspaceSidebarVideoFilterControl.svelte";
 
   // Lazy-loaded dynamic components (create Vite code-split boundaries)
   // WorkspaceSearchBar: eagerly loaded on mount (visible immediately, split for bundle size)
@@ -92,6 +93,7 @@
     resolveGuideStepFromUrl,
     writeGuideStepToUrl,
   } from "$lib/utils/guide";
+  import { mobileWorkspaceBrowseIntent } from "$lib/mobile-navigation/mobileWorkspaceBrowseIntent";
   import {
     buildWorkspaceViewHref,
     mergeWorkspaceViewState,
@@ -338,6 +340,10 @@
     },
     onOpenChannelOverview: async (channelId: string) => {
       await goto(`/channels/${encodeURIComponent(channelId)}`);
+    },
+    onVideoListReset: () => {
+      historyExhausted = false;
+      backfillingHistory = false;
     },
   });
 
@@ -942,6 +948,13 @@
 
   onMount(() => {
     restoreWorkspaceState();
+    const unsubBrowseIntent = mobileWorkspaceBrowseIntent.subscribe(
+      (wantsBrowse) => {
+        if (!wantsBrowse) return;
+        mobileBrowseOpen = true;
+        mobileWorkspaceBrowseIntent.set(false);
+      },
+    );
     workspaceStateHydrated = true;
     setTimeout(() => {
       shallowUrlSyncReady = true;
@@ -1026,6 +1039,10 @@
         WorkspaceSearchBarComponent = m.default;
       },
     );
+
+    return () => {
+      unsubBrowseIntent();
+    };
   });
 
   // Lazily load FeatureGuide only when the guide tour is first opened.
@@ -1467,6 +1484,45 @@
       errorMessage = (error as Error).message;
     } finally {
       backfillingHistory = false;
+    }
+  }
+
+  /**
+   * While mobile browse is open, paginate and backfill until every video that
+   * matches the active filters is loaded (no manual Load More / Load History).
+   */
+  async function loadAllVideosForMobileBrowse(isAborted: () => boolean) {
+    const channelId = sidebarState.selectedChannelId;
+    if (!channelId || !mobileBrowseOpen) return;
+
+    historyExhausted = false;
+
+    let safety = 0;
+    while (safety++ < 2000 && !isAborted()) {
+      if (!mobileBrowseOpen || sidebarState.selectedChannelId !== channelId) {
+        return;
+      }
+
+      while (
+        (sidebarState.loadingVideos || backfillingHistory) &&
+        !isAborted()
+      ) {
+        await tick();
+        await new Promise((r) => setTimeout(r, 30));
+      }
+      if (isAborted()) return;
+      if (!mobileBrowseOpen || sidebarState.selectedChannelId !== channelId) {
+        return;
+      }
+
+      if (sidebarState.hasMore) {
+        await loadVideos(false);
+        continue;
+      }
+      if (historyExhausted) {
+        break;
+      }
+      await loadMoreVideos();
     }
   }
 
@@ -1994,18 +2050,7 @@
 
   $effect(() => {
     if (mobileBrowseOpen) {
-      mobileBottomBar.set({
-        kind: "sectionsWithVideoFilter",
-        filter: {
-          videoTypeFilter: sidebarState.videoState.videoTypeFilter,
-          acknowledgedFilter: sidebarState.videoState.acknowledgedFilter,
-          disabled: browseFilterDisabled,
-          onSelectVideoType: sidebarState.videoActions.onVideoTypeFilterChange,
-          onSelectAcknowledged:
-            sidebarState.videoActions.onAcknowledgedFilterChange,
-          onClearAllFilters: clearBrowseVideoFilters,
-        },
-      });
+      mobileBottomBar.set({ kind: "hidden" });
       return () => {
         mobileBottomBar.set({ kind: "sections" });
       };
@@ -2047,6 +2092,25 @@
     }
     return () => {
       mobileBottomBar.set({ kind: "sections" });
+    };
+  });
+
+  $effect(() => {
+    if (!mobileBrowseOpen || !sidebarState.selectedChannelId) {
+      return;
+    }
+
+    void videoTypeFilter;
+    void acknowledgedFilter;
+
+    let cancelled = false;
+    void (async () => {
+      await tick();
+      await loadAllVideosForMobileBrowse(() => cancelled);
+    })();
+
+    return () => {
+      cancelled = true;
     };
   });
 
@@ -2462,6 +2526,7 @@
 
   const workspaceContentSelection = $derived({
     mobileVisible: true,
+    mobileBackInTopBar: !mobileBrowseOpen && Boolean(selectedVideoId),
     selectedChannel,
     selectedVideo,
     selectedVideoId,
@@ -2613,7 +2678,34 @@
     />
   {/snippet}
   {#snippet mobileTopBar()}
-    <MobileYouTubeTopNav />
+    <MobileYouTubeTopNav
+      showBackInsteadOfMenu={!mobileBrowseOpen && Boolean(selectedVideoId)}
+      onBack={() => {
+        mobileBrowseOpen = true;
+      }}
+    >
+      {#snippet trailing()}
+        {#if mobileBrowseOpen}
+          <div
+            class="flex min-w-0 shrink-0 items-center justify-end"
+            aria-label="Video filters"
+          >
+            <WorkspaceSidebarVideoFilterControl
+              videoTypeFilter={sidebarState.videoState.videoTypeFilter}
+              acknowledgedFilter={sidebarState.videoState.acknowledgedFilter}
+              disabled={browseFilterDisabled}
+              onSelectVideoType={sidebarState.videoActions
+                .onVideoTypeFilterChange}
+              onSelectAcknowledged={sidebarState.videoActions
+                .onAcknowledgedFilterChange}
+              onClearAllFilters={clearBrowseVideoFilters}
+            />
+          </div>
+        {:else}
+          <div class="w-10 shrink-0" aria-hidden="true"></div>
+        {/if}
+      {/snippet}
+    </MobileYouTubeTopNav>
   {/snippet}
   {#snippet topBar()}
     <WorkspaceDesktopTopBar
@@ -2681,8 +2773,15 @@
         showDeleteAccessPrompt = true;
       },
     }}
-    videoState={sidebarState.videoState}
-    videoActions={sidebarState.videoActions}
+    videoState={{
+      ...sidebarState.videoState,
+      historyExhausted,
+      backfillingHistory,
+    }}
+    videoActions={{
+      ...sidebarState.videoActions,
+      onLoadMoreVideos: loadMoreVideos,
+    }}
     canDeleteChannels={isOperator}
     addSourceErrorMessage={errorMessage}
   />

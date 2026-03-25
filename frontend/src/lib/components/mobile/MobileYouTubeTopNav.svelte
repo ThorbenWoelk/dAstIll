@@ -11,15 +11,20 @@
   import { tick } from "svelte";
   import { resolveCurrentSectionFromPathname } from "$lib/mobile-navigation/resolveCurrentSectionFromPathname";
   import { shouldCloseDrawerForKey } from "$lib/mobile-navigation/drawerKeyboard";
-  import { mobileBottomBar } from "$lib/mobile-navigation/mobileBottomBar";
+  import { mobileWorkspaceBrowseIntent } from "$lib/mobile-navigation/mobileWorkspaceBrowseIntent";
+  import ChevronIcon from "$lib/components/icons/ChevronIcon.svelte";
+  import ThemePanel from "$lib/components/ThemePanel.svelte";
 
-  let { trailing }: { trailing?: Snippet } = $props();
-
-  /** Section links already appear in the bottom tab bar; omit them here to avoid duplication. */
-  let bar = $derived($mobileBottomBar);
-  let showSectionLinksInDrawer = $derived(
-    bar.kind !== "sections" && bar.kind !== "sectionsWithVideoFilter",
-  );
+  let {
+    trailing,
+    showBackInsteadOfMenu = false,
+    onBack,
+  }: {
+    trailing?: Snippet;
+    /** When true, left control is back (same slot as the hamburger). */
+    showBackInsteadOfMenu?: boolean;
+    onBack?: () => void;
+  } = $props();
 
   let currentSection = $derived(
     resolveCurrentSectionFromPathname($page.url.pathname),
@@ -60,11 +65,7 @@
   async function openDrawer() {
     open = true;
     await tick();
-    if (showSectionLinksInDrawer) {
-      firstSectionLinkEl?.focus({ preventScroll: false });
-    } else {
-      drawerFooterGitHubEl?.focus({ preventScroll: false });
-    }
+    firstSectionLinkEl?.focus({ preventScroll: false });
   }
 
   function handleKeydown(event: KeyboardEvent) {
@@ -81,32 +82,43 @@
 
 <div class="grid w-full grid-cols-[auto_1fr_auto] items-center gap-2">
   <div class="flex justify-start">
-    <button
-      type="button"
-      bind:this={triggerEl}
-      class="inline-flex h-10 w-10 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-80 transition hover:bg-[var(--accent-wash)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
-      aria-label={showSectionLinksInDrawer ? "Open navigation" : "Open menu"}
-      aria-expanded={open}
-      aria-controls={drawerId}
-      onclick={() => void openDrawer()}
-    >
-      <!-- Hamburger -->
-      <svg
-        width="20"
-        height="20"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2.1"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"
+    {#if showBackInsteadOfMenu}
+      <button
+        type="button"
+        class="inline-flex h-10 w-10 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-80 transition hover:bg-[var(--accent-wash)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+        aria-label="Back"
+        onclick={() => onBack?.()}
       >
-        <path d="M4 7h16" />
-        <path d="M4 12h16" />
-        <path d="M4 17h16" />
-      </svg>
-    </button>
+        <ChevronIcon direction="left" size={20} strokeWidth={2.2} />
+      </button>
+    {:else}
+      <button
+        type="button"
+        bind:this={triggerEl}
+        class="inline-flex h-10 w-10 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-80 transition hover:bg-[var(--accent-wash)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+        aria-label="Open navigation menu"
+        aria-expanded={open}
+        aria-controls={drawerId}
+        onclick={() => void openDrawer()}
+      >
+        <!-- Hamburger -->
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.1"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M4 7h16" />
+          <path d="M4 12h16" />
+          <path d="M4 17h16" />
+        </svg>
+      </button>
+    {/if}
   </div>
 
   <div class="flex min-w-0 justify-center">
@@ -116,6 +128,7 @@
       data-sveltekit-preload-data="tap"
       data-sveltekit-preload-code="viewport"
       aria-label="Go to dAstIll home"
+      onclick={() => mobileWorkspaceBrowseIntent.set(true)}
     >
       d<span style="color:var(--soft-foreground);">A</span>st<span
         style="color:var(--soft-foreground);">I</span
@@ -138,7 +151,7 @@
     class="fixed inset-0 z-[95] lg:hidden"
     role="dialog"
     aria-modal="true"
-    aria-label={showSectionLinksInDrawer ? "Navigation menu" : "Menu"}
+    aria-label="Navigation menu"
   >
     <button
       type="button"
@@ -148,7 +161,7 @@
     ></button>
 
     <div
-      class="relative flex h-full w-[min(85vw,20rem)] flex-col overflow-hidden border-r border-[var(--accent-border-soft)] bg-[var(--surface-strong)] shadow-2xl"
+      class="relative flex h-full min-h-0 w-[min(85vw,20rem)] flex-col overflow-hidden border-r border-[var(--accent-border-soft)] bg-[var(--surface-strong)] shadow-2xl"
     >
       <div
         class="flex shrink-0 items-center justify-end border-b border-[var(--accent-border-soft)]/70 px-3 py-2"
@@ -165,101 +178,108 @@
 
       <nav
         id={drawerMenuId}
-        class="min-h-0 flex-1 overflow-y-auto p-3"
-        aria-label={showSectionLinksInDrawer ? "Sections" : "About"}
+        class="min-h-0 flex-1 overflow-y-auto p-3 pb-2"
+        aria-label="Sections"
       >
-        {#if showSectionLinksInDrawer}
-          <div class="px-2 pb-2 pt-1">
-            <div
-              class="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-60"
-            >
-              Sections
-            </div>
+        <div class="px-2 pb-2 pt-1">
+          <div
+            class="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-60"
+          >
+            Sections
           </div>
+        </div>
 
-          {#if firstItem}
-            <a
-              bind:this={firstSectionLinkEl}
-              href={firstItem.href}
-              target={firstItem.external ? "_blank" : undefined}
-              rel={firstItem.external ? "noopener noreferrer" : undefined}
-              role="menuitem"
-              class={`flex items-center justify-between gap-2 rounded-[var(--radius-sm)] px-3 py-2 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface-strong)] ${
-                firstItem.active
-                  ? "bg-[var(--accent-wash-strong)] text-[var(--accent-strong)]"
-                  : "text-[var(--soft-foreground)] opacity-80 hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]"
-              }`}
-              aria-current={firstItem.active ? "page" : undefined}
-              onclick={closeDrawer}
-              data-tour-target={firstItem.section === "chat"
-                ? "nav-chat"
-                : undefined}
-              id={firstItem.section === "docs"
-                ? "mobile-nav-docs-link"
-                : firstItem.section === "chat"
-                  ? "mobile-nav-chat-link"
-                  : firstItem.section === "workspace"
-                    ? "mobile-nav-workspace-link"
-                    : undefined}
-              data-sveltekit-preload-code={firstItem.external
-                ? undefined
-                : "viewport"}
-              data-sveltekit-preload-data={firstItem.external
-                ? undefined
-                : "tap"}
-            >
-              <span class="min-w-0 truncate">{firstItem.label}</span>
-              {#if firstItem.external}
-                <ExternalLinkIcon size={14} className="shrink-0 opacity-70" />
-              {/if}
-            </a>
-          {/if}
-
-          {#each remainingItems as item (item.section)}
-            <a
-              href={item.href}
-              target={item.external ? "_blank" : undefined}
-              rel={item.external ? "noopener noreferrer" : undefined}
-              role="menuitem"
-              class={`flex items-center justify-between gap-2 rounded-[var(--radius-sm)] px-3 py-2 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface-strong)] ${
-                item.active
-                  ? "bg-[var(--accent-wash-strong)] text-[var(--accent-strong)]"
-                  : "text-[var(--soft-foreground)] opacity-80 hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]"
-              }`}
-              aria-current={item.active ? "page" : undefined}
-              onclick={closeDrawer}
-              data-tour-target={item.section === "chat"
-                ? "nav-chat"
-                : undefined}
-              id={item.section === "docs"
-                ? "mobile-nav-docs-link"
-                : item.section === "chat"
-                  ? "mobile-nav-chat-link"
-                  : item.section === "workspace"
-                    ? "mobile-nav-workspace-link"
-                    : undefined}
-              data-sveltekit-preload-code={item.external
-                ? undefined
-                : "viewport"}
-              data-sveltekit-preload-data={item.external ? undefined : "tap"}
-            >
-              <span class="min-w-0 truncate">{item.label}</span>
-              {#if item.external}
-                <ExternalLinkIcon size={14} className="shrink-0 opacity-70" />
-              {/if}
-            </a>
-          {/each}
-        {:else}
-          <div class="px-2 pb-3 pt-1">
-            <p
-              class="text-[12px] leading-relaxed text-[var(--soft-foreground)] opacity-80"
-            >
-              Move between app areas using the tab bar at the bottom of the
-              screen.
-            </p>
-          </div>
+        {#if firstItem}
+          <a
+            bind:this={firstSectionLinkEl}
+            href={firstItem.href}
+            target={firstItem.external ? "_blank" : undefined}
+            rel={firstItem.external ? "noopener noreferrer" : undefined}
+            role="menuitem"
+            class={`flex items-center justify-between gap-2 rounded-[var(--radius-sm)] px-3 py-2 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface-strong)] ${
+              firstItem.active
+                ? "bg-[var(--accent-wash-strong)] text-[var(--accent-strong)]"
+                : "text-[var(--soft-foreground)] opacity-80 hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]"
+            }`}
+            aria-current={firstItem.active ? "page" : undefined}
+            onclick={() => {
+              if (firstItem.section === "workspace") {
+                mobileWorkspaceBrowseIntent.set(true);
+              }
+              closeDrawer();
+            }}
+            data-tour-target={firstItem.section === "chat"
+              ? "nav-chat"
+              : undefined}
+            id={firstItem.section === "docs"
+              ? "mobile-nav-docs-link"
+              : firstItem.section === "chat"
+                ? "mobile-nav-chat-link"
+                : firstItem.section === "workspace"
+                  ? "mobile-nav-workspace-link"
+                  : undefined}
+            data-sveltekit-preload-code={firstItem.external
+              ? undefined
+              : "viewport"}
+            data-sveltekit-preload-data={firstItem.external ? undefined : "tap"}
+          >
+            <span class="min-w-0 truncate">{firstItem.label}</span>
+            {#if firstItem.external}
+              <ExternalLinkIcon size={14} className="shrink-0 opacity-70" />
+            {/if}
+          </a>
         {/if}
+
+        {#each remainingItems as item (item.section)}
+          <a
+            href={item.href}
+            target={item.external ? "_blank" : undefined}
+            rel={item.external ? "noopener noreferrer" : undefined}
+            role="menuitem"
+            class={`flex items-center justify-between gap-2 rounded-[var(--radius-sm)] px-3 py-2 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface-strong)] ${
+              item.active
+                ? "bg-[var(--accent-wash-strong)] text-[var(--accent-strong)]"
+                : "text-[var(--soft-foreground)] opacity-80 hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]"
+            }`}
+            aria-current={item.active ? "page" : undefined}
+            onclick={() => {
+              if (item.section === "workspace") {
+                mobileWorkspaceBrowseIntent.set(true);
+              }
+              closeDrawer();
+            }}
+            data-tour-target={item.section === "chat" ? "nav-chat" : undefined}
+            id={item.section === "docs"
+              ? "mobile-nav-docs-link"
+              : item.section === "chat"
+                ? "mobile-nav-chat-link"
+                : item.section === "workspace"
+                  ? "mobile-nav-workspace-link"
+                  : undefined}
+            data-sveltekit-preload-code={item.external ? undefined : "viewport"}
+            data-sveltekit-preload-data={item.external ? undefined : "tap"}
+          >
+            <span class="min-w-0 truncate">{item.label}</span>
+            {#if item.external}
+              <ExternalLinkIcon size={14} className="shrink-0 opacity-70" />
+            {/if}
+          </a>
+        {/each}
       </nav>
+
+      <div
+        class="shrink-0 border-t border-[var(--accent-border-soft)]/50 px-3 py-3"
+        aria-label="Appearance settings"
+      >
+        <div class="pb-2">
+          <div
+            class="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-60"
+          >
+            Settings
+          </div>
+        </div>
+        <ThemePanel variant="inline" className="w-full" />
+      </div>
 
       <div
         class="shrink-0 border-t border-[var(--accent-border-soft)]/50 px-3 py-3"
