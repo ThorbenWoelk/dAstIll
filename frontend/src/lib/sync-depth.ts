@@ -39,6 +39,11 @@ export function resolveDisplayedSyncDepthIso({
     return selectedChannel.earliest_sync_date ?? null;
   }
 
+  const derived = syncDepth?.derived_earliest_ready_date ?? null;
+  if (derived) {
+    return derived;
+  }
+
   if (allowLoadedVideoOverride) {
     const oldestLoaded = resolveOldestLoadedReadyVideoDate(videos);
     if (oldestLoaded) {
@@ -46,9 +51,5 @@ export function resolveDisplayedSyncDepthIso({
     }
   }
 
-  return (
-    syncDepth?.derived_earliest_ready_date ??
-    selectedChannel?.earliest_sync_date ??
-    null
-  );
+  return selectedChannel?.earliest_sync_date ?? null;
 }

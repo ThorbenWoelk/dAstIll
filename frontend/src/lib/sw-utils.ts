@@ -14,8 +14,14 @@ export const STATIC_CACHE = `static-${CACHE_VERSION}`;
 /** Cache name for successful GET /api/* responses. */
 export const API_CACHE = `api-${CACHE_VERSION}`;
 
+/**
+ * Cache name for channel / video thumbnails loaded from YouTube and Google CDNs.
+ * Cache-first keeps the mobile channel strip fast on repeat visits.
+ */
+export const AVATAR_CACHE = `avatars-${CACHE_VERSION}`;
+
 /** All cache names that belong to the current SW version. */
-export const KNOWN_CACHES = [STATIC_CACHE, API_CACHE];
+export const KNOWN_CACHES = [STATIC_CACHE, API_CACHE, AVATAR_CACHE];
 
 /**
  * Returns true for URL pathnames that should use a cache-first strategy:
@@ -24,6 +30,24 @@ export const KNOWN_CACHES = [STATIC_CACHE, API_CACHE];
  */
 export function isStaticAssetPath(pathname: string): boolean {
   return pathname.startsWith("/_app/") || pathname.startsWith("/fonts/");
+}
+
+/**
+ * Returns true for HTTPS URLs that serve YouTube / Google-hosted channel or
+ * video thumbnails. Used by the service worker for cache-first image caching.
+ */
+export function isChannelAvatarThumbnailUrl(url: URL): boolean {
+  if (url.protocol !== "https:") {
+    return false;
+  }
+  const h = url.hostname;
+  return (
+    h === "yt3.ggpht.com" ||
+    h === "yt3.googleusercontent.com" ||
+    h === "lh3.googleusercontent.com" ||
+    h === "i.ytimg.com" ||
+    /^i\d\.ytimg\.com$/.test(h)
+  );
 }
 
 /**

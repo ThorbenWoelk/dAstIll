@@ -1,6 +1,19 @@
 import { describe, expect, it } from "bun:test";
 
-import { loadChannelSnapshotWithRefresh } from "../src/lib/workspace/route-helpers";
+import {
+  dedupeVideosById,
+  loadChannelSnapshotWithRefresh,
+} from "../src/lib/workspace/route-helpers";
+import type { Video } from "../src/lib/types";
+
+describe("dedupeVideosById", () => {
+  it("keeps first occurrence and stable order", () => {
+    const a = { id: "a" } as Video;
+    const b = { id: "b" } as Video;
+    const aDup = { id: "a" } as Video;
+    expect(dedupeVideosById([a, b, aDup])).toEqual([a, b]);
+  });
+});
 
 describe("loadChannelSnapshotWithRefresh", () => {
   it("loads the snapshot without hitting the refresh endpoint inside the TTL window", async () => {

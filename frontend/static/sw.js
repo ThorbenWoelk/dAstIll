@@ -16,12 +16,27 @@
 var CACHE_VERSION = "v2";
 var STATIC_CACHE = "static-" + CACHE_VERSION;
 var API_CACHE = "api-" + CACHE_VERSION;
-var KNOWN_CACHES = [STATIC_CACHE, API_CACHE];
+var AVATAR_CACHE = "avatars-" + CACHE_VERSION;
+var KNOWN_CACHES = [STATIC_CACHE, API_CACHE, AVATAR_CACHE];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function isStaticAssetPath(pathname) {
   return pathname.startsWith("/_app/") || pathname.startsWith("/fonts/");
+}
+
+function isChannelAvatarThumbnailUrl(url) {
+  if (url.protocol !== "https:") {
+    return false;
+  }
+  var h = url.hostname;
+  return (
+    h === "yt3.ggpht.com" ||
+    h === "yt3.googleusercontent.com" ||
+    h === "lh3.googleusercontent.com" ||
+    h === "i.ytimg.com" ||
+    /^i\d\.ytimg\.com$/.test(h)
+  );
 }
 
 function isSseRequest(request) {
@@ -124,6 +139,14 @@ self.addEventListener("fetch", function (event) {
   // Network-first for GET API responses, with cache fallback for offline use.
   if (url.pathname.startsWith("/api/")) {
     event.respondWith(networkFirst(request, API_CACHE));
+    return;
+  }
+
+  // Cache-first for YouTube / Google CDN channel and video thumbnails (mobile
+  // channel strip, sidebar avatars). Speeds repeat visits; first visit still
+  // hits the network.
+  if (isChannelAvatarThumbnailUrl(url)) {
+    event.respondWith(cacheFirst(request, AVATAR_CACHE));
     return;
   }
 

@@ -215,7 +215,7 @@ pub async fn get_channel_sync_depth(
 
     let channel = require_channel(&state, &id).await?;
 
-    let derived = db::get_oldest_ready_video_published_at(&state.db, &id)
+    let derived = db::get_oldest_ready_video_published_at(&state.db, &channel)
         .await
         .map_err(map_db_err)?;
 

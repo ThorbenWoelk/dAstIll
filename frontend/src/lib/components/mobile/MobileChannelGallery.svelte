@@ -116,6 +116,32 @@
       },
     };
   }
+
+  const EAGER_THUMB_COUNT = 12;
+
+  /** Warm Cache API + browser cache for thumbnails past the eager strip (idle). */
+  $effect(() => {
+    if (typeof window === "undefined" || !("requestIdleCallback" in window)) {
+      return;
+    }
+    const urls = channels
+      .slice(EAGER_THUMB_COUNT)
+      .map((c) => normalizeThumbnail(c.thumbnail_url))
+      .filter((u): u is string => Boolean(u));
+    if (urls.length === 0) return;
+
+    const id = window.requestIdleCallback(
+      () => {
+        for (const url of urls.slice(0, 24)) {
+          const img = new Image();
+          img.referrerPolicy = "no-referrer";
+          img.src = url;
+        }
+      },
+      { timeout: 2000 },
+    );
+    return () => window.cancelIdleCallback(id);
+  });
 </script>
 
 <div class="lg:hidden">
@@ -126,9 +152,12 @@
       style="scroll-snap-type: x mandatory"
       aria-label="Channels"
     >
-      {#each channels as channel (channel.id)}
+      {#each channels as channel, index (channel.id)}
         {@const thumb = normalizeThumbnail(channel.thumbnail_url)}
         {@const active = selectedChannelId === channel.id}
+        <!-- Lazy-loading hurts horizontal strips: off-axis images stay deferred. Eager first strip. -->
+        {@const thumbLoading = index < EAGER_THUMB_COUNT ? "eager" : "lazy"}
+        {@const thumbFetchPriority = active || index < 4 ? "high" : "auto"}
         {@const preview = channelPreviews?.[channel.id]}
         {@const queueLine =
           queueTab && preview
@@ -151,7 +180,10 @@
               src={thumb ?? defaultChannelIcon}
               alt={channel.name}
               class="h-full w-full object-cover"
-              loading="lazy"
+              loading={thumbLoading}
+              decoding="async"
+              fetchpriority={thumbFetchPriority}
+              sizes="(max-width: 1024px) 64vw, 14rem"
               referrerpolicy="no-referrer"
             />
             <div

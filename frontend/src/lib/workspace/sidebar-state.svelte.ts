@@ -46,6 +46,7 @@ import {
 } from "$lib/workspace/channel-actions";
 import { channelOrderFromList } from "$lib/workspace/channels";
 import {
+  dedupeVideosById,
   filterVideosByAcknowledged,
   filterVideosByType,
   loadChannelSnapshotWithRefresh,
@@ -426,7 +427,7 @@ export function createSidebarState(
     selectedVideoId = id;
   }
   function setVideos(next: Video[]) {
-    videos = next;
+    videos = dedupeVideosById(next);
   }
   function setSyncDepth(depth: ChannelSyncDepthState | null) {
     syncDepth = depth;
@@ -512,14 +513,15 @@ export function createSidebarState(
     try {
       if (selectedChannelId !== channelId) return;
       syncDepth = snapshot.sync_depth;
-      videos = snapshot.videos;
-      offset = snapshot.videos.length;
-      hasMore = snapshot.videos.length === limit;
+      const deduped = dedupeVideosById(snapshot.videos);
+      videos = deduped;
+      offset = deduped.length;
+      hasMore = deduped.length === limit;
 
       if (options_root.onVideosLoaded) {
         await options_root.onVideosLoaded({
           reset: true,
-          videos: snapshot.videos,
+          videos: deduped,
         });
       }
     } finally {
@@ -593,7 +595,7 @@ export function createSidebarState(
             videoTypeFilter,
             isAck,
           );
-      videos = reset ? list : [...videos, ...list];
+      videos = dedupeVideosById(reset ? list : [...videos, ...list]);
       offset = (reset ? 0 : offset) + list.length;
       hasMore = list.length === limit;
 
@@ -627,7 +629,7 @@ export function createSidebarState(
     options_root.onChannelSelected?.(channelId);
 
     if (hasCached && cached) {
-      videos = cloneVideos(cached.videos);
+      videos = dedupeVideosById(cloneVideos(cached.videos));
       offset = cached.offset;
       hasMore = cached.hasMore;
       syncDepth = cloneSyncDepthState(cached.syncDepth);
@@ -912,7 +914,7 @@ export function createSidebarState(
       return videos;
     },
     set videos(v) {
-      videos = v;
+      videos = dedupeVideosById(v);
     },
     get loadingChannels() {
       return loadingChannels;

@@ -49,6 +49,7 @@
   } from "$lib/workspace/channels";
   import { formatShortDate } from "$lib/utils/date";
   import {
+    dedupeVideosById,
     filterVideosByAcknowledged,
     filterVideosByType,
   } from "$lib/workspace/route-helpers";
@@ -139,6 +140,8 @@
      * video and re-apply type + read filters.
      */
     videoAcknowledgeSync = null,
+    /** After earliest-sync date is saved (standalone or preview collection). */
+    onChannelSyncDateSaved = undefined,
   }: {
     shell?: WorkspaceSidebarShellProps;
     channelState?: WorkspaceSidebarChannelState;
@@ -149,6 +152,7 @@
     hideChannelUi?: boolean;
     suppressVideoLoadMoreButton?: boolean;
     readOnly?: boolean;
+    onChannelSyncDateSaved?: (channelId: string) => void | Promise<void>;
     addSourceErrorMessage?: string | null;
     /**
      * Server-side pre-loaded channel snapshots (keyed by channel id) for the
@@ -176,6 +180,14 @@
   let width = $derived(shell.width);
   let onToggleCollapse = $derived(shell.onToggleCollapse);
   let mobileVisible = $derived(shell.mobileVisible);
+  /** Always above trigger: dialog appears above the button so it's visible without scrolling. */
+  let syncDatePopupStackClass = "flex flex-col-reverse gap-2";
+
+  function scrollIntoViewOnMount(node: HTMLElement) {
+    void tick().then(() =>
+      node.scrollIntoView({ behavior: "smooth", block: "nearest" }),
+    );
+  }
 
   let channels = $derived(channelState.channels);
   let selectedChannelId = $derived(channelState.selectedChannelId);
@@ -237,6 +249,9 @@
   let reorderAnnouncement = $state("");
 
   let syncDatePickerChannelId = $state<string | null>(null);
+  /** Input when editing sync date without a per-channel collection row. */
+  let earliestSyncDateInputSelected = $state("");
+  let savingStandaloneSyncDate = $state(false);
   let channelVideoCollections = $state<
     Record<string, ChannelVideoCollectionState>
   >({});
@@ -456,13 +471,14 @@
         return;
       }
 
-      current.videos = nextVideos;
+      const dedupedVideos = dedupeVideosById(nextVideos);
+      current.videos = dedupedVideos;
       current.loadedMode = mode;
       current.loading = false;
       current.filterKey = filterKey;
       current.requestKey = null;
       current.hasMoreThanPreview =
-        nextVideos.length > PREVIEW_VISIBLE_VIDEO_COUNT;
+        dedupedVideos.length > PREVIEW_VISIBLE_VIDEO_COUNT;
       current.channelVideoCount = snapshot.channel_video_count;
       current.syncDepth = snapshot.sync_depth;
       current.earliestSyncDateInput = resolveSyncDateInputValue(
@@ -530,9 +546,52 @@
         updatedChannel,
         state.expanded ? "all" : "preview",
       );
+      await onChannelSyncDateSaved?.(channel.id);
     } finally {
       const current = ensureChannelVideoCollection(channel.id);
       current.savingSyncDate = false;
+    }
+  }
+
+  async function saveStandaloneChannelSyncDate(channel: Channel) {
+    if (!earliestSyncDateInputSelected.trim() || savingStandaloneSyncDate) {
+      return;
+    }
+
+    savingStandaloneSyncDate = true;
+    try {
+      const updatedChannel = await updateChannel(channel.id, {
+        earliest_sync_date: new Date(
+          earliestSyncDateInputSelected,
+        ).toISOString(),
+        earliest_sync_date_user_set: true,
+      });
+      onChannelUpdated(updatedChannel);
+      await refreshChannel(channel.id);
+      syncDatePickerChannelId = null;
+      await onChannelSyncDateSaved?.(channel.id);
+    } finally {
+      savingStandaloneSyncDate = false;
+    }
+  }
+
+  function toggleSyncDatePicker(
+    channel: Channel,
+    depth: SyncDepth | null,
+    collection: ChannelVideoCollectionState | undefined,
+  ) {
+    if (syncDatePickerChannelId === channel.id) {
+      syncDatePickerChannelId = null;
+      return;
+    }
+    syncDatePickerChannelId = channel.id;
+    if (collection) {
+      collection.earliestSyncDateInput = resolveSyncDateInputValue(
+        channel,
+        depth,
+      );
+    } else {
+      earliestSyncDateInputSelected = resolveSyncDateInputValue(channel, depth);
     }
   }
 
@@ -874,18 +933,83 @@
           {/if}
 
           {#if videos.length > 0 && selectedChannel}
-            <p
-              class="mt-2 px-2 text-[10px] text-[var(--soft-foreground)] opacity-55"
-            >
-              Synced to {formatSyncDate(
-                resolveDisplayedSyncDepthIso({
-                  videos,
-                  selectedChannel,
-                  syncDepth,
-                  allowLoadedVideoOverride: allowLoadedVideoSyncDepthOverride,
-                }),
-              )}
-            </p>
+            {#if !readOnly && !isVirtualChannel(selectedChannel)}
+              <div class="relative z-10 mt-2 px-2">
+                <div class={syncDatePopupStackClass}>
+                  <button
+                    type="button"
+                    class="touch-manipulation relative z-10 inline-flex w-full max-w-full flex-wrap items-baseline gap-x-1 rounded-[var(--radius-sm)] px-2 py-1 text-left text-[10px] text-[var(--soft-foreground)] opacity-55 transition hover:bg-[var(--accent-wash)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+                    aria-expanded={syncDatePickerChannelId ===
+                      selectedChannel.id}
+                    aria-haspopup="dialog"
+                    aria-label="Adjust sync date"
+                    onclick={(event) => {
+                      event.stopPropagation();
+                      toggleSyncDatePicker(
+                        selectedChannel,
+                        syncDepth,
+                        undefined,
+                      );
+                    }}
+                  >
+                    <span
+                      class="font-bold uppercase tracking-[0.06em] opacity-70"
+                      >Synced to</span
+                    >
+                    <span
+                      class="border-b border-dotted border-[var(--border-soft)] text-[var(--foreground)]"
+                      >{formatSyncDate(
+                        resolveDisplayedSyncDepthIso({
+                          videos,
+                          selectedChannel,
+                          syncDepth,
+                          allowLoadedVideoOverride:
+                            allowLoadedVideoSyncDepthOverride,
+                        }),
+                      )}</span
+                    >
+                  </button>
+                  {#if syncDatePickerChannelId === selectedChannel.id}
+                    <div
+                      class="flex flex-wrap items-center gap-2 rounded-[var(--radius-md)] bg-[var(--surface-strong)] p-2 shadow-[var(--shadow-soft)]"
+                      role="dialog"
+                      aria-label="Sync from date"
+                      use:scrollIntoViewOnMount
+                    >
+                      <input
+                        type="date"
+                        class="min-w-0 flex-1 rounded-[var(--radius-sm)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] px-3 py-2 text-[12px] font-medium transition-colors focus:border-[var(--accent)]/40 focus:outline-none"
+                        bind:value={earliestSyncDateInputSelected}
+                        disabled={savingStandaloneSyncDate}
+                      />
+                      <button
+                        type="button"
+                        class="rounded-[var(--radius-sm)] bg-[var(--foreground)] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--background)] transition-all hover:bg-[var(--accent-strong)] disabled:opacity-30"
+                        onclick={() =>
+                          void saveStandaloneChannelSyncDate(selectedChannel)}
+                        disabled={!earliestSyncDateInputSelected ||
+                          savingStandaloneSyncDate}
+                      >
+                        {savingStandaloneSyncDate ? "..." : "Set"}
+                      </button>
+                    </div>
+                  {/if}
+                </div>
+              </div>
+            {:else}
+              <p
+                class="mt-2 px-2 text-[10px] text-[var(--soft-foreground)] opacity-55"
+              >
+                Synced to {formatSyncDate(
+                  resolveDisplayedSyncDepthIso({
+                    videos,
+                    selectedChannel,
+                    syncDepth,
+                    allowLoadedVideoOverride: allowLoadedVideoSyncDepthOverride,
+                  }),
+                )}
+              </p>
+            {/if}
           {/if}
         {/if}
       </div>
@@ -1453,8 +1577,70 @@
             </div>
 
             {#if channelVideoCollection.loadedMode === "all" && !isVirtualChannel(channel)}
-              <div class="mt-2 px-2 pb-4">
-                <div class="flex items-center gap-2">
+              <div class="relative z-10 mt-2 px-2 pb-4">
+                {#if !readOnly}
+                  <div class={syncDatePopupStackClass}>
+                    <button
+                      type="button"
+                      class="touch-manipulation relative z-10 inline-flex w-full max-w-full flex-wrap items-baseline gap-x-1 rounded-[var(--radius-sm)] px-2 py-1 text-left text-[10px] text-[var(--soft-foreground)] opacity-50 transition hover:bg-[var(--accent-wash)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+                      aria-expanded={syncDatePickerChannelId === channel.id}
+                      aria-haspopup="dialog"
+                      aria-label="Adjust sync date"
+                      onclick={(event) => {
+                        event.stopPropagation();
+                        toggleSyncDatePicker(
+                          channel,
+                          channelVideoCollection.syncDepth,
+                          channelVideoCollection,
+                        );
+                      }}
+                    >
+                      <span
+                        class="font-bold uppercase tracking-[0.06em] opacity-70"
+                        >Synced to</span
+                      >
+                      <span
+                        class="border-b border-dotted border-[var(--border-soft)] text-[var(--foreground)]"
+                        >{formatSyncDate(
+                          resolveDisplayedSyncDepthIso({
+                            videos: channelVideoCollection.videos,
+                            selectedChannel: channel,
+                            syncDepth: channelVideoCollection.syncDepth,
+                            allowLoadedVideoOverride: true,
+                          }),
+                        )}</span
+                      >
+                    </button>
+                    {#if syncDatePickerChannelId === channel.id}
+                      <div
+                        class="flex flex-wrap items-center gap-2 rounded-[var(--radius-md)] bg-[var(--surface-strong)] p-2 shadow-[var(--shadow-soft)]"
+                        role="dialog"
+                        aria-label="Sync from date"
+                        use:scrollIntoViewOnMount
+                      >
+                        <input
+                          type="date"
+                          class="min-w-0 flex-1 rounded-[var(--radius-sm)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] px-3 py-2 text-[12px] font-medium transition-colors focus:border-[var(--accent)]/40 focus:outline-none"
+                          bind:value={
+                            channelVideoCollection.earliestSyncDateInput
+                          }
+                          disabled={channelVideoCollection.savingSyncDate}
+                        />
+                        <button
+                          type="button"
+                          class="rounded-[var(--radius-sm)] bg-[var(--foreground)] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--background)] transition-all hover:bg-[var(--accent-strong)] disabled:opacity-30"
+                          onclick={() => void saveChannelSyncDate(channel)}
+                          disabled={!channelVideoCollection.earliestSyncDateInput ||
+                            channelVideoCollection.savingSyncDate}
+                        >
+                          {channelVideoCollection.savingSyncDate
+                            ? "..."
+                            : "Set"}
+                        </button>
+                      </div>
+                    {/if}
+                  </div>
+                {:else}
                   <p
                     class="text-[10px] text-[var(--soft-foreground)] opacity-50"
                   >
@@ -1467,51 +1653,6 @@
                       }),
                     )}
                   </p>
-                  <button
-                    type="button"
-                    class="inline-flex h-5 w-5 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-50 transition-all hover:opacity-100 hover:text-[var(--foreground)]"
-                    onclick={() =>
-                      (syncDatePickerChannelId =
-                        syncDatePickerChannelId === channel.id
-                          ? null
-                          : channel.id)}
-                    aria-label="Edit sync date"
-                  >
-                    <svg
-                      width="8"
-                      height="8"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2.2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      aria-hidden="true"
-                      ><path
-                        d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"
-                      /><path d="m15 5 4 4" /></svg
-                    >
-                  </button>
-                </div>
-
-                {#if syncDatePickerChannelId === channel.id}
-                  <div class="mt-2 flex items-center gap-2">
-                    <input
-                      type="date"
-                      class="min-w-0 flex-1 rounded-[var(--radius-sm)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] px-3 py-2 text-[12px] font-medium transition-colors focus:border-[var(--accent)]/40 focus:outline-none"
-                      bind:value={channelVideoCollection.earliestSyncDateInput}
-                      disabled={channelVideoCollection.savingSyncDate}
-                    />
-                    <button
-                      type="button"
-                      class="rounded-[var(--radius-sm)] bg-[var(--foreground)] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--background)] transition-all hover:bg-[var(--accent-strong)] disabled:opacity-30"
-                      onclick={() => void saveChannelSyncDate(channel)}
-                      disabled={!channelVideoCollection.earliestSyncDateInput ||
-                        channelVideoCollection.savingSyncDate}
-                    >
-                      {channelVideoCollection.savingSyncDate ? "..." : "Set"}
-                    </button>
-                  </div>
                 {/if}
               </div>
             {/if}
@@ -1635,20 +1776,83 @@
                 {/if}
 
                 {#if videos.length > 0}
-                  <p
-                    id="channel-history-sync"
-                    class="mt-1 px-2 text-[10px] text-[var(--soft-foreground)] opacity-50"
-                  >
-                    Synced to {formatSyncDate(
-                      resolveDisplayedSyncDepthIso({
-                        videos,
-                        selectedChannel,
-                        syncDepth,
-                        allowLoadedVideoOverride:
-                          allowLoadedVideoSyncDepthOverride,
-                      }),
-                    )}
-                  </p>
+                  {#if !readOnly && !isVirtualChannel(channel)}
+                    <div
+                      class="relative z-10 mt-1 px-2"
+                      id="channel-history-sync"
+                    >
+                      <div class={syncDatePopupStackClass}>
+                        <button
+                          type="button"
+                          class="touch-manipulation relative z-10 inline-flex w-full max-w-full flex-wrap items-baseline gap-x-1 rounded-[var(--radius-sm)] px-2 py-1 text-left text-[10px] text-[var(--soft-foreground)] opacity-50 transition hover:bg-[var(--accent-wash)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+                          aria-expanded={syncDatePickerChannelId === channel.id}
+                          aria-haspopup="dialog"
+                          aria-label="Adjust sync date"
+                          onclick={(event) => {
+                            event.stopPropagation();
+                            toggleSyncDatePicker(channel, syncDepth, undefined);
+                          }}
+                        >
+                          <span
+                            class="font-bold uppercase tracking-[0.06em] opacity-70"
+                            >Synced to</span
+                          >
+                          <span
+                            class="border-b border-dotted border-[var(--border-soft)] text-[var(--foreground)]"
+                            >{formatSyncDate(
+                              resolveDisplayedSyncDepthIso({
+                                videos,
+                                selectedChannel,
+                                syncDepth,
+                                allowLoadedVideoOverride:
+                                  allowLoadedVideoSyncDepthOverride,
+                              }),
+                            )}</span
+                          >
+                        </button>
+                        {#if syncDatePickerChannelId === channel.id}
+                          <div
+                            class="flex flex-wrap items-center gap-2 rounded-[var(--radius-md)] bg-[var(--surface-strong)] p-2 shadow-[var(--shadow-soft)]"
+                            role="dialog"
+                            aria-label="Sync from date"
+                            use:scrollIntoViewOnMount
+                          >
+                            <input
+                              type="date"
+                              class="min-w-0 flex-1 rounded-[var(--radius-sm)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] px-3 py-2 text-[12px] font-medium transition-colors focus:border-[var(--accent)]/40 focus:outline-none"
+                              bind:value={earliestSyncDateInputSelected}
+                              disabled={savingStandaloneSyncDate}
+                            />
+                            <button
+                              type="button"
+                              class="rounded-[var(--radius-sm)] bg-[var(--foreground)] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--background)] transition-all hover:bg-[var(--accent-strong)] disabled:opacity-30"
+                              onclick={() =>
+                                void saveStandaloneChannelSyncDate(channel)}
+                              disabled={!earliestSyncDateInputSelected ||
+                                savingStandaloneSyncDate}
+                            >
+                              {savingStandaloneSyncDate ? "..." : "Set"}
+                            </button>
+                          </div>
+                        {/if}
+                      </div>
+                    </div>
+                  {:else}
+                    <p
+                      id="channel-history-sync"
+                      class="mt-1 px-2 text-[10px] text-[var(--soft-foreground)] opacity-50"
+                    >
+                      Synced to {formatSyncDate(
+                        resolveDisplayedSyncDepthIso({
+                          videos,
+                          selectedChannel,
+                          syncDepth,
+                          allowLoadedVideoOverride:
+                            allowLoadedVideoSyncDepthOverride,
+                        }),
+                      )}
+                    </p>
+                  {/if}
                 {/if}
               {/if}
             </div>

@@ -18,6 +18,18 @@ export class BackendUnavailableError extends Error {
   }
 }
 
+/** Thrown when the backend returns HTTP 429 (e.g. expensive-operation rate limit). */
+export class RateLimitedError extends Error {
+  readonly status = 429;
+  readonly retryAfterMs: number;
+
+  constructor(message: string, retryAfterMs: number) {
+    super(message);
+    this.name = "RateLimitedError";
+    this.retryAfterMs = retryAfterMs;
+  }
+}
+
 export function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
 }
@@ -64,6 +76,21 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   if (!response.ok) {
+    if (response.status === 429) {
+      const retryAfterHeader = response.headers.get("Retry-After");
+      const retryAfterSec = retryAfterHeader
+        ? Number.parseInt(retryAfterHeader, 10)
+        : NaN;
+      const retryAfterMs =
+        Number.isFinite(retryAfterSec) && retryAfterSec > 0
+          ? retryAfterSec * 1000
+          : 60_000;
+      const message = await response.text();
+      throw new RateLimitedError(
+        message.trim() || "Rate limit exceeded",
+        retryAfterMs,
+      );
+    }
     const message = await response.text();
     throw new Error(message || `Request failed (${response.status})`);
   }

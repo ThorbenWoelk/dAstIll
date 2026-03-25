@@ -7,6 +7,7 @@
   import {
     addChannel,
     backfillChannelVideos,
+    type BackfillChannelVideosResponse,
     cleanTranscriptFormatting,
     createHighlight,
     deleteHighlight,
@@ -29,6 +30,7 @@
     updateChannel,
     updateTranscript,
     updateAcknowledged,
+    RateLimitedError,
   } from "$lib/api";
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
   import { DOCS_URL } from "$lib/app-config";
@@ -215,8 +217,16 @@
   let historyExhausted = $state(false);
   let backfillingHistory = $state(false);
   let allowLoadedVideoSyncDepthOverride = $state(false);
+  /**
+   * Default backend expensive limit is 30/min per client (`EXPENSIVE_RATE_LIMIT_PER_MINUTE`).
+   * Space POST /backfill calls so mobile auto-load does not burst 429s.
+   */
+  const MIN_BACKFILL_INTERVAL_MS = 2100;
+  let lastBackfillRequestAtMs = 0;
 
   let contentMode = $state<WorkspaceContentMode>("transcript");
+  /** Matches Tailwind `lg` (mobile-only UI). Used to avoid racing desktop channel snapshot loads. */
+  let mobileViewportMq = $state(false);
   let mobileBrowseOpen = $state(true);
   let contentText = $state("");
   let transcriptRenderMode = $state<TranscriptRenderMode>("plain_text");
@@ -447,6 +457,12 @@
       sidebarState.setSyncDepth(depth as ChannelSyncDepthState);
     } catch {
       sidebarState.setSyncDepth(null);
+    }
+  }
+
+  async function handleChannelSyncDateSaved(channelId: string) {
+    if (sidebarState.selectedChannelId === channelId) {
+      await loadSyncDepth();
     }
   }
 
@@ -883,10 +899,13 @@
       sidebarState.setChannelOrder(restored.channelOrder);
     }
 
+    const url =
+      typeof window !== "undefined" ? new URL(window.location.href) : null;
+    const videoInUrl = Boolean(url?.searchParams.get("video")?.trim());
+
     if (sidebarState.selectedVideoId) {
-      mobileBrowseOpen = false;
-    } else if (sidebarState.selectedChannelId) {
-      mobileBrowseOpen = true;
+      const showVideoPanel = !mobileViewportMq || videoInUrl;
+      mobileBrowseOpen = !showVideoPanel;
     } else {
       mobileBrowseOpen = true;
     }
@@ -914,9 +933,10 @@
       typeof window === "undefined"
     )
       return;
+    const omitVideoFromUrl = mobileViewportMq && mobileBrowseOpen;
     const nextHref = buildWorkspaceViewHref({
       selectedChannelId: sidebarState.selectedChannelId,
-      selectedVideoId: sidebarState.selectedVideoId,
+      selectedVideoId: omitVideoFromUrl ? null : sidebarState.selectedVideoId,
       contentMode,
       videoTypeFilter: sidebarState.videoTypeFilter,
       acknowledgedFilter: sidebarState.acknowledgedFilter,
@@ -947,6 +967,13 @@
   });
 
   onMount(() => {
+    const mq = window.matchMedia("(max-width: 1023px)");
+    mobileViewportMq = mq.matches;
+    const onViewportChange = () => {
+      mobileViewportMq = mq.matches;
+    };
+    mq.addEventListener("change", onViewportChange);
+
     restoreWorkspaceState();
     const unsubBrowseIntent = mobileWorkspaceBrowseIntent.subscribe(
       (wantsBrowse) => {
@@ -1041,6 +1068,7 @@
     );
 
     return () => {
+      mq.removeEventListener("change", onViewportChange);
       unsubBrowseIntent();
     };
   });
@@ -1465,19 +1493,40 @@
     errorMessage = null;
 
     try {
-      // Try to backfill a batch of 50
-      const result = await backfillChannelVideos(
-        sidebarState.selectedChannelId,
-        50,
-      );
+      const channelId = sidebarState.selectedChannelId;
+      if (!channelId) return;
 
-      // Use the explicit flag from backend to know if we hit the actual end of YouTube results
+      const throttleWait = Math.max(
+        0,
+        MIN_BACKFILL_INTERVAL_MS - (Date.now() - lastBackfillRequestAtMs),
+      );
+      if (throttleWait > 0) {
+        await new Promise((r) => setTimeout(r, throttleWait));
+      }
+
+      let result: BackfillChannelVideosResponse | undefined;
+      const maxAttempts = 12;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        lastBackfillRequestAtMs = Date.now();
+        try {
+          result = await backfillChannelVideos(channelId, 50);
+          break;
+        } catch (e) {
+          if (e instanceof RateLimitedError && attempt < maxAttempts) {
+            await new Promise((r) => setTimeout(r, e.retryAfterMs));
+            continue;
+          }
+          throw e;
+        }
+      }
+      if (!result) return;
+
       if (result.exhausted) {
         historyExhausted = true;
       }
 
-      // Load the newly added videos (if any) or just try to see if we can find more older ones
       await loadVideos(false);
+      await loadSyncDepth();
       allowLoadedVideoSyncDepthOverride = true;
       await syncEarliestDateFromLoadedVideos();
     } catch (error) {
@@ -1493,18 +1542,39 @@
    */
   async function loadAllVideosForMobileBrowse(isAborted: () => boolean) {
     const channelId = sidebarState.selectedChannelId;
-    if (!channelId || !mobileBrowseOpen) return;
+    if (!channelId || !mobileBrowseOpen || !mobileViewportMq) return;
 
-    historyExhausted = false;
+    // Wait for the initial channel snapshot (often silent) so we do not race
+    // listVideos with applyChannelSnapshot.
+    let bootWait = 0;
+    while (bootWait++ < 100 && !isAborted()) {
+      if (
+        !mobileBrowseOpen ||
+        sidebarState.selectedChannelId !== channelId ||
+        !mobileViewportMq
+      ) {
+        return;
+      }
+      const hasList = sidebarState.videos.length > 0 || !sidebarState.hasMore;
+      if (hasList) break;
+      await tick();
+      await new Promise((r) => setTimeout(r, 40));
+    }
 
     let safety = 0;
     while (safety++ < 2000 && !isAborted()) {
-      if (!mobileBrowseOpen || sidebarState.selectedChannelId !== channelId) {
+      if (
+        !mobileBrowseOpen ||
+        sidebarState.selectedChannelId !== channelId ||
+        !mobileViewportMq
+      ) {
         return;
       }
 
       while (
-        (sidebarState.loadingVideos || backfillingHistory) &&
+        (sidebarState.loadingVideos ||
+          backfillingHistory ||
+          sidebarState.refreshingChannel) &&
         !isAborted()
       ) {
         await tick();
@@ -1524,6 +1594,52 @@
       }
       await loadMoreVideos();
     }
+  }
+
+  /**
+   * After a filter change on mobile browse, fetch remaining pages from the API
+   * only (no YouTube backfill). Keeps the list complete without the long
+   * full-history pass that `loadAllVideosForMobileBrowse` runs on channel open.
+   */
+  async function loadDbPagesOnlyForMobileBrowse() {
+    const channelId = sidebarState.selectedChannelId;
+    if (!channelId || !mobileBrowseOpen || !mobileViewportMq) return;
+
+    let safety = 0;
+    while (sidebarState.hasMore && safety++ < 500) {
+      if (
+        sidebarState.selectedChannelId !== channelId ||
+        !mobileBrowseOpen ||
+        !mobileViewportMq
+      ) {
+        return;
+      }
+      while (sidebarState.loadingVideos || backfillingHistory) {
+        await tick();
+        await new Promise((r) => setTimeout(r, 30));
+      }
+      if (
+        sidebarState.selectedChannelId !== channelId ||
+        !mobileBrowseOpen ||
+        !mobileViewportMq
+      ) {
+        return;
+      }
+      if (!sidebarState.hasMore) break;
+      await loadVideos(false);
+    }
+  }
+
+  async function onBrowseVideoTypeFilterChange(nextValue: VideoTypeFilter) {
+    await sidebarState.videoActions.onVideoTypeFilterChange(nextValue);
+    await loadDbPagesOnlyForMobileBrowse();
+  }
+
+  async function onBrowseAcknowledgedFilterChange(
+    nextValue: AcknowledgedFilter,
+  ) {
+    await sidebarState.videoActions.onAcknowledgedFilterChange(nextValue);
+    await loadDbPagesOnlyForMobileBrowse();
   }
 
   async function selectVideo(
@@ -2095,13 +2211,16 @@
     };
   });
 
+  // Full paginate + backfill only when browse opens or channel changes — not on
+  // every filter tweak (that used to restart a long backfill and felt broken).
   $effect(() => {
-    if (!mobileBrowseOpen || !sidebarState.selectedChannelId) {
+    if (
+      !mobileViewportMq ||
+      !mobileBrowseOpen ||
+      !sidebarState.selectedChannelId
+    ) {
       return;
     }
-
-    void videoTypeFilter;
-    void acknowledgedFilter;
 
     let cancelled = false;
     void (async () => {
@@ -2518,6 +2637,9 @@
       await actions.onVideoTypeFilterChange("all");
       await actions.onAcknowledgedFilterChange("all");
     }
+    if (mobileBrowseOpen && mobileViewportMq) {
+      await loadDbPagesOnlyForMobileBrowse();
+    }
   }
 
   const browseFilterDisabled = $derived(
@@ -2675,6 +2797,7 @@
       videoState={sidebarState.videoState}
       videoActions={sidebarState.videoActions}
       {videoAcknowledgeSync}
+      onChannelSyncDateSaved={handleChannelSyncDateSaved}
     />
   {/snippet}
   {#snippet mobileTopBar()}
@@ -2694,10 +2817,8 @@
               videoTypeFilter={sidebarState.videoState.videoTypeFilter}
               acknowledgedFilter={sidebarState.videoState.acknowledgedFilter}
               disabled={browseFilterDisabled}
-              onSelectVideoType={sidebarState.videoActions
-                .onVideoTypeFilterChange}
-              onSelectAcknowledged={sidebarState.videoActions
-                .onAcknowledgedFilterChange}
+              onSelectVideoType={onBrowseVideoTypeFilterChange}
+              onSelectAcknowledged={onBrowseAcknowledgedFilterChange}
               onClearAllFilters={clearBrowseVideoFilters}
             />
           </div>
@@ -2784,6 +2905,7 @@
     }}
     canDeleteChannels={isOperator}
     addSourceErrorMessage={errorMessage}
+    onChannelSyncDateSaved={handleChannelSyncDateSaved}
   />
 
   <WorkspaceContentPanel

@@ -24,11 +24,12 @@ import {
   API_BASE,
   BackendUnavailableError,
   createAbortError,
+  RateLimitedError,
   request,
   resolveApiUrl,
 } from "./api-client";
 
-export { API_BASE, BackendUnavailableError };
+export { API_BASE, BackendUnavailableError, RateLimitedError };
 
 // Give the backend a small grace window to return a structured timeout response
 // before the browser-level safeguard aborts the request.

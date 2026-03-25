@@ -124,7 +124,7 @@ pub async fn list_channel_videos(
         return Err((StatusCode::NOT_FOUND, "Channel not found".to_string()));
     }
 
-    tracing::info!("video_type filter: {:?}", params.video_type);
+    tracing::debug!(video_type = ?params.video_type, "list_channel_videos filter");
     let videos = db::list_videos_by_channel(
         &state.db,
         &channel_id,

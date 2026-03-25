@@ -73,6 +73,21 @@ export async function loadChannelSnapshotWithRefresh<TSnapshot>({
   }
 }
 
+/**
+ * Stable-unique by `video.id` (first occurrence wins). Prevents duplicate keys
+ * in keyed `{#each}` when API pagination or merges return overlapping rows.
+ */
+export function dedupeVideosById(videos: Video[]): Video[] {
+  const seen = new Set<string>();
+  const out: Video[] = [];
+  for (const v of videos) {
+    if (seen.has(v.id)) continue;
+    seen.add(v.id);
+    out.push(v);
+  }
+  return out;
+}
+
 export function filterVideosByType(
   videos: Video[],
   filter: VideoTypeFilter,

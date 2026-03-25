@@ -88,9 +88,18 @@ pub async fn list_channels_with_virtual_others(store: &Store) -> Result<Vec<Chan
 /// Compute the oldest `published_at` date across fully-ready videos in a
 /// channel, using an already-loaded slice — avoids an extra S3 round-trip
 /// when the caller has already fetched the video list.
+fn channel_sync_floor(channel: &Channel) -> Option<chrono::DateTime<chrono::Utc>> {
+    if channel.earliest_sync_date_user_set {
+        channel.earliest_sync_date
+    } else {
+        None
+    }
+}
+
 fn oldest_ready_video_published_at_from_slice(
     videos: &[Video],
     channel_id: &str,
+    published_at_not_before: Option<chrono::DateTime<chrono::Utc>>,
 ) -> Option<chrono::DateTime<chrono::Utc>> {
     videos
         .iter()
@@ -99,6 +108,7 @@ fn oldest_ready_video_published_at_from_slice(
                 && v.transcript_status == ContentStatus::Ready
                 && v.summary_status == ContentStatus::Ready
         })
+        .filter(|v| published_at_not_before.map_or(true, |floor| v.published_at >= floor))
         .map(|v| v.published_at)
         .min()
 }
@@ -107,10 +117,12 @@ fn oldest_ready_video_published_at_for_scope(
     videos: &[Video],
     channel_id: &str,
     subscribed_channel_ids: &HashSet<String>,
+    published_at_not_before: Option<chrono::DateTime<chrono::Utc>>,
 ) -> Option<chrono::DateTime<chrono::Utc>> {
     videos
         .iter()
         .filter(|v| video_matches_channel_scope(v, channel_id, subscribed_channel_ids))
+        .filter(|v| published_at_not_before.map_or(true, |floor| v.published_at >= floor))
         .filter(|v| {
             v.transcript_status == ContentStatus::Ready && v.summary_status == ContentStatus::Ready
         })
@@ -125,6 +137,8 @@ struct VideoListOptions {
     is_short: Option<bool>,
     acknowledged: Option<bool>,
     queue_filter: Option<QueueFilter>,
+    /// When the user set a sync floor, hide videos published before it (matches backfill `until`).
+    published_at_not_before: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// Apply channel-scoped filtering, sorting, and pagination to a pre-loaded
@@ -141,6 +155,11 @@ async fn apply_channel_video_filters(
     let mut filtered: Vec<Video> = all_videos
         .iter()
         .filter(|v| video_matches_channel_scope(v, channel_id, subscribed_channel_ids))
+        .filter(|v| {
+            options
+                .published_at_not_before
+                .map_or(true, |floor| v.published_at >= floor)
+        })
         .filter(|v| options.is_short.is_none_or(|s| v.is_short == s))
         .filter(|v| options.acknowledged.is_none_or(|a| v.acknowledged == a))
         .filter(|v| video_visible_in_list(v, options.queue_filter))
@@ -198,12 +217,17 @@ pub async fn list_videos_by_channel(
     let all = load_all_videos(store).await?;
     let channels = super::channels::list_channels(store).await?;
     let subscribed = subscribed_channel_ids(&channels);
+    let published_at_not_before = channels
+        .iter()
+        .find(|c| c.id == channel_id)
+        .and_then(channel_sync_floor);
     let options = VideoListOptions {
         limit,
         offset,
         is_short,
         acknowledged,
         queue_filter,
+        published_at_not_before,
     };
     apply_channel_video_filters(store, &all, channel_id, &subscribed, options).await
 }
@@ -225,10 +249,15 @@ pub async fn list_video_ids_by_channel(
 
 pub async fn get_oldest_ready_video_published_at(
     store: &Store,
-    channel_id: &str,
+    channel: &Channel,
 ) -> Result<Option<chrono::DateTime<chrono::Utc>>, StoreError> {
+    let floor = channel_sync_floor(channel);
     let all = load_all_videos(store).await?;
-    Ok(oldest_ready_video_published_at_from_slice(&all, channel_id))
+    Ok(oldest_ready_video_published_at_from_slice(
+        &all,
+        &channel.id,
+        floor,
+    ))
 }
 
 pub async fn list_videos_for_queue_processing(
@@ -306,17 +335,25 @@ async fn build_channel_snapshot_data(
     store: &Store,
     channel: Channel,
     subscribed_channel_ids: &HashSet<String>,
-    options: VideoListOptions,
+    mut options: VideoListOptions,
 ) -> Result<ChannelSnapshotData, StoreError> {
     // Load all videos for the whole store once — both derived values share this slice.
     let all_videos = load_all_videos(store).await?;
 
-    let derived_earliest_ready_date =
-        oldest_ready_video_published_at_for_scope(&all_videos, &channel.id, subscribed_channel_ids);
+    let sync_floor = channel_sync_floor(&channel);
+    options.published_at_not_before = sync_floor;
+
+    let derived_earliest_ready_date = oldest_ready_video_published_at_for_scope(
+        &all_videos,
+        &channel.id,
+        subscribed_channel_ids,
+        sync_floor,
+    );
 
     let channel_video_count = all_videos
         .iter()
         .filter(|v| video_matches_channel_scope(v, &channel.id, subscribed_channel_ids))
+        .filter(|v| sync_floor.map_or(true, |floor| v.published_at >= floor))
         .count();
 
     let videos = apply_channel_video_filters(
@@ -353,6 +390,7 @@ pub async fn load_channel_snapshot_data(
         is_short,
         acknowledged,
         queue_filter,
+        published_at_not_before: None,
     };
 
     if channel_id == OTHERS_CHANNEL_ID {
@@ -398,6 +436,7 @@ pub async fn load_workspace_bootstrap_data(
         is_short,
         acknowledged,
         queue_filter,
+        published_at_not_before: None,
     };
     let subscribed = subscribed_channel_ids(
         &channels
@@ -611,7 +650,7 @@ mod tests {
             make_video("v2", "ch1", ContentStatus::Ready, ContentStatus::Ready, 5),
             make_video("v3", "ch1", ContentStatus::Ready, ContentStatus::Ready, 20),
         ];
-        let result = oldest_ready_video_published_at_from_slice(&videos, "ch1");
+        let result = oldest_ready_video_published_at_from_slice(&videos, "ch1", None);
         // v3 is oldest (20 days ago)
         assert_eq!(result, Some(videos[2].published_at));
     }
@@ -630,7 +669,7 @@ mod tests {
             // fully ready but newer
             make_video("v2", "ch1", ContentStatus::Ready, ContentStatus::Ready, 5),
         ];
-        let result = oldest_ready_video_published_at_from_slice(&videos, "ch1");
+        let result = oldest_ready_video_published_at_from_slice(&videos, "ch1", None);
         // Only v2 qualifies
         assert_eq!(result, Some(videos[1].published_at));
     }
@@ -644,13 +683,13 @@ mod tests {
             ContentStatus::Pending,
             1,
         )];
-        let result = oldest_ready_video_published_at_from_slice(&videos, "ch1");
+        let result = oldest_ready_video_published_at_from_slice(&videos, "ch1", None);
         assert_eq!(result, None);
     }
 
     #[test]
     fn oldest_ready_date_returns_none_for_empty_slice() {
-        let result = oldest_ready_video_published_at_from_slice(&[], "ch1");
+        let result = oldest_ready_video_published_at_from_slice(&[], "ch1", None);
         assert_eq!(result, None);
     }
 
@@ -662,10 +701,21 @@ mod tests {
             // ch2: newer ready video — must NOT affect ch1's result
             make_video("v2", "ch2", ContentStatus::Ready, ContentStatus::Ready, 1),
         ];
-        let result_ch1 = oldest_ready_video_published_at_from_slice(&videos, "ch1");
-        let result_ch2 = oldest_ready_video_published_at_from_slice(&videos, "ch2");
+        let result_ch1 = oldest_ready_video_published_at_from_slice(&videos, "ch1", None);
+        let result_ch2 = oldest_ready_video_published_at_from_slice(&videos, "ch2", None);
         assert_eq!(result_ch1, Some(videos[0].published_at));
         assert_eq!(result_ch2, Some(videos[1].published_at));
+    }
+
+    #[test]
+    fn oldest_ready_date_respects_sync_floor() {
+        let videos = vec![
+            make_video("v1", "ch1", ContentStatus::Ready, ContentStatus::Ready, 100),
+            make_video("v2", "ch1", ContentStatus::Ready, ContentStatus::Ready, 5),
+        ];
+        let floor = videos[1].published_at - Duration::days(1);
+        let result = oldest_ready_video_published_at_from_slice(&videos, "ch1", Some(floor));
+        assert_eq!(result, Some(videos[1].published_at));
     }
 
     // ---------------------------------------------------------------------------

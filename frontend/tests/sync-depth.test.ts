@@ -55,7 +55,7 @@ describe("resolveDisplayedSyncDepthIso", () => {
     expect(result).toBe("2026-02-08T00:00:00.000Z");
   });
 
-  it("uses the oldest loaded ready video after explicit history expansion", () => {
+  it("prefers server-derived depth over oldest in the loaded page when both exist", () => {
     const result = resolveDisplayedSyncDepthIso({
       videos: [
         createVideo("2026-02-01T00:00:00.000Z"),
@@ -63,6 +63,20 @@ describe("resolveDisplayedSyncDepthIso", () => {
       ],
       selectedChannel: createChannel(),
       syncDepth: createSyncDepth(),
+      allowLoadedVideoOverride: true,
+    });
+
+    expect(result).toBe("2026-02-08T00:00:00.000Z");
+  });
+
+  it("falls back to oldest loaded ready video when derived depth is absent", () => {
+    const result = resolveDisplayedSyncDepthIso({
+      videos: [
+        createVideo("2026-02-01T00:00:00.000Z"),
+        createVideo("2026-03-01T00:00:00.000Z"),
+      ],
+      selectedChannel: createChannel(),
+      syncDepth: createSyncDepth({ derived_earliest_ready_date: null }),
       allowLoadedVideoOverride: true,
     });
 
