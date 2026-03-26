@@ -6,6 +6,7 @@ use rig::providers::ollama;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+use tokio::time::timeout;
 use tracing::Instrument;
 
 use crate::models::AiStatus;
@@ -261,10 +262,19 @@ impl OllamaCore {
                             .await
                             .map_err(OllamaPromptError::GenerationFailed)?;
                         let agent = ollama_client.agent(fallback).preamble(preamble).build();
-                        let resp = agent
-                            .prompt(prompt)
-                            .await
-                            .map_err(OllamaPromptError::RequestFailed)?;
+                        let resp = match timeout(
+                            std::time::Duration::from_secs(CLOUD_PROMPT_TIMEOUT_SECS),
+                            agent.prompt(prompt),
+                        )
+                        .await
+                        {
+                            Ok(res) => res.map_err(OllamaPromptError::RequestFailed)?,
+                            Err(_) => {
+                                return Err(OllamaPromptError::GenerationFailed(format!(
+                                    "Ollama prompt timed out after {CLOUD_PROMPT_TIMEOUT_SECS}s"
+                                )))
+                            }
+                        };
                         (resp, fallback.to_string())
                     }
                     CooldownStatusPolicy::Offline => return Err(OllamaPromptError::NotAvailable),
@@ -275,9 +285,14 @@ impl OllamaCore {
                     .await
                     .map_err(OllamaPromptError::GenerationFailed)?;
                 let agent = ollama_client.agent(self.model()).preamble(preamble).build();
-                match agent.prompt(prompt).await {
-                    Ok(resp) => (resp, self.model().to_string()),
-                    Err(err) if is_rate_limited(&err) => {
+                match timeout(
+                    std::time::Duration::from_secs(CLOUD_PROMPT_TIMEOUT_SECS),
+                    agent.prompt(prompt),
+                )
+                .await
+                {
+                    Ok(Ok(resp)) => (resp, self.model().to_string()),
+                    Ok(Err(err)) if is_rate_limited(&err) => {
                         if is_cloud {
                             self.activate_cloud_cooldown();
                         }
@@ -301,10 +316,19 @@ impl OllamaCore {
                                     .map_err(OllamaPromptError::GenerationFailed)?;
                                 let fallback_agent =
                                     ollama_client.agent(fallback).preamble(preamble).build();
-                                let resp = fallback_agent
-                                    .prompt(prompt)
-                                    .await
-                                    .map_err(OllamaPromptError::RequestFailed)?;
+                                let resp = match timeout(
+                                    std::time::Duration::from_secs(CLOUD_PROMPT_TIMEOUT_SECS),
+                                    fallback_agent.prompt(prompt),
+                                )
+                                .await
+                                {
+                                    Ok(res) => res.map_err(OllamaPromptError::RequestFailed)?,
+                                    Err(_) => {
+                                        return Err(OllamaPromptError::GenerationFailed(format!(
+                                            "Ollama prompt timed out after {CLOUD_PROMPT_TIMEOUT_SECS}s"
+                                        )))
+                                    }
+                                };
                                 (resp, fallback.to_string())
                             }
                             CooldownStatusPolicy::Offline => {
@@ -320,7 +344,12 @@ impl OllamaCore {
                             }
                         }
                     }
-                    Err(err) => return Err(OllamaPromptError::RequestFailed(err)),
+                    Ok(Err(err)) => return Err(OllamaPromptError::RequestFailed(err)),
+                    Err(_) => {
+                        return Err(OllamaPromptError::GenerationFailed(format!(
+                            "Ollama prompt timed out after {CLOUD_PROMPT_TIMEOUT_SECS}s"
+                        )))
+                    }
                 }
             };
 

@@ -12,8 +12,8 @@ pub mod search;
 pub mod summarizer;
 pub mod summary_evaluator;
 pub mod text;
-pub mod tts;
 pub mod transcript;
+pub mod tts;
 pub mod youtube;
 
 pub use chat::{ActiveChatHandle, ChatService, SpawnReplyJob};
@@ -28,6 +28,6 @@ pub use search::SearchService;
 pub use search::SearchSourceKind;
 pub use summarizer::SummarizerService;
 pub use summary_evaluator::SummaryEvaluatorService;
-pub use tts::ElevenLabsTtsService;
 pub use transcript::TranscriptService;
+pub use tts::ElevenLabsTtsService;
 pub use youtube::YouTubeService;

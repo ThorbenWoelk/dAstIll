@@ -616,6 +616,30 @@ export function regenerateSummary(videoId: string) {
   });
 }
 
+export async function getSummaryAudio(videoId: string): Promise<Blob> {
+  let response: Response;
+  try {
+    response = await fetch(
+      resolveApiUrl(`/api/videos/${videoId}/summary/audio`),
+      {
+        cache: "no-store",
+      },
+    );
+  } catch (error) {
+    if ((error as Error).name === "AbortError") {
+      throw error;
+    }
+    throw new BackendUnavailableError();
+  }
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || `Request failed (${response.status})`);
+  }
+
+  return response.blob();
+}
+
 export function resetVideo(videoId: string) {
   return request<void>(`/api/videos/${videoId}/reset`, {
     method: "POST",

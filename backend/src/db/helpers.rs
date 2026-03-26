@@ -59,6 +59,53 @@ impl Store {
         Ok(())
     }
 
+    pub(crate) async fn get_bytes(&self, key: &str) -> Result<Option<Vec<u8>>, StoreError> {
+        let result = self
+            .s3
+            .get_object()
+            .bucket(&self.data_bucket)
+            .key(key)
+            .send()
+            .await;
+
+        match result {
+            Ok(output) => {
+                let bytes = output
+                    .body
+                    .collect()
+                    .await
+                    .map_err(|e| StoreError::S3(e.to_string()))?
+                    .into_bytes();
+                Ok(Some(bytes.to_vec()))
+            }
+            Err(err) => {
+                if err.as_service_error().is_some_and(|e| e.is_no_such_key()) {
+                    Ok(None)
+                } else {
+                    Err(StoreError::S3(format!("{err:#}")))
+                }
+            }
+        }
+    }
+
+    pub(crate) async fn put_bytes(
+        &self,
+        key: &str,
+        bytes: &[u8],
+        content_type: &str,
+    ) -> Result<(), StoreError> {
+        self.s3
+            .put_object()
+            .bucket(&self.data_bucket)
+            .key(key)
+            .body(ByteStream::from(bytes.to_vec()))
+            .content_type(content_type)
+            .send()
+            .await
+            .map_err(|e| StoreError::S3(format!("{e:#}")))?;
+        Ok(())
+    }
+
     pub(crate) async fn delete_key(&self, key: &str) -> Result<(), StoreError> {
         self.s3
             .delete_object()

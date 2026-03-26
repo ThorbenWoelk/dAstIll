@@ -5,12 +5,33 @@ use crate::services::search::SearchSourceKind;
 
 use super::{Store, StoreError};
 
+fn summary_audio_key(video_id: &str, audio_hash: &str, ext: &str) -> String {
+    format!("summary-audio/{video_id}/{audio_hash}.{ext}")
+}
+
 fn transcript_key(video_id: &str) -> String {
     format!("transcripts/{video_id}.json")
 }
 
 fn summary_key(video_id: &str) -> String {
     format!("summaries/{video_id}.json")
+}
+
+pub async fn get_summary_audio(store: &Store, key: &str) -> Result<Option<Vec<u8>>, StoreError> {
+    store.get_bytes(key).await
+}
+
+pub async fn put_summary_audio(
+    store: &Store,
+    key: &str,
+    bytes: &[u8],
+    content_type: &str,
+) -> Result<(), StoreError> {
+    store.put_bytes(key, bytes, content_type).await
+}
+
+pub fn summary_audio_cache_key(video_id: &str, audio_hash: &str, ext: &str) -> String {
+    summary_audio_key(video_id, audio_hash, ext)
 }
 
 pub async fn upsert_transcript(store: &Store, transcript: &Transcript) -> Result<(), StoreError> {

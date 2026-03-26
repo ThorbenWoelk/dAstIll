@@ -53,84 +53,178 @@ impl TranscriptService {
         let video_url = format!("https://www.youtube.com/watch?v={video_id}");
         let started_at = Instant::now();
 
-        tracing::info!(video_id = %video_id, "running summarize --extract for transcript");
+        async fn run_summarize_extract(
+            summarize_path: &str,
+            video_url: &str,
+            video_id: &str,
+            youtube_mode: &str,
+        ) -> Result<String, TranscriptError> {
+            tracing::info!(
+                video_id = %video_id,
+                youtube_mode = youtube_mode,
+                "running summarize --extract for transcript"
+            );
+            let output = tokio::task::spawn_blocking({
+                let path = summarize_path.to_string();
+                let url = video_url.to_string();
+                let youtube_mode = youtube_mode.to_string();
+                move || {
+                    Command::new(&path)
+                        .arg(&url)
+                        .arg("--youtube")
+                        .arg(&youtube_mode)
+                        .arg("--extract")
+                        .arg("--format")
+                        .arg("text")
+                        .arg("--plain")
+                        .arg("--firecrawl")
+                        .arg("off")
+                        .output()
+                }
+            })
+            .await
+            .map_err(|e| TranscriptError::CommandFailed(e.to_string()))??;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                tracing::warn!(
+                    video_id = %video_id,
+                    youtube_mode = youtube_mode,
+                    status = output.status.code().unwrap_or(-1),
+                    error_output = %stderr.trim(),
+                    "summarize transcript command failed"
+                );
+                let stderr_lower = stderr.to_lowercase();
+                if stderr_lower.contains("rate limit") || stderr_lower.contains("429") {
+                    return Err(TranscriptError::RateLimited);
+                }
+                if stderr_lower.contains("no transcript")
+                    || stderr_lower.contains("subtitles are disabled")
+                {
+                    return Err(TranscriptError::NoTranscript);
+                }
+                return Err(TranscriptError::CommandFailed(stderr.to_string()));
+            }
+
+            let raw = String::from_utf8_lossy(&output.stdout).to_string();
+
+            // summarize prefixes transcript output with "Transcript:\n"; strip it.
+            Ok(raw
+                .strip_prefix("Transcript:\n")
+                .unwrap_or(&raw)
+                .to_string())
+        }
 
         // Flags rationale:
-        // --youtube auto   explicit mode; tries captionTracks/youtubei first
+        // --youtube auto   tries captionTracks/youtubei first
         // --extract        print raw transcript and exit, no LLM summarization
         // --format text    plain text output (not markdown)
         // --plain          strip ANSI/OSC terminal formatting from stdout
         // --firecrawl off  disable web-scraping fallback that silently returns the YouTube
         //                  site-wide og:description blurb when captions are unavailable
-        let output = tokio::task::spawn_blocking({
-            let path = self.summarize_path.clone();
-            let url = video_url.clone();
-            move || {
-                Command::new(&path)
-                    .arg(&url)
-                    .arg("--youtube")
-                    .arg("auto")
-                    .arg("--extract")
-                    .arg("--format")
-                    .arg("text")
-                    .arg("--plain")
-                    .arg("--firecrawl")
-                    .arg("off")
-                    .output()
-            }
-        })
-        .await
-        .map_err(|e| TranscriptError::CommandFailed(e.to_string()))??;
+        let raw_auto = run_summarize_extract(
+            &self.summarize_path,
+            &video_url,
+            video_id,
+            "auto",
+        )
+        .await?;
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
+        if raw_auto.trim().is_empty() {
+            tracing::info!(
+                video_id = %video_id,
+                "summarize returned empty output - trying yt-dlp fallback"
+            );
+            return self.extract_with_ytdlp(video_id).await;
+        }
+
+        if is_site_wide_placeholder_description(&raw_auto) {
             tracing::warn!(
                 video_id = %video_id,
-                status = output.status.code().unwrap_or(-1),
-                error_output = %stderr.trim(),
-                "summarize transcript command failed"
+                "summarize returned YouTube site-wide blurb - trying yt-dlp fallback"
             );
-            let stderr_lower = stderr.to_lowercase();
-            if stderr_lower.contains("rate limit") || stderr_lower.contains("429") {
-                return Err(TranscriptError::RateLimited);
-            }
-            if stderr_lower.contains("no transcript")
-                || stderr_lower.contains("subtitles are disabled")
-            {
-                return Err(TranscriptError::NoTranscript);
-            }
-            return Err(TranscriptError::CommandFailed(stderr.to_string()));
-        }
-
-        let raw = String::from_utf8_lossy(&output.stdout).to_string();
-
-        // summarize prefixes transcript output with "Transcript:\n"; strip it.
-        let raw = raw
-            .strip_prefix("Transcript:\n")
-            .unwrap_or(&raw)
-            .to_string();
-
-        if raw.trim().is_empty() {
-            tracing::info!(video_id = %video_id, "summarize returned empty output - trying yt-dlp fallback");
             return self.extract_with_ytdlp(video_id).await;
         }
 
-        if is_site_wide_placeholder_description(&raw) {
-            tracing::warn!(video_id = %video_id, "summarize returned YouTube site-wide blurb - trying yt-dlp fallback");
-            return self.extract_with_ytdlp(video_id).await;
+        // `--youtube auto` can sometimes return only a tiny snippet even when captions exist.
+        // If that happens, retry with `--youtube web` and accept it unless it is still clearly
+        // truncated and yt-dlp is available (then prefer the fallback extraction).
+        if looks_like_summarize_auto_output_truncation(&raw_auto) {
+            tracing::warn!(
+                video_id = %video_id,
+                raw_chars = raw_auto.chars().count(),
+                "summarize auto output looks truncated - retrying with youtube=web"
+            );
+
+            let raw_web = run_summarize_extract(
+                &self.summarize_path,
+                &video_url,
+                video_id,
+                "web",
+            )
+            .await?;
+
+            let yt_dlp_available = std::path::Path::new(&self.ytdlp_path).exists();
+            if raw_web.trim().is_empty() || is_site_wide_placeholder_description(&raw_web) {
+                if yt_dlp_available {
+                    tracing::info!(
+                        video_id = %video_id,
+                        "summarize youtube=web retry returned empty/placeholder - trying yt-dlp fallback"
+                    );
+                    return self.extract_with_ytdlp(video_id).await;
+                }
+
+                tracing::info!(
+                    video_id = %video_id,
+                    "summarize youtube=web retry returned empty/placeholder but yt-dlp is unavailable; returning summarize=auto output"
+                );
+                let formatted = raw_auto.clone();
+                return Ok((raw_auto, formatted, Vec::new()));
+            }
+
+            if looks_like_summarize_auto_output_truncation(&raw_web) && !yt_dlp_available {
+                // In unit tests we often don't have yt-dlp installed. Prefer returning
+                // the best available summarize output over failing the transcript request.
+                let formatted = raw_web.clone();
+                tracing::info!(
+                    video_id = %video_id,
+                    elapsed_ms = started_at.elapsed().as_millis(),
+                    raw_chars = raw_web.chars().count(),
+                    "transcript extraction completed (yt-dlp unavailable, returning summarize=web output)"
+                );
+                return Ok((raw_web, formatted, Vec::new()));
+            }
+
+            if looks_like_summarize_auto_output_truncation(&raw_web) {
+                tracing::info!(
+                    video_id = %video_id,
+                    "summarize web retry still looks truncated - trying yt-dlp fallback"
+                );
+                return self.extract_with_ytdlp(video_id).await;
+            }
+
+            let formatted = raw_web.clone();
+            tracing::info!(
+                video_id = %video_id,
+                elapsed_ms = started_at.elapsed().as_millis(),
+                raw_bytes = raw_web.len(),
+                formatted_bytes = formatted.len(),
+                "transcript extraction completed (summarize youtube=web)"
+            );
+            return Ok((raw_web, formatted, Vec::new()));
         }
 
-        let formatted = raw.clone();
+        let formatted = raw_auto.clone();
         tracing::info!(
             video_id = %video_id,
             elapsed_ms = started_at.elapsed().as_millis(),
-            raw_bytes = raw.len(),
+            raw_bytes = raw_auto.len(),
             formatted_bytes = formatted.len(),
-            "transcript extraction completed"
+            "transcript extraction completed (summarize youtube=auto)"
         );
 
         // Summarize CLI path produces no timed segments.
-        Ok((raw, formatted, Vec::new()))
+        Ok((raw_auto, formatted, Vec::new()))
     }
 
     /// Fallback transcript extraction using yt-dlp with the iOS YouTube client.
@@ -281,6 +375,24 @@ fn parse_json3_transcript(content: &str) -> (String, Vec<crate::models::TimedSeg
     (plain, timed)
 }
 
+/// Heuristic for detecting summarize's `--youtube auto` failure mode.
+///
+/// Some videos return only a first-cue snippet even when captions exist, which produces
+/// transcripts that are "non-empty" but far too small to be useful.
+fn looks_like_summarize_auto_output_truncation(raw: &str) -> bool {
+    let text = raw.trim();
+    if text.is_empty() {
+        return true;
+    }
+
+    let char_count = text.chars().count();
+    let word_count = text.split_whitespace().count();
+
+    // Tuned to catch single-line/snippet failures while avoiding rejecting "normal" short
+    // transcripts.
+    char_count < 120 && word_count < 25
+}
+
 impl Default for TranscriptService {
     fn default() -> Self {
         Self::new()
@@ -428,6 +540,45 @@ mod tests {
 
         assert_eq!(raw, "Hello world.\n");
         assert!(!raw.starts_with("Transcript:"));
+    }
+
+    #[tokio::test]
+    async fn extract_retries_with_youtube_web_when_summarize_auto_output_truncates() {
+        let dir = tempdir().expect("temp dir should be created");
+        let script_path = dir.path().join("fake_summarize.sh");
+
+        // Simulate summarize's `--youtube auto` returning only a tiny snippet, while
+        // `--youtube web` returns a longer transcript.
+        let script = r#"#!/bin/sh
+set -eu
+if echo "$*" | grep -q "youtube auto"; then
+  printf 'Transcript:\nSup nerds we got things to discuss.\n'
+else
+  printf 'Transcript:\nThis is a full transcript extracted via youtube web mode with enough words to avoid our short-snippet heuristic. It continues with additional lines for robust extraction.\n'
+fi
+"#;
+        fs::write(&script_path, script).expect("script should be written");
+        let mut perms = fs::metadata(&script_path)
+            .expect("metadata should be readable")
+            .permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&script_path, perms).expect("script should be executable");
+
+        let service = TranscriptService::with_path(
+            script_path.to_str().expect("script path should be utf-8"),
+        );
+
+        let (raw, _formatted, _timed) = service
+            .extract("abc123def45")
+            .await
+            .expect("extract should succeed");
+
+        assert!(
+            raw.contains("full transcript extracted via youtube web mode"),
+            "expected youtube=web transcript, got: {raw}"
+        );
+        assert!(!raw.contains("Sup nerds we got things to discuss."), "should not keep the truncated auto snippet");
+        assert!(!raw.starts_with("Transcript:"), "header should be stripped");
     }
 
     #[tokio::test]

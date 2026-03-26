@@ -8,12 +8,12 @@ use crate::db::Store;
 use crate::read_cache::ReadCache;
 use crate::search_progress::SearchProgress;
 use crate::security::RequestRateLimiter;
+use crate::services::ElevenLabsTtsService;
 use crate::services::{
     ActiveChatHandle, ChatService, CloudCooldown, DatabricksSqlService, FtsIndex, SearchService,
     SummarizerService, SummaryEvaluatorService, TranscriptCooldown, TranscriptService,
     YouTubeQuotaCooldown, YouTubeService,
 };
-use crate::services::ElevenLabsTtsService;
 
 #[derive(Clone)]
 pub struct AppState {

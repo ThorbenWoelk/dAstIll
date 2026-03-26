@@ -50,7 +50,7 @@ pub struct DatabricksRuntimeConfig {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ElevenLabsTtsRuntimeConfig {
     pub api_key: String,
-    pub voice_id: String,
+    pub voice_id: Option<String>,
     pub model_id: String,
     pub output_format: String,
 }
@@ -171,7 +171,7 @@ impl ElevenLabsTtsRuntimeConfig {
             return Ok(None);
         }
 
-        let voice_id = required_env("ELEVENLABS_TTS_VOICE_ID")?;
+        let voice_id = optional_env("ELEVENLABS_TTS_VOICE_ID");
         let model_id = optional_env("ELEVENLABS_TTS_MODEL_ID")
             .unwrap_or_else(|| "eleven_flash_v2_5".to_string());
         let output_format = optional_env("ELEVENLABS_TTS_OUTPUT_FORMAT")

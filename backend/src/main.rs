@@ -466,6 +466,20 @@ async fn main() -> anyhow::Result<()> {
         )
         .route("/api/videos/{id}/summary", get(content::get_summary))
         .route(
+            "/api/videos/{id}/summary/audio",
+            get(content::get_summary_audio).layer(middleware::from_fn_with_state(
+                state.clone(),
+                enforce_expensive_rate_limit,
+            )),
+        )
+        .route(
+            "/api/videos/{id}/summary/audio/debug",
+            get(content::get_summary_audio_debug).layer(middleware::from_fn_with_state(
+                state.clone(),
+                enforce_expensive_rate_limit,
+            )),
+        )
+        .route(
             "/api/videos/{id}/summary/ensure",
             post(content::generate_summary).layer(middleware::from_fn_with_state(
                 state.clone(),
