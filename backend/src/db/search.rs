@@ -1,7 +1,6 @@
 use aws_smithy_types::Document;
 
 use crate::models::{ContentStatus, Summary, Transcript, Video};
-use crate::search_query::meaningful_search_terms;
 use crate::services::search::{SearchCandidate, SearchIndexChunk, SearchSourceKind};
 
 use super::{
@@ -158,6 +157,7 @@ pub async fn mark_search_source_failed(
 pub async fn replace_search_chunks(
     store: &Store,
     video_id: &str,
+    channel_id: &str,
     source_kind: SearchSourceKind,
     content_hash: &str,
     embedding_model: Option<&str>,
@@ -179,6 +179,8 @@ pub async fn replace_search_chunks(
         source_kind: &'a str,
         section_title: Option<&'a str>,
         chunk_text: &'a str,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        start_sec: Option<f32>,
     }
 
     let mut put_batch: Vec<aws_sdk_s3vectors::types::PutInputVector> = Vec::new();
@@ -206,6 +208,7 @@ pub async fn replace_search_chunks(
                     source_kind: source_kind.as_str(),
                     section_title: chunk.section_title.as_deref(),
                     chunk_text: &chunk.chunk_text,
+                    start_sec: chunk.start_sec,
                 },
             )
             .await?;
@@ -213,6 +216,7 @@ pub async fn replace_search_chunks(
         let chunk_text_clamped: String = chunk.chunk_text.chars().take(30_000).collect();
         let mut meta_entries: Vec<(&str, Document)> = vec![
             ("video_id", Document::String(video_id.to_string())),
+            ("channel_id", Document::String(channel_id.to_string())),
             (
                 "source_kind",
                 Document::String(source_kind.as_str().to_string()),
@@ -231,6 +235,12 @@ pub async fn replace_search_chunks(
         ];
         if let Some(ref title) = chunk.section_title {
             meta_entries.push(("section_title", Document::String(title.clone())));
+        }
+        if let Some(sec) = chunk.start_sec {
+            meta_entries.push((
+                "start_sec",
+                Document::Number(aws_smithy_types::Number::Float(sec as f64)),
+            ));
         }
 
         let put_vector = aws_sdk_s3vectors::types::PutInputVector::builder()
@@ -366,17 +376,26 @@ pub async fn load_search_material(
         .map(|c| c.name)
         .unwrap_or_default();
 
-    let content = match source_kind {
-        SearchSourceKind::Transcript if video.transcript_status == ContentStatus::Ready => store
-            .get_json::<Transcript>(&format!("transcripts/{video_id}.json"))
-            .await?
-            .and_then(|t| t.raw_text.or(t.formatted_markdown))
-            .unwrap_or_default(),
-        SearchSourceKind::Summary if video.summary_status == ContentStatus::Ready => store
-            .get_json::<Summary>(&format!("summaries/{video_id}.json"))
-            .await?
-            .map(|s| s.content)
-            .unwrap_or_default(),
+    let (content, timed_segments) = match source_kind {
+        SearchSourceKind::Transcript if video.transcript_status == ContentStatus::Ready => {
+            let transcript = store
+                .get_json::<Transcript>(&format!("transcripts/{video_id}.json"))
+                .await?;
+            let text = transcript
+                .as_ref()
+                .and_then(|t| t.raw_text.clone().or_else(|| t.formatted_markdown.clone()))
+                .unwrap_or_default();
+            let timed = transcript.and_then(|t| t.timed_text);
+            (text, timed)
+        }
+        SearchSourceKind::Summary if video.summary_status == ContentStatus::Ready => {
+            let content = store
+                .get_json::<Summary>(&format!("summaries/{video_id}.json"))
+                .await?
+                .map(|s| s.content)
+                .unwrap_or_default();
+            (content, None)
+        }
         _ => return Ok(None),
     };
 
@@ -387,10 +406,13 @@ pub async fn load_search_material(
 
     Ok(Some(SearchMaterial {
         video_id: video_id.to_string(),
+        channel_id: video.channel_id.clone(),
         channel_name,
         video_title: video.title,
+        published_at: video.published_at.to_rfc3339(),
         source_kind,
         content,
+        timed_segments,
     }))
 }
 
@@ -530,12 +552,7 @@ pub async fn search_vector_candidates(
         return Ok(Vec::new());
     }
 
-    // Over-fetch to compensate for client-side channel_id filtering
-    let top_k = if channel_id.is_some() {
-        (limit * 3).clamp(10, 100)
-    } else {
-        limit.clamp(1, 100)
-    };
+    let top_k = limit.clamp(1, 100);
 
     let mut req = store
         .s3v
@@ -546,16 +563,21 @@ pub async fn search_vector_candidates(
         .top_k(top_k as i32)
         .return_metadata(true);
 
-    // Server-side filter on source_kind (filterable metadata)
+    // Server-side filters on filterable metadata fields.
+    // channel_id was added to metadata in a later release - old vectors without it
+    // will be excluded by this filter until re-indexed (acceptable transition behaviour).
+    let mut filter_map = std::collections::HashMap::new();
     if let Some(kind) = source_kind {
-        req = req.filter(Document::Object(
-            [(
-                "source_kind".to_string(),
-                Document::String(kind.as_str().to_string()),
-            )]
-            .into_iter()
-            .collect(),
-        ));
+        filter_map.insert(
+            "source_kind".to_string(),
+            Document::String(kind.as_str().to_string()),
+        );
+    }
+    if let Some(cid) = channel_id {
+        filter_map.insert("channel_id".to_string(), Document::String(cid.to_string()));
+    }
+    if !filter_map.is_empty() {
+        req = req.filter(Document::Object(filter_map));
     }
 
     let vectors = match req.send().await {
@@ -604,13 +626,18 @@ pub async fn search_vector_candidates(
         let vid = get_doc_string(meta, "video_id").unwrap_or_default();
         let sk = get_doc_string(meta, "source_kind").unwrap_or_default();
 
-        let video = video_map.get(&vid);
-        if channel_id.is_some_and(|f| video.is_none_or(|v| v.channel_id != f)) {
+        let Some(video) = video_map.get(&vid) else {
             continue;
-        }
-
-        let Some(video) = video else { continue };
+        };
         let ch = channel_map.get(&video.channel_id);
+
+        let start_sec = match meta {
+            Document::Object(map) => map.get("start_sec").and_then(|d| match d {
+                Document::Number(n) => Some(n.to_f64_lossy() as f32),
+                _ => None,
+            }),
+            _ => None,
+        };
 
         candidates.push(SearchCandidate {
             chunk_id: v.key.clone(),
@@ -622,6 +649,7 @@ pub async fn search_vector_candidates(
             section_title: get_doc_string(meta, "section_title"),
             chunk_text: get_doc_string(meta, "chunk_text").unwrap_or_default(),
             published_at: video.published_at.to_rfc3339(),
+            start_sec,
         });
 
         if candidates.len() >= limit {
@@ -629,132 +657,6 @@ pub async fn search_vector_candidates(
         }
     }
     Ok(candidates)
-}
-
-pub async fn search_fts_candidates(
-    store: &Store,
-    query: &str,
-    _embedding_model: Option<&str>,
-    source_kind: Option<SearchSourceKind>,
-    channel_id: Option<&str>,
-    limit: usize,
-) -> Result<Vec<SearchCandidate>, StoreError> {
-    use crate::services::search::extract_keyword_snippet;
-
-    let query_tokens = meaningful_search_terms(query);
-    if query_tokens.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    #[derive(serde::Deserialize)]
-    struct ChunkData {
-        video_id: String,
-        source_kind: String,
-        section_title: Option<String>,
-        chunk_text: String,
-    }
-
-    let chunk_keys = store.list_keys("search-chunks/").await?;
-
-    // Fetch all chunks concurrently instead of sequentially
-    const MAX_CONCURRENT_FETCHES: usize = 24;
-    let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_FETCHES));
-    let mut set = tokio::task::JoinSet::new();
-
-    for chunk_key in chunk_keys {
-        let store = store.clone();
-        let sem = semaphore.clone();
-        set.spawn(async move {
-            let _permit = sem.acquire_owned().await.ok();
-            store
-                .get_json::<ChunkData>(&chunk_key)
-                .await
-                .map(|opt| opt.map(|chunk| (chunk_key, chunk)))
-        });
-    }
-
-    let mut all_chunks: Vec<(String, ChunkData)> = Vec::new();
-    while let Some(result) = set.join_next().await {
-        match result {
-            Ok(Ok(Some(entry))) => all_chunks.push(entry),
-            Ok(Ok(None)) => {}
-            Ok(Err(err)) => return Err(err),
-            Err(_) => {}
-        }
-    }
-
-    // Score and filter chunks by query token matches
-    let mut video_cache: std::collections::HashMap<String, Option<Video>> =
-        std::collections::HashMap::new();
-    let mut channel_cache: std::collections::HashMap<String, crate::models::Channel> =
-        std::collections::HashMap::new();
-    let mut scored: Vec<(SearchCandidate, usize)> = Vec::new();
-
-    for (chunk_key, chunk) in all_chunks {
-        if source_kind.is_some_and(|f| chunk.source_kind != f.as_str()) {
-            continue;
-        }
-
-        let text_lower = chunk.chunk_text.to_lowercase();
-        let match_count = query_tokens
-            .iter()
-            .filter(|t| text_lower.contains(t.as_str()))
-            .count();
-        if match_count == 0 {
-            continue;
-        }
-
-        let video = match video_cache.entry(chunk.video_id.clone()) {
-            std::collections::hash_map::Entry::Occupied(e) => e.get().clone(),
-            std::collections::hash_map::Entry::Vacant(e) => {
-                let v = super::videos::get_video(store, &chunk.video_id, false).await?;
-                e.insert(v.clone());
-                v
-            }
-        };
-
-        let Some(video) = video else { continue };
-        if channel_id.is_some_and(|f| video.channel_id != f) {
-            continue;
-        }
-
-        if !channel_cache.contains_key(&video.channel_id) {
-            if let Some(ch) = store
-                .get_json::<crate::models::Channel>(&format!("channels/{}.json", video.channel_id))
-                .await?
-            {
-                channel_cache.insert(ch.id.clone(), ch);
-            }
-        }
-        let ch = channel_cache.get(&video.channel_id);
-
-        let chunk_id = chunk_key
-            .strip_prefix("search-chunks/")
-            .and_then(|s| s.strip_suffix(".json"))
-            .unwrap_or(&chunk_key)
-            .to_string();
-
-        let snippet = extract_keyword_snippet(&chunk.chunk_text, &query_tokens);
-
-        scored.push((
-            SearchCandidate {
-                chunk_id,
-                video_id: chunk.video_id,
-                channel_id: video.channel_id.clone(),
-                channel_name: ch.map(|c| c.name.clone()).unwrap_or_default(),
-                video_title: video.title.clone(),
-                source_kind: SearchSourceKind::from_db_value(&chunk.source_kind),
-                section_title: chunk.section_title,
-                chunk_text: snippet,
-                published_at: video.published_at.to_rfc3339(),
-            },
-            match_count,
-        ));
-    }
-
-    scored.sort_by(|a, b| b.1.cmp(&a.1));
-    scored.truncate(limit);
-    Ok(scored.into_iter().map(|(c, _)| c).collect())
 }
 
 pub async fn search_exact_global_candidates(

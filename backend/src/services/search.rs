@@ -17,6 +17,10 @@ pub use crate::services::fusion::SEARCH_RRF_K;
 pub use crate::services::fusion::fuse_ranked_matches;
 const SEARCH_EMBED_BATCH_SIZE: usize = 8;
 const SEARCH_EMBED_REQUEST_TIMEOUT: Duration = Duration::from_secs(90);
+const SEARCH_RERANK_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+const SEARCH_HYDE_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+/// Maximum candidates passed to the cross-encoder reranker per request.
+const SEARCH_RERANK_MAX_CANDIDATES: usize = 50;
 const MAX_ERROR_DETAIL_CHARS: usize = 240;
 const MAX_SNIPPET_CHARS: usize = 420;
 
@@ -44,13 +48,15 @@ impl SearchSourceKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ChunkDraft {
     pub source_kind: SearchSourceKind,
     pub section_title: Option<String>,
     pub text: String,
     pub word_count: usize,
     pub is_full_document: bool,
+    /// Start position in the video (seconds). Only present for timed transcript chunks.
+    pub start_sec: Option<f32>,
 }
 
 #[derive(Debug, Clone)]
@@ -60,6 +66,8 @@ pub struct SearchIndexChunk {
     pub chunk_text: String,
     pub embedding_json: Option<String>,
     pub token_count: usize,
+    /// Start position in the video (seconds). Only present for timed transcript chunks.
+    pub start_sec: Option<f32>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -73,6 +81,8 @@ pub struct SearchCandidate {
     pub section_title: Option<String>,
     pub chunk_text: String,
     pub published_at: String,
+    /// Start position in the video (seconds). Only present for timed transcript chunks.
+    pub start_sec: Option<f32>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -101,6 +111,10 @@ pub struct SearchService {
     client: Client,
     base_url: String,
     model: Option<String>,
+    /// Optional cross-encoder reranker model (Ollama `/api/rerank`).
+    rerank_model: Option<String>,
+    /// Optional generative model for HyDE passage synthesis (Ollama `/api/generate`).
+    hyde_model: Option<String>,
     api_key: Option<String>,
     dimensions: usize,
     semantic_enabled: bool,
@@ -118,6 +132,8 @@ impl SearchService {
             client: build_http_client(),
             base_url: base_url.to_string(),
             model: model.map(str::to_string),
+            rerank_model: None,
+            hyde_model: None,
             api_key: None,
             dimensions,
             semantic_enabled,
@@ -136,11 +152,23 @@ impl SearchService {
             client,
             base_url: base_url.to_string(),
             model: model.map(str::to_string),
+            rerank_model: None,
+            hyde_model: None,
             api_key: None,
             dimensions,
             semantic_enabled,
             ollama_semaphore: None,
         }
+    }
+
+    pub fn with_rerank_model(mut self, model: Option<String>) -> Self {
+        self.rerank_model = model;
+        self
+    }
+
+    pub fn with_hyde_model(mut self, model: Option<String>) -> Self {
+        self.hyde_model = model;
+        self
     }
 
     pub fn with_ollama_semaphore(mut self, semaphore: std::sync::Arc<Semaphore>) -> Self {
@@ -166,6 +194,14 @@ impl SearchService {
 
     pub fn model_label(&self) -> &str {
         self.model.as_deref().unwrap_or("disabled")
+    }
+
+    pub fn rerank_model(&self) -> Option<&str> {
+        self.rerank_model.as_deref()
+    }
+
+    pub fn hyde_model(&self) -> Option<&str> {
+        self.hyde_model.as_deref()
     }
 
     pub fn dimensions(&self) -> usize {
@@ -298,6 +334,132 @@ impl SearchService {
         Ok(payload.embeddings)
     }
 
+    /// Re-rank candidates using a cross-encoder model via Ollama `/api/rerank`.
+    /// Falls back to the original order if the reranker is not configured or the call fails.
+    pub async fn rerank_candidates(
+        &self,
+        query: &str,
+        candidates: Vec<SearchCandidate>,
+    ) -> Result<Vec<SearchCandidate>, SearchError> {
+        let Some(model) = self.rerank_model.as_ref() else {
+            return Ok(candidates);
+        };
+        if candidates.len() <= 1 {
+            return Ok(candidates);
+        }
+
+        let top: Vec<SearchCandidate> = candidates
+            .into_iter()
+            .take(SEARCH_RERANK_MAX_CANDIDATES)
+            .collect();
+        let documents: Vec<String> = top.iter().map(|c| c.chunk_text.clone()).collect();
+
+        let _permit = self.acquire_local_permit().await?;
+        let response = self
+            .auth(
+                self.client
+                    .post(format!("{}/api/rerank", self.base_url))
+                    .timeout(SEARCH_RERANK_REQUEST_TIMEOUT)
+                    .json(&RerankRequest {
+                        model: model.as_str(),
+                        query,
+                        documents: &documents,
+                    }),
+            )
+            .send()
+            .await
+            .map_err(|err| SearchError::Request(err.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let detail = response
+                .text()
+                .await
+                .ok()
+                .map(|t| limit_error_detail(&t))
+                .filter(|t| !t.is_empty());
+            return Err(SearchError::Request(match detail {
+                Some(d) => format!("Ollama rerank request failed ({status}): {d}"),
+                None => format!("Ollama rerank request failed ({status})"),
+            }));
+        }
+
+        let payload = response
+            .json::<RerankResponse>()
+            .await
+            .map_err(|err| SearchError::InvalidResponse(err.to_string()))?;
+
+        let mut scored: Vec<(usize, f32)> = payload
+            .results
+            .into_iter()
+            .map(|r| (r.index, r.relevance_score))
+            .collect();
+        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        Ok(scored
+            .into_iter()
+            .filter_map(|(idx, _)| top.get(idx).cloned())
+            .collect())
+    }
+
+    /// Generate a hypothetical document passage for HyDE using Ollama `/api/generate`.
+    /// Short queries (≤4 meaningful tokens) benefit from a richer embedding target.
+    pub async fn generate_hyde_passage(&self, query: &str) -> Result<String, SearchError> {
+        let Some(model) = self.hyde_model.as_ref() else {
+            return Err(SearchError::Request(
+                "HyDE model not configured".to_string(),
+            ));
+        };
+
+        let prompt = format!(
+            "Write a concise 2-3 sentence passage that directly answers: \"{query}\". \
+             Be specific. Output only the passage, nothing else."
+        );
+
+        let _permit = self.acquire_local_permit().await?;
+        let response = self
+            .auth(
+                self.client
+                    .post(format!("{}/api/generate", self.base_url))
+                    .timeout(SEARCH_HYDE_REQUEST_TIMEOUT)
+                    .json(&HydeRequest {
+                        model: model.as_str(),
+                        prompt: &prompt,
+                        stream: false,
+                    }),
+            )
+            .send()
+            .await
+            .map_err(|err| SearchError::Request(err.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let detail = response
+                .text()
+                .await
+                .ok()
+                .map(|t| limit_error_detail(&t))
+                .filter(|t| !t.is_empty());
+            return Err(SearchError::Request(match detail {
+                Some(d) => format!("Ollama HyDE request failed ({status}): {d}"),
+                None => format!("Ollama HyDE request failed ({status})"),
+            }));
+        }
+
+        let payload = response
+            .json::<HydeResponse>()
+            .await
+            .map_err(|err| SearchError::InvalidResponse(err.to_string()))?;
+
+        let passage = payload.response.trim().to_string();
+        if passage.is_empty() {
+            return Err(SearchError::InvalidResponse(
+                "HyDE generated empty passage".to_string(),
+            ));
+        }
+        Ok(passage)
+    }
+
     async fn acquire_local_permit(&self) -> Result<Option<OwnedSemaphorePermit>, SearchError> {
         match &self.ollama_semaphore {
             Some(semaphore) => semaphore
@@ -334,6 +496,36 @@ struct TagsModel {
     name: String,
 }
 
+#[derive(Debug, Serialize)]
+struct RerankRequest<'a> {
+    model: &'a str,
+    query: &'a str,
+    documents: &'a [String],
+}
+
+#[derive(Debug, Deserialize)]
+struct RerankResult {
+    index: usize,
+    relevance_score: f32,
+}
+
+#[derive(Debug, Deserialize)]
+struct RerankResponse {
+    results: Vec<RerankResult>,
+}
+
+#[derive(Debug, Serialize)]
+struct HydeRequest<'a> {
+    model: &'a str,
+    prompt: &'a str,
+    stream: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct HydeResponse {
+    response: String,
+}
+
 pub fn hash_search_content(content: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(content.trim().as_bytes());
@@ -352,6 +544,7 @@ pub fn chunk_summary_content(content: &str, target_words: usize) -> Vec<ChunkDra
         text: normalized.clone(),
         word_count: count_words(&normalized),
         is_full_document: true,
+        start_sec: None,
     }];
 
     let sections = parse_markdown_sections(content);
@@ -372,6 +565,7 @@ pub fn chunk_summary_content(content: &str, target_words: usize) -> Vec<ChunkDra
                 text: normalized_body,
                 word_count: count_words(&body),
                 is_full_document: false,
+                start_sec: None,
             });
             continue;
         }
@@ -383,6 +577,7 @@ pub fn chunk_summary_content(content: &str, target_words: usize) -> Vec<ChunkDra
                 word_count: count_words(&segment),
                 text: segment,
                 is_full_document: false,
+                start_sec: None,
             });
         }
     }
@@ -394,7 +589,12 @@ pub fn chunk_transcript_content(
     content: &str,
     target_words: usize,
     overlap_words: usize,
+    timed_segments: Option<&[crate::models::TimedSegment]>,
 ) -> Vec<ChunkDraft> {
+    if let Some(segments) = timed_segments.filter(|s| !s.is_empty()) {
+        return chunk_transcript_timed(segments, target_words, overlap_words);
+    }
+
     let paragraphs = split_paragraphs(content);
     let chunks = if paragraphs.is_empty() {
         let normalized = normalize_source_text(content);
@@ -415,8 +615,90 @@ pub fn chunk_transcript_content(
             word_count: count_words(&text),
             text,
             is_full_document: false,
+            start_sec: None,
         })
         .collect()
+}
+
+/// Group timed caption segments into chunks by word-count target.
+/// Each chunk's `start_sec` is the start of its first segment.
+/// An overlap tail from the previous chunk is prepended (using that chunk's start_sec).
+pub fn chunk_transcript_timed(
+    segments: &[crate::models::TimedSegment],
+    target_words: usize,
+    overlap_words: usize,
+) -> Vec<ChunkDraft> {
+    if segments.is_empty() {
+        return Vec::new();
+    }
+
+    let mut chunks: Vec<ChunkDraft> = Vec::new();
+    let mut current_words: Vec<&str> = Vec::new();
+    let mut current_start_sec: Option<f32> = None;
+    let mut overlap_tail: Vec<String> = Vec::new();
+    let mut overlap_start_sec: Option<f32> = None;
+
+    for segment in segments {
+        let seg_words: Vec<&str> = segment.text.split_whitespace().collect();
+        if seg_words.is_empty() {
+            continue;
+        }
+
+        // When adding this segment would exceed the target, flush first.
+        if !current_words.is_empty() && current_words.len() + seg_words.len() > target_words {
+            let text = if overlap_tail.is_empty() {
+                current_words.join(" ")
+            } else {
+                format!("{} {}", overlap_tail.join(" "), current_words.join(" "))
+            };
+            let start = overlap_start_sec.or(current_start_sec);
+            chunks.push(ChunkDraft {
+                source_kind: SearchSourceKind::Transcript,
+                section_title: None,
+                word_count: count_words(&text),
+                text,
+                is_full_document: false,
+                start_sec: start,
+            });
+
+            // Build overlap from end of current chunk.
+            let all_words: Vec<String> = current_words.iter().map(|w| w.to_string()).collect();
+            overlap_tail = if overlap_words > 0 {
+                let start_idx = all_words.len().saturating_sub(overlap_words);
+                all_words[start_idx..].to_vec()
+            } else {
+                Vec::new()
+            };
+            overlap_start_sec = current_start_sec;
+            current_words.clear();
+            current_start_sec = None;
+        }
+
+        if current_start_sec.is_none() {
+            current_start_sec = Some(segment.start_sec);
+        }
+        current_words.extend(seg_words);
+    }
+
+    // Flush remaining words.
+    if !current_words.is_empty() {
+        let text = if overlap_tail.is_empty() {
+            current_words.join(" ")
+        } else {
+            format!("{} {}", overlap_tail.join(" "), current_words.join(" "))
+        };
+        let start = overlap_start_sec.or(current_start_sec);
+        chunks.push(ChunkDraft {
+            source_kind: SearchSourceKind::Transcript,
+            section_title: None,
+            word_count: count_words(&text),
+            text,
+            is_full_document: false,
+            start_sec: start,
+        });
+    }
+
+    chunks
 }
 
 pub fn vector_to_json(embedding: &[f32]) -> String {
@@ -815,7 +1097,7 @@ mod tests {
         ]
         .join("\n\n");
 
-        let chunks = chunk_transcript_content(&transcript, 12, 4);
+        let chunks = chunk_transcript_content(&transcript, 12, 4, None);
 
         assert!(chunks.len() >= 2);
         assert_eq!(chunks[0].source_kind, SearchSourceKind::Transcript);
@@ -831,7 +1113,7 @@ mod tests {
     fn chunk_transcript_content_respects_explicit_paragraph_breaks() {
         let transcript = "Alpha beta gamma delta.\n\nSecond paragraph starts here today.";
 
-        let chunks = chunk_transcript_content(transcript, 5, 0);
+        let chunks = chunk_transcript_content(transcript, 5, 0, None);
 
         assert_eq!(chunks.len(), 2);
         assert_eq!(chunks[0].text, "Alpha beta gamma delta.");

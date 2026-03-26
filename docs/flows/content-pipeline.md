@@ -47,10 +47,11 @@ Inserted videos begin with transcript and summary lifecycle states that the queu
 
 The queue worker decides transcript work first whenever a video is missing a ready transcript.
 
-Transcript extraction uses the external `summarize` CLI:
+Transcript extraction starts with the external `summarize` CLI to extract plain transcript text (and a formatted transcript representation).
 
-- markdown transcript via `--extract --format md`
-- raw transcript text via `--extract --format txt`
+When `summarize` returns empty output (or a placeholder blurb), the backend falls back to `yt-dlp` using the `json3` subtitle format to extract timed caption events.
+
+Those timed events are parsed into `TimedSegment[]` and later stored as optional `start_sec` on transcript chunks for timestamp-aware search metadata.
 
 On success:
 

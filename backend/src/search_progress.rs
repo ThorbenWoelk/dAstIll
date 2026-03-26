@@ -318,6 +318,7 @@ fn count_chunks(content: &str, source_kind: SearchSourceKind) -> usize {
             content,
             SEARCH_TRANSCRIPT_TARGET_WORDS,
             SEARCH_TRANSCRIPT_OVERLAP_WORDS,
+            None,
         )
         .len(),
         SearchSourceKind::Summary => {
@@ -396,11 +397,14 @@ mod tests {
         let progress = SearchProgress::new(Some("qwen3-embedding"), 512, true);
         let material = SearchMaterial {
             video_id: "video-1".to_string(),
+            channel_id: "channel-1".to_string(),
             channel_name: "Channel".to_string(),
             video_title: "Title".to_string(),
+            published_at: "2026-01-01T00:00:00Z".to_string(),
             source_kind: SearchSourceKind::Summary,
             content: "# Overview\n\nSemantic search keeps related matches discoverable."
                 .to_string(),
+            timed_segments: None,
         };
 
         progress

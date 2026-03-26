@@ -44,8 +44,12 @@ impl TranscriptService {
     }
 
     /// Extract transcript from a YouTube video using the summarize CLI.
-    /// Returns (raw_text, formatted_markdown).
-    pub async fn extract(&self, video_id: &str) -> Result<(String, String), TranscriptError> {
+    /// Returns (raw_text, formatted_markdown, timed_segments).
+    /// Timed segments are only populated by the yt-dlp fallback path.
+    pub async fn extract(
+        &self,
+        video_id: &str,
+    ) -> Result<(String, String, Vec<crate::models::TimedSegment>), TranscriptError> {
         let video_url = format!("https://www.youtube.com/watch?v={video_id}");
         let started_at = Instant::now();
 
@@ -125,7 +129,8 @@ impl TranscriptService {
             "transcript extraction completed"
         );
 
-        Ok((raw, formatted))
+        // Summarize CLI path produces no timed segments.
+        Ok((raw, formatted, Vec::new()))
     }
 
     /// Fallback transcript extraction using yt-dlp with the iOS YouTube client.
@@ -135,7 +140,7 @@ impl TranscriptService {
     async fn extract_with_ytdlp(
         &self,
         video_id: &str,
-    ) -> Result<(String, String), TranscriptError> {
+    ) -> Result<(String, String, Vec<crate::models::TimedSegment>), TranscriptError> {
         if !std::path::Path::new(&self.ytdlp_path).exists() {
             tracing::debug!(
                 video_id = %video_id,
@@ -200,14 +205,19 @@ impl TranscriptService {
             return Err(TranscriptError::NoTranscript);
         }
 
-        let raw = parse_json3_transcript(&json3_content);
+        let (raw, timed) = parse_json3_transcript(&json3_content);
         if raw.trim().is_empty() {
             tracing::info!(video_id = %video_id, "yt-dlp json3 parsed to empty text");
             return Err(TranscriptError::NoTranscript);
         }
 
-        tracing::info!(video_id = %video_id, bytes = raw.len(), "yt-dlp transcript extracted");
-        Ok((raw.clone(), raw))
+        tracing::info!(
+            video_id = %video_id,
+            bytes = raw.len(),
+            timed_segments = timed.len(),
+            "yt-dlp transcript extracted"
+        );
+        Ok((raw.clone(), raw, timed))
     }
 
     /// Check if summarize CLI is available.
@@ -216,34 +226,59 @@ impl TranscriptService {
     }
 }
 
-/// Parse YouTube's json3 subtitle format into plain text.
-/// Each event's `segs` contain unique new text (no rolling-window duplication).
-fn parse_json3_transcript(content: &str) -> String {
+/// Parse YouTube's json3 subtitle format into (plain_text, timed_segments).
+/// Each event has `tStartMs` (start time in milliseconds) and `segs` (text segments).
+/// Timed segments use the event's start time; events without `tStartMs` are included
+/// in the plain text but omitted from the timed list.
+fn parse_json3_transcript(content: &str) -> (String, Vec<crate::models::TimedSegment>) {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(content) else {
-        return String::new();
+        return (String::new(), Vec::new());
     };
     let Some(events) = value["events"].as_array() else {
-        return String::new();
+        return (String::new(), Vec::new());
     };
-    let mut parts: Vec<String> = Vec::new();
+
+    let mut plain_parts: Vec<String> = Vec::new();
+    let mut timed: Vec<crate::models::TimedSegment> = Vec::new();
+
     for event in events {
+        let start_ms = event["tStartMs"].as_f64();
+        let mut event_words: Vec<String> = Vec::new();
+
         if let Some(segs) = event["segs"].as_array() {
             for seg in segs {
                 if let Some(utf8) = seg["utf8"].as_str() {
                     let text = utf8.replace('\n', " ");
-                    let text = text.trim();
+                    let text = text.trim().to_string();
                     if !text.is_empty() {
-                        parts.push(text.to_string());
+                        event_words.push(text);
                     }
                 }
             }
         }
+
+        if event_words.is_empty() {
+            continue;
+        }
+
+        let event_text = event_words.join(" ");
+        plain_parts.push(event_text.clone());
+
+        if let Some(ms) = start_ms {
+            timed.push(crate::models::TimedSegment {
+                start_sec: (ms / 1000.0) as f32,
+                text: event_text,
+            });
+        }
     }
-    parts
+
+    let plain = plain_parts
         .join(" ")
         .split_whitespace()
         .collect::<Vec<_>>()
-        .join(" ")
+        .join(" ");
+
+    (plain, timed)
 }
 
 impl Default for TranscriptService {
@@ -386,7 +421,7 @@ mod tests {
             script_path.to_str().expect("script path should be utf-8"),
         );
 
-        let (raw, _) = service
+        let (raw, _, _timed) = service
             .extract("abc123def45")
             .await
             .expect("extract should succeed");
@@ -445,12 +480,16 @@ echo "ARGS=$*"
             script_path.to_str().expect("script path should be utf-8"),
         );
 
-        let (raw, formatted) = service
+        let (raw, formatted, timed) = service
             .extract("abc123def45")
             .await
             .expect("extract should succeed");
 
         assert_eq!(raw, formatted);
+        assert!(
+            timed.is_empty(),
+            "summarize path should produce no timed segments"
+        );
         assert!(formatted.contains("OPENAI_BASE_URL="));
         assert!(formatted.contains("OPENAI_API_KEY="));
         assert!(formatted.contains("ARGS="));

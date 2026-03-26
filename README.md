@@ -2,16 +2,14 @@
 
 Stop doom-scrolling, start deep-diving. dAstIll monitors your favorite YouTube channels, pulls transcripts, and delivers AI-generated summaries - so you can quickly spot what matters to you and spend your time on the videos worth watching.
 
-daStIll is a full-stack Rust + SvelteKit application that uses local Ollama LLMs to generate and quality-score summaries from transcripts.
-Built with a focus on reliability, performance, and clear architectural separation.
+dAstIll is a full-stack Rust + SvelteKit application that uses Ollama LLMs to generate and quality-score summaries from transcripts.
 
 ## Features
 
-- **Channel Management**: Tracks favorite YouTube channels, backfills historical videos, and auto-refreshes for new content.
-- **AI Summarization**: Generates insightful summaries in a consistent way, evaluated by LLM-as-a-judge for quality of summary related to ground-truth.
+- **Never miss a beat**: Track your favorite YouTube channels and filter what's worth watching without missing out.
+- **Evaluated AI Summaries**: Dive deep without being overwhelmed. If an LLM screwed up, we will notice.
 - **Highlights**: Mark and save important snippets from transcripts and summaries for quick reference.
-- **Hybrid Search**: Full-text and optional semantic search across transcripts and summaries with highlighting.
-- **Background Workers**: Automatic, asynchronous syncing, downloading, and generating of summaries and evals.
+- **Agentic RAG Search**: Ranked keyword and semantic search across transcripts and summaries, with timestamp metadata on supported transcript matches.
 
 ## Documentation
 
@@ -38,8 +36,6 @@ http://localhost:4173
 
 The app header includes a `Docs` link. In local development it falls back to `http://localhost:4173`; in deployed environments the frontend reads `PUBLIC_DOCS_URL` at runtime.
 
-On `main` branch pushes, the docs site is also deployed through the same GitHub Actions workflow that deploys the backend and product frontend.
-
 ## Tech Stack
 
 ### Frontend
@@ -48,7 +44,7 @@ On `main` branch pushes, the docs site is also deployed through the same GitHub 
 
 ### Backend
 
-Rust, AWS S3, AWS S3 Vectors, Ollama
+Rust, AWS S3, AWS S3 Vectors, Google Firestore, Ollama
 
 ### Infrastructure & Deployment
 

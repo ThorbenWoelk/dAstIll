@@ -29,6 +29,9 @@ scraper = "0.26.0"
 # Async utilities
 thiserror = "2"
 anyhow = "1"
+
+# In-memory BM25 full-text search
+tantivy = "0.22"
 rig-core = "0.28.0"
 sha2 = "0.10"
 

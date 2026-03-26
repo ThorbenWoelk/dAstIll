@@ -22,6 +22,9 @@ The goal is to help you quickly identify which videos are worth your time based 
 - Additional product routes:
   - `/download-queue`
   - `/highlights`
+  - `/chat`
+  - `/channels/[id]`
+  - `/login` and `/logout`
 
 ### Backend
 

@@ -38,6 +38,7 @@ fn transcript_with_render_mode(
             raw_text: Some(content.to_string()),
             formatted_markdown: None,
             render_mode,
+            timed_text: None,
         },
         TranscriptRenderMode::Markdown => {
             let raw_text = existing
@@ -57,6 +58,7 @@ fn transcript_with_render_mode(
                 raw_text,
                 formatted_markdown: Some(content.to_string()),
                 render_mode,
+                timed_text: None,
             }
         }
     }

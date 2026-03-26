@@ -2,12 +2,14 @@
 
 ## Product Surfaces
 
-The current product UI is organized into four route-level experiences:
+The current product UI is organized into route-level experiences centered on:
 
 - main workspace (`/`)
 - download queue (`/download-queue`)
 - highlights (`/highlights`)
 - chat (`/chat`)
+- channel overview (`/channels/[id]`)
+- operator auth entrypoints (`/login`, `/logout`)
 
 ## Main Workspace
 

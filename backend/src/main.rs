@@ -14,7 +14,9 @@ use dastill::config::{
     SecurityRuntimeConfig,
 };
 use dastill::db::init_store;
-use dastill::handlers::{analytics, channels, chat, content, highlights, preferences, search, videos};
+use dastill::handlers::{
+    analytics, channels, chat, content, highlights, preferences, search, videos,
+};
 use dastill::read_cache::ReadCache;
 use dastill::search_progress::SearchProgress;
 use dastill::security::{
@@ -22,8 +24,9 @@ use dastill::security::{
     enforce_expensive_rate_limit, rate_limiter, require_operator_role, require_proxy_auth,
 };
 use dastill::services::{
-    ChatService, Cooldown, DatabricksSqlService, OllamaCore, SearchService, SummarizerService,
-    SummaryEvaluatorService, TranscriptService, YouTubeService, build_http_client,
+    ChatService, Cooldown, DatabricksSqlService, FtsIndex, OllamaCore, SearchService,
+    SummarizerService, SummaryEvaluatorService, TranscriptService, YouTubeService,
+    build_http_client,
 };
 use dastill::state::AppState;
 use dastill::workers::{
@@ -97,8 +100,8 @@ async fn main() -> anyhow::Result<()> {
         Arc::new(SecurityRuntimeConfig::from_env().map_err(|err| anyhow::anyhow!(err))?);
     let summarize_path = std::env::var("SUMMARIZE_PATH")
         .unwrap_or_else(|_| "/opt/homebrew/bin/summarize".to_string());
-    let ytdlp_path = std::env::var("YTDLP_PATH")
-        .unwrap_or_else(|_| "/usr/local/bin/yt-dlp".to_string());
+    let ytdlp_path =
+        std::env::var("YTDLP_PATH").unwrap_or_else(|_| "/usr/local/bin/yt-dlp".to_string());
     let ollama = OllamaRuntimeConfig::from_env(search_runtime.semantic_enabled)
         .map_err(|err| anyhow::anyhow!(err))?;
     if std::env::var("SUMMARY_EVALUATOR_FALLBACK_MODEL").is_ok() {
@@ -215,13 +218,17 @@ async fn main() -> anyhow::Result<()> {
             search_runtime.semantic_enabled,
         )
         .with_api_key(ollama.api_key)
-        .with_ollama_semaphore(search_ollama_semaphore),
+        .with_ollama_semaphore(search_ollama_semaphore)
+        .with_rerank_model(ollama.rerank_model)
+        .with_hyde_model(ollama.hyde_model),
     );
     let search_progress = Arc::new(SearchProgress::new(
         search.model(),
         search.dimensions(),
         search.semantic_enabled(),
     ));
+
+    let fts = Arc::new(FtsIndex::new().expect("failed to create in-memory FTS index"));
 
     let state = AppState {
         db: pool,
@@ -231,6 +238,7 @@ async fn main() -> anyhow::Result<()> {
         search_auto_create_vector_index: search_runtime.auto_create_vector_index,
         search_projection_lock: Arc::new(tokio::sync::RwLock::new(())),
         search_progress,
+        fts,
         youtube,
         transcript,
         summarizer,
@@ -292,6 +300,12 @@ async fn main() -> anyhow::Result<()> {
             search_available,
             "search progress hydration complete"
         );
+    });
+
+    // Populate the in-memory FTS index from all existing S3 chunks at startup.
+    let fts_hydration_state = state.clone();
+    tokio::spawn(async move {
+        dastill::workers::populate_fts_index_from_store(fts_hydration_state).await;
     });
 
     spawn_queue_worker(state.clone());

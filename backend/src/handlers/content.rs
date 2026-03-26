@@ -284,8 +284,8 @@ pub(crate) async fn ensure_transcript(
     }
 
     tracing::info!(video_id = %video_id, "starting transcript download");
-    let (raw, formatted) = match state.transcript.extract(video_id).await {
-        Ok(pair) => pair,
+    let (raw, formatted, timed) = match state.transcript.extract(video_id).await {
+        Ok(result) => result,
         Err(err) => {
             return Err(apply_transcript_error(state, video_id, err).await);
         }
@@ -294,6 +294,7 @@ pub(crate) async fn ensure_transcript(
         video_id = %video_id,
         raw_bytes = raw.len(),
         markdown_bytes = formatted.len(),
+        timed_segments = timed.len(),
         "transcript download completed"
     );
 
@@ -302,6 +303,7 @@ pub(crate) async fn ensure_transcript(
         raw_text: Some(raw),
         formatted_markdown: Some(formatted),
         render_mode: TranscriptRenderMode::PlainText,
+        timed_text: if timed.is_empty() { None } else { Some(timed) },
     };
 
     db::upsert_transcript(&state.db, &transcript)
@@ -634,6 +636,7 @@ mod tests {
             raw_text: raw.map(ToOwned::to_owned),
             formatted_markdown: formatted.map(ToOwned::to_owned),
             render_mode: TranscriptRenderMode::PlainText,
+            timed_text: None,
         }
     }
 
@@ -728,6 +731,7 @@ mod tests {
             raw_text: Some("   ".to_string()),
             formatted_markdown: Some("## Section\nUseful formatted text".to_string()),
             render_mode: TranscriptRenderMode::Markdown,
+            timed_text: None,
         };
 
         assert_eq!(
@@ -743,6 +747,7 @@ mod tests {
             raw_text: Some("Raw transcript text".to_string()),
             formatted_markdown: Some("## Section\nFormatted text".to_string()),
             render_mode: TranscriptRenderMode::Markdown,
+            timed_text: None,
         };
 
         assert_eq!(transcript_text(&transcript), Some("Raw transcript text"));

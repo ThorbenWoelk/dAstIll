@@ -1333,7 +1333,7 @@ impl ChatService {
         channel_focus_ids: &[String],
     ) -> Result<(Vec<Vec<SearchCandidate>>, Vec<Vec<SearchCandidate>>), String> {
         let conn = state.db.connect();
-        let mut keyword_batches = Vec::new();
+        let mut keyword_batches: Vec<Vec<SearchCandidate>> = Vec::new();
         let filters = if channel_focus_ids.is_empty() {
             vec![None]
         } else {
@@ -1344,19 +1344,26 @@ impl ChatService {
         };
 
         for query in queries {
+            let query_tokens = crate::search_query::meaningful_search_terms(query);
             for channel_filter in &filters {
-                keyword_batches.push(
-                    db::search_fts_candidates(
-                        &conn,
-                        query,
-                        None,
-                        None,
-                        *channel_filter,
-                        candidate_limit,
-                    )
-                    .await
-                    .map_err(|error| error.to_string())?,
-                );
+                let results = state
+                    .fts
+                    .search(query, None, *channel_filter, candidate_limit)
+                    .await;
+                let candidates: Vec<SearchCandidate> = results
+                    .into_iter()
+                    .map(|r| {
+                        let mut c: SearchCandidate = r.into();
+                        if !query_tokens.is_empty() {
+                            c.chunk_text = crate::services::search::extract_keyword_snippet(
+                                &c.chunk_text,
+                                &query_tokens,
+                            );
+                        }
+                        c
+                    })
+                    .collect();
+                keyword_batches.push(candidates);
             }
         }
 

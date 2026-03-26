@@ -170,10 +170,14 @@ impl From<&SearchSourceState> for SearchSourceRecord {
 #[derive(Debug, Clone)]
 pub struct SearchMaterial {
     pub video_id: String,
+    pub channel_id: String,
     pub channel_name: String,
     pub video_title: String,
+    pub published_at: String,
     pub source_kind: SearchSourceKind,
     pub content: String,
+    /// Timed caption segments. Present only for transcripts extracted via yt-dlp.
+    pub timed_segments: Option<Vec<crate::models::TimedSegment>>,
 }
 
 #[derive(Debug, Clone)]

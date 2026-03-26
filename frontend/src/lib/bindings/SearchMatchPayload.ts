@@ -6,4 +6,9 @@ export type SearchMatchPayload = {
   section_title: string | null;
   snippet: string;
   score: number;
+  /**
+   * Start position in the video for deep-link playback. Only present for
+   * transcripts extracted via yt-dlp (the summarize CLI path has no timestamps).
+   */
+  start_sec?: number;
 };

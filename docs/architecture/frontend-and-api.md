@@ -2,7 +2,7 @@
 
 ## Product Frontend Routes
 
-The SvelteKit app currently exposes four top-level routes:
+The SvelteKit app currently exposes the following top-level product routes:
 
 | Route             | Purpose                                                                 |
 | ----------------- | ----------------------------------------------------------------------- |
@@ -10,6 +10,9 @@ The SvelteKit app currently exposes four top-level routes:
 | `/download-queue` | Queue-oriented operational view                                         |
 | `/highlights`     | Cross-video highlight browser                                           |
 | `/chat`           | RAG conversations with video content                                    |
+| `/channels/[id]`  | Channel overview and channel-scoped operations                          |
+| `/login`          | Operator sign-in                                                        |
+| `/logout`         | Operator sign-out                                                       |
 
 ## Main Workspace Behavior
 

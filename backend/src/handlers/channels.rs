@@ -326,11 +326,7 @@ pub async fn refresh_channel_videos(
 
     let earliest_sync_date = require_channel(&state, &id).await?.earliest_sync_date;
 
-    let videos = state
-        .youtube
-        .fetch_videos(&id)
-        .await
-        .map_err(map_db_err)?;
+    let videos = state.youtube.fetch_videos(&id).await.map_err(map_db_err)?;
 
     let mut count = {
         db::bulk_insert_videos(&state.db, videos)
@@ -506,6 +502,7 @@ mod tests {
             analytics: None,
             active_chats: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
             chat_store_lock: Arc::new(tokio::sync::Mutex::new(())),
+            fts: Arc::new(crate::services::FtsIndex::new().expect("fts index")),
             anonymous_chat_quota_lock: Arc::new(tokio::sync::Mutex::new(())),
             cloud_cooldown: cooldown,
             youtube_quota_cooldown: Arc::new(YouTubeQuotaCooldown::youtube_quota()),
@@ -552,6 +549,7 @@ mod tests {
                 raw_text: Some("bootstrap transcript content".to_string()),
                 formatted_markdown: None,
                 render_mode: TranscriptRenderMode::PlainText,
+                timed_text: None,
             },
         )
         .await

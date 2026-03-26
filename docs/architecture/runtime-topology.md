@@ -22,9 +22,11 @@ At startup the backend:
 3. Connects to S3 data bucket and S3 Vectors bucket
 4. Initializes the store (no schema migrations needed - S3 is schemaless)
 5. Hydrates search progress from existing data
-6. Builds shared runtime services
+6. Builds shared runtime services (including in-memory FTS index)
 7. Spawns background workers
-8. Binds the Axum HTTP listener
+8. Spawns FTS hydration task: concurrently loads all search-chunks/ S3 objects
+   into the Tantivy index so keyword search is available immediately
+9. Binds the Axum HTTP listener
 ```
 
 ## Shared Runtime State
@@ -35,6 +37,7 @@ At startup the backend:
 - read cache
 - search projection lock
 - search progress tracker
+- **FTS index** (in-memory Tantivy BM25 index; shared `Arc<RwLock<_>>`)
 - chat service
 - active chats tracker (in-progress conversations)
 - chat store lock
@@ -42,7 +45,7 @@ At startup the backend:
 - transcript service
 - summarizer service
 - summary evaluator service
-- search service
+- search service (embedding, reranker, HyDE)
 - cooldown trackers
 
 This is the boundary between HTTP handlers and long-lived background processes.

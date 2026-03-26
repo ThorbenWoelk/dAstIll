@@ -9,10 +9,11 @@ use crate::read_cache::ReadCache;
 use crate::search_progress::SearchProgress;
 use crate::security::RequestRateLimiter;
 use crate::services::{
-    ActiveChatHandle, ChatService, CloudCooldown, DatabricksSqlService, SearchService,
+    ActiveChatHandle, ChatService, CloudCooldown, DatabricksSqlService, FtsIndex, SearchService,
     SummarizerService, SummaryEvaluatorService, TranscriptCooldown, TranscriptService,
     YouTubeQuotaCooldown, YouTubeService,
 };
+use crate::services::ElevenLabsTtsService;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -23,8 +24,10 @@ pub struct AppState {
     pub search_auto_create_vector_index: bool,
     pub search_projection_lock: Arc<RwLock<()>>,
     pub search_progress: Arc<SearchProgress>,
+    pub fts: Arc<FtsIndex>,
     pub youtube: Arc<YouTubeService>,
     pub transcript: Arc<TranscriptService>,
+    pub elevenlabs_tts: Option<Arc<ElevenLabsTtsService>>,
     pub summarizer: Arc<SummarizerService>,
     pub summary_evaluator: Arc<SummaryEvaluatorService>,
     pub search: Arc<SearchService>,

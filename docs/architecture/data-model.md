@@ -45,7 +45,12 @@ Search is intentionally modeled as a derived projection stored in S3:
 | `search_chunks`  | Chunked search content stored as S3 objects    |
 | S3 Vectors Index | Vector embeddings for semantic search          |
 
-S3 Vectors provides managed ANN vector storage and retrieval, eliminating the need for a separate FTS5 table.
+S3 Vectors provides managed ANN vector storage and retrieval for semantic search.
+
+The backend also maintains an **in-memory Tantivy BM25 index** hydrated from the stored
+`search-chunks/` corpus at startup. All keyword search queries go through this index -
+there is no per-query S3 scan. The Tantivy index is kept in sync by the search index
+worker after every write.
 
 ### `search_sources`
 
@@ -67,6 +72,7 @@ Each chunk is stored as an S3 object with:
 - `chunk_index`
 - `section_title`
 - `chunk_text`
+- `start_sec` (optional) - start position in the video (seconds) for timestamp-aware transcript chunks
 - `token_count`
 
 Embeddings are stored separately in S3 Vectors.

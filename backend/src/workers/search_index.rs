@@ -4,10 +4,14 @@ use tracing::Instrument;
 use crate::{
     db,
     search_progress::SearchProgressSourceStatus,
-    services::search::{
-        SEARCH_SUMMARY_TARGET_WORDS, SEARCH_TRANSCRIPT_OVERLAP_WORDS,
-        SEARCH_TRANSCRIPT_TARGET_WORDS, SearchIndexChunk, SearchSourceKind, build_embedding_input,
-        chunk_summary_content, chunk_transcript_content, hash_search_content, vector_to_json,
+    services::{
+        FtsChunk,
+        search::{
+            SEARCH_SUMMARY_TARGET_WORDS, SEARCH_TRANSCRIPT_OVERLAP_WORDS,
+            SEARCH_TRANSCRIPT_TARGET_WORDS, SearchIndexChunk, SearchSourceKind,
+            build_embedding_input, chunk_summary_content, chunk_transcript_content,
+            hash_search_content, vector_to_json,
+        },
     },
     state::AppState,
 };
@@ -29,6 +33,7 @@ fn chunk_material(material: &db::SearchMaterial) -> Vec<crate::services::search:
             &material.content,
             SEARCH_TRANSCRIPT_TARGET_WORDS,
             SEARCH_TRANSCRIPT_OVERLAP_WORDS,
+            material.timed_segments.as_deref(),
         ),
         SearchSourceKind::Summary => {
             chunk_summary_content(&material.content, SEARCH_SUMMARY_TARGET_WORDS)
@@ -235,6 +240,10 @@ async fn process_pending_search_sources(state: &AppState) -> bool {
         // Phase 1: Claim sources and load materials, collecting all embedding work.
         struct PreparedSource {
             video_id: String,
+            channel_id: String,
+            channel_name: String,
+            video_title: String,
+            published_at: String,
             source_kind: SearchSourceKind,
             content_hash: String,
             drafts: Vec<crate::services::search::ChunkDraft>,
@@ -298,6 +307,10 @@ async fn process_pending_search_sources(state: &AppState) -> bool {
             let Some(material) = material else {
                 let _ = db::clear_search_source(&conn, &source.video_id, source.source_kind).await;
                 state
+                    .fts
+                    .delete_source(&source.video_id, source.source_kind)
+                    .await;
+                state
                     .search_progress
                     .remove_source(&source.video_id, source.source_kind)
                     .await;
@@ -325,6 +338,10 @@ async fn process_pending_search_sources(state: &AppState) -> bool {
             let drafts = chunk_material(&material);
             if drafts.is_empty() {
                 let _ = db::clear_search_source(&conn, &source.video_id, source.source_kind).await;
+                state
+                    .fts
+                    .delete_source(&source.video_id, source.source_kind)
+                    .await;
                 state
                     .search_progress
                     .remove_source(&source.video_id, source.source_kind)
@@ -363,6 +380,10 @@ async fn process_pending_search_sources(state: &AppState) -> bool {
 
             prepared.push(PreparedSource {
                 video_id: source.video_id,
+                channel_id: material.channel_id.clone(),
+                channel_name: material.channel_name.clone(),
+                video_title: material.video_title.clone(),
+                published_at: material.published_at.clone(),
                 source_kind: source.source_kind,
                 content_hash: source.content_hash,
                 drafts,
@@ -402,6 +423,7 @@ async fn process_pending_search_sources(state: &AppState) -> bool {
                         chunk_text: draft.text,
                         embedding_json: None,
                         token_count: draft.word_count,
+                        start_sec: draft.start_sec,
                     })
                     .collect::<Vec<_>>();
 
@@ -410,6 +432,7 @@ async fn process_pending_search_sources(state: &AppState) -> bool {
                 match db::replace_search_chunks(
                     &conn,
                     &source.video_id,
+                    &source.channel_id,
                     source.source_kind,
                     &source.content_hash,
                     None,
@@ -419,6 +442,33 @@ async fn process_pending_search_sources(state: &AppState) -> bool {
                 {
                     Ok(stored) => {
                         if stored {
+                            let fts_chunks: Vec<FtsChunk> = chunks
+                                .iter()
+                                .map(|c| FtsChunk {
+                                    chunk_id: format!(
+                                        "{}_{}_{}_{}",
+                                        source.video_id,
+                                        source.source_kind.as_str(),
+                                        source.content_hash,
+                                        c.chunk_index
+                                    ),
+                                    section_title: c.section_title.clone(),
+                                    chunk_text: c.chunk_text.clone(),
+                                    start_sec: c.start_sec,
+                                })
+                                .collect();
+                            state
+                                .fts
+                                .upsert_source(
+                                    &source.video_id,
+                                    source.source_kind,
+                                    &source.channel_id,
+                                    &source.channel_name,
+                                    &source.video_title,
+                                    &source.published_at,
+                                    &fts_chunks,
+                                )
+                                .await;
                             state
                                 .search_progress
                                 .upsert_source(
@@ -546,6 +596,7 @@ async fn process_pending_search_sources(state: &AppState) -> bool {
                     chunk_text: draft.text,
                     embedding_json: Some(vector_to_json(embedding)),
                     token_count: draft.word_count,
+                    start_sec: draft.start_sec,
                 })
                 .collect::<Vec<_>>();
 
@@ -554,6 +605,7 @@ async fn process_pending_search_sources(state: &AppState) -> bool {
             match db::replace_search_chunks(
                 &conn,
                 &source.video_id,
+                &source.channel_id,
                 source.source_kind,
                 &source.content_hash,
                 state.search.model(),
@@ -563,6 +615,33 @@ async fn process_pending_search_sources(state: &AppState) -> bool {
             {
                 Ok(stored) => {
                     if stored {
+                        let fts_chunks: Vec<FtsChunk> = chunks
+                            .iter()
+                            .map(|c| FtsChunk {
+                                chunk_id: format!(
+                                    "{}_{}_{}_{}",
+                                    source.video_id,
+                                    source.source_kind.as_str(),
+                                    source.content_hash,
+                                    c.chunk_index
+                                ),
+                                section_title: c.section_title.clone(),
+                                chunk_text: c.chunk_text.clone(),
+                                start_sec: c.start_sec,
+                            })
+                            .collect();
+                        state
+                            .fts
+                            .upsert_source(
+                                &source.video_id,
+                                source.source_kind,
+                                &source.channel_id,
+                                &source.channel_name,
+                                &source.video_title,
+                                &source.published_at,
+                                &fts_chunks,
+                            )
+                            .await;
                         state
                             .search_progress
                             .upsert_source(

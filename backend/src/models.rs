@@ -64,6 +64,16 @@ pub struct VideoInfo {
     pub view_count: Option<u64>,
 }
 
+/// A time-stamped caption segment from yt-dlp json3 output.
+/// Only present on transcripts extracted via the yt-dlp fallback path.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
+pub struct TimedSegment {
+    /// Start position in the video, in seconds.
+    pub start_sec: f32,
+    pub text: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct Transcript {
@@ -72,6 +82,10 @@ pub struct Transcript {
     pub formatted_markdown: Option<String>,
     #[serde(default)]
     pub render_mode: TranscriptRenderMode,
+    /// Timed segments from yt-dlp. Present only when the yt-dlp fallback path ran.
+    #[serde(default)]
+    #[ts(optional)]
+    pub timed_text: Option<Vec<TimedSegment>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -284,6 +298,11 @@ pub struct SearchMatchPayload {
     pub section_title: Option<String>,
     pub snippet: String,
     pub score: f32,
+    /// Start position in the video for deep-link playback. Only present for
+    /// transcripts extracted via yt-dlp (the summarize CLI path has no timestamps).
+    #[serde(default)]
+    #[ts(optional)]
+    pub start_sec: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

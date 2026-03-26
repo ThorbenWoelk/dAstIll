@@ -18,7 +18,7 @@ use crate::models::{
 };
 use crate::search_query::{meaningful_search_terms, tokenize_search_terms};
 use crate::services::search::{
-    SEARCH_RRF_K, SearchCandidate, SearchSourceKind, fuse_ranked_matches,
+    SEARCH_RRF_K, SearchCandidate, SearchSourceKind, extract_keyword_snippet, fuse_ranked_matches,
     truncate_chunk_for_display, vector_to_json,
 };
 use crate::state::AppState;
@@ -198,21 +198,31 @@ pub async fn search(
         Some(SearchRetrievalMode::HybridExact) => (limit * 4).clamp(10, 50),
         _ => 0,
     };
+    let hyde_configured = hybrid_configured
+        && state.search.hyde_model().is_some()
+        && fts_terms.len() <= 4
+        && run_semantic_search;
 
     let fts_db_started = Instant::now();
     let fts_candidates = if !run_keyword_search || fts_terms.is_empty() {
         Vec::new()
     } else {
-        db::search_fts_candidates(
-            &state.db,
-            query,
-            None,
-            source.as_source_kind(),
-            params.channel_id.as_deref(),
-            fts_candidate_limit,
-        )
-        .await
-        .map_err(map_db_err)?
+        state
+            .fts
+            .search(
+                query,
+                source.as_source_kind(),
+                params.channel_id.as_deref(),
+                fts_candidate_limit,
+            )
+            .await
+            .into_iter()
+            .map(|r| {
+                let mut c: SearchCandidate = r.into();
+                c.chunk_text = extract_keyword_snippet(&c.chunk_text, &fts_terms);
+                c
+            })
+            .collect()
     };
     let fts_candidates = rerank_fts_candidates(&fts_candidates, query);
     let fts_db_elapsed_ms = fts_db_started.elapsed().as_millis() as u64;
@@ -220,6 +230,8 @@ pub async fn search(
     let mut embedding_elapsed_ms = 0;
     let mut hybrid_db_elapsed_ms = 0;
     let mut embedding_failed = false;
+    let mut hyde_triggered = false;
+    let mut hyde_elapsed_ms = 0;
 
     let hybrid_candidates = match semantic_retrieval_mode {
         None => Vec::new(),
@@ -227,8 +239,28 @@ pub async fn search(
             let Some(search_model) = search_model else {
                 return Err(map_db_err("search embedding model is not configured"));
             };
+
+            // HyDE: for short queries, synthesize a hypothetical passage and embed that
+            // instead of the raw query to improve recall for dense retrieval.
+            let hyde_started = Instant::now();
+            let embedding_input = if hyde_configured {
+                match state.search.generate_hyde_passage(query).await {
+                    Ok(passage) => {
+                        hyde_triggered = true;
+                        passage
+                    }
+                    Err(err) => {
+                        tracing::warn!(error = %err, "HyDE generation failed, falling back to query");
+                        query.to_string()
+                    }
+                }
+            } else {
+                query.to_string()
+            };
+            hyde_elapsed_ms = hyde_started.elapsed().as_millis() as u64;
+
             let embedding_started = Instant::now();
-            let embedding = match state.search.embed_texts(&[query.to_string()]).await {
+            let embedding = match state.search.embed_texts(&[embedding_input]).await {
                 Ok(embedding) => embedding,
                 Err(err) => {
                     tracing::warn!(
@@ -288,6 +320,9 @@ pub async fn search(
         ));
     }
 
+    let rerank_configured = state.search.rerank_model().is_some();
+    let mut rerank_elapsed_ms = 0u64;
+
     let results = match execution_mode {
         SearchExecutionMode::Keyword => group_fts_candidates(&fts_candidates, limit),
         SearchExecutionMode::Semantic => group_ranked_candidates(&hybrid_candidates, limit),
@@ -299,6 +334,25 @@ pub async fn search(
         }
         SearchExecutionMode::Hybrid if hybrid_candidates.is_empty() => {
             group_fts_candidates(&fts_candidates, limit)
+        }
+        SearchExecutionMode::Hybrid if rerank_configured => {
+            // Merge both candidate lists via RRF into a single ranked flat list,
+            // then let the cross-encoder reranker produce the final ordering.
+            let merged = collect_rrf_candidates(&hybrid_candidates, &fts_candidates);
+            let rerank_started = Instant::now();
+            let reranked = match state.search.rerank_candidates(query, merged).await {
+                Ok(reranked) => reranked,
+                Err(err) => {
+                    tracing::warn!(error = %err, "reranking failed, falling back to RRF");
+                    Vec::new()
+                }
+            };
+            rerank_elapsed_ms = rerank_started.elapsed().as_millis() as u64;
+            if reranked.is_empty() {
+                rank_and_group_candidates(&hybrid_candidates, &fts_candidates, limit)
+            } else {
+                group_ranked_candidates(&reranked, limit)
+            }
         }
         SearchExecutionMode::Hybrid => {
             rank_and_group_candidates(&hybrid_candidates, &fts_candidates, limit)
@@ -316,6 +370,10 @@ pub async fn search(
         embedding_failed,
         run_keyword_search,
         run_semantic_search,
+        hyde_triggered,
+        hyde_elapsed_ms,
+        rerank_configured,
+        rerank_elapsed_ms,
         fts_candidates = fts_candidates.len(),
         hybrid_candidates = hybrid_candidates.len(),
         result_count = results.len(),
@@ -492,6 +550,7 @@ fn group_ranked_candidates(
             section_title: candidate.section_title.clone(),
             snippet: truncate_chunk_for_display(&candidate.chunk_text),
             score,
+            start_sec: candidate.start_sec,
         };
 
         match existing {
@@ -539,6 +598,36 @@ fn group_fts_candidates(
     limit: usize,
 ) -> Vec<SearchVideoResultPayload> {
     group_ranked_candidates(candidates, limit)
+}
+
+/// Merge vector and FTS candidate lists via RRF, returning a flat deduplicated list
+/// ordered by descending fused score. Used as input to the cross-encoder reranker.
+fn collect_rrf_candidates(
+    vector_candidates: &[SearchCandidate],
+    fts_candidates: &[SearchCandidate],
+) -> Vec<SearchCandidate> {
+    let vector_ranks: Vec<(&str, usize)> = vector_candidates
+        .iter()
+        .enumerate()
+        .map(|(i, c)| (c.chunk_id.as_str(), i + 1))
+        .collect();
+    let fts_ranks: Vec<(&str, usize)> = fts_candidates
+        .iter()
+        .enumerate()
+        .map(|(i, c)| (c.chunk_id.as_str(), i + 1))
+        .collect();
+    let fused = fuse_ranked_matches(&vector_ranks, &fts_ranks, SEARCH_RRF_K);
+
+    let mut by_id: std::collections::HashMap<&str, &SearchCandidate> =
+        std::collections::HashMap::new();
+    for c in vector_candidates.iter().chain(fts_candidates.iter()) {
+        by_id.insert(c.chunk_id.as_str(), c);
+    }
+
+    fused
+        .into_iter()
+        .filter_map(|(chunk_id, _score)| by_id.get(chunk_id.as_str()).copied().cloned())
+        .collect()
 }
 
 fn rank_and_group_candidates(
@@ -591,6 +680,7 @@ fn rank_and_group_candidates(
             section_title: candidate.section_title.clone(),
             snippet: truncate_chunk_for_display(&candidate.chunk_text),
             score,
+            start_sec: candidate.start_sec,
         };
 
         match existing {
@@ -653,6 +743,7 @@ mod tests {
             section_title: None,
             chunk_text: "A detailed snippet about semantic search.".to_string(),
             published_at: "2026-03-12T00:00:00Z".to_string(),
+            start_sec: None,
         }
     }
 

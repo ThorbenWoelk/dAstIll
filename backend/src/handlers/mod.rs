@@ -24,10 +24,7 @@ pub(crate) fn map_db_err(err: impl std::fmt::Display) -> (axum::http::StatusCode
 }
 
 /// Returns `NOT_FOUND` if `opt` is `None`, otherwise unwraps it.
-pub(crate) fn require_present<T>(
-    opt: Option<T>,
-    msg: &str,
-) -> Result<T, (StatusCode, String)> {
+pub(crate) fn require_present<T>(opt: Option<T>, msg: &str) -> Result<T, (StatusCode, String)> {
     opt.ok_or_else(|| (StatusCode::NOT_FOUND, msg.to_string()))
 }
 

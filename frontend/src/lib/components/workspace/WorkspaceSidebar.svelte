@@ -201,6 +201,25 @@
     );
   }
 
+  function scrollIntoViewWhenSelected(node: HTMLElement, selected: boolean) {
+    let wasSelected = selected;
+    if (selected) {
+      void tick().then(() =>
+        node.scrollIntoView({ behavior: "smooth", block: "nearest" }),
+      );
+    }
+    return {
+      update(nextSelected: boolean) {
+        if (nextSelected && !wasSelected) {
+          void tick().then(() =>
+            node.scrollIntoView({ behavior: "smooth", block: "nearest" }),
+          );
+        }
+        wasSelected = nextSelected;
+      },
+    };
+  }
+
   let channels = $derived(channelState.channels);
   let selectedChannelId = $derived(channelState.selectedChannelId);
   let channelUiHidden = $derived(hideChannelUi);
@@ -708,6 +727,26 @@
     if (!first || isVirtualChannel(first)) return;
     initialExpandDone = true;
     ensureChannelVideoCollection(first.id).expanded = true;
+  });
+
+  $effect(() => {
+    if (videoListMode !== "per_channel_preview") return;
+    if (!selectedChannel || !selectedVideoId) return;
+    if (isVirtualChannel(selectedChannel)) return;
+
+    const state = ensureChannelVideoCollection(selectedChannel.id);
+    if (!state.expanded) {
+      state.expanded = true;
+    }
+
+    if (state.loading) return;
+    if (state.loadedMode !== "all") {
+      void loadChannelVideoCollection(selectedChannel, "all");
+      return;
+    }
+    if (!state.videos.some((video) => video.id === selectedVideoId)) {
+      void loadChannelVideoCollection(selectedChannel, "all", { force: true });
+    }
   });
 
   async function handleChannelSubmit(event: SubmitEvent) {
@@ -1555,6 +1594,8 @@
                       void handleChannelVideoClick(channel.id, video.id)}
                     onmouseenter={() => handleVideoMouseEnter(video.id)}
                     onmouseleave={handleVideoMouseLeave}
+                    use:scrollIntoViewWhenSelected={selectedVideoId ===
+                      video.id}
                   >
                     <div class="min-w-0 flex-1">
                       <p

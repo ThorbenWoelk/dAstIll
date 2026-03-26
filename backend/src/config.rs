@@ -11,6 +11,10 @@ pub struct OllamaRuntimeConfig {
     pub fallback_model: Option<String>,
     pub summary_evaluator_model: String,
     pub embedding_model: Option<String>,
+    /// Optional cross-encoder model for re-ranking search results (env: SEARCH_RERANK_MODEL).
+    pub rerank_model: Option<String>,
+    /// Optional generative model for HyDE passage synthesis (env: SEARCH_HYDE_MODEL).
+    pub hyde_model: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,6 +47,14 @@ pub struct DatabricksRuntimeConfig {
     pub bronze_table: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ElevenLabsTtsRuntimeConfig {
+    pub api_key: String,
+    pub voice_id: String,
+    pub model_id: String,
+    pub output_format: String,
+}
+
 impl OllamaRuntimeConfig {
     pub fn from_env(search_semantic_enabled: bool) -> Result<Self, String> {
         let url = env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
@@ -69,6 +81,8 @@ impl OllamaRuntimeConfig {
             fallback_model,
             summary_evaluator_model,
             embedding_model,
+            rerank_model: optional_env("SEARCH_RERANK_MODEL"),
+            hyde_model: optional_env("SEARCH_HYDE_MODEL"),
         })
     }
 }
@@ -146,6 +160,28 @@ impl DatabricksRuntimeConfig {
             schema: optional_env("DATABRICKS_SCHEMA").unwrap_or_else(|| "sandbox".to_string()),
             bronze_table: optional_env("DATABRICKS_BRONZE_TABLE")
                 .unwrap_or_else(|| "bronze_app_events".to_string()),
+        }))
+    }
+}
+
+impl ElevenLabsTtsRuntimeConfig {
+    pub fn from_env() -> Result<Option<Self>, String> {
+        let api_key = optional_env("ELEVENLABS_TTS_API_KEY");
+        if api_key.is_none() {
+            return Ok(None);
+        }
+
+        let voice_id = required_env("ELEVENLABS_TTS_VOICE_ID")?;
+        let model_id = optional_env("ELEVENLABS_TTS_MODEL_ID")
+            .unwrap_or_else(|| "eleven_flash_v2_5".to_string());
+        let output_format = optional_env("ELEVENLABS_TTS_OUTPUT_FORMAT")
+            .unwrap_or_else(|| "mp3_44100_128".to_string());
+
+        Ok(Some(Self {
+            api_key: api_key.expect("checked is_some"),
+            voice_id,
+            model_id,
+            output_format,
         }))
     }
 }

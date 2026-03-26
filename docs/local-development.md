@@ -70,6 +70,8 @@ Important variables:
 | `OLLAMA_EMBEDDING_MODEL`            | Search embedding model (default: embeddinggemma:latest)                          |
 | `SEARCH_SEMANTIC_ENABLED`           | Explicit override for semantic search behavior                                   |
 | `SEARCH_AUTO_CREATE_VECTOR_INDEX`   | Optional ANN index creation after backlog clears                                 |
+| `SEARCH_RERANK_MODEL`               | Optional cross-encoder reranker model name (Ollama `/api/rerank`)                |
+| `SEARCH_HYDE_MODEL`                 | Optional HyDE generation model name (Ollama `/api/generate`, short queries only) |
 | `SUMMARIZE_PATH`                    | Path to the transcript extraction CLI                                            |
 | `LOGFIRE_TOKEN`                     | Optional Logfire token for backend tracing / AI pipeline observability           |
 
