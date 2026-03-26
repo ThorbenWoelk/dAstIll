@@ -3,6 +3,7 @@ import {
   beginChannelDrag,
   buildQueueSnapshotOptions,
   completeChannelDrop,
+  finalizeAddedChannelOrder,
   finishChannelDrag,
   loadWorkspaceState,
   markChannelRefreshed,
@@ -48,6 +49,22 @@ describe("prioritizeChannelOrder", () => {
       "c",
     ]);
     expect(prioritizeChannelOrder([], "x")).toEqual(["x"]);
+  });
+});
+
+describe("finalizeAddedChannelOrder", () => {
+  it("keeps a newly confirmed channel at the front when no optimistic id was stored", () => {
+    expect(finalizeAddedChannelOrder(["a", "b"], "new")).toEqual([
+      "new",
+      "a",
+      "b",
+    ]);
+  });
+
+  it("replaces an optimistic id and keeps the confirmed channel at the front", () => {
+    expect(
+      finalizeAddedChannelOrder(["temp-1", "a", "b"], "real-1", "temp-1"),
+    ).toEqual(["real-1", "a", "b"]);
   });
 });
 

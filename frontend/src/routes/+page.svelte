@@ -54,6 +54,7 @@
   } from "$lib/types";
   import {
     applySavedChannelOrder,
+    finalizeAddedChannelOrder,
     loadWorkspaceState,
     restoreWorkspaceSnapshot,
     resolveInitialChannelSelection,
@@ -1135,10 +1136,19 @@
 
     try {
       const channel = await addChannel(trimmedInput);
-
-      sidebarState.setChannels(
-        replaceOptimisticChannel(sidebarState.channels, tempId, channel),
+      const nextChannels = replaceOptimisticChannel(
+        sidebarState.channels,
+        tempId,
+        channel,
       );
+      const nextOrder = finalizeAddedChannelOrder(
+        sidebarState.channelOrder,
+        channel.id,
+        tempId,
+      );
+
+      sidebarState.setChannelOrder(nextOrder);
+      sidebarState.setChannels(applySavedChannelOrder(nextChannels, nextOrder));
       sidebarState.replaceOptimisticChannelId(tempId, channel.id);
       sidebarState.setSelectedChannelId(channel.id);
 

@@ -22,6 +22,7 @@ import {
 } from "$lib/api";
 import {
   applySavedChannelOrder,
+  finalizeAddedChannelOrder,
   resolveInitialChannelSelection,
 } from "$lib/channel-workspace";
 import {
@@ -496,6 +497,7 @@ export function createSidebarState(
     channels = channels.map((c) =>
       c.id === tempId ? { ...c, id: realId } : c,
     );
+    channelOrder = finalizeAddedChannelOrder(channelOrder, realId, tempId);
     if (selectedChannelId === tempId) {
       selectedChannelId = realId;
     }

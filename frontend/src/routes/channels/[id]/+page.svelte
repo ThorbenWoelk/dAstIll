@@ -19,6 +19,7 @@
   import WorkspaceSidebar from "$lib/components/workspace/WorkspaceSidebar.svelte";
   import {
     applySavedChannelOrder,
+    finalizeAddedChannelOrder,
     loadWorkspaceState,
     restoreWorkspaceSnapshot,
     saveWorkspaceState,
@@ -227,7 +228,15 @@
 
     try {
       const addedChannel = await addChannel(input);
-      const nextChannels = applyChannelPreferences(await listChannels());
+      const nextOrder = finalizeAddedChannelOrder(
+        channelOrder,
+        addedChannel.id,
+      );
+      const nextChannels = applySavedChannelOrder(
+        await listChannels(),
+        nextOrder,
+      );
+      channelOrder = nextOrder;
       channels = nextChannels;
       if (channelOrder.length === 0) {
         channelOrder = channelOrderFromList(nextChannels);

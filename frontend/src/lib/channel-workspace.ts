@@ -53,6 +53,18 @@ export function prioritizeChannelOrder(
   return [channelId, ...channelOrder.filter((id) => id !== channelId)];
 }
 
+export function finalizeAddedChannelOrder(
+  channelOrder: string[],
+  channelId: string,
+  optimisticId?: string,
+): string[] {
+  const withoutOptimistic = optimisticId
+    ? channelOrder.filter((id) => id !== optimisticId)
+    : channelOrder;
+
+  return prioritizeChannelOrder(withoutOptimistic, channelId);
+}
+
 export function loadWorkspaceState(
   storage: WorkspaceStorage,
 ): Partial<WorkspaceStateSnapshot> | null {
