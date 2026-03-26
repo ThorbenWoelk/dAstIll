@@ -9,6 +9,8 @@
   let currentTime = $state(0);
   let duration = $state(0);
   let playbackRate = $state(1);
+  let summaryWordCount = $state<number | null>(null);
+  let estimatedSecs = $state<number | null>(null);
 
   const playbackRates = [1, 1.25, 1.5, 2, 2.5, 3, 0.75];
 
@@ -48,6 +50,8 @@
       const resp = await fetch(`/api/videos/${videoId}/summary/audio/debug`);
       if (resp.ok) {
         const data = await resp.json();
+        summaryWordCount = data.word_count ?? null;
+        estimatedSecs = data.estimated_secs ?? null;
         if (data.cache_hit) {
           status = "ready";
           audioSrc = `/api/videos/${videoId}/summary/audio`;
@@ -117,6 +121,7 @@
   function onEnded() {
     status = "ready";
     currentTime = 0;
+    if (audioPlayer) audioPlayer.currentTime = 0;
   }
 
   function onPlay() {
@@ -158,6 +163,8 @@
     summaryAudioError = null;
     currentTime = 0;
     duration = 0;
+    summaryWordCount = null;
+    estimatedSecs = null;
     // Keep playbackRate as is (persist across videos)
     checkAudioStatus();
   });
@@ -168,42 +175,6 @@
 <div class="mb-4 flex flex-col gap-1.5">
   <div class="flex items-center gap-3 py-1">
     <div class="flex items-center gap-1">
-      {#if status !== "missing" && status !== "generating"}
-        <button
-          onclick={() => skip(-10)}
-          class="flex h-8 w-8 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-60 transition-all hover:bg-[var(--accent-wash)] hover:opacity-100 active:scale-95"
-          title="Back 10s (Arrow Left)"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.75"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path d="M9 14L4 9l5-5" />
-            <path
-              d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"
-            />
-            <text
-              x="12.5"
-              y="15.5"
-              text-anchor="middle"
-              font-size="8"
-              font-weight="700"
-              fill="currentColor"
-              stroke="none"
-              style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; letter-spacing: -0.5px;"
-              >10</text
-            >
-          </svg>
-        </button>
-      {/if}
-
       {#if status === "generating" || status === "loading"}
         <div
           class="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--accent-soft)]/20 text-[var(--accent-strong)]"
@@ -235,6 +206,31 @@
           </svg>
         </button>
       {:else}
+        <button
+          onclick={() => skip(-10)}
+          class="relative flex h-8 w-8 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-60 transition-all hover:bg-[var(--accent-wash)] hover:opacity-100 active:scale-95"
+          title="Back 10s (Arrow Left)"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+            <path d="M3 3v5h5" />
+          </svg>
+          <span
+            class="absolute bottom-0.5 right-0.5 text-[8px] font-bold leading-none"
+            style="letter-spacing: -0.03em">10</span
+          >
+        </button>
+
         <button
           onclick={togglePlay}
           class="group flex h-10 w-10 items-center justify-center rounded-full bg-[var(--accent-soft)]/40 text-[var(--accent-strong)] transition-all hover:bg-[var(--accent-wash)] hover:scale-105 active:scale-95"
@@ -272,45 +268,32 @@
             </svg>
           {/if}
         </button>
-      {/if}
 
-      {#if status !== "missing" && status !== "generating"}
         <button
           onclick={() => skip(10)}
-          class="flex h-8 w-8 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-60 transition-all hover:bg-[var(--accent-wash)] hover:opacity-100 active:scale-95"
+          class="relative flex h-8 w-8 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-60 transition-all hover:bg-[var(--accent-wash)] hover:opacity-100 active:scale-95"
           title="Forward 10s (Arrow Right)"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            width="20"
-            height="20"
+            width="16"
+            height="16"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            stroke-width="1.75"
+            stroke-width="2"
             stroke-linecap="round"
             stroke-linejoin="round"
           >
-            <path d="M15 14l5-5-5-5" />
-            <path
-              d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5v0A5.5 5.5 0 0 0 9.5 20H13"
-            />
-            <text
-              x="11.5"
-              y="15.5"
-              text-anchor="middle"
-              font-size="8"
-              font-weight="700"
-              fill="currentColor"
-              stroke="none"
-              style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; letter-spacing: -0.5px;"
-              >10</text
-            >
+            <path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+            <path d="M21 3v5h-5" />
           </svg>
+          <span
+            class="absolute bottom-0.5 left-0.5 text-[8px] font-bold leading-none"
+            style="letter-spacing: -0.03em">10</span
+          >
         </button>
-      {/if}
 
-      {#if status !== "missing" && status !== "generating"}
         <button
           onclick={cyclePlaybackRate}
           class="ml-1 flex h-8 min-w-[32px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-[var(--soft-foreground)] opacity-60 transition-all hover:bg-[var(--accent-wash)] hover:opacity-100 active:scale-95"
@@ -327,20 +310,30 @@
           <span
             class="text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--soft-foreground)] opacity-70"
           >
-            {status === "generating" ? "Generating Audio" : "Loading"}
+            {status === "generating" ? "Generating audio" : "Loading"}
+          </span>
+        {:else if status === "missing" && summaryWordCount !== null}
+          {@const speakMins = Math.round(summaryWordCount / 140) || 1}
+          <span class="text-[10px] text-[var(--soft-foreground)] opacity-50">
+            {summaryWordCount} words &middot; ~{speakMins} min audio
+            {#if estimatedSecs !== null}
+              &middot; ~{Math.round(estimatedSecs)}s to generate
+            {/if}
           </span>
         {:else}
           <div></div>
         {/if}
-        {#if duration > 0}
+        {#if currentTime > 0 || duration > 0}
+          {@const knownDuration = isFinite(duration) && duration > 0}
           <span
             class="text-[10px] tabular-nums text-[var(--soft-foreground)] opacity-50"
           >
             {Math.floor(currentTime / 60)}:{(currentTime % 60)
               .toFixed(0)
-              .padStart(2, "0")} / {Math.floor(duration / 60)}:{(duration % 60)
-              .toFixed(0)
-              .padStart(2, "0")}
+              .padStart(2, "0")}{#if knownDuration}
+              / {Math.floor(duration / 60)}:{(duration % 60)
+                .toFixed(0)
+                .padStart(2, "0")}{/if}
           </span>
         {/if}
       </div>
@@ -348,7 +341,7 @@
         <input
           type="range"
           min="0"
-          max={duration}
+          max={isFinite(duration) && duration > 0 ? duration : 100}
           step="0.1"
           value={currentTime}
           oninput={handleScrub}

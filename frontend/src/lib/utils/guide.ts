@@ -1,8 +1,8 @@
 export function resolveGuideStepFromUrl(
-  url: URL,
+  search: string,
   stepCount: number,
 ): number | null {
-  const guideParam = url.searchParams.get("guide");
+  const guideParam = new URLSearchParams(search).get("guide");
   if (guideParam === null) return null;
 
   const parsed = Number.parseInt(guideParam, 10);

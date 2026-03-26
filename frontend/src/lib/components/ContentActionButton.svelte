@@ -11,6 +11,7 @@
     compact = false,
     disabled = false,
     loading = false,
+    className = "",
     label = "",
     tooltip = "",
     tooltipAnchor = undefined,
@@ -22,6 +23,7 @@
     compact?: boolean;
     disabled?: boolean;
     loading?: boolean;
+    className?: string;
     label?: string;
     tooltip?: string;
     tooltipAnchor?: string | undefined;
@@ -45,7 +47,7 @@
     {href}
     target="_blank"
     rel="noopener noreferrer"
-    class={buttonClass}
+    class={`${buttonClass} ${className}`}
     aria-label={label}
     data-tooltip={tooltip}
     data-tooltip-anchor={tooltipAnchor}
@@ -69,7 +71,7 @@
 {:else}
   <button
     type="button"
-    class={`${buttonClass} ${buttonStateClass}`}
+    class={`${buttonClass} ${buttonStateClass} ${className}`}
     onclick={onClick}
     {disabled}
     aria-label={label}

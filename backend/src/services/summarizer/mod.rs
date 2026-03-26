@@ -436,7 +436,7 @@ mod tests {
         assert!(
             prompt.contains("Do not invent names, numbers, claims, timelines, or conclusions.")
         );
-        assert!(prompt.contains("Start directly with section heading ## TL;DR"));
+        assert!(prompt.contains("Start directly with section heading ## At a glance"));
         assert!(prompt.contains("## Key Points"));
         assert!(prompt.contains("## Takeaways"));
         assert!(prompt.contains("## Overview"));

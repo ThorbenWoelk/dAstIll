@@ -75,160 +75,177 @@
     class="mobile-tab-bar mobile-tab-bar--actions mobile-tab-bar--video-actions lg:hidden"
     aria-label="Video actions"
   >
-    <div
-      class="custom-scrollbar flex w-full min-w-0 flex-nowrap items-center justify-center gap-2 overflow-x-auto px-2 py-1.5 [scrollbar-width:thin]"
-    >
+    <div class="mobile-video-actions-row">
       {#if bar.showFormatAction}
-        <ContentActionButton
-          compact
-          icon="format"
-          loading={bar.formatting}
-          disabled={bar.busy ||
-            bar.formatting ||
-            bar.reverting ||
-            !bar.aiAvailable}
-          label={bar.formatting
-            ? "Formatting transcript"
-            : bar.aiAvailable
-              ? "Clean formatting"
-              : "auto-format (AI engine required)"}
-          tooltip={bar.formatting
-            ? "Formatting…"
-            : bar.aiAvailable
-              ? "Clean formatting"
-              : "auto-format (AI engine required)"}
-          onClick={() => bar.onFormat()}
-        />
-        {#if bar.showRevertAction}
+        <div class="mobile-video-action-slot">
           <ContentActionButton
             compact
-            icon="revert"
-            loading={bar.reverting}
+            className="mobile-video-action-button"
+            icon="format"
+            loading={bar.formatting}
             disabled={bar.busy ||
               bar.formatting ||
               bar.reverting ||
-              !bar.canRevert}
-            label={bar.reverting
-              ? "Reverting transcript"
-              : "Revert to original transcript"}
-            tooltip={bar.reverting
-              ? "Reverting…"
-              : "Revert to original transcript"}
-            onClick={() => bar.onRevert()}
+              !bar.aiAvailable}
+            label={bar.formatting
+              ? "Formatting transcript"
+              : bar.aiAvailable
+                ? "Clean formatting"
+                : "auto-format (AI engine required)"}
+            tooltip={bar.formatting
+              ? "Formatting…"
+              : bar.aiAvailable
+                ? "Clean formatting"
+                : "auto-format (AI engine required)"}
+            onClick={() => bar.onFormat()}
           />
+        </div>
+        {#if bar.showRevertAction}
+          <div class="mobile-video-action-slot">
+            <ContentActionButton
+              compact
+              className="mobile-video-action-button"
+              icon="revert"
+              loading={bar.reverting}
+              disabled={bar.busy ||
+                bar.formatting ||
+                bar.reverting ||
+                !bar.canRevert}
+              label={bar.reverting
+                ? "Reverting transcript"
+                : "Revert to original transcript"}
+              tooltip={bar.reverting
+                ? "Reverting…"
+                : "Revert to original transcript"}
+              onClick={() => bar.onRevert()}
+            />
+          </div>
         {/if}
       {/if}
       {#if bar.showRegenerate}
-        <ContentActionButton
-          compact
-          icon="regenerate"
-          loading={bar.regenerating}
-          disabled={bar.busy ||
-            bar.formatting ||
-            bar.regenerating ||
-            bar.reverting ||
-            !bar.aiAvailable}
-          label={bar.regenerating
-            ? "Regenerating summary"
-            : bar.aiAvailable
-              ? "Regenerate summary"
-              : "regenerate (AI engine required)"}
-          tooltip={bar.regenerating
-            ? "Regenerating…"
-            : bar.aiAvailable
-              ? "Regenerate summary"
-              : "regenerate (AI engine required)"}
-          onClick={() => bar.onRegenerate()}
-        />
+        <div class="mobile-video-action-slot">
+          <ContentActionButton
+            compact
+            className="mobile-video-action-button"
+            icon="regenerate"
+            loading={bar.regenerating}
+            disabled={bar.busy ||
+              bar.formatting ||
+              bar.regenerating ||
+              bar.reverting ||
+              !bar.aiAvailable}
+            label={bar.regenerating
+              ? "Regenerating summary"
+              : bar.aiAvailable
+                ? "Regenerate summary"
+                : "regenerate (AI engine required)"}
+            tooltip={bar.regenerating
+              ? "Regenerating…"
+              : bar.aiAvailable
+                ? "Regenerate summary"
+                : "regenerate (AI engine required)"}
+            onClick={() => bar.onRegenerate()}
+          />
+        </div>
       {/if}
       {#if bar.youtubeUrl}
-        <ContentActionButton
-          compact
-          icon="youtube"
-          href={bar.youtubeUrl}
-          label="Open video on YouTube"
-          tooltip="Open on YouTube"
-        />
+        <div class="mobile-video-action-slot">
+          <ContentActionButton
+            compact
+            className="mobile-video-action-button"
+            icon="youtube"
+            href={bar.youtubeUrl}
+            label="Open video on YouTube"
+            tooltip="Open on YouTube"
+          />
+        </div>
       {/if}
-      <button
-        type="button"
-        class="inline-flex h-8 w-8 items-center justify-center rounded-full text-[var(--danger)] opacity-40 transition-all hover:bg-[var(--danger)]/10 hover:opacity-100 disabled:pointer-events-none disabled:opacity-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--danger)]/30"
-        aria-label="Reset video - wipe transcript and summary"
-        disabled={bar.busy || bar.resetting}
-        onclick={() => bar.onRequestResetVideo()}
-      >
-        {#if bar.resetting}
-          <svg
-            width="13"
-            height="13"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            class="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg
-          >
-        {:else}
-          <svg
-            width="13"
-            height="13"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            ><polyline points="3 6 5 6 21 6" /><path
-              d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"
-            /><path d="M10 11v6" /><path d="M14 11v6" /><path
-              d="M9 6V4h6v2"
-            /></svg
-          >
-        {/if}
-      </button>
-      {#if bar.showAcknowledgeToggle}
+      <div class="mobile-video-action-slot">
         <button
           type="button"
-          id="mark-read-toggle-mobile-footer"
-          class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-all hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 disabled:cursor-not-allowed disabled:opacity-30"
-          aria-label={bar.acknowledged ? "Mark as unread" : "Mark as read"}
-          aria-pressed={bar.acknowledged}
-          onclick={() => bar.onAcknowledgeToggle()}
-          disabled={bar.busy}
+          class="mobile-video-action-button inline-flex items-center justify-center rounded-full text-[var(--danger)] opacity-40 transition-all hover:bg-[var(--danger)]/10 hover:opacity-100 disabled:pointer-events-none disabled:opacity-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--danger)]/30"
+          aria-label="Reset video - wipe transcript and summary"
+          disabled={bar.busy || bar.resetting}
+          onclick={() => bar.onRequestResetVideo()}
         >
-          <span
-            class={`flex h-5 w-5 items-center justify-center rounded-full border transition-all ${
-              bar.acknowledged
-                ? "border-[var(--accent)] bg-[var(--accent)] text-white"
-                : "border-[var(--border)] bg-transparent text-transparent"
-            }`}
-            aria-hidden="true"
-          >
+          {#if bar.resetting}
             <svg
-              class={`h-3 w-3 transition-opacity ${bar.acknowledged ? "opacity-100" : "opacity-0"}`}
+              width="13"
+              height="13"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              stroke-width="3.4"
+              stroke-width="2.5"
               stroke-linecap="round"
               stroke-linejoin="round"
+              class="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg
             >
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-          </span>
+          {:else}
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              ><polyline points="3 6 5 6 21 6" /><path
+                d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"
+              /><path d="M10 11v6" /><path d="M14 11v6" /><path
+                d="M9 6V4h6v2"
+              /></svg
+            >
+          {/if}
         </button>
+      </div>
+      {#if bar.showAcknowledgeToggle}
+        <div class="mobile-video-action-slot">
+          <button
+            type="button"
+            id="mark-read-toggle-mobile-footer"
+            class="mobile-video-action-button inline-flex shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-all hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 disabled:cursor-not-allowed disabled:opacity-30"
+            aria-label={bar.acknowledged ? "Mark as unread" : "Mark as read"}
+            aria-pressed={bar.acknowledged}
+            onclick={() => bar.onAcknowledgeToggle()}
+            disabled={bar.busy}
+          >
+            <span
+              class={`flex h-5 w-5 items-center justify-center rounded-full border transition-all ${
+                bar.acknowledged
+                  ? "border-[var(--accent)] bg-[var(--accent)] text-white"
+                  : "border-[var(--border)] bg-transparent text-transparent"
+              }`}
+              aria-hidden="true"
+            >
+              <svg
+                class={`h-3 w-3 transition-opacity ${bar.acknowledged ? "opacity-100" : "opacity-0"}`}
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="3.4"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            </span>
+          </button>
+        </div>
       {/if}
       {#if bar.showEditAction}
-        <ContentActionButton
-          compact
-          icon="edit"
-          disabled={bar.busy}
-          label="Edit distillation"
-          tooltip="Edit distillation"
-          tooltipAnchor="end"
-          onClick={() => bar.onEdit()}
-        />
+        <div class="mobile-video-action-slot">
+          <ContentActionButton
+            compact
+            className="mobile-video-action-button"
+            icon="edit"
+            disabled={bar.busy}
+            label="Edit distillation"
+            tooltip="Edit distillation"
+            tooltipAnchor="end"
+            onClick={() => bar.onEdit()}
+          />
+        </div>
       {/if}
     </div>
   </nav>

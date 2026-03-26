@@ -263,13 +263,11 @@ export function createWorkspaceState(options: {
     const oldest = resolveOldestLoadedReadyVideoDate(sidebarState.videos);
     if (!oldest) return;
 
-    const currentEarliest = selectedChannel.earliest_sync_date
-      ? new Date(selectedChannel.earliest_sync_date)
-      : null;
+    const currentEarliestMs = selectedChannel.earliest_sync_date
+      ? Date.parse(selectedChannel.earliest_sync_date)
+      : NaN;
     const shouldPushBack =
-      !currentEarliest ||
-      Number.isNaN(currentEarliest.getTime()) ||
-      oldest < currentEarliest;
+      Number.isNaN(currentEarliestMs) || oldest.getTime() < currentEarliestMs;
     if (!shouldPushBack) return;
 
     const updated = await updateChannel(sidebarState.selectedChannelId!, {

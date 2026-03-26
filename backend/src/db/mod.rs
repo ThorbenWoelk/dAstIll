@@ -6,6 +6,7 @@ mod helpers;
 mod highlights;
 mod preferences;
 mod search;
+mod tts_stats;
 mod video_info;
 mod videos;
 
@@ -19,6 +20,7 @@ pub use firestore_videos::*;
 pub use highlights::*;
 pub use preferences::*;
 pub use search::*;
+pub use tts_stats::*;
 pub use video_info::*;
 pub use videos::*;
 

@@ -791,7 +791,7 @@ a[href],
     right: 0;
     z-index: 60;
     display: flex;
-    justify-content: space-around;
+    justify-content: stretch;
     align-items: center;
     height: var(--mobile-tab-bar-height);
     padding-bottom: env(safe-area-inset-bottom);
@@ -807,6 +807,29 @@ a[href],
   .mobile-tab-bar--video-actions {
     height: var(--mobile-video-actions-bar-height);
     min-height: var(--mobile-video-actions-bar-height);
+  }
+
+  .mobile-video-actions-row {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    align-items: center;
+    width: 100%;
+    min-width: 0;
+    padding: var(--space-sm) var(--space-md);
+  }
+
+  .mobile-video-action-slot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+  }
+
+  .mobile-video-action-button {
+    height: 2.75rem;
+    width: 2.75rem;
+    border-radius: var(--radius-full);
   }
 
   /* Hide bottom navigation behind the mobile drawer overlay. */
@@ -853,10 +876,14 @@ a[href],
 
 .mobile-tab-item {
   display: flex;
+  flex: 1 1 0;
   flex-direction: column;
+  justify-content: center;
   align-items: center;
   gap: 0px;
-  padding: 10px 16px;
+  min-width: 0;
+  align-self: stretch;
+  padding: 10px var(--space-sm);
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;

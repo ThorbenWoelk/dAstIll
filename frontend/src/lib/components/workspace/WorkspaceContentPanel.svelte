@@ -360,14 +360,14 @@
       class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between"
     >
       <div class="min-w-0 flex-1" id="workspace-tabs-mobile">
-        <div class="-mx-4 min-w-0 flex-1 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+        <div class="-mx-4 min-w-0 flex-1 px-4 sm:mx-0 sm:px-0">
           <div
-            class="flex min-w-max items-center gap-5 border-b border-[var(--accent-border-soft)] pr-4 sm:pr-0"
+            class="grid w-full grid-cols-4 items-center border-b border-[var(--accent-border-soft)] lg:flex lg:min-w-max lg:gap-5"
           >
             {#each WORKSPACE_CONTENT_MODE_ORDER as mode}
               <button
                 type="button"
-                class={`-mb-px border-b-2 pb-3 text-[11px] font-bold uppercase tracking-[0.12em] transition-colors ${
+                class={`-mb-px min-w-0 border-b-2 px-1 pb-3 text-center text-[11px] font-bold uppercase tracking-[0.12em] transition-colors ${
                   contentMode === mode
                     ? "border-[var(--accent)] text-[var(--accent-strong)]"
                     : "border-transparent text-[var(--soft-foreground)] opacity-75 hover:text-[var(--foreground)] hover:opacity-100"

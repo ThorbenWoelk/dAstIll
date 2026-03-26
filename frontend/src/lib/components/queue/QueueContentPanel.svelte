@@ -40,6 +40,7 @@
     actions?: QueueContentPanelActions;
   } = $props();
 
+  // eslint-disable-next-line svelte/prefer-writable-derived -- user-editable input, cannot be purely derived
   let localSyncDateInput = $state("");
 
   const QUEUE_EYEBROW = "Processing queue";

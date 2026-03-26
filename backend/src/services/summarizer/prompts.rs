@@ -73,10 +73,10 @@ Reliability rules:
 - Do not invent names, numbers, claims, timelines, or conclusions.
 - If a point is uncertain or incomplete in the transcript, say so briefly.
 - Keep wording precise and avoid speculative language.
-- Start directly with section heading ## TL;DR - no top title line.
+- Start directly with section heading ## At a glance - no top title line.
 
 Output format (exact section headings):
-## TL;DR
+## At a glance
 - Bullet-point list of the most important takeaways (3-7 bullets depending on content density).
 
 ## Overview

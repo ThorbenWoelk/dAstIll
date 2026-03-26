@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
   import { onMount, tick } from "svelte";
+  import { SvelteMap } from "svelte/reactivity";
 
   import {
     getSearchStatus,
@@ -111,7 +112,10 @@
   let modeKeyword = $state(true);
   let modeSemantic = $state(true);
   let filterMenuOpen = $state(false);
-  let searchAbortControllers = new Map<SearchResultMode, AbortController>();
+  let searchAbortControllers = new SvelteMap<
+    SearchResultMode,
+    AbortController
+  >();
 
   let searchQueryTrimmed = $derived(searchQuery.trim());
   let searchStatus = $derived(liveSearchStatus ?? initialSearchStatus);
@@ -432,9 +436,7 @@
     searchPanelOpen = false;
     mobileSearchOpen = false;
 
-    const params = new URLSearchParams();
-    params.set("prompt", query);
-    await goto(`/chat?${params.toString()}`, {
+    await goto(`/chat?prompt=${encodeURIComponent(query)}`, {
       keepFocus: true,
       noScroll: true,
     });

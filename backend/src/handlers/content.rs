@@ -266,10 +266,15 @@ pub async fn generate_summary_audio(
         return Ok(StatusCode::OK);
     }
 
+    let word_count = tts_text.split_whitespace().count() as u32;
+    let started_at = std::time::Instant::now();
+
     let audio = tts.synthesize_summary(&tts_text).await.map_err(|err| {
         tracing::error!(video_id = %video_id, error = %err, "summary audio synthesis failed");
         (StatusCode::BAD_GATEWAY, err.to_string())
     })?;
+
+    let duration_secs = started_at.elapsed().as_secs_f64();
 
     let effective_content_type = if audio.starts_with(b"RIFF") {
         "audio/wav"
@@ -281,6 +286,10 @@ pub async fn generate_summary_audio(
         .await
         .map_err(map_db_err)?;
 
+    if let Err(err) = db::record_tts_generation(&state.db, word_count, duration_secs).await {
+        tracing::warn!(error = %err, "failed to record TTS generation stats");
+    }
+
     Ok(StatusCode::OK)
 }
 
@@ -289,6 +298,8 @@ pub struct SummaryAudioDebugResponse {
     ok: bool,
     cache_hit: bool,
     error: Option<String>,
+    word_count: Option<u32>,
+    estimated_secs: Option<f32>,
 }
 
 pub async fn get_summary_audio_debug(
@@ -306,23 +317,34 @@ pub async fn get_summary_audio_debug(
         "Polly TTS is not configured".to_string(),
     ))?;
 
-    let (key, _, _) = get_summary_audio_cache_info(tts, &video_id, &summary.content).await?;
+    let (key, _, tts_text) =
+        get_summary_audio_cache_info(tts, &video_id, &summary.content).await?;
+    let word_count = tts_text.split_whitespace().count() as u32;
+
+    let stats = db::get_tts_stats(&state.db).await.ok().flatten();
+    let estimated_secs = stats.as_ref().and_then(|s| s.estimate_secs(word_count));
 
     match db::summary_audio_exists(&state.db, &key).await {
         Ok(true) => Ok(Json(SummaryAudioDebugResponse {
             ok: true,
             cache_hit: true,
             error: None,
+            word_count: Some(word_count),
+            estimated_secs,
         })),
         Ok(false) => Ok(Json(SummaryAudioDebugResponse {
             ok: true,
             cache_hit: false,
             error: None,
+            word_count: Some(word_count),
+            estimated_secs,
         })),
         Err(err) => Ok(Json(SummaryAudioDebugResponse {
             ok: false,
             cache_hit: false,
             error: Some(format!("{err}")),
+            word_count: None,
+            estimated_secs: None,
         })),
     }
 }

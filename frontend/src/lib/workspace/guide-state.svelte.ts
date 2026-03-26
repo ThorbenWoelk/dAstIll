@@ -53,7 +53,7 @@ export function createGuideState(stepCount: number): GuideState {
 
     restoreFromUrl() {
       const restored = resolveGuideStepFromUrl(
-        new URL(window.location.href),
+        window.location.search,
         stepCount,
       );
       if (restored !== null) {
