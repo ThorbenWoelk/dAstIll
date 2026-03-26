@@ -1,4 +1,6 @@
 <script lang="ts">
+  import CheckIcon from "$lib/components/icons/CheckIcon.svelte";
+  import CopyIcon from "$lib/components/icons/CopyIcon.svelte";
   import TrashIcon from "$lib/components/icons/TrashIcon.svelte";
   import type { Highlight, Video } from "$lib/types";
   import { formatPublishedAt } from "$lib/workspace/content";
@@ -16,6 +18,23 @@
       | ((highlightId: number) => Promise<void> | void)
       | undefined;
   } = $props();
+
+  let copiedHighlightId = $state<number | null>(null);
+  let copyResetTimer: ReturnType<typeof setTimeout> | null = null;
+
+  async function copyHighlightText(highlightId: number, text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      copiedHighlightId = highlightId;
+      if (copyResetTimer) clearTimeout(copyResetTimer);
+      copyResetTimer = setTimeout(() => {
+        copiedHighlightId = null;
+        copyResetTimer = null;
+      }, 2000);
+    } catch {
+      /* clipboard may be unavailable */
+    }
+  }
 </script>
 
 <div class="space-y-5 pb-20">
@@ -64,23 +83,47 @@
               >
                 {formatPublishedAt(highlight.created_at)}
               </span>
-              {#if onDeleteHighlight}
+              <div class="flex items-center gap-0.5">
                 <button
                   type="button"
-                  class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--danger)] disabled:cursor-not-allowed disabled:opacity-50"
-                  onclick={() => void onDeleteHighlight(highlight.id)}
-                  disabled={deletingHighlightId === highlight.id}
-                  aria-label="Delete highlight"
+                  class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]"
+                  data-tooltip={copiedHighlightId === highlight.id
+                    ? "Copied"
+                    : "Copy"}
+                  aria-label={copiedHighlightId === highlight.id
+                    ? "Copied"
+                    : "Copy highlight"}
+                  onclick={() =>
+                    void copyHighlightText(highlight.id, highlight.text)}
                 >
-                  <TrashIcon
-                    size={14}
-                    strokeWidth={2.2}
-                    class={deletingHighlightId === highlight.id
-                      ? "animate-pulse"
-                      : ""}
-                  />
+                  {#if copiedHighlightId === highlight.id}
+                    <CheckIcon
+                      size={16}
+                      strokeWidth={2}
+                      className="text-[var(--accent)]"
+                    />
+                  {:else}
+                    <CopyIcon size={14} strokeWidth={2} />
+                  {/if}
                 </button>
-              {/if}
+                {#if onDeleteHighlight}
+                  <button
+                    type="button"
+                    class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--danger)] disabled:cursor-not-allowed disabled:opacity-50"
+                    onclick={() => void onDeleteHighlight(highlight.id)}
+                    disabled={deletingHighlightId === highlight.id}
+                    aria-label="Delete highlight"
+                  >
+                    <TrashIcon
+                      size={14}
+                      strokeWidth={2.2}
+                      class={deletingHighlightId === highlight.id
+                        ? "animate-pulse"
+                        : ""}
+                    />
+                  </button>
+                {/if}
+              </div>
             </div>
           </div>
           <p

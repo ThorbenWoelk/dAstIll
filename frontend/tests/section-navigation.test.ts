@@ -1,10 +1,22 @@
 import { describe, expect, it } from "bun:test";
 
+import { resolveCurrentSectionFromPathname } from "../src/lib/mobile-navigation/resolveCurrentSectionFromPathname";
 import {
   getSectionNavigationItems,
   goHintKeyForSection,
   type SectionNavigationSection,
 } from "../src/lib/section-navigation";
+
+describe("resolveCurrentSectionFromPathname", () => {
+  it("maps primary routes for section highlighting and keyboard hints", () => {
+    expect(resolveCurrentSectionFromPathname("/")).toBe("workspace");
+    expect(resolveCurrentSectionFromPathname("/download-queue")).toBe("queue");
+    expect(resolveCurrentSectionFromPathname("/download-queue/")).toBe("queue");
+    expect(resolveCurrentSectionFromPathname("/highlights")).toBe("highlights");
+    expect(resolveCurrentSectionFromPathname("/chat")).toBe("chat");
+    expect(resolveCurrentSectionFromPathname("/chat/c1")).toBe("chat");
+  });
+});
 
 describe("goHintKeyForSection", () => {
   it("maps each section to its go chord letter", () => {

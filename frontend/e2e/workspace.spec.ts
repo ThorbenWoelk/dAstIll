@@ -108,6 +108,7 @@ test("switching content tabs shows different views", async ({ page }) => {
     timeout: READY_MS,
   });
   await expect(page.locator("#content-view article")).not.toBeEmpty();
+  await expect(page.locator("#workspace")).toBeVisible();
 });
 
 test("summary and transcript match the selected video after changing channel", async ({
@@ -166,4 +167,49 @@ test("summary and transcript match the selected video after changing channel", a
   ).trim();
   expect(summaryB.length).toBeGreaterThan(0);
   expect(summaryB).not.toBe(transcriptA);
+});
+
+test("G then W navigates from queue to workspace without full reload hang", async ({
+  page,
+}) => {
+  await page.goto("/download-queue");
+  await expect
+    .poll(() => new URL(page.url()).pathname)
+    .toContain("download-queue");
+
+  await page.keyboard.press("g");
+  await page.keyboard.press("w");
+
+  await expect.poll(() => new URL(page.url()).pathname).toBe("/");
+  await expect(page.locator("#workspace")).toBeVisible({ timeout: READY_MS });
+});
+
+test("mark read toggle flips aria-pressed on desktop", async ({ page }) => {
+  const hasData = await workspaceHasSeedData(page);
+  if (!hasData) {
+    test.skip(true, "Workspace has no channels; run against a seeded backend");
+  }
+
+  const sidebar = workspaceSidebar(page);
+  await sidebar
+    .locator("[data-channel-id]")
+    .first()
+    .locator("button")
+    .first()
+    .click();
+  await expect(
+    sidebar.locator("#videos").getByRole("button").first(),
+  ).toBeVisible({
+    timeout: READY_MS,
+  });
+  await sidebar.locator("#videos").getByRole("button").first().click();
+
+  const toggle = page.locator("#mark-read-toggle");
+  await expect(toggle).toBeVisible({ timeout: READY_MS });
+  const before = await toggle.getAttribute("aria-pressed");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute(
+    "aria-pressed",
+    before === "true" ? "false" : "true",
+  );
 });

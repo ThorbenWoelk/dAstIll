@@ -2,6 +2,8 @@
 
 Guidance for bundles, Lakeflow Spark Declarative Pipelines (SDP) SQL, and dashboards under `databricks/`.
 
+For product UI, typography, colors, and icon conventions used by the web app, see the repo root [DESIGN.md](../DESIGN.md).
+
 ## SQL pipeline file naming
 
 Use a single convention so library order in `databricks.yml` stays obvious and layers stay visible:

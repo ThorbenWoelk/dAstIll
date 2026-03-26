@@ -119,7 +119,14 @@
   } from "$lib/channel-view-cache";
   import { channelOrderFromList } from "$lib/workspace/channels";
   import {
-    applyOptimisticAcknowledge,
+    buildOptimisticAcknowledgeSidebarList,
+    isStillSelectedAfterAcknowledgeSuccess,
+    matchesAcknowledgedFilterVideo,
+    resolveRevertedVideoForAcknowledge,
+    resolveVideoForAcknowledgeToggle,
+    selectionDroppedAfterAcknowledgeOptimistic,
+  } from "$lib/workspace/acknowledge-toggle";
+  import {
     buildOptimisticChannel,
     removeChannelFromCollection,
     removeChannelId,
@@ -2478,23 +2485,22 @@
   }
 
   function matchesAcknowledgedFilter(video: Video) {
-    if (sidebarState.acknowledgedFilter === "ack") return video.acknowledged;
-    if (sidebarState.acknowledgedFilter === "unack") return !video.acknowledged;
-    return true;
+    return matchesAcknowledgedFilterVideo(
+      video,
+      sidebarState.acknowledgedFilter,
+    );
   }
 
   async function toggleAcknowledge() {
     if (!sidebarState.selectedVideoId) return;
     const targetVideoId = sidebarState.selectedVideoId;
-    const videoFromList = sidebarState.videos.find(
-      (v) => v.id === targetVideoId,
+    const resolved = resolveVideoForAcknowledgeToggle(
+      sidebarState.videos,
+      targetVideoId,
+      pendingSelectedVideo,
     );
-    const video =
-      videoFromList ??
-      (pendingSelectedVideo?.id === targetVideoId
-        ? pendingSelectedVideo
-        : null);
-    if (!video) return;
+    if (!resolved) return;
+    const { video, videoFromList } = resolved;
 
     errorMessage = null;
 
@@ -2508,13 +2514,14 @@
 
     // Optimistic update — flip state immediately, no loading indicator
     const optimisticVideo = { ...video, acknowledged: newAcknowledged };
-    const optimisticList = videoFromList
-      ? applyOptimisticAcknowledge(
-          sidebarState.videos,
-          targetVideoId,
-          newAcknowledged,
-        ).filter(matchesAcknowledgedFilter)
-      : previousVideos;
+    const optimisticList = buildOptimisticAcknowledgeSidebarList(
+      videoFromList,
+      previousVideos,
+      sidebarState.videos,
+      targetVideoId,
+      newAcknowledged,
+      sidebarState.acknowledgedFilter,
+    );
     if (videoFromList) {
       sidebarState.setVideos(optimisticList);
     } else {
@@ -2527,12 +2534,14 @@
       confirmed: false,
     };
 
-    const selectionDroppedFromFilter = Boolean(
-      previousSelectedVideoId &&
-      (videoFromList
-        ? !optimisticList.some((v) => v.id === previousSelectedVideoId)
-        : !matchesAcknowledgedFilter(optimisticVideo)),
-    );
+    const selectionDroppedFromFilter =
+      selectionDroppedAfterAcknowledgeOptimistic(
+        videoFromList,
+        optimisticList,
+        previousSelectedVideoId,
+        optimisticVideo,
+        sidebarState.acknowledgedFilter,
+      );
     if (selectionDroppedFromFilter) {
       editing = false;
       clearFormattingFeedbackState();
@@ -2579,12 +2588,11 @@
         confirmed: true,
       };
 
-      const stillSelected =
-        sidebarState.selectedVideoId != null &&
-        (sidebarState.videos.some(
-          (v) => v.id === sidebarState.selectedVideoId,
-        ) ||
-          pendingSelectedVideo?.id === sidebarState.selectedVideoId);
+      const stillSelected = isStillSelectedAfterAcknowledgeSuccess(
+        sidebarState.selectedVideoId,
+        sidebarState.videos,
+        pendingSelectedVideo,
+      );
       if (!stillSelected) {
         editing = false;
         clearFormattingFeedbackState();
@@ -2600,11 +2608,11 @@
       sidebarState.setVideos(previousVideos);
       sidebarState.setSelectedVideoId(previousSelectedVideoId);
       pendingSelectedVideo = previousPendingSelectedVideo;
-      const reverted =
-        previousVideos.find((v) => v.id === targetVideoId) ??
-        (previousPendingSelectedVideo?.id === targetVideoId
-          ? previousPendingSelectedVideo
-          : null);
+      const reverted = resolveRevertedVideoForAcknowledge(
+        previousVideos,
+        targetVideoId,
+        previousPendingSelectedVideo,
+      );
       if (reverted) {
         videoAcknowledgeSeq += 1;
         videoAcknowledgeSync = {

@@ -5,6 +5,7 @@ import {
   buildShortcutManual,
   clearGoSequence,
   computeGoHintBadgeStyles,
+  GO_SEQUENCE_HINTS,
   isApplePlatform,
   isEditableShortcutTarget,
   isInsideModalDialog,
@@ -99,6 +100,20 @@ describe("computeGoHintBadgeStyles", () => {
   it("returns no badges when there are no marked elements", () => {
     document.body.replaceChildren();
     expect(computeGoHintBadgeStyles()).toEqual([]);
+  });
+});
+
+describe("GO_SEQUENCE_HINTS", () => {
+  it("stays aligned with G-then-letter navigation (GlobalKeyboardShortcuts)", () => {
+    expect(GO_SEQUENCE_HINTS.map((h) => h.key.toLowerCase())).toEqual([
+      "w",
+      "q",
+      "h",
+      "c",
+      "d",
+      "m",
+      "u",
+    ]);
   });
 });
 

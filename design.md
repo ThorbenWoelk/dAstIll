@@ -50,6 +50,34 @@ All colors are CSS custom properties (`var(--token)`). Never use hardcoded hex v
 - **Standard**: `rounded-full` for pill buttons/tags, `--radius-md` for cards and panels.
 - **4-point Grid Rule**: All layout spacing must land on 4px increments. Prefer `--space-*` tokens or Tailwind spacing utilities that resolve to 4px steps, and avoid fractional spacing utilities like `.5` unless there is a deliberate, documented exception.
 
+### Icons
+
+Icons are **minimal stroke glyphs** only. No emoji, no filled decorative pictograms, and no one-off SVGs inlined in feature components when an existing icon fits.
+
+**Location**: `frontend/src/lib/components/icons/` (Svelte components, one file per icon).
+
+**Shape rules**
+
+- `viewBox="0 0 24 24"`, `fill="none"`, `stroke="currentColor"` so color follows text (`--foreground`, `--soft-foreground`, `--accent`, etc.).
+- `stroke-linecap="round"` and `stroke-linejoin="round"` for a consistent soft line look.
+- Default `aria-hidden="true"`; pair with visible labels or `aria-label` on the control when meaning is not obvious from text alone.
+- Optional props: `size`, `strokeWidth`, `className` / `class` (match existing components when adding new ones).
+
+**Standard set** (reuse before adding)
+
+| Component | Role |
+| --- | --- |
+| `ChevronIcon` | Disclosure, back/forward, expand/collapse (`direction`: left, right, down). |
+| `CheckIcon` | Success, selected, done. |
+| `CloseIcon` | Dismiss, clear input. |
+| `CopyIcon` | Copy to clipboard. |
+| `ExternalLinkIcon` | Opens elsewhere / external URL. |
+| `HighlighterIcon` | Highlights mode / annotation affordance. |
+| `SearchIcon` | Search fields and search affordances. |
+| `TrashIcon` | Delete / destructive remove. |
+
+New icons should match this stroke style and live in the same folder so the UI stays visually one system.
+
 ---
 
 ## Component Design

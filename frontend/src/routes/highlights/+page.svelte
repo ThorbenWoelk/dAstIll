@@ -5,6 +5,8 @@
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
   import { createAiStatusPoller } from "$lib/utils/ai-poller";
   import ErrorToast from "$lib/components/ErrorToast.svelte";
+  import CheckIcon from "$lib/components/icons/CheckIcon.svelte";
+  import CopyIcon from "$lib/components/icons/CopyIcon.svelte";
   import TrashIcon from "$lib/components/icons/TrashIcon.svelte";
   import defaultChannelIcon from "$lib/assets/channel-default.svg";
   import MobileYouTubeTopNav from "$lib/components/mobile/MobileYouTubeTopNav.svelte";
@@ -26,6 +28,8 @@
   let errorMessage = $state<string | null>(null);
   let deletingHighlightId = $state<number | null>(null);
   let deleteError = $state<string | null>(null);
+  let copiedHighlightId = $state<number | null>(null);
+  let copyResetTimer: ReturnType<typeof setTimeout> | null = null;
 
   let aiIndicator = $derived(
     aiStatus ? resolveAiIndicatorPresentation(aiStatus) : null,
@@ -90,6 +94,20 @@
       errorMessage = (error as Error).message;
     } finally {
       loading = false;
+    }
+  }
+
+  async function copyHighlightText(highlightId: number, text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      copiedHighlightId = highlightId;
+      if (copyResetTimer) clearTimeout(copyResetTimer);
+      copyResetTimer = setTimeout(() => {
+        copiedHighlightId = null;
+        copyResetTimer = null;
+      }, 2000);
+    } catch {
+      /* clipboard may be unavailable */
     }
   }
 
@@ -288,7 +306,7 @@
                           {#each video.highlights as highlight (highlight.id)}
                             {@const hid = Number(highlight.id)}
                             <div
-                              class="relative rounded-[var(--radius-sm)] border-l-2 border-[var(--accent)]/40 bg-[var(--accent-wash)]/60 pl-3 pr-11 py-2.5 transition-colors hover:bg-[var(--accent-wash)] lg:border lg:border-[var(--accent-border-soft)] lg:border-l-[var(--accent-border-soft)] lg:bg-[var(--accent-wash)] lg:pl-4 lg:pr-14 lg:py-3 lg:hover:border-[var(--accent)]/35"
+                              class="relative rounded-[var(--radius-sm)] border-l-2 border-[var(--accent)]/40 bg-[var(--accent-wash)]/60 pl-3 pr-16 py-2.5 transition-colors hover:bg-[var(--accent-wash)] lg:border lg:border-[var(--accent-border-soft)] lg:border-l-[var(--accent-border-soft)] lg:bg-[var(--accent-wash)] lg:pl-4 lg:pr-[4.5rem] lg:py-3 lg:hover:border-[var(--accent)]/35"
                             >
                               <a
                                 href={buildVideoHref(
@@ -318,21 +336,47 @@
                                   {highlight.text}
                                 </p>
                               </a>
-                              <button
-                                type="button"
-                                class="absolute right-1 top-1.5 inline-flex h-7 w-7 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash-strong)] hover:text-[var(--danger)] disabled:cursor-not-allowed disabled:opacity-50 lg:right-2 lg:top-2 lg:h-8 lg:w-8"
-                                disabled={deletingHighlightId === hid}
-                                onclick={() => void removeHighlightEntry(hid)}
-                                aria-label="Delete highlight"
+                              <div
+                                class="absolute right-1 top-1.5 flex items-center gap-0.5 lg:right-2 lg:top-2"
                               >
-                                <TrashIcon
-                                  size={14}
-                                  strokeWidth={2.2}
-                                  class={deletingHighlightId === hid
-                                    ? "animate-pulse"
-                                    : ""}
-                                />
-                              </button>
+                                <button
+                                  type="button"
+                                  class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash-strong)] hover:text-[var(--foreground)] lg:h-8 lg:w-8"
+                                  data-tooltip={copiedHighlightId === hid
+                                    ? "Copied"
+                                    : "Copy"}
+                                  aria-label={copiedHighlightId === hid
+                                    ? "Copied"
+                                    : "Copy highlight"}
+                                  onclick={() =>
+                                    void copyHighlightText(hid, highlight.text)}
+                                >
+                                  {#if copiedHighlightId === hid}
+                                    <CheckIcon
+                                      size={16}
+                                      strokeWidth={2}
+                                      className="text-[var(--accent)]"
+                                    />
+                                  {:else}
+                                    <CopyIcon size={14} strokeWidth={2} />
+                                  {/if}
+                                </button>
+                                <button
+                                  type="button"
+                                  class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash-strong)] hover:text-[var(--danger)] disabled:cursor-not-allowed disabled:opacity-50 lg:h-8 lg:w-8"
+                                  disabled={deletingHighlightId === hid}
+                                  onclick={() => void removeHighlightEntry(hid)}
+                                  aria-label="Delete highlight"
+                                >
+                                  <TrashIcon
+                                    size={14}
+                                    strokeWidth={2.2}
+                                    class={deletingHighlightId === hid
+                                      ? "animate-pulse"
+                                      : ""}
+                                  />
+                                </button>
+                              </div>
                             </div>
                           {/each}
                         </div>
