@@ -10,7 +10,7 @@ use tracing_subscriber::{Layer, filter, layer::SubscriberExt, util::SubscriberIn
 
 use dastill::cache_headers::add_cache_control;
 use dastill::config::{
-    ChatRuntimeConfig, DatabricksRuntimeConfig, ElevenLabsTtsRuntimeConfig, OllamaRuntimeConfig,
+    ChatRuntimeConfig, DatabricksRuntimeConfig, OllamaRuntimeConfig, PollyTtsRuntimeConfig,
     SearchRuntimeConfig, SecurityRuntimeConfig,
 };
 use dastill::db::init_store;
@@ -24,7 +24,7 @@ use dastill::security::{
     enforce_expensive_rate_limit, rate_limiter, require_operator_role, require_proxy_auth,
 };
 use dastill::services::{
-    ChatService, Cooldown, DatabricksSqlService, ElevenLabsTtsService, FtsIndex, OllamaCore,
+    ChatService, Cooldown, DatabricksSqlService, FtsIndex, OllamaCore, PollyTtsService,
     SearchService, SummarizerService, SummaryEvaluatorService, TranscriptService, YouTubeService,
     build_http_client,
 };
@@ -96,8 +96,8 @@ async fn main() -> anyhow::Result<()> {
     let chat_runtime = ChatRuntimeConfig::from_env();
     let databricks_runtime =
         DatabricksRuntimeConfig::from_env().map_err(|err| anyhow::anyhow!(err))?;
-    let elevenlabs_tts_runtime =
-        ElevenLabsTtsRuntimeConfig::from_env().map_err(|err| anyhow::anyhow!(err))?;
+    let polly_tts_runtime =
+        PollyTtsRuntimeConfig::from_env().map_err(|err| anyhow::anyhow!(err))?;
     let security_runtime =
         Arc::new(SecurityRuntimeConfig::from_env().map_err(|err| anyhow::anyhow!(err))?);
     let summarize_path = std::env::var("SUMMARIZE_PATH")
@@ -231,13 +231,13 @@ async fn main() -> anyhow::Result<()> {
     ));
 
     let fts = Arc::new(FtsIndex::new().expect("failed to create in-memory FTS index"));
-    let elevenlabs_tts = elevenlabs_tts_runtime.map(|cfg| {
-        Arc::new(ElevenLabsTtsService::new(
-            build_http_client(),
-            cfg.api_key,
+    let polly_tts = polly_tts_runtime.map(|cfg| {
+        Arc::new(PollyTtsService::new(
+            aws_sdk_polly::Client::new(&aws_config),
             cfg.voice_id,
-            cfg.model_id,
+            cfg.engine,
             cfg.output_format,
+            cfg.sample_rate,
         ))
     });
 
@@ -252,7 +252,7 @@ async fn main() -> anyhow::Result<()> {
         fts,
         youtube,
         transcript,
-        elevenlabs_tts,
+        tts: polly_tts,
         summarizer,
         summary_evaluator,
         search,
@@ -467,10 +467,12 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/videos/{id}/summary", get(content::get_summary))
         .route(
             "/api/videos/{id}/summary/audio",
-            get(content::get_summary_audio).layer(middleware::from_fn_with_state(
-                state.clone(),
-                enforce_expensive_rate_limit,
-            )),
+            get(content::get_summary_audio)
+                .post(content::generate_summary_audio)
+                .layer(middleware::from_fn_with_state(
+                    state.clone(),
+                    enforce_expensive_rate_limit,
+                )),
         )
         .route(
             "/api/videos/{id}/summary/audio/debug",

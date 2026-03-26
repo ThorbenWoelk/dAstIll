@@ -10,6 +10,7 @@
  * `videoActions` objects that can be passed directly to `WorkspaceSidebar`.
  */
 
+import { SvelteMap } from "svelte/reactivity";
 import {
   addChannel,
   addVideo,
@@ -222,6 +223,8 @@ export type SidebarStateResult = {
   setSyncDepth: (v: ChannelSyncDepthState | null) => void;
   setHasMore: (v: boolean) => void;
   setOffset: (v: number) => void;
+  setHistoryExhausted: (v: boolean) => void;
+  setBackfillingHistory: (v: boolean) => void;
   setVideoTypeFilter: (v: VideoTypeFilter) => void;
   setAcknowledgedFilter: (v: AcknowledgedFilter) => void;
   setChannelSortMode: (v: ChannelSortMode) => void;
@@ -287,7 +290,7 @@ export function createSidebarState(
   options_root: SidebarStateOptions,
 ): SidebarStateResult {
   const limit = options_root.limit ?? 20;
-  const channelLastRefreshedAt = new Map<string, number>();
+  const channelLastRefreshedAt = new SvelteMap<string, number>();
 
   const videoStateCache = createChannelViewCache<CachedVideoState>((state) => ({
     ...state,
@@ -437,6 +440,12 @@ export function createSidebarState(
   }
   function setOffset(value: number) {
     offset = value;
+  }
+  function setHistoryExhausted(value: boolean) {
+    historyExhausted = value;
+  }
+  function setBackfillingHistory(value: boolean) {
+    backfillingHistory = value;
   }
   function setVideoTypeFilter(v: VideoTypeFilter) {
     videoTypeFilter = v;
@@ -646,6 +655,8 @@ export function createSidebarState(
     videos = [];
     offset = 0;
     hasMore = true;
+    historyExhausted = false;
+    backfillingHistory = false;
     syncDepth = null;
     options_root.onVideoListReset?.();
     await refreshAndLoadVideos(channelId, !fromUserInteraction);
@@ -991,6 +1002,8 @@ export function createSidebarState(
     setSyncDepth,
     setHasMore,
     setOffset,
+    setHistoryExhausted,
+    setBackfillingHistory,
     setVideoTypeFilter,
     setAcknowledgedFilter,
     setChannelSortMode,

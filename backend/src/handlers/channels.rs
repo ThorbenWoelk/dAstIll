@@ -483,7 +483,7 @@ mod tests {
             )),
             youtube: Arc::new(YouTubeService::with_client(Client::new())),
             transcript: Arc::new(TranscriptService::with_path("/usr/bin/false")),
-            elevenlabs_tts: None,
+            tts: None,
             summarizer: Arc::new(SummarizerService::new(
                 OllamaCore::new("://invalid-url", "qwen3:8b").with_cloud_cooldown(cooldown.clone()),
             )),

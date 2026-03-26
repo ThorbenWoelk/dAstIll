@@ -106,6 +106,14 @@ Thin (4px), `--border` thumb, transparent track, `--soft-foreground` on hover.
 
 ---
 
+# Engineering Standards
+
+## File Limits
+
+- Max line count per file should be **800**. If a file exceeds this, it must be modularized.
+
+---
+
 # Dev Tools
 
 ## Log Inspection

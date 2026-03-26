@@ -43,7 +43,8 @@ pub use summary_evaluation::spawn_summary_evaluation_worker;
 /// Called once at startup so keyword search works immediately without waiting
 /// for the background index worker to process each source.
 pub async fn populate_fts_index_from_store(state: AppState) {
-    use crate::services::{FtsChunk, search::SearchSourceKind};
+    use crate::services::fts::{FtsChunk, FtsSourceMeta};
+    use crate::services::search::SearchSourceKind;
 
     #[derive(serde::Deserialize)]
     struct ChunkData {
@@ -152,15 +153,18 @@ pub async fn populate_fts_index_from_store(state: AppState) {
             })
             .collect();
 
+        let published_at = video.published_at.to_rfc3339();
         state
             .fts
             .upsert_source(
-                &video_id,
-                source_kind,
-                &video.channel_id,
-                channel_name,
-                &video.title,
-                &video.published_at.to_rfc3339(),
+                FtsSourceMeta {
+                    video_id: &video_id,
+                    source_kind,
+                    channel_id: &video.channel_id,
+                    channel_name,
+                    video_title: &video.title,
+                    published_at: &published_at,
+                },
                 &fts_chunks,
             )
             .await;

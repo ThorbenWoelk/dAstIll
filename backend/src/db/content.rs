@@ -21,6 +21,10 @@ pub async fn get_summary_audio(store: &Store, key: &str) -> Result<Option<Vec<u8
     store.get_bytes(key).await
 }
 
+pub async fn summary_audio_exists(store: &Store, key: &str) -> Result<bool, StoreError> {
+    store.key_exists(key).await
+}
+
 pub async fn put_summary_audio(
     store: &Store,
     key: &str,

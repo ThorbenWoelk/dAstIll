@@ -81,6 +81,22 @@ resource "aws_iam_role_policy" "backend_s3_vectors" {
   })
 }
 
+resource "aws_iam_role_policy" "backend_polly" {
+  name = "${var.app_name}-polly"
+  role = aws_iam_role.backend_s3.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["polly:SynthesizeSpeech"]
+        Resource = ["*"]
+      }
+    ]
+  })
+}
+
 output "aws_backend_role_arn" {
   value = aws_iam_role.backend_s3.arn
 }

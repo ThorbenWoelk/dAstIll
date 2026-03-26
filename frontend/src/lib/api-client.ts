@@ -72,6 +72,7 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
     if (isAbortError(error)) {
       throw error;
     }
+    console.error(`[API Fetch Failure] ${method} ${path}`, error);
     throw new BackendUnavailableError();
   }
 
@@ -86,12 +87,21 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
           ? retryAfterSec * 1000
           : 60_000;
       const message = await response.text();
+      console.warn(`[API Rate Limited] ${method} ${path}`, {
+        status: 429,
+        retryAfterMs,
+        message,
+      });
       throw new RateLimitedError(
         message.trim() || "Rate limit exceeded",
         retryAfterMs,
       );
     }
     const message = await response.text();
+    console.error(`[API Error] ${method} ${path}`, {
+      status: response.status,
+      message,
+    });
     throw new Error(message || `Request failed (${response.status})`);
   }
 

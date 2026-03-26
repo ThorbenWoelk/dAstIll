@@ -48,11 +48,11 @@ pub struct DatabricksRuntimeConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ElevenLabsTtsRuntimeConfig {
-    pub api_key: String,
-    pub voice_id: Option<String>,
-    pub model_id: String,
+pub struct PollyTtsRuntimeConfig {
+    pub voice_id: String,
+    pub engine: String,
     pub output_format: String,
+    pub sample_rate: String,
 }
 
 impl OllamaRuntimeConfig {
@@ -164,24 +164,21 @@ impl DatabricksRuntimeConfig {
     }
 }
 
-impl ElevenLabsTtsRuntimeConfig {
+impl PollyTtsRuntimeConfig {
     pub fn from_env() -> Result<Option<Self>, String> {
-        let api_key = optional_env("ELEVENLABS_TTS_API_KEY");
-        if api_key.is_none() {
+        let enabled = optional_bool_env("POLLY_TTS_ENABLED").unwrap_or(false);
+        if !enabled {
             return Ok(None);
         }
 
-        let voice_id = optional_env("ELEVENLABS_TTS_VOICE_ID");
-        let model_id = optional_env("ELEVENLABS_TTS_MODEL_ID")
-            .unwrap_or_else(|| "eleven_flash_v2_5".to_string());
-        let output_format = optional_env("ELEVENLABS_TTS_OUTPUT_FORMAT")
-            .unwrap_or_else(|| "mp3_44100_128".to_string());
-
         Ok(Some(Self {
-            api_key: api_key.expect("checked is_some"),
-            voice_id,
-            model_id,
-            output_format,
+            voice_id: optional_env("POLLY_TTS_VOICE_ID").unwrap_or_else(|| "Joanna".to_string()),
+            engine: optional_env("POLLY_TTS_ENGINE").unwrap_or_else(|| "neural".to_string()),
+            output_format: optional_env("POLLY_TTS_OUTPUT_FORMAT")
+                // `wav` maps to Polly `pcm` and then we wrap the result into a WAV container.
+                .unwrap_or_else(|| "wav".to_string()),
+            sample_rate: optional_env("POLLY_TTS_SAMPLE_RATE")
+                .unwrap_or_else(|| "16000".to_string()),
         }))
     }
 }

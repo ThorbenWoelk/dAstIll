@@ -1,5 +1,4 @@
 use axum::{
-    body::Body,
     Json,
     extract::{Path, State},
     http::{StatusCode, header},
@@ -169,6 +168,34 @@ pub async fn get_summary(
     Ok(Json(summary))
 }
 
+async fn get_summary_audio_cache_info(
+    tts: &crate::services::PollyTtsService,
+    video_id: &str,
+    summary_content: &str,
+) -> Result<(String, String, String), (StatusCode, String)> {
+    let voice_id = tts
+        .resolve_voice_id_for_cache_key()
+        .await
+        .map_err(|err| (StatusCode::BAD_GATEWAY, err.to_string()))?;
+
+    let output_format = tts.output_format();
+    let is_wav = output_format.starts_with("wav");
+    let ext = if is_wav { "wav" } else { "mp3" };
+
+    let tts_text = crate::services::tts::sanitize_markdown_for_tts(summary_content);
+    let audio_hash = hash_search_content(&format!(
+        "{}|voice_id={voice_id}|model_id={}|output_format={}",
+        tts_text.trim(),
+        tts.model_id(),
+        output_format
+    ));
+
+    let key = db::summary_audio_cache_key(video_id, &audio_hash, ext);
+    let content_type = if is_wav { "audio/wav" } else { "audio/mpeg" };
+
+    Ok((key, content_type.to_string(), tts_text))
+}
+
 pub async fn get_summary_audio(
     State(state): State<AppState>,
     Path(video_id): Path<String>,
@@ -180,42 +207,81 @@ pub async fn get_summary_audio(
         .map_err(map_db_err)
         .and_then(|opt| require_present(opt, "Summary not found"))?;
 
-    let tts = state.elevenlabs_tts.as_ref().ok_or((
+    let tts = state.tts.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
-        "ElevenLabs TTS is not configured".to_string(),
+        "Polly TTS is not configured".to_string(),
     ))?;
 
-    let output_format = tts.output_format();
-    let is_wav = output_format.starts_with("wav");
-    let content_type = if is_wav { "audio/wav" } else { "audio/mpeg" };
+    let (key, content_type, _) =
+        get_summary_audio_cache_info(tts, &video_id, &summary.content).await?;
 
-    let tts_text = crate::services::tts::sanitize_markdown_for_tts(&summary.content);
-    tracing::debug!(
-        video_id = %video_id,
-        summary_chars = summary.content.len(),
-        tts_chars = tts_text.len(),
-        "summary audio text sanitized for TTS"
-    );
+    match db::get_summary_audio(&state.db, &key).await {
+        Ok(Some(audio)) => {
+            let effective_content_type = if audio.starts_with(b"RIFF") {
+                "audio/wav"
+            } else {
+                &content_type
+            };
 
-    // Stream audio directly from ElevenLabs so the browser can start
-    // playback as soon as enough bytes arrive.
-    let eleven_labs_response = tts
-        .synthesize_summary_stream_response(&tts_text)
+            Ok((
+                [
+                    (header::CONTENT_TYPE, effective_content_type.to_string()),
+                    (
+                        header::CACHE_CONTROL,
+                        "public, max-age=31536000, immutable".to_string(),
+                    ),
+                ],
+                audio,
+            ))
+        }
+        Ok(None) => Err((
+            StatusCode::NOT_FOUND,
+            "Summary audio not yet generated or has expired.".to_string(),
+        )),
+        Err(err) => Err(map_db_err(err)),
+    }
+}
+
+pub async fn generate_summary_audio(
+    State(state): State<AppState>,
+    Path(video_id): Path<String>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    tracing::info!(video_id = %video_id, "summary audio generation requested");
+    require_video(&state, &video_id).await?;
+    let summary = db::get_summary(&state.db, &video_id)
         .await
-        .map_err(|err| (StatusCode::BAD_GATEWAY, err.to_string()))?;
+        .map_err(map_db_err)
+        .and_then(|opt| require_present(opt, "Summary not found"))?;
 
-    // Convert ElevenLabs response bytes into an Axum streaming body.
-    // `bytes_stream()` consumes the response and yields `Result<Bytes, _>` chunks.
-    let body = Body::from_stream(eleven_labs_response.bytes_stream());
+    let tts = state.tts.as_ref().ok_or((
+        StatusCode::SERVICE_UNAVAILABLE,
+        "Polly TTS is not configured".to_string(),
+    ))?;
 
-    Ok((
-        [
-            (header::CONTENT_TYPE, content_type),
-            // This route can be long-lived; never cache partial/streaming bodies.
-            (header::CACHE_CONTROL, "no-store"),
-        ],
-        body,
-    ))
+    let (key, content_type, tts_text) =
+        get_summary_audio_cache_info(tts, &video_id, &summary.content).await?;
+
+    // Check if it already exists to avoid redundant synthesis
+    if let Ok(Some(_)) = db::get_summary_audio(&state.db, &key).await {
+        return Ok(StatusCode::OK);
+    }
+
+    let audio = tts.synthesize_summary(&tts_text).await.map_err(|err| {
+        tracing::error!(video_id = %video_id, error = %err, "summary audio synthesis failed");
+        (StatusCode::BAD_GATEWAY, err.to_string())
+    })?;
+
+    let effective_content_type = if audio.starts_with(b"RIFF") {
+        "audio/wav"
+    } else {
+        &content_type
+    };
+
+    db::put_summary_audio(&state.db, &key, &audio, effective_content_type)
+        .await
+        .map_err(map_db_err)?;
+
+    Ok(StatusCode::OK)
 }
 
 #[derive(serde::Serialize)]
@@ -235,57 +301,30 @@ pub async fn get_summary_audio_debug(
         .map_err(map_db_err)
         .and_then(|opt| require_present(opt, "Summary not found"))?;
 
-    let tts = state.elevenlabs_tts.as_ref().ok_or((
+    let tts = state.tts.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
-        "ElevenLabs TTS is not configured".to_string(),
+        "Polly TTS is not configured".to_string(),
     ))?;
 
-    let voice_id = tts
-        .resolve_voice_id_for_cache_key()
-        .await
-        .map_err(|err| (StatusCode::BAD_GATEWAY, err.to_string()))?;
+    let (key, _, _) = get_summary_audio_cache_info(tts, &video_id, &summary.content).await?;
 
-    let output_format = tts.output_format();
-    let is_wav = output_format.starts_with("wav");
-    let ext = if is_wav { "wav" } else { "mp3" };
-
-    let tts_text = crate::services::tts::sanitize_markdown_for_tts(&summary.content);
-    let audio_hash = hash_search_content(&format!(
-        "{}|voice_id={voice_id}|model_id={}|output_format={}",
-        tts_text.trim(),
-        tts.model_id(),
-        output_format
-    ));
-    let key = db::summary_audio_cache_key(&video_id, &audio_hash, ext);
-
-    match db::get_summary_audio(&state.db, &key).await {
-        Ok(Some(_)) => {
-            return Ok(Json(SummaryAudioDebugResponse {
-                ok: true,
-                cache_hit: true,
-                error: None,
-            }));
-        }
-        Ok(None) => {}
-        Err(err) => {
-            // For debug, return the cache read error directly.
-            return Ok(Json(SummaryAudioDebugResponse {
-                ok: false,
-                cache_hit: false,
-                error: Some(format!("{err}")),
-            }));
-        }
+    match db::summary_audio_exists(&state.db, &key).await {
+        Ok(true) => Ok(Json(SummaryAudioDebugResponse {
+            ok: true,
+            cache_hit: true,
+            error: None,
+        })),
+        Ok(false) => Ok(Json(SummaryAudioDebugResponse {
+            ok: true,
+            cache_hit: false,
+            error: None,
+        })),
+        Err(err) => Ok(Json(SummaryAudioDebugResponse {
+            ok: false,
+            cache_hit: false,
+            error: Some(format!("{err}")),
+        })),
     }
-    // In streaming-only mode, `/api/videos/{id}/summary/audio` does not
-    // populate the S3 cache, so synthesizing here would burn additional
-    // credits without helping the user playback.
-    Ok(Json(SummaryAudioDebugResponse {
-        ok: false,
-        cache_hit: false,
-        error: Some(
-            "Summary audio is generated via streaming and is not cached.".to_string(),
-        ),
-    }))
 }
 
 pub async fn generate_summary(

@@ -1,7 +1,8 @@
-use reqwest::Client;
-use serde::{Deserialize, Serialize};
+use aws_sdk_polly::{
+    Client as PollyClient,
+    types::{OutputFormat as PollyOutputFormat, TextType as PollyTextType},
+};
 use thiserror::Error;
-use tokio::sync::Mutex;
 
 fn strip_html_tags(input: &str) -> String {
     let mut output = String::with_capacity(input.len());
@@ -145,15 +146,15 @@ pub(crate) fn sanitize_markdown_for_tts(input: &str) -> String {
 
         // Blockquotes: remove leading '>' (and one following space).
         let pst = processed.trim_start();
-        if pst.starts_with('>') {
-            processed = pst[1..].trim_start().to_string();
+        if let Some(stripped) = pst.strip_prefix('>') {
+            processed = stripped.trim_start().to_string();
         }
 
         // List prefixes.
         let pst2 = processed.trim_start();
         for prefix in ["- ", "* ", "+ "] {
-            if pst2.starts_with(prefix) {
-                processed = pst2[prefix.len()..].to_string();
+            if let Some(stripped) = pst2.strip_prefix(prefix) {
+                processed = stripped.to_string();
                 is_list_item = true;
                 break;
             }
@@ -191,6 +192,9 @@ pub(crate) fn sanitize_markdown_for_tts(input: &str) -> String {
             .collect::<String>();
 
         let mut cleaned = decor_stripped.trim().to_string();
+        // SSML is XML under the hood; escape `&` so it doesn't break parsing.
+        // (We already strip `<` and `>` above to avoid untrusted tags.)
+        cleaned = cleaned.replace('&', "&amp;");
         if !cleaned.is_empty() {
             let ends_with_punctuation = cleaned
                 .chars()
@@ -230,197 +234,261 @@ pub(crate) fn sanitize_markdown_for_tts(input: &str) -> String {
 }
 
 #[derive(Debug)]
-pub struct ElevenLabsTtsService {
-    client: Client,
-    api_key: String,
-    configured_voice_id: Option<String>,
-    resolved_voice_id: Mutex<Option<String>>,
-    model_id: String,
+pub struct PollyTtsService {
+    client: PollyClient,
+    voice_id: String,
+    engine: String,
     output_format: String,
+    sample_rate: String,
 }
 
 #[derive(Debug, Error)]
-pub enum ElevenLabsTtsError {
+pub enum PollyTtsError {
     #[error("summary text is empty")]
     EmptyText,
-    #[error("failed to call ElevenLabs API: {0}")]
-    Request(#[from] reqwest::Error),
-    #[error("ElevenLabs API error ({status}): {body}")]
-    ApiStatus { status: u16, body: String },
-    #[error(
-        "ElevenLabs voices_read permission is missing. Set ELEVENLABS_TTS_VOICE_ID (recommended) or grant `voices_read` to ELEVENLABS_TTS_API_KEY."
-    )]
-    MissingVoicesReadPermission,
-    #[error("no ElevenLabs voices available for this account")]
-    NoVoicesAvailable,
+    #[error("failed to call Amazon Polly API: {0}")]
+    Request(String),
 }
 
-#[derive(Debug, Serialize)]
-struct ElevenLabsTtsRequest<'a> {
-    text: &'a str,
-    model_id: &'a str,
-    output_format: &'a str,
-}
-
-#[derive(Debug, Serialize)]
-struct ElevenLabsTtsStreamRequest<'a> {
-    text: &'a str,
-    model_id: &'a str,
-}
-
-#[derive(Debug, Deserialize)]
-struct ElevenLabsVoicesResponse {
-    voices: Vec<ElevenLabsVoice>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ElevenLabsVoice {
-    voice_id: String,
-}
-
-impl ElevenLabsTtsService {
+impl PollyTtsService {
     pub fn new(
-        client: Client,
-        api_key: String,
-        voice_id: Option<String>,
-        model_id: String,
+        client: PollyClient,
+        voice_id: String,
+        engine: String,
         output_format: String,
+        sample_rate: String,
     ) -> Self {
         Self {
             client,
-            api_key,
-            configured_voice_id: voice_id,
-            resolved_voice_id: Mutex::new(None),
-            model_id,
+            voice_id,
+            engine,
             output_format,
+            sample_rate,
         }
     }
 
-    pub async fn synthesize_summary(&self, text: &str) -> Result<Vec<u8>, ElevenLabsTtsError> {
+    pub async fn synthesize_summary(&self, text: &str) -> Result<Vec<u8>, PollyTtsError> {
         let text = text.trim();
         if text.is_empty() {
-            return Err(ElevenLabsTtsError::EmptyText);
+            return Err(PollyTtsError::EmptyText);
         }
 
-        let voice_id = self.resolve_voice_id().await?;
-        let url = format!("https://api.elevenlabs.io/v1/text-to-speech/{}", voice_id);
-        let payload = ElevenLabsTtsRequest {
-            text,
-            model_id: &self.model_id,
-            output_format: &self.output_format,
-        };
+        // Polly's per-request text limits are much lower than typical summary length.
+        // Chunk text conservatively and stitch audio reliably.
+        //
+        // Polly MP3 stitching via raw concatenation has proven fragile in browsers
+        // (codecs/metadata boundaries can cause early decode termination), so we
+        // stitch PCM and wrap it into a WAV container.
+        //
+        // `text` already contains injected SSML `<break .../>` tags, so we must
+        // chunk without splitting those tags (otherwise Polly rejects the request
+        // as `Invalid SSML request`).
+        let chunks = split_ssml_for_polly(text, 2500);
+        let mut pcm_audio = Vec::new();
 
-        let response = self
-            .client
-            .post(url)
-            .header("xi-api-key", &self.api_key)
-            .header("Accept", "audio/mpeg")
-            .json(&payload)
-            .send()
-            .await?;
+        let sample_rate_u32 = self.sample_rate.parse::<u32>().unwrap_or(8000);
+        let sample_rate_for_request = sample_rate_u32.to_string();
 
-        if !response.status().is_success() {
-            let status = response.status().as_u16();
-            let body = response.text().await.unwrap_or_default();
-            return Err(ElevenLabsTtsError::ApiStatus { status, body });
+        for chunk in chunks {
+            // Polly requires SSML input to be wrapped in a `<speak>` root element.
+            // We send SSML per-chunk to keep text sizes bounded.
+            let ssml = format!("<speak>{chunk}</speak>");
+            let request = self
+                .client
+                .synthesize_speech()
+                .text(ssml)
+                .voice_id(self.voice_id.as_str().into())
+                .engine(self.engine.as_str().into())
+                .text_type(PollyTextType::Ssml)
+                // Always request PCM for reliable concatenation.
+                .output_format(PollyOutputFormat::Pcm)
+                // Explicitly request the sample rate we will use for the WAV wrapper.
+                .sample_rate(sample_rate_for_request.as_str());
+
+            let response = request
+                .send()
+                .await
+                .map_err(|err| PollyTtsError::Request(format!("{err:?}")))?;
+
+            let stream = response.audio_stream;
+            let bytes = stream
+                .collect()
+                .await
+                .map_err(|err| PollyTtsError::Request(format!("{err:?}")))?
+                .into_bytes();
+
+            // PCM output is raw signed 16-bit little-endian mono.
+            pcm_audio.extend_from_slice(&bytes);
         }
 
-        let bytes = response.bytes().await?;
-        Ok(bytes.to_vec())
+        Ok(wrap_pcm_s16le_mono_to_wav(pcm_audio, sample_rate_u32))
     }
 
-    pub async fn synthesize_summary_stream_response(
-        &self,
-        text: &str,
-    ) -> Result<reqwest::Response, ElevenLabsTtsError> {
-        let text = text.trim();
-        if text.is_empty() {
-            return Err(ElevenLabsTtsError::EmptyText);
-        }
-
-        let voice_id = self.resolve_voice_id().await?;
-        let url = format!(
-            "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream?output_format={}&optimize_streaming_latency=2",
-            self.output_format
-        );
-        let payload = ElevenLabsTtsStreamRequest {
-            text,
-            model_id: &self.model_id,
-        };
-
-        let response = self
-            .client
-            .post(url)
-            .header("xi-api-key", &self.api_key)
-            // ElevenLabs streams raw audio bytes; use a broad Accept so we don't
-            // accidentally constrain formats (mp3, opus, pcm, etc.).
-            .header("Accept", "application/octet-stream")
-            .json(&payload)
-            .send()
-            .await?;
-
-        if !response.status().is_success() {
-            let status = response.status().as_u16();
-            let body = response.text().await.unwrap_or_default();
-            return Err(ElevenLabsTtsError::ApiStatus { status, body });
-        }
-
-        Ok(response)
-    }
-
-    async fn resolve_voice_id(&self) -> Result<String, ElevenLabsTtsError> {
-        if let Some(voice_id) = self.configured_voice_id.as_ref() {
-            return Ok(voice_id.clone());
-        }
-
-        {
-            let cached = self.resolved_voice_id.lock().await;
-            if let Some(voice_id) = cached.as_ref() {
-                return Ok(voice_id.clone());
-            }
-        }
-
-        let response = self
-            .client
-            .get("https://api.elevenlabs.io/v1/voices")
-            .header("xi-api-key", &self.api_key)
-            .send()
-            .await?;
-
-        if !response.status().is_success() {
-            let status = response.status().as_u16();
-            let body = response.text().await.unwrap_or_default();
-            if status == 401
-                && (body.contains("voices_read")
-                    || body.contains("missing_permissions")
-                    || body.contains("permission"))
-            {
-                return Err(ElevenLabsTtsError::MissingVoicesReadPermission);
-            }
-            return Err(ElevenLabsTtsError::ApiStatus { status, body });
-        }
-
-        let body: ElevenLabsVoicesResponse = response.json().await?;
-        let first_voice = body
-            .voices
-            .first()
-            .map(|voice| voice.voice_id.clone())
-            .ok_or(ElevenLabsTtsError::NoVoicesAvailable)?;
-
-        let mut cached = self.resolved_voice_id.lock().await;
-        *cached = Some(first_voice.clone());
-        Ok(first_voice)
-    }
-
-    pub async fn resolve_voice_id_for_cache_key(&self) -> Result<String, ElevenLabsTtsError> {
-        self.resolve_voice_id().await
+    pub async fn resolve_voice_id_for_cache_key(&self) -> Result<String, PollyTtsError> {
+        Ok(self.voice_id.clone())
     }
 
     pub fn model_id(&self) -> &str {
-        &self.model_id
+        &self.engine
     }
 
     pub fn output_format(&self) -> &str {
         &self.output_format
     }
 }
+
+fn split_ssml_for_polly(input: &str, max_chars: usize) -> Vec<String> {
+    let mut chunks = Vec::new();
+    let mut current = String::new();
+    let mut current_len = 0usize;
+
+    // Custom tokenizer that keeps tags <...> intact and splits everything else
+    // into whitespace-separated words.
+    let mut tokens = Vec::new();
+    let mut in_tag = false;
+    let mut token_start = 0;
+
+    let chars: Vec<(usize, char)> = input.char_indices().collect();
+    for (idx, c) in &chars {
+        if *c == '<' {
+            if !in_tag && *idx > token_start {
+                // Add preceding text split into words.
+                for word in input[token_start..*idx].split_whitespace() {
+                    tokens.push(word);
+                }
+            }
+            in_tag = true;
+            token_start = *idx;
+        } else if *c == '>' && in_tag {
+            in_tag = false;
+            tokens.push(&input[token_start..*idx + 1]);
+            token_start = *idx + 1;
+        } else if c.is_whitespace() && !in_tag {
+            if *idx > token_start {
+                tokens.push(&input[token_start..*idx]);
+            }
+            token_start = *idx + 1;
+        }
+    }
+
+    if token_start < input.len() {
+        if in_tag {
+            tokens.push(&input[token_start..]);
+        } else {
+            for word in input[token_start..].split_whitespace() {
+                tokens.push(word);
+            }
+        }
+    }
+
+    for token in tokens {
+        let token_chars = token.chars().count();
+        let next_len = if current.is_empty() {
+            token_chars
+        } else {
+            current_len + 1 + token_chars
+        };
+
+        if !current.is_empty() && next_len > max_chars {
+            chunks.push(current);
+            current = String::new();
+            current_len = 0;
+        }
+
+        if !current.is_empty() {
+            current.push(' ');
+            current_len += 1;
+        }
+        current.push_str(token);
+        current_len += token_chars;
+    }
+
+    if !current.is_empty() {
+        chunks.push(current);
+    }
+
+    chunks
+}
+
+/*
+fn polly_output_format_for_request(wants_wav_or_pcm: bool) -> PollyOutputFormat {
+    if wants_wav_or_pcm {
+        PollyOutputFormat::Pcm
+    } else {
+        PollyOutputFormat::Mp3
+    }
+}
+*/
+
+fn wrap_pcm_s16le_mono_to_wav(pcm_s16le_mono: Vec<u8>, sample_rate: u32) -> Vec<u8> {
+    // Polly returns raw PCM bytes for `output_format=pcm`:
+    // - signed 16-bit little endian
+    // - mono
+    // We wrap it into a minimal WAV container so browsers can decode it reliably.
+    const CHANNELS: u16 = 1;
+    const BITS_PER_SAMPLE: u16 = 16;
+    const BLOCK_ALIGN: u16 = (CHANNELS * BITS_PER_SAMPLE) / 8;
+    let byte_rate: u32 = sample_rate * BLOCK_ALIGN as u32;
+
+    let data_size: u32 = pcm_s16le_mono.len() as u32;
+    let riff_chunk_size: u32 = 36 + data_size;
+
+    let mut out = Vec::with_capacity(44 + pcm_s16le_mono.len());
+
+    out.extend_from_slice(b"RIFF");
+    out.extend_from_slice(&riff_chunk_size.to_le_bytes());
+    out.extend_from_slice(b"WAVE");
+
+    // fmt chunk
+    out.extend_from_slice(b"fmt ");
+    out.extend_from_slice(&16u32.to_le_bytes()); // subchunk1 size
+    out.extend_from_slice(&1u16.to_le_bytes()); // audio format PCM
+    out.extend_from_slice(&CHANNELS.to_le_bytes());
+    out.extend_from_slice(&sample_rate.to_le_bytes());
+    out.extend_from_slice(&byte_rate.to_le_bytes());
+    out.extend_from_slice(&BLOCK_ALIGN.to_le_bytes());
+    out.extend_from_slice(&BITS_PER_SAMPLE.to_le_bytes());
+
+    // data chunk
+    out.extend_from_slice(b"data");
+    out.extend_from_slice(&data_size.to_le_bytes());
+    out.extend_from_slice(&pcm_s16le_mono);
+
+    out
+}
+
+/*
+fn strip_leading_id3v2(bytes: &[u8]) -> &[u8] {
+    if bytes.len() < 10 || &bytes[0..3] != b"ID3" {
+        return bytes;
+    }
+
+    // ID3v2 size is stored as synchsafe integer in bytes 6..10.
+    let tag_size = ((bytes[6] as usize & 0x7f) << 21)
+        | ((bytes[7] as usize & 0x7f) << 14)
+        | ((bytes[8] as usize & 0x7f) << 7)
+        | (bytes[9] as usize & 0x7f);
+    let total_header = 10 + tag_size;
+
+    if total_header >= bytes.len() {
+        bytes
+    } else {
+        &bytes[total_header..]
+    }
+}
+
+fn strip_trailing_id3v1(bytes: &[u8]) -> &[u8] {
+    // ID3v1 tags are fixed-size 128-byte trailers that start with "TAG".
+    // When Polly returns one per chunk, non-final chunk trailers can make
+    // stitched streams appear truncated to some players.
+    if bytes.len() < 128 {
+        return bytes;
+    }
+    let trailer_start = bytes.len() - 128;
+    if &bytes[trailer_start..trailer_start + 3] == b"TAG" {
+        &bytes[..trailer_start]
+    } else {
+        bytes
+    }
+}
+*/

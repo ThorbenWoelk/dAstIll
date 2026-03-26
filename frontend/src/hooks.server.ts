@@ -1,4 +1,4 @@
-import type { Handle } from "@sveltejs/kit";
+import type { Handle, HandleServerError } from "@sveltejs/kit";
 
 import {
   SESSION_COOKIE_NAME,
@@ -17,4 +17,20 @@ export const handle: Handle = async ({ event, resolve }) => {
   }
 
   return resolve(event);
+};
+
+export const handleError: HandleServerError = ({ error, event }) => {
+  const errorId = crypto.randomUUID();
+
+  // In a real app, you'd send this to a service like Sentry
+  console.error(`[Server Error ${errorId}]`, {
+    error,
+    url: event.url.pathname,
+    method: event.request.method,
+  });
+
+  return {
+    message: "Whoops! An unexpected error occurred.",
+    errorId,
+  };
 };

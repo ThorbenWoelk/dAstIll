@@ -122,13 +122,8 @@ impl TranscriptService {
         // --plain          strip ANSI/OSC terminal formatting from stdout
         // --firecrawl off  disable web-scraping fallback that silently returns the YouTube
         //                  site-wide og:description blurb when captions are unavailable
-        let raw_auto = run_summarize_extract(
-            &self.summarize_path,
-            &video_url,
-            video_id,
-            "auto",
-        )
-        .await?;
+        let raw_auto =
+            run_summarize_extract(&self.summarize_path, &video_url, video_id, "auto").await?;
 
         if raw_auto.trim().is_empty() {
             tracing::info!(
@@ -156,13 +151,8 @@ impl TranscriptService {
                 "summarize auto output looks truncated - retrying with youtube=web"
             );
 
-            let raw_web = run_summarize_extract(
-                &self.summarize_path,
-                &video_url,
-                video_id,
-                "web",
-            )
-            .await?;
+            let raw_web =
+                run_summarize_extract(&self.summarize_path, &video_url, video_id, "web").await?;
 
             let yt_dlp_available = std::path::Path::new(&self.ytdlp_path).exists();
             if raw_web.trim().is_empty() || is_site_wide_placeholder_description(&raw_web) {
@@ -577,7 +567,10 @@ fi
             raw.contains("full transcript extracted via youtube web mode"),
             "expected youtube=web transcript, got: {raw}"
         );
-        assert!(!raw.contains("Sup nerds we got things to discuss."), "should not keep the truncated auto snippet");
+        assert!(
+            !raw.contains("Sup nerds we got things to discuss."),
+            "should not keep the truncated auto snippet"
+        );
         assert!(!raw.starts_with("Transcript:"), "header should be stripped");
     }
 

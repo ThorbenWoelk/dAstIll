@@ -1,4 +1,10 @@
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
 
 use chrono::Utc;
 use reqwest::Client;
@@ -31,6 +37,7 @@ pub struct DatabricksSqlService {
     client: Client,
     config: DatabricksRuntimeConfig,
     initialized: Arc<Mutex<bool>>,
+    disabled: Arc<AtomicBool>,
     sender: mpsc::Sender<Vec<Value>>,
 }
 
@@ -41,6 +48,7 @@ impl DatabricksSqlService {
             client,
             config,
             initialized: Arc::new(Mutex::new(false)),
+            disabled: Arc::new(AtomicBool::new(false)),
             sender,
         };
         service.spawn_worker(receiver);
@@ -55,6 +63,9 @@ impl DatabricksSqlService {
     }
 
     async fn ingest_events(&self, events: &[Value]) -> Result<(), DatabricksSqlError> {
+        if self.disabled.load(Ordering::Relaxed) {
+            return Err(DatabricksSqlError::PermanentlyDisabled);
+        }
         self.ensure_table_ready().await?;
 
         let rows = build_insert_rows(events)?;
@@ -108,6 +119,15 @@ impl DatabricksSqlService {
             match self.ingest_events(&batch).await {
                 Ok(()) => return,
                 Err(error) => {
+                    if is_permanent_configuration_error(&error) {
+                        self.disabled.store(true, Ordering::Relaxed);
+                        tracing::warn!(
+                            error = %error,
+                            "analytics Databricks ingest disabled due to permanent configuration error"
+                        );
+                        return;
+                    }
+
                     if let Some(delay_ms) = retry_delay_ms(attempt, &error) {
                         let quota_backoff = should_use_quota_style_backoff(&error);
                         tracing::warn!(
@@ -293,6 +313,8 @@ pub enum DatabricksSqlError {
     QueueFull,
     #[error("analytics ingest queue is closed")]
     QueueClosed,
+    #[error("analytics ingest disabled due to permanent Databricks configuration error")]
+    PermanentlyDisabled,
 }
 
 #[derive(Debug, Clone)]
@@ -614,7 +636,31 @@ fn retry_delay_ms(attempt: usize, error: &DatabricksSqlError) -> Option<u64> {
         DatabricksSqlError::Serialization(_)
         | DatabricksSqlError::MissingStatementId
         | DatabricksSqlError::QueueFull
-        | DatabricksSqlError::QueueClosed => None,
+        | DatabricksSqlError::QueueClosed
+        | DatabricksSqlError::PermanentlyDisabled => None,
+    }
+}
+
+fn is_permanent_configuration_error(error: &DatabricksSqlError) -> bool {
+    match error {
+        DatabricksSqlError::ApiStatus { status, body } => {
+            if *status != reqwest::StatusCode::BAD_REQUEST {
+                return false;
+            }
+            let haystack = body.to_ascii_lowercase();
+            haystack.contains("cannot start warehouse")
+                && haystack.contains("serverless compute")
+                && (haystack.contains("disabled in global warehouse config")
+                    || haystack.contains("contact your administrator"))
+        }
+        DatabricksSqlError::StatementFailed { message, .. } => {
+            let haystack = message.to_ascii_lowercase();
+            haystack.contains("cannot start warehouse")
+                && haystack.contains("serverless compute")
+                && (haystack.contains("disabled in global warehouse config")
+                    || haystack.contains("contact your administrator"))
+        }
+        _ => false,
     }
 }
 
@@ -626,7 +672,8 @@ mod tests {
 
     use super::{
         MAX_NAMED_PARAMETERS_PER_STATEMENT, build_insert_parameters, build_insert_rows,
-        build_insert_statement, retry_delay_ms, row_named_param_count, stable_event_id,
+        build_insert_statement, is_permanent_configuration_error, retry_delay_ms,
+        row_named_param_count, stable_event_id,
     };
 
     #[test]
@@ -666,6 +713,15 @@ mod tests {
             body: r#"{"error_code":"BAD_REQUEST","message":"Invalid parameter"}"#.to_string(),
         };
         assert_eq!(retry_delay_ms(0, &err), Some(1_000));
+    }
+
+    #[test]
+    fn classifies_serverless_disabled_error_as_permanent_configuration_issue() {
+        let err = super::DatabricksSqlError::ApiStatus {
+            status: StatusCode::BAD_REQUEST,
+            body: r#"{"error_code":"BAD_REQUEST","message":"Cannot start warehouse 'Serverless Starter Warehouse' with Serverless Compute since it is disabled in global warehouse config. To use the warehouse, please contact your administrator."}"#.to_string(),
+        };
+        assert!(is_permanent_configuration_error(&err));
     }
 
     #[test]

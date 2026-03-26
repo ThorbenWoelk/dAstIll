@@ -5,7 +5,7 @@ use crate::{
     db,
     search_progress::SearchProgressSourceStatus,
     services::{
-        FtsChunk,
+        fts::{FtsChunk, FtsSourceMeta},
         search::{
             SEARCH_SUMMARY_TARGET_WORDS, SEARCH_TRANSCRIPT_OVERLAP_WORDS,
             SEARCH_TRANSCRIPT_TARGET_WORDS, SearchIndexChunk, SearchSourceKind,
@@ -460,12 +460,14 @@ async fn process_pending_search_sources(state: &AppState) -> bool {
                             state
                                 .fts
                                 .upsert_source(
-                                    &source.video_id,
-                                    source.source_kind,
-                                    &source.channel_id,
-                                    &source.channel_name,
-                                    &source.video_title,
-                                    &source.published_at,
+                                    FtsSourceMeta {
+                                        video_id: &source.video_id,
+                                        source_kind: source.source_kind,
+                                        channel_id: &source.channel_id,
+                                        channel_name: &source.channel_name,
+                                        video_title: &source.video_title,
+                                        published_at: &source.published_at,
+                                    },
                                     &fts_chunks,
                                 )
                                 .await;
@@ -633,12 +635,14 @@ async fn process_pending_search_sources(state: &AppState) -> bool {
                         state
                             .fts
                             .upsert_source(
-                                &source.video_id,
-                                source.source_kind,
-                                &source.channel_id,
-                                &source.channel_name,
-                                &source.video_title,
-                                &source.published_at,
+                                FtsSourceMeta {
+                                    video_id: &source.video_id,
+                                    source_kind: source.source_kind,
+                                    channel_id: &source.channel_id,
+                                    channel_name: &source.channel_name,
+                                    video_title: &source.video_title,
+                                    published_at: &source.published_at,
+                                },
                                 &fts_chunks,
                             )
                             .await;

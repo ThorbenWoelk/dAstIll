@@ -27,6 +27,7 @@
   import ChevronIcon from "$lib/components/icons/ChevronIcon.svelte";
   import LoadingSkeleton from "$lib/components/LoadingSkeleton.svelte";
   import WorkspaceHighlightsPanel from "$lib/components/workspace/WorkspaceHighlightsPanel.svelte";
+  import WorkspaceSummaryAudioPlayer from "$lib/components/workspace/WorkspaceSummaryAudioPlayer.svelte";
   import WorkspaceSummaryMeta from "$lib/components/workspace/WorkspaceSummaryMeta.svelte";
   import WorkspaceVideoInfoPanel from "$lib/components/workspace/WorkspaceVideoInfoPanel.svelte";
   import { shouldRetryReadySummaryLoad } from "$lib/workspace/content";
@@ -205,10 +206,6 @@
   let onCitationScrollConsumed = $derived(actions.onCitationScrollConsumed);
 
   let showResetConfirm = $state(false);
-  let summaryAudioError = $state<string | null>(null);
-  let summaryAudioElement = $state<HTMLAudioElement | null>(null);
-  let summaryAudioSrc = $state<string | null>(null);
-
   async function confirmResetVideo() {
     showResetConfirm = false;
     await overlayActions.onConfirmResetVideo();
@@ -218,36 +215,6 @@
     showResetConfirm = false;
     overlayActions.onCancelResetVideo();
   }
-
-  async function onSummaryAudioError() {
-    summaryAudioError = "Failed to load summary audio.";
-  }
-
-  $effect(() => {
-    selectedVideoId;
-    contentMode;
-    if (summaryAudioElement) {
-      summaryAudioElement.pause();
-      summaryAudioElement = null;
-    }
-    // Set `src` so the native audio player play control is enabled.
-    // With `preload="none"`, most browsers won't fetch until playback begins.
-    summaryAudioSrc =
-      contentMode === "summary" && selectedVideoId
-        ? `/api/videos/${selectedVideoId}/summary/audio`
-        : null;
-    summaryAudioError = null;
-  });
-
-  $effect(() => {
-    return () => {
-      if (summaryAudioElement) {
-        summaryAudioElement.pause();
-        summaryAudioElement = null;
-      }
-      summaryAudioSrc = null;
-    };
-  });
 
   let touchGesture: {
     startX: number;
@@ -551,24 +518,7 @@
         modelUsed={summaryModelUsed}
         qualityModelUsed={summaryQualityModelUsed}
       />
-      <div class="mb-4 flex flex-col gap-2">
-        <div class="relative w-full">
-          <audio
-            bind:this={summaryAudioElement}
-            class="w-full"
-            controls
-            preload="none"
-            src={summaryAudioSrc ?? undefined}
-            onerror={onSummaryAudioError}
-          ></audio>
-        </div>
-
-        {#if summaryAudioError}
-          <span class="text-[11px] text-[var(--danger)]"
-            >{summaryAudioError}</span
-          >
-        {/if}
-      </div>
+      <WorkspaceSummaryAudioPlayer videoId={selectedVideoId} />
     {/if}
 
     {#if !selectedVideoId}

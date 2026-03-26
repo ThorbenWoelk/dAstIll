@@ -108,7 +108,7 @@ fn oldest_ready_video_published_at_from_slice(
                 && v.transcript_status == ContentStatus::Ready
                 && v.summary_status == ContentStatus::Ready
         })
-        .filter(|v| published_at_not_before.map_or(true, |floor| v.published_at >= floor))
+        .filter(|v| published_at_not_before.is_none_or(|floor| v.published_at >= floor))
         .map(|v| v.published_at)
         .min()
 }
@@ -122,7 +122,7 @@ fn oldest_ready_video_published_at_for_scope(
     videos
         .iter()
         .filter(|v| video_matches_channel_scope(v, channel_id, subscribed_channel_ids))
-        .filter(|v| published_at_not_before.map_or(true, |floor| v.published_at >= floor))
+        .filter(|v| published_at_not_before.is_none_or(|floor| v.published_at >= floor))
         .filter(|v| {
             v.transcript_status == ContentStatus::Ready && v.summary_status == ContentStatus::Ready
         })
@@ -158,7 +158,7 @@ async fn apply_channel_video_filters(
         .filter(|v| {
             options
                 .published_at_not_before
-                .map_or(true, |floor| v.published_at >= floor)
+                .is_none_or(|floor| v.published_at >= floor)
         })
         .filter(|v| options.is_short.is_none_or(|s| v.is_short == s))
         .filter(|v| options.acknowledged.is_none_or(|a| v.acknowledged == a))
@@ -353,7 +353,7 @@ async fn build_channel_snapshot_data(
     let channel_video_count = all_videos
         .iter()
         .filter(|v| video_matches_channel_scope(v, &channel.id, subscribed_channel_ids))
-        .filter(|v| sync_floor.map_or(true, |floor| v.published_at >= floor))
+        .filter(|v| sync_floor.is_none_or(|floor| v.published_at >= floor))
         .count();
 
     let videos = apply_channel_video_filters(

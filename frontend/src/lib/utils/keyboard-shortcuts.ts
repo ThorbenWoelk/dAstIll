@@ -152,6 +152,23 @@ export function buildShortcutManual(
       ],
     },
     {
+      title: "Summary Audio",
+      rows: [
+        {
+          keys: "Space",
+          description: "Play / Pause",
+        },
+        {
+          keys: "Arrow Left",
+          description: "Back 10 seconds",
+        },
+        {
+          keys: "Arrow Right",
+          description: "Forward 10 seconds",
+        },
+      ],
+    },
+    {
       title: "Feature guide tour",
       rows: [
         {

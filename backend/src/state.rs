@@ -8,7 +8,7 @@ use crate::db::Store;
 use crate::read_cache::ReadCache;
 use crate::search_progress::SearchProgress;
 use crate::security::RequestRateLimiter;
-use crate::services::ElevenLabsTtsService;
+use crate::services::PollyTtsService;
 use crate::services::{
     ActiveChatHandle, ChatService, CloudCooldown, DatabricksSqlService, FtsIndex, SearchService,
     SummarizerService, SummaryEvaluatorService, TranscriptCooldown, TranscriptService,
@@ -27,7 +27,7 @@ pub struct AppState {
     pub fts: Arc<FtsIndex>,
     pub youtube: Arc<YouTubeService>,
     pub transcript: Arc<TranscriptService>,
-    pub elevenlabs_tts: Option<Arc<ElevenLabsTtsService>>,
+    pub tts: Option<Arc<PollyTtsService>>,
     pub summarizer: Arc<SummarizerService>,
     pub summary_evaluator: Arc<SummaryEvaluatorService>,
     pub search: Arc<SearchService>,

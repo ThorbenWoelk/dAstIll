@@ -132,6 +132,7 @@ jobs:
             SUMMARY_EVALUATOR_MODEL=${{ vars.SUMMARY_EVALUATOR_MODEL }}
             SUMMARIZE_PATH=/usr/local/bin/summarize
             BACKEND_CORS_ALLOWED_ORIGINS=${{ vars.BACKEND_CORS_ALLOWED_ORIGINS }}
+            POLLY_TTS_ENABLED=true
             DATABRICKS_HOST=${{ vars.DATABRICKS_HOST }}
             DATABRICKS_WAREHOUSE_ID=${{ vars.DATABRICKS_WAREHOUSE_ID }}
             DATABRICKS_CATALOG=${{ vars.DATABRICKS_CATALOG }}

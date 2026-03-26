@@ -101,36 +101,27 @@ impl FtsIndex {
 
     /// Add or replace all chunks for a single video+source_kind pair.
     /// Deletes existing documents with the matching video_id + source_kind, then adds the new ones.
-    pub async fn upsert_source(
-        &self,
-        video_id: &str,
-        source_kind: SearchSourceKind,
-        channel_id: &str,
-        channel_name: &str,
-        video_title: &str,
-        published_at: &str,
-        chunks: &[FtsChunk],
-    ) {
-        let source_key = format!("{}_{}", video_id, source_kind.as_str());
+    pub async fn upsert_source(&self, meta: FtsSourceMeta<'_>, chunks: &[FtsChunk]) {
+        let source_key = format!("{}_{}", meta.video_id, meta.source_kind.as_str());
         let mut inner = self.0.write().await;
         delete_source_docs(&mut inner, &source_key);
 
         for chunk in chunks {
             let mut doc = TantivyDocument::default();
             doc.add_text(inner.f_chunk_id, &chunk.chunk_id);
-            doc.add_text(inner.f_video_id, video_id);
-            doc.add_text(inner.f_channel_id, channel_id);
-            doc.add_text(inner.f_source_kind, source_kind.as_str());
+            doc.add_text(inner.f_video_id, meta.video_id);
+            doc.add_text(inner.f_channel_id, meta.channel_id);
+            doc.add_text(inner.f_source_kind, meta.source_kind.as_str());
             doc.add_text(inner.f_source_key, &source_key);
             doc.add_text(inner.f_chunk_text, &chunk.chunk_text);
-            doc.add_text(inner.f_video_title, video_title);
-            doc.add_text(inner.f_channel_name, channel_name);
-            doc.add_text(inner.f_published_at, published_at);
+            doc.add_text(inner.f_video_title, meta.video_title);
+            doc.add_text(inner.f_channel_name, meta.channel_name);
+            doc.add_text(inner.f_published_at, meta.published_at);
             if let Some(title) = &chunk.section_title {
                 doc.add_text(inner.f_section_title, title);
             }
             if let Some(sec) = chunk.start_sec {
-                doc.add_text(inner.f_start_sec, &sec.to_string());
+                doc.add_text(inner.f_start_sec, sec.to_string());
             }
             let _ = inner.writer.add_document(doc);
         }
@@ -287,11 +278,22 @@ fn delete_source_docs(inner: &mut FtsIndexInner, source_key: &str) {
 }
 
 /// Data for a single chunk to be inserted into the FTS index.
+#[derive(Debug, Clone)]
 pub struct FtsChunk {
     pub chunk_id: String,
     pub section_title: Option<String>,
     pub chunk_text: String,
     pub start_sec: Option<f32>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FtsSourceMeta<'a> {
+    pub video_id: &'a str,
+    pub source_kind: SearchSourceKind,
+    pub channel_id: &'a str,
+    pub channel_name: &'a str,
+    pub video_title: &'a str,
+    pub published_at: &'a str,
 }
 
 /// A single BM25 search result.
@@ -336,12 +338,14 @@ mod tests {
 
         index
             .upsert_source(
-                "video-1",
-                SearchSourceKind::Transcript,
-                "channel-a",
-                "Channel A",
-                "Rust ownership and borrowing",
-                "2026-01-01T00:00:00Z",
+                FtsSourceMeta {
+                    video_id: "video-1",
+                    source_kind: SearchSourceKind::Transcript,
+                    channel_id: "channel-a",
+                    channel_name: "Channel A",
+                    video_title: "Rust ownership and borrowing",
+                    published_at: "2026-01-01T00:00:00Z",
+                },
                 &[
                     FtsChunk {
                         chunk_id: "video-1_transcript_1_0".to_string(),
@@ -363,12 +367,14 @@ mod tests {
 
         index
             .upsert_source(
-                "video-2",
-                SearchSourceKind::Summary,
-                "channel-b",
-                "Channel B",
-                "Python async patterns",
-                "2026-01-02T00:00:00Z",
+                FtsSourceMeta {
+                    video_id: "video-2",
+                    source_kind: SearchSourceKind::Summary,
+                    channel_id: "channel-b",
+                    channel_name: "Channel B",
+                    video_title: "Python async patterns",
+                    published_at: "2026-01-02T00:00:00Z",
+                },
                 &[FtsChunk {
                     chunk_id: "video-2_summary_1_0".to_string(),
                     section_title: Some("Overview".to_string()),
@@ -394,12 +400,14 @@ mod tests {
         for (vid, cid) in [("v1", "ch-a"), ("v2", "ch-b")] {
             index
                 .upsert_source(
-                    vid,
-                    SearchSourceKind::Transcript,
-                    cid,
-                    cid,
-                    "semantic search",
-                    "2026-01-01T00:00:00Z",
+                    FtsSourceMeta {
+                        video_id: vid,
+                        source_kind: SearchSourceKind::Transcript,
+                        channel_id: cid,
+                        channel_name: cid,
+                        video_title: "semantic search",
+                        published_at: "2026-01-01T00:00:00Z",
+                    },
                     &[FtsChunk {
                         chunk_id: format!("{vid}_transcript_1_0"),
                         section_title: None,
@@ -423,12 +431,14 @@ mod tests {
 
         index
             .upsert_source(
-                "video-del",
-                SearchSourceKind::Transcript,
-                "ch",
-                "Ch",
-                "deletion test",
-                "2026-01-01T00:00:00Z",
+                FtsSourceMeta {
+                    video_id: "video-del",
+                    source_kind: SearchSourceKind::Transcript,
+                    channel_id: "ch",
+                    channel_name: "Ch",
+                    video_title: "deletion test",
+                    published_at: "2026-01-01T00:00:00Z",
+                },
                 &[FtsChunk {
                     chunk_id: "video-del_transcript_1_0".to_string(),
                     section_title: None,
