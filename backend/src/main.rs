@@ -10,8 +10,8 @@ use tracing_subscriber::{Layer, filter, layer::SubscriberExt, util::SubscriberIn
 
 use dastill::cache_headers::add_cache_control;
 use dastill::config::{
-    ChatRuntimeConfig, DatabricksRuntimeConfig, OllamaRuntimeConfig, SearchRuntimeConfig,
-    SecurityRuntimeConfig,
+    ChatRuntimeConfig, DatabricksRuntimeConfig, ElevenLabsTtsRuntimeConfig, OllamaRuntimeConfig,
+    SearchRuntimeConfig, SecurityRuntimeConfig,
 };
 use dastill::db::init_store;
 use dastill::handlers::{
@@ -24,8 +24,8 @@ use dastill::security::{
     enforce_expensive_rate_limit, rate_limiter, require_operator_role, require_proxy_auth,
 };
 use dastill::services::{
-    ChatService, Cooldown, DatabricksSqlService, FtsIndex, OllamaCore, SearchService,
-    SummarizerService, SummaryEvaluatorService, TranscriptService, YouTubeService,
+    ChatService, Cooldown, DatabricksSqlService, ElevenLabsTtsService, FtsIndex, OllamaCore,
+    SearchService, SummarizerService, SummaryEvaluatorService, TranscriptService, YouTubeService,
     build_http_client,
 };
 use dastill::state::AppState;
@@ -96,6 +96,8 @@ async fn main() -> anyhow::Result<()> {
     let chat_runtime = ChatRuntimeConfig::from_env();
     let databricks_runtime =
         DatabricksRuntimeConfig::from_env().map_err(|err| anyhow::anyhow!(err))?;
+    let elevenlabs_tts_runtime =
+        ElevenLabsTtsRuntimeConfig::from_env().map_err(|err| anyhow::anyhow!(err))?;
     let security_runtime =
         Arc::new(SecurityRuntimeConfig::from_env().map_err(|err| anyhow::anyhow!(err))?);
     let summarize_path = std::env::var("SUMMARIZE_PATH")
@@ -229,6 +231,15 @@ async fn main() -> anyhow::Result<()> {
     ));
 
     let fts = Arc::new(FtsIndex::new().expect("failed to create in-memory FTS index"));
+    let elevenlabs_tts = elevenlabs_tts_runtime.map(|cfg| {
+        Arc::new(ElevenLabsTtsService::new(
+            build_http_client(),
+            cfg.api_key,
+            cfg.voice_id,
+            cfg.model_id,
+            cfg.output_format,
+        ))
+    });
 
     let state = AppState {
         db: pool,
@@ -241,6 +252,7 @@ async fn main() -> anyhow::Result<()> {
         fts,
         youtube,
         transcript,
+        elevenlabs_tts,
         summarizer,
         summary_evaluator,
         search,
