@@ -59,6 +59,25 @@ resource "aws_iam_user_policy" "dev_s3_vectors" {
   })
 }
 
+resource "aws_iam_user_policy" "dev_polly" {
+  name = "${var.app_name}-dev-polly"
+  user = aws_iam_user.dev.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "polly:SynthesizeSpeech",
+          "polly:DescribeVoices",
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 output "dev_aws_access_key_id" {
   value     = aws_iam_access_key.dev.id
   sensitive = true

@@ -202,7 +202,7 @@
     bind:this={textareaElement}
     rows="1"
     class="mb-3 min-h-10 max-h-40 w-full resize-none overflow-y-hidden break-words bg-transparent px-1 py-2 text-[14px] leading-5 text-[var(--foreground)] placeholder:text-[var(--soft-foreground)] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-    placeholder="Ask about your indexed transcripts and summaries…"
+    placeholder="Ask something about your content…"
     wrap="soft"
     {disabled}
     oninput={syncTextareaHeight}
