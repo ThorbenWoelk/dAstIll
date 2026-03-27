@@ -472,6 +472,10 @@
     }
 
     sidebarState.setSelectedVideoId(preferredVideoId);
+    const cachedHighlights = videoHighlightsByVideoId[preferredVideoId];
+    if (!cachedHighlights) {
+      void hydrateVideoHighlights(preferredVideoId);
+    }
     let hasSelectedVideo = videos.some(
       (video) => video.id === preferredVideoId,
     );

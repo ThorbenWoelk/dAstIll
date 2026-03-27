@@ -240,12 +240,16 @@
       streamDisplayedQueries.length ||
       streamCoverageSummary ||
       streamPrimaryDecision ||
-      streamToolCalls.length > 0 ||
       streamTimings.length > 0,
     ),
   );
   let showConversationMeta = $derived(
-    Boolean(streamBanner || streamTraceVisible || errorMessage),
+    Boolean(
+      streamBanner ||
+      streamTraceVisible ||
+      streamToolCalls.length > 0 ||
+      errorMessage,
+    ),
   );
   let conversationMetaInsertMessageId = $derived.by(() => {
     if (

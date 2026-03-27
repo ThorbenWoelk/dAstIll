@@ -9,6 +9,7 @@ pub(crate) struct DbInspectToolInput {
     pub(crate) operation: Option<String>,
     pub(crate) resource: Option<String>,
     pub(crate) limit: Option<usize>,
+    pub(crate) group_by: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -30,6 +31,12 @@ pub(crate) enum DbInspectTarget {
 pub(crate) enum DbInspectOperation {
     Count,
     List,
+    Breakdown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DbGroupBy {
+    Channel,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,6 +44,7 @@ pub(crate) struct DbInspectQuery {
     pub(crate) operation: DbInspectOperation,
     pub(crate) target: DbInspectTarget,
     pub(crate) limit: usize,
+    pub(crate) group_by: Option<DbGroupBy>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,6 +95,16 @@ impl DbInspectOperation {
         match value.trim().to_ascii_lowercase().as_str() {
             "count" => Some(Self::Count),
             "list" => Some(Self::List),
+            "breakdown" => Some(Self::Breakdown),
+            _ => None,
+        }
+    }
+}
+
+impl DbGroupBy {
+    fn from_tool_value(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "channel" => Some(Self::Channel),
             _ => None,
         }
     }
@@ -129,10 +147,24 @@ pub(crate) fn build_db_inspect_query(
     let target = DbInspectTarget::from_tool_value(resource_value)
         .ok_or_else(|| format!("unsupported db_inspect resource `{resource_value}`"))?;
 
+    let group_by = match input.group_by.as_deref() {
+        Some(value) => {
+            let parsed = DbGroupBy::from_tool_value(value)
+                .ok_or_else(|| format!("unsupported db_inspect group_by `{value}`"))?;
+            Some(parsed)
+        }
+        None => None,
+    };
+
+    if operation == DbInspectOperation::Breakdown && group_by.is_none() {
+        return Err("db_inspect breakdown requires group_by".to_string());
+    }
+
     Ok(Some(DbInspectQuery {
         operation,
         target,
         limit: input.limit.unwrap_or(5).clamp(1, 10),
+        group_by,
     }))
 }
 
@@ -190,6 +222,23 @@ pub(crate) async fn execute_db_inspect_query(
             })
         }
         DbInspectOperation::List => execute_list_query(store, query).await,
+        DbInspectOperation::Breakdown => {
+            let counts = match query.target {
+                DbInspectTarget::Summaries => db::summaries_by_channel(store).await,
+                DbInspectTarget::Transcripts => db::transcripts_by_channel(store).await,
+                DbInspectTarget::Videos => db::videos_by_channel(store).await,
+                DbInspectTarget::Channels => {
+                    return Err(db::StoreError::Other(
+                        "cannot break channels down by channel".to_string(),
+                    ));
+                }
+            }?;
+            let output = format_breakdown_by_channel_output(query.target, &counts);
+            Ok(DbInspectResult {
+                summary: describe_db_inspect_query(query),
+                output,
+            })
+        }
     }
 }
 
@@ -204,6 +253,12 @@ pub(crate) fn describe_db_inspect_query(query: DbInspectQuery) -> String {
         DbInspectOperation::Count => format!("Count {target} in the database"),
         DbInspectOperation::List => {
             format!("List up to {} {target} from the database", query.limit)
+        }
+        DbInspectOperation::Breakdown => {
+            format!(
+                "{} breakdown by channel",
+                target[0..1].to_uppercase() + &target[1..]
+            )
         }
     }
 }
@@ -268,6 +323,22 @@ async fn execute_list_query(
     })
 }
 
+fn format_breakdown_by_channel_output(target: DbInspectTarget, counts: &[(String, usize)]) -> String {
+    if counts.is_empty() {
+        return format!("No {} found in the database.", target.plural());
+    }
+    let total: usize = counts.iter().map(|(_, c)| c).sum();
+    let rows = counts
+        .iter()
+        .map(|(name, count)| format!("- {name}: {count}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!(
+        "{} breakdown by channel (total {total}):\n{rows}",
+        target.plural()[0..1].to_uppercase() + &target.plural()[1..]
+    )
+}
+
 fn format_list_output(label: &str, rows: Vec<String>) -> String {
     if rows.is_empty() {
         return format!("No {label} found in the database.");
@@ -282,7 +353,7 @@ fn format_list_output(label: &str, rows: Vec<String>) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        DbInspectOperation, DbInspectQuery, DbInspectTarget, DbInspectToolInput,
+        DbGroupBy, DbInspectOperation, DbInspectQuery, DbInspectTarget, DbInspectToolInput,
         SearchLibraryToolInput, build_db_inspect_query, build_search_library_query,
         describe_db_inspect_query,
     };
@@ -296,6 +367,7 @@ mod tests {
                 operation: Some("count".to_string()),
                 resource: Some("summaries".to_string()),
                 limit: None,
+                group_by: None,
             }),
         )
         .expect("valid tool request")
@@ -314,6 +386,7 @@ mod tests {
                 operation: Some("list".to_string()),
                 resource: Some("videos".to_string()),
                 limit: Some(99),
+                group_by: None,
             }),
         )
         .expect("valid tool request")
@@ -332,6 +405,7 @@ mod tests {
                 operation: Some("count".to_string()),
                 resource: Some("summaries".to_string()),
                 limit: None,
+                group_by: None,
             }),
         )
         .expect_err("unknown tool should be rejected");
@@ -347,6 +421,7 @@ mod tests {
                 operation: Some("count".to_string()),
                 resource: Some("search_sources".to_string()),
                 limit: None,
+                group_by: None,
             }),
         )
         .expect_err("unknown resource should be rejected");
@@ -360,8 +435,44 @@ mod tests {
             operation: DbInspectOperation::List,
             target: DbInspectTarget::Channels,
             limit: 5,
+            group_by: None,
         });
         assert_eq!(description, "List up to 5 channels from the database");
+    }
+
+    #[test]
+    fn builds_breakdown_query_from_valid_tool_request() {
+        let query = build_db_inspect_query(
+            Some("db_inspect"),
+            Some(DbInspectToolInput {
+                operation: Some("breakdown".to_string()),
+                resource: Some("summaries".to_string()),
+                limit: None,
+                group_by: Some("channel".to_string()),
+            }),
+        )
+        .expect("valid tool request")
+        .expect("query should be built");
+
+        assert_eq!(query.operation, DbInspectOperation::Breakdown);
+        assert_eq!(query.target, DbInspectTarget::Summaries);
+        assert_eq!(query.group_by, Some(DbGroupBy::Channel));
+    }
+
+    #[test]
+    fn rejects_breakdown_without_group_by() {
+        let error = build_db_inspect_query(
+            Some("db_inspect"),
+            Some(DbInspectToolInput {
+                operation: Some("breakdown".to_string()),
+                resource: Some("summaries".to_string()),
+                limit: None,
+                group_by: None,
+            }),
+        )
+        .expect_err("breakdown without group_by should be rejected");
+
+        assert!(error.contains("requires group_by"));
     }
 
     #[test]

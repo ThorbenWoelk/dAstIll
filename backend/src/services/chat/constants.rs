@@ -73,10 +73,11 @@ Available tools:
 2. db_inspect
 - Use for read-only questions about stored app data itself, such as counts or small sample lists.
 - Input JSON:
-  {"operation":"count|list","resource":"summaries|transcripts|videos|channels","limit":1-10}
+  {"operation":"count|list|breakdown","resource":"summaries|transcripts|videos|channels","limit":1-10,"group_by":"channel"}
+- Use "breakdown" with "group_by":"channel" to count a resource per channel (e.g. how many summaries per channel).
 
 Return valid JSON only with this shape:
-{"action":"respond|tool_call","rationale":"short explanation","tool_name":"search_library|db_inspect"|null,"search_library_input":{"query":"...","source":"all|summary|transcript","limit":1-24}|null,"db_inspect_input":{"operation":"count|list","resource":"summaries|transcripts|videos|channels","limit":1-10}|null}
+{"action":"respond|tool_call","rationale":"short explanation","tool_name":"search_library|db_inspect"|null,"search_library_input":{"query":"...","source":"all|summary|transcript","limit":1-24}|null,"db_inspect_input":{"operation":"count|list|breakdown","resource":"summaries|transcripts|videos|channels","limit":1-10,"group_by":"channel"|null}|null}
 
 Rules:
 - Prefer responding when the current conversation and tool results already provide enough information.

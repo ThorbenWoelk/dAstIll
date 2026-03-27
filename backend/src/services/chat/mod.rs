@@ -2661,6 +2661,7 @@ mod tests {
                 operation: Some("count".to_string()),
                 resource: Some("summaries".to_string()),
                 limit: None,
+                group_by: None,
             }),
         }
         .into_step_outcome()
@@ -2716,6 +2717,7 @@ mod tests {
                 operation: Some("count".to_string()),
                 resource: Some("search_sources".to_string()),
                 limit: None,
+                group_by: None,
             }),
         }
         .into_step_outcome()
