@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { goto } from "$app/navigation";
+  import { goto, preloadData } from "$app/navigation";
   import { page } from "$app/stores";
   import { onMount } from "svelte";
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
@@ -9,6 +9,7 @@
     addVideo,
     deleteChannel as deleteChannelRequest,
     getChannelSyncDepth,
+    getWorkspaceBootstrap,
     getVideo,
     listVideos,
     listChannels,
@@ -32,9 +33,11 @@
     AiStatus,
     AddVideoResult,
     Channel,
+    ChannelSnapshot,
     SyncDepth,
     Video,
     VideoTypeFilter,
+    WorkspaceBootstrap,
   } from "$lib/types";
   import { looksLikeYouTubeVideoInput } from "$lib/utils/youtube-input";
   import { createAiStatusPoller } from "$lib/utils/ai-poller";
@@ -55,11 +58,17 @@
     ChannelSortMode,
   } from "$lib/workspace/types";
 
-  let channels = $state<Channel[]>([]);
-  let syncDepth = $state<SyncDepth | null>(null);
+  const initialBootstrap = ($page.data.bootstrap ??
+    null) as WorkspaceBootstrap | null;
+  const initialSelectedSnapshot = initialBootstrap?.snapshot ?? null;
+
+  let channels = $state<Channel[]>(initialBootstrap?.channels ?? []);
+  let syncDepth = $state<SyncDepth | null>(
+    initialSelectedSnapshot?.sync_depth ?? null,
+  );
   let earliestSyncDateInput = $state("");
-  let loadingChannels = $state(true);
-  let loadingOverview = $state(true);
+  let loadingChannels = $state(initialBootstrap === null);
+  let loadingOverview = $state(initialBootstrap === null);
   let addingChannel = $state(false);
   let savingSyncDate = $state(false);
   let errorMessage = $state<string | null>(null);
@@ -88,6 +97,14 @@
   let acknowledgedFilter = $state<AcknowledgedFilter>("all");
   let aiStatus = $state<AiStatus | null>(null);
   let activeOverviewRequest = 0;
+  let seededChannelPreviews = $state<Record<string, ChannelSnapshot>>(
+    (($page.data.channelPreviews ?? {}) as Record<string, ChannelSnapshot>) ??
+      {},
+  );
+  let seededChannelPreviewsFilterKey = $state<string>(
+    (($page.data.channelPreviewsFilterKey ?? "all:all:default") as string) ??
+      "all:all:default",
+  );
 
   let selectedChannelId = $derived($page.params.id ?? null);
   let selectedChannel = $derived(
@@ -141,6 +158,52 @@
     return applySavedChannelOrder(nextChannels, channelOrder);
   }
 
+  function resolvePreviewFilterKey(
+    currentVideoType: VideoTypeFilter,
+    currentAcknowledgedFilter: AcknowledgedFilter,
+  ) {
+    return `${currentVideoType}:${currentAcknowledgedFilter}:default`;
+  }
+
+  function applyBootstrapState(
+    bootstrap: WorkspaceBootstrap,
+    filterKey: string,
+    options?: { replaceChannels?: boolean },
+  ) {
+    const replaceChannels = options?.replaceChannels ?? true;
+    const nextChannels = applyChannelPreferences(bootstrap.channels);
+    if (replaceChannels) {
+      channels = nextChannels;
+      if (channelOrder.length === 0) {
+        channelOrder = channelOrderFromList(nextChannels);
+      }
+    }
+
+    const snapshot = bootstrap.snapshot;
+    if (
+      snapshot &&
+      bootstrap.selected_channel_id &&
+      snapshot.channel_id === bootstrap.selected_channel_id
+    ) {
+      seededChannelPreviews = {
+        [snapshot.channel_id]: snapshot,
+      };
+      seededChannelPreviewsFilterKey = filterKey;
+    }
+
+    if (!bootstrap.selected_channel_id) {
+      syncDepth = null;
+      earliestSyncDateInput = "";
+      return;
+    }
+
+    const currentChannel =
+      nextChannels.find((item) => item.id === bootstrap.selected_channel_id) ??
+      null;
+    syncDepth = snapshot?.sync_depth ?? null;
+    syncInputValue(currentChannel, snapshot?.sync_depth ?? null);
+  }
+
   function mergeUpdatedChannel(updatedChannel: Channel) {
     channels = channels.map((channel) =>
       channel.id === updatedChannel.id ? updatedChannel : channel,
@@ -179,15 +242,23 @@
     try {
       let nextChannels = channels;
       if (options?.shouldReloadChannels ?? false) {
-        nextChannels = applyChannelPreferences(await listChannels());
+        const bootstrap = await getWorkspaceBootstrap({
+          selectedChannelId: channelId,
+          videoType: videoTypeFilter,
+          acknowledged:
+            acknowledgedFilter === "all"
+              ? undefined
+              : acknowledgedFilter === "ack",
+        });
         if (requestId !== activeOverviewRequest) {
           return;
         }
 
-        channels = nextChannels;
-        if (channelOrder.length === 0) {
-          channelOrder = channelOrderFromList(nextChannels);
-        }
+        applyBootstrapState(
+          bootstrap,
+          resolvePreviewFilterKey(videoTypeFilter, acknowledgedFilter),
+        );
+        nextChannels = channels;
       }
 
       if (!channelId) {
@@ -202,6 +273,13 @@
       if (!currentChannel) {
         syncDepth = null;
         earliestSyncDateInput = "";
+        return;
+      }
+
+      if (
+        options?.shouldReloadChannels &&
+        nextChannels.some((item) => item.id === channelId)
+      ) {
         return;
       }
 
@@ -309,6 +387,14 @@
   }
 
   async function openVideoInWorkspace(channelId: string, videoId: string) {
+    const href = buildWorkspaceViewHref({
+      selectedChannelId: channelId,
+      selectedVideoId: videoId,
+      contentMode: "info",
+      videoTypeFilter,
+      acknowledgedFilter,
+    });
+
     if (typeof localStorage !== "undefined") {
       saveWorkspaceState(localStorage, {
         selectedChannelId: channelId,
@@ -321,15 +407,8 @@
       });
     }
 
-    await goto(
-      buildWorkspaceViewHref({
-        selectedChannelId: channelId,
-        selectedVideoId: videoId,
-        contentMode: "info",
-        videoTypeFilter,
-        acknowledgedFilter,
-      }),
-    );
+    await preloadData(href);
+    await goto(href, { keepFocus: true, noScroll: true });
   }
 
   function reorderChannels(nextOrder: string[]) {
@@ -466,7 +545,7 @@
           undefined,
           true,
         );
-        const status = resolveAddedChannelStatus(videos);
+        const status = resolveAddedChannelStatus(videos.videos);
         presentAddSourceFeedback(buildChannelAddFeedback(channel, status));
         if (status === "ready") {
           return;
@@ -520,10 +599,25 @@
       acknowledgedFilter = restored.acknowledgedFilter ?? "all";
     }
 
+    if (initialBootstrap) {
+      applyBootstrapState(initialBootstrap, seededChannelPreviewsFilterKey, {
+        replaceChannels: true,
+      });
+    } else {
+      loadingChannels = true;
+      loadingOverview = true;
+    }
+
+    const hasSeededSelectedSnapshot =
+      Boolean(initialBootstrap?.snapshot) &&
+      initialBootstrap?.selected_channel_id === selectedChannelId;
+
     workspaceStateHydrated = true;
-    void loadChannelOverviewState(selectedChannelId, {
-      shouldReloadChannels: true,
-    });
+    if (!hasSeededSelectedSnapshot || channels.length === 0) {
+      void loadChannelOverviewState(selectedChannelId, {
+        shouldReloadChannels: channels.length === 0,
+      });
+    }
 
     return () => {
       addSourceFeedbackPollSequence += 1;
@@ -634,6 +728,8 @@
     <WorkspaceSidebar
       videoListMode="per_channel_preview"
       previewSessionKey="workspace-sidebar-navigation"
+      initialChannelPreviews={seededChannelPreviews}
+      initialChannelPreviewsFilterKey={seededChannelPreviewsFilterKey}
       addSourceErrorMessage={errorMessage}
       shell={{
         collapsed,
@@ -669,6 +765,8 @@
         <WorkspaceSidebar
           videoListMode="per_channel_preview"
           previewSessionKey="workspace-sidebar-navigation"
+          initialChannelPreviews={seededChannelPreviews}
+          initialChannelPreviewsFilterKey={seededChannelPreviewsFilterKey}
           addSourceErrorMessage={errorMessage}
           shell={{
             collapsed: false,

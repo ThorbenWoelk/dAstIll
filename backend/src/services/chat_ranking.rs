@@ -302,6 +302,20 @@ fn selection_score(
         score *= CHAT_SOURCE_KIND_DIVERSITY_BONUS;
     }
 
+    if plan
+        .video_focus_ids
+        .iter()
+        .any(|video_id| video_id == &candidate.candidate.video_id)
+    {
+        score *= 1.8;
+    } else if plan
+        .channel_focus_ids
+        .iter()
+        .any(|channel_id| channel_id == &candidate.candidate.channel_id)
+    {
+        score *= 1.2;
+    }
+
     if plan.attributed_preference {
         let preference_score =
             preference_signal_score(&candidate.candidate.chunk_text, &plan.focus_terms);

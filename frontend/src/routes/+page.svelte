@@ -506,14 +506,14 @@
         acknowledged,
       );
       scannedPages += 1;
-      if (next.length === 0) {
-        sidebarState.setHasMore(false);
+      if (next.videos.length === 0) {
+        sidebarState.setHasMore(next.has_more);
         break;
       }
 
-      sidebarState.setVideos([...videos, ...next]);
-      sidebarState.setOffset(offset + next.length);
-      sidebarState.setHasMore(next.length === limit);
+      sidebarState.setVideos([...videos, ...next.videos]);
+      sidebarState.setOffset(next.next_offset ?? offset + next.videos.length);
+      sidebarState.setHasMore(next.has_more);
       hasSelectedVideo = videos.some((video) => video.id === preferredVideoId);
     }
 
@@ -559,7 +559,7 @@
       track({
         event: "channel_snapshot_loaded",
         channel_id: channelId,
-        video_count: snapshot.channel_video_count,
+        video_count: snapshot.channel_video_count ?? snapshot.videos.length,
       });
       void putCachedViewSnapshot(
         buildWorkspaceSnapshotCacheKey(channelId, videoTypeFilter, isAck),
@@ -1404,13 +1404,15 @@
         return;
 
       if (reset) {
-        sidebarState.setVideos(list);
-        sidebarState.setOffset(list.length);
+        sidebarState.setVideos(list.videos);
+        sidebarState.setOffset(list.next_offset ?? list.videos.length);
       } else {
-        sidebarState.setVideos([...sidebarState.videos, ...list]);
-        sidebarState.setOffset(sidebarState.offset + list.length);
+        sidebarState.setVideos([...sidebarState.videos, ...list.videos]);
+        sidebarState.setOffset(
+          list.next_offset ?? sidebarState.offset + list.videos.length,
+        );
       }
-      sidebarState.setHasMore(list.length === limit);
+      sidebarState.setHasMore(list.has_more);
       if (reset) {
         allowLoadedVideoSyncDepthOverride = false;
       }
@@ -1734,7 +1736,7 @@
           undefined,
           true,
         );
-        const status = resolveAddedChannelStatus(videos);
+        const status = resolveAddedChannelStatus(videos.videos);
         presentAddSourceFeedback(buildChannelAddFeedback(channel, status));
         if (status === "ready") {
           return;

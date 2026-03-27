@@ -1,9 +1,11 @@
 use std::collections::HashSet;
+use std::sync::{Mutex, OnceLock};
 
 use crate::models::{Channel, ContentStatus, OTHERS_CHANNEL_ID, OTHERS_CHANNEL_NAME, Video};
 
 use super::{
-    ChannelSnapshotData, QueueFilter, Store, StoreError, VideoInsertOutcome, WorkspaceBootstrapData,
+    ChannelSnapshotData, ChannelVideoPageData, QueueFilter, Store, StoreError, VideoInsertOutcome,
+    WorkspaceBootstrapData,
 };
 
 pub async fn insert_video(store: &Store, video: &Video) -> Result<VideoInsertOutcome, StoreError> {
@@ -66,6 +68,21 @@ fn build_virtual_others_channel() -> Channel {
 
 fn subscribed_channel_ids(channels: &[Channel]) -> HashSet<String> {
     channels.iter().map(|channel| channel.id.clone()).collect()
+}
+
+fn warn_missing_index_once(query_kind: &str, channel_id: &str, error: &StoreError) {
+    static SEEN: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    let key = format!("{query_kind}:{channel_id}");
+    let seen = SEEN.get_or_init(|| Mutex::new(HashSet::new()));
+    let mut guard = seen.lock().expect("missing index warning mutex poisoned");
+    if !guard.insert(key) {
+        return;
+    }
+    tracing::warn!(
+        channel_id = %channel_id,
+        error = %error,
+        "Firestore {query_kind} missing index, falling back to full scan"
+    );
 }
 
 pub async fn has_unsubscribed_channel_videos(store: &Store) -> Result<bool, StoreError> {
@@ -151,7 +168,7 @@ async fn apply_channel_video_filters(
     channel_id: &str,
     subscribed_channel_ids: &HashSet<String>,
     options: VideoListOptions,
-) -> Result<Vec<Video>, StoreError> {
+) -> Result<ChannelVideoPageData, StoreError> {
     let mut filtered: Vec<Video> = all_videos
         .iter()
         .filter(|v| video_matches_channel_scope(v, channel_id, subscribed_channel_ids))
@@ -198,11 +215,20 @@ async fn apply_channel_video_filters(
         filtered = result;
     }
 
-    Ok(filtered
+    let total_len = filtered.len();
+    let page_videos: Vec<Video> = filtered
         .into_iter()
         .skip(options.offset)
         .take(options.limit)
-        .collect())
+        .collect();
+    let next_offset = options.offset + page_videos.len();
+    let has_more = total_len > next_offset;
+
+    Ok(ChannelVideoPageData {
+        videos: page_videos,
+        has_more,
+        next_offset: has_more.then_some(next_offset),
+    })
 }
 
 pub async fn list_videos_by_channel(
@@ -213,7 +239,52 @@ pub async fn list_videos_by_channel(
     is_short: Option<bool>,
     acknowledged: Option<bool>,
     queue_filter: Option<QueueFilter>,
-) -> Result<Vec<Video>, StoreError> {
+) -> Result<ChannelVideoPageData, StoreError> {
+    if channel_id != OTHERS_CHANNEL_ID && queue_filter.is_none() {
+        let channels = super::channels::list_channels(store).await?;
+        let published_at_not_before = channels
+            .iter()
+            .find(|c| c.id == channel_id)
+            .and_then(channel_sync_floor);
+        let fetched = match super::firestore_videos::fs_list_videos_by_channel(
+            store,
+            channel_id,
+            limit + 1,
+            offset,
+            is_short,
+            acknowledged,
+            published_at_not_before,
+        )
+        .await
+        {
+            Ok(videos) => videos,
+            Err(error) if super::firestore_videos::is_missing_index_error(&error) => {
+                warn_missing_index_once("channel video query", channel_id, &error);
+                let all = load_all_videos(store).await?;
+                let subscribed = subscribed_channel_ids(&channels);
+                let options = VideoListOptions {
+                    limit,
+                    offset,
+                    is_short,
+                    acknowledged,
+                    queue_filter: None,
+                    published_at_not_before,
+                };
+                return apply_channel_video_filters(store, &all, channel_id, &subscribed, options)
+                    .await;
+            }
+            Err(error) => return Err(error),
+        };
+        let has_more = fetched.len() > limit;
+        let videos = fetched.into_iter().take(limit).collect::<Vec<_>>();
+        let next_offset = offset + videos.len();
+        return Ok(ChannelVideoPageData {
+            videos,
+            has_more,
+            next_offset: has_more.then_some(next_offset),
+        });
+    }
+
     let all = load_all_videos(store).await?;
     let channels = super::channels::list_channels(store).await?;
     let subscribed = subscribed_channel_ids(&channels);
@@ -252,6 +323,22 @@ pub async fn get_oldest_ready_video_published_at(
     channel: &Channel,
 ) -> Result<Option<chrono::DateTime<chrono::Utc>>, StoreError> {
     let floor = channel_sync_floor(channel);
+    if channel.id != OTHERS_CHANNEL_ID {
+        match super::firestore_videos::fs_get_oldest_fully_ready_video_published_at_by_channel(
+            store,
+            &channel.id,
+            floor,
+        )
+        .await
+        {
+            Ok(value) => return Ok(value),
+            Err(error) if super::firestore_videos::is_missing_index_error(&error) => {
+                warn_missing_index_once("oldest-ready query", &channel.id, &error);
+            }
+            Err(error) => return Err(error),
+        }
+    }
+
     let all = load_all_videos(store).await?;
     Ok(oldest_ready_video_published_at_from_slice(
         &all,
@@ -337,11 +424,92 @@ async fn build_channel_snapshot_data(
     subscribed_channel_ids: &HashSet<String>,
     mut options: VideoListOptions,
 ) -> Result<ChannelSnapshotData, StoreError> {
-    // Load all videos for the whole store once — both derived values share this slice.
-    let all_videos = load_all_videos(store).await?;
-
     let sync_floor = channel_sync_floor(&channel);
     options.published_at_not_before = sync_floor;
+
+    if channel.id != OTHERS_CHANNEL_ID && options.queue_filter.is_none() {
+        let fetched = match super::firestore_videos::fs_list_videos_by_channel(
+            store,
+            &channel.id,
+            options.limit + 1,
+            options.offset,
+            options.is_short,
+            options.acknowledged,
+            sync_floor,
+        )
+        .await
+        {
+            Ok(videos) => videos,
+            Err(error) if super::firestore_videos::is_missing_index_error(&error) => {
+                warn_missing_index_once("channel snapshot query", &channel.id, &error);
+                let all_videos = load_all_videos(store).await?;
+                let derived_earliest_ready_date = oldest_ready_video_published_at_for_scope(
+                    &all_videos,
+                    &channel.id,
+                    subscribed_channel_ids,
+                    sync_floor,
+                );
+                let channel_video_count = all_videos
+                    .iter()
+                    .filter(|v| video_matches_channel_scope(v, &channel.id, subscribed_channel_ids))
+                    .filter(|v| sync_floor.is_none_or(|floor| v.published_at >= floor))
+                    .count();
+                let page = apply_channel_video_filters(
+                    store,
+                    &all_videos,
+                    &channel.id,
+                    subscribed_channel_ids,
+                    options,
+                )
+                .await?;
+                return Ok(ChannelSnapshotData {
+                    channel,
+                    derived_earliest_ready_date,
+                    channel_video_count: Some(channel_video_count),
+                    has_more: page.has_more,
+                    next_offset: page.next_offset,
+                    videos: page.videos,
+                });
+            }
+            Err(error) => return Err(error),
+        };
+        let has_more = fetched.len() > options.limit;
+        let videos = fetched.into_iter().take(options.limit).collect::<Vec<_>>();
+        let next_offset = options.offset + videos.len();
+        let derived_earliest_ready_date =
+            match super::firestore_videos::fs_get_oldest_fully_ready_video_published_at_by_channel(
+                store,
+                &channel.id,
+                sync_floor,
+            )
+            .await
+            {
+                Ok(value) => value,
+                Err(error) if super::firestore_videos::is_missing_index_error(&error) => {
+                    warn_missing_index_once("oldest-ready snapshot query", &channel.id, &error);
+                    let all_videos = load_all_videos(store).await?;
+                    oldest_ready_video_published_at_for_scope(
+                        &all_videos,
+                        &channel.id,
+                        subscribed_channel_ids,
+                        sync_floor,
+                    )
+                }
+                Err(error) => return Err(error),
+            };
+
+        return Ok(ChannelSnapshotData {
+            channel,
+            derived_earliest_ready_date,
+            channel_video_count: None,
+            has_more,
+            next_offset: has_more.then_some(next_offset),
+            videos,
+        });
+    }
+
+    // Load all videos for the whole store once — both derived values share this slice.
+    let all_videos = load_all_videos(store).await?;
 
     let derived_earliest_ready_date = oldest_ready_video_published_at_for_scope(
         &all_videos,
@@ -356,7 +524,7 @@ async fn build_channel_snapshot_data(
         .filter(|v| sync_floor.is_none_or(|floor| v.published_at >= floor))
         .count();
 
-    let videos = apply_channel_video_filters(
+    let page = apply_channel_video_filters(
         store,
         &all_videos,
         &channel.id,
@@ -368,8 +536,10 @@ async fn build_channel_snapshot_data(
     Ok(ChannelSnapshotData {
         channel,
         derived_earliest_ready_date,
-        channel_video_count,
-        videos,
+        channel_video_count: Some(channel_video_count),
+        has_more: page.has_more,
+        next_offset: page.next_offset,
+        videos: page.videos,
     })
 }
 

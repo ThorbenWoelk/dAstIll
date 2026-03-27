@@ -1,7 +1,9 @@
 use serde::Deserialize;
 
 use crate::db;
-use crate::models::{Channel, Summary, Transcript, Video};
+use crate::models::{
+    Channel, Highlight, HighlightChannelGroup, HighlightVideoGroup, Summary, Transcript, Video,
+};
 use crate::services::search::SearchSourceKind;
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -16,6 +18,13 @@ pub(crate) struct DbInspectToolInput {
 pub(crate) struct SearchLibraryToolInput {
     pub(crate) query: Option<String>,
     pub(crate) source: Option<String>,
+    pub(crate) limit: Option<usize>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub(crate) struct HighlightLookupToolInput {
+    pub(crate) query: Option<String>,
+    pub(crate) video_title: Option<String>,
     pub(crate) limit: Option<usize>,
 }
 
@@ -58,6 +67,36 @@ pub(crate) struct SearchLibraryQuery {
     pub(crate) query: String,
     pub(crate) source_kind: Option<SearchSourceKind>,
     pub(crate) limit: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct HighlightLookupQuery {
+    pub(crate) query: Option<String>,
+    pub(crate) video_title: Option<String>,
+    pub(crate) limit: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct HighlightLookupResult {
+    pub(crate) summary: String,
+    pub(crate) output: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(crate) struct MentionScope {
+    pub(crate) cleaned_prompt: String,
+    pub(crate) channel_focus_ids: Vec<String>,
+    pub(crate) video_focus_ids: Vec<String>,
+    pub(crate) channel_names: Vec<String>,
+    pub(crate) video_titles: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct MentionToken {
+    start: usize,
+    end: usize,
+    trigger: char,
+    text: String,
 }
 
 impl DbInspectTarget {
@@ -116,6 +155,116 @@ fn parse_search_source_kind(value: &str) -> Option<Option<SearchSourceKind>> {
         "summary" | "summaries" => Some(Some(SearchSourceKind::Summary)),
         "transcript" | "transcripts" => Some(Some(SearchSourceKind::Transcript)),
         _ => None,
+    }
+}
+
+pub(crate) async fn resolve_mention_scope(
+    store: &db::Store,
+    input: &str,
+) -> Result<MentionScope, db::StoreError> {
+    let channels = db::list_channels(store).await?;
+    let videos = db::load_all_videos(store).await?;
+    Ok(resolve_mention_scope_from_catalog(
+        input, &channels, &videos,
+    ))
+}
+
+pub(crate) fn resolve_mention_scope_from_catalog(
+    input: &str,
+    channels: &[Channel],
+    videos: &[Video],
+) -> MentionScope {
+    let mentions = extract_mentions(input);
+    if mentions.is_empty() {
+        return MentionScope {
+            cleaned_prompt: input.trim().to_string(),
+            ..MentionScope::default()
+        };
+    }
+
+    let mut scope = MentionScope::default();
+    for mention in &mentions {
+        match mention.trigger {
+            '+' => {
+                if let Some(video) = resolve_video_mention(&mention.text, videos) {
+                    push_unique(&mut scope.video_focus_ids, video.id.clone());
+                    push_unique(&mut scope.video_titles, video.title.clone());
+                    push_unique(&mut scope.channel_focus_ids, video.channel_id.clone());
+                }
+            }
+            _ => {
+                if let Some(channel) = resolve_channel_mention(&mention.text, channels) {
+                    push_unique(&mut scope.channel_focus_ids, channel.id.clone());
+                    push_unique(&mut scope.channel_names, channel.name.clone());
+                    continue;
+                }
+
+                if let Some(video) = resolve_video_mention(&mention.text, videos) {
+                    push_unique(&mut scope.video_focus_ids, video.id.clone());
+                    push_unique(&mut scope.video_titles, video.title.clone());
+                    push_unique(&mut scope.channel_focus_ids, video.channel_id.clone());
+                }
+            }
+        }
+    }
+
+    scope.cleaned_prompt = remove_mention_spans(input, &mentions);
+    scope
+}
+
+impl MentionScope {
+    pub(crate) fn has_scope(&self) -> bool {
+        !self.channel_focus_ids.is_empty() || !self.video_focus_ids.is_empty()
+    }
+
+    pub(crate) fn prompt_for_retrieval(&self, original: &str) -> String {
+        let base = trim_to_option(&self.cleaned_prompt)
+            .or_else(|| trim_to_option(original))
+            .unwrap_or_default();
+        self.scoped_query(&base)
+    }
+
+    pub(crate) fn prompt_for_planner(&self, original: &str) -> String {
+        if !self.has_scope() {
+            return original.trim().to_string();
+        }
+
+        let mut lines = vec![self.prompt_for_retrieval(original)];
+        if let Some(detail) = self.scope_detail() {
+            lines.push(format!("Scoped mentions: {detail}."));
+        }
+        lines.join("\n")
+    }
+
+    pub(crate) fn scoped_query(&self, base: &str) -> String {
+        let mut parts = Vec::new();
+        if let Some(value) = trim_to_option(base) {
+            parts.push(value);
+        }
+        for title in &self.video_titles {
+            parts.push(format!("\"{title}\""));
+        }
+        if parts.is_empty() {
+            for name in &self.channel_names {
+                parts.push(name.clone());
+            }
+        }
+        if parts.is_empty() {
+            base.trim().to_string()
+        } else {
+            parts.join(" ")
+        }
+    }
+
+    pub(crate) fn scope_detail(&self) -> Option<String> {
+        let mut parts = Vec::new();
+        if !self.channel_names.is_empty() {
+            parts.push(format!("channels: {}", self.channel_names.join(", ")));
+        }
+        if !self.video_titles.is_empty() {
+            parts.push(format!("videos: {}", self.video_titles.join(", ")));
+        }
+        (!parts.is_empty()).then(|| parts.join("; "))
     }
 }
 
@@ -203,6 +352,34 @@ pub(crate) fn build_search_library_query(
     }))
 }
 
+pub(crate) fn build_highlight_lookup_query(
+    tool_name: Option<&str>,
+    input: Option<HighlightLookupToolInput>,
+) -> Result<Option<HighlightLookupQuery>, String> {
+    if tool_name.is_none() && input.is_none() {
+        return Ok(None);
+    }
+
+    let tool_name = tool_name.ok_or_else(|| "missing tool name".to_string())?;
+    if tool_name.trim() != "highlight_lookup" {
+        return Err(format!("unsupported tool `{tool_name}`"));
+    }
+
+    let input = input.ok_or_else(|| "missing highlight_lookup input".to_string())?;
+    let query = input.query.and_then(|value| trim_to_option(&value));
+    let video_title = input.video_title.and_then(|value| trim_to_option(&value));
+
+    if query.is_none() && video_title.is_none() {
+        return Err("highlight_lookup requires at least one of query or video_title".to_string());
+    }
+
+    Ok(Some(HighlightLookupQuery {
+        query,
+        video_title,
+        limit: input.limit.unwrap_or(8).clamp(1, 20),
+    }))
+}
+
 pub(crate) async fn execute_db_inspect_query(
     store: &db::Store,
     query: DbInspectQuery,
@@ -242,6 +419,31 @@ pub(crate) async fn execute_db_inspect_query(
     }
 }
 
+pub(crate) async fn execute_highlight_lookup_query(
+    store: &db::Store,
+    query: HighlightLookupQuery,
+) -> Result<HighlightLookupResult, db::StoreError> {
+    let groups = db::list_highlights_grouped(store).await?;
+    let mut matches = flatten_highlight_groups(&groups)
+        .into_iter()
+        .filter(|candidate| matches_highlight_query(candidate, &query))
+        .collect::<Vec<_>>();
+
+    matches.sort_by(|left, right| {
+        highlight_match_score(right, &query)
+            .cmp(&highlight_match_score(left, &query))
+            .then(right.highlight.created_at.cmp(&left.highlight.created_at))
+            .then(right.highlight.id.cmp(&left.highlight.id))
+    });
+    matches.truncate(query.limit);
+
+    let output = format_highlight_lookup_output(&query, &matches);
+    Ok(HighlightLookupResult {
+        summary: describe_highlight_lookup_query(&query),
+        output,
+    })
+}
+
 pub(crate) fn describe_db_inspect_query(query: DbInspectQuery) -> String {
     let target = match query.target {
         DbInspectTarget::Summaries => "summaries",
@@ -268,6 +470,349 @@ fn format_db_count_answer(target: DbInspectTarget, count: usize) -> String {
         return format!("There is 1 {} in the database.", target.singular());
     }
     format!("There are {count} {} in the database.", target.plural())
+}
+
+#[derive(Debug, Clone)]
+struct HighlightCandidate<'a> {
+    channel: &'a HighlightChannelGroup,
+    video: &'a HighlightVideoGroup,
+    highlight: &'a Highlight,
+}
+
+fn flatten_highlight_groups(groups: &[HighlightChannelGroup]) -> Vec<HighlightCandidate<'_>> {
+    let mut candidates = Vec::new();
+    for channel in groups {
+        for video in &channel.videos {
+            for highlight in &video.highlights {
+                candidates.push(HighlightCandidate {
+                    channel,
+                    video,
+                    highlight,
+                });
+            }
+        }
+    }
+    candidates
+}
+
+fn matches_highlight_query(
+    candidate: &HighlightCandidate<'_>,
+    query: &HighlightLookupQuery,
+) -> bool {
+    let haystack = format!(
+        "{} {} {} {} {}",
+        candidate.channel.channel_name,
+        candidate.video.title,
+        candidate.highlight.text,
+        candidate.highlight.prefix_context,
+        candidate.highlight.suffix_context
+    )
+    .to_ascii_lowercase();
+
+    let title_matches = query.video_title.as_ref().is_none_or(|value| {
+        candidate
+            .video
+            .title
+            .to_ascii_lowercase()
+            .contains(&value.to_ascii_lowercase())
+    });
+
+    let query_matches = query.query.as_ref().is_none_or(|value| {
+        tokenize_query(value)
+            .iter()
+            .all(|token| haystack.contains(token.as_str()))
+    });
+
+    title_matches && query_matches
+}
+
+fn highlight_match_score(
+    candidate: &HighlightCandidate<'_>,
+    query: &HighlightLookupQuery,
+) -> usize {
+    let haystack = format!(
+        "{} {} {} {} {}",
+        candidate.channel.channel_name,
+        candidate.video.title,
+        candidate.highlight.text,
+        candidate.highlight.prefix_context,
+        candidate.highlight.suffix_context
+    )
+    .to_ascii_lowercase();
+    let mut score = 0;
+    if let Some(value) = &query.video_title {
+        let value = value.to_ascii_lowercase();
+        if candidate.video.title.to_ascii_lowercase().contains(&value) {
+            score += 6;
+        }
+    }
+    if let Some(value) = &query.query {
+        for token in tokenize_query(value) {
+            if haystack.contains(&token) {
+                score += 2;
+                if candidate
+                    .highlight
+                    .text
+                    .to_ascii_lowercase()
+                    .contains(&token)
+                {
+                    score += 1;
+                }
+            }
+        }
+    }
+    score
+}
+
+fn format_highlight_lookup_output(
+    query: &HighlightLookupQuery,
+    matches: &[HighlightCandidate<'_>],
+) -> String {
+    if matches.is_empty() {
+        return format!(
+            "No saved highlights matched {}.",
+            describe_highlight_lookup_scope(query)
+        );
+    }
+
+    let mut lines = vec![format!(
+        "Saved highlights matching {}:",
+        describe_highlight_lookup_scope(query)
+    )];
+    for (index, candidate) in matches.iter().enumerate() {
+        let source = match candidate.highlight.source {
+            crate::models::HighlightSource::Transcript => "transcript",
+            crate::models::HighlightSource::Summary => "summary",
+        };
+        lines.push(format!(
+            "{}. {} / {} / {} highlight: {}",
+            index + 1,
+            candidate.channel.channel_name,
+            candidate.video.title,
+            source,
+            compact_highlight_text(&candidate.highlight.text)
+        ));
+    }
+    lines.join("\n")
+}
+
+fn describe_highlight_lookup_query(query: &HighlightLookupQuery) -> String {
+    format!(
+        "Look up saved highlights for {}",
+        describe_highlight_lookup_scope(query)
+    )
+}
+
+fn describe_highlight_lookup_scope(query: &HighlightLookupQuery) -> String {
+    match (&query.query, &query.video_title) {
+        (Some(query_text), Some(video_title)) => {
+            format!(
+                "query \"{}\" in videos matching \"{}\"",
+                query_text, video_title
+            )
+        }
+        (Some(query_text), None) => format!("query \"{}\"", query_text),
+        (None, Some(video_title)) => format!("videos matching \"{}\"", video_title),
+        (None, None) => "saved highlights".to_string(),
+    }
+}
+
+fn compact_highlight_text(input: &str) -> String {
+    const MAX_CHARS: usize = 220;
+    let compact = input.split_whitespace().collect::<Vec<_>>().join(" ");
+    if compact.chars().count() <= MAX_CHARS {
+        compact
+    } else {
+        let mut clipped = compact.chars().take(MAX_CHARS).collect::<String>();
+        clipped.push_str("...");
+        clipped
+    }
+}
+
+fn extract_mentions(input: &str) -> Vec<MentionToken> {
+    let mut mentions = Vec::new();
+    let mut index = 0;
+
+    while index < input.len() {
+        let Some(ch) = input[index..].chars().next() else {
+            break;
+        };
+        if ch != '@' && ch != '+' {
+            index += ch.len_utf8();
+            continue;
+        }
+
+        let parsed = match input[index + 1..].chars().next() {
+            Some('"') => extract_quoted_mention(input, index),
+            Some('{') => extract_braced_mention(input, index),
+            Some(_) => extract_bare_mention(input, index),
+            None => None,
+        };
+
+        if let Some(token) = parsed {
+            index = token.end;
+            mentions.push(token);
+        } else {
+            index += ch.len_utf8();
+        }
+    }
+
+    mentions
+}
+
+fn extract_quoted_mention(input: &str, start: usize) -> Option<MentionToken> {
+    let mut cursor = start + 2;
+    while cursor < input.len() {
+        let ch = input[cursor..].chars().next()?;
+        if ch == '"' {
+            let text = trim_to_option(&input[start + 2..cursor])?;
+            return Some(MentionToken {
+                start,
+                end: cursor + 1,
+                trigger: input[start..].chars().next().unwrap_or('@'),
+                text,
+            });
+        }
+        cursor += ch.len_utf8();
+    }
+    None
+}
+
+fn extract_braced_mention(input: &str, start: usize) -> Option<MentionToken> {
+    let mut cursor = start + 2;
+    while cursor < input.len() {
+        let ch = input[cursor..].chars().next()?;
+        if ch == '}' {
+            let text = trim_to_option(&input[start + 2..cursor])?;
+            return Some(MentionToken {
+                start,
+                end: cursor + 1,
+                trigger: input[start..].chars().next().unwrap_or('@'),
+                text,
+            });
+        }
+        cursor += ch.len_utf8();
+    }
+    None
+}
+
+fn extract_bare_mention(input: &str, start: usize) -> Option<MentionToken> {
+    let mut cursor = start + 1;
+    while cursor < input.len() {
+        let ch = input[cursor..].chars().next()?;
+        if !(ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.')) {
+            break;
+        }
+        cursor += ch.len_utf8();
+    }
+
+    let text = trim_to_option(&input[start + 1..cursor])?;
+    Some(MentionToken {
+        start,
+        end: cursor,
+        trigger: input[start..].chars().next().unwrap_or('@'),
+        text,
+    })
+}
+
+fn remove_mention_spans(input: &str, mentions: &[MentionToken]) -> String {
+    let mut cleaned = String::with_capacity(input.len());
+    let mut cursor = 0;
+    for mention in mentions {
+        if mention.start > cursor {
+            cleaned.push_str(&input[cursor..mention.start]);
+        }
+        cursor = mention.end;
+    }
+    if cursor < input.len() {
+        cleaned.push_str(&input[cursor..]);
+    }
+    cleaned.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn resolve_channel_mention<'a>(token: &str, channels: &'a [Channel]) -> Option<&'a Channel> {
+    resolve_unique_match(token, channels, |channel| {
+        let mut haystacks = vec![normalize_lookup_key(&channel.name)];
+        if let Some(handle) = &channel.handle {
+            haystacks.push(normalize_lookup_key(handle.trim_start_matches('@')));
+        }
+        haystacks
+    })
+}
+
+fn resolve_video_mention<'a>(token: &str, videos: &'a [Video]) -> Option<&'a Video> {
+    resolve_unique_match(token, videos, |video| {
+        vec![normalize_lookup_key(&video.title)]
+    })
+}
+
+fn resolve_unique_match<'a, T, F>(token: &str, items: &'a [T], haystacks: F) -> Option<&'a T>
+where
+    F: Fn(&T) -> Vec<String>,
+{
+    let needle = normalize_lookup_key(token);
+    if needle.is_empty() {
+        return None;
+    }
+
+    let exact = items
+        .iter()
+        .filter(|item| haystacks(item).iter().any(|candidate| candidate == &needle))
+        .collect::<Vec<_>>();
+    if exact.len() == 1 {
+        return exact.into_iter().next();
+    }
+    if !exact.is_empty() {
+        return None;
+    }
+
+    let fuzzy = items
+        .iter()
+        .filter(|item| {
+            haystacks(item)
+                .iter()
+                .any(|candidate| candidate.contains(&needle) || needle.contains(candidate))
+        })
+        .collect::<Vec<_>>();
+    (fuzzy.len() == 1).then(|| fuzzy[0])
+}
+
+fn normalize_lookup_key(input: &str) -> String {
+    input
+        .trim()
+        .trim_start_matches('@')
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                ' '
+            }
+        })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn push_unique(values: &mut Vec<String>, value: String) {
+    if !values.iter().any(|existing| existing == &value) {
+        values.push(value);
+    }
+}
+
+fn tokenize_query(input: &str) -> Vec<String> {
+    input
+        .to_ascii_lowercase()
+        .split(|char: char| !char.is_ascii_alphanumeric())
+        .filter(|token| token.len() > 1)
+        .map(ToString::to_string)
+        .collect()
+}
+
+fn trim_to_option(input: &str) -> Option<String> {
+    let trimmed = input.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
 
 async fn execute_list_query(
@@ -323,7 +868,10 @@ async fn execute_list_query(
     })
 }
 
-fn format_breakdown_by_channel_output(target: DbInspectTarget, counts: &[(String, usize)]) -> String {
+fn format_breakdown_by_channel_output(
+    target: DbInspectTarget,
+    counts: &[(String, usize)],
+) -> String {
     if counts.is_empty() {
         return format!("No {} found in the database.", target.plural());
     }
@@ -354,9 +902,12 @@ fn format_list_output(label: &str, rows: Vec<String>) -> String {
 mod tests {
     use super::{
         DbGroupBy, DbInspectOperation, DbInspectQuery, DbInspectTarget, DbInspectToolInput,
-        SearchLibraryToolInput, build_db_inspect_query, build_search_library_query,
-        describe_db_inspect_query,
+        HighlightLookupQuery, HighlightLookupToolInput, SearchLibraryToolInput,
+        build_db_inspect_query, build_highlight_lookup_query, build_search_library_query,
+        describe_db_inspect_query, describe_highlight_lookup_query,
+        resolve_mention_scope_from_catalog,
     };
+    use crate::models::{Channel, ContentStatus, Video};
     use crate::services::search::SearchSourceKind;
 
     #[test]
@@ -523,5 +1074,143 @@ mod tests {
         .expect_err("invalid source should be rejected");
 
         assert!(error.contains("unsupported search_library source"));
+    }
+
+    #[test]
+    fn builds_highlight_lookup_query_from_valid_request() {
+        let query = build_highlight_lookup_query(
+            Some("highlight_lookup"),
+            Some(HighlightLookupToolInput {
+                query: Some("prototype-first".to_string()),
+                video_title: Some("Theo".to_string()),
+                limit: Some(4),
+            }),
+        )
+        .expect("valid request")
+        .expect("query should be built");
+
+        assert_eq!(query.query.as_deref(), Some("prototype-first"));
+        assert_eq!(query.video_title.as_deref(), Some("Theo"));
+        assert_eq!(query.limit, 4);
+    }
+
+    #[test]
+    fn highlight_lookup_requires_query_or_video_title() {
+        let error = build_highlight_lookup_query(
+            Some("highlight_lookup"),
+            Some(HighlightLookupToolInput {
+                query: Some("   ".to_string()),
+                video_title: None,
+                limit: None,
+            }),
+        )
+        .expect_err("empty highlight lookup request should fail");
+
+        assert!(error.contains("requires at least one of query or video_title"));
+    }
+
+    #[test]
+    fn highlight_lookup_description_is_human_readable() {
+        let description = describe_highlight_lookup_query(&HighlightLookupQuery {
+            query: Some("agent".to_string()),
+            video_title: None,
+            limit: 5,
+        });
+
+        assert_eq!(description, "Look up saved highlights for query \"agent\"");
+    }
+
+    #[test]
+    fn resolves_bare_channel_mentions_into_scope() {
+        let channels = vec![sample_channel("chan_1", "Theo", Some("@theo"))];
+        let videos = vec![sample_video("vid_1", "chan_1", "Vector Search Guide")];
+
+        let scope = resolve_mention_scope_from_catalog(
+            "What does @theo recommend for databases?",
+            &channels,
+            &videos,
+        );
+
+        assert_eq!(scope.channel_focus_ids, vec!["chan_1".to_string()]);
+        assert_eq!(scope.channel_names, vec!["Theo".to_string()]);
+        assert_eq!(scope.cleaned_prompt, "What does recommend for databases?");
+    }
+
+    #[test]
+    fn resolves_quoted_video_mentions_into_scope() {
+        let channels = vec![sample_channel("chan_1", "Theo", Some("@theo"))];
+        let videos = vec![sample_video("vid_1", "chan_1", "Rust Search Deep Dive")];
+
+        let scope = resolve_mention_scope_from_catalog(
+            "Summarize @\"Rust Search Deep Dive\" in three bullets",
+            &channels,
+            &videos,
+        );
+
+        assert_eq!(scope.video_focus_ids, vec!["vid_1".to_string()]);
+        assert_eq!(scope.channel_focus_ids, vec!["chan_1".to_string()]);
+        assert_eq!(
+            scope.video_titles,
+            vec!["Rust Search Deep Dive".to_string()]
+        );
+        assert_eq!(
+            scope.prompt_for_retrieval("Summarize @\"Rust Search Deep Dive\" in three bullets"),
+            "Summarize in three bullets \"Rust Search Deep Dive\""
+        );
+    }
+
+    #[test]
+    fn plus_mentions_scope_videos_only() {
+        let channels = vec![sample_channel(
+            "chan_1",
+            "HealthyGamerGG",
+            Some("@healthygamergg"),
+        )];
+        let videos = vec![sample_video(
+            "vid_1",
+            "chan_1",
+            "Why Effort Alone Doesn’t Lead to Change",
+        )];
+
+        let scope = resolve_mention_scope_from_catalog(
+            "Summarize +{Why Effort Alone Doesn’t Lead to Change}",
+            &channels,
+            &videos,
+        );
+
+        assert_eq!(scope.video_focus_ids, vec!["vid_1".to_string()]);
+        assert!(scope.channel_names.is_empty());
+        assert_eq!(
+            scope.prompt_for_retrieval("Summarize +{Why Effort Alone Doesn’t Lead to Change}"),
+            "Summarize \"Why Effort Alone Doesn’t Lead to Change\""
+        );
+    }
+
+    fn sample_channel(id: &str, name: &str, handle: Option<&str>) -> Channel {
+        Channel {
+            id: id.to_string(),
+            handle: handle.map(str::to_string),
+            name: name.to_string(),
+            thumbnail_url: None,
+            added_at: chrono::Utc::now(),
+            earliest_sync_date: None,
+            earliest_sync_date_user_set: false,
+        }
+    }
+
+    fn sample_video(id: &str, channel_id: &str, title: &str) -> Video {
+        Video {
+            id: id.to_string(),
+            channel_id: channel_id.to_string(),
+            title: title.to_string(),
+            thumbnail_url: None,
+            published_at: chrono::Utc::now(),
+            is_short: false,
+            transcript_status: ContentStatus::Ready,
+            summary_status: ContentStatus::Ready,
+            acknowledged: false,
+            retry_count: 0,
+            quality_score: None,
+        }
     }
 }

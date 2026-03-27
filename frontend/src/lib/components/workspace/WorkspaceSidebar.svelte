@@ -24,6 +24,7 @@
   import type {
     Channel,
     ChannelSnapshot,
+    ChannelVideoPage,
     QueueTab,
     Video,
     SyncDepth,
@@ -54,6 +55,7 @@
     filterVideosByAcknowledged,
     filterVideosByType,
     resolveInitialPreviewExpandedChannelId,
+    resolveVirtualWindow,
     shouldLoadAllChannelVideosForSelection,
     shouldForceReloadMissingSelectedVideo,
   } from "$lib/workspace/route-helpers";
@@ -67,16 +69,22 @@
 
   const PREVIEW_VISIBLE_VIDEO_COUNT = 5;
   const PREVIEW_FETCH_LIMIT = PREVIEW_VISIBLE_VIDEO_COUNT + 1;
-  const FULL_FETCH_BATCH = 50;
+  const EXPANDED_PAGE_SIZE = 30;
+  const VIRTUALIZATION_THRESHOLD = 24;
+  const VIRTUALIZED_ROW_HEIGHT = 56;
+  const VIRTUALIZED_OVERSCAN = 8;
+  const VIRTUALIZED_VIEWPORT_HEIGHT = 336;
 
-  type ChannelVideoCollectionLoadMode = "preview" | "all";
+  type ChannelVideoCollectionLoadMode = "preview" | "paged";
 
   type ChannelVideoCollectionState = {
     videos: Video[];
     expanded: boolean;
-    loading: boolean;
+    loadingInitial: boolean;
+    loadingMore: boolean;
     loadedMode: ChannelVideoCollectionLoadMode | null;
-    hasMoreThanPreview: boolean;
+    hasMore: boolean;
+    nextOffset: number;
     /** Total videos for the channel from the last snapshot (unfiltered); null before first load. */
     channelVideoCount: number | null;
     filterKey: string | null;
@@ -85,6 +93,14 @@
     earliestSyncDateInput: string;
     savingSyncDate: boolean;
     selectedVideoReloadProbeKey: string | null;
+    scrollTop: number;
+  };
+
+  type RenderedCollectionVideos = {
+    videos: Video[];
+    topSpacer: number;
+    bottomSpacer: number;
+    virtualized: boolean;
   };
 
   let {
@@ -340,9 +356,11 @@
     return {
       videos: [],
       expanded: false,
-      loading: false,
+      loadingInitial: false,
+      loadingMore: false,
       loadedMode: null,
-      hasMoreThanPreview: false,
+      hasMore: false,
+      nextOffset: 0,
       channelVideoCount: null,
       filterKey: null,
       requestKey: null,
@@ -350,6 +368,7 @@
       earliestSyncDateInput: "",
       savingSyncDate: false,
       selectedVideoReloadProbeKey: null,
+      scrollTop: 0,
     };
   }
 
@@ -431,10 +450,15 @@
     filterKey: string,
     mode: ChannelVideoCollectionLoadMode,
   ) {
-    return (
-      state.filterKey === filterKey &&
-      (state.loadedMode === "all" || state.loadedMode === mode)
-    );
+    if (state.filterKey !== filterKey) {
+      return false;
+    }
+
+    if (mode === "preview") {
+      return state.loadedMode === "preview" || state.loadedMode === "paged";
+    }
+
+    return state.loadedMode === "paged";
   }
 
   function resolveSyncDateInputValue(
@@ -454,20 +478,94 @@
     return channel.id === OTHERS_CHANNEL_ID;
   }
 
+  function resolveVisibleCollectionVideos(
+    collection: ChannelVideoCollectionState,
+  ): Video[] {
+    if (collection.loadedMode === "preview") {
+      return collection.videos.slice(0, PREVIEW_VISIBLE_VIDEO_COUNT);
+    }
+
+    return collection.videos;
+  }
+
+  function resolveRenderedCollectionVideos(
+    collection: ChannelVideoCollectionState,
+  ): RenderedCollectionVideos {
+    const visibleVideos = resolveVisibleCollectionVideos(collection);
+    if (
+      collection.loadedMode !== "paged" ||
+      visibleVideos.length <= VIRTUALIZATION_THRESHOLD
+    ) {
+      return {
+        videos: visibleVideos,
+        topSpacer: 0,
+        bottomSpacer: 0,
+        virtualized: false,
+      };
+    }
+
+    const selectedIndex = selectedVideoId
+      ? visibleVideos.findIndex((video) => video.id === selectedVideoId)
+      : -1;
+    const window = resolveVirtualWindow({
+      itemCount: visibleVideos.length,
+      itemHeight: VIRTUALIZED_ROW_HEIGHT,
+      viewportHeight: VIRTUALIZED_VIEWPORT_HEIGHT,
+      scrollTop: collection.scrollTop,
+      overscan: VIRTUALIZED_OVERSCAN,
+    });
+    let start = window.startIndex;
+    let end = window.endIndex;
+
+    if (selectedIndex >= 0 && (selectedIndex < start || selectedIndex >= end)) {
+      const renderCount = end - start;
+      start = Math.max(0, selectedIndex - VIRTUALIZED_OVERSCAN);
+      end = Math.min(visibleVideos.length, start + renderCount);
+    }
+
+    return {
+      videos: visibleVideos.slice(start, end),
+      topSpacer: window.offsetTop,
+      bottomSpacer: Math.max(
+        0,
+        window.totalHeight -
+          window.offsetTop -
+          (end - start) * VIRTUALIZED_ROW_HEIGHT,
+      ),
+      virtualized: true,
+    };
+  }
+
   async function loadChannelVideoCollection(
     channel: Channel,
     mode: ChannelVideoCollectionLoadMode,
-    options?: { force?: boolean },
+    options?: { force?: boolean; append?: boolean },
   ) {
     const force = options?.force ?? false;
+    const append = options?.append ?? false;
     const state = ensureChannelVideoCollection(channel.id);
     const filterKey = getChannelVideoCollectionFilterKey();
 
-    if (state.loading && state.filterKey === filterKey && !force) {
+    if (
+      append &&
+      (!state.hasMore ||
+        state.loadingMore ||
+        state.filterKey !== filterKey ||
+        state.requestKey !== null)
+    ) {
       return;
     }
 
-    if (!force && supportsMode(state, filterKey, mode)) {
+    if (
+      !append &&
+      (state.loadingInitial || state.loadingMore) &&
+      state.filterKey === filterKey &&
+      !force
+    ) {
+      return;
+    }
+
+    if (!append && !force && supportsMode(state, filterKey, mode)) {
       return;
     }
 
@@ -483,18 +581,20 @@
     // Either way: 0 client-side getChannelSnapshot calls for pre-loaded channels.
     if (
       !force &&
+      !append &&
       mode === "preview" &&
       initialChannelPreviewsFilterKey &&
       filterKey === initialChannelPreviewsFilterKey &&
       channel.id in initialChannelPreviews
     ) {
       const preloaded = initialChannelPreviews[channel.id];
-      state.videos = preloaded.videos.slice(0, PREVIEW_VISIBLE_VIDEO_COUNT);
+      state.videos = preloaded.videos;
       state.loadedMode = "preview";
       state.filterKey = filterKey;
-      state.loading = false;
-      state.hasMoreThanPreview =
-        preloaded.videos.length > PREVIEW_VISIBLE_VIDEO_COUNT;
+      state.loadingInitial = false;
+      state.loadingMore = false;
+      state.hasMore = preloaded.has_more;
+      state.nextOffset = preloaded.next_offset ?? preloaded.videos.length;
       state.channelVideoCount = preloaded.channel_video_count ?? null;
       state.syncDepth = preloaded.sync_depth;
       state.earliestSyncDateInput = resolveSyncDateInputValue(
@@ -504,8 +604,13 @@
       return;
     }
 
-    const requestKey = `${channel.id}:${filterKey}:${mode}:${Date.now()}`;
-    state.loading = true;
+    const requestOffset = append ? state.nextOffset : 0;
+    const requestKey = `${channel.id}:${filterKey}:${mode}:${requestOffset}:${Date.now()}`;
+    if (append) {
+      state.loadingMore = true;
+    } else {
+      state.loadingInitial = true;
+    }
     // Set filter key immediately so $effect re-entry sees loading+filterKey and returns at
     // the guard above. Otherwise filterKey only appeared after await, causing synchronous
     // infinite re-entry (Maximum call stack size exceeded).
@@ -513,71 +618,83 @@
     state.requestKey = requestKey;
 
     const acknowledged = resolveAcknowledgedParam(acknowledgedFilter);
-    const initialLimit =
-      mode === "all" ? FULL_FETCH_BATCH : PREVIEW_FETCH_LIMIT;
+    const pageLimit =
+      mode === "paged" ? EXPANDED_PAGE_SIZE : PREVIEW_FETCH_LIMIT;
     const queueOnly =
       Boolean(channelSnapshotQueueTab) || channelQueueSnapshotUnified;
 
     try {
-      const snapshot = await getChannelSnapshot(channel.id, {
-        limit: initialLimit,
-        offset: 0,
-        videoType: videoTypeFilter,
-        acknowledged,
-        queueOnly: queueOnly ? true : undefined,
-        queueTab: channelSnapshotQueueTab,
-        bypassCache: force,
-      });
-
-      let nextVideos = [...snapshot.videos];
-
-      if (mode === "all") {
-        let nextOffset = nextVideos.length;
-        let nextHasMore = nextVideos.length === FULL_FETCH_BATCH;
-
-        while (nextHasMore) {
-          const batch = await listVideos(
-            channel.id,
-            FULL_FETCH_BATCH,
-            nextOffset,
-            videoTypeFilter,
-            acknowledged,
-            queueOnly,
-            channelSnapshotQueueTab,
-            force,
-          );
-          nextVideos = [...nextVideos, ...batch];
-          nextOffset += batch.length;
-          nextHasMore = batch.length === FULL_FETCH_BATCH;
-        }
-      }
-
       const current = channelVideoCollections[channel.id];
       if (!current || current.requestKey !== requestKey) {
         return;
       }
 
-      const dedupedVideos = dedupeVideosById(nextVideos);
-      current.videos = dedupedVideos;
-      current.loadedMode = mode;
-      current.loading = false;
+      if (!append) {
+        const snapshot = await getChannelSnapshot(channel.id, {
+          limit: pageLimit,
+          offset: 0,
+          videoType: videoTypeFilter,
+          acknowledged,
+          queueOnly: queueOnly ? true : undefined,
+          queueTab: channelSnapshotQueueTab,
+          bypassCache: force,
+        });
+
+        if (current.requestKey !== requestKey) {
+          return;
+        }
+
+        current.videos = dedupeVideosById(snapshot.videos);
+        current.loadedMode = mode;
+        current.loadingInitial = false;
+        current.loadingMore = false;
+        current.filterKey = filterKey;
+        current.requestKey = null;
+        current.hasMore = snapshot.has_more;
+        current.nextOffset = snapshot.next_offset ?? current.videos.length;
+        current.channelVideoCount = snapshot.channel_video_count ?? null;
+        current.syncDepth = snapshot.sync_depth;
+        current.earliestSyncDateInput = resolveSyncDateInputValue(
+          channel,
+          snapshot.sync_depth,
+        );
+        if (mode !== "paged") {
+          current.scrollTop = 0;
+        }
+        return;
+      }
+
+      const page = await listVideos(
+        channel.id,
+        pageLimit,
+        requestOffset,
+        videoTypeFilter,
+        acknowledged,
+        queueOnly,
+        channelSnapshotQueueTab,
+        force,
+      );
+
+      if (current.requestKey !== requestKey) {
+        return;
+      }
+
+      current.videos = dedupeVideosById([...current.videos, ...page.videos]);
+      current.loadedMode = "paged";
+      current.loadingInitial = false;
+      current.loadingMore = false;
       current.filterKey = filterKey;
       current.requestKey = null;
-      current.hasMoreThanPreview =
-        dedupedVideos.length > PREVIEW_VISIBLE_VIDEO_COUNT;
-      current.channelVideoCount = snapshot.channel_video_count;
-      current.syncDepth = snapshot.sync_depth;
-      current.earliestSyncDateInput = resolveSyncDateInputValue(
-        channel,
-        snapshot.sync_depth,
-      );
+      current.hasMore = page.has_more;
+      current.nextOffset = page.next_offset ?? current.videos.length;
     } catch {
       const current = channelVideoCollections[channel.id];
       if (!current || current.requestKey !== requestKey) {
         return;
       }
 
-      current.loading = false;
+      current.loadingInitial = false;
+      current.loadingMore = false;
       current.requestKey = null;
     }
   }
@@ -591,7 +708,7 @@
     for (const channel of channels) {
       const state = channelVideoCollections[channel.id];
       if (!state?.expanded) continue;
-      const mode = state.loadedMode === "preview" ? "preview" : "all";
+      const mode = state.loadedMode === "preview" ? "preview" : "paged";
       void loadChannelVideoCollection(channel, mode, { force: true });
     }
   });
@@ -604,7 +721,54 @@
     }
 
     state.expanded = true;
-    await loadChannelVideoCollection(channel, "all");
+    state.scrollTop = 0;
+
+    const filterKey = getChannelVideoCollectionFilterKey();
+    if (state.filterKey === filterKey && state.loadedMode === "preview") {
+      state.loadedMode = "paged";
+      if (state.videos.length < EXPANDED_PAGE_SIZE && state.hasMore) {
+        await loadChannelVideoCollection(channel, "paged", {
+          append: true,
+        });
+      }
+      return;
+    }
+
+    await loadChannelVideoCollection(channel, "paged");
+  }
+
+  async function loadNextChannelVideoPage(channel: Channel) {
+    const state = ensureChannelVideoCollection(channel.id);
+    if (!state.expanded || !state.hasMore) {
+      return;
+    }
+
+    await loadChannelVideoCollection(channel, "paged", { append: true });
+  }
+
+  function handleChannelCollectionScroll(channel: Channel, event: Event) {
+    const currentTarget = event.currentTarget;
+    if (!(currentTarget instanceof HTMLDivElement)) {
+      return;
+    }
+    const state = ensureChannelVideoCollection(channel.id);
+    state.scrollTop = currentTarget.scrollTop;
+
+    if (
+      state.loadedMode !== "paged" ||
+      !state.hasMore ||
+      state.loadingMore ||
+      state.loadingInitial
+    ) {
+      return;
+    }
+
+    const remaining =
+      currentTarget.scrollHeight -
+      (currentTarget.scrollTop + currentTarget.clientHeight);
+    if (remaining <= VIRTUALIZED_ROW_HEIGHT * 2) {
+      void loadNextChannelVideoPage(channel);
+    }
   }
 
   async function handlePerChannelPreviewSelect(channel: Channel) {
@@ -617,10 +781,14 @@
     }
   }
 
-  async function handleChannelVideoClick(channelId: string, videoId: string) {
+  async function handleChannelVideoClick(
+    channelId: string,
+    videoId: string,
+    video?: Video,
+  ) {
     if (collapsed) onToggleCollapse();
     if (onSelectChannelVideo) {
-      await onSelectChannelVideo(channelId, videoId);
+      await onSelectChannelVideo(channelId, videoId, video);
       return;
     }
 
@@ -644,7 +812,7 @@
       await refreshChannel(channel.id);
       await loadChannelVideoCollection(
         updatedChannel,
-        state.expanded ? "all" : "preview",
+        state.expanded ? "paged" : "preview",
       );
       await onChannelSyncDateSaved?.(channel.id);
     } finally {
@@ -729,7 +897,7 @@
     if (!state.expanded) return;
 
     if (filtered.length === 0) {
-      void loadChannelVideoCollection(ch, "all", { force: true });
+      void loadChannelVideoCollection(ch, "paged", { force: true });
     }
   });
 
@@ -760,8 +928,8 @@
     for (const channel of filteredChannels) {
       const state = ensureChannelVideoCollection(channel.id);
       if (!state.expanded) continue;
-      if (supportsMode(state, filterKey, "all")) continue;
-      void loadChannelVideoCollection(channel, "all");
+      if (supportsMode(state, filterKey, "paged")) continue;
+      void loadChannelVideoCollection(channel, "paged");
     }
 
     for (const channelId of Object.keys(channelVideoCollections)) {
@@ -805,7 +973,7 @@
 
     const preferredMode =
       selectedVideoId && selectedChannelId === targetChannel.id
-        ? "all"
+        ? "paged"
         : "preview";
     if (
       !supportsMode(state, getChannelVideoCollectionFilterKey(), preferredMode)
@@ -824,15 +992,19 @@
       state.expanded = true;
     }
 
-    if (state.loading) return;
+    if (state.loadingInitial || state.loadingMore) return;
     if (
       shouldLoadAllChannelVideosForSelection({
         selectedVideoId,
         videos: state.videos,
         loadedMode: state.loadedMode,
+        hasMore: state.hasMore,
       })
     ) {
-      void loadChannelVideoCollection(selectedChannel, "all");
+      if (state.loadedMode === "preview") {
+        state.loadedMode = "paged";
+      }
+      void loadNextChannelVideoPage(selectedChannel);
       return;
     }
 
@@ -855,7 +1027,7 @@
     // scope, for example when it is older than a user-set sync floor or hidden
     // by the current filters. Probe once, then stop retrying indefinitely.
     state.selectedVideoReloadProbeKey = probeKey;
-    void loadChannelVideoCollection(selectedChannel, "all", { force: true });
+    void loadChannelVideoCollection(selectedChannel, "paged", { force: true });
   });
 
   async function handleChannelSubmit(event: SubmitEvent) {
@@ -1668,12 +1840,19 @@
           </div>
 
           {#if videoListMode === "per_channel_preview" && isExpanded}
+            {@const renderedCollection = resolveRenderedCollectionVideos(
+              channelVideoCollection,
+            )}
             <div
-              class="mt-1 pb-1"
+              class={channelVideoCollection.loadedMode === "paged"
+                ? "mt-1 max-h-[21rem] overflow-y-auto pb-1 pr-1"
+                : "mt-1 pb-1"}
               id={selectedChannelId === channel.id ? "videos" : undefined}
+              onscroll={(event) =>
+                handleChannelCollectionScroll(channel, event)}
               transition:slide={{ duration: 180 }}
             >
-              {#if channelVideoCollection.loading && channelVideoCollection.videos.length === 0}
+              {#if channelVideoCollection.loadingInitial && channelVideoCollection.videos.length === 0}
                 <div class="space-y-1 px-1" role="status" aria-live="polite">
                   {#each Array.from({ length: 4 }) as _, i (i)}
                     <div class="animate-pulse px-2 py-1.5">
@@ -1695,12 +1874,19 @@
                   )}
                 </p>
               {:else}
-                {#each channelVideoCollection.videos as video (video.id)}
+                {#if renderedCollection.virtualized}
+                  <div
+                    aria-hidden="true"
+                    style={`height:${renderedCollection.topSpacer}px;`}
+                  ></div>
+                {/if}
+
+                {#each renderedCollection.videos as video (video.id)}
                   <button
                     type="button"
-                    class={`group flex w-full items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${selectedVideoId === video.id ? "bg-[var(--accent-wash)]" : "hover:bg-[var(--accent-wash)]"}`}
+                    class={`group flex min-h-[56px] w-full items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${selectedVideoId === video.id ? "bg-[var(--accent-wash)]" : "hover:bg-[var(--accent-wash)]"}`}
                     onclick={() =>
-                      void handleChannelVideoClick(channel.id, video.id)}
+                      void handleChannelVideoClick(channel.id, video.id, video)}
                     onmouseenter={() => handleVideoMouseEnter(video.id)}
                     onmouseleave={handleVideoMouseLeave}
                     use:scrollIntoViewWhenSelected={selectedVideoId ===
@@ -1749,17 +1935,34 @@
                   </button>
                 {/each}
 
-                {#if channelVideoCollection.loading}
+                {#if renderedCollection.virtualized}
+                  <div
+                    aria-hidden="true"
+                    style={`height:${renderedCollection.bottomSpacer}px;`}
+                  ></div>
+                {/if}
+
+                {#if channelVideoCollection.loadingMore}
                   <p
                     class="px-2 pt-2 text-[10px] text-[var(--soft-foreground)] opacity-50"
                   >
                     Loading videos…
                   </p>
                 {/if}
+
+                {#if channelVideoCollection.loadedMode === "paged" && channelVideoCollection.hasMore && !channelVideoCollection.loadingMore}
+                  <button
+                    type="button"
+                    class="mt-1 w-full rounded-[var(--radius-sm)] py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] transition-all hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]"
+                    onclick={() => void loadNextChannelVideoPage(channel)}
+                  >
+                    Load more
+                  </button>
+                {/if}
               {/if}
             </div>
 
-            {#if channelVideoCollection.loadedMode === "all" && !isVirtualChannel(channel)}
+            {#if channelVideoCollection.loadedMode === "paged" && !isVirtualChannel(channel)}
               <div class="relative z-10 mt-2 px-2 pb-4">
                 {#if !readOnly}
                   <div class={syncDatePopupStackClass}>

@@ -6,8 +6,10 @@ export type ChannelSnapshotPayload = {
   channel_id: string;
   sync_depth: SyncDepthPayload;
   /**
-   * Total videos stored for this channel (no type / read / queue filters).
+   * Total videos stored for this channel when cheaply available.
    */
-  channel_video_count: number;
+  channel_video_count: number | null;
+  has_more: boolean;
+  next_offset: number | null;
   videos: Array<Video>;
 };

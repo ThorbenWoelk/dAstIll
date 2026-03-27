@@ -108,17 +108,26 @@ export function shouldForceReloadMissingSelectedVideo(params: {
 export function shouldLoadAllChannelVideosForSelection(params: {
   selectedVideoId: string | null;
   videos: Array<Pick<Video, "id">>;
-  loadedMode: "preview" | "all" | null;
+  loadedMode: "preview" | "paged" | null;
+  hasMore: boolean;
 }): boolean {
   if (!params.selectedVideoId) {
     return false;
   }
 
-  if (params.loadedMode === "all") {
+  if (params.videos.some((video) => video.id === params.selectedVideoId)) {
     return false;
   }
 
-  return !params.videos.some((video) => video.id === params.selectedVideoId);
+  if (params.loadedMode === "preview") {
+    return true;
+  }
+
+  if (params.loadedMode === "paged") {
+    return params.hasMore;
+  }
+
+  return false;
 }
 
 export function resolveInitialPreviewExpandedChannelId(
@@ -169,4 +178,39 @@ export function resolveNextChannelSelection(
   return (
     channels.find((channel) => channel.id !== deletedChannelId)?.id ?? null
   );
+}
+
+export function resolveVirtualWindow(params: {
+  itemCount: number;
+  itemHeight: number;
+  viewportHeight: number;
+  scrollTop: number;
+  overscan: number;
+}) {
+  if (params.itemCount <= 0 || params.itemHeight <= 0) {
+    return {
+      startIndex: 0,
+      endIndex: 0,
+      offsetTop: 0,
+      totalHeight: 0,
+    };
+  }
+
+  const visibleCount = Math.max(
+    1,
+    Math.ceil(params.viewportHeight / params.itemHeight),
+  );
+  const rawStart = Math.floor(params.scrollTop / params.itemHeight);
+  const startIndex = Math.max(0, rawStart - params.overscan);
+  const endIndex = Math.min(
+    params.itemCount,
+    rawStart + visibleCount + params.overscan,
+  );
+
+  return {
+    startIndex,
+    endIndex,
+    offsetTop: startIndex * params.itemHeight,
+    totalHeight: params.itemCount * params.itemHeight,
+  };
 }

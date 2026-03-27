@@ -44,7 +44,7 @@ resource "google_cloud_run_v2_service" "backend" {
   }
 
   lifecycle {
-    ignore_changes = [template]
+    ignore_changes = [template, client, client_version]
   }
 }
 
@@ -85,7 +85,7 @@ resource "google_cloud_run_v2_service" "frontend" {
   }
 
   lifecycle {
-    ignore_changes = [template]
+    ignore_changes = [template, client, client_version]
   }
 }
 
@@ -137,7 +137,7 @@ resource "google_cloud_run_v2_service" "docs" {
   }
 
   lifecycle {
-    ignore_changes = [template]
+    ignore_changes = [template, client, client_version]
   }
 }
 

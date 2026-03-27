@@ -12,6 +12,7 @@
   import {
     cancelConversationGeneration,
     createConversation,
+    deleteAllConversations,
     deleteConversation,
     getChatClientConfig,
     getConversation,
@@ -88,6 +89,8 @@
   let hydratedConversationId = $state<string | null>(null);
   let handledPromptKey = $state<string | null>(null);
   let deleteConversationId = $state<string | null>(null);
+  let confirmDeleteAll = $state(false);
+  let deletingAllConversations = $state(false);
   /** Incremented when starting a new conversation so the prompt bar receives focus. */
   let chatInputFocusSignal = $state(0);
   let chatClientConfig = $state<ChatClientConfig | null>(null);
@@ -165,6 +168,26 @@
           (conversation) => conversation.id === deleteConversationId,
         ) ?? null)
       : null,
+  );
+  let showDeleteConfirmation = $derived(
+    Boolean(deleteConversationId || confirmDeleteAll),
+  );
+  let deleteConfirmationTitle = $derived.by(() => {
+    if (confirmDeleteAll) {
+      return "Delete all conversations?";
+    }
+    return `Delete ${pendingDeleteConversation?.title ? `“${pendingDeleteConversation.title}”` : "conversation"}?`;
+  });
+  let deleteConfirmationMessage = $derived(
+    confirmDeleteAll
+      ? "Every chat and its message history will be permanently removed."
+      : "This chat and its message history will be permanently removed.",
+  );
+  let deleteConfirmationConfirmLabel = $derived(
+    confirmDeleteAll ? "Delete all" : "Delete",
+  );
+  let deleteConfirmationCancelLabel = $derived(
+    confirmDeleteAll ? "Keep chats" : "Keep",
   );
   /** URL points at a thread that is not yet reflected in activeConversation (during fetch). */
   let showThreadPlaceholderLoading = $derived(
@@ -407,8 +430,9 @@
       return;
     }
 
-    const promptTarget = activeConversation?.id ?? requestedId ?? "new";
-    const promptKey = `${promptTarget}:${promptFromUrl}`;
+    // Use a stable key that doesn't change when a conversation is created.
+    // We only want to handle the prompt from the URL once per page load/mount.
+    const promptKey = `url-prompt:${promptFromUrl}`;
     if (handledPromptKey === promptKey) {
       return;
     }
@@ -568,14 +592,42 @@
   }
 
   function handleDeleteConversation(conversationId: string) {
+    confirmDeleteAll = false;
     deleteConversationId = conversationId;
+  }
+
+  function handleDeleteAllConversations() {
+    deleteConversationId = null;
+    confirmDeleteAll = true;
   }
 
   function cancelDeleteConversation() {
     deleteConversationId = null;
+    confirmDeleteAll = false;
   }
 
   async function confirmDeleteConversation() {
+    if (confirmDeleteAll) {
+      deletingAllConversations = true;
+      confirmDeleteAll = false;
+
+      try {
+        await deleteAllConversations();
+        conversations = [];
+        activeConversation = null;
+        hydratedConversationId = null;
+        abortActiveChatStream();
+        clearStreamState();
+        mobileTab = "content";
+        await navigateToConversation(null);
+      } catch (error) {
+        errorMessage = (error as Error).message;
+      } finally {
+        deletingAllConversations = false;
+      }
+      return;
+    }
+
     if (!deleteConversationId) {
       return;
     }
@@ -998,11 +1050,13 @@
           activeConversationId={requestedConversationId}
           loading={loadingConversations}
           creating={creatingConversation}
+          deletingAll={deletingAllConversations}
           canDelete={true}
           onCreate={handleCreateConversation}
           onSelect={handleSelectConversation}
           onRename={handleRenameConversation}
           onDelete={handleDeleteConversation}
+          onDeleteAll={handleDeleteAllConversations}
         />
       </ChatMobileConversationsOverlay>
 
@@ -1012,11 +1066,13 @@
           activeConversationId={requestedConversationId}
           loading={loadingConversations}
           creating={creatingConversation}
+          deletingAll={deletingAllConversations}
           canDelete={true}
           onCreate={handleCreateConversation}
           onSelect={handleSelectConversation}
           onRename={handleRenameConversation}
           onDelete={handleDeleteConversation}
+          onDeleteAll={handleDeleteAllConversations}
         />
       </div>
     </div>
@@ -1181,11 +1237,11 @@
   </div>
 
   <ConfirmationModal
-    show={Boolean(deleteConversationId)}
-    title={`Delete ${pendingDeleteConversation?.title ? `“${pendingDeleteConversation.title}”` : "conversation"}?`}
-    message="This chat and its message history will be permanently removed."
-    confirmLabel="Delete"
-    cancelLabel="Keep"
+    show={showDeleteConfirmation}
+    title={deleteConfirmationTitle}
+    message={deleteConfirmationMessage}
+    confirmLabel={deleteConfirmationConfirmLabel}
+    cancelLabel={deleteConfirmationCancelLabel}
     tone="danger"
     onConfirm={() => void confirmDeleteConversation()}
     onCancel={cancelDeleteConversation}

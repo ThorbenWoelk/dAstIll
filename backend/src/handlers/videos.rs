@@ -9,7 +9,8 @@ use std::collections::HashSet;
 
 use crate::db;
 use crate::models::{
-    AddVideoRequest, AddVideoResponse, ContentStatus, OTHERS_CHANNEL_ID, Video, VideoInfo,
+    AddVideoRequest, AddVideoResponse, ChannelVideoPagePayload, ContentStatus, OTHERS_CHANNEL_ID,
+    Video, VideoInfo,
 };
 use crate::state::AppState;
 
@@ -125,7 +126,7 @@ pub async fn list_channel_videos(
     }
 
     tracing::debug!(video_type = ?params.video_type, "list_channel_videos filter");
-    let videos = db::list_videos_by_channel(
+    let page = db::list_videos_by_channel(
         &state.db,
         &channel_id,
         params.limit_or_default(),
@@ -137,7 +138,11 @@ pub async fn list_channel_videos(
     .await
     .map_err(map_db_err)?;
 
-    Ok(Json(videos))
+    Ok(Json(ChannelVideoPagePayload {
+        videos: page.videos,
+        has_more: page.has_more,
+        next_offset: page.next_offset,
+    }))
 }
 
 pub async fn add_manual_video(

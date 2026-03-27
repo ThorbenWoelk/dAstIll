@@ -3,6 +3,7 @@ import type {
   AiHealthResponse,
   Channel,
   ChannelSnapshot,
+  ChannelVideoPage,
   CleanTranscriptResponse,
   CreateHighlightRequest,
   Highlight,
@@ -494,7 +495,7 @@ export function listVideos(
     queueOnly,
     queueTab,
   });
-  return cachedGetRequest<Video[]>(
+  return cachedGetRequest<ChannelVideoPage>(
     `/api/channels/${channelId}/videos?${params.toString()}`,
     bypassCache ? { bypassCache: true } : undefined,
   );

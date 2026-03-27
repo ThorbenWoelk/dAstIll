@@ -172,6 +172,9 @@ cd frontend && bunx playwright test --headed
 
 - Do not chain formatting, typecheck, tests, and build into one long `&&` command.
 - Run validators step-by-step as separate commands and report progress after each step so long-running checks do not appear stuck and can be interrupted safely.
+- Linting is mandatory, not optional. Run the relevant lint step for every change, even if tests already pass.
+- Treat lint warnings the same as lint errors for touched files. Fix them before reporting back unless a tool is currently broken or blocked by an unrelated repo-wide failure.
+- Before changing infrastructure or deployment configuration, inspect the existing repo-managed pattern first and check the live state with the relevant cloud CLI when available (for this repo: `gcloud` for GCP, especially Firestore/Cloud Run, before adding or changing infra resources).
 
 ## Pre-commit checks (after implementation)
 

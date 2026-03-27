@@ -9,22 +9,26 @@
     mobileVisible = false,
     loading = false,
     creating = false,
+    deletingAll = false,
     canDelete = false,
     onCreate = async () => {},
     onSelect = (_conversationId: string) => {},
     onRename = async (_conversationId: string, _title: string) => {},
     onDelete = async (_conversationId: string) => {},
+    onDeleteAll = async () => {},
   }: {
     conversations: ChatConversationSummary[];
     activeConversationId?: string | null;
     mobileVisible?: boolean;
     loading?: boolean;
     creating?: boolean;
+    deletingAll?: boolean;
     canDelete?: boolean;
     onCreate?: () => Promise<void> | void;
     onSelect?: (conversationId: string) => void;
     onRename?: (conversationId: string, title: string) => Promise<void> | void;
     onDelete?: (conversationId: string) => Promise<void> | void;
+    onDeleteAll?: () => Promise<void> | void;
   } = $props();
 
   let editingConversationId = $state<string | null>(null);
@@ -59,14 +63,27 @@
     >
       Conversations
     </span>
-    <button
-      type="button"
-      class="inline-flex h-7 items-center justify-center rounded-full border border-[var(--accent)]/15 bg-[var(--accent-wash-strong)] px-3 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--accent-strong)] transition-colors hover:bg-[var(--accent)]/15 disabled:cursor-not-allowed disabled:opacity-55"
-      disabled={creating}
-      onclick={() => void onCreate()}
-    >
-      {creating ? "Creating…" : "New"}
-    </button>
+    <div class="flex items-center gap-2">
+      {#if canDelete && conversations.length > 0}
+        <button
+          type="button"
+          class="inline-flex h-7 items-center justify-center rounded-full px-3 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--danger)] disabled:cursor-not-allowed disabled:opacity-55"
+          aria-label="Delete all conversations"
+          disabled={deletingAll}
+          onclick={() => void onDeleteAll()}
+        >
+          {deletingAll ? "Deleting…" : "Delete all"}
+        </button>
+      {/if}
+      <button
+        type="button"
+        class="inline-flex h-7 items-center justify-center rounded-full border border-[var(--accent)]/15 bg-[var(--accent-wash-strong)] px-3 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--accent-strong)] transition-colors hover:bg-[var(--accent)]/15 disabled:cursor-not-allowed disabled:opacity-55"
+        disabled={creating}
+        onclick={() => void onCreate()}
+      >
+        {creating ? "Creating…" : "New"}
+      </button>
+    </div>
   </div>
 
   <div

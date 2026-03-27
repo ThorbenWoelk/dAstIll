@@ -79,12 +79,12 @@ export function createWorkspaceState(options: {
       const isAck = resolveAcknowledgedParam(sidebarState.acknowledgedFilter);
       sidebarState.setSyncDepth(snapshot.sync_depth);
       sidebarState.setVideos(snapshot.videos);
-      sidebarState.setOffset(snapshot.videos.length);
-      sidebarState.setHasMore(snapshot.videos.length === sidebarState.limit);
+      sidebarState.setOffset(snapshot.next_offset ?? snapshot.videos.length);
+      sidebarState.setHasMore(snapshot.has_more);
       track({
         event: "channel_snapshot_loaded",
         channel_id: channelId,
-        video_count: snapshot.channel_video_count,
+        video_count: snapshot.channel_video_count ?? snapshot.videos.length,
       });
       void putCachedViewSnapshot(
         options.buildWorkspaceSnapshotCacheKey(
@@ -174,13 +174,15 @@ export function createWorkspaceState(options: {
         return;
 
       if (reset) {
-        sidebarState.setVideos(list);
-        sidebarState.setOffset(list.length);
+        sidebarState.setVideos(list.videos);
+        sidebarState.setOffset(list.next_offset ?? list.videos.length);
       } else {
-        sidebarState.setVideos([...sidebarState.videos, ...list]);
-        sidebarState.setOffset(sidebarState.offset + list.length);
+        sidebarState.setVideos([...sidebarState.videos, ...list.videos]);
+        sidebarState.setOffset(
+          list.next_offset ?? sidebarState.offset + list.videos.length,
+        );
       }
-      sidebarState.setHasMore(list.length === sidebarState.limit);
+      sidebarState.setHasMore(list.has_more);
 
       if (reset) {
         await options.hydrateSelectedVideo(sidebarState.selectedVideoId, isAck);

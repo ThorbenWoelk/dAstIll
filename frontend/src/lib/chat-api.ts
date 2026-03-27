@@ -3,6 +3,7 @@ import type {
   ChatConversation,
   ChatConversationSummary,
   ChatMessage,
+  ChatSuggestionItem,
   ChatSource,
   ChatStreamStatus,
   CreateConversationRequest,
@@ -20,6 +21,42 @@ type ChatStreamHandlers = {
 
 export function getChatClientConfig() {
   return request<ChatClientConfig>("/api/chat/config");
+}
+
+export function getChannelSuggestions(
+  query: string,
+  options?: { limit?: number; signal?: AbortSignal },
+) {
+  const params = new URLSearchParams();
+  if (query.trim()) {
+    params.set("q", query.trim());
+  }
+  if (options?.limit) {
+    params.set("limit", String(options.limit));
+  }
+  const suffix = params.toString();
+  return request<ChatSuggestionItem[]>(
+    `/api/chat/suggestions/channels${suffix ? `?${suffix}` : ""}`,
+    { signal: options?.signal },
+  );
+}
+
+export function getVideoSuggestions(
+  query: string,
+  options?: { limit?: number; signal?: AbortSignal },
+) {
+  const params = new URLSearchParams();
+  if (query.trim()) {
+    params.set("q", query.trim());
+  }
+  if (options?.limit) {
+    params.set("limit", String(options.limit));
+  }
+  const suffix = params.toString();
+  return request<ChatSuggestionItem[]>(
+    `/api/chat/suggestions/videos${suffix ? `?${suffix}` : ""}`,
+    { signal: options?.signal },
+  );
 }
 
 export function listConversations() {
@@ -49,6 +86,12 @@ export function renameConversation(conversationId: string, title: string) {
 
 export function deleteConversation(conversationId: string) {
   return request<void>(`/api/chat/conversations/${conversationId}`, {
+    method: "DELETE",
+  });
+}
+
+export function deleteAllConversations() {
+  return request<void>("/api/chat/conversations", {
     method: "DELETE",
   });
 }

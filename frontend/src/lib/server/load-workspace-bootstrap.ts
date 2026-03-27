@@ -16,6 +16,11 @@ export type WorkspaceBootstrapPageData = {
 
 export type LoadWorkspaceBootstrapOptions = {
   /**
+   * Allows routes with a path-param selected channel (for example
+   * `/channels/[id]`) to reuse the shared workspace bootstrap loader.
+   */
+  selectedChannelIdOverride?: string | null;
+  /**
    * For `/download-queue`: send `queue_tab` on bootstrap and snapshot requests
    * so sidebar lists match the queue API (videos still processing transcripts).
    * Used as the tab when the URL has no `queue` query (aligns with client default).
@@ -53,7 +58,10 @@ export async function loadWorkspaceBootstrapPageData(
   options?: LoadWorkspaceBootstrapOptions,
 ): Promise<WorkspaceBootstrapPageData> {
   const { fetch, url } = event;
-  const selectedChannelId = url.searchParams.get("channel") ?? null;
+  const selectedChannelId =
+    options?.selectedChannelIdOverride ??
+    url.searchParams.get("channel") ??
+    null;
   const typeParam = url.searchParams.get("type");
   const ackParam = url.searchParams.get("ack");
   const unified = options?.ssrQueueUnified === true;
@@ -102,9 +110,14 @@ export async function loadWorkspaceBootstrapPageData(
 
     const bootstrap = (await response.json()) as WorkspaceBootstrap;
 
-    // Do not block navigation on N per-channel preview snapshot fetches.
-    // The sidebar progressively loads previews on the client after paint.
     const channelPreviews: Record<string, ChannelSnapshot> = {};
+    if (
+      selectedChannelId &&
+      bootstrap.snapshot &&
+      bootstrap.snapshot.channel_id === selectedChannelId
+    ) {
+      channelPreviews[selectedChannelId] = bootstrap.snapshot;
+    }
 
     const previewVideoType =
       typeParam && VALID_VIDEO_TYPES.has(typeParam) ? typeParam : "all";

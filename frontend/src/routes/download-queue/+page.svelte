@@ -308,6 +308,8 @@
         channel_id: sid,
         sync_depth: sidebar.syncDepth,
         channel_video_count: sidebar.videos.length,
+        has_more: sidebar.hasMore,
+        next_offset: sidebar.offset,
         videos: sidebar.videos,
       };
     }
@@ -449,15 +451,18 @@
         ) {
           sidebar.setSyncDepth(bootstrapResult.snapshot.sync_depth);
           sidebar.setVideos(bootstrapResult.snapshot.videos);
-          sidebar.setOffset(bootstrapResult.snapshot.videos.length);
-          sidebar.setHasMore(
-            bootstrapResult.snapshot.videos.length === sidebar.limit,
+          sidebar.setOffset(
+            bootstrapResult.snapshot.next_offset ??
+              bootstrapResult.snapshot.videos.length,
           );
+          sidebar.setHasMore(bootstrapResult.snapshot.has_more);
           void putCachedViewSnapshot(
             buildQueueSnapshotCacheKey(selectedChannelIdAtMount),
             {
               channel_id: selectedChannelIdAtMount,
               channel_video_count: bootstrapResult.snapshot.channel_video_count,
+              has_more: bootstrapResult.snapshot.has_more,
+              next_offset: bootstrapResult.snapshot.next_offset,
               videos: bootstrapResult.snapshot.videos,
               sync_depth: bootstrapResult.snapshot.sync_depth,
             },

@@ -5,6 +5,7 @@ import {
   filterVideosByType,
   resolveInitialPreviewExpandedChannelId,
   resolveNextChannelSelection,
+  resolveVirtualWindow,
   shouldLoadAllChannelVideosForSelection,
   shouldForceReloadMissingSelectedVideo,
 } from "../src/lib/workspace/route-helpers";
@@ -191,6 +192,7 @@ describe("shouldLoadAllChannelVideosForSelection", () => {
     const result = shouldLoadAllChannelVideosForSelection({
       selectedVideoId: "video-1",
       loadedMode: "preview",
+      hasMore: true,
       videos: [
         makeVideo({ id: "video-1", is_short: false, acknowledged: false }),
       ],
@@ -203,6 +205,7 @@ describe("shouldLoadAllChannelVideosForSelection", () => {
     const result = shouldLoadAllChannelVideosForSelection({
       selectedVideoId: "video-2",
       loadedMode: "preview",
+      hasMore: true,
       videos: [
         makeVideo({ id: "video-1", is_short: false, acknowledged: false }),
       ],
@@ -211,16 +214,49 @@ describe("shouldLoadAllChannelVideosForSelection", () => {
     expect(result).toBe(true);
   });
 
-  it("does not escalate after the collection is already fully loaded", () => {
+  it("keeps paging in paged mode while more rows are available", () => {
     const result = shouldLoadAllChannelVideosForSelection({
       selectedVideoId: "video-2",
-      loadedMode: "all",
+      loadedMode: "paged",
+      hasMore: true,
+      videos: [
+        makeVideo({ id: "video-1", is_short: false, acknowledged: false }),
+      ],
+    });
+
+    expect(result).toBe(true);
+  });
+
+  it("does not escalate after paged mode is exhausted", () => {
+    const result = shouldLoadAllChannelVideosForSelection({
+      selectedVideoId: "video-2",
+      loadedMode: "paged",
+      hasMore: false,
       videos: [
         makeVideo({ id: "video-1", is_short: false, acknowledged: false }),
       ],
     });
 
     expect(result).toBe(false);
+  });
+});
+
+describe("resolveVirtualWindow", () => {
+  it("returns a bounded window with overscan", () => {
+    const result = resolveVirtualWindow({
+      itemCount: 100,
+      itemHeight: 56,
+      viewportHeight: 280,
+      scrollTop: 560,
+      overscan: 8,
+    });
+
+    expect(result).toEqual({
+      startIndex: 2,
+      endIndex: 23,
+      offsetTop: 112,
+      totalHeight: 5600,
+    });
   });
 });
 

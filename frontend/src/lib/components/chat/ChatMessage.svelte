@@ -1,4 +1,11 @@
 <script lang="ts">
+  import {
+    type ChatMentionSegment,
+    parseChatMentionSegments,
+    resolveChatMention,
+    type ResolvedChatMention,
+  } from "$lib/chat-mentions";
+  import ChatMentionTag from "$lib/components/chat/ChatMentionTag.svelte";
   import CheckIcon from "$lib/components/icons/CheckIcon.svelte";
   import type { ChatMessage } from "$lib/types";
   import {
@@ -32,6 +39,7 @@
   );
   let copyState = $state<"idle" | "copied" | "error">("idle");
   let copyReset = $state<ReturnType<typeof setTimeout> | null>(null);
+  let resolvedMentions = $state<Record<string, ResolvedChatMention>>({});
 
   let canCopy = $derived(
     isAssistant && Boolean(message.content.trim()) && !loading,
@@ -44,6 +52,52 @@
   let responseStatsLine = $derived(
     formatAssistantResponseStats(message, { loading }),
   );
+  let userMessageSegments = $derived(
+    !isAssistant ? parseChatMentionSegments(message.content) : [],
+  );
+
+  $effect(() => {
+    if (isAssistant) {
+      resolvedMentions = {};
+      return;
+    }
+
+    const mentionSegments = parseChatMentionSegments(message.content).filter(
+      (segment): segment is Extract<ChatMentionSegment, { type: "mention" }> =>
+        segment.type === "mention",
+    );
+    if (mentionSegments.length === 0) {
+      resolvedMentions = {};
+      return;
+    }
+
+    let cancelled = false;
+    void Promise.all(
+      mentionSegments.map((segment) =>
+        resolveChatMention(segment.mention)
+          .then((resolved) => [segment.mention.raw, resolved] as const)
+          .catch(() => [
+            segment.mention.raw,
+            {
+              kind: segment.mention.kind,
+              raw: segment.mention.raw,
+              query: segment.mention.query,
+              label: segment.mention.query,
+              resolved: false,
+            },
+          ]),
+      ),
+    ).then((entries) => {
+      if (cancelled) {
+        return;
+      }
+      resolvedMentions = Object.fromEntries(entries);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  });
 
   async function copyContent() {
     if (!canCopy) return;
@@ -150,9 +204,18 @@
           </div>
         {/if}
       {:else}
-        <p class="whitespace-pre-wrap text-[14px] leading-relaxed">
-          {message.content}
-        </p>
+        <div class="whitespace-pre-wrap text-[14px] leading-relaxed">
+          {#each userMessageSegments as segment, index (`${segment.type}:${index}`)}
+            {#if segment.type === "text"}
+              <span>{segment.value}</span>
+            {:else}
+              <ChatMentionTag
+                label={resolvedMentions[segment.mention.raw]?.label ??
+                  segment.mention.query}
+              />
+            {/if}
+          {/each}
+        </div>
       {/if}
     </div>
 

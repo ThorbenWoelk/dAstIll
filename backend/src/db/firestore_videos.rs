@@ -6,6 +6,17 @@ use super::{Store, StoreError};
 
 pub(super) const COLLECTION: &str = "dastill_videos";
 
+pub(crate) fn is_missing_index_error(error: &StoreError) -> bool {
+    match error {
+        StoreError::Other(message) => {
+            let normalized = message.to_ascii_lowercase();
+            normalized.contains("requires an index")
+                || (normalized.contains("failedprecondition") && normalized.contains("index"))
+        }
+        _ => false,
+    }
+}
+
 impl From<firestore::errors::FirestoreError> for StoreError {
     fn from(err: firestore::errors::FirestoreError) -> Self {
         StoreError::Other(format!("Firestore error: {err}"))
@@ -117,6 +128,7 @@ pub async fn fs_list_videos_by_channel(
     offset: usize,
     is_short: Option<bool>,
     acknowledged: Option<bool>,
+    published_at_not_before: Option<chrono::DateTime<chrono::Utc>>,
 ) -> Result<Vec<Video>, StoreError> {
     let mut query = store
         .firestore
@@ -130,6 +142,12 @@ pub async fn fs_list_videos_by_channel(
     }
     if let Some(ack_val) = acknowledged {
         query = query.filter(|q| q.field(path!(Video::acknowledged)).eq(ack_val));
+    }
+    if let Some(sync_floor) = published_at_not_before {
+        query = query.filter(|q| {
+            q.field(path!(Video::published_at))
+                .greater_than_or_equal(FirestoreTimestamp(sync_floor))
+        });
     }
 
     // Only show videos with ready transcripts in list views
@@ -150,6 +168,46 @@ pub async fn fs_list_videos_by_channel(
         .await?;
 
     Ok(videos)
+}
+
+pub async fn fs_get_oldest_fully_ready_video_published_at_by_channel(
+    store: &Store,
+    channel_id: &str,
+    published_at_not_before: Option<chrono::DateTime<chrono::Utc>>,
+) -> Result<Option<chrono::DateTime<chrono::Utc>>, StoreError> {
+    let mut query = store
+        .firestore
+        .fluent()
+        .select()
+        .from(COLLECTION)
+        .filter(|q| q.field(path!(Video::channel_id)).eq(channel_id))
+        .filter(|q| {
+            q.field(path!(Video::transcript_status))
+                .eq(ContentStatus::Ready)
+        })
+        .filter(|q| {
+            q.field(path!(Video::summary_status))
+                .eq(ContentStatus::Ready)
+        });
+
+    if let Some(sync_floor) = published_at_not_before {
+        query = query.filter(|q| {
+            q.field(path!(Video::published_at))
+                .greater_than_or_equal(FirestoreTimestamp(sync_floor))
+        });
+    }
+
+    let videos: Vec<Video> = query
+        .order_by([(
+            path!(Video::published_at),
+            FirestoreQueryDirection::Ascending,
+        )])
+        .limit(1)
+        .obj()
+        .query()
+        .await?;
+
+    Ok(videos.into_iter().next().map(|video| video.published_at))
 }
 
 pub async fn fs_update_video_acknowledged(

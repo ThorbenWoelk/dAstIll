@@ -9,6 +9,7 @@ pub use intent::ChatQueryIntent;
 
 use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
+use std::future::Future;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
@@ -149,6 +150,8 @@ pub(super) struct ChatRetrievalPlan {
     pub(super) queries: Vec<String>,
     pub(super) expansion_queries: Vec<String>,
     pub(super) focus_terms: Vec<String>,
+    pub(super) channel_focus_ids: Vec<String>,
+    pub(super) video_focus_ids: Vec<String>,
     pub(super) attributed_preference: bool,
     pub(super) rationale: Option<String>,
     /// When true, retrieval is skipped and the model answers from conversation history only.
@@ -172,6 +175,8 @@ impl ChatRetrievalPlan {
             queries: vec![prompt.trim().to_string()],
             expansion_queries: Vec::new(),
             focus_terms: collect_focus_terms(prompt),
+            channel_focus_ids: Vec::new(),
+            video_focus_ids: Vec::new(),
             attributed_preference,
             rationale,
             skip_retrieval: false,
@@ -242,6 +247,8 @@ impl ChatRetrievalPlan {
             queries,
             expansion_queries,
             focus_terms: collect_focus_terms(prompt),
+            channel_focus_ids: Vec::new(),
+            video_focus_ids: Vec::new(),
             attributed_preference,
             rationale: if attributed_preference && matches!(planner_intent, ChatQueryIntent::Fact) {
                 Some(
@@ -267,6 +274,43 @@ impl ChatRetrievalPlan {
             rationale: self.rationale.clone(),
             skip_retrieval: self.skip_retrieval,
             deep_research: self.deep_research,
+        }
+    }
+
+    fn apply_scope(&mut self, scope: &tools::MentionScope) {
+        if !scope.has_scope() {
+            return;
+        }
+
+        self.channel_focus_ids = scope.channel_focus_ids.clone();
+        self.video_focus_ids = scope.video_focus_ids.clone();
+
+        self.queries = self
+            .queries
+            .iter()
+            .map(|query| scope.scoped_query(query))
+            .filter(|query| !query.trim().is_empty())
+            .collect();
+        self.expansion_queries = self
+            .expansion_queries
+            .iter()
+            .map(|query| scope.scoped_query(query))
+            .filter(|query| !query.trim().is_empty())
+            .collect();
+
+        if self.queries.is_empty() {
+            let scoped = scope.prompt_for_retrieval(&scope.cleaned_prompt);
+            if !scoped.trim().is_empty() {
+                self.queries.push(scoped);
+            }
+        }
+
+        if let Some(scope_detail) = scope.scope_detail() {
+            let scope_note = format!("Scoped to {scope_detail}.");
+            self.rationale = Some(match self.rationale.take() {
+                Some(existing) if !existing.is_empty() => format!("{scope_note} {existing}"),
+                _ => scope_note,
+            });
         }
     }
 
@@ -393,6 +437,7 @@ struct ChatToolLoopResponse {
     tool_name: Option<String>,
     search_library_input: Option<tools::SearchLibraryToolInput>,
     db_inspect_input: Option<tools::DbInspectToolInput>,
+    highlight_lookup_input: Option<tools::HighlightLookupToolInput>,
 }
 
 #[derive(Debug)]
@@ -411,6 +456,7 @@ enum ToolLoopAction {
 enum PlannedChatToolCall {
     SearchLibrary(tools::SearchLibraryQuery),
     DbInspect(tools::DbInspectQuery),
+    HighlightLookup(tools::HighlightLookupQuery),
 }
 
 impl PlannedChatToolCall {
@@ -418,6 +464,7 @@ impl PlannedChatToolCall {
         match self {
             Self::SearchLibrary(_) => "search_library",
             Self::DbInspect(_) => "db_inspect",
+            Self::HighlightLookup(_) => "highlight_lookup",
         }
     }
 
@@ -425,6 +472,7 @@ impl PlannedChatToolCall {
         match self {
             Self::SearchLibrary(_) => "Library search",
             Self::DbInspect(_) => "Database lookup",
+            Self::HighlightLookup(_) => "Saved highlights lookup",
         }
     }
 
@@ -432,6 +480,7 @@ impl PlannedChatToolCall {
         match self {
             Self::SearchLibrary(query) => describe_search_library_query(query.clone()),
             Self::DbInspect(query) => tools::describe_db_inspect_query(*query),
+            Self::HighlightLookup(query) => describe_highlight_lookup_query(query.clone()),
         }
     }
 }
@@ -470,6 +519,43 @@ impl ChatToolLoopResponse {
                 action: ToolLoopAction::Respond,
                 rationale,
             }),
+            "search_library" => {
+                let query = tools::build_search_library_query(
+                    Some("search_library"),
+                    self.search_library_input,
+                )?
+                .ok_or_else(|| {
+                    "search_library action did not include a valid search request".to_string()
+                })?;
+                Ok(ToolLoopStepOutcome {
+                    action: ToolLoopAction::ToolCall(PlannedChatToolCall::SearchLibrary(query)),
+                    rationale,
+                })
+            }
+            "db_inspect" => {
+                let query =
+                    tools::build_db_inspect_query(Some("db_inspect"), self.db_inspect_input)?
+                        .ok_or_else(|| {
+                            "db_inspect action did not include a valid database request".to_string()
+                        })?;
+                Ok(ToolLoopStepOutcome {
+                    action: ToolLoopAction::ToolCall(PlannedChatToolCall::DbInspect(query)),
+                    rationale,
+                })
+            }
+            "highlight_lookup" => {
+                let query = tools::build_highlight_lookup_query(
+                    Some("highlight_lookup"),
+                    self.highlight_lookup_input,
+                )?
+                .ok_or_else(|| {
+                    "highlight_lookup action did not include a valid highlights request".to_string()
+                })?;
+                Ok(ToolLoopStepOutcome {
+                    action: ToolLoopAction::ToolCall(PlannedChatToolCall::HighlightLookup(query)),
+                    rationale,
+                })
+            }
             "tool_call" => {
                 let tool_name = self
                     .tool_name
@@ -501,6 +587,22 @@ impl ChatToolLoopResponse {
                                 })?;
                         Ok(ToolLoopStepOutcome {
                             action: ToolLoopAction::ToolCall(PlannedChatToolCall::DbInspect(query)),
+                            rationale,
+                        })
+                    }
+                    "highlight_lookup" => {
+                        let query = tools::build_highlight_lookup_query(
+                            Some(tool_name),
+                            self.highlight_lookup_input,
+                        )?
+                        .ok_or_else(|| {
+                            "tool_call action did not include a valid highlight_lookup request"
+                                .to_string()
+                        })?;
+                        Ok(ToolLoopStepOutcome {
+                            action: ToolLoopAction::ToolCall(PlannedChatToolCall::HighlightLookup(
+                                query,
+                            )),
                             rationale,
                         })
                     }
@@ -594,7 +696,19 @@ impl ActiveChatHandle {
     }
 
     pub fn cancel(&self) {
-        let _ = self.inner.cancel_tx.send(true);
+        self.inner.cancel_tx.send_replace(true);
+    }
+
+    fn is_cancelled(&self) -> bool {
+        *self.inner.cancel_tx.borrow()
+    }
+
+    fn ensure_not_cancelled(&self) -> Result<(), String> {
+        if self.is_cancelled() {
+            Err(cancelled_error())
+        } else {
+            Ok(())
+        }
     }
 
     fn subscribe_cancel(&self) -> watch::Receiver<bool> {
@@ -658,6 +772,30 @@ impl Default for ActiveChatHandle {
     }
 }
 
+fn cancelled_error() -> String {
+    "cancelled".to_string()
+}
+
+async fn await_or_cancel<T, F>(active_chat: &ActiveChatHandle, future: F) -> Result<T, String>
+where
+    F: Future<Output = T>,
+{
+    active_chat.ensure_not_cancelled()?;
+    let mut cancel_rx = active_chat.subscribe_cancel();
+    tokio::pin!(future);
+
+    tokio::select! {
+        changed = cancel_rx.changed() => {
+            if changed.is_ok() && *cancel_rx.borrow() {
+                Err(cancelled_error())
+            } else {
+                Ok(future.await)
+            }
+        }
+        result = &mut future => Ok(result),
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(super) struct RetrievedChatSource {
     pub(super) source: ChatSource,
@@ -696,6 +834,27 @@ struct RetrievalPassRequest<'a> {
     pass: usize,
     queries: &'a [String],
     channel_focus_ids: &'a [String],
+    video_focus_ids: &'a [String],
+    active_chat: &'a ActiveChatHandle,
+}
+
+struct ToolCallExecutionRequest<'a> {
+    state: &'a AppState,
+    call: PlannedChatToolCall,
+    prompt_scope: &'a tools::MentionScope,
+    rationale: Option<&'a str>,
+    tool_outputs: &'a mut Vec<ToolEvidenceRecord>,
+    gathered_sources: &'a mut Vec<RetrievedChatSource>,
+    active_chat: &'a ActiveChatHandle,
+}
+
+struct RetrievalCandidateRequest<'a> {
+    state: &'a AppState,
+    queries: &'a [String],
+    candidate_limit: usize,
+    channel_focus_ids: &'a [String],
+    video_focus_ids: &'a [String],
+    source_kind: Option<crate::services::search::SearchSourceKind>,
     active_chat: &'a ActiveChatHandle,
 }
 
@@ -1019,10 +1178,12 @@ impl ChatService {
         reply_model: &str,
         active_chat: &ActiveChatHandle,
     ) -> Result<ChatMessage, String> {
+        active_chat.ensure_not_cancelled()?;
         if let Some(tool_outcome) = self
             .run_tool_loop(state, conversation, prompt, deep_research, active_chat)
             .await?
         {
+            active_chat.ensure_not_cancelled()?;
             if tool_outcome.conversation_only {
                 active_chat
                     .emit(ChatStreamEvent::Status {
@@ -1125,13 +1286,14 @@ impl ChatService {
 
         let plan = self
             .plan_retrieval(
+                state,
                 conversation,
                 &conversation.id,
                 prompt,
                 deep_research,
                 active_chat,
             )
-            .await;
+            .await?;
 
         if plan.skip_retrieval {
             active_chat
@@ -1164,6 +1326,7 @@ impl ChatService {
         let retrieval = self
             .retrieve_sources_with_plan(state, &conversation.id, prompt, plan, active_chat)
             .await?;
+        active_chat.ensure_not_cancelled()?;
         let retrieved_sources = retrieval.sources;
         tracing::info!(
             conversation_id = %conversation.id,
@@ -1192,6 +1355,7 @@ impl ChatService {
                 active_chat,
             )
             .await?;
+        active_chat.ensure_not_cancelled()?;
         if retrieval.plan.deep_research {
             grounding_context = format!(
                 "The user enabled deep research: synthesize across as much of the grounded evidence below as is relevant. If the library still lacks coverage, say so clearly.\n\n{grounding_context}"
@@ -1251,6 +1415,15 @@ impl ChatService {
         deep_research: bool,
         active_chat: &ActiveChatHandle,
     ) -> Result<Option<ToolLoopOutcome>, String> {
+        let prompt_scope = tools::resolve_mention_scope(&state.db, prompt)
+            .await
+            .unwrap_or_else(|error| {
+                tracing::warn!(error = %error, "failed to resolve tool-loop @mentions");
+                tools::MentionScope {
+                    cleaned_prompt: prompt.trim().to_string(),
+                    ..tools::MentionScope::default()
+                }
+            });
         let mut tool_outputs = Vec::<ToolEvidenceRecord>::new();
         let mut gathered_sources = Vec::<RetrievedChatSource>::new();
         let max_steps = if deep_research {
@@ -1260,6 +1433,7 @@ impl ChatService {
         };
 
         for step in 1..=max_steps {
+            active_chat.ensure_not_cancelled()?;
             active_chat
                 .emit(ChatStreamEvent::Status {
                     status: ChatStatusPayload::new("tool_planning", "Planning next step")
@@ -1269,18 +1443,26 @@ impl ChatService {
                 })
                 .await;
 
-            let planner_input =
-                format_tool_loop_input(conversation, prompt, &tool_outputs, &gathered_sources);
-            let planned = timeout(
-                CHAT_CLASSIFY_TIMEOUT,
-                self.core.prompt_with_fallback(
-                    "chat_tool_loop",
-                    CHAT_TOOL_LOOP_PROMPT,
-                    &planner_input,
-                    crate::services::ollama::CooldownStatusPolicy::UseLocalFallback,
+            let planner_prompt = prompt_scope.prompt_for_planner(prompt);
+            let planner_input = format_tool_loop_input(
+                conversation,
+                &planner_prompt,
+                &tool_outputs,
+                &gathered_sources,
+            );
+            let planned = await_or_cancel(
+                active_chat,
+                timeout(
+                    CHAT_CLASSIFY_TIMEOUT,
+                    self.core.prompt_with_fallback(
+                        "chat_tool_loop",
+                        CHAT_TOOL_LOOP_PROMPT,
+                        &planner_input,
+                        crate::services::ollama::CooldownStatusPolicy::UseLocalFallback,
+                    ),
                 ),
             )
-            .await;
+            .await?;
 
             let step_outcome = match planned {
                 Ok(Ok((response, _))) => match parse_json_response::<ChatToolLoopResponse>(&response)
@@ -1315,14 +1497,15 @@ impl ChatService {
                     }));
                 }
                 ToolLoopAction::ToolCall(call) => {
-                    self.execute_planned_tool_call(
+                    self.execute_planned_tool_call(ToolCallExecutionRequest {
                         state,
                         call,
-                        step_outcome.rationale.as_deref(),
-                        &mut tool_outputs,
-                        &mut gathered_sources,
+                        prompt_scope: &prompt_scope,
+                        rationale: step_outcome.rationale.as_deref(),
+                        tool_outputs: &mut tool_outputs,
+                        gathered_sources: &mut gathered_sources,
                         active_chat,
-                    )
+                    })
                     .await?;
                 }
             }
@@ -1338,13 +1521,18 @@ impl ChatService {
 
     async fn execute_planned_tool_call(
         &self,
-        state: &AppState,
-        call: PlannedChatToolCall,
-        rationale: Option<&str>,
-        tool_outputs: &mut Vec<ToolEvidenceRecord>,
-        gathered_sources: &mut Vec<RetrievedChatSource>,
-        active_chat: &ActiveChatHandle,
+        request: ToolCallExecutionRequest<'_>,
     ) -> Result<(), String> {
+        let ToolCallExecutionRequest {
+            state,
+            call,
+            prompt_scope,
+            rationale,
+            tool_outputs,
+            gathered_sources,
+            active_chat,
+        } = request;
+        active_chat.ensure_not_cancelled()?;
         active_chat
             .emit(ChatStreamEvent::Status {
                 status: ChatStatusPayload::new(
@@ -1357,6 +1545,9 @@ impl ChatService {
                     }
                     PlannedChatToolCall::DbInspect(_) => {
                         "Running a read-only database query.".to_string()
+                    }
+                    PlannedChatToolCall::HighlightLookup(_) => {
+                        "Looking up saved highlights.".to_string()
                     }
                 })
                 .with_decision(
@@ -1401,7 +1592,12 @@ impl ChatService {
             }
             PlannedChatToolCall::SearchLibrary(query) => {
                 let result = self
-                    .execute_search_library_query(state, query.clone())
+                    .execute_search_library_query(
+                        state,
+                        query.clone(),
+                        Some(prompt_scope),
+                        active_chat,
+                    )
                     .await?;
                 merge_retrieved_sources(gathered_sources, result.sources.iter().cloned());
                 tool_outputs.push(ToolEvidenceRecord {
@@ -1421,6 +1617,34 @@ impl ChatService {
                                 )
                                 .with_output(result.output),
                             ),
+                    })
+                    .await;
+            }
+            PlannedChatToolCall::HighlightLookup(query) => {
+                let result = tools::execute_highlight_lookup_query(&state.db, query.clone())
+                    .await
+                    .map_err(|error| error.to_string())?;
+                let output = result.output.clone();
+                tool_outputs.push(ToolEvidenceRecord {
+                    summary: result.summary.clone(),
+                    output: output.clone(),
+                });
+                active_chat
+                    .emit(ChatStreamEvent::Status {
+                        status: ChatStatusPayload::new(
+                            "tool_complete",
+                            "Saved highlights lookup complete",
+                        )
+                        .with_detail(output.clone())
+                        .with_tool(
+                            ChatToolStatusPayload::new(
+                                call.tool_name(),
+                                call.label(),
+                                "completed",
+                                result.summary,
+                            )
+                            .with_output(output),
+                        ),
                     })
                     .await;
             }
@@ -1444,9 +1668,12 @@ impl ChatService {
         );
 
         async move {
+            active_chat.ensure_not_cancelled()?;
             let mut pool = HashMap::<String, AccumulatedSearchCandidate>::new();
 
             let pass_one_queries = plan.queries_for_pass(1);
+            let pass_one_channel_focus = plan.channel_focus_ids.clone();
+            let pass_one_video_focus = plan.video_focus_ids.clone();
             let pass_one = self
                 .run_retrieval_pass(
                     state,
@@ -1456,7 +1683,8 @@ impl ChatService {
                         plan: &plan,
                         pass: 1,
                         queries: &pass_one_queries,
-                        channel_focus_ids: &[],
+                        channel_focus_ids: &pass_one_channel_focus,
+                        video_focus_ids: &pass_one_video_focus,
                         active_chat,
                     },
                 )
@@ -1482,6 +1710,9 @@ impl ChatService {
                 }
                 active_chat.emit(ChatStreamEvent::Status { status }).await;
                 let pass_two_queries = plan.queries_for_pass(2);
+                let pass_two_channel_focus =
+                    merge_channel_focus_ids(&plan.channel_focus_ids, &assessment.channel_focus_ids);
+                let pass_two_video_focus = plan.video_focus_ids.clone();
                 let pass_two = self
                     .run_retrieval_pass(
                         state,
@@ -1491,11 +1722,13 @@ impl ChatService {
                             plan: &plan,
                             pass: 2,
                             queries: &pass_two_queries,
-                            channel_focus_ids: &assessment.channel_focus_ids,
+                            channel_focus_ids: &pass_two_channel_focus,
+                            video_focus_ids: &pass_two_video_focus,
                             active_chat,
                         },
                     )
                     .await?;
+                active_chat.ensure_not_cancelled()?;
                 sources = pass_two.sources;
                 assessment = pass_two.assessment;
                 pass_count = 2;
@@ -1517,6 +1750,9 @@ impl ChatService {
                 }
                 active_chat.emit(ChatStreamEvent::Status { status }).await;
                 let pass_three_queries = plan.queries_for_pass(3);
+                let pass_three_channel_focus =
+                    merge_channel_focus_ids(&plan.channel_focus_ids, &assessment.channel_focus_ids);
+                let pass_three_video_focus = plan.video_focus_ids.clone();
                 let pass_three = self
                     .run_retrieval_pass(
                         state,
@@ -1526,11 +1762,13 @@ impl ChatService {
                             plan: &plan,
                             pass: 3,
                             queries: &pass_three_queries,
-                            channel_focus_ids: &assessment.channel_focus_ids,
+                            channel_focus_ids: &pass_three_channel_focus,
+                            video_focus_ids: &pass_three_video_focus,
                             active_chat,
                         },
                     )
                     .await?;
+                active_chat.ensure_not_cancelled()?;
                 sources = pass_three.sources;
                 assessment = pass_three.assessment;
                 pass_count = 3;
@@ -1567,12 +1805,13 @@ impl ChatService {
 
     async fn plan_retrieval(
         &self,
+        state: &AppState,
         conversation: &ChatConversation,
         conversation_id: &str,
         prompt: &str,
         deep_research: bool,
         active_chat: &ActiveChatHandle,
-    ) -> ChatRetrievalPlan {
+    ) -> Result<ChatRetrievalPlan, String> {
         let span = logfire::span!(
             "chat.plan",
             conversation.id = conversation_id.to_string(),
@@ -1581,8 +1820,21 @@ impl ChatService {
         );
 
         async move {
+            active_chat.ensure_not_cancelled()?;
             let prompt = prompt.trim();
-            let planner_input = format_conversation_for_planner(conversation, prompt);
+            let scope = match tools::resolve_mention_scope(&state.db, prompt).await {
+                Ok(scope) => scope,
+                Err(error) => {
+                    tracing::warn!(error = %error, "failed to resolve chat @mentions");
+                    tools::MentionScope {
+                        cleaned_prompt: prompt.to_string(),
+                        ..tools::MentionScope::default()
+                    }
+                }
+            };
+            let retrieval_prompt = scope.prompt_for_retrieval(prompt);
+            let planner_prompt = scope.prompt_for_planner(prompt);
+            let planner_input = format_conversation_for_planner(conversation, &planner_prompt);
 
             active_chat
                 .emit(ChatStreamEvent::Status {
@@ -1593,23 +1845,26 @@ impl ChatService {
                 })
                 .await;
 
-            let planned = timeout(
-                CHAT_CLASSIFY_TIMEOUT,
-                self.core.prompt_with_fallback(
-                    "chat_query_plan",
-                    CHAT_QUERY_PLAN_PROMPT,
-                    &planner_input,
-                    crate::services::ollama::CooldownStatusPolicy::UseLocalFallback,
+            let planned = await_or_cancel(
+                active_chat,
+                timeout(
+                    CHAT_CLASSIFY_TIMEOUT,
+                    self.core.prompt_with_fallback(
+                        "chat_query_plan",
+                        CHAT_QUERY_PLAN_PROMPT,
+                        &planner_input,
+                        crate::services::ollama::CooldownStatusPolicy::UseLocalFallback,
+                    ),
                 ),
             )
-            .await;
+            .await?;
 
             let mut plan = match planned {
                 Ok(Ok((response, _))) => {
                     match parse_json_response::<ChatQueryPlanResponse>(&response) {
-                        Ok(payload) => ChatRetrievalPlan::from_response(prompt, payload),
+                        Ok(payload) => ChatRetrievalPlan::from_response(&retrieval_prompt, payload),
                         Err(error) => ChatRetrievalPlan::fallback(
-                            prompt,
+                            &retrieval_prompt,
                             Some(format!(
                                 "Planner returned unreadable JSON; falling back to synthesis ({error})."
                             )),
@@ -1617,27 +1872,31 @@ impl ChatService {
                     }
                 }
                 Ok(Err(error)) => ChatRetrievalPlan::fallback(
-                    prompt,
+                    &retrieval_prompt,
                     Some(format!(
                         "Planner unavailable; falling back to synthesis ({error:?})."
                     )),
                 ),
                 Err(_) => ChatRetrievalPlan::fallback(
-                    prompt,
+                    &retrieval_prompt,
                     Some("Planner timed out; falling back to synthesis.".to_string()),
                 ),
             };
+
+            plan.apply_scope(&scope);
 
             if !self.multi_pass_enabled && !plan.skip_retrieval {
                 let rationale = plan.rationale.clone().or(Some(
                     "Adaptive multi-pass retrieval is disabled; using a single direct search."
                         .to_string(),
                 ));
-                plan = ChatRetrievalPlan::fallback(prompt, rationale);
+                plan = ChatRetrievalPlan::fallback(&retrieval_prompt, rationale);
+                plan.apply_scope(&scope);
             }
 
             if deep_research {
-                plan.apply_deep_research(prompt);
+                plan.apply_deep_research(&retrieval_prompt);
+                plan.apply_scope(&scope);
             }
 
             tracing::info!(
@@ -1667,7 +1926,7 @@ impl ChatService {
             }
             active_chat.emit(ChatStreamEvent::Status { status }).await;
 
-            plan
+            Ok(plan)
         }
         .instrument(span)
         .await
@@ -1685,6 +1944,7 @@ impl ChatService {
             pass,
             queries,
             channel_focus_ids,
+            video_focus_ids,
             active_chat,
         } = request;
         let span = logfire::span!(
@@ -1693,10 +1953,12 @@ impl ChatService {
             retrieval.pass = pass,
             query_count = queries.len(),
             channel_focus_count = channel_focus_ids.len(),
+            video_focus_count = video_focus_ids.len(),
             plan.label = plan.label.clone(),
         );
 
         async move {
+            active_chat.ensure_not_cancelled()?;
             if queries.is_empty() {
                 let sources = rank_chat_sources(pool.values(), plan);
                 return Ok(RetrievalPassOutcome {
@@ -1740,14 +2002,17 @@ impl ChatService {
 
             let candidate_limit = retrieval_candidate_limit(plan.budget, queries.len(), pass);
             let (keyword_batches, semantic_batches) = self
-                .collect_retrieval_candidates(
+                .collect_retrieval_candidates(RetrievalCandidateRequest {
                     state,
                     queries,
                     candidate_limit,
                     channel_focus_ids,
-                    None,
-                )
+                    video_focus_ids,
+                    source_kind: None,
+                    active_chat,
+                })
                 .await?;
+            active_chat.ensure_not_cancelled()?;
 
             for batch in &keyword_batches {
                 accumulate_ranked_candidates(pool, batch, false, pass);
@@ -1790,12 +2055,17 @@ impl ChatService {
 
     async fn collect_retrieval_candidates(
         &self,
-        state: &AppState,
-        queries: &[String],
-        candidate_limit: usize,
-        channel_focus_ids: &[String],
-        source_kind: Option<crate::services::search::SearchSourceKind>,
+        request: RetrievalCandidateRequest<'_>,
     ) -> Result<(Vec<Vec<SearchCandidate>>, Vec<Vec<SearchCandidate>>), String> {
+        let RetrievalCandidateRequest {
+            state,
+            queries,
+            candidate_limit,
+            channel_focus_ids,
+            video_focus_ids,
+            source_kind,
+            active_chat,
+        } = request;
         let conn = state.db.connect();
         let mut keyword_batches: Vec<Vec<SearchCandidate>> = Vec::new();
         let filters = if channel_focus_ids.is_empty() {
@@ -1808,8 +2078,10 @@ impl ChatService {
         };
 
         for query in queries {
+            active_chat.ensure_not_cancelled()?;
             let query_tokens = crate::search_query::meaningful_search_terms(query);
             for channel_filter in &filters {
+                active_chat.ensure_not_cancelled()?;
                 let results = state
                     .fts
                     .search(query, source_kind, *channel_filter, candidate_limit)
@@ -1833,17 +2105,20 @@ impl ChatService {
 
         let semantic_batches = match state.search.model() {
             Some(model) if state.search.semantic_enabled() => {
-                let embeddings = match state.search.embed_texts(queries).await {
-                    Ok(embeddings) => embeddings,
-                    Err(error) => {
-                        tracing::warn!(error = %error, "chat semantic retrieval failed");
-                        Vec::new()
-                    }
-                };
+                let embeddings =
+                    match await_or_cancel(active_chat, state.search.embed_texts(queries)).await? {
+                        Ok(embeddings) => embeddings,
+                        Err(error) => {
+                            tracing::warn!(error = %error, "chat semantic retrieval failed");
+                            Vec::new()
+                        }
+                    };
                 let mut semantic_batches = Vec::new();
                 for embedding in &embeddings {
+                    active_chat.ensure_not_cancelled()?;
                     let query_embedding = crate::services::search::vector_to_json(embedding);
                     for channel_filter in &filters {
+                        active_chat.ensure_not_cancelled()?;
                         semantic_batches.push(
                             db::search_vector_candidates(
                                 &conn,
@@ -1863,6 +2138,9 @@ impl ChatService {
             _ => Vec::new(),
         };
 
+        let keyword_batches = filter_batches_to_video_scope(keyword_batches, video_focus_ids);
+        let semantic_batches = filter_batches_to_video_scope(semantic_batches, video_focus_ids);
+
         Ok((keyword_batches, semantic_batches))
     }
 
@@ -1870,18 +2148,46 @@ impl ChatService {
         &self,
         state: &AppState,
         query: tools::SearchLibraryQuery,
+        prompt_scope: Option<&tools::MentionScope>,
+        active_chat: &ActiveChatHandle,
     ) -> Result<SearchLibraryExecutionResult, String> {
+        active_chat.ensure_not_cancelled()?;
         let candidate_limit = retrieval_candidate_limit(query.limit, 1, 1);
-        let query_text = query.query.clone();
+        let query_scope = tools::resolve_mention_scope(&state.db, &query.query)
+            .await
+            .unwrap_or_else(|error| {
+                tracing::warn!(error = %error, "failed to resolve search_library @mentions");
+                tools::MentionScope {
+                    cleaned_prompt: query.query.clone(),
+                    ..tools::MentionScope::default()
+                }
+            });
+        let scope = merge_mention_scope(prompt_scope, &query_scope);
+        let query_text = scope.scoped_query(&query.query);
+        if let Some(video_id) = direct_video_lookup_target(&scope, &query) {
+            active_chat.ensure_not_cancelled()?;
+            let direct_sources =
+                load_direct_video_sources(&state.db, video_id, query.source_kind).await?;
+            let output = format_search_library_tool_output(&query, &direct_sources);
+            return Ok(SearchLibraryExecutionResult {
+                summary: describe_search_library_query(query),
+                output,
+                sources: direct_sources,
+            });
+        }
+        let query_list = [query_text.clone()];
         let (keyword_batches, semantic_batches) = self
-            .collect_retrieval_candidates(
+            .collect_retrieval_candidates(RetrievalCandidateRequest {
                 state,
-                &[query_text.clone()],
+                queries: &query_list,
                 candidate_limit,
-                &[],
-                query.source_kind,
-            )
+                channel_focus_ids: &scope.channel_focus_ids,
+                video_focus_ids: &scope.video_focus_ids,
+                source_kind: query.source_kind,
+                active_chat,
+            })
             .await?;
+        active_chat.ensure_not_cancelled()?;
 
         let mut pool = HashMap::<String, AccumulatedSearchCandidate>::new();
         for batch in &keyword_batches {
@@ -1894,8 +2200,9 @@ impl ChatService {
         let mut plan = ChatRetrievalPlan::fallback(&query.query, None);
         plan.budget = query.limit;
         plan.max_per_video = 3;
-        plan.queries = vec![query.query.clone()];
+        plan.queries = vec![query_text.clone()];
         plan.expansion_queries.clear();
+        plan.apply_scope(&scope);
         let sources = rank_chat_sources(pool.values(), &plan);
         let output = format_search_library_tool_output(&query, &sources);
 
@@ -1924,6 +2231,7 @@ impl ChatService {
         );
 
         async move {
+            active_chat.ensure_not_cancelled()?;
             if !plan.intent.needs_synthesis_stage() {
                 tracing::info!(
                     conversation_id = conversation_id,
@@ -1947,8 +2255,9 @@ impl ChatService {
                 build_video_observation_inputs(sources, plan.synthesis_video_cap());
             let mut observations = Vec::new();
             for input in observation_inputs {
+                active_chat.ensure_not_cancelled()?;
                 match self
-                    .generate_video_observation(conversation_id, prompt, &input)
+                    .generate_video_observation(conversation_id, prompt, &input, active_chat)
                     .await
                 {
                     Ok(summary) if !summary.trim().is_empty() => {
@@ -2002,6 +2311,7 @@ impl ChatService {
         conversation_id: &str,
         prompt: &str,
         input: &VideoObservationInput,
+        active_chat: &ActiveChatHandle,
     ) -> Result<String, String> {
         let span = logfire::span!(
             "chat.synthesize.observation",
@@ -2011,6 +2321,7 @@ impl ChatService {
         );
 
         async move {
+            active_chat.ensure_not_cancelled()?;
             let mut evidence = String::new();
             for (index, excerpt) in input.excerpts.iter().enumerate() {
                 let number = index + 1;
@@ -2031,15 +2342,16 @@ impl ChatService {
                 channel = input.channel_name,
                 evidence = evidence.trim()
             );
-            let (response, model_used) = self
-                .core
-                .prompt_with_fallback(
+            let (response, model_used) = await_or_cancel(
+                active_chat,
+                self.core.prompt_with_fallback(
                     "chat_video_observation",
                     CHAT_VIDEO_OBSERVATION_PROMPT,
                     &prompt,
                     crate::services::ollama::CooldownStatusPolicy::UseLocalFallback,
-                )
-                .await
+                ),
+            )
+            .await?
                 .map_err(|error| format!("{error:?}"))?;
             let observation = trim_to_option(&response)
                 .ok_or_else(|| "video observation was empty".to_string())?;
@@ -2499,6 +2811,154 @@ fn format_tool_loop_input(
     )
 }
 
+fn merge_channel_focus_ids(primary: &[String], secondary: &[String]) -> Vec<String> {
+    let mut merged = primary.to_vec();
+    for channel_id in secondary {
+        if !merged.iter().any(|existing| existing == channel_id) {
+            merged.push(channel_id.clone());
+        }
+    }
+    merged
+}
+
+fn merge_mention_scope(
+    primary: Option<&tools::MentionScope>,
+    secondary: &tools::MentionScope,
+) -> tools::MentionScope {
+    let mut merged = primary.cloned().unwrap_or_default();
+    if merged.cleaned_prompt.is_empty() {
+        merged.cleaned_prompt = secondary.cleaned_prompt.clone();
+    }
+    merged.channel_focus_ids =
+        merge_channel_focus_ids(&merged.channel_focus_ids, &secondary.channel_focus_ids);
+    merged.video_focus_ids =
+        merge_channel_focus_ids(&merged.video_focus_ids, &secondary.video_focus_ids);
+    merged.channel_names = merge_channel_focus_ids(&merged.channel_names, &secondary.channel_names);
+    merged.video_titles = merge_channel_focus_ids(&merged.video_titles, &secondary.video_titles);
+    merged
+}
+
+fn filter_batches_to_video_scope(
+    mut batches: Vec<Vec<SearchCandidate>>,
+    video_focus_ids: &[String],
+) -> Vec<Vec<SearchCandidate>> {
+    if video_focus_ids.is_empty() {
+        return batches;
+    }
+
+    let focus = video_focus_ids.iter().collect::<HashSet<_>>();
+    let has_scoped_match = batches.iter().any(|batch| {
+        batch
+            .iter()
+            .any(|candidate| focus.contains(&candidate.video_id))
+    });
+    if !has_scoped_match {
+        return batches;
+    }
+
+    for batch in &mut batches {
+        batch.retain(|candidate| focus.contains(&candidate.video_id));
+    }
+    batches
+}
+
+fn direct_video_lookup_target<'a>(
+    scope: &'a tools::MentionScope,
+    query: &tools::SearchLibraryQuery,
+) -> Option<&'a str> {
+    let [video_id] = scope.video_focus_ids.as_slice() else {
+        return None;
+    };
+    if !is_direct_video_lookup_request(&scope.cleaned_prompt, &query.query) {
+        return None;
+    }
+    Some(video_id.as_str())
+}
+
+fn is_direct_video_lookup_request(cleaned_prompt: &str, search_query: &str) -> bool {
+    let meaningful_terms = crate::search_query::meaningful_search_terms(cleaned_prompt);
+    if meaningful_terms.is_empty() {
+        return true;
+    }
+
+    let generic_terms = HashSet::from([
+        "answer",
+        "explain",
+        "give",
+        "me",
+        "read",
+        "recap",
+        "show",
+        "summarize",
+        "summary",
+        "tell",
+        "transcript",
+        "video",
+        "watch",
+    ]);
+    let title_terms = crate::search_query::meaningful_search_terms(search_query)
+        .into_iter()
+        .collect::<HashSet<_>>();
+
+    meaningful_terms
+        .into_iter()
+        .all(|term| generic_terms.contains(term.as_str()) || title_terms.contains(&term))
+}
+
+async fn load_direct_video_sources(
+    store: &db::Store,
+    video_id: &str,
+    source_kind: Option<crate::services::search::SearchSourceKind>,
+) -> Result<Vec<RetrievedChatSource>, String> {
+    let kinds = match source_kind {
+        Some(kind) => vec![kind],
+        None => vec![
+            crate::services::search::SearchSourceKind::Summary,
+            crate::services::search::SearchSourceKind::Transcript,
+        ],
+    };
+
+    let mut sources = Vec::new();
+    for kind in kinds {
+        let Some(material) = db::load_search_material(store, video_id, kind)
+            .await
+            .map_err(|error| error.to_string())?
+        else {
+            continue;
+        };
+        sources.push(retrieved_source_from_search_material(material));
+    }
+
+    Ok(sources)
+}
+
+fn retrieved_source_from_search_material(material: db::SearchMaterial) -> RetrievedChatSource {
+    let section_title = match material.source_kind {
+        crate::services::search::SearchSourceKind::Summary => Some("Full summary".to_string()),
+        crate::services::search::SearchSourceKind::Transcript => {
+            Some("Full transcript".to_string())
+        }
+    };
+    let source_kind = material.source_kind;
+    let video_id = material.video_id;
+
+    RetrievedChatSource {
+        source: ChatSource {
+            chunk_id: format!("{video_id}_direct_{}", source_kind.as_str()),
+            video_id,
+            channel_id: material.channel_id,
+            channel_name: material.channel_name,
+            video_title: material.video_title,
+            source_kind,
+            section_title,
+            snippet: crate::services::search::truncate_chunk_for_display(&material.content),
+            score: 1.0,
+            retrieval_pass: Some(1),
+        },
+        context_text: limit_text(material.content.trim(), CHAT_CONTEXT_MAX_CHARS),
+    }
+}
+
 fn describe_search_library_query(query: tools::SearchLibraryQuery) -> String {
     let source = match query.source_kind {
         Some(crate::services::search::SearchSourceKind::Summary) => Some("summaries"),
@@ -2510,6 +2970,24 @@ fn describe_search_library_query(query: tools::SearchLibraryQuery) -> String {
         "Search the library for \"{}\" in {} (limit {})",
         query.query, source_label, query.limit
     )
+}
+
+fn describe_highlight_lookup_query(query: tools::HighlightLookupQuery) -> String {
+    match (&query.query, &query.video_title) {
+        (Some(query_text), Some(video_title)) => format!(
+            "Look up saved highlights for query \"{}\" in videos matching \"{}\" (limit {})",
+            query_text, video_title, query.limit
+        ),
+        (Some(query_text), None) => format!(
+            "Look up saved highlights for query \"{}\" (limit {})",
+            query_text, query.limit
+        ),
+        (None, Some(video_title)) => format!(
+            "Look up saved highlights in videos matching \"{}\" (limit {})",
+            video_title, query.limit
+        ),
+        (None, None) => format!("Look up saved highlights (limit {})", query.limit),
+    }
 }
 
 fn format_search_library_tool_output(
@@ -2566,13 +3044,15 @@ mod tests {
         collect_focus_terms, is_attributed_preference_query, recommendation_query_variants,
     };
     use super::{
-        CHAT_CLASSIFY_TIMEOUT, ChatQueryIntent, ChatQueryPlanResponse, ChatRetrievalPlan,
-        ChatToolLoopResponse, PlannedChatToolCall, ToolLoopAction,
+        ActiveChatHandle, CHAT_CLASSIFY_TIMEOUT, ChatQueryIntent, ChatQueryPlanResponse,
+        ChatRetrievalPlan, ChatService, ChatToolLoopResponse, PlannedChatToolCall,
+        RetrievedChatSource, ToolLoopAction, is_direct_video_lookup_request, tools,
     };
+    use crate::models::ChatSource;
     use crate::services::chat::tools::{
         DbInspectOperation, DbInspectTarget, DbInspectToolInput, SearchLibraryToolInput,
     };
-    use crate::services::ollama::CLOUD_PROMPT_TIMEOUT_SECS;
+    use crate::services::ollama::{CLOUD_PROMPT_TIMEOUT_SECS, OllamaCore};
     use crate::services::search::SearchSourceKind;
 
     #[test]
@@ -2585,6 +3065,34 @@ mod tests {
         ));
         assert!(!is_attributed_preference_query(
             "when did theo publish his database video?"
+        ));
+    }
+
+    #[test]
+    fn direct_video_lookup_detects_generic_read_requests() {
+        assert!(is_direct_video_lookup_request(
+            "read for me",
+            "3 Things Every Relationship Has"
+        ));
+        assert!(is_direct_video_lookup_request(
+            "read 3 Things Every Relationship Has for me",
+            "3 Things Every Relationship Has"
+        ));
+        assert!(is_direct_video_lookup_request(
+            "summarize +{3 Things Every Relationship Has}",
+            "3 Things Every Relationship Has"
+        ));
+    }
+
+    #[test]
+    fn direct_video_lookup_keeps_real_search_queries_as_search() {
+        assert!(!is_direct_video_lookup_request(
+            "what does it say about dopamine",
+            "3 Things Every Relationship Has"
+        ));
+        assert!(!is_direct_video_lookup_request(
+            "find the section about trust",
+            "3 Things Every Relationship Has"
         ));
     }
 
@@ -2657,6 +3165,7 @@ mod tests {
             rationale: Some("The user is asking about stored summary records.".to_string()),
             tool_name: Some("db_inspect".to_string()),
             search_library_input: None,
+            highlight_lookup_input: None,
             db_inspect_input: Some(DbInspectToolInput {
                 operation: Some("count".to_string()),
                 resource: Some("summaries".to_string()),
@@ -2691,6 +3200,7 @@ mod tests {
                 source: Some("transcript".to_string()),
                 limit: Some(3),
             }),
+            highlight_lookup_input: None,
             db_inspect_input: None,
         }
         .into_step_outcome()
@@ -2707,12 +3217,68 @@ mod tests {
     }
 
     #[test]
+    fn tool_loop_accepts_direct_search_library_action() {
+        let execution = ChatToolLoopResponse {
+            action: Some("search_library".to_string()),
+            rationale: Some("Need library evidence.".to_string()),
+            tool_name: None,
+            search_library_input: Some(SearchLibraryToolInput {
+                query: Some("saved highlights".to_string()),
+                source: Some("all".to_string()),
+                limit: Some(4),
+            }),
+            highlight_lookup_input: None,
+            db_inspect_input: None,
+        }
+        .into_step_outcome()
+        .expect("direct search_library action should parse");
+
+        let ToolLoopAction::ToolCall(PlannedChatToolCall::SearchLibrary(query)) = execution.action
+        else {
+            panic!("expected search tool call");
+        };
+
+        assert_eq!(query.query, "saved highlights");
+        assert_eq!(query.source_kind, None);
+        assert_eq!(query.limit, 4);
+    }
+
+    #[test]
+    fn tool_loop_accepts_direct_highlight_lookup_action() {
+        let execution = ChatToolLoopResponse {
+            action: Some("highlight_lookup".to_string()),
+            rationale: Some("Need saved highlights.".to_string()),
+            tool_name: None,
+            search_library_input: None,
+            highlight_lookup_input: Some(tools::HighlightLookupToolInput {
+                query: Some("prototype-first".to_string()),
+                video_title: None,
+                limit: Some(3),
+            }),
+            db_inspect_input: None,
+        }
+        .into_step_outcome()
+        .expect("direct highlight_lookup action should parse");
+
+        let ToolLoopAction::ToolCall(PlannedChatToolCall::HighlightLookup(query)) =
+            execution.action
+        else {
+            panic!("expected highlight lookup tool call");
+        };
+
+        assert_eq!(query.query.as_deref(), Some("prototype-first"));
+        assert_eq!(query.video_title, None);
+        assert_eq!(query.limit, 3);
+    }
+
+    #[test]
     fn tool_loop_rejects_invalid_db_resource() {
         let error = ChatToolLoopResponse {
             action: Some("tool_call".to_string()),
             rationale: None,
             tool_name: Some("db_inspect".to_string()),
             search_library_input: None,
+            highlight_lookup_input: None,
             db_inspect_input: Some(DbInspectToolInput {
                 operation: Some("count".to_string()),
                 resource: Some("search_sources".to_string()),
@@ -2733,6 +3299,7 @@ mod tests {
             rationale: Some("This is just a greeting.".to_string()),
             tool_name: None,
             search_library_input: None,
+            highlight_lookup_input: None,
             db_inspect_input: None,
         }
         .into_step_outcome()
@@ -2743,5 +3310,49 @@ mod tests {
             outcome.rationale.as_deref(),
             Some("This is just a greeting.")
         );
+    }
+
+    #[tokio::test]
+    async fn build_answer_grounding_context_returns_cancelled_when_cancelled_before_synthesis() {
+        let service = ChatService::new(OllamaCore::new("://invalid-url", "qwen3:8b"));
+        let active_chat = ActiveChatHandle::new();
+        active_chat.cancel();
+
+        let mut plan = ChatRetrievalPlan::fallback("compare the channels", None);
+        plan.intent = ChatQueryIntent::Pattern;
+
+        let result = service
+            .build_answer_grounding_context(
+                "conv_cancelled",
+                "compare the channels",
+                &plan,
+                &[RetrievedChatSource {
+                    source: ChatSource {
+                        video_id: "vid_1".to_string(),
+                        channel_id: "chan_1".to_string(),
+                        channel_name: "Channel One".to_string(),
+                        video_title: "Video One".to_string(),
+                        source_kind: SearchSourceKind::Transcript,
+                        section_title: Some("Intro".to_string()),
+                        snippet: "Important supporting excerpt".to_string(),
+                        score: 1.0,
+                        chunk_id: "chunk_1".to_string(),
+                        retrieval_pass: Some(1),
+                    },
+                    context_text: "Important supporting excerpt with extra context.".to_string(),
+                }],
+                &active_chat,
+            )
+            .await;
+
+        assert_eq!(result, Err("cancelled".to_string()));
+    }
+
+    #[test]
+    fn cancel_marks_handle_cancelled_without_existing_receivers() {
+        let active_chat = ActiveChatHandle::new();
+        active_chat.cancel();
+
+        assert!(active_chat.is_cancelled());
     }
 }

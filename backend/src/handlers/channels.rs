@@ -43,6 +43,8 @@ fn build_snapshot_payload(
             snapshot.derived_earliest_ready_date,
         ),
         channel_video_count: snapshot.channel_video_count,
+        has_more: snapshot.has_more,
+        next_offset: snapshot.next_offset,
         videos: snapshot.videos,
     }
 }

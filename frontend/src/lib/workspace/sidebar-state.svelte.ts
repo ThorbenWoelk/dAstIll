@@ -60,6 +60,7 @@ import type {
   AddVideoResult,
   Channel,
   ChannelSnapshot,
+  ChannelVideoPage,
   Video,
   VideoTypeFilter,
 } from "$lib/types";
@@ -179,7 +180,7 @@ export type SidebarStateOptions = {
     /** Resolved from `AcknowledgedFilter` via `resolveAcknowledgedParam`. */
     acknowledged: boolean | undefined,
     includeOptimistic: boolean,
-  ) => Promise<Video[]>;
+  ) => Promise<ChannelVideoPage>;
   onVideoTypeFilterChange?: (filter: VideoTypeFilter) => void;
   onAcknowledgedFilterChange?: (ack: boolean | undefined) => void;
 };
@@ -613,9 +614,18 @@ export function createSidebarState(
             videoTypeFilter,
             isAck,
           );
-      videos = dedupeVideosById(reset ? list : [...videos, ...list]);
-      offset = (reset ? 0 : offset) + list.length;
-      hasMore = list.length === limit;
+      const page = Array.isArray(list)
+        ? {
+            videos: list,
+            has_more: list.length === limit,
+            next_offset: (reset ? 0 : offset) + list.length,
+          }
+        : list;
+      videos = dedupeVideosById(
+        reset ? page.videos : [...videos, ...page.videos],
+      );
+      offset = page.next_offset ?? (reset ? 0 : offset) + page.videos.length;
+      hasMore = page.has_more;
 
       if (options_root.onVideosLoaded) {
         await options_root.onVideosLoaded({ reset, videos });
@@ -635,6 +645,7 @@ export function createSidebarState(
     channelId: string,
     videoId: string | null = null,
     fromUserInteraction = false,
+    selectedVideoHint: Video | null = null,
   ) {
     const cacheKey = getVideoStateKey(channelId);
     const cached = videoStateCache.get(cacheKey);
@@ -661,7 +672,7 @@ export function createSidebarState(
       return;
     }
 
-    videos = [];
+    videos = selectedVideoHint ? [selectedVideoHint] : [];
     offset = 0;
     hasMore = true;
     historyExhausted = false;
@@ -882,8 +893,12 @@ export function createSidebarState(
     onVideoTypeFilterChange: setVideoTypeFilterAndReload,
     onAcknowledgedFilterChange: setAcknowledgedFilterAndReload,
     onClearAllFilters: clearAllFiltersAndReload,
-    onSelectChannelVideo: async (channelId: string, videoId: string) => {
-      await selectChannel(channelId, videoId, true);
+    onSelectChannelVideo: async (
+      channelId: string,
+      videoId: string,
+      video?: Video,
+    ) => {
+      await selectChannel(channelId, videoId, true, video ?? null);
       await options_root.onSelectVideo(videoId, { forceReload: true });
     },
   };

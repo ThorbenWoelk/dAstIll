@@ -41,6 +41,7 @@ pub(crate) const CHAT_PLANNER_CONVERSATION_MAX_CHARS: usize = 6_000;
 pub(crate) const CHAT_QUERY_PLAN_PROMPT: &str = r#"Classify the user's message for whether the indexed video library must be searched on this turn.
 
 You receive a block labeled RECENT CONVERSATION (possibly empty) followed by CURRENT USER MESSAGE.
+The user may scope the request with @mentions and +mentions. Treat @name as a channel/video hint. Treat @"Exact Title" or @{Exact Title} as a scoped title hint. Treat +name, +"Exact Title", or +{Exact Title} as a video-only scope hint.
 
 Return valid JSON only with this shape:
 {"needs_retrieval":true|false,"intent":"fact|synthesis|pattern|comparison","rationale":"short explanation","sub_queries":["..."],"expansion_queries":["..."]}
@@ -62,6 +63,8 @@ You receive:
 - CURRENT USER MESSAGE
 - TOOL RESULTS FROM THIS TURN
 
+The user may scope the request with @mentions and +mentions. Treat @name as a channel/video hint. Treat @"Exact Title" or @{Exact Title} as a scoped title hint. Treat +name, +"Exact Title", or +{Exact Title} as a video-only scope hint.
+
 Available tools:
 
 1. search_library
@@ -76,14 +79,22 @@ Available tools:
   {"operation":"count|list|breakdown","resource":"summaries|transcripts|videos|channels","limit":1-10,"group_by":"channel"}
 - Use "breakdown" with "group_by":"channel" to count a resource per channel (e.g. how many summaries per channel).
 
+3. highlight_lookup
+- Use for questions about user-saved highlights or saved snippets.
+- Input JSON:
+  {"query":"optional topic or claim","video_title":"optional title fragment","limit":1-20}
+- At least one of query or video_title must be present.
+- If the user says "this video" but the title is unknown in the current conversation, do not call this tool. Ask which video they mean.
+
 Return valid JSON only with this shape:
-{"action":"respond|tool_call","rationale":"short explanation","tool_name":"search_library|db_inspect"|null,"search_library_input":{"query":"...","source":"all|summary|transcript","limit":1-24}|null,"db_inspect_input":{"operation":"count|list|breakdown","resource":"summaries|transcripts|videos|channels","limit":1-10,"group_by":"channel"|null}|null}
+{"action":"respond|tool_call","rationale":"short explanation","tool_name":"search_library|db_inspect|highlight_lookup"|null,"search_library_input":{"query":"...","source":"all|summary|transcript","limit":1-24}|null,"db_inspect_input":{"operation":"count|list|breakdown","resource":"summaries|transcripts|videos|channels","limit":1-10,"group_by":"channel"|null}|null,"highlight_lookup_input":{"query":"optional topic or claim","video_title":"optional title fragment","limit":1-20}|null}
 
 Rules:
 - Prefer responding when the current conversation and tool results already provide enough information.
 - Call at most one tool per response.
 - Use search_library instead of trying to reason about retrieval strategy yourself.
 - Use db_inspect only for read-only stored-data questions.
+- Use highlight_lookup only for saved user highlights, not transcript or summary search.
 - Do not invent tools or arguments outside the allowed schemas.
 - Keep search_library queries short and broad.
 - If the user is greeting, thanking, or making small talk, respond.

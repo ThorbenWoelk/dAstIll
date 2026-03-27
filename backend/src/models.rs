@@ -287,9 +287,19 @@ pub struct SyncDepthPayload {
 pub struct ChannelSnapshotPayload {
     pub channel_id: String,
     pub sync_depth: SyncDepthPayload,
-    /// Total videos stored for this channel (no type / read / queue filters).
-    pub channel_video_count: usize,
+    /// Total videos stored for this channel when cheaply available.
+    pub channel_video_count: Option<usize>,
+    pub has_more: bool,
+    pub next_offset: Option<usize>,
     pub videos: Vec<Video>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
+pub struct ChannelVideoPagePayload {
+    pub videos: Vec<Video>,
+    pub has_more: bool,
+    pub next_offset: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

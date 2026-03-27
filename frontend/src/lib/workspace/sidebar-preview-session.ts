@@ -4,13 +4,14 @@ import {
 } from "$lib/channel-view-cache";
 import type { Video } from "$lib/types";
 
-export type SidebarPreviewCollectionLoadMode = "preview" | "all";
+export type SidebarPreviewCollectionLoadMode = "preview" | "paged";
 
 export type SidebarPreviewCollectionSnapshot = {
   videos: Video[];
   expanded: boolean;
   loadedMode: SidebarPreviewCollectionLoadMode | null;
-  hasMoreThanPreview: boolean;
+  hasMore: boolean;
+  nextOffset: number;
   channelVideoCount: number | null;
   filterKey: string | null;
   syncDepth: ChannelSyncDepthState | null;

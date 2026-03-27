@@ -323,8 +323,15 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/health/ai", get(content::health_ai))
         .route("/api/chat/config", get(chat::chat_client_config))
         .route(
+            "/api/chat/suggestions/channels",
+            get(chat::channel_suggestions),
+        )
+        .route("/api/chat/suggestions/videos", get(chat::video_suggestions))
+        .route(
             "/api/chat/conversations",
-            get(chat::list_conversations).post(chat::create_conversation),
+            get(chat::list_conversations)
+                .post(chat::create_conversation)
+                .delete(chat::delete_all_conversations),
         )
         .route(
             "/api/chat/conversations/{id}",

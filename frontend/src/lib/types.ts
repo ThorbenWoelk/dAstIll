@@ -17,6 +17,7 @@ export type ChatRetrievalIntent =
   | "synthesis"
   | "pattern"
   | "comparison";
+export type ChatSuggestionKind = "channel" | "video";
 
 export const OTHERS_CHANNEL_ID = "__others__";
 
@@ -39,9 +40,17 @@ export interface SyncDepth {
 export interface ChannelSnapshot {
   channel_id: string;
   sync_depth: SyncDepth;
-  /** Total videos for this channel in storage (ignores type / read / queue filters). */
-  channel_video_count: number;
+  /** Total videos for this channel in storage when cheaply available. */
+  channel_video_count: number | null;
+  has_more: boolean;
+  next_offset: number | null;
   videos: Video[];
+}
+
+export interface ChannelVideoPage {
+  videos: Video[];
+  has_more: boolean;
+  next_offset: number | null;
 }
 
 export interface WorkspaceBootstrap {
@@ -264,6 +273,13 @@ export interface ChatConversationSummary {
 
 export interface ChatConversation extends ChatConversationSummary {
   messages: ChatMessage[];
+}
+
+export interface ChatSuggestionItem {
+  kind: ChatSuggestionKind;
+  id: string;
+  label: string;
+  subtitle?: string | null;
 }
 
 export interface CreateConversationRequest {

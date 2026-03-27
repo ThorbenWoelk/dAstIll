@@ -1,0 +1,202 @@
+{
+  "generated_at_utc": "2026-03-27T14:18:24.608647+00:00",
+  "base_url": "http://localhost:3544",
+  "dataset_path": "/Users/thorben.woelk/repos/dAstIll/backend/tests/data/chat_capability_prompts.json",
+  "prompt_count": 2,
+  "summary": {
+    "total_prompts": 2,
+    "passed_prompts": 1,
+    "answerability_passed": 2,
+    "grounding_passed": 1,
+    "shape_passed": 2,
+    "average_score": 2.5,
+    "prompts_without_sources": [
+      "q062",
+      "q063"
+    ],
+    "single_video_prompts": [],
+    "failure_counts": {
+      "no_sources": 1
+    },
+    "by_capability_class": [
+      {
+        "capability_class": "highlight_lookup",
+        "total": 2,
+        "passed": 1,
+        "answerability_passed": 2,
+        "grounding_passed": 1,
+        "shape_passed": 2,
+        "average_score": 2.5,
+        "common_failure_classes": [
+          "no_sources"
+        ]
+      }
+    ]
+  },
+  "results": [
+    {
+      "prompt_id": "q062",
+      "prompt": "What highlights have I saved from this video?",
+      "capability_class": "highlight_lookup",
+      "answerability_expected": "yes",
+      "conversation_id": "conv_1774621043165_7",
+      "status": "completed",
+      "assistant_content": "I cannot see your saved highlights because I do not have access to the indexed library or transcript data for this turn. To view your highlights, please ask again to trigger a library search so I can retrieve the relevant information.",
+      "source_count": 0,
+      "source_videos": [],
+      "source_channels": [],
+      "used_search_tool": false,
+      "used_db_tool": false,
+      "used_conversation_only": true,
+      "status_trace": [
+        {
+          "received_at_ms": 0,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Planning next step",
+            "detail": "Choosing whether to answer now or call a tool (step 1/4).",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 5041,
+          "payload": {
+            "stage": "generating",
+            "label": "Answering from the conversation",
+            "detail": "No tool call was needed for this turn.",
+            "decision": "The user is asking about highlights from 'this video' but no specific video title has been mentioned in the conversation, so I cannot call highlight_lookup without knowing which video they mean.",
+            "plan": null,
+            "tool": null
+          }
+        }
+      ],
+      "tool_calls": [],
+      "latency_ms_total": 22650,
+      "latency_ms_retrieval": null,
+      "latency_ms_generation": 0,
+      "rubric_answerability_pass": true,
+      "rubric_grounding_pass": false,
+      "rubric_shape_pass": true,
+      "rubric_capability_score": 2,
+      "failure_class": "no_sources",
+      "notes": [
+        "highlight prompt did not use the saved highlights tool"
+      ],
+      "raw_error": null,
+      "raw_sse": "event: status\ndata: {\"detail\":\"Choosing whether to answer now or call a tool (step 1/4).\",\"label\":\"Planning next step\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"decision\":\"The user is asking about highlights from 'this video' but no specific video title has been mentioned in the conversation, so I cannot call highlight_lookup without knowing which video they mean.\",\"detail\":\"No tool call was needed for this turn.\",\"label\":\"Answering from the conversation\",\"stage\":\"generating\"}\n\n: ping\n\nevent: token\ndata: {\"token\":\"I cannot\"}\n\nevent: token\ndata: {\"token\":\" see your saved highlights\"}\n\nevent: token\ndata: {\"token\":\" because\"}\n\nevent: token\ndata: {\"token\":\" I do\"}\n\nevent: token\ndata: {\"token\":\" not have access to\"}\n\nevent: token\ndata: {\"token\":\" the indexed library or\"}\n\nevent: token\ndata: {\"token\":\" transcript\"}\n\nevent: token\ndata: {\"token\":\" data for this turn\"}\n\nevent: token\ndata: {\"token\":\". To view\"}\n\nevent: token\ndata: {\"token\":\" your highlights\"}\n\nevent: token\ndata: {\"token\":\", please ask\"}\n\nevent: token\ndata: {\"token\":\" again to trigger a\"}\n\nevent: token\ndata: {\"token\":\" library search so\"}\n\nevent: token\ndata: {\"token\":\" I can retrieve the\"}\n\nevent: token\ndata: {\"token\":\" relevant\"}\n\nevent: token\ndata: {\"token\":\" information.\"}\n\nevent: done\ndata: {\"message\":{\"completion_tokens\":803,\"content\":\"I cannot see your saved highlights because I do not have access to the indexed library or transcript data for this turn. To view your highlights, please ask again to trigger a library search so I can retrieve the relevant information.\",\"created_at\":\"2026-03-27T14:17:45.602798Z\",\"id\":\"msg_1774621065602_9\",\"model\":\"glm-5:cloud\",\"prompt_tokens\":122,\"role\":\"assistant\",\"sources\":[],\"status\":\"completed\",\"total_duration_ns\":16898390333}}\n\n"
+    },
+    {
+      "prompt_id": "q063",
+      "prompt": "Show me all highlights related to search.",
+      "capability_class": "highlight_lookup",
+      "answerability_expected": "yes",
+      "conversation_id": "conv_1774621065816_10",
+      "status": "completed",
+      "assistant_content": "Based on the saved highlights, there is **1 highlight** matching the query \"search\":\n\n---\n\n**Source:** AI News & Strategy Daily | Nate B Jones / Tobi Lütke Made a 20-Year-Old Codebase 53% Faster Overnight. Here's How.\n\n**Summary highlight:** \"Agents\" are too often misunderstood as simply LLMs plus tools in a loop; in practice, there are four distinct \"species\" of agents in production use, each suited to different problems. The four types are: Coding Harnesse...[Tool 1]\n\n---\n\nThis appears to be the only saved highlight related to \"search\" in the system.",
+      "source_count": 0,
+      "source_videos": [],
+      "source_channels": [],
+      "used_search_tool": false,
+      "used_db_tool": false,
+      "used_conversation_only": false,
+      "status_trace": [
+        {
+          "received_at_ms": 0,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Planning next step",
+            "detail": "Choosing whether to answer now or call a tool (step 1/4).",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 1999,
+          "payload": {
+            "stage": "tool",
+            "label": "Running saved highlights lookup",
+            "detail": "Looking up saved highlights.",
+            "decision": "User is asking for their saved highlights related to 'search'. Using highlight_lookup to retrieve these.",
+            "plan": null,
+            "tool": {
+              "name": "highlight_lookup",
+              "label": "Saved highlights lookup",
+              "state": "running",
+              "input": "Look up saved highlights for query \"search\" (limit 20)",
+              "output": null
+            }
+          }
+        },
+        {
+          "received_at_ms": 3146,
+          "payload": {
+            "stage": "tool_complete",
+            "label": "Saved highlights lookup complete",
+            "detail": "Saved highlights matching query \"search\":\n1. AI News & Strategy Daily | Nate B Jones / Tobi Lütke Made a 20-Year-Old Codebase 53% Faster Overnight. Here's How. / summary highlight: \"Agents\" are too often misunderstood as simply LLMs plus tools in a loop; in practice, there are four distinct \"species\" of agents in production use, each suited to different problems. The four types are: Coding Harnesse...",
+            "decision": null,
+            "plan": null,
+            "tool": {
+              "name": "highlight_lookup",
+              "label": "Saved highlights lookup",
+              "state": "completed",
+              "input": "Look up saved highlights for query \"search\"",
+              "output": "Saved highlights matching query \"search\":\n1. AI News & Strategy Daily | Nate B Jones / Tobi Lütke Made a 20-Year-Old Codebase 53% Faster Overnight. Here's How. / summary highlight: \"Agents\" are too often misunderstood as simply LLMs plus tools in a loop; in practice, there are four distinct \"species\" of agents in production use, each suited to different problems. The four types are: Coding Harnesse..."
+            }
+          }
+        },
+        {
+          "received_at_ms": 3146,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Planning next step",
+            "detail": "Choosing whether to answer now or call a tool (step 2/4).",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 15188,
+          "payload": {
+            "stage": "generating",
+            "label": "Answering from gathered evidence",
+            "detail": "Composing the final answer from 1 tool result and 0 excerpts.",
+            "decision": "The highlight_lookup tool already returned saved highlights matching the query 'search'. I have the first result with partial content, which is sufficient to answer the user's request about highlights related to search.",
+            "plan": null,
+            "tool": null
+          }
+        }
+      ],
+      "tool_calls": [
+        {
+          "name": "highlight_lookup",
+          "label": "Saved highlights lookup",
+          "state": "completed",
+          "input": "Look up saved highlights for query \"search\"",
+          "output": "Saved highlights matching query \"search\":\n1. AI News & Strategy Daily | Nate B Jones / Tobi Lütke Made a 20-Year-Old Codebase 53% Faster Overnight. Here's How. / summary highlight: \"Agents\" are too often misunderstood as simply LLMs plus tools in a loop; in practice, there are four distinct \"species\" of agents in production use, each suited to different problems. The four types are: Coding Harnesse..."
+        },
+        {
+          "name": "highlight_lookup",
+          "label": "Saved highlights lookup",
+          "state": "running",
+          "input": "Look up saved highlights for query \"search\" (limit 20)",
+          "output": null
+        }
+      ],
+      "latency_ms_total": 38792,
+      "latency_ms_retrieval": 3146,
+      "latency_ms_generation": 0,
+      "rubric_answerability_pass": true,
+      "rubric_grounding_pass": true,
+      "rubric_shape_pass": true,
+      "rubric_capability_score": 3,
+      "failure_class": null,
+      "notes": [],
+      "raw_error": null,
+      "raw_sse": "event: status\ndata: {\"detail\":\"Choosing whether to answer now or call a tool (step 1/4).\",\"label\":\"Planning next step\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"decision\":\"User is asking for their saved highlights related to 'search'. Using highlight_lookup to retrieve these.\",\"detail\":\"Looking up saved highlights.\",\"label\":\"Running saved highlights lookup\",\"stage\":\"tool\",\"tool\":{\"input\":\"Look up saved highlights for query \\\"search\\\" (limit 20)\",\"label\":\"Saved highlights lookup\",\"name\":\"highlight_lookup\",\"state\":\"running\"}}\n\nevent: status\ndata: {\"detail\":\"Saved highlights matching query \\\"search\\\":\\n1. AI News & Strategy Daily | Nate B Jones / Tobi Lütke Made a 20-Year-Old Codebase 53% Faster Overnight. Here's How. / summary highlight: \\\"Agents\\\" are too often misunderstood as simply LLMs plus tools in a loop; in practice, there are four distinct \\\"species\\\" of agents in production use, each suited to different problems. The four types are: Coding Harnesse...\",\"label\":\"Saved highlights lookup complete\",\"stage\":\"tool_complete\",\"tool\":{\"input\":\"Look up saved highlights for query \\\"search\\\"\",\"label\":\"Saved highlights lookup\",\"name\":\"highlight_lookup\",\"output\":\"Saved highlights matching query \\\"search\\\":\\n1. AI News & Strategy Daily | Nate B Jones / Tobi Lütke Made a 20-Year-Old Codebase 53% Faster Overnight. Here's How. / summary highlight: \\\"Agents\\\" are too often misunderstood as simply LLMs plus tools in a loop; in practice, there are four distinct \\\"species\\\" of agents in production use, each suited to different problems. The four types are: Coding Harnesse...\",\"state\":\"completed\"}}\n\nevent: status\ndata: {\"detail\":\"Choosing whether to answer now or call a tool (step 2/4).\",\"label\":\"Planning next step\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"decision\":\"The highlight_lookup tool already returned saved highlights matching the query 'search'. I have the first result with partial content, which is sufficient to answer the user's request about highlights related to search.\",\"detail\":\"Composing the final answer from 1 tool result and 0 excerpts.\",\"label\":\"Answering from gathered evidence\",\"stage\":\"generating\"}\n\n: ping\n\nevent: token\ndata: {\"token\":\"Based\"}\n\nevent: token\ndata: {\"token\":\" on the saved highlights\"}\n\nevent: token\ndata: {\"token\":\",\"}\n\nevent: token\ndata: {\"token\":\" there\"}\n\nevent: token\ndata: {\"token\":\" is **1 highlight\"}\n\nevent: token\ndata: {\"token\":\"** matching\"}\n\nevent: token\ndata: {\"token\":\" the query \\\"search\"}\n\nevent: token\ndata: {\"token\":\"\\\":\\n\\n---\"}\n\nevent: token\ndata: {\"token\":\"\\n\\n**Source\"}\n\nevent: token\ndata: {\"token\":\":** AI\"}\n\nevent: token\ndata: {\"token\":\" News & Strategy Daily\"}\n\nevent: token\ndata: {\"token\":\" | Nate B Jones\"}\n\nevent: token\ndata: {\"token\":\" / Tobi L\"}\n\nevent: token\ndata: {\"token\":\"ütke Made a\"}\n\nevent: token\ndata: {\"token\":\" 20-Year-\"}\n\nevent: token\ndata: {\"token\":\"Old Codebase\"}\n\nevent: token\ndata: {\"token\":\" 53% Faster Overnight\"}\n\nevent: token\ndata: {\"token\":\". Here's How\"}\n\nevent: token\ndata: {\"token\":\".\\n\\n**Summary highlight\"}\n\nevent: token\ndata: {\"token\":\":** \\\"Agents\\\"\"}\n\nevent: token\ndata: {\"token\":\" are too often misunderstood\"}\n\nevent: token\ndata: {\"token\":\" as simply LLM\"}\n\nevent: token\ndata: {\"token\":\"s plus tools in\"}\n\nevent: token\ndata: {\"token\":\" a loop; in\"}\n\nevent: token\ndata: {\"token\":\" practice, there are\"}\n\nevent: token\ndata: {\"token\":\" four distinct \\\"species\"}\n\nevent: token\ndata: {\"token\":\"\\\" of agents in\"}\n\nevent: token\ndata: {\"token\":\" production use, each\"}\n\nevent: token\ndata: {\"token\":\" suited to different problems\"}\n\nevent: token\ndata: {\"token\":\". The four types\"}\n\nevent: token\ndata: {\"token\":\" are: Coding H\"}\n\nevent: token\ndata: {\"token\":\"arnesse\"}\n\nevent: token\ndata: {\"token\":\"...\"}\n\nevent: token\ndata: {\"token\":\"[Tool\"}\n\nevent: token\ndata: {\"token\":\" 1]\\n\\n---\"}\n\nevent: token\ndata: {\"token\":\"\\n\\nThis appears\"}\n\nevent: token\ndata: {\"token\":\" to be the only\"}\n\nevent: token\ndata: {\"token\":\" saved highlight related to\"}\n\nevent: token\ndata: {\"token\":\" \\\"search\\\" in\"}\n\nevent: token\ndata: {\"token\":\" the\"}\n\nevent: token\ndata: {\"token\":\" system\"}\n\nevent: token\ndata: {\"token\":\".\"}\n\nevent: done\ndata: {\"message\":{\"completion_tokens\":284,\"content\":\"Based on the saved highlights, there is **1 highlight** matching the query \\\"search\\\":\\n\\n---\\n\\n**Source:** AI News & Strategy Daily | Nate B Jones / Tobi Lütke Made a 20-Year-Old Codebase 53% Faster Overnight. Here's How.\\n\\n**Summary highlight:** \\\"Agents\\\" are too often misunderstood as simply LLMs plus tools in a loop; in practice, there are four distinct \\\"species\\\" of agents in production use, each suited to different problems. The four types are: Coding Harnesse...[Tool 1]\\n\\n---\\n\\nThis appears to be the only saved highlight related to \\\"search\\\" in the system.\",\"created_at\":\"2026-03-27T14:18:24.420198Z\",\"id\":\"msg_1774621104420_12\",\"model\":\"glm-5:cloud\",\"prompt_tokens\":388,\"role\":\"assistant\",\"sources\":[],\"status\":\"completed\",\"total_duration_ns\":22929227113}}\n\n"
+    }
+  ]
+}

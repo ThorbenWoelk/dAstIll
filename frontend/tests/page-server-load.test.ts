@@ -1,13 +1,12 @@
 /**
- * Tests for the root route server load function (+page.server.ts).
+ * Tests for shared workspace-style server loads.
  *
  * Verifies that URL query parameters for type and ack filters are correctly
  * forwarded to the workspace bootstrap API call so the SSR-rendered state
  * matches the URL-specified filter state on first paint.
  *
- * Also verifies that channel preview snapshots are pre-fetched server-side
- * for all channels so the client sidebar does not need to make N separate
- * snapshot API calls on initial mount (VAL-DATA-002).
+ * Also verifies that the selected channel snapshot is surfaced as a single
+ * preloaded preview entry without triggering separate snapshot fetches.
  */
 import { describe, expect, it } from "bun:test";
 import type { ChannelSnapshot, WorkspaceBootstrap } from "../src/lib/types";
@@ -17,7 +16,25 @@ import type { ChannelSnapshot, WorkspaceBootstrap } from "../src/lib/types";
 // no special dependencies.
 async function importLoad() {
   const mod = await import("../src/routes/+page.server.js");
-  return mod.load as (event: { fetch: typeof fetch; url: URL }) => Promise<{
+  return mod.load as (event: {
+    fetch: typeof fetch;
+    url: URL;
+    isDataRequest?: boolean;
+  }) => Promise<{
+    bootstrap: WorkspaceBootstrap | null;
+    channelPreviews: Record<string, ChannelSnapshot>;
+    channelPreviewsFilterKey: string;
+  }>;
+}
+
+async function importChannelRouteLoad() {
+  const mod = await import("../src/routes/channels/[id]/+page.server.js");
+  return mod.load as (event: {
+    fetch: typeof fetch;
+    url: URL;
+    params: { id: string };
+    isDataRequest?: boolean;
+  }) => Promise<{
     bootstrap: WorkspaceBootstrap | null;
     channelPreviews: Record<string, ChannelSnapshot>;
     channelPreviewsFilterKey: string;
@@ -78,6 +95,16 @@ function makeBootstrapWithChannels(channelIds: string[]): WorkspaceBootstrap {
   };
 }
 
+function makeBootstrapWithSelectedSnapshot(
+  channelId: string,
+): WorkspaceBootstrap {
+  return {
+    ...makeBootstrapWithChannels([channelId]),
+    selected_channel_id: channelId,
+    snapshot: makeChannelSnapshot(channelId),
+  };
+}
+
 function makeChannelSnapshot(
   channelId: string,
   videoCount = 3,
@@ -90,6 +117,8 @@ function makeChannelSnapshot(
       derived_earliest_ready_date: null,
     },
     channel_video_count: videoCount,
+    has_more: false,
+    next_offset: null,
     videos: Array.from({ length: videoCount }, (_, i) => ({
       id: `vid-${channelId}-${i}`,
       channel_id: channelId,
@@ -178,7 +207,7 @@ function createUrl(params: Record<string, string> = {}): URL {
   return url;
 }
 
-describe("+page.server.ts load — URL filter forwarding", () => {
+describe("+page.server.ts load - URL filter forwarding", () => {
   it("forwards type=short as video_type=short", async () => {
     const load = await importLoad();
     const { fetch, calls } = createMockFetch();
@@ -289,6 +318,48 @@ describe("+page.server.ts load — URL filter forwarding", () => {
   });
 });
 
+describe("+page.server.ts load - data request bootstrap policy", () => {
+  it("skips bootstrap fetching for unscoped data requests", async () => {
+    const load = await importLoad();
+    let called = false;
+    const fetch = (async () => {
+      called = true;
+      return new Response("{}", { status: 200 });
+    }) as typeof fetch;
+
+    const result = await load({
+      fetch,
+      url: createUrl(),
+      isDataRequest: true,
+    });
+
+    expect(called).toBe(false);
+    expect(result.bootstrap).toBeNull();
+    expect(result.channelPreviews).toEqual({});
+  });
+
+  it("fetches bootstrap for scoped data requests with a selected channel", async () => {
+    const load = await importLoad();
+    const channelId = "ch-42";
+    const { fetch, calls } = createSmartMockFetch(
+      makeBootstrapWithSelectedSnapshot(channelId),
+    );
+
+    const result = await load({
+      fetch,
+      url: createUrl({ channel: channelId, video: "vid-1" }),
+      isDataRequest: true,
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url.searchParams.get("selected_channel_id")).toBe(
+      channelId,
+    );
+    expect(result.bootstrap?.selected_channel_id).toBe(channelId);
+    expect(result.channelPreviews[channelId]?.channel_id).toBe(channelId);
+  });
+});
+
 describe("+page.server.ts load — channel preview pre-loading (VAL-DATA-002)", () => {
   // Channel previews are now loaded client-side after paint.
   // The server load returns an empty channelPreviews object and only
@@ -312,6 +383,17 @@ describe("+page.server.ts load — channel preview pre-loading (VAL-DATA-002)", 
     const { fetch } = createSmartMockFetch(bootstrap);
     const result = await load({ fetch, url: createUrl() });
     expect(result.channelPreviews).toEqual({});
+  });
+
+  it("returns the selected channel snapshot as a preloaded preview map entry", async () => {
+    const load = await importLoad();
+    const bootstrap = makeBootstrapWithSelectedSnapshot("ch-1");
+    const { fetch } = createSmartMockFetch(bootstrap);
+    const result = await load({ fetch, url: createUrl({ channel: "ch-1" }) });
+
+    expect(result.channelPreviews).toEqual({
+      "ch-1": bootstrap.snapshot,
+    });
   });
 
   it("returns empty channelPreviews when bootstrap has no channels", async () => {
@@ -349,6 +431,48 @@ describe("+page.server.ts load — channel preview pre-loading (VAL-DATA-002)", 
       fetch,
       url: createUrl({ type: "invalid", ack: "invalid" }),
     });
+    expect(result.channelPreviewsFilterKey).toBe("all:all:default");
+  });
+});
+
+describe("channels/[id]/+page.server.ts load", () => {
+  it("uses the route param as selected_channel_id for bootstrap", async () => {
+    const load = await importChannelRouteLoad();
+    const bootstrap = makeBootstrapWithSelectedSnapshot("ch-route");
+    const { fetch, calls } = createSmartMockFetch(bootstrap);
+
+    const result = await load({
+      fetch,
+      url: createUrl(),
+      params: { id: "ch-route" },
+      isDataRequest: false,
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url.searchParams.get("selected_channel_id")).toBe(
+      "ch-route",
+    );
+    expect(result.channelPreviews).toEqual({
+      "ch-route": bootstrap.snapshot!,
+    });
+  });
+
+  it("returns empty bootstrap data on data requests", async () => {
+    const load = await importChannelRouteLoad();
+    const { fetch, calls } = createSmartMockFetch(
+      makeBootstrapWithSelectedSnapshot("ch-route"),
+    );
+
+    const result = await load({
+      fetch,
+      url: createUrl(),
+      params: { id: "ch-route" },
+      isDataRequest: true,
+    });
+
+    expect(calls).toHaveLength(0);
+    expect(result.bootstrap).toBeNull();
+    expect(result.channelPreviews).toEqual({});
     expect(result.channelPreviewsFilterKey).toBe("all:all:default");
   });
 });

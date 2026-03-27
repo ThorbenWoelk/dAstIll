@@ -70,3 +70,13 @@ pub async fn delete_conversation(store: &Store, conversation_id: &str) -> Result
     index.retain(|conversation| conversation.id != conversation_id);
     store_index(store, &sort_summaries(index)).await
 }
+
+pub async fn delete_all_conversations(store: &Store) -> Result<(), StoreError> {
+    let conversations = load_index(store).await?;
+    for conversation in conversations {
+        store
+            .delete_key(&conversation_key(&conversation.id))
+            .await?;
+    }
+    store_index(store, &[]).await
+}

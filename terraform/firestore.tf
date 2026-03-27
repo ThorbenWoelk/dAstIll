@@ -7,7 +7,7 @@ resource "google_firestore_database" "default" {
   depends_on = [google_project_service.services["firestore.googleapis.com"]]
 }
 
-# Composite index: list videos by channel, ordered by date
+# Composite index: list videos by channel with ready transcripts, ordered by date
 resource "google_firestore_index" "videos_channel_date" {
   provider   = google-beta
   database   = google_firestore_database.default.name
@@ -18,12 +18,16 @@ resource "google_firestore_index" "videos_channel_date" {
     order      = "ASCENDING"
   }
   fields {
+    field_path = "transcript_status"
+    order      = "ASCENDING"
+  }
+  fields {
     field_path = "published_at"
     order      = "DESCENDING"
   }
 }
 
-# Composite index: filter by channel + acknowledged, ordered by date
+# Composite index: filter by channel + acknowledged + ready transcript, ordered by date
 resource "google_firestore_index" "videos_channel_ack_date" {
   provider   = google-beta
   database   = google_firestore_database.default.name
@@ -38,12 +42,16 @@ resource "google_firestore_index" "videos_channel_ack_date" {
     order      = "ASCENDING"
   }
   fields {
+    field_path = "transcript_status"
+    order      = "ASCENDING"
+  }
+  fields {
     field_path = "published_at"
     order      = "DESCENDING"
   }
 }
 
-# Composite index: filter by channel + is_short, ordered by date
+# Composite index: filter by channel + is_short + ready transcript, ordered by date
 resource "google_firestore_index" "videos_channel_short_date" {
   provider   = google-beta
   database   = google_firestore_database.default.name
@@ -58,12 +66,16 @@ resource "google_firestore_index" "videos_channel_short_date" {
     order      = "ASCENDING"
   }
   fields {
+    field_path = "transcript_status"
+    order      = "ASCENDING"
+  }
+  fields {
     field_path = "published_at"
     order      = "DESCENDING"
   }
 }
 
-# Composite index: filter by channel + is_short + acknowledged, ordered by date
+# Composite index: filter by channel + is_short + acknowledged + ready transcript, ordered by date
 resource "google_firestore_index" "videos_channel_short_ack_date" {
   provider   = google-beta
   database   = google_firestore_database.default.name
@@ -82,8 +94,67 @@ resource "google_firestore_index" "videos_channel_short_ack_date" {
     order      = "ASCENDING"
   }
   fields {
+    field_path = "transcript_status"
+    order      = "ASCENDING"
+  }
+  fields {
     field_path = "published_at"
     order      = "DESCENDING"
   }
 }
 
+# Composite index: find oldest fully ready video by channel
+resource "google_firestore_index" "videos_channel_fully_ready_oldest" {
+  provider   = google-beta
+  database   = google_firestore_database.default.name
+  collection = "dastill_videos"
+
+  fields {
+    field_path = "channel_id"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "transcript_status"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "summary_status"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "published_at"
+    order      = "ASCENDING"
+  }
+}
+
+# Exact composite index requested by Firestore for ready-transcript channel list/snapshot queries
+resource "google_firestore_index" "videos_ready_transcript_published_desc" {
+  provider   = google-beta
+  database   = google_firestore_database.default.name
+  collection = "dastill_videos"
+
+  fields {
+    field_path = "transcript_status"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "published_at"
+    order      = "DESCENDING"
+  }
+}
+
+# Exact composite index requested by Firestore for oldest fully-ready lookups
+resource "google_firestore_index" "videos_ready_summary_published_asc" {
+  provider   = google-beta
+  database   = google_firestore_database.default.name
+  collection = "dastill_videos"
+
+  fields {
+    field_path = "summary_status"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "published_at"
+    order      = "ASCENDING"
+  }
+}

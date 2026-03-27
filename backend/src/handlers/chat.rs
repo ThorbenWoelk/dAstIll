@@ -2,11 +2,12 @@ use std::convert::Infallible;
 
 use axum::{
     Json,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Sse, sse::Event},
 };
 use chrono::Utc;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     db,
@@ -22,6 +23,58 @@ use crate::{
 };
 
 use super::{map_db_err, require_present, validate_nonempty};
+
+const CHAT_SUGGESTION_LIMIT_DEFAULT: usize = 8;
+const CHAT_SUGGESTION_LIMIT_MAX: usize = 12;
+
+#[derive(Debug, Deserialize)]
+pub struct ChatSuggestionQuery {
+    #[serde(default)]
+    q: String,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ChatSuggestionItem {
+    kind: &'static str,
+    id: String,
+    label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    subtitle: Option<String>,
+}
+
+pub async fn channel_suggestions(
+    State(state): State<AppState>,
+    Query(query): Query<ChatSuggestionQuery>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let channels = db::list_channels(&state.db).await.map_err(map_db_err)?;
+    Ok(Json(rank_channel_suggestions(
+        &channels,
+        &query.q,
+        query
+            .limit
+            .unwrap_or(CHAT_SUGGESTION_LIMIT_DEFAULT)
+            .clamp(1, CHAT_SUGGESTION_LIMIT_MAX),
+    )))
+}
+
+pub async fn video_suggestions(
+    State(state): State<AppState>,
+    Query(query): Query<ChatSuggestionQuery>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let videos = db::load_all_videos(&state.db).await.map_err(map_db_err)?;
+    let channels = db::list_channels(&state.db).await.map_err(map_db_err)?;
+    Ok(Json(rank_video_suggestions(
+        &videos,
+        &channels,
+        &query.q,
+        query
+            .limit
+            .unwrap_or(CHAT_SUGGESTION_LIMIT_DEFAULT)
+            .clamp(1, CHAT_SUGGESTION_LIMIT_MAX),
+    )))
+}
 
 pub async fn chat_client_config(State(state): State<AppState>) -> impl IntoResponse {
     Json(state.chat.chat_client_config())
@@ -94,6 +147,25 @@ pub async fn delete_conversation(
     db::delete_conversation(&state.db, &conversation_id)
         .await
         .map_err(map_db_err)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn delete_all_conversations(
+    State(state): State<AppState>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    for (_, active_chat) in state.active_chats.lock().await.drain() {
+        active_chat.cancel();
+    }
+
+    let _lock = state.chat_store_lock.lock().await;
+    db::delete_all_conversations(&state.db)
+        .await
+        .map_err(map_db_err)?;
+
+    for (_, active_chat) in state.active_chats.lock().await.drain() {
+        active_chat.cancel();
+    }
+
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -257,6 +329,147 @@ fn apply_user_message_to_conversation(
     should_auto_name
 }
 
+fn rank_channel_suggestions(
+    channels: &[crate::models::Channel],
+    query: &str,
+    limit: usize,
+) -> Vec<ChatSuggestionItem> {
+    let needle = normalize_suggestion_query(query);
+    let mut items = channels
+        .iter()
+        .filter_map(|channel| {
+            let name_key = normalize_suggestion_query(&channel.name);
+            let handle_key = channel
+                .handle
+                .as_deref()
+                .map(|value| normalize_suggestion_query(value.trim_start_matches('@')));
+
+            let score = score_channel_candidate(&needle, &name_key, handle_key.as_deref())?;
+            Some((score, channel))
+        })
+        .collect::<Vec<_>>();
+
+    items.sort_by(|left, right| {
+        right
+            .0
+            .cmp(&left.0)
+            .then_with(|| left.1.name.cmp(&right.1.name))
+            .then_with(|| left.1.id.cmp(&right.1.id))
+    });
+
+    items
+        .into_iter()
+        .take(limit)
+        .map(|(_, channel)| ChatSuggestionItem {
+            kind: "channel",
+            id: channel.id.clone(),
+            label: channel.name.clone(),
+            subtitle: channel.handle.clone(),
+        })
+        .collect()
+}
+
+fn rank_video_suggestions(
+    videos: &[crate::models::Video],
+    channels: &[crate::models::Channel],
+    query: &str,
+    limit: usize,
+) -> Vec<ChatSuggestionItem> {
+    let needle = normalize_suggestion_query(query);
+    let channel_names = channels
+        .iter()
+        .map(|channel| (channel.id.as_str(), channel.name.as_str()))
+        .collect::<std::collections::HashMap<_, _>>();
+
+    let mut items = videos
+        .iter()
+        .filter_map(|video| {
+            let title_key = normalize_suggestion_query(&video.title);
+            let score = score_text_candidate(&needle, &title_key)?;
+            Some((score, video))
+        })
+        .collect::<Vec<_>>();
+
+    items.sort_by(|left, right| {
+        right
+            .0
+            .cmp(&left.0)
+            .then_with(|| right.1.published_at.cmp(&left.1.published_at))
+            .then_with(|| left.1.title.cmp(&right.1.title))
+            .then_with(|| left.1.id.cmp(&right.1.id))
+    });
+
+    items
+        .into_iter()
+        .take(limit)
+        .map(|(_, video)| ChatSuggestionItem {
+            kind: "video",
+            id: video.id.clone(),
+            label: video.title.clone(),
+            subtitle: channel_names
+                .get(video.channel_id.as_str())
+                .map(|value| (*value).to_string()),
+        })
+        .collect()
+}
+
+fn score_channel_candidate(needle: &str, name_key: &str, handle_key: Option<&str>) -> Option<u8> {
+    if needle.is_empty() {
+        return Some(1);
+    }
+    let handle_score = handle_key.and_then(|value| score_text_candidate(needle, value));
+    let name_score = score_text_candidate(needle, name_key);
+    match (handle_score, name_score) {
+        (Some(left), Some(right)) => Some(left.max(right)),
+        (Some(score), None) | (None, Some(score)) => Some(score),
+        (None, None) => None,
+    }
+}
+
+fn score_text_candidate(needle: &str, haystack: &str) -> Option<u8> {
+    if needle.is_empty() {
+        return Some(1);
+    }
+    if haystack == needle {
+        return Some(5);
+    }
+    if haystack.starts_with(needle) {
+        return Some(4);
+    }
+    if haystack
+        .split_whitespace()
+        .any(|word| word.starts_with(needle))
+    {
+        return Some(3);
+    }
+    if haystack.contains(needle) {
+        return Some(2);
+    }
+    None
+}
+
+fn normalize_suggestion_query(input: &str) -> String {
+    input
+        .trim()
+        .trim_start_matches('@')
+        .trim_start_matches('+')
+        .trim_matches('"')
+        .trim_matches('{')
+        .trim_matches('}')
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                ' '
+            }
+        })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn mark_manual_title_on_create(conversation: &mut ChatConversation) {
     if conversation.title.is_some() {
         conversation.title_status = ChatTitleStatus::Manual;
@@ -279,11 +492,12 @@ mod tests {
 
     use super::{
         apply_manual_conversation_title, apply_user_message_to_conversation,
-        mark_manual_title_on_create,
+        mark_manual_title_on_create, rank_channel_suggestions, rank_video_suggestions,
     };
     use crate::handlers::validate_nonempty;
     use crate::models::{
-        ChatConversation, ChatMessage, ChatMessageStatus, ChatRole, ChatTitleStatus,
+        Channel, ChatConversation, ChatMessage, ChatMessageStatus, ChatRole, ChatTitleStatus,
+        ContentStatus, Video,
     };
 
     fn sample_conversation(title: Option<&str>, title_status: ChatTitleStatus) -> ChatConversation {
@@ -410,5 +624,61 @@ mod tests {
         assert_eq!(conversation.title.as_deref(), Some("New title"));
         assert_eq!(conversation.title_status, ChatTitleStatus::Manual);
         assert_eq!(conversation.updated_at, updated_at);
+    }
+
+    #[test]
+    fn channel_suggestions_prefer_handle_prefix_matches() {
+        let channels = vec![
+            sample_channel("chan-1", "HealthyGamerGG", Some("@healthygamergg")),
+            sample_channel("chan-2", "Theo - t3.gg", Some("@t3dotgg")),
+        ];
+
+        let items = rank_channel_suggestions(&channels, "hea", 5);
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].label, "HealthyGamerGG");
+    }
+
+    #[test]
+    fn video_suggestions_prefer_newer_titles_on_ties() {
+        let older = sample_video("vid-old", "chan-1", "Effort and Change", 10);
+        let newer = sample_video("vid-new", "chan-1", "Effort and Change Again", 1);
+        let channels = vec![sample_channel(
+            "chan-1",
+            "HealthyGamerGG",
+            Some("@healthygamergg"),
+        )];
+
+        let items = rank_video_suggestions(&[older, newer], &channels, "eff", 5);
+
+        assert_eq!(items[0].id, "vid-new");
+    }
+
+    fn sample_channel(id: &str, name: &str, handle: Option<&str>) -> Channel {
+        Channel {
+            id: id.to_string(),
+            handle: handle.map(str::to_string),
+            name: name.to_string(),
+            thumbnail_url: None,
+            added_at: Utc::now(),
+            earliest_sync_date: None,
+            earliest_sync_date_user_set: false,
+        }
+    }
+
+    fn sample_video(id: &str, channel_id: &str, title: &str, age_days: i64) -> Video {
+        Video {
+            id: id.to_string(),
+            channel_id: channel_id.to_string(),
+            title: title.to_string(),
+            thumbnail_url: None,
+            published_at: Utc::now() - Duration::days(age_days),
+            is_short: false,
+            transcript_status: ContentStatus::Ready,
+            summary_status: ContentStatus::Ready,
+            acknowledged: false,
+            retry_count: 0,
+            quality_score: None,
+        }
     }
 }

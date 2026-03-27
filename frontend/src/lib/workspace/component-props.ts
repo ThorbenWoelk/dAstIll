@@ -73,6 +73,7 @@ export interface WorkspaceSidebarVideoActions {
   onSelectChannelVideo?: (
     channelId: string,
     videoId: string,
+    video?: Video,
   ) => Promise<void> | void;
   onLoadMoreVideos: () => Promise<void> | void;
   onVideoTypeFilterChange: (value: VideoTypeFilter) => Promise<void> | void;
