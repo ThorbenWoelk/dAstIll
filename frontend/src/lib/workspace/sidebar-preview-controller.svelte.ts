@@ -36,6 +36,10 @@ import {
   resolveAcknowledgedParam,
   type AcknowledgedFilter,
 } from "$lib/workspace/types";
+import {
+  resolveSyncDateInputValue,
+  toIsoDateStart,
+} from "$lib/workspace/sidebar-sync-date";
 
 const PREVIEW_VISIBLE_VIDEO_COUNT = 5;
 const PREVIEW_FETCH_LIMIT = PREVIEW_VISIBLE_VIDEO_COUNT + 1;
@@ -44,18 +48,6 @@ const VIRTUALIZATION_THRESHOLD = 24;
 const VIRTUALIZED_ROW_HEIGHT = 56;
 const VIRTUALIZED_OVERSCAN = 8;
 const VIRTUALIZED_VIEWPORT_HEIGHT = 336;
-
-function toDateInputValue(value: string | null | undefined): string {
-  if (!value) {
-    return "";
-  }
-
-  return value.slice(0, 10);
-}
-
-function toIsoDateStart(value: string): string {
-  return `${value}T00:00:00.000Z`;
-}
 
 type ChannelVideoCollectionLoadMode = "preview" | "paged";
 
@@ -284,19 +276,6 @@ export function createSidebarPreviewController(
       ),
       virtualized: true,
     };
-  }
-
-  function resolveSyncDateInputValue(
-    channel: Channel,
-    syncDepthValue: SyncDepth | null,
-  ) {
-    const effective = channel.earliest_sync_date_user_set
-      ? channel.earliest_sync_date
-      : (syncDepthValue?.derived_earliest_ready_date ??
-        channel.earliest_sync_date ??
-        null);
-
-    return toDateInputValue(effective);
   }
 
   async function loadChannelVideoCollection(
