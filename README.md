@@ -90,7 +90,6 @@ To run the application locally, you will need:
    # Optional: Workload Identity Federation (WIF) for local development
    # AWS_ROLE_ARN="arn:aws:iam::877173393100:role/dastill-gcp-backend"
    # AWS_WEB_IDENTITY_TOKEN_FILE="backend-wif-token.jwt"
-   # GOOGLE_APPLICATION_CREDENTIALS="backend-sa-key.json"
    BACKEND_PROXY_TOKEN=local-dev-backend-proxy-token
    BACKEND_CORS_ALLOWED_ORIGINS=http://localhost:3543
    YOUTUBE_API_KEY=optional-api-key
