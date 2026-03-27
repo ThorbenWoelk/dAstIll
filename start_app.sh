@@ -177,6 +177,12 @@ else
 fi
 start_backend
 
+if ! wait_for_http "Backend" "http://localhost:$backend_port/api/health"; then
+	echo "Backend failed to start. Last backend log lines:"
+	tail -n 80 backend.log || true
+	exit 1
+fi
+
 if [[ "$mode" == "detached_child" ]]; then
 	echo "Starting frontend on http://localhost:$frontend_port (log: frontend.log)"
 else
@@ -190,12 +196,6 @@ else
 	echo "Starting docs on http://localhost:$docs_port (log: docs.log, streaming enabled)"
 fi
 start_docs
-
-if ! wait_for_http "Backend" "http://localhost:$backend_port/api/health"; then
-	echo "Backend failed to start. Last backend log lines:"
-	tail -n 80 backend.log || true
-	exit 1
-fi
 
 if ! wait_for_http "Frontend" "http://localhost:$frontend_port"; then
 	echo "Frontend failed to start. Last frontend log lines:"

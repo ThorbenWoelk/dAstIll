@@ -235,6 +235,21 @@ pub(super) fn assess_coverage(
                 channel_focus_ids,
             }
         }
+        ChatQueryIntent::RecentActivity => {
+            let needs_more = plan.supports_second_pass()
+                && (unique_video_count < 3 || dominant_video_count > plan.max_per_video + 1);
+            CoverageAssessment {
+                needs_more,
+                reason: Some(if needs_more {
+                    format!(
+                        "Pass 1 only covered {unique_video_count} recent videos, so a broader pass may improve recent-activity coverage."
+                    )
+                } else {
+                    format!("Recent-activity coverage spans {unique_video_count} recent videos.")
+                }),
+                channel_focus_ids: Vec::new(),
+            }
+        }
     }
 }
 

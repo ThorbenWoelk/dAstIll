@@ -62,6 +62,8 @@
   import {
     getSidebarPreviewSession,
     pruneSidebarPreviewCollections,
+    resolvePreferredExpandedSidebarPreviewCollectionId,
+    setSingleExpandedSidebarPreviewCollection,
     setSidebarPreviewSession,
   } from "$lib/workspace/sidebar-preview-session";
   import { formatSyncDate } from "$lib/workspace/content";
@@ -408,10 +410,18 @@
       restored[channelId] = {
         ...createEmptyChannelVideoCollection(),
         ...collection,
+        videos: constrainVideosToChannel(channelId, collection.videos),
       };
     }
 
     return restored;
+  }
+
+  function setExpandedPreviewChannel(channelId: string | null) {
+    setSingleExpandedSidebarPreviewCollection(
+      channelVideoCollections,
+      channelId,
+    );
   }
 
   $effect(() => {
@@ -426,6 +436,12 @@
 
     channelVideoCollections = restoreChannelVideoCollections(
       getSidebarPreviewSession(previewSessionKey) ?? {},
+    );
+    setExpandedPreviewChannel(
+      resolvePreferredExpandedSidebarPreviewCollectionId(
+        channelVideoCollections,
+        selectedChannelId,
+      ),
     );
     hydratedPreviewSessionKey = previewSessionKey;
   });
@@ -476,6 +492,16 @@
 
   function isVirtualChannel(channel: Channel) {
     return channel.id === OTHERS_CHANNEL_ID;
+  }
+
+  function constrainVideosToChannel(channelId: string, videos: Video[]) {
+    if (channelId === OTHERS_CHANNEL_ID) {
+      return dedupeVideosById(videos);
+    }
+
+    return dedupeVideosById(
+      videos.filter((video) => video.channel_id === channelId),
+    );
   }
 
   function resolveVisibleCollectionVideos(
@@ -588,7 +614,7 @@
       channel.id in initialChannelPreviews
     ) {
       const preloaded = initialChannelPreviews[channel.id];
-      state.videos = preloaded.videos;
+      state.videos = constrainVideosToChannel(channel.id, preloaded.videos);
       state.loadedMode = "preview";
       state.filterKey = filterKey;
       state.loadingInitial = false;
@@ -644,7 +670,7 @@
           return;
         }
 
-        current.videos = dedupeVideosById(snapshot.videos);
+        current.videos = constrainVideosToChannel(channel.id, snapshot.videos);
         current.loadedMode = mode;
         current.loadingInitial = false;
         current.loadingMore = false;
@@ -679,7 +705,10 @@
         return;
       }
 
-      current.videos = dedupeVideosById([...current.videos, ...page.videos]);
+      current.videos = constrainVideosToChannel(channel.id, [
+        ...current.videos,
+        ...page.videos,
+      ]);
       current.loadedMode = "paged";
       current.loadingInitial = false;
       current.loadingMore = false;
@@ -716,17 +745,21 @@
   async function toggleChannelVideoCollection(channel: Channel) {
     const state = ensureChannelVideoCollection(channel.id);
     if (state.expanded) {
-      state.expanded = false;
+      setExpandedPreviewChannel(null);
       return;
     }
 
-    state.expanded = true;
-    state.scrollTop = 0;
+    setExpandedPreviewChannel(channel.id);
+    const nextState = ensureChannelVideoCollection(channel.id);
+    nextState.scrollTop = 0;
 
     const filterKey = getChannelVideoCollectionFilterKey();
-    if (state.filterKey === filterKey && state.loadedMode === "preview") {
-      state.loadedMode = "paged";
-      if (state.videos.length < EXPANDED_PAGE_SIZE && state.hasMore) {
+    if (
+      nextState.filterKey === filterKey &&
+      nextState.loadedMode === "preview"
+    ) {
+      nextState.loadedMode = "paged";
+      if (nextState.videos.length < EXPANDED_PAGE_SIZE && nextState.hasMore) {
         await loadChannelVideoCollection(channel, "paged", {
           append: true,
         });
@@ -880,7 +913,7 @@
     const merged = state.videos.map((v) => (v.id === video.id ? video : v));
     const byType = filterVideosByType(merged, videoTypeFilter);
     const filtered = filterVideosByAcknowledged(byType, acknowledgedFilter);
-    state.videos = filtered;
+    state.videos = constrainVideosToChannel(video.channel_id, filtered);
 
     // Optimistic updates must not trigger a snapshot refetch: the GET cache is
     // still populated until updateAcknowledged completes and invalidates it, so
@@ -967,8 +1000,8 @@
       return;
     }
 
-    const state = ensureChannelVideoCollection(targetChannel.id);
-    state.expanded = true;
+    setExpandedPreviewChannel(targetChannel.id);
+    const nextState = ensureChannelVideoCollection(targetChannel.id);
     lastAutoExpandedChannelId = targetChannel.id;
 
     const preferredMode =
@@ -976,7 +1009,11 @@
         ? "paged"
         : "preview";
     if (
-      !supportsMode(state, getChannelVideoCollectionFilterKey(), preferredMode)
+      !supportsMode(
+        nextState,
+        getChannelVideoCollectionFilterKey(),
+        preferredMode,
+      )
     ) {
       void loadChannelVideoCollection(targetChannel, preferredMode);
     }
@@ -989,20 +1026,21 @@
 
     const state = ensureChannelVideoCollection(selectedChannel.id);
     if (!state.expanded) {
-      state.expanded = true;
+      setExpandedPreviewChannel(selectedChannel.id);
     }
 
-    if (state.loadingInitial || state.loadingMore) return;
+    const nextState = ensureChannelVideoCollection(selectedChannel.id);
+    if (nextState.loadingInitial || nextState.loadingMore) return;
     if (
       shouldLoadAllChannelVideosForSelection({
         selectedVideoId,
-        videos: state.videos,
-        loadedMode: state.loadedMode,
-        hasMore: state.hasMore,
+        videos: nextState.videos,
+        loadedMode: nextState.loadedMode,
+        hasMore: nextState.hasMore,
       })
     ) {
-      if (state.loadedMode === "preview") {
-        state.loadedMode = "paged";
+      if (nextState.loadedMode === "preview") {
+        nextState.loadedMode = "paged";
       }
       void loadNextChannelVideoPage(selectedChannel);
       return;
@@ -1012,13 +1050,13 @@
     if (
       !shouldForceReloadMissingSelectedVideo({
         selectedVideoId,
-        videos: state.videos,
+        videos: nextState.videos,
         probeKey,
-        lastProbeKey: state.selectedVideoReloadProbeKey,
+        lastProbeKey: nextState.selectedVideoReloadProbeKey,
       })
     ) {
-      if (state.videos.some((video) => video.id === selectedVideoId)) {
-        state.selectedVideoReloadProbeKey = null;
+      if (nextState.videos.some((video) => video.id === selectedVideoId)) {
+        nextState.selectedVideoReloadProbeKey = null;
       }
       return;
     }
@@ -1026,7 +1064,7 @@
     // A selected video can legitimately remain outside the visible collection
     // scope, for example when it is older than a user-set sync floor or hidden
     // by the current filters. Probe once, then stop retrying indefinitely.
-    state.selectedVideoReloadProbeKey = probeKey;
+    nextState.selectedVideoReloadProbeKey = probeKey;
     void loadChannelVideoCollection(selectedChannel, "paged", { force: true });
   });
 

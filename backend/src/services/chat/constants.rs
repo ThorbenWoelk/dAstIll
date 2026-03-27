@@ -6,6 +6,8 @@ pub(crate) const CHAT_SYNTHESIS_SOURCE_LIMIT: usize = 12;
 pub(crate) const CHAT_RECOMMENDATION_SOURCE_LIMIT: usize = 14;
 pub(crate) const CHAT_PATTERN_SOURCE_LIMIT: usize = 24;
 pub(crate) const CHAT_COMPARISON_SOURCE_LIMIT: usize = 20;
+pub(crate) const CHAT_RECENT_ACTIVITY_SOURCE_LIMIT: usize = 12;
+pub(crate) const CHAT_RECENT_ACTIVITY_VIDEO_LIMIT: usize = 6;
 pub(crate) const CHAT_HISTORY_LIMIT: usize = 12;
 pub(crate) const CHAT_CONTEXT_MAX_CHARS: usize = 1_400;
 pub(crate) const CHAT_TITLE_MAX_CHARS: usize = 80;
@@ -44,7 +46,7 @@ You receive a block labeled RECENT CONVERSATION (possibly empty) followed by CUR
 The user may scope the request with @mentions and +mentions. Treat @name as a channel/video hint. Treat @"Exact Title" or @{Exact Title} as a scoped title hint. Treat +name, +"Exact Title", or +{Exact Title} as a video-only scope hint.
 
 Return valid JSON only with this shape:
-{"needs_retrieval":true|false,"intent":"fact|synthesis|pattern|comparison","rationale":"short explanation","sub_queries":["..."],"expansion_queries":["..."]}
+{"needs_retrieval":true|false,"intent":"fact|synthesis|pattern|comparison|recent_activity","rationale":"short explanation","sub_queries":["..."],"expansion_queries":["..."]}
 
 needs_retrieval:
 - false when no new library search is needed: (a) clarifications or follow-ups that only rely on what was already said in RECENT CONVERSATION, or (b) pure greetings, thanks, goodbyes, or other small talk with no question about video, channel, or transcript content. Use false for (b) even when RECENT CONVERSATION is empty (first message).
@@ -52,7 +54,7 @@ needs_retrieval:
 
 If needs_retrieval is false, sub_queries and expansion_queries may be empty arrays.
 
-intent: fact: 1 direct query, no expansion. synthesis: 1-2 queries, optional expansion. pattern/comparison: 2-3 initial queries plus 1-2 expansion queries for broader coverage.
+intent: fact: 1 direct query, no expansion. synthesis: 1-2 queries, optional expansion. pattern/comparison: 2-3 initial queries plus 1-2 expansion queries for broader coverage. recent_activity: latest content in the library for a scoped creator/channel; prefer 1 short query and rely on recency metadata rather than keyword-heavy phrasing.
 
 Use the user's wording where possible. Keep each query short. No markdown or code fences."#;
 
@@ -86,13 +88,21 @@ Available tools:
 - At least one of query or video_title must be present.
 - If the user says "this video" but the title is unknown in the current conversation, do not call this tool. Ask which video they mean.
 
+4. recent_library_activity
+- Use for prompts about what a scoped creator/channel has been doing lately, recently, these days, or in the latest videos currently in the library.
+- Prefer this over search_library when the question is mainly about recent channel activity instead of a topic lookup.
+- Input JSON:
+  {"scope":"channel","channel_id":"optional resolved id","limit_videos":3-12,"include_summaries":true|false,"include_transcripts":true|false}
+- If the user asks for real-time off-library status like whether someone is live right now, do not use this tool.
+
 Return valid JSON only with this shape:
-{"action":"respond|tool_call","rationale":"short explanation","tool_name":"search_library|db_inspect|highlight_lookup"|null,"search_library_input":{"query":"...","source":"all|summary|transcript","limit":1-24}|null,"db_inspect_input":{"operation":"count|list|breakdown","resource":"summaries|transcripts|videos|channels","limit":1-10,"group_by":"channel"|null}|null,"highlight_lookup_input":{"query":"optional topic or claim","video_title":"optional title fragment","limit":1-20}|null}
+{"action":"respond|tool_call|recent_library_activity","rationale":"short explanation","tool_name":"search_library|db_inspect|highlight_lookup|recent_library_activity"|null,"search_library_input":{"query":"...","source":"all|summary|transcript","limit":1-24}|null,"db_inspect_input":{"operation":"count|list|breakdown","resource":"summaries|transcripts|videos|channels","limit":1-10,"group_by":"channel"|null}|null,"highlight_lookup_input":{"query":"optional topic or claim","video_title":"optional title fragment","limit":1-20}|null,"recent_library_activity_input":{"scope":"channel","channel_id":"optional resolved id","limit_videos":3-12,"include_summaries":true|false,"include_transcripts":true|false}|null}
 
 Rules:
 - Prefer responding when the current conversation and tool results already provide enough information.
 - Call at most one tool per response.
 - Use search_library instead of trying to reason about retrieval strategy yourself.
+- Use recent_library_activity first for scoped "lately/recently/latest" channel prompts.
 - Use db_inspect only for read-only stored-data questions.
 - Use highlight_lookup only for saved user highlights, not transcript or summary search.
 - Do not invent tools or arguments outside the allowed schemas.

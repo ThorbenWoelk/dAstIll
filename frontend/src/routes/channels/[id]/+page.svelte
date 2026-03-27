@@ -97,6 +97,7 @@
   let acknowledgedFilter = $state<AcknowledgedFilter>("all");
   let aiStatus = $state<AiStatus | null>(null);
   let activeOverviewRequest = 0;
+  let lastOverviewLoadKey = $state<string | null>(null);
   let seededChannelPreviews = $state<Record<string, ChannelSnapshot>>(
     (($page.data.channelPreviews ?? {}) as Record<string, ChannelSnapshot>) ??
       {},
@@ -163,6 +164,14 @@
     currentAcknowledgedFilter: AcknowledgedFilter,
   ) {
     return `${currentVideoType}:${currentAcknowledgedFilter}:default`;
+  }
+
+  function buildOverviewLoadKey(
+    channelId: string | null,
+    currentVideoType: VideoTypeFilter,
+    currentAcknowledgedFilter: AcknowledgedFilter,
+  ) {
+    return `${channelId ?? "__none__"}:${currentVideoType}:${currentAcknowledgedFilter}`;
   }
 
   function applyBootstrapState(
@@ -614,6 +623,11 @@
 
     workspaceStateHydrated = true;
     if (!hasSeededSelectedSnapshot || channels.length === 0) {
+      lastOverviewLoadKey = buildOverviewLoadKey(
+        selectedChannelId,
+        videoTypeFilter,
+        acknowledgedFilter,
+      );
       void loadChannelOverviewState(selectedChannelId, {
         shouldReloadChannels: channels.length === 0,
       });
@@ -629,10 +643,16 @@
       return;
     }
 
-    if (channels.length === 0 && loadingOverview) {
+    const nextLoadKey = buildOverviewLoadKey(
+      selectedChannelId,
+      videoTypeFilter,
+      acknowledgedFilter,
+    );
+    if (nextLoadKey === lastOverviewLoadKey) {
       return;
     }
 
+    lastOverviewLoadKey = nextLoadKey;
     void loadChannelOverviewState(selectedChannelId, {
       shouldReloadChannels: false,
     });

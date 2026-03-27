@@ -4,6 +4,8 @@ import {
   clearSidebarPreviewSession,
   getSidebarPreviewSession,
   pruneSidebarPreviewCollections,
+  resolvePreferredExpandedSidebarPreviewCollectionId,
+  setSingleExpandedSidebarPreviewCollection,
   setSidebarPreviewSession,
   type SidebarPreviewCollectionSnapshot,
 } from "../src/lib/workspace/sidebar-preview-session";
@@ -23,6 +25,13 @@ function makeVideo(id: string): Video {
     acknowledged: false,
     is_short: false,
   } as unknown as Video;
+}
+
+function makeVideoForChannel(id: string, channelId: string): Video {
+  return {
+    ...makeVideo(id),
+    channel_id: channelId,
+  } as Video;
 }
 
 function makeCollection(
@@ -65,7 +74,7 @@ describe("sidebar preview session", () => {
       {
         "channel-a": makeCollection(),
         "channel-b": makeCollection({
-          videos: [makeVideo("video-2")],
+          videos: [makeVideoForChannel("video-2", "channel-b")],
         }),
       },
       ["channel-b"],
@@ -73,5 +82,66 @@ describe("sidebar preview session", () => {
 
     expect(Object.keys(pruned)).toEqual(["channel-b"]);
     expect(pruned["channel-b"]?.videos[0]?.id).toBe("video-2");
+  });
+
+  it("sanitizes restored concrete-channel collections when video rows belong elsewhere", () => {
+    clearSidebarPreviewSession("workspace");
+    setSidebarPreviewSession("workspace", {
+      "channel-a": makeCollection({
+        videos: [
+          makeVideoForChannel("video-1", "channel-a"),
+          makeVideoForChannel("video-2", "channel-b"),
+        ],
+        loadedMode: "paged",
+        hasMore: true,
+        nextOffset: 2,
+      }),
+    });
+
+    const restored = getSidebarPreviewSession("workspace");
+    expect(restored?.["channel-a"]).toEqual({
+      ...makeCollection(),
+      videos: [],
+      loadedMode: null,
+      hasMore: false,
+      nextOffset: 0,
+      channelVideoCount: null,
+      filterKey: null,
+      syncDepth: null,
+      earliestSyncDateInput: "",
+      selectedVideoReloadProbeKey: null,
+    });
+  });
+
+  it("collapses all other expanded collections when one channel becomes active", () => {
+    const collections = {
+      "channel-a": makeCollection({ expanded: true }),
+      "channel-b": makeCollection({
+        expanded: true,
+        videos: [makeVideoForChannel("video-2", "channel-b")],
+      }),
+    };
+
+    setSingleExpandedSidebarPreviewCollection(collections, "channel-b");
+
+    expect(collections["channel-a"]?.expanded).toBe(false);
+    expect(collections["channel-b"]?.expanded).toBe(true);
+  });
+
+  it("prefers the current channel when normalizing restored expanded state", () => {
+    const collections = {
+      "channel-a": makeCollection({ expanded: true }),
+      "channel-b": makeCollection({
+        expanded: true,
+        videos: [makeVideoForChannel("video-2", "channel-b")],
+      }),
+    };
+
+    expect(
+      resolvePreferredExpandedSidebarPreviewCollectionId(
+        collections,
+        "channel-b",
+      ),
+    ).toBe("channel-b");
   });
 });

@@ -1,6 +1,7 @@
 mod cloud_models;
 mod constants;
 mod intent;
+mod recent;
 mod tools;
 
 pub use cloud_models::{default_chat_cloud_model_id, is_chat_cloud_model_choice};
@@ -31,6 +32,10 @@ use crate::services::search::SearchCandidate;
 use crate::services::text::limit_text;
 use crate::state::AppState;
 
+use super::chat::recent::{
+    execute_recent_library_activity_query, is_explicit_realtime_status_query,
+    is_recent_activity_query,
+};
 use super::chat_heuristics::{
     build_plan_label, collect_focus_terms, heuristic_expansion_queries, heuristic_query_variants,
     is_attributed_preference_query, push_unique_query, recommendation_query_variants,
@@ -163,15 +168,26 @@ pub(super) struct ChatRetrievalPlan {
 impl ChatRetrievalPlan {
     fn fallback(prompt: &str, rationale: Option<String>) -> Self {
         let attributed_preference = is_attributed_preference_query(prompt);
+        let recent_activity =
+            is_recent_activity_query(prompt) && !is_explicit_realtime_status_query(prompt);
+        let intent = if recent_activity {
+            ChatQueryIntent::RecentActivity
+        } else {
+            ChatQueryIntent::Synthesis
+        };
+        let (budget, max_per_video) = if attributed_preference {
+            (CHAT_RECOMMENDATION_SOURCE_LIMIT, 3)
+        } else {
+            match intent {
+                ChatQueryIntent::RecentActivity => (CHAT_RECENT_ACTIVITY_SOURCE_LIMIT, 2),
+                _ => (CHAT_SYNTHESIS_SOURCE_LIMIT, 4),
+            }
+        };
         Self {
-            intent: ChatQueryIntent::Synthesis,
-            label: build_plan_label(ChatQueryIntent::Synthesis, attributed_preference).to_string(),
-            budget: if attributed_preference {
-                CHAT_RECOMMENDATION_SOURCE_LIMIT
-            } else {
-                CHAT_SYNTHESIS_SOURCE_LIMIT
-            },
-            max_per_video: if attributed_preference { 3 } else { 4 },
+            intent,
+            label: build_plan_label(intent, attributed_preference).to_string(),
+            budget,
+            max_per_video,
             queries: vec![prompt.trim().to_string()],
             expansion_queries: Vec::new(),
             focus_terms: collect_focus_terms(prompt),
@@ -192,8 +208,13 @@ impl ChatRetrievalPlan {
             .unwrap_or(ChatQueryIntent::Synthesis);
         let mut intent = planner_intent;
         let attributed_preference = is_attributed_preference_query(prompt);
+        let recent_activity =
+            is_recent_activity_query(prompt) && !is_explicit_realtime_status_query(prompt);
         if attributed_preference && matches!(intent, ChatQueryIntent::Fact) {
             intent = ChatQueryIntent::Synthesis;
+        }
+        if recent_activity && !matches!(intent, ChatQueryIntent::Comparison) {
+            intent = ChatQueryIntent::RecentActivity;
         }
 
         let skip_retrieval = response.needs_retrieval == Some(false);
@@ -203,6 +224,7 @@ impl ChatRetrievalPlan {
             ChatQueryIntent::Synthesis => (CHAT_SYNTHESIS_SOURCE_LIMIT, 4),
             ChatQueryIntent::Pattern => (CHAT_PATTERN_SOURCE_LIMIT, 3),
             ChatQueryIntent::Comparison => (CHAT_COMPARISON_SOURCE_LIMIT, 5),
+            ChatQueryIntent::RecentActivity => (CHAT_RECENT_ACTIVITY_SOURCE_LIMIT, 2),
         };
         if attributed_preference && !matches!(intent, ChatQueryIntent::Comparison) {
             budget = budget.max(CHAT_RECOMMENDATION_SOURCE_LIMIT);
@@ -438,6 +460,7 @@ struct ChatToolLoopResponse {
     search_library_input: Option<tools::SearchLibraryToolInput>,
     db_inspect_input: Option<tools::DbInspectToolInput>,
     highlight_lookup_input: Option<tools::HighlightLookupToolInput>,
+    recent_library_activity_input: Option<tools::RecentLibraryActivityToolInput>,
 }
 
 #[derive(Debug)]
@@ -457,6 +480,7 @@ enum PlannedChatToolCall {
     SearchLibrary(tools::SearchLibraryQuery),
     DbInspect(tools::DbInspectQuery),
     HighlightLookup(tools::HighlightLookupQuery),
+    RecentLibraryActivity(tools::RecentLibraryActivityQuery),
 }
 
 impl PlannedChatToolCall {
@@ -465,6 +489,7 @@ impl PlannedChatToolCall {
             Self::SearchLibrary(_) => "search_library",
             Self::DbInspect(_) => "db_inspect",
             Self::HighlightLookup(_) => "highlight_lookup",
+            Self::RecentLibraryActivity(_) => "recent_library_activity",
         }
     }
 
@@ -473,6 +498,7 @@ impl PlannedChatToolCall {
             Self::SearchLibrary(_) => "Library search",
             Self::DbInspect(_) => "Database lookup",
             Self::HighlightLookup(_) => "Saved highlights lookup",
+            Self::RecentLibraryActivity(_) => "Recent library activity",
         }
     }
 
@@ -481,6 +507,9 @@ impl PlannedChatToolCall {
             Self::SearchLibrary(query) => describe_search_library_query(query.clone()),
             Self::DbInspect(query) => tools::describe_db_inspect_query(*query),
             Self::HighlightLookup(query) => describe_highlight_lookup_query(query.clone()),
+            Self::RecentLibraryActivity(query) => {
+                describe_recent_library_activity_query(query.clone())
+            }
         }
     }
 }
@@ -556,6 +585,21 @@ impl ChatToolLoopResponse {
                     rationale,
                 })
             }
+            "recent_library_activity" => {
+                let query = tools::build_recent_library_activity_query(
+                    Some("recent_library_activity"),
+                    self.recent_library_activity_input,
+                )?
+                .ok_or_else(|| {
+                    "recent_library_activity action did not include a valid request".to_string()
+                })?;
+                Ok(ToolLoopStepOutcome {
+                    action: ToolLoopAction::ToolCall(PlannedChatToolCall::RecentLibraryActivity(
+                        query,
+                    )),
+                    rationale,
+                })
+            }
             "tool_call" => {
                 let tool_name = self
                     .tool_name
@@ -603,6 +647,22 @@ impl ChatToolLoopResponse {
                             action: ToolLoopAction::ToolCall(PlannedChatToolCall::HighlightLookup(
                                 query,
                             )),
+                            rationale,
+                        })
+                    }
+                    "recent_library_activity" => {
+                        let query = tools::build_recent_library_activity_query(
+                            Some(tool_name),
+                            self.recent_library_activity_input,
+                        )?
+                        .ok_or_else(|| {
+                            "tool_call action did not include a valid recent_library_activity request"
+                                .to_string()
+                        })?;
+                        Ok(ToolLoopStepOutcome {
+                            action: ToolLoopAction::ToolCall(
+                                PlannedChatToolCall::RecentLibraryActivity(query),
+                            ),
                             rationale,
                         })
                     }
@@ -1432,6 +1492,21 @@ impl ChatService {
             CHAT_TOOL_LOOP_MAX_STEPS
         };
 
+        if let Some(call) = maybe_direct_recent_activity_tool_call(prompt, &prompt_scope) {
+            self.execute_planned_tool_call(ToolCallExecutionRequest {
+                state,
+                call,
+                prompt_scope: &prompt_scope,
+                rationale: Some(
+                    "This asks about what a scoped channel has been doing lately, so recent library activity was gathered first.",
+                ),
+                tool_outputs: &mut tool_outputs,
+                gathered_sources: &mut gathered_sources,
+                active_chat,
+            })
+            .await?;
+        }
+
         for step in 1..=max_steps {
             active_chat.ensure_not_cancelled()?;
             active_chat
@@ -1549,6 +1624,9 @@ impl ChatService {
                     PlannedChatToolCall::HighlightLookup(_) => {
                         "Looking up saved highlights.".to_string()
                     }
+                    PlannedChatToolCall::RecentLibraryActivity(_) => {
+                        "Reviewing recent processed videos for the scoped channel.".to_string()
+                    }
                 })
                 .with_decision(
                     rationale.and_then(trim_to_option).unwrap_or_else(|| {
@@ -1634,6 +1712,40 @@ impl ChatService {
                         status: ChatStatusPayload::new(
                             "tool_complete",
                             "Saved highlights lookup complete",
+                        )
+                        .with_detail(output.clone())
+                        .with_tool(
+                            ChatToolStatusPayload::new(
+                                call.tool_name(),
+                                call.label(),
+                                "completed",
+                                result.summary,
+                            )
+                            .with_output(output),
+                        ),
+                    })
+                    .await;
+            }
+            PlannedChatToolCall::RecentLibraryActivity(query) => {
+                let query = apply_recent_activity_scope(query.clone(), prompt_scope);
+                let result = execute_recent_library_activity_query(&state.db, &query).await?;
+                let output = result.output.clone();
+                merge_retrieved_sources(
+                    gathered_sources,
+                    result
+                        .materials
+                        .into_iter()
+                        .map(retrieved_source_from_search_material),
+                );
+                tool_outputs.push(ToolEvidenceRecord {
+                    summary: result.summary.clone(),
+                    output: output.clone(),
+                });
+                active_chat
+                    .emit(ChatStreamEvent::Status {
+                        status: ChatStatusPayload::new(
+                            "tool_complete",
+                            "Recent library activity complete",
                         )
                         .with_detail(output.clone())
                         .with_tool(
@@ -2905,6 +3017,44 @@ fn is_direct_video_lookup_request(cleaned_prompt: &str, search_query: &str) -> b
         .all(|term| generic_terms.contains(term.as_str()) || title_terms.contains(&term))
 }
 
+fn maybe_direct_recent_activity_tool_call(
+    prompt: &str,
+    scope: &tools::MentionScope,
+) -> Option<PlannedChatToolCall> {
+    if !is_recent_activity_query(prompt) || is_explicit_realtime_status_query(prompt) {
+        return None;
+    }
+    if !scope.video_focus_ids.is_empty() {
+        return None;
+    }
+    let channel_id = scope.channel_focus_ids.first()?.clone();
+    Some(PlannedChatToolCall::RecentLibraryActivity(
+        tools::RecentLibraryActivityQuery {
+            scope: tools::RecentLibraryActivityScope::Channel,
+            channel_id: Some(channel_id),
+            video_id: None,
+            limit_videos: CHAT_RECENT_ACTIVITY_VIDEO_LIMIT,
+            include_summaries: true,
+            include_transcripts: true,
+        },
+    ))
+}
+
+fn apply_recent_activity_scope(
+    mut query: tools::RecentLibraryActivityQuery,
+    scope: &tools::MentionScope,
+) -> tools::RecentLibraryActivityQuery {
+    if query.channel_id.is_none()
+        && matches!(query.scope, tools::RecentLibraryActivityScope::Channel)
+    {
+        query.channel_id = scope.channel_focus_ids.first().cloned();
+    }
+    if query.video_id.is_none() {
+        query.video_id = scope.video_focus_ids.first().cloned();
+    }
+    query
+}
+
 async fn load_direct_video_sources(
     store: &db::Store,
     video_id: &str,
@@ -2990,6 +3140,23 @@ fn describe_highlight_lookup_query(query: tools::HighlightLookupQuery) -> String
     }
 }
 
+fn describe_recent_library_activity_query(query: tools::RecentLibraryActivityQuery) -> String {
+    match query.scope {
+        tools::RecentLibraryActivityScope::Channel => format!(
+            "Review recent library activity for a scoped channel (latest {} videos)",
+            query.limit_videos
+        ),
+        tools::RecentLibraryActivityScope::Video => format!(
+            "Review recent library activity around a scoped video (latest {} videos)",
+            query.limit_videos
+        ),
+        tools::RecentLibraryActivityScope::Library => format!(
+            "Review recent library activity across the library (latest {} videos)",
+            query.limit_videos
+        ),
+    }
+}
+
 fn format_search_library_tool_output(
     query: &tools::SearchLibraryQuery,
     sources: &[RetrievedChatSource],
@@ -3044,9 +3211,10 @@ mod tests {
         collect_focus_terms, is_attributed_preference_query, recommendation_query_variants,
     };
     use super::{
-        ActiveChatHandle, CHAT_CLASSIFY_TIMEOUT, ChatQueryIntent, ChatQueryPlanResponse,
-        ChatRetrievalPlan, ChatService, ChatToolLoopResponse, PlannedChatToolCall,
-        RetrievedChatSource, ToolLoopAction, is_direct_video_lookup_request, tools,
+        ActiveChatHandle, CHAT_CLASSIFY_TIMEOUT, CHAT_RECENT_ACTIVITY_SOURCE_LIMIT,
+        ChatQueryIntent, ChatQueryPlanResponse, ChatRetrievalPlan, ChatService,
+        ChatToolLoopResponse, PlannedChatToolCall, RetrievedChatSource, ToolLoopAction,
+        is_direct_video_lookup_request, maybe_direct_recent_activity_tool_call, tools,
     };
     use crate::models::ChatSource;
     use crate::services::chat::tools::{
@@ -3117,6 +3285,14 @@ mod tests {
     }
 
     #[test]
+    fn retrieval_plan_recognizes_recent_activity_queries() {
+        let plan = ChatRetrievalPlan::fallback("What is HealthyGamerGG doing lately?", None);
+        assert_eq!(plan.intent, ChatQueryIntent::RecentActivity);
+        assert_eq!(plan.label, "Recent activity scan");
+        assert_eq!(plan.budget, CHAT_RECENT_ACTIVITY_SOURCE_LIMIT);
+    }
+
+    #[test]
     fn recommendation_query_variants_keep_subject_and_topic() {
         let queries = recommendation_query_variants("what is the best database according to theo?");
         assert!(
@@ -3172,6 +3348,7 @@ mod tests {
                 limit: None,
                 group_by: None,
             }),
+            recent_library_activity_input: None,
         }
         .into_step_outcome()
         .expect("valid tool plan");
@@ -3202,6 +3379,7 @@ mod tests {
             }),
             highlight_lookup_input: None,
             db_inspect_input: None,
+            recent_library_activity_input: None,
         }
         .into_step_outcome()
         .expect("valid tool plan");
@@ -3229,6 +3407,7 @@ mod tests {
             }),
             highlight_lookup_input: None,
             db_inspect_input: None,
+            recent_library_activity_input: None,
         }
         .into_step_outcome()
         .expect("direct search_library action should parse");
@@ -3256,6 +3435,7 @@ mod tests {
                 limit: Some(3),
             }),
             db_inspect_input: None,
+            recent_library_activity_input: None,
         }
         .into_step_outcome()
         .expect("direct highlight_lookup action should parse");
@@ -3272,6 +3452,39 @@ mod tests {
     }
 
     #[test]
+    fn tool_loop_accepts_direct_recent_library_activity_action() {
+        let execution = ChatToolLoopResponse {
+            action: Some("recent_library_activity".to_string()),
+            rationale: Some("Need recent channel activity.".to_string()),
+            tool_name: None,
+            search_library_input: None,
+            highlight_lookup_input: None,
+            db_inspect_input: None,
+            recent_library_activity_input: Some(tools::RecentLibraryActivityToolInput {
+                scope: Some("channel".to_string()),
+                channel_id: None,
+                video_id: None,
+                limit_videos: Some(6),
+                include_summaries: Some(true),
+                include_transcripts: Some(true),
+            }),
+        }
+        .into_step_outcome()
+        .expect("direct recent_library_activity action should parse");
+
+        let ToolLoopAction::ToolCall(PlannedChatToolCall::RecentLibraryActivity(query)) =
+            execution.action
+        else {
+            panic!("expected recent library activity tool call");
+        };
+
+        assert_eq!(query.scope, tools::RecentLibraryActivityScope::Channel);
+        assert_eq!(query.limit_videos, 6);
+        assert!(query.include_summaries);
+        assert!(query.include_transcripts);
+    }
+
+    #[test]
     fn tool_loop_rejects_invalid_db_resource() {
         let error = ChatToolLoopResponse {
             action: Some("tool_call".to_string()),
@@ -3285,6 +3498,7 @@ mod tests {
                 limit: None,
                 group_by: None,
             }),
+            recent_library_activity_input: None,
         }
         .into_step_outcome()
         .expect_err("invalid db resource should fail");
@@ -3301,6 +3515,7 @@ mod tests {
             search_library_input: None,
             highlight_lookup_input: None,
             db_inspect_input: None,
+            recent_library_activity_input: None,
         }
         .into_step_outcome()
         .expect("respond action should be accepted");
@@ -3310,6 +3525,25 @@ mod tests {
             outcome.rationale.as_deref(),
             Some("This is just a greeting.")
         );
+    }
+
+    #[test]
+    fn direct_recent_tool_call_prefers_channel_scope_only() {
+        let scope = tools::MentionScope {
+            cleaned_prompt: "What is HealthyGamerGG doing lately?".to_string(),
+            channel_focus_ids: vec!["chan_1".to_string()],
+            video_focus_ids: Vec::new(),
+            channel_names: vec!["HealthyGamerGG".to_string()],
+            video_titles: Vec::new(),
+        };
+
+        let Some(PlannedChatToolCall::RecentLibraryActivity(query)) =
+            maybe_direct_recent_activity_tool_call("What is HealthyGamerGG doing lately?", &scope)
+        else {
+            panic!("expected recent activity tool call");
+        };
+
+        assert_eq!(query.channel_id.as_deref(), Some("chan_1"));
     }
 
     #[tokio::test]

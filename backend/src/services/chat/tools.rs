@@ -28,6 +28,16 @@ pub(crate) struct HighlightLookupToolInput {
     pub(crate) limit: Option<usize>,
 }
 
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub(crate) struct RecentLibraryActivityToolInput {
+    pub(crate) scope: Option<String>,
+    pub(crate) channel_id: Option<String>,
+    pub(crate) video_id: Option<String>,
+    pub(crate) limit_videos: Option<usize>,
+    pub(crate) include_summaries: Option<bool>,
+    pub(crate) include_transcripts: Option<bool>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DbInspectTarget {
     Summaries,
@@ -80,6 +90,23 @@ pub(crate) struct HighlightLookupQuery {
 pub(crate) struct HighlightLookupResult {
     pub(crate) summary: String,
     pub(crate) output: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RecentLibraryActivityScope {
+    Channel,
+    Video,
+    Library,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RecentLibraryActivityQuery {
+    pub(crate) scope: RecentLibraryActivityScope,
+    pub(crate) channel_id: Option<String>,
+    pub(crate) video_id: Option<String>,
+    pub(crate) limit_videos: usize,
+    pub(crate) include_summaries: bool,
+    pub(crate) include_transcripts: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -175,13 +202,6 @@ pub(crate) fn resolve_mention_scope_from_catalog(
     videos: &[Video],
 ) -> MentionScope {
     let mentions = extract_mentions(input);
-    if mentions.is_empty() {
-        return MentionScope {
-            cleaned_prompt: input.trim().to_string(),
-            ..MentionScope::default()
-        };
-    }
-
     let mut scope = MentionScope::default();
     for mention in &mentions {
         match mention.trigger {
@@ -208,7 +228,13 @@ pub(crate) fn resolve_mention_scope_from_catalog(
         }
     }
 
-    scope.cleaned_prompt = remove_mention_spans(input, &mentions);
+    scope.cleaned_prompt = if mentions.is_empty() {
+        input.trim().to_string()
+    } else {
+        remove_mention_spans(input, &mentions)
+    };
+    let cleaned_prompt = scope.cleaned_prompt.clone();
+    infer_plain_scope_from_text(&cleaned_prompt, channels, videos, &mut scope);
     scope
 }
 
@@ -377,6 +403,41 @@ pub(crate) fn build_highlight_lookup_query(
         query,
         video_title,
         limit: input.limit.unwrap_or(8).clamp(1, 20),
+    }))
+}
+
+pub(crate) fn build_recent_library_activity_query(
+    tool_name: Option<&str>,
+    input: Option<RecentLibraryActivityToolInput>,
+) -> Result<Option<RecentLibraryActivityQuery>, String> {
+    if tool_name.is_none() && input.is_none() {
+        return Ok(None);
+    }
+
+    let tool_name = tool_name.ok_or_else(|| "missing tool name".to_string())?;
+    if tool_name.trim() != "recent_library_activity" {
+        return Err(format!("unsupported tool `{tool_name}`"));
+    }
+
+    let input = input.ok_or_else(|| "missing recent_library_activity input".to_string())?;
+    let scope = match input.scope.as_deref().map(str::trim) {
+        None | Some("") | Some("channel") => RecentLibraryActivityScope::Channel,
+        Some("video") => RecentLibraryActivityScope::Video,
+        Some("library") => RecentLibraryActivityScope::Library,
+        Some(value) => {
+            return Err(format!(
+                "unsupported recent_library_activity scope `{value}`"
+            ));
+        }
+    };
+
+    Ok(Some(RecentLibraryActivityQuery {
+        scope,
+        channel_id: input.channel_id.and_then(|value| trim_to_option(&value)),
+        video_id: input.video_id.and_then(|value| trim_to_option(&value)),
+        limit_videos: input.limit_videos.unwrap_or(6).clamp(3, 12),
+        include_summaries: input.include_summaries.unwrap_or(true),
+        include_transcripts: input.include_transcripts.unwrap_or(true),
     }))
 }
 
@@ -606,13 +667,10 @@ fn describe_highlight_lookup_query(query: &HighlightLookupQuery) -> String {
 fn describe_highlight_lookup_scope(query: &HighlightLookupQuery) -> String {
     match (&query.query, &query.video_title) {
         (Some(query_text), Some(video_title)) => {
-            format!(
-                "query \"{}\" in videos matching \"{}\"",
-                query_text, video_title
-            )
+            format!("query \"{query_text}\" in videos matching \"{video_title}\"")
         }
-        (Some(query_text), None) => format!("query \"{}\"", query_text),
-        (None, Some(video_title)) => format!("videos matching \"{}\"", video_title),
+        (Some(query_text), None) => format!("query \"{query_text}\""),
+        (None, Some(video_title)) => format!("videos matching \"{video_title}\""),
         (None, None) => "saved highlights".to_string(),
     }
 }
@@ -746,6 +804,47 @@ fn resolve_video_mention<'a>(token: &str, videos: &'a [Video]) -> Option<&'a Vid
     })
 }
 
+fn infer_plain_scope_from_text(
+    input: &str,
+    channels: &[Channel],
+    videos: &[Video],
+    scope: &mut MentionScope,
+) {
+    if scope.channel_focus_ids.is_empty()
+        && let Some(channel) = resolve_plain_channel_reference(input, channels)
+    {
+        push_unique(&mut scope.channel_focus_ids, channel.id.clone());
+        push_unique(&mut scope.channel_names, channel.name.clone());
+    }
+
+    if scope.video_focus_ids.is_empty()
+        && let Some(video) = resolve_plain_video_reference(input, videos)
+    {
+        push_unique(&mut scope.video_focus_ids, video.id.clone());
+        push_unique(&mut scope.video_titles, video.title.clone());
+        push_unique(&mut scope.channel_focus_ids, video.channel_id.clone());
+    }
+}
+
+fn resolve_plain_channel_reference<'a>(
+    input: &str,
+    channels: &'a [Channel],
+) -> Option<&'a Channel> {
+    resolve_unique_phrase_match(input, channels, |channel| {
+        let mut haystacks = vec![normalize_lookup_key(&channel.name)];
+        if let Some(handle) = &channel.handle {
+            haystacks.push(normalize_lookup_key(handle.trim_start_matches('@')));
+        }
+        haystacks
+    })
+}
+
+fn resolve_plain_video_reference<'a>(input: &str, videos: &'a [Video]) -> Option<&'a Video> {
+    resolve_unique_phrase_match(input, videos, |video| {
+        vec![normalize_lookup_key(&video.title)]
+    })
+}
+
 fn resolve_unique_match<'a, T, F>(token: &str, items: &'a [T], haystacks: F) -> Option<&'a T>
 where
     F: Fn(&T) -> Vec<String>,
@@ -777,6 +876,26 @@ where
     (fuzzy.len() == 1).then(|| fuzzy[0])
 }
 
+fn resolve_unique_phrase_match<'a, T, F>(input: &str, items: &'a [T], haystacks: F) -> Option<&'a T>
+where
+    F: Fn(&T) -> Vec<String>,
+{
+    let normalized_input = normalize_lookup_key(input);
+    if normalized_input.is_empty() {
+        return None;
+    }
+
+    let matches = items
+        .iter()
+        .filter(|item| {
+            haystacks(item)
+                .iter()
+                .any(|candidate| lookup_phrase_exists(&normalized_input, candidate))
+        })
+        .collect::<Vec<_>>();
+    (matches.len() == 1).then(|| matches[0])
+}
+
 fn normalize_lookup_key(input: &str) -> String {
     input
         .trim()
@@ -793,6 +912,15 @@ fn normalize_lookup_key(input: &str) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn lookup_phrase_exists(input: &str, needle: &str) -> bool {
+    if needle.is_empty() {
+        return false;
+    }
+    let haystack = format!(" {input} ");
+    let needle = format!(" {needle} ");
+    haystack.contains(&needle)
 }
 
 fn push_unique(values: &mut Vec<String>, value: String) {
@@ -902,9 +1030,10 @@ fn format_list_output(label: &str, rows: Vec<String>) -> String {
 mod tests {
     use super::{
         DbGroupBy, DbInspectOperation, DbInspectQuery, DbInspectTarget, DbInspectToolInput,
-        HighlightLookupQuery, HighlightLookupToolInput, SearchLibraryToolInput,
-        build_db_inspect_query, build_highlight_lookup_query, build_search_library_query,
-        describe_db_inspect_query, describe_highlight_lookup_query,
+        HighlightLookupQuery, HighlightLookupToolInput, RecentLibraryActivityScope,
+        RecentLibraryActivityToolInput, SearchLibraryToolInput, build_db_inspect_query,
+        build_highlight_lookup_query, build_recent_library_activity_query,
+        build_search_library_query, describe_db_inspect_query, describe_highlight_lookup_query,
         resolve_mention_scope_from_catalog,
     };
     use crate::models::{Channel, ContentStatus, Video};
@@ -1184,6 +1313,68 @@ mod tests {
             scope.prompt_for_retrieval("Summarize +{Why Effort Alone Doesn’t Lead to Change}"),
             "Summarize \"Why Effort Alone Doesn’t Lead to Change\""
         );
+    }
+
+    #[test]
+    fn plain_channel_reference_resolves_scope_when_unambiguous() {
+        let channels = vec![
+            sample_channel("chan_1", "HealthyGamerGG", Some("@healthygamergg")),
+            sample_channel("chan_2", "Theo", Some("@theo")),
+        ];
+        let scope = resolve_mention_scope_from_catalog(
+            "What is HealthyGamerGG doing lately?",
+            &channels,
+            &[],
+        );
+
+        assert_eq!(scope.channel_focus_ids, vec!["chan_1".to_string()]);
+        assert_eq!(scope.channel_names, vec!["HealthyGamerGG".to_string()]);
+        assert_eq!(
+            scope.cleaned_prompt,
+            "What is HealthyGamerGG doing lately?".to_string()
+        );
+    }
+
+    #[test]
+    fn plain_video_reference_resolves_scope_when_unambiguous() {
+        let videos = vec![sample_video(
+            "vid_1",
+            "chan_1",
+            "Why Effort Alone Doesn’t Lead to Change",
+        )];
+        let scope = resolve_mention_scope_from_catalog(
+            "Summarize Why Effort Alone Doesn’t Lead to Change",
+            &[],
+            &videos,
+        );
+
+        assert_eq!(scope.video_focus_ids, vec!["vid_1".to_string()]);
+        assert_eq!(
+            scope.video_titles,
+            vec!["Why Effort Alone Doesn’t Lead to Change".to_string()]
+        );
+    }
+
+    #[test]
+    fn builds_recent_library_activity_query_with_defaults() {
+        let query = build_recent_library_activity_query(
+            Some("recent_library_activity"),
+            Some(RecentLibraryActivityToolInput {
+                scope: Some("channel".to_string()),
+                channel_id: None,
+                video_id: None,
+                limit_videos: None,
+                include_summaries: None,
+                include_transcripts: None,
+            }),
+        )
+        .expect("valid tool request")
+        .expect("query should be built");
+
+        assert_eq!(query.scope, RecentLibraryActivityScope::Channel);
+        assert_eq!(query.limit_videos, 6);
+        assert!(query.include_summaries);
+        assert!(query.include_transcripts);
     }
 
     fn sample_channel(id: &str, name: &str, handle: Option<&str>) -> Channel {

@@ -119,10 +119,9 @@ async fn main() -> anyhow::Result<()> {
         std::env::var("S3_VECTOR_INDEX").unwrap_or_else(|_| "search-chunks".to_string());
     let aws_region = std::env::var("AWS_REGION").unwrap_or_else(|_| "eu-central-1".to_string());
 
-    let aws_config = aws_config::defaults(aws_config::BehaviorVersion::latest())
-        .region(aws_config::Region::new(aws_region))
-        .load()
-        .await;
+    let aws_config = dastill::aws_auth::load_aws_sdk_config(aws_region.clone())
+        .await
+        .map_err(|err| anyhow::anyhow!(err))?;
 
     let mut s3_config_builder = aws_sdk_s3::config::Builder::from(&aws_config);
     if let Ok(endpoint) = std::env::var("S3_ENDPOINT_URL") {
@@ -392,7 +391,9 @@ async fn main() -> anyhow::Result<()> {
         )
         .route(
             "/api/channels/{id}",
-            get(channels::get_channel).put(channels::update_channel),
+            get(channels::get_channel)
+                .put(channels::update_channel)
+                .layer(middleware::from_fn(require_operator_role)),
         )
         .route(
             "/api/channels/{id}",

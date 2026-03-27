@@ -7,6 +7,7 @@ pub enum ChatQueryIntent {
     Synthesis,
     Pattern,
     Comparison,
+    RecentActivity,
 }
 
 impl ChatQueryIntent {
@@ -16,6 +17,7 @@ impl ChatQueryIntent {
             "synthesis" => Some(Self::Synthesis),
             "pattern" => Some(Self::Pattern),
             "comparison" => Some(Self::Comparison),
+            "recent_activity" | "recent-activity" | "recent" => Some(Self::RecentActivity),
             _ => None,
         }
     }
@@ -26,10 +28,14 @@ impl ChatQueryIntent {
             Self::Synthesis => "targeted synthesis",
             Self::Pattern => "broad pattern analysis",
             Self::Comparison => "comparison",
+            Self::RecentActivity => "recent activity",
         }
     }
 
     pub(super) fn needs_synthesis_stage(&self) -> bool {
-        matches!(self, Self::Pattern | Self::Comparison)
+        matches!(
+            self,
+            Self::Pattern | Self::Comparison | Self::RecentActivity
+        )
     }
 }

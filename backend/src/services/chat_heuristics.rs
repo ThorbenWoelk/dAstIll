@@ -33,6 +33,7 @@ pub(super) fn build_plan_label(
             ChatQueryIntent::Synthesis => "Broader synthesis",
             ChatQueryIntent::Pattern => "Pattern scan",
             ChatQueryIntent::Comparison => "Comparison scan",
+            ChatQueryIntent::RecentActivity => "Recent activity scan",
         }
     }
 }
@@ -110,6 +111,17 @@ pub(super) fn heuristic_query_variants(prompt: &str, intent: ChatQueryIntent) ->
             format!("{prompt} similarities"),
             format!("{prompt} contrasting viewpoints"),
         ],
+        ChatQueryIntent::RecentActivity => {
+            let subject = extract_subject_phrase(prompt);
+            if subject.is_empty() {
+                vec![format!("{prompt} latest videos")]
+            } else {
+                vec![
+                    format!("{subject} latest videos"),
+                    format!("{subject} recent uploads"),
+                ]
+            }
+        }
     }
 }
 
@@ -163,6 +175,37 @@ fn extract_subject_phrase(prompt: &str) -> String {
                 )
             })
             .take(4)
+            .cloned()
+            .collect::<Vec<_>>();
+        if !subject.is_empty() {
+            return subject.join(" ");
+        }
+    }
+
+    if tokens.starts_with(&["what".to_string(), "is".to_string()]) {
+        let subject = tokens
+            .iter()
+            .skip(2)
+            .take_while(|token| {
+                !matches!(
+                    token.as_str(),
+                    "doing" | "focused" | "working" | "talking" | "saying" | "covering"
+                )
+            })
+            .take(6)
+            .cloned()
+            .collect::<Vec<_>>();
+        if !subject.is_empty() {
+            return subject.join(" ");
+        }
+    }
+
+    if tokens.starts_with(&["what".to_string(), "has".to_string()]) {
+        let subject = tokens
+            .iter()
+            .skip(2)
+            .take_while(|token| !matches!(token.as_str(), "been" | "recently" | "lately"))
+            .take(6)
             .cloned()
             .collect::<Vec<_>>();
         if !subject.is_empty() {
@@ -228,6 +271,13 @@ fn is_query_stopword(token: &str) -> bool {
             | "use"
             | "uses"
             | "should"
+            | "recent"
+            | "recently"
+            | "lately"
+            | "latest"
+            | "currently"
+            | "nowadays"
+            | "days"
             | "i"
             | "we"
             | "me"

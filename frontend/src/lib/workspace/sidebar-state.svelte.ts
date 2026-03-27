@@ -193,6 +193,13 @@ type CachedVideoState = {
   syncDepth: ChannelSyncDepthState | null;
 };
 
+export function videosBelongToChannel(channelId: string, videos: Video[]) {
+  if (channelId === OTHERS_CHANNEL_ID) {
+    return true;
+  }
+  return videos.every((video) => video.channel_id === channelId);
+}
+
 export type { WorkspaceSidebarVideoState } from "$lib/workspace/component-props";
 
 export type SidebarStateResult = {
@@ -411,6 +418,9 @@ export function createSidebarState(
 
   $effect(() => {
     if (!selectedChannelId) return;
+    if (!videosBelongToChannel(selectedChannelId, videos)) {
+      return;
+    }
     videoStateCache.set(getVideoStateKey(selectedChannelId), {
       videos: cloneVideos(videos),
       offset,
@@ -649,7 +659,14 @@ export function createSidebarState(
   ) {
     const cacheKey = getVideoStateKey(channelId);
     const cached = videoStateCache.get(cacheKey);
-    const hasCached = !!cached && cached.videos.length > 0;
+    const hasCached =
+      !!cached &&
+      cached.videos.length > 0 &&
+      videosBelongToChannel(channelId, cached.videos);
+
+    if (cached && !hasCached) {
+      videoStateCache.delete(cacheKey);
+    }
 
     selectedChannelId = channelId;
     if (videoId) {

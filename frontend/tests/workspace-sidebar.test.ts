@@ -9,6 +9,7 @@ import {
   shouldLoadAllChannelVideosForSelection,
   shouldForceReloadMissingSelectedVideo,
 } from "../src/lib/workspace/route-helpers";
+import { videosBelongToChannel } from "../src/lib/workspace/sidebar-state.svelte";
 import type { Video } from "../src/lib/types";
 import type { Channel } from "../src/lib/types";
 
@@ -238,6 +239,65 @@ describe("shouldLoadAllChannelVideosForSelection", () => {
     });
 
     expect(result).toBe(false);
+  });
+});
+
+describe("videosBelongToChannel", () => {
+  it("returns true when every video belongs to the selected channel", () => {
+    expect(
+      videosBelongToChannel("channel-1", [
+        makeVideo({
+          id: "video-1",
+          channel_id: "channel-1",
+          is_short: false,
+          acknowledged: false,
+        }),
+        makeVideo({
+          id: "video-2",
+          channel_id: "channel-1",
+          is_short: false,
+          acknowledged: false,
+        }),
+      ]),
+    ).toBe(true);
+  });
+
+  it("returns false when any video belongs to a different concrete channel", () => {
+    expect(
+      videosBelongToChannel("channel-1", [
+        makeVideo({
+          id: "video-1",
+          channel_id: "channel-1",
+          is_short: false,
+          acknowledged: false,
+        }),
+        makeVideo({
+          id: "video-2",
+          channel_id: "channel-2",
+          is_short: false,
+          acknowledged: false,
+        }),
+      ]),
+    ).toBe(false);
+  });
+
+  it("allows mixed channel ids for the __others__ virtual channel", () => {
+    expect(
+      videosBelongToChannel("__others__", [
+        makeVideo({
+          id: "video-1",
+          channel_id: "channel-1",
+          is_short: false,
+          acknowledged: false,
+        }),
+        makeVideo({
+          id: "video-2",
+          channel_id: "channel-2",
+          is_short: false,
+          acknowledged: false,
+        }),
+      ]),
+    ).toBe(true);
   });
 });
 

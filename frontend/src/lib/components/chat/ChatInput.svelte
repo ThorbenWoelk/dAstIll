@@ -66,6 +66,7 @@
   let suggestionController: AbortController | null = null;
   let suggestionRequestId = 0;
   let suggestionDebounce: ReturnType<typeof setTimeout> | null = null;
+  let suggestionListScrollEl = $state<HTMLDivElement | null>(null);
   let resolvedDraftMentions = $state<Record<string, ResolvedChatMention>>({});
   let composerScrollTop = $state(0);
   let composerPadCounts = $state<Record<string, number>>({});
@@ -125,7 +126,7 @@
       return null;
     }
     const family = window.getComputedStyle(textareaElement!).fontFamily;
-    return `400 12px ${family}`;
+    return `400 14px ${family}`;
   }
 
   function composerPadCountForLabel(rawToken: string, label: string): number {
@@ -602,6 +603,23 @@
     };
   });
 
+  $effect(() => {
+    if (suggestionItems.length === 0) {
+      return;
+    }
+    const idx = suggestionIndex;
+    void tick().then(() => {
+      const root = suggestionListScrollEl;
+      if (!root) {
+        return;
+      }
+      const el = root.querySelector<HTMLElement>(
+        `[data-suggestion-index="${idx}"]`,
+      );
+      el?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    });
+  });
+
   function composerMentionLabel(
     segment: Extract<ChatMentionSegment, { type: "mention" }>,
   ) {
@@ -736,10 +754,14 @@
             ? "Channel suggestions"
             : "Video suggestions"}
         </div>
-        <div class="max-h-56 overflow-y-auto py-1">
+        <div
+          bind:this={suggestionListScrollEl}
+          class="max-h-56 overflow-y-auto py-1"
+        >
           {#each suggestionItems as item, index (item.kind + ":" + item.id)}
             <button
               type="button"
+              data-suggestion-index={index}
               class={`flex w-full items-start justify-between gap-3 px-3 py-2 text-left transition-colors ${
                 index === suggestionIndex
                   ? "bg-[var(--accent-wash)] text-[var(--foreground)]"

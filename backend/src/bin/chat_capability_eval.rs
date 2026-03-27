@@ -723,11 +723,9 @@ fn grounding_pass(
         return false;
     }
 
-    if sources.is_empty() && !used_db_tool {
-        if !spec.requires_highlights {
-            notes.push("no grounding sources were attached".to_string());
-            return false;
-        }
+    if sources.is_empty() && !used_db_tool && !spec.requires_highlights {
+        notes.push("no grounding sources were attached".to_string());
+        return false;
     }
 
     let unique_videos = unique_video_ids(sources);
@@ -888,11 +886,6 @@ fn classify_answerability_failure(content: &str) -> String {
         .any(|phrase| normalized.contains(phrase))
     {
         FAILURE_UNSUPPORTED.to_string()
-    } else if generic_failure_phrases()
-        .iter()
-        .any(|phrase| normalized.contains(phrase))
-    {
-        FAILURE_GENERIC.to_string()
     } else {
         FAILURE_GENERIC.to_string()
     }
@@ -1254,7 +1247,7 @@ fn render_markdown_report(report: &SweepReport) -> String {
                 .map(|tool| format!("{} ({})", tool.label, tool.name))
                 .collect::<Vec<_>>()
                 .join(", ");
-            md.push_str(&format!("- Tools: {}\n", tools));
+            md.push_str(&format!("- Tools: {tools}\n"));
         }
         if !result.notes.is_empty() {
             md.push_str(&format!("- Notes: {}\n", result.notes.join(" | ")));
