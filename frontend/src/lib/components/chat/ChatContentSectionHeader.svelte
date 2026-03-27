@@ -79,7 +79,7 @@
           <p
             class="max-w-[34rem] text-[14px] leading-6 text-[var(--soft-foreground)]"
           >
-            How many summaries do we have in the DB?
+            how many summaries do we have in the db
           </p>
         </div>
       {/if}
