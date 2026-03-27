@@ -10,8 +10,8 @@
     reorderChannels as reorderChannelList,
     updateChannelDragOver,
   } from "$lib/channel-workspace";
-  import ChannelCard from "$lib/components/ChannelCard.svelte";
   import ChevronIcon from "$lib/components/icons/ChevronIcon.svelte";
+  import WorkspaceSidebarChannelRow from "$lib/components/workspace/WorkspaceSidebarChannelRow.svelte";
   import WorkspaceSidebarChannelControls from "$lib/components/workspace/WorkspaceSidebarChannelControls.svelte";
   import WorkspaceSidebarVideoFilterControl from "$lib/components/workspace/WorkspaceSidebarVideoFilterControl.svelte";
   import WorkspaceSidebarVideoRow from "$lib/components/workspace/WorkspaceSidebarVideoRow.svelte";
@@ -762,95 +762,31 @@
                   channel.id,
                 )
               : null}
-          <div class="relative" data-channel-id={channel.id} role="listitem">
-            {#if dropIndicatorEdge === "top"}
-              <div
-                class="pointer-events-none absolute inset-x-3 -top-1 z-10 flex items-center gap-2"
-              >
-                <span class="h-2 w-2 rounded-full bg-[var(--accent)]"></span>
-                <span class="h-0.5 flex-1 rounded-full bg-[var(--accent)]"
-                ></span>
-              </div>
-            {/if}
-            {#if dropIndicatorEdge === "bottom"}
-              <div
-                class="pointer-events-none absolute inset-x-3 -bottom-1 z-10 flex items-center gap-2"
-              >
-                <span class="h-2 w-2 rounded-full bg-[var(--accent)]"></span>
-                <span class="h-0.5 flex-1 rounded-full bg-[var(--accent)]"
-                ></span>
-              </div>
-            {/if}
-
-            {#if videoListMode !== "per_channel_preview" && isExpanded && (refreshingChannel || (loadingVideos && videos.length === 0))}
-              <div class="flex items-center gap-2 px-2 pb-1">
-                <span
-                  class="h-3 w-3 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--accent)]"
-                  role="status"
-                  aria-label="Syncing"
-                ></span>
-                <span
-                  class="text-[10px] text-[var(--soft-foreground)] opacity-50"
-                  >Syncing</span
-                >
-              </div>
-            {/if}
-
-            {#if !channelUiHidden}
-              <div
-                class={videoListMode !== "per_channel_preview" && isExpanded
-                  ? "sticky top-0 z-10 bg-[var(--surface)]"
-                  : ""}
-              >
-                {#if videoListMode === "per_channel_preview"}
-                  <ChannelCard
-                    {channel}
-                    active={isExpanded}
-                    expanded={isVirtualChannel(channel)
-                      ? undefined
-                      : isExpanded}
-                    showDelete={canDeleteChannels && !isVirtualChannel(channel)}
-                    draggableEnabled={!mobileVisible &&
-                      manualReorderEnabled &&
-                      !isVirtualChannel(channel)}
-                    loading={channel.id.startsWith("temp-")}
-                    dragging={draggedChannelId === channel.id}
-                    dragOver={dragOverChannelId === channel.id &&
-                      draggedChannelId !== channel.id}
-                    onSelect={() => void handlePerChannelPreviewSelect(channel)}
-                    onDragStart={(event) =>
-                      handleChannelDragStart(channel.id, event)}
-                    onDragOver={(event) =>
-                      handleChannelDragOver(channel.id, event)}
-                    onDrop={(event) => handleChannelDrop(channel.id, event)}
-                    onDragEnd={handleChannelDragEnd}
-                    onDelete={() => void onDeleteChannel(channel.id)}
-                  />
-                {:else}
-                  <ChannelCard
-                    {channel}
-                    active={isExpanded}
-                    showDelete={canDeleteChannels && !isVirtualChannel(channel)}
-                    draggableEnabled={!mobileVisible &&
-                      manualReorderEnabled &&
-                      !isVirtualChannel(channel)}
-                    loading={channel.id.startsWith("temp-")}
-                    dragging={draggedChannelId === channel.id}
-                    dragOver={dragOverChannelId === channel.id &&
-                      draggedChannelId !== channel.id}
-                    onSelect={() => void onSelectChannel(channel.id)}
-                    onDragStart={(event) =>
-                      handleChannelDragStart(channel.id, event)}
-                    onDragOver={(event) =>
-                      handleChannelDragOver(channel.id, event)}
-                    onDrop={(event) => handleChannelDrop(channel.id, event)}
-                    onDragEnd={handleChannelDragEnd}
-                    onDelete={() => void onDeleteChannel(channel.id)}
-                  />
-                {/if}
-              </div>
-            {/if}
-          </div>
+          <WorkspaceSidebarChannelRow
+            {channel}
+            {isExpanded}
+            isPreviewMode={videoListMode === "per_channel_preview"}
+            isVirtualChannel={isVirtualChannel(channel)}
+            {canDeleteChannels}
+            {mobileVisible}
+            {manualReorderEnabled}
+            {draggedChannelId}
+            {dragOverChannelId}
+            {dropIndicatorEdge}
+            {channelUiHidden}
+            {loadingVideos}
+            {refreshingChannel}
+            videoCount={videos.length}
+            onSelect={() =>
+              videoListMode === "per_channel_preview"
+                ? void handlePerChannelPreviewSelect(channel)
+                : void onSelectChannel(channel.id)}
+            onDragStart={(event) => handleChannelDragStart(channel.id, event)}
+            onDragOver={(event) => handleChannelDragOver(channel.id, event)}
+            onDrop={(event) => handleChannelDrop(channel.id, event)}
+            onDragEnd={handleChannelDragEnd}
+            onDelete={() => void onDeleteChannel(channel.id)}
+          />
 
           {#if videoListMode === "per_channel_preview" && isExpanded}
             {@const renderedCollection =
