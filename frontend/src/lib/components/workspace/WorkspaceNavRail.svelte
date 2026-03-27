@@ -65,6 +65,11 @@
             "M9 4v4h6V4",
           ],
         };
+      case "vocabulary":
+        return {
+          viewBox: "0 0 24 24",
+          paths: ["M4 6h16", "M4 12h10", "M4 18h7", "M18 10l2 2-4 4-2-2z"],
+        };
       case "chat":
         return {
           viewBox: "0 0 24 24",

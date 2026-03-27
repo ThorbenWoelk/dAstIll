@@ -6,6 +6,7 @@ mod helpers;
 mod highlights;
 mod preferences;
 mod search;
+mod stats;
 mod tts_stats;
 mod video_info;
 mod videos;
@@ -20,12 +21,15 @@ pub use firestore_videos::*;
 pub use highlights::*;
 pub use preferences::*;
 pub use search::*;
+pub use stats::*;
 pub use tts_stats::*;
 pub use video_info::*;
 pub use videos::*;
 
 use crate::models::{Channel, Video};
 use crate::services::search::SearchSourceKind;
+use aws_sdk_s3::error::SdkError;
+use aws_smithy_types::error::metadata::ProvideErrorMetadata;
 
 #[derive(Debug)]
 pub enum StoreError {
@@ -237,4 +241,21 @@ pub async fn init_store_memory() -> Result<Store, StoreError> {
     Err(StoreError::Other(
         "in-memory store not yet implemented".to_string(),
     ))
+}
+
+pub(crate) fn format_aws_error<E, R>(err: &SdkError<E, R>) -> String
+where
+    E: ProvideErrorMetadata + std::fmt::Display,
+{
+    use aws_sdk_s3::operation::RequestId;
+    match err {
+        SdkError::ServiceError(context) => {
+            let meta = context.err().meta();
+            let code = meta.code().unwrap_or("unknown_code");
+            let message = meta.message().unwrap_or("service error");
+            let request_id = meta.request_id().unwrap_or("unknown_request_id");
+            format!("{code}: {message} (Request ID: {request_id})")
+        }
+        _ => format!("{err:#}"),
+    }
 }

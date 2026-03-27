@@ -56,6 +56,7 @@
       errorMessage: null,
       showDeleteConfirmation: false,
       showDeleteAccessPrompt: false,
+      showAddSourceFeedback: false,
       showResetVideoConfirmation: false,
     },
     overlayActions = {
@@ -92,6 +93,7 @@
       resettingVideoId: null,
       creatingHighlight: false,
       creatingHighlightVideoId: null,
+      creatingVocabularyReplacement: false,
       deletingHighlightId: null,
       canRevertTranscript: false,
       showRevertTranscriptAction: false,
@@ -165,6 +167,9 @@
   let resettingVideoId = $derived(content.resettingVideoId);
   let creatingHighlight = $derived(content.creatingHighlight);
   let creatingHighlightVideoId = $derived(content.creatingHighlightVideoId);
+  let creatingVocabularyReplacement = $derived(
+    content.creatingVocabularyReplacement,
+  );
   let deletingHighlightId = $derived(content.deletingHighlightId);
   let canRevertTranscript = $derived(content.canRevertTranscript);
   let showRevertTranscriptAction = $derived(content.showRevertTranscriptAction);
@@ -200,6 +205,9 @@
   let onDraftChange = $derived(actions.onDraftChange);
   let onToggleAcknowledge = $derived(actions.onToggleAcknowledge);
   let onCreateHighlight = $derived(actions.onCreateHighlight);
+  let onCreateVocabularyReplacement = $derived(
+    actions.onCreateVocabularyReplacement,
+  );
   let onDeleteHighlight = $derived(actions.onDeleteHighlight);
   let onShowChannels = $derived(actions.onShowChannels);
   let onShowVideos = $derived(actions.onShowVideos);
@@ -518,7 +526,10 @@
         modelUsed={summaryModelUsed}
         qualityModelUsed={summaryQualityModelUsed}
       />
-      <WorkspaceSummaryAudioPlayer videoId={selectedVideoId} />
+      <WorkspaceSummaryAudioPlayer
+        videoId={selectedVideoId}
+        summaryReady={selectedVideo?.summary_status === "ready"}
+      />
     {/if}
 
     {#if !selectedVideoId}
@@ -690,8 +701,10 @@
           )}
           creatingHighlight={creatingHighlight &&
             creatingHighlightVideoId === selectedVideoId}
+          {creatingVocabularyReplacement}
           {deletingHighlightId}
           {onCreateHighlight}
+          {onCreateVocabularyReplacement}
           {onDeleteHighlight}
           {citationScrollText}
           {onCitationScrollConsumed}

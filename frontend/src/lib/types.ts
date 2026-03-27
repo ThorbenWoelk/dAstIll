@@ -215,12 +215,29 @@ export interface ChatRetrievalPlan {
   deep_research?: boolean;
 }
 
+export interface ChatToolStatus {
+  name: string;
+  label: string;
+  state: string;
+  input: string;
+  output?: string | null;
+}
+
+export interface ChatToolCall {
+  name: string;
+  label: string;
+  state: string;
+  input: string;
+  output?: string | null;
+}
+
 export interface ChatStreamStatus {
   stage: string;
   label?: string | null;
   detail?: string | null;
   decision?: string | null;
   plan?: ChatRetrievalPlan | null;
+  tool?: ChatToolStatus | null;
 }
 
 export interface ChatMessage {
@@ -264,4 +281,11 @@ export interface SendChatMessageRequest {
 export interface UserPreferences {
   channel_order: string[];
   channel_sort_mode: "custom" | "alpha" | "newest";
+  vocabulary_replacements: VocabularyReplacement[];
+}
+
+export interface VocabularyReplacement {
+  from: string;
+  to: string;
+  added_at: string;
 }

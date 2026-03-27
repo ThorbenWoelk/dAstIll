@@ -146,6 +146,9 @@
         h: () => {
           void goto("/highlights");
         },
+        v: () => {
+          void goto("/vocabulary");
+        },
         c: () => {
           void goto("/chat");
         },

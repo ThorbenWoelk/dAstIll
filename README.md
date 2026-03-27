@@ -84,6 +84,13 @@ To run the application locally, you will need:
    S3_DATA_BUCKET=your-data-bucket
    S3_VECTOR_BUCKET=your-vectors-bucket
    S3_VECTOR_INDEX=search-chunks
+   # Optional: custom endpoints (e.g. MinIO)
+   # S3_ENDPOINT_URL=http://localhost:9000
+   # S3_VECTOR_ENDPOINT_URL=http://localhost:9001
+   # Optional: Workload Identity Federation (WIF) for local development
+   # AWS_ROLE_ARN="arn:aws:iam::877173393100:role/dastill-gcp-backend"
+   # AWS_WEB_IDENTITY_TOKEN_FILE="backend-wif-token.jwt"
+   # GOOGLE_APPLICATION_CREDENTIALS="backend-sa-key.json"
    BACKEND_PROXY_TOKEN=local-dev-backend-proxy-token
    BACKEND_CORS_ALLOWED_ORIGINS=http://localhost:3543
    YOUTUBE_API_KEY=optional-api-key

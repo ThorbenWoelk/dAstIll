@@ -12,7 +12,9 @@ use crate::models::{
 };
 use crate::services::SearchSourceKind;
 use crate::services::search::hash_search_content;
-use crate::services::summarizer::{MAX_TRANSCRIPT_FORMAT_ATTEMPTS, SummarizerError};
+use crate::services::summarizer::{
+    MAX_TRANSCRIPT_FORMAT_ATTEMPTS, SummarizerError, apply_vocabulary_replacements,
+};
 use crate::services::youtube::placeholder::is_site_wide_placeholder_description;
 use crate::state::AppState;
 
@@ -608,9 +610,22 @@ async fn ensure_summary_internal(
         ));
     }
 
+    let vocabulary_replacements = db::get_preferences(&state.db)
+        .await
+        .map_err(map_db_err)?
+        .vocabulary_replacements;
+    let normalized_transcript =
+        apply_vocabulary_replacements(&transcript_text, &vocabulary_replacements);
+
     let summarize_result = state
         .summarizer
-        .summarize(&transcript_text, &video.title, video_id, &video.channel_id)
+        .summarize(
+            &normalized_transcript,
+            &video.title,
+            video_id,
+            &video.channel_id,
+            &vocabulary_replacements,
+        )
         .await;
     let (content, model) = match summarize_result {
         Ok(pair) => pair,

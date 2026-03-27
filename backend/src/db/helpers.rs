@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
-use super::{Store, StoreError};
+use super::{Store, StoreError, format_aws_error};
 
 impl Store {
     pub(crate) async fn get_json<T: for<'de> Deserialize<'de>>(
@@ -35,7 +35,7 @@ impl Store {
                 if err.as_service_error().is_some_and(|e| e.is_no_such_key()) {
                     Ok(None)
                 } else {
-                    Err(StoreError::S3(format!("{err:#}")))
+                    Err(StoreError::S3(format_aws_error(&err)))
                 }
             }
         }
@@ -55,7 +55,7 @@ impl Store {
             .content_type("application/json")
             .send()
             .await
-            .map_err(|e| StoreError::S3(format!("{e:#}")))?;
+            .map_err(|e| StoreError::S3(format_aws_error(&e)))?;
         Ok(())
     }
 
@@ -82,7 +82,7 @@ impl Store {
                 if err.as_service_error().is_some_and(|e| e.is_no_such_key()) {
                     Ok(None)
                 } else {
-                    Err(StoreError::S3(format!("{err:#}")))
+                    Err(StoreError::S3(format_aws_error(&err)))
                 }
             }
         }
@@ -102,7 +102,7 @@ impl Store {
             .content_type(content_type)
             .send()
             .await
-            .map_err(|e| StoreError::S3(format!("{e:#}")))?;
+            .map_err(|e| StoreError::S3(format_aws_error(&e)))?;
         Ok(())
     }
 
@@ -113,7 +113,7 @@ impl Store {
             .key(key)
             .send()
             .await
-            .map_err(|e| StoreError::S3(format!("{e:#}")))?;
+            .map_err(|e| StoreError::S3(format_aws_error(&e)))?;
         Ok(())
     }
 
@@ -135,7 +135,7 @@ impl Store {
             let output = req
                 .send()
                 .await
-                .map_err(|e| StoreError::S3(format!("{e:#}")))?;
+                .map_err(|e| StoreError::S3(format_aws_error(&e)))?;
 
             if let Some(contents) = output.contents {
                 for obj in contents {
@@ -205,7 +205,7 @@ impl Store {
                 if err.as_service_error().is_some_and(|e| e.is_not_found()) {
                     Ok(false)
                 } else {
-                    Err(StoreError::S3(format!("{err:#}")))
+                    Err(StoreError::S3(format_aws_error(&err)))
                 }
             }
         }

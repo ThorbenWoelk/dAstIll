@@ -31,21 +31,22 @@ thiserror = "2"
 anyhow = "1"
 
 # In-memory BM25 full-text search
-tantivy = "0.22"
+tantivy = { git = "https://github.com/quickwit-oss/tantivy", branch = "main" }
 rig-core = "0.28.0"
 sha2 = "0.10"
 
 # Date/time
 chrono = { version = "0.4", features = ["serde"] }
+rand = "0.8"
 
 # Types generation
 ts-rs = { version = "10.0", features = ["chrono-impl"] }
 
 # AWS S3 + S3 Vectors
-aws-config = { version = "1", features = ["behavior-version-latest", "credentials-login"] }
-aws-sdk-s3 = "1"
-aws-sdk-s3vectors = "1"
-aws-sdk-sts = "1"
+aws-config = { version = "1", features = ["behavior-version-latest", "credentials-login", "rustls"] }
+aws-sdk-s3 = { version = "1", features = ["rustls"] }
+aws-sdk-s3vectors = { version = "1", features = ["rustls"] }
+aws-sdk-sts = { version = "1", features = ["rustls"] }
 aws-smithy-types = "1"
 aws-credential-types = "1.2.11"
 
@@ -53,6 +54,7 @@ aws-credential-types = "1.2.11"
 firestore = "0.48"
 rustls = { version = "0.23", features = ["aws-lc-rs"] }
 aws-sdk-polly = "1.98.0"
+jsonwebtoken = { version = "10", default-features = false, features = ["aws_lc_rs"] }
 
 [dev-dependencies]
 tempfile = "3"

@@ -137,6 +137,7 @@ async function consumeChatStream(
           detail: data?.detail ?? null,
           decision: data?.decision ?? null,
           plan: data?.plan ?? null,
+          tool: data?.tool ?? null,
         } satisfies ChatStreamStatus);
         break;
       case "sources":

@@ -13,6 +13,7 @@ describe("resolveCurrentSectionFromPathname", () => {
     expect(resolveCurrentSectionFromPathname("/download-queue")).toBe("queue");
     expect(resolveCurrentSectionFromPathname("/download-queue/")).toBe("queue");
     expect(resolveCurrentSectionFromPathname("/highlights")).toBe("highlights");
+    expect(resolveCurrentSectionFromPathname("/vocabulary")).toBe("vocabulary");
     expect(resolveCurrentSectionFromPathname("/chat")).toBe("chat");
     expect(resolveCurrentSectionFromPathname("/chat/c1")).toBe("chat");
   });
@@ -23,6 +24,7 @@ describe("goHintKeyForSection", () => {
     expect(goHintKeyForSection("workspace")).toBe("W");
     expect(goHintKeyForSection("queue")).toBe("Q");
     expect(goHintKeyForSection("highlights")).toBe("H");
+    expect(goHintKeyForSection("vocabulary")).toBe("V");
     expect(goHintKeyForSection("chat")).toBe("C");
     expect(goHintKeyForSection("docs")).toBe("D");
   });
@@ -35,11 +37,12 @@ describe("getSectionNavigationItems", () => {
       "https://docs.example.com",
     );
 
-    expect(items).toHaveLength(5);
+    expect(items).toHaveLength(6);
     expect(items.map((item) => item.label)).toEqual([
       "Workspace",
       "Queue",
       "Highlights",
+      "Vocabulary",
       "Chat",
       "Docs",
     ]);
@@ -61,6 +64,7 @@ describe("getSectionNavigationItems", () => {
       "workspace",
       "queue",
       "highlights",
+      "vocabulary",
       "chat",
     ];
 

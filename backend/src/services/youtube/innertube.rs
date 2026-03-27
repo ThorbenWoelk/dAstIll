@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 
+use rand::Rng;
 use serde_json::Value;
+use tokio::time::{Duration, sleep};
 
 use crate::models::Video;
 
@@ -37,6 +39,10 @@ impl YouTubeService {
                 seen_in_this_run.insert(id.clone());
                 let is_missing = !known_video_ids.contains(&id);
                 if is_missing || until.is_some() {
+                    // Jittered delay to avoid rate limiting
+                    let delay_ms = rand::thread_rng().gen_range(500..1500);
+                    sleep(Duration::from_millis(delay_ms)).await;
+
                     match self.fetch_watch_metadata(&id).await {
                         Ok(metadata) => {
                             let Some(pub_at) = metadata.published_at else {
@@ -72,6 +78,14 @@ impl YouTubeService {
                         }
                         Err(err) => {
                             tracing::warn!(video_id = %id, error = %err, "failed to fetch metadata during crawl, skipping video to avoid date corruption");
+
+                            if matches!(err, YouTubeError::RateLimited(_)) {
+                                tracing::error!(
+                                    "YouTube rate limited during crawl, stopping to avoid longer ban"
+                                );
+                                continuation = None;
+                                break;
+                            }
                         }
                     }
                 }

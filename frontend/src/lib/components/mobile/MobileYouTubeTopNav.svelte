@@ -34,6 +34,7 @@
   const bottomOrder: Array<SectionNavigationItem["section"]> = [
     "workspace",
     "highlights",
+    "vocabulary",
     "queue",
     "chat",
     "docs",

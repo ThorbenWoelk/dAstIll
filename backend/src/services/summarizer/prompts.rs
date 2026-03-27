@@ -1,3 +1,5 @@
+use crate::models::VocabularyReplacement;
+
 pub(super) const SUMMARY_PREAMBLE: &str = "You are a meticulous, comprehensive transcript-grounded summarizer. \
     Your summaries must capture all substantive key points from the transcript; do not skip or gloss over editorial content. \
     If you are confident a portion is a paid promotion, sponsor read, or standalone ad segment, you may omit it from the summary. \
@@ -39,7 +41,11 @@ Safety fallback:
     prompt
 }
 
-pub(super) fn build_summary_prompt(transcript: &str, video_title: &str) -> String {
+pub(super) fn build_summary_prompt(
+    transcript: &str,
+    video_title: &str,
+    vocabulary_replacements: &[VocabularyReplacement],
+) -> String {
     let word_count = transcript.split_whitespace().count();
     let length_guidance = if word_count < 500 {
         "This is a short transcript. Keep the summary concise but still capture every point made."
@@ -51,7 +57,7 @@ pub(super) fn build_summary_prompt(transcript: &str, video_title: &str) -> Strin
         "This is a very long transcript. Provide an extensive, well-structured summary. Use sub-sections and group related points by theme. Cover every significant editorial topic, argument, example, data point, and conclusion (confidently identified sponsor or ad segments may be omitted as described in the task rules)."
     };
 
-    format!(
+    let mut prompt = format!(
         r#"Video Title: {video_title}
 
 Transcript (authoritative source - {word_count} words):
@@ -93,5 +99,22 @@ Cover every distinct editorial topic, argument, or segment from the transcript (
 - Actionable or memorable takeaway grounded in transcript.
 - Actionable or memorable takeaway grounded in transcript.
 (Scale number of takeaways with content density.)"#
-    )
+    );
+
+    if !vocabulary_replacements.is_empty() {
+        prompt.push_str("\n\nPreferred vocabulary replacements:\n");
+        prompt.push_str(
+            "When the transcript contains one of these phrases, use the canonical spelling in the summary.\n",
+        );
+        for replacement in vocabulary_replacements {
+            let from = replacement.from.trim();
+            let to = replacement.to.trim();
+            if from.is_empty() || to.is_empty() || from == to {
+                continue;
+            }
+            prompt.push_str(&format!("- `{from}` -> `{to}`\n"));
+        }
+    }
+
+    prompt
 }

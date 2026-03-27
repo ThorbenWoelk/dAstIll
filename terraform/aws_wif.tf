@@ -43,10 +43,14 @@ resource "aws_iam_role_policy" "backend_s3_data" {
           "s3:PutObject",
           "s3:DeleteObject",
           "s3:ListBucket",
+          "s3:GetBucketLocation",
+          "s3:ListAllMyBuckets",
+          "sts:GetCallerIdentity",
         ]
         Resource = [
           aws_s3_bucket.data.arn,
           "${aws_s3_bucket.data.arn}/*",
+          "arn:aws:s3:::*",
         ]
       }
     ]
@@ -74,6 +78,7 @@ resource "aws_iam_role_policy" "backend_s3_vectors" {
         ]
         Resource = [
           aws_s3vectors_vector_bucket.vectors.vector_bucket_arn,
+          "${aws_s3vectors_vector_bucket.vectors.vector_bucket_arn}/*",
           aws_s3vectors_index.search_chunks.index_arn,
         ]
       }

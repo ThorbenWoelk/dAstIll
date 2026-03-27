@@ -25,6 +25,8 @@
   } from "$lib/api";
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
   import { DOCS_URL } from "$lib/app-config";
+  import AddSourceFeedbackToast from "$lib/components/AddSourceFeedbackToast.svelte";
+  import VocabularyReplacementModal from "$lib/components/VocabularyReplacementModal.svelte";
   import WorkspaceContentPanel from "$lib/components/workspace/WorkspaceContentPanel.svelte";
   import MobileYouTubeTopNav from "$lib/components/mobile/MobileYouTubeTopNav.svelte";
   import MobileHomeBrowseOverlay from "$lib/components/mobile/MobileHomeBrowseOverlay.svelte";
@@ -42,6 +44,7 @@
   let FeatureGuideComponent = $state<Component<any> | null>(null);
   import type {
     AiStatus,
+    AddVideoResult,
     Channel,
     ChannelSnapshot,
     CreateHighlightRequest,
@@ -51,6 +54,7 @@
     SearchStatus,
     Video,
     VideoTypeFilter,
+    VocabularyReplacement,
   } from "$lib/types";
   import {
     applySavedChannelOrder,
@@ -62,6 +66,13 @@
     type WorkspaceStateSnapshot,
   } from "$lib/channel-workspace";
   import { renderMarkdown } from "$lib/utils/markdown";
+  import {
+    buildChannelAddFeedback,
+    buildVideoAddFeedback,
+    type AddSourceFeedback,
+    resolveAddedChannelStatus,
+    resolveAddedVideoStatus,
+  } from "$lib/workspace/add-source-feedback";
   import {
     buildOptimisticHighlight,
     reconcileOptimisticHighlight,
@@ -75,6 +86,7 @@
   import { resolveBootstrapOnMount } from "$lib/ssr-bootstrap";
   import { resolveOldestLoadedReadyVideoDate } from "$lib/sync-depth";
   import { createAiStatusPoller } from "$lib/utils/ai-poller";
+  import { upsertVocabularyReplacement } from "$lib/vocabulary";
   import { mobileWorkspaceBrowseIntent } from "$lib/mobile-navigation/mobileWorkspaceBrowseIntent";
   import {
     buildWorkspaceViewHref,
@@ -156,10 +168,14 @@
   let aiAvailable = $state<boolean | null>(null);
   let aiStatus = $state<AiStatus | null>(null);
   let searchStatus = $state<SearchStatus | null>(null);
+  let vocabularyReplacements = $state<VocabularyReplacement[]>([]);
 
   let errorMessage = $state<string | null>(null);
   let showDeleteAccessPrompt = $state(false);
+  let addSourceFeedback = $state<AddSourceFeedback | null>(null);
+  let addSourceFeedbackDismissed = $state(false);
   let showResetVideoConfirmation = $state(false);
+  let addSourceFeedbackPollSequence = 0;
 
   let allowLoadedVideoSyncDepthOverride = $state(false);
   /**
@@ -177,6 +193,9 @@
   let nextOptimisticHighlightId = -1;
   let creatingHighlight = $state(false);
   let creatingHighlightVideoId = $state<string | null>(null);
+  let creatingVocabularyReplacement = $state(false);
+  let vocabularyModalSource = $state<string | null>(null);
+  let vocabularyModalValue = $state("");
   let deletingHighlightId = $state<number | null>(null);
 
   let workspaceStateHydrated = $state(false);
@@ -290,6 +309,12 @@
     },
     onOpenChannelOverview: async (channelId: string) => {
       await goto(`/channels/${encodeURIComponent(channelId)}`);
+    },
+    onChannelAdded: (channel: Channel) => {
+      void trackAddedChannel(channel);
+    },
+    onVideoAdded: (result: AddVideoResult) => {
+      void trackAddedVideo(result);
     },
     onVideoListReset: () => {
       // Logic handled internally by sidebarState now
@@ -683,6 +708,65 @@
     }
   }
 
+  async function saveVocabularyReplacement(selectedText: string) {
+    const source = selectedText.trim();
+    if (!source) {
+      return;
+    }
+    vocabularyModalSource = source;
+    vocabularyModalValue = source;
+  }
+
+  function closeVocabularyModal() {
+    if (creatingVocabularyReplacement) {
+      return;
+    }
+    vocabularyModalSource = null;
+    vocabularyModalValue = "";
+  }
+
+  async function confirmVocabularyReplacement() {
+    const source = vocabularyModalSource?.trim();
+    const replacement = vocabularyModalValue.trim();
+    if (!source || !replacement) {
+      return;
+    }
+
+    const nextReplacements = upsertVocabularyReplacement(
+      vocabularyReplacements,
+      {
+        from: source,
+        to: replacement,
+        added_at: new Date().toISOString(),
+      },
+    );
+    if (nextReplacements === vocabularyReplacements) {
+      return;
+    }
+
+    creatingVocabularyReplacement = true;
+    errorMessage = null;
+
+    try {
+      vocabularyReplacements = nextReplacements;
+      await savePreferences({
+        channel_order: sidebarState.channelOrder,
+        channel_sort_mode: sidebarState.channelSortMode,
+        vocabulary_replacements: nextReplacements,
+      });
+      vocabularyModalSource = null;
+      vocabularyModalValue = "";
+    } catch (error) {
+      errorMessage = (error as Error).message;
+    } finally {
+      creatingVocabularyReplacement = false;
+      if (preferencesSaveTimer) {
+        clearTimeout(preferencesSaveTimer);
+        preferencesSaveTimer = null;
+      }
+    }
+  }
+
   async function deleteExistingHighlight(highlightId: number) {
     const targetVideoId =
       selectedVideoId ??
@@ -821,6 +905,7 @@
       void savePreferences({
         channel_order: sidebarState.channelOrder,
         channel_sort_mode: sidebarState.channelSortMode,
+        vocabulary_replacements: vocabularyReplacements,
       });
       preferencesSaveTimer = null;
     }, 1000);
@@ -915,6 +1000,7 @@
           sidebarState.setChannelSortMode(
             apiPreferences.channel_sort_mode as ChannelSortMode,
           );
+          vocabularyReplacements = apiPreferences.vocabulary_replacements ?? [];
         }
 
         const hasInitialData = Boolean(
@@ -1574,6 +1660,117 @@
   );
   const contentHtml = $derived(renderMarkdown(content.contentText));
 
+  function presentAddSourceFeedback(next: AddSourceFeedback) {
+    addSourceFeedback = next;
+    addSourceFeedbackDismissed = false;
+  }
+
+  function dismissAddSourceFeedback() {
+    addSourceFeedbackDismissed = true;
+    if (addSourceFeedback?.status !== "loading") {
+      addSourceFeedback = null;
+    }
+  }
+
+  async function trackAddedVideo(result: AddVideoResult) {
+    const sequence = ++addSourceFeedbackPollSequence;
+    let nextResult = result;
+
+    presentAddSourceFeedback(
+      buildVideoAddFeedback(
+        nextResult,
+        resolveAddedVideoStatus(nextResult.video),
+      ),
+    );
+
+    while (sequence === addSourceFeedbackPollSequence) {
+      const currentStatus = resolveAddedVideoStatus(nextResult.video);
+      if (currentStatus !== "loading") {
+        return;
+      }
+
+      await new Promise((resolve) => window.setTimeout(resolve, 4000));
+      if (sequence !== addSourceFeedbackPollSequence) {
+        return;
+      }
+
+      try {
+        const refreshedVideo = await getVideo(nextResult.video.id, true);
+        nextResult = { ...nextResult, video: refreshedVideo };
+        presentAddSourceFeedback(
+          buildVideoAddFeedback(
+            nextResult,
+            resolveAddedVideoStatus(refreshedVideo),
+          ),
+        );
+      } catch {
+        // Keep polling quietly; the initial acceptance feedback already surfaced.
+      }
+    }
+  }
+
+  async function trackAddedChannel(channel: Channel) {
+    const sequence = ++addSourceFeedbackPollSequence;
+    presentAddSourceFeedback(buildChannelAddFeedback(channel, "loading"));
+
+    while (sequence === addSourceFeedbackPollSequence) {
+      await new Promise((resolve) => window.setTimeout(resolve, 4000));
+      if (sequence !== addSourceFeedbackPollSequence) {
+        return;
+      }
+
+      try {
+        const videos = await listVideos(
+          channel.id,
+          1,
+          0,
+          "all",
+          undefined,
+          false,
+          undefined,
+          true,
+        );
+        const status = resolveAddedChannelStatus(videos);
+        presentAddSourceFeedback(buildChannelAddFeedback(channel, status));
+        if (status === "ready") {
+          return;
+        }
+      } catch {
+        // Keep polling quietly; the initial acceptance feedback already surfaced.
+      }
+    }
+  }
+
+  async function openAddSourceFeedbackTarget() {
+    const current = addSourceFeedback;
+    if (!current) {
+      return;
+    }
+
+    addSourceFeedbackPollSequence += 1;
+    addSourceFeedback = null;
+    addSourceFeedbackDismissed = false;
+
+    if (current.kind === "video") {
+      await sidebarState.selectChannel(
+        current.targetChannelId,
+        current.videoId,
+        true,
+      );
+      await selectVideo(current.videoId, true, true);
+      return;
+    }
+
+    mobileBrowseOpen = true;
+    await sidebarState.selectChannel(current.channelId, null, true);
+  }
+
+  onMount(() => {
+    return () => {
+      addSourceFeedbackPollSequence += 1;
+    };
+  });
+
   $effect(() => {
     if (mobileBrowseOpen) {
       mobileBottomBar.set({ kind: "hidden" });
@@ -1932,6 +2129,7 @@
     resettingVideoId: content.resettingVideoId,
     creatingHighlight,
     creatingHighlightVideoId,
+    creatingVocabularyReplacement,
     deletingHighlightId,
     canRevertTranscript,
     showRevertTranscriptAction: hasUpdatedTranscript,
@@ -1957,6 +2155,7 @@
     },
     onToggleAcknowledge: toggleAcknowledge,
     onCreateHighlight: saveSelectionHighlight,
+    onCreateVocabularyReplacement: saveVocabularyReplacement,
     onDeleteHighlight: deleteExistingHighlight,
     onShowChannels: () => {
       mobileBrowseOpen = true;
@@ -1970,6 +2169,7 @@
     errorMessage,
     showDeleteConfirmation: sidebarState.showDeleteConfirmation,
     showDeleteAccessPrompt,
+    showAddSourceFeedback: !!addSourceFeedback && !addSourceFeedbackDismissed,
     showResetVideoConfirmation,
   });
   const workspaceOverlaysActions = {
@@ -2147,6 +2347,14 @@
     overlayActions={workspaceOverlaysActions}
   />
 
+  {#if addSourceFeedback && !addSourceFeedbackDismissed}
+    <AddSourceFeedbackToast
+      feedback={addSourceFeedback}
+      onDismiss={dismissAddSourceFeedback}
+      onAction={openAddSourceFeedbackTarget}
+    />
+  {/if}
+
   {#if FeatureGuideComponent}
     <FeatureGuideComponent
       open={guideOpen}
@@ -2157,4 +2365,16 @@
       onStep={setGuideStep}
     />
   {/if}
+
+  <VocabularyReplacementModal
+    show={Boolean(vocabularyModalSource)}
+    source={vocabularyModalSource ?? ""}
+    value={vocabularyModalValue}
+    busy={creatingVocabularyReplacement}
+    onValueChange={(value) => {
+      vocabularyModalValue = value;
+    }}
+    onConfirm={() => void confirmVocabularyReplacement()}
+    onCancel={closeVocabularyModal}
+  />
 </WorkspaceShell>

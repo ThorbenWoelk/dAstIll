@@ -53,6 +53,7 @@
     dedupeVideosById,
     filterVideosByAcknowledged,
     filterVideosByType,
+    resolveInitialPreviewExpandedChannelId,
     shouldForceReloadMissingSelectedVideo,
   } from "$lib/workspace/route-helpers";
   import { formatSyncDate } from "$lib/workspace/content";
@@ -721,15 +722,38 @@
     }
   });
 
-  // Expand the first (user-ordered) channel on initial load in per_channel_preview mode.
-  let initialExpandDone = false;
+  let lastAutoExpandedChannelId = $state<string | null>(null);
   $effect(() => {
     if (videoListMode !== "per_channel_preview") return;
-    if (initialExpandDone) return;
-    const first = filteredChannels[0];
-    if (!first || isVirtualChannel(first)) return;
-    initialExpandDone = true;
-    ensureChannelVideoCollection(first.id).expanded = true;
+    const targetChannelId = resolveInitialPreviewExpandedChannelId(
+      filteredChannels,
+      selectedChannelId,
+      OTHERS_CHANNEL_ID,
+    );
+    if (!targetChannelId || targetChannelId === lastAutoExpandedChannelId) {
+      return;
+    }
+
+    const targetChannel = channels.find(
+      (channel) => channel.id === targetChannelId,
+    );
+    if (!targetChannel || isVirtualChannel(targetChannel)) {
+      return;
+    }
+
+    const state = ensureChannelVideoCollection(targetChannel.id);
+    state.expanded = true;
+    lastAutoExpandedChannelId = targetChannel.id;
+
+    const preferredMode =
+      selectedVideoId && selectedChannelId === targetChannel.id
+        ? "all"
+        : "preview";
+    if (
+      !supportsMode(state, getChannelVideoCollectionFilterKey(), preferredMode)
+    ) {
+      void loadChannelVideoCollection(targetChannel, preferredMode);
+    }
   });
 
   $effect(() => {

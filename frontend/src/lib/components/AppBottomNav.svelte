@@ -22,6 +22,7 @@
   const bottomOrder: Array<SectionNavigationItem["section"]> = [
     "workspace",
     "highlights",
+    "vocabulary",
     "queue",
     "chat",
     "docs",
@@ -36,6 +37,7 @@
   function resolveYouTubeRoleLabel(section: SectionNavigationItem["section"]) {
     if (section === "workspace") return "Home";
     if (section === "highlights") return "Shorts";
+    if (section === "vocabulary") return "Words";
     if (section === "queue") return "Create";
     if (section === "chat") return "Chat";
     return "Docs";
@@ -321,6 +323,21 @@
             <path d="M9 7h10v10H9z" />
             <path d="M5 7l4-2v14l-4-2z" />
             <path d="M12 10l2 2-2 2" />
+          </svg>
+        {:else if item.section === "vocabulary"}
+          <svg
+            class="h-5 w-5"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M4 6h16" />
+            <path d="M4 12h10" />
+            <path d="M4 18h7" />
+            <path d="M18 10l2 2-4 4-2-2z" />
           </svg>
         {:else if item.section === "chat"}
           <svg

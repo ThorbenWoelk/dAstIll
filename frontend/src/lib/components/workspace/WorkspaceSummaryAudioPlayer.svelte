@@ -1,8 +1,26 @@
 <script lang="ts">
-  let { videoId }: { videoId: string | null } = $props();
+  import { onDestroy } from "svelte";
+  import {
+    generateSummaryAudio,
+    markSummaryAudioPlaybackStopped,
+    readSummaryAudioSession,
+    resetSummaryAudioPlayback,
+    resolveSummaryAudioTimelineState,
+    setSummaryAudioStatus,
+    subscribeToSummaryAudioSession,
+    syncSummaryAudioDebugState,
+    updateSummaryAudioCurrentTime,
+    updateSummaryAudioDuration,
+    updateSummaryAudioPlaybackRate,
+    type SummaryAudioStatus,
+  } from "$lib/workspace/summary-audio-session";
 
-  type AudioStatus = "missing" | "generating" | "ready" | "playing" | "loading";
-  let status = $state<AudioStatus>("missing");
+  let {
+    videoId,
+    summaryReady = true,
+  }: { videoId: string | null; summaryReady?: boolean } = $props();
+
+  let status = $state<SummaryAudioStatus>("missing");
   let summaryAudioError = $state<string | null>(null);
   let audioPlayer = $state<HTMLAudioElement | null>(null);
   let audioSrc = $state<string | null>(null);
@@ -13,12 +31,32 @@
   let estimatedSecs = $state<number | null>(null);
 
   const playbackRates = [1, 1.25, 1.5, 2, 2.5, 3, 0.75];
+  const timelineState = $derived(
+    resolveSummaryAudioTimelineState(currentTime, duration),
+  );
+
+  let unsubscribeSession: (() => void) | null = null;
+
+  function applySession(videoIdValue: string) {
+    const session = readSummaryAudioSession(videoIdValue);
+    status = session.status;
+    summaryAudioError = session.summaryAudioError;
+    audioSrc = session.audioSrc;
+    currentTime = session.currentTime;
+    duration = session.duration;
+    playbackRate = session.playbackRate;
+    summaryWordCount = session.summaryWordCount;
+    estimatedSecs = session.estimatedSecs;
+  }
 
   function cyclePlaybackRate() {
     const currentIndex = playbackRates.indexOf(playbackRate);
     playbackRate = playbackRates[(currentIndex + 1) % playbackRates.length];
     if (audioPlayer) {
       audioPlayer.playbackRate = playbackRate;
+    }
+    if (videoId) {
+      updateSummaryAudioPlaybackRate(videoId, playbackRate);
     }
   }
 
@@ -50,15 +88,7 @@
       const resp = await fetch(`/api/videos/${videoId}/summary/audio/debug`);
       if (resp.ok) {
         const data = await resp.json();
-        summaryWordCount = data.word_count ?? null;
-        estimatedSecs = data.estimated_secs ?? null;
-        if (data.cache_hit) {
-          status = "ready";
-          audioSrc = `/api/videos/${videoId}/summary/audio`;
-        } else {
-          status = "missing";
-          audioSrc = null;
-        }
+        syncSummaryAudioDebugState(videoId, data);
       }
     } catch (e) {
       console.error("Failed to check audio status", e);
@@ -67,34 +97,21 @@
 
   async function generateAudio() {
     if (!videoId) return;
-    status = "generating";
-    summaryAudioError = null;
-    try {
-      const resp = await fetch(`/api/videos/${videoId}/summary/audio`, {
+    await generateSummaryAudio(videoId, () =>
+      fetch(`/api/videos/${videoId}/summary/audio`, {
         method: "POST",
-      });
-      if (resp.ok) {
-        status = "ready";
-        audioSrc = `/api/videos/${videoId}/summary/audio`;
-      } else {
-        const text = await resp.text();
-        summaryAudioError = text || "Failed to generate audio.";
-        status = "missing";
-      }
-    } catch (e) {
-      summaryAudioError = "Failed to generate audio.";
-      status = "missing";
-    }
+      }),
+    );
   }
 
   function togglePlay() {
-    if (!audioPlayer) return;
+    if (!audioPlayer || !videoId) return;
     if (audioPlayer.paused) {
       audioPlayer.play();
-      status = "playing";
+      setSummaryAudioStatus(videoId, "playing");
     } else {
       audioPlayer.pause();
-      status = "ready";
+      setSummaryAudioStatus(videoId, "ready");
     }
   }
 
@@ -107,44 +124,58 @@
   }
 
   function onTimeUpdate() {
-    if (audioPlayer) {
-      currentTime = audioPlayer.currentTime;
+    if (audioPlayer && videoId) {
+      updateSummaryAudioCurrentTime(videoId, audioPlayer.currentTime);
     }
   }
 
-  function onLoadedMetadata() {
-    if (audioPlayer) {
-      duration = audioPlayer.duration;
+  function syncKnownDuration() {
+    if (audioPlayer && videoId) {
+      updateSummaryAudioDuration(videoId, audioPlayer.duration);
     }
   }
 
   function onEnded() {
-    status = "ready";
-    currentTime = 0;
-    if (audioPlayer) audioPlayer.currentTime = 0;
+    if (!videoId) return;
+    resetSummaryAudioPlayback(videoId);
+    if (audioPlayer) {
+      audioPlayer.currentTime = 0;
+    }
   }
 
   function onPlay() {
-    status = "playing";
+    if (videoId) {
+      setSummaryAudioStatus(videoId, "playing");
+    }
   }
 
   function onPause() {
-    if (status === "playing") {
-      status = "ready";
+    if (videoId && status === "playing") {
+      setSummaryAudioStatus(videoId, "ready");
     }
   }
 
   function onWaiting() {
-    status = "loading";
+    if (videoId) {
+      setSummaryAudioStatus(videoId, "loading");
+    }
   }
 
   function onCanPlay() {
+    syncKnownDuration();
     if (audioPlayer) {
       audioPlayer.playbackRate = playbackRate;
+      if (videoId) {
+        updateSummaryAudioPlaybackRate(videoId, playbackRate);
+      }
       if (!audioPlayer.paused) {
-        status = "playing";
+        if (videoId) {
+          setSummaryAudioStatus(videoId, "playing");
+        }
       } else {
-        status = "ready";
+        if (videoId) {
+          setSummaryAudioStatus(videoId, "ready");
+        }
       }
     }
   }
@@ -157,16 +188,39 @@
   }
 
   $effect(() => {
-    videoId;
-    status = "missing";
-    audioSrc = null;
-    summaryAudioError = null;
-    currentTime = 0;
-    duration = 0;
-    summaryWordCount = null;
-    estimatedSecs = null;
-    // Keep playbackRate as is (persist across videos)
-    checkAudioStatus();
+    const activeVideoId = videoId;
+    unsubscribeSession?.();
+    unsubscribeSession = null;
+
+    if (!activeVideoId) {
+      status = "missing";
+      audioSrc = null;
+      summaryAudioError = null;
+      currentTime = 0;
+      duration = 0;
+      summaryWordCount = null;
+      estimatedSecs = null;
+      return;
+    }
+
+    applySession(activeVideoId);
+    unsubscribeSession = subscribeToSummaryAudioSession(activeVideoId, () => {
+      applySession(activeVideoId);
+    });
+    void checkAudioStatus();
+
+    return () => {
+      if (audioPlayer) {
+        audioPlayer.pause();
+      }
+      markSummaryAudioPlaybackStopped(activeVideoId);
+      unsubscribeSession?.();
+      unsubscribeSession = null;
+    };
+  });
+
+  onDestroy(() => {
+    unsubscribeSession?.();
   });
 </script>
 
@@ -186,8 +240,11 @@
       {:else if status === "missing"}
         <button
           onclick={generateAudio}
-          class="group flex h-10 w-10 items-center justify-center rounded-full bg-[var(--accent-soft)]/40 text-[var(--accent-strong)] transition-all hover:bg-[var(--accent-wash)] hover:scale-105 active:scale-95"
-          title="Generate Summary Audio"
+          disabled={!summaryReady}
+          class="group flex h-10 w-10 items-center justify-center rounded-full bg-[var(--accent-soft)]/40 text-[var(--accent-strong)] transition-all hover:bg-[var(--accent-wash)] hover:scale-105 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+          title={summaryReady
+            ? "Generate Summary Audio"
+            : "Summary not yet available"}
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -341,11 +398,13 @@
         <input
           type="range"
           min="0"
-          max={isFinite(duration) && duration > 0 ? duration : 100}
+          max={timelineState.sliderMax}
           step="0.1"
-          value={currentTime}
+          value={timelineState.sliderValue}
           oninput={handleScrub}
-          disabled={status === "missing" || status === "generating"}
+          disabled={status === "missing" ||
+            status === "generating" ||
+            !timelineState.knownDuration}
           class="timeline-slider w-full cursor-pointer appearance-none bg-transparent"
         />
         <div
@@ -354,7 +413,7 @@
         >
           <div
             class="h-full rounded-full bg-[var(--accent)] transition-all duration-75"
-            style="width: {duration > 0 ? (currentTime / duration) * 100 : 0}%"
+            style="width: {timelineState.progressPercent}%"
           ></div>
         </div>
       </div>
@@ -372,12 +431,15 @@
       bind:this={audioPlayer}
       src={audioSrc}
       ontimeupdate={onTimeUpdate}
-      onloadedmetadata={onLoadedMetadata}
+      onloadedmetadata={syncKnownDuration}
+      ondurationchange={syncKnownDuration}
+      onloadeddata={syncKnownDuration}
       onended={onEnded}
       onplay={onPlay}
       onpause={onPause}
       onwaiting={onWaiting}
       oncanplay={onCanPlay}
+      preload="metadata"
       class="hidden"
     ></audio>
   {/if}

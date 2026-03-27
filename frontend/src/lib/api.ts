@@ -511,8 +511,10 @@ export function updateAcknowledged(videoId: string, acknowledged: boolean) {
   });
 }
 
-export function getVideo(videoId: string) {
-  return cachedGetRequest<Video>(`/api/videos/${videoId}`);
+export function getVideo(videoId: string, bypassCache = false) {
+  return cachedGetRequest<Video>(`/api/videos/${videoId}`, {
+    bypassCache,
+  });
 }
 
 export function getVideoInfo(videoId: string) {

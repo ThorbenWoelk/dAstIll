@@ -125,10 +125,22 @@ pub struct UserPreferences {
     /// Which sort mode is active: "custom", "alpha", or "newest".
     #[serde(default = "default_channel_sort_mode")]
     pub channel_sort_mode: String,
+    /// User-defined exact replacements applied before summary generation.
+    #[serde(default)]
+    pub vocabulary_replacements: Vec<VocabularyReplacement>,
 }
 
 fn default_channel_sort_mode() -> String {
     "custom".to_string()
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS, PartialEq, Eq)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
+pub struct VocabularyReplacement {
+    pub from: String,
+    pub to: String,
+    #[serde(default = "chrono::Utc::now")]
+    pub added_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Deserialize, TS)]

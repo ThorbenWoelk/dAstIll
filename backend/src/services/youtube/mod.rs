@@ -25,6 +25,8 @@ pub enum YouTubeError {
     FeedParseError(String),
     #[error("Channel not found")]
     ChannelNotFound,
+    #[error("YouTube rate limit exceeded: {0}")]
+    RateLimited(String),
     #[error("Invalid input format")]
     InvalidInput,
 }
@@ -56,7 +58,7 @@ struct WatchVideoDetails {
 
 impl YouTubeService {
     fn desktop_user_agent() -> &'static str {
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
     }
 
     pub fn new() -> Self {

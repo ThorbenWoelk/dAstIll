@@ -105,6 +105,25 @@ export function shouldForceReloadMissingSelectedVideo(params: {
   return params.lastProbeKey !== params.probeKey;
 }
 
+export function resolveInitialPreviewExpandedChannelId(
+  channels: Channel[],
+  selectedChannelId: string | null,
+  virtualChannelId: string,
+): string | null {
+  if (selectedChannelId) {
+    const selected = channels.find(
+      (channel) => channel.id === selectedChannelId,
+    );
+    if (selected && selected.id !== virtualChannelId) {
+      return selected.id;
+    }
+  }
+
+  return (
+    channels.find((channel) => channel.id !== virtualChannelId)?.id ?? null
+  );
+}
+
 export function filterVideosByType(
   videos: Video[],
   filter: VideoTypeFilter,

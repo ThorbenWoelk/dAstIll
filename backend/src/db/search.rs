@@ -5,7 +5,7 @@ use crate::services::search::{SearchCandidate, SearchIndexChunk, SearchSourceKin
 
 use super::{
     SearchMaterial, SearchProgressMaterial, SearchSourceCounts, SearchSourceRecord,
-    SearchSourceState, Store, StoreError,
+    SearchSourceState, Store, StoreError, format_aws_error,
 };
 
 fn search_source_key(video_id: &str, source_kind: SearchSourceKind) -> String {
@@ -262,7 +262,7 @@ pub async fn replace_search_chunks(
                 .set_vectors(Some(std::mem::take(&mut put_batch)))
                 .send()
                 .await
-                .map_err(|e| StoreError::S3Vectors(format!("{e:#}")))?;
+                .map_err(|e| StoreError::S3Vectors(format_aws_error(&e)))?;
         }
     }
 
@@ -276,7 +276,7 @@ pub async fn replace_search_chunks(
             .set_vectors(Some(put_batch))
             .send()
             .await
-            .map_err(|e| StoreError::S3Vectors(format!("{e:#}")))?;
+            .map_err(|e| StoreError::S3Vectors(format_aws_error(&e)))?;
     }
 
     let mut updated = current;
@@ -583,7 +583,7 @@ pub async fn search_vector_candidates(
     let vectors = match req.send().await {
         Ok(output) => output.vectors,
         Err(err) => {
-            tracing::debug!(error = %err, "vector search unavailable");
+            tracing::debug!(error = %format_aws_error(&err), "vector search unavailable");
             return Ok(Vec::new());
         }
     };

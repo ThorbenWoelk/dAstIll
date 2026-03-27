@@ -57,6 +57,9 @@ Important variables:
 | `S3_DATA_BUCKET`                    | S3 bucket for data storage                                                       |
 | `S3_VECTOR_BUCKET`                  | S3 Vectors bucket for semantic search                                            |
 | `S3_VECTOR_INDEX`                   | S3 Vectors index name for embeddings                                             |
+| `AWS_ACCESS_KEY_ID`                 | Local AWS access key used for S3 / S3 Vectors                                    |
+| `AWS_SECRET_ACCESS_KEY`             | Local AWS secret key used for S3 / S3 Vectors                                    |
+| `AWS_SESSION_TOKEN`                 | Optional temporary session token for local AWS auth                              |
 | `BACKEND_PROXY_TOKEN`               | Shared secret used by the authenticated frontend proxy when it calls the backend |
 | `BACKEND_CORS_ALLOWED_ORIGINS`      | Comma-separated list of browser origins allowed to call the backend directly     |
 | `AWS_ROLE_ARN` / `AWS_WIF_AUDIENCE` | Production only: GCP Workload Identity Federation for AWS                        |
@@ -74,6 +77,18 @@ Important variables:
 | `SEARCH_HYDE_MODEL`                 | Optional HyDE generation model name (Ollama `/api/generate`, short queries only) |
 | `SUMMARIZE_PATH`                    | Path to the transcript extraction CLI                                            |
 | `LOGFIRE_TOKEN`                     | Optional Logfire token for backend tracing / AI pipeline observability           |
+
+For local development, the backend still needs AWS credentials in addition to the bucket names.
+This repository now expects those local credentials in `backend/.env`:
+
+```bash
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+# Optional for temporary credentials:
+# AWS_SESSION_TOKEN=...
+```
+
+Production is different: Cloud Run uses `AWS_ROLE_ARN` and `AWS_WIF_AUDIENCE` for Workload Identity Federation, not static access keys.
 
 ## Logfire Observability
 

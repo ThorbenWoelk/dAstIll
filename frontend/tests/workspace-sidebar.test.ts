@@ -3,6 +3,7 @@ import { describe, expect, it } from "bun:test";
 import {
   filterVideosByAcknowledged,
   filterVideosByType,
+  resolveInitialPreviewExpandedChannelId,
   resolveNextChannelSelection,
   shouldForceReloadMissingSelectedVideo,
 } from "../src/lib/workspace/route-helpers";
@@ -181,5 +182,37 @@ describe("shouldForceReloadMissingSelectedVideo", () => {
     });
 
     expect(result).toBe(false);
+  });
+});
+
+describe("resolveInitialPreviewExpandedChannelId", () => {
+  it("prefers the route-selected channel over the first channel", () => {
+    const result = resolveInitialPreviewExpandedChannelId(
+      [makeChannel("channel-a"), makeChannel("channel-b")],
+      "channel-b",
+      "others",
+    );
+
+    expect(result).toBe("channel-b");
+  });
+
+  it("falls back to the first non-virtual channel", () => {
+    const result = resolveInitialPreviewExpandedChannelId(
+      [makeChannel("others"), makeChannel("channel-b")],
+      null,
+      "others",
+    );
+
+    expect(result).toBe("channel-b");
+  });
+
+  it("ignores a virtual selected channel", () => {
+    const result = resolveInitialPreviewExpandedChannelId(
+      [makeChannel("others"), makeChannel("channel-b")],
+      "others",
+      "others",
+    );
+
+    expect(result).toBe("channel-b");
   });
 });

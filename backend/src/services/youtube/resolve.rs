@@ -74,6 +74,9 @@ impl YouTubeService {
             .await?;
 
         if !response.status().is_success() {
+            if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                return Err(YouTubeError::RateLimited("channel page scrape".to_string()));
+            }
             return Err(YouTubeError::ChannelNotFound);
         }
 
@@ -255,7 +258,13 @@ impl YouTubeService {
             .await?;
 
         if !response.status().is_success() {
-            tracing::warn!(video_id = %video_id, status = %response.status(), "watch page fetch failed");
+            let status = response.status();
+            tracing::warn!(video_id = %video_id, %status, "watch page fetch failed");
+
+            if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                return Err(YouTubeError::RateLimited("watch page scrape".to_string()));
+            }
+
             return Err(YouTubeError::ChannelNotFound);
         }
 
@@ -299,9 +308,26 @@ impl YouTubeService {
                 duration_seconds: details.duration_seconds,
                 view_count: details.view_count,
             }
-        } else if let Some(api_key) = self.api_key.as_deref() {
-            return self.fetch_video_info_from_data_api(video_id, api_key).await;
         } else {
+            let status = response.status();
+            tracing::warn!(video_id = %video_id, %status, "watch page fetch failed during info fetch");
+
+            if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                return Err(YouTubeError::RateLimited(
+                    "watch page scrape (info)".to_string(),
+                ));
+            }
+
+            if let Some(api_key) = self.api_key.as_deref() {
+                let cooldown_active = self
+                    .quota_cooldown
+                    .as_ref()
+                    .is_some_and(|cd| cd.is_active());
+
+                if !cooldown_active {
+                    return self.fetch_video_info_from_data_api(video_id, api_key).await;
+                }
+            }
             return Err(YouTubeError::ChannelNotFound);
         };
 

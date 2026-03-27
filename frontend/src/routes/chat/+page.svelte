@@ -8,6 +8,7 @@
   import { isAnonymousChatQuotaError } from "$lib/chat/anonymous-quota";
   import type { ChatStreamTiming } from "$lib/chat/conversation-meta";
   import { CHAT_STARTER_PROMPTS } from "$lib/chat/starter-prompts";
+  import { deriveToolCalls } from "$lib/chat/tool-calls";
   import {
     cancelConversationGeneration,
     createConversation,
@@ -42,6 +43,7 @@
     ChatConversationSummary,
     ChatMessage,
     ChatStreamStatus,
+    ChatToolCall,
     SearchResult,
   } from "$lib/types";
 
@@ -154,6 +156,9 @@
       latestStreamStatus?.decision ??
       null,
   );
+  let streamToolCalls = $derived.by((): ChatToolCall[] =>
+    deriveToolCalls(streamStatuses),
+  );
   let pendingDeleteConversation = $derived(
     deleteConversationId
       ? (conversations.find(
@@ -235,6 +240,7 @@
       streamDisplayedQueries.length ||
       streamCoverageSummary ||
       streamPrimaryDecision ||
+      streamToolCalls.length > 0 ||
       streamTimings.length > 0,
     ),
   );
@@ -1056,6 +1062,7 @@
                   {streamCoverageSummary}
                   {streamPrimaryDecision}
                   {streamTimings}
+                  toolCalls={streamToolCalls}
                   {errorMessage}
                 />
               </div>
@@ -1083,6 +1090,7 @@
                 {streamCoverageSummary}
                 {streamPrimaryDecision}
                 {streamTimings}
+                toolCalls={streamToolCalls}
                 {errorMessage}
               />
 
@@ -1110,6 +1118,7 @@
                   {streamCoverageSummary}
                   {streamPrimaryDecision}
                   {streamTimings}
+                  toolCalls={streamToolCalls}
                   {errorMessage}
                 />
               </div>

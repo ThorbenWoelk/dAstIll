@@ -2,6 +2,7 @@ export type SectionNavigationSection =
   | "workspace"
   | "queue"
   | "highlights"
+  | "vocabulary"
   | "chat";
 
 export type SectionNavigationItem = {
@@ -20,6 +21,7 @@ export function goHintKeyForSection(
     workspace: "W",
     queue: "Q",
     highlights: "H",
+    vocabulary: "V",
     chat: "C",
     docs: "D",
   };
@@ -50,6 +52,13 @@ export function getSectionNavigationItems(
       label: "Highlights",
       href: "/highlights",
       active: currentSection === "highlights",
+      external: false,
+    },
+    {
+      section: "vocabulary",
+      label: "Vocabulary",
+      href: "/vocabulary",
+      active: currentSection === "vocabulary",
       external: false,
     },
     {

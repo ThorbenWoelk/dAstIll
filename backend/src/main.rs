@@ -45,19 +45,20 @@ async fn main() -> anyhow::Result<()> {
         .install_default()
         .expect("failed to install rustls crypto provider");
 
-    // Load .env if present (simple key=value parsing, no external crate)
-    if let Ok(contents) = std::fs::read_to_string(".env") {
-        for line in contents.lines() {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') {
-                continue;
-            }
+    // Install the jsonwebtoken crypto provider (required by jsonwebtoken 10+)
+    jsonwebtoken::crypto::aws_lc::DEFAULT_PROVIDER
+        .install_default()
+        .expect("failed to install jsonwebtoken crypto provider");
+
+    // Standard local dev .env loading
+    if let Ok(content) = std::fs::read_to_string(".env") {
+        for line in content.lines() {
             if let Some((key, value)) = line.split_once('=') {
                 let key = key.trim();
                 let value = value.trim();
-                if std::env::var(key).is_err() {
-                    // SAFETY: called during single-threaded init before any
-                    // worker threads are spawned.
+                // Strip optional quotes
+                let value = value.trim_matches('"');
+                if !key.is_empty() && !key.starts_with('#') {
                     unsafe { std::env::set_var(key, value) };
                 }
             }
@@ -120,32 +121,26 @@ async fn main() -> anyhow::Result<()> {
         std::env::var("S3_VECTOR_INDEX").unwrap_or_else(|_| "search-chunks".to_string());
     let aws_region = std::env::var("AWS_REGION").unwrap_or_else(|_| "eu-central-1".to_string());
 
-    let aws_config = if let (Ok(role_arn), Ok(audience)) = (
-        std::env::var("AWS_ROLE_ARN"),
-        std::env::var("AWS_WIF_AUDIENCE"),
-    ) {
-        tracing::info!(role_arn = %role_arn, "using GCP Workload Identity Federation for AWS auth");
-        let wif_provider = dastill::aws_auth::GcpWifCredentialProvider::new(
-            role_arn,
-            audience,
-            aws_region.clone(),
-        );
-        aws_config::defaults(aws_config::BehaviorVersion::latest())
-            .region(aws_config::Region::new(aws_region))
-            .credentials_provider(wif_provider)
-            .load()
-            .await
-    } else {
-        tracing::info!("using default AWS credential chain (local dev)");
-        aws_config::defaults(aws_config::BehaviorVersion::latest())
-            .region(aws_config::Region::new(aws_region))
-            .load()
-            .await
-    };
+    let aws_config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+        .region(aws_config::Region::new(aws_region))
+        .load()
+        .await;
 
-    tracing::info!(bucket = %data_bucket, vector_bucket = %vector_bucket, "connecting to AWS S3");
-    let s3_client = aws_sdk_s3::Client::new(&aws_config);
-    let s3v_client = aws_sdk_s3vectors::Client::new(&aws_config);
+    let mut s3_config_builder = aws_sdk_s3::config::Builder::from(&aws_config);
+    if let Ok(endpoint) = std::env::var("S3_ENDPOINT_URL") {
+        tracing::info!(endpoint = %endpoint, "using custom S3 endpoint");
+        s3_config_builder = s3_config_builder
+            .endpoint_url(endpoint)
+            .force_path_style(true);
+    }
+    let s3_client = aws_sdk_s3::Client::from_conf(s3_config_builder.build());
+
+    let mut s3v_config_builder = aws_sdk_s3vectors::config::Builder::from(&aws_config);
+    if let Ok(endpoint) = std::env::var("S3_VECTOR_ENDPOINT_URL") {
+        tracing::info!(endpoint = %endpoint, "using custom S3 Vectors endpoint");
+        s3v_config_builder = s3v_config_builder.endpoint_url(endpoint);
+    }
+    let s3v_client = aws_sdk_s3vectors::Client::from_conf(s3v_config_builder.build());
 
     let gcp_project_id = std::env::var("GCP_PROJECT_ID")
         .map_err(|_| anyhow::anyhow!("GCP_PROJECT_ID must be set"))?;

@@ -3,6 +3,8 @@ name: Security
 on:
   workflow_call:
   pull_request:
+  push:
+    branches: ["main"]
   schedule:
     - cron: "0 6 * * 1"
   workflow_dispatch:
@@ -23,9 +25,11 @@ jobs:
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
 
-      - name: Cargo Audit
+      - name: Cargo Update and Audit
         working-directory: backend
-        run: cargo audit
+        run: |
+          cargo update
+          cargo audit
 
   frontend-audit:
     name: Frontend Audit

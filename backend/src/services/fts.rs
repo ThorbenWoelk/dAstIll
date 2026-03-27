@@ -189,10 +189,11 @@ impl FtsIndex {
             limit.min(200)
         };
 
-        let top_docs = match searcher.search(&parsed, &TopDocs::with_limit(fetch_limit)) {
-            Ok(docs) => docs,
-            Err(_) => return Vec::new(),
-        };
+        let top_docs =
+            match searcher.search(&parsed, &TopDocs::with_limit(fetch_limit).order_by_score()) {
+                Ok(docs) => docs,
+                Err(_) => return Vec::new(),
+            };
 
         let mut results = Vec::new();
         for (score, doc_address) in top_docs {

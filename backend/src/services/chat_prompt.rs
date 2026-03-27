@@ -79,6 +79,42 @@ pub(super) fn build_conversation_only_grounding() -> String {
     "No new library excerpts are attached for this turn. Answer using the conversation history only. If the question clearly requires fresh evidence from the indexed library, say that briefly and suggest the user ask in a way that triggers a library search.".to_string()
 }
 
+pub(super) fn build_tool_grounding_context(
+    tool_outputs: &[String],
+    retrieved_sources: &[RetrievedChatSource],
+) -> String {
+    let mut context = String::from("Ground-truth evidence for the next answer only:\n\n");
+
+    if !tool_outputs.is_empty() {
+        context.push_str("Trusted tool outputs:\n\n");
+        for (index, output) in tool_outputs.iter().enumerate() {
+            let number = index + 1;
+            context.push_str(&format!("[Tool {number}]\n{}\n\n", output.trim()));
+        }
+    }
+
+    if !retrieved_sources.is_empty() {
+        context.push_str("Ground-truth excerpts:\n\n");
+        for (index, source) in retrieved_sources.iter().enumerate() {
+            let source_number = index + 1;
+            context.push_str(&format!(
+                "[Source {source_number}] Video: {}\nChannel: {}\nType: {}\n",
+                source.source.video_title,
+                source.source.channel_name,
+                source.source.source_kind.as_str(),
+            ));
+            if let Some(section_title) = &source.source.section_title {
+                context.push_str(&format!("Section: {section_title}\n"));
+            }
+            context.push_str(&format!("Excerpt:\n{}\n\n", source.context_text));
+        }
+    }
+
+    context.push_str("If this evidence is not enough, explicitly say so.");
+    context.push_str(GROUNDING_CITATION_FOOTER);
+    context
+}
+
 pub(super) fn build_synthesis_grounding_context(
     prompt: &str,
     plan: &ChatRetrievalPlan,

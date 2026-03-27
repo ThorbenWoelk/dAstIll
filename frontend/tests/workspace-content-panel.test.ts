@@ -10,6 +10,7 @@ function makeOverlaysState(
     errorMessage: null,
     showDeleteConfirmation: false,
     showDeleteAccessPrompt: false,
+    showAddSourceFeedback: false,
     ...overrides,
   };
 }
@@ -46,5 +47,10 @@ describe("hasActiveOverlay", () => {
   it("returns false when errorMessage is null", () => {
     const state = makeOverlaysState({ errorMessage: null });
     expect(hasActiveOverlay(state)).toBe(false);
+  });
+
+  it("returns true when add-source feedback is visible", () => {
+    const state = makeOverlaysState({ showAddSourceFeedback: true });
+    expect(hasActiveOverlay(state)).toBe(true);
   });
 });

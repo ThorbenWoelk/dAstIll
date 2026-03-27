@@ -86,10 +86,10 @@ regenerated. Once the cap is reached, the video is not requeued further.
 
 ### Configuration
 
-| Variable                | Purpose                                            |
-| ----------------------- | -------------------------------------------------- |
-| `OLLAMA_EMBEDDING_MODEL`| Model name for dense embeddings (default: `embeddinggemma:latest`) |
-| `SEARCH_SEMANTIC_ENABLED`| Override switch; local debug defaults on, release defaults off |
+| Variable                  | Purpose                                                            |
+| ------------------------- | ------------------------------------------------------------------ |
+| `OLLAMA_EMBEDDING_MODEL`  | Model name for dense embeddings (default: `embeddinggemma:latest`) |
+| `SEARCH_SEMANTIC_ENABLED` | Override switch; local debug defaults on, release defaults off     |
 
 The embedding model is accessed via Ollama's `/api/embed` endpoint. The service:
 
@@ -214,9 +214,9 @@ retrieval strategy to gather the right context.
 
 ### Model Configuration
 
-| Variable           | Chat behavior                                              |
-| ------------------ | ---------------------------------------------------------- |
-| `OLLAMA_CHAT_MODEL`| Primary chat model. Falls back to `OLLAMA_MODEL` if unset |
+| Variable            | Chat behavior                                             |
+| ------------------- | --------------------------------------------------------- |
+| `OLLAMA_CHAT_MODEL` | Primary chat model. Falls back to `OLLAMA_MODEL` if unset |
 
 Chat model selection is done at conversation creation time. If the selected model is no
 longer available at message-send time, the service fails gracefully without corrupting
@@ -229,26 +229,26 @@ predefined cloud model entries. Users can switch models per-conversation.
 
 Before retrieval, the chat service classifies each user message into an intent category:
 
-| Intent          | Description                                                          |
-| --------------- | -------------------------------------------------------------------- |
-| `fact`          | Specific factual lookup from one or few sources                      |
-| `synthesis`     | Cross-video synthesis of a topic across many sources                 |
-| `pattern`       | Pattern detection across a large corpus                              |
-| `comparison`    | Comparative analysis between two or more subjects                    |
-| `recommendation`| Recommendation request (best X, worth watching, etc.)               |
+| Intent           | Description                                           |
+| ---------------- | ----------------------------------------------------- |
+| `fact`           | Specific factual lookup from one or few sources       |
+| `synthesis`      | Cross-video synthesis of a topic across many sources  |
+| `pattern`        | Pattern detection across a large corpus               |
+| `comparison`     | Comparative analysis between two or more subjects     |
+| `recommendation` | Recommendation request (best X, worth watching, etc.) |
 
 Intent drives the source budget (how many chunks the context window targets) and the
 query fan-out strategy.
 
 ### Source Budgets by Intent
 
-| Intent          | Source budget |
-| --------------- | ------------- |
-| `fact`          | 6             |
-| `synthesis`     | 12            |
-| `recommendation`| 14            |
-| `comparison`    | 20            |
-| `pattern`       | 24            |
+| Intent           | Source budget |
+| ---------------- | ------------- |
+| `fact`           | 6             |
+| `synthesis`      | 12            |
+| `recommendation` | 14            |
+| `comparison`     | 20            |
+| `pattern`        | 24            |
 
 Deep research mode raises the budget to the system maximum and enables additional query
 passes.

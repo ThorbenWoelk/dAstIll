@@ -15,6 +15,7 @@
       path === "/" ||
       path.startsWith("/channels/") ||
       path === "/highlights" ||
+      path === "/vocabulary" ||
       path === "/download-queue" ||
       path === "/chat"
     ) {

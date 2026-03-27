@@ -23,9 +23,13 @@
     highlightSource?: HighlightSource | null;
     highlightEnabled?: boolean;
     creatingHighlight?: boolean;
+    creatingVocabularyReplacement?: boolean;
     deletingHighlightId?: number | null;
     onCreateHighlight?:
       | ((payload: CreateHighlightRequest) => Promise<void> | void)
+      | undefined;
+    onCreateVocabularyReplacement?:
+      | ((selectedText: string) => Promise<void> | void)
       | undefined;
     onDeleteHighlight?:
       | ((highlightId: number) => Promise<void> | void)
@@ -43,8 +47,10 @@
     highlightSource = null,
     highlightEnabled = false,
     creatingHighlight = false,
+    creatingVocabularyReplacement = false,
     deletingHighlightId = null,
     onCreateHighlight = undefined,
+    onCreateVocabularyReplacement = undefined,
     onDeleteHighlight = undefined,
     citationScrollText = null,
     onCitationScrollConsumed = undefined,
@@ -217,6 +223,7 @@
     }
 
     const range = selection.getRangeAt(0);
+    // Ensure the selection is entirely within the article
     if (!articleElement.contains(range.commonAncestorContainer)) {
       if (tooltip?.kind === "create") {
         clearTooltip();
@@ -240,7 +247,11 @@
       return;
     }
 
-    const rect = range.getBoundingClientRect();
+    const rects = range.getClientRects();
+    if (rects.length === 0) return;
+
+    // Use the last rect for positioning to stay close to the end of selection
+    const lastRect = rects[rects.length - 1];
     const containerRect = containerElement?.getBoundingClientRect();
     if (!containerRect) {
       if (tooltip?.kind === "create") {
@@ -251,7 +262,7 @@
 
     tooltip = {
       kind: "create",
-      ...resolveTooltipPosition(rect, containerRect),
+      ...resolveTooltipPosition(lastRect, containerRect),
       draft,
     };
   }
@@ -267,6 +278,22 @@
     }
 
     const result = onCreateHighlight(tooltip.draft);
+    window.getSelection()?.removeAllRanges();
+    clearTooltip();
+    await result;
+  }
+
+  async function handleCreateVocabularyReplacement() {
+    if (
+      !tooltip ||
+      tooltip.kind !== "create" ||
+      !onCreateVocabularyReplacement ||
+      creatingVocabularyReplacement
+    ) {
+      return;
+    }
+
+    const result = onCreateVocabularyReplacement(tooltip.draft.text);
     window.getSelection()?.removeAllRanges();
     clearTooltip();
     await result;
@@ -361,6 +388,7 @@
     highlightEnabled;
     highlightSource;
     onCreateHighlight;
+    onCreateVocabularyReplacement;
     onDeleteHighlight;
     if (!highlightEnabled || !highlightSource || !onCreateHighlight) {
       if (tooltip?.kind === "create") {
@@ -378,8 +406,18 @@
     }
 
     const handleSelectionChange = () => {
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed) {
+        if (tooltip?.kind === "create") {
+          clearTooltip();
+        }
+      }
+    };
+
+    const handleStableSelection = () => {
       updateTooltipFromSelection();
     };
+
     const handleScroll = () => {
       if (tooltip) {
         if (tooltip.kind === "create") {
@@ -389,6 +427,7 @@
         }
       }
     };
+
     const handlePointerDown = (event: PointerEvent) => {
       if (!containerElement) {
         return;
@@ -399,14 +438,18 @@
     };
 
     document.addEventListener("selectionchange", handleSelectionChange);
+    document.addEventListener("pointerup", handleStableSelection);
+    document.addEventListener("keyup", handleStableSelection);
     document.addEventListener("pointerdown", handlePointerDown);
-    window.addEventListener("resize", handleSelectionChange);
+    window.addEventListener("resize", handleStableSelection);
     window.addEventListener("scroll", handleScroll, true);
 
     return () => {
       document.removeEventListener("selectionchange", handleSelectionChange);
+      document.removeEventListener("pointerup", handleStableSelection);
+      document.removeEventListener("keyup", handleStableSelection);
       document.removeEventListener("pointerdown", handlePointerDown);
-      window.removeEventListener("resize", handleSelectionChange);
+      window.removeEventListener("resize", handleStableSelection);
       window.removeEventListener("scroll", handleScroll, true);
     };
   });
@@ -431,7 +474,7 @@
   {#if mode === "markdown"}
     <article
       bind:this={articleElement}
-      class={`prose max-w-none break-words leading-relaxed transition-all duration-500 prose-headings:font-serif prose-headings:font-bold prose-headings:tracking-tight prose-h1:text-xl prose-h2:text-lg prose-h3:text-base prose-p:text-[17px] prose-p:leading-[1.75] prose-p:tracking-[-0.01em] prose-strong:font-bold prose-a:text-[var(--accent)] prose-a:underline-offset-4 prose-blockquote:border-l-[var(--accent)] prose-blockquote:bg-[var(--accent-soft)]/30 prose-blockquote:py-1 prose-blockquote:px-6 prose-blockquote:rounded-r-lg ${
+      class={`prose max-w-none break-words leading-relaxed transition-opacity duration-500 prose-headings:font-serif prose-headings:font-bold prose-headings:tracking-tight prose-h1:text-xl prose-h2:text-lg prose-h3:text-base prose-p:text-[17px] prose-p:leading-[1.75] prose-p:tracking-[-0.01em] prose-strong:font-bold prose-a:text-[var(--accent)] prose-a:underline-offset-4 prose-blockquote:border-l-[var(--accent)] prose-blockquote:bg-[var(--accent-soft)]/30 prose-blockquote:py-1 prose-blockquote:px-6 prose-blockquote:rounded-r-lg ${
         formatting ? "opacity-40 grayscale blur-[1px]" : "opacity-100"
       }`}
     >
@@ -440,7 +483,7 @@
   {:else}
     <article
       bind:this={articleElement}
-      class={`max-w-none whitespace-pre-wrap break-words text-[17px] leading-[1.75] tracking-[-0.01em] text-[var(--foreground)] transition-all duration-500 ${
+      class={`max-w-none whitespace-pre-wrap break-words text-[17px] leading-[1.75] tracking-[-0.01em] text-[var(--foreground)] transition-opacity duration-500 ${
         formatting ? "opacity-40 grayscale blur-[1px]" : "opacity-100"
       }`}
     >
@@ -449,31 +492,48 @@
   {/if}
 
   {#if tooltip}
-    <button
-      type="button"
-      class={`absolute z-40 shadow-lg transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
-        tooltip.kind === "create"
-          ? "inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--accent)]/30 bg-[var(--foreground)] text-[var(--background)] hover:bg-[var(--accent-strong)] hover:text-[var(--background)]"
-          : "inline-flex h-10 w-10 items-center justify-center rounded-full bg-[var(--surface)] text-[var(--soft-foreground)] hover:bg-[var(--danger-soft)] hover:text-[var(--danger)]"
-      }`}
-      style={`top: ${tooltip.top}px; left: ${tooltip.left}px; transform: translateX(-50%);`}
-      onmousedown={(event) => event.preventDefault()}
-      onclick={tooltip.kind === "create"
-        ? handleCreateHighlight
-        : handleDeleteHighlight}
-      disabled={tooltip.kind === "create"
-        ? creatingHighlight
-        : deletingHighlightId === tooltip.highlightId}
-      aria-label={tooltip.kind === "create"
-        ? "Save selected text as a highlight"
-        : "Delete highlight"}
-      title={tooltip.kind === "create" ? "Save highlight" : "Delete highlight"}
-    >
-      {#if tooltip.kind === "create"}
-        <HighlighterIcon
-          class={`h-4 w-4 ${creatingHighlight ? "animate-pulse" : ""}`}
-        />
-      {:else}
+    {#if tooltip.kind === "create"}
+      <div
+        class="absolute z-40 flex items-center gap-2 rounded-full bg-[var(--surface-strong)] px-2 py-2 shadow-lg"
+        style={`top: ${tooltip.top}px; left: ${tooltip.left}px; transform: translateX(-50%);`}
+      >
+        <button
+          type="button"
+          class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[var(--foreground)] text-[var(--background)] transition-all hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+          onmousedown={(event) => event.preventDefault()}
+          onclick={handleCreateHighlight}
+          disabled={creatingHighlight}
+          aria-label="Save selected text as a highlight"
+          title="Save highlight"
+        >
+          <HighlighterIcon
+            class={`h-4 w-4 ${creatingHighlight ? "animate-pulse" : ""}`}
+          />
+        </button>
+        <button
+          type="button"
+          class="inline-flex min-w-0 items-center justify-center rounded-full bg-[var(--accent-wash)] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--accent-strong)] transition-all hover:bg-[var(--accent-soft)] disabled:cursor-not-allowed disabled:opacity-60"
+          onmousedown={(event) => event.preventDefault()}
+          onclick={handleCreateVocabularyReplacement}
+          disabled={!onCreateVocabularyReplacement ||
+            creatingVocabularyReplacement}
+          aria-label="Mark selected text as incorrect and save a preferred spelling"
+          title="Correct spelling"
+        >
+          {creatingVocabularyReplacement ? "Saving" : "Correct"}
+        </button>
+      </div>
+    {:else}
+      <button
+        type="button"
+        class="absolute z-40 inline-flex h-10 w-10 items-center justify-center rounded-full bg-[var(--surface)] text-[var(--soft-foreground)] shadow-lg transition-all hover:bg-[var(--danger-soft)] hover:text-[var(--danger)] disabled:cursor-not-allowed disabled:opacity-60"
+        style={`top: ${tooltip.top}px; left: ${tooltip.left}px; transform: translateX(-50%);`}
+        onmousedown={(event) => event.preventDefault()}
+        onclick={handleDeleteHighlight}
+        disabled={deletingHighlightId === tooltip.highlightId}
+        aria-label="Delete highlight"
+        title="Delete highlight"
+      >
         <TrashIcon
           size={16}
           strokeWidth={2.2}
@@ -481,8 +541,8 @@
             ? "animate-pulse"
             : ""}
         />
-      {/if}
-    </button>
+      </button>
+    {/if}
   {/if}
 </div>
 

@@ -6,12 +6,16 @@
   import defaultChannelIcon from "$lib/assets/channel-default.svg";
   import {
     addChannel,
+    addVideo,
     deleteChannel as deleteChannelRequest,
     getChannelSyncDepth,
+    getVideo,
+    listVideos,
     listChannels,
     refreshChannel,
     updateChannel,
   } from "$lib/api";
+  import AddSourceFeedbackToast from "$lib/components/AddSourceFeedbackToast.svelte";
   import ConfirmationModal from "$lib/components/ConfirmationModal.svelte";
   import ErrorToast from "$lib/components/ErrorToast.svelte";
   import MobileYouTubeTopNav from "$lib/components/mobile/MobileYouTubeTopNav.svelte";
@@ -26,14 +30,23 @@
   } from "$lib/channel-workspace";
   import type {
     AiStatus,
+    AddVideoResult,
     Channel,
     SyncDepth,
     Video,
     VideoTypeFilter,
   } from "$lib/types";
+  import { looksLikeYouTubeVideoInput } from "$lib/utils/youtube-input";
   import { createAiStatusPoller } from "$lib/utils/ai-poller";
   import { formatShortDate } from "$lib/utils/date";
   import { buildWorkspaceViewHref } from "$lib/view-url";
+  import {
+    buildChannelAddFeedback,
+    buildVideoAddFeedback,
+    type AddSourceFeedback,
+    resolveAddedChannelStatus,
+    resolveAddedVideoStatus,
+  } from "$lib/workspace/add-source-feedback";
   import { channelOrderFromList } from "$lib/workspace/channels";
   import { formatSyncDate } from "$lib/workspace/content";
   import { mobileBottomBar } from "$lib/mobile-navigation/mobileBottomBar";
@@ -50,6 +63,9 @@
   let addingChannel = $state(false);
   let savingSyncDate = $state(false);
   let errorMessage = $state<string | null>(null);
+  let addSourceFeedback = $state<AddSourceFeedback | null>(null);
+  let addSourceFeedbackDismissed = $state(false);
+  let addSourceFeedbackPollSequence = 0;
   let showDeleteConfirmation = $state(false);
   let showDeleteAccessPrompt = $state(false);
   let channelIdToDelete = $state<string | null>(null);
@@ -145,20 +161,33 @@
   }
 
   async function loadChannelOverview(channelId: string | null) {
+    const shouldReloadChannels = channels.length === 0;
+    return loadChannelOverviewState(channelId, { shouldReloadChannels });
+  }
+
+  async function loadChannelOverviewState(
+    channelId: string | null,
+    options?: { shouldReloadChannels?: boolean },
+  ) {
     const requestId = ++activeOverviewRequest;
-    loadingChannels = true;
     loadingOverview = true;
+    if (options?.shouldReloadChannels ?? false) {
+      loadingChannels = true;
+    }
     errorMessage = null;
 
     try {
-      const nextChannels = applyChannelPreferences(await listChannels());
-      if (requestId !== activeOverviewRequest) {
-        return;
-      }
+      let nextChannels = channels;
+      if (options?.shouldReloadChannels ?? false) {
+        nextChannels = applyChannelPreferences(await listChannels());
+        if (requestId !== activeOverviewRequest) {
+          return;
+        }
 
-      channels = nextChannels;
-      if (channelOrder.length === 0) {
-        channelOrder = channelOrderFromList(nextChannels);
+        channels = nextChannels;
+        if (channelOrder.length === 0) {
+          channelOrder = channelOrderFromList(nextChannels);
+        }
       }
 
       if (!channelId) {
@@ -193,7 +222,9 @@
       earliestSyncDateInput = "";
     } finally {
       if (requestId === activeOverviewRequest) {
-        loadingChannels = false;
+        if (options?.shouldReloadChannels ?? false) {
+          loadingChannels = false;
+        }
         loadingOverview = false;
       }
     }
@@ -225,9 +256,25 @@
   async function handleAddChannel(input: string) {
     addingChannel = true;
     errorMessage = null;
+    const submittedInput = input.trim();
 
     try {
-      const addedChannel = await addChannel(input);
+      if (looksLikeYouTubeVideoInput(submittedInput)) {
+        const result = await addVideo(submittedInput);
+        const nextChannels = applySavedChannelOrder(
+          await listChannels(),
+          channelOrder,
+        );
+        channels = nextChannels;
+        if (channelOrder.length === 0) {
+          channelOrder = channelOrderFromList(nextChannels);
+        }
+        mobileChannelsDrawerOpen = false;
+        void trackAddedVideo(result);
+        return true;
+      }
+
+      const addedChannel = await addChannel(submittedInput);
       const nextOrder = finalizeAddedChannelOrder(
         channelOrder,
         addedChannel.id,
@@ -242,7 +289,7 @@
         channelOrder = channelOrderFromList(nextChannels);
       }
       mobileChannelsDrawerOpen = false;
-      await goto(`/channels/${encodeURIComponent(addedChannel.id)}`);
+      void trackAddedChannel(addedChannel);
       return true;
     } catch (error) {
       errorMessage = (error as Error).message;
@@ -349,6 +396,113 @@
     await goto(`/login?redirectTo=${encodeURIComponent(redirectTo)}`);
   }
 
+  function presentAddSourceFeedback(next: AddSourceFeedback) {
+    addSourceFeedback = next;
+    addSourceFeedbackDismissed = false;
+  }
+
+  function dismissAddSourceFeedback() {
+    addSourceFeedbackDismissed = true;
+    if (addSourceFeedback?.status !== "loading") {
+      addSourceFeedback = null;
+    }
+  }
+
+  async function trackAddedVideo(result: AddVideoResult) {
+    const sequence = ++addSourceFeedbackPollSequence;
+    let nextResult = result;
+
+    presentAddSourceFeedback(
+      buildVideoAddFeedback(
+        nextResult,
+        resolveAddedVideoStatus(nextResult.video),
+      ),
+    );
+
+    while (sequence === addSourceFeedbackPollSequence) {
+      const currentStatus = resolveAddedVideoStatus(nextResult.video);
+      if (currentStatus !== "loading") {
+        return;
+      }
+
+      await new Promise((resolve) => window.setTimeout(resolve, 4000));
+      if (sequence !== addSourceFeedbackPollSequence) {
+        return;
+      }
+
+      try {
+        const refreshedVideo = await getVideo(nextResult.video.id, true);
+        nextResult = { ...nextResult, video: refreshedVideo };
+        presentAddSourceFeedback(
+          buildVideoAddFeedback(
+            nextResult,
+            resolveAddedVideoStatus(refreshedVideo),
+          ),
+        );
+      } catch {
+        // Keep polling quietly; the initial acceptance feedback already surfaced.
+      }
+    }
+  }
+
+  async function trackAddedChannel(channel: Channel) {
+    const sequence = ++addSourceFeedbackPollSequence;
+    presentAddSourceFeedback(buildChannelAddFeedback(channel, "loading"));
+
+    while (sequence === addSourceFeedbackPollSequence) {
+      await new Promise((resolve) => window.setTimeout(resolve, 4000));
+      if (sequence !== addSourceFeedbackPollSequence) {
+        return;
+      }
+
+      try {
+        const videos = await listVideos(
+          channel.id,
+          1,
+          0,
+          "all",
+          undefined,
+          false,
+          undefined,
+          true,
+        );
+        const status = resolveAddedChannelStatus(videos);
+        presentAddSourceFeedback(buildChannelAddFeedback(channel, status));
+        if (status === "ready") {
+          return;
+        }
+      } catch {
+        // Keep polling quietly; the initial acceptance feedback already surfaced.
+      }
+    }
+  }
+
+  async function openAddSourceFeedbackTarget() {
+    const current = addSourceFeedback;
+    if (!current) {
+      return;
+    }
+
+    addSourceFeedbackPollSequence += 1;
+    addSourceFeedback = null;
+    addSourceFeedbackDismissed = false;
+
+    if (current.kind === "video") {
+      await goto(
+        buildWorkspaceViewHref({
+          selectedChannelId: current.targetChannelId,
+          selectedVideoId: current.videoId,
+          contentMode: "info",
+          videoTypeFilter,
+          acknowledgedFilter,
+        }),
+      );
+      return;
+    }
+
+    await goto(`/channels/${encodeURIComponent(current.channelId)}`);
+  }
+
   onMount(() => {
     if (typeof localStorage !== "undefined") {
       const restored = restoreWorkspaceSnapshot(
@@ -367,6 +521,13 @@
     }
 
     workspaceStateHydrated = true;
+    void loadChannelOverviewState(selectedChannelId, {
+      shouldReloadChannels: true,
+    });
+
+    return () => {
+      addSourceFeedbackPollSequence += 1;
+    };
   });
 
   $effect(() => {
@@ -374,7 +535,13 @@
       return;
     }
 
-    void loadChannelOverview(selectedChannelId);
+    if (channels.length === 0 && loadingOverview) {
+      return;
+    }
+
+    void loadChannelOverviewState(selectedChannelId, {
+      shouldReloadChannels: false,
+    });
   });
 
   $effect(() => {
@@ -794,6 +961,14 @@
     <ErrorToast
       message={errorMessage}
       onDismiss={() => (errorMessage = null)}
+    />
+  {/if}
+
+  {#if addSourceFeedback && !addSourceFeedbackDismissed}
+    <AddSourceFeedbackToast
+      feedback={addSourceFeedback}
+      onDismiss={dismissAddSourceFeedback}
+      onAction={openAddSourceFeedbackTarget}
     />
   {/if}
 

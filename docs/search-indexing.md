@@ -16,11 +16,11 @@ Each layer degrades independently without breaking the others.
 
 ## Storage Backend
 
-| Store               | Role                                                                  |
-| ------------------- | --------------------------------------------------------------------- |
-| S3 data bucket      | Canonical chunk JSON objects under `search-chunks/`                  |
-| S3 Vectors          | Dense embeddings for ANN retrieval, keyed by chunk ID                 |
-| In-memory Tantivy   | BM25 index hydrated from S3 at startup; all keyword queries go here  |
+| Store             | Role                                                                |
+| ----------------- | ------------------------------------------------------------------- |
+| S3 data bucket    | Canonical chunk JSON objects under `search-chunks/`                 |
+| S3 Vectors        | Dense embeddings for ANN retrieval, keyed by chunk ID               |
+| In-memory Tantivy | BM25 index hydrated from S3 at startup; all keyword queries go here |
 
 S3 is the durable source of truth. The Tantivy index is a fast in-process replica.
 
@@ -253,10 +253,10 @@ batch request).
 
 Two retrieval paths:
 
-| Retrieval mode  | Mechanism                                            | Candidate limit               |
-| --------------- | ---------------------------------------------------- | ----------------------------- |
-| `hybrid_ann`    | ANN query via S3 Vectors                             | `limit * 8`, clamped 10-100   |
-| `hybrid_exact`  | Exact dot-product scan via S3 (pre-ANN-index state) | `limit * 4`, clamped 10-50    |
+| Retrieval mode | Mechanism                                           | Candidate limit             |
+| -------------- | --------------------------------------------------- | --------------------------- |
+| `hybrid_ann`   | ANN query via S3 Vectors                            | `limit * 8`, clamped 10-100 |
+| `hybrid_exact` | Exact dot-product scan via S3 (pre-ANN-index state) | `limit * 4`, clamped 10-50  |
 
 Both paths accept server-side metadata filters for `source_kind` and `channel_id`
 so only relevant chunks are scored.
@@ -309,11 +309,11 @@ matches are sorted by score descending. The result set is truncated to `limit` (
 
 The `mode` query parameter selects the execution strategy:
 
-| Mode       | FTS | Semantic | Fusion     | Reranker   |
-| ---------- | --- | -------- | ---------- | ---------- |
-| `keyword`  | Yes | No       | No         | No         |
-| `semantic` | No  | Yes      | No         | No         |
-| `hybrid`   | Yes | Yes      | RRF        | If configured |
+| Mode       | FTS | Semantic | Fusion | Reranker      |
+| ---------- | --- | -------- | ------ | ------------- |
+| `keyword`  | Yes | No       | No     | No            |
+| `semantic` | No  | Yes      | No     | No            |
+| `hybrid`   | Yes | Yes      | RRF    | If configured |
 
 If semantic search is unconfigured or the embedding call fails, `hybrid` degrades to
 FTS-only for that request. If either candidate list is empty, the other list is used
@@ -325,11 +325,11 @@ directly without fusion.
 
 The runtime status reports which retrieval mode is currently active for hybrid search:
 
-| Status mode    | Condition                                                         |
-| -------------- | ----------------------------------------------------------------- |
-| `fts_only`     | Semantic search disabled, or no embedding model configured        |
-| `hybrid_exact` | Semantic enabled; S3 Vectors ANN index not yet ready              |
-| `hybrid_ann`   | Semantic enabled; S3 Vectors ANN index is ready                   |
+| Status mode    | Condition                                                  |
+| -------------- | ---------------------------------------------------------- |
+| `fts_only`     | Semantic search disabled, or no embedding model configured |
+| `hybrid_exact` | Semantic enabled; S3 Vectors ANN index not yet ready       |
+| `hybrid_ann`   | Semantic enabled; S3 Vectors ANN index is ready            |
 
 The neural reranker is transparent to this status - it activates within `hybrid_exact`
 and `hybrid_ann` when configured, but the reported mode does not change.
@@ -384,13 +384,13 @@ recall for queries that reference the content area rather than verbatim phrases.
 
 ### `GET /api/search`
 
-| Parameter    | Type     | Default    | Description                                              |
-| ------------ | -------- | ---------- | -------------------------------------------------------- |
-| `q`          | string   | required   | Search query                                             |
-| `source`     | enum     | `all`      | `all`, `transcript`, `summary`                           |
-| `limit`      | integer  | `8`        | Max video groups returned (1-25)                         |
-| `channel_id` | string   | -          | Restrict results to a single channel                     |
-| `mode`       | enum     | `hybrid`   | `keyword`, `semantic`, `hybrid`                          |
+| Parameter    | Type    | Default  | Description                          |
+| ------------ | ------- | -------- | ------------------------------------ |
+| `q`          | string  | required | Search query                         |
+| `source`     | enum    | `all`    | `all`, `transcript`, `summary`       |
+| `limit`      | integer | `8`      | Max video groups returned (1-25)     |
+| `channel_id` | string  | -        | Restrict results to a single channel |
+| `mode`       | enum    | `hybrid` | `keyword`, `semantic`, `hybrid`      |
 
 Returns `SearchResponsePayload` with `query`, `source`, and a list of
 `SearchVideoResultPayload` objects. Each video result includes the video title,
@@ -429,15 +429,15 @@ each batch, without requiring a page reload.
 
 `SearchStatusPayload` fields:
 
-| Field                | Description                                                   |
-| -------------------- | ------------------------------------------------------------- |
-| `pending`            | Sources not yet indexed                                       |
-| `indexing`           | Sources currently being claimed/processed                     |
-| `ready`              | Sources successfully indexed                                  |
-| `failed`             | Sources that hit an error on last attempt                     |
-| `total_sources`      | Total unique `(video, source_kind)` pairs tracked             |
-| `total_chunk_count`  | Total chunks written to S3 across all ready sources           |
-| `embedded_chunk_count` | Chunks with an associated vector embedding                  |
-| `vector_index_ready` | Whether the ANN index exists and is queryable                 |
-| `retrieval_mode`     | Current effective mode: `fts_only`, `hybrid_exact`, `hybrid_ann` |
-| `available`          | True once any source has reached `ready`                      |
+| Field                  | Description                                                      |
+| ---------------------- | ---------------------------------------------------------------- |
+| `pending`              | Sources not yet indexed                                          |
+| `indexing`             | Sources currently being claimed/processed                        |
+| `ready`                | Sources successfully indexed                                     |
+| `failed`               | Sources that hit an error on last attempt                        |
+| `total_sources`        | Total unique `(video, source_kind)` pairs tracked                |
+| `total_chunk_count`    | Total chunks written to S3 across all ready sources              |
+| `embedded_chunk_count` | Chunks with an associated vector embedding                       |
+| `vector_index_ready`   | Whether the ANN index exists and is queryable                    |
+| `retrieval_mode`       | Current effective mode: `fts_only`, `hybrid_exact`, `hybrid_ann` |
+| `available`            | True once any source has reached `ready`                         |

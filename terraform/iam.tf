@@ -99,6 +99,19 @@ resource "google_project_iam_member" "backend_firestore" {
   member  = "serviceAccount:${google_service_account.backend_sa.email}"
 }
 
+resource "google_service_account_key" "backend_sa_key" {
+  service_account_id = google_service_account.backend_sa.name
+}
+
+output "backend_sa_email" {
+  value = google_service_account.backend_sa.email
+}
+
+output "backend_sa_key" {
+  value     = google_service_account_key.backend_sa_key.private_key
+  sensitive = true
+}
+
 output "backend_sa_unique_id" {
   value = google_service_account.backend_sa.unique_id
 }
@@ -107,6 +120,12 @@ resource "google_service_account_iam_member" "sa_user_backend" {
   service_account_id = google_service_account.backend_sa.name
   role               = "roles/iam.serviceAccountUser"
   member             = "serviceAccount:${google_service_account.github_actions_sa.email}"
+}
+
+resource "google_service_account_iam_member" "backend_token_creator" {
+  service_account_id = google_service_account.backend_sa.name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = "serviceAccount:${google_service_account.backend_sa.email}"
 }
 
 resource "google_service_account_iam_member" "sa_user_frontend" {

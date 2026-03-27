@@ -57,6 +57,7 @@ import {
 import type { AcknowledgedFilter, ChannelSortMode } from "$lib/workspace/types";
 import { resolveAcknowledgedParam } from "$lib/workspace/types";
 import type {
+  AddVideoResult,
   Channel,
   ChannelSnapshot,
   Video,
@@ -132,6 +133,12 @@ export type SidebarStateOptions = {
    * needing to know about routing.
    */
   onChannelAdded?: (channel: Channel) => Promise<void> | void;
+
+  /**
+   * Optional: called after a video URL is accepted successfully.
+   * When omitted, the sidebar keeps the existing immediate-open behavior.
+   */
+  onVideoAdded?: (result: AddVideoResult) => Promise<void> | void;
 
   /**
    * Optional: called after a channel is successfully deleted (the composable
@@ -713,11 +720,15 @@ export function createSidebarState(
           ((chs: Channel[]) => void putCachedChannels(chs));
         cacheChannels(channels);
 
-        selectedChannelId = result.target_channel_id;
-        await selectChannel(result.target_channel_id, result.video.id, true);
-        await options_root.onSelectVideo(result.video.id, {
-          forceReload: true,
-        });
+        if (options_root.onVideoAdded) {
+          await options_root.onVideoAdded(result);
+        } else {
+          selectedChannelId = result.target_channel_id;
+          await selectChannel(result.target_channel_id, result.video.id, true);
+          await options_root.onSelectVideo(result.video.id, {
+            forceReload: true,
+          });
+        }
         return true;
       } catch (error) {
         options_root.onError?.((error as Error).message);
@@ -745,9 +756,10 @@ export function createSidebarState(
         ((chs: Channel[]) => void putCachedChannels(chs));
       cacheChannels(channels);
 
-      selectedChannelId = channel.id;
       if (options_root.onChannelAdded) {
         await options_root.onChannelAdded(channel);
+      } else {
+        selectedChannelId = channel.id;
       }
       return true;
     } catch (error) {

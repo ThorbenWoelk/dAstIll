@@ -11,6 +11,7 @@ describe("resolveCurrentSectionFromPathname", () => {
       "queue",
     );
     expect(resolveCurrentSectionFromPathname("/highlights")).toBe("highlights");
+    expect(resolveCurrentSectionFromPathname("/vocabulary")).toBe("vocabulary");
     expect(resolveCurrentSectionFromPathname("/chat")).toBe("chat");
   });
 });

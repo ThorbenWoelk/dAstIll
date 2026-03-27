@@ -8,6 +8,7 @@ export function hasActiveOverlay(state: WorkspaceOverlaysState): boolean {
   return (
     !!state.errorMessage ||
     state.showDeleteConfirmation ||
-    state.showDeleteAccessPrompt
+    state.showDeleteAccessPrompt ||
+    !!state.showAddSourceFeedback
   );
 }

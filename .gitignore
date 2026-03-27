@@ -21,6 +21,7 @@ backend/target/
 **/.env
 **/__pycache__/
 **/*.pyc
+backend/backend-sa-key.json
 
 # Frontend
 frontend/node_modules/

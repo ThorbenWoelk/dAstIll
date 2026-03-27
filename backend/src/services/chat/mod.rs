@@ -1,6 +1,7 @@
 mod cloud_models;
 mod constants;
 mod intent;
+mod tools;
 
 pub use cloud_models::{default_chat_cloud_model_id, is_chat_cloud_model_choice};
 pub(crate) use constants::*;
@@ -36,7 +37,7 @@ use super::chat_heuristics::{
 };
 use super::chat_prompt::{
     build_conversation_only_grounding, build_grounding_context, build_ollama_messages,
-    build_synthesis_grounding_context, synthesis_raw_limit_for_plan,
+    build_synthesis_grounding_context, build_tool_grounding_context, synthesis_raw_limit_for_plan,
 };
 use super::chat_ranking::{
     accumulate_ranked_candidates, assess_coverage, build_video_observation_inputs,
@@ -60,6 +61,38 @@ struct ChatRetrievalPlanVisibility {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct ChatToolStatusPayload {
+    name: String,
+    label: String,
+    state: String,
+    input: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    output: Option<String>,
+}
+
+impl ChatToolStatusPayload {
+    fn new(
+        name: impl Into<String>,
+        label: impl Into<String>,
+        state: impl Into<String>,
+        input: impl Into<String>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            label: label.into(),
+            state: state.into(),
+            input: input.into(),
+            output: None,
+        }
+    }
+
+    fn with_output(mut self, output: impl Into<String>) -> Self {
+        self.output = Some(output.into());
+        self
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct ChatStatusPayload {
     stage: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -70,6 +103,8 @@ pub struct ChatStatusPayload {
     decision: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     plan: Option<ChatRetrievalPlanVisibility>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool: Option<ChatToolStatusPayload>,
 }
 
 impl ChatStatusPayload {
@@ -80,6 +115,7 @@ impl ChatStatusPayload {
             detail: None,
             decision: None,
             plan: None,
+            tool: None,
         }
     }
 
@@ -95,6 +131,11 @@ impl ChatStatusPayload {
 
     fn with_plan(mut self, plan: ChatRetrievalPlanVisibility) -> Self {
         self.plan = Some(plan);
+        self
+    }
+
+    fn with_tool(mut self, tool: ChatToolStatusPayload) -> Self {
+        self.tool = Some(tool);
         self
     }
 }
@@ -343,6 +384,132 @@ struct ChatQueryPlanResponse {
     rationale: Option<String>,
     sub_queries: Option<Vec<String>>,
     expansion_queries: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChatToolLoopResponse {
+    action: Option<String>,
+    rationale: Option<String>,
+    tool_name: Option<String>,
+    search_library_input: Option<tools::SearchLibraryToolInput>,
+    db_inspect_input: Option<tools::DbInspectToolInput>,
+}
+
+#[derive(Debug)]
+struct ToolLoopStepOutcome {
+    action: ToolLoopAction,
+    rationale: Option<String>,
+}
+
+#[derive(Debug)]
+enum ToolLoopAction {
+    Respond,
+    ToolCall(PlannedChatToolCall),
+}
+
+#[derive(Debug, Clone)]
+enum PlannedChatToolCall {
+    SearchLibrary(tools::SearchLibraryQuery),
+    DbInspect(tools::DbInspectQuery),
+}
+
+impl PlannedChatToolCall {
+    fn tool_name(&self) -> &'static str {
+        match self {
+            Self::SearchLibrary(_) => "search_library",
+            Self::DbInspect(_) => "db_inspect",
+        }
+    }
+
+    fn label(&self) -> &'static str {
+        match self {
+            Self::SearchLibrary(_) => "Library search",
+            Self::DbInspect(_) => "Database lookup",
+        }
+    }
+
+    fn input_summary(&self) -> String {
+        match self {
+            Self::SearchLibrary(query) => describe_search_library_query(query.clone()),
+            Self::DbInspect(query) => tools::describe_db_inspect_query(*query),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ToolEvidenceRecord {
+    summary: String,
+    output: String,
+}
+
+#[derive(Debug, Clone)]
+struct ToolLoopOutcome {
+    conversation_only: bool,
+    rationale: Option<String>,
+    tool_outputs: Vec<ToolEvidenceRecord>,
+    sources: Vec<RetrievedChatSource>,
+}
+
+#[derive(Debug, Clone)]
+struct SearchLibraryExecutionResult {
+    summary: String,
+    output: String,
+    sources: Vec<RetrievedChatSource>,
+}
+
+impl ChatToolLoopResponse {
+    fn into_step_outcome(self) -> Result<ToolLoopStepOutcome, String> {
+        let rationale = self.rationale.and_then(|value| trim_to_option(&value));
+        let action = self
+            .action
+            .as_deref()
+            .ok_or_else(|| "missing tool loop action".to_string())?;
+
+        match action.trim() {
+            "respond" => Ok(ToolLoopStepOutcome {
+                action: ToolLoopAction::Respond,
+                rationale,
+            }),
+            "tool_call" => {
+                let tool_name = self
+                    .tool_name
+                    .as_deref()
+                    .ok_or_else(|| "missing tool name for tool_call action".to_string())?;
+                match tool_name {
+                    "search_library" => {
+                        let query = tools::build_search_library_query(
+                            Some(tool_name),
+                            self.search_library_input,
+                        )?
+                        .ok_or_else(|| {
+                            "tool_call action did not include a valid search_library request"
+                                .to_string()
+                        })?;
+                        Ok(ToolLoopStepOutcome {
+                            action: ToolLoopAction::ToolCall(PlannedChatToolCall::SearchLibrary(
+                                query,
+                            )),
+                            rationale,
+                        })
+                    }
+                    "db_inspect" => {
+                        let query =
+                            tools::build_db_inspect_query(Some(tool_name), self.db_inspect_input)?
+                                .ok_or_else(|| {
+                                    "tool_call action did not include a valid db_inspect request"
+                                        .to_string()
+                                })?;
+                        Ok(ToolLoopStepOutcome {
+                            action: ToolLoopAction::ToolCall(PlannedChatToolCall::DbInspect(query)),
+                            rationale,
+                        })
+                    }
+                    other => Err(format!("unsupported tool `{other}`")),
+                }
+            }
+            other => Err(format!("unsupported tool loop action `{other}`")),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -852,6 +1019,110 @@ impl ChatService {
         reply_model: &str,
         active_chat: &ActiveChatHandle,
     ) -> Result<ChatMessage, String> {
+        if let Some(tool_outcome) = self
+            .run_tool_loop(state, conversation, prompt, deep_research, active_chat)
+            .await?
+        {
+            if tool_outcome.conversation_only {
+                active_chat
+                    .emit(ChatStreamEvent::Status {
+                        status: ChatStatusPayload::new(
+                            "generating",
+                            "Answering from the conversation",
+                        )
+                        .with_detail("No tool call was needed for this turn.")
+                        .with_decision(
+                            tool_outcome.rationale.clone().unwrap_or_else(|| {
+                                "The current conversation already contains enough context."
+                                    .to_string()
+                            }),
+                        ),
+                    })
+                    .await;
+                let grounding = build_conversation_only_grounding();
+                let mut cancel_rx = active_chat.subscribe_cancel();
+                let (content, terminal_stats) = self
+                    .stream_ollama_reply(
+                        conversation,
+                        grounding,
+                        active_chat,
+                        &mut cancel_rx,
+                        true,
+                        reply_model,
+                    )
+                    .await?;
+                return Ok(self.build_assistant_message(
+                    content,
+                    Vec::new(),
+                    ChatMessageStatus::Completed,
+                    Some(self.assistant_generation_meta(reply_model, terminal_stats)),
+                ));
+            }
+
+            let sources = tool_outcome
+                .sources
+                .iter()
+                .map(|source| source.source.clone())
+                .collect::<Vec<_>>();
+            let tool_outputs = tool_outcome
+                .tool_outputs
+                .iter()
+                .map(|record| format!("{}:\n{}", record.summary, record.output))
+                .collect::<Vec<_>>();
+
+            active_chat
+                .emit(ChatStreamEvent::Status {
+                    status: ChatStatusPayload::new(
+                        "generating",
+                        "Answering from gathered evidence",
+                    )
+                    .with_detail(format!(
+                        "Composing the final answer from {} tool result{} and {} excerpt{}.",
+                        tool_outcome.tool_outputs.len(),
+                        if tool_outcome.tool_outputs.len() == 1 {
+                            ""
+                        } else {
+                            "s"
+                        },
+                        sources.len(),
+                        if sources.len() == 1 { "" } else { "s" }
+                    ))
+                    .with_decision(
+                        tool_outcome.rationale.clone().unwrap_or_else(|| {
+                            "The tool loop gathered enough evidence to answer.".to_string()
+                        }),
+                    ),
+                })
+                .await;
+
+            if !sources.is_empty() {
+                active_chat
+                    .emit(ChatStreamEvent::Sources {
+                        sources: sources.clone(),
+                    })
+                    .await;
+            }
+
+            let grounding = build_tool_grounding_context(&tool_outputs, &tool_outcome.sources);
+            let mut cancel_rx = active_chat.subscribe_cancel();
+            let (content, terminal_stats) = self
+                .stream_ollama_reply(
+                    conversation,
+                    grounding,
+                    active_chat,
+                    &mut cancel_rx,
+                    false,
+                    reply_model,
+                )
+                .await?;
+            return Ok(self.build_assistant_message(
+                content,
+                sources,
+                ChatMessageStatus::Completed,
+                Some(self.assistant_generation_meta(reply_model, terminal_stats)),
+            ));
+        }
+
         let plan = self
             .plan_retrieval(
                 conversation,
@@ -970,6 +1241,192 @@ impl ChatService {
             ChatMessageStatus::Completed,
             Some(self.assistant_generation_meta(reply_model, terminal_stats)),
         ))
+    }
+
+    async fn run_tool_loop(
+        &self,
+        state: &AppState,
+        conversation: &ChatConversation,
+        prompt: &str,
+        deep_research: bool,
+        active_chat: &ActiveChatHandle,
+    ) -> Result<Option<ToolLoopOutcome>, String> {
+        let mut tool_outputs = Vec::<ToolEvidenceRecord>::new();
+        let mut gathered_sources = Vec::<RetrievedChatSource>::new();
+        let max_steps = if deep_research {
+            CHAT_TOOL_LOOP_MAX_STEPS_DEEP_RESEARCH
+        } else {
+            CHAT_TOOL_LOOP_MAX_STEPS
+        };
+
+        for step in 1..=max_steps {
+            active_chat
+                .emit(ChatStreamEvent::Status {
+                    status: ChatStatusPayload::new("tool_planning", "Planning next step")
+                        .with_detail(format!(
+                            "Choosing whether to answer now or call a tool (step {step}/{max_steps})."
+                        )),
+                })
+                .await;
+
+            let planner_input =
+                format_tool_loop_input(conversation, prompt, &tool_outputs, &gathered_sources);
+            let planned = timeout(
+                CHAT_CLASSIFY_TIMEOUT,
+                self.core.prompt_with_fallback(
+                    "chat_tool_loop",
+                    CHAT_TOOL_LOOP_PROMPT,
+                    &planner_input,
+                    crate::services::ollama::CooldownStatusPolicy::UseLocalFallback,
+                ),
+            )
+            .await;
+
+            let step_outcome = match planned {
+                Ok(Ok((response, _))) => match parse_json_response::<ChatToolLoopResponse>(&response)
+                {
+                    Ok(payload) => payload.into_step_outcome().map_err(|error| {
+                        tracing::warn!(error = %error, "chat tool loop returned invalid tool request");
+                        error
+                    })?,
+                    Err(error) => {
+                        tracing::warn!(error = %error, "chat tool loop returned unreadable JSON");
+                        return Ok(None);
+                    }
+                },
+                Ok(Err(error)) => {
+                    tracing::warn!(error = ?error, "chat tool loop unavailable");
+                    return Ok(None);
+                }
+                Err(_) => {
+                    tracing::warn!("chat tool loop timed out");
+                    return Ok(None);
+                }
+            };
+
+            match step_outcome.action {
+                ToolLoopAction::Respond => {
+                    let conversation_only = tool_outputs.is_empty() && gathered_sources.is_empty();
+                    return Ok(Some(ToolLoopOutcome {
+                        conversation_only,
+                        rationale: step_outcome.rationale,
+                        tool_outputs,
+                        sources: gathered_sources,
+                    }));
+                }
+                ToolLoopAction::ToolCall(call) => {
+                    self.execute_planned_tool_call(
+                        state,
+                        call,
+                        step_outcome.rationale.as_deref(),
+                        &mut tool_outputs,
+                        &mut gathered_sources,
+                        active_chat,
+                    )
+                    .await?;
+                }
+            }
+        }
+
+        Ok(Some(ToolLoopOutcome {
+            conversation_only: tool_outputs.is_empty() && gathered_sources.is_empty(),
+            rationale: Some("Reached the tool-step limit for this turn.".to_string()),
+            tool_outputs,
+            sources: gathered_sources,
+        }))
+    }
+
+    async fn execute_planned_tool_call(
+        &self,
+        state: &AppState,
+        call: PlannedChatToolCall,
+        rationale: Option<&str>,
+        tool_outputs: &mut Vec<ToolEvidenceRecord>,
+        gathered_sources: &mut Vec<RetrievedChatSource>,
+        active_chat: &ActiveChatHandle,
+    ) -> Result<(), String> {
+        active_chat
+            .emit(ChatStreamEvent::Status {
+                status: ChatStatusPayload::new(
+                    "tool",
+                    format!("Running {}", call.label().to_ascii_lowercase()),
+                )
+                .with_detail(match &call {
+                    PlannedChatToolCall::SearchLibrary(_) => {
+                        "Running a grounded library search.".to_string()
+                    }
+                    PlannedChatToolCall::DbInspect(_) => {
+                        "Running a read-only database query.".to_string()
+                    }
+                })
+                .with_decision(
+                    rationale.and_then(trim_to_option).unwrap_or_else(|| {
+                        "This tool call is needed to gather evidence.".to_string()
+                    }),
+                )
+                .with_tool(ChatToolStatusPayload::new(
+                    call.tool_name(),
+                    call.label(),
+                    "running",
+                    call.input_summary(),
+                )),
+            })
+            .await;
+
+        match &call {
+            PlannedChatToolCall::DbInspect(query) => {
+                let result = tools::execute_db_inspect_query(&state.db, *query)
+                    .await
+                    .map_err(|error| error.to_string())?;
+                let output = result.output.clone();
+                tool_outputs.push(ToolEvidenceRecord {
+                    summary: result.summary.clone(),
+                    output: output.clone(),
+                });
+                active_chat
+                    .emit(ChatStreamEvent::Status {
+                        status: ChatStatusPayload::new("tool_complete", "Database lookup complete")
+                            .with_detail(output.clone())
+                            .with_tool(
+                                ChatToolStatusPayload::new(
+                                    call.tool_name(),
+                                    call.label(),
+                                    "completed",
+                                    result.summary,
+                                )
+                                .with_output(output),
+                            ),
+                    })
+                    .await;
+            }
+            PlannedChatToolCall::SearchLibrary(query) => {
+                let result = self
+                    .execute_search_library_query(state, query.clone())
+                    .await?;
+                merge_retrieved_sources(gathered_sources, result.sources.iter().cloned());
+                tool_outputs.push(ToolEvidenceRecord {
+                    summary: result.summary.clone(),
+                    output: result.output.clone(),
+                });
+                active_chat
+                    .emit(ChatStreamEvent::Status {
+                        status: ChatStatusPayload::new("tool_complete", "Library search complete")
+                            .with_detail(result.output.clone())
+                            .with_tool(
+                                ChatToolStatusPayload::new(
+                                    call.tool_name(),
+                                    call.label(),
+                                    "completed",
+                                    result.summary,
+                                )
+                                .with_output(result.output),
+                            ),
+                    })
+                    .await;
+            }
+        }
+
+        Ok(())
     }
 
     async fn retrieve_sources_with_plan(
@@ -1283,7 +1740,13 @@ impl ChatService {
 
             let candidate_limit = retrieval_candidate_limit(plan.budget, queries.len(), pass);
             let (keyword_batches, semantic_batches) = self
-                .collect_retrieval_candidates(state, queries, candidate_limit, channel_focus_ids)
+                .collect_retrieval_candidates(
+                    state,
+                    queries,
+                    candidate_limit,
+                    channel_focus_ids,
+                    None,
+                )
                 .await?;
 
             for batch in &keyword_batches {
@@ -1331,6 +1794,7 @@ impl ChatService {
         queries: &[String],
         candidate_limit: usize,
         channel_focus_ids: &[String],
+        source_kind: Option<crate::services::search::SearchSourceKind>,
     ) -> Result<(Vec<Vec<SearchCandidate>>, Vec<Vec<SearchCandidate>>), String> {
         let conn = state.db.connect();
         let mut keyword_batches: Vec<Vec<SearchCandidate>> = Vec::new();
@@ -1348,7 +1812,7 @@ impl ChatService {
             for channel_filter in &filters {
                 let results = state
                     .fts
-                    .search(query, None, *channel_filter, candidate_limit)
+                    .search(query, source_kind, *channel_filter, candidate_limit)
                     .await;
                 let candidates: Vec<SearchCandidate> = results
                     .into_iter()
@@ -1385,7 +1849,7 @@ impl ChatService {
                                 &conn,
                                 &query_embedding,
                                 model,
-                                None,
+                                source_kind,
                                 *channel_filter,
                                 candidate_limit,
                             )
@@ -1400,6 +1864,46 @@ impl ChatService {
         };
 
         Ok((keyword_batches, semantic_batches))
+    }
+
+    async fn execute_search_library_query(
+        &self,
+        state: &AppState,
+        query: tools::SearchLibraryQuery,
+    ) -> Result<SearchLibraryExecutionResult, String> {
+        let candidate_limit = retrieval_candidate_limit(query.limit, 1, 1);
+        let query_text = query.query.clone();
+        let (keyword_batches, semantic_batches) = self
+            .collect_retrieval_candidates(
+                state,
+                &[query_text.clone()],
+                candidate_limit,
+                &[],
+                query.source_kind,
+            )
+            .await?;
+
+        let mut pool = HashMap::<String, AccumulatedSearchCandidate>::new();
+        for batch in &keyword_batches {
+            accumulate_ranked_candidates(&mut pool, batch, false, 1);
+        }
+        for batch in &semantic_batches {
+            accumulate_ranked_candidates(&mut pool, batch, true, 1);
+        }
+
+        let mut plan = ChatRetrievalPlan::fallback(&query.query, None);
+        plan.budget = query.limit;
+        plan.max_per_video = 3;
+        plan.queries = vec![query.query.clone()];
+        plan.expansion_queries.clear();
+        let sources = rank_chat_sources(pool.values(), &plan);
+        let output = format_search_library_tool_output(&query, &sources);
+
+        Ok(SearchLibraryExecutionResult {
+            summary: describe_search_library_query(query),
+            output,
+            sources,
+        })
     }
 
     async fn build_answer_grounding_context(
@@ -1951,13 +2455,125 @@ fn format_conversation_for_planner(
     )
 }
 
+fn format_tool_loop_input(
+    conversation: &ChatConversation,
+    current_prompt: &str,
+    tool_outputs: &[ToolEvidenceRecord],
+    gathered_sources: &[RetrievedChatSource],
+) -> String {
+    let mut tool_lines = Vec::new();
+    for (index, record) in tool_outputs.iter().enumerate() {
+        tool_lines.push(format!(
+            "Tool {}: {}\n{}",
+            index + 1,
+            record.summary,
+            record.output.trim()
+        ));
+    }
+    if !gathered_sources.is_empty() {
+        tool_lines.push(format!(
+            "Retrieved excerpt count: {}",
+            gathered_sources.len()
+        ));
+        for source in gathered_sources.iter().take(6) {
+            tool_lines.push(format!(
+                "- [{}] {} / {} / {}",
+                source.source.source_kind.as_str(),
+                source.source.channel_name,
+                source.source.video_title,
+                source.source.snippet
+            ));
+        }
+    }
+
+    let tool_results = if tool_lines.is_empty() {
+        "none".to_string()
+    } else {
+        tool_lines.join("\n\n")
+    };
+
+    format!(
+        "{}\n\nTOOL RESULTS FROM THIS TURN:\n{}",
+        format_conversation_for_planner(conversation, current_prompt),
+        limit_text(&tool_results, CHAT_PLANNER_CONVERSATION_MAX_CHARS)
+    )
+}
+
+fn describe_search_library_query(query: tools::SearchLibraryQuery) -> String {
+    let source = match query.source_kind {
+        Some(crate::services::search::SearchSourceKind::Summary) => Some("summaries"),
+        Some(crate::services::search::SearchSourceKind::Transcript) => Some("transcripts"),
+        None => None,
+    };
+    let source_label = source.unwrap_or("all sources");
+    format!(
+        "Search the library for \"{}\" in {} (limit {})",
+        query.query, source_label, query.limit
+    )
+}
+
+fn format_search_library_tool_output(
+    query: &tools::SearchLibraryQuery,
+    sources: &[RetrievedChatSource],
+) -> String {
+    if sources.is_empty() {
+        return format!("No grounded excerpts found for \"{}\".", query.query);
+    }
+
+    let rows = sources
+        .iter()
+        .enumerate()
+        .map(|(index, source)| {
+            format!(
+                "{}. {} / {} / {} - {}",
+                index + 1,
+                source.source.channel_name,
+                source.source.video_title,
+                source.source.source_kind.as_str(),
+                source.source.snippet
+            )
+        })
+        .collect::<Vec<_>>();
+
+    format!(
+        "Found {} excerpt{} for \"{}\":\n{}",
+        sources.len(),
+        if sources.len() == 1 { "" } else { "s" },
+        query.query,
+        rows.join("\n")
+    )
+}
+
+fn merge_retrieved_sources(
+    existing: &mut Vec<RetrievedChatSource>,
+    new_sources: impl IntoIterator<Item = RetrievedChatSource>,
+) {
+    let mut seen = existing
+        .iter()
+        .map(|source| source.source.chunk_id.clone())
+        .collect::<HashSet<_>>();
+
+    for source in new_sources {
+        if seen.insert(source.source.chunk_id.clone()) {
+            existing.push(source);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::chat_heuristics::{
         collect_focus_terms, is_attributed_preference_query, recommendation_query_variants,
     };
-    use super::{CHAT_CLASSIFY_TIMEOUT, ChatQueryIntent, ChatQueryPlanResponse, ChatRetrievalPlan};
+    use super::{
+        CHAT_CLASSIFY_TIMEOUT, ChatQueryIntent, ChatQueryPlanResponse, ChatRetrievalPlan,
+        ChatToolLoopResponse, PlannedChatToolCall, ToolLoopAction,
+    };
+    use crate::services::chat::tools::{
+        DbInspectOperation, DbInspectTarget, DbInspectToolInput, SearchLibraryToolInput,
+    };
     use crate::services::ollama::CLOUD_PROMPT_TIMEOUT_SECS;
+    use crate::services::search::SearchSourceKind;
 
     #[test]
     fn attributed_preference_queries_are_detected() {
@@ -2032,5 +2648,98 @@ mod tests {
         assert_eq!(plan.label, "Deep research");
         assert_eq!(plan.intent, ChatQueryIntent::Pattern);
         assert!(!plan.queries.is_empty());
+    }
+
+    #[test]
+    fn tool_loop_builds_db_inspect_query_when_requested() {
+        let execution = ChatToolLoopResponse {
+            action: Some("tool_call".to_string()),
+            rationale: Some("The user is asking about stored summary records.".to_string()),
+            tool_name: Some("db_inspect".to_string()),
+            search_library_input: None,
+            db_inspect_input: Some(DbInspectToolInput {
+                operation: Some("count".to_string()),
+                resource: Some("summaries".to_string()),
+                limit: None,
+            }),
+        }
+        .into_step_outcome()
+        .expect("valid tool plan");
+
+        let ToolLoopAction::ToolCall(PlannedChatToolCall::DbInspect(query)) = execution.action
+        else {
+            panic!("expected db inspect tool call");
+        };
+
+        assert_eq!(query.operation, DbInspectOperation::Count);
+        assert_eq!(query.target, DbInspectTarget::Summaries);
+        assert_eq!(
+            execution.rationale.as_deref(),
+            Some("The user is asking about stored summary records.")
+        );
+    }
+
+    #[test]
+    fn tool_loop_builds_search_library_query_when_requested() {
+        let execution = ChatToolLoopResponse {
+            action: Some("tool_call".to_string()),
+            rationale: Some("The user asked about transcript evidence.".to_string()),
+            tool_name: Some("search_library".to_string()),
+            search_library_input: Some(SearchLibraryToolInput {
+                query: Some("ownership model".to_string()),
+                source: Some("transcript".to_string()),
+                limit: Some(3),
+            }),
+            db_inspect_input: None,
+        }
+        .into_step_outcome()
+        .expect("valid tool plan");
+
+        let ToolLoopAction::ToolCall(PlannedChatToolCall::SearchLibrary(query)) = execution.action
+        else {
+            panic!("expected search tool call");
+        };
+
+        assert_eq!(query.query, "ownership model");
+        assert_eq!(query.source_kind, Some(SearchSourceKind::Transcript));
+        assert_eq!(query.limit, 3);
+    }
+
+    #[test]
+    fn tool_loop_rejects_invalid_db_resource() {
+        let error = ChatToolLoopResponse {
+            action: Some("tool_call".to_string()),
+            rationale: None,
+            tool_name: Some("db_inspect".to_string()),
+            search_library_input: None,
+            db_inspect_input: Some(DbInspectToolInput {
+                operation: Some("count".to_string()),
+                resource: Some("search_sources".to_string()),
+                limit: None,
+            }),
+        }
+        .into_step_outcome()
+        .expect_err("invalid db resource should fail");
+
+        assert!(error.contains("unsupported db_inspect resource"));
+    }
+
+    #[test]
+    fn tool_loop_can_choose_to_respond_without_tool() {
+        let outcome = ChatToolLoopResponse {
+            action: Some("respond".to_string()),
+            rationale: Some("This is just a greeting.".to_string()),
+            tool_name: None,
+            search_library_input: None,
+            db_inspect_input: None,
+        }
+        .into_step_outcome()
+        .expect("respond action should be accepted");
+
+        assert!(matches!(outcome.action, ToolLoopAction::Respond));
+        assert_eq!(
+            outcome.rationale.as_deref(),
+            Some("This is just a greeting.")
+        );
     }
 }

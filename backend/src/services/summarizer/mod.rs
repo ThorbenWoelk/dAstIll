@@ -6,7 +6,7 @@ use thiserror::Error;
 use tokio::time::{Instant as TokioInstant, timeout};
 use tracing::Instrument;
 
-use crate::models::AiStatus;
+use crate::models::{AiStatus, VocabularyReplacement};
 use crate::services::ollama::{
     CLOUD_PROMPT_TIMEOUT_SECS, CooldownStatusPolicy, OllamaCore, OllamaPromptError,
 };
@@ -112,6 +112,7 @@ impl SummarizerService {
         video_title: &str,
         video_id: &str,
         channel_id: &str,
+        vocabulary_replacements: &[VocabularyReplacement],
     ) -> Result<(String, String), SummarizerError> {
         let span = logfire::span!(
             "summary.generate",
@@ -119,11 +120,12 @@ impl SummarizerService {
             channel.id = channel_id.to_string(),
             transcript_chars = transcript.chars().count(),
             title_chars = video_title.chars().count(),
+            vocabulary_replacements = vocabulary_replacements.len(),
         );
 
         async move {
             let started = TokioInstant::now();
-            let prompt = build_summary_prompt(transcript, video_title);
+            let prompt = build_summary_prompt(transcript, video_title, vocabulary_replacements);
 
             let (raw, model_used) = self
                 .prompt_model(
@@ -303,6 +305,37 @@ impl SummarizerService {
     }
 }
 
+fn normalize_vocabulary_entry(value: &str) -> Option<&str> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
+}
+
+pub(crate) fn apply_vocabulary_replacements(
+    transcript: &str,
+    replacements: &[VocabularyReplacement],
+) -> String {
+    let mut normalized = transcript.to_string();
+
+    for replacement in replacements {
+        let Some(from) = normalize_vocabulary_entry(&replacement.from) else {
+            continue;
+        };
+        let Some(to) = normalize_vocabulary_entry(&replacement.to) else {
+            continue;
+        };
+        if from == to {
+            continue;
+        }
+        normalized = normalized.replace(from, to);
+    }
+
+    normalized
+}
+
 pub(crate) fn transcript_text_equivalent(input: &str, output: &str) -> bool {
     let expected = input
         .split_whitespace()
@@ -322,9 +355,10 @@ mod tests {
     use super::transcript_compare::{detect_transcript_mismatch, strip_summary_title_heading};
     use super::{
         MAX_TRANSCRIPT_FORMAT_ATTEMPTS, SummarizerService, TRANSCRIPT_FORMAT_HARD_TIMEOUT_SECS,
-        TRANSCRIPT_FORMAT_TIMEOUT_HEADROOM_SECS, transcript_text_equivalent,
+        TRANSCRIPT_FORMAT_TIMEOUT_HEADROOM_SECS, apply_vocabulary_replacements,
+        transcript_text_equivalent,
     };
-    use crate::models::AiStatus;
+    use crate::models::{AiStatus, VocabularyReplacement};
     use crate::services::ollama::{CLOUD_PROMPT_TIMEOUT_SECS, OllamaCore};
     use crate::services::summary_evaluator::SummaryEvaluatorService;
 
@@ -343,6 +377,7 @@ mod tests {
                 "test title",
                 "test-video",
                 "test-channel",
+                &[],
             )
             .await;
         assert!(result.is_err());
@@ -430,7 +465,7 @@ mod tests {
 
     #[test]
     fn build_summary_prompt_contains_strict_reliability_contract() {
-        let prompt = build_summary_prompt("alpha beta", "Sample Title");
+        let prompt = build_summary_prompt("alpha beta", "Sample Title", &[]);
         assert!(prompt.contains("<<<TRANSCRIPT_START>>>"));
         assert!(prompt.contains("<<<TRANSCRIPT_END>>>"));
         assert!(
@@ -446,17 +481,72 @@ mod tests {
 
     #[test]
     fn build_summary_prompt_scales_guidance_with_transcript_length() {
-        let short = build_summary_prompt("word ".repeat(100).trim(), "Short");
+        let short = build_summary_prompt("word ".repeat(100).trim(), "Short", &[]);
         assert!(short.contains("short transcript"));
 
-        let medium = build_summary_prompt(&"word ".repeat(1000), "Medium");
+        let medium = build_summary_prompt(&"word ".repeat(1000), "Medium", &[]);
         assert!(medium.contains("medium-length transcript"));
 
-        let long = build_summary_prompt(&"word ".repeat(3000), "Long");
+        let long = build_summary_prompt(&"word ".repeat(3000), "Long", &[]);
         assert!(long.contains("long transcript"));
 
-        let very_long = build_summary_prompt(&"word ".repeat(6000), "Very Long");
+        let very_long = build_summary_prompt(&"word ".repeat(6000), "Very Long", &[]);
         assert!(very_long.contains("very long transcript"));
+    }
+
+    #[test]
+    fn build_summary_prompt_includes_vocabulary_guidance_when_rules_exist() {
+        let replacements = vec![VocabularyReplacement {
+            from: "Open A I".to_string(),
+            to: "OpenAI".to_string(),
+            added_at: chrono::Utc::now(),
+        }];
+
+        let prompt = build_summary_prompt("Open A I shipped a release.", "Sample", &replacements);
+
+        assert!(prompt.contains("Preferred vocabulary replacements:"));
+        assert!(prompt.contains("- `Open A I` -> `OpenAI`"));
+    }
+
+    #[test]
+    fn apply_vocabulary_replacements_applies_literal_rules_in_order() {
+        let replacements = vec![
+            VocabularyReplacement {
+                from: "Open A I".to_string(),
+                to: "OpenAI".to_string(),
+                added_at: chrono::Utc::now(),
+            },
+            VocabularyReplacement {
+                from: "San Franciso".to_string(),
+                to: "San Francisco".to_string(),
+                added_at: chrono::Utc::now(),
+            },
+        ];
+
+        let result =
+            apply_vocabulary_replacements("Open A I expanded in San Franciso.", &replacements);
+
+        assert_eq!(result, "OpenAI expanded in San Francisco.");
+    }
+
+    #[test]
+    fn apply_vocabulary_replacements_skips_empty_and_identity_rules() {
+        let replacements = vec![
+            VocabularyReplacement {
+                from: "".to_string(),
+                to: "OpenAI".to_string(),
+                added_at: chrono::Utc::now(),
+            },
+            VocabularyReplacement {
+                from: "Anthropic".to_string(),
+                to: "Anthropic".to_string(),
+                added_at: chrono::Utc::now(),
+            },
+        ];
+
+        let result = apply_vocabulary_replacements("Anthropic", &replacements);
+
+        assert_eq!(result, "Anthropic");
     }
 
     #[test]
@@ -625,7 +715,7 @@ and use canary for lower-risk feature rollouts.";
 
         let (summary, model_used) = timeout(
             Duration::from_secs(240),
-            summarizer.summarize(transcript, title, "test-video", "test-channel"),
+            summarizer.summarize(transcript, title, "test-video", "test-channel", &[]),
         )
         .await
         .expect("summary generation timed out")

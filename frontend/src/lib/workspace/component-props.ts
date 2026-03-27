@@ -118,6 +118,7 @@ export interface WorkspaceContentState {
   resettingVideoId: string | null;
   creatingHighlight: boolean;
   creatingHighlightVideoId: string | null;
+  creatingVocabularyReplacement: boolean;
   deletingHighlightId: number | null;
   canRevertTranscript: boolean;
   showRevertTranscriptAction: boolean;
@@ -141,6 +142,9 @@ export interface WorkspaceContentActions {
   onDraftChange: (value: string) => void;
   onToggleAcknowledge: () => Promise<void> | void;
   onCreateHighlight: (payload: CreateHighlightRequest) => Promise<void> | void;
+  onCreateVocabularyReplacement?: (
+    selectedText: string,
+  ) => Promise<void> | void;
   onDeleteHighlight?: (highlightId: number) => Promise<void> | void;
   onShowChannels: () => void;
   onShowVideos: () => void;
@@ -152,6 +156,7 @@ export interface WorkspaceOverlaysState {
   errorMessage: string | null;
   showDeleteConfirmation: boolean;
   showDeleteAccessPrompt: boolean;
+  showAddSourceFeedback?: boolean;
   showResetVideoConfirmation: boolean;
 }
 

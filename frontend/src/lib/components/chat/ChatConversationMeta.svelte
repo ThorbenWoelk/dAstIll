@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ChatStreamTiming } from "$lib/chat/conversation-meta";
+  import type { ChatToolCall } from "$lib/types";
 
   let {
     streamBanner,
@@ -10,6 +11,7 @@
     streamCoverageSummary,
     streamPrimaryDecision,
     streamTimings,
+    toolCalls,
     errorMessage,
   }: {
     streamBanner: string | null;
@@ -20,6 +22,7 @@
     streamCoverageSummary: string | null;
     streamPrimaryDecision: string | null;
     streamTimings: ChatStreamTiming[];
+    toolCalls: ChatToolCall[];
     errorMessage: string | null;
   } = $props();
 </script>
@@ -111,6 +114,46 @@
           <p class="mt-1 text-[11px] leading-relaxed text-[var(--foreground)]">
             {streamPrimaryDecision}
           </p>
+        </div>
+      {/if}
+
+      {#if toolCalls.length > 0}
+        <div class="mt-3">
+          <p
+            class="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-70"
+          >
+            Tool calls
+          </p>
+          <div class="mt-2 space-y-2">
+            {#each toolCalls as tool (`${tool.name}:${tool.input}`)}
+              <div
+                class="rounded-[var(--radius-sm)] bg-[var(--surface-strong)] px-3 py-2"
+              >
+                <div class="flex items-start justify-between gap-3">
+                  <p class="text-[11px] font-semibold text-[var(--foreground)]">
+                    {tool.label}
+                  </p>
+                  <span
+                    class="rounded-full bg-[var(--accent-wash)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--accent)]"
+                  >
+                    {tool.state}
+                  </span>
+                </div>
+                <p
+                  class="mt-1 text-[11px] leading-relaxed text-[var(--foreground)]"
+                >
+                  {tool.input}
+                </p>
+                {#if tool.output}
+                  <p
+                    class="mt-1 text-[11px] leading-relaxed text-[var(--soft-foreground)]"
+                  >
+                    {tool.output}
+                  </p>
+                {/if}
+              </div>
+            {/each}
+          </div>
         </div>
       {/if}
 
