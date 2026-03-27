@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 
 import {
+  applyAcknowledgedFilterChange,
   filterVideosByAcknowledged,
   filterVideosByType,
   resolveInitialPreviewExpandedChannelId,
@@ -349,5 +350,36 @@ describe("resolveInitialPreviewExpandedChannelId", () => {
     );
 
     expect(result).toBe("channel-b");
+  });
+});
+
+describe("applyAcknowledgedFilterChange", () => {
+  it("uses the shared setter path when switching to unread", async () => {
+    let nextFilter = "all";
+    let nextVideos: Video[] = [];
+    let reloadCount = 0;
+
+    const changed = await applyAcknowledgedFilterChange({
+      currentFilter: "all",
+      nextFilter: "unack",
+      videos: [
+        makeVideo({ id: "video-1", is_short: false, acknowledged: false }),
+        makeVideo({ id: "video-2", is_short: false, acknowledged: true }),
+      ],
+      setFilter: (value) => {
+        nextFilter = value;
+      },
+      setVideos: (videos) => {
+        nextVideos = videos;
+      },
+      reload: async () => {
+        reloadCount += 1;
+      },
+    });
+
+    expect(changed).toBe(true);
+    expect(nextFilter).toBe("unack");
+    expect(nextVideos.map((video) => video.id)).toEqual(["video-1"]);
+    expect(reloadCount).toBe(1);
   });
 });

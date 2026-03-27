@@ -4,9 +4,9 @@ const READY_MS = 120_000;
 
 function workspaceSidebar(page: Page) {
   // Two aside#workspace nodes can exist (desktop rail + mobile browse dialog). Exclude the dialog copy.
-  return page.locator(
-    'xpath=//aside[@id="workspace"][not(ancestor::*[@role="dialog"])]',
-  );
+  return page
+    .locator('xpath=//aside[@id="workspace"][not(ancestor::*[@role="dialog"])]')
+    .first();
 }
 
 async function workspaceHasSeedData(page: Page): Promise<boolean> {
@@ -212,4 +212,51 @@ test("mark read toggle flips aria-pressed on desktop", async ({ page }) => {
     "aria-pressed",
     before === "true" ? "false" : "true",
   );
+});
+
+test("unread filter keeps unread videos and removes them after marking read", async ({
+  page,
+}) => {
+  const hasData = await workspaceHasSeedData(page);
+  if (!hasData) {
+    test.skip(true, "Workspace has no channels; run against a seeded backend");
+  }
+
+  const sidebar = workspaceSidebar(page);
+  await sidebar
+    .locator("[data-channel-id]")
+    .first()
+    .locator("button")
+    .first()
+    .click();
+  const videoButtons = sidebar.locator("#videos").getByRole("button");
+  await expect(videoButtons.first()).toBeVisible({ timeout: READY_MS });
+  const targetButton = videoButtons.first();
+  const targetTitle = (
+    await targetButton.locator("p.line-clamp-2").innerText()
+  ).trim();
+  await targetButton.click();
+
+  const toggle = page.locator("#mark-read-toggle");
+  await expect(toggle).toBeVisible({ timeout: READY_MS });
+  if ((await toggle.getAttribute("aria-label")) === "Mark as unread") {
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-label", "Mark as read");
+  }
+
+  await page.getByRole("button", { name: "Video filters" }).click();
+  await page.getByRole("menuitemradio", { name: "Unread" }).click();
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get("ack"))
+    .toBe("unack");
+  await expect(sidebar.getByText("Unread", { exact: true })).toBeVisible();
+  await expect(
+    sidebar.locator("#videos").getByText(targetTitle, { exact: true }),
+  ).toBeVisible();
+
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-label", "Mark as unread");
+  await expect(
+    sidebar.locator("#videos").getByText(targetTitle, { exact: true }),
+  ).toHaveCount(0);
 });

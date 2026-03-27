@@ -1,15 +1,7 @@
 <script lang="ts">
-  import { browser } from "$app/environment";
   import { tick } from "svelte";
   import { slide } from "svelte/transition";
-  import {
-    getChannelSnapshot,
-    getTranscript,
-    getVideo,
-    listVideos,
-    refreshChannel,
-    updateChannel,
-  } from "$lib/api";
+  import { getTranscript, getVideo, updateChannel } from "$lib/api";
   import {
     beginChannelDrag,
     completeChannelDrop,
@@ -21,15 +13,7 @@
   import ChannelCard from "$lib/components/ChannelCard.svelte";
   import ChevronIcon from "$lib/components/icons/ChevronIcon.svelte";
   import WorkspaceSidebarVideoFilterControl from "$lib/components/workspace/WorkspaceSidebarVideoFilterControl.svelte";
-  import type {
-    Channel,
-    ChannelSnapshot,
-    ChannelVideoPage,
-    QueueTab,
-    Video,
-    SyncDepth,
-    VideoTypeFilter,
-  } from "$lib/types";
+  import type { Channel, Video, VideoTypeFilter } from "$lib/types";
   import { OTHERS_CHANNEL_ID } from "$lib/types";
   import type {
     WorkspaceSidebarChannelActions,
@@ -50,60 +34,13 @@
     resolveChannelDropIndicatorEdge,
   } from "$lib/workspace/channels";
   import { formatShortDate } from "$lib/utils/date";
-  import {
-    dedupeVideosById,
-    filterVideosByAcknowledged,
-    filterVideosByType,
-    resolveInitialPreviewExpandedChannelId,
-    resolveVirtualWindow,
-    shouldLoadAllChannelVideosForSelection,
-    shouldForceReloadMissingSelectedVideo,
-  } from "$lib/workspace/route-helpers";
-  import {
-    getSidebarPreviewSession,
-    pruneSidebarPreviewCollections,
-    resolvePreferredExpandedSidebarPreviewCollectionId,
-    setSingleExpandedSidebarPreviewCollection,
-    setSidebarPreviewSession,
-  } from "$lib/workspace/sidebar-preview-session";
-  import { formatSyncDate } from "$lib/workspace/content";
   import { resolveDisplayedSyncDepthIso } from "$lib/sync-depth";
-
-  const PREVIEW_VISIBLE_VIDEO_COUNT = 5;
-  const PREVIEW_FETCH_LIMIT = PREVIEW_VISIBLE_VIDEO_COUNT + 1;
-  const EXPANDED_PAGE_SIZE = 30;
-  const VIRTUALIZATION_THRESHOLD = 24;
-  const VIRTUALIZED_ROW_HEIGHT = 56;
-  const VIRTUALIZED_OVERSCAN = 8;
-  const VIRTUALIZED_VIEWPORT_HEIGHT = 336;
-
-  type ChannelVideoCollectionLoadMode = "preview" | "paged";
-
-  type ChannelVideoCollectionState = {
-    videos: Video[];
-    expanded: boolean;
-    loadingInitial: boolean;
-    loadingMore: boolean;
-    loadedMode: ChannelVideoCollectionLoadMode | null;
-    hasMore: boolean;
-    nextOffset: number;
-    /** Total videos for the channel from the last snapshot (unfiltered); null before first load. */
-    channelVideoCount: number | null;
-    filterKey: string | null;
-    requestKey: string | null;
-    syncDepth: SyncDepth | null;
-    earliestSyncDateInput: string;
-    savingSyncDate: boolean;
-    selectedVideoReloadProbeKey: string | null;
-    scrollTop: number;
-  };
-
-  type RenderedCollectionVideos = {
-    videos: Video[];
-    topSpacer: number;
-    bottomSpacer: number;
-    virtualized: boolean;
-  };
+  import { formatSyncDate } from "$lib/workspace/content";
+  import {
+    createSidebarPreviewController,
+    createEmptyChannelVideoCollection,
+  } from "$lib/workspace/sidebar-preview-controller.svelte";
+  import type { ChannelSnapshot, QueueTab, SyncDepth } from "$lib/types";
 
   let {
     shell = {
@@ -313,12 +250,6 @@
   /** Input when editing sync date without a per-channel collection row. */
   let earliestSyncDateInputSelected = $state("");
   let savingStandaloneSyncDate = $state(false);
-  let channelVideoCollections = $state<
-    Record<string, ChannelVideoCollectionState>
-  >({});
-  let hydratedPreviewSessionKey = $state<string | null>(null);
-
-  let lastAppliedVideoAcknowledgeSeq = $state(0);
 
   let filteredChannels = $derived(
     filterChannels(channels, channelSearchQuery, channelSortMode),
@@ -354,128 +285,33 @@
     ),
   );
 
-  function createEmptyChannelVideoCollection(): ChannelVideoCollectionState {
-    return {
-      videos: [],
-      expanded: false,
-      loadingInitial: false,
-      loadingMore: false,
-      loadedMode: null,
-      hasMore: false,
-      nextOffset: 0,
-      channelVideoCount: null,
-      filterKey: null,
-      requestKey: null,
-      syncDepth: null,
-      earliestSyncDateInput: "",
-      savingSyncDate: false,
-      selectedVideoReloadProbeKey: null,
-      scrollTop: 0,
-    };
-  }
-
-  function channelListEmptyCaption(channelVideoCount: number | null): string {
-    if (channelVideoCount === null) {
-      return "Nothing to show.";
-    }
-    if (channelVideoCount === 0) {
-      return "No videos yet.";
-    }
-    if (hasActiveVideoFilters) {
-      return "Nothing matches the current filters.";
-    }
-    return "Nothing to show.";
-  }
-
-  function ensureChannelVideoCollection(channelId: string) {
-    const existingCollection = channelVideoCollections[channelId];
-    if (existingCollection) {
-      return existingCollection;
-    }
-
-    const nextCollection = createEmptyChannelVideoCollection();
-    channelVideoCollections[channelId] = nextCollection;
-    return nextCollection;
-  }
-
-  function restoreChannelVideoCollections(
-    collections: Record<
-      string,
-      import("$lib/workspace/sidebar-preview-session").SidebarPreviewCollectionSnapshot
-    >,
-  ): Record<string, ChannelVideoCollectionState> {
-    const restored: Record<string, ChannelVideoCollectionState> = {};
-
-    for (const [channelId, collection] of Object.entries(collections)) {
-      restored[channelId] = {
-        ...createEmptyChannelVideoCollection(),
-        ...collection,
-        videos: constrainVideosToChannel(channelId, collection.videos),
-      };
-    }
-
-    return restored;
-  }
-
-  function setExpandedPreviewChannel(channelId: string | null) {
-    setSingleExpandedSidebarPreviewCollection(
-      channelVideoCollections,
-      channelId,
-    );
-  }
-
-  $effect(() => {
-    if (videoListMode !== "per_channel_preview" || !previewSessionKey) {
-      hydratedPreviewSessionKey = null;
-      return;
-    }
-
-    if (hydratedPreviewSessionKey === previewSessionKey) {
-      return;
-    }
-
-    channelVideoCollections = restoreChannelVideoCollections(
-      getSidebarPreviewSession(previewSessionKey) ?? {},
-    );
-    setExpandedPreviewChannel(
-      resolvePreferredExpandedSidebarPreviewCollectionId(
-        channelVideoCollections,
-        selectedChannelId,
-      ),
-    );
-    hydratedPreviewSessionKey = previewSessionKey;
+  const previewController = createSidebarPreviewController({
+    getEnabled: () => videoListMode === "per_channel_preview",
+    getChannels: () => channels,
+    getFilteredChannels: () => filteredChannels,
+    getSelectedChannelId: () => selectedChannelId,
+    getSelectedChannel: () => selectedChannel,
+    getSelectedVideoId: () => selectedVideoId,
+    getVideoTypeFilter: () => videoTypeFilter,
+    getAcknowledgedFilter: () => acknowledgedFilter,
+    getHasActiveVideoFilters: () => hasActiveVideoFilters,
+    getReadOnly: () => readOnly,
+    getInitialChannelPreviews: () => initialChannelPreviews,
+    getInitialChannelPreviewsFilterKey: () => initialChannelPreviewsFilterKey,
+    getChannelSnapshotQueueTab: () => channelSnapshotQueueTab,
+    getChannelQueueSnapshotUnified: () => channelQueueSnapshotUnified,
+    getQueueVideoRefreshTick: () => queueVideoRefreshTick,
+    getVideoAcknowledgeSync: () => videoAcknowledgeSync,
+    getPreviewSessionKey: () => previewSessionKey,
+    onChannelUpdated: (channel) => onChannelUpdated(channel),
+    onChannelSyncDateSaved: (channelId) => onChannelSyncDateSaved?.(channelId),
   });
-
-  function resolveAcknowledgedParam(filter: AcknowledgedFilter) {
-    if (filter === "ack") return true;
-    if (filter === "unack") return false;
-    return undefined;
-  }
-
-  function getChannelVideoCollectionFilterKey() {
-    const queueSegment = channelSnapshotQueueTab
-      ? channelSnapshotQueueTab
-      : channelQueueSnapshotUnified
-        ? "unified"
-        : "default";
-    return `${videoTypeFilter}:${acknowledgedFilter}:${queueSegment}`;
-  }
-
-  function supportsMode(
-    state: ChannelVideoCollectionState,
-    filterKey: string,
-    mode: ChannelVideoCollectionLoadMode,
-  ) {
-    if (state.filterKey !== filterKey) {
-      return false;
-    }
-
-    if (mode === "preview") {
-      return state.loadedMode === "preview" || state.loadedMode === "paged";
-    }
-
-    return state.loadedMode === "paged";
-  }
+  let channelVideoCollections = $derived(
+    previewController.channelVideoCollections,
+  );
+  let previewSyncDatePickerChannelId = $derived(
+    previewController.syncDatePickerChannelId,
+  );
 
   function resolveSyncDateInputValue(
     channel: Channel,
@@ -494,321 +330,11 @@
     return channel.id === OTHERS_CHANNEL_ID;
   }
 
-  function constrainVideosToChannel(channelId: string, videos: Video[]) {
-    if (channelId === OTHERS_CHANNEL_ID) {
-      return dedupeVideosById(videos);
-    }
-
-    return dedupeVideosById(
-      videos.filter((video) => video.channel_id === channelId),
-    );
-  }
-
-  function resolveVisibleCollectionVideos(
-    collection: ChannelVideoCollectionState,
-  ): Video[] {
-    if (collection.loadedMode === "preview") {
-      return collection.videos.slice(0, PREVIEW_VISIBLE_VIDEO_COUNT);
-    }
-
-    return collection.videos;
-  }
-
-  function resolveRenderedCollectionVideos(
-    collection: ChannelVideoCollectionState,
-  ): RenderedCollectionVideos {
-    const visibleVideos = resolveVisibleCollectionVideos(collection);
-    if (
-      collection.loadedMode !== "paged" ||
-      visibleVideos.length <= VIRTUALIZATION_THRESHOLD
-    ) {
-      return {
-        videos: visibleVideos,
-        topSpacer: 0,
-        bottomSpacer: 0,
-        virtualized: false,
-      };
-    }
-
-    const selectedIndex = selectedVideoId
-      ? visibleVideos.findIndex((video) => video.id === selectedVideoId)
-      : -1;
-    const window = resolveVirtualWindow({
-      itemCount: visibleVideos.length,
-      itemHeight: VIRTUALIZED_ROW_HEIGHT,
-      viewportHeight: VIRTUALIZED_VIEWPORT_HEIGHT,
-      scrollTop: collection.scrollTop,
-      overscan: VIRTUALIZED_OVERSCAN,
-    });
-    let start = window.startIndex;
-    let end = window.endIndex;
-
-    if (selectedIndex >= 0 && (selectedIndex < start || selectedIndex >= end)) {
-      const renderCount = end - start;
-      start = Math.max(0, selectedIndex - VIRTUALIZED_OVERSCAN);
-      end = Math.min(visibleVideos.length, start + renderCount);
-    }
-
-    return {
-      videos: visibleVideos.slice(start, end),
-      topSpacer: window.offsetTop,
-      bottomSpacer: Math.max(
-        0,
-        window.totalHeight -
-          window.offsetTop -
-          (end - start) * VIRTUALIZED_ROW_HEIGHT,
-      ),
-      virtualized: true,
-    };
-  }
-
-  async function loadChannelVideoCollection(
-    channel: Channel,
-    mode: ChannelVideoCollectionLoadMode,
-    options?: { force?: boolean; append?: boolean },
-  ) {
-    const force = options?.force ?? false;
-    const append = options?.append ?? false;
-    const state = ensureChannelVideoCollection(channel.id);
-    const filterKey = getChannelVideoCollectionFilterKey();
-
-    if (
-      append &&
-      (!state.hasMore ||
-        state.loadingMore ||
-        state.filterKey !== filterKey ||
-        state.requestKey !== null)
-    ) {
-      return;
-    }
-
-    if (
-      !append &&
-      (state.loadingInitial || state.loadingMore) &&
-      state.filterKey === filterKey &&
-      !force
-    ) {
-      return;
-    }
-
-    if (!append && !force && supportsMode(state, filterKey, mode)) {
-      return;
-    }
-
-    // Use server-pre-loaded preview data when available and the filter matches.
-    // The initialChannelPreviewsFilterKey records the filter used server-side.
-    // We only use the pre-loaded snapshot when the current filter key matches
-    // the server's filter key, preventing stale data from appearing (e.g. on
-    // the first client render before onMount/restoreWorkspaceState fires).
-    //
-    // Case 1 (no URL filter, "all:all"): pre-seeded immediately on first render.
-    // Case 2 (URL filter, e.g. "short:all"): skipped on first render ("all:all"
-    //   ≠ "short:all"), then pre-seeded after onMount applies the URL filter.
-    // Either way: 0 client-side getChannelSnapshot calls for pre-loaded channels.
-    if (
-      !force &&
-      !append &&
-      mode === "preview" &&
-      initialChannelPreviewsFilterKey &&
-      filterKey === initialChannelPreviewsFilterKey &&
-      channel.id in initialChannelPreviews
-    ) {
-      const preloaded = initialChannelPreviews[channel.id];
-      state.videos = constrainVideosToChannel(channel.id, preloaded.videos);
-      state.loadedMode = "preview";
-      state.filterKey = filterKey;
-      state.loadingInitial = false;
-      state.loadingMore = false;
-      state.hasMore = preloaded.has_more;
-      state.nextOffset = preloaded.next_offset ?? preloaded.videos.length;
-      state.channelVideoCount = preloaded.channel_video_count ?? null;
-      state.syncDepth = preloaded.sync_depth;
-      state.earliestSyncDateInput = resolveSyncDateInputValue(
-        channel,
-        preloaded.sync_depth,
-      );
-      return;
-    }
-
-    const requestOffset = append ? state.nextOffset : 0;
-    const requestKey = `${channel.id}:${filterKey}:${mode}:${requestOffset}:${Date.now()}`;
-    if (append) {
-      state.loadingMore = true;
-    } else {
-      state.loadingInitial = true;
-    }
-    // Set filter key immediately so $effect re-entry sees loading+filterKey and returns at
-    // the guard above. Otherwise filterKey only appeared after await, causing synchronous
-    // infinite re-entry (Maximum call stack size exceeded).
-    state.filterKey = filterKey;
-    state.requestKey = requestKey;
-
-    const acknowledged = resolveAcknowledgedParam(acknowledgedFilter);
-    const pageLimit =
-      mode === "paged" ? EXPANDED_PAGE_SIZE : PREVIEW_FETCH_LIMIT;
-    const queueOnly =
-      Boolean(channelSnapshotQueueTab) || channelQueueSnapshotUnified;
-
-    try {
-      const current = channelVideoCollections[channel.id];
-      if (!current || current.requestKey !== requestKey) {
-        return;
-      }
-
-      if (!append) {
-        const snapshot = await getChannelSnapshot(channel.id, {
-          limit: pageLimit,
-          offset: 0,
-          videoType: videoTypeFilter,
-          acknowledged,
-          queueOnly: queueOnly ? true : undefined,
-          queueTab: channelSnapshotQueueTab,
-          bypassCache: force,
-        });
-
-        if (current.requestKey !== requestKey) {
-          return;
-        }
-
-        current.videos = constrainVideosToChannel(channel.id, snapshot.videos);
-        current.loadedMode = mode;
-        current.loadingInitial = false;
-        current.loadingMore = false;
-        current.filterKey = filterKey;
-        current.requestKey = null;
-        current.hasMore = snapshot.has_more;
-        current.nextOffset = snapshot.next_offset ?? current.videos.length;
-        current.channelVideoCount = snapshot.channel_video_count ?? null;
-        current.syncDepth = snapshot.sync_depth;
-        current.earliestSyncDateInput = resolveSyncDateInputValue(
-          channel,
-          snapshot.sync_depth,
-        );
-        if (mode !== "paged") {
-          current.scrollTop = 0;
-        }
-        return;
-      }
-
-      const page = await listVideos(
-        channel.id,
-        pageLimit,
-        requestOffset,
-        videoTypeFilter,
-        acknowledged,
-        queueOnly,
-        channelSnapshotQueueTab,
-        force,
-      );
-
-      if (current.requestKey !== requestKey) {
-        return;
-      }
-
-      current.videos = constrainVideosToChannel(channel.id, [
-        ...current.videos,
-        ...page.videos,
-      ]);
-      current.loadedMode = "paged";
-      current.loadingInitial = false;
-      current.loadingMore = false;
-      current.filterKey = filterKey;
-      current.requestKey = null;
-      current.hasMore = page.has_more;
-      current.nextOffset = page.next_offset ?? current.videos.length;
-    } catch {
-      const current = channelVideoCollections[channel.id];
-      if (!current || current.requestKey !== requestKey) {
-        return;
-      }
-
-      current.loadingInitial = false;
-      current.loadingMore = false;
-      current.requestKey = null;
-    }
-  }
-
-  $effect(() => {
-    if (!browser || !channelQueueSnapshotUnified) return;
-    const refreshTick = queueVideoRefreshTick;
-    if (refreshTick === 0) return;
-    if (videoListMode !== "per_channel_preview") return;
-
-    for (const channel of channels) {
-      const state = channelVideoCollections[channel.id];
-      if (!state?.expanded) continue;
-      const mode = state.loadedMode === "preview" ? "preview" : "paged";
-      void loadChannelVideoCollection(channel, mode, { force: true });
-    }
-  });
-
-  async function toggleChannelVideoCollection(channel: Channel) {
-    const state = ensureChannelVideoCollection(channel.id);
-    if (state.expanded) {
-      setExpandedPreviewChannel(null);
-      return;
-    }
-
-    setExpandedPreviewChannel(channel.id);
-    const nextState = ensureChannelVideoCollection(channel.id);
-    nextState.scrollTop = 0;
-
-    const filterKey = getChannelVideoCollectionFilterKey();
-    if (
-      nextState.filterKey === filterKey &&
-      nextState.loadedMode === "preview"
-    ) {
-      nextState.loadedMode = "paged";
-      if (nextState.videos.length < EXPANDED_PAGE_SIZE && nextState.hasMore) {
-        await loadChannelVideoCollection(channel, "paged", {
-          append: true,
-        });
-      }
-      return;
-    }
-
-    await loadChannelVideoCollection(channel, "paged");
-  }
-
-  async function loadNextChannelVideoPage(channel: Channel) {
-    const state = ensureChannelVideoCollection(channel.id);
-    if (!state.expanded || !state.hasMore) {
-      return;
-    }
-
-    await loadChannelVideoCollection(channel, "paged", { append: true });
-  }
-
-  function handleChannelCollectionScroll(channel: Channel, event: Event) {
-    const currentTarget = event.currentTarget;
-    if (!(currentTarget instanceof HTMLDivElement)) {
-      return;
-    }
-    const state = ensureChannelVideoCollection(channel.id);
-    state.scrollTop = currentTarget.scrollTop;
-
-    if (
-      state.loadedMode !== "paged" ||
-      !state.hasMore ||
-      state.loadingMore ||
-      state.loadingInitial
-    ) {
-      return;
-    }
-
-    const remaining =
-      currentTarget.scrollHeight -
-      (currentTarget.scrollTop + currentTarget.clientHeight);
-    if (remaining <= VIRTUALIZED_ROW_HEIGHT * 2) {
-      void loadNextChannelVideoPage(channel);
-    }
-  }
-
   async function handlePerChannelPreviewSelect(channel: Channel) {
     if (isVirtualChannel(channel)) {
       return;
     }
-    await toggleChannelVideoCollection(channel);
+    await previewController.toggleChannelVideoCollection(channel);
     if (onOpenChannelOverview) {
       void onOpenChannelOverview(channel.id);
     }
@@ -828,32 +354,6 @@
     await onSelectVideo(videoId);
   }
 
-  async function saveChannelSyncDate(channel: Channel) {
-    const state = ensureChannelVideoCollection(channel.id);
-    if (!state.earliestSyncDateInput || state.savingSyncDate) {
-      return;
-    }
-
-    state.savingSyncDate = true;
-
-    try {
-      const updatedChannel = await updateChannel(channel.id, {
-        earliest_sync_date: new Date(state.earliestSyncDateInput).toISOString(),
-        earliest_sync_date_user_set: true,
-      });
-      onChannelUpdated(updatedChannel);
-      await refreshChannel(channel.id);
-      await loadChannelVideoCollection(
-        updatedChannel,
-        state.expanded ? "paged" : "preview",
-      );
-      await onChannelSyncDateSaved?.(channel.id);
-    } finally {
-      const current = ensureChannelVideoCollection(channel.id);
-      current.savingSyncDate = false;
-    }
-  }
-
   async function saveStandaloneChannelSyncDate(channel: Channel) {
     if (!earliestSyncDateInputSelected.trim() || savingStandaloneSyncDate) {
       return;
@@ -868,7 +368,6 @@
         earliest_sync_date_user_set: true,
       });
       onChannelUpdated(updatedChannel);
-      await refreshChannel(channel.id);
       syncDatePickerChannelId = null;
       await onChannelSyncDateSaved?.(channel.id);
     } finally {
@@ -876,196 +375,22 @@
     }
   }
 
-  function toggleSyncDatePicker(
+  function toggleStandaloneSyncDatePicker(
     channel: Channel,
     depth: SyncDepth | null,
-    collection: ChannelVideoCollectionState | undefined,
   ) {
     if (syncDatePickerChannelId === channel.id) {
       syncDatePickerChannelId = null;
       return;
     }
     syncDatePickerChannelId = channel.id;
-    if (collection) {
-      collection.earliestSyncDateInput = resolveSyncDateInputValue(
-        channel,
-        depth,
-      );
-    } else {
-      earliestSyncDateInputSelected = resolveSyncDateInputValue(channel, depth);
-    }
+    earliestSyncDateInputSelected = resolveSyncDateInputValue(channel, depth);
   }
-
-  $effect(() => {
-    if (videoListMode !== "per_channel_preview") {
-      return;
-    }
-    const sync = videoAcknowledgeSync;
-    if (!sync || sync.seq <= lastAppliedVideoAcknowledgeSeq) {
-      return;
-    }
-    lastAppliedVideoAcknowledgeSeq = sync.seq;
-    const { video, confirmed } = sync;
-    const state = channelVideoCollections[video.channel_id];
-    if (!state) {
-      return;
-    }
-    const merged = state.videos.map((v) => (v.id === video.id ? video : v));
-    const byType = filterVideosByType(merged, videoTypeFilter);
-    const filtered = filterVideosByAcknowledged(byType, acknowledgedFilter);
-    state.videos = constrainVideosToChannel(video.channel_id, filtered);
-
-    // Optimistic updates must not trigger a snapshot refetch: the GET cache is
-    // still populated until updateAcknowledged completes and invalidates it, so
-    // a forced load would overwrite the filtered list with stale rows.
-    if (!confirmed) {
-      return;
-    }
-
-    const ch = channels.find((c) => c.id === video.channel_id);
-    if (!ch) {
-      return;
-    }
-
-    if (!state.expanded) return;
-
-    if (filtered.length === 0) {
-      void loadChannelVideoCollection(ch, "paged", { force: true });
-    }
-  });
-
-  $effect(() => {
-    if (videoListMode !== "per_channel_preview" || !previewSessionKey) {
-      return;
-    }
-
-    setSidebarPreviewSession(
-      previewSessionKey,
-      pruneSidebarPreviewCollections(
-        channelVideoCollections,
-        channels.map((channel) => channel.id),
-      ),
-    );
-  });
-
-  $effect(() => {
-    if (videoListMode !== "per_channel_preview") {
-      return;
-    }
-
-    const filterKey = getChannelVideoCollectionFilterKey();
-    const visibleChannelIds = new Set(
-      filteredChannels.map((channel) => channel.id),
-    );
-
-    for (const channel of filteredChannels) {
-      const state = ensureChannelVideoCollection(channel.id);
-      if (!state.expanded) continue;
-      if (supportsMode(state, filterKey, "paged")) continue;
-      void loadChannelVideoCollection(channel, "paged");
-    }
-
-    for (const channelId of Object.keys(channelVideoCollections)) {
-      if (
-        !visibleChannelIds.has(channelId) &&
-        !channels.some((channel) => channel.id === channelId)
-      ) {
-        delete channelVideoCollections[channelId];
-      }
-    }
-  });
 
   $effect(() => {
     if (readOnly) {
       channelInputOpen = false;
     }
-  });
-
-  let lastAutoExpandedChannelId = $state<string | null>(null);
-  $effect(() => {
-    if (videoListMode !== "per_channel_preview") return;
-    const targetChannelId = resolveInitialPreviewExpandedChannelId(
-      filteredChannels,
-      selectedChannelId,
-      OTHERS_CHANNEL_ID,
-    );
-    if (!targetChannelId || targetChannelId === lastAutoExpandedChannelId) {
-      return;
-    }
-
-    const targetChannel = channels.find(
-      (channel) => channel.id === targetChannelId,
-    );
-    if (!targetChannel || isVirtualChannel(targetChannel)) {
-      return;
-    }
-
-    setExpandedPreviewChannel(targetChannel.id);
-    const nextState = ensureChannelVideoCollection(targetChannel.id);
-    lastAutoExpandedChannelId = targetChannel.id;
-
-    const preferredMode =
-      selectedVideoId && selectedChannelId === targetChannel.id
-        ? "paged"
-        : "preview";
-    if (
-      !supportsMode(
-        nextState,
-        getChannelVideoCollectionFilterKey(),
-        preferredMode,
-      )
-    ) {
-      void loadChannelVideoCollection(targetChannel, preferredMode);
-    }
-  });
-
-  $effect(() => {
-    if (videoListMode !== "per_channel_preview") return;
-    if (!selectedChannel || !selectedVideoId) return;
-    if (isVirtualChannel(selectedChannel)) return;
-
-    const state = ensureChannelVideoCollection(selectedChannel.id);
-    if (!state.expanded) {
-      setExpandedPreviewChannel(selectedChannel.id);
-    }
-
-    const nextState = ensureChannelVideoCollection(selectedChannel.id);
-    if (nextState.loadingInitial || nextState.loadingMore) return;
-    if (
-      shouldLoadAllChannelVideosForSelection({
-        selectedVideoId,
-        videos: nextState.videos,
-        loadedMode: nextState.loadedMode,
-        hasMore: nextState.hasMore,
-      })
-    ) {
-      if (nextState.loadedMode === "preview") {
-        nextState.loadedMode = "paged";
-      }
-      void loadNextChannelVideoPage(selectedChannel);
-      return;
-    }
-
-    const probeKey = `${selectedChannel.id}:${selectedVideoId}:${getChannelVideoCollectionFilterKey()}`;
-    if (
-      !shouldForceReloadMissingSelectedVideo({
-        selectedVideoId,
-        videos: nextState.videos,
-        probeKey,
-        lastProbeKey: nextState.selectedVideoReloadProbeKey,
-      })
-    ) {
-      if (nextState.videos.some((video) => video.id === selectedVideoId)) {
-        nextState.selectedVideoReloadProbeKey = null;
-      }
-      return;
-    }
-
-    // A selected video can legitimately remain outside the visible collection
-    // scope, for example when it is older than a user-set sync floor or hidden
-    // by the current filters. Probe once, then stop retrying indefinitely.
-    nextState.selectedVideoReloadProbeKey = probeKey;
-    void loadChannelVideoCollection(selectedChannel, "paged", { force: true });
   });
 
   async function handleChannelSubmit(event: SubmitEvent) {
@@ -1336,10 +661,9 @@
                     aria-label="Adjust sync date"
                     onclick={(event) => {
                       event.stopPropagation();
-                      toggleSyncDatePicker(
+                      toggleStandaloneSyncDatePicker(
                         selectedChannel,
                         syncDepth,
-                        undefined,
                       );
                     }}
                   >
@@ -1878,16 +1202,17 @@
           </div>
 
           {#if videoListMode === "per_channel_preview" && isExpanded}
-            {@const renderedCollection = resolveRenderedCollectionVideos(
-              channelVideoCollection,
-            )}
+            {@const renderedCollection =
+              previewController.resolveRenderedCollectionVideos(
+                channelVideoCollection,
+              )}
             <div
               class={channelVideoCollection.loadedMode === "paged"
                 ? "mt-1 max-h-[21rem] overflow-y-auto pb-1 pr-1"
                 : "mt-1 pb-1"}
               id={selectedChannelId === channel.id ? "videos" : undefined}
               onscroll={(event) =>
-                handleChannelCollectionScroll(channel, event)}
+                previewController.handleChannelCollectionScroll(channel, event)}
               transition:slide={{ duration: 180 }}
             >
               {#if channelVideoCollection.loadingInitial && channelVideoCollection.videos.length === 0}
@@ -1907,7 +1232,7 @@
                 <p
                   class="px-3 py-2 text-[12px] italic text-[var(--soft-foreground)] opacity-50"
                 >
-                  {channelListEmptyCaption(
+                  {previewController.channelListEmptyCaption(
                     channelVideoCollection.channelVideoCount,
                   )}
                 </p>
@@ -1992,7 +1317,8 @@
                   <button
                     type="button"
                     class="mt-1 w-full rounded-[var(--radius-sm)] py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] transition-all hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]"
-                    onclick={() => void loadNextChannelVideoPage(channel)}
+                    onclick={() =>
+                      void previewController.loadNextChannelVideoPage(channel)}
                   >
                     Load more
                   </button>
@@ -2007,12 +1333,13 @@
                     <button
                       type="button"
                       class="touch-manipulation relative z-10 inline-flex w-full max-w-full flex-wrap items-baseline gap-x-1 rounded-[var(--radius-sm)] px-2 py-1 text-left text-[10px] text-[var(--soft-foreground)] opacity-50 transition hover:bg-[var(--accent-wash)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
-                      aria-expanded={syncDatePickerChannelId === channel.id}
+                      aria-expanded={previewSyncDatePickerChannelId ===
+                        channel.id}
                       aria-haspopup="dialog"
                       aria-label="Adjust sync date"
                       onclick={(event) => {
                         event.stopPropagation();
-                        toggleSyncDatePicker(
+                        previewController.toggleSyncDatePicker(
                           channel,
                           channelVideoCollection.syncDepth,
                           channelVideoCollection,
@@ -2035,7 +1362,7 @@
                         )}</span
                       >
                     </button>
-                    {#if syncDatePickerChannelId === channel.id}
+                    {#if previewSyncDatePickerChannelId === channel.id}
                       <div
                         class="flex flex-wrap items-center gap-2 rounded-[var(--radius-md)] bg-[var(--surface-strong)] p-2 shadow-[var(--shadow-soft)]"
                         role="dialog"
@@ -2053,7 +1380,8 @@
                         <button
                           type="button"
                           class="rounded-[var(--radius-sm)] bg-[var(--foreground)] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--background)] transition-all hover:bg-[var(--accent-strong)] disabled:opacity-30"
-                          onclick={() => void saveChannelSyncDate(channel)}
+                          onclick={() =>
+                            void previewController.saveChannelSyncDate(channel)}
                           disabled={!channelVideoCollection.earliestSyncDateInput ||
                             channelVideoCollection.savingSyncDate}
                         >
@@ -2214,7 +1542,7 @@
                           aria-label="Adjust sync date"
                           onclick={(event) => {
                             event.stopPropagation();
-                            toggleSyncDatePicker(channel, syncDepth, undefined);
+                            toggleStandaloneSyncDatePicker(channel, syncDepth);
                           }}
                         >
                           <span

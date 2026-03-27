@@ -295,15 +295,13 @@
       });
       replaceWorkspaceUrl(href);
     },
-    onAcknowledgedFilterChange: (value: boolean | undefined) => {
-      const ack: AcknowledgedFilter =
-        value === true ? "ack" : value === false ? "unack" : "all";
+    onAcknowledgedFilterChange: (value: AcknowledgedFilter) => {
       const href = buildWorkspaceViewHref({
         selectedChannelId: sidebarState.selectedChannelId,
         selectedVideoId,
         contentMode,
         videoTypeFilter: sidebarState.videoTypeFilter,
-        acknowledgedFilter: ack,
+        acknowledgedFilter: value,
       });
       replaceWorkspaceUrl(href);
     },

@@ -112,6 +112,12 @@ Thin (4px), `--border` thumb, transparent track, `--soft-foreground` on hover.
 
 - Max line count per file should be **800**. If a file exceeds this, it must be modularized.
 
+## Svelte State Management
+
+- When a Svelte component or `.svelte.ts` controller exposes setter methods or action methods for reactive state, treat those methods as the only valid write path. Do not mutate the backing `$state` variable directly from alternate code paths.
+- Keep side-effectful state transitions centralized. If changing a value must also sync the URL, invalidate cache, emit analytics, or notify a parent, that logic belongs in the setter/action, not in scattered direct assignments.
+- Keep UI/domain state in its canonical type across the app. Only translate it to transport/API shapes at the boundary where the request is made.
+
 ## Testing
 
 ### Two layers, two jobs

@@ -48,9 +48,10 @@ import {
 } from "$lib/workspace/channel-actions";
 import { channelOrderFromList } from "$lib/workspace/channels";
 import {
+  applyAcknowledgedFilterChange,
+  applyVideoTypeFilterChange,
+  clearSidebarVideoFilters,
   dedupeVideosById,
-  filterVideosByAcknowledged,
-  filterVideosByType,
   loadChannelSnapshotWithRefresh,
   resolveNextChannelSelection,
 } from "$lib/workspace/route-helpers";
@@ -182,7 +183,7 @@ export type SidebarStateOptions = {
     includeOptimistic: boolean,
   ) => Promise<ChannelVideoPage>;
   onVideoTypeFilterChange?: (filter: VideoTypeFilter) => void;
-  onAcknowledgedFilterChange?: (ack: boolean | undefined) => void;
+  onAcknowledgedFilterChange?: (filter: AcknowledgedFilter) => void;
 };
 
 type CachedVideoState = {
@@ -472,9 +473,7 @@ export function createSidebarState(
   }
   function setAcknowledgedFilter(v: AcknowledgedFilter) {
     acknowledgedFilter = v;
-    options_root.onAcknowledgedFilterChange?.(
-      v === "ack" ? true : v === "unack" ? false : undefined,
-    );
+    options_root.onAcknowledgedFilterChange?.(v);
   }
   function setChannelSortMode(mode: ChannelSortMode) {
     channelSortMode = mode;
@@ -702,24 +701,35 @@ export function createSidebarState(
   // --- Filter operations ---
 
   async function setVideoTypeFilterAndReload(nextValue: VideoTypeFilter) {
-    if (videoTypeFilter === nextValue) return;
-    videoTypeFilter = nextValue;
-    videos = filterVideosByType(videos, nextValue);
-    await loadVideos(true, true);
+    await applyVideoTypeFilterChange({
+      currentFilter: videoTypeFilter,
+      nextFilter: nextValue,
+      videos,
+      setFilter: setVideoTypeFilter,
+      setVideos,
+      reload: () => loadVideos(true, true),
+    });
   }
 
   async function setAcknowledgedFilterAndReload(nextValue: AcknowledgedFilter) {
-    if (acknowledgedFilter === nextValue) return;
-    acknowledgedFilter = nextValue;
-    videos = filterVideosByAcknowledged(videos, nextValue);
-    await loadVideos(true, true);
+    await applyAcknowledgedFilterChange({
+      currentFilter: acknowledgedFilter,
+      nextFilter: nextValue,
+      videos,
+      setFilter: setAcknowledgedFilter,
+      setVideos,
+      reload: () => loadVideos(true, true),
+    });
   }
 
   async function clearAllFiltersAndReload() {
-    if (videoTypeFilter === "all" && acknowledgedFilter === "all") return;
-    videoTypeFilter = "all";
-    acknowledgedFilter = "all";
-    await loadVideos(true, true);
+    await clearSidebarVideoFilters({
+      videoTypeFilter,
+      acknowledgedFilter,
+      setVideoTypeFilter,
+      setAcknowledgedFilter,
+      reload: () => loadVideos(true, true),
+    });
   }
 
   // --- Channel CRUD ---

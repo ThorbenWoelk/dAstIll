@@ -171,6 +171,61 @@ export function filterVideosByAcknowledged(
   });
 }
 
+export async function applyVideoTypeFilterChange(params: {
+  currentFilter: VideoTypeFilter;
+  nextFilter: VideoTypeFilter;
+  videos: Video[];
+  setFilter: (filter: VideoTypeFilter) => void;
+  setVideos: (videos: Video[]) => void;
+  reload: () => Promise<void>;
+}): Promise<boolean> {
+  if (params.currentFilter === params.nextFilter) {
+    return false;
+  }
+
+  params.setFilter(params.nextFilter);
+  params.setVideos(filterVideosByType(params.videos, params.nextFilter));
+  await params.reload();
+  return true;
+}
+
+export async function applyAcknowledgedFilterChange(params: {
+  currentFilter: AcknowledgedFilter;
+  nextFilter: AcknowledgedFilter;
+  videos: Video[];
+  setFilter: (filter: AcknowledgedFilter) => void;
+  setVideos: (videos: Video[]) => void;
+  reload: () => Promise<void>;
+}): Promise<boolean> {
+  if (params.currentFilter === params.nextFilter) {
+    return false;
+  }
+
+  params.setFilter(params.nextFilter);
+  params.setVideos(
+    filterVideosByAcknowledged(params.videos, params.nextFilter),
+  );
+  await params.reload();
+  return true;
+}
+
+export async function clearSidebarVideoFilters(params: {
+  videoTypeFilter: VideoTypeFilter;
+  acknowledgedFilter: AcknowledgedFilter;
+  setVideoTypeFilter: (filter: VideoTypeFilter) => void;
+  setAcknowledgedFilter: (filter: AcknowledgedFilter) => void;
+  reload: () => Promise<void>;
+}): Promise<boolean> {
+  if (params.videoTypeFilter === "all" && params.acknowledgedFilter === "all") {
+    return false;
+  }
+
+  params.setVideoTypeFilter("all");
+  params.setAcknowledgedFilter("all");
+  await params.reload();
+  return true;
+}
+
 export function resolveNextChannelSelection(
   channels: Channel[],
   deletedChannelId: string,
