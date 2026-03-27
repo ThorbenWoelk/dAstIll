@@ -10,6 +10,7 @@ import {
   shouldLoadAllChannelVideosForSelection,
   shouldForceReloadMissingSelectedVideo,
 } from "../src/lib/workspace/route-helpers";
+import { resolveSidebarPreviewFilterKey } from "../src/lib/workspace/sidebar-preview-scope";
 import { videosBelongToChannel } from "../src/lib/workspace/sidebar-state.svelte";
 import type { Video } from "../src/lib/types";
 import type { Channel } from "../src/lib/types";
@@ -186,6 +187,31 @@ describe("shouldForceReloadMissingSelectedVideo", () => {
     });
 
     expect(result).toBe(false);
+  });
+});
+
+describe("resolveSidebarPreviewFilterKey", () => {
+  it("uses the default segment for workspace previews", () => {
+    expect(
+      resolveSidebarPreviewFilterKey("all", "all", { kind: "default" }),
+    ).toBe("all:all:default");
+  });
+
+  it("uses the unified segment for queue-wide previews", () => {
+    expect(
+      resolveSidebarPreviewFilterKey("short", "unack", {
+        kind: "unified",
+      }),
+    ).toBe("short:unack:unified");
+  });
+
+  it("uses the queue tab segment when queue previews are scoped to one stage", () => {
+    expect(
+      resolveSidebarPreviewFilterKey("long", "ack", {
+        kind: "queue_tab",
+        queueTab: "summary",
+      }),
+    ).toBe("long:ack:summary");
   });
 });
 

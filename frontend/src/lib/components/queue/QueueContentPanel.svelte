@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { formatShortDate } from "$lib/utils/date";
+  import QueueFailedTranscriptList from "$lib/components/queue/QueueFailedTranscriptList.svelte";
+  import QueueSelectedVideoCard from "$lib/components/queue/QueueSelectedVideoCard.svelte";
   import { formatSyncDate } from "$lib/workspace/content";
   import type { Video } from "$lib/types";
   import type {
@@ -58,107 +59,6 @@
 
   function retryTranscript(videoId: string) {
     return actions.onRetryTranscript?.(videoId);
-  }
-
-  /** Primary pipeline label for queue video details. */
-  function queueVideoPrimaryState(v: Video): string {
-    if (v.transcript_status === "failed") {
-      return "Transcript failed";
-    }
-    if (v.transcript_status === "loading") {
-      return "Transcript generating";
-    }
-    if (v.transcript_status === "pending") {
-      return "In queue";
-    }
-    if (v.summary_status === "failed") {
-      return "Summary failed";
-    }
-    if (v.summary_status === "loading") {
-      return "Summary generating";
-    }
-    if (v.summary_status === "pending") {
-      return "In queue";
-    }
-    return "Complete";
-  }
-
-  type PipelineStepStatus = "complete" | "active" | "upcoming" | "failed";
-
-  type PipelineStep = {
-    key: string;
-    label: string;
-    status: PipelineStepStatus;
-  };
-
-  /** Minimal 3-step model: queue → transcript → summary. */
-  function queueVideoPipelineSteps(v: Video): PipelineStep[] {
-    const t = v.transcript_status;
-    const s = v.summary_status;
-
-    if (t === "failed") {
-      return [
-        { key: "q", label: "Queue", status: "complete" },
-        { key: "tr", label: "Transcript", status: "failed" },
-        { key: "su", label: "Summary", status: "upcoming" },
-      ];
-    }
-    if (t === "pending") {
-      return [
-        { key: "q", label: "Queue", status: "active" },
-        { key: "tr", label: "Transcript", status: "upcoming" },
-        { key: "su", label: "Summary", status: "upcoming" },
-      ];
-    }
-    if (t === "loading") {
-      return [
-        { key: "q", label: "Queue", status: "complete" },
-        { key: "tr", label: "Transcript", status: "active" },
-        { key: "su", label: "Summary", status: "upcoming" },
-      ];
-    }
-    if (s === "failed") {
-      return [
-        { key: "q", label: "Queue", status: "complete" },
-        { key: "tr", label: "Transcript", status: "complete" },
-        { key: "su", label: "Summary", status: "failed" },
-      ];
-    }
-    if (s === "loading") {
-      return [
-        { key: "q", label: "Queue", status: "complete" },
-        { key: "tr", label: "Transcript", status: "complete" },
-        { key: "su", label: "Summary", status: "active" },
-      ];
-    }
-    if (s === "pending") {
-      return [
-        { key: "q", label: "Queue", status: "complete" },
-        { key: "tr", label: "Transcript", status: "complete" },
-        { key: "su", label: "Summary", status: "active" },
-      ];
-    }
-    return [
-      { key: "q", label: "Queue", status: "complete" },
-      { key: "tr", label: "Transcript", status: "complete" },
-      { key: "su", label: "Summary", status: "complete" },
-    ];
-  }
-
-  function queueStateAccentClass(v: Video): string {
-    if (v.transcript_status === "failed" || v.summary_status === "failed") {
-      return "bg-[var(--danger)]";
-    }
-    if (v.transcript_status === "loading" || v.summary_status === "loading") {
-      return "bg-[var(--accent)] motion-safe:animate-pulse";
-    }
-    if (v.transcript_status === "pending" || v.summary_status === "pending") {
-      return "bg-[var(--soft-foreground)]/45";
-    }
-    if (v.transcript_status === "ready" && v.summary_status === "ready") {
-      return "bg-[var(--accent-strong)]/80";
-    }
-    return "bg-[var(--soft-foreground)]/35";
   }
 </script>
 
@@ -272,187 +172,14 @@
     {:else}
       <div class="flex flex-col gap-8 pb-24">
         {#if panelState.selectedVideoId && panelState.selectedQueueVideo}
-          {@const v = panelState.selectedQueueVideo}
-          {@const steps = queueVideoPipelineSteps(v)}
-          <article
-            class="rounded-[var(--radius-md)] bg-[var(--panel-surface)] px-4 py-5 sm:px-5"
-            aria-labelledby="queue-video-title"
-          >
-            <header
-              class="flex items-start justify-between gap-3 border-b border-[var(--border-soft)]/40 pb-4"
-            >
-              <p
-                class="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-60"
-              >
-                Selected video
-              </p>
-              {#if actions.onClearSelectedVideo}
-                <button
-                  type="button"
-                  class="shrink-0 rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]"
-                  onclick={() => actions.onClearSelectedVideo?.()}
-                >
-                  Clear
-                </button>
-              {/if}
-            </header>
-
-            <h3
-              id="queue-video-title"
-              class="font-serif mt-4 text-[1.125rem] leading-snug text-[var(--foreground)] sm:text-[1.25rem]"
-            >
-              {v.title}
-            </h3>
-            <p
-              class="mt-2 text-[13px] leading-relaxed text-[var(--soft-foreground)]"
-            >
-              Published {formatShortDate(v.published_at)}
-            </p>
-
-            <div class="mt-6" aria-label="Processing pipeline">
-              <p
-                class="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-55"
-              >
-                Pipeline
-              </p>
-              <ol class="mt-3 grid grid-cols-3 gap-3 sm:gap-4" role="list">
-                {#each steps as step (step.key)}
-                  <li class="flex flex-col items-center gap-2 text-center">
-                    <span
-                      class="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[10px] font-bold uppercase tracking-[0.06em] transition-colors duration-200 {step.status ===
-                      'complete'
-                        ? 'bg-[var(--accent-soft)] text-[var(--accent-strong)] ring-1 ring-[var(--accent)]/20'
-                        : step.status === 'active'
-                          ? 'bg-[var(--accent-wash)] text-[var(--accent-strong)] ring-2 ring-[var(--accent)]/35'
-                          : step.status === 'failed'
-                            ? 'bg-[var(--danger-soft)] text-[var(--danger)] ring-1 ring-[var(--danger)]/25'
-                            : 'bg-[var(--muted)]/50 text-[var(--soft-foreground)]'}"
-                      aria-current={step.status === "active"
-                        ? "step"
-                        : undefined}
-                    >
-                      <span class="sr-only">{step.label}</span>
-                      {#if step.status === "complete"}
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2.5"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          aria-hidden="true"
-                        >
-                          <polyline points="20 6 9 17 4 12" />
-                        </svg>
-                      {:else if step.status === "failed"}
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2.5"
-                          stroke-linecap="round"
-                          aria-hidden="true"
-                        >
-                          <line x1="18" y1="6" x2="6" y2="18" />
-                          <line x1="6" y1="6" x2="18" y2="18" />
-                        </svg>
-                      {:else if step.status === "active"}
-                        <span
-                          class="h-2 w-2 rounded-full bg-[var(--accent)] motion-safe:animate-pulse"
-                          aria-hidden="true"
-                        ></span>
-                      {:else}
-                        <span
-                          class="h-1.5 w-1.5 rounded-full bg-[var(--border)]"
-                          aria-hidden="true"
-                        ></span>
-                      {/if}
-                    </span>
-                    <span
-                      class="text-[9px] font-bold uppercase leading-tight tracking-[0.08em] text-[var(--soft-foreground)] opacity-80 {step.status ===
-                      'active'
-                        ? 'text-[var(--accent-strong)] opacity-100'
-                        : step.status === 'complete'
-                          ? 'text-[var(--foreground)] opacity-90'
-                          : ''}"
-                    >
-                      {step.label}
-                    </span>
-                  </li>
-                {/each}
-              </ol>
-            </div>
-
-            <div class="mt-8 border-t border-[var(--border-soft)]/40 pt-6">
-              <p
-                class="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-55"
-              >
-                Current status
-              </p>
-              <div class="mt-3 flex items-start gap-3">
-                <span
-                  class="mt-1.5 h-2 w-2 shrink-0 rounded-full {queueStateAccentClass(
-                    v,
-                  )}"
-                  aria-hidden="true"
-                ></span>
-                <p
-                  class="font-serif text-[1.125rem] leading-snug text-[var(--foreground)]"
-                >
-                  {queueVideoPrimaryState(v)}
-                </p>
-              </div>
-            </div>
-
-            <dl class="mt-6 space-y-1">
-              <div
-                class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1"
-              >
-                <dt
-                  class="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] opacity-50"
-                >
-                  Quality
-                </dt>
-                <dd
-                  class="text-[13px] font-medium tabular-nums text-[var(--soft-foreground)]"
-                >
-                  {v.quality_score != null && v.quality_score !== undefined
-                    ? String(v.quality_score)
-                    : "Not scored yet"}
-                </dd>
-              </div>
-            </dl>
-
-            <div
-              class="mt-6 flex flex-wrap gap-2 border-t border-[var(--border-soft)]/40 pt-5"
-            >
-              {#if v.transcript_status === "failed" && !readOnly}
-                <button
-                  type="button"
-                  class="inline-flex h-9 min-h-8 items-center justify-center rounded-full bg-[var(--foreground)] px-5 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--background)] transition-all duration-200 hover:bg-[var(--accent-strong)] disabled:opacity-40"
-                  onclick={() => void actions.onRetryTranscript?.(v.id)}
-                  disabled={panelState.retryingTranscriptVideoId === v.id}
-                >
-                  {panelState.retryingTranscriptVideoId === v.id
-                    ? "Retrying"
-                    : "Retry download"}
-                </button>
-              {/if}
-              {#if actions.onOpenVideoInWorkspace}
-                <button
-                  type="button"
-                  class="inline-flex h-9 min-h-8 items-center justify-center rounded-full px-5 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--accent-strong)] transition-all duration-200 hover:bg-[var(--accent-wash)]"
-                  onclick={() => void actions.onOpenVideoInWorkspace?.(v)}
-                >
-                  Open in workspace
-                </button>
-              {/if}
-            </div>
-          </article>
+          <QueueSelectedVideoCard
+            video={panelState.selectedQueueVideo}
+            {readOnly}
+            retryingTranscriptVideoId={panelState.retryingTranscriptVideoId}
+            onRetryTranscript={actions.onRetryTranscript}
+            onClearSelectedVideo={actions.onClearSelectedVideo}
+            onOpenVideoInWorkspace={actions.onOpenVideoInWorkspace}
+          />
         {:else if panelState.selectedVideoId && !panelState.selectedQueueVideo}
           <div
             class="flex flex-col gap-3 rounded-[var(--radius-md)] bg-[var(--panel-surface)] px-4 py-4 sm:px-5"
@@ -590,60 +317,12 @@
           </div>
 
           <!-- Failed downloads -->
-          {#if panelState.failedTranscriptVideos && panelState.failedTranscriptVideos.length > 0}
-            <div class="border-t border-[var(--border-soft)] pt-6">
-              <div class="flex items-center justify-between gap-3">
-                <p
-                  class="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-55"
-                >
-                  Failed downloads
-                </p>
-                <span
-                  class="rounded-full bg-[var(--danger-soft)] px-2 py-1 text-[11px] font-semibold text-[var(--danger-foreground)]"
-                >
-                  {panelState.failedTranscriptVideos.length} failed
-                </span>
-              </div>
-              <p
-                class="mt-2 text-[14px] font-semibold text-[var(--foreground)]"
-              >
-                Retry transcript extraction
-              </p>
-
-              <div class="mt-4 space-y-0">
-                {#each panelState.failedTranscriptVideos as video (video.id)}
-                  <div
-                    class="flex flex-col gap-3 border-t border-[var(--border-soft)] py-4 first:border-t-0 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div class="min-w-0">
-                      <p
-                        class="line-clamp-2 text-[14px] font-semibold text-[var(--foreground)]"
-                      >
-                        {video.title}
-                      </p>
-                      <p class="mt-1 text-[12px] text-[var(--soft-foreground)]">
-                        Published {formatShortDate(video.published_at)}
-                      </p>
-                    </div>
-
-                    {#if !readOnly}
-                      <button
-                        type="button"
-                        class="inline-flex shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] px-4 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--background)] transition-all hover:bg-[var(--accent-strong)] disabled:opacity-40"
-                        onclick={() => void retryTranscript(video.id)}
-                        disabled={panelState.retryingTranscriptVideoId ===
-                          video.id}
-                      >
-                        {panelState.retryingTranscriptVideoId === video.id
-                          ? "Retrying"
-                          : "Retry"}
-                      </button>
-                    {/if}
-                  </div>
-                {/each}
-              </div>
-            </div>
-          {/if}
+          <QueueFailedTranscriptList
+            videos={panelState.failedTranscriptVideos ?? []}
+            {readOnly}
+            retryingTranscriptVideoId={panelState.retryingTranscriptVideoId}
+            onRetryTranscript={retryTranscript}
+          />
         {/if}
       </div>
     {/if}

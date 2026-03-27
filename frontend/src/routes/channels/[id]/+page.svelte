@@ -750,6 +750,7 @@
       previewSessionKey="workspace-sidebar-navigation"
       initialChannelPreviews={seededChannelPreviews}
       initialChannelPreviewsFilterKey={seededChannelPreviewsFilterKey}
+      previewScope={{ kind: "default" }}
       addSourceErrorMessage={errorMessage}
       shell={{
         collapsed,
@@ -787,6 +788,7 @@
           previewSessionKey="workspace-sidebar-navigation"
           initialChannelPreviews={seededChannelPreviews}
           initialChannelPreviewsFilterKey={seededChannelPreviewsFilterKey}
+          previewScope={{ kind: "default" }}
           addSourceErrorMessage={errorMessage}
           shell={{
             collapsed: false,

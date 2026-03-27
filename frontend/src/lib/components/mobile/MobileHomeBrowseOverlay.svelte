@@ -1,8 +1,9 @@
 <script lang="ts">
-  import type { Channel, ChannelSnapshot, QueueTab } from "$lib/types";
+  import type { Channel, ChannelSnapshot } from "$lib/types";
   import type {
     WorkspaceSidebarChannelActions,
     WorkspaceSidebarChannelState,
+    WorkspaceSidebarPreviewProps,
     WorkspaceSidebarVideoActions,
     WorkspaceSidebarVideoState,
   } from "$lib/workspace/component-props";
@@ -24,7 +25,9 @@
     addSourceErrorMessage = null as string | null,
     initialChannelPreviews = {} as Record<string, ChannelSnapshot>,
     initialChannelPreviewsFilterKey = undefined as string | undefined,
-    channelSnapshotQueueTab = undefined as QueueTab | undefined,
+    previewScope = { kind: "default" } as NonNullable<
+      WorkspaceSidebarPreviewProps["previewScope"]
+    >,
     onChannelSyncDateSaved = undefined,
   }: {
     open: boolean;
@@ -41,7 +44,7 @@
     addSourceErrorMessage?: string | null;
     initialChannelPreviews?: Record<string, ChannelSnapshot>;
     initialChannelPreviewsFilterKey?: string | undefined;
-    channelSnapshotQueueTab?: QueueTab;
+    previewScope?: WorkspaceSidebarPreviewProps["previewScope"];
     onChannelSyncDateSaved?: (channelId: string) => void | Promise<void>;
   } = $props();
 </script>
@@ -85,7 +88,7 @@
         {addSourceErrorMessage}
         {initialChannelPreviews}
         {initialChannelPreviewsFilterKey}
-        {channelSnapshotQueueTab}
+        {previewScope}
         hideChannelUi
         suppressVideoLoadMoreButton
         {onChannelSyncDateSaved}

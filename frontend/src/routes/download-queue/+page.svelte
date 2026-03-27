@@ -19,6 +19,13 @@
   import MobileChannelGallery from "$lib/components/mobile/MobileChannelGallery.svelte";
   import MobileYouTubeTopNav from "$lib/components/mobile/MobileYouTubeTopNav.svelte";
   import QueueContentPanel from "$lib/components/queue/QueueContentPanel.svelte";
+  import {
+    buildQueueGalleryChannelPreviews,
+    deriveEarliestSyncDateInput,
+    deriveEffectiveEarliestSyncDate,
+    deriveQueueRefreshCadence,
+    deriveQueueStats,
+  } from "$lib/queue/route-state";
   import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
   import WorkspaceSidebar from "$lib/components/workspace/WorkspaceSidebar.svelte";
   import { resolveBootstrapOnMount } from "$lib/ssr-bootstrap";
@@ -80,17 +87,6 @@
   import { createAiStatusPoller, refreshAiStatus } from "$lib/utils/ai-poller";
   import { createSidebarState } from "$lib/workspace/sidebar-state.svelte";
   import { mobileBottomBar } from "$lib/mobile-navigation/mobileBottomBar";
-
-  /** Transcript or summary still running for unified queue visibility. */
-  function videoPipelineInFlight(video: Video): boolean {
-    return (
-      video.transcript_status === "pending" ||
-      video.transcript_status === "loading" ||
-      (video.transcript_status === "ready" &&
-        (video.summary_status === "pending" ||
-          video.summary_status === "loading"))
-    );
-  }
 
   const sidebar = createSidebarState({
     limit: 20,
@@ -218,7 +214,9 @@
   /** Mirrors workspace: replaceState is unsafe until after the client router is ready. */
   let queueUrlSyncReady = $state(false);
   // let lastSyncedAt = $state<Date | null>(null); // No longer needed
-  let earliestSyncDateInput = $state("");
+  const earliestSyncDateInput = $derived(
+    deriveEarliestSyncDateInput(sidebar.selectedChannel, sidebar.syncDepth),
+  );
   let savingSyncDate = $state(false);
   let retryingTranscriptVideoId = $state<string | null>(null);
   /** Bumped after each silent list refresh so desktop per-channel queue lists reload. */
@@ -228,31 +226,10 @@
     aiStatus ? resolveAiIndicatorPresentation(aiStatus) : null,
   );
   const effectiveEarliestSyncDate = $derived(
-    sidebar.selectedChannel?.earliest_sync_date_user_set
-      ? sidebar.selectedChannel.earliest_sync_date
-      : (sidebar.syncDepth?.derived_earliest_ready_date ??
-          sidebar.selectedChannel?.earliest_sync_date),
+    deriveEffectiveEarliestSyncDate(sidebar.selectedChannel, sidebar.syncDepth),
   );
 
-  const queueStats = $derived({
-    total: sidebar.videos.length,
-    loading: sidebar.videos.filter(
-      (video) =>
-        video.transcript_status === "loading" ||
-        video.summary_status === "loading",
-    ).length,
-    pending: sidebar.videos.filter(
-      (video) =>
-        video.transcript_status === "pending" ||
-        (video.transcript_status === "ready" &&
-          video.summary_status === "pending"),
-    ).length,
-    failed: sidebar.videos.filter(
-      (video) =>
-        video.transcript_status === "failed" ||
-        video.summary_status === "failed",
-    ).length,
-  });
+  const queueStats = $derived(deriveQueueStats(sidebar.videos));
 
   const failedTranscriptVideos = $derived(
     sidebar.videos.filter((video) => video.transcript_status === "failed"),
@@ -260,13 +237,12 @@
 
   const queueRefreshCadence = $derived.by(
     (): "off" | "fast" | "slow" | "idle" => {
-      if (!browser) return "off";
-      if (!sidebar.selectedChannelId) return "off";
-      if (sidebar.loadingVideos) return "off";
-      const vids = sidebar.videos;
-      if (vids.some(videoPipelineInFlight)) return "fast";
-      if (vids.length > 0) return "slow";
-      return "idle";
+      return deriveQueueRefreshCadence({
+        browser,
+        selectedChannelId: sidebar.selectedChannelId,
+        loadingVideos: sidebar.loadingVideos,
+        videos: sidebar.videos,
+      });
     },
   );
 
@@ -299,21 +275,17 @@
   });
 
   const galleryChannelPreviews = $derived.by(() => {
-    const base = {
-      ...($page.data.channelPreviews ?? {}),
-    } as Record<string, ChannelSnapshot>;
-    const sid = sidebar.selectedChannelId;
-    if (sid && sidebar.syncDepth) {
-      base[sid] = {
-        channel_id: sid,
-        sync_depth: sidebar.syncDepth,
-        channel_video_count: sidebar.videos.length,
-        has_more: sidebar.hasMore,
-        next_offset: sidebar.offset,
-        videos: sidebar.videos,
-      };
-    }
-    return base;
+    return buildQueueGalleryChannelPreviews({
+      basePreviews: ($page.data.channelPreviews ?? {}) as Record<
+        string,
+        ChannelSnapshot
+      >,
+      selectedChannelId: sidebar.selectedChannelId,
+      syncDepth: sidebar.syncDepth,
+      videos: sidebar.videos,
+      hasMore: sidebar.hasMore,
+      offset: sidebar.offset,
+    });
   });
 
   $effect(() =>
@@ -323,22 +295,6 @@
       },
     }),
   );
-
-  $effect(() => {
-    if (!sidebar.selectedChannel) {
-      earliestSyncDateInput = "";
-      return;
-    }
-
-    const effective = sidebar.selectedChannel.earliest_sync_date_user_set
-      ? sidebar.selectedChannel.earliest_sync_date
-      : (sidebar.syncDepth?.derived_earliest_ready_date ??
-        sidebar.selectedChannel.earliest_sync_date);
-
-    earliestSyncDateInput = effective
-      ? new Date(effective).toISOString().split("T")[0]
-      : "";
-  });
 
   let previousQueueChannelId = $state<string | null>(null);
   $effect(() => {
@@ -707,7 +663,7 @@
       initialChannelPreviews={$page.data.channelPreviews ?? {}}
       initialChannelPreviewsFilterKey={$page.data.channelPreviewsFilterKey ??
         "all:all:unified"}
-      channelQueueSnapshotUnified={true}
+      previewScope={{ kind: "unified" }}
       {queueVideoRefreshTick}
       readOnly={true}
       shell={{
@@ -746,7 +702,7 @@
           initialChannelPreviews={$page.data.channelPreviews ?? {}}
           initialChannelPreviewsFilterKey={$page.data
             .channelPreviewsFilterKey ?? "all:all:unified"}
-          channelQueueSnapshotUnified={true}
+          previewScope={{ kind: "unified" }}
           {queueVideoRefreshTick}
           readOnly={true}
           shell={{

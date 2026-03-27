@@ -2213,6 +2213,7 @@
       initialChannelPreviews={$page.data.channelPreviews ?? {}}
       initialChannelPreviewsFilterKey={$page.data.channelPreviewsFilterKey ??
         "all:all:default"}
+      previewScope={{ kind: "default" }}
       shell={{
         collapsed: shell.collapsed,
         width: shell.width,

@@ -10,18 +10,19 @@
     reorderChannels as reorderChannelList,
     updateChannelDragOver,
   } from "$lib/channel-workspace";
-  import ChevronIcon from "$lib/components/icons/ChevronIcon.svelte";
+  import WorkspaceSidebarCollapsedChannelRail from "$lib/components/workspace/WorkspaceSidebarCollapsedChannelRail.svelte";
   import WorkspaceSidebarChannelRow from "$lib/components/workspace/WorkspaceSidebarChannelRow.svelte";
   import WorkspaceSidebarChannelControls from "$lib/components/workspace/WorkspaceSidebarChannelControls.svelte";
-  import WorkspaceSidebarVideoFilterControl from "$lib/components/workspace/WorkspaceSidebarVideoFilterControl.svelte";
-  import WorkspaceSidebarVideoRow from "$lib/components/workspace/WorkspaceSidebarVideoRow.svelte";
-  import WorkspaceSidebarSelectedVideoList from "$lib/components/workspace/WorkspaceSidebarSelectedVideoList.svelte";
-  import WorkspaceSidebarSyncDateControl from "$lib/components/workspace/WorkspaceSidebarSyncDateControl.svelte";
+  import WorkspaceSidebarHiddenChannelPane from "$lib/components/workspace/WorkspaceSidebarHiddenChannelPane.svelte";
+  import WorkspaceSidebarPreviewChannelContent from "$lib/components/workspace/WorkspaceSidebarPreviewChannelContent.svelte";
+  import WorkspaceSidebarSelectedChannelContent from "$lib/components/workspace/WorkspaceSidebarSelectedChannelContent.svelte";
   import type { Channel, Video, VideoTypeFilter } from "$lib/types";
   import { OTHERS_CHANNEL_ID } from "$lib/types";
   import type {
     WorkspaceSidebarChannelActions,
     WorkspaceSidebarChannelState,
+    WorkspaceSidebarPreviewProps,
+    WorkspaceSidebarPreviewScope,
     WorkspaceSidebarShellProps,
     WorkspaceSidebarVideoActions,
     WorkspaceSidebarVideoState,
@@ -37,9 +38,6 @@
     filterChannels,
     resolveChannelDropIndicatorEdge,
   } from "$lib/workspace/channels";
-  import { formatShortDate } from "$lib/utils/date";
-  import { resolveDisplayedSyncDepthIso } from "$lib/sync-depth";
-  import { formatSyncDate } from "$lib/workspace/content";
   import {
     resolveSyncDateInputValue,
     toIsoDateStart,
@@ -48,7 +46,7 @@
     createSidebarPreviewController,
     createEmptyChannelVideoCollection,
   } from "$lib/workspace/sidebar-preview-controller.svelte";
-  import type { ChannelSnapshot, QueueTab, SyncDepth } from "$lib/types";
+  import type { ChannelSnapshot, SyncDepth } from "$lib/types";
 
   let {
     shell = {
@@ -104,13 +102,7 @@
     addSourceErrorMessage = null as string | null,
     initialChannelPreviews = {} as Record<string, ChannelSnapshot>,
     initialChannelPreviewsFilterKey = undefined as string | undefined,
-    /** When set (download queue), snapshot and list APIs use queue_tab so in-progress work appears. */
-    channelSnapshotQueueTab = undefined as QueueTab | undefined,
-    /**
-     * When true (download queue, unified pipeline view), snapshot/list use
-     * `queue_only` without `queue_tab` (any incomplete transcript or summary).
-     */
-    channelQueueSnapshotUnified = false,
+    previewScope = { kind: "default" } as WorkspaceSidebarPreviewScope,
     /**
      * When bumped (download queue), forces reload of expanded per-channel queue lists.
      */
@@ -152,8 +144,7 @@
      * fetched the channel preview snapshots.
      */
     initialChannelPreviewsFilterKey?: string;
-    channelSnapshotQueueTab?: QueueTab;
-    channelQueueSnapshotUnified?: boolean;
+    previewScope?: WorkspaceSidebarPreviewProps["previewScope"];
     queueVideoRefreshTick?: number;
     videoAcknowledgeSync?: {
       seq: number;
@@ -300,8 +291,7 @@
     getReadOnly: () => readOnly,
     getInitialChannelPreviews: () => initialChannelPreviews,
     getInitialChannelPreviewsFilterKey: () => initialChannelPreviewsFilterKey,
-    getChannelSnapshotQueueTab: () => channelSnapshotQueueTab,
-    getChannelQueueSnapshotUnified: () => channelQueueSnapshotUnified,
+    getPreviewScope: () => previewScope,
     getQueueVideoRefreshTick: () => queueVideoRefreshTick,
     getVideoAcknowledgeSync: () => videoAcknowledgeSync,
     getPreviewSessionKey: () => previewSessionKey,
@@ -509,145 +499,57 @@
     : `width: ${width ?? (collapsed ? 52 : 280)}px;`}
 >
   {#if channelUiHidden}
-    <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div
-        class="custom-scrollbar min-h-0 flex-1 overflow-y-auto px-3 pb-4 pt-3"
-        aria-busy={loadingVideos}
-      >
-        {#if !selectedChannelId}
-          <p
-            class="px-2 py-2 text-[14px] font-medium italic text-[var(--soft-foreground)] opacity-55"
-          >
-            Pick a channel above.
-          </p>
-        {:else if loadingVideos && videos.length === 0}
-          <div class="space-y-1 px-1" role="status" aria-live="polite">
-            {#each Array.from({ length: 6 }) as _, i (i)}
-              <div class="animate-pulse px-2 py-1.5">
-                <div
-                  class="h-3 w-11/12 rounded-full bg-[var(--border)] opacity-60"
-                ></div>
-                <div
-                  class="mt-1 h-2 w-1/3 rounded-full bg-[var(--border)] opacity-40"
-                ></div>
-              </div>
-            {/each}
-          </div>
-        {:else if videos.length === 0 && !refreshingChannel}
-          <p
-            class="px-2 py-2 text-[14px] font-medium italic text-[var(--soft-foreground)] opacity-55"
-          >
-            No videos yet.
-          </p>
-        {:else}
-          <WorkspaceSidebarSelectedVideoList
-            {videos}
-            {selectedVideoId}
-            {pendingSelectedVideo}
-            {showPendingSelectedVideo}
-            {loadingVideos}
-            {refreshingChannel}
-            {hasMore}
-            {historyExhausted}
-            {backfillingHistory}
-            {suppressLoadMoreButton}
-            emptyLabel="No videos yet."
-            wrapperClass=""
-            rowClassName="min-h-[56px]"
-            onSelectVideo={(videoId) => void onSelectVideo(videoId)}
-            onLoadMoreVideos={() => void onLoadMoreVideos()}
-            onVideoMouseEnter={handleVideoMouseEnter}
-            onVideoMouseLeave={handleVideoMouseLeave}
-          >
-            {#snippet footer()}
-              {#if selectedChannel}
-                <WorkspaceSidebarSyncDateControl
-                  readOnly={readOnly || isVirtualChannel(selectedChannel)}
-                  open={syncDatePickerChannelId === selectedChannel.id}
-                  label={formatSyncDate(
-                    resolveDisplayedSyncDepthIso({
-                      videos,
-                      selectedChannel,
-                      syncDepth,
-                      allowLoadedVideoOverride:
-                        allowLoadedVideoSyncDepthOverride,
-                    }),
-                  )}
-                  inputValue={earliestSyncDateInputSelected}
-                  saving={savingStandaloneSyncDate}
-                  popupStackClass={syncDatePopupStackClass}
-                  wrapperClass="relative z-10 mt-2 px-2"
-                  buttonClass="touch-manipulation relative z-10 inline-flex w-full max-w-full flex-wrap items-baseline gap-x-1 rounded-[var(--radius-sm)] px-2 py-1 text-left text-[10px] text-[var(--soft-foreground)] opacity-55 transition hover:bg-[var(--accent-wash)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
-                  readonlyClass="mt-2 px-2 text-[10px] text-[var(--soft-foreground)] opacity-55"
-                  dialogClass="flex flex-wrap items-center gap-2 rounded-[var(--radius-md)] bg-[var(--surface-strong)] p-2 shadow-[var(--shadow-soft)]"
-                  inputClass="min-w-0 flex-1 rounded-[var(--radius-sm)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] px-3 py-2 text-[12px] font-medium transition-colors focus:border-[var(--accent)]/40 focus:outline-none"
-                  submitClass="rounded-[var(--radius-sm)] bg-[var(--foreground)] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--background)] transition-all hover:bg-[var(--accent-strong)] disabled:opacity-30"
-                  onToggle={() =>
-                    toggleStandaloneSyncDatePicker(selectedChannel, syncDepth)}
-                  onInputValueChange={(value) => {
-                    earliestSyncDateInputSelected = value;
-                  }}
-                  onSubmit={() =>
-                    void saveStandaloneChannelSyncDate(selectedChannel)}
-                />
-              {/if}
-            {/snippet}
-          </WorkspaceSidebarSelectedVideoList>
-        {/if}
-      </div>
-    </div>
+    <WorkspaceSidebarHiddenChannelPane
+      {selectedChannelId}
+      {selectedChannel}
+      {videos}
+      {selectedVideoId}
+      {pendingSelectedVideo}
+      {showPendingSelectedVideo}
+      {loadingVideos}
+      {refreshingChannel}
+      {hasMore}
+      {historyExhausted}
+      {backfillingHistory}
+      {suppressLoadMoreButton}
+      {readOnly}
+      isVirtualChannel={selectedChannel
+        ? isVirtualChannel(selectedChannel)
+        : false}
+      {syncDepth}
+      {allowLoadedVideoSyncDepthOverride}
+      syncDateOpen={selectedChannel
+        ? syncDatePickerChannelId === selectedChannel.id
+        : false}
+      syncDateInputValue={earliestSyncDateInputSelected}
+      savingSyncDate={savingStandaloneSyncDate}
+      {syncDatePopupStackClass}
+      onSelectVideo={(videoId) => void onSelectVideo(videoId)}
+      onLoadMoreVideos={() => void onLoadMoreVideos()}
+      onVideoMouseEnter={handleVideoMouseEnter}
+      onVideoMouseLeave={handleVideoMouseLeave}
+      onToggleSyncDate={() => {
+        if (selectedChannel) {
+          toggleStandaloneSyncDatePicker(selectedChannel, syncDepth);
+        }
+      }}
+      onSyncDateInputValueChange={(value) => {
+        earliestSyncDateInputSelected = value;
+      }}
+      onSaveSyncDate={() => {
+        if (selectedChannel) {
+          return saveStandaloneChannelSyncDate(selectedChannel);
+        }
+      }}
+    />
   {:else if collapsed}
-    <div class="flex items-center justify-center px-2 pt-3 pb-1">
-      <button
-        type="button"
-        class="inline-flex h-7 w-7 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-60 transition-all hover:bg-[var(--accent-wash)] hover:opacity-100"
-        onclick={onToggleCollapse}
-        aria-label="Expand channel sidebar"
-      >
-        <ChevronIcon direction="right" />
-      </button>
-    </div>
-
-    <div
-      class="custom-scrollbar mt-1 flex min-h-0 flex-1 flex-col items-center gap-2 overflow-y-auto px-2 pb-4"
-    >
-      {#if loadingChannels}
-        {#each Array.from({ length: 5 }) as _, i (i)}
-          <div
-            class="h-8 w-8 animate-pulse rounded-full bg-[var(--border)] opacity-60"
-          ></div>
-        {/each}
-      {:else}
-        {#each filteredChannels as channel (channel.id)}
-          <button
-            type="button"
-            class={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full p-0.5 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${selectedChannelId === channel.id ? "bg-[var(--accent-soft)]/60" : "hover:bg-[var(--accent-wash)]"}`}
-            onclick={() => handleChannelClick(channel.id)}
-            data-tooltip={channel.name}
-            data-tooltip-placement="right"
-            aria-label={channel.name}
-          >
-            <span
-              class={`flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-[var(--muted)] ${selectedChannelId === channel.id ? "ring-1 ring-[var(--accent)]/20" : ""}`}
-            >
-              {#if channel.thumbnail_url}
-                <img
-                  src={channel.thumbnail_url}
-                  alt={channel.name}
-                  class="h-full w-full object-cover"
-                  referrerpolicy="no-referrer"
-                />
-              {:else}
-                <span
-                  class="flex h-full w-full items-center justify-center text-[10px] font-bold text-[var(--soft-foreground)]"
-                  >{channel.name.charAt(0)}</span
-                >
-              {/if}
-            </span>
-          </button>
-        {/each}
-      {/if}
-    </div>
+    <WorkspaceSidebarCollapsedChannelRail
+      {loadingChannels}
+      {filteredChannels}
+      {selectedChannelId}
+      {onToggleCollapse}
+      onSelectChannel={handleChannelClick}
+    />
   {:else}
     <WorkspaceSidebarChannelControls
       {readOnly}
@@ -793,130 +695,44 @@
               previewController.resolveRenderedCollectionVideos(
                 channelVideoCollection,
               )}
-            <div
-              class={channelVideoCollection.loadedMode === "paged"
-                ? "mt-1 max-h-[21rem] overflow-y-auto pb-1 pr-1"
-                : "mt-1 pb-1"}
-              id={selectedChannelId === channel.id ? "videos" : undefined}
-              onscroll={(event) =>
-                previewController.handleChannelCollectionScroll(channel, event)}
-              transition:slide={{ duration: 180 }}
-            >
-              {#if channelVideoCollection.loadingInitial && channelVideoCollection.videos.length === 0}
-                <div class="space-y-1 px-1" role="status" aria-live="polite">
-                  {#each Array.from({ length: 4 }) as _, i (i)}
-                    <div class="animate-pulse px-2 py-1.5">
-                      <div
-                        class="h-3 w-11/12 rounded-full bg-[var(--border)] opacity-60"
-                      ></div>
-                      <div
-                        class="mt-1 h-2 w-1/3 rounded-full bg-[var(--border)] opacity-40"
-                      ></div>
-                    </div>
-                  {/each}
-                </div>
-              {:else if channelVideoCollection.videos.length === 0 && !channelVideoCollection.requestKey}
-                <p
-                  class="px-3 py-2 text-[12px] italic text-[var(--soft-foreground)] opacity-50"
-                >
-                  {previewController.channelListEmptyCaption(
-                    channelVideoCollection.channelVideoCount,
+            <div transition:slide={{ duration: 180 }}>
+              <WorkspaceSidebarPreviewChannelContent
+                {channel}
+                {channelVideoCollection}
+                {renderedCollection}
+                {selectedVideoId}
+                {previewSyncDatePickerChannelId}
+                readOnly={readOnly || isVirtualChannel(channel)}
+                {syncDatePopupStackClass}
+                {scrollIntoViewWhenSelected}
+                emptyCaption={previewController.channelListEmptyCaption(
+                  channelVideoCollection.channelVideoCount,
+                )}
+                onChannelVideoClick={handleChannelVideoClick}
+                onVideoMouseEnter={handleVideoMouseEnter}
+                onVideoMouseLeave={handleVideoMouseLeave}
+                onCollectionScroll={(event) =>
+                  previewController.handleChannelCollectionScroll(
+                    channel,
+                    event,
                   )}
-                </p>
-              {:else}
-                {#if renderedCollection.virtualized}
-                  <div
-                    aria-hidden="true"
-                    style={`height:${renderedCollection.topSpacer}px;`}
-                  ></div>
-                {/if}
-
-                {#each renderedCollection.videos as video (video.id)}
-                  <div
-                    use:scrollIntoViewWhenSelected={selectedVideoId ===
-                      video.id}
-                  >
-                    <WorkspaceSidebarVideoRow
-                      {video}
-                      selected={selectedVideoId === video.id}
-                      className="min-h-[56px]"
-                      onclick={() =>
-                        void handleChannelVideoClick(
-                          channel.id,
-                          video.id,
-                          video,
-                        )}
-                      onmouseenter={() => handleVideoMouseEnter(video.id)}
-                      onmouseleave={handleVideoMouseLeave}
-                    />
-                  </div>
-                {/each}
-
-                {#if renderedCollection.virtualized}
-                  <div
-                    aria-hidden="true"
-                    style={`height:${renderedCollection.bottomSpacer}px;`}
-                  ></div>
-                {/if}
-
-                {#if channelVideoCollection.loadingMore}
-                  <p
-                    class="px-2 pt-2 text-[10px] text-[var(--soft-foreground)] opacity-50"
-                  >
-                    Loading videos…
-                  </p>
-                {/if}
-
-                {#if channelVideoCollection.loadedMode === "paged" && channelVideoCollection.hasMore && !channelVideoCollection.loadingMore}
-                  <button
-                    type="button"
-                    class="mt-1 w-full rounded-[var(--radius-sm)] py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] transition-all hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]"
-                    onclick={() =>
-                      void previewController.loadNextChannelVideoPage(channel)}
-                  >
-                    Load more
-                  </button>
-                {/if}
-              {/if}
+                onLoadMore={() =>
+                  void previewController.loadNextChannelVideoPage(channel)}
+                onToggleSyncDatePicker={() =>
+                  previewController.toggleSyncDatePicker(
+                    channel,
+                    channelVideoCollection.syncDepth,
+                    channelVideoCollection,
+                  )}
+                onEarliestSyncDateInputChange={(value) => {
+                  channelVideoCollection.earliestSyncDateInput = value;
+                }}
+                onSaveSyncDate={() =>
+                  void previewController.saveChannelSyncDate(channel)}
+              />
             </div>
-
-            {#if channelVideoCollection.loadedMode === "paged" && !isVirtualChannel(channel)}
-              <div class="relative z-10 mt-2 px-2 pb-4">
-                <WorkspaceSidebarSyncDateControl
-                  {readOnly}
-                  open={previewSyncDatePickerChannelId === channel.id}
-                  label={formatSyncDate(
-                    resolveDisplayedSyncDepthIso({
-                      videos: channelVideoCollection.videos,
-                      selectedChannel: channel,
-                      syncDepth: channelVideoCollection.syncDepth,
-                      allowLoadedVideoOverride: true,
-                    }),
-                  )}
-                  inputValue={channelVideoCollection.earliestSyncDateInput}
-                  saving={channelVideoCollection.savingSyncDate}
-                  popupStackClass={syncDatePopupStackClass}
-                  buttonClass="touch-manipulation relative z-10 inline-flex w-full max-w-full flex-wrap items-baseline gap-x-1 rounded-[var(--radius-sm)] px-2 py-1 text-left text-[10px] text-[var(--soft-foreground)] opacity-50 transition hover:bg-[var(--accent-wash)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
-                  readonlyClass="text-[10px] text-[var(--soft-foreground)] opacity-50"
-                  dialogClass="flex flex-wrap items-center gap-2 rounded-[var(--radius-md)] bg-[var(--surface-strong)] p-2 shadow-[var(--shadow-soft)]"
-                  inputClass="min-w-0 flex-1 rounded-[var(--radius-sm)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] px-3 py-2 text-[12px] font-medium transition-colors focus:border-[var(--accent)]/40 focus:outline-none"
-                  submitClass="rounded-[var(--radius-sm)] bg-[var(--foreground)] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--background)] transition-all hover:bg-[var(--accent-strong)] disabled:opacity-30"
-                  onToggle={() =>
-                    previewController.toggleSyncDatePicker(
-                      channel,
-                      channelVideoCollection.syncDepth,
-                      channelVideoCollection,
-                    )}
-                  onInputValueChange={(value) => {
-                    channelVideoCollection.earliestSyncDateInput = value;
-                  }}
-                  onSubmit={() =>
-                    void previewController.saveChannelSyncDate(channel)}
-                />
-              </div>
-            {/if}
           {:else if isExpanded}
-            <WorkspaceSidebarSelectedVideoList
+            <WorkspaceSidebarSelectedChannelContent
               {videos}
               {selectedVideoId}
               {pendingSelectedVideo}
@@ -926,64 +742,33 @@
               {hasMore}
               {historyExhausted}
               {backfillingHistory}
+              selectedChannel={channel}
+              {readOnly}
+              {syncDepth}
+              {allowLoadedVideoSyncDepthOverride}
+              syncDateOpen={syncDatePickerChannelId === channel.id}
+              syncDateInputValue={earliestSyncDateInputSelected}
+              savingSyncDate={savingStandaloneSyncDate}
+              {syncDatePopupStackClass}
+              syncDateWrapperClass="relative z-10 mt-1 px-2"
+              syncDateButtonClass="touch-manipulation relative z-10 inline-flex w-full max-w-full flex-wrap items-baseline gap-x-1 rounded-[var(--radius-sm)] px-2 py-1 text-left text-[10px] text-[var(--soft-foreground)] opacity-50 transition hover:bg-[var(--accent-wash)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+              syncDateReadonlyClass="mt-1 px-2 text-[10px] text-[var(--soft-foreground)] opacity-50"
+              syncDateDialogClass="flex flex-wrap items-center gap-2 rounded-[var(--radius-md)] bg-[var(--surface-strong)] p-2 shadow-[var(--shadow-soft)]"
+              syncDateInputClass="min-w-0 flex-1 rounded-[var(--radius-sm)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] px-3 py-2 text-[12px] font-medium transition-colors focus:border-[var(--accent)]/40 focus:outline-none"
+              syncDateSubmitClass="rounded-[var(--radius-sm)] bg-[var(--foreground)] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--background)] transition-all hover:bg-[var(--accent-strong)] disabled:opacity-30"
               listId="videos"
               onSelectVideo={(videoId) => void onSelectVideo(videoId)}
               onLoadMoreVideos={() => void onLoadMoreVideos()}
               onVideoMouseEnter={handleVideoMouseEnter}
               onVideoMouseLeave={handleVideoMouseLeave}
-            >
-              {#snippet footer()}
-                {#if !readOnly && !isVirtualChannel(channel)}
-                  <div
-                    class="relative z-10 mt-1 px-2"
-                    id="channel-history-sync"
-                  >
-                    <WorkspaceSidebarSyncDateControl
-                      open={syncDatePickerChannelId === channel.id}
-                      label={formatSyncDate(
-                        resolveDisplayedSyncDepthIso({
-                          videos,
-                          selectedChannel,
-                          syncDepth,
-                          allowLoadedVideoOverride:
-                            allowLoadedVideoSyncDepthOverride,
-                        }),
-                      )}
-                      inputValue={earliestSyncDateInputSelected}
-                      saving={savingStandaloneSyncDate}
-                      popupStackClass={syncDatePopupStackClass}
-                      buttonClass="touch-manipulation relative z-10 inline-flex w-full max-w-full flex-wrap items-baseline gap-x-1 rounded-[var(--radius-sm)] px-2 py-1 text-left text-[10px] text-[var(--soft-foreground)] opacity-50 transition hover:bg-[var(--accent-wash)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
-                      readonlyClass="mt-1 px-2 text-[10px] text-[var(--soft-foreground)] opacity-50"
-                      dialogClass="flex flex-wrap items-center gap-2 rounded-[var(--radius-md)] bg-[var(--surface-strong)] p-2 shadow-[var(--shadow-soft)]"
-                      inputClass="min-w-0 flex-1 rounded-[var(--radius-sm)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] px-3 py-2 text-[12px] font-medium transition-colors focus:border-[var(--accent)]/40 focus:outline-none"
-                      submitClass="rounded-[var(--radius-sm)] bg-[var(--foreground)] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--background)] transition-all hover:bg-[var(--accent-strong)] disabled:opacity-30"
-                      onToggle={() =>
-                        toggleStandaloneSyncDatePicker(channel, syncDepth)}
-                      onInputValueChange={(value) => {
-                        earliestSyncDateInputSelected = value;
-                      }}
-                      onSubmit={() =>
-                        void saveStandaloneChannelSyncDate(channel)}
-                    />
-                  </div>
-                {:else}
-                  <p
-                    id="channel-history-sync"
-                    class="mt-1 px-2 text-[10px] text-[var(--soft-foreground)] opacity-50"
-                  >
-                    Synced to {formatSyncDate(
-                      resolveDisplayedSyncDepthIso({
-                        videos,
-                        selectedChannel,
-                        syncDepth,
-                        allowLoadedVideoOverride:
-                          allowLoadedVideoSyncDepthOverride,
-                      }),
-                    )}
-                  </p>
-                {/if}
-              {/snippet}
-            </WorkspaceSidebarSelectedVideoList>
+              onToggleSyncDate={() =>
+                toggleStandaloneSyncDatePicker(channel, syncDepth)}
+              onSyncDateInputValueChange={(value) => {
+                earliestSyncDateInputSelected = value;
+              }}
+              onSaveSyncDate={() => saveStandaloneChannelSyncDate(channel)}
+              isVirtualChannel={isVirtualChannel(channel)}
+            />
           {/if}
           {#if filteredChannels.indexOf(channel) < filteredChannels.length - 1}
             <hr

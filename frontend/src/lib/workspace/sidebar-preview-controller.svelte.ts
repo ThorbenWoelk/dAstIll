@@ -9,7 +9,6 @@ import { resolveDisplayedSyncDepthIso } from "$lib/sync-depth";
 import type {
   Channel,
   ChannelSnapshot,
-  QueueTab,
   SyncDepth,
   Video,
   VideoTypeFilter,
@@ -36,6 +35,11 @@ import {
   resolveAcknowledgedParam,
   type AcknowledgedFilter,
 } from "$lib/workspace/types";
+import type { WorkspaceSidebarPreviewScope } from "$lib/workspace/component-props";
+import {
+  resolveSidebarPreviewFilterKey,
+  resolveSidebarPreviewQueueRequest,
+} from "$lib/workspace/sidebar-preview-scope";
 import {
   resolveSyncDateInputValue,
   toIsoDateStart,
@@ -95,8 +99,7 @@ type SidebarPreviewControllerOptions = {
   getReadOnly: () => boolean;
   getInitialChannelPreviews: () => Record<string, ChannelSnapshot>;
   getInitialChannelPreviewsFilterKey: () => string | undefined;
-  getChannelSnapshotQueueTab: () => QueueTab | undefined;
-  getChannelQueueSnapshotUnified: () => boolean;
+  getPreviewScope: () => WorkspaceSidebarPreviewScope;
   getQueueVideoRefreshTick: () => number;
   getVideoAcknowledgeSync: () => VideoAcknowledgeSync | null;
   getPreviewSessionKey: () => string | undefined;
@@ -151,12 +154,11 @@ export function createSidebarPreviewController(
   }
 
   function getChannelVideoCollectionFilterKey() {
-    const queueSegment = options.getChannelSnapshotQueueTab()
-      ? options.getChannelSnapshotQueueTab()
-      : options.getChannelQueueSnapshotUnified()
-        ? "unified"
-        : "default";
-    return `${options.getVideoTypeFilter()}:${options.getAcknowledgedFilter()}:${queueSegment}`;
+    return resolveSidebarPreviewFilterKey(
+      options.getVideoTypeFilter(),
+      options.getAcknowledgedFilter(),
+      options.getPreviewScope(),
+    );
   }
 
   function supportsMode(
@@ -354,9 +356,9 @@ export function createSidebarPreviewController(
     );
     const pageLimit =
       mode === "paged" ? EXPANDED_PAGE_SIZE : PREVIEW_FETCH_LIMIT;
-    const queueOnly =
-      Boolean(options.getChannelSnapshotQueueTab()) ||
-      options.getChannelQueueSnapshotUnified();
+    const queueRequest = resolveSidebarPreviewQueueRequest(
+      options.getPreviewScope(),
+    );
 
     try {
       const current = channelVideoCollections[channel.id];
@@ -370,8 +372,8 @@ export function createSidebarPreviewController(
           offset: 0,
           videoType: options.getVideoTypeFilter(),
           acknowledged,
-          queueOnly: queueOnly ? true : undefined,
-          queueTab: options.getChannelSnapshotQueueTab(),
+          queueOnly: queueRequest.queueOnly ? true : undefined,
+          queueTab: queueRequest.queueTab,
           bypassCache: force,
         });
 
@@ -405,8 +407,8 @@ export function createSidebarPreviewController(
         requestOffset,
         options.getVideoTypeFilter(),
         acknowledged,
-        queueOnly,
-        options.getChannelSnapshotQueueTab(),
+        queueRequest.queueOnly,
+        queueRequest.queueTab,
         force,
       );
 
@@ -568,7 +570,7 @@ export function createSidebarPreviewController(
   });
 
   $effect(() => {
-    if (!browser || !options.getChannelQueueSnapshotUnified()) return;
+    if (!browser || options.getPreviewScope().kind !== "unified") return;
     const refreshTick = options.getQueueVideoRefreshTick();
     if (refreshTick === 0) return;
     if (!options.getEnabled()) return;

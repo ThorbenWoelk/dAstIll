@@ -1,194 +1,26 @@
-# Design & Style Guide
+# Agent Guide
 
-## Philosophy
+`AGENTS.md` is the agent entry point for this repository.
+Keep this file short, operational, and focused on how to work in the repo.
+Deeper domain-specific guidance belongs in dedicated docs and should be linked from here.
 
-Muted, zen, minimalistic. No decorative chrome. Let content breathe. Prefer restraint over expressiveness - if something can be removed, remove it. No emojis anywhere.
+## Source Of Truth
 
-**Borders and boxes**: use as little as possible. Prefer whitespace, typography weight, and color contrast to create separation and hierarchy. Borders and background boxes around text or UI elements should be a last resort - only when there is no other way to communicate structure or state.
+- Frontend design system, Svelte frontend cleanliness rules, UI architecture guidance, file-size thresholds, and frontend testing expectations live in [DESIGN.md](/Users/thorben.woelk/repos/dAstIll/DESIGN.md).
 
-## Typography
+## How To Work Here
 
-- Body: **Manrope** (system-ui fallback), `-webkit-font-smoothing: antialiased`
-- Headings / serif moments: **Fraunces** (`font-variation-settings: "opsz" 72`, `letter-spacing: -0.02em`, `font-weight: 600`)
-- UI labels, tabs, tooltips: uppercase, `font-weight: 700`, `letter-spacing: 0.05-0.08em`, `font-size: 10-11px`
-- Logo wordmark: `font-bold tracking-tighter` — A and I rendered in `--soft-foreground`, rest in `--color-swatch`
+- Read this file first, then open the linked domain doc you need.
+- Do not duplicate large guidance blocks across multiple markdown files.
+- When frontend rules change, update `DESIGN.md` and keep only the pointer here.
+- Keep repo guidance legible for agents: short entry points here, detailed source-of-truth docs elsewhere.
 
-## Color System
+## Documentation Split
 
-All colors are CSS custom properties. Never hardcode hex values in components — always use variables.
+- `AGENTS.md`: agent workflow entry point, document map, repo-level instructions.
+- `DESIGN.md`: design system and frontend engineering standards.
 
-### Core tokens (light / dark)
+## Verification
 
-| Token               | Light                      | Dark                   |
-| ------------------- | -------------------------- | ---------------------- |
-| `--background`      | `#faf9f6` (warm off-white) | `#111315` (near-black) |
-| `--foreground`      | `#1a1a1a`                  | `#f4efe9` (warm white) |
-| `--surface`         | `#ffffff`                  | `#181b1f`              |
-| `--surface-strong`  | `#ffffff`                  | `#1d2126`              |
-| `--soft-foreground` | `#5a5a5a` (mid-gray)       | `#b8b1aa` (warm taupe) |
-| `--muted`           | warm gray wash             | dark gray wash         |
-| `--border`          | warm gray                  | cool-dark gray         |
-| `--border-soft`     | softer warm gray           | softer dark gray       |
-| `--danger`          | `#d25a5a`                  | `#ff8f8f`              |
-
-### Accent / palette (swappable)
-
-The accent color is set by `data-color` on `:root`. Five palettes, each with light + dark variants:
-
-| Palette           | Light accent | Dark accent |
-| ----------------- | ------------ | ----------- |
-| `ember` (default) | `#d33c2a`    | `#ff8e79`   |
-| `sage`            | `#4a8a5c`    | `#7ac88e`   |
-| `ocean`           | `#2a7ab5`    | `#6db8e8`   |
-| `sand`            | `#a68a5b`    | `#d4b882`   |
-| `plum`            | `#8b5cb4`    | `#c49aeb`   |
-
-Derived accent tokens (auto-computed via `color-mix`): `--accent-soft`, `--accent-strong`, `--accent-wash`, `--accent-wash-strong`, `--accent-border-soft`, `--panel-surface`, `--color-swatch`.
-
-### Usage rules
-
-- **Primary text**: `--foreground`
-- **Secondary / supporting text**: `--soft-foreground`
-- **Interactive accent**: `--accent` (links, active states, icons)
-- **Subtle accent backgrounds**: `--accent-wash`, `--accent-soft`
-- **Borders**: available (`--border`, `--border-soft`, `--accent-border-soft`) but use sparingly - prefer spacing and surface contrast over divider lines
-- **Panels / cards**: `--surface`, `--panel-surface` - avoid adding a border on top of a surface background; the surface color already creates separation
-- **Never** use raw `--background` as a surface — it's for the page shell only
-
-## Spacing & Radius
-
-```
---space-xs: 4px   --radius-sm: 8px
---space-sm: 8px   --radius-md: 12px
---space-md: 16px  --radius-lg: 20px
---space-lg: 24px  --radius-full: 9999px
---space-xl: 32px
-```
-
-Prefer `rounded-full` for pill buttons/tags, `--radius-md` for cards and panels.
-All layout spacing should sit on a 4px grid. Prefer `--space-*` tokens or Tailwind spacing utilities that resolve to 4px steps, and avoid fractional `.5` spacing utilities unless the exception is intentional.
-
-## Interactive States
-
-- Hover: `--accent-wash` background + nudge toward `--foreground`
-- Active/selected: `--accent-soft` background + `--accent-strong` text + `--accent`/25 border
-- Focus ring: `ring-2 ring-[var(--accent)]/40`, `ring-offset` uses `--background`
-- Transitions: `200ms`, easing `cubic-bezier(0.16, 1, 0.3, 1)`
-- Disabled: `opacity-50`, no pointer events
-
-## Buttons
-
-- Ghost/icon: `rounded-full`, `h-8 w-8`, `--soft-foreground` color, hover `--accent-wash` background - no border
-- Pill/label: `rounded-full`, borderless by default; add `--accent-border-soft` border only when needed for legibility against ambiguous backgrounds; uppercase 11px bold tracking
-- Destructive: `--danger` family tokens only
-- Never add a border to a button just for decoration
-
-## Surfaces & Depth
-
-- Body: radial gradient from `--shell-gradient-start` → `--shell-gradient-end` → `--background`
-- Subtle noise grain texture via `body::before` SVG filter
-- Frosted glass: `backdrop-filter: blur(10px)` + `--surface-frost` background
-- Shadows: `--shadow-soft` (soft lift), `--shadow-strong` (modals/popovers)
-
-## Animation
-
-- Entrance: `fade-in` (500ms, translateY 10px → 0, ease-out spring)
-- Stagger classes: `.stagger-1` (80ms), `.stagger-2` (160ms), `.stagger-3` (240ms)
-- Respect `prefers-reduced-motion` — all durations collapse to 0.01ms
-
-## Scrollbars
-
-Thin (4px), `--border` thumb, transparent track, `--soft-foreground` on hover.
-
-## Tooltips
-
-`[data-tooltip]` attribute. 10px uppercase bold, `--tooltip-bg` (dark glass) with blur, hidden on touch devices.
-
----
-
-# Engineering Standards
-
-## File Limits
-
-- Max line count per file should be **800**. If a file exceeds this, it must be modularized.
-
-## Svelte State Management
-
-- When a Svelte component or `.svelte.ts` controller exposes setter methods or action methods for reactive state, treat those methods as the only valid write path. Do not mutate the backing `$state` variable directly from alternate code paths.
-- Keep side-effectful state transitions centralized. If changing a value must also sync the URL, invalidate cache, emit analytics, or notify a parent, that logic belongs in the setter/action, not in scattered direct assignments.
-- Keep UI/domain state in its canonical type across the app. Only translate it to transport/API shapes at the boundary where the request is made.
-
-## Testing
-
-### Two layers, two jobs
-
-| Layer | Runner | What it proves | What it misses |
-|-------|--------|---------------|----------------|
-| Unit (`tests/`) | `bun test` | Logic correctness - offsets, transforms, data mutations | Whether the component actually renders the output |
-| E2E (`e2e/`) | `playwright test` | Real DOM: elements present, visible, interactive | Fine-grained logic edge cases |
-
-**Neither layer substitutes for the other.** The highlights regression (marks not rendering) is the canonical example: every utility function was tested, but no test verified that `<mark class="reader-highlight">` elements appeared in the article DOM.
-
-### When each layer is required
-
-Write a **unit test** when:
-- A pure function transforms, filters, or maps data (offsets, ranges, merging, sorting)
-- A bug was caused by incorrect logic - pin the input/output contract
-
-Write an **E2E test** when:
-- A feature is visible in the DOM: an element appears, disappears, or changes state
-- A data-to-DOM pipeline exists: server data → component prop → rendered element
-- A regression was a rendering/wiring failure - the element was absent or wrong
-
-### Rendering regression rule
-
-> Any feature whose correctness is observable in the DOM must have at least one E2E assertion that checks for that element.
-
-Examples:
-- Highlights → assert `mark.reader-highlight` is visible inside the article
-- Sidebar counts → assert the count badge text matches data
-- Floating toolbar → assert the action container appears on text selection
-
-When fixing a rendering bug, **add the E2E test first** (it must fail before the fix), then fix, then confirm it passes. This is the TDD red-green cycle applied to rendering.
-
-### Running tests locally
-
-```bash
-# Unit tests
-cd frontend && bun test tests
-
-# E2E (requires running app on port 3543)
-cd frontend && bunx playwright test
-
-# E2E headed (watch it run)
-cd frontend && bunx playwright test --headed
-```
-
----
-
-# Dev Tools
-
-## Log Inspection
-
-- **Logfire**: `logfire logs` - inspect application traces and structured logs
-- **GCloud**: `gcloud logging read` - inspect Cloud Run deployment logs
-- **GitHub Actions**: `gh run list` / `gh run view <id>` - inspect CI/CD pipeline logs
-
-## Validation Execution
-
-- Do not chain formatting, typecheck, tests, and build into one long `&&` command.
-- Run validators step-by-step as separate commands and report progress after each step so long-running checks do not appear stuck and can be interrupted safely.
-- Linting is mandatory, not optional. Run the relevant lint step for every change, even if tests already pass.
-- Treat lint warnings the same as lint errors for touched files. Fix them before reporting back unless a tool is currently broken or blocked by an unrelated repo-wide failure.
-- Before changing infrastructure or deployment configuration, inspect the existing repo-managed pattern first and check the live state with the relevant cloud CLI when available (for this repo: `gcloud` for GCP, especially Firestore/Cloud Run, before adding or changing infra resources).
-
-## Pre-commit checks (after implementation)
-
-Always run the repository pre-commit script after implementation and before treating work as verified. Do not bypass it.
-
-1. **Stage the files you changed.** The script only checks staged paths (same as a real commit).
-2. From the repository root: `bash scripts/githooks/pre-commit`
-
-What runs depends on what is staged (see `scripts/githooks/pre-commit` for the full logic): Python `ruff check` / `ruff format --check` and sometimes `pytest`; frontend Prettier and ESLint on staged `frontend/` sources; `bun audit` when `package.json` or lockfiles are staged; `cargo audit` when `backend/Cargo.toml` or `Cargo.lock` are staged.
-
-If you must verify without keeping those paths staged, run the equivalent commands from that script against your edits so outcomes match the hook.
+- After code changes, run the relevant local verification steps before treating work as verified.
+- For frontend work, follow the verification checklist in [DESIGN.md](/Users/thorben.woelk/repos/dAstIll/DESIGN.md).

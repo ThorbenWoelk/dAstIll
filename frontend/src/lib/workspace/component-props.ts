@@ -15,6 +15,7 @@ import type {
   QueueStats,
   WorkspaceContentMode,
 } from "$lib/workspace/types";
+import type { ChannelSnapshot, QueueTab } from "$lib/types";
 
 export interface WorkspaceSidebarShellProps {
   collapsed: boolean;
@@ -81,6 +82,18 @@ export interface WorkspaceSidebarVideoActions {
     value: AcknowledgedFilter,
   ) => Promise<void> | void;
   onClearAllFilters?: () => Promise<void> | void;
+}
+
+export interface WorkspaceSidebarPreviewScope {
+  kind: "default" | "unified" | "queue_tab";
+  queueTab?: QueueTab;
+}
+
+export interface WorkspaceSidebarPreviewProps {
+  initialChannelPreviews?: Record<string, ChannelSnapshot>;
+  initialChannelPreviewsFilterKey?: string | undefined;
+  previewScope?: WorkspaceSidebarPreviewScope;
+  previewSessionKey?: string | undefined;
 }
 
 export interface WorkspaceContentSelection {

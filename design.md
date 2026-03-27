@@ -1,5 +1,8 @@
 # dAstIll Design System
 
+`DESIGN.md` is the source of truth for this repository's frontend design system and frontend engineering standards.
+Do not duplicate these rules in `AGENTS.md`; link here from there instead.
+
 ## Philosophy
 
 Muted, zen, minimalistic. Content first, no decorative chrome. Prefer restraint over expressiveness - if something can be removed, remove it. No emojis anywhere.
@@ -123,3 +126,79 @@ Refer to [ux-visual-audit.md](file:///Users/thorben.woelk/repos/dAstIll/specs/ux
 2. [ ] **Common Mobile Nav**: Implement a single, fixed bottom tab bar across all pages.
 3. [ ] **Tab Parity**: Standardize all tab-like controls to use the rounded pill style.
 4. [ ] **Header Consistency**: Lock the logo/nav/actions layout across all pages.
+
+---
+
+## Engineering Standards
+
+### File Limits
+
+- Max line count per file should be **800**. If a file exceeds this, it must be modularized.
+- For frontend files, **500+ lines** is already a refactor candidate even if it is still below the hard limit. Treat that as a prompt to look for natural seams before adding more code.
+
+### Svelte State Management
+
+- When a Svelte component or `.svelte.ts` controller exposes setter methods or action methods for reactive state, treat those methods as the only valid write path. Do not mutate the backing `$state` variable directly from alternate code paths.
+- Keep side-effectful state transitions centralized. If changing a value must also sync the URL, invalidate cache, emit analytics, or notify a parent, that logic belongs in the setter/action, not in scattered direct assignments.
+- Keep UI/domain state in its canonical type across the app. Only translate it to transport/API shapes at the boundary where the request is made.
+
+### Frontend Clean Code Rules
+
+- Keep `.svelte.ts` controllers/store modules to a single concern. If one file mixes filter state, CRUD flows, preview loading, and route sync, split those into focused modules with an explicit context or API.
+- Prefer extracting render-only Svelte components before moving more behavior into state modules. If the same markup pattern appears in multiple branches, create a presentational component and pass callbacks/data in.
+- In Svelte 5, prefer snippet props and `{@render ...}` over legacy `<slot>` APIs in new code. Do not introduce deprecated slot patterns during refactors.
+- Do not put TypeScript type annotations or casts directly inside template event expressions when avoidable. Move non-trivial handlers into the `<script>` block and type them there.
+- When a child component needs to cooperate with parent-owned focus or element refs, use an explicit prop/callback contract rather than duplicating ownership of the ref.
+- Repeated UI sections should be extracted with the smallest useful surface area. Keep parent components responsible for route-specific orchestration and children responsible for rendering.
+- When a component grows because it handles multiple list modes or layouts, split by mode-specific content blocks rather than keeping large `if/else` trees in one file.
+- Treat duplicated state representations as a code smell. One domain concept should have one canonical representation through the UI layer.
+- After refactoring large frontend files, rerun `prettier`, `svelte-check`, `eslint`, targeted unit tests, and the staged pre-commit hook before considering the cleanup verified.
+
+### Testing
+
+#### Two layers, two jobs
+
+| Layer | Runner | What it proves | What it misses |
+|-------|--------|---------------|----------------|
+| Unit (`tests/`) | `bun test` | Logic correctness - offsets, transforms, data mutations | Whether the component actually renders the output |
+| E2E (`e2e/`) | `playwright test` | Real DOM: elements present, visible, interactive | Fine-grained logic edge cases |
+
+Neither layer substitutes for the other. The highlights regression - marks not rendering - is the canonical example: every utility function was tested, but no test verified that `<mark class="reader-highlight">` elements appeared in the article DOM.
+
+#### When each layer is required
+
+Write a **unit test** when:
+
+- A pure function transforms, filters, or maps data (offsets, ranges, merging, sorting)
+- A bug was caused by incorrect logic - pin the input/output contract
+
+Write an **E2E test** when:
+
+- A feature is visible in the DOM: an element appears, disappears, or changes state
+- A data-to-DOM pipeline exists: server data → component prop → rendered element
+- A regression was a rendering/wiring failure - the element was absent or wrong
+
+#### Rendering regression rule
+
+Any feature whose correctness is observable in the DOM must have at least one E2E assertion that checks for that element.
+
+Examples:
+
+- Highlights → assert `mark.reader-highlight` is visible inside the article
+- Sidebar counts → assert the count badge text matches data
+- Floating toolbar → assert the action container appears on text selection
+
+When fixing a rendering bug, add the E2E test first so it fails before the fix, then fix, then confirm it passes.
+
+#### Running tests locally
+
+```bash
+# Unit tests
+cd frontend && bun test tests
+
+# E2E (requires running app on port 3543)
+cd frontend && bunx playwright test
+
+# E2E headed (watch it run)
+cd frontend && bunx playwright test --headed
+```
