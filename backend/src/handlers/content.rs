@@ -150,7 +150,10 @@ pub async fn clean_transcript_formatting(
         }
         Err(err) => {
             tracing::error!(video_id = %video_id, error = %err, "transcript clean failed");
-            Err((StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Transcript clean failed".to_string(),
+            ))
         }
     }
 }
@@ -317,8 +320,7 @@ pub async fn get_summary_audio_debug(
         "Polly TTS is not configured".to_string(),
     ))?;
 
-    let (key, _, tts_text) =
-        get_summary_audio_cache_info(tts, &video_id, &summary.content).await?;
+    let (key, _, tts_text) = get_summary_audio_cache_info(tts, &video_id, &summary.content).await?;
     let word_count = tts_text.split_whitespace().count() as u32;
 
     let stats = db::get_tts_stats(&state.db).await.ok().flatten();

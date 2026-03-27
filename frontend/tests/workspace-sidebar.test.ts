@@ -4,6 +4,7 @@ import {
   filterVideosByAcknowledged,
   filterVideosByType,
   resolveNextChannelSelection,
+  shouldForceReloadMissingSelectedVideo,
 } from "../src/lib/workspace/route-helpers";
 import type { Video } from "../src/lib/types";
 import type { Channel } from "../src/lib/types";
@@ -139,5 +140,46 @@ describe("resolveNextChannelSelection", () => {
   it("returns null when the channel list is empty", () => {
     const result = resolveNextChannelSelection([], "channel-a");
     expect(result).toBeNull();
+  });
+});
+
+describe("shouldForceReloadMissingSelectedVideo", () => {
+  it("returns true the first time a selected video is missing from scope", () => {
+    const result = shouldForceReloadMissingSelectedVideo({
+      selectedVideoId: "video-2",
+      videos: [
+        makeVideo({ id: "video-1", is_short: false, acknowledged: false }),
+      ],
+      probeKey: "channel-1:video-2:long:unack:default",
+      lastProbeKey: null,
+    });
+
+    expect(result).toBe(true);
+  });
+
+  it("returns false after the same missing-scope probe already ran", () => {
+    const result = shouldForceReloadMissingSelectedVideo({
+      selectedVideoId: "video-2",
+      videos: [
+        makeVideo({ id: "video-1", is_short: false, acknowledged: false }),
+      ],
+      probeKey: "channel-1:video-2:long:unack:default",
+      lastProbeKey: "channel-1:video-2:long:unack:default",
+    });
+
+    expect(result).toBe(false);
+  });
+
+  it("returns false when the selected video is already present", () => {
+    const result = shouldForceReloadMissingSelectedVideo({
+      selectedVideoId: "video-1",
+      videos: [
+        makeVideo({ id: "video-1", is_short: false, acknowledged: false }),
+      ],
+      probeKey: "channel-1:video-1:long:unack:default",
+      lastProbeKey: null,
+    });
+
+    expect(result).toBe(false);
   });
 });

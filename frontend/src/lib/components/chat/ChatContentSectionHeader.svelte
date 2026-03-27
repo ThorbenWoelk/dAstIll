@@ -58,22 +58,31 @@
   <div class="hidden border-b border-[var(--accent-border-soft)] pb-3 lg:block">
     <div class="min-w-0">
       <p
-        class="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--soft-foreground)] opacity-55"
-      >
-        Grounded conversation
-      </p>
-      <p
-        class="mt-1 truncate text-[20px] font-semibold tracking-tight text-[var(--foreground)]"
+        class="truncate text-[20px] font-semibold tracking-tight text-[var(--foreground)]"
       >
         {conversationTitle}
       </p>
-      <p
-        class="mt-2 max-w-[34rem] text-[14px] leading-6 text-[var(--soft-foreground)]"
-      >
-        {titleStatus === "generating"
-          ? "AI is naming this chat while the conversation stays available in the background."
-          : "Ask questions grounded in indexed transcripts and summaries, with source-backed answers streamed into this pane."}
-      </p>
+      {#if titleStatus === "generating"}
+        <p
+          class="mt-2 max-w-[34rem] text-[14px] leading-6 text-[var(--soft-foreground)]"
+        >
+          AI is naming this chat while the conversation stays available in the
+          background.
+        </p>
+      {:else}
+        <div class="mt-3 space-y-1">
+          <p
+            class="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--soft-foreground)] opacity-55"
+          >
+            Questions it should be able to answer
+          </p>
+          <p
+            class="max-w-[34rem] text-[14px] leading-6 text-[var(--soft-foreground)]"
+          >
+            How many summaries do we have in the DB?
+          </p>
+        </div>
+      {/if}
     </div>
   </div>
 </div>

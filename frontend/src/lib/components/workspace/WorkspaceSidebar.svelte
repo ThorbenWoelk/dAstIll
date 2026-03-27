@@ -53,6 +53,7 @@
     dedupeVideosById,
     filterVideosByAcknowledged,
     filterVideosByType,
+    shouldForceReloadMissingSelectedVideo,
   } from "$lib/workspace/route-helpers";
   import { formatSyncDate } from "$lib/workspace/content";
   import { resolveDisplayedSyncDepthIso } from "$lib/sync-depth";
@@ -76,6 +77,7 @@
     syncDepth: SyncDepth | null;
     earliestSyncDateInput: string;
     savingSyncDate: boolean;
+    selectedVideoReloadProbeKey: string | null;
   };
 
   let {
@@ -336,6 +338,7 @@
       syncDepth: null,
       earliestSyncDateInput: "",
       savingSyncDate: false,
+      selectedVideoReloadProbeKey: null,
     };
   }
 
@@ -744,9 +747,27 @@
       void loadChannelVideoCollection(selectedChannel, "all");
       return;
     }
-    if (!state.videos.some((video) => video.id === selectedVideoId)) {
-      void loadChannelVideoCollection(selectedChannel, "all", { force: true });
+
+    const probeKey = `${selectedChannel.id}:${selectedVideoId}:${getChannelVideoCollectionFilterKey()}`;
+    if (
+      !shouldForceReloadMissingSelectedVideo({
+        selectedVideoId,
+        videos: state.videos,
+        probeKey,
+        lastProbeKey: state.selectedVideoReloadProbeKey,
+      })
+    ) {
+      if (state.videos.some((video) => video.id === selectedVideoId)) {
+        state.selectedVideoReloadProbeKey = null;
+      }
+      return;
     }
+
+    // A selected video can legitimately remain outside the visible collection
+    // scope, for example when it is older than a user-set sync floor or hidden
+    // by the current filters. Probe once, then stop retrying indefinitely.
+    state.selectedVideoReloadProbeKey = probeKey;
+    void loadChannelVideoCollection(selectedChannel, "all", { force: true });
   });
 
   async function handleChannelSubmit(event: SubmitEvent) {

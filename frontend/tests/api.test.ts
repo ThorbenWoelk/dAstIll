@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import {
+  addVideo,
   cleanTranscriptFormatting,
   createHighlight,
   deleteHighlight,
@@ -107,6 +108,31 @@ describe("listChannelsWhenAvailable", () => {
       listChannelsWhenAvailable({ retryDelayMs: 0 }),
     ).rejects.toThrow("bad request");
     expect(attempts).toBe(1);
+  });
+});
+
+describe("addVideo", () => {
+  it("returns an existing DB video with a single add request", async () => {
+    const payload = {
+      video: video("vid-existing", "chan-a"),
+      target_channel_id: "chan-a",
+      already_exists: true,
+    };
+    const requests: string[] = [];
+
+    globalThis.fetch = (async (input, init) => {
+      const url = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      requests.push(`${method} ${url}`);
+      return new Response(JSON.stringify(payload), { status: 200 });
+    }) as typeof fetch;
+
+    const result = await addVideo(
+      "https://www.youtube.com/watch?v=abcdefghijk",
+    );
+
+    expect(result).toEqual(payload);
+    expect(requests).toEqual(["POST /api/videos"]);
   });
 });
 

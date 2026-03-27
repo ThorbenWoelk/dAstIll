@@ -46,7 +46,13 @@ function copyProxyRequestHeaders(sourceHeaders: Headers): Headers {
 function copyProxyResponseHeaders(sourceHeaders: Headers): Headers {
   const headers = new Headers();
   for (const [name, value] of sourceHeaders.entries()) {
-    if (HOP_BY_HOP_HEADERS.has(name.toLowerCase())) {
+    const lowercaseName = name.toLowerCase();
+    if (
+      HOP_BY_HOP_HEADERS.has(lowercaseName) ||
+      lowercaseName === "server" ||
+      lowercaseName === "x-powered-by" ||
+      lowercaseName.startsWith("x-dastill-")
+    ) {
       continue;
     }
 

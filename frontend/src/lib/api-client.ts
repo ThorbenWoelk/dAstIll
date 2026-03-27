@@ -100,7 +100,6 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const message = await response.text();
     console.error(`[API Error] ${method} ${path}`, {
       status: response.status,
-      message,
     });
     throw new Error(message || `Request failed (${response.status})`);
   }

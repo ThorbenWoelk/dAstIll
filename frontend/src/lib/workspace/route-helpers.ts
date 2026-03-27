@@ -88,6 +88,23 @@ export function dedupeVideosById(videos: Video[]): Video[] {
   return out;
 }
 
+export function shouldForceReloadMissingSelectedVideo(params: {
+  selectedVideoId: string | null;
+  videos: Array<Pick<Video, "id">>;
+  probeKey: string;
+  lastProbeKey: string | null;
+}): boolean {
+  if (!params.selectedVideoId) {
+    return false;
+  }
+
+  if (params.videos.some((video) => video.id === params.selectedVideoId)) {
+    return false;
+  }
+
+  return params.lastProbeKey !== params.probeKey;
+}
+
 export function filterVideosByType(
   videos: Video[],
   filter: VideoTypeFilter,

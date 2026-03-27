@@ -19,7 +19,10 @@ use crate::{
 pub(crate) fn map_db_err(err: impl std::fmt::Display) -> (axum::http::StatusCode, String) {
     let err_msg = err.to_string();
     tracing::error!(error = %err_msg, "database error");
-    (axum::http::StatusCode::INTERNAL_SERVER_ERROR, err_msg)
+    (
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+        "Database error".to_string(),
+    )
 }
 
 /// Returns `NOT_FOUND` if `opt` is `None`, otherwise unwraps it.
