@@ -41,14 +41,12 @@ fn should_send_to_logfire(target: &str) -> bool {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Install the rustls crypto provider before any TLS usage (required by rustls 0.23+)
-    rustls::crypto::aws_lc_rs::default_provider()
+    // Using ring because both rustls 0.21 (AWS SDK) and 0.23 (our direct dependency) support it.
+    // This fixes the "dispatch failure" TLS error where the rustls 0.21 from AWS SDK had no
+    // crypto backend installed when only aws-lc-rs was set for rustls 0.23.
+    rustls::crypto::ring::default_provider()
         .install_default()
         .expect("failed to install rustls crypto provider");
-
-    // Install the jsonwebtoken crypto provider (required by jsonwebtoken 10+)
-    jsonwebtoken::crypto::aws_lc::DEFAULT_PROVIDER
-        .install_default()
-        .expect("failed to install jsonwebtoken crypto provider");
 
     // Standard local dev .env loading
     if let Ok(content) = std::fs::read_to_string(".env") {
