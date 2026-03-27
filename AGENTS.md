@@ -112,6 +112,52 @@ Thin (4px), `--border` thumb, transparent track, `--soft-foreground` on hover.
 
 - Max line count per file should be **800**. If a file exceeds this, it must be modularized.
 
+## Testing
+
+### Two layers, two jobs
+
+| Layer | Runner | What it proves | What it misses |
+|-------|--------|---------------|----------------|
+| Unit (`tests/`) | `bun test` | Logic correctness - offsets, transforms, data mutations | Whether the component actually renders the output |
+| E2E (`e2e/`) | `playwright test` | Real DOM: elements present, visible, interactive | Fine-grained logic edge cases |
+
+**Neither layer substitutes for the other.** The highlights regression (marks not rendering) is the canonical example: every utility function was tested, but no test verified that `<mark class="reader-highlight">` elements appeared in the article DOM.
+
+### When each layer is required
+
+Write a **unit test** when:
+- A pure function transforms, filters, or maps data (offsets, ranges, merging, sorting)
+- A bug was caused by incorrect logic - pin the input/output contract
+
+Write an **E2E test** when:
+- A feature is visible in the DOM: an element appears, disappears, or changes state
+- A data-to-DOM pipeline exists: server data → component prop → rendered element
+- A regression was a rendering/wiring failure - the element was absent or wrong
+
+### Rendering regression rule
+
+> Any feature whose correctness is observable in the DOM must have at least one E2E assertion that checks for that element.
+
+Examples:
+- Highlights → assert `mark.reader-highlight` is visible inside the article
+- Sidebar counts → assert the count badge text matches data
+- Floating toolbar → assert the action container appears on text selection
+
+When fixing a rendering bug, **add the E2E test first** (it must fail before the fix), then fix, then confirm it passes. This is the TDD red-green cycle applied to rendering.
+
+### Running tests locally
+
+```bash
+# Unit tests
+cd frontend && bun test tests
+
+# E2E (requires running app on port 3543)
+cd frontend && bunx playwright test
+
+# E2E headed (watch it run)
+cd frontend && bunx playwright test --headed
+```
+
 ---
 
 # Dev Tools
