@@ -17,6 +17,86 @@ interface TooltipRect {
   width: number;
 }
 
+const TEXT_NODE = 3;
+const CONTENT_PREFIX_PATTERN = /^(?:Transcript|Summary):\s*/i;
+
+function resolveNodeTextLength(node: Node) {
+  return node.textContent?.length ?? 0;
+}
+
+function resolveBoundaryTextOffset(
+  root: Node,
+  container: Node,
+  offset: number,
+): number | null {
+  let total = 0;
+  let found = false;
+
+  function visit(node: Node) {
+    if (found) {
+      return;
+    }
+
+    if (node === container) {
+      if (node.nodeType === TEXT_NODE) {
+        total += Math.min(offset, node.textContent?.length ?? 0);
+        found = true;
+        return;
+      }
+
+      const childNodes = Array.from(node.childNodes);
+      const boundedOffset = Math.min(offset, childNodes.length);
+      for (let index = 0; index < boundedOffset; index += 1) {
+        total += resolveNodeTextLength(childNodes[index]);
+      }
+      found = true;
+      return;
+    }
+
+    if (node.nodeType === TEXT_NODE) {
+      total += node.textContent?.length ?? 0;
+      return;
+    }
+
+    for (const child of Array.from(node.childNodes)) {
+      visit(child);
+      if (found) {
+        return;
+      }
+    }
+  }
+
+  visit(root);
+  return found ? total : null;
+}
+
+export function resolveRangeTextOffsets(root: Node, range: Range) {
+  if (
+    range.collapsed ||
+    (range.startContainer !== root && !root.contains(range.startContainer)) ||
+    (range.endContainer !== root && !root.contains(range.endContainer))
+  ) {
+    return null;
+  }
+
+  const start = resolveBoundaryTextOffset(
+    root,
+    range.startContainer,
+    range.startOffset,
+  );
+  const end = resolveBoundaryTextOffset(
+    root,
+    range.endContainer,
+    range.endOffset,
+  );
+
+  if (start === null || end === null || end <= start) {
+    return null;
+  }
+
+  return { start, end };
+}
+
 export function buildHighlightDraft(
   fullText: string,
   source: HighlightSource,
@@ -44,6 +124,63 @@ export function buildHighlightDraft(
   };
 }
 
+function stripStoredContentPrefix(source: HighlightSource, value: string) {
+  if ((source !== "transcript" && source !== "summary") || !value) {
+    return value;
+  }
+
+  return value.replace(CONTENT_PREFIX_PATTERN, "").trimStart();
+}
+
+function normalizeLegacyHighlightFormatting(
+  source: HighlightSource,
+  value: string,
+) {
+  if ((source !== "transcript" && source !== "summary") || !value) {
+    return value;
+  }
+
+  return value
+    .replace(/\r\n?/g, "\n")
+    .replace(/[ \t]{2,}\n/g, "")
+    .replace(/\n{2,}/g, "\n");
+}
+
+function buildHighlightFieldVariants(source: HighlightSource, value: string) {
+  const stripped = stripStoredContentPrefix(source, value);
+  const variants = [
+    value,
+    stripped,
+    normalizeLegacyHighlightFormatting(source, value),
+    normalizeLegacyHighlightFormatting(source, stripped),
+  ].filter((variant, index, all) => all.indexOf(variant) === index);
+
+  return variants;
+}
+
+function resolveContextScore(
+  actual: string,
+  variants: string[],
+  side: "prefix" | "suffix",
+) {
+  let bestScore = variants.includes("") ? 1 : 0;
+
+  for (const variant of variants) {
+    if (!variant) {
+      continue;
+    }
+
+    const matches =
+      side === "prefix" ? actual.endsWith(variant) : actual.startsWith(variant);
+
+    if (matches) {
+      bestScore = Math.max(bestScore, variant.length);
+    }
+  }
+
+  return bestScore;
+}
+
 function resolveBestMatch(fullText: string, highlight: Highlight) {
   if (!highlight.text) {
     return null;
@@ -54,51 +191,57 @@ function resolveBestMatch(fullText: string, highlight: Highlight) {
     end: number;
     score: number;
   } | null = null;
-  let searchStart = 0;
+  const textVariants = buildHighlightFieldVariants(
+    highlight.source,
+    highlight.text,
+  ).filter((variant) => Boolean(variant));
+  const prefixVariants = buildHighlightFieldVariants(
+    highlight.source,
+    highlight.prefix_context,
+  );
+  const suffixVariants = buildHighlightFieldVariants(
+    highlight.source,
+    highlight.suffix_context,
+  );
 
-  while (searchStart < fullText.length) {
-    const start = fullText.indexOf(highlight.text, searchStart);
-    if (start < 0) {
-      break;
-    }
+  for (const textVariant of textVariants) {
+    let searchStart = 0;
 
-    const end = start + highlight.text.length;
-    let score = 0;
-
-    if (highlight.prefix_context) {
-      const prefix = fullText.slice(
-        Math.max(0, start - highlight.prefix_context.length),
-        start,
-      );
-      if (prefix.endsWith(highlight.prefix_context)) {
-        score += highlight.prefix_context.length;
+    while (searchStart < fullText.length) {
+      const start = fullText.indexOf(textVariant, searchStart);
+      if (start < 0) {
+        break;
       }
-    } else {
-      score += 1;
-    }
 
-    if (highlight.suffix_context) {
+      const end = start + textVariant.length;
+      const longestPrefix = Math.max(
+        ...prefixVariants.map((variant) => variant.length),
+        0,
+      );
+      const longestSuffix = Math.max(
+        ...suffixVariants.map((variant) => variant.length),
+        0,
+      );
+      const prefix = fullText.slice(Math.max(0, start - longestPrefix), start);
       const suffix = fullText.slice(
         end,
-        Math.min(fullText.length, end + highlight.suffix_context.length),
+        Math.min(fullText.length, end + longestSuffix),
       );
-      if (suffix.startsWith(highlight.suffix_context)) {
-        score += highlight.suffix_context.length;
+      const score =
+        resolveContextScore(prefix, prefixVariants, "prefix") +
+        resolveContextScore(suffix, suffixVariants, "suffix");
+
+      const candidate = { start, end, score };
+      if (
+        !best ||
+        candidate.score > best.score ||
+        (candidate.score === best.score && candidate.start < best.start)
+      ) {
+        best = candidate;
       }
-    } else {
-      score += 1;
-    }
 
-    const candidate = { start, end, score };
-    if (
-      !best ||
-      candidate.score > best.score ||
-      (candidate.score === best.score && candidate.start < best.start)
-    ) {
-      best = candidate;
+      searchStart = start + 1;
     }
-
-    searchStart = start + 1;
   }
 
   return best;

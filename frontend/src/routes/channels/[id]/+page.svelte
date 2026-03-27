@@ -633,6 +633,7 @@
   {#snippet sidebar({ collapsed, toggle, width })}
     <WorkspaceSidebar
       videoListMode="per_channel_preview"
+      previewSessionKey="workspace-sidebar-navigation"
       addSourceErrorMessage={errorMessage}
       shell={{
         collapsed,
@@ -667,6 +668,7 @@
       >
         <WorkspaceSidebar
           videoListMode="per_channel_preview"
+          previewSessionKey="workspace-sidebar-navigation"
           addSourceErrorMessage={errorMessage}
           shell={{
             collapsed: false,

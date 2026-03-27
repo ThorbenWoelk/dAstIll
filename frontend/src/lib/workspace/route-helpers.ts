@@ -105,6 +105,22 @@ export function shouldForceReloadMissingSelectedVideo(params: {
   return params.lastProbeKey !== params.probeKey;
 }
 
+export function shouldLoadAllChannelVideosForSelection(params: {
+  selectedVideoId: string | null;
+  videos: Array<Pick<Video, "id">>;
+  loadedMode: "preview" | "all" | null;
+}): boolean {
+  if (!params.selectedVideoId) {
+    return false;
+  }
+
+  if (params.loadedMode === "all") {
+    return false;
+  }
+
+  return !params.videos.some((video) => video.id === params.selectedVideoId);
+}
+
 export function resolveInitialPreviewExpandedChannelId(
   channels: Channel[],
   selectedChannelId: string | null,

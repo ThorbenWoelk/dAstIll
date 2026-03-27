@@ -2204,6 +2204,7 @@
   {#snippet sidebar(shell)}
     <WorkspaceSidebar
       videoListMode="per_channel_preview"
+      previewSessionKey="workspace-sidebar-navigation"
       addSourceErrorMessage={errorMessage}
       initialChannelPreviews={$page.data.channelPreviews ?? {}}
       initialChannelPreviewsFilterKey={$page.data.channelPreviewsFilterKey ??

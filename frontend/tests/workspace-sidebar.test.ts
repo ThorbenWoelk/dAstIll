@@ -5,6 +5,7 @@ import {
   filterVideosByType,
   resolveInitialPreviewExpandedChannelId,
   resolveNextChannelSelection,
+  shouldLoadAllChannelVideosForSelection,
   shouldForceReloadMissingSelectedVideo,
 } from "../src/lib/workspace/route-helpers";
 import type { Video } from "../src/lib/types";
@@ -179,6 +180,44 @@ describe("shouldForceReloadMissingSelectedVideo", () => {
       ],
       probeKey: "channel-1:video-1:long:unack:default",
       lastProbeKey: null,
+    });
+
+    expect(result).toBe(false);
+  });
+});
+
+describe("shouldLoadAllChannelVideosForSelection", () => {
+  it("does not escalate preview loading when the selected video is already present", () => {
+    const result = shouldLoadAllChannelVideosForSelection({
+      selectedVideoId: "video-1",
+      loadedMode: "preview",
+      videos: [
+        makeVideo({ id: "video-1", is_short: false, acknowledged: false }),
+      ],
+    });
+
+    expect(result).toBe(false);
+  });
+
+  it("escalates to a full load when the selected video is outside the preview rows", () => {
+    const result = shouldLoadAllChannelVideosForSelection({
+      selectedVideoId: "video-2",
+      loadedMode: "preview",
+      videos: [
+        makeVideo({ id: "video-1", is_short: false, acknowledged: false }),
+      ],
+    });
+
+    expect(result).toBe(true);
+  });
+
+  it("does not escalate after the collection is already fully loaded", () => {
+    const result = shouldLoadAllChannelVideosForSelection({
+      selectedVideoId: "video-2",
+      loadedMode: "all",
+      videos: [
+        makeVideo({ id: "video-1", is_short: false, acknowledged: false }),
+      ],
     });
 
     expect(result).toBe(false);

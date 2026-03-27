@@ -54,8 +54,14 @@
     filterVideosByAcknowledged,
     filterVideosByType,
     resolveInitialPreviewExpandedChannelId,
+    shouldLoadAllChannelVideosForSelection,
     shouldForceReloadMissingSelectedVideo,
   } from "$lib/workspace/route-helpers";
+  import {
+    getSidebarPreviewSession,
+    pruneSidebarPreviewCollections,
+    setSidebarPreviewSession,
+  } from "$lib/workspace/sidebar-preview-session";
   import { formatSyncDate } from "$lib/workspace/content";
   import { resolveDisplayedSyncDepthIso } from "$lib/sync-depth";
 
@@ -155,6 +161,8 @@
     videoAcknowledgeSync = null,
     /** After earliest-sync date is saved (standalone or preview collection). */
     onChannelSyncDateSaved = undefined,
+    /** Shared session key for preserving per-channel preview state across routes. */
+    previewSessionKey = undefined as string | undefined,
   }: {
     shell?: WorkspaceSidebarShellProps;
     channelState?: WorkspaceSidebarChannelState;
@@ -189,6 +197,7 @@
       video: Video;
       confirmed: boolean;
     } | null;
+    previewSessionKey?: string;
   } = $props();
 
   let collapsed = $derived(shell.collapsed);
@@ -289,6 +298,7 @@
   let channelVideoCollections = $state<
     Record<string, ChannelVideoCollectionState>
   >({});
+  let hydratedPreviewSessionKey = $state<string | null>(null);
 
   let lastAppliedVideoAcknowledgeSeq = $state(0);
 
@@ -366,6 +376,40 @@
     channelVideoCollections[channelId] = nextCollection;
     return nextCollection;
   }
+
+  function restoreChannelVideoCollections(
+    collections: Record<
+      string,
+      import("$lib/workspace/sidebar-preview-session").SidebarPreviewCollectionSnapshot
+    >,
+  ): Record<string, ChannelVideoCollectionState> {
+    const restored: Record<string, ChannelVideoCollectionState> = {};
+
+    for (const [channelId, collection] of Object.entries(collections)) {
+      restored[channelId] = {
+        ...createEmptyChannelVideoCollection(),
+        ...collection,
+      };
+    }
+
+    return restored;
+  }
+
+  $effect(() => {
+    if (videoListMode !== "per_channel_preview" || !previewSessionKey) {
+      hydratedPreviewSessionKey = null;
+      return;
+    }
+
+    if (hydratedPreviewSessionKey === previewSessionKey) {
+      return;
+    }
+
+    channelVideoCollections = restoreChannelVideoCollections(
+      getSidebarPreviewSession(previewSessionKey) ?? {},
+    );
+    hydratedPreviewSessionKey = previewSessionKey;
+  });
 
   function resolveAcknowledgedParam(filter: AcknowledgedFilter) {
     if (filter === "ack") return true;
@@ -690,6 +734,20 @@
   });
 
   $effect(() => {
+    if (videoListMode !== "per_channel_preview" || !previewSessionKey) {
+      return;
+    }
+
+    setSidebarPreviewSession(
+      previewSessionKey,
+      pruneSidebarPreviewCollections(
+        channelVideoCollections,
+        channels.map((channel) => channel.id),
+      ),
+    );
+  });
+
+  $effect(() => {
     if (videoListMode !== "per_channel_preview") {
       return;
     }
@@ -767,7 +825,13 @@
     }
 
     if (state.loading) return;
-    if (state.loadedMode !== "all") {
+    if (
+      shouldLoadAllChannelVideosForSelection({
+        selectedVideoId,
+        videos: state.videos,
+        loadedMode: state.loadedMode,
+      })
+    ) {
       void loadChannelVideoCollection(selectedChannel, "all");
       return;
     }

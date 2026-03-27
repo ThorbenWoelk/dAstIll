@@ -697,6 +697,7 @@
   })}
     <WorkspaceSidebar
       videoListMode="per_channel_preview"
+      previewSessionKey="download-queue-sidebar-navigation"
       addSourceErrorMessage={errorMessage}
       initialChannelPreviews={$page.data.channelPreviews ?? {}}
       initialChannelPreviewsFilterKey={$page.data.channelPreviewsFilterKey ??

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { Window } from "happy-dom";
 import type {
   CreateHighlightRequest,
   Highlight,
@@ -10,6 +11,7 @@ import {
   mergeHighlightIntoList,
   removeHighlightFromGroups,
   reconcileOptimisticHighlight,
+  resolveRangeTextOffsets,
   resolveHighlightRanges,
   resolveTooltipPosition,
 } from "../src/lib/utils/highlights";
@@ -27,7 +29,112 @@ describe("buildHighlightDraft", () => {
   });
 });
 
+describe("resolveRangeTextOffsets", () => {
+  it("maps nested DOM range boundaries to raw article text offsets", () => {
+    const window = new Window();
+    const document = window.document;
+    const article = document.createElement("article");
+    article.innerHTML =
+      "<p>Alpha <strong>beta</strong> gamma</p><p>Delta <em>epsilon</em> zeta</p>";
+    document.body.appendChild(article);
+
+    const firstParagraphText = article.querySelector("p")?.firstChild;
+    const emphasisText = article.querySelector("em")?.firstChild;
+    expect(firstParagraphText?.nodeType).toBe(3);
+    expect(emphasisText?.nodeType).toBe(3);
+
+    const range = document.createRange();
+    range.setStart(firstParagraphText!, 6);
+    range.setEnd(emphasisText!, 7);
+
+    expect(resolveRangeTextOffsets(article, range)).toEqual({
+      start: 6,
+      end: 29,
+    });
+
+    const offsets = resolveRangeTextOffsets(article, range);
+    expect(
+      buildHighlightDraft(
+        article.textContent ?? "",
+        "summary",
+        offsets!.start,
+        offsets!.end,
+      ),
+    ).toEqual({
+      source: "summary",
+      text: "beta gammaDelta epsilon",
+      prefix_context: "Alpha ",
+      suffix_context: " zeta",
+    });
+  });
+
+  it("handles element-node boundaries without shortening the selected range", () => {
+    const window = new Window();
+    const document = window.document;
+    const article = document.createElement("article");
+    article.innerHTML = "<p>Alpha <strong>beta</strong> gamma</p>";
+    document.body.appendChild(article);
+
+    const paragraph = article.querySelector("p");
+    const range = document.createRange();
+    range.setStart(paragraph!.firstChild!, 0);
+    range.setEnd(paragraph!, 2);
+
+    expect(resolveRangeTextOffsets(article, range)).toEqual({
+      start: 0,
+      end: 10,
+    });
+  });
+});
+
 describe("resolveHighlightRanges", () => {
+  it("matches legacy summary highlights after the UI strips the summary prefix", () => {
+    const fullText = "Alpha beta gamma delta";
+    const highlights: Highlight[] = [
+      {
+        id: 7,
+        video_id: "vid-1",
+        source: "summary",
+        text: "Summary: Alpha beta",
+        prefix_context: "",
+        suffix_context: " gamma delta",
+        created_at: "2026-03-12T20:00:00.000Z",
+      },
+    ];
+
+    expect(resolveHighlightRanges(fullText, highlights)).toEqual([
+      {
+        highlightId: 7,
+        start: 0,
+        end: 10,
+      },
+    ]);
+  });
+
+  it("matches legacy summary highlights saved from markdown source text", () => {
+    const fullText =
+      "Example automations shown: summarize yesterday's Git activity for standup, synthesize weekly PRs/rollouts/incidents/reviews into updates, draft release notes for merged PRsThe speaker finds these examples not particularly appealing to developers";
+    const highlights: Highlight[] = [
+      {
+        id: 8,
+        video_id: "vid-1",
+        source: "summary",
+        text: "Example automations shown: summarize yesterday's Git activity for standup, synthesize weekly PRs/rollouts/incidents/reviews into updates, draft release notes for merged PRs  \nThe speaker finds these examples not particularly appealing to developers",
+        prefix_context: "",
+        suffix_context: "",
+        created_at: "2026-03-12T20:00:00.000Z",
+      },
+    ];
+
+    expect(resolveHighlightRanges(fullText, highlights)).toEqual([
+      {
+        highlightId: 8,
+        start: 0,
+        end: fullText.length,
+      },
+    ]);
+  });
+
   it("uses stored context to choose the intended repeated phrase", () => {
     const fullText =
       "Intro insight appears here. Later, the same insight appears again.";

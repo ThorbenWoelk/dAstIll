@@ -9,6 +9,7 @@
   import TrashIcon from "$lib/components/icons/TrashIcon.svelte";
   import {
     buildHighlightDraft,
+    resolveRangeTextOffsets,
     resolveHighlightRanges,
     resolveTooltipPosition,
   } from "$lib/utils/highlights";
@@ -231,14 +232,16 @@
       return;
     }
 
-    const preRange = document.createRange();
-    preRange.selectNodeContents(articleElement);
-    preRange.setEnd(range.startContainer, range.startOffset);
-
-    const start = preRange.toString().length;
-    const end = start + selection.toString().length;
     const fullText = articleElement.textContent ?? "";
-    const draft = buildHighlightDraft(fullText, highlightSource, start, end);
+    const offsets = resolveRangeTextOffsets(articleElement, range);
+    const draft = offsets
+      ? buildHighlightDraft(
+          fullText,
+          highlightSource,
+          offsets.start,
+          offsets.end,
+        )
+      : null;
 
     if (!draft) {
       if (tooltip?.kind === "create") {
@@ -494,12 +497,12 @@
   {#if tooltip}
     {#if tooltip.kind === "create"}
       <div
-        class="absolute z-40 flex items-center gap-2 rounded-full bg-[var(--surface-strong)] px-2 py-2 shadow-lg"
+        class="text-action-toolbar absolute z-40 flex items-center gap-1 rounded-full px-1.5 py-1.5"
         style={`top: ${tooltip.top}px; left: ${tooltip.left}px; transform: translateX(-50%);`}
       >
         <button
           type="button"
-          class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[var(--foreground)] text-[var(--background)] transition-all hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+          class="text-action-btn inline-flex h-8 w-8 items-center justify-center rounded-full text-[var(--soft-foreground)] hover:bg-[var(--accent-wash)] hover:text-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
           onmousedown={(event) => event.preventDefault()}
           onclick={handleCreateHighlight}
           disabled={creatingHighlight}
@@ -507,12 +510,13 @@
           title="Save highlight"
         >
           <HighlighterIcon
-            class={`h-4 w-4 ${creatingHighlight ? "animate-pulse" : ""}`}
+            class={`h-3.5 w-3.5 ${creatingHighlight ? "animate-pulse" : ""}`}
           />
         </button>
         <button
           type="button"
-          class="inline-flex min-w-0 items-center justify-center rounded-full bg-[var(--accent-wash)] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--accent-strong)] transition-all hover:bg-[var(--accent-soft)] disabled:cursor-not-allowed disabled:opacity-60"
+          class="text-action-btn inline-flex items-center justify-center rounded-full px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--accent-strong)] hover:bg-[var(--accent-soft)] disabled:cursor-not-allowed disabled:opacity-50"
+          style="background: var(--accent-wash);"
           onmousedown={(event) => event.preventDefault()}
           onclick={handleCreateVocabularyReplacement}
           disabled={!onCreateVocabularyReplacement ||
@@ -524,29 +528,46 @@
         </button>
       </div>
     {:else}
-      <button
-        type="button"
-        class="absolute z-40 inline-flex h-10 w-10 items-center justify-center rounded-full bg-[var(--surface)] text-[var(--soft-foreground)] shadow-lg transition-all hover:bg-[var(--danger-soft)] hover:text-[var(--danger)] disabled:cursor-not-allowed disabled:opacity-60"
+      <div
+        class="text-action-toolbar absolute z-40 rounded-full px-1.5 py-1.5"
         style={`top: ${tooltip.top}px; left: ${tooltip.left}px; transform: translateX(-50%);`}
-        onmousedown={(event) => event.preventDefault()}
-        onclick={handleDeleteHighlight}
-        disabled={deletingHighlightId === tooltip.highlightId}
-        aria-label="Delete highlight"
-        title="Delete highlight"
       >
-        <TrashIcon
-          size={16}
-          strokeWidth={2.2}
-          class={deletingHighlightId === tooltip.highlightId
-            ? "animate-pulse"
-            : ""}
-        />
-      </button>
+        <button
+          type="button"
+          class="text-action-btn inline-flex h-8 w-8 items-center justify-center rounded-full text-[var(--soft-foreground)] hover:bg-[var(--danger-soft)] hover:text-[var(--danger)] disabled:cursor-not-allowed disabled:opacity-50"
+          onmousedown={(event) => event.preventDefault()}
+          onclick={handleDeleteHighlight}
+          disabled={deletingHighlightId === tooltip.highlightId}
+          aria-label="Delete highlight"
+          title="Delete highlight"
+        >
+          <TrashIcon
+            size={14}
+            strokeWidth={2}
+            class={deletingHighlightId === tooltip.highlightId
+              ? "animate-pulse"
+              : ""}
+          />
+        </button>
+      </div>
     {/if}
   {/if}
 </div>
 
 <style>
+  .text-action-toolbar {
+    background: var(--surface-frost);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow:
+      0 2px 12px var(--shadow-soft),
+      0 1px 3px var(--shadow-strong);
+  }
+
+  .text-action-btn {
+    transition: all 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
   :global(.prose h1, .prose h2, .prose h3) {
     font-variation-settings:
       "opsz" 72,
