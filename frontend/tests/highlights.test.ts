@@ -32,6 +32,11 @@ describe("buildHighlightDraft", () => {
 describe("resolveRangeTextOffsets", () => {
   it("maps nested DOM range boundaries to raw article text offsets", () => {
     const window = new Window();
+    (
+      window as unknown as {
+        SyntaxError?: typeof SyntaxError;
+      }
+    ).SyntaxError = SyntaxError;
     const document = window.document;
     const article = document.createElement("article");
     article.innerHTML =
@@ -70,6 +75,11 @@ describe("resolveRangeTextOffsets", () => {
 
   it("handles element-node boundaries without shortening the selected range", () => {
     const window = new Window();
+    (
+      window as unknown as {
+        SyntaxError?: typeof SyntaxError;
+      }
+    ).SyntaxError = SyntaxError;
     const document = window.document;
     const article = document.createElement("article");
     article.innerHTML = "<p>Alpha <strong>beta</strong> gamma</p>";

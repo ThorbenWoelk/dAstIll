@@ -33,7 +33,7 @@
     "eslint-plugin-svelte": "^3.16.0",
     "fake-indexeddb": "^6.2.5",
     "globals": "^17.4.0",
-    "happy-dom": "17.4.4",
+    "happy-dom": "^20",
     "postcss": "^8.5.8",
     "prettier": "^3.8.1",
     "prettier-plugin-svelte": "^3.5.1",
@@ -47,10 +47,13 @@
   },
   "dependencies": {
     "bits-ui": "^2.16.3",
+    "firebase": "^12",
+    "firebase-admin": "^13",
     "isomorphic-dompurify": "^3.6.0",
     "marked": "^17.0.5"
   },
   "overrides": {
+    "@tootallnate/once": "^3.0.1",
     "cookie": "^1.0.2",
     "h3": "^1.15.9"
   }

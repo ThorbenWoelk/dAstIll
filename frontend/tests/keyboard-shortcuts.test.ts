@@ -15,6 +15,11 @@ import {
 
 beforeAll(() => {
   const w = new HappyWindow();
+  (
+    w as unknown as {
+      SyntaxError?: typeof SyntaxError;
+    }
+  ).SyntaxError = SyntaxError;
   globalThis.window = w as unknown as typeof globalThis.window;
   globalThis.document = w.document as unknown as Document;
   globalThis.Element = w.Element;
