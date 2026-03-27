@@ -11,19 +11,10 @@
  */
 
 import { SvelteMap } from "svelte/reactivity";
-import {
-  addChannel,
-  addVideo,
-  deleteChannel,
-  getChannelSnapshot,
-  listChannelsWhenAvailable,
-  listVideos,
-  refreshChannel,
-} from "$lib/api";
+import { getChannelSnapshot } from "$lib/api";
 import {
   applySavedChannelOrder,
   finalizeAddedChannelOrder,
-  resolveInitialChannelSelection,
 } from "$lib/channel-workspace";
 import {
   buildChannelViewCacheKey,
@@ -40,36 +31,20 @@ import type {
   WorkspaceSidebarChannelState,
   WorkspaceVideoSelectContext,
 } from "$lib/workspace/component-props";
-import {
-  buildOptimisticChannel,
-  removeChannelFromCollection,
-  removeChannelId,
-  replaceOptimisticChannel,
-} from "$lib/workspace/channel-actions";
+import { createSidebarChannelCrudOperations } from "$lib/workspace/sidebar-channel-crud";
+import { createSidebarVideoOperations } from "$lib/workspace/sidebar-video-operations";
 import { channelOrderFromList } from "$lib/workspace/channels";
-import {
-  applyAcknowledgedFilterChange,
-  applyVideoTypeFilterChange,
-  clearSidebarVideoFilters,
-  dedupeVideosById,
-  loadChannelSnapshotWithRefresh,
-  resolveNextChannelSelection,
-} from "$lib/workspace/route-helpers";
+import { dedupeVideosById } from "$lib/workspace/route-helpers";
 import type { AcknowledgedFilter, ChannelSortMode } from "$lib/workspace/types";
-import { resolveAcknowledgedParam } from "$lib/workspace/types";
 import type {
   AddVideoResult,
   Channel,
   ChannelSnapshot,
-  ChannelVideoPage,
   Video,
+  ChannelVideoPage,
   VideoTypeFilter,
 } from "$lib/types";
 import { OTHERS_CHANNEL_ID } from "$lib/types";
-import { looksLikeYouTubeVideoInput } from "$lib/utils/youtube-input";
-import { putCachedChannels } from "$lib/workspace-cache";
-
-const CHANNEL_REFRESH_TTL_MS = 5 * 60 * 1000;
 
 export type SidebarStateOptions = {
   /**
@@ -186,7 +161,7 @@ export type SidebarStateOptions = {
   onAcknowledgedFilterChange?: (filter: AcknowledgedFilter) => void;
 };
 
-type CachedVideoState = {
+export type CachedVideoState = {
   videos: Video[];
   offset: number;
   hasMore: boolean;
@@ -315,46 +290,6 @@ export function createSidebarState(
     lastSyncedAt: cloneDate(state.lastSyncedAt),
     syncDepth: cloneSyncDepthState(state.syncDepth),
   }));
-
-  async function loadInitial(options?: { silent?: boolean }) {
-    if (options_root.onLoadInitial) {
-      return options_root.onLoadInitial(options);
-    }
-    const silent = options?.silent ?? false;
-    if (!silent) {
-      loadingChannels = true;
-    }
-
-    try {
-      const channelList = await listChannelsWhenAvailable({
-        retryDelayMs: 500,
-      });
-      channels = applySavedChannelOrder(channelList, channelOrder);
-      syncChannelOrderFromList();
-      void putCachedChannels(channels);
-
-      const initialChannelId = resolveInitialChannelSelection(
-        channels,
-        selectedChannelId,
-        channelOrder[0], // Pass a single string (the first channel ID) as the preference
-      );
-
-      if (!initialChannelId) {
-        selectedChannelId = null;
-        videos = [];
-        syncDepth = null;
-      } else {
-        selectedChannelId = initialChannelId;
-        await refreshAndLoadVideos(initialChannelId, silent);
-      }
-    } catch (error) {
-      options_root.onError?.((error as Error).message);
-    } finally {
-      if (!silent) {
-        loadingChannels = false;
-      }
-    }
-  }
 
   // --- Core reactive state ---
 
@@ -528,333 +463,63 @@ export function createSidebarState(
     return selectedChannelId === channelId && selectedVideoId === vidId;
   }
 
-  // --- Snapshot / video loading ---
+  const {
+    loadInitial,
+    refreshAndLoadVideos,
+    loadVideos,
+    selectChannel,
+    setVideoTypeFilterAndReload,
+    setAcknowledgedFilterAndReload,
+    clearAllFiltersAndReload,
+  } = createSidebarVideoOperations({
+    options: options_root,
+    limit,
+    channelLastRefreshedAt,
+    videoStateCache,
+    syncChannelOrderFromList,
+    getVideoStateKey,
+    getChannelOrder: () => channelOrder,
+    getSelectedChannelId: () => selectedChannelId,
+    getVideos: () => videos,
+    getOffset: () => offset,
+    getVideoTypeFilter: () => videoTypeFilter,
+    getAcknowledgedFilter: () => acknowledgedFilter,
+    getLoadingVideos: () => loadingVideos,
+    getVideoListMutationEpoch: () => videoListMutationEpoch,
+    setChannels,
+    setSelectedChannelId,
+    setSelectedVideoId,
+    setVideos,
+    setOffset,
+    setHasMore,
+    setSyncDepth,
+    setLoadingChannels,
+    setLoadingVideos,
+    setRefreshingChannel,
+    setHistoryExhausted,
+    setBackfillingHistory,
+    setVideoTypeFilter,
+    setAcknowledgedFilter,
+  });
 
-  async function applyChannelSnapshot(
-    channelId: string,
-    snapshot: ChannelSnapshot,
-    silent = false,
-  ) {
-    if (!silent) {
-      loadingVideos = true;
-    }
-    try {
-      if (selectedChannelId !== channelId) return;
-      syncDepth = snapshot.sync_depth;
-      const deduped = dedupeVideosById(snapshot.videos);
-      videos = deduped;
-      offset = deduped.length;
-      hasMore = deduped.length === limit;
-
-      if (options_root.onVideosLoaded) {
-        await options_root.onVideosLoaded({
-          reset: true,
-          videos: deduped,
-        });
-      }
-    } finally {
-      if (!silent) {
-        loadingVideos = false;
-      }
-    }
-  }
-
-  async function refreshAndLoadVideos(channelId: string, silent = false) {
-    const isAck = resolveAcknowledgedParam(acknowledgedFilter);
-    const snapshotOptions = {
-      limit,
-      offset: 0,
-      videoType: videoTypeFilter,
-      acknowledged: isAck,
-    };
-    await loadChannelSnapshotWithRefresh({
-      channelId,
-      refreshedAtByChannel: channelLastRefreshedAt,
-      ttlMs: CHANNEL_REFRESH_TTL_MS,
-      initialSilent: silent,
-      getMutationEpoch: () => videoListMutationEpoch,
-      loadSnapshot: () =>
-        options_root.onLoadChannelSnapshot
-          ? options_root.onLoadChannelSnapshot(
-              channelId,
-              snapshotOptions,
-              silent,
-            )
-          : getChannelSnapshot(channelId, snapshotOptions),
-      applySnapshot: (snapshot, snapshotSilent = false) =>
-        applyChannelSnapshot(channelId, snapshot, snapshotSilent),
-      refreshChannel: () =>
-        options_root.onRefreshChannel
-          ? options_root.onRefreshChannel(channelId)
-          : refreshChannel(channelId),
-      shouldReloadAfterRefresh: () => selectedChannelId === channelId,
-      onRefreshingChange: (r) => {
-        refreshingChannel = r;
-      },
-      onError: (message) => {
-        options_root.onError?.(message);
-      },
-    });
-  }
-
-  async function loadVideos(reset = false, silent = false) {
-    if (!selectedChannelId) return;
-    if (loadingVideos && !silent) return;
-
-    if (!silent) {
-      loadingVideos = true;
-    }
-
-    try {
-      const isAck = resolveAcknowledgedParam(acknowledgedFilter);
-      const list = options_root.onListVideos
-        ? await options_root.onListVideos(
-            selectedChannelId,
-            limit,
-            reset ? 0 : offset,
-            videoTypeFilter,
-            isAck,
-            false,
-          )
-        : await listVideos(
-            selectedChannelId,
-            limit,
-            reset ? 0 : offset,
-            videoTypeFilter,
-            isAck,
-          );
-      const page = Array.isArray(list)
-        ? {
-            videos: list,
-            has_more: list.length === limit,
-            next_offset: (reset ? 0 : offset) + list.length,
-          }
-        : list;
-      videos = dedupeVideosById(
-        reset ? page.videos : [...videos, ...page.videos],
-      );
-      offset = page.next_offset ?? (reset ? 0 : offset) + page.videos.length;
-      hasMore = page.has_more;
-
-      if (options_root.onVideosLoaded) {
-        await options_root.onVideosLoaded({ reset, videos });
-      }
-    } catch (error) {
-      options_root.onError?.((error as Error).message);
-    } finally {
-      if (!silent) {
-        loadingVideos = false;
-      }
-    }
-  }
-
-  // --- Channel selection ---
-
-  async function selectChannel(
-    channelId: string,
-    videoId: string | null = null,
-    fromUserInteraction = false,
-    selectedVideoHint: Video | null = null,
-  ) {
-    const cacheKey = getVideoStateKey(channelId);
-    const cached = videoStateCache.get(cacheKey);
-    const hasCached =
-      !!cached &&
-      cached.videos.length > 0 &&
-      videosBelongToChannel(channelId, cached.videos);
-
-    if (cached && !hasCached) {
-      videoStateCache.delete(cacheKey);
-    }
-
-    selectedChannelId = channelId;
-    if (videoId) {
-      selectedVideoId = videoId;
-    } else {
-      // Channel overview: keep selection in sync with the active channel. Leaving
-      // the previous video id causes stale matches (wrong list until load) or
-      // odd queue detail while the sidebar shows a new channel.
-      selectedVideoId = null;
-    }
-    options_root.onChannelSelected?.(channelId);
-
-    if (hasCached && cached) {
-      videos = dedupeVideosById(cloneVideos(cached.videos));
-      offset = cached.offset;
-      hasMore = cached.hasMore;
-      syncDepth = cloneSyncDepthState(cached.syncDepth);
-      loadingVideos = false;
-      void refreshAndLoadVideos(channelId, true);
-      return;
-    }
-
-    videos = selectedVideoHint ? [selectedVideoHint] : [];
-    offset = 0;
-    hasMore = true;
-    historyExhausted = false;
-    backfillingHistory = false;
-    syncDepth = null;
-    options_root.onVideoListReset?.();
-    await refreshAndLoadVideos(channelId, !fromUserInteraction);
-  }
-
-  // --- Filter operations ---
-
-  async function setVideoTypeFilterAndReload(nextValue: VideoTypeFilter) {
-    await applyVideoTypeFilterChange({
-      currentFilter: videoTypeFilter,
-      nextFilter: nextValue,
-      videos,
-      setFilter: setVideoTypeFilter,
+  const { handleAddChannel, handleDeleteChannel, confirmDeleteChannel } =
+    createSidebarChannelCrudOperations({
+      options: options_root,
+      getChannels: () => channels,
+      getChannelOrder: () => channelOrder,
+      getSelectedChannelId: () => selectedChannelId,
+      setChannels,
+      setChannelOrder,
+      setSelectedChannelId,
       setVideos,
-      reload: () => loadVideos(true, true),
+      setSyncDepth,
+      setAddingChannel,
+      setChannelIdToDelete,
+      setShowDeleteConfirmation,
+      syncChannelOrderFromList,
+      replaceOptimisticChannelId,
+      selectChannel,
     });
-  }
-
-  async function setAcknowledgedFilterAndReload(nextValue: AcknowledgedFilter) {
-    await applyAcknowledgedFilterChange({
-      currentFilter: acknowledgedFilter,
-      nextFilter: nextValue,
-      videos,
-      setFilter: setAcknowledgedFilter,
-      setVideos,
-      reload: () => loadVideos(true, true),
-    });
-  }
-
-  async function clearAllFiltersAndReload() {
-    await clearSidebarVideoFilters({
-      videoTypeFilter,
-      acknowledgedFilter,
-      setVideoTypeFilter,
-      setAcknowledgedFilter,
-      reload: () => loadVideos(true, true),
-    });
-  }
-
-  // --- Channel CRUD ---
-
-  async function handleAddChannel(input: string): Promise<boolean> {
-    if (!input.trim()) return false;
-
-    addingChannel = true;
-    options_root.onError?.("");
-
-    const submittedInput = input.trim();
-
-    if (looksLikeYouTubeVideoInput(submittedInput)) {
-      try {
-        const result = await addVideo(submittedInput);
-        const refreshedChannels = applySavedChannelOrder(
-          await listChannelsWhenAvailable({
-            retryDelayMs: 500,
-          }),
-          channelOrder,
-        );
-        channels = refreshedChannels;
-        syncChannelOrderFromList();
-        const cacheChannels =
-          options_root.cacheChannels ??
-          ((chs: Channel[]) => void putCachedChannels(chs));
-        cacheChannels(channels);
-
-        if (options_root.onVideoAdded) {
-          await options_root.onVideoAdded(result);
-        } else {
-          selectedChannelId = result.target_channel_id;
-          await selectChannel(result.target_channel_id, result.video.id, true);
-          await options_root.onSelectVideo(result.video.id, {
-            forceReload: true,
-          });
-        }
-        return true;
-      } catch (error) {
-        options_root.onError?.((error as Error).message);
-        return false;
-      } finally {
-        addingChannel = false;
-      }
-    }
-
-    const previousChannels = [...channels];
-    const previousSelectedId = selectedChannelId;
-
-    const { optimisticChannel, tempId, trimmedInput } =
-      buildOptimisticChannel(input);
-    channels = [optimisticChannel, ...channels];
-    channelOrder = [tempId, ...channelOrder];
-
-    try {
-      const channel = await addChannel(trimmedInput);
-      channels = replaceOptimisticChannel(channels, tempId, channel);
-      replaceOptimisticChannelId(tempId, channel.id);
-
-      const cacheChannels =
-        options_root.cacheChannels ??
-        ((chs: Channel[]) => void putCachedChannels(chs));
-      cacheChannels(channels);
-
-      if (options_root.onChannelAdded) {
-        await options_root.onChannelAdded(channel);
-      } else {
-        selectedChannelId = channel.id;
-      }
-      return true;
-    } catch (error) {
-      channels = previousChannels;
-      selectedChannelId = previousSelectedId;
-      syncChannelOrderFromList();
-      options_root.onError?.((error as Error).message);
-      return false;
-    } finally {
-      addingChannel = false;
-    }
-  }
-
-  async function handleDeleteChannel(
-    channelId: string,
-    isOperator: boolean,
-    onAccessRequired: () => void,
-  ) {
-    if (!isOperator) {
-      onAccessRequired();
-      return;
-    }
-    channelIdToDelete = channelId;
-    showDeleteConfirmation = true;
-  }
-
-  async function confirmDeleteChannel(channelId: string, isOperator: boolean) {
-    if (!isOperator) return;
-
-    const previousChannels = [...channels];
-    channels = removeChannelFromCollection(channels, channelId);
-    channelOrder = removeChannelId(channelOrder, channelId);
-
-    if (selectedChannelId === channelId) {
-      const nextChannelId = resolveNextChannelSelection(channels, channelId);
-      if (nextChannelId) {
-        await selectChannel(nextChannelId);
-      } else {
-        selectedChannelId = null;
-        videos = [];
-        syncDepth = null;
-        options_root.onChannelDeselected?.();
-      }
-    }
-
-    try {
-      await deleteChannel(channelId);
-      options_root.onChannelDeleted?.(channelId);
-    } catch (error) {
-      channels = previousChannels;
-      syncChannelOrderFromList();
-      options_root.onError?.((error as Error).message);
-    } finally {
-      channelIdToDelete = null;
-      showDeleteConfirmation = false;
-    }
-  }
 
   // --- WorkspaceSidebar prop objects ---
 
