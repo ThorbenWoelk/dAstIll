@@ -57,11 +57,11 @@ Non-secret runtime config is passed as plain env values for:
 
 ### Firebase Auth (product frontend)
 
-The SvelteKit app uses the Firebase JS SDK in the browser and **Firebase Admin** on the server for session cookies. The web client reads **`PUBLIC_FIREBASE_API_KEY`** (not `PUBLIC_FIREBASE_KEY`), **`PUBLIC_FIREBASE_AUTH_DOMAIN`**, and **`PUBLIC_FIREBASE_PROJECT_ID`** from `$env/dynamic/public`; the server resolves the same project for Admin SDK initialization.
+The SvelteKit app uses the Firebase JS SDK in the browser and **Firebase Admin** on the server for session cookies. The web client reads the Firebase Web API key as **`PUBLIC_FIREBASE_API_KEY`** (alias **`PUBLIC_FIREBASE_KEY`**), plus **`PUBLIC_FIREBASE_AUTH_DOMAIN`** and **`PUBLIC_FIREBASE_PROJECT_ID`**, from `$env/dynamic/public`; the server resolves the same project for Admin SDK initialization.
 
 **Terraform (`terraform.tfvars`, not GitHub Variables):** set `firebase_web_api_key` (Firebase console: Project settings > General > Web API Key) when you are ready to provision Firebase client secrets; leave unset or empty until then. Optionally set `firebase_auth_domain`; if omitted, Terraform stores `{project_id}.firebaseapp.com` in Secret Manager. Run `terraform apply` so secrets `dastill-firebase-web-api-key` and `dastill-firebase-auth-domain` exist and IAM allows the frontend Cloud Run service account and GitHub Actions deploy identity to read them.
 
-**Release workflow:** mounts those secrets as `PUBLIC_FIREBASE_API_KEY` and `PUBLIC_FIREBASE_AUTH_DOMAIN`, and sets **`PUBLIC_FIREBASE_PROJECT_ID`** to the GCP project id (`GCP_PROJECT_ID` in the workflow), matching a Firebase project hosted in the same GCP project.
+**Release workflow:** checks that Secret Manager secrets `dastill-firebase-web-api-key` and `dastill-firebase-auth-domain` exist (fails fast with a Terraform hint if not), then mounts them as `PUBLIC_FIREBASE_API_KEY`, `PUBLIC_FIREBASE_KEY` (same value, optional alias), and `PUBLIC_FIREBASE_AUTH_DOMAIN`. It sets **`PUBLIC_FIREBASE_PROJECT_ID`** to the GCP project id (`GCP_PROJECT_ID` in the workflow).
 
 **GCP:** Terraform grants the frontend Cloud Run service account `roles/firebaseauth.admin` so the Node server can verify ID tokens and issue session cookies.
 
