@@ -53,3 +53,16 @@ variable "databricks_token" {
   default     = ""
   description = "Databricks PAT. If non-empty, Terraform manages the secret version in Secret Manager. If empty, only IAM is managed and the databricks-token secret must already exist."
 }
+
+variable "firebase_web_api_key" {
+  type        = string
+  sensitive   = true
+  default     = ""
+  description = "Firebase Web API key (Project settings > General). If non-empty, Terraform creates Secret Manager secrets for the web client. If empty, omit firebase_* from terraform.tfvars until ready."
+}
+
+variable "firebase_auth_domain" {
+  type        = string
+  default     = ""
+  description = "Firebase authDomain (e.g. project.firebaseapp.com). Leave empty to use {project_id}.firebaseapp.com."
+}

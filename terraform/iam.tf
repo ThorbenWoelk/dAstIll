@@ -31,9 +31,15 @@ locals {
     logfire_token       = google_secret_manager_secret.logfire_token.id
     backend_proxy_token = google_secret_manager_secret.backend_proxy_token.id
   }
-  frontend_secret_ids = {
-    backend_proxy_token = google_secret_manager_secret.backend_proxy_token.id
-  }
+  frontend_secret_ids = merge(
+    {
+      backend_proxy_token = google_secret_manager_secret.backend_proxy_token.id
+    },
+    local.firebase_secrets_enabled ? {
+      firebase_web_api_key = google_secret_manager_secret.firebase_web_api_key[0].id
+      firebase_auth_domain = google_secret_manager_secret.firebase_auth_domain[0].id
+    } : {},
+  )
   cicd_secret_ids = merge(local.backend_secret_ids, local.frontend_secret_ids)
 }
 
@@ -104,6 +110,13 @@ resource "google_project_iam_member" "backend_firebase_auth" {
   project = var.project_id
   role    = "roles/firebaseauth.admin"
   member  = "serviceAccount:${google_service_account.backend_sa.email}"
+}
+
+# SvelteKit server uses Firebase Admin (session cookies, token verify) on the frontend Cloud Run service.
+resource "google_project_iam_member" "frontend_firebase_auth" {
+  project = var.project_id
+  role    = "roles/firebaseauth.admin"
+  member  = "serviceAccount:${google_service_account.frontend_sa.email}"
 }
 
 resource "google_service_account_key" "backend_sa_key" {

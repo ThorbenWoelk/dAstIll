@@ -20,6 +20,26 @@ Deeper domain-specific guidance belongs in dedicated docs and should be linked f
 - `AGENTS.md`: agent workflow entry point, document map, repo-level instructions.
 - `DESIGN.md`: design system and frontend engineering standards.
 
+## Secrets and production config
+
+**Follow these rules**
+- Sensitive values for production belong in **GCP Secret Manager**, managed by **Terraform** from your local **`terraform.tfvars`** (same pattern as `youtube_api_key`, `backend_proxy_token`, `firebase_web_api_key`, etc.).
+
+Terraform creates the secrets, writes secret versions from tfvars, and grants **Cloud Run** service accounts plus the **GitHub Actions deploy** service account `roles/secretmanager.secretAccessor` on the relevant secrets. See `terraform/secrets.tf` and `terraform/iam.tf`.
+
+The **Release** workflow (`.github/workflows/deploy.yml`) deploys to Cloud Run and **mounts** Secret Manager secrets onto the service as named environment variables (for example `BACKEND_PROXY_TOKEN=dastill-backend-proxy-token:latest`). Non-secret runtime config uses GitHub **vars** or plain `env` in the workflow where documented.
+
+
+**Anti-patterns to avoid**
+
+- Application API keys or tokens in GitHub repository variables (use Terraform and Secret Manager instead).
+
+**CI**
+
+GitHub **encrypted secrets** in the repo are only for **CI authentication to GCP** (e.g. WIF and project id), not for storing app credentials.
+
+Full list of boundaries, Firebase, and CI steps: [docs/operations/deployment.md](./docs/operations/deployment.md).
+
 # Developer Guide
 
 ## Run the app

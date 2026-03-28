@@ -274,6 +274,8 @@ jobs:
           flags: "--service-account=dastill-frontend-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
           secrets: |
             BACKEND_PROXY_TOKEN=dastill-backend-proxy-token:latest
+            PUBLIC_FIREBASE_API_KEY=dastill-firebase-web-api-key:latest
+            PUBLIC_FIREBASE_AUTH_DOMAIN=dastill-firebase-auth-domain:latest
           # Overwrite drops legacy secret mounts (e.g. app-auth / app-session) that no longer have IAM.
           secrets_update_strategy: overwrite
           env_vars: |
@@ -282,3 +284,4 @@ jobs:
             PUBLIC_DOCS_URL=${{ needs.resolve-frontend-env.outputs.docs_url }}
             PUBLIC_CONTACT_EMAIL=${{ vars.CONTACT_EMAIL }}
             ADDRESS_HEADER=X-Forwarded-For
+            PUBLIC_FIREBASE_PROJECT_ID=${{ env.PROJECT_ID }}

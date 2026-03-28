@@ -36,6 +36,7 @@ Secrets are stored in GCP Secret Manager for:
 
 - `YOUTUBE_API_KEY`
 - `LOGFIRE_TOKEN` (when Logfire observability is enabled for the backend)
+- `firebase_web_api_key` and `firebase_auth_domain` (product frontend; Terraform writes secret versions from `terraform.tfvars`)
 
 Non-secret runtime config is passed as plain env values for:
 
@@ -54,18 +55,27 @@ Non-secret runtime config is passed as plain env values for:
 - `SUMMARIZE_PATH`
 - log level
 
+### Firebase Auth (product frontend)
+
+The SvelteKit app uses the Firebase JS SDK in the browser and **Firebase Admin** on the server for session cookies. The web client reads **`PUBLIC_FIREBASE_API_KEY`** (not `PUBLIC_FIREBASE_KEY`), **`PUBLIC_FIREBASE_AUTH_DOMAIN`**, and **`PUBLIC_FIREBASE_PROJECT_ID`** from `$env/dynamic/public`; the server resolves the same project for Admin SDK initialization.
+
+**Terraform (`terraform.tfvars`, not GitHub Variables):** set `firebase_web_api_key` (Firebase console: Project settings > General > Web API Key) when you are ready to provision Firebase client secrets; leave unset or empty until then. Optionally set `firebase_auth_domain`; if omitted, Terraform stores `{project_id}.firebaseapp.com` in Secret Manager. Run `terraform apply` so secrets `dastill-firebase-web-api-key` and `dastill-firebase-auth-domain` exist and IAM allows the frontend Cloud Run service account and GitHub Actions deploy identity to read them.
+
+**Release workflow:** mounts those secrets as `PUBLIC_FIREBASE_API_KEY` and `PUBLIC_FIREBASE_AUTH_DOMAIN`, and sets **`PUBLIC_FIREBASE_PROJECT_ID`** to the GCP project id (`GCP_PROJECT_ID` in the workflow), matching a Firebase project hosted in the same GCP project.
+
+**GCP:** Terraform grants the frontend Cloud Run service account `roles/firebaseauth.admin` so the Node server can verify ID tokens and issue session cookies.
+
+**Firebase console:** add your production site origin (and the Cloud Run URL if needed) under Authentication > Settings > Authorized domains.
+
 ## CI/CD Flow
 
 The GitHub Actions workflow:
 
 ```text
-1. Applies Terraform to provision/update AWS and GCP resources
-2. Builds and pushes backend image to Artifact Registry
-3. Deploys backend to Cloud Run with AWS IAM role configuration
-4. Builds and pushes the docs image
-5. Deploys docs to Cloud Run as a public service
-6. Builds the frontend image with the deployed backend URL injected as VITE_API_BASE
-7. Deploys the frontend to Cloud Run with PUBLIC_DOCS_URL set to the deployed docs URL
+1. Builds and pushes backend, docs, and frontend images to Artifact Registry
+2. Deploys backend, docs, and frontend to Cloud Run (main branch or release dispatch)
+3. Resolves deployed backend and docs URLs for the frontend service env
+4. Deploys the frontend with runtime env including BACKEND_API_BASE, PUBLIC_DOCS_URL, PUBLIC_FIREBASE_PROJECT_ID, and Firebase client values from Secret Manager mounts
 ```
 
 ## Docker Layout
