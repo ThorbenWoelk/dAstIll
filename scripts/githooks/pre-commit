@@ -63,11 +63,14 @@ if [[ -n "$STAGED_FRONTEND_REL" ]]; then
         echo "❌ Prettier check failed. Run 'cd frontend && bun run format' (or bunx prettier --write <files>)."
         exit 1
     fi
-    echo "🔧 Running ESLint on staged frontend files..."
-    # shellcheck disable=SC2086
-    if ! (cd frontend && bunx eslint $STAGED_FRONTEND_REL); then
-        echo "❌ ESLint failed. Fix the issues above (try: cd frontend && bun run lint:fix)."
-        exit 1
+    STAGED_FRONTEND_ESLINT=$(echo "$STAGED_FRONTEND_REL" | grep -E '\.(ts|js|mjs|cjs|svelte)$' || true)
+    if [[ -n "$STAGED_FRONTEND_ESLINT" ]]; then
+        echo "🔧 Running ESLint on staged frontend files..."
+        # shellcheck disable=SC2086
+        if ! (cd frontend && bunx eslint $STAGED_FRONTEND_ESLINT); then
+            echo "❌ ESLint failed. Fix the issues above (try: cd frontend && bun run lint:fix)."
+            exit 1
+        fi
     fi
 else
     echo "✅ No staged frontend .ts/.js/.svelte/.css under frontend/, skipping Prettier/ESLint"
