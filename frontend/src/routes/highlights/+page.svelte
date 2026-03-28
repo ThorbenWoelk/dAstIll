@@ -138,12 +138,20 @@
 
     void loadPage();
 
-    return createAiStatusPoller({
+    const stopPoller = createAiStatusPoller({
       intervalMs: 30000,
       onStatus: (payload) => {
         aiStatus = payload.status;
       },
     });
+
+    return () => {
+      if (copyResetTimer) {
+        clearTimeout(copyResetTimer);
+        copyResetTimer = null;
+      }
+      stopPoller();
+    };
   });
 
   $effect(() => {

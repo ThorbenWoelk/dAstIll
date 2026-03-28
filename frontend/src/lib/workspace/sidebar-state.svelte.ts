@@ -103,7 +103,7 @@ export type SidebarStateOptions = {
   /**
    * Optional: hook to report errors to the route's error message state.
    */
-  onError?: (message: string) => void;
+  onError?: (message: string | null) => void;
 
   /**
    * Optional: called after a channel is added successfully.

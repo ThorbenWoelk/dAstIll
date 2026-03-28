@@ -55,7 +55,7 @@ export function createSidebarChannelCrudOperations(
     if (!input.trim()) return false;
 
     context.setAddingChannel(true);
-    context.options.onError?.("");
+    context.options.onError?.(null);
 
     const submittedInput = input.trim();
 

@@ -1100,6 +1100,10 @@ export function createHomeWorkspacePage() {
     return () => {
       mq.removeEventListener("change", onViewportChange);
       unsubBrowseIntent();
+      if (preferencesSaveTimer) {
+        clearTimeout(preferencesSaveTimer);
+        preferencesSaveTimer = null;
+      }
     };
   });
 

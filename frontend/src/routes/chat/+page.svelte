@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
-  import { page } from "$app/stores";
+  import { page } from "$app/state";
   import { onMount, tick } from "svelte";
   import { SvelteURLSearchParams } from "svelte/reactivity";
 
@@ -125,9 +125,9 @@
   let stickyScroll = $state(true);
   let nearBottom = $state(true);
 
-  let requestedConversationId = $derived($page.url.searchParams.get("id"));
+  let requestedConversationId = $derived(page.url.searchParams.get("id"));
   let promptFromUrl = $derived(
-    $page.url.searchParams.get("prompt")?.trim() ?? "",
+    page.url.searchParams.get("prompt")?.trim() ?? "",
   );
   let isAuthenticated = $derived(
     authState.current.authState === "authenticated",
@@ -1084,7 +1084,7 @@
     conversationId: string | null,
     options?: { prompt?: string | null },
   ) {
-    const params = new SvelteURLSearchParams($page.url.searchParams);
+    const params = new SvelteURLSearchParams(page.url.searchParams);
 
     if (conversationId) {
       params.set("id", conversationId);

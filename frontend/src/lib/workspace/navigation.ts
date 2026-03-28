@@ -7,11 +7,7 @@ export const WORKSPACE_CONTENT_MODE_ORDER: WorkspaceContentMode[] = [
   "transcript",
 ];
 
-export function resolveDefaultContentMode(_options: {
-  hasHighlights: boolean;
-  hasSummary: boolean;
-  hasTranscript: boolean;
-}): WorkspaceContentMode {
+export function resolveDefaultContentMode(): WorkspaceContentMode {
   return "info";
 }
 

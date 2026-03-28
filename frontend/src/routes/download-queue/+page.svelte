@@ -1,7 +1,7 @@
 <script lang="ts">
   import { browser } from "$app/environment";
   import { goto, replaceState as replacePageState } from "$app/navigation";
-  import { page } from "$app/stores";
+  import { page } from "$app/state";
   import { onMount } from "svelte";
   import { authState } from "$lib/auth-state.svelte";
   import {
@@ -104,9 +104,6 @@
       // no-op: historyExhausted and others are constants here
     },
     onVideosLoaded: (res) => {
-      if (res.reset) {
-        setSyncSnapshot();
-      }
       void putCachedViewSnapshot(
         buildQueueSnapshotCacheKey(sidebar.selectedChannelId!),
         {
@@ -118,7 +115,7 @@
         getAuthStorageScopeKey(authState.current),
       );
     },
-    onError: (msg: string) => {
+    onError: (msg) => {
       errorMessage = msg;
     },
     onChannelAdded: async (channel) => {
@@ -205,10 +202,6 @@
     },
   });
 
-  function setSyncSnapshot() {
-    // lastSyncedAt = new Date(); // No longer needed, handled by sidebar composable
-  }
-
   function buildQueueSnapshotCacheKey(channelId: string) {
     const acknowledged = resolveAcknowledgedParam(sidebar.acknowledgedFilter);
     const acknowledgedKey =
@@ -231,7 +224,6 @@
   let viewUrlHydrated = $state(false);
   /** Mirrors workspace: replaceState is unsafe until after the client router is ready. */
   let queueUrlSyncReady = $state(false);
-  // let lastSyncedAt = $state<Date | null>(null); // No longer needed
   const earliestSyncDateInput = $derived(
     deriveEarliestSyncDateInput(sidebar.selectedChannel, sidebar.syncDepth),
   );
@@ -294,7 +286,7 @@
 
   const galleryChannelPreviews = $derived.by(() => {
     return buildQueueGalleryChannelPreviews({
-      basePreviews: ($page.data.channelPreviews ?? {}) as Record<
+      basePreviews: (page.data.channelPreviews ?? {}) as Record<
         string,
         ChannelSnapshot
       >,
@@ -382,7 +374,7 @@
         const selectedChannelIdAtMount = sidebar.selectedChannelId;
 
         const bootstrapResult = await resolveBootstrapOnMount({
-          serverBootstrap: $page.data.bootstrap ?? null,
+          serverBootstrap: page.data.bootstrap ?? null,
           selectedChannelId: selectedChannelIdAtMount,
           workspaceCacheScopeKey,
           viewSnapshotCacheKey: selectedChannelIdAtMount
@@ -695,8 +687,8 @@
       videoListMode="per_channel_preview"
       previewSessionKey="download-queue-sidebar-navigation"
       addSourceErrorMessage={errorMessage}
-      initialChannelPreviews={$page.data.channelPreviews ?? {}}
-      initialChannelPreviewsFilterKey={$page.data.channelPreviewsFilterKey ??
+      initialChannelPreviews={page.data.channelPreviews ?? {}}
+      initialChannelPreviewsFilterKey={page.data.channelPreviewsFilterKey ??
         "all:all:unified"}
       previewScope={{ kind: "unified" }}
       {queueVideoRefreshTick}
@@ -734,9 +726,9 @@
         <WorkspaceSidebar
           videoListMode="selected_channel"
           addSourceErrorMessage={errorMessage}
-          initialChannelPreviews={$page.data.channelPreviews ?? {}}
-          initialChannelPreviewsFilterKey={$page.data
-            .channelPreviewsFilterKey ?? "all:all:unified"}
+          initialChannelPreviews={page.data.channelPreviews ?? {}}
+          initialChannelPreviewsFilterKey={page.data.channelPreviewsFilterKey ??
+            "all:all:unified"}
           previewScope={{ kind: "unified" }}
           {queueVideoRefreshTick}
           readOnly={true}

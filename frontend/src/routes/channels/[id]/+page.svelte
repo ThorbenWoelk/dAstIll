@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto, preloadData } from "$app/navigation";
-  import { page } from "$app/stores";
+  import { page } from "$app/state";
   import { onMount } from "svelte";
   import type { Component } from "svelte";
   import { authState } from "$lib/auth-state.svelte";
@@ -71,7 +71,7 @@
     ChannelSortMode,
   } from "$lib/workspace/types";
 
-  const initialBootstrap = ($page.data.bootstrap ??
+  const initialBootstrap = (page.data.bootstrap ??
     null) as WorkspaceBootstrap | null;
   const initialSelectedSnapshot = initialBootstrap?.snapshot ?? null;
 
@@ -112,19 +112,17 @@
   let activeOverviewRequest = 0;
   let lastOverviewLoadKey = $state<string | null>(null);
   let seededChannelPreviews = $state<Record<string, ChannelSnapshot>>(
-    (($page.data.channelPreviews ?? {}) as Record<string, ChannelSnapshot>) ??
-      {},
+    (page.data.channelPreviews ?? {}) as Record<string, ChannelSnapshot>,
   );
   let seededChannelPreviewsFilterKey = $state<string>(
-    (($page.data.channelPreviewsFilterKey ?? "all:all:default") as string) ??
-      "all:all:default",
+    (page.data.channelPreviewsFilterKey ?? "all:all:default") as string,
   );
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let WorkspaceSearchBarComponent = $state<Component<any> | null>(null);
   let searchStatus = $state<SearchStatus | null>(null);
 
-  let selectedChannelId = $derived($page.params.id ?? null);
+  let selectedChannelId = $derived(page.params.id ?? null);
   let selectedChannel = $derived(
     channels.find((item) => item.id === selectedChannelId) ?? null,
   );
@@ -493,7 +491,7 @@
 
   async function confirmDeleteAccessPrompt() {
     showDeleteAccessPrompt = false;
-    const redirectTo = `${$page.url.pathname}${$page.url.search}`;
+    const redirectTo = `${page.url.pathname}${page.url.search}`;
     await goto(`/login?redirectTo=${encodeURIComponent(redirectTo)}`);
   }
 
