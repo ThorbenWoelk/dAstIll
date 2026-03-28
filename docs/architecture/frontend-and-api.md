@@ -10,6 +10,7 @@ The SvelteKit app currently exposes the following top-level product routes:
 | `/download-queue` | Queue-oriented operational view                                         |
 | `/highlights`     | Cross-video highlight browser                                           |
 | `/chat`           | RAG conversations with video content                                    |
+| `/vocabulary`     | Manage custom word replacements for summaries                           |
 | `/channels/[id]`  | Channel overview and channel-scoped operations                          |
 | `/login`          | Operator sign-in                                                        |
 | `/logout`         | Operator sign-out                                                       |
@@ -94,6 +95,12 @@ It is still useful for combined consumers and tests, but the product frontend no
 - stream AI responses via server-sent events
 - cancel in-progress message generation
 - reconnect to ongoing streams
+
+### Analytics
+
+- ingest frontend analytics events
+- batch submission with size limits
+- queues events for downstream processing
 
 ## Handler Layer Boundaries
 

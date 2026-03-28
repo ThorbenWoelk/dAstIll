@@ -10,6 +10,9 @@ dAstIll is a full-stack Rust + SvelteKit application that uses Ollama LLMs to ge
 - **Evaluated AI Summaries**: Dive deep without being overwhelmed. If an LLM screwed up, we will notice.
 - **Highlights**: Mark and save important snippets from transcripts and summaries for quick reference.
 - **Agentic RAG Search**: Ranked keyword and semantic search across transcripts and summaries, with timestamp metadata on supported transcript matches.
+- **Chat with Content**: Ask questions across your video library with source attribution and multi-pass retrieval.
+- **Vocabulary Customization**: Define word replacements applied during summary generation for consistent terminology.
+- **Audio Playback**: Optional text-to-speech synthesis via Amazon Polly for listening to summaries.
 
 ## Documentation
 

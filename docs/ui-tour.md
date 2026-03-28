@@ -8,6 +8,7 @@ The current product UI is organized into route-level experiences centered on:
 - download queue (`/download-queue`)
 - highlights (`/highlights`)
 - chat (`/chat`)
+- vocabulary (`/vocabulary`)
 - channel overview (`/channels/[id]`)
 - operator auth entrypoints (`/login`, `/logout`)
 

@@ -373,6 +373,40 @@ work and skip to the next item rather than blocking.
 
 ---
 
+## Text-to-Speech (TTS)
+
+dAstIll integrates with Amazon Polly to synthesize audio from summaries.
+
+### Configuration
+
+| Variable                | Purpose                                    |
+| ----------------------- | ------------------------------------------ |
+| `POLLY_TTS_ENABLED`     | Enable TTS (default: `false`)             |
+| `POLLY_TTS_VOICE_ID`    | Polly voice ID (e.g., `Joanna`, `Matthew`) |
+| `POLLY_TTS_ENGINE`      | Engine type: `standard` or `neural`        |
+| `POLLY_TTS_OUTPUT_FORMAT`| Output format (e.g., `wav`, `pcm`)       |
+| `POLLY_TTS_SAMPLE_RATE` | Sample rate in Hz (e.g., `8000`, `16000`)  |
+
+### Processing Pipeline
+
+1. **Markdown sanitization**: Summary text is stripped of HTML tags, markdown links are converted to plain text, and decorative characters are removed
+2. **SSML injection**: Pause markers (`<break time="..."/>`) are inserted after headings and list items for natural pacing
+3. **Chunking**: Long texts are split into chunks under 2500 characters, preserving SSML tag boundaries
+4. **Synthesis**: Each chunk is sent to Polly via SSML; returned PCM audio is concatenated
+5. **WAV wrapping**: Raw PCM is packaged into a WAV container for browser compatibility
+
+### Statistics Tracking
+
+Completed synthesis samples are recorded in Firestore (`dastill_tts_stats`) to estimate future synthesis duration based on word count and historical throughput.
+
+| Field                | Description                            |
+| -------------------- | -------------------------------------- |
+| `sample_count`       | Number of completed TTS generations    |
+| `total_words`        | Cumulative words processed             |
+| `total_duration_secs`| Cumulative synthesis duration in seconds |
+
+---
+
 ## Degradation Model
 
 The application prefers degraded functionality over total failure. Failures in one domain

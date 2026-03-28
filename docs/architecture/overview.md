@@ -33,6 +33,7 @@ The goal is to help you quickly identify which videos are worth your time based 
   - HTTP API
   - AWS S3 persistence for canonical data
   - AWS S3 Vectors for semantic search embeddings
+  - Google Firestore for user preferences and statistics
   - runtime config
   - AI service adapters
   - all long-running worker loops
@@ -49,6 +50,7 @@ The goal is to help you quickly identify which videos are worth your time based 
 - **Cloud Run** services for backend and product frontend
 - **AWS S3** for data storage
 - **AWS S3 Vectors** for semantic search
+- **Google Firestore** for user preferences and statistics
 - **AWS IAM** with GCP Workload Identity Federation for cross-cloud auth
 - **Secret Manager** for YouTube API key
 

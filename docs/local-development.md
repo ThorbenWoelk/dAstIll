@@ -75,8 +75,21 @@ Important variables:
 | `SEARCH_AUTO_CREATE_VECTOR_INDEX`   | Optional ANN index creation after backlog clears                                 |
 | `SEARCH_RERANK_MODEL`               | Optional cross-encoder reranker model name (Ollama `/api/rerank`)                |
 | `SEARCH_HYDE_MODEL`                 | Optional HyDE generation model name (Ollama `/api/generate`, short queries only) |
+| `CHAT_MULTI_PASS_ENABLED`           | Enable multi-pass retrieval for chat (default: `true`)                           |
+| `DEFAULT_SEEDED_CHANNEL_ID`         | Fallback channel ID for empty workspace (default: set in config)                  |
+| `BASELINE_RATE_LIMIT_PER_MINUTE`    | Baseline API rate limit per client (default: `600`)                              |
+| `EXPENSIVE_RATE_LIMIT_PER_MINUTE`   | Rate limit for AI/chat/search mutations (default: `120`)                         |
+| `ANONYMOUS_CHAT_QUOTA`               | Message quota for anonymous chat users (default: `30`)                          |
 | `SUMMARIZE_PATH`                    | Path to the transcript extraction CLI                                            |
 | `LOGFIRE_TOKEN`                     | Optional Logfire token for backend tracing / AI pipeline observability           |
+| `DATABRICKS_HOST`                   | Databricks workspace URL for analytics ingestion                                 |
+| `DATABRICKS_TOKEN`                  | Databricks personal access token                                                 |
+| `DATABRICKS_WAREHOUSE_ID`           | Databricks SQL warehouse ID                                                      |
+| `POLLY_TTS_ENABLED`                 | Enable Amazon Polly TTS for summary audio (default: `false`)                    |
+| `POLLY_TTS_VOICE_ID`                | Polly voice ID (default: `Joanna`)                                              |
+| `POLLY_TTS_ENGINE`                  | Polly engine: `standard` or `neural` (default: `neural`)                        |
+| `POLLY_TTS_OUTPUT_FORMAT`           | Polly output format (default: `wav`)                                            |
+| `POLLY_TTS_SAMPLE_RATE`             | Polly sample rate in Hz (default: `16000`)                                      |
 
 For local development, the backend still needs AWS credentials in addition to the bucket names.
 This repository now expects those local credentials in `backend/.env`:
@@ -119,6 +132,17 @@ Local defaults when you start with `./start_app.sh`:
 | `BACKEND_PROXY_TOKEN` | `local-dev-backend-proxy-token` |
 
 If you run the frontend by itself, copy `frontend/.env.example` to `frontend/.env` and set `BACKEND_API_BASE`, `BACKEND_PROXY_TOKEN`, and `PUBLIC_DOCS_URL`. Admin sign-in uses `ADMIN_PASSWORD` from the runtime environment, and the minimal admin entrypoint is `/login`.
+
+### Auth Migration Status
+
+The application is migrating from single-user password auth to Firebase-based multi-user authentication. The current state:
+
+- Firebase SDK session endpoints, anonymous bootstrap, and Google sign-in UI are in place
+- Backend request identity exists via `AccessContext`, but data storage and most handlers are still global
+- User-scoped migration for channels, conversations, highlights, and preferences is in progress
+- Until migration completes, data remains global and operator-level actions use password auth
+
+See `.specs/multi-user-firebase-auth.md` for migration status and remaining work.
 
 ## Search Defaults
 

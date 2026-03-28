@@ -128,6 +128,55 @@ Chat is intentionally separate from canonical content:
 - messages reference existing search chunks but don't duplicate them
 - conversations can be deleted without affecting transcripts or summaries
 
+---
+
+## Firestore Collections
+
+In addition to S3 for canonical content, the application uses Google Firestore for user-facing state and statistics.
+
+### User Preferences (`dastill_preferences`)
+
+Per-user preferences stored in Firestore:
+
+| Field                    | Description                            |
+| ------------------------ | -------------------------------------- |
+| `channel_order`          | Ordered list of channel IDs            |
+| `channel_sort_mode`      | Sort mode: `custom`, `alphabetical`    |
+| `vocabulary_replacements` | Custom word replacements for summaries |
+
+The default document ID is `user` for the global/single-user case. Multi-user auth migration adds user-scoped document IDs.
+
+### TTS Statistics (`dastill_tts_stats`)
+
+Aggregated text-to-speech generation metrics:
+
+| Field                | Description                            |
+| -------------------- | -------------------------------------- |
+| `sample_count`       | Number of completed TTS generations    |
+| `total_words`        | Cumulative words processed             |
+| `total_duration_secs`| Cumulative synthesis duration in seconds |
+
+Used to estimate synthesis time for new TTS requests.
+
+---
+
+## Storage Ownership Summary
+
+| Data                          | Storage   | Notes                                    |
+| ----------------------------- | --------- | ---------------------------------------- |
+| Channels, videos, transcripts | S3        | Canonical content                        |
+| Summaries                     | S3        | Canonical content                        |
+| Video info                    | S3        | Extended metadata                        |
+| Search chunks                 | S3        | Derived projection                       |
+| Search sources                | S3        | Derived projection metadata              |
+| Vector embeddings             | S3 Vectors| Semantic search                          |
+| Conversations                 | S3        | Chat history (JSON objects)              |
+| Highlights                    | S3        | User annotations                         |
+| User preferences              | Firestore | Per-user settings                        |
+| TTS statistics                | Firestore | Aggregated synthesis metrics             |
+
+---
+
 ## Why Separate Canonical and Search Tables
 
 This lets the app:
