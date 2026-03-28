@@ -1,4 +1,13 @@
-import type { ChannelSnapshot, QueueTab, WorkspaceBootstrap } from "$lib/types";
+import type {
+  ChannelSnapshot,
+  QueueTab,
+  VideoTypeFilter,
+  WorkspaceBootstrap,
+} from "$lib/types";
+import type {
+  AcknowledgedFilter,
+  WorkspaceContentMode,
+} from "$lib/workspace/types";
 
 const VALID_VIDEO_TYPES = new Set(["long", "short"]);
 
@@ -12,6 +21,11 @@ export type WorkspaceBootstrapPageData = {
   bootstrap: WorkspaceBootstrap | null;
   channelPreviews: Record<string, ChannelSnapshot>;
   channelPreviewsFilterKey: string;
+  selectedChannelId: string | null;
+  selectedVideoId: string | null;
+  contentMode: WorkspaceContentMode | null;
+  videoTypeFilter: VideoTypeFilter | null;
+  acknowledgedFilter: AcknowledgedFilter | null;
 };
 
 export type LoadWorkspaceBootstrapOptions = {
@@ -62,6 +76,7 @@ export async function loadWorkspaceBootstrapPageData(
     options?.selectedChannelIdOverride ??
     url.searchParams.get("channel") ??
     null;
+  const selectedVideoId = url.searchParams.get("video") ?? null;
   const typeParam = url.searchParams.get("type");
   const ackParam = url.searchParams.get("ack");
   const unified = options?.ssrQueueUnified === true;
@@ -100,37 +115,60 @@ export async function loadWorkspaceBootstrapPageData(
       `/api/workspace/bootstrap?${params.toString()}`,
     );
 
-    if (!response.ok) {
-      return {
-        bootstrap: null,
-        channelPreviews: {},
-        channelPreviewsFilterKey: fallbackFilterKey,
-      };
-    }
-
-    const bootstrap = (await response.json()) as WorkspaceBootstrap;
-
-    const channelPreviews: Record<string, ChannelSnapshot> = {};
-    if (
-      selectedChannelId &&
-      bootstrap.snapshot &&
-      bootstrap.snapshot.channel_id === selectedChannelId
-    ) {
-      channelPreviews[selectedChannelId] = bootstrap.snapshot;
-    }
-
     const previewVideoType =
       typeParam && VALID_VIDEO_TYPES.has(typeParam) ? typeParam : "all";
     const previewAcknowledged =
       ackParam === "ack" ? "ack" : ackParam === "unack" ? "unack" : "all";
     const channelPreviewsFilterKey = `${previewVideoType}:${previewAcknowledged}:${queueSegment}`;
 
-    return { bootstrap, channelPreviews, channelPreviewsFilterKey };
+    if (!response.ok) {
+      return {
+        bootstrap: null,
+        channelPreviews: {},
+        channelPreviewsFilterKey: fallbackFilterKey,
+        selectedChannelId,
+        selectedVideoId,
+        contentMode:
+          (url.searchParams.get("content") as WorkspaceContentMode) ?? null,
+        videoTypeFilter: previewVideoType as VideoTypeFilter,
+        acknowledgedFilter: previewAcknowledged as AcknowledgedFilter,
+      };
+    }
+    const bootstrap = (await response.json()) as WorkspaceBootstrap;
+
+    const channelPreviews: Record<string, ChannelSnapshot> = {};
+    const snapshot = bootstrap.snapshot;
+    if (
+      selectedChannelId &&
+      snapshot &&
+      snapshot.channel_id === selectedChannelId
+    ) {
+      channelPreviews[selectedChannelId] = snapshot;
+    }
+
+    const contentMode =
+      (url.searchParams.get("content") as WorkspaceContentMode) ?? null;
+
+    return {
+      bootstrap,
+      channelPreviews,
+      channelPreviewsFilterKey,
+      selectedChannelId,
+      selectedVideoId,
+      contentMode,
+      videoTypeFilter: previewVideoType as VideoTypeFilter,
+      acknowledgedFilter: previewAcknowledged as AcknowledgedFilter,
+    };
   } catch {
     return {
       bootstrap: null,
       channelPreviews: {},
       channelPreviewsFilterKey: fallbackFilterKey,
+      selectedChannelId,
+      selectedVideoId,
+      contentMode: null,
+      videoTypeFilter: null,
+      acknowledgedFilter: null,
     };
   }
 }

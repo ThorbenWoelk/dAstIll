@@ -24,14 +24,24 @@ import type {
 } from "./types";
 import {
   API_BASE,
+  AuthRequiredError,
   BackendUnavailableError,
   createAbortError,
+  isAuthRequiredError,
+  isSignInRequiredFailure,
   RateLimitedError,
   request,
   resolveApiUrl,
 } from "./api-client";
 
-export { API_BASE, BackendUnavailableError, RateLimitedError };
+export {
+  API_BASE,
+  AuthRequiredError,
+  BackendUnavailableError,
+  isAuthRequiredError,
+  isSignInRequiredFailure,
+  RateLimitedError,
+};
 
 // Give the backend a small grace window to return a structured timeout response
 // before the browser-level safeguard aborts the request.
@@ -441,7 +451,9 @@ export function deleteChannel(id: string) {
 }
 
 export function getChannelSyncDepth(channelId: string) {
-  return cachedGetRequest<SyncDepth>(`/api/channels/${channelId}/sync-depth`);
+  return cachedGetRequest<SyncDepth>(`/api/channels/${channelId}/sync-depth`, {
+    bypassCache: true,
+  });
 }
 
 export function refreshChannel(id: string) {

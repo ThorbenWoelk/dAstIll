@@ -1,5 +1,6 @@
 import type { Channel, ChannelSnapshot, SyncDepth, Video } from "$lib/types";
 import type { ChannelSyncDepthState } from "$lib/channel-view-cache";
+import { defaultEarliestSyncFloorDateInputValue } from "$lib/workspace/sidebar-sync-date";
 import type { QueueStats } from "$lib/workspace/types";
 
 export type QueueRefreshCadence = "off" | "fast" | "slow" | "idle";
@@ -60,27 +61,21 @@ export function deriveEffectiveEarliestSyncDate(
   selectedChannel: Channel | null,
   syncDepth: ChannelSyncDepthState | null,
 ): string | null {
-  if (!selectedChannel) {
-    return null;
-  }
-
-  if (selectedChannel.earliest_sync_date_user_set) {
-    return selectedChannel.earliest_sync_date ?? null;
-  }
-
   return (
-    syncDepth?.derived_earliest_ready_date ??
-    selectedChannel.earliest_sync_date ??
-    null
+    selectedChannel?.earliest_sync_date ?? syncDepth?.earliest_sync_date ?? null
   );
 }
 
 export function deriveEarliestSyncDateInput(
   selectedChannel: Channel | null,
   syncDepth: ChannelSyncDepthState | null,
+  now: Date = new Date(),
 ): string {
   const effective = deriveEffectiveEarliestSyncDate(selectedChannel, syncDepth);
-  return effective ? new Date(effective).toISOString().split("T")[0] : "";
+  if (effective) {
+    return new Date(effective).toISOString().split("T")[0];
+  }
+  return defaultEarliestSyncFloorDateInputValue(now);
 }
 
 export function buildQueueGalleryChannelPreviews({

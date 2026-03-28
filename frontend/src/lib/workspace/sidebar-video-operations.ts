@@ -21,6 +21,7 @@ import {
   loadChannelSnapshotWithRefresh,
 } from "$lib/workspace/route-helpers";
 import { putCachedChannels } from "$lib/workspace-cache";
+import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
 import { resolveAcknowledgedParam, type AcknowledgedFilter } from "./types";
 import type {
   CachedVideoState,
@@ -125,7 +126,9 @@ export function createSidebarVideoOperations(
         await refreshAndLoadVideos(initialChannelId, silent);
       }
     } catch (error) {
-      context.options.onError?.((error as Error).message);
+      if (!presentAuthRequiredNoticeIfNeeded(error)) {
+        context.options.onError?.((error as Error).message);
+      }
     } finally {
       if (!silent) {
         context.setLoadingChannels(false);
@@ -254,7 +257,9 @@ export function createSidebarVideoOperations(
         });
       }
     } catch (error) {
-      context.options.onError?.((error as Error).message);
+      if (!presentAuthRequiredNoticeIfNeeded(error)) {
+        context.options.onError?.((error as Error).message);
+      }
     } finally {
       if (!silent) {
         context.setLoadingVideos(false);

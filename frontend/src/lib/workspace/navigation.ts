@@ -30,6 +30,19 @@ export function getAdjacentContentMode(
   return WORKSPACE_CONTENT_MODE_ORDER[targetIndex] ?? null;
 }
 
+/** Letter shown on content tabs after G (L = tab Highlights; G H stays app Highlights page). */
+export function goHintKeyForWorkspaceContentMode(
+  mode: WorkspaceContentMode,
+): string {
+  const keys: Record<WorkspaceContentMode, string> = {
+    info: "I",
+    summary: "S",
+    highlights: "L",
+    transcript: "T",
+  };
+  return keys[mode];
+}
+
 export function resolveSwipedContentMode(
   currentMode: WorkspaceContentMode,
   deltaX: number,

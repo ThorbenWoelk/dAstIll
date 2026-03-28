@@ -9,9 +9,17 @@
     getAuthStorageScopeKey,
     getScopedStorageKey,
   } from "$lib/auth-storage";
+  import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
   import { isAnonymousChatQuotaError } from "$lib/chat/anonymous-quota";
   import type { ChatStreamTiming } from "$lib/chat/conversation-meta";
+  import {
+    clearEphemeralThreads,
+    conversationToSummary,
+    createEmptyEphemeralConversation,
+    loadEphemeralThreads,
+    saveEphemeralThreads,
+  } from "$lib/chat/ephemeral-session";
   import { CHAT_STARTER_PROMPTS } from "$lib/chat/starter-prompts";
   import { deriveToolCalls } from "$lib/chat/tool-calls";
   import {
@@ -25,6 +33,7 @@
     reconnectConversationStream,
     renameConversation,
     sendConversationMessage,
+    sendEphemeralConversationMessage,
   } from "$lib/chat-api";
   import ConfirmationModal from "$lib/components/ConfirmationModal.svelte";
   import ChatAnonymousQuotaNotice from "$lib/components/chat/ChatAnonymousQuotaNotice.svelte";
@@ -74,6 +83,8 @@
   }
 
   let conversations = $state<ChatConversationSummary[]>([]);
+  /** Anonymous-only: full threads kept in sessionStorage, never listed from the API. */
+  let ephemeralThreads = $state<ChatConversation[]>([]);
   let activeConversation = $state<ChatConversation | null>(null);
   let loadingConversations = $state(true);
   let loadingConversation = $state(false);
@@ -357,6 +368,9 @@
     });
 
     const handleVisibilityChange = () => {
+      if (authState.current.authState === "anonymous") {
+        return;
+      }
       if (document.visibilityState === "hidden") {
         pauseStreamForReconnect();
       } else {
@@ -469,6 +483,9 @@
   });
 
   $effect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
     const conversationId = activeConversation?.id;
     const isGeneratingTitle = activeConversation?.title_status === "generating";
     if (!conversationId || !isGeneratingTitle) {
@@ -507,13 +524,24 @@
       loadingConversations = true;
     }
     try {
-      conversations = await listConversations();
-      const conversationId = requestedConversationId;
-      if (!conversationId && !promptFromUrl && conversations[0]) {
-        await navigateToConversation(conversations[0].id);
+      if (authState.current.authState === "anonymous") {
+        ephemeralThreads = loadEphemeralThreads();
+        conversations = ephemeralThreads.map(conversationToSummary);
+        const conversationId = requestedConversationId;
+        if (!conversationId && !promptFromUrl && conversations[0]) {
+          await navigateToConversation(conversations[0].id);
+        }
+      } else {
+        conversations = await listConversations();
+        const conversationId = requestedConversationId;
+        if (!conversationId && !promptFromUrl && conversations[0]) {
+          await navigateToConversation(conversations[0].id);
+        }
       }
     } catch (error) {
-      errorMessage = (error as Error).message;
+      if (!presentAuthRequiredNoticeIfNeeded(error)) {
+        errorMessage = (error as Error).message;
+      }
     } finally {
       if (!options?.quiet) {
         loadingConversations = false;
@@ -525,6 +553,28 @@
     conversationId: string,
     options?: { quiet?: boolean },
   ) {
+    if (authState.current.authState === "anonymous") {
+      if (!options?.quiet) {
+        loadingConversation = true;
+      }
+      const found = ephemeralThreads.find((t) => t.id === conversationId);
+      if (requestedConversationId === conversationId) {
+        if (found) {
+          activeConversation = structuredClone(found);
+          clearStreamState();
+          upsertConversationSummary(conversationToSummary(found));
+          mobileTab = "content";
+          stickyScroll = true;
+          await scrollToBottom("auto");
+        } else {
+          activeConversation = null;
+          errorMessage = "Conversation not found.";
+        }
+      }
+      loadingConversation = false;
+      return;
+    }
+
     if (!options?.quiet) {
       loadingConversation = true;
       if (
@@ -549,7 +599,9 @@
     } catch (error) {
       if (requestedConversationId === conversationId) {
         activeConversation = null;
-        errorMessage = (error as Error).message;
+        if (!presentAuthRequiredNoticeIfNeeded(error)) {
+          errorMessage = (error as Error).message;
+        }
       }
     } finally {
       loadingConversation = false;
@@ -557,6 +609,12 @@
   }
 
   async function refreshConversation(conversationId: string) {
+    if (authState.current.authState === "anonymous") {
+      if (activeConversation?.id === conversationId) {
+        persistEphemeralFromActive();
+      }
+      return;
+    }
     try {
       const conversation = await getConversation(conversationId);
       if (activeConversation?.id === conversationId) {
@@ -569,22 +627,55 @@
     }
   }
 
+  function persistEphemeralFromActive() {
+    if (authState.current.authState !== "anonymous" || !activeConversation) {
+      return;
+    }
+    const id = activeConversation.id;
+    const idx = ephemeralThreads.findIndex((t) => t.id === id);
+    const merged: ChatConversation[] =
+      idx === -1
+        ? [activeConversation, ...ephemeralThreads]
+        : ephemeralThreads.map((t) =>
+            t.id === id ? (activeConversation as ChatConversation) : t,
+          );
+    ephemeralThreads = merged;
+    saveEphemeralThreads(merged);
+    conversations = merged.map(conversationToSummary);
+  }
+
   async function handleCreateConversation() {
     creatingConversation = true;
     errorMessage = null;
     abortActiveChatStream();
     clearStreamState();
     try {
-      const conversation = await createConversation();
-      upsertConversationSummary(conversation);
-      activeConversation = conversation;
-      mobileTab = "content";
-      hydratedConversationId = conversation.id;
-      await navigateToConversation(conversation.id);
-      chatInputFocusSignal += 1;
-      await tick();
+      if (authState.current.authState === "anonymous") {
+        const conversation = createEmptyEphemeralConversation();
+        ephemeralThreads = [conversation, ...ephemeralThreads];
+        saveEphemeralThreads(ephemeralThreads);
+        conversations = ephemeralThreads.map(conversationToSummary);
+        upsertConversationSummary(conversationToSummary(conversation));
+        activeConversation = conversation;
+        mobileTab = "content";
+        hydratedConversationId = conversation.id;
+        await navigateToConversation(conversation.id);
+        chatInputFocusSignal += 1;
+        await tick();
+      } else {
+        const conversation = await createConversation();
+        upsertConversationSummary(conversation);
+        activeConversation = conversation;
+        mobileTab = "content";
+        hydratedConversationId = conversation.id;
+        await navigateToConversation(conversation.id);
+        chatInputFocusSignal += 1;
+        await tick();
+      }
     } catch (error) {
-      errorMessage = (error as Error).message;
+      if (!presentAuthRequiredNoticeIfNeeded(error)) {
+        errorMessage = (error as Error).message;
+      }
     } finally {
       creatingConversation = false;
     }
@@ -595,13 +686,39 @@
     title: string,
   ) {
     try {
+      if (authState.current.authState === "anonymous") {
+        const next = ephemeralThreads.map((thread) =>
+          thread.id === conversationId
+            ? {
+                ...thread,
+                title,
+                title_status: "manual" as const,
+                updated_at: new Date().toISOString(),
+              }
+            : thread,
+        );
+        ephemeralThreads = next;
+        saveEphemeralThreads(next);
+        conversations = next.map(conversationToSummary);
+        if (activeConversation?.id === conversationId) {
+          activeConversation = {
+            ...activeConversation,
+            title,
+            title_status: "manual",
+            updated_at: new Date().toISOString(),
+          };
+        }
+        return;
+      }
       const conversation = await renameConversation(conversationId, title);
       if (activeConversation?.id === conversationId) {
         activeConversation = conversation;
       }
       upsertConversationSummary(conversation);
     } catch (error) {
-      errorMessage = (error as Error).message;
+      if (!presentAuthRequiredNoticeIfNeeded(error)) {
+        errorMessage = (error as Error).message;
+      }
     }
   }
 
@@ -626,16 +743,30 @@
       confirmDeleteAll = false;
 
       try {
-        await deleteAllConversations();
-        conversations = [];
-        activeConversation = null;
-        hydratedConversationId = null;
-        abortActiveChatStream();
-        clearStreamState();
-        mobileTab = "content";
-        await navigateToConversation(null);
+        if (authState.current.authState === "anonymous") {
+          clearEphemeralThreads();
+          ephemeralThreads = [];
+          conversations = [];
+          activeConversation = null;
+          hydratedConversationId = null;
+          abortActiveChatStream();
+          clearStreamState();
+          mobileTab = "content";
+          await navigateToConversation(null);
+        } else {
+          await deleteAllConversations();
+          conversations = [];
+          activeConversation = null;
+          hydratedConversationId = null;
+          abortActiveChatStream();
+          clearStreamState();
+          mobileTab = "content";
+          await navigateToConversation(null);
+        }
       } catch (error) {
-        errorMessage = (error as Error).message;
+        if (!presentAuthRequiredNoticeIfNeeded(error)) {
+          errorMessage = (error as Error).message;
+        }
       } finally {
         deletingAllConversations = false;
       }
@@ -650,21 +781,40 @@
     deleteConversationId = null;
 
     try {
-      await deleteConversation(conversationId);
-      conversations = conversations.filter(
-        (conversation) => conversation.id !== conversationId,
-      );
+      if (authState.current.authState === "anonymous") {
+        const nextThreads = ephemeralThreads.filter(
+          (c) => c.id !== conversationId,
+        );
+        ephemeralThreads = nextThreads;
+        saveEphemeralThreads(nextThreads);
+        conversations = nextThreads.map(conversationToSummary);
+        if (activeConversation?.id === conversationId) {
+          activeConversation = null;
+          hydratedConversationId = null;
+          abortActiveChatStream();
+          clearStreamState();
+          const nextConversation = conversations[0];
+          await navigateToConversation(nextConversation?.id ?? null);
+        }
+      } else {
+        await deleteConversation(conversationId);
+        conversations = conversations.filter(
+          (conversation) => conversation.id !== conversationId,
+        );
 
-      if (activeConversation?.id === conversationId) {
-        activeConversation = null;
-        hydratedConversationId = null;
-        abortActiveChatStream();
-        clearStreamState();
-        const nextConversation = conversations[0];
-        await navigateToConversation(nextConversation?.id ?? null);
+        if (activeConversation?.id === conversationId) {
+          activeConversation = null;
+          hydratedConversationId = null;
+          abortActiveChatStream();
+          clearStreamState();
+          const nextConversation = conversations[0];
+          await navigateToConversation(nextConversation?.id ?? null);
+        }
       }
     } catch (error) {
-      errorMessage = (error as Error).message;
+      if (!presentAuthRequiredNoticeIfNeeded(error)) {
+        errorMessage = (error as Error).message;
+      }
     }
   }
 
@@ -688,15 +838,29 @@
     if (!conversation) {
       creatingConversation = true;
       try {
-        conversation = await createConversation();
-        activeConversation = conversation;
-        mobileTab = "content";
-        hydratedConversationId = conversation.id;
-        upsertConversationSummary(conversation);
-        await navigateToConversation(conversation.id);
+        if (authState.current.authState === "anonymous") {
+          conversation = createEmptyEphemeralConversation();
+          ephemeralThreads = [conversation, ...ephemeralThreads];
+          saveEphemeralThreads(ephemeralThreads);
+          conversations = ephemeralThreads.map(conversationToSummary);
+          activeConversation = conversation;
+          mobileTab = "content";
+          hydratedConversationId = conversation.id;
+          upsertConversationSummary(conversationToSummary(conversation));
+          await navigateToConversation(conversation.id);
+        } else {
+          conversation = await createConversation();
+          activeConversation = conversation;
+          mobileTab = "content";
+          hydratedConversationId = conversation.id;
+          upsertConversationSummary(conversation);
+          await navigateToConversation(conversation.id);
+        }
       } catch (error) {
         creatingConversation = false;
-        errorMessage = (error as Error).message;
+        if (!presentAuthRequiredNoticeIfNeeded(error)) {
+          errorMessage = (error as Error).message;
+        }
         return;
       }
       creatingConversation = false;
@@ -705,6 +869,11 @@
     if (!conversation) {
       return;
     }
+
+    const ephemeralRequestBase =
+      authState.current.authState === "anonymous"
+        ? structuredClone(conversation)
+        : null;
 
     draft = "";
     await navigateToConversation(conversation.id);
@@ -732,25 +901,42 @@
       updated_at: new Date().toISOString(),
       messages: [...conversation.messages, userMessage, assistantMessage],
     };
-    upsertConversationSummary(activeConversation);
+    upsertConversationSummary(
+      authState.current.authState === "anonymous"
+        ? conversationToSummary(activeConversation)
+        : activeConversation,
+    );
     stickyScroll = true;
     await scrollToBottom();
 
     await startStream(
       conversation.id,
       (signal, handlers) =>
-        sendConversationMessage(
-          conversation.id,
-          {
-            content,
-            deep_research: deepResearch,
-            ...(selectedChatModelId ? { model: selectedChatModelId } : {}),
-          },
-          handlers,
-          {
-            signal,
-          },
-        ),
+        authState.current.authState === "anonymous" && ephemeralRequestBase
+          ? sendEphemeralConversationMessage(
+              {
+                conversation: ephemeralRequestBase,
+                content,
+                deep_research: deepResearch,
+                ...(selectedChatModelId ? { model: selectedChatModelId } : {}),
+              },
+              handlers,
+              {
+                signal,
+              },
+            )
+          : sendConversationMessage(
+              conversation.id,
+              {
+                content,
+                deep_research: deepResearch,
+                ...(selectedChatModelId ? { model: selectedChatModelId } : {}),
+              },
+              handlers,
+              {
+                signal,
+              },
+            ),
       { resetStreamingMessage: false },
     );
   }
@@ -763,7 +949,9 @@
     try {
       await cancelConversationGeneration(streamingConversationId);
     } catch (error) {
-      errorMessage = (error as Error).message;
+      if (!presentAuthRequiredNoticeIfNeeded(error)) {
+        errorMessage = (error as Error).message;
+      }
     }
   }
 
@@ -813,8 +1001,24 @@
         onDone: (message) => {
           streamDoneAt = Date.now();
           replaceStreamingMessage(message);
+          if (
+            authState.current.authState === "anonymous" &&
+            activeConversation?.title_status === "generating"
+          ) {
+            activeConversation = {
+              ...activeConversation,
+              title_status: "idle",
+            };
+          }
         },
         onError: (message) => {
+          if (presentAuthRequiredNoticeIfNeeded(new Error(message))) {
+            patchStreamingMessage({
+              content: "",
+              status: "failed",
+            });
+            return;
+          }
           patchStreamingMessage({
             content: message,
             status: "failed",
@@ -839,7 +1043,9 @@
         errorMessage = null;
         return;
       }
-      errorMessage = message;
+      if (!presentAuthRequiredNoticeIfNeeded(error)) {
+        errorMessage = message;
+      }
     } finally {
       if (pendingReconnectConversationId !== conversationId) {
         streamController = null;

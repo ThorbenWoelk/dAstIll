@@ -343,6 +343,18 @@ async fn main() -> anyhow::Result<()> {
                 .delete(chat::delete_conversation),
         )
         .route(
+            "/api/chat/ephemeral/messages",
+            post(chat::send_ephemeral_message)
+                .layer(middleware::from_fn_with_state(
+                    state.clone(),
+                    enforce_expensive_rate_limit,
+                ))
+                .layer(middleware::from_fn_with_state(
+                    state.clone(),
+                    enforce_anonymous_chat_quota,
+                )),
+        )
+        .route(
             "/api/chat/conversations/{id}/messages",
             post(chat::send_message)
                 .layer(middleware::from_fn_with_state(

@@ -25,12 +25,14 @@ import {
   resetSummaryQualityState,
 } from "$lib/workspace/formatting";
 import type {
+  Transcript,
   TranscriptRenderMode,
   VideoInfo as VideoInfoPayload,
   Summary as SummaryPayload,
   ContentStatus,
 } from "$lib/types";
 import type { WorkspaceContentMode } from "$lib/workspace/types";
+import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
 import { track } from "$lib/analytics/tracker";
 
 export type ContentCacheEntry = {
@@ -54,9 +56,12 @@ export function createContentState(options: {
     transcriptStatus: ContentStatus | undefined,
     summaryStatus: ContentStatus | undefined,
   ) => void;
+  initialContentMode?: WorkspaceContentMode;
 }) {
   let loadingContent = $state(false);
-  let contentMode = $state<WorkspaceContentMode>("info");
+  let contentMode = $state<WorkspaceContentMode>(
+    options.initialContentMode ?? "info",
+  );
   let contentText = $state("");
   let transcriptRenderMode = $state<TranscriptRenderMode>("plain_text");
   let draftTranscriptRenderMode = $state<TranscriptRenderMode>("plain_text");
@@ -245,10 +250,15 @@ export function createContentState(options: {
           });
         }
         let transcriptSuccess = false;
-        let transcript;
+        let transcript: Transcript | undefined;
         try {
           transcript = await ensureTranscript(targetVideoId);
           transcriptSuccess = true;
+        } catch (error) {
+          if (!isCurrentContentRequest(requestId, targetVideoId, targetMode))
+            return;
+          options.setVideoStatus(targetVideoId, "failed", undefined);
+          throw error;
         } finally {
           if (channelId) {
             track({
@@ -278,6 +288,7 @@ export function createContentState(options: {
         contentCache.set(targetVideoId, entry);
         resetSummaryQuality();
         videoInfo = null;
+        options.setVideoStatus(targetVideoId, "ready", undefined);
       } else if (targetMode === "summary") {
         try {
           const summary = await getSummary(targetVideoId);
@@ -294,6 +305,8 @@ export function createContentState(options: {
             contentText = "";
             resetSummaryQuality();
             videoInfo = null;
+          } else if (presentAuthRequiredNoticeIfNeeded(error)) {
+            return;
           } else {
             throw error;
           }

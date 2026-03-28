@@ -2,6 +2,7 @@
   import { goto } from "$app/navigation";
   import { onMount } from "svelte";
   import { getPreferences, isAiAvailable } from "$lib/api";
+  import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
   import MobileYouTubeTopNav from "$lib/components/mobile/MobileYouTubeTopNav.svelte";
   import ErrorToast from "$lib/components/ErrorToast.svelte";
@@ -41,7 +42,9 @@
       vocabulary = preferences.vocabulary_replacements ?? [];
       aiStatus = aiHealth.status;
     } catch (error) {
-      errorMessage = (error as Error).message;
+      if (!presentAuthRequiredNoticeIfNeeded(error)) {
+        errorMessage = (error as Error).message;
+      }
     } finally {
       loading = false;
     }

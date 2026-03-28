@@ -2,7 +2,10 @@
   import ContentEditor from "$lib/components/ContentEditor.svelte";
   import ChevronIcon from "$lib/components/icons/ChevronIcon.svelte";
   import type { Video } from "$lib/types";
-  import { WORKSPACE_CONTENT_MODE_ORDER } from "$lib/workspace/navigation";
+  import {
+    goHintKeyForWorkspaceContentMode,
+    WORKSPACE_CONTENT_MODE_ORDER,
+  } from "$lib/workspace/navigation";
   import type { WorkspaceContentMode } from "$lib/workspace/types";
 
   const CONTENT_MODE_LABELS: Record<WorkspaceContentMode, string> = {
@@ -100,6 +103,8 @@
           {#each WORKSPACE_CONTENT_MODE_ORDER as mode}
             <button
               type="button"
+              data-workspace-content-tab={mode}
+              data-go-hint-key={goHintKeyForWorkspaceContentMode(mode)}
               class={`-mb-px min-w-0 border-b-2 px-1 pb-3 text-center text-[11px] font-bold uppercase tracking-[0.12em] transition-colors ${
                 contentMode === mode
                   ? "border-[var(--accent)] text-[var(--accent-strong)]"

@@ -8,6 +8,7 @@
     getAuthStorageScopeKey,
     getScopedStorageKey,
   } from "$lib/auth-storage";
+  import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
   import defaultChannelIcon from "$lib/assets/channel-default.svg";
   import {
@@ -26,6 +27,7 @@
   } from "$lib/api";
   import AddSourceFeedbackToast from "$lib/components/AddSourceFeedbackToast.svelte";
   import ConfirmationModal from "$lib/components/ConfirmationModal.svelte";
+  import SignInRequiredModal from "$lib/components/SignInRequiredModal.svelte";
   import ErrorToast from "$lib/components/ErrorToast.svelte";
   import MobileYouTubeTopNav from "$lib/components/mobile/MobileYouTubeTopNav.svelte";
   import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
@@ -62,7 +64,7 @@
     resolveAddedVideoStatus,
   } from "$lib/workspace/add-source-feedback";
   import { channelOrderFromList } from "$lib/workspace/channels";
-  import { formatSyncDate } from "$lib/workspace/content";
+  import { resolveSyncDateInputValue } from "$lib/workspace/sidebar-sync-date";
   import { mobileBottomBar } from "$lib/mobile-navigation/mobileBottomBar";
   import type {
     AcknowledgedFilter,
@@ -150,32 +152,14 @@
     return selectedChannel ? null : "Channel not found.";
   });
 
-  function resolveEffectiveSyncDate(
-    currentChannel: Channel | null,
-    currentSyncDepth: SyncDepth | null,
-  ) {
-    if (!currentChannel) {
-      return null;
-    }
-
-    return currentChannel.earliest_sync_date_user_set
-      ? currentChannel.earliest_sync_date
-      : (currentSyncDepth?.derived_earliest_ready_date ??
-          currentChannel.earliest_sync_date ??
-          null);
-  }
-
   function syncInputValue(
     currentChannel: Channel | null = selectedChannel,
     currentSyncDepth: SyncDepth | null = syncDepth,
   ) {
-    const effective = resolveEffectiveSyncDate(
+    earliestSyncDateInput = resolveSyncDateInputValue(
       currentChannel,
       currentSyncDepth,
     );
-    earliestSyncDateInput = effective
-      ? new Date(effective).toISOString().split("T")[0]
-      : "";
   }
 
   function applyChannelPreferences(nextChannels: Channel[]) {
@@ -232,8 +216,9 @@
     const currentChannel =
       nextChannels.find((item) => item.id === bootstrap.selected_channel_id) ??
       null;
-    syncDepth = snapshot?.sync_depth ?? null;
-    syncInputValue(currentChannel, snapshot?.sync_depth ?? null);
+    const depth = snapshot?.sync_depth ?? null;
+    syncDepth = depth;
+    syncInputValue(currentChannel, depth);
   }
 
   function mergeUpdatedChannel(updatedChannel: Channel) {
@@ -308,13 +293,6 @@
         return;
       }
 
-      if (
-        options?.shouldReloadChannels &&
-        nextChannels.some((item) => item.id === channelId)
-      ) {
-        return;
-      }
-
       const nextSyncDepth = await getChannelSyncDepth(channelId);
       if (requestId !== activeOverviewRequest) {
         return;
@@ -327,7 +305,9 @@
         return;
       }
 
-      errorMessage = (error as Error).message;
+      if (!presentAuthRequiredNoticeIfNeeded(error)) {
+        errorMessage = (error as Error).message;
+      }
       syncDepth = null;
       earliestSyncDateInput = "";
     } finally {
@@ -357,7 +337,9 @@
       await refreshChannel(selectedChannelId);
       await refreshSelectedChannelDepth(selectedChannelId, updatedChannel);
     } catch (error) {
-      errorMessage = (error as Error).message;
+      if (!presentAuthRequiredNoticeIfNeeded(error)) {
+        errorMessage = (error as Error).message;
+      }
     } finally {
       savingSyncDate = false;
     }
@@ -402,7 +384,9 @@
       void trackAddedChannel(addedChannel);
       return true;
     } catch (error) {
-      errorMessage = (error as Error).message;
+      if (!presentAuthRequiredNoticeIfNeeded(error)) {
+        errorMessage = (error as Error).message;
+      }
       return false;
     } finally {
       addingChannel = false;
@@ -492,7 +476,9 @@
         }
       }
     } catch (error) {
-      errorMessage = (error as Error).message;
+      if (!presentAuthRequiredNoticeIfNeeded(error)) {
+        errorMessage = (error as Error).message;
+      }
     }
   }
 
@@ -778,7 +764,9 @@
           updatedChannel.id,
           updatedChannel,
         ).catch((error) => {
-          errorMessage = (error as Error).message;
+          if (!presentAuthRequiredNoticeIfNeeded(error)) {
+            errorMessage = (error as Error).message;
+          }
         });
       }
     },
@@ -962,21 +950,6 @@
           </p>
         </div>
       </div>
-
-      {#if selectedChannel}
-        <div class="text-left sm:text-right">
-          <p
-            class="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--soft-foreground)] opacity-50"
-          >
-            Sync boundary
-          </p>
-          <p class="mt-2 text-[15px] font-semibold text-[var(--foreground)]">
-            {formatSyncDate(
-              resolveEffectiveSyncDate(selectedChannel, syncDepth),
-            )}
-          </p>
-        </div>
-      {/if}
     </div>
 
     <div
@@ -987,7 +960,7 @@
           class="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)]"
         >
           <div class="space-y-4">
-            {#each Array.from({ length: 2 }) as _, index (index)}
+            {#each Array.from({ length: 1 }) as _, index (index)}
               <div
                 class="animate-pulse rounded-[var(--radius-lg)] bg-[var(--panel-surface)] p-5 shadow-sm"
               >
@@ -1046,14 +1019,7 @@
               <p
                 class="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-55"
               >
-                Current sync boundary
-              </p>
-              <p
-                class="mt-3 text-[22px] font-semibold tracking-tight text-[var(--foreground)]"
-              >
-                {formatSyncDate(
-                  resolveEffectiveSyncDate(selectedChannel, syncDepth),
-                )}
+                Sync boundary
               </p>
               <p
                 class="mt-3 max-w-2xl text-[14px] leading-6 text-[var(--soft-foreground)]"
@@ -1062,20 +1028,10 @@
                 workspace. Newer videos stay surfaced automatically once
                 transcripts are ready.
               </p>
-            </section>
-
-            <section
-              class="rounded-[var(--radius-lg)] bg-[var(--surface)] p-5 shadow-sm sm:p-6"
-            >
-              <p
-                class="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-55"
-              >
-                Adjust boundary
-              </p>
               <div class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
                 <input
                   type="date"
-                  class="min-w-0 flex-1 rounded-full border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] px-4 py-2 text-[14px] font-medium transition-colors focus:border-[var(--accent)]/40 focus:outline-none"
+                  class="min-w-0 flex-1 rounded-full border border-[var(--accent-border-soft)] bg-[var(--surface)] px-4 py-2 text-[14px] font-medium transition-colors focus:border-[var(--accent)]/40 focus:outline-none"
                   bind:value={earliestSyncDateInput}
                   disabled={savingSyncDate}
                 />
@@ -1175,13 +1131,9 @@
     onCancel={cancelDeleteChannel}
   />
 
-  <ConfirmationModal
+  <SignInRequiredModal
     show={showDeleteAccessPrompt}
-    title="Admin sign-in required"
-    message="Deleting channels is restricted to admins. Sign in to unlock channel management."
-    confirmLabel="Sign in"
-    cancelLabel="Not now"
-    tone="info"
+    message="Sign in to remove channels and manage your library."
     onConfirm={confirmDeleteAccessPrompt}
     onCancel={cancelDeleteAccessPrompt}
   />

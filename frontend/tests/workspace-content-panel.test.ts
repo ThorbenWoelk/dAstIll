@@ -31,7 +31,7 @@ describe("hasActiveOverlay", () => {
     expect(hasActiveOverlay(state)).toBe(true);
   });
 
-  it("returns true when admin access prompt is shown", () => {
+  it("returns true when sign-in required prompt is shown", () => {
     const state = makeOverlaysState({ showDeleteAccessPrompt: true });
     expect(hasActiveOverlay(state)).toBe(true);
   });

@@ -13,9 +13,9 @@ use crate::{
     audit, db,
     models::{
         ChatConversation, ChatMessage, ChatRole, ChatTitleStatus, CreateConversationRequest,
-        SendChatMessageRequest, UpdateConversationRequest,
+        EphemeralChatMessageRequest, SendChatMessageRequest, UpdateConversationRequest,
     },
-    security::{AccessContext, can_access_video},
+    security::{AccessContext, AuthState, can_access_video},
     services::{
         SpawnReplyJob,
         chat::{default_chat_cloud_model_id, is_chat_cloud_model_choice},
@@ -47,6 +47,32 @@ pub struct ChatSuggestionItem {
 
 fn conversation_scope_id(access_context: &AccessContext) -> &str {
     access_context.user_id.as_deref().unwrap_or("anonymous")
+}
+
+const EPHEMERAL_CHAT_MAX_MESSAGES: usize = 200;
+const EPHEMERAL_CHAT_MAX_TOTAL_CHARS: usize = 500_000;
+
+fn validate_ephemeral_conversation(
+    conversation: &ChatConversation,
+) -> Result<(), (StatusCode, String)> {
+    if conversation.messages.len() > EPHEMERAL_CHAT_MAX_MESSAGES {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Conversation has too many messages for one request.".to_string(),
+        ));
+    }
+    let total: usize = conversation
+        .messages
+        .iter()
+        .map(|message| message.content.len())
+        .sum();
+    if total > EPHEMERAL_CHAT_MAX_TOTAL_CHARS {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Conversation payload is too large.".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 pub async fn channel_suggestions(
@@ -305,6 +331,88 @@ pub async fn send_message(
         deep_research: payload.deep_research,
         reply_model,
         active_chat: active_chat.clone(),
+        persist_to_store: true,
+    });
+
+    Ok(sse_response(active_chat).await)
+}
+
+/// Anonymous-only: runs one model turn without reading or writing persisted conversations.
+pub async fn send_ephemeral_message(
+    State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
+    Json(payload): Json<EphemeralChatMessageRequest>,
+) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, (StatusCode, String)>
+{
+    if access_context.auth_state != AuthState::Anonymous {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Ephemeral chat is only for signed-out visitors. Use the standard chat API when signed in."
+                .to_string(),
+        ));
+    }
+
+    let prompt = payload.content.trim();
+    if prompt.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Message content must not be empty".to_string(),
+        ));
+    }
+
+    validate_ephemeral_conversation(&payload.conversation)?;
+
+    let conversation_id = payload.conversation.id.clone();
+    let active_chat = {
+        let mut active_chats = state.active_chats.lock().await;
+        if active_chats.contains_key(&conversation_id) {
+            return Err((
+                StatusCode::CONFLICT,
+                "Conversation already has an active response".to_string(),
+            ));
+        }
+        let handle = crate::services::ActiveChatHandle::new();
+        active_chats.insert(conversation_id.clone(), handle.clone());
+        handle
+    };
+
+    let reply_model = match payload
+        .model
+        .as_deref()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+    {
+        Some(id) if is_chat_cloud_model_choice(id) => id.to_string(),
+        Some(_) => {
+            state.active_chats.lock().await.remove(&conversation_id);
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Unknown chat model. Pick a cloud model from the selector.".to_string(),
+            ));
+        }
+        None => default_chat_cloud_model_id(state.chat.model()),
+    };
+
+    let mut conversation = payload.conversation;
+    let user_message = state.chat.build_user_message(prompt);
+    let provisional_title = state.chat.build_provisional_title(prompt);
+    let should_auto_name = apply_user_message_to_conversation(
+        &mut conversation,
+        user_message,
+        provisional_title,
+        Utc::now(),
+    );
+
+    state.chat.spawn_reply(SpawnReplyJob {
+        state: state.clone(),
+        conversation,
+        conversation_scope_id: String::new(),
+        prompt: prompt.to_string(),
+        should_auto_name,
+        deep_research: payload.deep_research,
+        reply_model,
+        active_chat: active_chat.clone(),
+        persist_to_store: false,
     });
 
     Ok(sse_response(active_chat).await)

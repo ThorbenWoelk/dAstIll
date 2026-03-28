@@ -1,7 +1,10 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import ContentEditor from "$lib/components/ContentEditor.svelte";
-  import { WORKSPACE_CONTENT_MODE_ORDER } from "$lib/workspace/navigation";
+  import {
+    goHintKeyForWorkspaceContentMode,
+    WORKSPACE_CONTENT_MODE_ORDER,
+  } from "$lib/workspace/navigation";
   import type { WorkspaceContentMode } from "$lib/workspace/types";
 
   let {
@@ -69,6 +72,8 @@
   {#each WORKSPACE_CONTENT_MODE_ORDER as mode}
     <button
       type="button"
+      data-workspace-content-tab={mode}
+      data-go-hint-key={goHintKeyForWorkspaceContentMode(mode)}
       class={`-mb-px inline-flex h-6 items-center border-b-2 text-[11px] font-bold uppercase tracking-[0.12em] transition-colors ${
         contentMode === mode
           ? "border-[var(--accent)] text-[var(--accent-strong)]"

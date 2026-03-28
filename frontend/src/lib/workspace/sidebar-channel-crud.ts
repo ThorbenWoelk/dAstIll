@@ -16,6 +16,7 @@ import { putCachedChannels } from "$lib/workspace-cache";
 import type { SidebarStateOptions } from "./sidebar-state.svelte";
 import type { Channel, Video } from "$lib/types";
 import { resolveNextChannelSelection } from "./route-helpers";
+import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
 import { looksLikeYouTubeVideoInput } from "$lib/utils/youtube-input";
 
 type SidebarChannelCrudContext = {
@@ -86,7 +87,9 @@ export function createSidebarChannelCrudOperations(
         }
         return true;
       } catch (error) {
-        context.options.onError?.((error as Error).message);
+        if (!presentAuthRequiredNoticeIfNeeded(error)) {
+          context.options.onError?.((error as Error).message);
+        }
         return false;
       } finally {
         context.setAddingChannel(false);
@@ -120,7 +123,9 @@ export function createSidebarChannelCrudOperations(
       context.setChannels(previousChannels);
       context.setSelectedChannelId(previousSelectedId);
       context.syncChannelOrderFromList();
-      context.options.onError?.((error as Error).message);
+      if (!presentAuthRequiredNoticeIfNeeded(error)) {
+        context.options.onError?.((error as Error).message);
+      }
       return false;
     } finally {
       context.setAddingChannel(false);
@@ -174,7 +179,9 @@ export function createSidebarChannelCrudOperations(
     } catch (error) {
       context.setChannels(previousChannels);
       context.syncChannelOrderFromList();
-      context.options.onError?.((error as Error).message);
+      if (!presentAuthRequiredNoticeIfNeeded(error)) {
+        context.options.onError?.((error as Error).message);
+      }
     } finally {
       context.setChannelIdToDelete(null);
       context.setShowDeleteConfirmation(false);

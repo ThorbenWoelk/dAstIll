@@ -17,7 +17,7 @@ function createSyncDepth(overrides: Partial<SyncDepth> = {}): SyncDepth {
   return {
     earliest_sync_date: "2026-02-10T00:00:00.000Z",
     earliest_sync_date_user_set: false,
-    derived_earliest_ready_date: "2026-02-08T00:00:00.000Z",
+    derived_earliest_ready_date: "2012-07-14T00:00:00.000Z",
     ...overrides,
   };
 }
@@ -41,59 +41,44 @@ function createVideo(
 }
 
 describe("resolveDisplayedSyncDepthIso", () => {
-  it("keeps the derived sync boundary when older ready videos were not loaded via load more", () => {
+  it("shows the persisted sync floor, not derived oldest-ready or loaded videos", () => {
     const result = resolveDisplayedSyncDepthIso({
       videos: [
         createVideo("2026-02-01T00:00:00.000Z"),
         createVideo("2026-03-01T00:00:00.000Z"),
       ],
-      selectedChannel: createChannel(),
-      syncDepth: createSyncDepth(),
-      allowLoadedVideoOverride: false,
-    });
-
-    expect(result).toBe("2026-02-08T00:00:00.000Z");
-  });
-
-  it("prefers server-derived depth over oldest in the loaded page when both exist", () => {
-    const result = resolveDisplayedSyncDepthIso({
-      videos: [
-        createVideo("2026-02-01T00:00:00.000Z"),
-        createVideo("2026-03-01T00:00:00.000Z"),
-      ],
-      selectedChannel: createChannel(),
-      syncDepth: createSyncDepth(),
-      allowLoadedVideoOverride: true,
-    });
-
-    expect(result).toBe("2026-02-08T00:00:00.000Z");
-  });
-
-  it("falls back to oldest loaded ready video when derived depth is absent", () => {
-    const result = resolveDisplayedSyncDepthIso({
-      videos: [
-        createVideo("2026-02-01T00:00:00.000Z"),
-        createVideo("2026-03-01T00:00:00.000Z"),
-      ],
-      selectedChannel: createChannel(),
-      syncDepth: createSyncDepth({ derived_earliest_ready_date: null }),
-      allowLoadedVideoOverride: true,
-    });
-
-    expect(result).toBe("2026-02-01T00:00:00.000Z");
-  });
-
-  it("keeps a user-set boundary authoritative", () => {
-    const result = resolveDisplayedSyncDepthIso({
-      videos: [createVideo("2026-01-15T00:00:00.000Z")],
       selectedChannel: createChannel({
-        earliest_sync_date: "2026-02-20T00:00:00.000Z",
-        earliest_sync_date_user_set: true,
+        earliest_sync_date: "2026-02-10T00:00:00.000Z",
       }),
       syncDepth: createSyncDepth(),
       allowLoadedVideoOverride: true,
     });
 
-    expect(result).toBe("2026-02-20T00:00:00.000Z");
+    expect(result).toBe("2026-02-10T00:00:00.000Z");
+  });
+
+  it("returns null when no sync floor is stored", () => {
+    const result = resolveDisplayedSyncDepthIso({
+      videos: [createVideo("2026-02-01T00:00:00.000Z")],
+      selectedChannel: createChannel({ earliest_sync_date: null }),
+      syncDepth: createSyncDepth({ earliest_sync_date: null }),
+      allowLoadedVideoOverride: true,
+    });
+
+    expect(result).toBeNull();
+  });
+
+  it("uses sync depth when the channel list row is missing earliest_sync_date", () => {
+    const result = resolveDisplayedSyncDepthIso({
+      videos: [],
+      selectedChannel: createChannel({ earliest_sync_date: null }),
+      syncDepth: createSyncDepth({
+        earliest_sync_date: "2026-01-01T00:00:00.000Z",
+        derived_earliest_ready_date: "2012-07-14T00:00:00.000Z",
+      }),
+      allowLoadedVideoOverride: false,
+    });
+
+    expect(result).toBe("2026-01-01T00:00:00.000Z");
   });
 });

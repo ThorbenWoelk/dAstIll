@@ -1,9 +1,10 @@
 <script lang="ts">
   import ConfirmationModal from "$lib/components/ConfirmationModal.svelte";
+  import SignInRequiredModal from "$lib/components/SignInRequiredModal.svelte";
   import ContentEditor from "$lib/components/ContentEditor.svelte";
   import ErrorToast from "$lib/components/ErrorToast.svelte";
   import WorkspaceContentContextStrip from "$lib/components/workspace/WorkspaceContentContextStrip.svelte";
-  import type { CreateHighlightRequest, HighlightSource } from "$lib/types";
+  import type { HighlightSource } from "$lib/types";
   import type {
     WorkspaceContentActions,
     WorkspaceContentSelection,
@@ -82,6 +83,7 @@
       formattingNoticeVideoId: null,
       formattingNoticeTone: "info",
       citationScrollText: null,
+      canPersistHighlights: true,
     },
     actions = {
       onBack: () => {},
@@ -95,7 +97,7 @@
       onResetVideo: async () => {},
       onDraftChange: () => {},
       onToggleAcknowledge: async () => {},
-      onCreateHighlight: async (_payload: CreateHighlightRequest) => {},
+      onCreateHighlight: undefined,
       onDeleteHighlight: undefined,
       onShowChannels: () => {},
       onShowVideos: () => {},
@@ -158,6 +160,7 @@
   let formattingNoticeVideoId = $derived(content.formattingNoticeVideoId);
   let formattingNoticeTone = $derived(content.formattingNoticeTone);
   let citationScrollText = $derived(content.citationScrollText ?? null);
+  let canPersistHighlights = $derived(content.canPersistHighlights);
   let contentHighlightSource = $derived.by((): HighlightSource | null =>
     contentMode === "transcript" || contentMode === "summary"
       ? contentMode
@@ -424,6 +427,7 @@
       {selectedVideoYoutubeUrl}
       {citationScrollText}
       {summaryBodyRetrying}
+      {canPersistHighlights}
       {onStartEdit}
       {onCancelEdit}
       {onSaveEdit}
@@ -461,13 +465,9 @@
   onCancel={overlayActions.onCancelDelete}
 />
 
-<ConfirmationModal
+<SignInRequiredModal
   show={overlays.showDeleteAccessPrompt}
-  title="Admin sign-in required"
-  message="Deleting channels is restricted to admins. Sign in to unlock channel management."
-  confirmLabel="Sign in"
-  cancelLabel="Not now"
-  tone="info"
+  message="Sign in to remove channels and manage your library."
   onConfirm={overlayActions.onConfirmAccessPrompt}
   onCancel={overlayActions.onCancelAccessPrompt}
 />

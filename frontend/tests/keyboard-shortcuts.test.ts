@@ -118,6 +118,10 @@ describe("GO_SEQUENCE_HINTS", () => {
       "d",
       "m",
       "u",
+      "i",
+      "s",
+      "l",
+      "t",
     ]);
   });
 });
@@ -132,6 +136,9 @@ describe("buildShortcutManual", () => {
     const everywhere = groups.find((g) => g.title === "Everywhere");
     expect(everywhere?.rows.some((r) => r.keys.includes("G W"))).toBe(true);
     expect(everywhere?.rows.some((r) => r.keys.includes("G U"))).toBe(true);
+    const workspaceHome = groups.find((g) => g.title === "Workspace home");
+    expect(workspaceHome?.rows.some((r) => r.keys === "G I")).toBe(true);
+    expect(workspaceHome?.rows.some((r) => r.keys === "G T")).toBe(true);
     const guideTour = groups.find((g) => g.title === "Feature guide tour");
     expect(guideTour?.rows[0]?.keys).toBe("G U");
   });

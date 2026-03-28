@@ -1,11 +1,20 @@
 use std::collections::HashMap;
 
+use chrono::{DateTime, Datelike, TimeZone, Utc};
+
 use crate::models::{
     CanonicalChannelRecord, Channel, OTHERS_CHANNEL_ID, OTHERS_CHANNEL_NAME,
     UserChannelSubscription,
 };
 
 use super::{Store, StoreError, build_channel_from_records};
+
+/// Default sync floor for new channel subscriptions: first day of the current month at 00:00 UTC.
+pub fn default_earliest_sync_date_floor(now: DateTime<Utc>) -> DateTime<Utc> {
+    Utc.with_ymd_and_hms(now.year(), now.month(), 1, 0, 0, 0)
+        .single()
+        .unwrap_or(now)
+}
 
 fn canonical_channel_key(id: &str) -> String {
     format!("channels/{id}.json")
@@ -207,4 +216,18 @@ pub async fn delete_channel(store: &Store, id: &str) -> Result<bool, StoreError>
 
     store.delete_key(&canonical_channel_key(id)).await?;
     Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::default_earliest_sync_date_floor;
+    use chrono::TimeZone;
+    use chrono::Utc;
+
+    #[test]
+    fn default_floor_is_start_of_utc_month() {
+        let t = Utc.with_ymd_and_hms(2026, 3, 28, 15, 30, 0).unwrap();
+        let floor = default_earliest_sync_date_floor(t);
+        assert_eq!(floor, Utc.with_ymd_and_hms(2026, 3, 1, 0, 0, 0).unwrap());
+    }
 }

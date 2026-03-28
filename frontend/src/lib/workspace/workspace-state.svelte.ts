@@ -19,6 +19,7 @@ import {
   putCachedViewSnapshot,
 } from "$lib/workspace-cache";
 import { resolveAcknowledgedParam } from "$lib/workspace/types";
+import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
 import { track } from "$lib/analytics/tracker";
 import type { SidebarStateResult } from "$lib/workspace/sidebar-state.svelte";
 import type {
@@ -94,7 +95,9 @@ export function createWorkspaceState(options: {
       );
       await options.hydrateSelectedVideo(preferredVideoId, isAck);
     } catch (error) {
-      if (!silent || !options.getErrorMessage()) {
+      if (presentAuthRequiredNoticeIfNeeded(error)) {
+        // Modal only
+      } else if (!silent || !options.getErrorMessage()) {
         options.setErrorMessage((error as Error).message);
       }
     } finally {
@@ -186,7 +189,9 @@ export function createWorkspaceState(options: {
         await options.hydrateSelectedVideo(sidebarState.selectedVideoId, isAck);
       }
     } catch (error) {
-      if (!silent || !options.getErrorMessage()) {
+      if (presentAuthRequiredNoticeIfNeeded(error)) {
+        // Modal only
+      } else if (!silent || !options.getErrorMessage()) {
         options.setErrorMessage((error as Error).message);
       }
     } finally {
@@ -248,7 +253,9 @@ export function createWorkspaceState(options: {
       await loadVideos(false);
       await options.loadSyncDepth();
     } catch (error) {
-      options.setErrorMessage((error as Error).message);
+      if (!presentAuthRequiredNoticeIfNeeded(error)) {
+        options.setErrorMessage((error as Error).message);
+      }
     } finally {
       sidebarState.setBackfillingHistory(false);
     }
@@ -348,7 +355,9 @@ export function createWorkspaceState(options: {
         }
       }
     } catch (error) {
-      if (!silent || !options.getErrorMessage()) {
+      if (presentAuthRequiredNoticeIfNeeded(error)) {
+        // Modal only
+      } else if (!silent || !options.getErrorMessage()) {
         options.setErrorMessage((error as Error).message);
       }
     } finally {

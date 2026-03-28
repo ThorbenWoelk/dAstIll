@@ -7,6 +7,11 @@ export const load: PageServerLoad = async (event) => {
       bootstrap: null,
       channelPreviews: {},
       channelPreviewsFilterKey: "all:all:default",
+      selectedChannelId: null,
+      selectedVideoId: null,
+      contentMode: null,
+      videoTypeFilter: null,
+      acknowledgedFilter: null,
     };
   }
 

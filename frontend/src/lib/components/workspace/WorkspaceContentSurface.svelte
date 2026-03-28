@@ -54,6 +54,7 @@
     onRequestResetVideo,
     onDraftChange,
     onToggleAcknowledge,
+    canPersistHighlights = true,
     onCreateHighlight,
     onCreateVocabularyReplacement = undefined as
       | ((selectedText: string) => void | Promise<void>)
@@ -104,7 +105,8 @@
     onRequestResetVideo: () => void;
     onDraftChange: (value: string) => void;
     onToggleAcknowledge: () => void | Promise<void>;
-    onCreateHighlight: (
+    canPersistHighlights?: boolean;
+    onCreateHighlight?: (
       payload: CreateHighlightRequest,
     ) => void | Promise<void>;
     onCreateVocabularyReplacement?: (
@@ -202,6 +204,7 @@
     highlights={selectedVideoHighlights}
     {deletingHighlightId}
     {onDeleteHighlight}
+    {canPersistHighlights}
   />
 {:else if contentMode === "info"}
   <WorkspaceVideoInfoPanel {videoInfo} />
@@ -274,7 +277,8 @@
         selectedVideoId &&
         !loadingContent &&
         !editing &&
-        (contentMode === "transcript" || contentMode === "summary"),
+        (contentMode === "transcript" || contentMode === "summary") &&
+        onCreateHighlight,
       )}
       creatingHighlight={creatingHighlight &&
         creatingHighlightVideoId === selectedVideoId}

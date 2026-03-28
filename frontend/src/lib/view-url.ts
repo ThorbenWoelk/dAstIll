@@ -7,7 +7,7 @@ import {
   isWorkspaceVideoTypeFilter,
 } from "./workspace/types";
 
-type WorkspaceViewState = Pick<
+export type WorkspaceViewState = Pick<
   WorkspaceStateSnapshot,
   | "selectedChannelId"
   | "selectedVideoId"

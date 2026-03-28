@@ -30,6 +30,40 @@ export class RateLimitedError extends Error {
   }
 }
 
+/** Backend returned 403 with a sign-in requirement (library and other protected routes). */
+export class AuthRequiredError extends Error {
+  readonly status = 403;
+
+  constructor(message = "Sign in to continue.") {
+    super(message);
+    this.name = "AuthRequiredError";
+  }
+}
+
+export function isAuthRequiredError(
+  error: unknown,
+): error is AuthRequiredError {
+  return error instanceof AuthRequiredError;
+}
+
+function isLikelyAuthRequiredMessage(message: string): boolean {
+  if (isSignInRequiredBody(message)) return true;
+  const t = message.trim();
+  return t === "Sign in to continue." || t === "Sign in to use this feature.";
+}
+
+/** True for `AuthRequiredError` or a plain `Error` whose message is a sign-in requirement. */
+export function isSignInRequiredFailure(error: unknown): boolean {
+  if (isAuthRequiredError(error)) return true;
+  if (!(error instanceof Error)) return false;
+  return isLikelyAuthRequiredMessage(error.message);
+}
+
+function isSignInRequiredBody(text: string): boolean {
+  const t = text.trim();
+  return t === "Sign-in required" || t.includes("Sign-in required");
+}
+
 export function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
 }
@@ -98,10 +132,17 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
       );
     }
     const message = await response.text();
+    const trimmed = message.trim();
+    if (response.status === 403 && isSignInRequiredBody(trimmed)) {
+      console.warn(`[API] ${method} ${path} sign-in required`);
+      throw trimmed === "Sign-in required"
+        ? new AuthRequiredError()
+        : new AuthRequiredError(trimmed);
+    }
     console.error(`[API Error] ${method} ${path}`, {
       status: response.status,
     });
-    throw new Error(message || `Request failed (${response.status})`);
+    throw new Error(trimmed || `Request failed (${response.status})`);
   }
 
   if (response.status === 204) {

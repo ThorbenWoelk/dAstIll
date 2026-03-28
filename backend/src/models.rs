@@ -516,6 +516,19 @@ pub struct UpdateConversationRequest {
     pub title: String,
 }
 
+/// Anonymous-only chat turn: full conversation state is carried by the client; nothing is written to the store.
+#[derive(Debug, Deserialize, TS)]
+#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
+pub struct EphemeralChatMessageRequest {
+    pub conversation: ChatConversation,
+    pub content: String,
+    #[serde(default)]
+    pub deep_research: bool,
+    #[serde(default)]
+    #[ts(optional)]
+    pub model: Option<String>,
+}
+
 #[derive(Debug, Deserialize, TS)]
 #[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 pub struct SendChatMessageRequest {

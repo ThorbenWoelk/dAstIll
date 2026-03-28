@@ -119,6 +119,28 @@ export async function sendConversationMessage(
   );
 }
 
+/** Anonymous-only: server does not persist history; client carries full `conversation` state. */
+export async function sendEphemeralConversationMessage(
+  payload: {
+    conversation: ChatConversation;
+    content: string;
+    deep_research: boolean;
+    model?: string;
+  },
+  handlers: ChatStreamHandlers,
+  options?: { signal?: AbortSignal },
+) {
+  return consumeChatStream(
+    "/api/chat/ephemeral/messages",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+      signal: options?.signal,
+    },
+    handlers,
+  );
+}
+
 export async function reconnectConversationStream(
   conversationId: string,
   handlers: ChatStreamHandlers,

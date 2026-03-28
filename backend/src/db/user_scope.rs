@@ -98,10 +98,11 @@ pub async fn ensure_user_seeded_channel_subscription(
         return Ok(());
     }
 
+    let now = chrono::Utc::now();
     let subscription = UserChannelSubscription {
         channel_id: channel_id.to_string(),
-        added_at: chrono::Utc::now(),
-        earliest_sync_date: None,
+        added_at: now,
+        earliest_sync_date: Some(super::default_earliest_sync_date_floor(now)),
         earliest_sync_date_user_set: false,
     };
     put_user_channel_subscription(store, user_id, &subscription).await

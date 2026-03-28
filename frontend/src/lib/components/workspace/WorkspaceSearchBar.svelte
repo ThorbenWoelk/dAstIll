@@ -19,6 +19,7 @@
     getAuthStorageScopeKey,
     getScopedStorageKey,
   } from "$lib/auth-storage";
+  import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
   import { resolveSearchCoverageHint } from "$lib/search-status";
   import {
     readWorkspaceSearchSession,
@@ -316,11 +317,19 @@
       }
 
       searchPanelOpen = true;
-      updateSearchSection(mode, {
-        results: [],
-        error: (error as Error).message,
-        loading: false,
-      });
+      if (presentAuthRequiredNoticeIfNeeded(error)) {
+        updateSearchSection(mode, {
+          results: [],
+          error: null,
+          loading: false,
+        });
+      } else {
+        updateSearchSection(mode, {
+          results: [],
+          error: (error as Error).message,
+          loading: false,
+        });
+      }
     } finally {
       if (searchAbortControllers.get(mode) === abortController) {
         searchAbortControllers.delete(mode);

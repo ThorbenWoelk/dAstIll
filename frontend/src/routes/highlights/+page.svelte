@@ -2,6 +2,7 @@
   import { goto } from "$app/navigation";
   import { onMount } from "svelte";
   import { deleteHighlight, isAiAvailable, listHighlights } from "$lib/api";
+  import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
   import { createAiStatusPoller } from "$lib/utils/ai-poller";
   import ErrorToast from "$lib/components/ErrorToast.svelte";
@@ -91,7 +92,9 @@
       groups = highlightGroups;
       aiStatus = aiHealth.status;
     } catch (error) {
-      errorMessage = (error as Error).message;
+      if (!presentAuthRequiredNoticeIfNeeded(error)) {
+        errorMessage = (error as Error).message;
+      }
     } finally {
       loading = false;
     }
@@ -118,7 +121,9 @@
       await deleteHighlight(highlightId);
       groups = removeHighlightFromGroups(groups, highlightId);
     } catch (error) {
-      deleteError = (error as Error).message;
+      if (!presentAuthRequiredNoticeIfNeeded(error)) {
+        deleteError = (error as Error).message;
+      }
     } finally {
       deletingHighlightId = null;
     }

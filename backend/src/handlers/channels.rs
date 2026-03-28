@@ -12,7 +12,7 @@ use crate::audit;
 use crate::db;
 use crate::handlers::query::{VideoListParams, WorkspaceBootstrapParams};
 use crate::models::{AddChannelRequest, Channel, UpdateChannelRequest};
-use crate::read_cache::{ChannelSnapshotCacheKey, VideoListCacheKey, WorkspaceBootstrapCacheKey};
+use crate::read_cache::{ChannelSnapshotCacheKey, VideoListCacheKey};
 use crate::security::{AccessContext, AuthState};
 use crate::state::AppState;
 
@@ -55,12 +55,8 @@ pub async fn list_channels(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let scope = access_context.cache_scope_key();
-    if let Some(channels) = state.read_cache.get_channels(&scope).await {
-        tracing::debug!("channels cache hit");
-        return Ok(Json(channels));
-    }
-
+    // Do not cache: subscription fields (e.g. `earliest_sync_date`) can change outside the API
+    // (S3 ops, migration tools); stale list rows keep the sync boundary input empty.
     let channels = match access_context.user_id.as_deref() {
         Some(user_id) if access_context.auth_state == AuthState::Authenticated => {
             db::list_user_channels_with_virtual_others(&state.db, user_id)
@@ -80,7 +76,6 @@ pub async fn list_channels(
             channels
         }
     };
-    state.read_cache.set_channels(scope, channels.clone()).await;
     Ok(Json(channels))
 }
 
@@ -90,21 +85,8 @@ pub async fn workspace_bootstrap(
     Query(params): Query<WorkspaceBootstrapParams>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let video_params = params.video_params();
-    let cache_key = WorkspaceBootstrapCacheKey {
-        scope: access_context.cache_scope_key(),
-        selected_channel_id: params.selected_channel_id.clone(),
-        video_list: VideoListCacheKey::new(
-            video_params.limit_or_default(),
-            video_params.offset_or_default(),
-            video_params.is_short_filter(),
-            video_params.acknowledged_filter(),
-            video_params.queue_filter(),
-        ),
-    };
-    if let Some(payload) = state.read_cache.get_workspace_bootstrap(&cache_key).await {
-        tracing::debug!("workspace bootstrap cache hit");
-        return Ok(Json(payload));
-    }
+    // Do not cache: same as `list_channels` / sync depth — subscription and snapshot rows must
+    // reflect store writes immediately (including S3 migrations).
 
     let ai_available = state.summarizer.is_available().await;
     let ai_status = state
@@ -180,10 +162,6 @@ pub async fn workspace_bootstrap(
         snapshot: snapshot.map(build_snapshot_payload),
         search_status,
     };
-    state
-        .read_cache
-        .set_workspace_bootstrap(cache_key, payload.clone())
-        .await;
 
     Ok(Json(payload))
 }
@@ -227,17 +205,15 @@ pub async fn add_channel(
         None
     };
 
-    let earliest_sync_date = match youtube.fetch_videos(&channel_id).await {
-        Ok(videos) if !videos.is_empty() => Some(videos[0].published_at),
-        _ => Some(Utc::now()),
-    };
+    let now = Utc::now();
+    let earliest_sync_date = Some(db::default_earliest_sync_date_floor(now));
 
     let channel = Channel {
         id: channel_id.clone(),
         handle,
         name,
         thumbnail_url: thumbnail,
-        added_at: Utc::now(),
+        added_at: now,
         earliest_sync_date,
         earliest_sync_date_user_set: false,
     };
@@ -296,12 +272,8 @@ pub async fn get_channel_sync_depth(
     Extension(access_context): Extension<AccessContext>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let scope = access_context.cache_scope_key();
-    if let Some(payload) = state.read_cache.get_channel_sync_depth(&scope, &id).await {
-        tracing::debug!(channel_id = %id, "channel sync depth cache hit");
-        return Ok(Json(payload));
-    }
-
+    // Do not cache: subscription `earliest_sync_date` can change outside the API (e.g. S3 ops);
+    // stale sync-depth misleads the UI until TTL expires on every layer.
     let channel = require_channel_for_access(&state, &access_context, &id).await?;
 
     let derived = db::get_oldest_ready_video_published_at(&state.db, &channel)
@@ -309,10 +281,6 @@ pub async fn get_channel_sync_depth(
         .map_err(map_db_err)?;
 
     let payload = build_sync_depth_payload(&channel, derived);
-    state
-        .read_cache
-        .set_channel_sync_depth(scope, id.clone(), payload.clone())
-        .await;
     Ok(Json(payload))
 }
 

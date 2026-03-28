@@ -141,6 +141,8 @@ export interface WorkspaceContentState {
   formattingNoticeTone: "info" | "success" | "warning";
   /** When set, transcript/summary view scrolls to this excerpt text once (from `cite` URL param). */
   citationScrollText: string | null;
+  /** When false, highlight save/delete is disabled (e.g. forced read-only). */
+  canPersistHighlights: boolean;
 }
 
 export interface WorkspaceContentActions {
@@ -155,7 +157,7 @@ export interface WorkspaceContentActions {
   onResetVideo: () => Promise<void> | void;
   onDraftChange: (value: string) => void;
   onToggleAcknowledge: () => Promise<void> | void;
-  onCreateHighlight: (payload: CreateHighlightRequest) => Promise<void> | void;
+  onCreateHighlight?: (payload: CreateHighlightRequest) => Promise<void> | void;
   onCreateVocabularyReplacement?: (
     selectedText: string,
   ) => Promise<void> | void;

@@ -2,6 +2,7 @@
   import { tick } from "svelte";
 
   import { getChannelSuggestions, getVideoSuggestions } from "$lib/chat-api";
+  import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
   import {
     extractChatMentions,
     parseChatMentionSegments,
@@ -432,7 +433,9 @@
         return;
       }
       suggestionItems = [];
-      suggestionError = (error as Error).message;
+      if (!presentAuthRequiredNoticeIfNeeded(error)) {
+        suggestionError = (error as Error).message;
+      }
     } finally {
       if (requestId === suggestionRequestId) {
         suggestionsLoading = false;

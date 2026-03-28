@@ -43,6 +43,7 @@ import type {
   Video,
   ChannelVideoPage,
   VideoTypeFilter,
+  ContentStatus,
 } from "$lib/types";
 import { OTHERS_CHANNEL_ID } from "$lib/types";
 
@@ -226,6 +227,12 @@ export type SidebarStateResult = {
   setAddingChannel: (v: boolean) => void;
   setChannelIdToDelete: (v: string | null) => void;
   setShowDeleteConfirmation: (v: boolean) => void;
+  setVideoStatus: (
+    videoId: string,
+    transcriptStatus: ContentStatus | undefined,
+    summaryStatus: ContentStatus | undefined,
+  ) => void;
+  updateVideo: (v: Video) => void;
 
   // Operations
   syncChannelOrderFromList: () => void;
@@ -430,6 +437,29 @@ export function createSidebarState(
   }
   function setShowDeleteConfirmation(v: boolean) {
     showDeleteConfirmation = v;
+  }
+
+  function updateVideo(updated: Video) {
+    videos = videos.map((v) => (v.id === updated.id ? updated : v));
+  }
+
+  function setVideoStatus(
+    videoId: string,
+    transcriptStatus: ContentStatus | undefined,
+    summaryStatus: ContentStatus | undefined,
+  ) {
+    videos = videos.map((v) => {
+      if (v.id !== videoId) return v;
+      return {
+        ...v,
+        ...(transcriptStatus !== undefined
+          ? { transcript_status: transcriptStatus }
+          : {}),
+        ...(summaryStatus !== undefined
+          ? { summary_status: summaryStatus }
+          : {}),
+      };
+    });
   }
 
   function updateChannel(updated: Channel) {
@@ -734,6 +764,8 @@ export function createSidebarState(
     setAddingChannel,
     setChannelIdToDelete,
     setShowDeleteConfirmation,
+    setVideoStatus,
+    updateVideo,
 
     // Operations
     loadInitial,

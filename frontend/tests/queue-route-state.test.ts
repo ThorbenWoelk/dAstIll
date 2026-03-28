@@ -211,7 +211,7 @@ describe("deriveEffectiveEarliestSyncDate", () => {
     ).toBe("2024-02-10T00:00:00.000Z");
   });
 
-  it("falls back to derived sync depth when no user-set boundary exists", () => {
+  it("uses the stored sync floor, not derived oldest-ready", () => {
     expect(
       deriveEffectiveEarliestSyncDate(
         makeChannel({
@@ -223,7 +223,23 @@ describe("deriveEffectiveEarliestSyncDate", () => {
           derived_earliest_ready_date: "2024-02-15T00:00:00.000Z",
         }),
       ),
-    ).toBe("2024-02-15T00:00:00.000Z");
+    ).toBe("2024-02-10T00:00:00.000Z");
+  });
+
+  it("falls back to sync depth earliest_sync_date when the channel row omits it", () => {
+    expect(
+      deriveEffectiveEarliestSyncDate(
+        makeChannel({
+          id: "channel-1",
+          earliest_sync_date: null,
+          earliest_sync_date_user_set: false,
+        }),
+        makeSyncDepth({
+          earliest_sync_date: "2024-02-01T00:00:00.000Z",
+          derived_earliest_ready_date: "2012-07-14T00:00:00.000Z",
+        }),
+      ),
+    ).toBe("2024-02-01T00:00:00.000Z");
   });
 });
 
@@ -239,6 +255,20 @@ describe("deriveEarliestSyncDateInput", () => {
         null,
       ),
     ).toBe("2024-02-10");
+  });
+
+  it("uses UTC month-start when no floor is stored so the date control is not empty", () => {
+    expect(
+      deriveEarliestSyncDateInput(
+        makeChannel({
+          id: "channel-1",
+          earliest_sync_date: null,
+          earliest_sync_date_user_set: false,
+        }),
+        makeSyncDepth({ earliest_sync_date: null }),
+        new Date("2026-03-20T00:00:00.000Z"),
+      ),
+    ).toBe("2026-03-01");
   });
 });
 

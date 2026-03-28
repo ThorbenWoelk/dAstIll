@@ -11,6 +11,11 @@ export const load: PageServerLoad = async (event) => {
       bootstrap: null,
       channelPreviews: {},
       channelPreviewsFilterKey: "all:all:unified",
+      selectedChannelId: null,
+      selectedVideoId: null,
+      contentMode: null,
+      videoTypeFilter: null,
+      acknowledgedFilter: null,
     };
   }
   return loadWorkspaceBootstrapPageData(event, {

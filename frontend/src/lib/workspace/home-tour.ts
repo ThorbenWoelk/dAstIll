@@ -12,6 +12,8 @@ export type TourContext = {
   selectedChannelId: string | null;
   videos: { id: string }[];
   contentMode: string;
+  /** When false, the tour skips selecting a video (avoids API calls that require sign-in). */
+  isAuthenticated: () => boolean;
   selectVideo: (
     id: string,
     fromUserInteraction?: boolean,
@@ -25,6 +27,10 @@ export function createHomeTourSteps(ctx: TourContext): TourStep[] {
   async function tourPrepareFirstVideoIfNeeded() {
     ctx.mobileBrowseOpen = false;
     await ctx.tick();
+    if (!ctx.isAuthenticated()) {
+      await ctx.tick();
+      return;
+    }
     if (
       !ctx.selectedVideoId &&
       ctx.selectedChannelId &&

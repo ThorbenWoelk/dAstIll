@@ -3,6 +3,7 @@ import {
   markChannelRefreshed,
   shouldRefreshChannel,
 } from "$lib/channel-workspace";
+import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
 import type { AcknowledgedFilter } from "$lib/workspace/types";
 
 type ChannelRefreshWorkflowOptions<TSnapshot> = {
@@ -67,6 +68,7 @@ export async function loadChannelSnapshotWithRefresh<TSnapshot>({
     }
     await applySnapshot(refreshedSnapshot, true);
   } catch (error) {
+    if (presentAuthRequiredNoticeIfNeeded(error)) return;
     onError((error as Error).message);
   } finally {
     onRefreshingChange(false);

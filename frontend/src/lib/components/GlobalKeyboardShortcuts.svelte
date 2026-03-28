@@ -11,6 +11,7 @@
     armGoSequence,
     clearGoSequence,
     computeGoHintBadgeStyles,
+    DASTILL_SET_WORKSPACE_CONTENT_MODE_EVENT,
     focusSectionTabsNav,
     shouldIgnoreGlobalShortcutNavigation,
     type GoHintBadge,
@@ -160,6 +161,34 @@
         },
         u: () => {
           window.dispatchEvent(new CustomEvent("dastill:open-guide"));
+        },
+        i: () => {
+          window.dispatchEvent(
+            new CustomEvent(DASTILL_SET_WORKSPACE_CONTENT_MODE_EVENT, {
+              detail: { mode: "info" },
+            }),
+          );
+        },
+        s: () => {
+          window.dispatchEvent(
+            new CustomEvent(DASTILL_SET_WORKSPACE_CONTENT_MODE_EVENT, {
+              detail: { mode: "summary" },
+            }),
+          );
+        },
+        l: () => {
+          window.dispatchEvent(
+            new CustomEvent(DASTILL_SET_WORKSPACE_CONTENT_MODE_EVENT, {
+              detail: { mode: "highlights" },
+            }),
+          );
+        },
+        t: () => {
+          window.dispatchEvent(
+            new CustomEvent(DASTILL_SET_WORKSPACE_CONTENT_MODE_EVENT, {
+              detail: { mode: "transcript" },
+            }),
+          );
         },
       };
       const action = goActions[k];

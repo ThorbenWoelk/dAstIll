@@ -2,6 +2,10 @@
  * Shared helpers for app-wide keyboard shortcuts and the shortcuts reference modal.
  */
 
+/** Dispatched on the window with `detail.mode` to switch workspace video content tab (home route). */
+export const DASTILL_SET_WORKSPACE_CONTENT_MODE_EVENT =
+  "dastill:set-workspace-content-mode" as const;
+
 const EDITABLE_SELECTORS =
   "input:not([type='hidden']):not([disabled]), textarea:not([disabled]), select:not([disabled]), [contenteditable='true'], [contenteditable='']";
 
@@ -115,6 +119,24 @@ export function buildShortcutManual(
           keys: "/",
           description: "Focus search bar (when not typing in a field)",
         },
+        {
+          keys: "G I",
+          description:
+            "Switch video panel to Info (press G for hints, then I within a second)",
+        },
+        {
+          keys: "G S",
+          description: "Switch video panel to Summary",
+        },
+        {
+          keys: "G L",
+          description:
+            "Switch video panel to Highlights (G H opens the Highlights page)",
+        },
+        {
+          keys: "G T",
+          description: "Switch video panel to Transcript",
+        },
       ],
     },
     {
@@ -204,6 +226,10 @@ export const GO_SEQUENCE_HINTS: readonly { key: string; label: string }[] = [
   { key: "D", label: "Docs" },
   { key: "M", label: "Section tabs" },
   { key: "U", label: "Feature guide" },
+  { key: "I", label: "Info (video tab)" },
+  { key: "S", label: "Summary" },
+  { key: "L", label: "Highlights (video tab)" },
+  { key: "T", label: "Transcript" },
 ] as const;
 
 export type GoSequenceState = {

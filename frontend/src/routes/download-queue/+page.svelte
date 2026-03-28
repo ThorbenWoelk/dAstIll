@@ -8,6 +8,7 @@
     getAuthStorageScopeKey,
     getScopedStorageKey,
   } from "$lib/auth-storage";
+  import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
   import {
     addChannel,
     deleteChannel,
@@ -163,7 +164,9 @@
           aiStatus = "offline";
         });
       } catch (error) {
-        if (!silent || !errorMessage) {
+        if (presentAuthRequiredNoticeIfNeeded(error)) {
+          // Modal only
+        } else if (!silent || !errorMessage) {
           errorMessage = (error as Error).message;
         }
       }
@@ -519,7 +522,9 @@
       sidebar.setHasMore(true);
       await sidebar.refreshAndLoadVideos(sidebar.selectedChannelId);
     } catch (error) {
-      errorMessage = (error as Error).message;
+      if (!presentAuthRequiredNoticeIfNeeded(error)) {
+        errorMessage = (error as Error).message;
+      }
     } finally {
       savingSyncDate = false;
     }
@@ -537,7 +542,9 @@
         await sidebar.loadVideos(true, true);
       }
     } catch (error) {
-      errorMessage = (error as Error).message;
+      if (!presentAuthRequiredNoticeIfNeeded(error)) {
+        errorMessage = (error as Error).message;
+      }
     } finally {
       retryingTranscriptVideoId = null;
     }

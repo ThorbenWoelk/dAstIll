@@ -1,4 +1,5 @@
 import { createHighlight, deleteHighlight, getVideoHighlights } from "$lib/api";
+import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
 import type { CreateHighlightRequest, Highlight } from "$lib/types";
 import {
   buildOptimisticHighlight,
@@ -63,7 +64,9 @@ export function createHighlightState(options: CreateHighlightStateOptions) {
       return highlights;
     } catch (error) {
       if (opts.showError) {
-        options.onError((error as Error).message);
+        if (!presentAuthRequiredNoticeIfNeeded(error)) {
+          options.onError((error as Error).message);
+        }
       }
       return null;
     }
@@ -106,7 +109,9 @@ export function createHighlightState(options: CreateHighlightStateOptions) {
       );
     } catch (error) {
       removeVideoHighlight(targetVideoId, optimisticHighlight.id);
-      options.onError((error as Error).message);
+      if (!presentAuthRequiredNoticeIfNeeded(error)) {
+        options.onError((error as Error).message);
+      }
     } finally {
       creatingHighlight = false;
       creatingHighlightVideoId = null;
@@ -131,7 +136,9 @@ export function createHighlightState(options: CreateHighlightStateOptions) {
       await deleteHighlight(highlightId);
       removeVideoHighlight(targetVideoId, highlightId);
     } catch (error) {
-      options.onError((error as Error).message);
+      if (!presentAuthRequiredNoticeIfNeeded(error)) {
+        options.onError((error as Error).message);
+      }
     } finally {
       deletingHighlightId = null;
     }

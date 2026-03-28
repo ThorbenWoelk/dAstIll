@@ -24,32 +24,21 @@ export function resolveOldestLoadedReadyVideoDate(
   return oldest;
 }
 
+/**
+ * Persisted sync floor for labels and inputs: subscription `earliest_sync_date`.
+ * Prefer `syncDepth.earliest_sync_date` when the channel row is missing it (same field from the
+ * server; list/bootstrap cache can lag behind a fresh sync-depth fetch).
+ */
 export function resolveDisplayedSyncDepthIso({
-  videos,
   selectedChannel,
   syncDepth,
-  allowLoadedVideoOverride,
 }: {
   videos: Video[];
   selectedChannel: Channel | null;
   syncDepth: SyncDepth | null;
   allowLoadedVideoOverride: boolean;
 }): string | null {
-  if (selectedChannel?.earliest_sync_date_user_set) {
-    return selectedChannel.earliest_sync_date ?? null;
-  }
-
-  const derived = syncDepth?.derived_earliest_ready_date ?? null;
-  if (derived) {
-    return derived;
-  }
-
-  if (allowLoadedVideoOverride) {
-    const oldestLoaded = resolveOldestLoadedReadyVideoDate(videos);
-    if (oldestLoaded) {
-      return oldestLoaded.toISOString();
-    }
-  }
-
-  return selectedChannel?.earliest_sync_date ?? null;
+  return (
+    selectedChannel?.earliest_sync_date ?? syncDepth?.earliest_sync_date ?? null
+  );
 }

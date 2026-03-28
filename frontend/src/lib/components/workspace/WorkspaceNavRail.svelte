@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import { goto } from "$app/navigation";
 
   import AiStatusIndicator from "$lib/components/AiStatusIndicator.svelte";
@@ -36,7 +35,8 @@
 
   let navItems = $derived(getSectionNavigationItems(currentSection, DOCS_URL));
 
-  onMount(() => {
+  $effect(() => {
+    if (typeof window === "undefined") return;
     const onOpenGuideEvent = () => {
       onOpenGuide();
     };

@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 
 import {
   getAdjacentContentMode,
+  goHintKeyForWorkspaceContentMode,
   resolveDefaultContentMode,
   resolveSwipedContentMode,
   WORKSPACE_CONTENT_MODE_ORDER,
@@ -15,6 +16,15 @@ describe("WORKSPACE_CONTENT_MODE_ORDER", () => {
       "highlights",
       "transcript",
     ]);
+  });
+});
+
+describe("goHintKeyForWorkspaceContentMode", () => {
+  it("maps each tab to a G-chord letter (L for tab Highlights; G H is the Highlights page)", () => {
+    expect(goHintKeyForWorkspaceContentMode("info")).toBe("I");
+    expect(goHintKeyForWorkspaceContentMode("summary")).toBe("S");
+    expect(goHintKeyForWorkspaceContentMode("highlights")).toBe("L");
+    expect(goHintKeyForWorkspaceContentMode("transcript")).toBe("T");
   });
 });
 

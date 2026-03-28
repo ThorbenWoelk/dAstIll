@@ -169,6 +169,18 @@ test("summary and transcript match the selected video after changing channel", a
   expect(summaryB).not.toBe(transcriptA);
 });
 
+test("workspace feature guide opens from guide URL param (same state as Guide control)", async ({
+  page,
+}) => {
+  // Matches tour.restoreFromUrl() / ?guide=0; avoids flaky nav-click races with client URL sync.
+  await page.goto("/?guide=0");
+  await page.waitForLoadState("load");
+
+  const dialog = page.getByRole("dialog", { name: "Feature guide" });
+  await expect(dialog).toBeVisible({ timeout: READY_MS });
+  await expect(dialog.getByText("Welcome to dAstIll")).toBeVisible();
+});
+
 test("G then W navigates from queue to workspace without full reload hang", async ({
   page,
 }) => {

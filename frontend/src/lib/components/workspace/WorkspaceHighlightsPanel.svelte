@@ -2,6 +2,7 @@
   import CheckIcon from "$lib/components/icons/CheckIcon.svelte";
   import CopyIcon from "$lib/components/icons/CopyIcon.svelte";
   import TrashIcon from "$lib/components/icons/TrashIcon.svelte";
+  import { authState } from "$lib/auth-state.svelte";
   import type { Highlight, Video } from "$lib/types";
   import { formatPublishedAt } from "$lib/workspace/content";
 
@@ -10,6 +11,7 @@
     highlights = [],
     deletingHighlightId = null,
     onDeleteHighlight = undefined,
+    canPersistHighlights = true,
   }: {
     selectedVideo?: Video | null;
     highlights?: Highlight[];
@@ -17,7 +19,13 @@
     onDeleteHighlight?:
       | ((highlightId: number) => Promise<void> | void)
       | undefined;
+    /** When false, user can view the tab but not save or delete. */
+    canPersistHighlights?: boolean;
   } = $props();
+
+  let sessionOnlyHighlights = $derived(
+    authState.current.authState !== "authenticated",
+  );
 
   let copiedHighlightId = $state<number | null>(null);
   let copyResetTimer: ReturnType<typeof setTimeout> | null = null;
@@ -62,8 +70,18 @@
     <div
       class="rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--muted)]/20 px-4 py-5 text-[14px] text-[var(--soft-foreground)] opacity-70"
     >
-      Select text in the transcript or summary to save your first highlight for
-      this video.
+      {#if canPersistHighlights}
+        {#if sessionOnlyHighlights}
+          Select text in the transcript or summary to save a highlight. Stored
+          only in this browser tab until you close it.
+        {:else}
+          Select text in the transcript or summary to save your first highlight
+          for this video.
+        {/if}
+      {:else}
+        Sign in to save highlights for this video. You can still read the
+        transcript and summary in the other tabs.
+      {/if}
     </div>
   {:else}
     <div class="space-y-3">
