@@ -59,6 +59,21 @@
 
   let containerElement = $state<HTMLDivElement | null>(null);
   let articleElement = $state<HTMLElement | null>(null);
+  let isMobile = $state(false);
+
+  $effect(() => {
+    if (typeof window === "undefined") return;
+    const mediaQuery = window.matchMedia("(max-width: 1023px)");
+    isMobile = mediaQuery.matches;
+
+    const handler = (event: MediaQueryListEvent) => {
+      isMobile = event.matches;
+    };
+
+    mediaQuery.addEventListener("change", handler);
+    return () => mediaQuery.removeEventListener("change", handler);
+  });
+
   let tooltip = $state<
     | {
         kind: "create";
@@ -281,7 +296,8 @@
     }
 
     const result = onCreateHighlight(tooltip.draft);
-    window.getSelection()?.removeAllRanges();
+    const selection = window.getSelection();
+    if (selection) selection.removeAllRanges();
     clearTooltip();
     await result;
   }
@@ -297,7 +313,8 @@
     }
 
     const result = onCreateVocabularyReplacement(tooltip.draft.text);
-    window.getSelection()?.removeAllRanges();
+    const selection = window.getSelection();
+    if (selection) selection.removeAllRanges();
     clearTooltip();
     await result;
   }
@@ -337,7 +354,8 @@
     }
 
     event.preventDefault();
-    window.getSelection()?.removeAllRanges();
+    const selection = window.getSelection();
+    if (selection) selection.removeAllRanges();
 
     const containerRect = containerElement.getBoundingClientRect();
     tooltip = {
@@ -495,60 +513,104 @@
   {/if}
 
   {#if tooltip}
-    {#if tooltip.kind === "create"}
+    {#if isMobile}
+      <div
+        class="text-action-toolbar fixed bottom-[calc(var(--mobile-bottom-stack-height)+1.5rem)] left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-2xl px-2 py-2 shadow-2xl"
+      >
+        {#if tooltip.kind === "create"}
+          <button
+            type="button"
+            class="text-action-btn inline-flex h-9 w-9 items-center justify-center rounded-full text-[var(--soft-foreground)] hover:bg-[var(--accent-wash)] hover:text-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
+            onmousedown={(event) => event.preventDefault()}
+            onclick={handleCreateHighlight}
+            disabled={creatingHighlight}
+            aria-label="Save selected text as a highlight"
+            title="Save highlight"
+          >
+            <HighlighterIcon
+              class={`h-4 w-4 ${creatingHighlight ? "animate-pulse" : ""}`}
+            />
+          </button>
+          <button
+            type="button"
+            class="text-action-btn inline-flex items-center justify-center rounded-full px-4 py-2 text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--accent-strong)] hover:bg-[var(--accent-soft)] disabled:cursor-not-allowed disabled:opacity-50"
+            style="background: var(--accent-wash);"
+            onmousedown={(event) => event.preventDefault()}
+            onclick={handleCreateVocabularyReplacement}
+            disabled={!onCreateVocabularyReplacement ||
+              creatingVocabularyReplacement}
+          >
+            {creatingVocabularyReplacement ? "Saving" : "Correct"}
+          </button>
+        {:else}
+          <button
+            type="button"
+            class="text-action-btn inline-flex h-9 w-9 items-center justify-center rounded-full text-[var(--soft-foreground)] hover:bg-[var(--danger-soft)] hover:text-[var(--danger)] disabled:cursor-not-allowed disabled:opacity-50"
+            onmousedown={(event) => event.preventDefault()}
+            onclick={handleDeleteHighlight}
+            disabled={deletingHighlightId === tooltip.highlightId}
+            aria-label="Delete highlight"
+            title="Delete highlight"
+          >
+            <TrashIcon
+              size={16}
+              strokeWidth={2}
+              class={deletingHighlightId === tooltip.highlightId
+                ? "animate-pulse"
+                : ""}
+            />
+          </button>
+        {/if}
+      </div>
+    {:else}
       <div
         class="text-action-toolbar absolute z-40 flex items-center gap-1 rounded-full px-1.5 py-1.5"
         style={`top: ${tooltip.top}px; left: ${tooltip.left}px; transform: translateX(-50%);`}
       >
-        <button
-          type="button"
-          class="text-action-btn inline-flex h-8 w-8 items-center justify-center rounded-full text-[var(--soft-foreground)] hover:bg-[var(--accent-wash)] hover:text-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
-          onmousedown={(event) => event.preventDefault()}
-          onclick={handleCreateHighlight}
-          disabled={creatingHighlight}
-          aria-label="Save selected text as a highlight"
-          title="Save highlight"
-        >
-          <HighlighterIcon
-            class={`h-3.5 w-3.5 ${creatingHighlight ? "animate-pulse" : ""}`}
-          />
-        </button>
-        <button
-          type="button"
-          class="text-action-btn inline-flex items-center justify-center rounded-full px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--accent-strong)] hover:bg-[var(--accent-soft)] disabled:cursor-not-allowed disabled:opacity-50"
-          style="background: var(--accent-wash);"
-          onmousedown={(event) => event.preventDefault()}
-          onclick={handleCreateVocabularyReplacement}
-          disabled={!onCreateVocabularyReplacement ||
-            creatingVocabularyReplacement}
-          aria-label="Mark selected text as incorrect and save a preferred spelling"
-          title="Correct spelling"
-        >
-          {creatingVocabularyReplacement ? "Saving" : "Correct"}
-        </button>
-      </div>
-    {:else}
-      <div
-        class="text-action-toolbar absolute z-40 rounded-full px-1.5 py-1.5"
-        style={`top: ${tooltip.top}px; left: ${tooltip.left}px; transform: translateX(-50%);`}
-      >
-        <button
-          type="button"
-          class="text-action-btn inline-flex h-8 w-8 items-center justify-center rounded-full text-[var(--soft-foreground)] hover:bg-[var(--danger-soft)] hover:text-[var(--danger)] disabled:cursor-not-allowed disabled:opacity-50"
-          onmousedown={(event) => event.preventDefault()}
-          onclick={handleDeleteHighlight}
-          disabled={deletingHighlightId === tooltip.highlightId}
-          aria-label="Delete highlight"
-          title="Delete highlight"
-        >
-          <TrashIcon
-            size={14}
-            strokeWidth={2}
-            class={deletingHighlightId === tooltip.highlightId
-              ? "animate-pulse"
-              : ""}
-          />
-        </button>
+        {#if tooltip.kind === "create"}
+          <button
+            type="button"
+            class="text-action-btn inline-flex h-8 w-8 items-center justify-center rounded-full text-[var(--soft-foreground)] hover:bg-[var(--accent-wash)] hover:text-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
+            onmousedown={(event) => event.preventDefault()}
+            onclick={handleCreateHighlight}
+            disabled={creatingHighlight}
+            aria-label="Save selected text as a highlight"
+            title="Save highlight"
+          >
+            <HighlighterIcon
+              class={`h-3.5 w-3.5 ${creatingHighlight ? "animate-pulse" : ""}`}
+            />
+          </button>
+          <button
+            type="button"
+            class="text-action-btn inline-flex items-center justify-center rounded-full px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--accent-strong)] hover:bg-[var(--accent-soft)] disabled:cursor-not-allowed disabled:opacity-50"
+            style="background: var(--accent-wash);"
+            onmousedown={(event) => event.preventDefault()}
+            onclick={handleCreateVocabularyReplacement}
+            disabled={!onCreateVocabularyReplacement ||
+              creatingVocabularyReplacement}
+          >
+            {creatingVocabularyReplacement ? "Saving" : "Correct"}
+          </button>
+        {:else}
+          <button
+            type="button"
+            class="text-action-btn inline-flex h-8 w-8 items-center justify-center rounded-full text-[var(--soft-foreground)] hover:bg-[var(--danger-soft)] hover:text-[var(--danger)] disabled:cursor-not-allowed disabled:opacity-50"
+            onmousedown={(event) => event.preventDefault()}
+            onclick={handleDeleteHighlight}
+            disabled={deletingHighlightId === tooltip.highlightId}
+            aria-label="Delete highlight"
+            title="Delete highlight"
+          >
+            <TrashIcon
+              size={14}
+              strokeWidth={2}
+              class={deletingHighlightId === tooltip.highlightId
+                ? "animate-pulse"
+                : ""}
+            />
+          </button>
+        {/if}
       </div>
     {/if}
   {/if}

@@ -7,6 +7,7 @@ use axum::{
 use chrono::Utc;
 use std::collections::HashSet;
 
+use crate::audit;
 use crate::db;
 use crate::models::{
     AddVideoRequest, AddVideoResponse, ChannelVideoPagePayload, ContentStatus, OTHERS_CHANNEL_ID,
@@ -189,6 +190,13 @@ pub async fn add_manual_video(
             &existing_video.channel_id,
             &subscribed_channel_ids,
         );
+        audit::log_manual_video_add(
+            user_id,
+            &video_id,
+            &existing_video.channel_id,
+            &target_channel_id,
+            true,
+        );
         return Ok((
             StatusCode::OK,
             Json(AddVideoResponse {
@@ -242,6 +250,7 @@ pub async fn add_manual_video(
 
     let target_channel_id =
         resolve_manual_video_target_channel_id(&channel_id, &subscribed_channel_ids);
+    audit::log_manual_video_add(user_id, &video_id, &channel_id, &target_channel_id, false);
     evict_video_scope_cache(&state, &channel_id).await?;
     state.read_cache.evict_channel_list().await;
 
@@ -425,6 +434,7 @@ pub async fn update_video_acknowledged(
         return Err((StatusCode::FORBIDDEN, "Sign-in required".to_string()));
     }
     let mut video = require_video_for_access(&state, &access_context, &video_id).await?;
+    let old_acknowledged = video.acknowledged;
     db::put_user_video_state(
         &state.db,
         user_id,
@@ -434,9 +444,16 @@ pub async fn update_video_acknowledged(
             updated_at: Utc::now(),
         },
     )
-        .await
-        .map_err(map_db_err)?;
+    .await
+    .map_err(map_db_err)?;
     video.acknowledged = payload.acknowledged;
+    audit::log_video_acknowledgment(
+        user_id,
+        &video_id,
+        &video.channel_id,
+        old_acknowledged,
+        payload.acknowledged,
+    );
     evict_video_scope_cache(&state, &video.channel_id).await?;
     Ok(Json(video))
 }

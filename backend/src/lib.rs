@@ -1,3 +1,4 @@
+pub mod audit;
 pub mod aws_auth;
 pub mod cache_headers;
 pub mod config;

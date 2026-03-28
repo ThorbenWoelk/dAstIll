@@ -2795,8 +2795,8 @@ async fn finalize_title_generation(
     let conn = state.db.connect();
     let Some(mut conversation) =
         db::get_conversation_for_scope(&conn, conversation_scope_id, conversation_id)
-        .await
-        .map_err(|error| error.to_string())?
+            .await
+            .map_err(|error| error.to_string())?
     else {
         return Ok(());
     };
@@ -2831,8 +2831,8 @@ async fn persist_assistant_message(
     let conn = state.db.connect();
     let Some(mut conversation) =
         db::get_conversation_for_scope(&conn, conversation_scope_id, conversation_id)
-        .await
-        .map_err(|error| error.to_string())?
+            .await
+            .map_err(|error| error.to_string())?
     else {
         return Err("Conversation not found".to_string());
     };

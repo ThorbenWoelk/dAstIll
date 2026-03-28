@@ -208,14 +208,13 @@ pub fn scope_cache_key(access_context: &AccessContext) -> String {
 
 pub fn can_access_channel(access_context: &AccessContext, channel_id: &str) -> bool {
     channel_id == crate::models::OTHERS_CHANNEL_ID
-        || access_context.allowed_channel_ids.iter().any(|id| id == channel_id)
+        || access_context
+            .allowed_channel_ids
+            .iter()
+            .any(|id| id == channel_id)
 }
 
-pub fn can_access_video(
-    access_context: &AccessContext,
-    video_id: &str,
-    channel_id: &str,
-) -> bool {
+pub fn can_access_video(access_context: &AccessContext, video_id: &str, channel_id: &str) -> bool {
     access_context
         .allowed_channel_ids
         .iter()
@@ -329,7 +328,12 @@ async fn load_authenticated_allowed_other_video_ids(
 ) -> Result<Vec<String>, String> {
     crate::db::list_user_video_memberships(&state.db, user_id)
         .await
-        .map(|memberships| memberships.into_iter().map(|entry| entry.video_id).collect())
+        .map(|memberships| {
+            memberships
+                .into_iter()
+                .map(|entry| entry.video_id)
+                .collect()
+        })
         .map_err(|error| error.to_string())
 }
 
@@ -337,7 +341,9 @@ async fn resolve_access_context(
     state: &AppState,
     headers: &axum::http::HeaderMap,
 ) -> Result<AccessContext, String> {
-    let Some(user_id) = extract_user_id(headers).filter(|_| resolve_auth_state(headers).is_authenticated()) else {
+    let Some(user_id) =
+        extract_user_id(headers).filter(|_| resolve_auth_state(headers).is_authenticated())
+    else {
         return Ok(build_access_context(
             headers,
             &state.security.default_seeded_channel_id,
@@ -649,7 +655,8 @@ mod tests {
     fn build_access_context_uses_seeded_channel_for_anonymous_requests() {
         let headers = test_headers();
 
-        let access_context = build_access_context(&headers, "seeded-channel", Vec::new(), Vec::new());
+        let access_context =
+            build_access_context(&headers, "seeded-channel", Vec::new(), Vec::new());
 
         assert_eq!(
             access_context,
@@ -666,10 +673,7 @@ mod tests {
     #[test]
     fn build_access_context_uses_authenticated_identity_and_subscriptions() {
         let mut headers = test_headers();
-        headers.insert(
-            AUTH_STATE_HEADER,
-            HeaderValue::from_static("authenticated"),
-        );
+        headers.insert(AUTH_STATE_HEADER, HeaderValue::from_static("authenticated"));
         headers.insert(USER_ID_HEADER, HeaderValue::from_static("firebase-uid-123"));
         headers.insert(ROLE_HEADER, HeaderValue::from_static(OPERATOR_ROLE));
 

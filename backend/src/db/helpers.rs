@@ -1,9 +1,12 @@
 use std::sync::Arc;
 
 use aws_sdk_s3::primitives::ByteStream;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
+
+use crate::models::UserChannelSubscription;
 
 use super::{Store, StoreError, format_aws_error};
 
@@ -218,5 +221,64 @@ impl Store {
             self.delete_key(&key).await?;
         }
         Ok(count)
+    }
+
+    /// Sets `earliest_sync_date` and `earliest_sync_date_user_set` on every
+    /// `user-channel-subscriptions/{user_id}/{channel_id}.json` object.
+    pub async fn set_all_user_channel_earliest_sync_dates(
+        &self,
+        earliest: DateTime<Utc>,
+        dry_run: bool,
+    ) -> Result<usize, StoreError> {
+        const PREFIX: &str = "user-channel-subscriptions/";
+        let keys = self.list_keys(PREFIX).await?;
+        let mut updated = 0usize;
+        for key in keys {
+            let Some(expected_channel_id) = channel_id_from_user_channel_subscription_key(&key)
+            else {
+                tracing::warn!(key = %key, "unexpected user-channel-subscriptions key shape");
+                continue;
+            };
+            let Some(mut sub) = self.get_json::<UserChannelSubscription>(&key).await? else {
+                tracing::warn!(key = %key, "missing subscription object");
+                continue;
+            };
+            if sub.channel_id != expected_channel_id {
+                return Err(StoreError::Other(format!(
+                    "channel_id mismatch for {key}: file {:?} vs key {expected_channel_id}",
+                    sub.channel_id
+                )));
+            }
+            sub.earliest_sync_date = Some(earliest);
+            sub.earliest_sync_date_user_set = true;
+            if !dry_run {
+                self.put_json(&key, &sub).await?;
+            }
+            updated += 1;
+        }
+        Ok(updated)
+    }
+}
+
+fn channel_id_from_user_channel_subscription_key(key: &str) -> Option<String> {
+    const PREFIX: &str = "user-channel-subscriptions/";
+    let rest = key.strip_prefix(PREFIX)?;
+    let (_user_id, file) = rest.split_once('/')?;
+    file.strip_suffix(".json").map(|s| s.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::channel_id_from_user_channel_subscription_key;
+
+    #[test]
+    fn parses_channel_id_from_subscription_key() {
+        assert_eq!(
+            channel_id_from_user_channel_subscription_key(
+                "user-channel-subscriptions/firebaseUid123/UCxxxxxxxx.json",
+            )
+            .as_deref(),
+            Some("UCxxxxxxxx")
+        );
     }
 }

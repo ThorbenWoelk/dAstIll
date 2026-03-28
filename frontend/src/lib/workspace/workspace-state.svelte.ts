@@ -7,7 +7,6 @@ import {
   refreshChannel,
   backfillChannelVideos,
   RateLimitedError,
-  updateChannel,
   type BackfillChannelVideosResponse,
 } from "$lib/api";
 import {
@@ -21,7 +20,6 @@ import {
 } from "$lib/workspace-cache";
 import { resolveAcknowledgedParam } from "$lib/workspace/types";
 import { track } from "$lib/analytics/tracker";
-import { resolveOldestLoadedReadyVideoDate } from "$lib/sync-depth";
 import type { SidebarStateResult } from "$lib/workspace/sidebar-state.svelte";
 import type {
   AiStatus,
@@ -208,7 +206,6 @@ export function createWorkspaceState(options: {
 
     if (sidebarState.hasMore) {
       await loadVideos(false);
-      await syncEarliestDateFromLoadedVideos();
       return;
     }
 
@@ -250,33 +247,11 @@ export function createWorkspaceState(options: {
 
       await loadVideos(false);
       await options.loadSyncDepth();
-      await syncEarliestDateFromLoadedVideos();
     } catch (error) {
       options.setErrorMessage((error as Error).message);
     } finally {
       sidebarState.setBackfillingHistory(false);
     }
-  }
-
-  async function syncEarliestDateFromLoadedVideos() {
-    const selectedChannel = sidebarState.selectedChannel;
-    if (!sidebarState.selectedChannelId || !selectedChannel) return;
-    if (selectedChannel.earliest_sync_date_user_set) return;
-    const oldest = resolveOldestLoadedReadyVideoDate(sidebarState.videos);
-    if (!oldest) return;
-
-    const currentEarliestMs = selectedChannel.earliest_sync_date
-      ? Date.parse(selectedChannel.earliest_sync_date)
-      : NaN;
-    const shouldPushBack =
-      Number.isNaN(currentEarliestMs) || oldest.getTime() < currentEarliestMs;
-    if (!shouldPushBack) return;
-
-    const updated = await updateChannel(sidebarState.selectedChannelId!, {
-      earliest_sync_date: oldest.toISOString(),
-    });
-    sidebarState.updateChannel(updated);
-    void options.loadSyncDepth();
   }
 
   async function loadBootstrapRefresh(options_local?: { silent?: boolean }) {
@@ -390,6 +365,5 @@ export function createWorkspaceState(options: {
     loadVideos,
     refreshAndLoadVideos,
     applyChannelSnapshot,
-    syncEarliestDateFromLoadedVideos,
   };
 }

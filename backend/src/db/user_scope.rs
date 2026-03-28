@@ -11,7 +11,11 @@ fn user_channel_subscription_prefix(user_id: &str) -> String {
 }
 
 fn user_channel_subscription_key(user_id: &str, channel_id: &str) -> String {
-    format!("{}{}.json", user_channel_subscription_prefix(user_id), channel_id)
+    format!(
+        "{}{}.json",
+        user_channel_subscription_prefix(user_id),
+        channel_id
+    )
 }
 
 fn user_video_membership_prefix(user_id: &str) -> String {
@@ -107,8 +111,9 @@ pub async fn list_user_video_memberships(
     store: &Store,
     user_id: &str,
 ) -> Result<Vec<UserVideoMembership>, StoreError> {
-    let mut memberships: Vec<UserVideoMembership> =
-        store.load_all(&user_video_membership_prefix(user_id)).await?;
+    let mut memberships: Vec<UserVideoMembership> = store
+        .load_all(&user_video_membership_prefix(user_id))
+        .await?;
     memberships.sort_by(|left, right| {
         right
             .added_at
@@ -124,7 +129,10 @@ pub async fn put_user_video_membership(
     membership: &UserVideoMembership,
 ) -> Result<(), StoreError> {
     store
-        .put_json(&user_video_membership_key(user_id, &membership.video_id), membership)
+        .put_json(
+            &user_video_membership_key(user_id, &membership.video_id),
+            membership,
+        )
         .await
 }
 
@@ -184,7 +192,9 @@ pub async fn get_user_video_state(
     user_id: &str,
     video_id: &str,
 ) -> Result<Option<UserVideoState>, StoreError> {
-    store.get_json(&user_video_state_key(user_id, video_id)).await
+    store
+        .get_json(&user_video_state_key(user_id, video_id))
+        .await
 }
 
 pub async fn put_user_video_state(

@@ -5,6 +5,7 @@ use axum::{
     response::IntoResponse,
 };
 
+use crate::audit;
 use crate::db;
 use crate::models::{
     CleanTranscriptResponse, ContentStatus, Summary, Transcript, TranscriptRenderMode,
@@ -387,6 +388,7 @@ pub async fn reset_video(
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     tracing::info!(video_id = %video_id, "video reset requested");
     let video = require_video(&state, &video_id).await?;
+    audit::log_video_reset(&video_id, &video.channel_id);
 
     db::delete_transcript(&state.db, &video_id)
         .await

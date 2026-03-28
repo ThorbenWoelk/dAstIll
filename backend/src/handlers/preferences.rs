@@ -6,7 +6,7 @@ use axum::{
 };
 
 use crate::{
-    db,
+    audit, db,
     models::UserPreferences,
     security::{AccessContext, AuthState},
     state::AppState,
@@ -41,8 +41,12 @@ pub async fn save_preferences(
         return Err((StatusCode::FORBIDDEN, "Sign-in required".to_string()));
     }
 
+    let before = db::get_user_preferences(&state.db, user_id)
+        .await
+        .map_err(map_db_err)?;
     db::save_user_preferences(&state.db, user_id, &payload)
         .await
         .map_err(map_db_err)?;
+    audit::log_preferences_save(user_id, &before, &payload);
     Ok(StatusCode::NO_CONTENT)
 }

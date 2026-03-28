@@ -130,9 +130,8 @@ impl SecurityRuntimeConfig {
                 .unwrap_or_else(default_backend_allowed_origins),
             // Release builds do not use `cfg!(debug_assertions)`; use the same default as local dev
             // when unset so Cloud Run and Docker do not require a duplicate env var.
-            default_seeded_channel_id: optional_env("DEFAULT_SEEDED_CHANNEL_ID").unwrap_or_else(
-                || LOCAL_DEV_DEFAULT_SEEDED_CHANNEL_ID.to_string(),
-            ),
+            default_seeded_channel_id: optional_env("DEFAULT_SEEDED_CHANNEL_ID")
+                .unwrap_or_else(|| LOCAL_DEV_DEFAULT_SEEDED_CHANNEL_ID.to_string()),
             // Baseline applies to almost all API routes; SPAs with polling and parallel loads
             // need a generous default (120/min was routinely exceeded by a single user).
             baseline_rate_limit_per_minute: optional_u32_env("BASELINE_RATE_LIMIT_PER_MINUTE")

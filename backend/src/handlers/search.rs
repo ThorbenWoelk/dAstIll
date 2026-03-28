@@ -2,8 +2,7 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
 use axum::{
-    Extension,
-    Json,
+    Extension, Json,
     extract::{Query, State},
     http::StatusCode,
     response::{IntoResponse, Sse, sse::Event},

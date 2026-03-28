@@ -110,7 +110,7 @@ impl ReadCache {
             &ReadCacheKey::Channels(scope.to_string()),
             ReadCacheValue::into_channels,
         )
-            .await
+        .await
     }
 
     pub async fn set_channels(&self, scope: String, channels: Vec<Channel>) {
@@ -450,7 +450,9 @@ mod tests {
         let channels = vec![sample_channel("abc")];
         let scope = "user:test";
 
-        cache.set_channels(scope.to_string(), channels.clone()).await;
+        cache
+            .set_channels(scope.to_string(), channels.clone())
+            .await;
 
         let cached = cache
             .get_channels(scope)
@@ -631,7 +633,10 @@ mod tests {
             "channel-a workspace bootstrap should be evicted"
         );
         assert!(
-            cache.get_channel_sync_depth(scope_a, "channel-a").await.is_none(),
+            cache
+                .get_channel_sync_depth(scope_a, "channel-a")
+                .await
+                .is_none(),
             "channel-a sync depth should be evicted"
         );
 

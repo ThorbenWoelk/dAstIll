@@ -1,8 +1,7 @@
 use std::convert::Infallible;
 
 use axum::{
-    Extension,
-    Json,
+    Extension, Json,
     extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Sse, sse::Event},
@@ -11,16 +10,16 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    db,
+    audit, db,
     models::{
         ChatConversation, ChatMessage, ChatRole, ChatTitleStatus, CreateConversationRequest,
         SendChatMessageRequest, UpdateConversationRequest,
     },
+    security::{AccessContext, can_access_video},
     services::{
         SpawnReplyJob,
         chat::{default_chat_cloud_model_id, is_chat_cloud_model_choice},
     },
-    security::{AccessContext, can_access_video},
     state::AppState,
 };
 
@@ -131,9 +130,10 @@ pub async fn list_conversations(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let conversations = db::list_conversations_for_scope(&state.db, conversation_scope_id(&access_context))
-        .await
-        .map_err(map_db_err)?;
+    let conversations =
+        db::list_conversations_for_scope(&state.db, conversation_scope_id(&access_context))
+            .await
+            .map_err(map_db_err)?;
     Ok(Json(conversations))
 }
 
@@ -145,10 +145,16 @@ pub async fn create_conversation(
     let mut conversation = state.chat.create_conversation(payload.title.clone());
     mark_manual_title_on_create(&mut conversation);
 
+    let scope_id = conversation_scope_id(&access_context);
     let _lock = state.chat_store_lock.lock().await;
-    db::upsert_conversation_for_scope(&state.db, conversation_scope_id(&access_context), &conversation)
+    db::upsert_conversation_for_scope(&state.db, scope_id, &conversation)
         .await
         .map_err(map_db_err)?;
+    audit::log_chat_conversation_create(
+        scope_id,
+        &conversation.id,
+        conversation.title.as_deref().map(str::len).unwrap_or(0),
+    );
     Ok((StatusCode::CREATED, Json(conversation)))
 }
 
@@ -162,9 +168,9 @@ pub async fn get_conversation(
         conversation_scope_id(&access_context),
         &conversation_id,
     )
-        .await
-        .map_err(map_db_err)
-        .and_then(|opt| require_present(opt, "Conversation not found"))?;
+    .await
+    .map_err(map_db_err)
+    .and_then(|opt| require_present(opt, "Conversation not found"))?;
     Ok(Json(conversation))
 }
 
@@ -178,16 +184,20 @@ pub async fn update_conversation(
     let scope_id = conversation_scope_id(&access_context);
 
     let _lock = state.chat_store_lock.lock().await;
-    let Some(mut conversation) = db::get_conversation_for_scope(&state.db, scope_id, &conversation_id)
-        .await
-        .map_err(map_db_err)?
+    let Some(mut conversation) =
+        db::get_conversation_for_scope(&state.db, scope_id, &conversation_id)
+            .await
+            .map_err(map_db_err)?
     else {
         return Err((StatusCode::NOT_FOUND, "Conversation not found".to_string()));
     };
+    let old_title_len = conversation.title.as_deref().map(str::len).unwrap_or(0);
+    let new_title_len = title.len();
     apply_manual_conversation_title(&mut conversation, title, Utc::now());
     db::upsert_conversation_for_scope(&state.db, scope_id, &conversation)
         .await
         .map_err(map_db_err)?;
+    audit::log_chat_conversation_update(scope_id, &conversation_id, old_title_len, new_title_len);
     Ok(Json(conversation))
 }
 
@@ -200,10 +210,12 @@ pub async fn delete_conversation(
         active_chat.cancel();
     }
 
+    let scope_id = conversation_scope_id(&access_context);
     let _lock = state.chat_store_lock.lock().await;
-    db::delete_conversation_for_scope(&state.db, conversation_scope_id(&access_context), &conversation_id)
+    db::delete_conversation_for_scope(&state.db, scope_id, &conversation_id)
         .await
         .map_err(map_db_err)?;
+    audit::log_chat_conversation_delete(scope_id, &conversation_id);
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -215,10 +227,12 @@ pub async fn delete_all_conversations(
         active_chat.cancel();
     }
 
+    let scope_id = conversation_scope_id(&access_context);
     let _lock = state.chat_store_lock.lock().await;
-    db::delete_all_conversations_for_scope(&state.db, conversation_scope_id(&access_context))
+    db::delete_all_conversations_for_scope(&state.db, scope_id)
         .await
         .map_err(map_db_err)?;
+    audit::log_chat_conversations_delete_all(scope_id);
 
     for (_, active_chat) in state.active_chats.lock().await.drain() {
         active_chat.cancel();
@@ -346,9 +360,10 @@ async fn store_user_message(
 ) -> Result<(ChatConversation, bool), (StatusCode, String)> {
     let scope_id = conversation_scope_id(access_context);
     let _lock = state.chat_store_lock.lock().await;
-    let Some(mut conversation) = db::get_conversation_for_scope(&state.db, scope_id, conversation_id)
-        .await
-        .map_err(map_db_err)?
+    let Some(mut conversation) =
+        db::get_conversation_for_scope(&state.db, scope_id, conversation_id)
+            .await
+            .map_err(map_db_err)?
     else {
         return Err((StatusCode::NOT_FOUND, "Conversation not found".to_string()));
     };

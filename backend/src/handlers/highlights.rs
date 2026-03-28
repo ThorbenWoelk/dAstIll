@@ -6,7 +6,7 @@ use axum::{
 };
 
 use crate::{
-    db,
+    audit, db,
     models::{CreateHighlightRequest, HighlightChannelGroup},
     security::{AccessContext, AuthState},
     state::AppState,
@@ -42,6 +42,8 @@ pub async fn create_highlight(
     .await
     .map_err(map_db_err)?;
 
+    audit::log_highlight_create(user_id, &video_id, highlight.id, highlight.source);
+
     Ok((StatusCode::CREATED, Json(highlight)))
 }
 
@@ -68,9 +70,10 @@ pub async fn list_highlights(
     let Some(user_id) = access_context.user_id.as_deref() else {
         return Ok(Json(Vec::new()));
     };
-    let grouped: Vec<HighlightChannelGroup> = db::list_highlights_grouped_for_user(&state.db, user_id)
-        .await
-        .map_err(map_db_err)?;
+    let grouped: Vec<HighlightChannelGroup> =
+        db::list_highlights_grouped_for_user(&state.db, user_id)
+            .await
+            .map_err(map_db_err)?;
     Ok(Json(grouped))
 }
 
@@ -89,6 +92,9 @@ pub async fn delete_highlight(
     let deleted = db::delete_highlight(&state.db, user_id, highlight_id)
         .await
         .map_err(map_db_err)?;
+    if deleted {
+        audit::log_highlight_delete(user_id, highlight_id);
+    }
     let status = resolve_delete_highlight_result(deleted)?;
 
     Ok(status)

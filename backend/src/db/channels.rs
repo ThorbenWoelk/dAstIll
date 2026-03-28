@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
 use crate::models::{
-    CanonicalChannelRecord, Channel, OTHERS_CHANNEL_ID, OTHERS_CHANNEL_NAME, UserChannelSubscription,
+    CanonicalChannelRecord, Channel, OTHERS_CHANNEL_ID, OTHERS_CHANNEL_NAME,
+    UserChannelSubscription,
 };
 
 use super::{Store, StoreError, build_channel_from_records};
@@ -41,7 +42,9 @@ pub async fn insert_channel(store: &Store, channel: &Channel) -> Result<(), Stor
         name: channel.name.clone(),
         thumbnail_url: channel.thumbnail_url.clone(),
     };
-    store.put_json(&canonical_channel_key(&channel.id), &record).await
+    store
+        .put_json(&canonical_channel_key(&channel.id), &record)
+        .await
 }
 
 pub async fn get_canonical_channel(
@@ -52,12 +55,20 @@ pub async fn get_canonical_channel(
 }
 
 pub async fn get_channel(store: &Store, id: &str) -> Result<Option<Channel>, StoreError> {
-    Ok(get_canonical_channel(store, id).await?.map(canonical_to_channel))
+    Ok(get_canonical_channel(store, id)
+        .await?
+        .map(canonical_to_channel))
 }
 
-pub async fn list_canonical_channels(store: &Store) -> Result<Vec<CanonicalChannelRecord>, StoreError> {
+pub async fn list_canonical_channels(
+    store: &Store,
+) -> Result<Vec<CanonicalChannelRecord>, StoreError> {
     let mut channels: Vec<CanonicalChannelRecord> = store.load_all("channels/").await?;
-    channels.sort_by(|left, right| left.name.cmp(&right.name).then_with(|| left.id.cmp(&right.id)));
+    channels.sort_by(|left, right| {
+        left.name
+            .cmp(&right.name)
+            .then_with(|| left.id.cmp(&right.id))
+    });
     Ok(channels)
 }
 
@@ -94,7 +105,10 @@ pub async fn list_user_channels(store: &Store, user_id: &str) -> Result<Vec<Chan
     Ok(channels)
 }
 
-pub async fn list_user_channel_ids(store: &Store, user_id: &str) -> Result<Vec<String>, StoreError> {
+pub async fn list_user_channel_ids(
+    store: &Store,
+    user_id: &str,
+) -> Result<Vec<String>, StoreError> {
     Ok(super::list_user_channel_subscriptions(store, user_id)
         .await?
         .into_iter()
@@ -112,13 +126,17 @@ pub async fn list_user_channels_with_virtual_others(
         .map(|channel| channel.id.clone())
         .collect::<Vec<_>>();
     let memberships = super::list_user_video_memberships(store, user_id).await?;
-    let other_video_ids = super::list_user_other_video_ids(store, user_id, &subscribed_channel_ids)
-        .await?;
+    let other_video_ids =
+        super::list_user_other_video_ids(store, user_id, &subscribed_channel_ids).await?;
 
     if !other_video_ids.is_empty() {
         let added_at = memberships
             .iter()
-            .find(|membership| other_video_ids.iter().any(|video_id| video_id == &membership.video_id))
+            .find(|membership| {
+                other_video_ids
+                    .iter()
+                    .any(|video_id| video_id == &membership.video_id)
+            })
             .map(|membership| membership.added_at)
             .unwrap_or_else(chrono::Utc::now);
         channels.push(build_virtual_others_channel(added_at));
@@ -135,7 +153,9 @@ pub async fn get_user_channel(
     let canonical = get_canonical_channel(store, channel_id).await?;
     let subscription = super::get_user_channel_subscription(store, user_id, channel_id).await?;
     Ok(match (canonical, subscription) {
-        (Some(canonical), Some(subscription)) => Some(build_channel_from_records(&canonical, &subscription)),
+        (Some(canonical), Some(subscription)) => {
+            Some(build_channel_from_records(&canonical, &subscription))
+        }
         _ => None,
     })
 }
@@ -180,7 +200,9 @@ pub async fn delete_channel(store: &Store, id: &str) -> Result<bool, StoreError>
             .delete_prefix(&format!("search-sources/{}/", video.id))
             .await?;
         super::search::delete_vectors_for_video(store, &video.id).await?;
-        store.delete_key(&format!("videos/{}.json", video.id)).await?;
+        store
+            .delete_key(&format!("videos/{}.json", video.id))
+            .await?;
     }
 
     store.delete_key(&canonical_channel_key(id)).await?;

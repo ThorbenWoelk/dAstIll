@@ -78,10 +78,7 @@ pub async fn save_user_preferences(
     Ok(())
 }
 
-pub async fn migrate_legacy_preferences(
-    store: &Store,
-    user_id: &str,
-) -> Result<(), StoreError> {
+pub async fn migrate_legacy_preferences(store: &Store, user_id: &str) -> Result<(), StoreError> {
     let user_doc_id = preferences_document_id(user_id);
     if user_doc_id == DOCUMENT_ID {
         return Ok(());

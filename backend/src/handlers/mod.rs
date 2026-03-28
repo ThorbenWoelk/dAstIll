@@ -83,7 +83,11 @@ pub(crate) async fn require_channel_for_access(
         });
     }
 
-    if !access_context.allowed_channel_ids.iter().any(|id| id == channel_id) {
+    if !access_context
+        .allowed_channel_ids
+        .iter()
+        .any(|id| id == channel_id)
+    {
         return Err((StatusCode::NOT_FOUND, "Channel not found".to_string()));
     }
 
@@ -100,7 +104,8 @@ pub(crate) async fn require_video_for_access(
 ) -> Result<Video, (StatusCode, String)> {
     let Some(video) = db::get_video(&state.db, video_id, true)
         .await
-        .map_err(map_db_err)? else {
+        .map_err(map_db_err)?
+    else {
         return Err((StatusCode::NOT_FOUND, "Video not found".to_string()));
     };
 

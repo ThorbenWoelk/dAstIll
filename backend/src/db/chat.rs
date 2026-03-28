@@ -40,7 +40,9 @@ async fn store_index(
     scope_id: &str,
     conversations: &[ChatConversationSummary],
 ) -> Result<(), StoreError> {
-    store.put_json(&chat_index_key(scope_id), conversations).await
+    store
+        .put_json(&chat_index_key(scope_id), conversations)
+        .await
 }
 
 fn sort_summaries(mut conversations: Vec<ChatConversationSummary>) -> Vec<ChatConversationSummary> {
@@ -66,7 +68,9 @@ pub async fn get_conversation_for_scope(
     scope_id: &str,
     conversation_id: &str,
 ) -> Result<Option<ChatConversation>, StoreError> {
-    store.get_json(&conversation_key(scope_id, conversation_id)).await
+    store
+        .get_json(&conversation_key(scope_id, conversation_id))
+        .await
 }
 
 pub async fn upsert_conversation_for_scope(

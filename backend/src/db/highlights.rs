@@ -74,7 +74,9 @@ pub async fn create_highlight(
         created_at: chrono::Utc::now(),
     };
 
-    store.put_json(&highlight_key(user_id, id), &highlight).await?;
+    store
+        .put_json(&highlight_key(user_id, id), &highlight)
+        .await?;
     Ok(highlight)
 }
 

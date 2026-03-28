@@ -8,6 +8,7 @@ use chrono::Utc;
 use serde::Deserialize;
 use std::collections::HashSet;
 
+use crate::audit;
 use crate::db;
 use crate::handlers::query::{VideoListParams, WorkspaceBootstrapParams};
 use crate::models::{AddChannelRequest, Channel, UpdateChannelRequest};
@@ -206,7 +207,12 @@ pub async fn add_channel(
         .resolve_channel(&input)
         .await
         .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
-    tracing::info!(channel_id = %channel_id, input = %input, "resolved channel input");
+    tracing::info!(
+        channel_id = %channel_id,
+        user_id = %user_id,
+        input = %input,
+        "resolved channel input"
+    );
 
     let thumbnail = match youtube.fetch_channel_thumbnail(&channel_id).await {
         Ok(Some(url)) => Some(url),
@@ -244,7 +250,7 @@ pub async fn add_channel(
             .await
             .map_err(map_db_err)?;
     }
-    tracing::info!(channel_id = %channel.id, channel_name = %channel.name, "channel subscribed");
+    audit::log_channel_subscribe(user_id, &channel, input.len());
 
     let db_pool = state.db.clone();
     let read_cache = state.read_cache.clone();
@@ -280,7 +286,9 @@ pub async fn get_channel(
     Extension(access_context): Extension<AccessContext>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    Ok(Json(require_channel_for_access(&state, &access_context, &id).await?))
+    Ok(Json(
+        require_channel_for_access(&state, &access_context, &id).await?,
+    ))
 }
 
 pub async fn get_channel_sync_depth(
@@ -386,6 +394,7 @@ pub async fn delete_channel(
         .map_err(map_db_err)?;
 
     if deleted {
+        audit::log_channel_unsubscribe(user_id, &id);
         state.read_cache.evict_channel(&id).await;
         state.read_cache.evict_channel_list().await;
         Ok(StatusCode::NO_CONTENT)
@@ -412,6 +421,8 @@ pub async fn update_channel(
         .map_err(map_db_err)?
         .ok_or((StatusCode::NOT_FOUND, "Channel not found".to_string()))?;
 
+    let before = channel.clone();
+
     if let Some(v) = payload.earliest_sync_date {
         channel.earliest_sync_date = Some(v);
     }
@@ -424,6 +435,7 @@ pub async fn update_channel(
             .await
             .map_err(map_db_err)?;
     }
+    audit::log_channel_update(user_id, &id, &before, &channel, &payload);
     state.read_cache.evict_channel(&id).await;
     state.read_cache.evict_channel_list().await;
 
@@ -572,8 +584,8 @@ mod tests {
         },
         handlers::query::WorkspaceBootstrapParams,
         models::{Channel, ContentStatus, Transcript, TranscriptRenderMode, Video},
-        security::{AccessContext, AccessRole, AuthState},
         search_progress::SearchProgress,
+        security::{AccessContext, AccessRole, AuthState},
         services::{
             ChatService, CloudCooldown, OllamaCore, SearchService, SummarizerService,
             SummaryEvaluatorService, TranscriptCooldown, TranscriptService, YouTubeQuotaCooldown,
@@ -680,21 +692,20 @@ mod tests {
             .initialize_from_materials(&materials, false, false)
             .await;
 
-        let response =
-            workspace_bootstrap(
-                State(state),
-                Extension(AccessContext {
-                    user_id: None,
-                    auth_state: AuthState::Anonymous,
-                    access_role: AccessRole::Anonymous,
-                    allowed_channel_ids: vec![channel.id.clone()],
-                    allowed_other_video_ids: Vec::new(),
-                }),
-                Query(WorkspaceBootstrapParams::default()),
-            )
-            .await
-            .unwrap()
-            .into_response();
+        let response = workspace_bootstrap(
+            State(state),
+            Extension(AccessContext {
+                user_id: None,
+                auth_state: AuthState::Anonymous,
+                access_role: AccessRole::Anonymous,
+                allowed_channel_ids: vec![channel.id.clone()],
+                allowed_other_video_ids: Vec::new(),
+            }),
+            Query(WorkspaceBootstrapParams::default()),
+        )
+        .await
+        .unwrap()
+        .into_response();
         let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let payload: Value = serde_json::from_slice(&body).unwrap();
 

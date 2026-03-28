@@ -24,7 +24,6 @@
     listVideos,
     refreshChannel,
     savePreferences,
-    updateChannel,
     updateAcknowledged,
     RateLimitedError,
   } from "$lib/api";
@@ -89,7 +88,6 @@
     removeCachedChannel,
   } from "$lib/workspace-cache";
   import { resolveBootstrapOnMount } from "$lib/ssr-bootstrap";
-  import { resolveOldestLoadedReadyVideoDate } from "$lib/sync-depth";
   import { createAiStatusPoller } from "$lib/utils/ai-poller";
   import { upsertVocabularyReplacement } from "$lib/vocabulary";
   import { mobileWorkspaceBrowseIntent } from "$lib/mobile-navigation/mobileWorkspaceBrowseIntent";
@@ -590,31 +588,6 @@
     }
   }
 
-  async function syncEarliestDateFromLoadedVideos() {
-    if (!selectedChannelId || !selectedChannel) return;
-    if (selectedChannel.earliest_sync_date_user_set) return;
-    const oldest = resolveOldestLoadedReadyVideoDate(videos);
-    if (!oldest) return;
-
-    const currentEarliest = selectedChannel.earliest_sync_date
-      ? new Date(selectedChannel.earliest_sync_date)
-      : null;
-    const shouldPushBack =
-      !currentEarliest ||
-      Number.isNaN(currentEarliest.getTime()) ||
-      oldest < currentEarliest;
-    if (!shouldPushBack) return;
-
-    const updated = await updateChannel(sidebarState.selectedChannelId!, {
-      earliest_sync_date: oldest.toISOString(),
-    });
-    sidebarState.setChannels(
-      sidebarState.channels.map((channel) =>
-        channel.id === sidebarState.selectedChannelId ? updated : channel,
-      ),
-    );
-    void loadSyncDepth();
-  }
   const selectedVideoYoutubeUrl = $derived(
     selectedVideoId
       ? `https://www.youtube.com/watch?v=${selectedVideoId}`
@@ -1459,7 +1432,6 @@
     if (sidebarState.hasMore) {
       await loadVideos(false);
       allowLoadedVideoSyncDepthOverride = true;
-      await syncEarliestDateFromLoadedVideos();
       return;
     }
 
@@ -1502,7 +1474,6 @@
       await loadVideos(false);
       await loadSyncDepth();
       allowLoadedVideoSyncDepthOverride = true;
-      await syncEarliestDateFromLoadedVideos();
     } catch (error) {
       errorMessage = (error as Error).message;
     } finally {
