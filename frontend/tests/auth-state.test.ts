@@ -12,54 +12,57 @@ const firebaseAuthInstance = {
   currentUser: null as MockUser | null,
 };
 
-const firebaseAuthModule = {
-  GoogleAuthProvider: class GoogleAuthProvider {},
-  connectAuthEmulator: mock(() => undefined),
-  getAuth: mock(() => firebaseAuthInstance),
-  onAuthStateChanged: mock(
-    (
-      _auth: typeof firebaseAuthInstance,
-      callback: typeof authStateListener,
-    ) => {
-      authStateListener = callback as typeof authStateListener;
-      return () => {
-        authStateListener = null;
-      };
-    },
-  ),
-  signInAnonymously: mock(async () => {
-    const user: MockUser = {
-      uid: "anon-123",
-      email: null,
-      isAnonymous: true,
-      getIdToken: async () => "anon-token",
+const onAuthStateChangedMock = mock(
+  (_auth: typeof firebaseAuthInstance, callback: typeof authStateListener) => {
+    authStateListener = callback as typeof authStateListener;
+    return () => {
+      authStateListener = null;
     };
-    firebaseAuthInstance.currentUser = user;
-    authStateListener?.(user);
-    return { user };
-  }),
-  signInWithPopup: mock(async () => {
-    const user: MockUser = {
-      uid: "google-123",
-      email: "person@example.com",
-      isAnonymous: false,
-      getIdToken: async () => "google-token",
-    };
-    firebaseAuthInstance.currentUser = user;
-    authStateListener?.(user);
-    return { user };
-  }),
-  signOut: mock(async () => {
-    firebaseAuthInstance.currentUser = null;
-    authStateListener?.(null);
-  }),
-};
+  },
+);
+
+const signInAnonymouslyMock = mock(async () => {
+  const user: MockUser = {
+    uid: "anon-123",
+    email: null,
+    isAnonymous: true,
+    getIdToken: async () => "anon-token",
+  };
+  firebaseAuthInstance.currentUser = user;
+  authStateListener?.(user);
+  return { user };
+});
+
+const signInWithPopupMock = mock(async () => {
+  const user: MockUser = {
+    uid: "google-123",
+    email: "person@example.com",
+    isAnonymous: false,
+    getIdToken: async () => "google-token",
+  };
+  firebaseAuthInstance.currentUser = user;
+  authStateListener?.(user);
+  return { user };
+});
+
+const signOutMock = mock(async () => {
+  firebaseAuthInstance.currentUser = null;
+  authStateListener?.(null);
+});
 
 mock.module("$lib/firebase", () => ({
   auth: firebaseAuthInstance,
 }));
 
-mock.module("firebase/auth", () => firebaseAuthModule);
+mock.module("firebase/auth", () => ({
+  GoogleAuthProvider: class GoogleAuthProvider {},
+  connectAuthEmulator: mock(() => undefined),
+  getAuth: mock(() => firebaseAuthInstance),
+  onAuthStateChanged: onAuthStateChangedMock,
+  signInAnonymously: signInAnonymouslyMock,
+  signInWithPopup: signInWithPopupMock,
+  signOut: signOutMock,
+}));
 
 const originalFetch = globalThis.fetch;
 const originalWindow = globalThis.window;
@@ -131,12 +134,10 @@ beforeEach(() => {
 afterEach(() => {
   firebaseAuthInstance.currentUser = null;
   authStateListener = null;
-  firebaseAuthModule.onAuthStateChanged.mockClear();
-  firebaseAuthModule.signInAnonymously.mockClear();
-  firebaseAuthModule.signInWithPopup.mockClear();
-  firebaseAuthModule.signOut.mockClear();
-  firebaseAuthModule.connectAuthEmulator.mockClear();
-  firebaseAuthModule.getAuth.mockClear();
+  onAuthStateChangedMock.mockClear();
+  signInAnonymouslyMock.mockClear();
+  signInWithPopupMock.mockClear();
+  signOutMock.mockClear();
   globalThis.fetch = originalFetch;
   if (originalWindow === undefined) {
     delete (globalThis as typeof globalThis & { window?: unknown }).window;
@@ -163,7 +164,7 @@ describe("auth state controller", () => {
 
     await authState.start();
 
-    expect(firebaseAuthModule.signInAnonymously).toHaveBeenCalledTimes(1);
+    expect(signInAnonymouslyMock).toHaveBeenCalledTimes(1);
     expect(authState.current).toEqual({
       userId: "anon-123",
       authState: "anonymous",
@@ -186,7 +187,7 @@ describe("auth state controller", () => {
 
     await authState.start();
 
-    expect(firebaseAuthModule.signInAnonymously).not.toHaveBeenCalled();
+    expect(signInAnonymouslyMock).not.toHaveBeenCalled();
     expect(authState.current).toEqual({
       userId: "anon-123",
       authState: "anonymous",
@@ -208,7 +209,7 @@ describe("auth state controller", () => {
     });
 
     await authState.start();
-    expect(firebaseAuthModule.signInAnonymously).toHaveBeenCalledTimes(1);
+    expect(signInAnonymouslyMock).toHaveBeenCalledTimes(1);
 
     authState.setServerAuth({
       userId: null,
@@ -219,7 +220,7 @@ describe("auth state controller", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(firebaseAuthModule.signInAnonymously).toHaveBeenCalledTimes(2);
+    expect(signInAnonymouslyMock).toHaveBeenCalledTimes(2);
     expect(authState.current).toEqual({
       userId: "anon-123",
       authState: "anonymous",
@@ -243,7 +244,7 @@ describe("auth state controller", () => {
     await authState.start();
     await authState.signInWithGoogle();
 
-    expect(firebaseAuthModule.signInWithPopup).toHaveBeenCalledTimes(1);
+    expect(signInWithPopupMock).toHaveBeenCalledTimes(1);
     expect(authState.current).toEqual({
       userId: "google-123",
       authState: "authenticated",
