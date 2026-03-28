@@ -113,7 +113,7 @@ jobs:
           service: ${{ env.BACKEND_SERVICE }}
           region: ${{ env.REGION }}
           image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_ID }}/backend:${{ env.IMAGE_TAG }}
-          flags: "--service-account=dastill-backend-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
+          flags: "--service-account=dastill-backend-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com --startup-cpu-boost --cpu=2 --memory=4Gi --timeout=300"
           # Quote so newlines from the prior step are preserved for deploy-cloudrun.
           secrets: "${{ steps.backend_secrets.outputs.secrets }}"
           secrets_update_strategy: overwrite
