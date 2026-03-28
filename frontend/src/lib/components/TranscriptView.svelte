@@ -295,7 +295,8 @@
       return;
     }
 
-    const result = onCreateHighlight(tooltip.draft);
+    const draft = tooltip.draft;
+    const result = onCreateHighlight(draft);
     const selection = window.getSelection();
     if (selection) selection.removeAllRanges();
     clearTooltip();
@@ -312,7 +313,8 @@
       return;
     }
 
-    const result = onCreateVocabularyReplacement(tooltip.draft.text);
+    const text = tooltip.draft.text;
+    const result = onCreateVocabularyReplacement(text);
     const selection = window.getSelection();
     if (selection) selection.removeAllRanges();
     clearTooltip();
@@ -453,6 +455,10 @@
       if (!containerElement) {
         return;
       }
+      const target = event.target;
+      if (target instanceof Element && target.closest(".text-action-toolbar")) {
+        return;
+      }
       if (!containerElement.contains(event.target as Node)) {
         clearTooltip();
       }
@@ -515,13 +521,18 @@
   {#if tooltip}
     {#if isMobile}
       <div
+        role="group"
+        aria-label="Text selection actions"
         class="text-action-toolbar fixed bottom-[calc(var(--mobile-bottom-stack-height)+1.5rem)] left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-2xl px-2 py-2 shadow-2xl"
+        onpointerdown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        }}
       >
         {#if tooltip.kind === "create"}
           <button
             type="button"
             class="text-action-btn inline-flex h-9 w-9 items-center justify-center rounded-full text-[var(--soft-foreground)] hover:bg-[var(--accent-wash)] hover:text-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
-            onmousedown={(event) => event.preventDefault()}
             onclick={handleCreateHighlight}
             disabled={creatingHighlight}
             aria-label="Save selected text as a highlight"
@@ -535,7 +546,6 @@
             type="button"
             class="text-action-btn inline-flex items-center justify-center rounded-full px-4 py-2 text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--accent-strong)] hover:bg-[var(--accent-soft)] disabled:cursor-not-allowed disabled:opacity-50"
             style="background: var(--accent-wash);"
-            onmousedown={(event) => event.preventDefault()}
             onclick={handleCreateVocabularyReplacement}
             disabled={!onCreateVocabularyReplacement ||
               creatingVocabularyReplacement}
@@ -546,7 +556,6 @@
           <button
             type="button"
             class="text-action-btn inline-flex h-9 w-9 items-center justify-center rounded-full text-[var(--soft-foreground)] hover:bg-[var(--danger-soft)] hover:text-[var(--danger)] disabled:cursor-not-allowed disabled:opacity-50"
-            onmousedown={(event) => event.preventDefault()}
             onclick={handleDeleteHighlight}
             disabled={deletingHighlightId === tooltip.highlightId}
             aria-label="Delete highlight"
@@ -564,14 +573,16 @@
       </div>
     {:else}
       <div
+        role="group"
+        aria-label="Text selection actions"
         class="text-action-toolbar absolute z-40 flex items-center gap-1 rounded-full px-1.5 py-1.5"
         style={`top: ${tooltip.top}px; left: ${tooltip.left}px; transform: translateX(-50%);`}
+        onpointerdown={(event) => event.preventDefault()}
       >
         {#if tooltip.kind === "create"}
           <button
             type="button"
             class="text-action-btn inline-flex h-8 w-8 items-center justify-center rounded-full text-[var(--soft-foreground)] hover:bg-[var(--accent-wash)] hover:text-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
-            onmousedown={(event) => event.preventDefault()}
             onclick={handleCreateHighlight}
             disabled={creatingHighlight}
             aria-label="Save selected text as a highlight"
@@ -585,7 +596,6 @@
             type="button"
             class="text-action-btn inline-flex items-center justify-center rounded-full px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--accent-strong)] hover:bg-[var(--accent-soft)] disabled:cursor-not-allowed disabled:opacity-50"
             style="background: var(--accent-wash);"
-            onmousedown={(event) => event.preventDefault()}
             onclick={handleCreateVocabularyReplacement}
             disabled={!onCreateVocabularyReplacement ||
               creatingVocabularyReplacement}
@@ -596,7 +606,6 @@
           <button
             type="button"
             class="text-action-btn inline-flex h-8 w-8 items-center justify-center rounded-full text-[var(--soft-foreground)] hover:bg-[var(--danger-soft)] hover:text-[var(--danger)] disabled:cursor-not-allowed disabled:opacity-50"
-            onmousedown={(event) => event.preventDefault()}
             onclick={handleDeleteHighlight}
             disabled={deletingHighlightId === tooltip.highlightId}
             aria-label="Delete highlight"
@@ -624,6 +633,7 @@
     box-shadow:
       0 2px 12px var(--shadow-soft),
       0 1px 3px var(--shadow-strong);
+    touch-action: none;
   }
 
   .text-action-btn {

@@ -46,13 +46,7 @@ import {
   type WorkspaceStateSnapshot,
 } from "$lib/channel-workspace";
 import { renderMarkdown } from "$lib/utils/markdown";
-import {
-  buildChannelAddFeedback,
-  buildVideoAddFeedback,
-  type AddSourceFeedback,
-  resolveAddedChannelStatus,
-  resolveAddedVideoStatus,
-} from "$lib/workspace/add-source-feedback";
+import { createAddSourceFeedbackController } from "$lib/workspace/add-source-feedback.svelte";
 import {
   buildOptimisticHighlight,
   reconcileOptimisticHighlight,
@@ -65,7 +59,6 @@ import {
 } from "$lib/workspace-cache";
 import { resolveBootstrapOnMount } from "$lib/ssr-bootstrap";
 import { createAiStatusPoller } from "$lib/utils/ai-poller";
-import { upsertVocabularyReplacement } from "$lib/vocabulary";
 import { mobileWorkspaceBrowseIntent } from "$lib/mobile-navigation/mobileWorkspaceBrowseIntent";
 import {
   buildWorkspaceViewHref,
@@ -120,6 +113,7 @@ import { createGuideState } from "$lib/workspace/guide-state.svelte";
 import { createHomeTourSteps } from "$lib/workspace/home-tour";
 import { createContentState } from "$lib/workspace/content-state.svelte";
 import { DASTILL_SET_WORKSPACE_CONTENT_MODE_EVENT } from "$lib/utils/keyboard-shortcuts";
+import { createVocabularyController } from "$lib/workspace/vocabulary-controller.svelte";
 
 export function createHomeWorkspacePage() {
   // Lazy-loaded dynamic components (Vite code-split boundaries)
@@ -128,6 +122,7 @@ export function createHomeWorkspacePage() {
 
   const CHANNEL_REFRESH_TTL_MS = 5 * 60 * 1000;
   const SELECTED_VIDEO_SCAN_PAGE_LIMIT = 8;
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity
   const channelLastRefreshedAt = new Map<string, number>();
   let preferencesSaveTimer: ReturnType<typeof setTimeout> | null = null;
   /** When false, skip PUT /api/preferences so a fast debounce cannot overwrite the server before GET preferences returns. */
@@ -157,10 +152,9 @@ export function createHomeWorkspacePage() {
 
   let errorMessage = $state<string | null>(null);
   let showDeleteAccessPrompt = $state(false);
-  let addSourceFeedback = $state<AddSourceFeedback | null>(null);
-  let addSourceFeedbackDismissed = $state(false);
   let showResetVideoConfirmation = $state(false);
-  let addSourceFeedbackPollSequence = 0;
+
+  const addSourceFeedbackCtrl = createAddSourceFeedbackController();
 
   let allowLoadedVideoSyncDepthOverride = $state(false);
   /**
@@ -178,10 +172,28 @@ export function createHomeWorkspacePage() {
   let nextOptimisticHighlightId = -1;
   let creatingHighlight = $state(false);
   let creatingHighlightVideoId = $state<string | null>(null);
-  let creatingVocabularyReplacement = $state(false);
-  let vocabularyModalSource = $state<string | null>(null);
-  let vocabularyModalValue = $state("");
   let deletingHighlightId = $state<number | null>(null);
+
+  const vocabulary = createVocabularyController({
+    getReplacements: () => vocabularyReplacements,
+    setReplacements: (r) => {
+      vocabularyReplacements = r;
+    },
+    onError: (msg) => {
+      errorMessage = msg;
+    },
+    onSave: async (replacements) => {
+      await savePreferences({
+        channel_order: sidebarState.channelOrder,
+        channel_sort_mode: sidebarState.channelSortMode,
+        vocabulary_replacements: replacements,
+      });
+      if (preferencesSaveTimer) {
+        clearTimeout(preferencesSaveTimer);
+        preferencesSaveTimer = null;
+      }
+    },
+  });
 
   let workspaceStateHydrated = $state(false);
   /** SvelteKit's replaceState throws until the client router has started; sidebar restore runs in onMount before that. */
@@ -262,10 +274,10 @@ export function createHomeWorkspacePage() {
       await goto(`/channels/${encodeURIComponent(channelId)}`);
     },
     onChannelAdded: (channel: Channel) => {
-      void trackAddedChannel(channel);
+      void addSourceFeedbackCtrl.trackAddedChannel(channel);
     },
     onVideoAdded: (result: AddVideoResult) => {
-      void trackAddedVideo(result);
+      void addSourceFeedbackCtrl.trackAddedVideo(result);
     },
     onVideoListReset: () => {
       // Handled by sidebarState
@@ -710,67 +722,6 @@ export function createHomeWorkspacePage() {
     }
   }
 
-  async function saveVocabularyReplacement(selectedText: string) {
-    const source = selectedText.trim();
-    if (!source) {
-      return;
-    }
-    vocabularyModalSource = source;
-    vocabularyModalValue = source;
-  }
-
-  function closeVocabularyModal() {
-    if (creatingVocabularyReplacement) {
-      return;
-    }
-    vocabularyModalSource = null;
-    vocabularyModalValue = "";
-  }
-
-  async function confirmVocabularyReplacement() {
-    const source = vocabularyModalSource?.trim();
-    const replacement = vocabularyModalValue.trim();
-    if (!source || !replacement) {
-      return;
-    }
-
-    const nextReplacements = upsertVocabularyReplacement(
-      vocabularyReplacements,
-      {
-        from: source,
-        to: replacement,
-        added_at: new Date().toISOString(),
-      },
-    );
-    if (nextReplacements === vocabularyReplacements) {
-      return;
-    }
-
-    creatingVocabularyReplacement = true;
-    errorMessage = null;
-
-    try {
-      vocabularyReplacements = nextReplacements;
-      await savePreferences({
-        channel_order: sidebarState.channelOrder,
-        channel_sort_mode: sidebarState.channelSortMode,
-        vocabulary_replacements: nextReplacements,
-      });
-      vocabularyModalSource = null;
-      vocabularyModalValue = "";
-    } catch (error) {
-      if (!presentAuthRequiredNoticeIfNeeded(error)) {
-        errorMessage = (error as Error).message;
-      }
-    } finally {
-      creatingVocabularyReplacement = false;
-      if (preferencesSaveTimer) {
-        clearTimeout(preferencesSaveTimer);
-        preferencesSaveTimer = null;
-      }
-    }
-  }
-
   async function deleteExistingHighlight(highlightId: number) {
     const targetVideoId =
       selectedVideoId ??
@@ -870,7 +821,9 @@ export function createHomeWorkspacePage() {
       sidebarState.setChannelOrder(restored.channelOrder);
     }
 
+    // Transient URL for one-time read from window.location, not reactive state
     const url =
+      // eslint-disable-next-line svelte/prefer-svelte-reactivity
       typeof window !== "undefined" ? new URL(window.location.href) : null;
     const videoInUrl = Boolean(url?.searchParams.get("video")?.trim());
 
@@ -884,6 +837,7 @@ export function createHomeWorkspacePage() {
 
   function replaceWorkspaceUrl(href: string) {
     if (!shallowUrlSyncReady || typeof window === "undefined") return;
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- transient URL for navigation comparison, not reactive state
     const nextUrl = new URL(href, window.location.origin);
     if (
       nextUrl.pathname === window.location.pathname &&
@@ -1668,114 +1622,22 @@ export function createHomeWorkspacePage() {
   );
   const contentHtml = $derived(renderMarkdown(content.contentText));
 
-  function presentAddSourceFeedback(next: AddSourceFeedback) {
-    addSourceFeedback = next;
-    addSourceFeedbackDismissed = false;
-  }
-
-  function dismissAddSourceFeedback() {
-    addSourceFeedbackDismissed = true;
-    if (addSourceFeedback?.status !== "loading") {
-      addSourceFeedback = null;
-    }
-  }
-
-  async function trackAddedVideo(result: AddVideoResult) {
-    const sequence = ++addSourceFeedbackPollSequence;
-    let nextResult = result;
-
-    presentAddSourceFeedback(
-      buildVideoAddFeedback(
-        nextResult,
-        resolveAddedVideoStatus(nextResult.video),
-      ),
-    );
-
-    while (sequence === addSourceFeedbackPollSequence) {
-      const currentStatus = resolveAddedVideoStatus(nextResult.video);
-      if (currentStatus !== "loading") {
-        return;
-      }
-
-      await new Promise((resolve) => window.setTimeout(resolve, 4000));
-      if (sequence !== addSourceFeedbackPollSequence) {
-        return;
-      }
-
-      try {
-        const refreshedVideo = await getVideo(nextResult.video.id, true);
-        nextResult = { ...nextResult, video: refreshedVideo };
-        presentAddSourceFeedback(
-          buildVideoAddFeedback(
-            nextResult,
-            resolveAddedVideoStatus(refreshedVideo),
-          ),
-        );
-      } catch {
-        // Keep polling quietly; the initial acceptance feedback already surfaced.
-      }
-    }
-  }
-
-  async function trackAddedChannel(channel: Channel) {
-    const sequence = ++addSourceFeedbackPollSequence;
-    presentAddSourceFeedback(buildChannelAddFeedback(channel, "loading"));
-
-    while (sequence === addSourceFeedbackPollSequence) {
-      await new Promise((resolve) => window.setTimeout(resolve, 4000));
-      if (sequence !== addSourceFeedbackPollSequence) {
-        return;
-      }
-
-      try {
-        const videos = await listVideos(
-          channel.id,
-          1,
-          0,
-          "all",
-          undefined,
-          false,
-          undefined,
-          true,
-        );
-        const status = resolveAddedChannelStatus(videos.videos);
-        presentAddSourceFeedback(buildChannelAddFeedback(channel, status));
-        if (status === "ready") {
-          return;
-        }
-      } catch {
-        // Keep polling quietly; the initial acceptance feedback already surfaced.
-      }
-    }
-  }
-
   async function openAddSourceFeedbackTarget() {
-    const current = addSourceFeedback;
-    if (!current) {
-      return;
-    }
-
-    addSourceFeedbackPollSequence += 1;
-    addSourceFeedback = null;
-    addSourceFeedbackDismissed = false;
-
-    if (current.kind === "video") {
-      await sidebarState.selectChannel(
-        current.targetChannelId,
-        current.videoId,
-        true,
-      );
-      await selectVideo(current.videoId, true, true);
-      return;
-    }
-
-    mobileBrowseOpen = true;
-    await sidebarState.selectChannel(current.channelId, null, true);
+    await addSourceFeedbackCtrl.openTarget({
+      onOpenVideo: async (videoId, channelId) => {
+        await sidebarState.selectChannel(channelId, videoId, true);
+        await selectVideo(videoId, true, true);
+      },
+      onOpenChannel: async (channelId) => {
+        mobileBrowseOpen = true;
+        await sidebarState.selectChannel(channelId, null, true);
+      },
+    });
   }
 
   onMount(() => {
     return () => {
-      addSourceFeedbackPollSequence += 1;
+      addSourceFeedbackCtrl.cancelPolling();
     };
   });
 
@@ -2105,6 +1967,7 @@ export function createHomeWorkspacePage() {
   });
 
   function onCitationScrollConsumed() {
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- transient URL for navigation, not reactive state
     const url = new URL(page.url.href);
     if (!url.searchParams.has("cite") && !url.searchParams.has("chunk")) {
       return;
@@ -2139,7 +2002,7 @@ export function createHomeWorkspacePage() {
     resettingVideoId: content.resettingVideoId,
     creatingHighlight,
     creatingHighlightVideoId,
-    creatingVocabularyReplacement,
+    creatingVocabularyReplacement: vocabulary.creating,
     deletingHighlightId,
     canRevertTranscript,
     showRevertTranscriptAction: hasUpdatedTranscript,
@@ -2166,7 +2029,7 @@ export function createHomeWorkspacePage() {
     },
     onToggleAcknowledge: toggleAcknowledge,
     onCreateHighlight: saveSelectionHighlight,
-    onCreateVocabularyReplacement: saveVocabularyReplacement,
+    onCreateVocabularyReplacement: vocabulary.open,
     onDeleteHighlight: deleteExistingHighlight,
     onShowChannels: () => {
       mobileBrowseOpen = true;
@@ -2180,7 +2043,8 @@ export function createHomeWorkspacePage() {
     errorMessage,
     showDeleteConfirmation: sidebarState.showDeleteConfirmation,
     showDeleteAccessPrompt,
-    showAddSourceFeedback: !!addSourceFeedback && !addSourceFeedbackDismissed,
+    showAddSourceFeedback:
+      !!addSourceFeedbackCtrl.feedback && !addSourceFeedbackCtrl.dismissed,
     showResetVideoConfirmation,
   });
   const workspaceOverlaysActions = {
@@ -2330,12 +2194,12 @@ export function createHomeWorkspacePage() {
     },
     workspaceOverlaysActions,
     get addSourceFeedback() {
-      return addSourceFeedback;
+      return addSourceFeedbackCtrl.feedback;
     },
     get addSourceFeedbackDismissed() {
-      return addSourceFeedbackDismissed;
+      return addSourceFeedbackCtrl.dismissed;
     },
-    dismissAddSourceFeedback,
+    dismissAddSourceFeedback: () => addSourceFeedbackCtrl.dismiss(),
     openAddSourceFeedbackTarget,
     get guideOpen() {
       return guideOpen;
@@ -2345,18 +2209,18 @@ export function createHomeWorkspacePage() {
     },
     tourSteps,
     get vocabularyModalSource() {
-      return vocabularyModalSource;
+      return vocabulary.modalSource;
     },
     get vocabularyModalValue() {
-      return vocabularyModalValue;
+      return vocabulary.modalValue;
     },
     set vocabularyModalValue(v) {
-      vocabularyModalValue = v;
+      vocabulary.modalValue = v;
     },
     get creatingVocabularyReplacement() {
-      return creatingVocabularyReplacement;
+      return vocabulary.creating;
     },
-    confirmVocabularyReplacement,
-    closeVocabularyModal,
+    confirmVocabularyReplacement: () => vocabulary.confirm(),
+    closeVocabularyModal: () => vocabulary.close(),
   };
 }

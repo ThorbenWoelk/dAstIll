@@ -29,7 +29,6 @@ Terraform creates the secrets, writes secret versions from tfvars, and grants **
 
 The **Release** workflow (`.github/workflows/deploy.yml`) deploys to Cloud Run and **mounts** Secret Manager secrets onto the service as named environment variables (for example `BACKEND_PROXY_TOKEN=dastill-backend-proxy-token:latest`). Non-secret runtime config uses GitHub **vars** or plain `env` in the workflow where documented.
 
-
 **Anti-patterns to avoid**
 
 - Application API keys or tokens in GitHub repository variables (use Terraform and Secret Manager instead).
@@ -42,22 +41,24 @@ Full list of boundaries, Firebase, and CI steps: [docs/operations/deployment.md]
 
 # Developer Guide
 
+## Mistakes stupid AIs do...
+
+When you don't want to be called an idiot, do the following: 
+- When returning $state or $derived from a function, use getters/setters to preserve the reactive boundary. The function scope becomes a closure that stays connected to the reactive proxies (Svelte 5 rule).
+
 ## Run the app
 
-From the repo root, start backend, frontend, and docs with [`./start_app.sh`](./start_app.sh). Default ports: frontend **3543** (`FRONTEND_PORT`), backend **3544** (`BACKEND_PORT`), docs **4173** (`DOCS_PORT`). Use `./start_app.sh --detach` when you need a long-running process without tying up the shell (logs: `start_app.log`; follow with `tail -f start_app.log`).
+From the repo root, start backend, frontend, and docs with [`./start_app.sh`](./start_app.sh). Use `./start_app.sh --detach` to not tie up the shell (follow with `tail -f start_app.log`).
 
 ## Verification
 
-Related work or not, all tests have to be green before committing anything.
+IMPORTANT: Related work or not, ALL TESTS HAVE TO BE GREEN before committing anything.
 
-Run the blocks that match what you changed.
-
-### Backend (`backend/`)
+Navigate to the respective frontend and backend folders and run the following before commit:
 
 1. `cargo check`
 2. `cargo test`
-
-### Frontend (`frontend/`)
+3. `cargo audit` (use `cargo update` when you intend to refresh `Cargo.lock`; otherwise `cargo audit` alone is the usual local check).
 
 1. `bun install --frozen-lockfile`
 2. `bun run format:check` (Prettier)
@@ -65,38 +66,12 @@ Run the blocks that match what you changed.
 4. `bun run check` (Svelte / `svelte-check`)
 5. `bun run test` (unit tests)
 6. `bun run test:e2e` (Playwright E2E - requires running stack: `./start_app.sh`)
-
-### Docs (`docs/`)
-
-1. `bun install --frozen-lockfile`
 2. `bun run build`
-
-### Dependency audits
-
-**Backend** (`backend/`): install [`cargo-audit`](https://github.com/rustsec/rustsec) once with `cargo install cargo-audit --locked`, then `cargo update` and `cargo audit` (use `cargo update` when you intend to refresh `Cargo.lock`; otherwise `cargo audit` alone is the usual local check).
-
-**Frontend** (`frontend/`):
-
-1. `bun install --frozen-lockfile`
 2. `bun audit --production`
 
-**Docs** (`docs/`):
+*Not in CI - run locally before commit*
 
-1. `bun install --frozen-lockfile`
-2. `bun audit --production`
-
-### Release images (optional local parity)
-
-From the repo root:
-
-1. `docker build ./backend`
-2. `docker build ./docs`
-3. `docker build ./frontend`
-
-### Not in CI
-
-**Frontend production bundle** (`frontend/`): `bun run build` (release Docker build runs this inside the image).
-
-**E2E/Playwright** (`frontend/`): runs in pre-commit hook when `frontend/src/`, `frontend/e2e/`, or Playwright config changes. Requires running stack (`./start_app.sh`). Not in CI workflow.
+**E2E/Playwright** Requires running stack (`./start_app.sh`).
 
 When to add unit vs E2E tests: [DESIGN.md#testing](./DESIGN.md#testing).
+
