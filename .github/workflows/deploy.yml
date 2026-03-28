@@ -124,7 +124,7 @@ jobs:
             S3_DATA_BUCKET=${{ vars.S3_DATA_BUCKET }}
             S3_VECTOR_BUCKET=${{ vars.S3_VECTOR_BUCKET }}
             S3_VECTOR_INDEX=${{ vars.S3_VECTOR_INDEX }}
-            DEFAULT_SEEDED_CHANNEL_ID=${{ vars.DEFAULT_SEEDED_CHANNEL_ID }}
+            DEFAULT_SEEDED_CHANNEL_ID=${{ vars.DEFAULT_SEEDED_CHANNEL_ID || 'UCbRP3c757lWg9M-U7TyEkXA' }}
             # Release builds default semantic search off; default to on when unset (embedding + vector buckets are configured above).
             SEARCH_SEMANTIC_ENABLED=${{ vars.SEARCH_SEMANTIC_ENABLED || 'true' }}
             OLLAMA_URL=${{ vars.OLLAMA_URL }}
