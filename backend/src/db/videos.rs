@@ -633,6 +633,117 @@ pub async fn load_workspace_bootstrap_data(
     })
 }
 
+fn overlay_user_video_state(
+    mut video: Video,
+    user_video_states: &std::collections::HashMap<String, crate::models::UserVideoState>,
+) -> Video {
+    video.acknowledged = user_video_states
+        .get(&video.id)
+        .map(|state| state.acknowledged)
+        .unwrap_or(false);
+    video
+}
+
+pub async fn get_user_scoped_video(
+    store: &Store,
+    user_id: Option<&str>,
+    allowed_channel_ids: &[String],
+    allowed_other_video_ids: &[String],
+    video_id: &str,
+    include_summary: bool,
+) -> Result<Option<Video>, StoreError> {
+    let Some(video) = get_video(store, video_id, include_summary).await? else {
+        return Ok(None);
+    };
+
+    if !allowed_channel_ids.iter().any(|id| id == &video.channel_id)
+        && !allowed_other_video_ids.iter().any(|id| id == &video.id)
+    {
+        return Ok(None);
+    }
+
+    let user_states = match user_id {
+        Some(user_id) => super::list_user_video_states(store, user_id).await?,
+        None => std::collections::HashMap::new(),
+    };
+
+    Ok(Some(overlay_user_video_state(video, &user_states)))
+}
+
+pub async fn list_user_scoped_videos_by_channel(
+    store: &Store,
+    user_id: Option<&str>,
+    channel_id: &str,
+    allowed_channel_ids: &[String],
+    allowed_other_video_ids: &[String],
+    limit: usize,
+    offset: usize,
+    is_short: Option<bool>,
+    acknowledged: Option<bool>,
+    queue_filter: Option<QueueFilter>,
+) -> Result<Option<ChannelVideoPageData>, StoreError> {
+    if channel_id != OTHERS_CHANNEL_ID && !allowed_channel_ids.iter().any(|id| id == channel_id) {
+        return Ok(None);
+    }
+
+    let user_states = match user_id {
+        Some(user_id) => super::list_user_video_states(store, user_id).await?,
+        None => std::collections::HashMap::new(),
+    };
+    let allowed_other_video_ids = allowed_other_video_ids
+        .iter()
+        .cloned()
+        .collect::<HashSet<_>>();
+    let subscribed_channel_ids = allowed_channel_ids.iter().cloned().collect::<HashSet<_>>();
+    let mut filtered = load_all_videos(store)
+        .await?
+        .into_iter()
+        .map(|video| overlay_user_video_state(video, &user_states))
+        .filter(|video| {
+            if channel_id == OTHERS_CHANNEL_ID {
+                allowed_other_video_ids.contains(&video.id)
+                    && !subscribed_channel_ids.contains(&video.channel_id)
+            } else {
+                video.channel_id == channel_id
+            }
+        })
+        .filter(|video| is_short.is_none_or(|value| video.is_short == value))
+        .filter(|video| acknowledged.is_none_or(|value| video.acknowledged == value))
+        .filter(|video| video_visible_in_list(video, queue_filter))
+        .filter(|video| match queue_filter {
+            Some(QueueFilter::AnyIncomplete) => {
+                video.transcript_status != ContentStatus::Ready
+                    || video.summary_status != ContentStatus::Ready
+            }
+            Some(QueueFilter::TranscriptsOnly) => video.transcript_status != ContentStatus::Ready,
+            Some(QueueFilter::SummariesOnly) => {
+                video.transcript_status == ContentStatus::Ready
+                    && video.summary_status != ContentStatus::Ready
+            }
+            Some(QueueFilter::EvaluationsOnly) => {
+                video.transcript_status == ContentStatus::Ready
+                    && video.summary_status == ContentStatus::Ready
+            }
+            None => true,
+        })
+        .collect::<Vec<_>>();
+
+    filtered.sort_by(|left, right| right.published_at.cmp(&left.published_at));
+    let total_len = filtered.len();
+    let videos = filtered
+        .into_iter()
+        .skip(offset)
+        .take(limit)
+        .collect::<Vec<_>>();
+    let next_offset = offset + videos.len();
+
+    Ok(Some(ChannelVideoPageData {
+        videos,
+        has_more: total_len > next_offset,
+        next_offset: (total_len > next_offset).then_some(next_offset),
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::{Duration, Utc};

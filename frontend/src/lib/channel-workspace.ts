@@ -67,8 +67,9 @@ export function finalizeAddedChannelOrder(
 
 export function loadWorkspaceState(
   storage: WorkspaceStorage,
+  key = WORKSPACE_STATE_KEY,
 ): Partial<WorkspaceStateSnapshot> | null {
-  const raw = storage.getItem(WORKSPACE_STATE_KEY);
+  const raw = storage.getItem(key);
   if (!raw) {
     return null;
   }
@@ -76,7 +77,7 @@ export function loadWorkspaceState(
   try {
     return JSON.parse(raw) as Partial<WorkspaceStateSnapshot>;
   } catch {
-    storage.removeItem(WORKSPACE_STATE_KEY);
+    storage.removeItem(key);
     return null;
   }
 }
@@ -84,10 +85,11 @@ export function loadWorkspaceState(
 export function saveWorkspaceState(
   storage: WorkspaceStorage,
   snapshot: Partial<WorkspaceStateSnapshot>,
+  key = WORKSPACE_STATE_KEY,
 ) {
-  const current = loadWorkspaceState(storage) ?? {};
+  const current = loadWorkspaceState(storage, key) ?? {};
   storage.setItem(
-    WORKSPACE_STATE_KEY,
+    key,
     JSON.stringify({
       ...current,
       ...snapshot,

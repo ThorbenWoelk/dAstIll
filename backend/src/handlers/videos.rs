@@ -1,6 +1,6 @@
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Extension, Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
 };
@@ -10,8 +10,9 @@ use std::collections::HashSet;
 use crate::db;
 use crate::models::{
     AddVideoRequest, AddVideoResponse, ChannelVideoPagePayload, ContentStatus, OTHERS_CHANNEL_ID,
-    Video, VideoInfo,
+    UserVideoMembership, UserVideoState, Video, VideoInfo,
 };
+use crate::security::{AccessContext, AuthState};
 use crate::state::AppState;
 
 fn resolve_manual_video_target_channel_id(
@@ -101,7 +102,10 @@ fn cached_video_info_needs_refresh(info: &VideoInfo) -> bool {
     })
 }
 use super::query::VideoListParams;
-use super::{evict_video_scope_cache, map_db_err, require_channel, require_present, require_video};
+use super::{
+    evict_video_scope_cache, map_db_err, require_channel_for_access, require_present,
+    require_video_for_access,
+};
 
 #[derive(Debug, serde::Deserialize)]
 pub struct VideoInfoBackfillParams {
@@ -113,22 +117,19 @@ pub struct VideoInfoBackfillParams {
 
 pub async fn list_channel_videos(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(channel_id): Path<String>,
     Query(params): Query<VideoListParams>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    if channel_id != OTHERS_CHANNEL_ID {
-        require_channel(&state, &channel_id).await?;
-    } else if !db::has_unsubscribed_channel_videos(&state.db)
-        .await
-        .map_err(map_db_err)?
-    {
-        return Err((StatusCode::NOT_FOUND, "Channel not found".to_string()));
-    }
+    require_channel_for_access(&state, &access_context, &channel_id).await?;
 
     tracing::debug!(video_type = ?params.video_type, "list_channel_videos filter");
-    let page = db::list_videos_by_channel(
+    let page = db::list_user_scoped_videos_by_channel(
         &state.db,
+        access_context.user_id.as_deref(),
         &channel_id,
+        &access_context.allowed_channel_ids,
+        &access_context.allowed_other_video_ids,
         params.limit_or_default(),
         params.offset_or_default(),
         params.is_short_filter(),
@@ -137,6 +138,7 @@ pub async fn list_channel_videos(
     )
     .await
     .map_err(map_db_err)?;
+    let page = page.ok_or((StatusCode::NOT_FOUND, "Channel not found".to_string()))?;
 
     Ok(Json(ChannelVideoPagePayload {
         videos: page.videos,
@@ -147,25 +149,42 @@ pub async fn list_channel_videos(
 
 pub async fn add_manual_video(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Json(payload): Json<AddVideoRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let Some(user_id) = access_context.user_id.as_deref() else {
+        return Err((StatusCode::FORBIDDEN, "Sign-in required".to_string()));
+    };
+    if access_context.auth_state != AuthState::Authenticated {
+        return Err((StatusCode::FORBIDDEN, "Sign-in required".to_string()));
+    }
+
     let input = payload.input.trim();
     let video_id = parse_manual_video_id(input).ok_or((
         StatusCode::BAD_REQUEST,
         "Enter a YouTube video URL, shorts URL, or 11-character video ID.".to_string(),
     ))?;
 
-    let subscribed_channel_ids = db::list_channels(&state.db)
-        .await
-        .map_err(map_db_err)?
-        .into_iter()
-        .map(|channel| channel.id)
+    let subscribed_channel_ids = access_context
+        .allowed_channel_ids
+        .iter()
+        .cloned()
         .collect::<HashSet<_>>();
 
     if let Some(existing_video) = db::get_video(&state.db, &video_id, false)
         .await
         .map_err(map_db_err)?
     {
+        db::put_user_video_membership(
+            &state.db,
+            user_id,
+            &UserVideoMembership {
+                video_id: existing_video.id.clone(),
+                added_at: Utc::now(),
+            },
+        )
+        .await
+        .map_err(map_db_err)?;
         let target_channel_id = resolve_manual_video_target_channel_id(
             &existing_video.channel_id,
             &subscribed_channel_ids,
@@ -210,6 +229,16 @@ pub async fn add_manual_video(
     db::upsert_video_info(&state.db, &info)
         .await
         .map_err(map_db_err)?;
+    db::put_user_video_membership(
+        &state.db,
+        user_id,
+        &UserVideoMembership {
+            video_id: video_id.clone(),
+            added_at: Utc::now(),
+        },
+    )
+    .await
+    .map_err(map_db_err)?;
 
     let target_channel_id =
         resolve_manual_video_target_channel_id(&channel_id, &subscribed_channel_ids);
@@ -228,16 +257,20 @@ pub async fn add_manual_video(
 
 pub async fn get_video(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(video_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    Ok(Json(require_video(&state, &video_id).await?))
+    Ok(Json(
+        require_video_for_access(&state, &access_context, &video_id).await?,
+    ))
 }
 
 pub async fn get_video_info(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(video_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let video = require_video(&state, &video_id).await?;
+    let video = require_video_for_access(&state, &access_context, &video_id).await?;
 
     let cached = {
         db::get_video_info(&state.db, &video_id)
@@ -252,9 +285,10 @@ pub async fn get_video_info(
 
 pub async fn ensure_video_info(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(video_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let video = require_video(&state, &video_id).await?;
+    let video = require_video_for_access(&state, &access_context, &video_id).await?;
 
     let cached = {
         db::get_video_info(&state.db, &video_id)
@@ -380,11 +414,26 @@ pub async fn backfill_video_info(
 
 pub async fn update_video_acknowledged(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(video_id): Path<String>,
     Json(payload): Json<crate::models::UpdateAcknowledgedRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let mut video = require_video(&state, &video_id).await?;
-    db::update_video_acknowledged(&state.db, &video_id, payload.acknowledged)
+    let Some(user_id) = access_context.user_id.as_deref() else {
+        return Err((StatusCode::FORBIDDEN, "Sign-in required".to_string()));
+    };
+    if access_context.auth_state != AuthState::Authenticated {
+        return Err((StatusCode::FORBIDDEN, "Sign-in required".to_string()));
+    }
+    let mut video = require_video_for_access(&state, &access_context, &video_id).await?;
+    db::put_user_video_state(
+        &state.db,
+        user_id,
+        &UserVideoState {
+            video_id: video_id.clone(),
+            acknowledged: payload.acknowledged,
+            updated_at: Utc::now(),
+        },
+    )
         .await
         .map_err(map_db_err)?;
     video.acknowledged = payload.acknowledged;

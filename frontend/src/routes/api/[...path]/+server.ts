@@ -1,9 +1,12 @@
 import type { RequestHandler } from "./$types";
 
-import { getAuthRuntimeConfig } from "$lib/server/auth";
+import { getAuthRuntimeConfig } from "$lib/server/auth-runtime";
 
 const FRONTEND_PROXY_OPERATOR_ROLE = "operator";
 const FRONTEND_PROXY_USER_ROLE = "user";
+const FRONTEND_PROXY_ANONYMOUS_ROLE = "anonymous";
+const FRONTEND_PROXY_AUTHENTICATED_STATE = "authenticated";
+const FRONTEND_PROXY_ANONYMOUS_STATE = "anonymous";
 
 const HOP_BY_HOP_HEADERS = new Set([
   "connection",
@@ -32,7 +35,8 @@ function copyProxyRequestHeaders(sourceHeaders: Headers): Headers {
       HOP_BY_HOP_HEADERS.has(lowercaseName) ||
       lowercaseName === "authorization" ||
       lowercaseName === "cookie" ||
-      lowercaseName === "host"
+      lowercaseName === "host" ||
+      lowercaseName.startsWith("x-dastill-")
     ) {
       continue;
     }
@@ -103,9 +107,23 @@ const proxyRequest: RequestHandler = async (event) => {
   headers.set("x-dastill-proxy-auth", authConfig.backendProxyToken);
   headers.set(
     "x-dastill-role",
-    event.locals.auth.accessRole === FRONTEND_PROXY_OPERATOR_ROLE
-      ? FRONTEND_PROXY_OPERATOR_ROLE
-      : FRONTEND_PROXY_USER_ROLE,
+    event.locals.auth.authState === FRONTEND_PROXY_AUTHENTICATED_STATE
+      ? event.locals.auth.accessRole === FRONTEND_PROXY_OPERATOR_ROLE
+        ? FRONTEND_PROXY_OPERATOR_ROLE
+        : FRONTEND_PROXY_USER_ROLE
+      : FRONTEND_PROXY_ANONYMOUS_ROLE,
+  );
+  headers.set(
+    "x-dastill-auth-state",
+    event.locals.auth.authState === FRONTEND_PROXY_AUTHENTICATED_STATE
+      ? FRONTEND_PROXY_AUTHENTICATED_STATE
+      : FRONTEND_PROXY_ANONYMOUS_STATE,
+  );
+  headers.set(
+    "x-dastill-user-id",
+    event.locals.auth.authState === FRONTEND_PROXY_AUTHENTICATED_STATE
+      ? (event.locals.auth.userId ?? "")
+      : "",
   );
 
   try {

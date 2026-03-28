@@ -1,6 +1,6 @@
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Extension, Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
 };
@@ -12,9 +12,10 @@ use crate::db;
 use crate::handlers::query::{VideoListParams, WorkspaceBootstrapParams};
 use crate::models::{AddChannelRequest, Channel, UpdateChannelRequest};
 use crate::read_cache::{ChannelSnapshotCacheKey, VideoListCacheKey, WorkspaceBootstrapCacheKey};
+use crate::security::{AccessContext, AuthState};
 use crate::state::AppState;
 
-use super::{map_db_err, require_channel};
+use super::{map_db_err, require_channel, require_channel_for_access};
 
 #[derive(Deserialize)]
 pub struct BackfillParams {
@@ -51,25 +52,45 @@ fn build_snapshot_payload(
 
 pub async fn list_channels(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    if let Some(channels) = state.read_cache.get_channels().await {
+    let scope = access_context.cache_scope_key();
+    if let Some(channels) = state.read_cache.get_channels(&scope).await {
         tracing::debug!("channels cache hit");
         return Ok(Json(channels));
     }
 
-    let channels = db::list_channels_with_virtual_others(&state.db)
-        .await
-        .map_err(map_db_err)?;
-    state.read_cache.set_channels(channels.clone()).await;
+    let channels = match access_context.user_id.as_deref() {
+        Some(user_id) if access_context.auth_state == AuthState::Authenticated => {
+            db::list_user_channels_with_virtual_others(&state.db, user_id)
+                .await
+                .map_err(map_db_err)?
+        }
+        _ => {
+            let mut channels = Vec::new();
+            for channel_id in &access_context.allowed_channel_ids {
+                if let Some(channel) = db::get_channel(&state.db, channel_id)
+                    .await
+                    .map_err(map_db_err)?
+                {
+                    channels.push(channel);
+                }
+            }
+            channels
+        }
+    };
+    state.read_cache.set_channels(scope, channels.clone()).await;
     Ok(Json(channels))
 }
 
 pub async fn workspace_bootstrap(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Query(params): Query<WorkspaceBootstrapParams>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let video_params = params.video_params();
     let cache_key = WorkspaceBootstrapCacheKey {
+        scope: access_context.cache_scope_key(),
         selected_channel_id: params.selected_channel_id.clone(),
         video_list: VideoListCacheKey::new(
             video_params.limit_or_default(),
@@ -88,25 +109,74 @@ pub async fn workspace_bootstrap(
     let ai_status = state
         .summarizer
         .indicator_status(state.cloud_cooldown.is_active(), ai_available);
-    let bootstrap = db::load_workspace_bootstrap_data(
-        &state.db,
-        params.selected_channel_id.as_deref(),
-        video_params.limit_or_default(),
-        video_params.offset_or_default(),
-        video_params.is_short_filter(),
-        video_params.acknowledged_filter(),
-        video_params.queue_filter(),
-    )
-    .await
-    .map_err(map_db_err)?;
+    let channels = match access_context.user_id.as_deref() {
+        Some(user_id) if access_context.auth_state == AuthState::Authenticated => {
+            db::list_user_channels_with_virtual_others(&state.db, user_id)
+                .await
+                .map_err(map_db_err)?
+        }
+        _ => {
+            let mut channels = Vec::new();
+            for channel_id in &access_context.allowed_channel_ids {
+                if let Some(channel) = db::get_channel(&state.db, channel_id)
+                    .await
+                    .map_err(map_db_err)?
+                {
+                    channels.push(channel);
+                }
+            }
+            channels
+        }
+    };
+    let selected_channel = params
+        .selected_channel_id
+        .as_deref()
+        .and_then(|id| channels.iter().find(|channel| channel.id == id))
+        .cloned()
+        .or_else(|| channels.first().cloned());
+    let snapshot = match selected_channel.clone() {
+        Some(channel) => {
+            let page = db::list_user_scoped_videos_by_channel(
+                &state.db,
+                access_context.user_id.as_deref(),
+                &channel.id,
+                &access_context.allowed_channel_ids,
+                &access_context.allowed_other_video_ids,
+                video_params.limit_or_default(),
+                video_params.offset_or_default(),
+                video_params.is_short_filter(),
+                video_params.acknowledged_filter(),
+                video_params.queue_filter(),
+            )
+            .await
+            .map_err(map_db_err)?;
+            let page = page.ok_or((StatusCode::NOT_FOUND, "Channel not found".to_string()))?;
+            let derived = if channel.id == crate::models::OTHERS_CHANNEL_ID {
+                None
+            } else {
+                db::get_oldest_ready_video_published_at(&state.db, &channel)
+                    .await
+                    .map_err(map_db_err)?
+            };
+            Some(db::ChannelSnapshotData {
+                channel,
+                derived_earliest_ready_date: derived,
+                channel_video_count: None,
+                has_more: page.has_more,
+                next_offset: page.next_offset,
+                videos: page.videos,
+            })
+        }
+        None => None,
+    };
     let search_status = super::search::load_search_status_payload(&state);
 
     let payload = crate::models::WorkspaceBootstrapPayload {
         ai_available,
         ai_status,
-        channels: bootstrap.channels,
-        selected_channel_id: bootstrap.selected_channel_id,
-        snapshot: bootstrap.snapshot.map(build_snapshot_payload),
+        channels,
+        selected_channel_id: selected_channel.as_ref().map(|channel| channel.id.clone()),
+        snapshot: snapshot.map(build_snapshot_payload),
         search_status,
     };
     state
@@ -119,8 +189,16 @@ pub async fn workspace_bootstrap(
 
 pub async fn add_channel(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Json(payload): Json<AddChannelRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let Some(user_id) = access_context.user_id.as_deref() else {
+        return Err((StatusCode::FORBIDDEN, "Sign-in required".to_string()));
+    };
+    if access_context.auth_state != AuthState::Authenticated {
+        return Err((StatusCode::FORBIDDEN, "Sign-in required".to_string()));
+    }
+
     let input = payload.input.trim().to_string();
     let youtube = state.youtube.clone();
 
@@ -162,12 +240,10 @@ pub async fn add_channel(
         db::insert_channel(&state.db, &channel)
             .await
             .map_err(map_db_err)?;
+        db::save_user_channel(&state.db, user_id, &channel)
+            .await
+            .map_err(map_db_err)?;
     }
-    state.read_cache.evict_channel_list().await;
-    state
-        .read_cache
-        .evict_channel(crate::models::OTHERS_CHANNEL_ID)
-        .await;
     tracing::info!(channel_id = %channel.id, channel_name = %channel.name, "channel subscribed");
 
     let db_pool = state.db.clone();
@@ -201,21 +277,24 @@ pub async fn add_channel(
 
 pub async fn get_channel(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    Ok(Json(require_channel(&state, &id).await?))
+    Ok(Json(require_channel_for_access(&state, &access_context, &id).await?))
 }
 
 pub async fn get_channel_sync_depth(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    if let Some(payload) = state.read_cache.get_channel_sync_depth(&id).await {
+    let scope = access_context.cache_scope_key();
+    if let Some(payload) = state.read_cache.get_channel_sync_depth(&scope, &id).await {
         tracing::debug!(channel_id = %id, "channel sync depth cache hit");
         return Ok(Json(payload));
     }
 
-    let channel = require_channel(&state, &id).await?;
+    let channel = require_channel_for_access(&state, &access_context, &id).await?;
 
     let derived = db::get_oldest_ready_video_published_at(&state.db, &channel)
         .await
@@ -224,18 +303,20 @@ pub async fn get_channel_sync_depth(
     let payload = build_sync_depth_payload(&channel, derived);
     state
         .read_cache
-        .set_channel_sync_depth(id.clone(), payload.clone())
+        .set_channel_sync_depth(scope, id.clone(), payload.clone())
         .await;
-
     Ok(Json(payload))
 }
 
 pub async fn get_channel_snapshot(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(id): Path<String>,
     Query(params): Query<VideoListParams>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let scope = access_context.cache_scope_key();
     let cache_key = ChannelSnapshotCacheKey {
+        scope: scope.clone(),
         channel_id: id.clone(),
         video_list: VideoListCacheKey::new(
             params.limit_or_default(),
@@ -250,9 +331,13 @@ pub async fn get_channel_snapshot(
         return Ok(Json(payload));
     }
 
-    let snapshot = db::load_channel_snapshot_data(
+    let channel = require_channel_for_access(&state, &access_context, &id).await?;
+    let page = db::list_user_scoped_videos_by_channel(
         &state.db,
+        access_context.user_id.as_deref(),
         &id,
+        &access_context.allowed_channel_ids,
+        &access_context.allowed_other_video_ids,
         params.limit_or_default(),
         params.offset_or_default(),
         params.is_short_filter(),
@@ -261,25 +346,42 @@ pub async fn get_channel_snapshot(
     )
     .await
     .map_err(map_db_err)?;
-
-    match snapshot {
-        Some(snapshot) => {
-            let payload = build_snapshot_payload(snapshot);
-            state
-                .read_cache
-                .set_channel_snapshot(cache_key, payload.clone())
-                .await;
-            Ok(Json(payload))
-        }
-        None => Err((StatusCode::NOT_FOUND, "Channel not found".to_string())),
-    }
+    let page = page.ok_or((StatusCode::NOT_FOUND, "Channel not found".to_string()))?;
+    let derived = if id == crate::models::OTHERS_CHANNEL_ID {
+        None
+    } else {
+        db::get_oldest_ready_video_published_at(&state.db, &channel)
+            .await
+            .map_err(map_db_err)?
+    };
+    let payload = build_snapshot_payload(db::ChannelSnapshotData {
+        channel,
+        derived_earliest_ready_date: derived,
+        channel_video_count: None,
+        has_more: page.has_more,
+        next_offset: page.next_offset,
+        videos: page.videos,
+    });
+    state
+        .read_cache
+        .set_channel_snapshot(cache_key, payload.clone())
+        .await;
+    Ok(Json(payload))
 }
 
 pub async fn delete_channel(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let deleted = db::delete_channel(&state.db, &id)
+    let Some(user_id) = access_context.user_id.as_deref() else {
+        return Err((StatusCode::FORBIDDEN, "Sign-in required".to_string()));
+    };
+    if access_context.auth_state != AuthState::Authenticated {
+        return Err((StatusCode::FORBIDDEN, "Sign-in required".to_string()));
+    }
+
+    let deleted = db::delete_user_channel_subscription(&state.db, user_id, &id)
         .await
         .map_err(map_db_err)?;
 
@@ -294,10 +396,21 @@ pub async fn delete_channel(
 
 pub async fn update_channel(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(id): Path<String>,
     Json(payload): Json<UpdateChannelRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let mut channel = require_channel(&state, &id).await?;
+    let Some(user_id) = access_context.user_id.as_deref() else {
+        return Err((StatusCode::FORBIDDEN, "Sign-in required".to_string()));
+    };
+    if access_context.auth_state != AuthState::Authenticated {
+        return Err((StatusCode::FORBIDDEN, "Sign-in required".to_string()));
+    }
+
+    let mut channel = db::get_user_channel(&state.db, user_id, &id)
+        .await
+        .map_err(map_db_err)?
+        .ok_or((StatusCode::NOT_FOUND, "Channel not found".to_string()))?;
 
     if let Some(v) = payload.earliest_sync_date {
         channel.earliest_sync_date = Some(v);
@@ -307,7 +420,7 @@ pub async fn update_channel(
     }
 
     {
-        db::insert_channel(&state.db, &channel)
+        db::save_user_channel(&state.db, user_id, &channel)
             .await
             .map_err(map_db_err)?;
     }
@@ -442,6 +555,7 @@ mod tests {
     use std::sync::Arc;
 
     use axum::{
+        Extension,
         body::to_bytes,
         extract::{Query, State},
         response::IntoResponse,
@@ -458,6 +572,7 @@ mod tests {
         },
         handlers::query::WorkspaceBootstrapParams,
         models::{Channel, ContentStatus, Transcript, TranscriptRenderMode, Video},
+        security::{AccessContext, AccessRole, AuthState},
         search_progress::SearchProgress,
         services::{
             ChatService, CloudCooldown, OllamaCore, SearchService, SummarizerService,
@@ -566,10 +681,20 @@ mod tests {
             .await;
 
         let response =
-            workspace_bootstrap(State(state), Query(WorkspaceBootstrapParams::default()))
-                .await
-                .unwrap()
-                .into_response();
+            workspace_bootstrap(
+                State(state),
+                Extension(AccessContext {
+                    user_id: None,
+                    auth_state: AuthState::Anonymous,
+                    access_role: AccessRole::Anonymous,
+                    allowed_channel_ids: vec![channel.id.clone()],
+                    allowed_other_video_ids: Vec::new(),
+                }),
+                Query(WorkspaceBootstrapParams::default()),
+            )
+            .await
+            .unwrap()
+            .into_response();
         let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let payload: Value = serde_json::from_slice(&body).unwrap();
 

@@ -194,13 +194,32 @@ class AuthStateController implements AuthController {
         await signOutFirebase(auth);
       }
 
-      const credential = await signInAnonymously(auth);
-      const nextAuth = await exchangeUserSession(credential.user);
-      this.#setState({
-        current: nextAuth,
-        ready: true,
-      });
-      return nextAuth;
+      try {
+        const credential = await signInAnonymously(auth);
+        const nextAuth = await exchangeUserSession(credential.user);
+        this.#setState({
+          current: nextAuth,
+          ready: true,
+        });
+        return nextAuth;
+      } catch (firebaseError) {
+        const isNetworkError =
+          firebaseError instanceof Error &&
+          (firebaseError.message.includes("network") ||
+            firebaseError.message.includes("fetch") ||
+            firebaseError.message.includes("connection") ||
+            firebaseError.message.includes("timeout"));
+
+        if (isNetworkError) {
+          this.#setState({
+            error: null,
+            ready: true,
+          });
+          return this.#current;
+        }
+
+        throw firebaseError;
+      }
     })()
       .catch((cause) => {
         this.#setState({

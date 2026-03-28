@@ -32,10 +32,13 @@ pub struct ChatRuntimeConfig {
 pub struct SecurityRuntimeConfig {
     pub proxy_token: String,
     pub allowed_origins: Vec<String>,
+    pub default_seeded_channel_id: String,
     pub baseline_rate_limit_per_minute: u32,
     pub expensive_rate_limit_per_minute: u32,
     pub anonymous_chat_quota: u32,
 }
+
+const LOCAL_DEV_DEFAULT_SEEDED_CHANNEL_ID: &str = "UCbRP3c757lWg9M-U7TyEkXA";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DatabricksRuntimeConfig {
@@ -125,6 +128,10 @@ impl SecurityRuntimeConfig {
             )?,
             allowed_origins: optional_csv_env("BACKEND_CORS_ALLOWED_ORIGINS")
                 .unwrap_or_else(default_backend_allowed_origins),
+            default_seeded_channel_id: required_env_with_local_default(
+                "DEFAULT_SEEDED_CHANNEL_ID",
+                LOCAL_DEV_DEFAULT_SEEDED_CHANNEL_ID,
+            )?,
             // Baseline applies to almost all API routes; SPAs with polling and parallel loads
             // need a generous default (120/min was routinely exceeded by a single user).
             baseline_rate_limit_per_minute: optional_u32_env("BASELINE_RATE_LIMIT_PER_MINUTE")
@@ -294,6 +301,7 @@ mod tests {
     const SECURITY_ENV_KEYS: &[&str] = &[
         "BACKEND_PROXY_TOKEN",
         "BACKEND_CORS_ALLOWED_ORIGINS",
+        "DEFAULT_SEEDED_CHANNEL_ID",
         "BASELINE_RATE_LIMIT_PER_MINUTE",
         "EXPENSIVE_RATE_LIMIT_PER_MINUTE",
         "ANONYMOUS_CHAT_QUOTA",
@@ -435,6 +443,7 @@ mod tests {
 
         let config = SecurityRuntimeConfig::from_env().expect("security config");
         assert_eq!(config.proxy_token, "local-dev-backend-proxy-token");
+        assert_eq!(config.default_seeded_channel_id, "UCbRP3c757lWg9M-U7TyEkXA");
         assert_eq!(config.baseline_rate_limit_per_minute, 600);
         assert_eq!(config.expensive_rate_limit_per_minute, 120);
         assert_eq!(config.anonymous_chat_quota, 30);
@@ -458,12 +467,14 @@ mod tests {
             "BACKEND_CORS_ALLOWED_ORIGINS",
             "https://app.example.com,https://ops.example.com",
         );
+        set_env("DEFAULT_SEEDED_CHANNEL_ID", "seeded-channel-123");
         set_env("BASELINE_RATE_LIMIT_PER_MINUTE", "90");
         set_env("EXPENSIVE_RATE_LIMIT_PER_MINUTE", "7");
         set_env("ANONYMOUS_CHAT_QUOTA", "12");
 
         let config = SecurityRuntimeConfig::from_env().expect("security config");
         assert_eq!(config.proxy_token, "proxy-secret");
+        assert_eq!(config.default_seeded_channel_id, "seeded-channel-123");
         assert_eq!(
             config.allowed_origins,
             vec![

@@ -1,6 +1,11 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { clickOutside } from "$lib/actions/click-outside";
+  import { authState } from "$lib/auth-state.svelte";
+  import {
+    getAuthStorageScopeKey,
+    getScopedStorageKey,
+  } from "$lib/auth-storage";
   import {
     applyColorScheme,
     applyThemeState,
@@ -37,6 +42,18 @@
   let isDark = $state(false);
   let mediaQueryList = $state<MediaQueryList | null>(null);
   let triggerEl = $state<HTMLButtonElement | null>(null);
+  let themeStorageKey = $derived(
+    getScopedStorageKey(
+      "dastill-theme-appearance",
+      getAuthStorageScopeKey(authState.current),
+    ),
+  );
+  let colorStorageKey = $derived(
+    getScopedStorageKey(
+      "dastill-theme-color",
+      getAuthStorageScopeKey(authState.current),
+    ),
+  );
 
   function systemPrefersDark(): boolean {
     return (
@@ -57,13 +74,13 @@
 
   function setMode(m: ThemeMode) {
     mode = m;
-    writeThemeMode(window.localStorage, m);
+    writeThemeMode(window.localStorage, m, themeStorageKey);
     syncTheme();
   }
 
   function setColor(c: ColorScheme) {
     color = c;
-    writeColorScheme(window.localStorage, c);
+    writeColorScheme(window.localStorage, c, colorStorageKey);
     syncTheme();
   }
 
@@ -76,8 +93,8 @@
 
   onMount(() => {
     mediaQueryList = window.matchMedia("(prefers-color-scheme: dark)");
-    mode = readThemeMode(window.localStorage);
-    color = readColorScheme(window.localStorage);
+    mode = readThemeMode(window.localStorage, themeStorageKey);
+    color = readColorScheme(window.localStorage, colorStorageKey);
     syncTheme();
 
     const handleChange = () => {
@@ -90,6 +107,16 @@
       mediaQueryList?.removeEventListener("change", handleChange);
       document.removeEventListener("keydown", handleKeydown);
     };
+  });
+
+  $effect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    mode = readThemeMode(window.localStorage, themeStorageKey);
+    color = readColorScheme(window.localStorage, colorStorageKey);
+    syncTheme();
   });
 </script>
 

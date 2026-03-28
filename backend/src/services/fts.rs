@@ -8,7 +8,7 @@ use tokio::sync::RwLock;
 
 use crate::services::search::{SearchCandidate, SearchSourceKind};
 
-const WRITER_HEAP_BYTES: usize = 50_000_000; // 50 MB
+const WRITER_HEAP_BYTES: usize = 15_000_000; // 15 MB
 
 /// In-memory BM25 index over all indexed search chunks.
 /// Thread-safe via an `Arc<RwLock<FtsIndexInner>>`.

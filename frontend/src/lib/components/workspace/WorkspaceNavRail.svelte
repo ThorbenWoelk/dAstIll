@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { goto } from "$app/navigation";
 
   import AiStatusIndicator from "$lib/components/AiStatusIndicator.svelte";
   import ChevronIcon from "$lib/components/icons/ChevronIcon.svelte";
@@ -11,6 +12,7 @@
     goHintKeyForSection,
     type SectionNavigationSection,
   } from "$lib/section-navigation";
+  import { authState } from "$lib/auth-state.svelte";
 
   let {
     currentSection = "workspace" as SectionNavigationSection,
@@ -91,6 +93,15 @@
         return { viewBox: "0 0 24 24", paths: [] };
     }
   }
+
+  async function handleSignIn() {
+    await goto("/login");
+  }
+
+  async function handleSignOut() {
+    await authState.signOut();
+    window.location.href = "/";
+  }
 </script>
 
 <aside
@@ -115,7 +126,7 @@
           href="/"
           data-sveltekit-preload-code="viewport"
           data-sveltekit-preload-data="tap"
-          class="min-w-0 text-xl font-bold tracking-tighter text-[var(--color-swatch)] transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
+          class="font-serif min-w-0 text-xl font-bold tracking-[-0.03em] text-[var(--color-swatch)] transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
           aria-label="Go to dAstIll home"
         >
           d<span style="color:var(--soft-foreground);">A</span>st<span
@@ -293,6 +304,170 @@
         {/if}
       </a>
     </div>
+
+    {#if collapsed}
+      {#if authState.error}
+        <button
+          type="button"
+          class="inline-flex h-7 w-7 items-center justify-center rounded-full text-[var(--danger)] opacity-80 transition hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+          onclick={handleSignIn}
+          aria-label="Auth error - retry"
+          data-tooltip="Auth error"
+          data-tooltip-placement="right"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="shrink-0"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+        </button>
+      {:else if authState.current.authState === "authenticated"}
+        <button
+          type="button"
+          class="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[var(--accent-wash)] text-[var(--accent-strong)] transition hover:bg-[var(--accent)]/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+          onclick={handleSignOut}
+          aria-label="Sign out"
+          data-tooltip="Sign out"
+          data-tooltip-placement="right"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="shrink-0"
+            aria-hidden="true"
+          >
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <polyline points="16 17 21 12 16 7" />
+            <line x1="21" y1="12" x2="9" y2="12" />
+          </svg>
+        </button>
+      {:else}
+        <button
+          type="button"
+          class="inline-flex h-7 w-7 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-60 transition hover:bg-[var(--accent-wash)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+          onclick={handleSignIn}
+          aria-label="Sign in"
+          data-tooltip="Sign in"
+          data-tooltip-placement="right"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="shrink-0"
+            aria-hidden="true"
+          >
+            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+            <polyline points="10 17 15 12 10 7" />
+            <line x1="15" y1="12" x2="3" y2="12" />
+          </svg>
+        </button>
+      {/if}
+    {:else}
+      <div class="flex flex-col gap-1">
+        {#if authState.error}
+          <div
+            class="flex flex-col gap-1 rounded-[var(--radius-sm)] bg-[var(--danger)]/10 px-3 py-2"
+          >
+            <span class="truncate text-[11px] font-medium text-[var(--danger)]">
+              Auth error
+            </span>
+            <span
+              class="text-[10px] leading-tight text-[var(--soft-foreground)]"
+            >
+              {authState.error}
+            </span>
+            <button
+              type="button"
+              class="mt-1 text-[10px] font-medium text-[var(--accent-strong)] hover:underline"
+              onclick={handleSignIn}
+            >
+              Retry sign in
+            </button>
+          </div>
+        {:else if authState.current.authState === "authenticated"}
+          <div
+            class="flex items-center gap-2 rounded-[var(--radius-sm)] bg-[var(--accent-wash)] px-3 py-2"
+          >
+            <div class="flex min-w-0 flex-1 flex-col">
+              <span
+                class="truncate text-[12px] font-medium text-[var(--accent-strong)]"
+              >
+                {authState.current.email ?? "Signed in"}
+              </span>
+            </div>
+            <button
+              type="button"
+              class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-[var(--soft-foreground)] transition hover:bg-[var(--background)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+              onclick={handleSignOut}
+              aria-label="Sign out"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+            </button>
+          </div>
+        {:else}
+          <button
+            type="button"
+            class="inline-flex items-center gap-2 rounded-[var(--radius-sm)] text-[var(--soft-foreground)] opacity-60 transition hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 px-3 py-2"
+            onclick={handleSignIn}
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="shrink-0"
+              aria-hidden="true"
+            >
+              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+              <polyline points="10 17 15 12 10 7" />
+              <line x1="15" y1="12" x2="3" y2="12" />
+            </svg>
+            <span class="text-[12px] font-medium">Sign in</span>
+          </button>
+        {/if}
+      </div>
+    {/if}
 
     {#if collapsed}
       <span class="sr-only">

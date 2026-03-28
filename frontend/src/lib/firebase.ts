@@ -14,7 +14,6 @@ const LOCAL_DEV_FIREBASE_CONFIG: FirebaseClientConfig = {
   authDomain: "demo-dastill.firebaseapp.com",
   projectId: "demo-dastill",
 };
-const LOCAL_DEV_FIREBASE_AUTH_EMULATOR_HOST = "127.0.0.1:9099";
 
 function readProcessEnv(key: string): string | undefined {
   return typeof process !== "undefined" ? process.env[key] : undefined;
@@ -53,7 +52,7 @@ function readFirebaseAuthEmulatorHost(): string | null {
     return normalizedHost;
   }
 
-  return dev ? LOCAL_DEV_FIREBASE_AUTH_EMULATOR_HOST : null;
+  return null;
 }
 
 export const firebaseConfig: FirebaseClientConfig = {

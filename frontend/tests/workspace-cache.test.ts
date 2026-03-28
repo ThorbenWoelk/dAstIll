@@ -113,6 +113,19 @@ describe("workspace cache", () => {
     expect(await getCachedBootstrapMeta()).toEqual(meta);
   });
 
+  it("isolates caches by auth scope", async () => {
+    await putCachedChannels([createChannel("alpha")], "user:user-a");
+    await putCachedChannels([createChannel("beta")], "user:user-b");
+
+    expect(await getCachedChannels("user:user-a")).toEqual([
+      createChannel("alpha"),
+    ]);
+    expect(await getCachedChannels("user:user-b")).toEqual([
+      createChannel("beta"),
+    ]);
+    expect(await getCachedChannels("user:user-c")).toBeNull();
+  });
+
   it("removeCachedChannel removes related channel, snapshot, and videos", async () => {
     const channelA = createChannel("alpha");
     const channelB = createChannel("beta");

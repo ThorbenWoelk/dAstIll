@@ -35,15 +35,19 @@ export async function resolveBootstrapOnMount(options: {
   serverBootstrap: WorkspaceBootstrap | null;
   selectedChannelId: string | null;
   viewSnapshotCacheKey: string | null;
+  workspaceCacheScopeKey?: string;
 }): Promise<OnMountBootstrapResult> {
   // Always read IndexedDB — ensures IndexedDB is consulted before any network
   // API call (satisfies VAL-CROSS-004 warm-start requirement).
   const [cachedChannels, cachedSnapshot, cachedMeta] = await Promise.all([
-    getCachedChannels(),
+    getCachedChannels(options.workspaceCacheScopeKey),
     options.viewSnapshotCacheKey
-      ? getCachedViewSnapshot(options.viewSnapshotCacheKey)
+      ? getCachedViewSnapshot(
+          options.viewSnapshotCacheKey,
+          options.workspaceCacheScopeKey,
+        )
       : Promise.resolve(null),
-    getCachedBootstrapMeta(),
+    getCachedBootstrapMeta(options.workspaceCacheScopeKey),
   ]);
 
   const { serverBootstrap } = options;

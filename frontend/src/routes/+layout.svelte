@@ -4,6 +4,7 @@
   import { onMount } from "svelte";
   import type { AuthContext } from "$lib/auth";
   import AppBottomNav from "$lib/components/AppBottomNav.svelte";
+  import { cleanupLegacyClientStorage } from "$lib/auth-storage";
   import { authState } from "$lib/auth-state.svelte";
   import GlobalKeyboardShortcuts from "$lib/components/GlobalKeyboardShortcuts.svelte";
   import MobileViewportInset from "$lib/components/MobileViewportInset.svelte";
@@ -30,6 +31,7 @@
   });
 
   onMount(() => {
+    void cleanupLegacyClientStorage();
     void authState.start();
   });
 

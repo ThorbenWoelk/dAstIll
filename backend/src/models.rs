@@ -20,6 +20,23 @@ pub struct Channel {
     pub earliest_sync_date_user_set: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CanonicalChannelRecord {
+    pub id: String,
+    pub handle: Option<String>,
+    pub name: String,
+    pub thumbnail_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserChannelSubscription {
+    pub channel_id: String,
+    pub added_at: DateTime<Utc>,
+    pub earliest_sync_date: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub earliest_sync_date_user_set: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../frontend/src/lib/bindings/")]
 #[serde(rename_all = "snake_case")]
@@ -46,6 +63,19 @@ pub struct Video {
     pub retry_count: u8,
     #[ts(optional)]
     pub quality_score: Option<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserVideoMembership {
+    pub video_id: String,
+    pub added_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserVideoState {
+    pub video_id: String,
+    pub acknowledged: bool,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

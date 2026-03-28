@@ -2,24 +2,45 @@ use crate::models::{ChatConversation, ChatConversationSummary};
 
 use super::{Store, StoreError};
 
-const CHAT_INDEX_KEY: &str = "conversations/index.json";
-
-fn conversation_key(conversation_id: &str) -> String {
-    format!("conversations/{conversation_id}.json")
+fn conversation_scope(scope_id: &str) -> String {
+    if scope_id.trim().is_empty() {
+        "anonymous".to_string()
+    } else {
+        scope_id.trim().to_string()
+    }
 }
 
-async fn load_index(store: &Store) -> Result<Vec<ChatConversationSummary>, StoreError> {
+fn chat_index_key(scope_id: &str) -> String {
+    format!(
+        "user-conversations/{}/index.json",
+        conversation_scope(scope_id)
+    )
+}
+
+fn conversation_key(scope_id: &str, conversation_id: &str) -> String {
+    format!(
+        "user-conversations/{}/{}.json",
+        conversation_scope(scope_id),
+        conversation_id
+    )
+}
+
+async fn load_index(
+    store: &Store,
+    scope_id: &str,
+) -> Result<Vec<ChatConversationSummary>, StoreError> {
     Ok(store
-        .get_json::<Vec<ChatConversationSummary>>(CHAT_INDEX_KEY)
+        .get_json::<Vec<ChatConversationSummary>>(&chat_index_key(scope_id))
         .await?
         .unwrap_or_default())
 }
 
 async fn store_index(
     store: &Store,
+    scope_id: &str,
     conversations: &[ChatConversationSummary],
 ) -> Result<(), StoreError> {
-    store.put_json(CHAT_INDEX_KEY, conversations).await
+    store.put_json(&chat_index_key(scope_id), conversations).await
 }
 
 fn sort_summaries(mut conversations: Vec<ChatConversationSummary>) -> Vec<ChatConversationSummary> {
@@ -33,26 +54,31 @@ fn sort_summaries(mut conversations: Vec<ChatConversationSummary>) -> Vec<ChatCo
     conversations
 }
 
-pub async fn list_conversations(store: &Store) -> Result<Vec<ChatConversationSummary>, StoreError> {
-    Ok(sort_summaries(load_index(store).await?))
+pub async fn list_conversations_for_scope(
+    store: &Store,
+    scope_id: &str,
+) -> Result<Vec<ChatConversationSummary>, StoreError> {
+    Ok(sort_summaries(load_index(store, scope_id).await?))
 }
 
-pub async fn get_conversation(
+pub async fn get_conversation_for_scope(
     store: &Store,
+    scope_id: &str,
     conversation_id: &str,
 ) -> Result<Option<ChatConversation>, StoreError> {
-    store.get_json(&conversation_key(conversation_id)).await
+    store.get_json(&conversation_key(scope_id, conversation_id)).await
 }
 
-pub async fn upsert_conversation(
+pub async fn upsert_conversation_for_scope(
     store: &Store,
+    scope_id: &str,
     conversation: &ChatConversation,
 ) -> Result<(), StoreError> {
     store
-        .put_json(&conversation_key(&conversation.id), conversation)
+        .put_json(&conversation_key(scope_id, &conversation.id), conversation)
         .await?;
 
-    let mut index = load_index(store).await?;
+    let mut index = load_index(store, scope_id).await?;
     let summary = ChatConversationSummary::from(conversation);
     match index
         .iter_mut()
@@ -61,22 +87,31 @@ pub async fn upsert_conversation(
         Some(existing) => *existing = summary,
         None => index.push(summary),
     }
-    store_index(store, &sort_summaries(index)).await
+    store_index(store, scope_id, &sort_summaries(index)).await
 }
 
-pub async fn delete_conversation(store: &Store, conversation_id: &str) -> Result<(), StoreError> {
-    store.delete_key(&conversation_key(conversation_id)).await?;
-    let mut index = load_index(store).await?;
+pub async fn delete_conversation_for_scope(
+    store: &Store,
+    scope_id: &str,
+    conversation_id: &str,
+) -> Result<(), StoreError> {
+    store
+        .delete_key(&conversation_key(scope_id, conversation_id))
+        .await?;
+    let mut index = load_index(store, scope_id).await?;
     index.retain(|conversation| conversation.id != conversation_id);
-    store_index(store, &sort_summaries(index)).await
+    store_index(store, scope_id, &sort_summaries(index)).await
 }
 
-pub async fn delete_all_conversations(store: &Store) -> Result<(), StoreError> {
-    let conversations = load_index(store).await?;
+pub async fn delete_all_conversations_for_scope(
+    store: &Store,
+    scope_id: &str,
+) -> Result<(), StoreError> {
+    let conversations = load_index(store, scope_id).await?;
     for conversation in conversations {
         store
-            .delete_key(&conversation_key(&conversation.id))
+            .delete_key(&conversation_key(scope_id, &conversation.id))
             .await?;
     }
-    store_index(store, &[]).await
+    store_index(store, scope_id, &[]).await
 }

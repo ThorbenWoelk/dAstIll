@@ -3,6 +3,11 @@
   import { page } from "$app/stores";
   import { onMount, tick } from "svelte";
   import type { Component } from "svelte";
+  import { authState } from "$lib/auth-state.svelte";
+  import {
+    getAuthStorageScopeKey,
+    getScopedStorageKey,
+  } from "$lib/auth-storage";
   import {
     addChannel,
     backfillChannelVideos,
@@ -203,6 +208,15 @@
   let shallowUrlSyncReady = $state(false);
   let viewUrlHydrated = $state(false);
   let pendingSelectedVideo = $state<Video | null>(null);
+  let workspaceStorageKey = $derived(
+    getScopedStorageKey(
+      "dastill.workspace.state.v1",
+      getAuthStorageScopeKey(authState.current),
+    ),
+  );
+  let workspaceCacheScopeKey = $derived(
+    getAuthStorageScopeKey(authState.current),
+  );
 
   // Content State
   const content = createContentState({
@@ -562,6 +576,7 @@
       void putCachedViewSnapshot(
         buildWorkspaceSnapshotCacheKey(channelId, videoTypeFilter, isAck),
         snapshot,
+        workspaceCacheScopeKey,
       );
       await hydrateSelectedVideo(preferredVideoId, isAck);
     } catch (error) {
@@ -803,7 +818,7 @@
       restoreWorkspaceSnapshot(
         typeof localStorage === "undefined"
           ? null
-          : loadWorkspaceState(localStorage),
+          : loadWorkspaceState(localStorage, workspaceStorageKey),
         {
           includeSelectedVideoId: true,
           includeContentMode: true,
@@ -898,7 +913,7 @@
       channelOrder: sidebarState.channelOrder,
       channelSortMode: sidebarState.channelSortMode,
     };
-    saveWorkspaceState(localStorage, snapshot);
+    saveWorkspaceState(localStorage, snapshot, workspaceStorageKey);
     // Debounce-persist channel order + sort mode to the backend so it survives
     // across devices/browsers. 1 s delay avoids bursting on rapid reorders.
     if (!preferencesHydrated) return;
@@ -984,6 +999,7 @@
           resolveBootstrapOnMount({
             serverBootstrap: $page.data.bootstrap ?? null,
             selectedChannelId: selectedChannelIdAtMount,
+            workspaceCacheScopeKey,
             viewSnapshotCacheKey: sidebarState.selectedChannelId
               ? buildWorkspaceSnapshotCacheKey(
                   sidebarState.selectedChannelId,
@@ -1121,16 +1137,19 @@
         applySavedChannelOrder(bootstrap.channels, sidebarState.channelOrder),
       );
       syncChannelOrderFromList();
-      void putCachedChannels(sidebarState.channels);
+      void putCachedChannels(sidebarState.channels, workspaceCacheScopeKey);
 
       aiAvailable = bootstrap.ai_available;
       aiStatus = bootstrap.ai_status;
       searchStatus = bootstrap.search_status;
-      void putCachedBootstrapMeta({
-        ai_available: bootstrap.ai_available,
-        ai_status: bootstrap.ai_status,
-        search_status: bootstrap.search_status,
-      });
+      void putCachedBootstrapMeta(
+        {
+          ai_available: bootstrap.ai_available,
+          ai_status: bootstrap.ai_status,
+          search_status: bootstrap.search_status,
+        },
+        workspaceCacheScopeKey,
+      );
 
       const selectionChannelId = sidebarState.selectedChannelId;
       const selectionVideoId = sidebarState.selectedVideoId;
@@ -1253,7 +1272,7 @@
   }
 
   async function handleDeleteChannel(channelId: string) {
-    if (!isOperator) {
+    if (!canManageLibrary) {
       showDeleteAccessPrompt = true;
       return;
     }
@@ -1263,7 +1282,7 @@
   }
 
   async function confirmDeleteChannel() {
-    if (!sidebarState.channelIdToDelete || !isOperator) return;
+    if (!sidebarState.channelIdToDelete || !canManageLibrary) return;
     const channelId = sidebarState.channelIdToDelete;
     const channelViewKey = getChannelViewKey(channelId);
     sidebarState.setShowDeleteConfirmation(false);
@@ -1293,7 +1312,7 @@
 
     try {
       await deleteChannel(channelId);
-      void removeCachedChannel(channelId);
+      void removeCachedChannel(channelId, workspaceCacheScopeKey);
       channelVideoStateCache.delete(channelViewKey);
     } catch (error) {
       sidebarState.setChannels(previousChannels);
@@ -1658,7 +1677,9 @@
     await tick();
   }
 
-  const isOperator = $derived(Boolean($page.data.isOperator));
+  const canManageLibrary = $derived(
+    authState.current.authState === "authenticated",
+  );
   const aiIndicator = $derived(
     aiStatus ? resolveAiIndicatorPresentation(aiStatus) : null,
   );
@@ -2222,7 +2243,7 @@
       }}
       channelState={{
         ...sidebarState.channelState,
-        canDeleteChannels: isOperator,
+        canDeleteChannels: canManageLibrary,
       }}
       channelActions={{
         ...sidebarState.channelActions,
@@ -2322,7 +2343,7 @@
     }}
     channelState={{
       ...sidebarState.channelState,
-      canDeleteChannels: isOperator,
+      canDeleteChannels: canManageLibrary,
     }}
     channelActions={{
       ...sidebarState.channelActions,
@@ -2340,7 +2361,7 @@
       ...sidebarState.videoActions,
       onLoadMoreVideos: loadMoreVideos,
     }}
-    canDeleteChannels={isOperator}
+    canDeleteChannels={canManageLibrary}
     addSourceErrorMessage={errorMessage}
     onChannelSyncDateSaved={handleChannelSyncDateSaved}
   />

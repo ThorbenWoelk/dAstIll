@@ -3,6 +3,11 @@
   import { goto, replaceState as replacePageState } from "$app/navigation";
   import { page } from "$app/stores";
   import { onMount } from "svelte";
+  import { authState } from "$lib/auth-state.svelte";
+  import {
+    getAuthStorageScopeKey,
+    getScopedStorageKey,
+  } from "$lib/auth-storage";
   import {
     addChannel,
     deleteChannel,
@@ -109,6 +114,7 @@
           videos: res.videos,
           sync_depth: sidebar.syncDepth,
         } as ChannelSnapshot,
+        getAuthStorageScopeKey(authState.current),
       );
     },
     onError: (msg: string) => {
@@ -122,7 +128,7 @@
     },
     onPersistWorkspaceState: (state) => {
       if (typeof localStorage === "undefined") return;
-      saveWorkspaceState(localStorage, state);
+      saveWorkspaceState(localStorage, state, workspaceStorageKey);
     },
     onLoadInitial: async (options) => {
       const silent = options?.silent ?? false;
@@ -134,7 +140,7 @@
           applySavedChannelOrder(channelList, sidebar.channelOrder),
         );
         sidebar.syncChannelOrderFromList();
-        void putCachedChannels(sidebar.channels);
+        void putCachedChannels(sidebar.channels, workspaceCacheScopeKey);
 
         const initialChannelId = resolveInitialChannelSelection(
           sidebar.channels,
@@ -209,6 +215,15 @@
 
   let aiStatus = $state<AiStatus | null>(null);
   let errorMessage = $state<string | null>(null);
+  let workspaceStorageKey = $derived(
+    getScopedStorageKey(
+      "dastill.workspace.state.v1",
+      getAuthStorageScopeKey(authState.current),
+    ),
+  );
+  let workspaceCacheScopeKey = $derived(
+    getAuthStorageScopeKey(authState.current),
+  );
   let workspaceStateHydrated = $state(false);
   let viewUrlHydrated = $state(false);
   /** Mirrors workspace: replaceState is unsafe until after the client router is ready. */
@@ -366,6 +381,7 @@
         const bootstrapResult = await resolveBootstrapOnMount({
           serverBootstrap: $page.data.bootstrap ?? null,
           selectedChannelId: selectedChannelIdAtMount,
+          workspaceCacheScopeKey,
           viewSnapshotCacheKey: selectedChannelIdAtMount
             ? buildQueueSnapshotCacheKey(selectedChannelIdAtMount)
             : null,
@@ -393,11 +409,14 @@
           bootstrapResult.aiStatus !== null &&
           bootstrapResult.searchStatus !== null
         ) {
-          void putCachedBootstrapMeta({
-            ai_available: bootstrapResult.aiAvailable,
-            ai_status: bootstrapResult.aiStatus,
-            search_status: bootstrapResult.searchStatus,
-          });
+          void putCachedBootstrapMeta(
+            {
+              ai_available: bootstrapResult.aiAvailable,
+              ai_status: bootstrapResult.aiStatus,
+              search_status: bootstrapResult.searchStatus,
+            },
+            workspaceCacheScopeKey,
+          );
         }
 
         if (
@@ -422,6 +441,7 @@
               videos: bootstrapResult.snapshot.videos,
               sync_depth: bootstrapResult.snapshot.sync_depth,
             },
+            workspaceCacheScopeKey,
           );
         }
 
@@ -443,7 +463,7 @@
       restoreWorkspaceSnapshot(
         typeof localStorage === "undefined"
           ? null
-          : loadWorkspaceState(localStorage),
+          : loadWorkspaceState(localStorage, workspaceStorageKey),
         {
           includeChannelSortMode: true,
         },
@@ -491,7 +511,7 @@
       });
 
       sidebar.updateChannel(channel);
-      void putCachedChannels(sidebar.channels);
+      void putCachedChannels(sidebar.channels, workspaceCacheScopeKey);
 
       // Reload videos with the new sync boundary
       sidebar.setVideos([]);
@@ -525,13 +545,17 @@
 
   async function openVideoTranscriptInWorkspace(video: Video) {
     if (typeof localStorage !== "undefined") {
-      saveWorkspaceState(localStorage, {
-        selectedChannelId: video.channel_id,
-        selectedVideoId: video.id,
-        contentMode: "info",
-        videoTypeFilter: "all",
-        acknowledgedFilter: "all",
-      });
+      saveWorkspaceState(
+        localStorage,
+        {
+          selectedChannelId: video.channel_id,
+          selectedVideoId: video.id,
+          contentMode: "info",
+          videoTypeFilter: "all",
+          acknowledgedFilter: "all",
+        },
+        workspaceStorageKey,
+      );
     }
 
     await goto(
@@ -555,13 +579,17 @@
     targetMode: "transcript" | "summary",
   ) {
     if (typeof localStorage !== "undefined") {
-      saveWorkspaceState(localStorage, {
-        selectedChannelId: result.channel_id,
-        selectedVideoId: result.video_id,
-        contentMode: targetMode,
-        videoTypeFilter: "all",
-        acknowledgedFilter: "all",
-      });
+      saveWorkspaceState(
+        localStorage,
+        {
+          selectedChannelId: result.channel_id,
+          selectedVideoId: result.video_id,
+          contentMode: targetMode,
+          videoTypeFilter: "all",
+          acknowledgedFilter: "all",
+        },
+        workspaceStorageKey,
+      );
     }
 
     await goto(

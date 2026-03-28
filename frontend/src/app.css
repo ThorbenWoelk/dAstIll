@@ -525,6 +525,20 @@ a[href],
   }
 }
 
+.animate-pulse-subtle {
+  animation: pulse-subtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse-subtle {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
 /* Sidebar shell: opacity-only fade so position:fixed children (e.g. video filter popup)
    stay viewport-anchored. transform-based animations create a new containing block. */
 .fade-in-opacity {

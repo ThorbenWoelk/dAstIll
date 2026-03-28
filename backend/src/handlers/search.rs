@@ -2,6 +2,7 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
 use axum::{
+    Extension,
     Json,
     extract::{Query, State},
     http::StatusCode,
@@ -17,6 +18,7 @@ use crate::models::{
     SearchMatchPayload, SearchResponsePayload, SearchStatusPayload, SearchVideoResultPayload,
 };
 use crate::search_query::{meaningful_search_terms, tokenize_search_terms};
+use crate::security::{AccessContext, can_access_channel, can_access_video};
 use crate::services::search::{
     SEARCH_RRF_K, SearchCandidate, SearchSourceKind, extract_keyword_snippet, fuse_ranked_matches,
     truncate_chunk_for_display, vector_to_json,
@@ -153,6 +155,7 @@ fn resolve_semantic_exact_source_kind(source: SearchSourceFilter) -> Option<Sear
 
 pub async fn search(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Query(params): Query<SearchParams>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let handler_started = Instant::now();
@@ -168,6 +171,11 @@ pub async fn search(
     let source = params.source.unwrap_or(SearchSourceFilter::All);
     let limit = params.limit.unwrap_or(8).clamp(1, 25);
     let execution_mode = params.mode.unwrap_or(SearchExecutionMode::Hybrid);
+    if let Some(channel_id) = params.channel_id.as_deref() {
+        if !can_access_channel(&access_context, channel_id) {
+            return Err((StatusCode::FORBIDDEN, "Channel access denied".to_string()));
+        }
+    }
     let run_keyword_search = execution_mode.runs_keyword();
     let run_semantic_search = execution_mode.runs_semantic();
     let fts_terms = meaningful_search_terms(query);
@@ -224,7 +232,12 @@ pub async fn search(
             })
             .collect()
     };
-    let fts_candidates = rerank_fts_candidates(&fts_candidates, query);
+    let fts_candidates = rerank_fts_candidates(&fts_candidates, query)
+        .into_iter()
+        .filter(|candidate| {
+            can_access_video(&access_context, &candidate.video_id, &candidate.channel_id)
+        })
+        .collect::<Vec<_>>();
     let fts_db_elapsed_ms = fts_db_started.elapsed().as_millis() as u64;
 
     let mut embedding_elapsed_ms = 0;
@@ -307,6 +320,15 @@ pub async fn search(
                 .map_err(map_db_err)?;
                 hybrid_db_elapsed_ms = hybrid_db_started.elapsed().as_millis() as u64;
                 candidates
+                    .into_iter()
+                    .filter(|candidate| {
+                        can_access_video(
+                            &access_context,
+                            &candidate.video_id,
+                            &candidate.channel_id,
+                        )
+                    })
+                    .collect()
             }
         }
     };

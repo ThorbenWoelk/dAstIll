@@ -1,6 +1,7 @@
 use std::convert::Infallible;
 
 use axum::{
+    Extension,
     Json,
     extract::{Path, Query, State},
     http::StatusCode,
@@ -19,6 +20,7 @@ use crate::{
         SpawnReplyJob,
         chat::{default_chat_cloud_model_id, is_chat_cloud_model_choice},
     },
+    security::{AccessContext, can_access_video},
     state::AppState,
 };
 
@@ -44,11 +46,32 @@ pub struct ChatSuggestionItem {
     subtitle: Option<String>,
 }
 
+fn conversation_scope_id(access_context: &AccessContext) -> &str {
+    access_context.user_id.as_deref().unwrap_or("anonymous")
+}
+
 pub async fn channel_suggestions(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Query(query): Query<ChatSuggestionQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let channels = db::list_channels(&state.db).await.map_err(map_db_err)?;
+    let channels = match access_context.user_id.as_deref() {
+        Some(user_id) => db::list_user_channels_with_virtual_others(&state.db, user_id)
+            .await
+            .map_err(map_db_err)?,
+        None => {
+            let mut channels = Vec::new();
+            for channel_id in &access_context.allowed_channel_ids {
+                if let Some(channel) = db::get_channel(&state.db, channel_id)
+                    .await
+                    .map_err(map_db_err)?
+                {
+                    channels.push(channel);
+                }
+            }
+            channels
+        }
+    };
     Ok(Json(rank_channel_suggestions(
         &channels,
         &query.q,
@@ -61,10 +84,34 @@ pub async fn channel_suggestions(
 
 pub async fn video_suggestions(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Query(query): Query<ChatSuggestionQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let videos = db::load_all_videos(&state.db).await.map_err(map_db_err)?;
-    let channels = db::list_channels(&state.db).await.map_err(map_db_err)?;
+    let channels = match access_context.user_id.as_deref() {
+        Some(user_id) => db::list_user_channels_with_virtual_others(&state.db, user_id)
+            .await
+            .map_err(map_db_err)?,
+        None => {
+            let mut channels = Vec::new();
+            for channel_id in &access_context.allowed_channel_ids {
+                if let Some(channel) = db::get_channel(&state.db, channel_id)
+                    .await
+                    .map_err(map_db_err)?
+                {
+                    channels.push(channel);
+                }
+            }
+            channels
+        }
+    };
+    let videos = videos
+        .into_iter()
+        .filter(|video| {
+            can_access_video(&access_context, &video.id, &video.channel_id)
+                || video.channel_id == crate::models::OTHERS_CHANNEL_ID
+        })
+        .collect::<Vec<_>>();
     Ok(Json(rank_video_suggestions(
         &videos,
         &channels,
@@ -82,8 +129,9 @@ pub async fn chat_client_config(State(state): State<AppState>) -> impl IntoRespo
 
 pub async fn list_conversations(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let conversations = db::list_conversations(&state.db)
+    let conversations = db::list_conversations_for_scope(&state.db, conversation_scope_id(&access_context))
         .await
         .map_err(map_db_err)?;
     Ok(Json(conversations))
@@ -91,13 +139,14 @@ pub async fn list_conversations(
 
 pub async fn create_conversation(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Json(payload): Json<CreateConversationRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let mut conversation = state.chat.create_conversation(payload.title.clone());
     mark_manual_title_on_create(&mut conversation);
 
     let _lock = state.chat_store_lock.lock().await;
-    db::upsert_conversation(&state.db, &conversation)
+    db::upsert_conversation_for_scope(&state.db, conversation_scope_id(&access_context), &conversation)
         .await
         .map_err(map_db_err)?;
     Ok((StatusCode::CREATED, Json(conversation)))
@@ -105,9 +154,14 @@ pub async fn create_conversation(
 
 pub async fn get_conversation(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(conversation_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let conversation = db::get_conversation(&state.db, &conversation_id)
+    let conversation = db::get_conversation_for_scope(
+        &state.db,
+        conversation_scope_id(&access_context),
+        &conversation_id,
+    )
         .await
         .map_err(map_db_err)
         .and_then(|opt| require_present(opt, "Conversation not found"))?;
@@ -116,20 +170,22 @@ pub async fn get_conversation(
 
 pub async fn update_conversation(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(conversation_id): Path<String>,
     Json(payload): Json<UpdateConversationRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let title = validate_nonempty(&payload.title, "Conversation title must not be empty")?;
+    let scope_id = conversation_scope_id(&access_context);
 
     let _lock = state.chat_store_lock.lock().await;
-    let Some(mut conversation) = db::get_conversation(&state.db, &conversation_id)
+    let Some(mut conversation) = db::get_conversation_for_scope(&state.db, scope_id, &conversation_id)
         .await
         .map_err(map_db_err)?
     else {
         return Err((StatusCode::NOT_FOUND, "Conversation not found".to_string()));
     };
     apply_manual_conversation_title(&mut conversation, title, Utc::now());
-    db::upsert_conversation(&state.db, &conversation)
+    db::upsert_conversation_for_scope(&state.db, scope_id, &conversation)
         .await
         .map_err(map_db_err)?;
     Ok(Json(conversation))
@@ -137,6 +193,7 @@ pub async fn update_conversation(
 
 pub async fn delete_conversation(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(conversation_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     if let Some(active_chat) = state.active_chats.lock().await.remove(&conversation_id) {
@@ -144,7 +201,7 @@ pub async fn delete_conversation(
     }
 
     let _lock = state.chat_store_lock.lock().await;
-    db::delete_conversation(&state.db, &conversation_id)
+    db::delete_conversation_for_scope(&state.db, conversation_scope_id(&access_context), &conversation_id)
         .await
         .map_err(map_db_err)?;
     Ok(StatusCode::NO_CONTENT)
@@ -152,13 +209,14 @@ pub async fn delete_conversation(
 
 pub async fn delete_all_conversations(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     for (_, active_chat) in state.active_chats.lock().await.drain() {
         active_chat.cancel();
     }
 
     let _lock = state.chat_store_lock.lock().await;
-    db::delete_all_conversations(&state.db)
+    db::delete_all_conversations_for_scope(&state.db, conversation_scope_id(&access_context))
         .await
         .map_err(map_db_err)?;
 
@@ -171,6 +229,7 @@ pub async fn delete_all_conversations(
 
 pub async fn send_message(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(conversation_id): Path<String>,
     Json(payload): Json<SendChatMessageRequest>,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, (StatusCode, String)>
@@ -213,7 +272,8 @@ pub async fn send_message(
         None => default_chat_cloud_model_id(state.chat.model()),
     };
 
-    let maybe_conversation = store_user_message(&state, &conversation_id, prompt).await;
+    let maybe_conversation =
+        store_user_message(&state, &access_context, &conversation_id, prompt).await;
     let (conversation, should_auto_name) = match maybe_conversation {
         Ok(value) => value,
         Err(error) => {
@@ -225,6 +285,7 @@ pub async fn send_message(
     state.chat.spawn_reply(SpawnReplyJob {
         state: state.clone(),
         conversation,
+        conversation_scope_id: conversation_scope_id(&access_context).to_string(),
         prompt: prompt.to_string(),
         should_auto_name,
         deep_research: payload.deep_research,
@@ -237,6 +298,7 @@ pub async fn send_message(
 
 pub async fn reconnect_stream(
     State(state): State<AppState>,
+    Extension(_access_context): Extension<AccessContext>,
     Path(conversation_id): Path<String>,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, (StatusCode, String)>
 {
@@ -252,6 +314,7 @@ pub async fn reconnect_stream(
 
 pub async fn cancel_message(
     State(state): State<AppState>,
+    Extension(_access_context): Extension<AccessContext>,
     Path(conversation_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let active_chat = state
@@ -277,11 +340,13 @@ async fn sse_response(
 
 async fn store_user_message(
     state: &AppState,
+    access_context: &AccessContext,
     conversation_id: &str,
     prompt: &str,
 ) -> Result<(ChatConversation, bool), (StatusCode, String)> {
+    let scope_id = conversation_scope_id(access_context);
     let _lock = state.chat_store_lock.lock().await;
-    let Some(mut conversation) = db::get_conversation(&state.db, conversation_id)
+    let Some(mut conversation) = db::get_conversation_for_scope(&state.db, scope_id, conversation_id)
         .await
         .map_err(map_db_err)?
     else {
@@ -296,7 +361,7 @@ async fn store_user_message(
         provisional_title,
         Utc::now(),
     );
-    db::upsert_conversation(&state.db, &conversation)
+    db::upsert_conversation_for_scope(&state.db, scope_id, &conversation)
         .await
         .map_err(map_db_err)?;
     Ok((conversation, should_auto_name))

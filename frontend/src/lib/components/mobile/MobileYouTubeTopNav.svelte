@@ -14,6 +14,7 @@
   import { mobileWorkspaceBrowseIntent } from "$lib/mobile-navigation/mobileWorkspaceBrowseIntent";
   import ChevronIcon from "$lib/components/icons/ChevronIcon.svelte";
   import ThemePanel from "$lib/components/ThemePanel.svelte";
+  import { authState } from "$lib/auth-state.svelte";
 
   let {
     trailing,
@@ -77,6 +78,15 @@
     if (typeof document === "undefined") return;
     document.body.dataset.mobileDrawerOpen = open ? "true" : "";
   });
+
+  async function handleSignIn() {
+    window.location.href = "/login";
+  }
+
+  async function handleSignOut() {
+    await authState.signOut();
+    window.location.href = "/";
+  }
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -125,7 +135,7 @@
   <div class="flex min-w-0 justify-center">
     <a
       href="/"
-      class="min-w-0 text-base font-bold tracking-tighter text-[var(--color-swatch)] transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
+      class="font-serif min-w-0 text-base font-bold tracking-[-0.03em] text-[var(--color-swatch)] transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
       data-sveltekit-preload-data="tap"
       data-sveltekit-preload-code="viewport"
       aria-label="Go to dAstIll home"
@@ -280,6 +290,62 @@
           </div>
         </div>
         <ThemePanel variant="inline" className="w-full" />
+
+        <div class="mt-1 flex flex-col">
+          {#if authState.current.authState === "authenticated"}
+            <button
+              type="button"
+              class="inline-flex w-full items-center gap-2 rounded-[var(--radius-sm)] px-3 py-2 text-[var(--soft-foreground)] opacity-60 transition-all hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+              onclick={handleSignOut}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                class="shrink-0"
+                aria-hidden="true"
+              >
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+              <span class="min-w-0 truncate text-[12px] font-medium"
+                >Sign out ({authState.current.email ?? "Authenticated"})</span
+              >
+            </button>
+          {:else}
+            <button
+              type="button"
+              class="inline-flex w-full items-center gap-2 rounded-[var(--radius-sm)] px-3 py-2 text-[var(--soft-foreground)] opacity-60 transition-all hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+              onclick={handleSignIn}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                class="shrink-0"
+                aria-hidden="true"
+              >
+                <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+                <polyline points="10 17 15 12 10 7" />
+                <line x1="15" y1="12" x2="3" y2="12" />
+              </svg>
+              <span class="min-w-0 truncate text-[12px] font-medium"
+                >Sign in</span
+              >
+            </button>
+          {/if}
+        </div>
       </div>
 
       <div

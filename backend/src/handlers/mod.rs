@@ -13,6 +13,7 @@ use axum::http::StatusCode;
 use crate::{
     db,
     models::{Channel, Video},
+    security::AccessContext,
     state::AppState,
 };
 
@@ -60,6 +61,63 @@ pub(crate) async fn require_video(
         .await
         .map_err(map_db_err)?
         .ok_or((StatusCode::NOT_FOUND, "Video not found".to_string()))
+}
+
+pub(crate) async fn require_channel_for_access(
+    state: &AppState,
+    access_context: &AccessContext,
+    channel_id: &str,
+) -> Result<Channel, (StatusCode, String)> {
+    if channel_id == crate::models::OTHERS_CHANNEL_ID {
+        if access_context.allowed_other_video_ids.is_empty() {
+            return Err((StatusCode::NOT_FOUND, "Channel not found".to_string()));
+        }
+        return Ok(Channel {
+            id: crate::models::OTHERS_CHANNEL_ID.to_string(),
+            handle: None,
+            name: crate::models::OTHERS_CHANNEL_NAME.to_string(),
+            thumbnail_url: None,
+            added_at: chrono::Utc::now(),
+            earliest_sync_date: None,
+            earliest_sync_date_user_set: false,
+        });
+    }
+
+    if !access_context.allowed_channel_ids.iter().any(|id| id == channel_id) {
+        return Err((StatusCode::NOT_FOUND, "Channel not found".to_string()));
+    }
+
+    db::get_channel(&state.db, channel_id)
+        .await
+        .map_err(map_db_err)?
+        .ok_or((StatusCode::NOT_FOUND, "Channel not found".to_string()))
+}
+
+pub(crate) async fn require_video_for_access(
+    state: &AppState,
+    access_context: &AccessContext,
+    video_id: &str,
+) -> Result<Video, (StatusCode, String)> {
+    let Some(video) = db::get_video(&state.db, video_id, true)
+        .await
+        .map_err(map_db_err)? else {
+        return Err((StatusCode::NOT_FOUND, "Video not found".to_string()));
+    };
+
+    let allowed = access_context
+        .allowed_channel_ids
+        .iter()
+        .any(|channel_id| channel_id == &video.channel_id)
+        || access_context
+            .allowed_other_video_ids
+            .iter()
+            .any(|candidate| candidate == &video.id);
+
+    if !allowed {
+        return Err((StatusCode::NOT_FOUND, "Video not found".to_string()));
+    }
+
+    Ok(video)
 }
 
 pub(crate) async fn evict_video_scope_cache(

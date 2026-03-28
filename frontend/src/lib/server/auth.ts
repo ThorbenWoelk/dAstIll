@@ -1,6 +1,8 @@
 import { dev } from "$app/environment";
 import { env } from "$env/dynamic/private";
+import { env as publicEnv } from "$env/dynamic/public";
 import type { AuthContext, AccessRole } from "$lib/auth";
+import { getAuthRuntimeConfig } from "$lib/server/auth-runtime";
 import type { Cookies } from "@sveltejs/kit";
 import {
   getApps as getAdminApps,
@@ -13,14 +15,6 @@ import {
   type DecodedIdToken as DecodedSessionCookie,
 } from "firebase-admin/auth";
 
-export interface AuthRuntimeConfig {
-  backendApiBase: string;
-  backendProxyToken: string;
-  backendIdentityAudience?: string;
-}
-
-const LOCAL_DEV_BACKEND_API_BASE = "http://localhost:3544";
-const LOCAL_DEV_BACKEND_PROXY_TOKEN = "local-dev-backend-proxy-token";
 const LOCAL_DEV_FIREBASE_PROJECT_ID = "demo-dastill";
 const LOCAL_DEV_FIREBASE_AUTH_EMULATOR_HOST = "127.0.0.1:9099";
 const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -31,6 +25,7 @@ export const AUTH_SESSION_MAX_AGE_SECONDS = Math.floor(
 );
 export const SESSION_COOKIE_NAME = "__session";
 export const LEGACY_SESSION_COOKIE_NAME = "dastill-session";
+export { getAuthRuntimeConfig };
 
 export class AuthSessionError extends Error {
   constructor(
@@ -49,23 +44,11 @@ function normalizeConfiguredValue(
   return normalized ? normalized : undefined;
 }
 
-function requiredPrivateEnv(key: string, localDevFallback?: string): string {
-  const configuredValue = normalizeConfiguredValue(env[key]);
-  if (configuredValue) {
-    return configuredValue;
-  }
-
-  if (dev && localDevFallback) {
-    return localDevFallback;
-  }
-
-  throw new Error(`${key} must be set`);
-}
-
 function readConfiguredFirebaseProjectId(): string {
   const projectId =
     normalizeConfiguredValue(env.FIREBASE_PROJECT_ID) ??
     normalizeConfiguredValue(process.env.FIREBASE_PROJECT_ID) ??
+    normalizeConfiguredValue(publicEnv.PUBLIC_FIREBASE_PROJECT_ID) ??
     normalizeConfiguredValue(process.env.PUBLIC_FIREBASE_PROJECT_ID) ??
     normalizeConfiguredValue(process.env.GCLOUD_PROJECT) ??
     normalizeConfiguredValue(process.env.GOOGLE_CLOUD_PROJECT);
@@ -165,38 +148,17 @@ export function normalizeRedirectTarget(
   return normalized;
 }
 
-function loadAuthRuntimeConfig(): AuthRuntimeConfig {
-  const backendIdentityAudience = normalizeConfiguredValue(
-    env.BACKEND_IDENTITY_AUDIENCE,
-  );
-
-  return {
-    backendApiBase: requiredPrivateEnv(
-      "BACKEND_API_BASE",
-      LOCAL_DEV_BACKEND_API_BASE,
-    ),
-    backendProxyToken: requiredPrivateEnv(
-      "BACKEND_PROXY_TOKEN",
-      LOCAL_DEV_BACKEND_PROXY_TOKEN,
-    ),
-    ...(backendIdentityAudience ? { backendIdentityAudience } : {}),
-  };
-}
-
-let authRuntimeConfig: AuthRuntimeConfig | null = null;
 let firebaseAdminApp: FirebaseAdminApp | null = null;
-
-export function getAuthRuntimeConfig(): AuthRuntimeConfig {
-  authRuntimeConfig ??= loadAuthRuntimeConfig();
-  return authRuntimeConfig;
-}
 
 function getFirebaseAdminApp(): FirebaseAdminApp {
   if (firebaseAdminApp) {
     return firebaseAdminApp;
   }
 
-  if (dev && !process.env.FIREBASE_AUTH_EMULATOR_HOST) {
+  const projectId = readConfiguredFirebaseProjectId();
+  const isLocalDevProject = projectId === LOCAL_DEV_FIREBASE_PROJECT_ID;
+
+  if (dev && isLocalDevProject && !process.env.FIREBASE_AUTH_EMULATOR_HOST) {
     process.env.FIREBASE_AUTH_EMULATOR_HOST =
       LOCAL_DEV_FIREBASE_AUTH_EMULATOR_HOST;
   }
@@ -208,7 +170,7 @@ function getFirebaseAdminApp(): FirebaseAdminApp {
   }
 
   firebaseAdminApp = initializeAdminApp({
-    projectId: readConfiguredFirebaseProjectId(),
+    projectId,
   });
   return firebaseAdminApp;
 }

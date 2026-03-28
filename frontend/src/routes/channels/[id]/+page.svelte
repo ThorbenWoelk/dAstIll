@@ -2,6 +2,12 @@
   import { goto, preloadData } from "$app/navigation";
   import { page } from "$app/stores";
   import { onMount } from "svelte";
+  import type { Component } from "svelte";
+  import { authState } from "$lib/auth-state.svelte";
+  import {
+    getAuthStorageScopeKey,
+    getScopedStorageKey,
+  } from "$lib/auth-storage";
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
   import defaultChannelIcon from "$lib/assets/channel-default.svg";
   import {
@@ -15,6 +21,8 @@
     listChannels,
     refreshChannel,
     updateChannel,
+    getSearchStatus,
+    openSearchStatusStream,
   } from "$lib/api";
   import AddSourceFeedbackToast from "$lib/components/AddSourceFeedbackToast.svelte";
   import ConfirmationModal from "$lib/components/ConfirmationModal.svelte";
@@ -22,6 +30,7 @@
   import MobileYouTubeTopNav from "$lib/components/mobile/MobileYouTubeTopNav.svelte";
   import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
   import WorkspaceSidebar from "$lib/components/workspace/WorkspaceSidebar.svelte";
+  import WorkspaceMinimalTopBar from "$lib/components/workspace/WorkspaceMinimalTopBar.svelte";
   import {
     applySavedChannelOrder,
     finalizeAddedChannelOrder,
@@ -34,6 +43,8 @@
     AddVideoResult,
     Channel,
     ChannelSnapshot,
+    SearchResult,
+    SearchStatus,
     SyncDepth,
     Video,
     VideoTypeFilter,
@@ -107,6 +118,10 @@
       "all:all:default",
   );
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let WorkspaceSearchBarComponent = $state<Component<any> | null>(null);
+  let searchStatus = $state<SearchStatus | null>(null);
+
   let selectedChannelId = $derived($page.params.id ?? null);
   let selectedChannel = $derived(
     channels.find((item) => item.id === selectedChannelId) ?? null,
@@ -114,7 +129,15 @@
   let aiIndicator = $derived(
     aiStatus ? resolveAiIndicatorPresentation(aiStatus) : null,
   );
-  let isOperator = $derived(Boolean($page.data.isOperator));
+  let canManageLibrary = $derived(
+    authState.current.authState === "authenticated",
+  );
+  let workspaceStorageKey = $derived(
+    getScopedStorageKey(
+      "dastill.workspace.state.v1",
+      getAuthStorageScopeKey(authState.current),
+    ),
+  );
   let missingChannelMessage = $derived.by(() => {
     if (loadingOverview) {
       return null;
@@ -405,15 +428,19 @@
     });
 
     if (typeof localStorage !== "undefined") {
-      saveWorkspaceState(localStorage, {
-        selectedChannelId: channelId,
-        selectedVideoId: videoId,
-        contentMode: "info",
-        videoTypeFilter,
-        acknowledgedFilter,
-        channelOrder,
-        channelSortMode,
-      });
+      saveWorkspaceState(
+        localStorage,
+        {
+          selectedChannelId: channelId,
+          selectedVideoId: videoId,
+          contentMode: "info",
+          videoTypeFilter,
+          acknowledgedFilter,
+          channelOrder,
+          channelSortMode,
+        },
+        workspaceStorageKey,
+      );
     }
 
     await preloadData(href);
@@ -426,7 +453,7 @@
   }
 
   async function handleDeleteChannel(channelId: string) {
-    if (!isOperator) {
+    if (!canManageLibrary) {
       showDeleteAccessPrompt = true;
       return;
     }
@@ -436,7 +463,7 @@
   }
 
   async function confirmDeleteChannel() {
-    if (!channelIdToDelete || !isOperator) {
+    if (!channelIdToDelete || !canManageLibrary) {
       return;
     }
 
@@ -591,10 +618,25 @@
     await goto(`/channels/${encodeURIComponent(current.channelId)}`);
   }
 
+  async function handleSearchResultSelection(
+    result: SearchResult,
+    mode: "transcript" | "summary",
+  ) {
+    await goto(
+      buildWorkspaceViewHref({
+        selectedChannelId: result.channel_id,
+        selectedVideoId: result.video_id,
+        contentMode: mode,
+        videoTypeFilter: "all",
+        acknowledgedFilter: "all",
+      }),
+    );
+  }
+
   onMount(() => {
     if (typeof localStorage !== "undefined") {
       const restored = restoreWorkspaceSnapshot(
-        loadWorkspaceState(localStorage),
+        loadWorkspaceState(localStorage, workspaceStorageKey),
         {
           includeVideoTypeFilter: true,
           includeAcknowledgedFilter: true,
@@ -633,6 +675,16 @@
       });
     }
 
+    void getSearchStatus().then((status) => {
+      searchStatus = status;
+    });
+
+    void import("$lib/components/workspace/WorkspaceSearchBar.svelte").then(
+      (m) => {
+        WorkspaceSearchBarComponent = m.default;
+      },
+    );
+
     return () => {
       addSourceFeedbackPollSequence += 1;
     };
@@ -663,13 +715,17 @@
       return;
     }
 
-    saveWorkspaceState(localStorage, {
-      selectedChannelId,
-      videoTypeFilter,
-      acknowledgedFilter,
-      channelOrder,
-      channelSortMode,
-    });
+    saveWorkspaceState(
+      localStorage,
+      {
+        selectedChannelId,
+        videoTypeFilter,
+        acknowledgedFilter,
+        channelOrder,
+        channelSortMode,
+      },
+      workspaceStorageKey,
+    );
   });
 
   $effect(() =>
@@ -686,7 +742,7 @@
     loadingChannels,
     addingChannel,
     channelSortMode,
-    canDeleteChannels: isOperator,
+    canDeleteChannels: canManageLibrary,
   });
   const overviewSidebarVideoState = $derived({
     videos: [] as Video[],
@@ -743,6 +799,20 @@
 <WorkspaceShell currentSection="workspace" {aiIndicator}>
   {#snippet mobileTopBar()}
     <MobileYouTubeTopNav />
+  {/snippet}
+  {#snippet topBar()}
+    <WorkspaceMinimalTopBar
+      title={selectedChannel ? selectedChannel.name : "Channel Overview"}
+    >
+      {#snippet trailing()}
+        {#if WorkspaceSearchBarComponent}
+          <WorkspaceSearchBarComponent
+            initialSearchStatus={searchStatus}
+            onSearchResultSelect={handleSearchResultSelection}
+          />
+        {/if}
+      {/snippet}
+    </WorkspaceMinimalTopBar>
   {/snippet}
   {#snippet sidebar({ collapsed, toggle, width })}
     <WorkspaceSidebar

@@ -1,6 +1,6 @@
 use axum::{
     Json,
-    extract::{Path, State},
+    extract::{Extension, Path, State},
     http::StatusCode,
     response::IntoResponse,
 };
@@ -8,21 +8,31 @@ use axum::{
 use crate::{
     db,
     models::{CreateHighlightRequest, HighlightChannelGroup},
+    security::{AccessContext, AuthState},
     state::AppState,
 };
 
-use super::{map_db_err, require_video, validate_nonempty};
+use super::{map_db_err, require_video_for_access, validate_nonempty};
 
 pub async fn create_highlight(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(video_id): Path<String>,
     Json(payload): Json<CreateHighlightRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    require_video(&state, &video_id).await?;
+    let Some(user_id) = access_context.user_id.as_deref() else {
+        return Err((StatusCode::FORBIDDEN, "Sign-in required".to_string()));
+    };
+    if access_context.auth_state != AuthState::Authenticated {
+        return Err((StatusCode::FORBIDDEN, "Sign-in required".to_string()));
+    }
+
+    require_video_for_access(&state, &access_context, &video_id).await?;
     let highlight_text = validate_nonempty(&payload.text, "Highlight text cannot be empty")?;
 
     let highlight = db::create_highlight(
         &state.db,
+        user_id,
         &video_id,
         payload.source,
         highlight_text,
@@ -37,11 +47,15 @@ pub async fn create_highlight(
 
 pub async fn list_video_highlights(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(video_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    require_video(&state, &video_id).await?;
+    let Some(user_id) = access_context.user_id.as_deref() else {
+        return Ok(Json(Vec::new()));
+    };
+    require_video_for_access(&state, &access_context, &video_id).await?;
 
-    let highlights = db::list_video_highlights(&state.db, &video_id)
+    let highlights = db::list_video_highlights(&state.db, user_id, &video_id)
         .await
         .map_err(map_db_err)?;
     Ok(Json(highlights))
@@ -49,8 +63,12 @@ pub async fn list_video_highlights(
 
 pub async fn list_highlights(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let grouped: Vec<HighlightChannelGroup> = db::list_highlights_grouped(&state.db)
+    let Some(user_id) = access_context.user_id.as_deref() else {
+        return Ok(Json(Vec::new()));
+    };
+    let grouped: Vec<HighlightChannelGroup> = db::list_highlights_grouped_for_user(&state.db, user_id)
         .await
         .map_err(map_db_err)?;
     Ok(Json(grouped))
@@ -58,9 +76,17 @@ pub async fn list_highlights(
 
 pub async fn delete_highlight(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(highlight_id): Path<i64>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let deleted = db::delete_highlight(&state.db, highlight_id)
+    let Some(user_id) = access_context.user_id.as_deref() else {
+        return Err((StatusCode::FORBIDDEN, "Sign-in required".to_string()));
+    };
+    if access_context.auth_state != AuthState::Authenticated {
+        return Err((StatusCode::FORBIDDEN, "Sign-in required".to_string()));
+    }
+
+    let deleted = db::delete_highlight(&state.db, user_id, highlight_id)
         .await
         .map_err(map_db_err)?;
     let status = resolve_delete_highlight_result(deleted)?;

@@ -48,8 +48,6 @@ pub async fn populate_fts_index_from_store(state: AppState) {
 
     #[derive(serde::Deserialize)]
     struct ChunkData {
-        video_id: String,
-        source_kind: String,
         section_title: Option<String>,
         chunk_text: String,
         #[serde(default)]
@@ -70,64 +68,88 @@ pub async fn populate_fts_index_from_store(state: AppState) {
         return;
     }
 
-    // Fetch all chunk JSON files concurrently.
-    const MAX_CONCURRENT: usize = 32;
-    let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT));
-    let mut set = tokio::task::JoinSet::new();
-    for key in chunk_keys {
-        let s = store.clone();
-        let sem = semaphore.clone();
-        set.spawn(async move {
-            let _permit = sem.acquire_owned().await.ok();
-            s.get_json::<ChunkData>(&key)
-                .await
-                .map(|opt| opt.map(|chunk| (key, chunk)))
-        });
-    }
-
-    let mut all_chunks: Vec<(String, ChunkData)> = Vec::new();
-    while let Some(result) = set.join_next().await {
-        if let Ok(Ok(Some(entry))) = result {
-            all_chunks.push(entry);
-        }
-    }
-
-    // Group chunks by (video_id, source_kind).
-    let mut groups: std::collections::HashMap<(String, String), Vec<(String, ChunkData)>> =
+    // Group keys by (video_id, source_kind) extracted from the key name.
+    // Key format: search-chunks/{video_id}_{source_kind}_{hash}_{index}.json
+    let mut key_groups: std::collections::HashMap<(String, String), Vec<String>> =
         std::collections::HashMap::new();
-    for (key, chunk) in all_chunks {
-        groups
-            .entry((chunk.video_id.clone(), chunk.source_kind.clone()))
+    for key in chunk_keys {
+        let Some(filename) = key
+            .strip_prefix("search-chunks/")
+            .and_then(|s| s.strip_suffix(".json"))
+        else {
+            continue;
+        };
+
+        let parts: Vec<&str> = filename.split('_').collect();
+        if parts.len() < 4 {
+            continue;
+        }
+
+        let video_id = parts[0].to_string();
+        let source_kind = parts[1].to_string();
+        key_groups
+            .entry((video_id, source_kind))
             .or_default()
-            .push((key, chunk));
+            .push(key);
     }
 
-    // Load video + channel metadata once per unique video.
-    let video_ids: std::collections::HashSet<String> =
-        groups.keys().map(|(vid, _)| vid.clone()).collect();
     let mut video_map: std::collections::HashMap<String, crate::models::Video> =
         std::collections::HashMap::new();
     let mut channel_map: std::collections::HashMap<String, crate::models::Channel> =
         std::collections::HashMap::new();
-    for vid in &video_ids {
-        if let Ok(Some(video)) = crate::db::get_video(&store, vid, false).await {
-            if !channel_map.contains_key(&video.channel_id) {
-                if let Ok(Some(ch)) = store
-                    .get_json::<crate::models::Channel>(&format!(
-                        "channels/{}.json",
-                        video.channel_id
-                    ))
-                    .await
-                {
-                    channel_map.insert(ch.id.clone(), ch);
-                }
-            }
-            video_map.insert(vid.clone(), video);
-        }
-    }
 
     let mut upserted = 0usize;
-    for ((video_id, source_kind_str), entries) in groups {
+    for ((video_id, source_kind_str), keys) in key_groups {
+        // Fetch all chunk JSON files for this specific video+source concurrently.
+        let mut fts_chunks = Vec::with_capacity(keys.len());
+        let mut set = tokio::task::JoinSet::new();
+        for key in keys {
+            let s = store.clone();
+            set.spawn(async move {
+                s.get_json::<ChunkData>(&key)
+                    .await
+                    .map(|opt| opt.map(|chunk| (key, chunk)))
+            });
+        }
+
+        while let Some(result) = set.join_next().await {
+            if let Ok(Ok(Some((key, chunk)))) = result {
+                let chunk_id = key
+                    .strip_prefix("search-chunks/")
+                    .and_then(|s| s.strip_suffix(".json"))
+                    .unwrap_or(&key)
+                    .to_string();
+                fts_chunks.push(FtsChunk {
+                    chunk_id,
+                    section_title: chunk.section_title,
+                    chunk_text: chunk.chunk_text,
+                    start_sec: chunk.start_sec,
+                });
+            }
+        }
+
+        if fts_chunks.is_empty() {
+            continue;
+        }
+
+        // Load video + channel metadata once per unique video.
+        if !video_map.contains_key(&video_id) {
+            if let Ok(Some(video)) = crate::db::get_video(&store, &video_id, false).await {
+                if !channel_map.contains_key(&video.channel_id) {
+                    if let Ok(Some(ch)) = store
+                        .get_json::<crate::models::Channel>(&format!(
+                            "channels/{}.json",
+                            video.channel_id
+                        ))
+                        .await
+                    {
+                        channel_map.insert(ch.id.clone(), ch);
+                    }
+                }
+                video_map.insert(video_id.clone(), video);
+            }
+        }
+
         let Some(video) = video_map.get(&video_id) else {
             continue;
         };
@@ -136,24 +158,8 @@ pub async fn populate_fts_index_from_store(state: AppState) {
             .map(|c| c.name.as_str())
             .unwrap_or("");
         let source_kind = SearchSourceKind::from_db_value(&source_kind_str);
-        let fts_chunks: Vec<FtsChunk> = entries
-            .into_iter()
-            .map(|(key, chunk)| {
-                let chunk_id = key
-                    .strip_prefix("search-chunks/")
-                    .and_then(|s| s.strip_suffix(".json"))
-                    .unwrap_or(&key)
-                    .to_string();
-                FtsChunk {
-                    chunk_id,
-                    section_title: chunk.section_title,
-                    chunk_text: chunk.chunk_text,
-                    start_sec: chunk.start_sec,
-                }
-            })
-            .collect();
-
         let published_at = video.published_at.to_rfc3339();
+
         state
             .fts
             .upsert_source(

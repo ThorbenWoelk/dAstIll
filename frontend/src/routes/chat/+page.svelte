@@ -4,6 +4,11 @@
   import { onMount, tick } from "svelte";
   import { SvelteURLSearchParams } from "svelte/reactivity";
 
+  import { authState } from "$lib/auth-state.svelte";
+  import {
+    getAuthStorageScopeKey,
+    getScopedStorageKey,
+  } from "$lib/auth-storage";
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
   import { isAnonymousChatQuotaError } from "$lib/chat/anonymous-quota";
   import type { ChatStreamTiming } from "$lib/chat/conversation-meta";
@@ -50,11 +55,12 @@
 
   type TimedStatus = ChatStreamStatus & { receivedAt: number };
 
-  const chatModelStorageKey = "dastill.chat.cloudModel";
-
-  function pickInitialChatModelId(cfg: ChatClientConfig): string {
+  function pickInitialChatModelId(
+    cfg: ChatClientConfig,
+    storageKey: string,
+  ): string {
     try {
-      const stored = localStorage.getItem(chatModelStorageKey)?.trim();
+      const stored = localStorage.getItem(storageKey)?.trim();
       if (stored && cfg.models.some((entry) => entry.id === stored)) {
         return stored;
       }
@@ -97,6 +103,12 @@
   let selectedChatModelId = $state("");
   let messagesViewport = $state<HTMLDivElement | null>(null);
   let streamController: AbortController | null = null;
+  let chatModelStorageKey = $derived(
+    getScopedStorageKey(
+      "dastill.chat.cloudModel",
+      getAuthStorageScopeKey(authState.current),
+    ),
+  );
 
   /** When true, new tokens and layout growth keep the viewport pinned to the bottom. */
   let stickyScroll = $state(true);
@@ -106,7 +118,9 @@
   let promptFromUrl = $derived(
     $page.url.searchParams.get("prompt")?.trim() ?? "",
   );
-  let isOperator = $derived(Boolean($page.data.isOperator));
+  let isAuthenticated = $derived(
+    authState.current.authState === "authenticated",
+  );
   let aiIndicator = $derived(
     aiStatus ? resolveAiIndicatorPresentation(aiStatus) : null,
   );
@@ -330,7 +344,7 @@
     void getChatClientConfig()
       .then((cfg) => {
         chatClientConfig = cfg;
-        selectedChatModelId = pickInitialChatModelId(cfg);
+        selectedChatModelId = pickInitialChatModelId(cfg, chatModelStorageKey);
       })
       .catch(() => {
         chatClientConfig = null;
@@ -449,7 +463,7 @@
   });
 
   $effect(() => {
-    if (isOperator && anonymousQuotaMessage) {
+    if (isAuthenticated && anonymousQuotaMessage) {
       anonymousQuotaMessage = null;
     }
   });
@@ -664,7 +678,7 @@
 
   async function handleSend(rawValue: string) {
     const content = rawValue.trim();
-    if (!content || (!isOperator && anonymousQuotaMessage)) {
+    if (!content || (!isAuthenticated && anonymousQuotaMessage)) {
       return;
     }
 
@@ -1223,13 +1237,13 @@
           focusSignal={chatInputFocusSignal}
           disabled={loadingConversation ||
             creatingConversation ||
-            (!isOperator && Boolean(anonymousQuotaMessage))}
+            (!isAuthenticated && Boolean(anonymousQuotaMessage))}
           busy={Boolean(streamingConversationId) || creatingConversation}
           canCancel={Boolean(streamingConversationId)}
           onSubmit={(value) => void handleSend(value)}
           onCancel={() => void handleCancel()}
         />
-        {#if anonymousQuotaMessage && !isOperator}
+        {#if anonymousQuotaMessage && !isAuthenticated}
           <ChatAnonymousQuotaNotice />
         {/if}
       </div>

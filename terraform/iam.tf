@@ -99,6 +99,13 @@ resource "google_project_iam_member" "backend_firestore" {
   member  = "serviceAccount:${google_service_account.backend_sa.email}"
 }
 
+# Grant Firebase Auth access to the backend service account
+resource "google_project_iam_member" "backend_firebase_auth" {
+  project = var.project_id
+  role    = "roles/firebaseauth.admin"
+  member  = "serviceAccount:${google_service_account.backend_sa.email}"
+}
+
 resource "google_service_account_key" "backend_sa_key" {
   service_account_id = google_service_account.backend_sa.name
 }

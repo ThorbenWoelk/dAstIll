@@ -14,6 +14,11 @@
   import SearchIcon from "$lib/components/icons/SearchIcon.svelte";
   import SearchResultsPopover from "$lib/components/SearchResultsPopover.svelte";
   import ThemePanel from "$lib/components/ThemePanel.svelte";
+  import { authState } from "$lib/auth-state.svelte";
+  import {
+    getAuthStorageScopeKey,
+    getScopedStorageKey,
+  } from "$lib/auth-storage";
   import { resolveSearchCoverageHint } from "$lib/search-status";
   import {
     readWorkspaceSearchSession,
@@ -116,6 +121,12 @@
     SearchResultMode,
     AbortController
   >();
+  let searchSessionStorageKey = $derived(
+    getScopedStorageKey(
+      "workspace-search-session",
+      getAuthStorageScopeKey(authState.current),
+    ),
+  );
 
   let searchQueryTrimmed = $derived(searchQuery.trim());
   let searchStatus = $derived(liveSearchStatus ?? initialSearchStatus);
@@ -167,6 +178,7 @@
 
     const restoredSearchState = readWorkspaceSearchSession(
       window.sessionStorage,
+      searchSessionStorageKey,
     );
     searchQuery = restoredSearchState.query;
     retainedSearchQuery = restoredSearchState.retainedQuery;
@@ -227,14 +239,18 @@
       return;
     }
 
-    writeWorkspaceSearchSession(window.sessionStorage, {
-      query: searchQuery,
-      retainedQuery: retainedSearchQuery,
-      source: searchSource,
-      sections: searchSections,
-      modeKeyword,
-      modeSemantic,
-    });
+    writeWorkspaceSearchSession(
+      window.sessionStorage,
+      {
+        query: searchQuery,
+        retainedQuery: retainedSearchQuery,
+        source: searchSource,
+        sections: searchSections,
+        modeKeyword,
+        modeSemantic,
+      },
+      searchSessionStorageKey,
+    );
   });
 
   function abortSearchRequests() {

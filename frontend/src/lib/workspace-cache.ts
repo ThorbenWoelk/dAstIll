@@ -19,6 +19,11 @@ type ViewSnapshotRecord = {
 };
 
 let workspaceCacheDbPromise: Promise<IDBDatabase> | null = null;
+let workspaceCacheDbName: string | null = null;
+
+function resolveDbName(scopeKey?: string): string {
+  return scopeKey ? `${DB_NAME}:${scopeKey}` : DB_NAME;
+}
 
 function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -38,14 +43,16 @@ function transactionDone(transaction: IDBTransaction): Promise<void> {
   });
 }
 
-function openWorkspaceCacheInternal(): Promise<IDBDatabase> {
+function openWorkspaceCacheInternal(scopeKey?: string): Promise<IDBDatabase> {
   if (typeof indexedDB === "undefined") {
     return Promise.reject(new Error("IndexedDB is unavailable"));
   }
 
-  if (!workspaceCacheDbPromise) {
+  const dbName = resolveDbName(scopeKey);
+  if (!workspaceCacheDbPromise || workspaceCacheDbName !== dbName) {
+    workspaceCacheDbName = dbName;
     workspaceCacheDbPromise = new Promise((resolve, reject) => {
-      const openRequest = indexedDB.open(DB_NAME, DB_VERSION);
+      const openRequest = indexedDB.open(dbName, DB_VERSION);
 
       openRequest.onupgradeneeded = () => {
         const db = openRequest.result;
@@ -130,9 +137,17 @@ export async function openWorkspaceCache(): Promise<IDBDatabase> {
   return openWorkspaceCacheInternal();
 }
 
-export async function getCachedChannels(): Promise<Channel[] | null> {
+export async function openScopedWorkspaceCache(
+  scopeKey: string,
+): Promise<IDBDatabase> {
+  return openWorkspaceCacheInternal(scopeKey);
+}
+
+export async function getCachedChannels(
+  scopeKey?: string,
+): Promise<Channel[] | null> {
   try {
-    const db = await openWorkspaceCacheInternal();
+    const db = await openWorkspaceCacheInternal(scopeKey);
     const transaction = db.transaction("channels", "readonly");
     const channels = await requestToPromise<Channel[]>(
       transaction.objectStore("channels").getAll(),
@@ -143,9 +158,12 @@ export async function getCachedChannels(): Promise<Channel[] | null> {
   }
 }
 
-export async function putCachedChannels(channels: Channel[]): Promise<void> {
+export async function putCachedChannels(
+  channels: Channel[],
+  scopeKey?: string,
+): Promise<void> {
   try {
-    const db = await openWorkspaceCacheInternal();
+    const db = await openWorkspaceCacheInternal(scopeKey);
     const transaction = db.transaction("channels", "readwrite");
     const channelStore = transaction.objectStore("channels");
     channelStore.clear();
@@ -160,9 +178,10 @@ export async function putCachedChannels(channels: Channel[]): Promise<void> {
 
 export async function getCachedSnapshot(
   channelId: string,
+  scopeKey?: string,
 ): Promise<ChannelSnapshot | null> {
   try {
-    const db = await openWorkspaceCacheInternal();
+    const db = await openWorkspaceCacheInternal(scopeKey);
     const transaction = db.transaction("snapshots", "readonly");
     const snapshot = await requestToPromise<ChannelSnapshot | undefined>(
       transaction.objectStore("snapshots").get(channelId),
@@ -175,9 +194,10 @@ export async function getCachedSnapshot(
 
 export async function getCachedViewSnapshot(
   key: string,
+  scopeKey?: string,
 ): Promise<ChannelSnapshot | null> {
   try {
-    const db = await openWorkspaceCacheInternal();
+    const db = await openWorkspaceCacheInternal(scopeKey);
     const transaction = db.transaction("view_snapshots", "readonly");
     const record = await requestToPromise<ViewSnapshotRecord | undefined>(
       transaction.objectStore("view_snapshots").get(key),
@@ -190,9 +210,10 @@ export async function getCachedViewSnapshot(
 
 export async function putCachedSnapshot(
   snapshot: ChannelSnapshot,
+  scopeKey?: string,
 ): Promise<void> {
   try {
-    const db = await openWorkspaceCacheInternal();
+    const db = await openWorkspaceCacheInternal(scopeKey);
     const transaction = db.transaction(["snapshots", "videos"], "readwrite");
     const snapshotStore = transaction.objectStore("snapshots");
     const videoStore = transaction.objectStore("videos");
@@ -211,9 +232,10 @@ export async function putCachedSnapshot(
 export async function putCachedViewSnapshot(
   key: string,
   snapshot: ChannelSnapshot,
+  scopeKey?: string,
 ): Promise<void> {
   try {
-    const db = await openWorkspaceCacheInternal();
+    const db = await openWorkspaceCacheInternal(scopeKey);
     const transaction = db.transaction("view_snapshots", "readwrite");
     transaction.objectStore("view_snapshots").put({ key, snapshot });
     await transactionDone(transaction);
@@ -222,9 +244,11 @@ export async function putCachedViewSnapshot(
   }
 }
 
-export async function getCachedBootstrapMeta(): Promise<WorkspaceBootstrapMeta | null> {
+export async function getCachedBootstrapMeta(
+  scopeKey?: string,
+): Promise<WorkspaceBootstrapMeta | null> {
   try {
-    const db = await openWorkspaceCacheInternal();
+    const db = await openWorkspaceCacheInternal(scopeKey);
     const transaction = db.transaction("meta", "readonly");
     const record = await requestToPromise<BootstrapMetaRecord | undefined>(
       transaction.objectStore("meta").get(BOOTSTRAP_META_KEY),
@@ -246,9 +270,10 @@ export async function getCachedBootstrapMeta(): Promise<WorkspaceBootstrapMeta |
 
 export async function putCachedBootstrapMeta(
   meta: WorkspaceBootstrapMeta,
+  scopeKey?: string,
 ): Promise<void> {
   try {
-    const db = await openWorkspaceCacheInternal();
+    const db = await openWorkspaceCacheInternal(scopeKey);
     const transaction = db.transaction("meta", "readwrite");
     transaction.objectStore("meta").put({
       key: BOOTSTRAP_META_KEY,
@@ -260,9 +285,9 @@ export async function putCachedBootstrapMeta(
   }
 }
 
-export async function clearWorkspaceCache(): Promise<void> {
+export async function clearWorkspaceCache(scopeKey?: string): Promise<void> {
   try {
-    const db = await openWorkspaceCacheInternal();
+    const db = await openWorkspaceCacheInternal(scopeKey);
     const transaction = db.transaction(
       ["channels", "videos", "snapshots", "meta", "view_snapshots"],
       "readwrite",
@@ -310,9 +335,12 @@ async function deleteViewSnapshotsByChannel(
   });
 }
 
-export async function removeCachedChannel(channelId: string): Promise<void> {
+export async function removeCachedChannel(
+  channelId: string,
+  scopeKey?: string,
+): Promise<void> {
   try {
-    const db = await openWorkspaceCacheInternal();
+    const db = await openWorkspaceCacheInternal(scopeKey);
     const transaction = db.transaction(
       ["channels", "snapshots", "videos", "view_snapshots"],
       "readwrite",

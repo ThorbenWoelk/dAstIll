@@ -2,6 +2,11 @@
   import { replaceState } from "$app/navigation";
   import { onMount } from "svelte";
   import type { Snippet } from "svelte";
+  import { authState } from "$lib/auth-state.svelte";
+  import {
+    getAuthStorageScopeKey,
+    getScopedStorageKey,
+  } from "$lib/auth-storage";
   import type { AiIndicatorPresentation } from "$lib/ai-status";
   import type { SectionNavigationSection } from "$lib/section-navigation";
   import WorkspaceNavRail from "$lib/components/workspace/WorkspaceNavRail.svelte";
@@ -12,7 +17,6 @@
   const SIDEBAR_DEFAULT = 280;
   const SIDEBAR_MIN = 52;
   const SIDEBAR_SNAP = 140;
-  const STORAGE_KEY = "dastill:shell-layout";
 
   let {
     currentSection = "workspace" as SectionNavigationSection,
@@ -47,10 +51,16 @@
 
   let navCollapsed = $derived(navWidth <= NAV_MIN);
   let sidebarCollapsed = $derived(sidebarWidth <= SIDEBAR_MIN);
+  let shellLayoutStorageKey = $derived(
+    getScopedStorageKey(
+      "dastill:shell-layout",
+      getAuthStorageScopeKey(authState.current),
+    ),
+  );
 
   onMount(() => {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(shellLayoutStorageKey);
       if (raw) {
         const saved = JSON.parse(raw);
         if (typeof saved.navWidth === "number") navWidth = saved.navWidth;
@@ -65,13 +75,33 @@
   function persist() {
     try {
       localStorage.setItem(
-        STORAGE_KEY,
+        shellLayoutStorageKey,
         JSON.stringify({ navWidth, sidebarWidth }),
       );
     } catch {
       // ignore
     }
   }
+
+  $effect(() => {
+    if (typeof localStorage === "undefined") {
+      return;
+    }
+
+    try {
+      const raw = localStorage.getItem(shellLayoutStorageKey);
+      if (!raw) {
+        return;
+      }
+
+      const saved = JSON.parse(raw);
+      if (typeof saved.navWidth === "number") navWidth = saved.navWidth;
+      if (typeof saved.sidebarWidth === "number")
+        sidebarWidth = saved.sidebarWidth;
+    } catch {
+      // ignore
+    }
+  });
 
   function handleResizeStart(target: "nav" | "sidebar", event: PointerEvent) {
     event.preventDefault();

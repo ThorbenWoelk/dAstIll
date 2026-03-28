@@ -1,6 +1,9 @@
 use std::process::Command;
+use std::sync::Arc;
 use std::time::Instant;
+
 use thiserror::Error;
+use tokio::sync::Semaphore;
 
 use crate::services::youtube::placeholder::is_site_wide_placeholder_description;
 
@@ -19,6 +22,7 @@ pub enum TranscriptError {
 pub struct TranscriptService {
     summarize_path: String,
     ytdlp_path: String,
+    concurrency_semaphore: Option<Arc<Semaphore>>,
 }
 
 impl TranscriptService {
@@ -26,6 +30,7 @@ impl TranscriptService {
         Self {
             summarize_path: "/opt/homebrew/bin/summarize".to_string(),
             ytdlp_path: "/usr/local/bin/yt-dlp".to_string(),
+            concurrency_semaphore: None,
         }
     }
 
@@ -33,6 +38,7 @@ impl TranscriptService {
         Self {
             summarize_path: summarize_path.to_string(),
             ytdlp_path: "/usr/local/bin/yt-dlp".to_string(),
+            concurrency_semaphore: None,
         }
     }
 
@@ -40,7 +46,13 @@ impl TranscriptService {
         Self {
             summarize_path: summarize_path.to_string(),
             ytdlp_path: ytdlp_path.to_string(),
+            concurrency_semaphore: None,
         }
+    }
+
+    pub fn with_concurrency_semaphore(mut self, semaphore: Arc<Semaphore>) -> Self {
+        self.concurrency_semaphore = Some(semaphore);
+        self
     }
 
     /// Extract transcript from a YouTube video using the summarize CLI.
@@ -50,6 +62,17 @@ impl TranscriptService {
         &self,
         video_id: &str,
     ) -> Result<(String, String, Vec<crate::models::TimedSegment>), TranscriptError> {
+        let _permit = if let Some(sem) = &self.concurrency_semaphore {
+            Some(
+                sem.clone()
+                    .acquire_owned()
+                    .await
+                    .map_err(|e| TranscriptError::CommandFailed(e.to_string()))?,
+            )
+        } else {
+            None
+        };
+
         let video_url = format!("https://www.youtube.com/watch?v={video_id}");
         let started_at = Instant::now();
 

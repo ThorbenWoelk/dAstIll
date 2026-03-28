@@ -174,7 +174,11 @@ async fn main() -> anyhow::Result<()> {
         Ok(None) => tracing::info!("YOUTUBE_API_KEY is not configured - using fallback sources"),
         Err(err) => tracing::warn!(error = %err, "could not validate YOUTUBE_API_KEY on startup"),
     }
-    let transcript = Arc::new(TranscriptService::with_paths(&summarize_path, &ytdlp_path));
+    let transcript_semaphore = Arc::new(tokio::sync::Semaphore::new(1));
+    let transcript = Arc::new(
+        TranscriptService::with_paths(&summarize_path, &ytdlp_path)
+            .with_concurrency_semaphore(transcript_semaphore),
+    );
     let ollama_semaphore = Arc::new(tokio::sync::Semaphore::new(1));
     let search_ollama_semaphore = Arc::new(tokio::sync::Semaphore::new(1));
 
@@ -376,10 +380,12 @@ async fn main() -> anyhow::Result<()> {
         )
         .route(
             "/api/search/rebuild",
-            post(search::rebuild_search_projection).layer(middleware::from_fn_with_state(
-                state.clone(),
-                enforce_expensive_rate_limit,
-            )),
+            post(search::rebuild_search_projection)
+                .layer(middleware::from_fn(require_operator_role))
+                .layer(middleware::from_fn_with_state(
+                    state.clone(),
+                    enforce_expensive_rate_limit,
+                )),
         )
         .route(
             "/api/workspace/bootstrap",
@@ -393,11 +399,7 @@ async fn main() -> anyhow::Result<()> {
             "/api/channels/{id}",
             get(channels::get_channel)
                 .put(channels::update_channel)
-                .layer(middleware::from_fn(require_operator_role)),
-        )
-        .route(
-            "/api/channels/{id}",
-            delete(channels::delete_channel).layer(middleware::from_fn(require_operator_role)),
+                .delete(channels::delete_channel),
         )
         .route(
             "/api/channels/{id}/sync-depth",

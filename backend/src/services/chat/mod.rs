@@ -996,6 +996,7 @@ pub(super) struct OllamaRequestMessage {
 pub struct SpawnReplyJob {
     pub state: AppState,
     pub conversation: ChatConversation,
+    pub conversation_scope_id: String,
     pub prompt: String,
     pub should_auto_name: bool,
     pub deep_research: bool,
@@ -1115,6 +1116,7 @@ impl ChatService {
         let SpawnReplyJob {
             state,
             conversation,
+            conversation_scope_id,
             prompt,
             should_auto_name,
             deep_research,
@@ -1125,12 +1127,14 @@ impl ChatService {
             if should_auto_name {
                 let naming_service = service.clone();
                 let naming_state = state.clone();
+                let naming_conversation_scope_id = conversation_scope_id.clone();
                 let naming_conversation_id = conversation.id.clone();
                 let naming_prompt = prompt.clone();
                 tokio::spawn(async move {
                     naming_service
                         .generate_and_store_title(
                             naming_state,
+                            naming_conversation_scope_id,
                             naming_conversation_id,
                             naming_prompt,
                         )
@@ -1142,6 +1146,7 @@ impl ChatService {
                 .run_reply(
                     state,
                     conversation,
+                    conversation_scope_id,
                     prompt,
                     deep_research,
                     reply_model,
@@ -1155,6 +1160,7 @@ impl ChatService {
         &self,
         state: AppState,
         conversation: ChatConversation,
+        conversation_scope_id: String,
         prompt: String,
         deep_research: bool,
         reply_model: String,
@@ -1181,8 +1187,13 @@ impl ChatService {
 
             match reply_result {
                 Ok(message) => {
-                    if let Err(error) =
-                        persist_assistant_message(&state, &conversation_id, &message).await
+                    if let Err(error) = persist_assistant_message(
+                        &state,
+                        &conversation_scope_id,
+                        &conversation_id,
+                        &message,
+                    )
+                    .await
                     {
                         tracing::error!(conversation_id = %conversation_id, error = %error, "failed to persist assistant message");
                         active_chat
@@ -1202,7 +1213,13 @@ impl ChatService {
                             ChatMessageStatus::Cancelled,
                             None,
                         );
-                        let _ = persist_assistant_message(&state, &conversation_id, &message).await;
+                        let _ = persist_assistant_message(
+                            &state,
+                            &conversation_scope_id,
+                            &conversation_id,
+                            &message,
+                        )
+                        .await;
                         active_chat.emit(ChatStreamEvent::Done { message }).await;
                         let mut active_chats = state.active_chats.lock().await;
                         active_chats.remove(&conversation_id);
@@ -1215,7 +1232,13 @@ impl ChatService {
                         ChatMessageStatus::Failed,
                         None,
                     );
-                    let _ = persist_assistant_message(&state, &conversation_id, &message).await;
+                    let _ = persist_assistant_message(
+                        &state,
+                        &conversation_scope_id,
+                        &conversation_id,
+                        &message,
+                    )
+                    .await;
                     active_chat
                         .emit(ChatStreamEvent::Error { message: error })
                         .await;
@@ -2694,6 +2717,7 @@ impl ChatService {
     async fn generate_and_store_title(
         &self,
         state: AppState,
+        conversation_scope_id: String,
         conversation_id: String,
         prompt: String,
     ) {
@@ -2709,13 +2733,24 @@ impl ChatService {
                 Ok(title) => title,
                 Err(error) => {
                     tracing::warn!(conversation_id = %conversation_id, error = %error, "chat title generation failed");
-                    let _ = finalize_title_generation(&state, &conversation_id, None).await;
+                    let _ = finalize_title_generation(
+                        &state,
+                        &conversation_scope_id,
+                        &conversation_id,
+                        None,
+                    )
+                    .await;
                     return;
                 }
             };
 
-            if let Err(error) =
-                finalize_title_generation(&state, &conversation_id, Some(generated_title.clone())).await
+            if let Err(error) = finalize_title_generation(
+                &state,
+                &conversation_scope_id,
+                &conversation_id,
+                Some(generated_title.clone()),
+            )
+            .await
             {
                 tracing::warn!(conversation_id = %conversation_id, error = %error, "failed to persist generated title");
                 return;
@@ -2752,12 +2787,14 @@ impl ChatService {
 
 async fn finalize_title_generation(
     state: &AppState,
+    conversation_scope_id: &str,
     conversation_id: &str,
     title: Option<String>,
 ) -> Result<(), String> {
     let _lock = state.chat_store_lock.lock().await;
     let conn = state.db.connect();
-    let Some(mut conversation) = db::get_conversation(&conn, conversation_id)
+    let Some(mut conversation) =
+        db::get_conversation_for_scope(&conn, conversation_scope_id, conversation_id)
         .await
         .map_err(|error| error.to_string())?
     else {
@@ -2779,19 +2816,21 @@ async fn finalize_title_generation(
         };
     }
     conversation.updated_at = Utc::now();
-    db::upsert_conversation(&conn, &conversation)
+    db::upsert_conversation_for_scope(&conn, conversation_scope_id, &conversation)
         .await
         .map_err(|error| error.to_string())
 }
 
 async fn persist_assistant_message(
     state: &AppState,
+    conversation_scope_id: &str,
     conversation_id: &str,
     message: &ChatMessage,
 ) -> Result<(), String> {
     let _lock = state.chat_store_lock.lock().await;
     let conn = state.db.connect();
-    let Some(mut conversation) = db::get_conversation(&conn, conversation_id)
+    let Some(mut conversation) =
+        db::get_conversation_for_scope(&conn, conversation_scope_id, conversation_id)
         .await
         .map_err(|error| error.to_string())?
     else {
@@ -2809,7 +2848,7 @@ async fn persist_assistant_message(
 
     conversation.messages.push(message.clone());
     conversation.updated_at = Utc::now();
-    db::upsert_conversation(&conn, &conversation)
+    db::upsert_conversation_for_scope(&conn, conversation_scope_id, &conversation)
         .await
         .map_err(|error| error.to_string())
 }

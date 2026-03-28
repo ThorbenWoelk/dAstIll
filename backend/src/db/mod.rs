@@ -8,6 +8,7 @@ mod preferences;
 mod search;
 mod stats;
 mod tts_stats;
+mod user_scope;
 mod video_info;
 mod videos;
 
@@ -23,6 +24,7 @@ pub use preferences::*;
 pub use search::*;
 pub use stats::*;
 pub use tts_stats::*;
+pub use user_scope::*;
 pub use video_info::*;
 pub use videos::*;
 

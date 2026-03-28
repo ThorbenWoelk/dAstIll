@@ -43,21 +43,23 @@ enum ReadCacheValue {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ReadCacheKey {
-    Channels,
+    Channels(String),
     WorkspaceBootstrap(WorkspaceBootstrapCacheKey),
     ChannelSnapshot(ChannelSnapshotCacheKey),
-    ChannelSyncDepth(String),
+    ChannelSyncDepth(String, String),
     SearchStatus,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct WorkspaceBootstrapCacheKey {
+    pub scope: String,
     pub selected_channel_id: Option<String>,
     pub video_list: VideoListCacheKey,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ChannelSnapshotCacheKey {
+    pub scope: String,
     pub channel_id: String,
     pub video_list: VideoListCacheKey,
 }
@@ -103,14 +105,21 @@ impl ReadCache {
         }
     }
 
-    pub async fn get_channels(&self) -> Option<Vec<Channel>> {
-        self.get_typed(&ReadCacheKey::Channels, ReadCacheValue::into_channels)
+    pub async fn get_channels(&self, scope: &str) -> Option<Vec<Channel>> {
+        self.get_typed(
+            &ReadCacheKey::Channels(scope.to_string()),
+            ReadCacheValue::into_channels,
+        )
             .await
     }
 
-    pub async fn set_channels(&self, channels: Vec<Channel>) {
-        self.set_typed(ReadCacheKey::Channels, channels, ReadCacheValue::Channels)
-            .await;
+    pub async fn set_channels(&self, scope: String, channels: Vec<Channel>) {
+        self.set_typed(
+            ReadCacheKey::Channels(scope),
+            channels,
+            ReadCacheValue::Channels,
+        )
+        .await;
     }
 
     pub async fn get_workspace_bootstrap(
@@ -161,17 +170,26 @@ impl ReadCache {
         .await;
     }
 
-    pub async fn get_channel_sync_depth(&self, channel_id: &str) -> Option<SyncDepthPayload> {
+    pub async fn get_channel_sync_depth(
+        &self,
+        scope: &str,
+        channel_id: &str,
+    ) -> Option<SyncDepthPayload> {
         self.get_typed(
-            &ReadCacheKey::ChannelSyncDepth(channel_id.to_string()),
+            &ReadCacheKey::ChannelSyncDepth(scope.to_string(), channel_id.to_string()),
             ReadCacheValue::into_sync_depth,
         )
         .await
     }
 
-    pub async fn set_channel_sync_depth(&self, channel_id: String, payload: SyncDepthPayload) {
+    pub async fn set_channel_sync_depth(
+        &self,
+        scope: String,
+        channel_id: String,
+        payload: SyncDepthPayload,
+    ) {
         self.set_typed(
-            ReadCacheKey::ChannelSyncDepth(channel_id),
+            ReadCacheKey::ChannelSyncDepth(scope, channel_id),
             payload,
             ReadCacheValue::SyncDepth,
         )
@@ -218,7 +236,7 @@ impl ReadCache {
                 // Keep entries that are explicitly for a different channel.
                 Some(id) => id != channel_id,
             },
-            ReadCacheKey::ChannelSyncDepth(id) => id != channel_id,
+            ReadCacheKey::ChannelSyncDepth(_, id) => id != channel_id,
             _ => true,
         });
     }
@@ -230,7 +248,7 @@ impl ReadCache {
         entries.retain(|key, _| {
             !matches!(
                 key,
-                ReadCacheKey::Channels | ReadCacheKey::WorkspaceBootstrap(_)
+                ReadCacheKey::Channels(_) | ReadCacheKey::WorkspaceBootstrap(_)
             )
         });
     }
@@ -430,11 +448,12 @@ mod tests {
     async fn returns_cached_channels_before_ttl_expiry() {
         let cache = ReadCache::new(Duration::from_secs(60));
         let channels = vec![sample_channel("abc")];
+        let scope = "user:test";
 
-        cache.set_channels(channels.clone()).await;
+        cache.set_channels(scope.to_string(), channels.clone()).await;
 
         let cached = cache
-            .get_channels()
+            .get_channels(scope)
             .await
             .expect("channels should be cached");
         assert_eq!(cached.len(), channels.len());
@@ -445,6 +464,7 @@ mod tests {
     async fn expires_entries_after_ttl() {
         let cache = ReadCache::new(Duration::from_millis(1));
         let key = WorkspaceBootstrapCacheKey {
+            scope: "anonymous".to_string(),
             selected_channel_id: Some("abc".to_string()),
             video_list: VideoListCacheKey::new(20, 0, None, None, None),
         };
@@ -470,12 +490,16 @@ mod tests {
     #[tokio::test]
     async fn clear_invalidates_cached_values() {
         let cache = ReadCache::new(Duration::from_secs(60));
+        let scope = "user:test";
         let key = WorkspaceBootstrapCacheKey {
+            scope: scope.to_string(),
             selected_channel_id: Some("abc".to_string()),
             video_list: VideoListCacheKey::new(20, 0, None, None, None),
         };
 
-        cache.set_channels(vec![sample_channel("abc")]).await;
+        cache
+            .set_channels(scope.to_string(), vec![sample_channel("abc")])
+            .await;
         cache
             .set_workspace_bootstrap(key.clone(), sample_bootstrap())
             .await;
@@ -483,7 +507,7 @@ mod tests {
 
         cache.clear().await;
 
-        assert!(cache.get_channels().await.is_none());
+        assert!(cache.get_channels(scope).await.is_none());
         assert!(cache.get_workspace_bootstrap(&key).await.is_none());
         assert!(cache.get_search_status().await.is_none());
     }
@@ -506,29 +530,38 @@ mod tests {
     #[tokio::test]
     async fn evict_channel_removes_only_matching_channel_snapshot_entries() {
         let cache = ReadCache::new(Duration::from_secs(60));
+        let scope_a = "user:a";
+        let scope_b = "user:b";
         let key_a = ChannelSnapshotCacheKey {
+            scope: scope_a.to_string(),
             channel_id: "channel-a".to_string(),
             video_list: VideoListCacheKey::new(20, 0, None, None, None),
         };
         let key_b = ChannelSnapshotCacheKey {
+            scope: scope_b.to_string(),
             channel_id: "channel-b".to_string(),
             video_list: VideoListCacheKey::new(20, 0, None, None, None),
         };
         let bootstrap_key_a = WorkspaceBootstrapCacheKey {
+            scope: scope_a.to_string(),
             selected_channel_id: Some("channel-a".to_string()),
             video_list: VideoListCacheKey::new(20, 0, None, None, None),
         };
         let bootstrap_key_b = WorkspaceBootstrapCacheKey {
+            scope: scope_b.to_string(),
             selected_channel_id: Some("channel-b".to_string()),
             video_list: VideoListCacheKey::new(20, 0, None, None, None),
         };
 
         // Populate cache for both channels
         cache
-            .set_channels(vec![
-                sample_channel("channel-a"),
-                sample_channel("channel-b"),
-            ])
+            .set_channels(
+                scope_a.to_string(),
+                vec![sample_channel("channel-a"), sample_channel("channel-b")],
+            )
+            .await;
+        cache
+            .set_channels(scope_b.to_string(), vec![sample_channel("channel-b")])
             .await;
         cache
             .set_channel_snapshot(
@@ -572,6 +605,7 @@ mod tests {
             .await;
         cache
             .set_channel_sync_depth(
+                scope_a.to_string(),
                 "channel-a".to_string(),
                 crate::models::SyncDepthPayload {
                     earliest_sync_date: None,
@@ -597,7 +631,7 @@ mod tests {
             "channel-a workspace bootstrap should be evicted"
         );
         assert!(
-            cache.get_channel_sync_depth("channel-a").await.is_none(),
+            cache.get_channel_sync_depth(scope_a, "channel-a").await.is_none(),
             "channel-a sync depth should be evicted"
         );
 
@@ -616,23 +650,30 @@ mod tests {
 
         // channels list is untouched
         assert!(
-            cache.get_channels().await.is_some(),
-            "channels list should remain after evict_channel"
+            cache.get_channels(scope_a).await.is_some(),
+            "scope-a channels list should remain after evict_channel"
+        );
+        assert!(
+            cache.get_channels(scope_b).await.is_some(),
+            "scope-b channels list should remain after evict_channel"
         );
     }
 
     #[tokio::test]
     async fn evict_channel_does_not_affect_workspace_bootstrap_for_other_channels() {
         let cache = ReadCache::new(Duration::from_secs(60));
+        let scope = "user:test";
         // A workspace bootstrap with NO selected channel (e.g., first load with no channel selected).
         // Null resolves to the first channel via fallback, so evict_channel must invalidate it
         // to prevent serving a stale payload after a mutation to that first channel.
         let bootstrap_key_none = WorkspaceBootstrapCacheKey {
+            scope: scope.to_string(),
             selected_channel_id: None,
             video_list: VideoListCacheKey::new(20, 0, None, None, None),
         };
         // A workspace bootstrap explicitly for channel-b (a different channel).
         let bootstrap_key_b = WorkspaceBootstrapCacheKey {
+            scope: scope.to_string(),
             selected_channel_id: Some("channel-b".to_string()),
             video_list: VideoListCacheKey::new(20, 0, None, None, None),
         };
@@ -667,20 +708,30 @@ mod tests {
     #[tokio::test]
     async fn evict_channel_list_removes_channels_and_all_workspace_bootstraps() {
         let cache = ReadCache::new(Duration::from_secs(60));
+        let scope_a = "user:a";
+        let scope_b = "user:b";
         let key_a = WorkspaceBootstrapCacheKey {
+            scope: scope_a.to_string(),
             selected_channel_id: Some("channel-a".to_string()),
             video_list: VideoListCacheKey::new(20, 0, None, None, None),
         };
         let key_b = WorkspaceBootstrapCacheKey {
+            scope: scope_b.to_string(),
             selected_channel_id: Some("channel-b".to_string()),
             video_list: VideoListCacheKey::new(20, 0, None, None, None),
         };
         let snapshot_key_a = ChannelSnapshotCacheKey {
+            scope: scope_a.to_string(),
             channel_id: "channel-a".to_string(),
             video_list: VideoListCacheKey::new(20, 0, None, None, None),
         };
 
-        cache.set_channels(vec![sample_channel("channel-a")]).await;
+        cache
+            .set_channels(scope_a.to_string(), vec![sample_channel("channel-a")])
+            .await;
+        cache
+            .set_channels(scope_b.to_string(), vec![sample_channel("channel-b")])
+            .await;
         cache
             .set_workspace_bootstrap(key_a.clone(), sample_bootstrap())
             .await;
@@ -710,8 +761,12 @@ mod tests {
 
         // Channels list and ALL workspace bootstraps are evicted
         assert!(
-            cache.get_channels().await.is_none(),
-            "channels list should be evicted"
+            cache.get_channels(scope_a).await.is_none(),
+            "scope-a channels list should be evicted"
+        );
+        assert!(
+            cache.get_channels(scope_b).await.is_none(),
+            "scope-b channels list should be evicted"
         );
         assert!(
             cache.get_workspace_bootstrap(&key_a).await.is_none(),
@@ -748,6 +803,7 @@ mod tests {
             let channel_id = format!("channel-{i}");
             cache
                 .set_channel_sync_depth(
+                    "anonymous".to_string(),
                     channel_id,
                     crate::models::SyncDepthPayload {
                         earliest_sync_date: None,
@@ -769,10 +825,12 @@ mod tests {
     async fn workspace_bootstrap_cache_keeps_entries_separate_by_video_filter() {
         let cache = ReadCache::new(Duration::from_secs(60));
         let long_videos_key = WorkspaceBootstrapCacheKey {
+            scope: "anonymous".to_string(),
             selected_channel_id: Some("abc".to_string()),
             video_list: VideoListCacheKey::new(20, 0, Some(false), None, None),
         };
         let queued_videos_key = WorkspaceBootstrapCacheKey {
+            scope: "anonymous".to_string(),
             selected_channel_id: Some("abc".to_string()),
             video_list: VideoListCacheKey::new(
                 20,
