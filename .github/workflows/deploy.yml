@@ -265,21 +265,6 @@ jobs:
             -t $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/frontend:$IMAGE_TAG ./frontend
           docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/frontend:$IMAGE_TAG
 
-      - name: Verify Firebase Secret Manager secrets exist
-        run: |
-          set -euo pipefail
-          for id in dastill-firebase-web-api-key dastill-firebase-auth-domain; do
-            if ! gcloud secrets describe "$id" --project="$PROJECT_ID" >/dev/null 2>&1; then
-              echo "Missing Secret Manager secret: $id"
-              echo "Add firebase_web_api_key to terraform/terraform.tfvars and run: cd terraform && terraform apply"
-              exit 1
-            fi
-            if ! gcloud secrets versions list "$id" --project="$PROJECT_ID" --filter="state=ENABLED" --limit=1 --format="value(name)" | grep -q .; then
-              echo "Secret $id has no enabled version."
-              exit 1
-            fi
-          done
-
       - name: Deploy Frontend to Cloud Run
         uses: google-github-actions/deploy-cloudrun@v3
         with:
