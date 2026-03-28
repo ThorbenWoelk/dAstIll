@@ -1,20 +1,27 @@
 import type { Handle, HandleServerError } from "@sveltejs/kit";
 
 import {
+  LEGACY_SESSION_COOKIE_NAME,
   SESSION_COOKIE_NAME,
-  clearAdminSessionCookie,
-  readAdminSession,
+  buildAnonymousAuthContext,
+  clearAuthSessionCookies,
+  readAuthSession,
 } from "$lib/server/auth";
 
 export const handle: Handle = async ({ event, resolve }) => {
-  const token = event.cookies.get(SESSION_COOKIE_NAME);
-  const session = readAdminSession(token);
+  const sessionCookie = event.cookies.get(SESSION_COOKIE_NAME);
+  const legacySessionCookie = event.cookies.get(LEGACY_SESSION_COOKIE_NAME);
+  const auth =
+    sessionCookie === undefined
+      ? buildAnonymousAuthContext()
+      : await readAuthSession(sessionCookie);
 
-  event.locals.isOperator = Boolean(session);
-
-  if (token && !session) {
-    clearAdminSessionCookie(event.cookies);
+  if ((sessionCookie && !auth) || legacySessionCookie) {
+    clearAuthSessionCookies(event.cookies);
   }
+
+  event.locals.auth = auth ?? buildAnonymousAuthContext();
+  event.locals.isOperator = event.locals.auth.accessRole === "operator";
 
   return resolve(event);
 };

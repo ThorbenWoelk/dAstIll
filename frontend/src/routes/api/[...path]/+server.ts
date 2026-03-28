@@ -103,7 +103,7 @@ const proxyRequest: RequestHandler = async (event) => {
   headers.set("x-dastill-proxy-auth", authConfig.backendProxyToken);
   headers.set(
     "x-dastill-role",
-    event.locals.isOperator
+    event.locals.auth.accessRole === FRONTEND_PROXY_OPERATOR_ROLE
       ? FRONTEND_PROXY_OPERATOR_ROLE
       : FRONTEND_PROXY_USER_ROLE,
   );

@@ -10,6 +10,10 @@ const authModule = {
   connectAuthEmulator: mock(() => undefined),
 };
 
+mock.module("$app/environment", () => ({
+  dev: false,
+}));
+
 mock.module("$env/dynamic/public", () => ({
   env: process.env,
 }));

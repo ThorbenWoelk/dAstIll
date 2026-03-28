@@ -1,11 +1,37 @@
 <script lang="ts">
   import "../app.css";
   import { afterNavigate } from "$app/navigation";
+  import { onMount } from "svelte";
+  import type { AuthContext } from "$lib/auth";
   import AppBottomNav from "$lib/components/AppBottomNav.svelte";
+  import { authState } from "$lib/auth-state.svelte";
   import GlobalKeyboardShortcuts from "$lib/components/GlobalKeyboardShortcuts.svelte";
   import MobileViewportInset from "$lib/components/MobileViewportInset.svelte";
   import ServiceWorkerRegistration from "$lib/components/ServiceWorkerRegistration.svelte";
   import { mobileBottomBar } from "$lib/mobile-navigation/mobileBottomBar";
+
+  let {
+    data,
+    children,
+  }: {
+    data: { auth?: AuthContext };
+    children: import("svelte").Snippet;
+  } = $props();
+
+  $effect(() => {
+    authState.setServerAuth(
+      data.auth ?? {
+        userId: null,
+        authState: "anonymous",
+        accessRole: "anonymous",
+        email: null,
+      },
+    );
+  });
+
+  onMount(() => {
+    void authState.start();
+  });
 
   /** Routes that own `mobileBottomBar` via local `$effect`; others default to section nav. */
   afterNavigate(({ to }) => {
@@ -43,7 +69,7 @@
   <MobileViewportInset />
   <ServiceWorkerRegistration />
   <div class="min-h-0 flex-1">
-    <slot />
+    {@render children()}
   </div>
   <AppBottomNav />
 </div>

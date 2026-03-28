@@ -9,19 +9,20 @@ mock.module("$env/dynamic/private", () => ({
 }));
 
 const originalEnv = {
-  ADMIN_PASSWORD: process.env.ADMIN_PASSWORD,
   BACKEND_API_BASE: process.env.BACKEND_API_BASE,
   BACKEND_IDENTITY_AUDIENCE: process.env.BACKEND_IDENTITY_AUDIENCE,
   BACKEND_PROXY_TOKEN: process.env.BACKEND_PROXY_TOKEN,
+  OPERATOR_EMAIL_ALLOWLIST: process.env.OPERATOR_EMAIL_ALLOWLIST,
 };
 
 function restoreEnv() {
   for (const [key, value] of Object.entries(originalEnv)) {
     if (value === undefined) {
       delete process.env[key];
-    } else {
-      process.env[key] = value;
+      continue;
     }
+
+    process.env[key] = value;
   }
 }
 
@@ -30,15 +31,14 @@ afterEach(() => {
 });
 
 async function loadAuthModule() {
-  return import("../src/lib/server/auth");
+  return import(`../src/lib/server/auth?test=${Date.now()}-${Math.random()}`);
 }
 
 describe("server auth runtime config", () => {
-  it("loads proxy config without requiring ADMIN_PASSWORD", async () => {
+  it("loads proxy config without requiring legacy admin password config", async () => {
     process.env.BACKEND_API_BASE = "https://backend.example.com";
     process.env.BACKEND_PROXY_TOKEN = "proxy-secret";
     process.env.BACKEND_IDENTITY_AUDIENCE = "https://backend.example.com";
-    delete process.env.ADMIN_PASSWORD;
 
     const auth = await loadAuthModule();
 
@@ -48,37 +48,95 @@ describe("server auth runtime config", () => {
       backendIdentityAudience: "https://backend.example.com",
     });
   });
+});
 
-  it("treats admin auth as unavailable when ADMIN_PASSWORD is unset", async () => {
-    delete process.env.ADMIN_PASSWORD;
+describe("firebase auth context helpers", () => {
+  it("maps anonymous, user, and operator access roles", async () => {
+    process.env.OPERATOR_EMAIL_ALLOWLIST =
+      "operator@example.com, OWNER@example.com";
 
     const auth = await loadAuthModule();
 
-    expect(auth.isValidAdminPassword("secret")).toBeFalse();
-    expect(auth.readAdminSession("invalid.token.parts")).toBeNull();
+    expect(auth.buildAnonymousAuthContext()).toEqual({
+      userId: null,
+      authState: "anonymous",
+      accessRole: "anonymous",
+      email: null,
+    });
+    expect(
+      auth.buildAuthenticatedAuthContext("uid-user", "person@example.com"),
+    ).toEqual({
+      userId: "uid-user",
+      authState: "authenticated",
+      accessRole: "user",
+      email: "person@example.com",
+    });
+    expect(
+      auth.buildAuthenticatedAuthContext("uid-operator", "OWNER@example.com"),
+    ).toEqual({
+      userId: "uid-operator",
+      authState: "authenticated",
+      accessRole: "operator",
+      email: "OWNER@example.com",
+    });
   });
 
-  it("creates readable admin sessions only when ADMIN_PASSWORD is configured", async () => {
-    process.env.ADMIN_PASSWORD = "secret";
-
+  it("writes and clears the firebase session cookie with strict defaults", async () => {
     const auth = await loadAuthModule();
+    const setCalls: Array<{
+      name: string;
+      value: string;
+      options: Record<string, unknown>;
+    }> = [];
+    const deleteCalls: Array<{
+      name: string;
+      options: Record<string, unknown>;
+    }> = [];
 
-    const token = auth.createAdminSessionToken();
-    const session = auth.readAdminSession(token);
+    const cookies = {
+      set(name: string, value: string, options: Record<string, unknown>) {
+        setCalls.push({ name, value, options });
+      },
+      delete(name: string, options: Record<string, unknown>) {
+        deleteCalls.push({ name, options });
+      },
+    };
 
-    expect(auth.isValidAdminPassword("secret")).toBeTrue();
-    expect(auth.isValidAdminPassword("nope")).toBeFalse();
-    expect(session).not.toBeNull();
-    expect(session?.sid).toHaveLength(32);
-  });
+    auth.setAuthSessionCookie(cookies, "firebase-session-cookie");
+    auth.clearAuthSessionCookies(cookies);
 
-  it("invalidates existing admin sessions if ADMIN_PASSWORD is later removed", async () => {
-    process.env.ADMIN_PASSWORD = "secret";
-    const auth = await loadAuthModule();
-    const token = auth.createAdminSessionToken();
-
-    delete process.env.ADMIN_PASSWORD;
-
-    expect(auth.readAdminSession(token)).toBeNull();
+    expect(setCalls).toEqual([
+      {
+        name: "__session",
+        value: "firebase-session-cookie",
+        options: expect.objectContaining({
+          path: "/",
+          httpOnly: true,
+          sameSite: "strict",
+          maxAge: 60 * 60 * 24 * 7,
+          secure: true,
+        }),
+      },
+    ]);
+    expect(deleteCalls).toEqual([
+      {
+        name: "__session",
+        options: expect.objectContaining({
+          path: "/",
+          httpOnly: true,
+          sameSite: "strict",
+          secure: true,
+        }),
+      },
+      {
+        name: "dastill-session",
+        options: expect.objectContaining({
+          path: "/",
+          httpOnly: true,
+          sameSite: "strict",
+          secure: true,
+        }),
+      },
+    ]);
   });
 });
