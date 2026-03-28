@@ -8,6 +8,10 @@ mock.module("$env/dynamic/private", () => ({
   env: process.env,
 }));
 
+mock.module("$env/dynamic/public", () => ({
+  env: {},
+}));
+
 const originalEnv = {
   BACKEND_API_BASE: process.env.BACKEND_API_BASE,
   BACKEND_IDENTITY_AUDIENCE: process.env.BACKEND_IDENTITY_AUDIENCE,
