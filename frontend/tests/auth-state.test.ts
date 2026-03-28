@@ -172,6 +172,62 @@ describe("auth state controller", () => {
     });
   });
 
+  it("reuses a cookie-backed anonymous session on start instead of creating a second anonymous user", async () => {
+    globalThis.fetch = createFetchMock() as typeof fetch;
+
+    const { authState } = await loadAuthStateModule();
+
+    authState.setServerAuth({
+      userId: "anon-123",
+      authState: "anonymous",
+      accessRole: "anonymous",
+      email: null,
+    });
+
+    await authState.start();
+
+    expect(firebaseAuthModule.signInAnonymously).not.toHaveBeenCalled();
+    expect(authState.current).toEqual({
+      userId: "anon-123",
+      authState: "anonymous",
+      accessRole: "anonymous",
+      email: null,
+    });
+  });
+
+  it("re-bootstraps an anonymous session when a started client later receives anonymous server auth without a user id", async () => {
+    globalThis.fetch = createFetchMock() as typeof fetch;
+
+    const { authState } = await loadAuthStateModule();
+
+    authState.setServerAuth({
+      userId: null,
+      authState: "anonymous",
+      accessRole: "anonymous",
+      email: null,
+    });
+
+    await authState.start();
+    expect(firebaseAuthModule.signInAnonymously).toHaveBeenCalledTimes(1);
+
+    authState.setServerAuth({
+      userId: null,
+      authState: "anonymous",
+      accessRole: "anonymous",
+      email: null,
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(firebaseAuthModule.signInAnonymously).toHaveBeenCalledTimes(2);
+    expect(authState.current).toEqual({
+      userId: "anon-123",
+      authState: "anonymous",
+      accessRole: "anonymous",
+      email: null,
+    });
+  });
+
   it("signs in with Google and exchanges the popup token for a server session", async () => {
     globalThis.fetch = createFetchMock() as typeof fetch;
 

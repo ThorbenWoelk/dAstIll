@@ -153,11 +153,24 @@ class AuthStateController implements AuthController {
   }
 
   setServerAuth(nextAuth: AuthContext) {
+    const normalizedAuth = normalizeAuthContext(nextAuth);
+    const shouldRebootstrapAnonymousSession =
+      typeof window !== "undefined" &&
+      this.#started &&
+      this.#ready &&
+      !this.#syncing &&
+      this.#bootstrapPromise === null &&
+      normalizedAuth.userId === null;
+
     this.#setState({
-      current: nextAuth,
-      ready: this.#ready || Boolean(nextAuth.userId),
-      error: nextAuth.userId ? null : this.#error,
+      current: normalizedAuth,
+      ready: this.#ready || Boolean(normalizedAuth.userId),
+      error: normalizedAuth.userId ? null : this.#error,
     });
+
+    if (shouldRebootstrapAnonymousSession) {
+      void this.#bootstrapAnonymousSession().catch(() => undefined);
+    }
   }
 
   async #bootstrapAnonymousSession(): Promise<AuthContext> {
