@@ -80,6 +80,9 @@ afterEach(() => {
 
 describe("listChannelsWhenAvailable", () => {
   it("retries when backend is unreachable and resolves once reachable", async () => {
+    const originalError = console.error;
+    console.error = () => {};
+
     const expected = [channel("abc")];
     let attempts = 0;
 
@@ -92,11 +95,15 @@ describe("listChannelsWhenAvailable", () => {
     }) as typeof fetch;
 
     const result = await listChannelsWhenAvailable({ retryDelayMs: 0 });
+    console.error = originalError;
     expect(result).toEqual(expected);
     expect(attempts).toBe(2);
   });
 
   it("does not retry non-reachability failures", async () => {
+    const originalError = console.error;
+    console.error = () => {};
+
     let attempts = 0;
 
     globalThis.fetch = (async () => {
@@ -107,6 +114,7 @@ describe("listChannelsWhenAvailable", () => {
     await expect(
       listChannelsWhenAvailable({ retryDelayMs: 0 }),
     ).rejects.toThrow("bad request");
+    console.error = originalError;
     expect(attempts).toBe(1);
   });
 });
