@@ -98,5 +98,24 @@ if [[ -n "$BACKEND_STAGED" ]]; then
     fi
 fi
 
+# E2E Tests (Playwright) - requires running stack
+# Only run if frontend source or e2e tests changed
+E2E_STAGED=$(git diff --cached --name-only | grep -E '^(frontend/(src|e2e)/|frontend/playwright\.config\.ts|frontend/package\.json)$' || true)
+if [[ -n "$E2E_STAGED" ]]; then
+    echo "🎭 Running E2E tests (Playwright)..."
+    # Check if the stack is running on default port
+    if ! curl -s "http://127.0.0.1:3543" > /dev/null 2>&1; then
+        echo "⚠️  Frontend not running on port 3543. Start with ./start_app.sh before running E2E tests."
+        echo "   Skipping E2E tests for this commit."
+    else
+        if ! (cd frontend && bun run test:e2e); then
+            echo "❌ E2E tests failed. Please fix failing tests before committing."
+            exit 1
+        fi
+    fi
+else
+    echo "✅ No E2E-relevant files staged, skipping Playwright tests"
+fi
+
 echo "✅ All pre-commit checks passed!"
 exit 0
