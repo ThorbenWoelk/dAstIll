@@ -8,6 +8,11 @@ const appModule = {
 const authModule = {
   getAuth: mock(() => ({ emulatorConfig: null })),
   connectAuthEmulator: mock(() => undefined),
+  GoogleAuthProvider: class GoogleAuthProvider {},
+  onAuthStateChanged: mock(() => () => {}),
+  signInAnonymously: mock(async () => ({ user: null })),
+  signInWithPopup: mock(async () => ({ user: null })),
+  signOut: mock(async () => undefined),
 };
 
 mock.module("$app/environment", () => ({

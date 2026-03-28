@@ -76,6 +76,23 @@ else
     echo "✅ No staged frontend .ts/.js/.svelte/.css under frontend/, skipping Prettier/ESLint"
 fi
 
+# Frontend Unit Tests (always run, matches CI)
+if [[ -n "$STAGED_FRONTEND_REL" ]] || [[ -n "$FRONTEND_SRC_STAGED" ]]; then
+    echo "🧪 Running frontend unit tests..."
+    if ! (cd frontend && bun run test); then
+        echo "❌ Frontend unit tests failed. Please fix failing tests before committing."
+        exit 1
+    fi
+elif git diff --cached --name-only | grep -E '^frontend/' > /dev/null; then
+    echo "🧪 Running frontend unit tests..."
+    if ! (cd frontend && bun run test); then
+        echo "❌ Frontend unit tests failed. Please fix failing tests before committing."
+        exit 1
+    fi
+else
+    echo "✅ No frontend files staged, skipping unit tests"
+fi
+
 # Frontend Audit
 FRONTEND_STAGED=$(git diff --cached --name-only | grep -E '^frontend/(package\.json|bun\.lock|bun\.lockb)$')
 if [[ -n "$FRONTEND_STAGED" ]]; then
