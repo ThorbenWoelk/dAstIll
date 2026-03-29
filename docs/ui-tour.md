@@ -22,7 +22,7 @@ The workspace combines:
 - search with result highlighting
 - acknowledgement tracking
 
-The current shell is optimized for immediacy: subscribed channels render first, the selected channel snapshot loads right after, and content restores without waiting for the entire workspace payload.
+The shell is optimized for immediacy: subscribed channels render first, the selected channel snapshot loads right after, and content restores without waiting for the full workspace payload.
 
 ### Desktop workspace
 
@@ -84,4 +84,4 @@ The product UI is not a thin shell over CRUD. It reflects multiple backend lifec
 - search indexing coverage
 - acknowledgement state
 
-That is why the backend exposes rich snapshot payloads and a combined bootstrap endpoint, even though the main frontend now loads channels first and defers the selected-channel snapshot until after the sidebar is on screen.
+That is why the backend exposes rich snapshot payloads and a combined bootstrap endpoint, even though the main frontend loads channels first and defers the selected-channel snapshot until after the sidebar is on screen.

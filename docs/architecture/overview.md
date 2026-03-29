@@ -11,7 +11,6 @@ dAstIll is a YouTube channel monitoring tool that helps you stop doom-scrolling 
 - **Enables search**: Full-text and optional semantic search across all transcripts and summaries
 - **Preserves highlights**: Save and organize important snippets from transcripts and summaries
 
-The goal is to help you quickly identify which videos are worth your time based on AI-generated insights and searchable content.
 
 ## Primary Components
 
@@ -52,7 +51,7 @@ The goal is to help you quickly identify which videos are worth your time based 
 - **AWS S3 Vectors** for semantic search
 - **Google Firestore** for user preferences and statistics
 - **AWS IAM** with GCP Workload Identity Federation for cross-cloud auth
-- **Secret Manager** for YouTube API key
+- **Secret Manager** for API keys and sensitive runtime config (YouTube API key, Logfire token, Firebase client secrets)
 
 ## Repo-Level Boundaries
 

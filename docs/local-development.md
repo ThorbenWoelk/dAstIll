@@ -91,8 +91,7 @@ Important variables:
 | `POLLY_TTS_OUTPUT_FORMAT`           | Polly output format (default: `wav`)                                            |
 | `POLLY_TTS_SAMPLE_RATE`             | Polly sample rate in Hz (default: `16000`)                                      |
 
-For local development, the backend still needs AWS credentials in addition to the bucket names.
-This repository now expects those local credentials in `backend/.env`:
+The backend requires AWS credentials in addition to the bucket names. Provide them in `backend/.env`:
 
 ```bash
 AWS_ACCESS_KEY_ID=...
@@ -101,7 +100,7 @@ AWS_SECRET_ACCESS_KEY=...
 # AWS_SESSION_TOKEN=...
 ```
 
-Production is different: Cloud Run uses `AWS_ROLE_ARN` and `AWS_WIF_AUDIENCE` for Workload Identity Federation, not static access keys.
+In production, Cloud Run uses `AWS_ROLE_ARN` and `AWS_WIF_AUDIENCE` for Workload Identity Federation instead of static access keys.
 
 ## Logfire Observability
 
@@ -123,7 +122,7 @@ Behavior:
 
 ## Frontend Auth And Proxy
 
-The browser no longer talks to the backend directly. The SvelteKit frontend proxies `/api/*` requests server-to-server, treats anonymous visitors as regular users, and upgrades to operator access only after a password-based admin sign-in.
+The SvelteKit frontend proxies `/api/*` requests server-to-server. Anonymous visitors are treated as regular users; operator access requires a password-based admin sign-in.
 
 Local defaults when you start with `./start_app.sh`:
 
@@ -135,14 +134,14 @@ If you run the frontend by itself, copy `frontend/.env.example` to `frontend/.en
 
 ### Auth Migration Status
 
-The application is migrating from single-user password auth to Firebase-based multi-user authentication. The current state:
+The application is migrating from single-user password auth to Firebase-based multi-user authentication:
 
-- Firebase SDK session endpoints, anonymous bootstrap, and Google sign-in UI are in place
-- Backend request identity exists via `AccessContext`, but data storage and most handlers are still global
-- User-scoped migration for channels, conversations, highlights, and preferences is in progress
-- Until migration completes, data remains global and operator-level actions use password auth
+- Firebase SDK session endpoints, anonymous bootstrap, and Google sign-in UI are in place.
+- Backend request identity is established via `AccessContext`, but data storage and most handlers are still global.
+- User-scoped data (channels, conversations, highlights, preferences) has not yet been migrated to per-user storage.
+- Data remains global and operator-level actions use password auth until migration completes.
 
-See `.specs/multi-user-firebase-auth.md` for migration status and remaining work.
+See `.specs/multi-user-firebase-auth.md` for the full migration plan and remaining tasks.
 
 ## Search Defaults
 

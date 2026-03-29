@@ -5,20 +5,20 @@ Deeper domain-specific guidance belongs in dedicated docs and should be linked f
 
 ## Source Of Truth
 
-- Frontend design system, Svelte frontend cleanliness rules, UI architecture guidance, file-size thresholds, and frontend testing expectations live in [DESIGN.md](./DESIGN.md).
-- user docs in [./docs/](./docs/)
+- Frontend design system, Svelte frontend cleanliness rules, UI architecture guidance, file-size thresholds, and frontend testing expectations live in [design.md](./design.md).
+- User docs in [./docs/](./docs/)
 
 ## How To Work Here
 
 - Read this file first, then open the linked domain doc you need.
 - Do not duplicate large guidance blocks across multiple markdown files.
-- When frontend rules change, update `DESIGN.md` and keep only the pointer here.
+- When frontend rules change, update `design.md` and keep only the pointer here.
 - Keep repo guidance legible for agents: short entry points here, detailed source-of-truth docs elsewhere.
 
 ## Documentation Split
 
 - `AGENTS.md`: agent workflow entry point, document map, repo-level instructions.
-- `DESIGN.md`: design system and frontend engineering standards.
+- `design.md`: design system and frontend engineering standards.
 
 ## Secrets and production config
 
@@ -41,10 +41,9 @@ Full list of boundaries, Firebase, and CI steps: [docs/operations/deployment.md]
 
 # Developer Guide
 
-## Mistakes stupid AIs do...
+## Svelte 5 Reactive State Rules
 
-When you don't want to be called an idiot, do the following: 
-- When returning $state or $derived from a function, use getters/setters to preserve the reactive boundary. The function scope becomes a closure that stays connected to the reactive proxies (Svelte 5 rule).
+- When returning `$state` or `$derived` from a function, use getters/setters to preserve the reactive boundary. The function scope becomes a closure that stays connected to the reactive proxies.
 
 ## Run the app
 
@@ -56,22 +55,24 @@ IMPORTANT: Related work or not, ALL TESTS HAVE TO BE GREEN before committing any
 
 Navigate to the respective frontend and backend folders and run the following before commit:
 
+**Backend** (`backend/`):
+
 1. `cargo check`
 2. `cargo test`
 3. `cargo audit` (use `cargo update` when you intend to refresh `Cargo.lock`; otherwise `cargo audit` alone is the usual local check).
+
+**Frontend** (`frontend/`):
 
 1. `bun install --frozen-lockfile`
 2. `bun run format:check` (Prettier)
 3. `bun run lint` (ESLint)
 4. `bun run check` (Svelte / `svelte-check`)
 5. `bun run test` (unit tests)
-6. `bun run test:e2e` (Playwright E2E - requires running stack: `./start_app.sh`)
-2. `bun run build`
-2. `bun audit --production`
+6. `bun run test:e2e` (Playwright E2E — requires running stack: `./start_app.sh`)
+7. `bun run build`
+8. `bun audit --production`
 
-*Not in CI - run locally before commit*
+*E2E requires a running stack (`./start_app.sh`). Not in CI — run locally before commit.*
 
-**E2E/Playwright** Requires running stack (`./start_app.sh`).
-
-When to add unit vs E2E tests: [DESIGN.md#testing](./DESIGN.md#testing).
+When to add unit vs E2E tests: [design.md#testing](./design.md#testing).
 

@@ -250,8 +250,7 @@ query fan-out strategy.
 | `comparison`     | 20            |
 | `pattern`        | 24            |
 
-Deep research mode raises the budget to the system maximum and enables additional query
-passes.
+Deep research mode (a per-request flag set by the client) raises the budget to the system maximum and enables additional query passes beyond the standard limit.
 
 ### Multi-Pass Retrieval
 
