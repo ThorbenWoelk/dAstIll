@@ -1,6 +1,6 @@
 # dAstIll Design System
 
-`DESIGN.md` is the source of truth for this repository's frontend design system and frontend engineering standards.
+This file (`design.md`) is the source of truth for this repository's frontend design system and frontend engineering standards.
 Do not duplicate these rules in `AGENTS.md`; link here from there instead.
 
 ## Philosophy
@@ -120,7 +120,7 @@ All pages (Workspace, Queue, Highlights) must share the same `AppShell` structur
 
 ## Design Debt (P0/P1)
 
-Refer to [ux-visual-audit.md](file:///Users/thorben.woelk/repos/dAstIll/specs/ux-visual-audit.md) for detailed fixes. Key priorities:
+Key priorities:
 
 1. [ ] **Unify Shells**: Align Highlights and Queue pages with the 3-column Workspace shell.
 2. [ ] **Common Mobile Nav**: Implement a single, fixed bottom tab bar across all pages.

@@ -27,22 +27,22 @@ The main route is responsible for most user-facing behavior:
 
 ## Startup Pattern
 
-The main workspace now prioritizes first paint responsiveness:
+The main workspace prioritizes first paint responsiveness:
 
 1. load the subscribed channel list first
 2. render the sidebar and current channel selection immediately
 3. fetch the selected channel snapshot right after render
 4. hydrate transcript / summary content once the selected video is known
 
-That keeps the channel list off the critical path for the heavier snapshot payload.
+This keeps the channel list off the critical path for the heavier snapshot payload.
 
-The backend still exposes a combined convenience endpoint:
+The backend exposes a combined convenience endpoint:
 
 ```text
 GET /api/workspace/bootstrap
 ```
 
-That payload includes:
+The payload includes:
 
 - AI availability / indicator status
 - channel list
@@ -50,7 +50,7 @@ That payload includes:
 - initial channel snapshot
 - search status
 
-It is still useful for combined consumers and tests, but the product frontend no longer depends on it for first render.
+This endpoint is useful for combined consumers and tests. The product frontend loads channels first and defers the selected-channel snapshot until after the sidebar is rendered.
 
 ## Important API Areas
 

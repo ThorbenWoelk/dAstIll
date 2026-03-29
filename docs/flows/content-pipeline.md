@@ -45,7 +45,7 @@ Inserted videos begin with transcript and summary lifecycle states that the queu
 
 ## 3. Transcript Extraction
 
-The queue worker decides transcript work first whenever a video is missing a ready transcript.
+The queue worker processes transcripts before summaries whenever a video is missing a ready transcript.
 
 Transcript extraction starts with the external `summarize` CLI to extract plain transcript text (and a formatted transcript representation).
 

@@ -40,7 +40,7 @@ All performance optimizations MUST work within Cloud Run's 1 vCPU / 512Mi memory
 - Bun for package management and test runner
 - SvelteKit with adapter-node
 - Tailwind CSS v4
-- No e2e test framework installed
+- Playwright for E2E tests (`bunx playwright test`; requires running app stack)
 
 ## Backend
 

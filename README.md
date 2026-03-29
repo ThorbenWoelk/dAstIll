@@ -55,14 +55,12 @@ Terraform, Google Cloud Run, AWS IAM (Workload Identity Federation), Google Secr
 
 ## Prerequisites
 
-To run the application locally, you will need:
-
 - [Rust](https://rustup.rs/)
 - [Bun](https://bun.sh/)
-- [Ollama](https://ollama.com/) (running locally if using local AI models)
-- AWS credentials with access to S3 and S3 Vectors (configured via `~/.aws/credentials` or environment variables)
+- [Ollama](https://ollama.com/) (required for local AI models)
+- AWS credentials with access to S3 and S3 Vectors (via `~/.aws/credentials` or environment variables)
 - An AWS S3 bucket for data storage and an S3 Vectors bucket for semantic search
-- (Optional) YouTube Data API Key.
+- YouTube Data API Key (optional)
 
 ## Getting Started (Local Development)
 
@@ -111,12 +109,12 @@ To run the application locally, you will need:
    If you run the frontend separately from `start_app.sh`, copy `frontend/.env.example` to `frontend/.env` and set `BACKEND_PROXY_TOKEN`, `BACKEND_API_BASE`, and `PUBLIC_DOCS_URL`. Admin sign-in uses the runtime `ADMIN_PASSWORD` environment variable.
 
 3. **Understand Search Defaults**:
-   `SEARCH_SEMANTIC_ENABLED` overrides the runtime default behavior:
-   - Local debug runs (`cargo run`, `./start_app.sh`) default to semantic search on.
-   - Release / production builds default to plain FTS mode unless you explicitly set `SEARCH_SEMANTIC_ENABLED=true`.
-   - Setting `SEARCH_SEMANTIC_ENABLED=false` disables embeddings even locally.
+   `SEARCH_SEMANTIC_ENABLED` overrides the runtime default:
+   - Local debug builds default to semantic search on.
+   - Release/production builds default to FTS-only unless `SEARCH_SEMANTIC_ENABLED=true` is explicitly set.
+   - `SEARCH_SEMANTIC_ENABLED=false` disables embeddings in any environment.
 
-   For local hybrid semantic search, keep `OLLAMA_EMBEDDING_MODEL` configured and either leave `SEARCH_SEMANTIC_ENABLED` unset or set it to `true`.
+   For local hybrid semantic search, configure `OLLAMA_EMBEDDING_MODEL` and leave `SEARCH_SEMANTIC_ENABLED` unset or set it to `true`.
 
 4. **Start the Application**:
    You can start the frontend, backend, and docs simultaneously using the provided startup script:

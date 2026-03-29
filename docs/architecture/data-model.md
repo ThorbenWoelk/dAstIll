@@ -2,7 +2,7 @@
 
 ## Canonical Tables
 
-These tables represent application truth and are not merely cache artifacts.
+These are the authoritative records — not derived projections or caches.
 
 | Table         | Role                                                                              |
 | ------------- | --------------------------------------------------------------------------------- |
@@ -198,4 +198,4 @@ If the projection schema changes, the backend can drop and recreate `search_sour
 
 ## Counting Search Coverage
 
-Search coverage totals intentionally use readiness flags from `videos` rather than scanning large transcript or summary text tables. That keeps status payloads lightweight enough for startup surfaces.
+Search coverage totals intentionally use readiness flags from `videos` rather than scanning large transcript or summary text tables. This keeps status payloads lightweight for the startup bootstrap request.
