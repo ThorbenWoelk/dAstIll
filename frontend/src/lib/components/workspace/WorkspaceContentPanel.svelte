@@ -234,6 +234,15 @@
       return;
     }
 
+    // If the user already has text selected (e.g. they are about to drag a
+    // selection handle), don't track a swipe gesture so we don't interfere
+    // with the browser's text-selection drag behaviour.
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed) {
+      touchGesture = null;
+      return;
+    }
+
     const touch = event.touches[0];
     const edgeStart = touch.clientX <= SWIPE_BACK_EDGE_PX;
     touchGesture = {
