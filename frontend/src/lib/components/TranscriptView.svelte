@@ -431,14 +431,30 @@
     const handleSelectionChange = () => {
       const selection = window.getSelection();
       if (!selection || selection.isCollapsed) {
-        if (tooltip?.kind === "create") {
+        // Use a small delay on mobile to avoid clearing during multi-touch or handle adjustment
+        if (isMobile) {
+          setTimeout(() => {
+            const currentSelection = window.getSelection();
+            if (!currentSelection || currentSelection.isCollapsed) {
+              if (tooltip?.kind === "create") {
+                clearTooltip();
+              }
+            }
+          }, 100);
+        } else if (tooltip?.kind === "create") {
           clearTooltip();
         }
       }
     };
 
     const handleStableSelection = () => {
-      updateTooltipFromSelection();
+      // On mobile, native selection menu appears after pointerup.
+      // We wait a tick to ensure selection is stable.
+      if (isMobile) {
+        void tick().then(updateTooltipFromSelection);
+      } else {
+        updateTooltipFromSelection();
+      }
     };
 
     const handleScroll = () => {

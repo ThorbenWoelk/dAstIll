@@ -223,7 +223,7 @@
 
     return Boolean(
       target.closest(
-        "button, a, input, textarea, select, label, [role='button'], [role='tab']",
+        "button, a, input, textarea, select, label, [role='button'], [role='tab'], article, .prose, mark",
       ),
     );
   }
@@ -273,7 +273,11 @@
       };
     }
 
-    if (touchGesture?.axisLocked === "x" && !touchGesture.interactive) {
+    if (
+      touchGesture?.axisLocked === "x" &&
+      !touchGesture.interactive &&
+      window.getSelection()?.isCollapsed
+    ) {
       event.preventDefault();
     }
   }
