@@ -37,7 +37,7 @@ resource "google_cloud_run_v2_service" "backend" {
         startup_cpu_boost = true
         limits = {
           cpu    = "1000m"
-          memory = "384Mi"
+          memory = "1024Mi"
         }
       }
     }

@@ -63,6 +63,7 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    let is_cloud_run = std::env::var("K_SERVICE").is_ok();
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| "dastill=info,tower_http=info".into());
 
@@ -70,24 +71,45 @@ async fn main() -> anyhow::Result<()> {
         let logfire = logfire::configure().local().finish()?;
         let guard = logfire.clone().shutdown_guard();
 
-        tracing_subscriber::registry()
+        let registry = tracing_subscriber::registry()
             .with(env_filter)
-            .with(tracing_subscriber::fmt::layer())
             .with(
                 logfire
                     .tracing_layer()
                     .with_filter(filter::filter_fn(|metadata| {
                         should_send_to_logfire(metadata.target())
                     })),
-            )
-            .init();
+            );
+
+        if is_cloud_run {
+            registry
+                .with(
+                    tracing_subscriber::fmt::layer()
+                        .json()
+                        .flatten_event(true)
+                        .with_ansi(false),
+                )
+                .init();
+        } else {
+            registry.with(tracing_subscriber::fmt::layer()).init();
+        }
 
         Some(guard)
     } else {
-        tracing_subscriber::registry()
-            .with(env_filter)
-            .with(tracing_subscriber::fmt::layer())
-            .init();
+        let registry = tracing_subscriber::registry().with(env_filter);
+
+        if is_cloud_run {
+            registry
+                .with(
+                    tracing_subscriber::fmt::layer()
+                        .json()
+                        .flatten_event(true)
+                        .with_ansi(false),
+                )
+                .init();
+        } else {
+            registry.with(tracing_subscriber::fmt::layer()).init();
+        }
         None
     };
 

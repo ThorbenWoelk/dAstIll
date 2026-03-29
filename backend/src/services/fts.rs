@@ -127,6 +127,19 @@ impl FtsIndex {
         }
 
         let _ = inner.writer.commit();
+        let doc_count = inner
+            .index
+            .reader_builder()
+            .try_into()
+            .map(|r: tantivy::IndexReader| r.searcher().num_docs())
+            .unwrap_or(0);
+        tracing::info!(
+            video_id = meta.video_id,
+            source_kind = meta.source_kind.as_str(),
+            chunks_added = chunks.len(),
+            total_docs = doc_count,
+            "fts index updated"
+        );
     }
 
     /// Remove all indexed documents for a video+source_kind pair.

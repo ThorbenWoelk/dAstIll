@@ -148,42 +148,6 @@
     [...streamStatuses].reverse().find((status) => status.plan)?.plan ?? null,
   );
   let streamPlanLabel = $derived(visibleStreamPlan?.label ?? null);
-  let streamUsedExpansionQueries = $derived(
-    streamStatuses.some(
-      (status) =>
-        status.stage === "retrieving_pass_2" ||
-        status.stage === "retrieving_pass_3",
-    ),
-  );
-  let streamDisplayedQueries = $derived(
-    visibleStreamPlan
-      ? Array.from(
-          new Set([
-            ...visibleStreamPlan.queries,
-            ...(streamUsedExpansionQueries
-              ? visibleStreamPlan.expansion_queries
-              : []),
-          ]),
-        )
-      : [],
-  );
-  let streamCoverageSummary = $derived(
-    [...streamStatuses]
-      .reverse()
-      .find((status) => status.stage === "retrieving_complete")?.detail ?? null,
-  );
-  let streamPrimaryDecision = $derived(
-    [...streamStatuses]
-      .reverse()
-      .find(
-        (status) =>
-          (status.stage === "retrieving_complete" ||
-            status.stage === "classifying") &&
-          status.decision,
-      )?.decision ??
-      latestStreamStatus?.decision ??
-      null,
-  );
   let streamToolCalls = $derived.by((): ChatToolCall[] =>
     deriveToolCalls(streamStatuses),
   );
@@ -235,22 +199,6 @@
     }
     return "New conversation";
   });
-  let streamBanner = $derived(
-    pendingReconnectConversationId
-      ? "Reconnecting to active response…"
-      : latestStreamStatus?.label
-        ? latestStreamStatus.label
-        : streamStage === "retrieving"
-          ? "Searching knowledge base…"
-          : streamStage === "generating"
-            ? "Generating response…"
-            : null,
-  );
-  let streamBannerDetail = $derived(
-    pendingReconnectConversationId
-      ? "Waiting to resume the live response stream."
-      : (latestStreamStatus?.detail ?? null),
-  );
   let streamTimings = $derived.by((): ChatStreamTiming[] => {
     if (!streamStartedAt) return [];
     const retrievalComplete = [...streamStatuses]
@@ -282,21 +230,9 @@
     return timings;
   });
 
-  let streamTraceVisible = $derived(
-    Boolean(
-      streamPlanLabel ||
-      streamDisplayedQueries.length ||
-      streamCoverageSummary ||
-      streamPrimaryDecision ||
-      streamTimings.length > 0,
-    ),
-  );
   let showConversationMeta = $derived(
     Boolean(
-      streamBanner ||
-      streamTraceVisible ||
-      streamToolCalls.length > 0 ||
-      errorMessage,
+      streamStatuses.length > 0 || streamToolCalls.length > 0 || errorMessage,
     ),
   );
   let conversationMetaInsertMessageId = $derived.by(() => {
@@ -1334,13 +1270,7 @@
             {#if showConversationMeta}
               <div class="mb-4">
                 <ChatConversationMeta
-                  {streamBanner}
-                  {streamBannerDetail}
-                  {streamTraceVisible}
-                  {streamPlanLabel}
-                  {streamDisplayedQueries}
-                  {streamCoverageSummary}
-                  {streamPrimaryDecision}
+                  statuses={streamStatuses}
                   {streamTimings}
                   toolCalls={streamToolCalls}
                   {errorMessage}
@@ -1362,13 +1292,7 @@
               {/each}
 
               <ChatConversationMeta
-                {streamBanner}
-                {streamBannerDetail}
-                {streamTraceVisible}
-                {streamPlanLabel}
-                {streamDisplayedQueries}
-                {streamCoverageSummary}
-                {streamPrimaryDecision}
+                statuses={streamStatuses}
                 {streamTimings}
                 toolCalls={streamToolCalls}
                 {errorMessage}
@@ -1390,13 +1314,7 @@
             {#if showConversationMeta}
               <div class="mt-4">
                 <ChatConversationMeta
-                  {streamBanner}
-                  {streamBannerDetail}
-                  {streamTraceVisible}
-                  {streamPlanLabel}
-                  {streamDisplayedQueries}
-                  {streamCoverageSummary}
-                  {streamPrimaryDecision}
+                  statuses={streamStatuses}
                   {streamTimings}
                   toolCalls={streamToolCalls}
                   {errorMessage}
