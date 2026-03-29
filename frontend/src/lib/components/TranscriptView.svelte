@@ -428,22 +428,50 @@
       return;
     }
 
+    // Timer to defer tooltip clear so a pending tap on the toolbar fires first.
+    // On Android, tapping a toolbar button fires selectionchange (collapsed) before
+    // the synthesised click arrives; without the delay the tooltip disappears and
+    // the click handler finds tooltip === null.
+    let clearTooltipTimer: ReturnType<typeof setTimeout> | null = null;
+    // Debounce timer for selectionchange-based show. On Android, pointerup fires
+    // before the selection is committed, so we also watch selectionchange and show
+    // the toolbar once the selection has been stable for a short period.
+    let selectionDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
     const handleSelectionChange = () => {
       const selection = window.getSelection();
       if (!selection || selection.isCollapsed) {
-        // Use a small delay on mobile to avoid clearing during multi-touch or handle adjustment
-        if (isMobile) {
-          setTimeout(() => {
-            const currentSelection = window.getSelection();
-            if (!currentSelection || currentSelection.isCollapsed) {
-              if (tooltip?.kind === "create") {
+        // Cancel any pending debounced show.
+        if (selectionDebounceTimer) {
+          clearTimeout(selectionDebounceTimer);
+          selectionDebounceTimer = null;
+        }
+        if (tooltip?.kind === "create") {
+          // Defer the clear so a button tap (whose click arrives ~100 ms later)
+          // still finds the tooltip intact.
+          if (!clearTooltipTimer) {
+            clearTooltipTimer = setTimeout(() => {
+              clearTooltipTimer = null;
+              const sel = window.getSelection();
+              if (!sel || sel.isCollapsed) {
                 clearTooltip();
               }
-            }
-          }, 100);
-        } else if (tooltip?.kind === "create") {
-          clearTooltip();
+            }, 350);
+          }
         }
+      } else {
+        // Selection is non-empty — cancel any pending deferred clear.
+        if (clearTooltipTimer) {
+          clearTimeout(clearTooltipTimer);
+          clearTooltipTimer = null;
+        }
+        // Show toolbar once selection stabilises (debounced to avoid firing on
+        // every cursor move while the user is still dragging a selection handle).
+        if (selectionDebounceTimer) clearTimeout(selectionDebounceTimer);
+        selectionDebounceTimer = setTimeout(() => {
+          selectionDebounceTimer = null;
+          updateTooltipFromSelection();
+        }, 200);
       }
     };
 
@@ -488,6 +516,8 @@
     window.addEventListener("scroll", handleScroll, true);
 
     return () => {
+      if (clearTooltipTimer) clearTimeout(clearTooltipTimer);
+      if (selectionDebounceTimer) clearTimeout(selectionDebounceTimer);
       document.removeEventListener("selectionchange", handleSelectionChange);
       document.removeEventListener("pointerup", handleStableSelection);
       document.removeEventListener("keyup", handleStableSelection);
