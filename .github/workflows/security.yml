@@ -19,11 +19,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --version 0.22.1 --locked
+
       - name: Audit
-        uses: rustsec/audit-check@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          working-directory: backend
+        working-directory: backend
+        run: cargo audit
 
   frontend-audit:
     name: Frontend Audit
