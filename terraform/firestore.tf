@@ -7,126 +7,6 @@ resource "google_firestore_database" "default" {
   depends_on = [google_project_service.services["firestore.googleapis.com"]]
 }
 
-# Composite index: list videos by channel with ready transcripts, ordered by date
-resource "google_firestore_index" "videos_channel_date" {
-  provider   = google-beta
-  database   = google_firestore_database.default.name
-  collection = "dastill_videos"
-
-  fields {
-    field_path = "channel_id"
-    order      = "ASCENDING"
-  }
-  fields {
-    field_path = "transcript_status"
-    order      = "ASCENDING"
-  }
-  fields {
-    field_path = "published_at"
-    order      = "DESCENDING"
-  }
-}
-
-# Composite index: filter by channel + acknowledged + ready transcript, ordered by date
-resource "google_firestore_index" "videos_channel_ack_date" {
-  provider   = google-beta
-  database   = google_firestore_database.default.name
-  collection = "dastill_videos"
-
-  fields {
-    field_path = "channel_id"
-    order      = "ASCENDING"
-  }
-  fields {
-    field_path = "acknowledged"
-    order      = "ASCENDING"
-  }
-  fields {
-    field_path = "transcript_status"
-    order      = "ASCENDING"
-  }
-  fields {
-    field_path = "published_at"
-    order      = "DESCENDING"
-  }
-}
-
-# Composite index: filter by channel + is_short + ready transcript, ordered by date
-resource "google_firestore_index" "videos_channel_short_date" {
-  provider   = google-beta
-  database   = google_firestore_database.default.name
-  collection = "dastill_videos"
-
-  fields {
-    field_path = "channel_id"
-    order      = "ASCENDING"
-  }
-  fields {
-    field_path = "is_short"
-    order      = "ASCENDING"
-  }
-  fields {
-    field_path = "transcript_status"
-    order      = "ASCENDING"
-  }
-  fields {
-    field_path = "published_at"
-    order      = "DESCENDING"
-  }
-}
-
-# Composite index: filter by channel + is_short + acknowledged + ready transcript, ordered by date
-resource "google_firestore_index" "videos_channel_short_ack_date" {
-  provider   = google-beta
-  database   = google_firestore_database.default.name
-  collection = "dastill_videos"
-
-  fields {
-    field_path = "channel_id"
-    order      = "ASCENDING"
-  }
-  fields {
-    field_path = "is_short"
-    order      = "ASCENDING"
-  }
-  fields {
-    field_path = "acknowledged"
-    order      = "ASCENDING"
-  }
-  fields {
-    field_path = "transcript_status"
-    order      = "ASCENDING"
-  }
-  fields {
-    field_path = "published_at"
-    order      = "DESCENDING"
-  }
-}
-
-# Composite index: find oldest fully ready video by channel
-resource "google_firestore_index" "videos_channel_fully_ready_oldest" {
-  provider   = google-beta
-  database   = google_firestore_database.default.name
-  collection = "dastill_videos"
-
-  fields {
-    field_path = "channel_id"
-    order      = "ASCENDING"
-  }
-  fields {
-    field_path = "transcript_status"
-    order      = "ASCENDING"
-  }
-  fields {
-    field_path = "summary_status"
-    order      = "ASCENDING"
-  }
-  fields {
-    field_path = "published_at"
-    order      = "ASCENDING"
-  }
-}
-
 # Single-field index exemptions for unqueried fields to save storage and write costs
 resource "google_firestore_field" "videos_title_exemption" {
   provider   = google-beta
@@ -164,34 +44,56 @@ resource "google_firestore_field" "videos_retry_count_exemption" {
   index_config {}
 }
 
-# Exact composite index requested by Firestore for ready-transcript channel list/snapshot queries
-resource "google_firestore_index" "videos_ready_transcript_published_desc" {
+resource "google_firestore_field" "preferences_vocabulary_replacements_exemption" {
   provider   = google-beta
   database   = google_firestore_database.default.name
-  collection = "dastill_videos"
+  collection = "dastill_preferences"
+  field      = "vocabulary_replacements"
 
-  fields {
-    field_path = "transcript_status"
-    order      = "ASCENDING"
-  }
-  fields {
-    field_path = "published_at"
-    order      = "DESCENDING"
-  }
+  index_config {}
 }
 
-# Exact composite index requested by Firestore for oldest fully-ready lookups
-resource "google_firestore_index" "videos_ready_summary_published_asc" {
+resource "google_firestore_field" "preferences_channel_order_exemption" {
   provider   = google-beta
   database   = google_firestore_database.default.name
-  collection = "dastill_videos"
+  collection = "dastill_preferences"
+  field      = "channel_order"
 
-  fields {
-    field_path = "summary_status"
-    order      = "ASCENDING"
-  }
-  fields {
-    field_path = "published_at"
-    order      = "ASCENDING"
-  }
+  index_config {}
+}
+
+resource "google_firestore_field" "preferences_channel_sort_mode_exemption" {
+  provider   = google-beta
+  database   = google_firestore_database.default.name
+  collection = "dastill_preferences"
+  field      = "channel_sort_mode"
+
+  index_config {}
+}
+
+resource "google_firestore_field" "tts_stats_sample_count_exemption" {
+  provider   = google-beta
+  database   = google_firestore_database.default.name
+  collection = "dastill_tts_stats"
+  field      = "sample_count"
+
+  index_config {}
+}
+
+resource "google_firestore_field" "tts_stats_total_words_exemption" {
+  provider   = google-beta
+  database   = google_firestore_database.default.name
+  collection = "dastill_tts_stats"
+  field      = "total_words"
+
+  index_config {}
+}
+
+resource "google_firestore_field" "tts_stats_total_duration_secs_exemption" {
+  provider   = google-beta
+  database   = google_firestore_database.default.name
+  collection = "dastill_tts_stats"
+  field      = "total_duration_secs"
+
+  index_config {}
 }

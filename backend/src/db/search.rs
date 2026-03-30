@@ -598,23 +598,19 @@ pub async fn search_vector_candidates(
         })
         .collect();
 
-    let mut video_map: std::collections::HashMap<String, Video> = std::collections::HashMap::new();
+    let video_map = super::videos::get_videos(store, &video_ids.into_iter().collect::<Vec<_>>(), false).await?;
     let mut channel_map: std::collections::HashMap<String, crate::models::Channel> =
         std::collections::HashMap::new();
-    for vid in &video_ids {
-        if let Some(video) = super::videos::get_video(store, vid, false).await? {
-            if !channel_map.contains_key(&video.channel_id) {
-                if let Some(ch) = store
-                    .get_json::<crate::models::Channel>(&format!(
-                        "channels/{}.json",
-                        video.channel_id
-                    ))
-                    .await?
-                {
-                    channel_map.insert(ch.id.clone(), ch);
-                }
+
+    let channel_ids: std::collections::HashSet<String> = video_map.values().map(|v| v.channel_id.clone()).collect();
+    for cid in channel_ids {
+        if !channel_map.contains_key(&cid) {
+            if let Some(ch) = store
+                .get_json::<crate::models::Channel>(&format!("channels/{cid}.json"))
+                .await?
+            {
+                channel_map.insert(ch.id.clone(), ch);
             }
-            video_map.insert(vid.clone(), video);
         }
     }
 
