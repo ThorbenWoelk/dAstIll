@@ -13,23 +13,17 @@ jobs:
   backend-audit:
     name: Backend Audit
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@1.93.1
-
-      - name: Install cargo-audit
-        run: cargo install cargo-audit --locked
-
-      - name: Cargo Update and Audit
-        working-directory: backend
-        run: |
-          cargo update
-          cargo audit
+      - name: Audit
+        uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          working-directory: backend
 
   frontend-audit:
     name: Frontend Audit
