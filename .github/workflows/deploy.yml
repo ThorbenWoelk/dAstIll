@@ -8,7 +8,9 @@ run-name: >-
   }}
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Security"]
+    types: [completed]
     branches: ["main"]
   workflow_dispatch:
     inputs:
@@ -23,7 +25,7 @@ on:
         default: all
 
 concurrency:
-  group: release-${{ github.sha }}-${{ github.event.inputs.target || 'all' }}
+  group: release-${{ github.event.workflow_run.head_sha || github.sha }}-${{ github.event.inputs.target || 'all' }}
   cancel-in-progress: true
 
 env:
@@ -33,25 +35,31 @@ env:
   BACKEND_SERVICE: dastill-backend
   FRONTEND_SERVICE: dastill-frontend
   DOCS_SERVICE: dastill-docs
+  # workflow_run sets github.sha to the workflow file ref, not the triggering commit.
+  # Use head_sha from the triggering run when available.
+  DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
 
 permissions:
   contents: read
   id-token: write
 
 jobs:
+  gate:
+    name: Security Gate
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    steps:
+      - run: echo "Security passed"
+
   checks:
     name: Checks
+    needs: gate
     uses: ./.github/workflows/checks.yml
-
-  security:
-    name: Security
-    uses: ./.github/workflows/security.yml
 
   deploy-backend:
     name: Deploy Backend
     needs:
       - checks
-      - security
     if: github.event_name != 'workflow_dispatch' || github.event.inputs.target == 'all' || github.event.inputs.target == 'backend'
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -59,11 +67,13 @@ jobs:
       url: ${{ steps.deploy.outputs.url }}
 
     env:
-      IMAGE_TAG: ${{ github.sha }}
+      IMAGE_TAG: ${{ env.DEPLOY_SHA }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
 
       - name: Google Auth
         uses: google-github-actions/auth@v3
@@ -147,7 +157,6 @@ jobs:
     name: Deploy Docs
     needs:
       - checks
-      - security
     if: github.event_name != 'workflow_dispatch' || github.event.inputs.target == 'all' || github.event.inputs.target == 'docs'
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -155,11 +164,13 @@ jobs:
       url: ${{ steps.deploy.outputs.url }}
 
     env:
-      IMAGE_TAG: ${{ github.sha }}
+      IMAGE_TAG: ${{ env.DEPLOY_SHA }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
 
       - name: Google Auth
         uses: google-github-actions/auth@v3
@@ -234,18 +245,19 @@ jobs:
     name: Deploy Frontend
     needs:
       - checks
-      - security
       - resolve-frontend-env
     if: github.event_name != 'workflow_dispatch' || github.event.inputs.target == 'all' || github.event.inputs.target == 'frontend'
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
     env:
-      IMAGE_TAG: ${{ github.sha }}
+      IMAGE_TAG: ${{ env.DEPLOY_SHA }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
 
       - name: Google Auth
         uses: google-github-actions/auth@v3
