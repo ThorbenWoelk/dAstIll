@@ -13,6 +13,56 @@ resource "aws_s3_bucket" "data" {
   }
 }
 
+resource "aws_s3_bucket_lifecycle_configuration" "data" {
+  bucket = aws_s3_bucket.data.id
+
+  # Clean up old versions and stale multipart uploads for all objects.
+  rule {
+    id     = "housekeeping"
+    status = "Enabled"
+
+    noncurrent_version_expiration {
+      noncurrent_days = 30
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
+
+  # Move large objects to INTELLIGENT_TIERING after 30 days. Objects under 128KB
+  # are always billed at Standard rates in INTELLIGENT_TIERING, so these rules are
+  # scoped to prefixes where large files are expected (transcripts and compressed
+  # bundles), avoiding the per-object monitoring fee on small metadata files.
+  rule {
+    id     = "intelligent-tiering-transcripts"
+    status = "Enabled"
+
+    filter {
+      prefix = "transcripts/"
+    }
+
+    transition {
+      days          = 30
+      storage_class = "INTELLIGENT_TIERING"
+    }
+  }
+
+  rule {
+    id     = "intelligent-tiering-bundles"
+    status = "Enabled"
+
+    filter {
+      prefix = "search-bundles/"
+    }
+
+    transition {
+      days          = 30
+      storage_class = "INTELLIGENT_TIERING"
+    }
+  }
+}
+
 resource "aws_s3_bucket_versioning" "data" {
   bucket = aws_s3_bucket.data.id
 

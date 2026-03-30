@@ -62,6 +62,77 @@ impl Store {
         Ok(())
     }
 
+    pub(crate) async fn get_json_gz<T: for<'de> Deserialize<'de>>(
+        &self,
+        key: &str,
+    ) -> Result<Option<T>, StoreError> {
+        use flate2::read::GzDecoder;
+        use std::io::Read;
+
+        let result = self
+            .s3
+            .get_object()
+            .bucket(&self.data_bucket)
+            .key(key)
+            .send()
+            .await;
+
+        match result {
+            Ok(output) => {
+                let bytes = output
+                    .body
+                    .collect()
+                    .await
+                    .map_err(|e| StoreError::S3(e.to_string()))?
+                    .into_bytes();
+                let mut decoder = GzDecoder::new(&bytes[..]);
+                let mut decompressed = Vec::new();
+                decoder
+                    .read_to_end(&mut decompressed)
+                    .map_err(|e| StoreError::Other(format!("gzip decompression failed: {e}")))?;
+                let value: T = serde_json::from_slice(&decompressed)?;
+                Ok(Some(value))
+            }
+            Err(err) => {
+                if err.as_service_error().is_some_and(|e| e.is_no_such_key()) {
+                    Ok(None)
+                } else {
+                    Err(StoreError::S3(format_aws_error(&err)))
+                }
+            }
+        }
+    }
+
+    pub(crate) async fn put_json_gz<T: Serialize + ?Sized>(
+        &self,
+        key: &str,
+        value: &T,
+    ) -> Result<(), StoreError> {
+        use flate2::write::GzEncoder;
+        use flate2::Compression;
+        use std::io::Write;
+
+        let json = serde_json::to_vec(value)?;
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        encoder
+            .write_all(&json)
+            .map_err(|e| StoreError::Other(format!("gzip compression failed: {e}")))?;
+        let compressed = encoder
+            .finish()
+            .map_err(|e| StoreError::Other(format!("gzip compression finish failed: {e}")))?;
+
+        self.s3
+            .put_object()
+            .bucket(&self.data_bucket)
+            .key(key)
+            .body(ByteStream::from(compressed))
+            .content_type("application/x-gzip")
+            .send()
+            .await
+            .map_err(|e| StoreError::S3(format_aws_error(&e)))?;
+        Ok(())
+    }
+
     pub(crate) async fn get_bytes(&self, key: &str) -> Result<Option<Vec<u8>>, StoreError> {
         let result = self
             .s3

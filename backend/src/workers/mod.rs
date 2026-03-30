@@ -55,6 +55,106 @@ pub async fn populate_fts_index_from_store(state: AppState) {
     }
 
     let store = state.db.connect();
+
+    // 1. Try to load from bundles first (Optimized path)
+    let bundle_keys = match store.list_keys("search-bundles/").await {
+        Ok(keys) => keys,
+        Err(err) => {
+            tracing::error!(error = %err, "FTS hydration: failed to list bundle keys");
+            Vec::new()
+        }
+    };
+
+    if !bundle_keys.is_empty() {
+        tracing::info!(bundles = bundle_keys.len(), "FTS hydration: starting bundle-based load");
+
+        // Pre-load all videos (hits the 120s cache) and all channels in two bulk fetches
+        // instead of one Firestore GET + one S3 GET per video in the loop.
+        let video_map: std::collections::HashMap<String, crate::models::Video> =
+            crate::db::load_all_videos(&store)
+                .await
+                .unwrap_or_default()
+                .into_iter()
+                .map(|v| (v.id.clone(), v))
+                .collect();
+        let channel_map: std::collections::HashMap<String, crate::models::Channel> =
+            store
+                .load_all::<crate::models::Channel>("channels/")
+                .await
+                .unwrap_or_default()
+                .into_iter()
+                .map(|c| (c.id.clone(), c))
+                .collect();
+
+        let mut upserted = 0usize;
+
+        for key in bundle_keys {
+            // Key format: search-bundles/{video_id}_{source_kind}_{generation}.json.gz
+            let Some(filename) = key
+                .strip_prefix("search-bundles/")
+                .and_then(|s| s.strip_suffix(".json.gz"))
+            else {
+                continue;
+            };
+
+            let parts: Vec<&str> = filename.split('_').collect();
+            if parts.len() < 3 {
+                continue;
+            }
+
+            let video_id = parts[0].to_string();
+            let source_kind_str = parts[1].to_string();
+            let generation = parts[2].to_string();
+
+            let bundle: Vec<ChunkData> = match store.get_json_gz(&key).await {
+                Ok(Some(b)) => b,
+                _ => continue,
+            };
+
+            let fts_chunks: Vec<FtsChunk> = bundle
+                .into_iter()
+                .enumerate()
+                .map(|(index, chunk)| FtsChunk {
+                    chunk_id: format!("{video_id}_{source_kind_str}_{generation}_{index}"),
+                    section_title: chunk.section_title,
+                    chunk_text: chunk.chunk_text,
+                    start_sec: chunk.start_sec,
+                })
+                .collect();
+
+            let Some(video) = video_map.get(&video_id) else {
+                continue;
+            };
+            let channel_name = channel_map
+                .get(&video.channel_id)
+                .map(|c| c.name.as_str())
+                .unwrap_or("");
+            let source_kind = SearchSourceKind::from_db_value(&source_kind_str);
+            let published_at = video.published_at.to_rfc3339();
+
+            state
+                .fts
+                .upsert_source(
+                    FtsSourceMeta {
+                        video_id: &video_id,
+                        source_kind,
+                        channel_id: &video.channel_id,
+                        channel_name,
+                        video_title: &video.title,
+                        published_at: &published_at,
+                    },
+                    &fts_chunks,
+                )
+                .await;
+            upserted += 1;
+        }
+
+        let doc_count = state.fts.doc_count().await;
+        tracing::info!(bundles = upserted, doc_count, "FTS hydration (bundled) complete");
+        return;
+    }
+
+    // 2. Legacy fallback to individual chunks
     let chunk_keys = match store.list_keys("search-chunks/").await {
         Ok(keys) => keys,
         Err(err) => {
@@ -64,12 +164,10 @@ pub async fn populate_fts_index_from_store(state: AppState) {
     };
 
     if chunk_keys.is_empty() {
-        tracing::info!("FTS hydration: no chunks found, skipping");
+        tracing::info!("FTS hydration: no chunks or bundles found, skipping");
         return;
     }
 
-    // Group keys by (video_id, source_kind) extracted from the key name.
-    // Key format: search-chunks/{video_id}_{source_kind}_{hash}_{index}.json
     let mut key_groups: std::collections::HashMap<(String, String), Vec<String>> =
         std::collections::HashMap::new();
     for key in chunk_keys {
@@ -93,14 +191,24 @@ pub async fn populate_fts_index_from_store(state: AppState) {
             .push(key);
     }
 
-    let mut video_map: std::collections::HashMap<String, crate::models::Video> =
-        std::collections::HashMap::new();
-    let mut channel_map: std::collections::HashMap<String, crate::models::Channel> =
-        std::collections::HashMap::new();
+    let video_map: std::collections::HashMap<String, crate::models::Video> =
+        crate::db::load_all_videos(&store)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|v| (v.id.clone(), v))
+            .collect();
+    let channel_map: std::collections::HashMap<String, crate::models::Channel> =
+        store
+            .load_all::<crate::models::Channel>("channels/")
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|c| (c.id.clone(), c))
+            .collect();
 
     let mut upserted = 0usize;
     for ((video_id, source_kind_str), keys) in key_groups {
-        // Fetch all chunk JSON files for this specific video+source concurrently.
         let mut fts_chunks = Vec::with_capacity(keys.len());
         let mut set = tokio::task::JoinSet::new();
         for key in keys {
@@ -132,24 +240,6 @@ pub async fn populate_fts_index_from_store(state: AppState) {
             continue;
         }
 
-        // Load video + channel metadata once per unique video.
-        if !video_map.contains_key(&video_id) {
-            if let Ok(Some(video)) = crate::db::get_video(&store, &video_id, false).await {
-                if !channel_map.contains_key(&video.channel_id) {
-                    if let Ok(Some(ch)) = store
-                        .get_json::<crate::models::Channel>(&format!(
-                            "channels/{}.json",
-                            video.channel_id
-                        ))
-                        .await
-                    {
-                        channel_map.insert(ch.id.clone(), ch);
-                    }
-                }
-                video_map.insert(video_id.clone(), video);
-            }
-        }
-
         let Some(video) = video_map.get(&video_id) else {
             continue;
         };
@@ -178,7 +268,7 @@ pub async fn populate_fts_index_from_store(state: AppState) {
     }
 
     let doc_count = state.fts.doc_count().await;
-    tracing::info!(sources = upserted, doc_count, "FTS hydration complete");
+    tracing::info!(sources = upserted, doc_count, "FTS hydration (legacy) complete");
 }
 
 #[derive(Clone, Copy, Debug)]

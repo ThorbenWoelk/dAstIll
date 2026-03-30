@@ -184,13 +184,13 @@ pub async fn replace_search_chunks(
     }
 
     let mut put_batch: Vec<aws_sdk_s3vectors::types::PutInputVector> = Vec::new();
+    let mut bundle_data = Vec::new();
 
     for chunk in chunks {
         let embedding = chunk
             .embedding_json
             .as_deref()
             .and_then(|json| serde_json::from_str::<Vec<f32>>(json).ok());
-        let Some(embedding) = embedding else { continue };
 
         let vkey = vector_key(
             video_id,
@@ -199,19 +199,23 @@ pub async fn replace_search_chunks(
             chunk.chunk_index,
         );
 
-        // Store full chunk text in S3 for FTS and retrieval
+        let chunk_item = ChunkData {
+            video_id,
+            source_kind: source_kind.as_str(),
+            section_title: chunk.section_title.as_deref(),
+            chunk_text: &chunk.chunk_text,
+            start_sec: chunk.start_sec,
+        };
+
+        // 1. Maintain individual chunks for now (to avoid breaking current search results/FTS)
         store
-            .put_json(
-                &format!("search-chunks/{vkey}.json"),
-                &ChunkData {
-                    video_id,
-                    source_kind: source_kind.as_str(),
-                    section_title: chunk.section_title.as_deref(),
-                    chunk_text: &chunk.chunk_text,
-                    start_sec: chunk.start_sec,
-                },
-            )
+            .put_json(&format!("search-chunks/{vkey}.json"), &chunk_item)
             .await?;
+
+        // 2. Add to bundle for future optimized hydration
+        bundle_data.push(chunk_item);
+
+        let Some(embedding) = embedding else { continue };
 
         let chunk_text_clamped: String = chunk.chunk_text.chars().take(30_000).collect();
         let mut meta_entries: Vec<(&str, Document)> = vec![
@@ -252,7 +256,7 @@ pub async fn replace_search_chunks(
 
         put_batch.push(put_vector);
 
-        // Flush in batches of 500 (API limit)
+        // Flush vectors in batches of 500 (API limit)
         if put_batch.len() >= 500 {
             store
                 .s3v
@@ -264,6 +268,17 @@ pub async fn replace_search_chunks(
                 .await
                 .map_err(|e| StoreError::S3Vectors(format_aws_error(&e)))?;
         }
+    }
+
+    // 3. Write the consolidated bundle (compressed)
+    if !bundle_data.is_empty() {
+        let bundle_key = format!(
+            "search-bundles/{}_{}_{}.json.gz",
+            video_id,
+            source_kind.as_str(),
+            current.source_generation
+        );
+        store.put_json_gz(&bundle_key, &bundle_data).await?;
     }
 
     // Flush remaining vectors
@@ -351,6 +366,14 @@ async fn delete_vectors_for_source(
     for key in &chunk_keys {
         store.delete_key(key).await.ok();
     }
+
+    // Clean up S3 bundles
+    let bundle_prefix = format!("search-bundles/{}_{}_", video_id, source_kind.as_str());
+    let bundle_keys = store.list_keys(&bundle_prefix).await?;
+    for key in &bundle_keys {
+        store.delete_key(key).await.ok();
+    }
+
     Ok(())
 }
 

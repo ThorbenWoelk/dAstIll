@@ -38,6 +38,7 @@ sha2 = "0.10"
 # Date/time
 chrono = { version = "0.4", features = ["serde"] }
 rand = "0.8"
+flate2 = "1.0"
 
 # Types generation
 ts-rs = { version = "10.0", features = ["chrono-impl"] }

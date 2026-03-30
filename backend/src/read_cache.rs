@@ -9,13 +9,14 @@ use tokio::sync::RwLock;
 use crate::{
     db::QueueFilter,
     models::{
-        Channel, ChannelSnapshotPayload, SearchStatusPayload, SyncDepthPayload,
+        Channel, ChannelSnapshotPayload, SearchStatusPayload, SyncDepthPayload, Video,
         WorkspaceBootstrapPayload,
     },
 };
 
 const DEFAULT_READ_CACHE_TTL: Duration = Duration::from_secs(10);
 const SEARCH_STATUS_CACHE_TTL: Duration = Duration::from_secs(30);
+const VIDEOS_CACHE_TTL: Duration = Duration::from_secs(120);
 /// Maximum number of entries to keep in the cache.
 /// Prevents unbounded memory growth within Cloud Run's 512Mi limit.
 pub(crate) const MAX_CACHE_SIZE: usize = 512;
@@ -35,6 +36,7 @@ struct CacheEntry {
 #[derive(Debug, Clone)]
 enum ReadCacheValue {
     Channels(Vec<Channel>),
+    Videos(Vec<Video>),
     WorkspaceBootstrap(WorkspaceBootstrapPayload),
     ChannelSnapshot(ChannelSnapshotPayload),
     SyncDepth(SyncDepthPayload),
@@ -44,6 +46,7 @@ enum ReadCacheValue {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ReadCacheKey {
     Channels(String),
+    Videos,
     WorkspaceBootstrap(WorkspaceBootstrapCacheKey),
     ChannelSnapshot(ChannelSnapshotCacheKey),
     ChannelSyncDepth(String, String),
@@ -118,6 +121,25 @@ impl ReadCache {
             ReadCacheKey::Channels(scope),
             channels,
             ReadCacheValue::Channels,
+        )
+        .await;
+    }
+
+    pub async fn get_videos(&self) -> Option<Vec<Video>> {
+        self.get_typed(&ReadCacheKey::Videos, ReadCacheValue::into_videos)
+            .await
+    }
+
+    pub async fn evict_videos(&self) {
+        self.entries.write().await.remove(&ReadCacheKey::Videos);
+    }
+
+    pub async fn set_videos(&self, videos: Vec<Video>) {
+        self.set_typed_with_ttl(
+            ReadCacheKey::Videos,
+            videos,
+            ReadCacheValue::Videos,
+            VIDEOS_CACHE_TTL,
         )
         .await;
     }
@@ -228,6 +250,7 @@ impl ReadCache {
     pub async fn evict_channel(&self, channel_id: &str) {
         let mut entries = self.entries.write().await;
         entries.retain(|key, _| match key {
+            ReadCacheKey::Videos => false, // Evict all videos cache if any channel changes
             ReadCacheKey::ChannelSnapshot(k) => k.channel_id != channel_id,
             ReadCacheKey::WorkspaceBootstrap(k) => match &k.selected_channel_id {
                 // Evict null-keyed entries: null resolves to the first channel via fallback,
@@ -248,7 +271,7 @@ impl ReadCache {
         entries.retain(|key, _| {
             !matches!(
                 key,
-                ReadCacheKey::Channels(_) | ReadCacheKey::WorkspaceBootstrap(_)
+                ReadCacheKey::Channels(_) | ReadCacheKey::WorkspaceBootstrap(_) | ReadCacheKey::Videos
             )
         });
     }
@@ -336,6 +359,13 @@ impl ReadCacheValue {
     fn into_channels(self) -> Option<Vec<Channel>> {
         match self {
             Self::Channels(channels) => Some(channels),
+            _ => None,
+        }
+    }
+
+    fn into_videos(self) -> Option<Vec<Video>> {
+        match self {
+            Self::Videos(videos) => Some(videos),
             _ => None,
         }
     }

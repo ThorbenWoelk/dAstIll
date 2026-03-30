@@ -12,6 +12,8 @@ mod user_scope;
 mod video_info;
 mod videos;
 
+pub(crate) use crate::read_cache::ReadCache;
+
 /// Maximum number of concurrent S3 operations. Chosen for 1 vCPU / 512 MiB Cloud Run.
 pub(crate) const MAX_CONCURRENT_S3_OPS: usize = 12;
 
@@ -70,6 +72,7 @@ pub struct Store {
     pub(crate) data_bucket: String,
     pub(crate) vector_bucket: String,
     pub(crate) vector_index: String,
+    pub(crate) read_cache: ReadCache,
 }
 
 impl Store {
@@ -97,6 +100,7 @@ impl Store {
                 .unwrap_or_else(|_| "dastill-vectors-test".to_string()),
             vector_index: std::env::var("S3_VECTOR_INDEX")
                 .unwrap_or_else(|_| "search-chunks".to_string()),
+            read_cache: ReadCache::default(),
         }
     }
 }
@@ -236,6 +240,7 @@ pub async fn init_store(
     data_bucket: String,
     vector_bucket: String,
     vector_index: String,
+    read_cache: ReadCache,
 ) -> Result<Store, StoreError> {
     Ok(Store {
         s3,
@@ -244,6 +249,7 @@ pub async fn init_store(
         data_bucket,
         vector_bucket,
         vector_index,
+        read_cache,
     })
 }
 

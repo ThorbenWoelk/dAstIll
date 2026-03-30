@@ -8,11 +8,19 @@ use super::{
 };
 
 pub async fn insert_video(store: &Store, video: &Video) -> Result<VideoInsertOutcome, StoreError> {
-    super::firestore_videos::fs_insert_video(store, video).await
+    let outcome = super::firestore_videos::fs_insert_video(store, video).await?;
+    if outcome == VideoInsertOutcome::Inserted {
+        store.read_cache.evict_channel(&video.channel_id).await;
+    }
+    Ok(outcome)
 }
 
 pub async fn bulk_insert_videos(store: &Store, videos: Vec<Video>) -> Result<usize, StoreError> {
-    super::firestore_videos::fs_bulk_insert_videos(store, videos).await
+    let count = super::firestore_videos::fs_bulk_insert_videos(store, videos).await?;
+    if count > 0 {
+        store.read_cache.evict_channel_list().await;
+    }
+    Ok(count)
 }
 
 pub async fn get_video(
@@ -34,7 +42,13 @@ pub async fn get_videos(
 /// Fetch every video document from Firestore without any server-side filter or ordering.
 /// Filtering and sorting happen in-memory after this call. This avoids composite indexes,
 /// which would otherwise be the primary Firestore cost driver at this scale.
-pub(crate) async fn load_all_videos(store: &Store) -> Result<Vec<Video>, StoreError> {
+pub async fn load_all_videos(store: &Store) -> Result<Vec<Video>, StoreError> {
+    // 1. Try cache first (TTL-based)
+    if let Some(videos) = store.read_cache.get_videos().await {
+        return Ok(videos);
+    }
+
+    // 2. Cache miss: fetch from Firestore
     let videos: Vec<Video> = store
         .firestore
         .fluent()
@@ -44,6 +58,10 @@ pub(crate) async fn load_all_videos(store: &Store) -> Result<Vec<Video>, StoreEr
         .query()
         .await
         .map_err(|e| StoreError::Other(format!("Firestore error: {e}")))?;
+
+    // 3. Populate cache
+    store.read_cache.set_videos(videos.clone()).await;
+
     Ok(videos)
 }
 
@@ -291,7 +309,9 @@ pub async fn update_video_transcript_status(
     video_id: &str,
     status: ContentStatus,
 ) -> Result<(), StoreError> {
-    super::firestore_videos::fs_update_video_transcript_status(store, video_id, status).await
+    super::firestore_videos::fs_update_video_transcript_status(store, video_id, status).await?;
+    store.read_cache.evict_videos().await;
+    Ok(())
 }
 
 pub async fn update_video_summary_status(
@@ -299,7 +319,9 @@ pub async fn update_video_summary_status(
     video_id: &str,
     status: ContentStatus,
 ) -> Result<(), StoreError> {
-    super::firestore_videos::fs_update_video_summary_status(store, video_id, status).await
+    super::firestore_videos::fs_update_video_summary_status(store, video_id, status).await?;
+    store.read_cache.evict_videos().await;
+    Ok(())
 }
 
 pub async fn update_video_acknowledged(
@@ -307,7 +329,9 @@ pub async fn update_video_acknowledged(
     video_id: &str,
     acknowledged: bool,
 ) -> Result<(), StoreError> {
-    super::firestore_videos::fs_update_video_acknowledged(store, video_id, acknowledged).await
+    super::firestore_videos::fs_update_video_acknowledged(store, video_id, acknowledged).await?;
+    store.read_cache.evict_videos().await;
+    Ok(())
 }
 
 pub async fn increment_video_retry_count(store: &Store, video_id: &str) -> Result<(), StoreError> {

@@ -166,6 +166,7 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!(project = %gcp_project_id, "connecting to Firestore");
     let firestore_db = firestore::FirestoreDb::new(&gcp_project_id).await?;
 
+    let read_cache = ReadCache::default();
     let pool = init_store(
         s3_client,
         s3v_client,
@@ -173,6 +174,7 @@ async fn main() -> anyhow::Result<()> {
         data_bucket,
         vector_bucket,
         vector_index,
+        read_cache.clone(),
     )
     .await
     .map_err(|e| anyhow::anyhow!(e))?;
@@ -260,8 +262,8 @@ async fn main() -> anyhow::Result<()> {
     });
 
     let state = AppState {
-        db: pool,
-        read_cache: Arc::new(ReadCache::default()),
+        db: pool.clone(),
+        read_cache: Arc::new(read_cache),
         security: security_runtime.clone(),
         request_rate_limiter: rate_limiter(security_runtime.as_ref()),
         search_auto_create_vector_index: search_runtime.auto_create_vector_index,

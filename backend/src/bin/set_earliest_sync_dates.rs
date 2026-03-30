@@ -67,6 +67,7 @@ async fn main() -> Result<()> {
         data_bucket,
         vector_bucket,
         vector_index,
+        dastill::read_cache::ReadCache::default(),
     )
     .await
     .map_err(|e| anyhow::anyhow!(e))?;
