@@ -8,6 +8,8 @@
 
 Wrapping dAstIll in Tauri v2 is viable for Android today, rough for iOS. The single largest change is converting SvelteKit from SSR (`adapter-node`) to SPA (`adapter-static`) — everything else is additive. The Rust backend stays untouched and runs as a sidecar or remote service. The custom text-selection action bar (the original goal) is achievable via a small Kotlin plugin.
 
+**Distribution strategy**: sideloading (direct APK install) first — no app store account, no review process, works immediately. Play Store is a later option once YouTube policy compliance allows it.
+
 ---
 
 ## 1. Architecture: What Changes vs What Stays
@@ -252,15 +254,24 @@ cargo tauri android dev
 cargo tauri ios dev
 ```
 
-### Release builds
+### Sideload APK (primary distribution path)
 ```bash
-# Android — AAB for Play Store
-cargo tauri android build -- --aab
+# Debug build — no signing required, install immediately
+cargo tauri android build -- --apk --debug
 
-# Android — APK for direct install / testing
+# Release build — requires keystore (see §9), better performance
 cargo tauri android build -- --apk
+```
 
-# iOS — IPA
+Output: `src-tauri/gen/android/app/build/outputs/apk/{debug,release}/app-*.apk`
+
+### Play Store AAB (future, once eligible)
+```bash
+cargo tauri android build -- --aab
+```
+
+### iOS IPA (future)
+```bash
 cargo tauri ios build
 ```
 
@@ -326,48 +337,90 @@ jobs:
 
 ## 9. Costs
 
+### Sideload-only (current path)
+
 | Item | Cost | Notes |
 |---|---|---|
 | Tauri itself | Free | Open source (Apache 2 / MIT) |
-| Google Play Store | $25 one-time | Per developer account |
-| Apple Developer Program | $99/year | Required for any iOS distribution |
-| GitHub Actions Android CI | ~$0 | Runs on Linux; free tier handles it |
-| GitHub Actions iOS CI | ~$5–15/month | Depends on build frequency; macOS runners are 10× Linux |
-| **Total year 1** | **~$125 + iOS CI** | Mostly the Apple tax |
+| Android signing keystore | Free | Self-generated with `keytool` |
+| GitHub Actions Android CI | ~$0 | `ubuntu-latest`; free tier covers it |
+| **Total** | **$0** | |
 
-If iOS CI cost is a concern, a self-hosted macOS runner (Mac Mini) eliminates the per-minute charge entirely.
+### When Play Store becomes an option
+
+| Item | Cost | Notes |
+|---|---|---|
+| Google Play Store | $25 one-time | Per developer account |
+| NDK 28 signing compliance | $0 | Already required for sideload builds |
+
+### If iOS is added later
+
+| Item | Cost | Notes |
+|---|---|---|
+| Apple Developer Program | $99/year | Required for any iOS distribution |
+| GitHub Actions iOS CI | ~$0–15/month | `macos-latest` is free for public repos; private repos burn quota 10× faster than Linux — fine for infrequent release builds |
 
 ---
 
 ## 10. Deployment to Devices
 
-### Android
+### Android — Sideloading (primary path, no store account needed)
 
-**During development** (USB or Wi-Fi ADB):
+**Step 1 — Enable unknown sources on your device**
+Settings → Apps → Special app access → Install unknown apps → allow your file manager or browser.
+
+**Step 2 — Build the APK**
 ```bash
-cargo tauri android dev   # hot-reload on connected device
-```
+# Debug: no signing setup needed, install immediately
+cargo tauri android build -- --apk --debug
 
-**Beta testing** — Firebase App Distribution or Google Play Internal Testing track (upload AAB, invite testers by email).
-
-**Production** — Google Play Store: upload signed AAB → review (1–3 days for new apps) → rollout.
-
-**Sideloading** (team testing without Play Store):
-```bash
+# Release (better perf): requires keystore first (one-time, see below)
 cargo tauri android build -- --apk
-adb install src-tauri/gen/android/app/build/outputs/apk/release/app-release.apk
 ```
 
-### iOS
+**Step 3 — Install on device** (pick any method):
 
-**During development** (device must be registered in Apple Developer portal):
+| Method | Command / Steps |
+|---|---|
+| ADB over USB | `adb install app-debug.apk` |
+| ADB over Wi-Fi | `adb connect <device-ip>:5555` then same |
+| File transfer | Copy APK via USB/cloud, tap to install on device |
+| Local server | `python3 -m http.server` in build folder, open URL on device |
+
+**Keystore setup** (one-time, needed for release APK):
+```bash
+keytool -genkey -v -keystore ~/dastill.jks -keyalg RSA \
+  -keysize 2048 -validity 10000 -alias dastill
+```
+Then reference it in `src-tauri/gen/android/app/build.gradle.kts` signing config.
+
+**Updating the app** — build a new APK and install over the existing one. Android keeps app data between installs as long as the signing key is the same.
+
+---
+
+### Android — Development mode (hot reload)
+```bash
+cargo tauri android dev   # connects to device/emulator with live reload
+```
+
+---
+
+### Android — Play Store (future, once YouTube policy compliant)
+
+1. Generate signed AAB: `cargo tauri android build -- --aab`
+2. Create Google Play developer account ($25 one-time)
+3. Upload to Play Console → internal testing track → staged rollout
+
+---
+
+### iOS (future)
+
+**Development** (device must be registered in Apple Developer portal):
 ```bash
 cargo tauri ios dev       # deploys to registered device via Xcode
 ```
 
-**Beta testing** — TestFlight (free, up to 10,000 external testers).
-
-**Production** — App Store: upload IPA via Xcode Organizer or `xcrun altool`, submit for review (24–48 hours).
+**Distribution** — TestFlight (beta) or App Store ($99/year Apple Developer account required).
 
 ```bash
 xcrun altool --upload-app --type ios --file "$APPNAME.ipa" \
@@ -382,8 +435,8 @@ xcrun altool --upload-app --type ios --file "$APPNAME.ipa" \
 - `src-tauri/` — Tauri shell config, `Cargo.toml`, capabilities
 - `MainActivity.kt` — ActionMode plugin (30–50 lines of Kotlin)
 - `frontend/src/lib/native-selection.ts` — JS bridge handlers
-- `.github/workflows/android.yml` — Android CI workflow
-- Android keystore + Play Console setup
+- `.github/workflows/android.yml` — Android CI workflow (produces APK artifact)
+- Android signing keystore (one-time local setup)
 - Auth refactor: remove server session, use Bearer token
 
 ### Modified (not rewritten)
@@ -411,31 +464,39 @@ xcrun altool --upload-app --type ios --file "$APPNAME.ipa" \
 
 | Risk | Severity | Mitigation |
 |---|---|---|
-| iOS CI is painful to set up | Medium | Start Android-only; add iOS later |
-| WKWebView on iOS has no service worker | Low | Acceptable for v1; affects offline only |
-| Android WebView version variance on old devices | Medium | Set `minSdkVersion 26` (Android 8+); affects ~3% of devices |
 | SSR → SPA conversion touches auth flow | High | Must be tested thoroughly; session handling changes meaningfully |
+| Android WebView version variance on old devices | Medium | Set `minSdkVersion 26` (Android 8+); affects ~3% of devices |
+| iOS CI is painful to set up | Medium | Out of scope for now; add later |
+| WKWebView on iOS has no service worker | Low | Out of scope for now |
 | `tauri-action` mobile support is experimental | Low | Use the manual workflow; it's 50 lines of YAML |
-| Play Store 16KB page alignment (NDK 28) | Low if caught early | Use NDK 28 from day one |
-| Web PWA and Tauri app must stay in sync | Ongoing | They share the same frontend codebase; single source of truth |
+| Play Store 16KB page alignment (NDK 28) | Low | NDK 28 required anyway; non-issue if set up from day one |
+| Web PWA and Tauri app must stay in sync | Ongoing | Same frontend codebase; single source of truth |
 
 ---
 
 ## 13. Recommended Phasing
 
-### Phase 1 — Android only (4–6 weeks)
+### Phase 1 — Sideload on your own device (1–2 weeks)
 1. Convert SvelteKit to SPA mode + auth refactor
 2. Set up Tauri shell, local Android build
 3. Write ActionMode Kotlin plugin
-4. Internal testing via APK sideload
-5. Android CI workflow + keystore
-6. Play Store setup + internal testing track
+4. Generate signing keystore
+5. Build release APK, install via ADB or file transfer
+6. Done — app works on your device, zero store involvement
 
-### Phase 2 — iOS (4–8 weeks additional)
-1. Apple Developer account + certs
-2. iOS build locally
-3. iOS CI on macOS runner (self-hosted Mac Mini or paid runner)
-4. TestFlight beta
-5. App Store submission
+### Phase 2 — CI-produced APK artifact (1 week)
+1. Android CI workflow — produces a signed APK on every push
+2. Download artifact from GitHub Actions and sideload without a local build environment
+3. Useful for sharing with other devices/testers without needing the full toolchain
+
+### Phase 3 — Play Store (when YouTube policy allows)
+1. Google Play developer account ($25 one-time)
+2. Switch CI to produce AAB
+3. Upload to Play Console → internal testing → staged rollout
+
+### Phase 4 — iOS (optional, when needed)
+1. Apple Developer account ($99/year)
+2. iOS build locally + TestFlight
+3. App Store submission
 
 The web PWA continues to work throughout — Tauri is purely additive to the existing deployment.
