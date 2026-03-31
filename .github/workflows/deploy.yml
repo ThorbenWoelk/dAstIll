@@ -4,12 +4,12 @@ run-name: >-
   ${{
     github.event_name == 'workflow_dispatch'
       && format('Release ({0})', github.event.inputs.target || 'all')
-      || format('Release: {0}', github.event.head_commit.message)
+      || format('Release: {0}', github.event.workflow_run.head_commit.message || github.event.head_commit.message || 'unknown message')
   }}
 
 on:
   workflow_run:
-    workflows: ["Security"]
+    workflows: ["Validation"]
     types: [completed]
     branches: ["main"]
   workflow_dispatch:
@@ -54,7 +54,7 @@ jobs:
   checks:
     name: Checks
     needs: gate
-    uses: ./.github/workflows/checks.yml
+    uses: ./.github/workflows/validation.yml
 
   deploy-backend:
     name: Deploy Backend
@@ -67,22 +67,22 @@ jobs:
       url: ${{ steps.deploy.outputs.url }}
 
     env:
-      IMAGE_TAG: ${{ env.DEPLOY_SHA }}
+      IMAGE_TAG: ${{ github.event.workflow_run.head_sha || github.sha }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4.2.2
         with:
           ref: ${{ env.DEPLOY_SHA }}
 
       - name: Google Auth
-        uses: google-github-actions/auth@v3
+        uses: google-github-actions/auth@v2.1.3
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_WIF_SA_EMAIL }}
 
       - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v3
+        uses: google-github-actions/setup-gcloud@v2.1.1
 
       - name: Configure Docker
         run: gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
@@ -118,7 +118,7 @@ jobs:
 
       - name: Deploy Backend to Cloud Run
         id: deploy
-        uses: google-github-actions/deploy-cloudrun@v3
+        uses: google-github-actions/deploy-cloudrun@v2.2.1
         with:
           service: ${{ env.BACKEND_SERVICE }}
           region: ${{ env.REGION }}
@@ -164,22 +164,22 @@ jobs:
       url: ${{ steps.deploy.outputs.url }}
 
     env:
-      IMAGE_TAG: ${{ env.DEPLOY_SHA }}
+      IMAGE_TAG: ${{ github.event.workflow_run.head_sha || github.sha }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4.2.2
         with:
           ref: ${{ env.DEPLOY_SHA }}
 
       - name: Google Auth
-        uses: google-github-actions/auth@v3
+        uses: google-github-actions/auth@v2.1.3
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_WIF_SA_EMAIL }}
 
       - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v3
+        uses: google-github-actions/setup-gcloud@v2.1.1
 
       - name: Configure Docker
         run: gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
@@ -192,7 +192,7 @@ jobs:
 
       - name: Deploy Docs to Cloud Run
         id: deploy
-        uses: google-github-actions/deploy-cloudrun@v3
+        uses: google-github-actions/deploy-cloudrun@v2.2.1
         with:
           service: ${{ env.DOCS_SERVICE }}
           region: ${{ env.REGION }}
@@ -213,13 +213,13 @@ jobs:
 
     steps:
       - name: Google Auth
-        uses: google-github-actions/auth@v3
+        uses: google-github-actions/auth@v2.1.3
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_WIF_SA_EMAIL }}
 
       - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v3
+        uses: google-github-actions/setup-gcloud@v2.1.1
 
       - name: Resolve deployed service URLs
         id: urls
@@ -251,22 +251,22 @@ jobs:
     timeout-minutes: 60
 
     env:
-      IMAGE_TAG: ${{ env.DEPLOY_SHA }}
+      IMAGE_TAG: ${{ github.event.workflow_run.head_sha || github.sha }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4.2.2
         with:
           ref: ${{ env.DEPLOY_SHA }}
 
       - name: Google Auth
-        uses: google-github-actions/auth@v3
+        uses: google-github-actions/auth@v2.1.3
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_WIF_SA_EMAIL }}
 
       - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v3
+        uses: google-github-actions/setup-gcloud@v2.1.1
 
       - name: Configure Docker
         run: gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
@@ -278,7 +278,7 @@ jobs:
           docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/frontend:$IMAGE_TAG
 
       - name: Deploy Frontend to Cloud Run
-        uses: google-github-actions/deploy-cloudrun@v3
+        uses: google-github-actions/deploy-cloudrun@v2.2.1
         with:
           service: ${{ env.FRONTEND_SERVICE }}
           region: ${{ env.REGION }}
