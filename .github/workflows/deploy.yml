@@ -197,54 +197,13 @@ jobs:
           image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_ID }}/docs:${{ env.IMAGE_TAG }}
           flags: "--allow-unauthenticated --service-account=${{ env.APP_NAME }}-docs-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
 
-  resolve-frontend-env:
-    name: Resolve Frontend Environment
-    needs:
-      - deploy-backend
-      - deploy-docs
-    if: always() && (github.event_name != 'workflow_dispatch' || github.event.inputs.target == 'all' || github.event.inputs.target == 'frontend') && (needs.deploy-backend.result == 'success' || needs.deploy-backend.result == 'skipped') && (needs.deploy-docs.result == 'success' || needs.deploy-docs.result == 'skipped')
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    outputs:
-      backend_url: ${{ steps.urls.outputs.backend_url }}
-      docs_url: ${{ steps.urls.outputs.docs_url }}
-
-    steps:
-      - name: Google Auth
-        uses: google-github-actions/auth@v3.0.0
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-          service_account: ${{ secrets.GCP_WIF_SA_EMAIL }}
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v3.0.0
-
-      - name: Resolve deployed service URLs
-        id: urls
-        env:
-          DEPLOYED_BACKEND_URL: ${{ needs.deploy-backend.outputs.url }}
-          DEPLOYED_DOCS_URL: ${{ needs.deploy-docs.outputs.url }}
-        run: |
-          backend_url="$DEPLOYED_BACKEND_URL"
-          docs_url="$DEPLOYED_DOCS_URL"
-
-          if [ -z "$backend_url" ]; then
-            backend_url="$(gcloud run services describe "${APP_NAME}-backend" --region "$REGION" --format='value(status.url)')"
-          fi
-
-          if [ -z "$docs_url" ]; then
-            docs_url="$(gcloud run services describe "${APP_NAME}-docs" --region "$REGION" --format='value(status.url)')"
-          fi
-
-          echo "backend_url=$backend_url" >> "$GITHUB_OUTPUT"
-          echo "docs_url=$docs_url" >> "$GITHUB_OUTPUT"
-
   deploy-frontend:
     name: Deploy Frontend
     needs:
       - checks
-      - resolve-frontend-env
-    if: github.event_name != 'workflow_dispatch' || github.event.inputs.target == 'all' || github.event.inputs.target == 'frontend'
+      - deploy-backend
+      - deploy-docs
+    if: always() && (github.event_name != 'workflow_dispatch' || github.event.inputs.target == 'all' || github.event.inputs.target == 'frontend') && (needs.deploy-backend.result == 'success' || needs.deploy-backend.result == 'skipped') && (needs.deploy-docs.result == 'success' || needs.deploy-docs.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -269,6 +228,28 @@ jobs:
       - name: Configure Docker
         run: gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
 
+      - name: Resolve backend and docs URLs
+        id: service_urls
+        env:
+          DEPLOYED_BACKEND_URL: ${{ needs.deploy-backend.outputs.url }}
+          DEPLOYED_DOCS_URL: ${{ needs.deploy-docs.outputs.url }}
+        run: |
+          set -euo pipefail
+
+          backend_url="$DEPLOYED_BACKEND_URL"
+          docs_url="$DEPLOYED_DOCS_URL"
+
+          if [ -z "$backend_url" ]; then
+            backend_url="$(gcloud run services describe "${APP_NAME}-backend" --project "$PROJECT_ID" --region "$REGION" --format='value(status.url)')"
+          fi
+
+          if [ -z "$docs_url" ]; then
+            docs_url="$(gcloud run services describe "${APP_NAME}-docs" --project "$PROJECT_ID" --region "$REGION" --format='value(status.url)')"
+          fi
+
+          echo "backend_url=$backend_url" >> "$GITHUB_OUTPUT"
+          echo "docs_url=$docs_url" >> "$GITHUB_OUTPUT"
+
       - name: Build and Push Frontend Image
         run: |
           docker build \
@@ -290,9 +271,9 @@ jobs:
           # Overwrite drops legacy secret mounts (e.g. app-auth / app-session) that no longer have IAM.
           secrets_update_strategy: overwrite
           env_vars: |
-            BACKEND_API_BASE=${{ needs.resolve-frontend-env.outputs.backend_url }}
-            BACKEND_IDENTITY_AUDIENCE=${{ needs.resolve-frontend-env.outputs.backend_url }}
-            PUBLIC_DOCS_URL=${{ needs.resolve-frontend-env.outputs.docs_url }}
+            BACKEND_API_BASE=${{ steps.service_urls.outputs.backend_url }}
+            BACKEND_IDENTITY_AUDIENCE=${{ steps.service_urls.outputs.backend_url }}
+            PUBLIC_DOCS_URL=${{ steps.service_urls.outputs.docs_url }}
             PUBLIC_CONTACT_EMAIL=${{ vars.CONTACT_EMAIL }}
             ADDRESS_HEADER=X-Forwarded-For
             PUBLIC_FIREBASE_PROJECT_ID=${{ env.PROJECT_ID }}
