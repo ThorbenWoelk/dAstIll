@@ -3,7 +3,7 @@
 ## Current State
 
 The transcript fallback now prefers `yt-dlp -J` caption metadata plus direct `json3` fetches and keeps the legacy subtitle-file path only as backup. Targeted backend transcript tests are passing. Investigation also confirmed that `summarize` can return a cached HTML extraction for these videos when its earlier transcript lookup was cached as unavailable, which is what produced the short `Sup nerds...` snippet.
-Production storage scan found three cached poisoned transcript objects containing the `Sup nerds we got things to discuss.` blurb: `nDU7Mn-XRWI`, `nsqGI1VAYbU`, and `5qA0HessLi4`. A targeted cleanup is in progress to wipe their transcript and summary artifacts and reset Firestore statuses to `pending`.
+Production storage scan found three cached poisoned transcript objects containing the `Sup nerds we got things to discuss.` blurb: `nDU7Mn-XRWI`, `nsqGI1VAYbU`, and `5qA0HessLi4`. The cleanup is complete: no transcript object in S3 contains that snippet anymore, `nsqGI1VAYbU` and `5qA0HessLi4` are reset to missing transcript/summary artifacts with Firestore statuses at `pending`, and `nDU7Mn-XRWI` regenerated a clean transcript while its summary remains `pending`.
 
 ## Steps
 
