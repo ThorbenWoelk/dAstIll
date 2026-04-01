@@ -17,6 +17,7 @@ test.beforeEach(async ({ context, request }) => {
   await context.addInitScript(() => {
     try {
       localStorage.clear();
+      sessionStorage.clear();
     } catch {
       /* ignore */
     }
@@ -32,14 +33,20 @@ test("delete all clears chat history from the sidebar", async ({
   page,
   request,
 }) => {
-  await request.post("/api/chat/conversations", {
-    data: { title: "First thread" },
-  });
-  await request.post("/api/chat/conversations", {
-    data: { title: "Second thread" },
-  });
-
   await page.goto("/chat");
+  await page.waitForTimeout(1500);
+  const newConversationButton = page
+    .getByRole("button", { name: "New", exact: true })
+    .first();
+  await expect(newConversationButton).toBeVisible();
+  await newConversationButton.click();
+  await expect
+    .poll(() => page.getByLabel("Delete conversation").count())
+    .toBe(1);
+  await newConversationButton.click();
+  await expect
+    .poll(() => page.getByLabel("Delete conversation").count())
+    .toBe(2);
 
   const deleteAllButton = page.getByRole("button", {
     name: "Delete all conversations",
@@ -56,6 +63,13 @@ test("delete all clears chat history from the sidebar", async ({
       "Start a new conversation to ask grounded questions about your library.",
     ),
   ).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        sessionStorage.getItem("dastill.chat.ephemeralThreads.v1"),
+      ),
+    )
+    .toBe(null);
   await expect
     .poll(() => new URL(page.url()).searchParams.get("id"))
     .toBe(null);

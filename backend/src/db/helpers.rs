@@ -108,8 +108,8 @@ impl Store {
         key: &str,
         value: &T,
     ) -> Result<(), StoreError> {
-        use flate2::write::GzEncoder;
         use flate2::Compression;
+        use flate2::write::GzEncoder;
         use std::io::Write;
 
         let json = serde_json::to_vec(value)?;

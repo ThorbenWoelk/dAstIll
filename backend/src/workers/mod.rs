@@ -66,7 +66,10 @@ pub async fn populate_fts_index_from_store(state: AppState) {
     };
 
     if !bundle_keys.is_empty() {
-        tracing::info!(bundles = bundle_keys.len(), "FTS hydration: starting bundle-based load");
+        tracing::info!(
+            bundles = bundle_keys.len(),
+            "FTS hydration: starting bundle-based load"
+        );
 
         // Pre-load all videos (hits the 120s cache) and all channels in two bulk fetches
         // instead of one Firestore GET + one S3 GET per video in the loop.
@@ -77,14 +80,13 @@ pub async fn populate_fts_index_from_store(state: AppState) {
                 .into_iter()
                 .map(|v| (v.id.clone(), v))
                 .collect();
-        let channel_map: std::collections::HashMap<String, crate::models::Channel> =
-            store
-                .load_all::<crate::models::Channel>("channels/")
-                .await
-                .unwrap_or_default()
-                .into_iter()
-                .map(|c| (c.id.clone(), c))
-                .collect();
+        let channel_map: std::collections::HashMap<String, crate::models::Channel> = store
+            .load_all::<crate::models::Channel>("channels/")
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|c| (c.id.clone(), c))
+            .collect();
 
         let mut upserted = 0usize;
 
@@ -150,7 +152,11 @@ pub async fn populate_fts_index_from_store(state: AppState) {
         }
 
         let doc_count = state.fts.doc_count().await;
-        tracing::info!(bundles = upserted, doc_count, "FTS hydration (bundled) complete");
+        tracing::info!(
+            bundles = upserted,
+            doc_count,
+            "FTS hydration (bundled) complete"
+        );
         return;
     }
 
@@ -198,14 +204,13 @@ pub async fn populate_fts_index_from_store(state: AppState) {
             .into_iter()
             .map(|v| (v.id.clone(), v))
             .collect();
-    let channel_map: std::collections::HashMap<String, crate::models::Channel> =
-        store
-            .load_all::<crate::models::Channel>("channels/")
-            .await
-            .unwrap_or_default()
-            .into_iter()
-            .map(|c| (c.id.clone(), c))
-            .collect();
+    let channel_map: std::collections::HashMap<String, crate::models::Channel> = store
+        .load_all::<crate::models::Channel>("channels/")
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|c| (c.id.clone(), c))
+        .collect();
 
     let mut upserted = 0usize;
     for ((video_id, source_kind_str), keys) in key_groups {
@@ -268,7 +273,11 @@ pub async fn populate_fts_index_from_store(state: AppState) {
     }
 
     let doc_count = state.fts.doc_count().await;
-    tracing::info!(sources = upserted, doc_count, "FTS hydration (legacy) complete");
+    tracing::info!(
+        sources = upserted,
+        doc_count,
+        "FTS hydration (legacy) complete"
+    );
 }
 
 #[derive(Clone, Copy, Debug)]

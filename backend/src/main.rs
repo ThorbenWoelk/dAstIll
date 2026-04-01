@@ -71,15 +71,13 @@ async fn main() -> anyhow::Result<()> {
         let logfire = logfire::configure().local().finish()?;
         let guard = logfire.clone().shutdown_guard();
 
-        let registry = tracing_subscriber::registry()
-            .with(env_filter)
-            .with(
-                logfire
-                    .tracing_layer()
-                    .with_filter(filter::filter_fn(|metadata| {
-                        should_send_to_logfire(metadata.target())
-                    })),
-            );
+        let registry = tracing_subscriber::registry().with(env_filter).with(
+            logfire
+                .tracing_layer()
+                .with_filter(filter::filter_fn(|metadata| {
+                    should_send_to_logfire(metadata.target())
+                })),
+        );
 
         if is_cloud_run {
             registry

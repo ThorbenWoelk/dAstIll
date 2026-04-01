@@ -621,11 +621,13 @@ pub async fn search_vector_candidates(
         })
         .collect();
 
-    let video_map = super::videos::get_videos(store, &video_ids.into_iter().collect::<Vec<_>>(), false).await?;
+    let video_map =
+        super::videos::get_videos(store, &video_ids.into_iter().collect::<Vec<_>>(), false).await?;
     let mut channel_map: std::collections::HashMap<String, crate::models::Channel> =
         std::collections::HashMap::new();
 
-    let channel_ids: std::collections::HashSet<String> = video_map.values().map(|v| v.channel_id.clone()).collect();
+    let channel_ids: std::collections::HashSet<String> =
+        video_map.values().map(|v| v.channel_id.clone()).collect();
     for cid in channel_ids {
         if !channel_map.contains_key(&cid) {
             if let Some(ch) = store

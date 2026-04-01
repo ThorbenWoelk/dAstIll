@@ -98,7 +98,6 @@ fn subscribed_channel_ids(channels: &[Channel]) -> HashSet<String> {
     channels.iter().map(|channel| channel.id.clone()).collect()
 }
 
-
 pub async fn has_unsubscribed_channel_videos(store: &Store) -> Result<bool, StoreError> {
     let channels = super::channels::list_channels(store).await?;
     let subscribed = subscribed_channel_ids(&channels);
@@ -293,7 +292,11 @@ pub async fn get_oldest_ready_video_published_at(
 ) -> Result<Option<chrono::DateTime<chrono::Utc>>, StoreError> {
     let floor = channel_sync_floor(channel);
     let all = load_all_videos(store).await?;
-    Ok(oldest_ready_video_published_at_from_slice(&all, &channel.id, floor))
+    Ok(oldest_ready_video_published_at_from_slice(
+        &all,
+        &channel.id,
+        floor,
+    ))
 }
 
 pub async fn list_videos_for_queue_processing(
@@ -418,6 +421,5 @@ async fn build_channel_snapshot_data(
         videos: page.videos,
     })
 }
-
 
 include!("frag_02.rs");
