@@ -1,10 +1,12 @@
 use std::process::Command;
 use std::sync::Arc;
 use std::time::Instant;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use thiserror::Error;
 use tokio::sync::Semaphore;
 
+use crate::services::http::build_http_client;
 use crate::services::youtube::placeholder::is_site_wide_placeholder_description;
 
 #[derive(Error, Debug)]
@@ -17,6 +19,8 @@ pub enum TranscriptError {
     RateLimited,
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
+    #[error("HTTP error: {0}")]
+    HttpError(#[from] reqwest::Error),
 }
 
 pub struct TranscriptService {
@@ -55,6 +59,16 @@ impl TranscriptService {
         self
     }
 
+    fn build_summarize_isolated_home(video_id: &str, youtube_mode: &str) -> std::path::PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "summarize-transcript-{video_id}-{youtube_mode}-{stamp}"
+        ))
+    }
+
     /// Extract transcript from a YouTube video using the summarize CLI.
     /// Returns (raw_text, formatted_markdown, timed_segments).
     /// Timed segments are only populated by the yt-dlp fallback path.
@@ -91,8 +105,15 @@ impl TranscriptService {
                 let path = summarize_path.to_string();
                 let url = video_url.to_string();
                 let youtube_mode = youtube_mode.to_string();
+                let isolated_home =
+                    TranscriptService::build_summarize_isolated_home(video_id, &youtube_mode);
                 move || {
-                    Command::new(&path)
+                    let cache_dir = isolated_home.join(".cache");
+                    let config_dir = isolated_home.join(".config");
+                    let _ = std::fs::create_dir_all(&cache_dir);
+                    let _ = std::fs::create_dir_all(&config_dir);
+
+                    let output = Command::new(&path)
                         .arg(&url)
                         .arg("--youtube")
                         .arg(&youtube_mode)
@@ -102,7 +123,13 @@ impl TranscriptService {
                         .arg("--plain")
                         .arg("--firecrawl")
                         .arg("off")
-                        .output()
+                        .env("HOME", &isolated_home)
+                        .env("XDG_CACHE_HOME", &cache_dir)
+                        .env("XDG_CONFIG_HOME", &config_dir)
+                        .output();
+
+                    let _ = std::fs::remove_dir_all(&isolated_home);
+                    output
                 }
             })
             .await
@@ -145,6 +172,9 @@ impl TranscriptService {
         // --plain          strip ANSI/OSC terminal formatting from stdout
         // --firecrawl off  disable web-scraping fallback that silently returns the YouTube
         //                  site-wide og:description blurb when captions are unavailable
+        // summarize can also serve a cached HTML page extraction when its transcript provider
+        // previously resolved as unavailable. That failure mode produces a short first-cue
+        // snippet instead of a real transcript, so we treat tiny outputs as suspect below.
         let raw_auto =
             run_summarize_extract(&self.summarize_path, &video_url, video_id, "auto").await?;
 
@@ -259,13 +289,104 @@ impl TranscriptService {
 
         tracing::info!(video_id = %video_id, "running yt-dlp fallback for transcript");
 
+        if let Some(json3_url) = self.resolve_ytdlp_json3_url(video_id).await? {
+            tracing::info!(video_id = %video_id, "yt-dlp resolved json3 caption URL");
+
+            match self.fetch_json3_from_url(&json3_url).await {
+                Ok(json3_content) => {
+                    if let Some(result) = parse_ytdlp_json3_result(video_id, &json3_content) {
+                        return Ok(result);
+                    }
+                    tracing::warn!(
+                        video_id = %video_id,
+                        "yt-dlp metadata URL returned json3 that parsed to empty transcript - trying legacy subtitle file fallback"
+                    );
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        video_id = %video_id,
+                        error = %err,
+                        "fetching yt-dlp json3 caption URL failed - trying legacy subtitle file fallback"
+                    );
+                }
+            }
+        } else {
+            tracing::info!(
+                video_id = %video_id,
+                "yt-dlp metadata did not expose a json3 caption URL - trying legacy subtitle file fallback"
+            );
+        }
+
+        let json3_content = self.extract_with_ytdlp_subtitle_file(video_id).await?;
+        if let Some(result) = parse_ytdlp_json3_result(video_id, &json3_content) {
+            return Ok(result);
+        }
+
+        tracing::info!(
+            video_id = %video_id,
+            "yt-dlp json3 parsed to empty text after metadata and legacy fallbacks"
+        );
+        Err(TranscriptError::NoTranscript)
+    }
+
+    async fn resolve_ytdlp_json3_url(
+        &self,
+        video_id: &str,
+    ) -> Result<Option<String>, TranscriptError> {
+        let url = format!("https://www.youtube.com/watch?v={video_id}");
+        let ytdlp_path = self.ytdlp_path.clone();
+
+        let output = tokio::task::spawn_blocking(move || {
+            Command::new(&ytdlp_path)
+                .arg("-J")
+                .arg(&url)
+                .arg("--quiet")
+                .arg("--no-warnings")
+                .arg("--ignore-no-formats-error")
+                .arg("--extractor-args")
+                .arg("youtube:player_client=ios")
+                .output()
+        })
+        .await
+        .map_err(|e| TranscriptError::CommandFailed(e.to_string()))??;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            tracing::warn!(
+                video_id = %video_id,
+                status = output.status.code().unwrap_or(-1),
+                error_output = %stderr.trim(),
+                "yt-dlp metadata probe failed"
+            );
+            return Ok(None);
+        }
+
+        let metadata = String::from_utf8_lossy(&output.stdout);
+        Ok(extract_json3_caption_url_from_ytdlp_metadata(&metadata))
+    }
+
+    async fn fetch_json3_from_url(&self, url: &str) -> Result<String, TranscriptError> {
+        let response = build_http_client().get(url).send().await?;
+        if !response.status().is_success() {
+            return Err(TranscriptError::CommandFailed(format!(
+                "json3 caption fetch returned HTTP {}",
+                response.status()
+            )));
+        }
+        Ok(response.text().await?)
+    }
+
+    async fn extract_with_ytdlp_subtitle_file(
+        &self,
+        video_id: &str,
+    ) -> Result<String, TranscriptError> {
         let tmp_dir = std::env::temp_dir().join(format!("ytdlp_{video_id}"));
         let _ = std::fs::create_dir_all(&tmp_dir);
         let output_template = tmp_dir.join("%(id)s").to_string_lossy().to_string();
         let url = format!("https://www.youtube.com/watch?v={video_id}");
         let ytdlp_path = self.ytdlp_path.clone();
 
-        let _ = tokio::task::spawn_blocking({
+        let output = tokio::task::spawn_blocking({
             let url = url.clone();
             let template = output_template.clone();
             move || {
@@ -273,10 +394,11 @@ impl TranscriptService {
                     .arg(&url)
                     .arg("--skip-download")
                     .arg("--write-auto-subs")
-                    .arg("--sub-lang")
-                    .arg("en")
+                    .arg("--sub-langs")
+                    .arg("en.*,en")
                     .arg("--sub-format")
                     .arg("json3")
+                    .arg("--ignore-no-formats-error")
                     .arg("-o")
                     .arg(&template)
                     .arg("--quiet")
@@ -287,7 +409,8 @@ impl TranscriptService {
                     .output()
             }
         })
-        .await;
+        .await
+        .map_err(|e| TranscriptError::CommandFailed(e.to_string()))??;
 
         // Search the tmp dir for any *.json3 file yt-dlp may have written.
         let json3_content = std::fs::read_dir(&tmp_dir)
@@ -307,24 +430,22 @@ impl TranscriptService {
 
         let _ = std::fs::remove_dir_all(&tmp_dir);
 
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            tracing::warn!(
+                video_id = %video_id,
+                status = output.status.code().unwrap_or(-1),
+                error_output = %stderr.trim(),
+                "yt-dlp legacy subtitle-file fallback exited non-zero"
+            );
+        }
+
         if json3_content.trim().is_empty() {
             tracing::info!(video_id = %video_id, "yt-dlp returned no captions");
             return Err(TranscriptError::NoTranscript);
         }
 
-        let (raw, timed) = parse_json3_transcript(&json3_content);
-        if raw.trim().is_empty() {
-            tracing::info!(video_id = %video_id, "yt-dlp json3 parsed to empty text");
-            return Err(TranscriptError::NoTranscript);
-        }
-
-        tracing::info!(
-            video_id = %video_id,
-            bytes = raw.len(),
-            timed_segments = timed.len(),
-            "yt-dlp transcript extracted"
-        );
-        Ok((raw.clone(), raw, timed))
+        Ok(json3_content)
     }
 
     /// Check if summarize CLI is available.
@@ -388,6 +509,73 @@ fn parse_json3_transcript(content: &str) -> (String, Vec<crate::models::TimedSeg
     (plain, timed)
 }
 
+fn parse_ytdlp_json3_result(
+    video_id: &str,
+    json3_content: &str,
+) -> Option<(String, String, Vec<crate::models::TimedSegment>)> {
+    let (raw, timed) = parse_json3_transcript(json3_content);
+    if raw.trim().is_empty() {
+        return None;
+    }
+
+    tracing::info!(
+        video_id = %video_id,
+        bytes = raw.len(),
+        timed_segments = timed.len(),
+        "yt-dlp transcript extracted"
+    );
+    Some((raw.clone(), raw, timed))
+}
+
+fn extract_json3_caption_url_from_ytdlp_metadata(content: &str) -> Option<String> {
+    let value = serde_json::from_str::<serde_json::Value>(content).ok()?;
+
+    find_json3_caption_url_in_track_map(value.get("automatic_captions"))
+        .or_else(|| find_json3_caption_url_in_track_map(value.get("subtitles")))
+}
+
+fn find_json3_caption_url_in_track_map(track_map: Option<&serde_json::Value>) -> Option<String> {
+    let tracks = track_map?.as_object()?;
+
+    let mut preferred_keys = Vec::new();
+    if tracks.contains_key("en-orig") {
+        preferred_keys.push("en-orig".to_string());
+    }
+
+    let mut english_variants = tracks
+        .keys()
+        .filter(|key| key.starts_with("en-") && key.as_str() != "en-orig")
+        .cloned()
+        .collect::<Vec<_>>();
+    english_variants.sort();
+    preferred_keys.extend(english_variants);
+
+    if tracks.contains_key("en") {
+        preferred_keys.push("en".to_string());
+    }
+
+    let mut remaining_keys = tracks
+        .keys()
+        .filter(|key| !preferred_keys.iter().any(|preferred| preferred == *key))
+        .cloned()
+        .collect::<Vec<_>>();
+    remaining_keys.sort();
+    preferred_keys.extend(remaining_keys);
+
+    preferred_keys.into_iter().find_map(|key| {
+        tracks
+            .get(&key)
+            .and_then(|entries| entries.as_array())
+            .and_then(|entries| {
+                entries.iter().find_map(|entry| {
+                    let ext = entry.get("ext").and_then(|value| value.as_str())?;
+                    let url = entry.get("url").and_then(|value| value.as_str())?;
+                    (ext == "json3" && !url.trim().is_empty()).then(|| url.to_string())
+                })
+            })
+    })
+}
+
 /// Heuristic for detecting summarize's `--youtube auto` failure mode.
 ///
 /// Some videos return only a first-cue snippet even when captions exist, which produces
@@ -415,9 +603,12 @@ impl Default for TranscriptService {
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
     use std::os::unix::fs::PermissionsExt;
+    use std::thread;
 
-    use super::TranscriptService;
+    use super::{TranscriptService, extract_json3_caption_url_from_ytdlp_metadata};
     use tempfile::tempdir;
 
     #[tokio::test]
@@ -634,6 +825,9 @@ echo "Enjoy the videos and music you love, upload original content, and share it
 set -eu
 echo "OPENAI_BASE_URL=${OPENAI_BASE_URL:-}"
 echo "OPENAI_API_KEY=${OPENAI_API_KEY:-}"
+echo "HOME=${HOME:-}"
+echo "XDG_CACHE_HOME=${XDG_CACHE_HOME:-}"
+echo "XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-}"
 echo "ARGS=$*"
 "#;
         fs::write(&script_path, script).expect("script should be written");
@@ -659,11 +853,96 @@ echo "ARGS=$*"
         );
         assert!(formatted.contains("OPENAI_BASE_URL="));
         assert!(formatted.contains("OPENAI_API_KEY="));
+        assert!(formatted.contains("HOME=/"));
+        assert!(formatted.contains("XDG_CACHE_HOME=/"));
+        assert!(formatted.contains("XDG_CONFIG_HOME=/"));
         assert!(formatted.contains("ARGS="));
         assert!(!formatted.contains("--markdown-mode"));
         assert!(!formatted.contains("--model"));
         assert!(
             formatted.contains("--youtube auto --extract --format text --plain --firecrawl off")
         );
+    }
+
+    #[test]
+    fn extract_json3_caption_url_prefers_en_orig_then_english_variants() {
+        let metadata = r#"{
+          "automatic_captions": {
+            "fr": [{ "ext": "json3", "url": "https://example.test/fr.json3" }],
+            "en": [{ "ext": "json3", "url": "https://example.test/en.json3" }],
+            "en-orig": [{ "ext": "json3", "url": "https://example.test/en-orig.json3" }],
+            "en-US": [{ "ext": "json3", "url": "https://example.test/en-us.json3" }]
+          }
+        }"#;
+
+        assert_eq!(
+            extract_json3_caption_url_from_ytdlp_metadata(metadata).as_deref(),
+            Some("https://example.test/en-orig.json3")
+        );
+    }
+
+    #[tokio::test]
+    async fn extract_uses_ytdlp_metadata_url_when_subtitle_file_is_not_written() {
+        let dir = tempdir().expect("temp dir should be created");
+
+        let summarize_path = dir.path().join("fake_summarize.sh");
+        let summarize_script = r#"#!/bin/sh
+set -eu
+printf 'Transcript:\nSup nerds we got things to discuss.\n'
+"#;
+        fs::write(&summarize_path, summarize_script).expect("script should be written");
+
+        let ytdlp_path = dir.path().join("fake_ytdlp.sh");
+        let listener = TcpListener::bind("127.0.0.1:0").expect("listener should bind");
+        let addr = listener.local_addr().expect("listener addr should resolve");
+        let json3_body = r#"{
+          "events": [
+            { "tStartMs": 0, "segs": [{ "utf8": "Hello from metadata" }] },
+            { "tStartMs": 1000, "segs": [{ "utf8": "full transcript fallback" }] }
+          ]
+        }"#;
+        let server_body = json3_body.to_string();
+        let server = thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut request_buf = [0_u8; 1024];
+                let _ = stream.read(&mut request_buf);
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    server_body.len(),
+                    server_body
+                );
+                let _ = stream.write_all(response.as_bytes());
+            }
+        });
+        let metadata_url = format!("http://{addr}/captions.json3");
+        let ytdlp_script = format!(
+            "#!/bin/sh\nset -eu\nif [ \"${{1:-}}\" = \"-J\" ]; then\n  printf '%s\\n' '{{\"automatic_captions\":{{\"en-orig\":[{{\"ext\":\"json3\",\"url\":\"{metadata_url}\"}}]}}}}'\n  exit 0\nfi\nexit 0\n"
+        );
+        fs::write(&ytdlp_path, ytdlp_script).expect("yt-dlp script should be written");
+
+        for path in [&summarize_path, &ytdlp_path] {
+            let mut perms = fs::metadata(path)
+                .expect("metadata should be readable")
+                .permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(path, perms).expect("script should be executable");
+        }
+
+        let service = TranscriptService::with_paths(
+            summarize_path
+                .to_str()
+                .expect("summarize path should be utf-8"),
+            ytdlp_path.to_str().expect("yt-dlp path should be utf-8"),
+        );
+
+        let (raw, _formatted, timed) = service
+            .extract("abc123def45")
+            .await
+            .expect("extract should succeed");
+
+        server.join().expect("server thread should join");
+
+        assert_eq!(raw, "Hello from metadata full transcript fallback");
+        assert_eq!(timed.len(), 2);
     }
 }
