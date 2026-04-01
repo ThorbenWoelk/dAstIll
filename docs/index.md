@@ -48,7 +48,7 @@ This site is the technical reference for how the product is structured: the user
 
 ### Product and Runtime
 
-- [UI Tour](/ui-tour) - screenshots and route-level UX summary.
+- [UI Tour](/ui-tour) - visual walkthrough with current desktop and mobile captures.
 - [Runtime Topology](/architecture/runtime-topology) - active processes, startup sequence, and shared runtime state.
 - [Frontend and API](/architecture/frontend-and-api) - Svelte routes, startup flow, and handler boundaries.
 
