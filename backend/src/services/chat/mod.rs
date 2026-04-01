@@ -30,7 +30,7 @@ use crate::models::{
 use crate::services::ollama::OllamaCore;
 use crate::services::search::SearchCandidate;
 use crate::services::text::limit_text;
-use crate::state::AppState;
+use crate::state::{ActiveChatKey, AppState};
 
 use super::chat::recent::{
     execute_recent_library_activity_query, is_explicit_realtime_status_query,
@@ -50,15 +50,10 @@ use super::chat_ranking::{
     count_unique_videos, rank_chat_sources, retrieval_candidate_limit,
 };
 
-
 include!("frag_types_a.rs");
 include!("frag_types_b.rs");
 
-
-
 include!("frag_impl.rs");
-
-
 
 include!("frag_post_a.rs");
 include!("frag_post_b.rs");

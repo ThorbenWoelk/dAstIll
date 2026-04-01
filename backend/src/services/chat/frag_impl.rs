@@ -105,6 +105,7 @@ impl ChatService {
             state,
             conversation,
             conversation_scope_id,
+            active_chat_key,
             prompt,
             should_auto_name,
             deep_research,
@@ -136,6 +137,7 @@ impl ChatService {
                     state,
                     conversation,
                     conversation_scope_id,
+                    active_chat_key,
                     prompt,
                     deep_research,
                     reply_model,
@@ -151,6 +153,7 @@ impl ChatService {
         state: AppState,
         conversation: ChatConversation,
         conversation_scope_id: String,
+        active_chat_key: ActiveChatKey,
         prompt: String,
         deep_research: bool,
         reply_model: String,
@@ -219,7 +222,7 @@ impl ChatService {
                         }
                         active_chat.emit(ChatStreamEvent::Done { message }).await;
                         let mut active_chats = state.active_chats.lock().await;
-                        active_chats.remove(&conversation_id);
+                        active_chats.remove(&active_chat_key);
                         return;
                     }
                     tracing::error!(conversation_id = %conversation_id, error = %error, "chat reply failed");
@@ -245,7 +248,7 @@ impl ChatService {
             }
 
             let mut active_chats = state.active_chats.lock().await;
-            active_chats.remove(&conversation_id);
+            active_chats.remove(&active_chat_key);
         }
         .instrument(span)
         .await;
