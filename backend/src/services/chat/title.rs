@@ -1,5 +1,7 @@
+use super::*;
+
 impl ChatService {
-    async fn generate_and_store_title(
+    pub(super) async fn generate_and_store_title(
         &self,
         state: AppState,
         conversation_scope_id: String,

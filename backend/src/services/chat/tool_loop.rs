@@ -1,5 +1,7 @@
+use super::*;
+
 impl ChatService {
-    async fn run_tool_loop(
+    pub(super) async fn run_tool_loop(
         &self,
         state: &AppState,
         conversation: &ChatConversation,
@@ -249,8 +251,8 @@ impl ChatService {
                     access_context.user_id.as_deref(),
                     query.clone(),
                 )
-                    .await
-                    .map_err(|error| error.to_string())?;
+                .await
+                .map_err(|error| error.to_string())?;
                 let output = result.output.clone();
                 tool_outputs.push(ToolEvidenceRecord {
                     summary: result.summary.clone(),
@@ -278,7 +280,8 @@ impl ChatService {
             PlannedChatToolCall::RecentLibraryActivity(query) => {
                 let query = apply_recent_activity_scope(query.clone(), prompt_scope);
                 let result =
-                    execute_recent_library_activity_query(&state.db, access_context, &query).await?;
+                    execute_recent_library_activity_query(&state.db, access_context, &query)
+                        .await?;
                 let output = result.output.clone();
                 merge_retrieved_sources(
                     gathered_sources,

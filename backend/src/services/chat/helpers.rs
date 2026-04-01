@@ -1,4 +1,6 @@
-async fn finalize_title_generation(
+use super::*;
+
+pub(super) async fn finalize_title_generation(
     state: &AppState,
     conversation_scope_id: &str,
     conversation_id: &str,
@@ -34,7 +36,7 @@ async fn finalize_title_generation(
         .map_err(|error| error.to_string())
 }
 
-async fn persist_assistant_message(
+pub(super) async fn persist_assistant_message(
     state: &AppState,
     conversation_scope_id: &str,
     conversation_id: &str,
@@ -67,7 +69,9 @@ async fn persist_assistant_message(
         .map_err(|error| error.to_string())
 }
 
-fn parse_json_response<T: for<'de> Deserialize<'de>>(response: &str) -> Result<T, String> {
+pub(super) fn parse_json_response<T: for<'de> Deserialize<'de>>(
+    response: &str,
+) -> Result<T, String> {
     serde_json::from_str(response)
         .or_else(|_| {
             let start = response
@@ -81,7 +85,7 @@ fn parse_json_response<T: for<'de> Deserialize<'de>>(response: &str) -> Result<T
         .map_err(|error| error.to_string())
 }
 
-fn sanitize_generated_title(input: &str) -> String {
+pub(super) fn sanitize_generated_title(input: &str) -> String {
     limit_text(
         input
             .trim()
@@ -94,7 +98,7 @@ fn sanitize_generated_title(input: &str) -> String {
     )
 }
 
-fn trim_to_option(input: &str) -> Option<String> {
+pub(super) fn trim_to_option(input: &str) -> Option<String> {
     let trimmed = input.trim();
     if trimmed.is_empty() {
         None
@@ -103,7 +107,7 @@ fn trim_to_option(input: &str) -> Option<String> {
     }
 }
 
-fn generate_chat_id(prefix: &str) -> String {
+pub(super) fn generate_chat_id(prefix: &str) -> String {
     format!(
         "{prefix}_{}_{}",
         Utc::now().timestamp_millis(),
@@ -111,7 +115,7 @@ fn generate_chat_id(prefix: &str) -> String {
     )
 }
 
-fn format_conversation_for_planner(
+pub(super) fn format_conversation_for_planner(
     conversation: &ChatConversation,
     access_context: &crate::security::AccessContext,
     current_prompt: &str,
@@ -134,7 +138,9 @@ fn format_conversation_for_planner(
     )
 }
 
-fn planner_access_constraints(access_context: &crate::security::AccessContext) -> String {
+pub(super) fn planner_access_constraints(
+    access_context: &crate::security::AccessContext,
+) -> String {
     let role = match access_context.access_role {
         crate::security::AccessRole::Operator => "operator",
         crate::security::AccessRole::User => "authenticated_user",
@@ -150,7 +156,7 @@ fn planner_access_constraints(access_context: &crate::security::AccessContext) -
     )
 }
 
-fn format_tool_loop_input(
+pub(super) fn format_tool_loop_input(
     conversation: &ChatConversation,
     access_context: &crate::security::AccessContext,
     current_prompt: &str,
@@ -195,7 +201,7 @@ fn format_tool_loop_input(
     )
 }
 
-async fn filter_mention_scope_for_access(
+pub(super) async fn filter_mention_scope_for_access(
     store: &db::Store,
     access_context: &crate::security::AccessContext,
     mut scope: tools::MentionScope,
@@ -223,7 +229,7 @@ async fn filter_mention_scope_for_access(
     scope
 }
 
-fn filter_search_candidates_for_access(
+pub(super) fn filter_search_candidates_for_access(
     candidates: Vec<SearchCandidate>,
     access_context: &crate::security::AccessContext,
 ) -> Vec<SearchCandidate> {
@@ -239,7 +245,7 @@ fn filter_search_candidates_for_access(
         .collect()
 }
 
-fn can_access_retrieved_source(
+pub(super) fn can_access_retrieved_source(
     access_context: &crate::security::AccessContext,
     source: &RetrievedChatSource,
 ) -> bool {
@@ -250,7 +256,7 @@ fn can_access_retrieved_source(
     )
 }
 
-fn filter_retrieved_sources_for_access(
+pub(super) fn filter_retrieved_sources_for_access(
     sources: Vec<RetrievedChatSource>,
     access_context: &crate::security::AccessContext,
 ) -> Vec<RetrievedChatSource> {
@@ -260,7 +266,7 @@ fn filter_retrieved_sources_for_access(
         .collect()
 }
 
-fn merge_channel_focus_ids(primary: &[String], secondary: &[String]) -> Vec<String> {
+pub(super) fn merge_channel_focus_ids(primary: &[String], secondary: &[String]) -> Vec<String> {
     let mut merged = primary.to_vec();
     for channel_id in secondary {
         if !merged.iter().any(|existing| existing == channel_id) {
@@ -270,7 +276,7 @@ fn merge_channel_focus_ids(primary: &[String], secondary: &[String]) -> Vec<Stri
     merged
 }
 
-fn merge_mention_scope(
+pub(super) fn merge_mention_scope(
     primary: Option<&tools::MentionScope>,
     secondary: &tools::MentionScope,
 ) -> tools::MentionScope {
@@ -287,7 +293,7 @@ fn merge_mention_scope(
     merged
 }
 
-fn filter_batches_to_video_scope(
+pub(super) fn filter_batches_to_video_scope(
     mut batches: Vec<Vec<SearchCandidate>>,
     video_focus_ids: &[String],
 ) -> Vec<Vec<SearchCandidate>> {
@@ -311,7 +317,7 @@ fn filter_batches_to_video_scope(
     batches
 }
 
-fn direct_video_lookup_target<'a>(
+pub(super) fn direct_video_lookup_target<'a>(
     scope: &'a tools::MentionScope,
     query: &tools::SearchLibraryQuery,
 ) -> Option<&'a str> {
@@ -324,7 +330,7 @@ fn direct_video_lookup_target<'a>(
     Some(video_id.as_str())
 }
 
-fn is_direct_video_lookup_request(cleaned_prompt: &str, search_query: &str) -> bool {
+pub(super) fn is_direct_video_lookup_request(cleaned_prompt: &str, search_query: &str) -> bool {
     let meaningful_terms = crate::search_query::meaningful_search_terms(cleaned_prompt);
     if meaningful_terms.is_empty() {
         return true;
@@ -354,7 +360,7 @@ fn is_direct_video_lookup_request(cleaned_prompt: &str, search_query: &str) -> b
         .all(|term| generic_terms.contains(term.as_str()) || title_terms.contains(&term))
 }
 
-fn maybe_direct_recent_activity_tool_call(
+pub(super) fn maybe_direct_recent_activity_tool_call(
     prompt: &str,
     scope: &tools::MentionScope,
 ) -> Option<PlannedChatToolCall> {
@@ -377,7 +383,7 @@ fn maybe_direct_recent_activity_tool_call(
     ))
 }
 
-fn apply_recent_activity_scope(
+pub(super) fn apply_recent_activity_scope(
     mut query: tools::RecentLibraryActivityQuery,
     scope: &tools::MentionScope,
 ) -> tools::RecentLibraryActivityQuery {
@@ -392,7 +398,7 @@ fn apply_recent_activity_scope(
     query
 }
 
-async fn load_direct_video_sources(
+pub(super) async fn load_direct_video_sources(
     store: &db::Store,
     video_id: &str,
     source_kind: Option<crate::services::search::SearchSourceKind>,
@@ -419,7 +425,9 @@ async fn load_direct_video_sources(
     Ok(sources)
 }
 
-fn retrieved_source_from_search_material(material: db::SearchMaterial) -> RetrievedChatSource {
+pub(super) fn retrieved_source_from_search_material(
+    material: db::SearchMaterial,
+) -> RetrievedChatSource {
     let section_title = match material.source_kind {
         crate::services::search::SearchSourceKind::Summary => Some("Full summary".to_string()),
         crate::services::search::SearchSourceKind::Transcript => {
@@ -446,7 +454,7 @@ fn retrieved_source_from_search_material(material: db::SearchMaterial) -> Retrie
     }
 }
 
-fn describe_search_library_query(query: tools::SearchLibraryQuery) -> String {
+pub(super) fn describe_search_library_query(query: tools::SearchLibraryQuery) -> String {
     let source = match query.source_kind {
         Some(crate::services::search::SearchSourceKind::Summary) => Some("summaries"),
         Some(crate::services::search::SearchSourceKind::Transcript) => Some("transcripts"),
@@ -459,7 +467,7 @@ fn describe_search_library_query(query: tools::SearchLibraryQuery) -> String {
     )
 }
 
-fn describe_highlight_lookup_query(query: tools::HighlightLookupQuery) -> String {
+pub(super) fn describe_highlight_lookup_query(query: tools::HighlightLookupQuery) -> String {
     match (&query.query, &query.video_title) {
         (Some(query_text), Some(video_title)) => format!(
             "Look up saved highlights for query \"{}\" in videos matching \"{}\" (limit {})",
@@ -477,7 +485,9 @@ fn describe_highlight_lookup_query(query: tools::HighlightLookupQuery) -> String
     }
 }
 
-fn describe_recent_library_activity_query(query: tools::RecentLibraryActivityQuery) -> String {
+pub(super) fn describe_recent_library_activity_query(
+    query: tools::RecentLibraryActivityQuery,
+) -> String {
     match query.scope {
         tools::RecentLibraryActivityScope::Channel => format!(
             "Review recent library activity for a scoped channel (latest {} videos)",

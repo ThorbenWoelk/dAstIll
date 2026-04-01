@@ -1,3 +1,5 @@
+mod scoped_views;
+
 use std::collections::HashSet;
 
 use crate::models::{Channel, ContentStatus, OTHERS_CHANNEL_ID, OTHERS_CHANNEL_NAME, Video};
@@ -5,6 +7,10 @@ use crate::models::{Channel, ContentStatus, OTHERS_CHANNEL_ID, OTHERS_CHANNEL_NA
 use super::{
     ChannelSnapshotData, ChannelVideoPageData, QueueFilter, Store, StoreError, VideoInsertOutcome,
     WorkspaceBootstrapData,
+};
+pub use scoped_views::{
+    get_user_scoped_video, list_user_scoped_videos_by_channel, load_channel_snapshot_data,
+    load_workspace_bootstrap_data,
 };
 
 pub async fn insert_video(store: &Store, video: &Video) -> Result<VideoInsertOutcome, StoreError> {
@@ -421,5 +427,3 @@ async fn build_channel_snapshot_data(
         videos: page.videos,
     })
 }
-
-include!("frag_02.rs");

@@ -1,5 +1,6 @@
+use super::*;
 
-fn format_search_library_tool_output(
+pub(super) fn format_search_library_tool_output(
     query: &tools::SearchLibraryQuery,
     sources: &[RetrievedChatSource],
 ) -> String {
@@ -31,7 +32,7 @@ fn format_search_library_tool_output(
     )
 }
 
-fn merge_retrieved_sources(
+pub(super) fn merge_retrieved_sources(
     existing: &mut Vec<RetrievedChatSource>,
     new_sources: impl IntoIterator<Item = RetrievedChatSource>,
 ) {
@@ -49,9 +50,6 @@ fn merge_retrieved_sources(
 
 #[cfg(test)]
 mod tests {
-    use super::super::chat_heuristics::{
-        collect_focus_terms, is_attributed_preference_query, recommendation_query_variants,
-    };
     use super::{
         ActiveChatHandle, CHAT_CLASSIFY_TIMEOUT, CHAT_RECENT_ACTIVITY_SOURCE_LIMIT,
         ChatQueryIntent, ChatQueryPlanResponse, ChatRetrievalPlan, ChatService,
@@ -61,6 +59,9 @@ mod tests {
     use crate::models::ChatSource;
     use crate::services::chat::tools::{
         DbInspectOperation, DbInspectTarget, DbInspectToolInput, SearchLibraryToolInput,
+    };
+    use crate::services::chat_heuristics::{
+        collect_focus_terms, is_attributed_preference_query, recommendation_query_variants,
     };
     use crate::services::ollama::{CLOUD_PROMPT_TIMEOUT_SECS, OllamaCore};
     use crate::services::search::SearchSourceKind;

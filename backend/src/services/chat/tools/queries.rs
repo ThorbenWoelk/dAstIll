@@ -1,3 +1,5 @@
+use super::*;
+
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub(crate) struct DbInspectToolInput {
     pub(crate) operation: Option<String>,
@@ -111,11 +113,11 @@ pub(crate) struct MentionScope {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct MentionToken {
-    start: usize,
-    end: usize,
-    trigger: char,
-    text: String,
+pub(super) struct MentionToken {
+    pub(super) start: usize,
+    pub(super) end: usize,
+    pub(super) trigger: char,
+    pub(super) text: String,
 }
 
 impl DbInspectTarget {
@@ -129,7 +131,7 @@ impl DbInspectTarget {
         }
     }
 
-    fn singular(self) -> &'static str {
+    pub(super) fn singular(self) -> &'static str {
         match self {
             Self::Summaries => "summary",
             Self::Transcripts => "transcript",
@@ -138,7 +140,7 @@ impl DbInspectTarget {
         }
     }
 
-    fn plural(self) -> &'static str {
+    pub(super) fn plural(self) -> &'static str {
         match self {
             Self::Summaries => "summaries",
             Self::Transcripts => "transcripts",

@@ -1,5 +1,7 @@
+use super::*;
+
 impl ChatService {
-    async fn run_reply(
+    pub(super) async fn run_reply(
         &self,
         state: AppState,
         conversation: ChatConversation,

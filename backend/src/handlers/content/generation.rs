@@ -1,3 +1,5 @@
+use super::*;
+
 pub async fn update_summary(
     State(state): State<AppState>,
     Path(video_id): Path<String>,
@@ -245,7 +247,7 @@ async fn ensure_summary_internal(
     Ok(summary)
 }
 
-async fn save_manual_transcript_content(
+pub(super) async fn save_manual_transcript_content(
     state: &AppState,
     video_id: &str,
     content: &str,

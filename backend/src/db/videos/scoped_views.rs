@@ -1,3 +1,5 @@
+use super::*;
+
 pub async fn load_channel_snapshot_data(
     store: &Store,
     channel_id: &str,
@@ -7,7 +9,7 @@ pub async fn load_channel_snapshot_data(
     acknowledged: Option<bool>,
     queue_filter: Option<QueueFilter>,
 ) -> Result<Option<ChannelSnapshotData>, StoreError> {
-    let stored_channels = super::channels::list_channels(store).await?;
+    let stored_channels = crate::db::channels::list_channels(store).await?;
     let subscribed = subscribed_channel_ids(&stored_channels);
     let options = VideoListOptions {
         limit,
@@ -118,7 +120,7 @@ pub async fn get_user_scoped_video(
     }
 
     let user_states = match user_id {
-        Some(user_id) => super::list_user_video_states(store, user_id).await?,
+        Some(user_id) => crate::db::list_user_video_states(store, user_id).await?,
         None => std::collections::HashMap::new(),
     };
 
@@ -142,7 +144,7 @@ pub async fn list_user_scoped_videos_by_channel(
     }
 
     let user_states = match user_id {
-        Some(user_id) => super::list_user_video_states(store, user_id).await?,
+        Some(user_id) => crate::db::list_user_video_states(store, user_id).await?,
         None => std::collections::HashMap::new(),
     };
     let allowed_other_video_ids = allowed_other_video_ids

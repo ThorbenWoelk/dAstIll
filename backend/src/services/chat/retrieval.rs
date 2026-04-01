@@ -1,5 +1,7 @@
+use super::*;
+
 impl ChatService {
-    async fn retrieve_sources_with_plan(
+    pub(super) async fn retrieve_sources_with_plan(
         &self,
         state: &AppState,
         access_context: &crate::security::AccessContext,
@@ -153,7 +155,7 @@ impl ChatService {
         .await
     }
 
-    async fn plan_retrieval(
+    pub(super) async fn plan_retrieval(
         &self,
         state: &AppState,
         conversation: &ChatConversation,
@@ -477,21 +479,19 @@ impl ChatService {
                     let query_embedding = crate::services::search::vector_to_json(embedding);
                     for channel_filter in &filters {
                         active_chat.ensure_not_cancelled()?;
-                        semantic_batches.push(
-                            filter_search_candidates_for_access(
-                                db::search_vector_candidates(
-                                    &conn,
-                                    &query_embedding,
-                                    model,
-                                    source_kind,
-                                    *channel_filter,
-                                    candidate_limit,
-                                )
-                                .await
-                                .map_err(|error| error.to_string())?,
-                                access_context,
-                            ),
-                        );
+                        semantic_batches.push(filter_search_candidates_for_access(
+                            db::search_vector_candidates(
+                                &conn,
+                                &query_embedding,
+                                model,
+                                source_kind,
+                                *channel_filter,
+                                candidate_limit,
+                            )
+                            .await
+                            .map_err(|error| error.to_string())?,
+                            access_context,
+                        ));
                     }
                 }
                 semantic_batches
@@ -505,7 +505,7 @@ impl ChatService {
         Ok((keyword_batches, semantic_batches))
     }
 
-    async fn execute_search_library_query(
+    pub(super) async fn execute_search_library_query(
         &self,
         state: &AppState,
         access_context: &crate::security::AccessContext,

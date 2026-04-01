@@ -1,12 +1,27 @@
 mod cloud_models;
 mod constants;
+mod helpers;
 mod intent;
 mod recent;
+mod reply;
+mod retrieval;
+mod service;
+mod status;
+mod streaming;
+mod title;
+mod tool_loop;
 mod tools;
+mod types;
+mod utilities;
 
 pub use cloud_models::{default_chat_cloud_model_id, is_chat_cloud_model_choice};
 pub(crate) use constants::*;
+use helpers::*;
 pub use intent::ChatQueryIntent;
+pub(crate) use status::*;
+pub(crate) use types::*;
+pub use types::{ActiveChatHandle, ChatService, ChatStreamEvent, SpawnReplyJob};
+use utilities::*;
 
 use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
@@ -49,14 +64,3 @@ use super::chat_ranking::{
     accumulate_ranked_candidates, assess_coverage, build_video_observation_inputs,
     count_unique_videos, rank_chat_sources, retrieval_candidate_limit,
 };
-
-include!("frag_types_a.rs");
-include!("frag_types_b.rs");
-include!("frag_impl_service.rs");
-include!("frag_impl_reply.rs");
-include!("frag_impl_tool_loop.rs");
-include!("frag_impl_retrieval.rs");
-include!("frag_impl_streaming.rs");
-include!("frag_impl_title.rs");
-include!("frag_post_a.rs");
-include!("frag_post_b.rs");

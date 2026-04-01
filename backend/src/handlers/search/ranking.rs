@@ -1,4 +1,9 @@
-fn rerank_fts_candidates(candidates: &[SearchCandidate], query: &str) -> Vec<SearchCandidate> {
+use super::*;
+
+pub(super) fn rerank_fts_candidates(
+    candidates: &[SearchCandidate],
+    query: &str,
+) -> Vec<SearchCandidate> {
     let meaningful_terms = meaningful_search_terms(query);
     if candidates.len() <= 1 || meaningful_terms.is_empty() {
         return candidates.to_vec();
@@ -60,7 +65,7 @@ fn rerank_fts_candidates(candidates: &[SearchCandidate], query: &str) -> Vec<Sea
         .collect()
 }
 
-fn group_ranked_candidates(
+pub(super) fn group_ranked_candidates(
     candidates: &[SearchCandidate],
     limit: usize,
 ) -> Vec<SearchVideoResultPayload> {
@@ -133,7 +138,7 @@ fn group_ranked_candidates(
     results
 }
 
-fn group_fts_candidates(
+pub(super) fn group_fts_candidates(
     candidates: &[SearchCandidate],
     limit: usize,
 ) -> Vec<SearchVideoResultPayload> {
@@ -142,7 +147,7 @@ fn group_fts_candidates(
 
 /// Merge vector and FTS candidate lists via RRF, returning a flat deduplicated list
 /// ordered by descending fused score. Used as input to the cross-encoder reranker.
-fn collect_rrf_candidates(
+pub(super) fn collect_rrf_candidates(
     vector_candidates: &[SearchCandidate],
     fts_candidates: &[SearchCandidate],
 ) -> Vec<SearchCandidate> {
@@ -170,7 +175,7 @@ fn collect_rrf_candidates(
         .collect()
 }
 
-fn rank_and_group_candidates(
+pub(super) fn rank_and_group_candidates(
     vector_candidates: &[SearchCandidate],
     fts_candidates: &[SearchCandidate],
     limit: usize,

@@ -1,11 +1,15 @@
+use super::*;
+
 #[derive(Debug, Clone)]
-struct HighlightCandidate<'a> {
-    channel: &'a HighlightChannelGroup,
-    video: &'a HighlightVideoGroup,
-    highlight: &'a Highlight,
+pub(super) struct HighlightCandidate<'a> {
+    pub(super) channel: &'a HighlightChannelGroup,
+    pub(super) video: &'a HighlightVideoGroup,
+    pub(super) highlight: &'a Highlight,
 }
 
-fn flatten_highlight_groups(groups: &[HighlightChannelGroup]) -> Vec<HighlightCandidate<'_>> {
+pub(super) fn flatten_highlight_groups(
+    groups: &[HighlightChannelGroup],
+) -> Vec<HighlightCandidate<'_>> {
     let mut candidates = Vec::new();
     for channel in groups {
         for video in &channel.videos {
@@ -21,7 +25,7 @@ fn flatten_highlight_groups(groups: &[HighlightChannelGroup]) -> Vec<HighlightCa
     candidates
 }
 
-fn matches_highlight_query(
+pub(super) fn matches_highlight_query(
     candidate: &HighlightCandidate<'_>,
     query: &HighlightLookupQuery,
 ) -> bool {
@@ -52,7 +56,7 @@ fn matches_highlight_query(
     title_matches && query_matches
 }
 
-fn highlight_match_score(
+pub(super) fn highlight_match_score(
     candidate: &HighlightCandidate<'_>,
     query: &HighlightLookupQuery,
 ) -> usize {
@@ -90,7 +94,7 @@ fn highlight_match_score(
     score
 }
 
-fn format_highlight_lookup_output(
+pub(super) fn format_highlight_lookup_output(
     query: &HighlightLookupQuery,
     matches: &[HighlightCandidate<'_>],
 ) -> String {
@@ -122,7 +126,7 @@ fn format_highlight_lookup_output(
     lines.join("\n")
 }
 
-fn describe_highlight_lookup_query(query: &HighlightLookupQuery) -> String {
+pub(super) fn describe_highlight_lookup_query(query: &HighlightLookupQuery) -> String {
     format!(
         "Look up saved highlights for {}",
         describe_highlight_lookup_scope(query)
@@ -152,7 +156,7 @@ fn compact_highlight_text(input: &str) -> String {
     }
 }
 
-fn extract_mentions(input: &str) -> Vec<MentionToken> {
+pub(super) fn extract_mentions(input: &str) -> Vec<MentionToken> {
     let mut mentions = Vec::new();
     let mut index = 0;
 
@@ -183,7 +187,7 @@ fn extract_mentions(input: &str) -> Vec<MentionToken> {
     mentions
 }
 
-fn extract_quoted_mention(input: &str, start: usize) -> Option<MentionToken> {
+pub(super) fn extract_quoted_mention(input: &str, start: usize) -> Option<MentionToken> {
     let mut cursor = start + 2;
     while cursor < input.len() {
         let ch = input[cursor..].chars().next()?;
@@ -201,7 +205,7 @@ fn extract_quoted_mention(input: &str, start: usize) -> Option<MentionToken> {
     None
 }
 
-fn extract_braced_mention(input: &str, start: usize) -> Option<MentionToken> {
+pub(super) fn extract_braced_mention(input: &str, start: usize) -> Option<MentionToken> {
     let mut cursor = start + 2;
     while cursor < input.len() {
         let ch = input[cursor..].chars().next()?;
@@ -219,7 +223,7 @@ fn extract_braced_mention(input: &str, start: usize) -> Option<MentionToken> {
     None
 }
 
-fn extract_bare_mention(input: &str, start: usize) -> Option<MentionToken> {
+pub(super) fn extract_bare_mention(input: &str, start: usize) -> Option<MentionToken> {
     let mut cursor = start + 1;
     while cursor < input.len() {
         let ch = input[cursor..].chars().next()?;
@@ -238,7 +242,7 @@ fn extract_bare_mention(input: &str, start: usize) -> Option<MentionToken> {
     })
 }
 
-fn remove_mention_spans(input: &str, mentions: &[MentionToken]) -> String {
+pub(super) fn remove_mention_spans(input: &str, mentions: &[MentionToken]) -> String {
     let mut cleaned = String::with_capacity(input.len());
     let mut cursor = 0;
     for mention in mentions {
@@ -253,7 +257,10 @@ fn remove_mention_spans(input: &str, mentions: &[MentionToken]) -> String {
     cleaned.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-fn resolve_channel_mention<'a>(token: &str, channels: &'a [Channel]) -> Option<&'a Channel> {
+pub(super) fn resolve_channel_mention<'a>(
+    token: &str,
+    channels: &'a [Channel],
+) -> Option<&'a Channel> {
     resolve_unique_match(token, channels, |channel| {
         let mut haystacks = vec![normalize_lookup_key(&channel.name)];
         if let Some(handle) = &channel.handle {
@@ -263,13 +270,13 @@ fn resolve_channel_mention<'a>(token: &str, channels: &'a [Channel]) -> Option<&
     })
 }
 
-fn resolve_video_mention<'a>(token: &str, videos: &'a [Video]) -> Option<&'a Video> {
+pub(super) fn resolve_video_mention<'a>(token: &str, videos: &'a [Video]) -> Option<&'a Video> {
     resolve_unique_match(token, videos, |video| {
         vec![normalize_lookup_key(&video.title)]
     })
 }
 
-fn infer_plain_scope_from_text(
+pub(super) fn infer_plain_scope_from_text(
     input: &str,
     channels: &[Channel],
     videos: &[Video],
@@ -388,7 +395,7 @@ fn lookup_phrase_exists(input: &str, needle: &str) -> bool {
     haystack.contains(&needle)
 }
 
-fn push_unique(values: &mut Vec<String>, value: String) {
+pub(super) fn push_unique(values: &mut Vec<String>, value: String) {
     if !values.iter().any(|existing| existing == &value) {
         values.push(value);
     }
@@ -403,12 +410,12 @@ fn tokenize_query(input: &str) -> Vec<String> {
         .collect()
 }
 
-fn trim_to_option(input: &str) -> Option<String> {
+pub(super) fn trim_to_option(input: &str) -> Option<String> {
     let trimmed = input.trim();
     (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
 
-async fn execute_list_query(
+pub(super) async fn execute_list_query(
     store: &db::Store,
     query: DbInspectQuery,
 ) -> Result<DbInspectResult, db::StoreError> {
@@ -461,7 +468,7 @@ async fn execute_list_query(
     })
 }
 
-fn format_breakdown_by_channel_output(
+pub(super) fn format_breakdown_by_channel_output(
     target: DbInspectTarget,
     counts: &[(String, usize)],
 ) -> String {

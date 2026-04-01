@@ -1,3 +1,5 @@
+use super::*;
+
 impl ChatService {
     pub fn new(core: OllamaCore) -> Self {
         Self {
@@ -82,7 +84,7 @@ impl ChatService {
         }
     }
 
-    fn assistant_generation_meta(
+    pub(super) fn assistant_generation_meta(
         &self,
         reply_model: &str,
         terminal: Option<OllamaStreamStats>,

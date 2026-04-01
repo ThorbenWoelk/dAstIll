@@ -1,3 +1,5 @@
+mod content_processing;
+
 use std::time::Duration;
 
 use reqwest::Client;
@@ -15,6 +17,11 @@ pub const SEARCH_SUMMARY_TARGET_WORDS: usize = 300;
 // Re-export so callers don't need to know about the fusion module.
 pub use crate::services::fusion::SEARCH_RRF_K;
 pub use crate::services::fusion::fuse_ranked_matches;
+use content_processing::limit_error_detail;
+pub use content_processing::{
+    build_embedding_input, chunk_summary_content, chunk_transcript_content, chunk_transcript_timed,
+    extract_keyword_snippet, hash_search_content, truncate_chunk_for_display, vector_to_json,
+};
 const SEARCH_EMBED_BATCH_SIZE: usize = 8;
 const SEARCH_EMBED_REQUEST_TIMEOUT: Duration = Duration::from_secs(90);
 const SEARCH_RERANK_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
@@ -525,5 +532,3 @@ struct HydeRequest<'a> {
 struct HydeResponse {
     response: String,
 }
-
-include!("frag_02.rs");

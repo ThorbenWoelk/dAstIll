@@ -1,3 +1,5 @@
+mod ranking;
+
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
@@ -25,6 +27,7 @@ use crate::services::search::{
 use crate::state::AppState;
 
 use super::map_db_err;
+use ranking::*;
 
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -478,5 +481,3 @@ fn count_title_term_matches(title: &str, terms: &[String]) -> usize {
         .filter(|term| title_terms.contains(*term))
         .count()
 }
-
-include!("frag_02.rs");

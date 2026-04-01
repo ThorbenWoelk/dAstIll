@@ -1,3 +1,5 @@
+mod generation;
+
 use axum::{
     Json,
     extract::{Path, State},
@@ -20,6 +22,9 @@ use crate::services::youtube::placeholder::is_site_wide_placeholder_description;
 use crate::state::AppState;
 
 use super::{evict_video_scope_cache, map_db_err, require_present, require_video};
+pub use generation::update_summary;
+use generation::*;
+pub(crate) use generation::{ensure_summary, ensure_summary_for_queue, ensure_transcript};
 
 pub(crate) const MIN_SUMMARY_QUALITY_SCORE_FOR_ACCEPTANCE: u8 = 7;
 pub(crate) const MAX_SUMMARY_AUTO_REGEN_ATTEMPTS: u8 = 2;
@@ -420,5 +425,3 @@ pub async fn health_ai(State(state): State<AppState>) -> impl IntoResponse {
         .indicator_status(state.cloud_cooldown.is_active(), available);
     Json(crate::models::AiHealthPayload { available, status })
 }
-
-include!("frag_02.rs");

@@ -1,5 +1,7 @@
+use super::*;
+
 impl ChatService {
-    async fn build_answer_grounding_context(
+    pub(super) async fn build_answer_grounding_context(
         &self,
         conversation_id: &str,
         prompt: &str,
@@ -154,7 +156,7 @@ impl ChatService {
         .await
     }
 
-    async fn stream_ollama_reply(
+    pub(super) async fn stream_ollama_reply(
         &self,
         conversation: &ChatConversation,
         grounding_context: String,

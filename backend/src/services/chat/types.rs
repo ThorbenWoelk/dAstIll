@@ -1,26 +1,28 @@
+use super::*;
+
 #[derive(Debug, Clone)]
-struct ToolEvidenceRecord {
-    summary: String,
-    output: String,
+pub(super) struct ToolEvidenceRecord {
+    pub(super) summary: String,
+    pub(super) output: String,
 }
 
 #[derive(Debug, Clone)]
-struct ToolLoopOutcome {
-    conversation_only: bool,
-    rationale: Option<String>,
-    tool_outputs: Vec<ToolEvidenceRecord>,
-    sources: Vec<RetrievedChatSource>,
+pub(super) struct ToolLoopOutcome {
+    pub(super) conversation_only: bool,
+    pub(super) rationale: Option<String>,
+    pub(super) tool_outputs: Vec<ToolEvidenceRecord>,
+    pub(super) sources: Vec<RetrievedChatSource>,
 }
 
 #[derive(Debug, Clone)]
-struct SearchLibraryExecutionResult {
-    summary: String,
-    output: String,
-    sources: Vec<RetrievedChatSource>,
+pub(super) struct SearchLibraryExecutionResult {
+    pub(super) summary: String,
+    pub(super) output: String,
+    pub(super) sources: Vec<RetrievedChatSource>,
 }
 
 impl ChatToolLoopResponse {
-    fn into_step_outcome(self) -> Result<ToolLoopStepOutcome, String> {
+    pub(super) fn into_step_outcome(self) -> Result<ToolLoopStepOutcome, String> {
         let rationale = self.rationale.and_then(|value| trim_to_option(&value));
         let action = self
             .action
@@ -243,11 +245,11 @@ impl ActiveChatHandle {
         self.inner.cancel_tx.send_replace(true);
     }
 
-    fn is_cancelled(&self) -> bool {
+    pub(super) fn is_cancelled(&self) -> bool {
         *self.inner.cancel_tx.borrow()
     }
 
-    fn ensure_not_cancelled(&self) -> Result<(), String> {
+    pub(super) fn ensure_not_cancelled(&self) -> Result<(), String> {
         if self.is_cancelled() {
             Err(cancelled_error())
         } else {
@@ -255,7 +257,7 @@ impl ActiveChatHandle {
         }
     }
 
-    fn subscribe_cancel(&self) -> watch::Receiver<bool> {
+    pub(super) fn subscribe_cancel(&self) -> watch::Receiver<bool> {
         self.inner.cancel_tx.subscribe()
     }
 
@@ -316,11 +318,14 @@ impl Default for ActiveChatHandle {
     }
 }
 
-fn cancelled_error() -> String {
+pub(super) fn cancelled_error() -> String {
     "cancelled".to_string()
 }
 
-async fn await_or_cancel<T, F>(active_chat: &ActiveChatHandle, future: F) -> Result<T, String>
+pub(super) async fn await_or_cancel<T, F>(
+    active_chat: &ActiveChatHandle,
+    future: F,
+) -> Result<T, String>
 where
     F: Future<Output = T>,
 {
@@ -341,21 +346,21 @@ where
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct RetrievedChatSource {
-    pub(super) source: ChatSource,
-    pub(super) context_text: String,
+pub(crate) struct RetrievedChatSource {
+    pub(crate) source: ChatSource,
+    pub(crate) context_text: String,
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct AccumulatedSearchCandidate {
-    pub(super) candidate: SearchCandidate,
-    pub(super) keyword_score: f32,
-    pub(super) semantic_score: f32,
-    pub(super) retrieval_pass: usize,
+pub(crate) struct AccumulatedSearchCandidate {
+    pub(crate) candidate: SearchCandidate,
+    pub(crate) keyword_score: f32,
+    pub(crate) semantic_score: f32,
+    pub(crate) retrieval_pass: usize,
 }
 
 impl AccumulatedSearchCandidate {
-    pub(super) fn combined_score(&self) -> f32 {
+    pub(crate) fn combined_score(&self) -> f32 {
         match (self.keyword_score > 0.0, self.semantic_score > 0.0) {
             (true, true) => self.keyword_score + self.semantic_score,
             (true, false) => self.keyword_score,
@@ -366,91 +371,91 @@ impl AccumulatedSearchCandidate {
 }
 
 #[derive(Debug, Clone)]
-struct RetrievalPassOutcome {
-    sources: Vec<RetrievedChatSource>,
-    assessment: CoverageAssessment,
+pub(super) struct RetrievalPassOutcome {
+    pub(super) sources: Vec<RetrievedChatSource>,
+    pub(super) assessment: CoverageAssessment,
 }
 
 #[derive(Clone, Copy)]
-struct RetrievalPassRequest<'a> {
-    conversation_id: &'a str,
-    plan: &'a ChatRetrievalPlan,
-    access_context: &'a crate::security::AccessContext,
-    pass: usize,
-    queries: &'a [String],
-    channel_focus_ids: &'a [String],
-    video_focus_ids: &'a [String],
-    active_chat: &'a ActiveChatHandle,
+pub(super) struct RetrievalPassRequest<'a> {
+    pub(super) conversation_id: &'a str,
+    pub(super) plan: &'a ChatRetrievalPlan,
+    pub(super) access_context: &'a crate::security::AccessContext,
+    pub(super) pass: usize,
+    pub(super) queries: &'a [String],
+    pub(super) channel_focus_ids: &'a [String],
+    pub(super) video_focus_ids: &'a [String],
+    pub(super) active_chat: &'a ActiveChatHandle,
 }
 
-struct ToolCallExecutionRequest<'a> {
-    state: &'a AppState,
-    call: PlannedChatToolCall,
-    access_context: &'a crate::security::AccessContext,
-    prompt_scope: &'a tools::MentionScope,
-    rationale: Option<&'a str>,
-    tool_outputs: &'a mut Vec<ToolEvidenceRecord>,
-    gathered_sources: &'a mut Vec<RetrievedChatSource>,
-    active_chat: &'a ActiveChatHandle,
+pub(super) struct ToolCallExecutionRequest<'a> {
+    pub(super) state: &'a AppState,
+    pub(super) call: PlannedChatToolCall,
+    pub(super) access_context: &'a crate::security::AccessContext,
+    pub(super) prompt_scope: &'a tools::MentionScope,
+    pub(super) rationale: Option<&'a str>,
+    pub(super) tool_outputs: &'a mut Vec<ToolEvidenceRecord>,
+    pub(super) gathered_sources: &'a mut Vec<RetrievedChatSource>,
+    pub(super) active_chat: &'a ActiveChatHandle,
 }
 
-struct RetrievalCandidateRequest<'a> {
-    state: &'a AppState,
-    access_context: &'a crate::security::AccessContext,
-    queries: &'a [String],
-    candidate_limit: usize,
-    channel_focus_ids: &'a [String],
-    video_focus_ids: &'a [String],
-    source_kind: Option<crate::services::search::SearchSourceKind>,
-    active_chat: &'a ActiveChatHandle,
-}
-
-#[derive(Debug, Clone)]
-pub(super) struct CoverageAssessment {
-    pub(super) needs_more: bool,
-    pub(super) reason: Option<String>,
-    pub(super) channel_focus_ids: Vec<String>,
+pub(super) struct RetrievalCandidateRequest<'a> {
+    pub(super) state: &'a AppState,
+    pub(super) access_context: &'a crate::security::AccessContext,
+    pub(super) queries: &'a [String],
+    pub(super) candidate_limit: usize,
+    pub(super) channel_focus_ids: &'a [String],
+    pub(super) video_focus_ids: &'a [String],
+    pub(super) source_kind: Option<crate::services::search::SearchSourceKind>,
+    pub(super) active_chat: &'a ActiveChatHandle,
 }
 
 #[derive(Debug, Clone)]
-struct ChatRetrievalOutcome {
-    plan: ChatRetrievalPlan,
-    sources: Vec<RetrievedChatSource>,
+pub(crate) struct CoverageAssessment {
+    pub(crate) needs_more: bool,
+    pub(crate) reason: Option<String>,
+    pub(crate) channel_focus_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct VideoObservation {
-    pub(super) video_title: String,
-    pub(super) channel_name: String,
-    pub(super) summary: String,
+pub(super) struct ChatRetrievalOutcome {
+    pub(super) plan: ChatRetrievalPlan,
+    pub(super) sources: Vec<RetrievedChatSource>,
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct VideoObservationInput {
-    pub(super) video_id: String,
-    pub(super) video_title: String,
-    pub(super) channel_name: String,
-    pub(super) excerpts: Vec<RetrievedChatSource>,
+pub(crate) struct VideoObservation {
+    pub(crate) video_title: String,
+    pub(crate) channel_name: String,
+    pub(crate) summary: String,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct VideoObservationInput {
+    pub(crate) video_id: String,
+    pub(crate) video_title: String,
+    pub(crate) channel_name: String,
+    pub(crate) excerpts: Vec<RetrievedChatSource>,
 }
 
 #[derive(Debug, Deserialize)]
-struct OllamaChatResponse {
-    message: Option<OllamaChatMessage>,
-    done: bool,
-    error: Option<String>,
+pub(super) struct OllamaChatResponse {
+    pub(super) message: Option<OllamaChatMessage>,
+    pub(super) done: bool,
+    pub(super) error: Option<String>,
     #[serde(default)]
-    prompt_eval_count: Option<u64>,
+    pub(super) prompt_eval_count: Option<u64>,
     #[serde(default)]
-    eval_count: Option<u64>,
+    pub(super) eval_count: Option<u64>,
     #[serde(default)]
-    total_duration: Option<u64>,
+    pub(super) total_duration: Option<u64>,
 }
 
 #[derive(Debug, Clone)]
-struct OllamaStreamStats {
-    prompt_eval_count: Option<u64>,
-    eval_count: Option<u64>,
-    total_duration_ns: Option<u64>,
+pub(super) struct OllamaStreamStats {
+    pub(super) prompt_eval_count: Option<u64>,
+    pub(super) eval_count: Option<u64>,
+    pub(super) total_duration_ns: Option<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -462,21 +467,21 @@ pub(crate) struct GenerationMeta {
 }
 
 #[derive(Debug, Deserialize)]
-struct OllamaChatMessage {
-    content: String,
-}
-
-#[derive(Debug, Serialize)]
-struct OllamaChatRequest {
-    model: String,
-    messages: Vec<OllamaRequestMessage>,
-    stream: bool,
-}
-
-#[derive(Debug, Serialize)]
-pub(super) struct OllamaRequestMessage {
-    pub(super) role: String,
+pub(super) struct OllamaChatMessage {
     pub(super) content: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(super) struct OllamaChatRequest {
+    pub(super) model: String,
+    pub(super) messages: Vec<OllamaRequestMessage>,
+    pub(super) stream: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct OllamaRequestMessage {
+    pub(crate) role: String,
+    pub(crate) content: String,
 }
 
 /// Inputs for [`ChatService::spawn_reply`], grouped to stay within `clippy::too_many_arguments`.
@@ -497,6 +502,6 @@ pub struct SpawnReplyJob {
 
 #[derive(Clone)]
 pub struct ChatService {
-    core: OllamaCore,
-    multi_pass_enabled: bool,
+    pub(super) core: OllamaCore,
+    pub(super) multi_pass_enabled: bool,
 }

@@ -1,5 +1,7 @@
+use super::*;
+
 #[derive(Debug, Clone, Serialize)]
-struct ChatRetrievalPlanVisibility {
+pub(super) struct ChatRetrievalPlanVisibility {
     intent: ChatQueryIntent,
     label: String,
     budget: usize,
@@ -25,7 +27,7 @@ pub struct ChatToolStatusPayload {
 }
 
 impl ChatToolStatusPayload {
-    fn new(
+    pub(super) fn new(
         name: impl Into<String>,
         label: impl Into<String>,
         state: impl Into<String>,
@@ -40,7 +42,7 @@ impl ChatToolStatusPayload {
         }
     }
 
-    fn with_output(mut self, output: impl Into<String>) -> Self {
+    pub(super) fn with_output(mut self, output: impl Into<String>) -> Self {
         self.output = Some(output.into());
         self
     }
@@ -62,7 +64,7 @@ pub struct ChatStatusPayload {
 }
 
 impl ChatStatusPayload {
-    fn new(stage: impl Into<String>, label: impl Into<String>) -> Self {
+    pub(super) fn new(stage: impl Into<String>, label: impl Into<String>) -> Self {
         Self {
             stage: stage.into(),
             label: Some(label.into()),
@@ -73,48 +75,48 @@ impl ChatStatusPayload {
         }
     }
 
-    fn with_detail(mut self, detail: impl Into<String>) -> Self {
+    pub(super) fn with_detail(mut self, detail: impl Into<String>) -> Self {
         self.detail = Some(detail.into());
         self
     }
 
-    fn with_decision(mut self, decision: impl Into<String>) -> Self {
+    pub(super) fn with_decision(mut self, decision: impl Into<String>) -> Self {
         self.decision = Some(decision.into());
         self
     }
 
-    fn with_plan(mut self, plan: ChatRetrievalPlanVisibility) -> Self {
+    pub(super) fn with_plan(mut self, plan: ChatRetrievalPlanVisibility) -> Self {
         self.plan = Some(plan);
         self
     }
 
-    fn with_tool(mut self, tool: ChatToolStatusPayload) -> Self {
+    pub(super) fn with_tool(mut self, tool: ChatToolStatusPayload) -> Self {
         self.tool = Some(tool);
         self
     }
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct ChatRetrievalPlan {
-    pub(super) intent: ChatQueryIntent,
-    pub(super) label: String,
-    pub(super) budget: usize,
-    pub(super) max_per_video: usize,
-    pub(super) queries: Vec<String>,
-    pub(super) expansion_queries: Vec<String>,
-    pub(super) focus_terms: Vec<String>,
-    pub(super) channel_focus_ids: Vec<String>,
-    pub(super) video_focus_ids: Vec<String>,
-    pub(super) attributed_preference: bool,
-    pub(super) rationale: Option<String>,
+pub(crate) struct ChatRetrievalPlan {
+    pub(crate) intent: ChatQueryIntent,
+    pub(crate) label: String,
+    pub(crate) budget: usize,
+    pub(crate) max_per_video: usize,
+    pub(crate) queries: Vec<String>,
+    pub(crate) expansion_queries: Vec<String>,
+    pub(crate) focus_terms: Vec<String>,
+    pub(crate) channel_focus_ids: Vec<String>,
+    pub(crate) video_focus_ids: Vec<String>,
+    pub(crate) attributed_preference: bool,
+    pub(crate) rationale: Option<String>,
     /// When true, retrieval is skipped and the model answers from conversation history only.
-    pub(super) skip_retrieval: bool,
+    pub(crate) skip_retrieval: bool,
     /// User requested maximum library coverage for this turn.
-    pub(super) deep_research: bool,
+    pub(crate) deep_research: bool,
 }
 
 impl ChatRetrievalPlan {
-    fn fallback(prompt: &str, rationale: Option<String>) -> Self {
+    pub(super) fn fallback(prompt: &str, rationale: Option<String>) -> Self {
         let attributed_preference = is_attributed_preference_query(prompt);
         let recent_activity =
             is_recent_activity_query(prompt) && !is_explicit_realtime_status_query(prompt);
@@ -148,7 +150,7 @@ impl ChatRetrievalPlan {
         }
     }
 
-    fn from_response(prompt: &str, response: ChatQueryPlanResponse) -> Self {
+    pub(super) fn from_response(prompt: &str, response: ChatQueryPlanResponse) -> Self {
         let planner_intent = response
             .intent
             .as_deref()
@@ -233,7 +235,7 @@ impl ChatRetrievalPlan {
         }
     }
 
-    fn visibility(&self) -> ChatRetrievalPlanVisibility {
+    pub(super) fn visibility(&self) -> ChatRetrievalPlanVisibility {
         ChatRetrievalPlanVisibility {
             intent: self.intent,
             label: self.label.clone(),
@@ -247,7 +249,7 @@ impl ChatRetrievalPlan {
         }
     }
 
-    fn apply_scope(&mut self, scope: &tools::MentionScope) {
+    pub(super) fn apply_scope(&mut self, scope: &tools::MentionScope) {
         if !scope.has_scope() {
             return;
         }
@@ -337,7 +339,7 @@ impl ChatRetrievalPlan {
         });
     }
 
-    fn queries_for_pass(&self, pass: usize) -> Vec<String> {
+    pub(super) fn queries_for_pass(&self, pass: usize) -> Vec<String> {
         let cap = self.queries_per_pass_cap();
         match pass {
             1 => self.queries.clone(),
@@ -372,7 +374,7 @@ impl ChatRetrievalPlan {
         }
     }
 
-    pub(super) fn supports_second_pass(&self) -> bool {
+    pub(crate) fn supports_second_pass(&self) -> bool {
         !self.queries_for_pass(2).is_empty()
     }
 
@@ -392,39 +394,39 @@ impl ChatRetrievalPlan {
 }
 
 #[derive(Debug, Deserialize)]
-struct ChatQueryPlanResponse {
-    needs_retrieval: Option<bool>,
-    intent: Option<String>,
-    rationale: Option<String>,
-    sub_queries: Option<Vec<String>>,
-    expansion_queries: Option<Vec<String>>,
+pub(super) struct ChatQueryPlanResponse {
+    pub(super) needs_retrieval: Option<bool>,
+    pub(super) intent: Option<String>,
+    pub(super) rationale: Option<String>,
+    pub(super) sub_queries: Option<Vec<String>>,
+    pub(super) expansion_queries: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
-struct ChatToolLoopResponse {
-    action: Option<String>,
-    rationale: Option<String>,
-    tool_name: Option<String>,
-    search_library_input: Option<tools::SearchLibraryToolInput>,
-    db_inspect_input: Option<tools::DbInspectToolInput>,
-    highlight_lookup_input: Option<tools::HighlightLookupToolInput>,
-    recent_library_activity_input: Option<tools::RecentLibraryActivityToolInput>,
+pub(super) struct ChatToolLoopResponse {
+    pub(super) action: Option<String>,
+    pub(super) rationale: Option<String>,
+    pub(super) tool_name: Option<String>,
+    pub(super) search_library_input: Option<tools::SearchLibraryToolInput>,
+    pub(super) db_inspect_input: Option<tools::DbInspectToolInput>,
+    pub(super) highlight_lookup_input: Option<tools::HighlightLookupToolInput>,
+    pub(super) recent_library_activity_input: Option<tools::RecentLibraryActivityToolInput>,
 }
 
 #[derive(Debug)]
-struct ToolLoopStepOutcome {
-    action: ToolLoopAction,
-    rationale: Option<String>,
+pub(super) struct ToolLoopStepOutcome {
+    pub(super) action: ToolLoopAction,
+    pub(super) rationale: Option<String>,
 }
 
 #[derive(Debug)]
-enum ToolLoopAction {
+pub(super) enum ToolLoopAction {
     Respond,
     ToolCall(PlannedChatToolCall),
 }
 
 #[derive(Debug, Clone)]
-enum PlannedChatToolCall {
+pub(super) enum PlannedChatToolCall {
     SearchLibrary(tools::SearchLibraryQuery),
     DbInspect(tools::DbInspectQuery),
     HighlightLookup(tools::HighlightLookupQuery),
@@ -432,7 +434,7 @@ enum PlannedChatToolCall {
 }
 
 impl PlannedChatToolCall {
-    fn tool_name(&self) -> &'static str {
+    pub(super) fn tool_name(&self) -> &'static str {
         match self {
             Self::SearchLibrary(_) => "search_library",
             Self::DbInspect(_) => "db_inspect",
@@ -441,7 +443,7 @@ impl PlannedChatToolCall {
         }
     }
 
-    fn label(&self) -> &'static str {
+    pub(super) fn label(&self) -> &'static str {
         match self {
             Self::SearchLibrary(_) => "Library search",
             Self::DbInspect(_) => "Database lookup",
@@ -450,7 +452,7 @@ impl PlannedChatToolCall {
         }
     }
 
-    fn input_summary(&self) -> String {
+    pub(super) fn input_summary(&self) -> String {
         match self {
             Self::SearchLibrary(query) => describe_search_library_query(query.clone()),
             Self::DbInspect(query) => tools::describe_db_inspect_query(*query),

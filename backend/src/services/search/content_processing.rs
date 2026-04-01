@@ -1,3 +1,5 @@
+use super::*;
+
 pub fn hash_search_content(content: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(content.trim().as_bytes());
@@ -429,7 +431,7 @@ fn limit_snippet(text: &str) -> String {
     }
 }
 
-fn limit_error_detail(text: &str) -> String {
+pub(super) fn limit_error_detail(text: &str) -> String {
     let collapsed = text.split_whitespace().collect::<Vec<_>>().join(" ");
     let truncated = limit_text_base(&collapsed, MAX_ERROR_DETAIL_CHARS);
     if collapsed.chars().count() > MAX_ERROR_DETAIL_CHARS {
