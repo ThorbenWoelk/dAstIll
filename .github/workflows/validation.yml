@@ -10,10 +10,24 @@ on:
   workflow_dispatch:
 
 jobs:
+  repo-hygiene:
+    name: Repo Hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+
+      - name: Check forbidden tracked artifacts
+        run: ./scripts/check_forbidden_artifacts.sh
+
   backend:
     name: Backend
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    needs:
+      - repo-hygiene
 
     steps:
       - name: Checkout
@@ -41,6 +55,8 @@ jobs:
     name: Frontend
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    needs:
+      - repo-hygiene
 
     steps:
       - name: Checkout
@@ -77,6 +93,8 @@ jobs:
     name: Docs
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    needs:
+      - repo-hygiene
 
     steps:
       - name: Checkout

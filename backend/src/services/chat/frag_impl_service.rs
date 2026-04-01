@@ -104,6 +104,7 @@ impl ChatService {
         let SpawnReplyJob {
             state,
             conversation,
+            access_context,
             conversation_scope_id,
             active_chat_key,
             prompt,
@@ -136,6 +137,7 @@ impl ChatService {
                 .run_reply(
                     state,
                     conversation,
+                    access_context,
                     conversation_scope_id,
                     active_chat_key,
                     prompt,

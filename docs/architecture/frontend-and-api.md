@@ -12,8 +12,8 @@ The SvelteKit app currently exposes the following top-level product routes:
 | `/chat`           | RAG conversations with video content                                    |
 | `/vocabulary`     | Manage custom word replacements for summaries                           |
 | `/channels/[id]`  | Channel overview and channel-scoped operations                          |
-| `/login`          | Operator sign-in                                                        |
-| `/logout`         | Operator sign-out                                                       |
+| `/login`          | Firebase sign-in and guest continuation                                 |
+| `/logout`         | Session sign-out                                                        |
 
 ## Main Workspace Behavior
 
@@ -95,6 +95,7 @@ This endpoint is useful for combined consumers and tests. The product frontend l
 - stream AI responses via server-sent events
 - cancel in-progress message generation
 - reconnect to ongoing streams
+- signed-in users use persistent conversations; signed-out visitors use the ephemeral chat path
 
 ### Analytics
 

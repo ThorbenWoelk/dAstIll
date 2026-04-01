@@ -41,8 +41,42 @@ wait_for_http() {
 	return 1
 }
 
+read_env_file_value() {
+	local env_file=$1
+	local key=$2
+
+	if [[ ! -f "$env_file" ]]; then
+		return 0
+	fi
+
+	grep -E "^${key}=" "$env_file" | head -n1 | cut -d= -f2-
+}
+
 start_backend() {
 	pushd backend >/dev/null
+	local summary_model="${OLLAMA_SUMMARY_MODEL:-}"
+	if [[ -z "$summary_model" ]]; then
+		summary_model=$(read_env_file_value ".env" "OLLAMA_SUMMARY_MODEL")
+	fi
+	if [[ -z "$summary_model" ]]; then
+		summary_model=$(read_env_file_value ".env" "OLLAMA_MODEL")
+	fi
+
+	local default_chat_model="${OLLAMA_DEFAULT_CHAT_MODEL:-}"
+	if [[ -z "$default_chat_model" ]]; then
+		default_chat_model=$(read_env_file_value ".env" "OLLAMA_DEFAULT_CHAT_MODEL")
+	fi
+	if [[ -z "$default_chat_model" ]]; then
+		default_chat_model=$(read_env_file_value ".env" "OLLAMA_CHAT_MODEL")
+	fi
+
+	if [[ -n "$summary_model" ]]; then
+		export OLLAMA_SUMMARY_MODEL="$summary_model"
+	fi
+	if [[ -n "$default_chat_model" ]]; then
+		export OLLAMA_DEFAULT_CHAT_MODEL="$default_chat_model"
+	fi
+
 	PORT=$backend_port cargo run --bin dastill > >(tee ../backend.log) 2>&1 &
 	backend_pid=$!
 	popd >/dev/null
@@ -96,7 +130,7 @@ check_ollama_models() {
 		exit 1
 	}
 
-	local model_vars=(OLLAMA_MODEL OLLAMA_FALLBACK_MODEL SUMMARY_EVALUATOR_MODEL OLLAMA_EMBEDDING_MODEL)
+	local model_vars=(OLLAMA_SUMMARY_MODEL OLLAMA_DEFAULT_CHAT_MODEL OLLAMA_FALLBACK_MODEL SUMMARY_EVALUATOR_MODEL OLLAMA_EMBEDDING_MODEL)
 	local missing=()
 	local verified=0
 

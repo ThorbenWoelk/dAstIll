@@ -6,6 +6,10 @@
 **/.terraform/
 *.tfstate
 *.tfstate.*
+*.tfplan
+*.tfplan.*
+tfplan
+tfplan-*
 terraform.tfvars
 *.tfvars
 *.tfvars.json
@@ -22,6 +26,7 @@ backend/target/
 **/__pycache__/
 **/*.pyc
 backend/backend-sa-key.json
+backend/backend-wif-token.jwt
 
 # Frontend
 frontend/node_modules/

@@ -30,9 +30,9 @@ dAstIll is a YouTube channel monitoring tool that helps you stop doom-scrolling 
 - Built with **Rust + Axum** in `backend/`
 - Owns:
   - HTTP API
-  - AWS S3 persistence for canonical data
+  - AWS S3 persistence for canonical data and most user-scoped library records
   - AWS S3 Vectors for semantic search embeddings
-  - Google Firestore for user preferences and statistics
+  - Google Firestore for user preferences and TTS statistics
   - runtime config
   - AI service adapters
   - all long-running worker loops
@@ -46,10 +46,10 @@ dAstIll is a YouTube channel monitoring tool that helps you stop doom-scrolling 
 ### Infrastructure
 
 - **Terraform** in `terraform/`
-- **Cloud Run** services for backend and product frontend
+- **Cloud Run** services for backend, product frontend, and docs frontend
 - **AWS S3** for data storage
 - **AWS S3 Vectors** for semantic search
-- **Google Firestore** for user preferences and statistics
+- **Google Firestore** for user preferences and TTS statistics
 - **AWS IAM** with GCP Workload Identity Federation for cross-cloud auth
 - **Secret Manager** for API keys and sensitive runtime config (YouTube API key, Logfire token, Firebase client secrets)
 
@@ -60,6 +60,7 @@ frontend/  -> user-facing app interface
 backend/   -> API, jobs, storage, AI orchestration
 docs/      -> technical documentation frontend
 terraform/ -> infrastructure state and service definitions
+.specs/    -> persistent specs and task trackers
 ```
 
 ## Architectural Style
@@ -88,4 +89,4 @@ The runtime supports local Ollama endpoints, cloud-backed model names, and expli
 
 ### Semantic search is deployment-sensitive
 
-Local debug runs default semantic search on. Release / production builds default semantic search off unless explicitly enabled. The default embedding model is **embeddinggemma:latest** for generating vector embeddings via Ollama.
+Local debug runs default semantic search on. Release / production builds default semantic search off unless explicitly enabled. When semantic search is on, the backend reads the embedding model from `OLLAMA_EMBEDDING_MODEL`.

@@ -10,7 +10,7 @@ The current product UI is organized into route-level experiences centered on:
 - chat (`/chat`)
 - vocabulary (`/vocabulary`)
 - channel overview (`/channels/[id]`)
-- operator auth entrypoints (`/login`, `/logout`)
+- sign-in entrypoints (`/login`, `/logout`)
 
 ## Main Workspace
 
@@ -49,7 +49,7 @@ The chat route enables RAG conversations with your video content:
 - receive AI responses grounded in retrieved source chunks
 - view source attribution for each response
 
-Anonymous visitors can use chat with limits in place, while operator sign-in unlocks admin-only actions such as destructive management.
+Anonymous visitors can use chat with limits in place. Signed-in users get persistent conversations and other user-scoped surfaces, while operator-only actions depend on the frontend server's email allowlist.
 
 Chat uses the semantic search index to find relevant content before generating responses.
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-Cutover is operationally complete in `dastill`. Cloud Run, Firebase, secrets, and the app runtime all point at the new project. The remaining repo-side work is keeping the `Release` workflow healthy so frontend redeploys continue to inject the backend/docs Cloud Run URLs correctly after GitHub masked the earlier cross-job URL outputs.
+Cutover is operationally complete in `dastill`. Cloud Run, Firebase, secrets, and the app runtime all point at the new project; the `Release` workflow already picked up the frontend URL fix; and the last migration regression, broken Firebase Google sign-in caused by an old-project OAuth client, is fixed live and captured in repo config through `frontend/firebase.json` plus the release workflow's Firebase Auth deploy step. One migration cleanup item is still open: Terraform still owns the Firestore single-field exemption resources in `uplifted-water-273221` because those resources never pinned the project argument explicitly.
 
 ## Problem
 
@@ -33,6 +33,8 @@ Make the repo ready to run from the `dastill` GCP project, with Terraform, GitHu
 - Firestore location should be explicit because database location is effectively permanent once created.
 - AWS resources are global/account-scoped and currently keyed by `app_name`, not `project_id`. That makes them a migration dependency even though the user only asked for a GCP project move.
 - The old Firestore export came from a shared database. That means cutover needs either collection-scoped migration or a post-import cleanup pass so `dastill` only keeps `dAstIll` collections.
+- Firebase Google sign-in is not just a generic OAuth client wiring problem. Reusing the old project's client breaks the Google redirect in the new project, and Terraform's generic IAM OAuth client resources do not create the same kind of Firebase web client that Google sign-in expects.
+- Some Firestore resources, especially `google_firestore_field`, need `project = var.project_id` explicitly. Otherwise Terraform can keep targeting the old project from state even after the database resource itself has moved.
 
 ## Resolved Outcomes
 
@@ -42,3 +44,5 @@ Make the repo ready to run from the `dastill` GCP project, with Terraform, GitHu
 - The shared old project remains active because it hosts unrelated workloads.
 - `dastill` has been trimmed back to only `dastill_preferences`, `dastill_tts_stats`, and `dastill_videos` after the initial whole-export import brought along unrelated shared collections.
 - The release workflow now resolves backend/docs service URLs inside the `deploy-frontend` job instead of publishing them as job outputs, preventing GitHub Actions from blanking the frontend `BACKEND_API_BASE`, `BACKEND_IDENTITY_AUDIENCE`, and `PUBLIC_DOCS_URL` env vars on deploy.
+- Firebase Google sign-in in `dastill` now uses a valid project-local `apps.googleusercontent.com` client again. The source of truth is `frontend/firebase.json`, deployed with `firebase deploy --only auth`, instead of Terraform-managed OAuth client credentials copied from another project.
+- A post-cutover Terraform audit found that Firestore single-field exemption resources are still tracked under `uplifted-water-273221`; that cleanup remains separate from the now-fixed auth regression.

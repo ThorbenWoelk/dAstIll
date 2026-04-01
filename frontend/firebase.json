@@ -1,4 +1,13 @@
 {
+  "auth": {
+    "providers": {
+      "anonymous": true,
+      "googleSignIn": {
+        "oAuthBrandDisplayName": "dAstIll",
+        "supportEmail": "thorben.woelk@gmail.com"
+      }
+    }
+  },
   "emulators": {
     "auth": {
       "port": 9099

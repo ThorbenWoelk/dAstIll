@@ -6,8 +6,8 @@ use crate::services::SummaryEvaluatorService;
 pub struct OllamaRuntimeConfig {
     pub url: String,
     pub api_key: Option<String>,
-    pub model: String,
-    pub chat_model: Option<String>,
+    pub summary_model: String,
+    pub default_chat_model: Option<String>,
     pub fallback_model: Option<String>,
     pub summary_evaluator_model: String,
     pub embedding_model: Option<String>,
@@ -62,8 +62,8 @@ impl OllamaRuntimeConfig {
     pub fn from_env(search_semantic_enabled: bool) -> Result<Self, String> {
         let url = env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
         let api_key = optional_env("OLLAMA_API_KEY");
-        let model = required_env("OLLAMA_MODEL")?;
-        let chat_model = optional_env("OLLAMA_CHAT_MODEL");
+        let summary_model = required_env("OLLAMA_SUMMARY_MODEL")?;
+        let default_chat_model = optional_env("OLLAMA_DEFAULT_CHAT_MODEL");
         let fallback_model = optional_env("OLLAMA_FALLBACK_MODEL");
         let summary_evaluator_model = required_env("SUMMARY_EVALUATOR_MODEL")?;
         let embedding_model = if search_semantic_enabled {
@@ -72,15 +72,15 @@ impl OllamaRuntimeConfig {
             optional_env("OLLAMA_EMBEDDING_MODEL")
         };
 
-        validate_distinct_model_roles(&model, &summary_evaluator_model)?;
+        validate_distinct_model_roles(&summary_model, &summary_evaluator_model)?;
         SummaryEvaluatorService::validate_model_policy(&summary_evaluator_model)?;
         validate_cloud_auth(&url, &api_key)?;
 
         Ok(Self {
             url,
             api_key,
-            model,
-            chat_model,
+            summary_model,
+            default_chat_model,
             fallback_model,
             summary_evaluator_model,
             embedding_model,
@@ -90,10 +90,13 @@ impl OllamaRuntimeConfig {
     }
 }
 
-fn validate_distinct_model_roles(model: &str, summary_evaluator_model: &str) -> Result<(), String> {
-    if model == summary_evaluator_model {
+fn validate_distinct_model_roles(
+    summary_model: &str,
+    summary_evaluator_model: &str,
+) -> Result<(), String> {
+    if summary_model == summary_evaluator_model {
         return Err(format!(
-            "OLLAMA_MODEL and SUMMARY_EVALUATOR_MODEL must differ so summaries are evaluated independently; got `{model}` for both"
+            "OLLAMA_SUMMARY_MODEL and SUMMARY_EVALUATOR_MODEL must differ so summaries are evaluated independently; got `{summary_model}` for both"
         ));
     }
 
@@ -292,8 +295,8 @@ mod tests {
     const OLLAMA_ENV_KEYS: &[&str] = &[
         "OLLAMA_URL",
         "OLLAMA_API_KEY",
-        "OLLAMA_MODEL",
-        "OLLAMA_CHAT_MODEL",
+        "OLLAMA_SUMMARY_MODEL",
+        "OLLAMA_DEFAULT_CHAT_MODEL",
         "OLLAMA_FALLBACK_MODEL",
         "SUMMARY_EVALUATOR_MODEL",
         "OLLAMA_EMBEDDING_MODEL",
@@ -316,7 +319,7 @@ mod tests {
     ];
 
     #[test]
-    fn from_env_requires_primary_model() {
+    fn from_env_requires_summary_model() {
         let _guard = ENV_LOCK
             .get_or_init(|| Mutex::new(()))
             .lock()
@@ -325,11 +328,11 @@ mod tests {
         let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
         remove_env("OLLAMA_URL");
         remove_env("OLLAMA_API_KEY");
-        remove_env("OLLAMA_MODEL");
+        remove_env("OLLAMA_SUMMARY_MODEL");
         set_env("SUMMARY_EVALUATOR_MODEL", "glm-5:cloud");
 
         let err = OllamaRuntimeConfig::from_env(true).expect_err("missing model should fail");
-        assert!(err.contains("OLLAMA_MODEL"));
+        assert!(err.contains("OLLAMA_SUMMARY_MODEL"));
     }
 
     #[test]
@@ -342,7 +345,7 @@ mod tests {
         let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
         remove_env("OLLAMA_URL");
         remove_env("OLLAMA_API_KEY");
-        set_env("OLLAMA_MODEL", "glm-5:cloud");
+        set_env("OLLAMA_SUMMARY_MODEL", "glm-5:cloud");
         remove_env("SUMMARY_EVALUATOR_MODEL");
 
         let err = OllamaRuntimeConfig::from_env(true).expect_err("missing evaluator should fail");
@@ -359,7 +362,7 @@ mod tests {
         let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
         remove_env("OLLAMA_URL");
         remove_env("OLLAMA_API_KEY");
-        set_env("OLLAMA_MODEL", "glm-5:cloud");
+        set_env("OLLAMA_SUMMARY_MODEL", "glm-5:cloud");
         set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
         remove_env("OLLAMA_EMBEDDING_MODEL");
 
@@ -378,7 +381,7 @@ mod tests {
         let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
         remove_env("OLLAMA_URL");
         remove_env("OLLAMA_API_KEY");
-        set_env("OLLAMA_MODEL", "glm-5:cloud");
+        set_env("OLLAMA_SUMMARY_MODEL", "glm-5:cloud");
         set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
         remove_env("OLLAMA_EMBEDDING_MODEL");
 
@@ -396,7 +399,7 @@ mod tests {
         let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
         remove_env("OLLAMA_URL");
         remove_env("OLLAMA_API_KEY");
-        set_env("OLLAMA_MODEL", "glm-5:cloud");
+        set_env("OLLAMA_SUMMARY_MODEL", "glm-5:cloud");
         set_env("OLLAMA_FALLBACK_MODEL", "   ");
         set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
         set_env("OLLAMA_EMBEDDING_MODEL", "embeddinggemma");
@@ -415,14 +418,14 @@ mod tests {
         let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
         remove_env("OLLAMA_URL");
         remove_env("OLLAMA_API_KEY");
-        set_env("OLLAMA_MODEL", "glm-5:cloud");
+        set_env("OLLAMA_SUMMARY_MODEL", "glm-5:cloud");
         set_env("OLLAMA_FALLBACK_MODEL", "qwen3-coder:30b");
         set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
         set_env("OLLAMA_EMBEDDING_MODEL", "embeddinggemma");
 
         let config = OllamaRuntimeConfig::from_env(true).expect("config");
-        assert_eq!(config.model, "glm-5:cloud");
-        assert_eq!(config.chat_model, None);
+        assert_eq!(config.summary_model, "glm-5:cloud");
+        assert_eq!(config.default_chat_model, None);
         assert_eq!(config.fallback_model.as_deref(), Some("qwen3-coder:30b"));
         assert_eq!(config.summary_evaluator_model, "qwen3.5:397b-cloud");
         assert_eq!(config.embedding_model.as_deref(), Some("embeddinggemma"));
@@ -489,7 +492,7 @@ mod tests {
     }
 
     #[test]
-    fn from_env_loads_optional_chat_model() {
+    fn from_env_loads_optional_default_chat_model() {
         let _guard = ENV_LOCK
             .get_or_init(|| Mutex::new(()))
             .lock()
@@ -498,13 +501,16 @@ mod tests {
         let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
         remove_env("OLLAMA_URL");
         remove_env("OLLAMA_API_KEY");
-        set_env("OLLAMA_MODEL", "glm-5:cloud");
-        set_env("OLLAMA_CHAT_MODEL", "qwen3-chat:latest");
+        set_env("OLLAMA_SUMMARY_MODEL", "glm-5:cloud");
+        set_env("OLLAMA_DEFAULT_CHAT_MODEL", "qwen3-chat:latest");
         set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
         set_env("OLLAMA_EMBEDDING_MODEL", "embeddinggemma");
 
         let config = OllamaRuntimeConfig::from_env(true).expect("config");
-        assert_eq!(config.chat_model.as_deref(), Some("qwen3-chat:latest"));
+        assert_eq!(
+            config.default_chat_model.as_deref(),
+            Some("qwen3-chat:latest")
+        );
     }
 
     #[test]
@@ -517,13 +523,13 @@ mod tests {
         let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
         remove_env("OLLAMA_URL");
         remove_env("OLLAMA_API_KEY");
-        set_env("OLLAMA_MODEL", "qwen3.5:397b-cloud");
+        set_env("OLLAMA_SUMMARY_MODEL", "qwen3.5:397b-cloud");
         set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
         set_env("OLLAMA_EMBEDDING_MODEL", "embeddinggemma");
 
         let err = OllamaRuntimeConfig::from_env(true)
             .expect_err("matching summary and evaluator models should fail");
-        assert!(err.contains("OLLAMA_MODEL"));
+        assert!(err.contains("OLLAMA_SUMMARY_MODEL"));
         assert!(err.contains("SUMMARY_EVALUATOR_MODEL"));
     }
 
@@ -616,7 +622,7 @@ mod tests {
         let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
         set_env("OLLAMA_URL", "https://ollama.cloud.example.com");
         remove_env("OLLAMA_API_KEY");
-        set_env("OLLAMA_MODEL", "glm-5:cloud");
+        set_env("OLLAMA_SUMMARY_MODEL", "glm-5:cloud");
         set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
         set_env("OLLAMA_EMBEDDING_MODEL", "embeddinggemma");
 
@@ -635,7 +641,7 @@ mod tests {
         let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
         set_env("OLLAMA_URL", "https://ollama.cloud.example.com");
         set_env("OLLAMA_API_KEY", "sk-test-key");
-        set_env("OLLAMA_MODEL", "glm-5:cloud");
+        set_env("OLLAMA_SUMMARY_MODEL", "glm-5:cloud");
         set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
         set_env("OLLAMA_EMBEDDING_MODEL", "embeddinggemma");
 
@@ -653,7 +659,7 @@ mod tests {
         let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
         set_env("OLLAMA_URL", "http://localhost:11434");
         remove_env("OLLAMA_API_KEY");
-        set_env("OLLAMA_MODEL", "glm-5:cloud");
+        set_env("OLLAMA_SUMMARY_MODEL", "glm-5:cloud");
         set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
         set_env("OLLAMA_EMBEDDING_MODEL", "embeddinggemma");
 

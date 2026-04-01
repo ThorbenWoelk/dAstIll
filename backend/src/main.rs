@@ -17,6 +17,9 @@ use dastill::db::init_store;
 use dastill::handlers::{
     analytics, channels, chat, content, highlights, preferences, search, videos,
 };
+use dastill::local_env::{
+    clear_missing_google_application_credentials, load_dotenv_preserving_existing,
+};
 use dastill::read_cache::ReadCache;
 use dastill::search_progress::SearchProgress;
 use dastill::security::{
@@ -40,28 +43,16 @@ fn should_send_to_logfire(target: &str) -> bool {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Install the rustls crypto provider before any TLS usage (required by rustls 0.23+)
-    // Using ring because both rustls 0.21 (AWS SDK) and 0.23 (our direct dependency) support it.
-    // This fixes the "dispatch failure" TLS error where the rustls 0.21 from AWS SDK had no
-    // crypto backend installed when only aws-lc-rs was set for rustls 0.23.
+    // Install a process-wide rustls provider before any TLS clients are created.
+    // This build enables `ring` directly and `aws-lc-rs` transitively, so rustls 0.23
+    // cannot always infer a unique default provider at runtime.
+    // We pin `ring` here to keep the Firestore/gcloud TLS path deterministic and aligned
+    // with the legacy AWS rustls 0.21 stack that is still present in the dependency graph.
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("failed to install rustls crypto provider");
 
-    // Standard local dev .env loading
-    if let Ok(content) = std::fs::read_to_string(".env") {
-        for line in content.lines() {
-            if let Some((key, value)) = line.split_once('=') {
-                let key = key.trim();
-                let value = value.trim();
-                // Strip optional quotes
-                let value = value.trim_matches('"');
-                if !key.is_empty() && !key.starts_with('#') {
-                    unsafe { std::env::set_var(key, value) };
-                }
-            }
-        }
-    }
+    load_dotenv_preserving_existing();
 
     let is_cloud_run = std::env::var("K_SERVICE").is_ok();
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
@@ -110,6 +101,12 @@ async fn main() -> anyhow::Result<()> {
         }
         None
     };
+
+    if clear_missing_google_application_credentials() {
+        tracing::warn!(
+            "GOOGLE_APPLICATION_CREDENTIALS points to a missing file - falling back to application-default credentials"
+        );
+    }
 
     let search_runtime = SearchRuntimeConfig::from_env();
     let chat_runtime = ChatRuntimeConfig::from_env();
@@ -204,17 +201,18 @@ async fn main() -> anyhow::Result<()> {
     let ollama_semaphore = Arc::new(tokio::sync::Semaphore::new(1));
     let search_ollama_semaphore = Arc::new(tokio::sync::Semaphore::new(1));
 
-    let summarizer_core = OllamaCore::with_client(client.clone(), &ollama.url, &ollama.model)
-        .with_fallback_model(ollama.fallback_model.clone())
-        .with_api_key(ollama.api_key.clone())
-        .with_cloud_cooldown(cloud_cooldown.clone())
-        .with_ollama_semaphore(ollama_semaphore.clone());
+    let summarizer_core =
+        OllamaCore::with_client(client.clone(), &ollama.url, &ollama.summary_model)
+            .with_fallback_model(ollama.fallback_model.clone())
+            .with_api_key(ollama.api_key.clone())
+            .with_cloud_cooldown(cloud_cooldown.clone())
+            .with_ollama_semaphore(ollama_semaphore.clone());
     let summarizer = Arc::new(SummarizerService::new(summarizer_core));
 
     let chat_model = ollama
-        .chat_model
+        .default_chat_model
         .clone()
-        .unwrap_or_else(|| ollama.model.clone());
+        .unwrap_or_else(|| ollama.summary_model.clone());
     let chat_core = OllamaCore::with_client(build_http_client(), &ollama.url, &chat_model)
         .with_fallback_model(ollama.fallback_model.clone())
         .with_api_key(ollama.api_key.clone())

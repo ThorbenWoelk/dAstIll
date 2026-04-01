@@ -18,8 +18,8 @@ Channel input
 User interactions:
 
 ```text
-Highlight creation -> stored in highlights table -> grouped in /highlights route
-Acknowledgement -> stored on video record -> filters inbox view
+Highlight creation -> stored in user-highlights/{user_id}/ -> grouped in /highlights route
+Acknowledgement -> stored in user-video-states/{user_id}/{video_id}.json -> overlaid onto video responses
 ```
 
 ## 1. Channel Subscription
@@ -27,10 +27,12 @@ Acknowledgement -> stored on video record -> filters inbox view
 When a user adds a channel:
 
 1. the backend resolves the input to a canonical channel id
-2. channel metadata is stored
-3. an async task fetches current videos for initial population
+2. canonical channel metadata is stored if missing
+3. the authenticated user's subscription record is stored
+4. an async task fetches current videos for initial population
 
-This is a write to canonical state first. It does not wait for transcript or summary generation.
+This keeps canonical channel data and user-scoped library membership separate. It does
+not wait for transcript or summary generation.
 
 ## 2. Video Discovery
 
@@ -42,6 +44,8 @@ Videos enter the system from multiple paths:
 - explicit channel backfill
 
 Inserted videos begin with transcript and summary lifecycle states that the queue worker consumes.
+User visibility to those videos is derived later from channel subscriptions and explicit
+video memberships rather than from separate per-user video copies.
 
 ## 3. Transcript Extraction
 

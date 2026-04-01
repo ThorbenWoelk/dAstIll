@@ -2,16 +2,16 @@
 
 ## Canonical Tables
 
-These are the authoritative records — not derived projections or caches.
+These are the authoritative content records owned by ingest and processing, not user
+overlays or derived search projections.
 
 | Table         | Role                                                                              |
 | ------------- | --------------------------------------------------------------------------------- |
-| `channels`    | Subscribed YouTube channels and sync depth                                        |
-| `videos`      | Per-video state, publication metadata, queue status, acknowledgement, retry count |
+| `channels`    | Canonical channel metadata discovered from YouTube                                |
+| `videos`      | Canonical per-video metadata plus transcript/summary processing state             |
 | `transcripts` | Extracted raw text and formatted markdown transcript forms                        |
 | `summaries`   | Generated or manually edited summaries plus quality fields                        |
 | `video_info`  | Extended metadata such as description, duration, and view count                   |
-| `highlights`  | User-created transcript or summary snippets with context                          |
 
 ## Core Status Fields
 
@@ -31,9 +31,21 @@ These statuses drive the queue worker and much of the UI state.
 
 Additional video fields:
 
-- `acknowledged` - tracks whether the user has marked a video as seen
+- `acknowledged` - user-scoped read state overlaid onto API responses
 - `retry_count` - caps regeneration attempts for summaries
 - `quality_score` - 0-100 rating from the evaluator model
+
+## API View Models vs Stored Records
+
+Some API payloads intentionally merge canonical and user-scoped records:
+
+- `Channel` responses combine canonical channel metadata with the caller's
+  `user-channel-subscriptions/{user_id}/{channel_id}.json` record.
+- `Video` responses combine canonical `videos/{video_id}.json` data with the caller's
+  `user-video-states/{user_id}/{video_id}.json` overlay, which currently carries
+  `acknowledged`.
+- Anonymous requests do not persist these user-scoped records. They operate against the
+  seeded default channel scope exposed by `AccessContext`.
 
 ## Search Projection
 
@@ -58,7 +70,7 @@ Tracks one record per `(video_id, source_kind)` pair with:
 
 - `content_hash`
 - `source_generation`
-- `embedding_model` - stores which embedding model was used (default: embeddinggemma:latest)
+- `embedding_model` - stores the configured embedding model string used for that generation
 - `index_status`
 - `last_indexed_at`
 - `last_error`
@@ -77,9 +89,26 @@ Each chunk is stored as an S3 object with:
 
 Embeddings are stored separately in S3 Vectors.
 
-## Highlights
+## User-Scoped Library Records
 
-The `highlights` table stores user-selected snippets:
+Most user-owned library state lives in S3 under user-specific prefixes.
+
+### Subscriptions and per-user video state
+
+| Prefix                                             | Role                                                       |
+| -------------------------------------------------- | ---------------------------------------------------------- |
+| `user-channel-subscriptions/{user_id}/`            | Channel subscriptions plus per-subscription sync settings  |
+| `user-video-memberships/{user_id}/`                | Explicitly added videos, including the virtual Others view |
+| `user-video-states/{user_id}/`                     | Per-user overlays such as `acknowledged`                  |
+
+These records are loaded into `AccessContext` at request time so the backend can scope
+channel, video, search, and chat access to the caller's library.
+
+### Highlights
+
+Highlights are stored per authenticated user under `user-highlights/{user_id}/`.
+
+Each highlight stores:
 
 - `id` - unique identifier
 - `video_id` - associated video
@@ -88,16 +117,17 @@ The `highlights` table stores user-selected snippets:
 - `prefix_context` / `suffix_context` - surrounding text for context
 - `created_at` - timestamp
 
-Highlights are grouped by channel and video in the `/highlights` route.
+The `/highlights` route groups these per-user records by channel and video at read time.
 
-## Chat Storage
+### Chat Storage
 
-Chat conversations are stored in S3 as JSON objects, separate from the canonical tables:
+Persistent chat conversations are stored in S3 as JSON objects under authenticated user
+scope, separate from canonical content:
 
-| Storage                    | Role                                               |
-| -------------------------- | -------------------------------------------------- |
-| `conversations/index.json` | Conversation list index with titles and timestamps |
-| `conversations/{id}.json`  | Full conversation with all messages and sources    |
+| Storage                                    | Role                                               |
+| ------------------------------------------ | -------------------------------------------------- |
+| `user-conversations/{user_id}/index.json`  | Conversation list index with titles and timestamps |
+| `user-conversations/{user_id}/{id}.json`   | Full conversation with all messages and sources    |
 
 ### Conversation Structure
 
@@ -127,6 +157,8 @@ Chat is intentionally separate from canonical content:
 - conversations are ephemeral user interactions, not canonical content
 - messages reference existing search chunks but don't duplicate them
 - conversations can be deleted without affecting transcripts or summaries
+- signed-out chat stays in the frontend's ephemeral session path instead of writing these
+  S3 objects
 
 ---
 
@@ -136,19 +168,21 @@ In addition to S3 for canonical content, the application uses Google Firestore f
 
 ### User Preferences (`dastill_preferences`)
 
-Per-user preferences stored in Firestore:
+Per-authenticated-user preferences stored in Firestore:
 
 | Field                    | Description                            |
 | ------------------------ | -------------------------------------- |
 | `channel_order`          | Ordered list of channel IDs            |
-| `channel_sort_mode`      | Sort mode: `custom`, `alphabetical`    |
+| `channel_sort_mode`      | Sort mode: `custom`, `alpha`, `newest` |
 | `vocabulary_replacements` | Custom word replacements for summaries |
 
-The default document ID is `user` for the global/single-user case. Multi-user auth migration adds user-scoped document IDs.
+Document IDs use the authenticated Firebase user id. On first authenticated access, the
+backend can copy a legacy `dastill_preferences/user` document forward for compatibility.
 
 ### TTS Statistics (`dastill_tts_stats`)
 
-Aggregated text-to-speech generation metrics:
+Aggregated text-to-speech generation metrics stored in the global Firestore document
+`dastill_tts_stats/global`:
 
 | Field                | Description                            |
 | -------------------- | -------------------------------------- |
@@ -164,16 +198,16 @@ Used to estimate synthesis time for new TTS requests.
 
 | Data                          | Storage   | Notes                                    |
 | ----------------------------- | --------- | ---------------------------------------- |
-| Channels, videos, transcripts | S3        | Canonical content                        |
-| Summaries                     | S3        | Canonical content                        |
-| Video info                    | S3        | Extended metadata                        |
-| Search chunks                 | S3        | Derived projection                       |
-| Search sources                | S3        | Derived projection metadata              |
-| Vector embeddings             | S3 Vectors| Semantic search                          |
-| Conversations                 | S3        | Chat history (JSON objects)              |
-| Highlights                    | S3        | User annotations                         |
-| User preferences              | Firestore | Per-user settings                        |
-| TTS statistics                | Firestore | Aggregated synthesis metrics             |
+| Channels, videos, transcripts, summaries, video info | S3         | Canonical content                          |
+| User channel subscriptions                           | S3         | `user-channel-subscriptions/{user_id}`     |
+| User video memberships and view state                | S3         | `user-video-memberships/*` and `user-video-states/*` |
+| Search chunks                                        | S3         | Derived projection                         |
+| Search sources                                       | S3         | Derived projection metadata                |
+| Vector embeddings                                    | S3 Vectors | Semantic search                            |
+| Conversations                                        | S3         | Authenticated user chat history            |
+| Highlights                                           | S3         | Authenticated user annotations             |
+| User preferences                                     | Firestore  | Per-user settings                          |
+| TTS statistics                                       | Firestore  | Global synthesis metrics                   |
 
 ---
 

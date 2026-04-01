@@ -7,20 +7,9 @@
 use anyhow::{Context, Result};
 use chrono::{TimeZone, Utc};
 use dastill::db::init_store;
-
-fn load_dotenv() {
-    if let Ok(content) = std::fs::read_to_string(".env") {
-        for line in content.lines() {
-            if let Some((key, value)) = line.split_once('=') {
-                let key = key.trim();
-                let value = value.trim().trim_matches('"');
-                if !key.is_empty() && !key.starts_with('#') {
-                    unsafe { std::env::set_var(key, value) };
-                }
-            }
-        }
-    }
-}
+use dastill::local_env::{
+    clear_missing_google_application_credentials, load_dotenv_preserving_existing,
+};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -28,7 +17,12 @@ async fn main() -> Result<()> {
         .install_default()
         .expect("failed to install rustls crypto provider");
 
-    load_dotenv();
+    load_dotenv_preserving_existing();
+    if clear_missing_google_application_credentials() {
+        eprintln!(
+            "GOOGLE_APPLICATION_CREDENTIALS points to a missing file - falling back to application-default credentials"
+        );
+    }
 
     let dry_run = std::env::args().any(|a| a == "--dry-run");
 

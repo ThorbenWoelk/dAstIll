@@ -3,6 +3,7 @@ impl ChatService {
         &self,
         state: AppState,
         conversation: ChatConversation,
+        access_context: crate::security::AccessContext,
         conversation_scope_id: String,
         active_chat_key: ActiveChatKey,
         prompt: String,
@@ -23,6 +24,7 @@ impl ChatService {
                 .generate_reply(
                     &state,
                     &conversation,
+                    &access_context,
                     &prompt,
                     deep_research,
                     &reply_model,
@@ -109,6 +111,7 @@ impl ChatService {
         &self,
         state: &AppState,
         conversation: &ChatConversation,
+        access_context: &crate::security::AccessContext,
         prompt: &str,
         deep_research: bool,
         reply_model: &str,
@@ -116,7 +119,14 @@ impl ChatService {
     ) -> Result<ChatMessage, String> {
         active_chat.ensure_not_cancelled()?;
         if let Some(tool_outcome) = self
-            .run_tool_loop(state, conversation, prompt, deep_research, active_chat)
+            .run_tool_loop(
+                state,
+                conversation,
+                access_context,
+                prompt,
+                deep_research,
+                active_chat,
+            )
             .await?
         {
             active_chat.ensure_not_cancelled()?;
@@ -224,6 +234,7 @@ impl ChatService {
             .plan_retrieval(
                 state,
                 conversation,
+                access_context,
                 &conversation.id,
                 prompt,
                 deep_research,
@@ -260,7 +271,14 @@ impl ChatService {
 
         let retrieval_started = Instant::now();
         let retrieval = self
-            .retrieve_sources_with_plan(state, &conversation.id, prompt, plan, active_chat)
+            .retrieve_sources_with_plan(
+                state,
+                access_context,
+                &conversation.id,
+                prompt,
+                plan,
+                active_chat,
+            )
             .await?;
         active_chat.ensure_not_cancelled()?;
         let retrieved_sources = retrieval.sources;

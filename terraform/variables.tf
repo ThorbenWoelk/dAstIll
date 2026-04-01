@@ -89,14 +89,14 @@ variable "firebase_google_client_id" {
   type        = string
   sensitive   = true
   default     = ""
-  description = "Optional Google OAuth client ID used to enable Google sign-in in Identity Platform."
+  description = "Deprecated. Ignored. Google sign-in is managed via frontend/firebase.json and Firebase auth deploys."
 }
 
 variable "firebase_google_client_secret" {
   type        = string
   sensitive   = true
   default     = ""
-  description = "Optional Google OAuth client secret used to enable Google sign-in in Identity Platform."
+  description = "Deprecated. Ignored. Google sign-in is managed via frontend/firebase.json and Firebase auth deploys."
 }
 
 variable "billing_export_enabled" {

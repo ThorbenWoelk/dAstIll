@@ -375,6 +375,7 @@ struct RetrievalPassOutcome {
 struct RetrievalPassRequest<'a> {
     conversation_id: &'a str,
     plan: &'a ChatRetrievalPlan,
+    access_context: &'a crate::security::AccessContext,
     pass: usize,
     queries: &'a [String],
     channel_focus_ids: &'a [String],
@@ -385,6 +386,7 @@ struct RetrievalPassRequest<'a> {
 struct ToolCallExecutionRequest<'a> {
     state: &'a AppState,
     call: PlannedChatToolCall,
+    access_context: &'a crate::security::AccessContext,
     prompt_scope: &'a tools::MentionScope,
     rationale: Option<&'a str>,
     tool_outputs: &'a mut Vec<ToolEvidenceRecord>,
@@ -394,6 +396,7 @@ struct ToolCallExecutionRequest<'a> {
 
 struct RetrievalCandidateRequest<'a> {
     state: &'a AppState,
+    access_context: &'a crate::security::AccessContext,
     queries: &'a [String],
     candidate_limit: usize,
     channel_focus_ids: &'a [String],
@@ -480,6 +483,7 @@ pub(super) struct OllamaRequestMessage {
 pub struct SpawnReplyJob {
     pub state: AppState,
     pub conversation: ChatConversation,
+    pub access_context: crate::security::AccessContext,
     pub conversation_scope_id: String,
     pub active_chat_key: ActiveChatKey,
     pub prompt: String,

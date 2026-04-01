@@ -6,9 +6,9 @@ dAstIll uses different models for different jobs. Each role is independently con
 
 | Variable                  | Role                                                                                 |
 | ------------------------- | ------------------------------------------------------------------------------------ |
-| `OLLAMA_MODEL`            | Primary summarizer and transcript-cleaning model                                     |
+| `OLLAMA_SUMMARY_MODEL`    | Primary summarizer and transcript-cleaning model                                     |
 | `OLLAMA_FALLBACK_MODEL`   | Optional local fallback when the summarizer primary is cloud-backed and rate-limited |
-| `OLLAMA_CHAT_MODEL`       | Chat model for RAG conversations (falls back to `OLLAMA_MODEL` if not set)           |
+| `OLLAMA_DEFAULT_CHAT_MODEL` | Default chat model for RAG conversations (falls back to `OLLAMA_SUMMARY_MODEL` if not set) |
 | `SUMMARY_EVALUATOR_MODEL` | Summary quality evaluator (LLM-as-judge)                                             |
 | `OLLAMA_EMBEDDING_MODEL`  | Search embedding model for semantic search                                           |
 | `SEARCH_RERANK_MODEL`     | Optional cross-encoder reranker for hybrid search (`/api/rerank`)                    |
@@ -30,7 +30,7 @@ The summarizer service handles two tasks:
 - **Transcript cleaning**: normalizes formatting (whitespace, linebreaks, repetitions)
   while preserving the speaker's wording
 
-Both are driven by `OLLAMA_MODEL` calling Ollama's `/api/generate` endpoint.
+Both are driven by `OLLAMA_SUMMARY_MODEL` calling Ollama's `/api/generate` endpoint.
 
 ### Fallback
 
@@ -62,11 +62,11 @@ The evaluator is stricter than the summarizer by design:
 
 - it must be a **cloud model** (local models are not accepted)
 - it must represent a model larger than **40B parameters** (enforced by name pattern check)
-- it must not be the same model string as `OLLAMA_MODEL`
+- it must not be the same model string as `OLLAMA_SUMMARY_MODEL`
 - its cooldown policy is `offline` rather than local fallback - evaluation pauses instead
   of consuming local capacity when the cloud is unavailable
 
-Backend startup **fails** if `OLLAMA_MODEL` and `SUMMARY_EVALUATOR_MODEL` are identical.
+Backend startup **fails** if `OLLAMA_SUMMARY_MODEL` and `SUMMARY_EVALUATOR_MODEL` are identical.
 This guard exists to keep generation and judgment independent.
 
 ### Judgment Criteria
@@ -88,7 +88,7 @@ regenerated. Once the cap is reached, the video is not requeued further.
 
 | Variable                  | Purpose                                                            |
 | ------------------------- | ------------------------------------------------------------------ |
-| `OLLAMA_EMBEDDING_MODEL`  | Model name for dense embeddings (default: `embeddinggemma:latest`) |
+| `OLLAMA_EMBEDDING_MODEL`  | Model name for dense embeddings; required when semantic search is enabled |
 | `SEARCH_SEMANTIC_ENABLED` | Override switch; local debug defaults on, release defaults off     |
 
 The embedding model is accessed via Ollama's `/api/embed` endpoint. The service:
@@ -100,9 +100,9 @@ The embedding model is accessed via Ollama's `/api/embed` endpoint. The service:
 If the model is not pulled or Ollama is unreachable at startup, semantic search silently
 disables itself. FTS continues to work.
 
-### Default Model
+### Example Local Model
 
-**embeddinggemma:latest** - Gemma's embedding model via Ollama:
+`embeddinggemma` is a common local choice for Ollama-backed semantic search:
 
 - optimized for semantic similarity tasks
 - produces 512-dimensional float32 vectors
@@ -216,7 +216,7 @@ retrieval strategy to gather the right context.
 
 | Variable            | Chat behavior                                             |
 | ------------------- | --------------------------------------------------------- |
-| `OLLAMA_CHAT_MODEL` | Primary chat model. Falls back to `OLLAMA_MODEL` if unset |
+| `OLLAMA_DEFAULT_CHAT_MODEL` | Default chat model. Falls back to `OLLAMA_SUMMARY_MODEL` if unset |
 
 Chat model selection is done at conversation creation time. If the selected model is no
 longer available at message-send time, the service fails gracefully without corrupting

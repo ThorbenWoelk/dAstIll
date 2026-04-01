@@ -18,7 +18,7 @@ Deeper domain-specific guidance belongs in dedicated docs and should be linked f
 ## Documentation Split
 
 - `AGENTS.md`: agent workflow entry point, document map, repo-level instructions.
-- `design.md`: design system and frontend engineering standards.
+- `DESIGN.md`: design system and frontend engineering standards.
 
 ## Secrets and production config
 

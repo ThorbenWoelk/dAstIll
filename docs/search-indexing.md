@@ -126,7 +126,7 @@ This keeps summary searchability from being starved behind a large transcript ba
 | `TRANSCRIPT_TARGET_WORDS`  | 300   | Target words per transcript chunk                   |
 | `TRANSCRIPT_OVERLAP_WORDS` | 40    | Overlap words between consecutive transcript chunks |
 | `SUMMARY_TARGET_WORDS`     | 300   | Target words per summary section chunk              |
-| `EMBEDDING_DIMENSIONS`     | 512   | Vector dimensions for the default embedding model   |
+| `EMBEDDING_DIMENSIONS`     | 512   | Vector dimensions for the common embeddinggemma configuration |
 | `EMBED_BATCH_SIZE`         | 8     | Chunks per embedding API request                    |
 
 ### Transcript Chunking
@@ -354,12 +354,12 @@ on; release builds default semantic off.
 
 ## Embedding Model
 
-The default embedding model is **embeddinggemma:latest**, configured via
-`OLLAMA_EMBEDDING_MODEL`. The embedding service:
+The embedding service reads the configured model name from `OLLAMA_EMBEDDING_MODEL`.
+There is no separate hard-coded fallback in the search service. The embedding service:
 
 - calls Ollama's `/api/embed` endpoint
 - batches embedding requests (up to 8 chunks per request)
-- validates that returned dimensions match the configured model (512 for embeddinggemma)
+- validates that returned dimensions match the configured model
 - checks model availability at startup via Ollama `/api/tags`
 
 ### Embedding Input Format

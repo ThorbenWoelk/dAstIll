@@ -3,6 +3,7 @@ impl ChatService {
         &self,
         state: &AppState,
         conversation: &ChatConversation,
+        access_context: &crate::security::AccessContext,
         prompt: &str,
         deep_research: bool,
         active_chat: &ActiveChatHandle,
@@ -16,6 +17,8 @@ impl ChatService {
                     ..tools::MentionScope::default()
                 }
             });
+        let prompt_scope =
+            filter_mention_scope_for_access(&state.db, access_context, prompt_scope).await;
         let mut tool_outputs = Vec::<ToolEvidenceRecord>::new();
         let mut gathered_sources = Vec::<RetrievedChatSource>::new();
         let max_steps = if deep_research {
@@ -28,6 +31,7 @@ impl ChatService {
             self.execute_planned_tool_call(ToolCallExecutionRequest {
                 state,
                 call,
+                access_context,
                 prompt_scope: &prompt_scope,
                 rationale: Some(
                     "This asks about what a scoped channel has been doing lately, so recent library activity was gathered first.",
@@ -53,6 +57,7 @@ impl ChatService {
             let planner_prompt = prompt_scope.prompt_for_planner(prompt);
             let planner_input = format_tool_loop_input(
                 conversation,
+                access_context,
                 &planner_prompt,
                 &tool_outputs,
                 &gathered_sources,
@@ -107,6 +112,7 @@ impl ChatService {
                     self.execute_planned_tool_call(ToolCallExecutionRequest {
                         state,
                         call,
+                        access_context,
                         prompt_scope: &prompt_scope,
                         rationale: step_outcome.rationale.as_deref(),
                         tool_outputs: &mut tool_outputs,
@@ -133,6 +139,7 @@ impl ChatService {
         let ToolCallExecutionRequest {
             state,
             call,
+            access_context,
             prompt_scope,
             rationale,
             tool_outputs,
@@ -176,9 +183,14 @@ impl ChatService {
 
         match &call {
             PlannedChatToolCall::DbInspect(query) => {
-                let result = tools::execute_db_inspect_query(&state.db, *query)
-                    .await
-                    .map_err(|error| error.to_string())?;
+                let result = if access_context.access_role == crate::security::AccessRole::Operator
+                {
+                    tools::execute_db_inspect_query(&state.db, *query)
+                        .await
+                        .map_err(|error| error.to_string())?
+                } else {
+                    tools::db_inspect_forbidden_result()
+                };
                 let output = result.output.clone();
                 tool_outputs.push(ToolEvidenceRecord {
                     summary: result.summary.clone(),
@@ -204,6 +216,7 @@ impl ChatService {
                 let result = self
                     .execute_search_library_query(
                         state,
+                        access_context,
                         query.clone(),
                         Some(prompt_scope),
                         active_chat,
@@ -231,7 +244,11 @@ impl ChatService {
                     .await;
             }
             PlannedChatToolCall::HighlightLookup(query) => {
-                let result = tools::execute_highlight_lookup_query(&state.db, query.clone())
+                let result = tools::execute_highlight_lookup_query(
+                    &state.db,
+                    access_context.user_id.as_deref(),
+                    query.clone(),
+                )
                     .await
                     .map_err(|error| error.to_string())?;
                 let output = result.output.clone();
@@ -260,7 +277,8 @@ impl ChatService {
             }
             PlannedChatToolCall::RecentLibraryActivity(query) => {
                 let query = apply_recent_activity_scope(query.clone(), prompt_scope);
-                let result = execute_recent_library_activity_query(&state.db, &query).await?;
+                let result =
+                    execute_recent_library_activity_query(&state.db, access_context, &query).await?;
                 let output = result.output.clone();
                 merge_retrieved_sources(
                     gathered_sources,

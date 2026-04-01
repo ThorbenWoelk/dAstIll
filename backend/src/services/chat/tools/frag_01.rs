@@ -472,11 +472,26 @@ pub(crate) async fn execute_db_inspect_query(
     }
 }
 
+pub(crate) fn db_inspect_forbidden_result() -> DbInspectResult {
+    DbInspectResult {
+        summary: "Database inspection unavailable".to_string(),
+        output: "Database inspection is restricted to operator sessions.".to_string(),
+    }
+}
+
 pub(crate) async fn execute_highlight_lookup_query(
     store: &db::Store,
+    user_id: Option<&str>,
     query: HighlightLookupQuery,
 ) -> Result<HighlightLookupResult, db::StoreError> {
-    let groups = db::list_highlights_grouped(store).await?;
+    let Some(user_id) = user_id else {
+        return Ok(HighlightLookupResult {
+            summary: describe_highlight_lookup_query(&query),
+            output: "Saved highlights are only available when signed in.".to_string(),
+        });
+    };
+
+    let groups = db::list_highlights_grouped_for_user(store, user_id).await?;
     let mut matches = flatten_highlight_groups(&groups)
         .into_iter()
         .filter(|candidate| matches_highlight_query(candidate, &query))

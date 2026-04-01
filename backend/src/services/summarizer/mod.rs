@@ -637,7 +637,8 @@ mod tests {
     }
 
     fn live_summary_model() -> String {
-        std::env::var("OLLAMA_MODEL").expect("OLLAMA_MODEL must be set for live Ollama tests")
+        std::env::var("OLLAMA_SUMMARY_MODEL")
+            .expect("OLLAMA_SUMMARY_MODEL must be set for live Ollama tests")
     }
 
     fn live_evaluator_model() -> String {

@@ -14,15 +14,43 @@ test("mobile text selection shows the custom toolbar at the bottom", async ({
   const channelScroller = page.locator('div[aria-label="Channels"]').first();
   await expect(channelScroller).toBeVisible({ timeout: 15000 });
 
-  const channelRow = channelScroller.locator("button").first();
-  await expect(channelRow).toBeVisible();
-  await channelRow.click();
+  const channelButtons = channelScroller.locator(":scope > button");
+  const browseRegion = page.getByRole("region", { name: "Browse" });
+  const videoButtons = browseRegion.locator("#videos button");
+  const emptyState = browseRegion.getByText("No videos yet.");
+  const channelCount = await channelButtons.count();
+  let foundVideoRows = false;
 
-  // Wait for the visible mobile browse sheet to render video rows.
-  const videoButton = page
-    .locator('section[aria-label="Browse"] aside#workspace button')
-    .filter({ has: page.locator("p.line-clamp-2") })
-    .first();
+  for (let i = 0; i < channelCount; i += 1) {
+    const channelRow = channelButtons.nth(i);
+    await expect(channelRow).toBeVisible();
+    await channelRow.click();
+
+    const browseState = async () => {
+      if ((await videoButtons.count()) > 0) return "videos";
+      if (await emptyState.isVisible()) return "empty";
+      return "loading";
+    };
+
+    await expect
+      .poll(browseState, {
+        timeout: 15000,
+        message: "Timed out waiting for mobile browse results to settle",
+      })
+      .not.toBe("loading");
+
+    if ((await browseState()) === "videos") {
+      foundVideoRows = true;
+      break;
+    }
+  }
+
+  test.skip(
+    !foundVideoRows,
+    "Mobile browse overlay has no videos; run against a seeded backend",
+  );
+
+  const videoButton = videoButtons.first();
   await expect(videoButton).toBeVisible();
   await videoButton.click();
 

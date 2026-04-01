@@ -136,7 +136,8 @@ jobs:
             # Release builds default semantic search off; default to on when unset (embedding + vector buckets are configured above).
             SEARCH_SEMANTIC_ENABLED=${{ vars.SEARCH_SEMANTIC_ENABLED || 'true' }}
             OLLAMA_URL=${{ vars.OLLAMA_URL }}
-            OLLAMA_MODEL=${{ vars.OLLAMA_MODEL }}
+            OLLAMA_SUMMARY_MODEL=${{ vars.OLLAMA_SUMMARY_MODEL }}
+            OLLAMA_DEFAULT_CHAT_MODEL=${{ vars.OLLAMA_DEFAULT_CHAT_MODEL }}
             OLLAMA_EMBEDDING_MODEL=${{ vars.OLLAMA_EMBEDDING_MODEL }}
             SUMMARY_EVALUATOR_MODEL=${{ vars.SUMMARY_EVALUATOR_MODEL }}
             SUMMARIZE_PATH=/usr/local/bin/summarize
@@ -197,13 +198,40 @@ jobs:
           image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_ID }}/docs:${{ env.IMAGE_TAG }}
           flags: "--allow-unauthenticated --service-account=${{ env.APP_NAME }}-docs-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
 
+  deploy-auth:
+    name: Deploy Firebase Auth
+    needs:
+      - checks
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.target == 'all' || github.event.inputs.target == 'frontend'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
+      - name: Google Auth
+        uses: google-github-actions/auth@v3.0.0
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_WIF_SA_EMAIL }}
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2.2.0
+
+      - name: Deploy Firebase Auth config
+        run: bunx firebase-tools@15.12.0 deploy --only auth --project "$PROJECT_ID" --config frontend/firebase.json --non-interactive
+
   deploy-frontend:
     name: Deploy Frontend
     needs:
       - checks
       - deploy-backend
       - deploy-docs
-    if: always() && (github.event_name != 'workflow_dispatch' || github.event.inputs.target == 'all' || github.event.inputs.target == 'frontend') && (needs.deploy-backend.result == 'success' || needs.deploy-backend.result == 'skipped') && (needs.deploy-docs.result == 'success' || needs.deploy-docs.result == 'skipped')
+      - deploy-auth
+    if: always() && (github.event_name != 'workflow_dispatch' || github.event.inputs.target == 'all' || github.event.inputs.target == 'frontend') && (needs.deploy-backend.result == 'success' || needs.deploy-backend.result == 'skipped') && (needs.deploy-docs.result == 'success' || needs.deploy-docs.result == 'skipped') && (needs.deploy-auth.result == 'success' || needs.deploy-auth.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 60
 

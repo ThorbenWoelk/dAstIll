@@ -2,6 +2,7 @@ impl ChatService {
     async fn retrieve_sources_with_plan(
         &self,
         state: &AppState,
+        access_context: &crate::security::AccessContext,
         conversation_id: &str,
         prompt: &str,
         plan: ChatRetrievalPlan,
@@ -27,6 +28,7 @@ impl ChatService {
                     RetrievalPassRequest {
                         conversation_id,
                         plan: &plan,
+                        access_context,
                         pass: 1,
                         queries: &pass_one_queries,
                         channel_focus_ids: &pass_one_channel_focus,
@@ -66,6 +68,7 @@ impl ChatService {
                         RetrievalPassRequest {
                             conversation_id,
                             plan: &plan,
+                            access_context,
                             pass: 2,
                             queries: &pass_two_queries,
                             channel_focus_ids: &pass_two_channel_focus,
@@ -106,6 +109,7 @@ impl ChatService {
                         RetrievalPassRequest {
                             conversation_id,
                             plan: &plan,
+                            access_context,
                             pass: 3,
                             queries: &pass_three_queries,
                             channel_focus_ids: &pass_three_channel_focus,
@@ -153,6 +157,7 @@ impl ChatService {
         &self,
         state: &AppState,
         conversation: &ChatConversation,
+        access_context: &crate::security::AccessContext,
         conversation_id: &str,
         prompt: &str,
         deep_research: bool,
@@ -169,7 +174,7 @@ impl ChatService {
             active_chat.ensure_not_cancelled()?;
             let prompt = prompt.trim();
             let scope = match tools::resolve_mention_scope(&state.db, prompt).await {
-                Ok(scope) => scope,
+                Ok(scope) => filter_mention_scope_for_access(&state.db, access_context, scope).await,
                 Err(error) => {
                     tracing::warn!(error = %error, "failed to resolve chat @mentions");
                     tools::MentionScope {
@@ -180,7 +185,8 @@ impl ChatService {
             };
             let retrieval_prompt = scope.prompt_for_retrieval(prompt);
             let planner_prompt = scope.prompt_for_planner(prompt);
-            let planner_input = format_conversation_for_planner(conversation, &planner_prompt);
+            let planner_input =
+                format_conversation_for_planner(conversation, access_context, &planner_prompt);
 
             active_chat
                 .emit(ChatStreamEvent::Status {
@@ -287,6 +293,7 @@ impl ChatService {
         let RetrievalPassRequest {
             conversation_id,
             plan,
+            access_context,
             pass,
             queries,
             channel_focus_ids,
@@ -350,6 +357,7 @@ impl ChatService {
             let (keyword_batches, semantic_batches) = self
                 .collect_retrieval_candidates(RetrievalCandidateRequest {
                     state,
+                    access_context,
                     queries,
                     candidate_limit,
                     channel_focus_ids,
@@ -405,6 +413,7 @@ impl ChatService {
     ) -> Result<(Vec<Vec<SearchCandidate>>, Vec<Vec<SearchCandidate>>), String> {
         let RetrievalCandidateRequest {
             state,
+            access_context,
             queries,
             candidate_limit,
             channel_focus_ids,
@@ -445,7 +454,10 @@ impl ChatService {
                         c
                     })
                     .collect();
-                keyword_batches.push(candidates);
+                keyword_batches.push(filter_search_candidates_for_access(
+                    candidates,
+                    access_context,
+                ));
             }
         }
 
@@ -466,16 +478,19 @@ impl ChatService {
                     for channel_filter in &filters {
                         active_chat.ensure_not_cancelled()?;
                         semantic_batches.push(
-                            db::search_vector_candidates(
-                                &conn,
-                                &query_embedding,
-                                model,
-                                source_kind,
-                                *channel_filter,
-                                candidate_limit,
-                            )
-                            .await
-                            .map_err(|error| error.to_string())?,
+                            filter_search_candidates_for_access(
+                                db::search_vector_candidates(
+                                    &conn,
+                                    &query_embedding,
+                                    model,
+                                    source_kind,
+                                    *channel_filter,
+                                    candidate_limit,
+                                )
+                                .await
+                                .map_err(|error| error.to_string())?,
+                                access_context,
+                            ),
                         );
                     }
                 }
@@ -493,6 +508,7 @@ impl ChatService {
     async fn execute_search_library_query(
         &self,
         state: &AppState,
+        access_context: &crate::security::AccessContext,
         query: tools::SearchLibraryQuery,
         prompt_scope: Option<&tools::MentionScope>,
         active_chat: &ActiveChatHandle,
@@ -508,12 +524,19 @@ impl ChatService {
                     ..tools::MentionScope::default()
                 }
             });
-        let scope = merge_mention_scope(prompt_scope, &query_scope);
+        let scope = filter_mention_scope_for_access(
+            &state.db,
+            access_context,
+            merge_mention_scope(prompt_scope, &query_scope),
+        )
+        .await;
         let query_text = scope.scoped_query(&query.query);
         if let Some(video_id) = direct_video_lookup_target(&scope, &query) {
             active_chat.ensure_not_cancelled()?;
-            let direct_sources =
-                load_direct_video_sources(&state.db, video_id, query.source_kind).await?;
+            let direct_sources = filter_retrieved_sources_for_access(
+                load_direct_video_sources(&state.db, video_id, query.source_kind).await?,
+                access_context,
+            );
             let output = format_search_library_tool_output(&query, &direct_sources);
             return Ok(SearchLibraryExecutionResult {
                 summary: describe_search_library_query(query),
@@ -525,6 +548,7 @@ impl ChatService {
         let (keyword_batches, semantic_batches) = self
             .collect_retrieval_candidates(RetrievalCandidateRequest {
                 state,
+                access_context,
                 queries: &query_list,
                 candidate_limit,
                 channel_focus_ids: &scope.channel_focus_ids,

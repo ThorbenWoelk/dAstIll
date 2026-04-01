@@ -1,19 +1,6 @@
-import { expect, test, type APIRequestContext } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
-async function clearConversations(request: APIRequestContext) {
-  const listResponse = await request.get("/api/chat/conversations");
-  expect(listResponse.ok()).toBeTruthy();
-
-  const conversations = (await listResponse.json()) as Array<{ id: string }>;
-  for (const conversation of conversations) {
-    const deleteResponse = await request.delete(
-      `/api/chat/conversations/${conversation.id}`,
-    );
-    expect(deleteResponse.ok()).toBeTruthy();
-  }
-}
-
-test.beforeEach(async ({ context, request }) => {
+test.beforeEach(async ({ context }) => {
   await context.addInitScript(() => {
     try {
       localStorage.clear();
@@ -22,17 +9,9 @@ test.beforeEach(async ({ context, request }) => {
       /* ignore */
     }
   });
-  await clearConversations(request);
 });
 
-test.afterEach(async ({ request }) => {
-  await clearConversations(request);
-});
-
-test("delete all clears chat history from the sidebar", async ({
-  page,
-  request,
-}) => {
+test("delete all clears chat history from the sidebar", async ({ page }) => {
   await page.goto("/chat");
   await page.waitForTimeout(1500);
   const newConversationButton = page
@@ -73,14 +52,5 @@ test("delete all clears chat history from the sidebar", async ({
   await expect
     .poll(() => new URL(page.url()).searchParams.get("id"))
     .toBe(null);
-  await expect
-    .poll(async () => {
-      const listResponse = await request.get("/api/chat/conversations");
-      expect(listResponse.ok()).toBeTruthy();
-      const conversations = (await listResponse.json()) as Array<{
-        id: string;
-      }>;
-      return conversations.length;
-    })
-    .toBe(0);
+  await expect(page.getByLabel("Delete conversation")).toHaveCount(0);
 });

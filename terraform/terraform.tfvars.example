@@ -10,10 +10,7 @@ ollama_api_key      = "your-ollama-api-key"
 logfire_token       = "your-logfire-token"
 backend_proxy_token = "replace-with-a-long-random-proxy-token"
 
-# Optional: provide Google OAuth credentials to enable Google sign-in in Firebase/Identity Platform.
-# Leave unset or "" to keep anonymous auth only.
-# firebase_google_client_id     = "your-google-oauth-client-id"
-# firebase_google_client_secret = "your-google-oauth-client-secret"
+# Google sign-in is configured in frontend/firebase.json and deployed with Firebase Auth.
 
 # Optional: set to let Terraform store the PAT; omit or "" if the secret already exists in GCP.
 # databricks_token = "your-databricks-personal-access-token"
@@ -31,7 +28,8 @@ backend_proxy_token = "replace-with-a-long-random-proxy-token"
 # github_repository = "ThorbenWoelk/dAstIll"
 
 ollama_url              = "https://your-ollama-proxy.com"
-ollama_model            = "glm-5:cloud"
+ollama_summary_model    = "glm-5:cloud"
+ollama_default_chat_model = "glm-5:cloud"
 summary_evaluator_model = "glm-5:cloud"
 ollama_fallback_model   = "qwen3-coder:30b"
 ollama_embedding_model  = "embeddinggemma:latest"

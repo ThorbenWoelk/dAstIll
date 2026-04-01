@@ -18,7 +18,11 @@ use crate::{
     security::{AccessContext, AuthState, can_access_video},
     services::{
         SpawnReplyJob,
-        chat::{default_chat_cloud_model_id, is_chat_cloud_model_choice},
+        chat::{
+            default_chat_cloud_model_id, enforce_chat_conversation_storage_limits,
+            is_chat_cloud_model_choice, validate_chat_conversation_bounds, validate_chat_prompt,
+            validate_chat_title_length,
+        },
     },
     state::{ActiveChatKey, AppState},
 };
@@ -91,30 +95,29 @@ fn remove_active_chats_for_scope(
     handles
 }
 
-const EPHEMERAL_CHAT_MAX_MESSAGES: usize = 200;
-const EPHEMERAL_CHAT_MAX_TOTAL_CHARS: usize = 500_000;
-
 fn validate_ephemeral_conversation(
     conversation: &ChatConversation,
 ) -> Result<(), (StatusCode, String)> {
-    if conversation.messages.len() > EPHEMERAL_CHAT_MAX_MESSAGES {
+    validate_chat_conversation_bounds(conversation)
+        .map_err(|message| (StatusCode::BAD_REQUEST, message.to_string()))
+}
+
+fn require_authenticated_persistent_chat(
+    access_context: &AccessContext,
+) -> Result<&str, (StatusCode, String)> {
+    let Some(user_id) = access_context.user_id.as_deref() else {
         return Err((
-            StatusCode::BAD_REQUEST,
-            "Conversation has too many messages for one request.".to_string(),
+            StatusCode::FORBIDDEN,
+            "Sign-in required for persistent chat. Signed-out chat stays ephemeral.".to_string(),
+        ));
+    };
+    if access_context.auth_state != AuthState::Authenticated {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Sign-in required for persistent chat. Signed-out chat stays ephemeral.".to_string(),
         ));
     }
-    let total: usize = conversation
-        .messages
-        .iter()
-        .map(|message| message.content.len())
-        .sum();
-    if total > EPHEMERAL_CHAT_MAX_TOTAL_CHARS {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "Conversation payload is too large.".to_string(),
-        ));
-    }
-    Ok(())
+    Ok(user_id)
 }
 
 pub async fn channel_suggestions(
@@ -198,6 +201,7 @@ pub async fn list_conversations(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    require_authenticated_persistent_chat(&access_context)?;
     let conversations =
         db::list_conversations_for_scope(&state.db, conversation_scope_id(&access_context))
             .await
@@ -210,6 +214,11 @@ pub async fn create_conversation(
     Extension(access_context): Extension<AccessContext>,
     Json(payload): Json<CreateConversationRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    require_authenticated_persistent_chat(&access_context)?;
+    if let Some(title) = payload.title.as_deref() {
+        validate_chat_title_length(title)
+            .map_err(|message| (StatusCode::BAD_REQUEST, message.to_string()))?;
+    }
     let mut conversation = state.chat.create_conversation(payload.title.clone());
     mark_manual_title_on_create(&mut conversation);
 
@@ -231,6 +240,7 @@ pub async fn get_conversation(
     Extension(access_context): Extension<AccessContext>,
     Path(conversation_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    require_authenticated_persistent_chat(&access_context)?;
     let conversation = db::get_conversation_for_scope(
         &state.db,
         conversation_scope_id(&access_context),
@@ -248,7 +258,10 @@ pub async fn update_conversation(
     Path(conversation_id): Path<String>,
     Json(payload): Json<UpdateConversationRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    require_authenticated_persistent_chat(&access_context)?;
     let title = validate_nonempty(&payload.title, "Conversation title must not be empty")?;
+    validate_chat_title_length(title)
+        .map_err(|message| (StatusCode::BAD_REQUEST, message.to_string()))?;
     let scope_id = conversation_scope_id(&access_context);
 
     let _lock = state.chat_store_lock.lock().await;
@@ -274,6 +287,7 @@ pub async fn delete_conversation(
     Extension(access_context): Extension<AccessContext>,
     Path(conversation_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    require_authenticated_persistent_chat(&access_context)?;
     if let Some(active_chat) = state
         .active_chats
         .lock()
@@ -296,6 +310,7 @@ pub async fn delete_all_conversations(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    require_authenticated_persistent_chat(&access_context)?;
     let scope_key = active_chat_scope_key(&access_context);
     let active_chats_to_cancel = {
         let mut active_chats = state.active_chats.lock().await;
@@ -322,6 +337,7 @@ pub async fn send_message(
     Json(payload): Json<SendChatMessageRequest>,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, (StatusCode, String)>
 {
+    require_authenticated_persistent_chat(&access_context)?;
     let prompt = payload.content.trim();
     if prompt.is_empty() {
         return Err((
@@ -329,6 +345,8 @@ pub async fn send_message(
             "Message content must not be empty".to_string(),
         ));
     }
+    validate_chat_prompt(prompt)
+        .map_err(|message| (StatusCode::BAD_REQUEST, message.to_string()))?;
 
     let runtime_key = active_chat_key(&access_context, &conversation_id);
     let active_chat = {
@@ -374,6 +392,7 @@ pub async fn send_message(
     state.chat.spawn_reply(SpawnReplyJob {
         state: state.clone(),
         conversation,
+        access_context: access_context.clone(),
         conversation_scope_id: conversation_scope_id(&access_context).to_string(),
         active_chat_key: runtime_key,
         prompt: prompt.to_string(),
@@ -409,6 +428,8 @@ pub async fn send_ephemeral_message(
             "Message content must not be empty".to_string(),
         ));
     }
+    validate_chat_prompt(prompt)
+        .map_err(|message| (StatusCode::BAD_REQUEST, message.to_string()))?;
 
     validate_ephemeral_conversation(&payload.conversation)?;
 
@@ -457,6 +478,7 @@ pub async fn send_ephemeral_message(
     state.chat.spawn_reply(SpawnReplyJob {
         state: state.clone(),
         conversation,
+        access_context: access_context.clone(),
         conversation_scope_id: String::new(),
         active_chat_key: runtime_key,
         prompt: prompt.to_string(),
@@ -476,8 +498,9 @@ pub async fn reconnect_stream(
     Path(conversation_id): Path<String>,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, (StatusCode, String)>
 {
-    let active_chat = lookup_active_chat(&state.active_chats, &access_context, &conversation_id)
-        .await?;
+    require_authenticated_persistent_chat(&access_context)?;
+    let active_chat =
+        lookup_active_chat(&state.active_chats, &access_context, &conversation_id).await?;
     Ok(sse_response(active_chat).await)
 }
 
@@ -486,8 +509,9 @@ pub async fn cancel_message(
     Extension(access_context): Extension<AccessContext>,
     Path(conversation_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let active_chat = lookup_active_chat(&state.active_chats, &access_context, &conversation_id)
-        .await?;
+    require_authenticated_persistent_chat(&access_context)?;
+    let active_chat =
+        lookup_active_chat(&state.active_chats, &access_context, &conversation_id).await?;
     active_chat.cancel();
     Ok(StatusCode::ACCEPTED)
 }
@@ -526,6 +550,7 @@ async fn store_user_message(
         provisional_title,
         Utc::now(),
     );
+    enforce_chat_conversation_storage_limits(&mut conversation);
     db::upsert_conversation_for_scope(&state.db, scope_id, &conversation)
         .await
         .map_err(map_db_err)?;
@@ -725,6 +750,7 @@ mod tests {
         active_chat_key, apply_manual_conversation_title, apply_user_message_to_conversation,
         lookup_active_chat, mark_manual_title_on_create, rank_channel_suggestions,
         rank_video_suggestions, remove_active_chats_for_scope,
+        require_authenticated_persistent_chat,
     };
     use crate::handlers::validate_nonempty;
     use crate::models::{
@@ -945,6 +971,20 @@ mod tests {
             active_chat_key(&authenticated, "conv-shared"),
             active_chat_key(&anonymous, "conv-shared")
         );
+    }
+
+    #[test]
+    fn persistent_chat_requires_authenticated_context() {
+        let authenticated = auth_context("user-a");
+        assert_eq!(
+            require_authenticated_persistent_chat(&authenticated).unwrap(),
+            "user-a"
+        );
+
+        let anonymous = anonymous_context();
+        let error = require_authenticated_persistent_chat(&anonymous)
+            .expect_err("anonymous access should be rejected");
+        assert_eq!(error.0, StatusCode::FORBIDDEN);
     }
 
     #[tokio::test]

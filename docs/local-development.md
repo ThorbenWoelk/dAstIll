@@ -66,11 +66,11 @@ Important variables:
 | `YOUTUBE_API_KEY`                   | Optional YouTube Data API access                                                 |
 | `OLLAMA_URL`                        | Ollama endpoint                                                                  |
 | `OLLAMA_API_KEY`                    | API key for Ollama cloud (required when using cloud Ollama URL)                  |
-| `OLLAMA_MODEL`                      | Primary summarizer model                                                         |
+| `OLLAMA_SUMMARY_MODEL`              | Primary summarizer model                                                         |
 | `OLLAMA_FALLBACK_MODEL`             | Local fallback used when the primary summarizer is cloud-backed and rate-limited |
-| `OLLAMA_CHAT_MODEL`                 | Chat model for RAG conversations (falls back to `OLLAMA_MODEL` if not set)       |
-| `SUMMARY_EVALUATOR_MODEL`           | Quality evaluator model - must differ from `OLLAMA_MODEL`                        |
-| `OLLAMA_EMBEDDING_MODEL`            | Search embedding model (default: embeddinggemma:latest)                          |
+| `OLLAMA_DEFAULT_CHAT_MODEL`         | Default chat model for RAG conversations (falls back to `OLLAMA_SUMMARY_MODEL` if not set) |
+| `SUMMARY_EVALUATOR_MODEL`           | Quality evaluator model - must differ from `OLLAMA_SUMMARY_MODEL`                |
+| `OLLAMA_EMBEDDING_MODEL`            | Search embedding model (required when semantic search is enabled)                |
 | `SEARCH_SEMANTIC_ENABLED`           | Explicit override for semantic search behavior                                   |
 | `SEARCH_AUTO_CREATE_VECTOR_INDEX`   | Optional ANN index creation after backlog clears                                 |
 | `SEARCH_RERANK_MODEL`               | Optional cross-encoder reranker model name (Ollama `/api/rerank`)                |
@@ -122,7 +122,7 @@ Behavior:
 
 ## Frontend Auth And Proxy
 
-The SvelteKit frontend proxies `/api/*` requests server-to-server. Anonymous visitors are treated as regular users; operator access requires a password-based admin sign-in.
+The SvelteKit frontend proxies `/api/*` requests server-to-server using the backend proxy token. In Cloud Run it also mints an identity token for the backend audience, so the backend service remains non-public even though the product frontend is public.
 
 Local defaults when you start with `./start_app.sh`:
 
@@ -130,18 +130,19 @@ Local defaults when you start with `./start_app.sh`:
 | --------------------- | ------------------------------- |
 | `BACKEND_PROXY_TOKEN` | `local-dev-backend-proxy-token` |
 
-If you run the frontend by itself, copy `frontend/.env.example` to `frontend/.env` and set `BACKEND_API_BASE`, `BACKEND_PROXY_TOKEN`, and `PUBLIC_DOCS_URL`. Admin sign-in uses `ADMIN_PASSWORD` from the runtime environment, and the minimal admin entrypoint is `/login`.
+If you run the frontend by itself, copy `frontend/.env.example` to `frontend/.env` and set `BACKEND_API_BASE`, `BACKEND_PROXY_TOKEN`, and `PUBLIC_DOCS_URL`.
 
-### Auth Migration Status
+Operator access is derived from `OPERATOR_EMAIL_ALLOWLIST` on the frontend server. Users whose Firebase email matches the allowlist receive the `operator` role in proxied backend requests.
 
-The application is migrating from single-user password auth to Firebase-based multi-user authentication:
+### Auth Model
 
-- Firebase SDK session endpoints, anonymous bootstrap, and Google sign-in UI are in place.
-- Backend request identity is established via `AccessContext`, but data storage and most handlers are still global.
-- User-scoped data (channels, conversations, highlights, preferences) has not yet been migrated to per-user storage.
-- Data remains global and operator-level actions use password auth until migration completes.
+The current auth model is Firebase-based multi-user auth:
 
-See `.specs/multi-user-firebase-auth.md` for the full migration plan and remaining tasks.
+- Signed-in users receive a Firebase-backed session cookie handled by the SvelteKit server.
+- Backend request identity is passed through `AccessContext` on proxied API calls.
+- Persistent chat, channels, highlights, and preferences are authenticated user-scoped surfaces.
+- Signed-out browsing remains available, but signed-out chat stays on the ephemeral path and is subject to the anonymous quota.
+- Operator-only backend behavior is keyed off the proxied `operator` role, which comes from `OPERATOR_EMAIL_ALLOWLIST`.
 
 ## Search Defaults
 
@@ -154,7 +155,7 @@ See `.specs/multi-user-firebase-auth.md` for the full migration plan and remaini
 
 ## Model Separation Guard
 
-The backend refuses to start if `OLLAMA_MODEL` and `SUMMARY_EVALUATOR_MODEL` are identical.
+The backend refuses to start if `OLLAMA_SUMMARY_MODEL` and `SUMMARY_EVALUATOR_MODEL` are identical.
 
 That check exists to keep summary generation and summary evaluation independent. If you copy the env template, keep the evaluator on a different model string than the summarizer.
 

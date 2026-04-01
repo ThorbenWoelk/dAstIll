@@ -41,12 +41,20 @@ pub(crate) fn is_explicit_realtime_status_query(prompt: &str) -> bool {
 
 pub(crate) async fn execute_recent_library_activity_query(
     store: &db::Store,
+    access_context: &crate::security::AccessContext,
     query: &RecentLibraryActivityQuery,
 ) -> Result<RecentLibraryActivityResult, String> {
     let channel_id = query
         .channel_id
         .as_deref()
         .ok_or_else(|| "recent_library_activity requires a resolved channel scope".to_string())?;
+    if !crate::security::can_access_channel(access_context, channel_id) {
+        return Ok(RecentLibraryActivityResult {
+            summary: "Review recent library activity for an inaccessible channel".to_string(),
+            output: "That channel is outside the caller's accessible library scope.".to_string(),
+            materials: Vec::new(),
+        });
+    }
     let channel = db::get_channel(store, channel_id)
         .await
         .map_err(|error| error.to_string())?

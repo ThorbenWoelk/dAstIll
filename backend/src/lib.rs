@@ -4,6 +4,7 @@ pub mod cache_headers;
 pub mod config;
 pub mod db;
 pub mod handlers;
+pub mod local_env;
 pub mod models;
 pub mod read_cache;
 pub mod search_progress;

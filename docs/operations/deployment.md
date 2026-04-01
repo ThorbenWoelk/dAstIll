@@ -35,11 +35,14 @@ Local development uses standard AWS credentials (`~/.aws/credentials` or environ
 
 Secrets are stored in GCP Secret Manager for:
 
+- `OLLAMA_API_KEY`
 - `YOUTUBE_API_KEY`
 - `LOGFIRE_TOKEN` (when Logfire observability is enabled for the backend)
-- `firebase_web_api_key` and `firebase_auth_domain` (product frontend; Terraform writes secret versions from `terraform.tfvars`)
+- `BACKEND_PROXY_TOKEN`
+- `DATABRICKS_TOKEN` (only when Databricks ingestion is configured)
+- `firebase_web_api_key` and `firebase_auth_domain` (product frontend; Terraform derives both from the Firebase web app config and writes them to Secret Manager)
 
-Non-secret runtime config is passed as plain env values for:
+Non-secret backend runtime config is passed as plain env values for:
 
 - `AWS_REGION`
 - `S3_DATA_BUCKET`
@@ -48,25 +51,35 @@ Non-secret runtime config is passed as plain env values for:
 - `AWS_ROLE_ARN` (production only)
 - `AWS_WIF_AUDIENCE` (production only)
 - `OLLAMA_URL`
-- `OLLAMA_MODEL`
+- `OLLAMA_SUMMARY_MODEL`
 - `OLLAMA_FALLBACK_MODEL`
-- `OLLAMA_CHAT_MODEL`
+- `OLLAMA_DEFAULT_CHAT_MODEL`
 - `OLLAMA_EMBEDDING_MODEL`
 - `SUMMARY_EVALUATOR_MODEL`
 - `SUMMARIZE_PATH`
 - log level
 
+Non-secret product frontend runtime config is passed as plain env values for:
+
+- `BACKEND_API_BASE`
+- `BACKEND_IDENTITY_AUDIENCE`
+- `PUBLIC_DOCS_URL`
+- `PUBLIC_FIREBASE_PROJECT_ID`
+- `PUBLIC_CONTACT_EMAIL`
+
 ### Firebase Auth (product frontend)
 
 The SvelteKit app uses the Firebase JS SDK in the browser and **Firebase Admin** on the server for session cookies. The web client reads the Firebase Web API key as **`PUBLIC_FIREBASE_API_KEY`** (alias **`PUBLIC_FIREBASE_KEY`**), plus **`PUBLIC_FIREBASE_AUTH_DOMAIN`** and **`PUBLIC_FIREBASE_PROJECT_ID`**, from `$env/dynamic/public`; the server resolves the same project for Admin SDK initialization.
 
-**Terraform (`terraform.tfvars`, not GitHub Variables):** set `firebase_web_api_key` (Firebase console: Project settings > General > Web API Key) when you are ready to provision Firebase client secrets; leave unset or empty until then. Optionally set `firebase_auth_domain`; if omitted, Terraform stores `{project_id}.firebaseapp.com` in Secret Manager. Run `terraform apply` so secrets `dastill-firebase-web-api-key` and `dastill-firebase-auth-domain` exist and IAM allows the frontend Cloud Run service account and GitHub Actions deploy identity to read them.
+**Terraform (`terraform.tfvars`, not GitHub Variables):** Terraform creates the Firebase project resources and web app, then reads the effective Web API key and auth domain from the Firebase web app config data source before writing them to Secret Manager. Run `terraform apply` so secrets `dastill-firebase-web-api-key` and `dastill-firebase-auth-domain` exist and IAM allows the frontend Cloud Run service account and GitHub Actions deploy identity to read them.
 
-**Release workflow:** checks that Secret Manager secrets `dastill-firebase-web-api-key` and `dastill-firebase-auth-domain` exist (fails fast with a Terraform hint if not), then mounts them as `PUBLIC_FIREBASE_API_KEY`, `PUBLIC_FIREBASE_KEY` (same value, optional alias), and `PUBLIC_FIREBASE_AUTH_DOMAIN`. It sets **`PUBLIC_FIREBASE_PROJECT_ID`** to the GCP project id (`GCP_PROJECT_ID` in the workflow).
+**Google sign-in:** anonymous auth stays enabled through Identity Platform. Google sign-in itself is managed through [`frontend/firebase.json`](../../frontend/firebase.json) and deployed with `firebase deploy --only auth`, which lets Firebase provision the correct project-local Google OAuth client for the web app instead of reusing a copied client ID/secret from another project.
+
+**Release workflow:** checks that Secret Manager secrets `dastill-firebase-web-api-key` and `dastill-firebase-auth-domain` exist (fails fast with a Terraform hint if not), deploys the Firebase auth config from `frontend/firebase.json`, then mounts the frontend Firebase secrets as `PUBLIC_FIREBASE_API_KEY`, `PUBLIC_FIREBASE_KEY` (same value, optional alias), and `PUBLIC_FIREBASE_AUTH_DOMAIN`. It sets **`PUBLIC_FIREBASE_PROJECT_ID`** to the GCP project id (`GCP_PROJECT_ID` in the workflow), plus frontend runtime env such as `BACKEND_API_BASE`, `BACKEND_IDENTITY_AUDIENCE`, `PUBLIC_DOCS_URL`, and `PUBLIC_CONTACT_EMAIL`.
 
 **GCP:** Terraform grants the frontend Cloud Run service account `roles/firebaseauth.admin` so the Node server can verify ID tokens and issue session cookies.
 
-**Firebase console:** add your production site origin (and the Cloud Run URL if needed) under Authentication > Settings > Authorized domains.
+**Authorized domains:** Terraform manages Identity Platform authorized domains. The default set includes `localhost`, the Firebase-hosted domains for the project, the deployed frontend Cloud Run host, and any entries in `firebase_authorized_domains_extra`. Use Terraform rather than console-only edits for managed environments.
 
 ## Project Migration
 
@@ -86,7 +99,7 @@ gcloud firestore import gs://<shared-migration-bucket>/<export-prefix> \
   --project=dastill
 ```
 
-6. Enable Firebase on the new project, create the web app, obtain the Web API key/auth domain, set `firebase_web_api_key` and optional `firebase_auth_domain` in `terraform.tfvars`, re-apply Terraform so Secret Manager contains the frontend Firebase values, and add the new frontend origins under Firebase Auth authorized domains.
+6. Enable Firebase on the new project, set any optional Firebase Terraform inputs you need such as `firebase_authorized_domains_extra`, then re-apply Terraform so it creates the web app, refreshes Secret Manager with the effective frontend Firebase values, and updates authorized domains through Identity Platform. Keep Google sign-in configuration in `frontend/firebase.json` and deploy it with `firebase deploy --only auth`.
 7. Re-run the release workflow after the GitHub secret/var cutover so Cloud Run revisions pick up the new project ID, Firebase config, backend URL, and docs URL.
 
 ## CI/CD Flow
@@ -97,7 +110,7 @@ The GitHub Actions workflow:
 1. Builds and pushes backend, docs, and frontend images to Artifact Registry
 2. Deploys backend, docs, and frontend to Cloud Run (main branch or release dispatch)
 3. Resolves deployed backend and docs URLs for the frontend service env
-4. Deploys the frontend with runtime env including BACKEND_API_BASE, PUBLIC_DOCS_URL, PUBLIC_FIREBASE_PROJECT_ID, and Firebase client values from Secret Manager mounts
+4. Deploys the frontend with runtime env including BACKEND_API_BASE, BACKEND_IDENTITY_AUDIENCE, PUBLIC_DOCS_URL, PUBLIC_CONTACT_EMAIL, PUBLIC_FIREBASE_PROJECT_ID, and Firebase client values from Secret Manager mounts
 ```
 
 ## Docker Layout

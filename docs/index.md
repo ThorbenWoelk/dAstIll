@@ -37,6 +37,11 @@ This site is the technical reference for how the product is structured: the user
     <h2>Deployment</h2>
     <p>Review the Cloud Run services, Terraform ownership, and the current config boundaries.</p>
   </a>
+  <a class="overview-card" href="/security/">
+    <p class="overview-card-eyebrow">Security</p>
+    <h2>Agentic security</h2>
+    <p>See the OWASP ASI threat model, current controls, repo hygiene rules, and remaining gaps.</p>
+  </a>
 </div>
 
 ## What This Site Covers
@@ -56,6 +61,8 @@ This site is the technical reference for how the product is structured: the user
 ### Operations
 
 - [Deployment and Operations](/operations/deployment) - Cloud Run services, Terraform ownership, and CI/CD flow.
+- [Security](/security/) - OWASP ASI mapping, current controls, and verification checklist.
+- [OWASP ASI Status](/security/owasp-asi-status) - detailed status matrix of what is implemented and what remains open.
 
 ## Repo Layout
 
@@ -65,7 +72,7 @@ dAstIll/
 ├── frontend/    SvelteKit product UI
 ├── docs/        VitePress documentation frontend
 ├── terraform/   Cloud Run, secrets, and supporting infrastructure
-└── specs/       Persistent implementation specs and reference screenshots
+└── .specs/      Persistent implementation specs and task trackers
 ```
 
 ## Scope

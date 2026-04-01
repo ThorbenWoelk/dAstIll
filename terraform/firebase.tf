@@ -14,7 +14,6 @@ locals {
       var.firebase_authorized_domains_extra,
     ),
   )
-  firebase_google_provider_enabled = trimspace(var.firebase_google_client_id) != "" && trimspace(var.firebase_google_client_secret) != ""
 }
 
 resource "google_firebase_project" "default" {
@@ -52,18 +51,6 @@ resource "google_identity_platform_config" "default" {
   }
 
   depends_on = [google_firebase_project.default]
-}
-
-resource "google_identity_platform_default_supported_idp_config" "google" {
-  count         = local.firebase_google_provider_enabled ? 1 : 0
-  provider      = google-beta
-  project       = var.project_id
-  idp_id        = "google.com"
-  enabled       = true
-  client_id     = var.firebase_google_client_id
-  client_secret = var.firebase_google_client_secret
-
-  depends_on = [google_identity_platform_config.default]
 }
 
 output "firebase_web_app_id" {

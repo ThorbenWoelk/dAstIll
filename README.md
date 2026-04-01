@@ -95,7 +95,8 @@ Terraform, Google Cloud Run, AWS IAM (Workload Identity Federation), Google Secr
    BACKEND_CORS_ALLOWED_ORIGINS=http://localhost:3543
    YOUTUBE_API_KEY=optional-api-key
    OLLAMA_URL=http://localhost:11434
-   OLLAMA_MODEL=glm-5:cloud
+   OLLAMA_SUMMARY_MODEL=glm-5:cloud
+   OLLAMA_DEFAULT_CHAT_MODEL=glm-5:cloud
    OLLAMA_FALLBACK_MODEL=qwen3-coder:30b
    SUMMARY_EVALUATOR_MODEL=qwen3.5:397b-cloud
    SEARCH_SEMANTIC_ENABLED=true
@@ -104,9 +105,10 @@ Terraform, Google Cloud Run, AWS IAM (Workload Identity Federation), Google Secr
    SUMMARIZE_PATH=/opt/homebrew/bin/summarize
    ```
 
-   `OLLAMA_MODEL` and `SUMMARY_EVALUATOR_MODEL` must be different. If they match, backend startup exits before serving requests so summary evaluation stays independent from summary generation.
+   `OLLAMA_SUMMARY_MODEL` and `SUMMARY_EVALUATOR_MODEL` must be different. If they match, backend startup exits before serving requests so summary evaluation stays independent from summary generation.
+   If `OLLAMA_URL` points to a remote Ollama endpoint instead of localhost, also set `OLLAMA_API_KEY`.
 
-   If you run the frontend separately from `start_app.sh`, copy `frontend/.env.example` to `frontend/.env` and set `BACKEND_PROXY_TOKEN`, `BACKEND_API_BASE`, and `PUBLIC_DOCS_URL`. Admin sign-in uses the runtime `ADMIN_PASSWORD` environment variable.
+   If you run the frontend separately from `start_app.sh`, copy `frontend/.env.example` to `frontend/.env` and set `BACKEND_PROXY_TOKEN`, `BACKEND_API_BASE`, `PUBLIC_DOCS_URL`, `PUBLIC_FIREBASE_API_KEY`, `PUBLIC_FIREBASE_AUTH_DOMAIN`, and `PUBLIC_FIREBASE_PROJECT_ID`. Operator access is granted through the frontend server's `OPERATOR_EMAIL_ALLOWLIST`.
 
 3. **Understand Search Defaults**:
    `SEARCH_SEMANTIC_ENABLED` overrides the runtime default:
@@ -131,8 +133,8 @@ Terraform, Google Cloud Run, AWS IAM (Workload Identity Federation), Google Secr
 
    Detached mode starts a background supervisor, performs the usual health checks in the background, and writes its startup output to `start_app.log`. The service logs remain in `backend.log`, `frontend.log`, and `docs.log`.
 
-5. **Admin Sign-In Locally**:
-   Anonymous browsing remains available by default. Admin-only actions use the minimal `/login` route and require `ADMIN_PASSWORD` to be set in the frontend runtime environment.
+5. **Sign-In And Roles Locally**:
+   Anonymous browsing remains available by default. Signed-in users use the Firebase-backed `/login` flow, and operator-only actions depend on the frontend server's `OPERATOR_EMAIL_ALLOWLIST`.
 
 ## License
 
