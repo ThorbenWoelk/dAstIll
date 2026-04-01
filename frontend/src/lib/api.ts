@@ -223,6 +223,10 @@ export function resetApiCacheForTests() {
   clearGetRequestCache();
 }
 
+export function resetApiCacheForAuthChange() {
+  clearGetRequestCache();
+}
+
 async function cachedGetRequest<T>(
   path: string,
   options?: {

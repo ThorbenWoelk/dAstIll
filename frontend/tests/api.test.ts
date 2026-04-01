@@ -10,6 +10,7 @@ import {
   isAiAvailable,
   listHighlights,
   listChannelsWhenAvailable,
+  resetApiCacheForAuthChange,
   refreshChannel,
   resetApiCacheForTests,
   searchContent,
@@ -211,6 +212,60 @@ describe("getWorkspaceBootstrap", () => {
     expect(first).toEqual(payload);
     expect(second).toEqual(payload);
     expect(attempts).toBe(1);
+  });
+
+  it("refetches bootstrap data after an auth-scope cache reset", async () => {
+    const anonymousPayload = {
+      ai_available: true,
+      ai_status: "cloud",
+      channels: [channel("anon")],
+      selected_channel_id: "anon",
+      search_status: searchStatus(),
+      snapshot: {
+        channel_id: "anon",
+        sync_depth: syncDepth(),
+        channel_video_count: 1,
+        videos: [video("anon-video", "anon")],
+      },
+    };
+    const authenticatedPayload = {
+      ai_available: true,
+      ai_status: "cloud",
+      channels: [channel("auth")],
+      selected_channel_id: "auth",
+      search_status: searchStatus(),
+      snapshot: {
+        channel_id: "auth",
+        sync_depth: syncDepth(),
+        channel_video_count: 1,
+        videos: [video("auth-video", "auth")],
+      },
+    };
+    let attempts = 0;
+
+    globalThis.fetch = (async () => {
+      attempts += 1;
+      return new Response(
+        JSON.stringify(
+          attempts === 1 ? anonymousPayload : authenticatedPayload,
+        ),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+
+    const anonymousResult = await getWorkspaceBootstrap({
+      selectedChannelId: "scope-test",
+    });
+
+    resetApiCacheForAuthChange();
+
+    const authenticatedResult = await getWorkspaceBootstrap({
+      selectedChannelId: "scope-test",
+    });
+
+    expect(anonymousResult.channels[0]?.id).toBe("anon");
+    expect(authenticatedResult.channels[0]?.id).toBe("auth");
+    expect(attempts).toBe(2);
   });
 });
 

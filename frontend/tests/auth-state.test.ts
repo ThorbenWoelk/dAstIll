@@ -53,6 +53,7 @@ const mockSignOut = mock(async () => {
   firebaseAuthInstance.currentUser = null;
   authStateListener?.(null);
 });
+const mockResetApiCacheForAuthChange = mock(() => undefined);
 
 beforeEach(() => {
   authStateListener = null;
@@ -68,6 +69,7 @@ afterEach(() => {
   mockSignInAnonymously.mockClear();
   mockSignInWithPopup.mockClear();
   mockSignOut.mockClear();
+  mockResetApiCacheForAuthChange.mockClear();
 });
 
 mock.module("$lib/firebase", () => ({
@@ -82,6 +84,10 @@ mock.module("firebase/auth", () => ({
   signInAnonymously: mockSignInAnonymously,
   signInWithPopup: mockSignInWithPopup,
   signOut: mockSignOut,
+}));
+
+mock.module("$lib/api-cache-reset", () => ({
+  resetApiCacheForAuthChange: mockResetApiCacheForAuthChange,
 }));
 
 const originalFetch = globalThis.fetch;
@@ -301,6 +307,7 @@ describe("auth state controller", () => {
     });
 
     await authState.start();
+    mockResetApiCacheForAuthChange.mockClear();
     await authState.signInWithGoogle();
 
     expect(mockSignInWithPopup).toHaveBeenCalledTimes(1);
@@ -310,6 +317,7 @@ describe("auth state controller", () => {
       accessRole: "user",
       email: "person@example.com",
     });
+    expect(mockResetApiCacheForAuthChange).toHaveBeenCalledTimes(1);
   });
 
   it("forces a refreshed popup token before exchanging the server session", async () => {

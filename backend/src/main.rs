@@ -20,6 +20,7 @@ use dastill::handlers::{
 use dastill::local_env::{
     clear_missing_google_application_credentials, load_dotenv_preserving_existing,
 };
+use dastill::logging::HumanReadableEventFormatter;
 use dastill::read_cache::ReadCache;
 use dastill::search_progress::SearchProgress;
 use dastill::security::{
@@ -76,11 +77,19 @@ async fn main() -> anyhow::Result<()> {
                     tracing_subscriber::fmt::layer()
                         .json()
                         .flatten_event(true)
+                        .with_current_span(false)
+                        .with_span_list(false)
                         .with_ansi(false),
                 )
                 .init();
         } else {
-            registry.with(tracing_subscriber::fmt::layer()).init();
+            registry
+                .with(
+                    tracing_subscriber::fmt::layer()
+                        .event_format(HumanReadableEventFormatter)
+                        .with_ansi(false),
+                )
+                .init();
         }
 
         Some(guard)
@@ -93,11 +102,19 @@ async fn main() -> anyhow::Result<()> {
                     tracing_subscriber::fmt::layer()
                         .json()
                         .flatten_event(true)
+                        .with_current_span(false)
+                        .with_span_list(false)
                         .with_ansi(false),
                 )
                 .init();
         } else {
-            registry.with(tracing_subscriber::fmt::layer()).init();
+            registry
+                .with(
+                    tracing_subscriber::fmt::layer()
+                        .event_format(HumanReadableEventFormatter)
+                        .with_ansi(false),
+                )
+                .init();
         }
         None
     };

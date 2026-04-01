@@ -1,5 +1,7 @@
 import type { AuthContext } from "$lib/auth";
 import { cloneAuthContext } from "$lib/auth";
+import { resetApiCacheForAuthChange } from "$lib/api-cache-reset";
+import { getAuthStorageScopeKey } from "$lib/auth-storage";
 import { createSubscriber } from "svelte/reactivity";
 
 type FirebaseUserLike = {
@@ -26,6 +28,17 @@ const DEFAULT_AUTH: AuthContext = {
 
 function normalizeAuthContext(value: AuthContext): AuthContext {
   return cloneAuthContext(value);
+}
+
+function maybeResetAuthScopedCaches(
+  previousAuth: AuthContext,
+  nextAuth: AuthContext,
+) {
+  if (
+    getAuthStorageScopeKey(previousAuth) !== getAuthStorageScopeKey(nextAuth)
+  ) {
+    resetApiCacheForAuthChange();
+  }
 }
 
 async function importFirebaseAuthModule() {
@@ -118,7 +131,9 @@ class AuthStateController implements AuthController {
     }>,
   ) {
     if (next.current) {
-      this.#current = normalizeAuthContext(next.current);
+      const normalizedCurrent = normalizeAuthContext(next.current);
+      maybeResetAuthScopedCaches(this.#current, normalizedCurrent);
+      this.#current = normalizedCurrent;
     }
     if (next.ready !== undefined) {
       this.#ready = next.ready;
