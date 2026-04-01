@@ -30,7 +30,7 @@ use crate::models::{
 use crate::services::ollama::OllamaCore;
 use crate::services::search::SearchCandidate;
 use crate::services::text::limit_text;
-use crate::state::AppState;
+use crate::state::{ActiveChatKey, AppState};
 
 use super::chat::recent::{
     execute_recent_library_activity_query, is_explicit_realtime_status_query,

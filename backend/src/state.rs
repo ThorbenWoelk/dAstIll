@@ -15,6 +15,21 @@ use crate::services::{
     YouTubeQuotaCooldown, YouTubeService,
 };
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ActiveChatKey {
+    pub scope_key: String,
+    pub conversation_id: String,
+}
+
+impl ActiveChatKey {
+    pub fn new(scope_key: impl Into<String>, conversation_id: impl Into<String>) -> Self {
+        Self {
+            scope_key: scope_key.into(),
+            conversation_id: conversation_id.into(),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub db: Store,
@@ -33,7 +48,7 @@ pub struct AppState {
     pub search: Arc<SearchService>,
     pub chat: Arc<ChatService>,
     pub analytics: Option<Arc<DatabricksSqlService>>,
-    pub active_chats: Arc<Mutex<HashMap<String, ActiveChatHandle>>>,
+    pub active_chats: Arc<Mutex<HashMap<ActiveChatKey, ActiveChatHandle>>>,
     pub chat_store_lock: Arc<Mutex<()>>,
     pub anonymous_chat_quota_lock: Arc<Mutex<()>>,
     pub cloud_cooldown: Arc<CloudCooldown>,

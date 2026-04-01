@@ -20,7 +20,7 @@ use crate::{
         SpawnReplyJob,
         chat::{default_chat_cloud_model_id, is_chat_cloud_model_choice},
     },
-    state::AppState,
+    state::{ActiveChatKey, AppState},
 };
 
 use super::{map_db_err, require_present, validate_nonempty};
@@ -47,6 +47,32 @@ pub struct ChatSuggestionItem {
 
 fn conversation_scope_id(access_context: &AccessContext) -> &str {
     access_context.user_id.as_deref().unwrap_or("anonymous")
+}
+
+fn active_chat_scope_key(access_context: &AccessContext) -> String {
+    access_context.cache_scope_key()
+}
+
+fn active_chat_key(access_context: &AccessContext, conversation_id: &str) -> ActiveChatKey {
+    ActiveChatKey::new(active_chat_scope_key(access_context), conversation_id)
+}
+
+fn remove_active_chats_for_scope(
+    active_chats: &mut std::collections::HashMap<ActiveChatKey, crate::services::ActiveChatHandle>,
+    scope_key: &str,
+) -> Vec<crate::services::ActiveChatHandle> {
+    let keys = active_chats
+        .keys()
+        .filter(|key| key.scope_key == scope_key)
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut handles = Vec::with_capacity(keys.len());
+    for key in keys {
+        if let Some(active_chat) = active_chats.remove(&key) {
+            handles.push(active_chat);
+        }
+    }
+    handles
 }
 
 const EPHEMERAL_CHAT_MAX_MESSAGES: usize = 200;
@@ -232,7 +258,12 @@ pub async fn delete_conversation(
     Extension(access_context): Extension<AccessContext>,
     Path(conversation_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    if let Some(active_chat) = state.active_chats.lock().await.remove(&conversation_id) {
+    if let Some(active_chat) = state
+        .active_chats
+        .lock()
+        .await
+        .remove(&active_chat_key(&access_context, &conversation_id))
+    {
         active_chat.cancel();
     }
 
@@ -249,7 +280,12 @@ pub async fn delete_all_conversations(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    for (_, active_chat) in state.active_chats.lock().await.drain() {
+    let scope_key = active_chat_scope_key(&access_context);
+    let active_chats_to_cancel = {
+        let mut active_chats = state.active_chats.lock().await;
+        remove_active_chats_for_scope(&mut active_chats, &scope_key)
+    };
+    for active_chat in active_chats_to_cancel {
         active_chat.cancel();
     }
 
@@ -259,10 +295,6 @@ pub async fn delete_all_conversations(
         .await
         .map_err(map_db_err)?;
     audit::log_chat_conversations_delete_all(scope_id);
-
-    for (_, active_chat) in state.active_chats.lock().await.drain() {
-        active_chat.cancel();
-    }
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -282,16 +314,17 @@ pub async fn send_message(
         ));
     }
 
+    let runtime_key = active_chat_key(&access_context, &conversation_id);
     let active_chat = {
         let mut active_chats = state.active_chats.lock().await;
-        if active_chats.contains_key(&conversation_id) {
+        if active_chats.contains_key(&runtime_key) {
             return Err((
                 StatusCode::CONFLICT,
                 "Conversation already has an active response".to_string(),
             ));
         }
         let handle = crate::services::ActiveChatHandle::new();
-        active_chats.insert(conversation_id.clone(), handle.clone());
+        active_chats.insert(runtime_key.clone(), handle.clone());
         handle
     };
 
@@ -303,7 +336,7 @@ pub async fn send_message(
     {
         Some(id) if is_chat_cloud_model_choice(id) => id.to_string(),
         Some(_) => {
-            state.active_chats.lock().await.remove(&conversation_id);
+            state.active_chats.lock().await.remove(&runtime_key);
             return Err((
                 StatusCode::BAD_REQUEST,
                 "Unknown chat model. Pick a cloud model from the selector.".to_string(),
@@ -317,7 +350,7 @@ pub async fn send_message(
     let (conversation, should_auto_name) = match maybe_conversation {
         Ok(value) => value,
         Err(error) => {
-            state.active_chats.lock().await.remove(&conversation_id);
+            state.active_chats.lock().await.remove(&runtime_key);
             return Err(error);
         }
     };
@@ -326,6 +359,7 @@ pub async fn send_message(
         state: state.clone(),
         conversation,
         conversation_scope_id: conversation_scope_id(&access_context).to_string(),
+        active_chat_key: runtime_key,
         prompt: prompt.to_string(),
         should_auto_name,
         deep_research: payload.deep_research,
@@ -363,16 +397,17 @@ pub async fn send_ephemeral_message(
     validate_ephemeral_conversation(&payload.conversation)?;
 
     let conversation_id = payload.conversation.id.clone();
+    let runtime_key = active_chat_key(&access_context, &conversation_id);
     let active_chat = {
         let mut active_chats = state.active_chats.lock().await;
-        if active_chats.contains_key(&conversation_id) {
+        if active_chats.contains_key(&runtime_key) {
             return Err((
                 StatusCode::CONFLICT,
                 "Conversation already has an active response".to_string(),
             ));
         }
         let handle = crate::services::ActiveChatHandle::new();
-        active_chats.insert(conversation_id.clone(), handle.clone());
+        active_chats.insert(runtime_key.clone(), handle.clone());
         handle
     };
 
@@ -384,7 +419,7 @@ pub async fn send_ephemeral_message(
     {
         Some(id) if is_chat_cloud_model_choice(id) => id.to_string(),
         Some(_) => {
-            state.active_chats.lock().await.remove(&conversation_id);
+            state.active_chats.lock().await.remove(&runtime_key);
             return Err((
                 StatusCode::BAD_REQUEST,
                 "Unknown chat model. Pick a cloud model from the selector.".to_string(),
@@ -407,6 +442,7 @@ pub async fn send_ephemeral_message(
         state: state.clone(),
         conversation,
         conversation_scope_id: String::new(),
+        active_chat_key: runtime_key,
         prompt: prompt.to_string(),
         should_auto_name,
         deep_research: payload.deep_research,
@@ -420,15 +456,16 @@ pub async fn send_ephemeral_message(
 
 pub async fn reconnect_stream(
     State(state): State<AppState>,
-    Extension(_access_context): Extension<AccessContext>,
+    Extension(access_context): Extension<AccessContext>,
     Path(conversation_id): Path<String>,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, (StatusCode, String)>
 {
+    let runtime_key = active_chat_key(&access_context, &conversation_id);
     let active_chat = state
         .active_chats
         .lock()
         .await
-        .get(&conversation_id)
+        .get(&runtime_key)
         .cloned()
         .ok_or((StatusCode::NOT_FOUND, "Active chat not found".to_string()))?;
     Ok(sse_response(active_chat).await)
@@ -436,14 +473,15 @@ pub async fn reconnect_stream(
 
 pub async fn cancel_message(
     State(state): State<AppState>,
-    Extension(_access_context): Extension<AccessContext>,
+    Extension(access_context): Extension<AccessContext>,
     Path(conversation_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let runtime_key = active_chat_key(&access_context, &conversation_id);
     let active_chat = state
         .active_chats
         .lock()
         .await
-        .get(&conversation_id)
+        .get(&runtime_key)
         .cloned()
         .ok_or((StatusCode::NOT_FOUND, "Active chat not found".to_string()))?;
     active_chat.cancel();
@@ -676,17 +714,47 @@ fn apply_manual_conversation_title(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Arc, Once};
+
+    use axum::{
+        Extension,
+        extract::{Path, State},
+        http::StatusCode,
+        response::IntoResponse,
+    };
     use chrono::{Duration, Utc};
+    use reqwest::Client;
+    use tokio::sync::RwLock;
 
     use super::{
-        apply_manual_conversation_title, apply_user_message_to_conversation,
-        mark_manual_title_on_create, rank_channel_suggestions, rank_video_suggestions,
+        active_chat_key, apply_manual_conversation_title, apply_user_message_to_conversation,
+        cancel_message, mark_manual_title_on_create, rank_channel_suggestions,
+        rank_video_suggestions, reconnect_stream, remove_active_chats_for_scope,
     };
+    use crate::db::Store;
     use crate::handlers::validate_nonempty;
     use crate::models::{
         Channel, ChatConversation, ChatMessage, ChatMessageStatus, ChatRole, ChatTitleStatus,
         ContentStatus, Video,
     };
+    use crate::search_progress::SearchProgress;
+    use crate::security::{AccessContext, AccessRole, AuthState};
+    use crate::services::{
+        ActiveChatHandle, ChatService, CloudCooldown, OllamaCore, SearchService, SummarizerService,
+        SummaryEvaluatorService, TranscriptCooldown, TranscriptService, YouTubeQuotaCooldown,
+        YouTubeService,
+    };
+    use crate::state::AppState;
+
+    static RUSTLS_PROVIDER: Once = Once::new();
+
+    fn ensure_rustls_provider() {
+        RUSTLS_PROVIDER.call_once(|| {
+            rustls::crypto::ring::default_provider()
+                .install_default()
+                .expect("install rustls crypto provider");
+        });
+    }
 
     fn sample_conversation(title: Option<&str>, title_status: ChatTitleStatus) -> ChatConversation {
         let created_at = Utc::now() - Duration::minutes(5);
@@ -868,5 +936,155 @@ mod tests {
             retry_count: 0,
             quality_score: None,
         }
+    }
+
+    fn auth_context(user_id: &str) -> AccessContext {
+        AccessContext {
+            user_id: Some(user_id.to_string()),
+            auth_state: AuthState::Authenticated,
+            access_role: AccessRole::User,
+            allowed_channel_ids: Vec::new(),
+            allowed_other_video_ids: Vec::new(),
+        }
+    }
+
+    fn anonymous_context() -> AccessContext {
+        AccessContext {
+            user_id: None,
+            auth_state: AuthState::Anonymous,
+            access_role: AccessRole::Anonymous,
+            allowed_channel_ids: Vec::new(),
+            allowed_other_video_ids: Vec::new(),
+        }
+    }
+
+    fn test_app_state(db: Store) -> AppState {
+        ensure_rustls_provider();
+        let cooldown = Arc::new(CloudCooldown::cloud());
+        let security =
+            Arc::new(crate::config::SecurityRuntimeConfig::from_env().expect("security config"));
+        AppState {
+            db,
+            read_cache: Arc::new(crate::read_cache::ReadCache::default()),
+            security: security.clone(),
+            request_rate_limiter: crate::security::rate_limiter(security.as_ref()),
+            search_auto_create_vector_index: false,
+            search_projection_lock: Arc::new(RwLock::new(())),
+            search_progress: Arc::new(SearchProgress::new(
+                None,
+                crate::services::search::SEARCH_EMBEDDING_DIMENSIONS,
+                false,
+            )),
+            youtube: Arc::new(YouTubeService::with_client(Client::new())),
+            transcript: Arc::new(TranscriptService::with_path("/usr/bin/false")),
+            tts: None,
+            summarizer: Arc::new(SummarizerService::new(
+                OllamaCore::new("://invalid-url", "qwen3:8b").with_cloud_cooldown(cooldown.clone()),
+            )),
+            summary_evaluator: Arc::new(SummaryEvaluatorService::new(
+                OllamaCore::new("://invalid-url", "qwen3.5:397b-cloud")
+                    .with_cloud_cooldown(cooldown.clone()),
+            )),
+            search: Arc::new(SearchService::with_config(
+                "://invalid-url",
+                None,
+                crate::services::search::SEARCH_EMBEDDING_DIMENSIONS,
+                false,
+            )),
+            chat: Arc::new(ChatService::new(
+                OllamaCore::new("://invalid-url", "qwen3:8b").with_cloud_cooldown(cooldown.clone()),
+            )),
+            analytics: None,
+            active_chats: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+            chat_store_lock: Arc::new(tokio::sync::Mutex::new(())),
+            fts: Arc::new(crate::services::FtsIndex::new().expect("fts index")),
+            anonymous_chat_quota_lock: Arc::new(tokio::sync::Mutex::new(())),
+            cloud_cooldown: cooldown,
+            youtube_quota_cooldown: Arc::new(YouTubeQuotaCooldown::youtube_quota()),
+            transcript_cooldown: Arc::new(TranscriptCooldown::transcript()),
+        }
+    }
+
+    #[test]
+    fn active_chat_key_separates_anonymous_and_authenticated_scope_for_same_id() {
+        let authenticated = auth_context("anonymous");
+        let anonymous = anonymous_context();
+
+        assert_ne!(
+            active_chat_key(&authenticated, "conv-shared"),
+            active_chat_key(&anonymous, "conv-shared")
+        );
+    }
+
+    #[tokio::test]
+    async fn reconnect_and_cancel_require_matching_scope_ownership() {
+        ensure_rustls_provider();
+        let store = Store::for_test().await;
+        let state = test_app_state(store);
+        let owner = auth_context("user-a");
+        let foreign = auth_context("user-b");
+        let conversation_id = "conv-shared".to_string();
+        let owner_key = active_chat_key(&owner, &conversation_id);
+        state
+            .active_chats
+            .lock()
+            .await
+            .insert(owner_key.clone(), ActiveChatHandle::new());
+
+        let reconnect_error = reconnect_stream(
+            State(state.clone()),
+            Extension(foreign.clone()),
+            Path(conversation_id.clone()),
+        )
+        .await
+        .expect_err("foreign reconnect should fail");
+        assert_eq!(reconnect_error.0, StatusCode::NOT_FOUND);
+
+        let _ = reconnect_stream(
+            State(state.clone()),
+            Extension(owner.clone()),
+            Path(conversation_id.clone()),
+        )
+        .await
+        .expect("owner reconnect should succeed");
+
+        let cancel_error = cancel_message(
+            State(state.clone()),
+            Extension(foreign),
+            Path(conversation_id.clone()),
+        )
+        .await
+        .err()
+        .expect("foreign cancel should fail");
+        assert_eq!(cancel_error.0, StatusCode::NOT_FOUND);
+        assert!(state.active_chats.lock().await.contains_key(&owner_key));
+
+        let cancel_response = cancel_message(
+            State(state.clone()),
+            Extension(owner),
+            Path(conversation_id),
+        )
+        .await
+        .expect("owner cancel should succeed")
+        .into_response();
+        assert_eq!(cancel_response.status(), StatusCode::ACCEPTED);
+    }
+
+    #[test]
+    fn remove_active_chats_for_scope_only_takes_matching_scope_entries() {
+        let authenticated = auth_context("user-a");
+        let anonymous = anonymous_context();
+        let conversation_id = "conv-shared";
+
+        let authenticated_key = active_chat_key(&authenticated, conversation_id);
+        let anonymous_key = active_chat_key(&anonymous, conversation_id);
+        let mut active_chats = std::collections::HashMap::new();
+        active_chats.insert(authenticated_key.clone(), ActiveChatHandle::new());
+        active_chats.insert(anonymous_key.clone(), ActiveChatHandle::new());
+
+        let removed = remove_active_chats_for_scope(&mut active_chats, "user:user-a");
+        assert_eq!(removed.len(), 1);
+        assert!(!active_chats.contains_key(&authenticated_key));
+        assert!(active_chats.contains_key(&anonymous_key));
     }
 }

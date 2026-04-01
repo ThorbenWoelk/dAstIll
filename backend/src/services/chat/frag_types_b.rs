@@ -481,6 +481,7 @@ pub struct SpawnReplyJob {
     pub state: AppState,
     pub conversation: ChatConversation,
     pub conversation_scope_id: String,
+    pub active_chat_key: ActiveChatKey,
     pub prompt: String,
     pub should_auto_name: bool,
     pub deep_research: bool,
