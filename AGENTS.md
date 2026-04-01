@@ -20,6 +20,14 @@ Deeper domain-specific guidance belongs in dedicated docs and should be linked f
 - `AGENTS.md`: agent workflow entry point, document map, repo-level instructions.
 - `DESIGN.md`: design system and frontend engineering standards.
 
+## Docs Writing Style
+
+- Write docs in plain, direct language.
+- Prefer simple words over clever or abstract wording.
+- Optimize for reader understanding, not voice, flourish, or sounding impressive.
+- Avoid unnecessary jargon, layered metaphors, and inflated product language.
+- If a sentence can be shorter or more concrete without losing meaning, rewrite it.
+
 ## Secrets and production config
 
 **Follow these rules**

@@ -5,74 +5,60 @@ pageClass: ui-tour-page
 
 # UI Tour
 
-<div class="tour-hero">
-  <div>
-    <p class="tour-eyebrow">Visual walkthrough</p>
-    <p class="tour-lede">
-      dAstIll is organized around one loop: monitor channels, open a video, read the distilled version,
-      then branch into queue or chat when you need operational visibility or cross-video answers.
-    </p>
-    <div class="tour-route-strip">
-      <span>Workspace</span>
-      <span>Queue</span>
-      <span>Highlights</span>
-      <span>Vocabulary</span>
-      <span>Chat</span>
-      <span>Docs</span>
-    </div>
+<div class="tour-intro">
+  <p class="tour-eyebrow">Screenshots</p>
+  <p class="tour-lede">
+    dAstIll follows a simple flow: check channels, open a video, read the summary or transcript,
+    then use queue or chat when you need more detail.
+  </p>
+  <p class="tour-route-line">
+    <strong>Core routes:</strong> Workspace, Queue, Highlights, Vocabulary, Chat, Docs.
+  </p>
+</div>
+
+<div class="tour-facts">
+  <div class="tour-fact-row">
+    <p class="tour-fact-label">Capture date</p>
+    <p>April 1, 2026. All screenshots below were taken again from the deployed app for this update.</p>
   </div>
-  <div class="tour-meta-grid">
-    <article class="tour-meta-card">
-      <p class="tour-meta-label">Capture Date</p>
-      <strong>April 1, 2026</strong>
-      <p>All screenshots below were recaptured from the deployed app for this refresh.</p>
-    </article>
-    <article class="tour-meta-card">
-      <p class="tour-meta-label">Primary Loop</p>
-      <strong>Browse, read, triage, ask</strong>
-      <p>The routes are distinct, but they share one content model and one section shell.</p>
-    </article>
-    <article class="tour-meta-card">
-      <p class="tour-meta-label">Signed-Out Experience</p>
-      <strong>Still useful</strong>
-      <p>Anonymous browsing and quota-limited chat remain available even before sign-in.</p>
-    </article>
-    <article class="tour-meta-card">
-      <p class="tour-meta-label">Guide Entry Point</p>
-      <strong>In product</strong>
-      <p>The header-level Guide control opens the built-in walkthrough from the workspace.</p>
-    </article>
+  <div class="tour-fact-row">
+    <p class="tour-fact-label">Primary loop</p>
+    <p>Browse, read, check processing status, ask questions. The routes are separate, but they use the same content and layout structure.</p>
+  </div>
+  <div class="tour-fact-row">
+    <p class="tour-fact-label">Signed-out experience</p>
+    <p>Anonymous browsing and quota-limited chat remain available even before sign-in.</p>
+  </div>
+  <div class="tour-fact-row">
+    <p class="tour-fact-label">Guide entry point</p>
+    <p>The Guide button in the header opens the built-in walkthrough from the workspace.</p>
   </div>
 </div>
 
 ## Surface Map
 
-<div class="tour-surface-grid">
-  <article class="tour-surface-card">
+<div class="tour-surface-list">
+  <article class="tour-surface-row">
     <p class="tour-surface-label">Workspace</p>
-    <h3>Default operating surface</h3>
-    <p>Browse channels, scan recent uploads, and switch the selected video between info, summary, highlights, and transcript.</p>
+    <p><strong>Main view.</strong> Browse channels, scan recent uploads, and switch the selected video between info, summary, highlights, and transcript.</p>
   </article>
-  <article class="tour-surface-card">
+  <article class="tour-surface-row">
     <p class="tour-surface-label">Queue</p>
-    <h3>Operational backlog</h3>
-    <p>Track transcript extraction, summary generation, failures, and backfill depth without leaving the main shell.</p>
+    <p><strong>Processing status.</strong> See transcript extraction, summary generation, failures, and backfill depth without leaving the main layout.</p>
   </article>
-  <article class="tour-surface-card">
+  <article class="tour-surface-row">
     <p class="tour-surface-label">Chat</p>
-    <h3>Grounded assistant</h3>
-    <p>Run RAG conversations over the same library with streamed tool steps, evidence, and source-aware replies.</p>
+    <p><strong>Library chat.</strong> Ask questions across the same library and review tool steps, evidence, and cited answers.</p>
   </article>
-  <article class="tour-surface-card">
-    <p class="tour-surface-label">Personal library</p>
-    <h3>Highlights and vocabulary</h3>
-    <p>Save excerpts worth keeping and define replacement rules that future summaries should normalize toward.</p>
+  <article class="tour-surface-row">
+    <p class="tour-surface-label">Saved items</p>
+    <p><strong>Highlights and vocabulary.</strong> Save useful excerpts and define replacement rules for future summaries.</p>
   </article>
 </div>
 
 ## Workspace
 
-The workspace is the product's center of gravity. It keeps global navigation on the far left, channel and video browsing in the middle, and the selected content view on the right. On desktop that means you can move from channel discovery to deep reading without losing orientation.
+The workspace is the main screen. On desktop, navigation is on the left, channel and video browsing is in the middle, and the selected content is on the right. You can move from browsing to reading without losing your place.
 
 <figure class="tour-figure tour-figure--wide">
   <img
@@ -84,32 +70,32 @@ The workspace is the product's center of gravity. It keeps global navigation on 
   </figcaption>
 </figure>
 
-- The left rail anchors route changes without collapsing the rest of the reading context.
-- The middle column behaves like a channel inbox: recent uploads first, browsing second.
-- The content pane is optimized for reading, with summary and transcript treated as first-class views rather than secondary drawers.
-- Signed-out visitors still land in a usable workspace via the seeded default channel.
+- The left navigation lets you change routes without losing the current reading view.
+- The middle column lists recent uploads first.
+- The content pane focuses on reading, with summary and transcript available as main views.
+- Signed-out visitors still get a usable workspace through the default channel.
 
 ## Queue
 
-The queue is not a second library view. It is the operational readout for content still moving through the pipeline. When work is pending, this route surfaces incomplete transcripts, missing summaries, retries, and sync boundaries. When the system is caught up, the page becomes a "clear" state rather than disappearing.
+The queue is not another library page. It shows content that is still moving through the pipeline. When work is pending, this route shows incomplete transcripts, missing summaries, retries, and sync boundaries. When the system is caught up, the page shows a clear state instead of disappearing.
 
 <figure class="tour-figure tour-figure--wide">
   <img
     src="./images/ui-tour-queue-desktop.png"
-    alt="Desktop queue view showing a clear processing queue state, sync depth controls, and the shared section shell."
+    alt="Desktop queue view showing a clear processing state, sync depth controls, and the shared page layout."
   />
   <figcaption>
     Queue route in a clear state on April 1, 2026. The layout stays useful even when no items are currently waiting.
   </figcaption>
 </figure>
 
-- Queue state is still channel-scoped, so operators can inspect one feed at a time.
+- Queue state is still channel-scoped, so you can inspect one feed at a time.
 - Sync depth lives here because backfill policy is an operational control, not a reading preference.
-- The route reuses the same shell and sidebar language as the workspace, which keeps the mode switch lightweight.
+- This route uses the same main layout as the workspace, so switching between them is simple.
 
 ## Chat
 
-Chat sits on top of the same transcript and summary corpus, but the interaction model is different: instead of selecting one video and reading linearly, you ask for synthesis, explanation, or retrieval across the library. The composer keeps model choice and deep-research mode in the conversation workflow rather than hiding them in settings.
+Chat uses the same transcripts and summaries, but the workflow is different. Instead of opening one video and reading it, you ask questions across the library. Model choice and deep-research mode stay in the conversation flow instead of being hidden in settings.
 
 <figure class="tour-figure tour-figure--wide">
   <img
@@ -121,13 +107,13 @@ Chat sits on top of the same transcript and summary corpus, but the interaction 
   </figcaption>
 </figure>
 
-- Conversations are first-class objects with their own sidebar, rename flow, and delete controls.
-- Anonymous usage is allowed, but it is intentionally quota-limited and conversation history is ephemeral.
-- Tool progress is visible instead of hidden, which makes the assistant feel like part of the product runtime instead of a black box.
+- Conversations have their own sidebar, rename flow, and delete controls.
+- Anonymous usage is allowed, but it is quota-limited and conversation history is temporary.
+- Tool progress is visible instead of hidden, so you can see what the assistant is doing.
 
 ## Mobile
 
-On mobile the shell collapses around the reading experience. The tab strip stays at the top of the content stack, while bottom navigation handles route changes. The result is a tighter, more article-like presentation that still preserves the product's major modes.
+On mobile, the layout puts reading first. The tab strip stays at the top of the content, while bottom navigation handles route changes. The result is a smaller layout that still keeps the main modes available.
 
 <figure class="tour-figure tour-figure--mobile">
   <img
@@ -139,19 +125,19 @@ On mobile the shell collapses around the reading experience. The tab strip stays
   </figcaption>
 </figure>
 
-- The mobile layout prioritizes the selected video's content over the surrounding library chrome.
-- The same content modes remain available, but they are surfaced as a compact top tab strip.
-- Navigation, queue, highlights, and chat stay reachable without forcing a separate mobile-only information architecture.
+- The mobile layout prioritizes the selected video's content over the surrounding UI.
+- The same content modes remain available through a compact top tab strip.
+- Navigation, queue, highlights, and chat stay reachable without needing a separate mobile-only navigation model.
 
 ## Additional Surfaces
 
 Not every route needs a full screenshot to understand its role:
 
 - `Highlights` is the saved excerpt library built from transcript or summary selections.
-- `Vocabulary` stores replacement rules that future summaries should normalize toward.
+- `Vocabulary` stores replacement rules for future summaries.
 - `Docs` is a separate VitePress frontend linked from the product header.
-- `Guide` reopens the in-product walkthrough overlay when users need a refresher inside the workspace itself.
+- `Guide` reopens the in-product walkthrough overlay from inside the workspace.
 
 ## Why This UI Shape Matters
 
-The UI is built around backend lifecycle state, not just navigation. Transcript readiness, summary readiness, evaluation status, search coverage, and acknowledgement state all surface directly in the reading and queue flows. That is why the backend exposes rich bootstrap payloads and why the frontend keeps route transitions lightweight: the product is designed to stay readable while the content pipeline keeps changing underneath it.
+The UI is built around content state, not just navigation. Transcript readiness, summary readiness, evaluation status, search coverage, and acknowledgement state all appear directly in the reading and queue flows. The backend sends the frontend enough state to keep those views current while the pipeline is still running.

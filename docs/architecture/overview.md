@@ -60,7 +60,7 @@ flowchart LR
 
 ## What dAstIll Is
 
-dAstIll is a YouTube channel monitoring tool that helps you stop doom-scrolling and start deep-diving. It:
+dAstIll is a YouTube channel monitoring tool. It:
 
 - **Monitors your channels**: Subscribe to YouTube channels, backfill their video history, and auto-refresh for new uploads
 - **Extracts transcripts**: Pulls transcripts from videos so you can search and read instead of watch
@@ -72,7 +72,7 @@ dAstIll is a YouTube channel monitoring tool that helps you stop doom-scrolling 
 ## Primary Components
 
 <MermaidDiagram
-  caption="High-level system context: the product UI talks to the Rust backend, while the docs UI stays separate and static-first."
+  caption="High-level system context. The product UI talks to the Rust backend, while the docs UI stays separate."
   :chart="systemContextDiagram"
 />
 
@@ -103,7 +103,7 @@ dAstIll is a YouTube channel monitoring tool that helps you stop doom-scrolling 
 
 - Built with **VitePress** in `docs/`
 - Separate from the product UI
-- Static-first and markdown-native
+- Built from markdown and served as its own site
 
 ### Infrastructure
 
@@ -115,14 +115,15 @@ dAstIll is a YouTube channel monitoring tool that helps you stop doom-scrolling 
 - **AWS IAM** with GCP Workload Identity Federation for cross-cloud auth
 - **Secret Manager** for API keys and sensitive runtime config (YouTube API key, Logfire token, Firebase client secrets)
 
-## Repo-Level Boundaries
+## Repo Layout
 
 ```text
-frontend/  -> user-facing app interface
-backend/   -> API, jobs, storage, AI orchestration
-docs/      -> technical documentation frontend
-terraform/ -> infrastructure state and service definitions
-.specs/    -> persistent specs and task trackers
+dAstIll/
+├── backend/     Rust + Axum API, workers, S3 storage, AI service adapters
+├── frontend/    SvelteKit product UI
+├── docs/        VitePress documentation frontend
+├── terraform/   Cloud Run, secrets, and supporting infrastructure
+└── .specs/      Persistent implementation specs and task trackers
 ```
 
 ## Architectural Style
@@ -133,7 +134,7 @@ The application is intentionally split into:
 - **derived search projection storage** for retrieval
 - **background workers** that keep expensive or failure-prone work off user-facing writes
 
-This avoids embedding, chunking, and external-model work directly inside normal CRUD operations.
+This keeps embedding, chunking, and external model calls out of normal CRUD operations.
 
 <MermaidDiagram
   caption="Canonical content is stored first, then background workers build and maintain the derived search projection used by search and chat."
@@ -150,10 +151,10 @@ Transcripts, summaries, and metadata live in canonical tables first. Search chun
 
 Transcript extraction, summary generation, summary evaluation, channel refreshes, and search projection maintenance are all driven by background loops.
 
-### Local-first AI, cloud-capable evaluator path
+### Local-first AI, cloud-backed evaluator support
 
-The runtime supports local Ollama endpoints, cloud-backed model names, and explicit fallback policies. The app treats availability and rate limits as first-class runtime conditions.
+The runtime supports local Ollama endpoints, cloud-backed model names, and explicit fallback rules. The app treats availability and rate limits as normal runtime conditions that must be handled.
 
-### Semantic search is deployment-sensitive
+### Semantic search defaults depend on the environment
 
 Local debug runs default semantic search on. Release / production builds default semantic search off unless explicitly enabled. When semantic search is on, the backend reads the embedding model from `OLLAMA_EMBEDDING_MODEL`.
