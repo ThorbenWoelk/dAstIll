@@ -4,15 +4,15 @@
 
 dAstIll uses different models for different jobs. Each role is independently configured.
 
-| Variable                  | Role                                                                                 |
-| ------------------------- | ------------------------------------------------------------------------------------ |
-| `OLLAMA_SUMMARY_MODEL`    | Primary summarizer and transcript-cleaning model                                     |
-| `OLLAMA_FALLBACK_MODEL`   | Optional local fallback when the summarizer primary is cloud-backed and rate-limited |
+| Variable                    | Role                                                                                       |
+| --------------------------- | ------------------------------------------------------------------------------------------ |
+| `OLLAMA_SUMMARY_MODEL`      | Primary summarizer and transcript-cleaning model                                           |
+| `OLLAMA_FALLBACK_MODEL`     | Optional local fallback when the summarizer primary is cloud-backed and rate-limited       |
 | `OLLAMA_DEFAULT_CHAT_MODEL` | Default chat model for RAG conversations (falls back to `OLLAMA_SUMMARY_MODEL` if not set) |
-| `SUMMARY_EVALUATOR_MODEL` | Summary quality evaluator (LLM-as-judge)                                             |
-| `OLLAMA_EMBEDDING_MODEL`  | Search embedding model for semantic search                                           |
-| `SEARCH_RERANK_MODEL`     | Optional cross-encoder reranker for hybrid search (`/api/rerank`)                    |
-| `SEARCH_HYDE_MODEL`       | Optional generative model for HyDE passage synthesis (`/api/generate`)               |
+| `SUMMARY_EVALUATOR_MODEL`   | Summary quality evaluator (LLM-as-judge)                                                   |
+| `OLLAMA_EMBEDDING_MODEL`    | Search embedding model for semantic search                                                 |
+| `SEARCH_RERANK_MODEL`       | Optional cross-encoder reranker for hybrid search (`/api/rerank`)                          |
+| `SEARCH_HYDE_MODEL`         | Optional generative model for HyDE passage synthesis (`/api/generate`)                     |
 
 All models are accessed through the configured Ollama endpoint (`OLLAMA_URL`). The same
 endpoint is shared across roles; there is no per-role endpoint override.
@@ -86,10 +86,10 @@ regenerated. Once the cap is reached, the video is not requeued further.
 
 ### Configuration
 
-| Variable                  | Purpose                                                            |
-| ------------------------- | ------------------------------------------------------------------ |
+| Variable                  | Purpose                                                                   |
+| ------------------------- | ------------------------------------------------------------------------- |
 | `OLLAMA_EMBEDDING_MODEL`  | Model name for dense embeddings; required when semantic search is enabled |
-| `SEARCH_SEMANTIC_ENABLED` | Override switch; local debug defaults on, release defaults off     |
+| `SEARCH_SEMANTIC_ENABLED` | Override switch; local debug defaults on, release defaults off            |
 
 The embedding model is accessed via Ollama's `/api/embed` endpoint. The service:
 
@@ -214,8 +214,8 @@ retrieval strategy to gather the right context.
 
 ### Model Configuration
 
-| Variable            | Chat behavior                                             |
-| ------------------- | --------------------------------------------------------- |
+| Variable                    | Chat behavior                                                     |
+| --------------------------- | ----------------------------------------------------------------- |
 | `OLLAMA_DEFAULT_CHAT_MODEL` | Default chat model. Falls back to `OLLAMA_SUMMARY_MODEL` if unset |
 
 Chat model selection is done at conversation creation time. If the selected model is no
@@ -378,13 +378,13 @@ dAstIll integrates with Amazon Polly to synthesize audio from summaries.
 
 ### Configuration
 
-| Variable                | Purpose                                    |
-| ----------------------- | ------------------------------------------ |
-| `POLLY_TTS_ENABLED`     | Enable TTS (default: `false`)             |
-| `POLLY_TTS_VOICE_ID`    | Polly voice ID (e.g., `Joanna`, `Matthew`) |
-| `POLLY_TTS_ENGINE`      | Engine type: `standard` or `neural`        |
-| `POLLY_TTS_OUTPUT_FORMAT`| Output format (e.g., `wav`, `pcm`)       |
-| `POLLY_TTS_SAMPLE_RATE` | Sample rate in Hz (e.g., `8000`, `16000`)  |
+| Variable                  | Purpose                                    |
+| ------------------------- | ------------------------------------------ |
+| `POLLY_TTS_ENABLED`       | Enable TTS (default: `false`)              |
+| `POLLY_TTS_VOICE_ID`      | Polly voice ID (e.g., `Joanna`, `Matthew`) |
+| `POLLY_TTS_ENGINE`        | Engine type: `standard` or `neural`        |
+| `POLLY_TTS_OUTPUT_FORMAT` | Output format (e.g., `wav`, `pcm`)         |
+| `POLLY_TTS_SAMPLE_RATE`   | Sample rate in Hz (e.g., `8000`, `16000`)  |
 
 ### Processing Pipeline
 
@@ -398,11 +398,11 @@ dAstIll integrates with Amazon Polly to synthesize audio from summaries.
 
 Completed synthesis samples are recorded in Firestore (`dastill_tts_stats`) to estimate future synthesis duration based on word count and historical throughput.
 
-| Field                | Description                            |
-| -------------------- | -------------------------------------- |
-| `sample_count`       | Number of completed TTS generations    |
-| `total_words`        | Cumulative words processed             |
-| `total_duration_secs`| Cumulative synthesis duration in seconds |
+| Field                 | Description                              |
+| --------------------- | ---------------------------------------- |
+| `sample_count`        | Number of completed TTS generations      |
+| `total_words`         | Cumulative words processed               |
+| `total_duration_secs` | Cumulative synthesis duration in seconds |
 
 ---
 

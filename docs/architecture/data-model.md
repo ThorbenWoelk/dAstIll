@@ -1,17 +1,92 @@
 # Data Model
 
-## Canonical Tables
+<script setup>
+const storageOwnershipDiagram = String.raw`
+flowchart LR
+  subgraph s3canonical["S3-backed canonical records"]
+    channels[channels]
+    transcripts[transcripts]
+    summaries[summaries]
+    videoinfo[video_info]
+  end
+
+  subgraph firestorecanonical["Firestore-backed records"]
+    videos[videos]
+  end
+
+  subgraph userstate["User-scoped S3 records"]
+    subscriptions[user-channel-subscriptions]
+    memberships[user-video-memberships]
+    videostate[user-video-states]
+    highlights[user-highlights]
+    chats[user-conversations]
+  end
+
+  subgraph search["Derived search projection"]
+    sources[search_sources]
+    chunks[search_chunks]
+    vectors[S3 Vectors embeddings]
+    fts[Tantivy BM25 replica]
+  end
+
+  subgraph firestore["Firestore"]
+    prefs[dastill_preferences]
+    tts[dastill_tts_stats]
+  end
+
+  channels --> videos
+  videos --> transcripts
+  videos --> summaries
+  videos --> videoinfo
+  transcripts --> sources
+  summaries --> sources
+  sources --> chunks
+  chunks --> vectors
+  chunks --> fts
+  subscriptions --> videos
+  memberships --> videos
+  videostate --> videos
+`;
+
+const searchProjectionDiagram = String.raw`
+flowchart LR
+  transcript[Transcript content]
+  summary[Summary content]
+  pending[Mark search_sources pending]
+  worker[Search index worker]
+  chunks[search_chunks objects]
+  fts[In-memory Tantivy]
+  vectors[S3 Vectors]
+  results[Search + chat retrieval]
+
+  transcript --> pending
+  summary --> pending
+  pending --> worker
+  worker --> chunks
+  worker --> fts
+  worker --> vectors
+  fts --> results
+  vectors --> results
+`;
+</script>
+
+## Canonical Record Sets
 
 These are the authoritative content records owned by ingest and processing, not user
 overlays or derived search projections.
 
-| Table         | Role                                                                              |
-| ------------- | --------------------------------------------------------------------------------- |
-| `channels`    | Canonical channel metadata discovered from YouTube                                |
-| `videos`      | Canonical per-video metadata plus transcript/summary processing state             |
-| `transcripts` | Extracted raw text and formatted markdown transcript forms                        |
-| `summaries`   | Generated or manually edited summaries plus quality fields                        |
-| `video_info`  | Extended metadata such as description, duration, and view count                   |
+| Table         | Role                                                                  |
+| ------------- | --------------------------------------------------------------------- |
+| `channels`    | Canonical channel metadata discovered from YouTube                    |
+| `videos`      | Canonical per-video metadata plus transcript/summary processing state |
+| `transcripts` | Extracted raw text and formatted markdown transcript forms            |
+| `summaries`   | Generated or manually edited summaries plus quality fields            |
+| `video_info`  | Extended metadata such as description, duration, and view count       |
+
+<MermaidDiagram
+  caption="Storage ownership map: canonical content, user-scoped records, and derived search state are separated so indexing can be rebuilt without rewriting source records."
+  :chart="storageOwnershipDiagram"
+/>
 
 ## Core Status Fields
 
@@ -41,7 +116,7 @@ Some API payloads intentionally merge canonical and user-scoped records:
 
 - `Channel` responses combine canonical channel metadata with the caller's
   `user-channel-subscriptions/{user_id}/{channel_id}.json` record.
-- `Video` responses combine canonical `videos/{video_id}.json` data with the caller's
+- `Video` responses combine the canonical Firestore-backed `videos` record with the caller's
   `user-video-states/{user_id}/{video_id}.json` overlay, which currently carries
   `acknowledged`.
 - Anonymous requests do not persist these user-scoped records. They operate against the
@@ -63,6 +138,11 @@ The backend also maintains an **in-memory Tantivy BM25 index** hydrated from the
 `search-chunks/` corpus at startup. All keyword search queries go through this index -
 there is no per-query S3 scan. The Tantivy index is kept in sync by the search index
 worker after every write.
+
+<MermaidDiagram
+  caption="Canonical transcript and summary records feed the derived search projection, which then powers both keyword and semantic retrieval."
+  :chart="searchProjectionDiagram"
+/>
 
 ### `search_sources`
 
@@ -95,11 +175,11 @@ Most user-owned library state lives in S3 under user-specific prefixes.
 
 ### Subscriptions and per-user video state
 
-| Prefix                                             | Role                                                       |
-| -------------------------------------------------- | ---------------------------------------------------------- |
-| `user-channel-subscriptions/{user_id}/`            | Channel subscriptions plus per-subscription sync settings  |
-| `user-video-memberships/{user_id}/`                | Explicitly added videos, including the virtual Others view |
-| `user-video-states/{user_id}/`                     | Per-user overlays such as `acknowledged`                  |
+| Prefix                                  | Role                                                       |
+| --------------------------------------- | ---------------------------------------------------------- |
+| `user-channel-subscriptions/{user_id}/` | Channel subscriptions plus per-subscription sync settings  |
+| `user-video-memberships/{user_id}/`     | Explicitly added videos, including the virtual Others view |
+| `user-video-states/{user_id}/`          | Per-user overlays such as `acknowledged`                   |
 
 These records are loaded into `AccessContext` at request time so the backend can scope
 channel, video, search, and chat access to the caller's library.
@@ -124,10 +204,10 @@ The `/highlights` route groups these per-user records by channel and video at re
 Persistent chat conversations are stored in S3 as JSON objects under authenticated user
 scope, separate from canonical content:
 
-| Storage                                    | Role                                               |
-| ------------------------------------------ | -------------------------------------------------- |
-| `user-conversations/{user_id}/index.json`  | Conversation list index with titles and timestamps |
-| `user-conversations/{user_id}/{id}.json`   | Full conversation with all messages and sources    |
+| Storage                                   | Role                                               |
+| ----------------------------------------- | -------------------------------------------------- |
+| `user-conversations/{user_id}/index.json` | Conversation list index with titles and timestamps |
+| `user-conversations/{user_id}/{id}.json`  | Full conversation with all messages and sources    |
 
 ### Conversation Structure
 
@@ -164,16 +244,28 @@ Chat is intentionally separate from canonical content:
 
 ## Firestore Collections
 
-In addition to S3 for canonical content, the application uses Google Firestore for user-facing state and statistics.
+The application uses Google Firestore for video records plus selected user-facing state and statistics.
+
+### Video Records (`dastill_videos`)
+
+Canonical video records, queue state, retry counts, and summary quality mirrors are stored in
+Firestore rather than S3.
+
+| Field group                       | Description                                           |
+| --------------------------------- | ----------------------------------------------------- |
+| metadata                          | Video id, channel id, title, publish timestamp        |
+| processing state                  | `transcript_status`, `summary_status`, `retry_count`  |
+| quality mirror                    | `quality_score` copied from summary evaluation output |
+| user-facing flags in API overlays | `acknowledged` merged at read time from user state    |
 
 ### User Preferences (`dastill_preferences`)
 
 Per-authenticated-user preferences stored in Firestore:
 
-| Field                    | Description                            |
-| ------------------------ | -------------------------------------- |
-| `channel_order`          | Ordered list of channel IDs            |
-| `channel_sort_mode`      | Sort mode: `custom`, `alpha`, `newest` |
+| Field                     | Description                            |
+| ------------------------- | -------------------------------------- |
+| `channel_order`           | Ordered list of channel IDs            |
+| `channel_sort_mode`       | Sort mode: `custom`, `alpha`, `newest` |
 | `vocabulary_replacements` | Custom word replacements for summaries |
 
 Document IDs use the authenticated Firebase user id. On first authenticated access, the
@@ -184,11 +276,11 @@ backend can copy a legacy `dastill_preferences/user` document forward for compat
 Aggregated text-to-speech generation metrics stored in the global Firestore document
 `dastill_tts_stats/global`:
 
-| Field                | Description                            |
-| -------------------- | -------------------------------------- |
-| `sample_count`       | Number of completed TTS generations    |
-| `total_words`        | Cumulative words processed             |
-| `total_duration_secs`| Cumulative synthesis duration in seconds |
+| Field                 | Description                              |
+| --------------------- | ---------------------------------------- |
+| `sample_count`        | Number of completed TTS generations      |
+| `total_words`         | Cumulative words processed               |
+| `total_duration_secs` | Cumulative synthesis duration in seconds |
 
 Used to estimate synthesis time for new TTS requests.
 
@@ -196,18 +288,20 @@ Used to estimate synthesis time for new TTS requests.
 
 ## Storage Ownership Summary
 
-| Data                          | Storage   | Notes                                    |
-| ----------------------------- | --------- | ---------------------------------------- |
-| Channels, videos, transcripts, summaries, video info | S3         | Canonical content                          |
-| User channel subscriptions                           | S3         | `user-channel-subscriptions/{user_id}`     |
-| User video memberships and view state                | S3         | `user-video-memberships/*` and `user-video-states/*` |
-| Search chunks                                        | S3         | Derived projection                         |
-| Search sources                                       | S3         | Derived projection metadata                |
-| Vector embeddings                                    | S3 Vectors | Semantic search                            |
-| Conversations                                        | S3         | Authenticated user chat history            |
-| Highlights                                           | S3         | Authenticated user annotations             |
-| User preferences                                     | Firestore  | Per-user settings                          |
-| TTS statistics                                       | Firestore  | Global synthesis metrics                   |
+| Data                                  | Storage    | Notes                                                     |
+| ------------------------------------- | ---------- | --------------------------------------------------------- |
+| Channels                              | S3         | `channels/{id}.json` canonical channel records            |
+| Videos                                | Firestore  | `dastill_videos` canonical video records and queue status |
+| Transcripts, summaries, video info    | S3         | Canonical content blobs                                   |
+| User channel subscriptions            | S3         | `user-channel-subscriptions/{user_id}`                    |
+| User video memberships and view state | S3         | `user-video-memberships/*` and `user-video-states/*`      |
+| Search chunks                         | S3         | Derived projection                                        |
+| Search sources                        | S3         | Derived projection metadata                               |
+| Vector embeddings                     | S3 Vectors | Semantic search                                           |
+| Conversations                         | S3         | Authenticated user chat history                           |
+| Highlights                            | S3         | Authenticated user annotations                            |
+| User preferences                      | Firestore  | Per-user settings                                         |
+| TTS statistics                        | Firestore  | Global synthesis metrics                                  |
 
 ---
 

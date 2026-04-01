@@ -51,45 +51,45 @@ cp backend/.env.example backend/.env
 
 Important variables:
 
-| Variable                            | Purpose                                                                          |
-| ----------------------------------- | -------------------------------------------------------------------------------- |
-| `AWS_REGION`                        | AWS region for S3 and S3 Vectors                                                 |
-| `S3_DATA_BUCKET`                    | S3 bucket for data storage                                                       |
-| `S3_VECTOR_BUCKET`                  | S3 Vectors bucket for semantic search                                            |
-| `S3_VECTOR_INDEX`                   | S3 Vectors index name for embeddings                                             |
-| `AWS_ACCESS_KEY_ID`                 | Local AWS access key used for S3 / S3 Vectors                                    |
-| `AWS_SECRET_ACCESS_KEY`             | Local AWS secret key used for S3 / S3 Vectors                                    |
-| `AWS_SESSION_TOKEN`                 | Optional temporary session token for local AWS auth                              |
-| `BACKEND_PROXY_TOKEN`               | Shared secret used by the authenticated frontend proxy when it calls the backend |
-| `BACKEND_CORS_ALLOWED_ORIGINS`      | Comma-separated list of browser origins allowed to call the backend directly     |
-| `AWS_ROLE_ARN` / `AWS_WIF_AUDIENCE` | Production only: GCP Workload Identity Federation for AWS                        |
-| `YOUTUBE_API_KEY`                   | Optional YouTube Data API access                                                 |
-| `OLLAMA_URL`                        | Ollama endpoint                                                                  |
-| `OLLAMA_API_KEY`                    | API key for Ollama cloud (required when using cloud Ollama URL)                  |
-| `OLLAMA_SUMMARY_MODEL`              | Primary summarizer model                                                         |
-| `OLLAMA_FALLBACK_MODEL`             | Local fallback used when the primary summarizer is cloud-backed and rate-limited |
+| Variable                            | Purpose                                                                                    |
+| ----------------------------------- | ------------------------------------------------------------------------------------------ |
+| `AWS_REGION`                        | AWS region for S3 and S3 Vectors                                                           |
+| `S3_DATA_BUCKET`                    | S3 bucket for data storage                                                                 |
+| `S3_VECTOR_BUCKET`                  | S3 Vectors bucket for semantic search                                                      |
+| `S3_VECTOR_INDEX`                   | S3 Vectors index name for embeddings                                                       |
+| `AWS_ACCESS_KEY_ID`                 | Local AWS access key used for S3 / S3 Vectors                                              |
+| `AWS_SECRET_ACCESS_KEY`             | Local AWS secret key used for S3 / S3 Vectors                                              |
+| `AWS_SESSION_TOKEN`                 | Optional temporary session token for local AWS auth                                        |
+| `BACKEND_PROXY_TOKEN`               | Shared secret used by the authenticated frontend proxy when it calls the backend           |
+| `BACKEND_CORS_ALLOWED_ORIGINS`      | Comma-separated list of browser origins allowed to call the backend directly               |
+| `AWS_ROLE_ARN` / `AWS_WIF_AUDIENCE` | Production only: GCP Workload Identity Federation for AWS                                  |
+| `YOUTUBE_API_KEY`                   | Optional YouTube Data API access                                                           |
+| `OLLAMA_URL`                        | Ollama endpoint                                                                            |
+| `OLLAMA_API_KEY`                    | API key for Ollama cloud (required when using cloud Ollama URL)                            |
+| `OLLAMA_SUMMARY_MODEL`              | Primary summarizer model                                                                   |
+| `OLLAMA_FALLBACK_MODEL`             | Local fallback used when the primary summarizer is cloud-backed and rate-limited           |
 | `OLLAMA_DEFAULT_CHAT_MODEL`         | Default chat model for RAG conversations (falls back to `OLLAMA_SUMMARY_MODEL` if not set) |
-| `SUMMARY_EVALUATOR_MODEL`           | Quality evaluator model - must differ from `OLLAMA_SUMMARY_MODEL`                |
-| `OLLAMA_EMBEDDING_MODEL`            | Search embedding model (required when semantic search is enabled)                |
-| `SEARCH_SEMANTIC_ENABLED`           | Explicit override for semantic search behavior                                   |
-| `SEARCH_AUTO_CREATE_VECTOR_INDEX`   | Optional ANN index creation after backlog clears                                 |
-| `SEARCH_RERANK_MODEL`               | Optional cross-encoder reranker model name (Ollama `/api/rerank`)                |
-| `SEARCH_HYDE_MODEL`                 | Optional HyDE generation model name (Ollama `/api/generate`, short queries only) |
-| `CHAT_MULTI_PASS_ENABLED`           | Enable multi-pass retrieval for chat (default: `true`)                           |
-| `DEFAULT_SEEDED_CHANNEL_ID`         | Fallback channel ID for empty workspace (default: set in config)                  |
-| `BASELINE_RATE_LIMIT_PER_MINUTE`    | Baseline API rate limit per client (default: `600`)                              |
-| `EXPENSIVE_RATE_LIMIT_PER_MINUTE`   | Rate limit for AI/chat/search mutations (default: `120`)                         |
-| `ANONYMOUS_CHAT_QUOTA`               | Message quota for anonymous chat users (default: `30`)                          |
-| `SUMMARIZE_PATH`                    | Path to the transcript extraction CLI                                            |
-| `LOGFIRE_TOKEN`                     | Optional Logfire token for backend tracing / AI pipeline observability           |
-| `DATABRICKS_HOST`                   | Databricks workspace URL for analytics ingestion                                 |
-| `DATABRICKS_TOKEN`                  | Databricks personal access token                                                 |
-| `DATABRICKS_WAREHOUSE_ID`           | Databricks SQL warehouse ID                                                      |
-| `POLLY_TTS_ENABLED`                 | Enable Amazon Polly TTS for summary audio (default: `false`)                    |
-| `POLLY_TTS_VOICE_ID`                | Polly voice ID (default: `Joanna`)                                              |
-| `POLLY_TTS_ENGINE`                  | Polly engine: `standard` or `neural` (default: `neural`)                        |
-| `POLLY_TTS_OUTPUT_FORMAT`           | Polly output format (default: `wav`)                                            |
-| `POLLY_TTS_SAMPLE_RATE`             | Polly sample rate in Hz (default: `16000`)                                      |
+| `SUMMARY_EVALUATOR_MODEL`           | Quality evaluator model - must differ from `OLLAMA_SUMMARY_MODEL`                          |
+| `OLLAMA_EMBEDDING_MODEL`            | Search embedding model (required when semantic search is enabled)                          |
+| `SEARCH_SEMANTIC_ENABLED`           | Explicit override for semantic search behavior                                             |
+| `SEARCH_AUTO_CREATE_VECTOR_INDEX`   | Optional ANN index creation after backlog clears                                           |
+| `SEARCH_RERANK_MODEL`               | Optional cross-encoder reranker model name (Ollama `/api/rerank`)                          |
+| `SEARCH_HYDE_MODEL`                 | Optional HyDE generation model name (Ollama `/api/generate`, short queries only)           |
+| `CHAT_MULTI_PASS_ENABLED`           | Enable multi-pass retrieval for chat (default: `true`)                                     |
+| `DEFAULT_SEEDED_CHANNEL_ID`         | Fallback channel ID for empty workspace (default: set in config)                           |
+| `BASELINE_RATE_LIMIT_PER_MINUTE`    | Baseline API rate limit per client (default: `600`)                                        |
+| `EXPENSIVE_RATE_LIMIT_PER_MINUTE`   | Rate limit for AI/chat/search mutations (default: `120`)                                   |
+| `ANONYMOUS_CHAT_QUOTA`              | Message quota for anonymous chat users (default: `30`)                                     |
+| `SUMMARIZE_PATH`                    | Path to the transcript extraction CLI                                                      |
+| `LOGFIRE_TOKEN`                     | Optional Logfire token for backend tracing / AI pipeline observability                     |
+| `DATABRICKS_HOST`                   | Databricks workspace URL for analytics ingestion                                           |
+| `DATABRICKS_TOKEN`                  | Databricks personal access token                                                           |
+| `DATABRICKS_WAREHOUSE_ID`           | Databricks SQL warehouse ID                                                                |
+| `POLLY_TTS_ENABLED`                 | Enable Amazon Polly TTS for summary audio (default: `false`)                               |
+| `POLLY_TTS_VOICE_ID`                | Polly voice ID (default: `Joanna`)                                                         |
+| `POLLY_TTS_ENGINE`                  | Polly engine: `standard` or `neural` (default: `neural`)                                   |
+| `POLLY_TTS_OUTPUT_FORMAT`           | Polly output format (default: `wav`)                                                       |
+| `POLLY_TTS_SAMPLE_RATE`             | Polly sample rate in Hz (default: `16000`)                                                 |
 
 The backend requires AWS credentials in addition to the bucket names. Provide them in `backend/.env`:
 

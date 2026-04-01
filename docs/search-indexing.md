@@ -1,5 +1,55 @@
 # Search Indexing
 
+<script setup>
+const queryPathDiagram = String.raw`
+flowchart LR
+  query[User query]
+  tokenize[Tokenize + remove stopwords]
+  hyde[Optional HyDE passage]
+  embed[Embed query or HyDE passage]
+  fts[BM25 Tantivy leg]
+  vectors[Vector retrieval leg]
+  rrf[RRF fusion]
+  rerank[Optional reranker]
+  results[Search results + chat sources]
+
+  query --> tokenize
+  tokenize --> fts
+  tokenize --> hyde
+  tokenize --> embed
+  hyde --> embed
+  embed --> vectors
+  fts --> rrf
+  vectors --> rrf
+  rrf --> rerank
+  rerank --> results
+`;
+
+const indexMaintenanceDiagram = String.raw`
+flowchart LR
+  canonical[Ready transcript or summary]
+  pending[search_sources pending]
+  claim[Search worker claims source]
+  chunk[Chunk content]
+  embed[Optional embedding batches]
+  store[Write search_chunks + source state]
+  fts[Upsert Tantivy source]
+  vectors[S3 Vectors]
+  retrieval[Keyword + hybrid retrieval]
+
+  canonical --> pending
+  pending --> claim
+  claim --> chunk
+  chunk --> embed
+  chunk --> store
+  embed --> store
+  store --> fts
+  store --> vectors
+  fts --> retrieval
+  vectors --> retrieval
+`;
+</script>
+
 ## Overview
 
 Search is built on three complementary layers that run in parallel and can be combined
@@ -12,6 +62,11 @@ at query time:
 
 Each layer degrades independently without breaking the others.
 
+<MermaidDiagram
+  caption="Search query path: keyword and semantic legs run independently, then merge before the final result set is returned to workspace search or chat."
+  :chart="queryPathDiagram"
+/>
+
 ---
 
 ## Storage Backend
@@ -23,6 +78,11 @@ Each layer degrades independently without breaking the others.
 | In-memory Tantivy | BM25 index hydrated from S3 at startup; all keyword queries go here |
 
 S3 is the durable source of truth. The Tantivy index is a fast in-process replica.
+
+<MermaidDiagram
+  caption="Index maintenance flow: canonical content becomes pending search sources, then the search worker chunks, embeds, stores, and syncs the in-memory BM25 index."
+  :chart="indexMaintenanceDiagram"
+/>
 
 ---
 
@@ -121,13 +181,13 @@ This keeps summary searchability from being starved behind a large transcript ba
 
 ### Chunking Parameters
 
-| Constant                   | Value | Description                                         |
-| -------------------------- | ----- | --------------------------------------------------- |
-| `TRANSCRIPT_TARGET_WORDS`  | 300   | Target words per transcript chunk                   |
-| `TRANSCRIPT_OVERLAP_WORDS` | 40    | Overlap words between consecutive transcript chunks |
-| `SUMMARY_TARGET_WORDS`     | 300   | Target words per summary section chunk              |
+| Constant                   | Value | Description                                                   |
+| -------------------------- | ----- | ------------------------------------------------------------- |
+| `TRANSCRIPT_TARGET_WORDS`  | 300   | Target words per transcript chunk                             |
+| `TRANSCRIPT_OVERLAP_WORDS` | 40    | Overlap words between consecutive transcript chunks           |
+| `SUMMARY_TARGET_WORDS`     | 300   | Target words per summary section chunk                        |
 | `EMBEDDING_DIMENSIONS`     | 512   | Vector dimensions for the common embeddinggemma configuration |
-| `EMBED_BATCH_SIZE`         | 8     | Chunks per embedding API request                    |
+| `EMBED_BATCH_SIZE`         | 8     | Chunks per embedding API request                              |
 
 ### Transcript Chunking
 

@@ -77,7 +77,7 @@ The SvelteKit app uses the Firebase JS SDK in the browser and **Firebase Admin**
 
 **Release workflow:** checks that Secret Manager secrets `dastill-firebase-web-api-key` and `dastill-firebase-auth-domain` exist (fails fast with a Terraform hint if not), deploys the Firebase auth config from `frontend/firebase.json`, then mounts the frontend Firebase secrets as `PUBLIC_FIREBASE_API_KEY`, `PUBLIC_FIREBASE_KEY` (same value, optional alias), and `PUBLIC_FIREBASE_AUTH_DOMAIN`. It sets **`PUBLIC_FIREBASE_PROJECT_ID`** to the GCP project id (`GCP_PROJECT_ID` in the workflow), plus frontend runtime env such as `BACKEND_API_BASE`, `BACKEND_IDENTITY_AUDIENCE`, `PUBLIC_DOCS_URL`, and `PUBLIC_CONTACT_EMAIL`.
 
-**GCP:** Terraform grants the frontend Cloud Run service account `roles/firebaseauth.admin` so the Node server can verify ID tokens and issue session cookies.
+**GCP:** Terraform grants `roles/firebaseauth.admin` to the frontend Cloud Run service account so the Node server can verify ID tokens and issue session cookies, and to the GitHub Actions deploy service account so `firebase deploy --only auth` can list the Firebase web app and update auth config during release.
 
 **Authorized domains:** Terraform manages Identity Platform authorized domains. The default set includes `localhost`, the Firebase-hosted domains for the project, the deployed frontend Cloud Run host, and any entries in `firebase_authorized_domains_extra`. Use Terraform rather than console-only edits for managed environments.
 

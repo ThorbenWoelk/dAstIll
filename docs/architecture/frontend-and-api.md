@@ -1,5 +1,97 @@
 # Frontend and API
 
+<script setup>
+const frontendBoundaryDiagram = String.raw`
+flowchart LR
+  routes[Svelte routes + workspace controllers]
+  api[frontend/src/lib/api.ts]
+
+  subgraph handlers["Axum handler modules"]
+    channels[channels.rs]
+    videos[videos.rs]
+    content[content.rs]
+    search[search.rs]
+    chat[chat.rs]
+    highlights[highlights.rs]
+    prefs[preferences.rs]
+  end
+
+  services[db/* + services/* + workers/*]
+
+  routes --> api
+  api --> channels
+  api --> videos
+  api --> content
+  api --> search
+  api --> chat
+  api --> highlights
+  api --> prefs
+  channels --> services
+  videos --> services
+  content --> services
+  search --> services
+  chat --> services
+  highlights --> services
+  prefs --> services
+`;
+
+const workspaceBootstrapDiagram = String.raw`
+sequenceDiagram
+  participant ui as workspace route
+  participant api as /api/workspace/bootstrap
+  participant state as sidebar + content state
+  participant snapshot as /api/channels/{id}/snapshot
+  participant content as transcript/summary loaders
+
+  ui->>api: GET workspace bootstrap
+  api-->>ui: channels + selected_channel_id + snapshot + ai/search status
+  ui->>state: Render sidebar and restore selection
+  alt bootstrap already includes selected snapshot
+    ui->>state: Apply snapshot immediately
+  else snapshot missing or stale
+    ui->>snapshot: GET selected channel snapshot
+    snapshot-->>ui: channel snapshot payload
+    ui->>state: Apply snapshot
+  end
+  ui->>content: Load transcript/summary/info for selected video
+`;
+
+const proxyBoundaryDiagram = String.raw`
+flowchart LR
+  browser[Browser]
+  ui[Product UI]
+  proxy[SvelteKit API proxy]
+  headers[x-dastill-* proxy headers]
+  backend[Axum backend]
+  scope[AccessContext]
+  authz[Scoped channel, video, search, and chat access]
+
+  browser --> ui
+  ui -->|relative /api/...| proxy
+  proxy --> headers
+  headers --> backend
+  backend --> scope
+  scope --> authz
+`;
+
+const apiFamiliesDiagram = String.raw`
+flowchart TD
+  ui[Workspace + route UIs]
+
+  ui --> bootstrap[Bootstrap + channels + videos]
+  ui --> contentapi[Transcript + summary + video info]
+  ui --> searchapi[Search + search status + rebuild]
+  ui --> chatapi[Chat config + conversations + SSE streams]
+  ui --> userapi[Highlights + preferences + analytics]
+
+  bootstrap --> channels[channels.rs + videos.rs]
+  contentapi --> content[content.rs + videos.rs]
+  searchapi --> search[search.rs]
+  chatapi --> chat[chat.rs]
+  userapi --> userhandlers[highlights.rs + preferences.rs + analytics.rs]
+`;
+</script>
+
 ## Product Frontend Routes
 
 The SvelteKit app currently exposes the following top-level product routes:
@@ -14,6 +106,11 @@ The SvelteKit app currently exposes the following top-level product routes:
 | `/channels/[id]`  | Channel overview and channel-scoped operations                          |
 | `/login`          | Firebase sign-in and guest continuation                                 |
 | `/logout`         | Session sign-out                                                        |
+
+<MermaidDiagram
+  caption="Frontend boundary: route components call the shared API client, which fans out into handler modules that delegate durable logic to db, services, and workers."
+  :chart="frontendBoundaryDiagram"
+/>
 
 ## Main Workspace Behavior
 
@@ -35,6 +132,16 @@ The main workspace prioritizes first paint responsiveness:
 4. hydrate transcript / summary content once the selected video is known
 
 This keeps the channel list off the critical path for the heavier snapshot payload.
+
+<MermaidDiagram
+  caption="Workspace bootstrap flow: the frontend asks for the channel list plus an optional selected-channel snapshot, then hydrates deeper content after the selection is known."
+  :chart="workspaceBootstrapDiagram"
+/>
+
+<MermaidDiagram
+  caption="All product API traffic goes through the SvelteKit proxy layer, which adds trusted proxy/auth headers before the Rust backend builds request scope and authorization state."
+  :chart="proxyBoundaryDiagram"
+/>
 
 The backend exposes a combined convenience endpoint:
 
@@ -102,6 +209,11 @@ This endpoint is useful for combined consumers and tests. The product frontend l
 - ingest frontend analytics events
 - batch submission with size limits
 - queues events for downstream processing
+
+<MermaidDiagram
+  caption="User-facing request families stay separated by concern: library and content APIs, search APIs, and chat SSE APIs all terminate at distinct handler boundaries."
+  :chart="apiFamiliesDiagram"
+/>
 
 ## Handler Layer Boundaries
 

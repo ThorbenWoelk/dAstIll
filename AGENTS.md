@@ -45,6 +45,11 @@ Full list of boundaries, Firebase, and CI steps: [docs/operations/deployment.md]
 
 - When returning `$state` or `$derived` from a function, use getters/setters to preserve the reactive boundary. The function scope becomes a closure that stays connected to the reactive proxies.
 
+## Rust Module Structure
+
+- `frag_*.rs` source fragments included via `include!()` are bad practice for hand-written repo code.
+- Use true Rust submodules and explicit internal APIs when refactoring large files instead of adding new `frag_` files.
+
 ## Run the app
 
 From the repo root, start backend, frontend, and docs with [`./start_app.sh`](./start_app.sh). Use `./start_app.sh --detach` to not tie up the shell (follow with `tail -f start_app.log`).
@@ -75,4 +80,3 @@ Navigate to the respective frontend and backend folders and run the following be
 *E2E requires a running stack (`./start_app.sh`). Not in CI — run locally before commit.*
 
 When to add unit vs E2E tests: [design.md#testing](./design.md#testing).
-

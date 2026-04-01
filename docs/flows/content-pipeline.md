@@ -1,5 +1,65 @@
 # Content Pipeline
 
+<script setup>
+const contentPipelineDiagram = String.raw`
+flowchart LR
+  channel[Channel add, refresh, or backfill]
+  discover[Video discovery]
+  queue[Queue worker]
+  transcript[Transcript extraction]
+  transcriptstore[Store transcript<br/>set transcript_status ready]
+  summary[Summary generation]
+  summarystore[Store summary<br/>set summary_status ready]
+  eval[Summary evaluation worker]
+  quality[quality_score + optional requeue]
+  searchpending[Mark search_sources pending]
+  searchworker[Search index worker]
+  chunks[search_chunks]
+  fts[Tantivy BM25]
+  vectors[S3 Vectors]
+  retrieval[Workspace search + chat]
+
+  channel --> discover
+  discover --> queue
+  queue --> transcript
+  transcript --> transcriptstore
+  transcriptstore --> summary
+  summary --> summarystore
+  summarystore --> eval
+  eval --> quality
+  transcriptstore --> searchpending
+  summarystore --> searchpending
+  quality --> searchpending
+  searchpending --> searchworker
+  searchworker --> chunks
+  searchworker --> fts
+  searchworker --> vectors
+  fts --> retrieval
+  vectors --> retrieval
+`;
+
+const userScopedWritesDiagram = String.raw`
+flowchart LR
+  ui[User actions in workspace]
+  ack[Acknowledge video]
+  hl[Create highlight]
+  subscriptions[Channel membership changes]
+  videostate[user-video-states prefix]
+  highlights[user-highlights prefix]
+  channelscope[user-channel-subscriptions prefix]
+  api[Backend read model]
+  responses[Scoped channel/video responses]
+
+  ui --> ack --> videostate
+  ui --> hl --> highlights
+  ui --> subscriptions --> channelscope
+  channelscope --> api
+  videostate --> api
+  highlights --> api
+  api --> responses
+`;
+</script>
+
 ## End-to-End View
 
 ```text
@@ -21,6 +81,16 @@ User interactions:
 Highlight creation -> stored in user-highlights/{user_id}/ -> grouped in /highlights route
 Acknowledgement -> stored in user-video-states/{user_id}/{video_id}.json -> overlaid onto video responses
 ```
+
+<MermaidDiagram
+  caption="Primary content pipeline: discovery and queueing feed transcript and summary generation, then evaluation and search projection maintenance run asynchronously."
+  :chart="contentPipelineDiagram"
+/>
+
+<MermaidDiagram
+  caption="User-scoped writes stay separate from canonical ingest: overlays and highlights are stored under per-user prefixes and merged back into read models later."
+  :chart="userScopedWritesDiagram"
+/>
 
 ## 1. Channel Subscription
 

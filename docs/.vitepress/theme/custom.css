@@ -102,6 +102,68 @@
   color: var(--vp-c-brand-3);
 }
 
+.vp-doc .mermaid-diagram-block {
+  margin: 1.6rem 0;
+}
+
+.vp-doc .mermaid-diagram {
+  overflow-x: auto;
+  padding: 1rem;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 18px;
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(183, 61, 32, 0.08),
+      transparent 42%
+    ),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), #faf7f3);
+}
+
+.vp-doc .mermaid-diagram svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.vp-doc .mermaid-diagram-caption {
+  display: block;
+  margin-top: 0.65rem;
+  color: var(--vp-c-text-2);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.vp-doc .mermaid-diagram-error {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--vp-c-danger-1);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 250, 250, 0.98),
+    rgba(255, 243, 241, 0.98)
+  );
+}
+
+.dark .vp-doc .mermaid-diagram {
+  border-color: var(--vp-c-border);
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(222, 105, 66, 0.18),
+      transparent 42%
+    ),
+    linear-gradient(180deg, rgba(34, 37, 43, 0.96), rgba(26, 29, 34, 0.98));
+}
+
+.dark .vp-doc .mermaid-diagram-error {
+  background: linear-gradient(
+    180deg,
+    rgba(56, 26, 25, 0.96),
+    rgba(45, 21, 20, 0.98)
+  );
+}
+
 @media (max-width: 640px) {
   .overview-page .overview-grid {
     margin-bottom: 2rem;
@@ -109,6 +171,11 @@
 
   .overview-page .overview-card {
     padding: 1rem;
+  }
+
+  .vp-doc .mermaid-diagram {
+    padding: 0.75rem;
+    border-radius: 14px;
   }
 }
 
