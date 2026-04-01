@@ -103,6 +103,7 @@ export function createHomeWorkspaceDataController(options: {
       : "";
     return buildChannelViewCacheKey(
       channelId,
+      options.getWorkspaceCacheScopeKey(),
       sidebarState.videoState.backfillingHistory,
       sidebarState.videoState.videoTypeFilter,
       sidebarState.videoState.acknowledgedFilter,

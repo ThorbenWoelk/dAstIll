@@ -4,6 +4,7 @@ import {
   clearSidebarPreviewSession,
   getSidebarPreviewSession,
   pruneSidebarPreviewCollections,
+  resolveSidebarPreviewSessionKey,
   resolvePreferredExpandedSidebarPreviewCollectionId,
   setSingleExpandedSidebarPreviewCollection,
   setSidebarPreviewSession,
@@ -111,6 +112,40 @@ describe("sidebar preview session", () => {
       earliestSyncDateInput: "",
       selectedVideoReloadProbeKey: null,
     });
+  });
+
+  it("isolates preview sessions across auth scopes", () => {
+    const anonymousKey = resolveSidebarPreviewSessionKey("workspace", {
+      authState: "anonymous",
+      userId: "anon-123",
+    });
+    const authenticatedKey = resolveSidebarPreviewSessionKey("workspace", {
+      authState: "authenticated",
+      userId: "user-123",
+    });
+
+    expect(anonymousKey).toBeDefined();
+    expect(authenticatedKey).toBeDefined();
+    expect(anonymousKey).not.toBe(authenticatedKey);
+
+    clearSidebarPreviewSession(anonymousKey!);
+    clearSidebarPreviewSession(authenticatedKey!);
+
+    setSidebarPreviewSession(anonymousKey!, {
+      "channel-a": makeCollection({ videos: [] }),
+    });
+    setSidebarPreviewSession(authenticatedKey!, {
+      "channel-a": makeCollection({
+        videos: [makeVideoForChannel("video-2", "channel-a")],
+      }),
+    });
+
+    expect(
+      getSidebarPreviewSession(anonymousKey!)?.["channel-a"]?.videos,
+    ).toEqual([]);
+    expect(
+      getSidebarPreviewSession(authenticatedKey!)?.["channel-a"]?.videos[0]?.id,
+    ).toBe("video-2");
   });
 
   it("collapses all other expanded collections when one channel becomes active", () => {

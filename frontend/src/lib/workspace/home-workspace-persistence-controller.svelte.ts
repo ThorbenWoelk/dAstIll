@@ -75,7 +75,7 @@ export function createHomeWorkspacePersistenceController(options: {
   let viewUrlHydrated = $state(false);
   let preferencesHydrated = $state(false);
   let WorkspaceSearchBarComponent = $state<Component | null>(null);
-  let preferencesSaveTimer = $state<ReturnType<typeof setTimeout> | null>(null);
+  let preferencesSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
   function syncChannelOrderFromList() {
     sidebarState.setChannelOrder(

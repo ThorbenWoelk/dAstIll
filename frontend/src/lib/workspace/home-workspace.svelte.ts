@@ -79,6 +79,7 @@ export function createHomeWorkspacePage() {
   let mobileViewportMq = $state(false);
   let mobileBrowseOpen = $state(true);
   let pendingSelectedVideo = $state<Video | null>(null);
+  let hydratedWorkspaceScopeKey = $state<string | null>(null);
 
   const addSourceFeedbackCtrl = createAddSourceFeedbackController();
   const workspaceStorageKey = $derived(
@@ -96,6 +97,7 @@ export function createHomeWorkspacePage() {
     initialVideoId: page.data.selectedVideoId,
     initialVideoTypeFilter: page.data.videoTypeFilter ?? "all",
     initialAcknowledgedFilter: page.data.acknowledgedFilter ?? "all",
+    getViewCacheScopeKey: () => workspaceCacheScopeKey,
     onSelectVideo: (videoId: string, context?: { forceReload?: boolean }) =>
       dataController.selectVideo(videoId, true, context?.forceReload ?? false),
     onChannelSelected: (channelId: string) => {
@@ -427,6 +429,31 @@ export function createHomeWorkspacePage() {
     return () => {
       addSourceFeedbackCtrl.cancelPolling();
     };
+  });
+
+  $effect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (hydratedWorkspaceScopeKey === null) {
+      hydratedWorkspaceScopeKey = workspaceCacheScopeKey;
+      return;
+    }
+
+    if (hydratedWorkspaceScopeKey === workspaceCacheScopeKey) {
+      return;
+    }
+
+    hydratedWorkspaceScopeKey = workspaceCacheScopeKey;
+    sidebarState.setVideos([]);
+    sidebarState.setOffset(0);
+    sidebarState.setHasMore(true);
+    sidebarState.setHistoryExhausted(false);
+    sidebarState.setBackfillingHistory(false);
+    sidebarState.setSyncDepth(null);
+    sidebarState.setLoadingVideos(false);
+    void dataController.loadBootstrapRefresh();
   });
 
   $effect(() => {

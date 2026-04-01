@@ -2,6 +2,7 @@
   import { tick } from "svelte";
   import { slide } from "svelte/transition";
   import { getTranscript, getVideo, updateChannel } from "$lib/api";
+  import { authState } from "$lib/auth-state.svelte";
   import {
     beginChannelDrag,
     completeChannelDrop,
@@ -46,6 +47,7 @@
     createSidebarPreviewController,
     createEmptyChannelVideoCollection,
   } from "$lib/workspace/sidebar-preview-controller.svelte";
+  import { resolveSidebarPreviewSessionKey } from "$lib/workspace/sidebar-preview-session";
   import type { ChannelSnapshot, SyncDepth } from "$lib/types";
 
   let {
@@ -277,6 +279,9 @@
       !videos.some((video) => video.id === pendingSelectedVideo.id),
     ),
   );
+  let scopedPreviewSessionKey = $derived(
+    resolveSidebarPreviewSessionKey(previewSessionKey, authState.current),
+  );
 
   const previewController = createSidebarPreviewController({
     getEnabled: () => videoListMode === "per_channel_preview",
@@ -294,7 +299,7 @@
     getPreviewScope: () => previewScope,
     getQueueVideoRefreshTick: () => queueVideoRefreshTick,
     getVideoAcknowledgeSync: () => videoAcknowledgeSync,
-    getPreviewSessionKey: () => previewSessionKey,
+    getPreviewSessionKey: () => scopedPreviewSessionKey,
     onChannelUpdated: (channel) => onChannelUpdated(channel),
     onChannelSyncDateSaved: (channelId) => onChannelSyncDateSaved?.(channelId),
   });

@@ -2,6 +2,8 @@ import {
   cloneSyncDepthState,
   type ChannelSyncDepthState,
 } from "$lib/channel-view-cache";
+import type { AuthContext } from "$lib/auth";
+import { getAuthStorageScopeKey, getScopedStorageKey } from "$lib/auth-storage";
 import { OTHERS_CHANNEL_ID, type Video } from "$lib/types";
 
 export type SidebarPreviewCollectionLoadMode = "preview" | "paged";
@@ -136,6 +138,17 @@ export function getSidebarPreviewSession(
 ): Record<string, SidebarPreviewCollectionSnapshot> | null {
   const snapshot = sidebarPreviewSessionByKey.get(sessionKey);
   return snapshot ? cloneSidebarPreviewCollections(snapshot) : null;
+}
+
+export function resolveSidebarPreviewSessionKey(
+  sessionKey: string | undefined,
+  auth: Pick<AuthContext, "authState" | "userId"> | null | undefined,
+): string | undefined {
+  if (!sessionKey) {
+    return undefined;
+  }
+
+  return getScopedStorageKey(sessionKey, getAuthStorageScopeKey(auth));
 }
 
 export function setSidebarPreviewSession(
