@@ -89,14 +89,14 @@ variable "firebase_google_client_id" {
   type        = string
   sensitive   = true
   default     = ""
-  description = "Deprecated. Ignored. Google sign-in is managed via frontend/firebase.json and Firebase auth deploys."
+  description = "Deprecated. Ignored. Google sign-in is managed via frontend/firebase.json and a separate one-time or maintenance auth deploy."
 }
 
 variable "firebase_google_client_secret" {
   type        = string
   sensitive   = true
   default     = ""
-  description = "Deprecated. Ignored. Google sign-in is managed via frontend/firebase.json and Firebase auth deploys."
+  description = "Deprecated. Ignored. Google sign-in is managed via frontend/firebase.json and a separate one-time or maintenance auth deploy."
 }
 
 variable "billing_export_enabled" {

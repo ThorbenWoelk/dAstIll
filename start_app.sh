@@ -23,15 +23,32 @@ docs_port=${DOCS_PORT:-4173}
 ports=($frontend_port $backend_port $docs_port)
 script_path=${0:A}
 
+process_is_running() {
+	local pid=$1
+	local exit_code=0
+
+	set +e
+	kill -0 "$pid" 2>/dev/null
+	exit_code=$?
+	set -e
+
+	return $exit_code
+}
+
 wait_for_http() {
 	local name=$1
 	local url=$2
-	local max_retries=${3:-30}
+	local pid=${3:-}
+	local max_retries=${4:-30}
 	local attempt=1
 
 	while (( attempt <= max_retries )); do
 		if curl -fsS "$url" >/dev/null 2>&1; then
 			return 0
+		fi
+		if [[ -n "$pid" ]] && ! process_is_running "$pid"; then
+			echo "$name exited before becoming ready at $url"
+			return 1
 		fi
 		sleep 1
 		((attempt++))
@@ -44,12 +61,15 @@ wait_for_http() {
 read_env_file_value() {
 	local env_file=$1
 	local key=$2
+	local value=""
 
 	if [[ ! -f "$env_file" ]]; then
 		return 0
 	fi
 
-	grep -E "^${key}=" "$env_file" | head -n1 | cut -d= -f2-
+	value=$(grep -E "^${key}=" "$env_file" | head -n1 | cut -d= -f2- || true)
+	printf '%s' "$value"
+	return 0
 }
 
 start_backend() {
@@ -211,7 +231,7 @@ else
 fi
 start_backend
 
-if ! wait_for_http "Backend" "http://localhost:$backend_port/api/health"; then
+if ! wait_for_http "Backend" "http://localhost:$backend_port/api/health" "$backend_pid"; then
 	echo "Backend failed to start. Last backend log lines:"
 	tail -n 80 backend.log || true
 	exit 1
@@ -231,13 +251,13 @@ else
 fi
 start_docs
 
-if ! wait_for_http "Frontend" "http://localhost:$frontend_port"; then
+if ! wait_for_http "Frontend" "http://localhost:$frontend_port" "$frontend_pid"; then
 	echo "Frontend failed to start. Last frontend log lines:"
 	tail -n 80 frontend.log || true
 	exit 1
 fi
 
-if ! wait_for_http "Docs" "http://localhost:$docs_port"; then
+if ! wait_for_http "Docs" "http://localhost:$docs_port" "$docs_pid"; then
 	echo "Docs failed to start. Last docs log lines:"
 	tail -n 80 docs.log || true
 	exit 1

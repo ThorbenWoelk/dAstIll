@@ -1,7 +1,7 @@
 # Tasks: GCP Project Migration
 
 ## Current State
-The migration is live. `dastill` now serves backend, frontend, and docs from real Artifact Registry images; Firestore in `dastill` now contains only `dastill_preferences`, `dastill_tts_stats`, and `dastill_videos`; GitHub deploy secrets/vars point at `dastill`; and the `Release` workflow has already caught up with the frontend URL fix. The last migration regression was Firebase Google sign-in: the new project initially inherited the old project's OAuth client, which caused Google's "Access blocked: This app's request is invalid" error until auth ownership moved to `frontend/firebase.json` plus `firebase deploy --only auth`. A follow-up drift check also showed the Firestore single-field exemption resources are still owned in Terraform state under `uplifted-water-273221` because those resources never pinned `project = var.project_id`, so migration cleanup is not fully complete yet. The old shared project `uplifted-water-273221` was briefly scheduled for deletion by mistake on April 1, 2026, then immediately restored with billing re-linked; unrelated shared-project collections still live there, and only `dAstIll`-owned leftovers were removed.
+The migration is live. `dastill` now serves backend, frontend, and docs from real Artifact Registry images; Firestore in `dastill` contains the expected `dastill_preferences`, `dastill_tts_stats`, and `dastill_videos` collections; GitHub deploy secrets/vars point at `dastill`; local backend/frontend envs also point at `dastill`; and the `Release` workflow has already caught up with the frontend URL fix. The last migration regression was Firebase Google sign-in: the new project initially inherited the old project's OAuth client, which caused Google's "Access blocked: This app's request is invalid" error until auth ownership moved to `frontend/firebase.json` plus `firebase deploy --only auth`. On April 1, 2026, the leftover Google supported IdP config was deleted from the old shared project `uplifted-water-273221` after verifying the old project no longer had any Firebase apps. The old shared project now no longer contains `dAstIll` Firestore collections, Firebase apps, or supported IdP configs for `dAstIll`. The remaining open cleanup is Terraform ownership of Firestore single-field exemption resources, which still points at the old project because those resources never pinned `project = var.project_id`.
 
 ## Steps
 - [x] Create spec and task files for the GCP project migration.
@@ -24,6 +24,9 @@ The migration is live. `dastill` now serves backend, frontend, and docs from rea
 - [x] Observe the `main` branch `Release` workflow for the frontend env-fix commit through completion so repo-side deployment catches up with the already-live cutover.
 - [x] Fix Firebase Google sign-in in `dastill` after the migrated project kept using the old project's OAuth client and Google rejected the request as invalid.
 - [x] Move Firebase Google sign-in ownership out of Terraform and into `frontend/firebase.json` plus the release workflow's Firebase Auth deploy step so future deploys keep the correct project-local OAuth client.
+- [x] Update local backend/frontend env files so local development uses `dastill` instead of the old shared project.
+- [x] Remove the `dAstIll` Firestore collections from the old shared project without touching unrelated shared-project data.
+- [x] Delete the leftover Google supported IdP config from the old shared project after confirming no `dAstIll` Firebase apps remained there.
 - [ ] Move the Firestore single-field exemption resources (`google_firestore_field.*`) into `dastill` and remove their leftover Terraform ownership in `uplifted-water-273221`.
 
 ## Decisions Made During Implementation
@@ -35,4 +38,5 @@ The migration is live. `dastill` now serves backend, frontend, and docs from rea
 - The repo-side backend CI issue was fixed by removing the Firestore credential dependency from the chat ownership test, so `Validation` now passes on `main`.
 - GitHub Actions treated the backend/docs Cloud Run URLs as secret-like when they were promoted to job outputs, so frontend deploys now resolve those URLs inside `deploy-frontend` and pass them directly into the Cloud Run deploy action.
 - Firebase Google sign-in cannot be safely recreated for the web app with Terraform's generic IAM OAuth client resources; the reliable source of truth is Firebase Auth config in `frontend/firebase.json`, deployed by the release workflow so Firebase provisions the correct project-local `apps.googleusercontent.com` client.
+- The old shared project cleanup needed to remove both the old Firebase app and the leftover Google supported IdP config to fully retire the migrated auth setup.
 - The Firestore field exemption resources need `project = var.project_id` explicitly. Without it, Terraform kept the old project binding in state even after the database resource itself moved to `dastill`.

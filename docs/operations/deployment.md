@@ -71,35 +71,35 @@ Non-secret product frontend runtime config is passed as plain env values for:
 
 The SvelteKit app uses the Firebase JS SDK in the browser and **Firebase Admin** on the server for session cookies. The web client reads the Firebase Web API key as **`PUBLIC_FIREBASE_API_KEY`** (alias **`PUBLIC_FIREBASE_KEY`**), plus **`PUBLIC_FIREBASE_AUTH_DOMAIN`** and **`PUBLIC_FIREBASE_PROJECT_ID`**, from `$env/dynamic/public`; the server resolves the same project for Admin SDK initialization.
 
-**Terraform (`terraform.tfvars`, not GitHub Variables):** Terraform creates the Firebase project resources and web app, then reads the effective Web API key and auth domain from the Firebase web app config data source before writing them to Secret Manager. Run `terraform apply` so secrets `dastill-firebase-web-api-key` and `dastill-firebase-auth-domain` exist and IAM allows the frontend Cloud Run service account and GitHub Actions deploy identity to read them.
+**Terraform (`terraform.tfvars`, not GitHub Variables):** Terraform creates the Firebase project resources and web app, then reads the effective Web API key and auth domain from the Firebase web app config data source before writing them to Secret Manager. Run `terraform apply` so secrets `dastill-firebase-web-api-key` and `dastill-firebase-auth-domain` exist and IAM allows the frontend Cloud Run service account to read them.
 
-**Google sign-in:** anonymous auth stays enabled through Identity Platform. Google sign-in itself is managed through [`frontend/firebase.json`](../../frontend/firebase.json) and deployed with `firebase deploy --only auth`, which lets Firebase provision the correct project-local Google OAuth client for the web app instead of reusing a copied client ID/secret from another project.
+**Google sign-in:** anonymous auth stays enabled through Identity Platform. Google sign-in itself is managed through [`frontend/firebase.json`](../../frontend/firebase.json) and should be deployed separately with `bunx firebase-tools@15.12.0 deploy --only auth --project "$PROJECT_ID" --config frontend/firebase.json --non-interactive` when provisioning a new project or when that file changes. That lets Firebase provision the correct project-local Google OAuth client for the web app instead of reusing a copied client ID/secret from another project.
 
-**Release workflow:** checks that Secret Manager secrets `dastill-firebase-web-api-key` and `dastill-firebase-auth-domain` exist (fails fast with a Terraform hint if not), deploys the Firebase auth config from `frontend/firebase.json`, then mounts the frontend Firebase secrets as `PUBLIC_FIREBASE_API_KEY`, `PUBLIC_FIREBASE_KEY` (same value, optional alias), and `PUBLIC_FIREBASE_AUTH_DOMAIN`. It sets **`PUBLIC_FIREBASE_PROJECT_ID`** to the GCP project id (`GCP_PROJECT_ID` in the workflow), plus frontend runtime env such as `BACKEND_API_BASE`, `BACKEND_IDENTITY_AUDIENCE`, `PUBLIC_DOCS_URL`, and `PUBLIC_CONTACT_EMAIL`.
+**Release workflow:** uses the Terraform-managed frontend Firebase secrets `dastill-firebase-web-api-key` and `dastill-firebase-auth-domain`, mounting them as `PUBLIC_FIREBASE_API_KEY`, `PUBLIC_FIREBASE_KEY` (same value, optional alias), and `PUBLIC_FIREBASE_AUTH_DOMAIN`. It sets **`PUBLIC_FIREBASE_PROJECT_ID`** to the GCP project id (`GCP_PROJECT_ID` in the workflow), plus frontend runtime env such as `BACKEND_API_BASE`, `BACKEND_IDENTITY_AUDIENCE`, `PUBLIC_DOCS_URL`, and `PUBLIC_CONTACT_EMAIL`. Routine releases do not redeploy Firebase Auth config.
 
-**GCP:** Terraform grants `roles/firebaseauth.admin` to the frontend Cloud Run service account so the Node server can verify ID tokens and issue session cookies, and to the GitHub Actions deploy service account so `firebase deploy --only auth` can list the Firebase web app and update auth config during release.
+**GCP:** Terraform grants `roles/firebaseauth.admin` to the frontend Cloud Run service account so the Node server can verify ID tokens and issue session cookies.
 
 **Authorized domains:** Terraform manages Identity Platform authorized domains. The default set includes `localhost`, the Firebase-hosted domains for the project, the deployed frontend Cloud Run host, and any entries in `firebase_authorized_domains_extra`. Use Terraform rather than console-only edits for managed environments.
 
 ## Project Migration
 
-To cut over from `uplifted-water-273221` ("Totos Home") to the new GCP project `dastill`:
+To cut over from a previous GCP project to the current `dastill` project:
 
 1. Create or gain access to the `dastill` GCP project, attach billing, and decide the Firestore location before the first apply. The repo now exposes `firestore_location_id` explicitly; the example uses `eur3`.
 2. Update your local `terraform.tfvars` for the new target project. Set `project_id = "dastill"` and keep `app_name = "dastill"` unless you intentionally want new GCP/AWS resource names. If the GitHub Workload Identity Pool lives outside the target project, also set `github_wif_pool_project_number`; otherwise it defaults to the active project number.
 3. Decide how Terraform state will handle the shared AWS resources. Buckets, vector buckets, and the `dastill-gcp-backend` AWS role are keyed by `app_name`, not `project_id`. Reusing the existing state is the simplest cutover. If you start from a fresh state backend, import the existing AWS resources before apply or intentionally rename `app_name` and migrate that data separately.
 4. Apply Terraform against the new project and record the outputs you need for GitHub. At minimum, update repository secrets `GCP_PROJECT_ID`, `GCP_WIF_PROVIDER`, and `GCP_WIF_SA_EMAIL` (the latter is available from `terraform output github_actions_sa_email`). Update repository vars that are outside Terraform ownership in this repo, especially `AWS_ROLE_ARN`, `AWS_WIF_AUDIENCE`, bucket/index names, CORS origins, contact email, and any Databricks settings.
-5. Migrate Firestore data explicitly. The app switches to the new database as soon as `GCP_PROJECT_ID` changes, so export from the old project and import into the new one before frontend/backend cutover. Example shape:
+5. Migrate Firestore data explicitly. The app switches to the new database as soon as `GCP_PROJECT_ID` changes, so export from the source project and import into `dastill` before frontend/backend cutover. Example shape:
 
 ```bash
 gcloud firestore export gs://<shared-migration-bucket>/<export-prefix> \
-  --project=uplifted-water-273221
+  --project=<source-project-id>
 
 gcloud firestore import gs://<shared-migration-bucket>/<export-prefix> \
   --project=dastill
 ```
 
-6. Enable Firebase on the new project, set any optional Firebase Terraform inputs you need such as `firebase_authorized_domains_extra`, then re-apply Terraform so it creates the web app, refreshes Secret Manager with the effective frontend Firebase values, and updates authorized domains through Identity Platform. Keep Google sign-in configuration in `frontend/firebase.json` and deploy it with `firebase deploy --only auth`.
+6. Enable Firebase on the new project, set any optional Firebase Terraform inputs you need such as `firebase_authorized_domains_extra`, then re-apply Terraform so it creates the web app, refreshes Secret Manager with the effective frontend Firebase values, and updates authorized domains through Identity Platform. Keep Google sign-in configuration in `frontend/firebase.json` and deploy it separately with `bunx firebase-tools@15.12.0 deploy --only auth --project "$PROJECT_ID" --config frontend/firebase.json --non-interactive`.
 7. Re-run the release workflow after the GitHub secret/var cutover so Cloud Run revisions pick up the new project ID, Firebase config, backend URL, and docs URL.
 
 ## CI/CD Flow

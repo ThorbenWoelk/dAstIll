@@ -78,7 +78,7 @@ async function parseSessionResponse(response: Response): Promise<AuthContext> {
 async function exchangeUserSession(
   user: FirebaseUserLike,
 ): Promise<AuthContext> {
-  const idToken = await user.getIdToken();
+  const idToken = await user.getIdToken(true);
   const response = await fetch("/auth/session", {
     method: "POST",
     headers: {
@@ -270,8 +270,11 @@ class AuthStateController implements AuthController {
     });
 
     try {
-      const { auth, GoogleAuthProvider, signInWithPopup } =
+      const { auth, GoogleAuthProvider, signInWithPopup, signOut } =
         await importFirebaseAuthModule();
+      if (auth.currentUser?.isAnonymous) {
+        await signOut(auth);
+      }
       const provider = new GoogleAuthProvider();
       const credential = await signInWithPopup(auth, provider);
       const nextAuth = await exchangeUserSession(credential.user);

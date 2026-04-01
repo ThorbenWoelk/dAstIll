@@ -12,6 +12,42 @@ impl From<firestore::errors::FirestoreError> for StoreError {
     }
 }
 
+fn transcript_storage_key(video_id: &str) -> String {
+    format!("transcripts/{video_id}.json")
+}
+
+fn summary_storage_key(video_id: &str) -> String {
+    format!("summaries/{video_id}.json")
+}
+
+fn reconcile_video_statuses_from_storage(
+    video: &Video,
+    transcript_exists: bool,
+    summary_exists: bool,
+) -> Video {
+    let mut reconciled = video.clone();
+    if transcript_exists {
+        reconciled.transcript_status = ContentStatus::Ready;
+    }
+    if summary_exists {
+        reconciled.summary_status = ContentStatus::Ready;
+    }
+    reconciled
+}
+
+async fn hydrate_inserted_video_from_storage(
+    store: &Store,
+    video: &Video,
+) -> Result<Video, StoreError> {
+    let transcript_exists = store.key_exists(&transcript_storage_key(&video.id)).await?;
+    let summary_exists = store.key_exists(&summary_storage_key(&video.id)).await?;
+    Ok(reconcile_video_statuses_from_storage(
+        video,
+        transcript_exists,
+        summary_exists,
+    ))
+}
+
 /// Upsert a video, preserving processing state fields when the document already exists.
 pub async fn fs_insert_video(
     store: &Store,
@@ -42,7 +78,10 @@ pub async fn fs_insert_video(
         };
         (merged, super::VideoInsertOutcome::Existing)
     } else {
-        (video.clone(), super::VideoInsertOutcome::Inserted)
+        (
+            hydrate_inserted_video_from_storage(store, video).await?,
+            super::VideoInsertOutcome::Inserted,
+        )
     };
 
     store
@@ -65,6 +104,53 @@ pub async fn fs_insert_video(
     }
 
     Ok(outcome)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::reconcile_video_statuses_from_storage;
+    use crate::models::{ContentStatus, Video};
+
+    fn build_video() -> Video {
+        Video {
+            id: "video-1".to_string(),
+            channel_id: "channel-1".to_string(),
+            title: "Example".to_string(),
+            thumbnail_url: None,
+            published_at: chrono::Utc::now(),
+            is_short: false,
+            transcript_status: ContentStatus::Pending,
+            summary_status: ContentStatus::Pending,
+            acknowledged: false,
+            retry_count: 0,
+            quality_score: None,
+        }
+    }
+
+    #[test]
+    fn inserted_video_becomes_ready_when_storage_artifacts_exist() {
+        let video = build_video();
+        let reconciled = reconcile_video_statuses_from_storage(&video, true, true);
+        assert_eq!(reconciled.transcript_status, ContentStatus::Ready);
+        assert_eq!(reconciled.summary_status, ContentStatus::Ready);
+    }
+
+    #[test]
+    fn inserted_video_preserves_missing_summary_when_only_transcript_exists() {
+        let video = build_video();
+        let reconciled = reconcile_video_statuses_from_storage(&video, true, false);
+        assert_eq!(reconciled.transcript_status, ContentStatus::Ready);
+        assert_eq!(reconciled.summary_status, ContentStatus::Pending);
+    }
+
+    #[test]
+    fn storage_reconcile_preserves_existing_ready_statuses() {
+        let mut video = build_video();
+        video.transcript_status = ContentStatus::Ready;
+        let reconciled = reconcile_video_statuses_from_storage(&video, false, false);
+        assert_eq!(reconciled.transcript_status, ContentStatus::Ready);
+        assert_eq!(reconciled.summary_status, ContentStatus::Pending);
+    }
 }
 
 pub async fn fs_bulk_insert_videos(store: &Store, videos: Vec<Video>) -> Result<usize, StoreError> {
@@ -368,7 +454,16 @@ pub async fn fs_heal_queue_videos(store: &Store, max_retries: u8) -> Result<usiz
 
     let mut healed = 0usize;
     for mut video in pending_transcripts.into_iter().chain(pending_summaries) {
-        if !super::videos::apply_heal_queue_video_fields(&mut video, max_retries) {
+        let reconciled = hydrate_inserted_video_from_storage(store, &video).await?;
+        let mut changed = reconciled.transcript_status != video.transcript_status
+            || reconciled.summary_status != video.summary_status;
+        video = reconciled;
+
+        if super::videos::apply_heal_queue_video_fields(&mut video, max_retries) {
+            changed = true;
+        }
+
+        if !changed {
             continue;
         }
         store

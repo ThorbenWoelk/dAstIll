@@ -124,13 +124,6 @@ resource "google_project_iam_member" "frontend_firebase_auth" {
   member  = "serviceAccount:${google_service_account.frontend_sa.email}"
 }
 
-# Release deploys Firebase Auth config from frontend/firebase.json through firebase-tools.
-resource "google_project_iam_member" "github_actions_firebase_auth" {
-  project = var.project_id
-  role    = "roles/firebaseauth.admin"
-  member  = "serviceAccount:${google_service_account.github_actions_sa.email}"
-}
-
 output "backend_sa_email" {
   value = google_service_account.backend_sa.email
 }

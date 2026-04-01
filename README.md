@@ -58,6 +58,7 @@ Terraform, Google Cloud Run, AWS IAM (Workload Identity Federation), Google Secr
 - [Rust](https://rustup.rs/)
 - [Bun](https://bun.sh/)
 - [Ollama](https://ollama.com/) (required for local AI models)
+- Google Cloud credentials for Firestore access, either via `GOOGLE_APPLICATION_CREDENTIALS` or `gcloud auth application-default login`
 - AWS credentials with access to S3 and S3 Vectors (via `~/.aws/credentials` or environment variables)
 - An AWS S3 bucket for data storage and an S3 Vectors bucket for semantic search
 - YouTube Data API Key (optional)
@@ -81,6 +82,11 @@ Terraform, Google Cloud Run, AWS IAM (Workload Identity Federation), Google Secr
    The backend reads `backend/.env` during local startup. A typical local config looks like this:
 
    ```env
+   GCP_PROJECT_ID=your-gcp-project-id
+   # Optional: point to a Firestore service-account JSON for local development.
+   # If unset, the backend falls back to application default credentials from:
+   #   gcloud auth application-default login
+   # GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/service-account.json
    AWS_REGION=eu-central-1
    S3_DATA_BUCKET=your-data-bucket
    S3_VECTOR_BUCKET=your-vectors-bucket
@@ -107,6 +113,7 @@ Terraform, Google Cloud Run, AWS IAM (Workload Identity Federation), Google Secr
 
    `OLLAMA_SUMMARY_MODEL` and `SUMMARY_EVALUATOR_MODEL` must be different. If they match, backend startup exits before serving requests so summary evaluation stays independent from summary generation.
    If `OLLAMA_URL` points to a remote Ollama endpoint instead of localhost, also set `OLLAMA_API_KEY`.
+   If `GOOGLE_APPLICATION_CREDENTIALS` points to a missing file, the backend falls back to application default credentials. If neither is valid, backend startup fails before `/api/health` becomes ready.
 
    If you run the frontend separately from `start_app.sh`, copy `frontend/.env.example` to `frontend/.env` and set `BACKEND_PROXY_TOKEN`, `BACKEND_API_BASE`, `PUBLIC_DOCS_URL`, `PUBLIC_FIREBASE_API_KEY`, `PUBLIC_FIREBASE_AUTH_DOMAIN`, and `PUBLIC_FIREBASE_PROJECT_ID`. Operator access is granted through the frontend server's `OPERATOR_EMAIL_ALLOWLIST`.
 

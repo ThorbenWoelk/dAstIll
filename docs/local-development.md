@@ -53,6 +53,8 @@ Important variables:
 
 | Variable                            | Purpose                                                                                    |
 | ----------------------------------- | ------------------------------------------------------------------------------------------ |
+| `GCP_PROJECT_ID`                    | Google Cloud project id used for Firestore                                                 |
+| `GOOGLE_APPLICATION_CREDENTIALS`    | Optional path to a local Firestore service-account JSON; falls back to ADC if unset/missing |
 | `AWS_REGION`                        | AWS region for S3 and S3 Vectors                                                           |
 | `S3_DATA_BUCKET`                    | S3 bucket for data storage                                                                 |
 | `S3_VECTOR_BUCKET`                  | S3 Vectors bucket for semantic search                                                      |
@@ -90,6 +92,18 @@ Important variables:
 | `POLLY_TTS_ENGINE`                  | Polly engine: `standard` or `neural` (default: `neural`)                                   |
 | `POLLY_TTS_OUTPUT_FORMAT`           | Polly output format (default: `wav`)                                                       |
 | `POLLY_TTS_SAMPLE_RATE`             | Polly sample rate in Hz (default: `16000`)                                                 |
+
+The backend also needs Firestore credentials locally. Use one of these paths:
+
+```bash
+# Option 1: service-account JSON
+GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/service-account.json
+
+# Option 2: application default credentials
+gcloud auth application-default login
+```
+
+If `GOOGLE_APPLICATION_CREDENTIALS` points to a missing file, the backend removes that setting and falls back to application default credentials. If no valid Firestore credentials remain, startup fails before `http://localhost:3544/api/health` becomes ready.
 
 The backend requires AWS credentials in addition to the bucket names. Provide them in `backend/.env`:
 

@@ -138,6 +138,51 @@ function createFetchMock() {
   });
 }
 
+function createRecentSignInFetchMock() {
+  return mock(async (input: string | URL | Request, init?: RequestInit) => {
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.pathname
+          : new URL(input.url).pathname;
+
+    if (url !== "/auth/session" || init?.method !== "POST") {
+      return new Response("Not Found", { status: 404 });
+    }
+
+    const body = init?.body ? JSON.parse(String(init.body)) : {};
+    if (body.idToken === "google-stale-token") {
+      return new Response(
+        JSON.stringify({
+          message: "Recent sign-in required.",
+        }),
+        {
+          status: 401,
+          headers: {
+            "Content-Type": "application/json",
+          },
+        },
+      );
+    }
+
+    return new Response(
+      JSON.stringify({
+        userId: "google-123",
+        authState: "authenticated",
+        accessRole: "user",
+        email: "person@example.com",
+      }),
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      },
+    );
+  });
+}
+
 async function loadAuthStateModule() {
   return import(
     `../src/lib/auth-state.svelte.ts?test=${Date.now()}-${Math.random()}`
@@ -259,6 +304,89 @@ describe("auth state controller", () => {
     await authState.signInWithGoogle();
 
     expect(mockSignInWithPopup).toHaveBeenCalledTimes(1);
+    expect(authState.current).toEqual({
+      userId: "google-123",
+      authState: "authenticated",
+      accessRole: "user",
+      email: "person@example.com",
+    });
+  });
+
+  it("forces a refreshed popup token before exchanging the server session", async () => {
+    globalThis.fetch = createRecentSignInFetchMock() as typeof fetch;
+
+    const popupGetIdToken = mock(async (forceRefresh?: boolean) =>
+      forceRefresh ? "google-fresh-token" : "google-stale-token",
+    );
+    mockSignInWithPopup.mockImplementationOnce(async () => {
+      const user: MockUser = {
+        uid: "google-123",
+        email: "person@example.com",
+        isAnonymous: false,
+        getIdToken: popupGetIdToken,
+      };
+      firebaseAuthInstance.currentUser = user;
+      authStateListener?.(user);
+      return { user };
+    });
+
+    const { authState } = await loadAuthStateModule();
+
+    authState.setServerAuth({
+      userId: "anon-123",
+      authState: "anonymous",
+      accessRole: "anonymous",
+      email: null,
+    });
+
+    await authState.start();
+    await authState.signInWithGoogle();
+
+    expect(popupGetIdToken).toHaveBeenCalledWith(true);
+    expect(authState.error).toBeNull();
+    expect(authState.current).toEqual({
+      userId: "google-123",
+      authState: "authenticated",
+      accessRole: "user",
+      email: "person@example.com",
+    });
+  });
+
+  it("signs out the anonymous firebase user before Google popup sign-in", async () => {
+    globalThis.fetch = createRecentSignInFetchMock() as typeof fetch;
+
+    mockSignInWithPopup.mockImplementationOnce(async () => {
+      const token =
+        firebaseAuthInstance.currentUser?.isAnonymous === true
+          ? "google-stale-token"
+          : "google-fresh-token";
+      const user: MockUser = {
+        uid: "google-123",
+        email: "person@example.com",
+        isAnonymous: false,
+        getIdToken: async () => token,
+      };
+      firebaseAuthInstance.currentUser = user;
+      authStateListener?.(user);
+      return { user };
+    });
+
+    const { authState } = await loadAuthStateModule();
+
+    authState.setServerAuth({
+      userId: null,
+      authState: "anonymous",
+      accessRole: "anonymous",
+      email: null,
+    });
+
+    await authState.start();
+    expect(firebaseAuthInstance.currentUser?.isAnonymous).toBe(true);
+
+    await authState.signInWithGoogle();
+
+    expect(mockSignOut).toHaveBeenCalled();
+    expect(authState.error).toBeNull();
     expect(authState.current).toEqual({
       userId: "google-123",
       authState: "authenticated",
