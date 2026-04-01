@@ -1,30 +1,31 @@
 resource "google_service_account" "backend_sa" {
+  project      = var.project_id
   account_id   = "${var.app_name}-backend-sa"
   display_name = "${var.app_name} Backend Service Account"
 }
 
 resource "google_service_account" "frontend_sa" {
+  project      = var.project_id
   account_id   = "${var.app_name}-frontend-sa"
   display_name = "${var.app_name} Frontend Service Account"
 }
 
 resource "google_service_account" "docs_sa" {
+  project      = var.project_id
   account_id   = "${var.app_name}-docs-sa"
   display_name = "${var.app_name} Docs Service Account"
 }
 
 # Service Account for GitHub Actions
 resource "google_service_account" "github_actions_sa" {
+  project      = var.project_id
   account_id   = "${var.app_name}-github-sa"
   display_name = "${var.app_name} GitHub Actions Service Account"
 }
 
 # Grant access to secrets for runtime services and GitHub Actions (deploy-time binding)
 locals {
-  databricks_secret_resource_id = try(
-    google_secret_manager_secret.databricks_token[0].id,
-    data.google_secret_manager_secret.databricks_token[0].id,
-  )
+  databricks_secret_resource_id = try(google_secret_manager_secret.databricks_token[0].id, null)
   backend_secret_ids = {
     ollama_api_key      = google_secret_manager_secret.ollama_api_key.id
     youtube_api_key     = google_secret_manager_secret.youtube_api_key.id
@@ -45,12 +46,14 @@ locals {
 
 # Explicit bindings so Cloud Run (backend SA) and deploy (GitHub SA) can read DATABRICKS_TOKEN.
 resource "google_secret_manager_secret_iam_member" "backend_databricks_token" {
+  count     = local.databricks_secret_resource_id != null ? 1 : 0
   secret_id = local.databricks_secret_resource_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.backend_sa.email}"
 }
 
 resource "google_secret_manager_secret_iam_member" "cicd_databricks_token" {
+  count     = local.databricks_secret_resource_id != null ? 1 : 0
   secret_id = local.databricks_secret_resource_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.github_actions_sa.email}"
@@ -78,6 +81,7 @@ resource "google_secret_manager_secret_iam_member" "cicd_secrets" {
 }
 
 resource "google_cloud_run_v2_service_iam_member" "backend_frontend_invoker" {
+  project  = var.project_id
   location = google_cloud_run_v2_service.backend.location
   name     = google_cloud_run_v2_service.backend.name
   role     = "roles/run.invoker"
@@ -86,6 +90,7 @@ resource "google_cloud_run_v2_service_iam_member" "backend_frontend_invoker" {
 
 # CICD Permissions
 resource "google_artifact_registry_repository_iam_member" "repo_writer" {
+  project    = var.project_id
   location   = google_artifact_registry_repository.repo.location
   repository = google_artifact_registry_repository.repo.name
   role       = "roles/artifactregistry.writer"
@@ -127,6 +132,14 @@ output "backend_sa_unique_id" {
   value = google_service_account.backend_sa.unique_id
 }
 
+output "github_actions_sa_email" {
+  value = google_service_account.github_actions_sa.email
+}
+
+output "github_actions_sa_unique_id" {
+  value = google_service_account.github_actions_sa.unique_id
+}
+
 resource "google_service_account_iam_member" "sa_user_backend" {
   service_account_id = google_service_account.backend_sa.name
   role               = "roles/iam.serviceAccountUser"
@@ -162,5 +175,5 @@ resource "google_project_iam_member" "token_creator" {
 resource "google_service_account_iam_member" "wif_user" {
   service_account_id = google_service_account.github_actions_sa.name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "principalSet://iam.googleapis.com/projects/673062863574/locations/global/workloadIdentityPools/github-pool-v1/attribute.repository/ThorbenWoelk/dAstIll"
+  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/${var.github_repository}"
 }

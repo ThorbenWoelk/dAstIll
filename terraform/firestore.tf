@@ -1,7 +1,8 @@
 resource "google_firestore_database" "default" {
   provider    = google-beta
   name        = "(default)"
-  location_id = "nam5"
+  location_id = var.firestore_location_id
+  project     = var.project_id
   type        = "FIRESTORE_NATIVE"
 
   depends_on = [google_project_service.services["firestore.googleapis.com"]]

@@ -68,6 +68,27 @@ The SvelteKit app uses the Firebase JS SDK in the browser and **Firebase Admin**
 
 **Firebase console:** add your production site origin (and the Cloud Run URL if needed) under Authentication > Settings > Authorized domains.
 
+## Project Migration
+
+To cut over from `uplifted-water-273221` ("Totos Home") to the new GCP project `dastill`:
+
+1. Create or gain access to the `dastill` GCP project, attach billing, and decide the Firestore location before the first apply. The repo now exposes `firestore_location_id` explicitly; the example uses `eur3`.
+2. Update your local `terraform.tfvars` for the new target project. Set `project_id = "dastill"` and keep `app_name = "dastill"` unless you intentionally want new GCP/AWS resource names. If the GitHub Workload Identity Pool lives outside the target project, also set `github_wif_pool_project_number`; otherwise it defaults to the active project number.
+3. Decide how Terraform state will handle the shared AWS resources. Buckets, vector buckets, and the `dastill-gcp-backend` AWS role are keyed by `app_name`, not `project_id`. Reusing the existing state is the simplest cutover. If you start from a fresh state backend, import the existing AWS resources before apply or intentionally rename `app_name` and migrate that data separately.
+4. Apply Terraform against the new project and record the outputs you need for GitHub. At minimum, update repository secrets `GCP_PROJECT_ID`, `GCP_WIF_PROVIDER`, and `GCP_WIF_SA_EMAIL` (the latter is available from `terraform output github_actions_sa_email`). Update repository vars that are outside Terraform ownership in this repo, especially `AWS_ROLE_ARN`, `AWS_WIF_AUDIENCE`, bucket/index names, CORS origins, contact email, and any Databricks settings.
+5. Migrate Firestore data explicitly. The app switches to the new database as soon as `GCP_PROJECT_ID` changes, so export from the old project and import into the new one before frontend/backend cutover. Example shape:
+
+```bash
+gcloud firestore export gs://<shared-migration-bucket>/<export-prefix> \
+  --project=uplifted-water-273221
+
+gcloud firestore import gs://<shared-migration-bucket>/<export-prefix> \
+  --project=dastill
+```
+
+6. Enable Firebase on the new project, create the web app, obtain the Web API key/auth domain, set `firebase_web_api_key` and optional `firebase_auth_domain` in `terraform.tfvars`, re-apply Terraform so Secret Manager contains the frontend Firebase values, and add the new frontend origins under Firebase Auth authorized domains.
+7. Re-run the release workflow after the GitHub secret/var cutover so Cloud Run revisions pick up the new project ID, Firebase config, backend URL, and docs URL.
+
 ## CI/CD Flow
 
 The GitHub Actions workflow:

@@ -12,6 +12,7 @@ locals {
 resource "google_cloud_run_v2_service" "backend" {
   provider            = google-beta
   name                = "${var.app_name}-backend"
+  project             = var.project_id
   location            = var.region
   ingress             = "INGRESS_TRAFFIC_ALL"
   deletion_protection = false
@@ -51,6 +52,7 @@ resource "google_cloud_run_v2_service" "backend" {
 resource "google_cloud_run_v2_service" "frontend" {
   provider            = google-beta
   name                = "${var.app_name}-frontend"
+  project             = var.project_id
   location            = var.region
   ingress             = "INGRESS_TRAFFIC_ALL"
   deletion_protection = false
@@ -90,6 +92,7 @@ resource "google_cloud_run_v2_service" "frontend" {
 }
 
 resource "google_cloud_run_v2_service_iam_member" "frontend_public" {
+  project  = var.project_id
   location = google_cloud_run_v2_service.frontend.location
   name     = google_cloud_run_v2_service.frontend.name
   role     = "roles/run.invoker"
@@ -107,6 +110,7 @@ output "frontend_url" {
 resource "google_cloud_run_v2_service" "docs" {
   provider            = google-beta
   name                = "${var.app_name}-docs"
+  project             = var.project_id
   location            = var.region
   ingress             = "INGRESS_TRAFFIC_ALL"
   deletion_protection = false
@@ -142,6 +146,7 @@ resource "google_cloud_run_v2_service" "docs" {
 }
 
 resource "google_cloud_run_v2_service_iam_member" "docs_public" {
+  project  = var.project_id
   location = google_cloud_run_v2_service.docs.location
   name     = google_cloud_run_v2_service.docs.name
   role     = "roles/run.invoker"

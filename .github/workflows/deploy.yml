@@ -31,10 +31,8 @@ concurrency:
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   REGION: europe-west3
+  APP_NAME: dastill
   REPO_ID: dastill
-  BACKEND_SERVICE: dastill-backend
-  FRONTEND_SERVICE: dastill-frontend
-  DOCS_SERVICE: dastill-docs
   # workflow_run sets github.sha to the workflow file ref, not the triggering commit.
   # Use head_sha from the triggering run when available.
   DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
@@ -102,12 +100,12 @@ jobs:
           set -euo pipefail
           trimmed="$(printf '%s' "$DATABRICKS_HOST" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
           {
-            echo 'YOUTUBE_API_KEY=dastill-youtube-api-key:latest'
-            echo 'OLLAMA_API_KEY=dastill-ollama-api-key:latest'
-            echo 'LOGFIRE_TOKEN=dastill-logfire-token:latest'
-            echo 'BACKEND_PROXY_TOKEN=dastill-backend-proxy-token:latest'
+            echo "YOUTUBE_API_KEY=${APP_NAME}-youtube-api-key:latest"
+            echo "OLLAMA_API_KEY=${APP_NAME}-ollama-api-key:latest"
+            echo "LOGFIRE_TOKEN=${APP_NAME}-logfire-token:latest"
+            echo "BACKEND_PROXY_TOKEN=${APP_NAME}-backend-proxy-token:latest"
             if [ -n "$trimmed" ]; then
-              echo 'DATABRICKS_TOKEN=dastill-databricks-token:latest'
+              echo "DATABRICKS_TOKEN=${APP_NAME}-databricks-token:latest"
             fi
           } > /tmp/backend_cr_secrets.txt
           {
@@ -120,10 +118,10 @@ jobs:
         id: deploy
         uses: google-github-actions/deploy-cloudrun@v3.0.0
         with:
-          service: ${{ env.BACKEND_SERVICE }}
+          service: ${{ format('{0}-backend', env.APP_NAME) }}
           region: ${{ env.REGION }}
           image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_ID }}/backend:${{ env.IMAGE_TAG }}
-          flags: "--service-account=dastill-backend-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com --memory=1Gi"
+          flags: "--service-account=${{ env.APP_NAME }}-backend-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com --memory=1Gi"
           # Quote so newlines from the prior step are preserved for deploy-cloudrun.
           secrets: "${{ steps.backend_secrets.outputs.secrets }}"
           secrets_update_strategy: overwrite
@@ -194,10 +192,10 @@ jobs:
         id: deploy
         uses: google-github-actions/deploy-cloudrun@v3.0.0
         with:
-          service: ${{ env.DOCS_SERVICE }}
+          service: ${{ format('{0}-docs', env.APP_NAME) }}
           region: ${{ env.REGION }}
           image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_ID }}/docs:${{ env.IMAGE_TAG }}
-          flags: "--allow-unauthenticated --service-account=dastill-docs-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
+          flags: "--allow-unauthenticated --service-account=${{ env.APP_NAME }}-docs-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
 
   resolve-frontend-env:
     name: Resolve Frontend Environment
@@ -231,11 +229,11 @@ jobs:
           docs_url="$DEPLOYED_DOCS_URL"
 
           if [ -z "$backend_url" ]; then
-            backend_url="$(gcloud run services describe "$BACKEND_SERVICE" --region "$REGION" --format='value(status.url)')"
+            backend_url="$(gcloud run services describe "${APP_NAME}-backend" --region "$REGION" --format='value(status.url)')"
           fi
 
           if [ -z "$docs_url" ]; then
-            docs_url="$(gcloud run services describe "$DOCS_SERVICE" --region "$REGION" --format='value(status.url)')"
+            docs_url="$(gcloud run services describe "${APP_NAME}-docs" --region "$REGION" --format='value(status.url)')"
           fi
 
           echo "backend_url=$backend_url" >> "$GITHUB_OUTPUT"
@@ -280,15 +278,15 @@ jobs:
       - name: Deploy Frontend to Cloud Run
         uses: google-github-actions/deploy-cloudrun@v3.0.0
         with:
-          service: ${{ env.FRONTEND_SERVICE }}
+          service: ${{ format('{0}-frontend', env.APP_NAME) }}
           region: ${{ env.REGION }}
           image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_ID }}/frontend:${{ env.IMAGE_TAG }}
-          flags: "--service-account=dastill-frontend-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
+          flags: "--service-account=${{ env.APP_NAME }}-frontend-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
           secrets: |
-            BACKEND_PROXY_TOKEN=dastill-backend-proxy-token:latest
-            PUBLIC_FIREBASE_API_KEY=dastill-firebase-web-api-key:latest
-            PUBLIC_FIREBASE_KEY=dastill-firebase-web-api-key:latest
-            PUBLIC_FIREBASE_AUTH_DOMAIN=dastill-firebase-auth-domain:latest
+            BACKEND_PROXY_TOKEN=${{ env.APP_NAME }}-backend-proxy-token:latest
+            PUBLIC_FIREBASE_API_KEY=${{ env.APP_NAME }}-firebase-web-api-key:latest
+            PUBLIC_FIREBASE_KEY=${{ env.APP_NAME }}-firebase-web-api-key:latest
+            PUBLIC_FIREBASE_AUTH_DOMAIN=${{ env.APP_NAME }}-firebase-auth-domain:latest
           # Overwrite drops legacy secret mounts (e.g. app-auth / app-session) that no longer have IAM.
           secrets_update_strategy: overwrite
           env_vars: |

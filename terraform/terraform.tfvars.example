@@ -1,6 +1,8 @@
-project_id          = "your-gcp-project-id"
+project_id          = "dastill"
 region              = "europe-west3"
 app_name            = "dastill"
+firestore_location_id = "eur3"
+firebase_web_app_display_name = "dAstIll Web"
 aws_region          = "eu-central-1"
 
 youtube_api_key     = "your-youtube-api-key"
@@ -8,13 +10,10 @@ ollama_api_key      = "your-ollama-api-key"
 logfire_token       = "your-logfire-token"
 backend_proxy_token = "replace-with-a-long-random-proxy-token"
 
-# Firebase Web client (Secret Manager: dastill-firebase-web-api-key, dastill-firebase-auth-domain).
-# Default "". When non-empty, Terraform creates those secrets for the product frontend on Cloud Run.
-# Web API key: Firebase console > Project settings > General > Web API Key (or `firebase apps:sdkconfig WEB <appId> --project <id>`).
-firebase_web_api_key = ""
-
-# Optional. Default "" stores "{project_id}.firebaseapp.com" in the auth-domain secret.
-# firebase_auth_domain = "your-project.firebaseapp.com"
+# Optional: provide Google OAuth credentials to enable Google sign-in in Firebase/Identity Platform.
+# Leave unset or "" to keep anonymous auth only.
+# firebase_google_client_id     = "your-google-oauth-client-id"
+# firebase_google_client_secret = "your-google-oauth-client-secret"
 
 # Optional: set to let Terraform store the PAT; omit or "" if the secret already exists in GCP.
 # databricks_token = "your-databricks-personal-access-token"
@@ -26,6 +25,10 @@ firebase_web_api_key = ""
 # billing_export_project_id = "your-gcp-project-id"
 # billing_export_dataset_id = "billing_export"
 # billing_export_dataset_location = "EU"
+
+# github_wif_pool_id = "github-pool-v1"
+# github_wif_provider_id = "github-provider-v1"
+# github_repository = "ThorbenWoelk/dAstIll"
 
 ollama_url              = "https://your-ollama-proxy.com"
 ollama_model            = "glm-5:cloud"

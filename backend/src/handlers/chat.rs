@@ -57,6 +57,22 @@ fn active_chat_key(access_context: &AccessContext, conversation_id: &str) -> Act
     ActiveChatKey::new(active_chat_scope_key(access_context), conversation_id)
 }
 
+async fn lookup_active_chat(
+    active_chats: &tokio::sync::Mutex<
+        std::collections::HashMap<ActiveChatKey, crate::services::ActiveChatHandle>,
+    >,
+    access_context: &AccessContext,
+    conversation_id: &str,
+) -> Result<crate::services::ActiveChatHandle, (StatusCode, String)> {
+    let runtime_key = active_chat_key(access_context, conversation_id);
+    active_chats
+        .lock()
+        .await
+        .get(&runtime_key)
+        .cloned()
+        .ok_or((StatusCode::NOT_FOUND, "Active chat not found".to_string()))
+}
+
 fn remove_active_chats_for_scope(
     active_chats: &mut std::collections::HashMap<ActiveChatKey, crate::services::ActiveChatHandle>,
     scope_key: &str,
@@ -460,14 +476,8 @@ pub async fn reconnect_stream(
     Path(conversation_id): Path<String>,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, (StatusCode, String)>
 {
-    let runtime_key = active_chat_key(&access_context, &conversation_id);
-    let active_chat = state
-        .active_chats
-        .lock()
-        .await
-        .get(&runtime_key)
-        .cloned()
-        .ok_or((StatusCode::NOT_FOUND, "Active chat not found".to_string()))?;
+    let active_chat = lookup_active_chat(&state.active_chats, &access_context, &conversation_id)
+        .await?;
     Ok(sse_response(active_chat).await)
 }
 
@@ -476,14 +486,8 @@ pub async fn cancel_message(
     Extension(access_context): Extension<AccessContext>,
     Path(conversation_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let runtime_key = active_chat_key(&access_context, &conversation_id);
-    let active_chat = state
-        .active_chats
-        .lock()
-        .await
-        .get(&runtime_key)
-        .cloned()
-        .ok_or((StatusCode::NOT_FOUND, "Active chat not found".to_string()))?;
+    let active_chat = lookup_active_chat(&state.active_chats, &access_context, &conversation_id)
+        .await?;
     active_chat.cancel();
     Ok(StatusCode::ACCEPTED)
 }
@@ -714,47 +718,21 @@ fn apply_manual_conversation_title(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Once};
-
-    use axum::{
-        Extension,
-        extract::{Path, State},
-        http::StatusCode,
-        response::IntoResponse,
-    };
+    use axum::http::StatusCode;
     use chrono::{Duration, Utc};
-    use reqwest::Client;
-    use tokio::sync::RwLock;
 
     use super::{
         active_chat_key, apply_manual_conversation_title, apply_user_message_to_conversation,
-        cancel_message, mark_manual_title_on_create, rank_channel_suggestions,
-        rank_video_suggestions, reconnect_stream, remove_active_chats_for_scope,
+        lookup_active_chat, mark_manual_title_on_create, rank_channel_suggestions,
+        rank_video_suggestions, remove_active_chats_for_scope,
     };
-    use crate::db::Store;
     use crate::handlers::validate_nonempty;
     use crate::models::{
         Channel, ChatConversation, ChatMessage, ChatMessageStatus, ChatRole, ChatTitleStatus,
         ContentStatus, Video,
     };
-    use crate::search_progress::SearchProgress;
     use crate::security::{AccessContext, AccessRole, AuthState};
-    use crate::services::{
-        ActiveChatHandle, ChatService, CloudCooldown, OllamaCore, SearchService, SummarizerService,
-        SummaryEvaluatorService, TranscriptCooldown, TranscriptService, YouTubeQuotaCooldown,
-        YouTubeService,
-    };
-    use crate::state::AppState;
-
-    static RUSTLS_PROVIDER: Once = Once::new();
-
-    fn ensure_rustls_provider() {
-        RUSTLS_PROVIDER.call_once(|| {
-            rustls::crypto::ring::default_provider()
-                .install_default()
-                .expect("install rustls crypto provider");
-        });
-    }
+    use crate::services::ActiveChatHandle;
 
     fn sample_conversation(title: Option<&str>, title_status: ChatTitleStatus) -> ChatConversation {
         let created_at = Utc::now() - Duration::minutes(5);
@@ -958,53 +936,6 @@ mod tests {
         }
     }
 
-    fn test_app_state(db: Store) -> AppState {
-        ensure_rustls_provider();
-        let cooldown = Arc::new(CloudCooldown::cloud());
-        let security =
-            Arc::new(crate::config::SecurityRuntimeConfig::from_env().expect("security config"));
-        AppState {
-            db,
-            read_cache: Arc::new(crate::read_cache::ReadCache::default()),
-            security: security.clone(),
-            request_rate_limiter: crate::security::rate_limiter(security.as_ref()),
-            search_auto_create_vector_index: false,
-            search_projection_lock: Arc::new(RwLock::new(())),
-            search_progress: Arc::new(SearchProgress::new(
-                None,
-                crate::services::search::SEARCH_EMBEDDING_DIMENSIONS,
-                false,
-            )),
-            youtube: Arc::new(YouTubeService::with_client(Client::new())),
-            transcript: Arc::new(TranscriptService::with_path("/usr/bin/false")),
-            tts: None,
-            summarizer: Arc::new(SummarizerService::new(
-                OllamaCore::new("://invalid-url", "qwen3:8b").with_cloud_cooldown(cooldown.clone()),
-            )),
-            summary_evaluator: Arc::new(SummaryEvaluatorService::new(
-                OllamaCore::new("://invalid-url", "qwen3.5:397b-cloud")
-                    .with_cloud_cooldown(cooldown.clone()),
-            )),
-            search: Arc::new(SearchService::with_config(
-                "://invalid-url",
-                None,
-                crate::services::search::SEARCH_EMBEDDING_DIMENSIONS,
-                false,
-            )),
-            chat: Arc::new(ChatService::new(
-                OllamaCore::new("://invalid-url", "qwen3:8b").with_cloud_cooldown(cooldown.clone()),
-            )),
-            analytics: None,
-            active_chats: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
-            chat_store_lock: Arc::new(tokio::sync::Mutex::new(())),
-            fts: Arc::new(crate::services::FtsIndex::new().expect("fts index")),
-            anonymous_chat_quota_lock: Arc::new(tokio::sync::Mutex::new(())),
-            cloud_cooldown: cooldown,
-            youtube_quota_cooldown: Arc::new(YouTubeQuotaCooldown::youtube_quota()),
-            transcript_cooldown: Arc::new(TranscriptCooldown::transcript()),
-        }
-    }
-
     #[test]
     fn active_chat_key_separates_anonymous_and_authenticated_scope_for_same_id() {
         let authenticated = auth_context("anonymous");
@@ -1018,56 +949,35 @@ mod tests {
 
     #[tokio::test]
     async fn reconnect_and_cancel_require_matching_scope_ownership() {
-        ensure_rustls_provider();
-        let store = Store::for_test().await;
-        let state = test_app_state(store);
         let owner = auth_context("user-a");
         let foreign = auth_context("user-b");
         let conversation_id = "conv-shared".to_string();
         let owner_key = active_chat_key(&owner, &conversation_id);
-        state
-            .active_chats
-            .lock()
-            .await
-            .insert(owner_key.clone(), ActiveChatHandle::new());
+        let active_chats = tokio::sync::Mutex::new(std::collections::HashMap::from([(
+            owner_key.clone(),
+            ActiveChatHandle::new(),
+        )]));
 
-        let reconnect_error = reconnect_stream(
-            State(state.clone()),
-            Extension(foreign.clone()),
-            Path(conversation_id.clone()),
-        )
-        .await
-        .expect_err("foreign reconnect should fail");
+        let reconnect_error = lookup_active_chat(&active_chats, &foreign, &conversation_id)
+            .await
+            .expect_err("foreign reconnect should fail");
         assert_eq!(reconnect_error.0, StatusCode::NOT_FOUND);
 
-        let _ = reconnect_stream(
-            State(state.clone()),
-            Extension(owner.clone()),
-            Path(conversation_id.clone()),
-        )
-        .await
-        .expect("owner reconnect should succeed");
+        let _ = lookup_active_chat(&active_chats, &owner, &conversation_id)
+            .await
+            .expect("owner reconnect should succeed");
 
-        let cancel_error = cancel_message(
-            State(state.clone()),
-            Extension(foreign),
-            Path(conversation_id.clone()),
-        )
-        .await
-        .err()
-        .expect("foreign cancel should fail");
+        let cancel_error = lookup_active_chat(&active_chats, &foreign, &conversation_id)
+            .await
+            .expect_err("foreign cancel should fail");
         assert_eq!(cancel_error.0, StatusCode::NOT_FOUND);
-        assert!(state.active_chats.lock().await.contains_key(&owner_key));
+        assert!(active_chats.lock().await.contains_key(&owner_key));
 
-        let cancel_response = cancel_message(
-            State(state.clone()),
-            Extension(owner),
-            Path(conversation_id),
-        )
-        .await
-        .expect("owner cancel should succeed")
-        .into_response();
-        assert_eq!(cancel_response.status(), StatusCode::ACCEPTED);
+        let active_chat = lookup_active_chat(&active_chats, &owner, &conversation_id)
+            .await
+            .expect("owner cancel should succeed");
+        active_chat.cancel();
+        assert!(active_chats.lock().await.contains_key(&owner_key));
     }
 
     #[test]
