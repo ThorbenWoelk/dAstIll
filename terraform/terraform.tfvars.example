@@ -19,6 +19,14 @@ firebase_web_api_key = ""
 # Optional: set to let Terraform store the PAT; omit or "" if the secret already exists in GCP.
 # databricks_token = "your-databricks-personal-access-token"
 
+# Optional: enable Terraform-managed prerequisites for Cloud Billing export to BigQuery.
+# This creates the dataset and grants the Google-managed billing export writers access.
+# The final export toggle still happens in Cloud Billing after `terraform apply`.
+# billing_export_enabled = true
+# billing_export_project_id = "your-gcp-project-id"
+# billing_export_dataset_id = "billing_export"
+# billing_export_dataset_location = "EU"
+
 ollama_url              = "https://your-ollama-proxy.com"
 ollama_model            = "glm-5:cloud"
 summary_evaluator_model = "glm-5:cloud"

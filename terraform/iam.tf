@@ -119,17 +119,8 @@ resource "google_project_iam_member" "frontend_firebase_auth" {
   member  = "serviceAccount:${google_service_account.frontend_sa.email}"
 }
 
-resource "google_service_account_key" "backend_sa_key" {
-  service_account_id = google_service_account.backend_sa.name
-}
-
 output "backend_sa_email" {
   value = google_service_account.backend_sa.email
-}
-
-output "backend_sa_key" {
-  value     = google_service_account_key.backend_sa_key.private_key
-  sensitive = true
 }
 
 output "backend_sa_unique_id" {

@@ -16,6 +16,7 @@ Terraform manages:
 - service accounts and IAM (GCP and AWS)
 - AWS S3 bucket for data storage
 - AWS S3 Vectors bucket and index for semantic search
+- optional BigQuery billing export dataset prerequisites
 - AWS IAM role for GCP Workload Identity Federation
 - Secret Manager secrets (GCP)
 
@@ -113,3 +114,16 @@ The `main`-branch deploy workflow publishes the docs revision with unauthenticat
 The product frontend links to this docs service through a `PUBLIC_DOCS_URL` runtime env var on the frontend Cloud Run service. Local development falls back to `http://localhost:4173` when that variable is unset.
 
 Terraform grants the GitHub Actions deploy identity Cloud Run admin permissions and service-account-user bindings so the workflow can keep managing all three Cloud Run services.
+
+## Billing Export
+
+Terraform can optionally create the BigQuery prerequisites for Cloud Billing export:
+
+- dataset `billing_export` by default
+- configurable export project and dataset location
+- dataset access for Google-managed billing export writers
+- required BigQuery APIs
+
+Enable this by setting `billing_export_enabled = true` in `terraform.tfvars` and optionally overriding `billing_export_project_id`, `billing_export_dataset_id`, or `billing_export_dataset_location`.
+
+After `terraform apply`, finish the setup in Cloud Billing by opening the billing account linked to the project, navigating to **Billing export**, and pointing the detailed usage export at the Terraform-managed dataset. Terraform does not manage that final toggle because Cloud Billing does not expose it as a supported first-class Terraform resource.

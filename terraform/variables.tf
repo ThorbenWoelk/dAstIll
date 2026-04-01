@@ -66,3 +66,27 @@ variable "firebase_auth_domain" {
   default     = ""
   description = "Firebase authDomain (e.g. project.firebaseapp.com). Leave empty to use {project_id}.firebaseapp.com."
 }
+
+variable "billing_export_enabled" {
+  type        = bool
+  default     = false
+  description = "When true, Terraform creates the BigQuery dataset and API prerequisites for Cloud Billing export."
+}
+
+variable "billing_export_project_id" {
+  type        = string
+  default     = ""
+  description = "Optional project ID that will host the billing export dataset. Defaults to project_id."
+}
+
+variable "billing_export_dataset_id" {
+  type        = string
+  default     = "billing_export"
+  description = "BigQuery dataset ID for Cloud Billing export tables."
+}
+
+variable "billing_export_dataset_location" {
+  type        = string
+  default     = "EU"
+  description = "BigQuery dataset location for Cloud Billing export tables."
+}
