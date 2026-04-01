@@ -52,8 +52,11 @@ use super::chat_ranking::{
 
 include!("frag_types_a.rs");
 include!("frag_types_b.rs");
-
-include!("frag_impl.rs");
-
+include!("frag_impl_service.rs");
+include!("frag_impl_reply.rs");
+include!("frag_impl_tool_loop.rs");
+include!("frag_impl_retrieval.rs");
+include!("frag_impl_streaming.rs");
+include!("frag_impl_title.rs");
 include!("frag_post_a.rs");
 include!("frag_post_b.rs");

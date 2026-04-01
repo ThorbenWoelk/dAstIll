@@ -188,12 +188,16 @@ test("G then W navigates from queue to workspace without full reload hang", asyn
   await expect
     .poll(() => new URL(page.url()).pathname)
     .toContain("download-queue");
+  await page.waitForTimeout(1500);
 
   await page.keyboard.press("g");
+  await expect(
+    page.getByLabel("Go navigation: press a highlighted letter"),
+  ).toBeVisible({ timeout: READY_MS });
   await page.keyboard.press("w");
 
   await expect.poll(() => new URL(page.url()).pathname).toBe("/");
-  await expect(page.locator("#workspace")).toBeVisible({ timeout: READY_MS });
+  await expect(workspaceSidebar(page)).toBeVisible({ timeout: READY_MS });
 });
 
 test("mark read toggle flips aria-pressed on desktop", async ({ page }) => {

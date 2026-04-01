@@ -526,5 +526,4 @@ struct HydeResponse {
     response: String,
 }
 
-
 include!("frag_02.rs");

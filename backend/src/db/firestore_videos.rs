@@ -6,7 +6,6 @@ use super::{Store, StoreError};
 
 pub(super) const COLLECTION: &str = "dastill_videos";
 
-
 impl From<firestore::errors::FirestoreError> for StoreError {
     fn from(err: firestore::errors::FirestoreError) -> Self {
         StoreError::Other(format!("Firestore error: {err}"))
@@ -135,7 +134,9 @@ pub async fn fs_get_videos(
             .batch(chunk_ids)
             .await?;
         while let Some((_id, maybe_video)) = stream.next().await {
-            let Some(mut video): Option<Video> = maybe_video else { continue };
+            let Some(mut video): Option<Video> = maybe_video else {
+                continue;
+            };
             if include_summary {
                 if let Some(summary) = store
                     .get_json::<crate::models::Summary>(&format!("summaries/{}.json", video.id))
@@ -150,7 +151,6 @@ pub async fn fs_get_videos(
 
     Ok(results)
 }
-
 
 pub async fn fs_update_video_acknowledged(
     store: &Store,

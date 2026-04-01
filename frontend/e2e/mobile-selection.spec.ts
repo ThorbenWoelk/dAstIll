@@ -18,9 +18,11 @@ test("mobile text selection shows the custom toolbar at the bottom", async ({
   await expect(channelRow).toBeVisible();
   await channelRow.click();
 
-  // Wait for the video list in WorkspaceSidebar to update
-  // Select first video button which is under the channel in the mobile view
-  const videoButton = page.locator("#videos button").first();
+  // Wait for the visible mobile browse sheet to render video rows.
+  const videoButton = page
+    .locator('section[aria-label="Browse"] aside#workspace button')
+    .filter({ has: page.locator("p.line-clamp-2") })
+    .first();
   await expect(videoButton).toBeVisible();
   await videoButton.click();
 
@@ -30,14 +32,10 @@ test("mobile text selection shows the custom toolbar at the bottom", async ({
   const article = page.locator("#content-view article");
   await expect(article).toBeVisible();
 
-  // 4. Simulate text selection
-  // We'll select the first sentence or a few words
-  const paragraph = article.locator("p").first();
-  await expect(paragraph).toBeVisible();
-
-  // Select text using bounding box
-  const box = await paragraph.boundingBox();
-  if (!box) throw new Error("Could not find paragraph bounding box");
+  // 4. Simulate text selection directly in the transcript article. The mobile
+  // transcript view now renders raw article text, not paragraph nodes.
+  const box = await article.boundingBox();
+  if (!box) throw new Error("Could not find transcript bounding box");
 
   // Drag to select text
   await page.mouse.move(box.x + 10, box.y + 10);
