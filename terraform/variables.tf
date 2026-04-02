@@ -69,7 +69,7 @@ variable "turso_auth_token" {
   type        = string
   sensitive   = true
   default     = ""
-  description = "Optional Turso auth token for the backend keyword-search replica. When set, Terraform writes it to Secret Manager as ${app_name}-turso-auth-token."
+  description = "Optional Turso auth token for the backend keyword-search replica. When set, Terraform writes it to Secret Manager as <app_name>-turso-auth-token."
 }
 
 variable "databricks_token" {
