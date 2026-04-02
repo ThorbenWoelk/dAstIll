@@ -109,11 +109,14 @@ gcloud firestore import gs://<shared-migration-bucket>/<export-prefix> \
 The GitHub Actions workflow:
 
 ```text
-1. Builds and pushes backend, docs, and frontend images to Artifact Registry
-2. Deploys backend, docs, and frontend to Cloud Run (main branch or release dispatch)
-3. Resolves deployed backend and docs URLs for the frontend service env
-4. Deploys the backend with runtime env including S3/AWS config, `TURSO_DB_URL`, and Secret Manager mounts such as `TURSO_AUTH_TOKEN` when enabled
-5. Deploys the frontend with runtime env including BACKEND_API_BASE, BACKEND_IDENTITY_AUDIENCE, PUBLIC_DOCS_URL, PUBLIC_CONTACT_EMAIL, PUBLIC_FIREBASE_PROJECT_ID, and Firebase client values from Secret Manager mounts
+1. Runs repo hygiene on every validation run
+2. Detects which of `backend/`, `frontend/`, and `docs/` changed
+3. Runs only the matching backend/frontend/docs validation jobs on push and pull request events
+4. On `main`, builds and deploys only the services with deploy-relevant changes
+5. Skips deploys for trivial-only service changes such as `.gitignore`, README, and test-only frontend/backend changes
+6. Resolves deployed backend and docs URLs for the frontend service env when the frontend itself is being deployed
+7. Deploys the backend with runtime env including S3/AWS config, `TURSO_DB_URL`, and Secret Manager mounts such as `TURSO_AUTH_TOKEN` when enabled
+8. Deploys the frontend with runtime env including BACKEND_API_BASE, BACKEND_IDENTITY_AUDIENCE, PUBLIC_DOCS_URL, PUBLIC_CONTACT_EMAIL, PUBLIC_FIREBASE_PROJECT_ID, and Firebase client values from Secret Manager mounts
 ```
 
 ## Docker Layout
