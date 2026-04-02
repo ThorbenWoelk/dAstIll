@@ -336,7 +336,7 @@ export function createHomeWorkspaceDataController(options: {
     }
 
     if (content.contentMode !== targetMode) {
-      content.contentMode = targetMode;
+      content.setMode(targetMode);
       await content.loadContent();
     }
   }
@@ -407,10 +407,7 @@ export function createHomeWorkspaceDataController(options: {
         sidebarState.setSelectedChannelId(initialChannelId);
 
         if (!silent || preferredVideoId !== selectionVideoId) {
-          content.resetSummaryQuality();
-          content.videoInfo = null;
-          content.editing = false;
-          content.clearFormattingFeedback();
+          content.resetViewState();
         }
 
         if (
@@ -498,8 +495,7 @@ export function createHomeWorkspaceDataController(options: {
         sidebarState.setSelectedVideoId(null);
         options.setMobileBrowseOpen(true);
         sidebarState.setVideos([]);
-        content.contentText = "";
-        content.draft = "";
+        content.clearDisplayedContent();
       }
     }
 
@@ -847,18 +843,14 @@ export function createHomeWorkspaceDataController(options: {
         channel_id: sidebarState.selectedChannelId,
       });
     }
-    content.contentText = "";
-    content.draft = "";
+    content.clearDisplayedContent();
     const cachedHighlights = videoId
       ? options.getVideoHighlightsByVideoId()[videoId]
       : null;
     if (videoId && !cachedHighlights) {
       void options.hydrateVideoHighlights(videoId);
     }
-    content.resetSummaryQuality();
-    content.videoInfo = null;
-    content.editing = false;
-    content.clearFormattingFeedback();
+    content.resetViewState();
     await content.loadContent();
   }
 
@@ -868,7 +860,7 @@ export function createHomeWorkspaceDataController(options: {
     if (previousMode === "summary" && sidebarState.selectedVideoId) {
       closeSummarySession();
     }
-    content.contentMode = mode;
+    content.setMode(mode);
     if (sidebarState.selectedVideoId && sidebarState.selectedChannelId) {
       track({
         event: "content_mode_changed",
@@ -878,10 +870,7 @@ export function createHomeWorkspaceDataController(options: {
         to_mode: mode,
       });
     }
-    content.resetSummaryQuality();
-    content.videoInfo = null;
-    content.editing = false;
-    content.clearFormattingFeedback();
+    content.resetViewState();
     await content.loadContent();
   }
 

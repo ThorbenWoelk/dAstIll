@@ -45,6 +45,10 @@ export function createVocabularyController(params: VocabularyControllerParams) {
     modalValue = "";
   }
 
+  function setModalValue(value: string) {
+    modalValue = value;
+  }
+
   /** Validates, upserts, and persists the replacement via `onSave`. */
   async function confirm() {
     const source = modalSource?.trim();
@@ -91,14 +95,12 @@ export function createVocabularyController(params: VocabularyControllerParams) {
     get modalValue() {
       return modalValue;
     },
-    set modalValue(v: string) {
-      modalValue = v;
-    },
     get creating() {
       return creating;
     },
     open,
     close,
+    setModalValue,
     confirm,
   };
 }

@@ -49,9 +49,7 @@
       channelActions={{
         ...hw.sidebarState.channelActions,
         onDeleteChannel: hw.handleDeleteChannel,
-        onDeleteAccessRequired: () => {
-          hw.showDeleteAccessPrompt = true;
-        },
+        onDeleteAccessRequired: hw.openDeleteAccessPrompt,
       }}
       videoState={hw.sidebarState.videoState}
       videoActions={hw.sidebarState.videoActions}
@@ -63,9 +61,7 @@
     <MobileYouTubeTopNav
       showBackInsteadOfMenu={!hw.mobileBrowseOpen &&
         Boolean(hw.selectedVideoId)}
-      onBack={() => {
-        hw.mobileBrowseOpen = true;
-      }}
+      onBack={hw.openMobileBrowse}
     >
       {#snippet trailing()}
         {#if hw.mobileBrowseOpen}
@@ -108,18 +104,14 @@
       selectedVideoYoutubeUrl={hw.selectedVideoYoutubeUrl}
       draft={hw.draft}
       selectedVideoAcknowledged={hw.selectedVideo?.acknowledged ?? false}
-      onEdit={hw.content.startEdit}
-      onCancel={hw.content.cancelEdit}
-      onSave={hw.content.saveEdit}
-      onFormat={hw.content.cleanFormatting}
-      onRegenerate={hw.content.regenerateSummaryContent}
-      onRevert={hw.content.revertToOriginalTranscript}
-      onRequestResetVideo={() => {
-        hw.showResetVideoConfirmation = true;
-      }}
-      onDraftChange={(value) => {
-        hw.content.draft = value;
-      }}
+      onEdit={hw.startEdit}
+      onCancel={hw.cancelEdit}
+      onSave={hw.saveEdit}
+      onFormat={hw.cleanFormatting}
+      onRegenerate={hw.regenerateSummaryContent}
+      onRevert={hw.revertToOriginalTranscript}
+      onRequestResetVideo={hw.openResetVideoConfirmation}
+      onDraftChange={hw.setDraft}
       onAcknowledgeToggle={hw.toggleAcknowledge}
     >
       {#snippet searchBar()}
@@ -140,9 +132,7 @@
     onSelectChannel={(channelId) => {
       void hw.sidebarState.selectChannel(channelId);
     }}
-    onClose={() => {
-      hw.mobileBrowseOpen = false;
-    }}
+    onClose={hw.closeMobileBrowse}
     channelState={{
       ...hw.sidebarState.channelState,
       canDeleteChannels: hw.canManageLibrary,
@@ -150,9 +140,7 @@
     channelActions={{
       ...hw.sidebarState.channelActions,
       onDeleteChannel: hw.handleDeleteChannel,
-      onDeleteAccessRequired: () => {
-        hw.showDeleteAccessPrompt = true;
-      },
+      onDeleteAccessRequired: hw.openDeleteAccessPrompt,
     }}
     videoState={{
       ...hw.sidebarState.videoState,
@@ -200,9 +188,7 @@
     source={hw.vocabularyModalSource ?? ""}
     value={hw.vocabularyModalValue}
     busy={hw.creatingVocabularyReplacement}
-    onValueChange={(value) => {
-      hw.vocabularyModalValue = value;
-    }}
+    onValueChange={hw.setVocabularyModalValue}
     onConfirm={() => void hw.confirmVocabularyReplacement()}
     onCancel={hw.closeVocabularyModal}
   />

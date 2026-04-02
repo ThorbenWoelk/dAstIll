@@ -41,6 +41,9 @@
     focusSignal = 0,
     onSubmit = (_value: string) => {},
     onCancel = () => {},
+    onValueChange = (_value: string) => {},
+    onDeepResearchChange = (_value: boolean) => {},
+    onSelectedModelIdChange = (_value: string) => {},
   }: {
     value?: string;
     deepResearch?: boolean;
@@ -52,6 +55,9 @@
     focusSignal?: number;
     onSubmit?: (value: string) => void;
     onCancel?: () => void;
+    onValueChange?: (value: string) => void;
+    onDeepResearchChange?: (value: boolean) => void;
+    onSelectedModelIdChange?: (value: string) => void;
   } = $props();
 
   let textareaElement: HTMLTextAreaElement | null = null;
@@ -72,6 +78,30 @@
   let resolvedDraftMentions = $state<Record<string, ResolvedChatMention>>({});
   let composerScrollTop = $state(0);
   let composerPadCounts = $state<Record<string, number>>({});
+
+  function setValue(nextValue: string) {
+    if (value === nextValue) {
+      return;
+    }
+    value = nextValue;
+    onValueChange(nextValue);
+  }
+
+  function setDeepResearch(nextValue: boolean) {
+    if (deepResearch === nextValue) {
+      return;
+    }
+    deepResearch = nextValue;
+    onDeepResearchChange(nextValue);
+  }
+
+  function setSelectedModelId(nextValue: string) {
+    if (selectedModelId === nextValue) {
+      return;
+    }
+    selectedModelId = nextValue;
+    onSelectedModelIdChange(nextValue);
+  }
 
   function syncTextareaHeight() {
     if (!textareaElement) {
@@ -455,8 +485,9 @@
     }
 
     const replacement = `${suggestionToken(item)} `;
-    value =
-      value.slice(0, trigger.start) + replacement + value.slice(trigger.end);
+    setValue(
+      value.slice(0, trigger.start) + replacement + value.slice(trigger.end),
+    );
     closeSuggestions();
     const nextCaret = trigger.start + replacement.length;
     await setCursorAfterValueChange(nextCaret);
@@ -514,7 +545,7 @@
       if (historyIndex === -1) savedDraft = value;
       if (historyIndex < history.length - 1) {
         historyIndex++;
-        value = history[historyIndex];
+        setValue(history[historyIndex]);
       }
       return;
     }
@@ -529,7 +560,7 @@
     ) {
       event.preventDefault();
       historyIndex--;
-      value = historyIndex === -1 ? savedDraft : history[historyIndex];
+      setValue(historyIndex === -1 ? savedDraft : history[historyIndex]);
       return;
     }
 
@@ -540,7 +571,7 @@
         ta.selectionStart,
       );
       const lineStart = value.lastIndexOf("\n", start - 1) + 1;
-      value = value.substring(0, lineStart) + value.substring(start);
+      setValue(value.substring(0, lineStart) + value.substring(start));
       void setCursorAfterValueChange(lineStart);
       return;
     }
@@ -553,7 +584,7 @@
       );
       const lineEnd = value.indexOf("\n", start);
       const end = lineEnd === -1 ? value.length : lineEnd;
-      value = value.substring(0, start) + value.substring(end);
+      setValue(value.substring(0, start) + value.substring(end));
       void setCursorAfterValueChange(start);
       return;
     }
@@ -567,7 +598,7 @@
       let i = start;
       while (i > 0 && /\s/.test(value[i - 1])) i--;
       while (i > 0 && !/\s/.test(value[i - 1])) i--;
-      value = value.substring(0, i) + value.substring(start);
+      setValue(value.substring(0, i) + value.substring(start));
       void setCursorAfterValueChange(i);
       return;
     }
@@ -597,7 +628,7 @@
       !selectedModelId ||
       !modelOptions.some((opt) => opt.id === selectedModelId)
     ) {
-      selectedModelId = modelOptions[0].id;
+      setSelectedModelId(modelOptions[0].id);
     }
   });
 
@@ -695,11 +726,9 @@
           currentCaret,
         );
 
-        // Update value (raw text). Svelte 5 will sync this to the parent.
+        // Update the raw value first so the parent controller remains canonical.
         const nextValue = stripComposerPadding(nextComposerValue);
-        if (value !== nextValue) {
-          value = nextValue;
-        }
+        setValue(nextValue);
 
         // Re-calculate composerValue (with padding) immediately to keep the UI in sync.
         const syncComposerValue = buildComposerDisplayValue(
@@ -757,8 +786,8 @@
   />
 
   <ChatInputControls
-    bind:deepResearch
-    bind:selectedModelId
+    {deepResearch}
+    {selectedModelId}
     {modelOptions}
     {modelSelectDisabled}
     {disabled}
@@ -767,5 +796,7 @@
     {actionDisabled}
     {ariaLabel}
     {onCancel}
+    onDeepResearchChange={setDeepResearch}
+    onSelectedModelIdChange={setSelectedModelId}
   />
 </form>

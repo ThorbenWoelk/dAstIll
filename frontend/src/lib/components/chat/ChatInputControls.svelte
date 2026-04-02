@@ -2,8 +2,8 @@
   import ChevronIcon from "$lib/components/icons/ChevronIcon.svelte";
 
   let {
-    deepResearch = $bindable(false),
-    selectedModelId = $bindable(""),
+    deepResearch = false,
+    selectedModelId = "",
     modelOptions = [],
     modelSelectDisabled = false,
     disabled = false,
@@ -12,6 +12,8 @@
     actionDisabled = false,
     ariaLabel = "Send message",
     onCancel = () => {},
+    onDeepResearchChange = (_value: boolean) => {},
+    onSelectedModelIdChange = (_value: string) => {},
   }: {
     deepResearch?: boolean;
     selectedModelId?: string;
@@ -23,6 +25,8 @@
     actionDisabled?: boolean;
     ariaLabel?: string;
     onCancel?: () => void;
+    onDeepResearchChange?: (value: boolean) => void;
+    onSelectedModelIdChange?: (value: string) => void;
   } = $props();
 </script>
 
@@ -35,10 +39,14 @@
       title="Ollama cloud model for this message"
     >
       <select
-        bind:value={selectedModelId}
+        value={selectedModelId}
         class="w-full min-w-[10rem] cursor-pointer appearance-none rounded-full bg-[var(--accent-wash)]/60 py-1.5 pl-2.5 pr-8 text-[11px] font-bold uppercase tracking-[0.06em] text-[var(--foreground)] transition-colors duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)] disabled:cursor-not-allowed disabled:opacity-50"
         aria-label="Ollama cloud model"
         disabled={modelSelectDisabled}
+        onchange={(event) => {
+          if (!(event.currentTarget instanceof HTMLSelectElement)) return;
+          onSelectedModelIdChange(event.currentTarget.value);
+        }}
       >
         {#if modelOptions.length === 0}
           <option value="">Loading…</option>
@@ -67,7 +75,7 @@
         : "Search more of your library (slower, richer context)"}
       disabled={disabled || busy}
       onclick={() => {
-        deepResearch = !deepResearch;
+        onDeepResearchChange(!deepResearch);
       }}
     >
       <svg

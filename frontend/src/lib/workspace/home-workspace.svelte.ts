@@ -4,38 +4,24 @@ import { onMount, tick } from "svelte";
 
 import { authState } from "$lib/auth-state.svelte";
 import { getAuthStorageScopeKey, getScopedStorageKey } from "$lib/auth-storage";
-import { savePreferences, updateAcknowledged } from "$lib/api";
+import { savePreferences } from "$lib/api";
 import { resolveAiIndicatorPresentation } from "$lib/ai-status";
 import { DOCS_URL } from "$lib/app-config";
 import type {
-  AiStatus,
   AddVideoResult,
   Channel,
   HighlightSource,
-  SearchStatus,
-  Video,
   VideoTypeFilter,
-  VocabularyReplacement,
 } from "$lib/types";
 import { renderMarkdown } from "$lib/utils/markdown";
 import { createAddSourceFeedbackController } from "$lib/workspace/add-source-feedback.svelte";
 import { createAiStatusPoller } from "$lib/utils/ai-poller";
 import { buildWorkspaceViewHref } from "$lib/view-url";
-import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
-import { track } from "$lib/analytics/tracker";
 import {
   cloneSyncDepthState,
   cloneVideos,
   createChannelViewCache,
 } from "$lib/channel-view-cache";
-import {
-  buildOptimisticAcknowledgeSidebarList,
-  isStillSelectedAfterAcknowledgeSuccess,
-  matchesAcknowledgedFilterVideo,
-  resolveRevertedVideoForAcknowledge,
-  resolveVideoForAcknowledgeToggle,
-  selectionDroppedAfterAcknowledgeOptimistic,
-} from "$lib/workspace/acknowledge-toggle";
 import { resolveNextChannelSelection } from "$lib/workspace/route-helpers";
 import { shouldRetryReadySummaryLoad } from "$lib/workspace/content";
 import { createSidebarState } from "$lib/workspace/sidebar-state.svelte";
@@ -55,7 +41,10 @@ import {
   createHomeWorkspaceDataController,
   type CachedChannelVideoState,
 } from "$lib/workspace/home-workspace-data-controller.svelte";
+import { createHomeWorkspaceAcknowledgeController } from "$lib/workspace/home-workspace-acknowledge-controller.svelte";
+import { createHomeWorkspacePageState } from "$lib/workspace/home-workspace-page-state.svelte";
 import { createHomeWorkspacePersistenceController } from "$lib/workspace/home-workspace-persistence-controller.svelte";
+import { createHomeWorkspaceViewModel } from "$lib/workspace/home-workspace-view-model.svelte";
 
 export function createHomeWorkspacePage() {
   // eslint-disable-next-line svelte/prefer-svelte-reactivity
@@ -66,20 +55,7 @@ export function createHomeWorkspacePage() {
       videos: cloneVideos(state.videos),
       syncDepth: cloneSyncDepthState(state.syncDepth),
     }));
-
-  let aiAvailable = $state<boolean | null>(null);
-  let aiStatus = $state<AiStatus | null>(null);
-  let searchStatus = $state<SearchStatus | null>(null);
-  let vocabularyReplacements = $state<VocabularyReplacement[]>([]);
-
-  let errorMessage = $state<string | null>(null);
-  let showDeleteAccessPrompt = $state(false);
-  let showResetVideoConfirmation = $state(false);
-  let allowLoadedVideoSyncDepthOverride = $state(false);
-  let mobileViewportMq = $state(false);
-  let mobileBrowseOpen = $state(true);
-  let pendingSelectedVideo = $state<Video | null>(null);
-  let hydratedWorkspaceScopeKey = $state<string | null>(null);
+  const pageState = createHomeWorkspacePageState();
 
   const addSourceFeedbackCtrl = createAddSourceFeedbackController();
   const workspaceStorageKey = $derived(
@@ -103,7 +79,7 @@ export function createHomeWorkspacePage() {
     onChannelSelected: (channelId: string) => {
       if (!sidebarState.selectedVideoId) {
         content.resetSummaryQuality();
-        content.videoInfo = null;
+        content.clearVideoInfo();
       }
       const href = buildWorkspaceViewHref({
         selectedChannelId: channelId,
@@ -176,13 +152,9 @@ export function createHomeWorkspacePage() {
   });
 
   const vocabulary = createVocabularyController({
-    getReplacements: () => vocabularyReplacements,
-    setReplacements: (replacements) => {
-      vocabularyReplacements = replacements;
-    },
-    onError: (message) => {
-      errorMessage = message;
-    },
+    getReplacements: () => pageState.vocabularyReplacements,
+    setReplacements: pageState.setVocabularyReplacements,
+    onError: pageState.setErrorMessage,
     onSave: async (replacements) => {
       await savePreferences({
         channel_order: sidebarState.channelOrder,
@@ -197,9 +169,7 @@ export function createHomeWorkspacePage() {
     getSelectedChannelId: () => sidebarState.selectedChannelId,
     getContentMode: () => content.contentMode,
     getCanManageLibrary: () => authState.current.authState === "authenticated",
-    onError: (message) => {
-      errorMessage = message;
-    },
+    onError: pageState.setErrorMessage,
   });
 
   const dataController = createHomeWorkspaceDataController({
@@ -208,23 +178,16 @@ export function createHomeWorkspacePage() {
     channelLastRefreshedAt,
     channelVideoStateCache,
     getAllowLoadedVideoSyncDepthOverride: () =>
-      allowLoadedVideoSyncDepthOverride,
-    setAllowLoadedVideoSyncDepthOverride: (value) => {
-      allowLoadedVideoSyncDepthOverride = value;
-    },
-    getPendingSelectedVideo: () => pendingSelectedVideo,
-    setPendingSelectedVideo: (value) => {
-      pendingSelectedVideo = value;
-    },
-    getErrorMessage: () => errorMessage,
-    setErrorMessage: (value) => {
-      errorMessage = value;
-    },
-    getMobileBrowseOpen: () => mobileBrowseOpen,
-    setMobileBrowseOpen: (value) => {
-      mobileBrowseOpen = value;
-    },
-    getMobileViewportMq: () => mobileViewportMq,
+      pageState.allowLoadedVideoSyncDepthOverride,
+    setAllowLoadedVideoSyncDepthOverride:
+      pageState.setAllowLoadedVideoSyncDepthOverride,
+    getPendingSelectedVideo: () => pageState.pendingSelectedVideo,
+    setPendingSelectedVideo: pageState.setPendingSelectedVideo,
+    getErrorMessage: () => pageState.errorMessage,
+    setErrorMessage: pageState.setErrorMessage,
+    getMobileBrowseOpen: () => pageState.mobileBrowseOpen,
+    setMobileBrowseOpen: pageState.setMobileBrowseOpen,
+    getMobileViewportMq: () => pageState.mobileViewportMq,
     getWorkspaceCacheScopeKey: () => workspaceCacheScopeKey,
     getVideoHighlightsByVideoId: () =>
       highlightController.videoHighlightsByVideoId,
@@ -236,30 +199,18 @@ export function createHomeWorkspacePage() {
     content,
     getWorkspaceStorageKey: () => workspaceStorageKey,
     getWorkspaceCacheScopeKey: () => workspaceCacheScopeKey,
-    getMobileViewportMq: () => mobileViewportMq,
-    setMobileViewportMq: (value) => {
-      mobileViewportMq = value;
-    },
-    getMobileBrowseOpen: () => mobileBrowseOpen,
-    setMobileBrowseOpen: (value) => {
-      mobileBrowseOpen = value;
-    },
-    getAiAvailable: () => aiAvailable,
-    setAiAvailable: (value) => {
-      aiAvailable = value;
-    },
-    getAiStatus: () => aiStatus,
-    setAiStatus: (value) => {
-      aiStatus = value;
-    },
-    getSearchStatus: () => searchStatus,
-    setSearchStatus: (value) => {
-      searchStatus = value;
-    },
-    getVocabularyReplacements: () => vocabularyReplacements,
-    setVocabularyReplacements: (value) => {
-      vocabularyReplacements = value;
-    },
+    getMobileViewportMq: () => pageState.mobileViewportMq,
+    setMobileViewportMq: pageState.setMobileViewportMq,
+    getMobileBrowseOpen: () => pageState.mobileBrowseOpen,
+    setMobileBrowseOpen: pageState.setMobileBrowseOpen,
+    getAiAvailable: () => pageState.aiAvailable,
+    setAiAvailable: pageState.setAiAvailable,
+    getAiStatus: () => pageState.aiStatus,
+    setAiStatus: pageState.setAiStatus,
+    getSearchStatus: () => pageState.searchStatus,
+    setSearchStatus: pageState.setSearchStatus,
+    getVocabularyReplacements: () => pageState.vocabularyReplacements,
+    setVocabularyReplacements: pageState.setVocabularyReplacements,
     buildWorkspaceSnapshotCacheKey:
       dataController.buildWorkspaceSnapshotCacheKey,
     restoreGuideFromUrl: () => {
@@ -267,6 +218,17 @@ export function createHomeWorkspacePage() {
     },
     applyChannelSnapshot: dataController.applyChannelSnapshot,
     loadBootstrapRefresh: dataController.loadBootstrapRefresh,
+  });
+
+  const acknowledgeController = createHomeWorkspaceAcknowledgeController({
+    sidebarState,
+    content,
+    getPendingSelectedVideo: () => pageState.pendingSelectedVideo,
+    setPendingSelectedVideo: pageState.setPendingSelectedVideo,
+    setErrorMessage: pageState.setErrorMessage,
+    getSelectedChannelId: () => selectedChannelId,
+    selectVideo: (videoId) => dataController.selectVideo(videoId),
+    setVideoAcknowledgeSync: pageState.setVideoAcknowledgeSync,
   });
 
   const contentMode = $derived(content.contentMode);
@@ -286,21 +248,14 @@ export function createHomeWorkspacePage() {
   const resettingVideoId = $derived(content.resettingVideoId);
   const draft = $derived(content.draft);
 
-  let videoAcknowledgeSeq = 0;
-  let videoAcknowledgeSync = $state<{
-    seq: number;
-    video: Video;
-    confirmed: boolean;
-  } | null>(null);
-
   const selectedChannelId = $derived(sidebarState.selectedChannelId);
   const selectedChannel = $derived(sidebarState.selectedChannel);
   const videos = $derived(sidebarState.videos);
   const selectedVideoId = $derived(sidebarState.selectedVideoId);
   const selectedVideo = $derived(
     videos.find((video) => video.id === selectedVideoId) ??
-      (pendingSelectedVideo?.id === selectedVideoId
-        ? pendingSelectedVideo
+      (pageState.pendingSelectedVideo?.id === selectedVideoId
+        ? pageState.pendingSelectedVideo
         : null),
   );
   const selectedVideoHighlights = $derived(
@@ -342,17 +297,19 @@ export function createHomeWorkspacePage() {
     authState.current.authState === "authenticated",
   );
   const aiIndicator = $derived(
-    aiStatus ? resolveAiIndicatorPresentation(aiStatus) : null,
+    pageState.aiStatus
+      ? resolveAiIndicatorPresentation(pageState.aiStatus)
+      : null,
   );
   const contentHtml = $derived(renderMarkdown(content.contentText));
 
   const tour = createGuideState(10);
   const tourSteps = createHomeTourSteps({
     get mobileBrowseOpen() {
-      return mobileBrowseOpen;
+      return pageState.mobileBrowseOpen;
     },
     set mobileBrowseOpen(value) {
-      mobileBrowseOpen = value;
+      pageState.setMobileBrowseOpen(value);
     },
     get selectedVideoId() {
       return sidebarState.selectedVideoId;
@@ -392,7 +349,7 @@ export function createHomeWorkspacePage() {
   async function handleDeleteChannel(channelId: string) {
     const result = await dataController.handleDeleteChannel(channelId);
     if (result === "auth_required") {
-      showDeleteAccessPrompt = true;
+      pageState.openDeleteAccessPrompt();
     }
   }
 
@@ -419,7 +376,7 @@ export function createHomeWorkspacePage() {
         await dataController.selectVideo(videoId, true, true);
       },
       onOpenChannel: async (channelId) => {
-        mobileBrowseOpen = true;
+        pageState.openMobileBrowse();
         await sidebarState.selectChannel(channelId, null, true);
       },
     });
@@ -436,16 +393,16 @@ export function createHomeWorkspacePage() {
       return;
     }
 
-    if (hydratedWorkspaceScopeKey === null) {
-      hydratedWorkspaceScopeKey = workspaceCacheScopeKey;
+    if (pageState.hydratedWorkspaceScopeKey === null) {
+      pageState.setHydratedWorkspaceScopeKey(workspaceCacheScopeKey);
       return;
     }
 
-    if (hydratedWorkspaceScopeKey === workspaceCacheScopeKey) {
+    if (pageState.hydratedWorkspaceScopeKey === workspaceCacheScopeKey) {
       return;
     }
 
-    hydratedWorkspaceScopeKey = workspaceCacheScopeKey;
+    pageState.setHydratedWorkspaceScopeKey(workspaceCacheScopeKey);
     sidebarState.setVideos([]);
     sidebarState.setOffset(0);
     sidebarState.setHasMore(true);
@@ -457,7 +414,7 @@ export function createHomeWorkspacePage() {
   });
 
   $effect(() => {
-    if (mobileBrowseOpen) {
+    if (pageState.mobileBrowseOpen) {
       mobileBottomBar.set({ kind: "hidden" });
       return () => {
         mobileBottomBar.set({ kind: "sections" });
@@ -465,7 +422,7 @@ export function createHomeWorkspacePage() {
     }
 
     const inVideoDetail =
-      !mobileBrowseOpen && Boolean(selectedVideoId) && !editing;
+      !pageState.mobileBrowseOpen && Boolean(selectedVideoId) && !editing;
     if (!inVideoDetail) {
       mobileBottomBar.set({ kind: "sections" });
     } else {
@@ -476,7 +433,7 @@ export function createHomeWorkspacePage() {
         regenerating: selectedVideoId
           ? content.regeneratingSummaryVideoIds.includes(selectedVideoId)
           : false,
-        aiAvailable: aiAvailable ?? false,
+        aiAvailable: pageState.aiAvailable ?? false,
         onRegenerate: content.regenerateSummaryContent,
         showFormatAction: contentMode === "transcript",
         formatting:
@@ -490,15 +447,13 @@ export function createHomeWorkspacePage() {
         canRevert: canRevertTranscript,
         onRevert: content.revertToOriginalTranscript,
         busy: loadingContent,
-        onRequestResetVideo: () => {
-          showResetVideoConfirmation = true;
-        },
+        onRequestResetVideo: pageState.openResetVideoConfirmation,
         resetting:
           content.resettingVideo &&
           content.resettingVideoId === selectedVideoId,
         showAcknowledgeToggle: true,
         acknowledged: selectedVideo?.acknowledged ?? false,
-        onAcknowledgeToggle: toggleAcknowledge,
+        onAcknowledgeToggle: acknowledgeController.toggleAcknowledge,
         showEditAction:
           contentMode === "transcript" || contentMode === "summary",
         onEdit: content.startEdit,
@@ -511,8 +466,8 @@ export function createHomeWorkspacePage() {
 
   $effect(() => {
     if (
-      !mobileViewportMq ||
-      !mobileBrowseOpen ||
+      !pageState.mobileViewportMq ||
+      !pageState.mobileBrowseOpen ||
       !sidebarState.selectedChannelId
     ) {
       return;
@@ -528,147 +483,6 @@ export function createHomeWorkspacePage() {
       cancelled = true;
     };
   });
-
-  async function toggleAcknowledge() {
-    if (!sidebarState.selectedVideoId) return;
-    const targetVideoId = sidebarState.selectedVideoId;
-    const resolved = resolveVideoForAcknowledgeToggle(
-      sidebarState.videos,
-      targetVideoId,
-      pendingSelectedVideo,
-    );
-    if (!resolved) return;
-    const { video, videoFromList } = resolved;
-
-    errorMessage = null;
-
-    const previousVideos = [...sidebarState.videos];
-    const previousPendingSelectedVideo = pendingSelectedVideo;
-    const previousSelectedVideoId = sidebarState.selectedVideoId;
-    const newAcknowledged = !video.acknowledged;
-
-    sidebarState.bumpVideoListMutationEpoch();
-
-    const optimisticVideo = { ...video, acknowledged: newAcknowledged };
-    const optimisticList = buildOptimisticAcknowledgeSidebarList(
-      videoFromList,
-      previousVideos,
-      sidebarState.videos,
-      targetVideoId,
-      newAcknowledged,
-      sidebarState.acknowledgedFilter,
-    );
-    if (videoFromList) {
-      sidebarState.setVideos(optimisticList);
-    } else {
-      pendingSelectedVideo = optimisticVideo;
-    }
-    videoAcknowledgeSeq += 1;
-    videoAcknowledgeSync = {
-      seq: videoAcknowledgeSeq,
-      video: optimisticVideo,
-      confirmed: false,
-    };
-
-    const selectionDroppedFromFilter =
-      selectionDroppedAfterAcknowledgeOptimistic(
-        videoFromList,
-        optimisticList,
-        previousSelectedVideoId,
-        optimisticVideo,
-        sidebarState.acknowledgedFilter,
-      );
-    if (selectionDroppedFromFilter) {
-      content.editing = false;
-      content.clearFormattingFeedback();
-      if (videoFromList) {
-        if (optimisticList.length === 0) {
-          sidebarState.setSelectedVideoId(null);
-          content.contentText = "";
-          content.draft = "";
-        } else {
-          await dataController.selectVideo(optimisticList[0].id);
-        }
-      } else {
-        sidebarState.setSelectedVideoId(null);
-        pendingSelectedVideo = null;
-        content.contentText = "";
-        content.draft = "";
-      }
-    }
-
-    try {
-      const updated = await updateAcknowledged(targetVideoId, newAcknowledged);
-      if (videoFromList) {
-        sidebarState.setVideos(
-          sidebarState.videos
-            .map((candidate) =>
-              candidate.id === updated.id ? updated : candidate,
-            )
-            .filter((candidate) =>
-              matchesAcknowledgedFilterVideo(
-                candidate,
-                sidebarState.acknowledgedFilter,
-              ),
-            ),
-        );
-      } else if (!selectionDroppedFromFilter) {
-        pendingSelectedVideo = updated;
-      }
-      if (selectedChannelId) {
-        track({
-          event: "video_acknowledged_changed",
-          video_id: targetVideoId,
-          channel_id: selectedChannelId,
-          acknowledged: newAcknowledged,
-        });
-      }
-
-      videoAcknowledgeSeq += 1;
-      videoAcknowledgeSync = {
-        seq: videoAcknowledgeSeq,
-        video: updated,
-        confirmed: true,
-      };
-
-      const stillSelected = isStillSelectedAfterAcknowledgeSuccess(
-        sidebarState.selectedVideoId,
-        sidebarState.videos,
-        pendingSelectedVideo,
-      );
-      if (!stillSelected) {
-        content.editing = false;
-        content.clearFormattingFeedback();
-        if (sidebarState.videos.length === 0) {
-          sidebarState.setSelectedVideoId(null);
-          content.contentText = "";
-          content.draft = "";
-        } else {
-          await dataController.selectVideo(sidebarState.videos[0].id);
-        }
-      }
-    } catch (error) {
-      sidebarState.setVideos(previousVideos);
-      sidebarState.setSelectedVideoId(previousSelectedVideoId);
-      pendingSelectedVideo = previousPendingSelectedVideo;
-      const reverted = resolveRevertedVideoForAcknowledge(
-        previousVideos,
-        targetVideoId,
-        previousPendingSelectedVideo,
-      );
-      if (reverted) {
-        videoAcknowledgeSeq += 1;
-        videoAcknowledgeSync = {
-          seq: videoAcknowledgeSeq,
-          video: reverted,
-          confirmed: true,
-        };
-      }
-      if (!presentAuthRequiredNoticeIfNeeded(error)) {
-        errorMessage = (error as Error).message;
-      }
-    }
-  }
 
   async function refreshSummaryQuality() {
     if (
@@ -692,8 +506,8 @@ export function createHomeWorkspacePage() {
       }
       if (!content.contentText.trim()) {
         content.cacheLoadedSummary(summary, targetVideoId);
-        content.draft = content.contentText;
-        content.videoInfo = null;
+        content.setDraft(content.contentText);
+        content.clearVideoInfo();
         if (
           highlightController.videoHighlightsByVideoId[targetVideoId] ===
           undefined
@@ -710,8 +524,8 @@ export function createHomeWorkspacePage() {
   $effect(() =>
     createAiStatusPoller({
       onStatus: (status) => {
-        aiAvailable = status.available;
-        aiStatus = status.status;
+        pageState.setAiAvailable(status.available);
+        pageState.setAiStatus(status.status);
       },
     }),
   );
@@ -749,132 +563,54 @@ export function createHomeWorkspacePage() {
     !sidebarState.selectedChannelId || sidebarState.videoState.loadingVideos,
   );
 
-  const workspaceContentSelection = $derived({
-    mobileVisible: true,
-    mobileBackInTopBar: !mobileBrowseOpen && Boolean(selectedVideoId),
-    selectedChannel,
-    selectedVideo,
-    selectedVideoId,
-    contentMode,
+  const viewModel = createHomeWorkspaceViewModel({
+    page,
+    replaceWorkspaceUrl: persistenceController.replaceWorkspaceUrl,
+    pageState,
+    content,
+    highlightController,
+    vocabulary,
+    dataController,
+    getLoadingContent: () => loadingContent,
+    getEditing: () => editing,
+    getContentText: () => contentText,
+    getContentMode: () => contentMode,
+    getSelectedChannel: () => selectedChannel,
+    getSelectedVideo: () => selectedVideo,
+    getSelectedVideoId: () => selectedVideoId,
+    getSelectedVideoYoutubeUrl: () => selectedVideoYoutubeUrl,
+    getSelectedVideoHighlights: () => selectedVideoHighlights,
+    getContentHighlights: () => contentHighlights,
+    getVideoInfo: () => videoInfo,
+    getContentHtml: () => contentHtml,
+    getTranscriptRenderMode: () => transcriptRenderMode,
+    getCanRevertTranscript: () => canRevertTranscript,
+    getHasUpdatedTranscript: () => hasUpdatedTranscript,
+    onToggleAcknowledge: acknowledgeController.toggleAcknowledge,
   });
-
-  const citationScrollText = $derived.by(() => {
-    const url = page.url;
-    const cite = url.searchParams.get("cite")?.trim();
-    if (!cite || loadingContent) {
-      return null;
-    }
-    const videoParam = url.searchParams.get("video")?.trim();
-    if (videoParam && selectedVideoId && videoParam !== selectedVideoId) {
-      return null;
-    }
-    return cite;
-  });
-
-  function onCitationScrollConsumed() {
-    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- transient URL for one-shot citation navigation cleanup
-    const url = new URL(page.url.href);
-    if (!url.searchParams.has("cite") && !url.searchParams.has("chunk")) {
-      return;
-    }
-    url.searchParams.delete("cite");
-    url.searchParams.delete("chunk");
-    persistenceController.replaceWorkspaceUrl(
-      `${url.pathname}${url.search}${url.hash}`,
-    );
-  }
-
-  const workspaceContentState = $derived({
-    loadingContent,
-    editing,
-    aiAvailable: aiAvailable ?? false,
-    summaryQualityScore: content.summaryQualityScore,
-    summaryQualityNote: content.summaryQualityNote,
-    summaryModelUsed: content.summaryModelUsed,
-    summaryQualityModelUsed: content.summaryQualityModelUsed,
-    videoInfo,
-    contentHtml,
-    contentText,
-    transcriptRenderMode,
-    contentHighlights,
-    selectedVideoHighlights,
-    selectedVideoYoutubeUrl,
-    draft: content.draft,
-    formattingContent: content.formattingContent,
-    formattingVideoId: content.formattingVideoId,
-    regeneratingSummaryVideoIds: content.regeneratingSummaryVideoIds,
-    revertingContent: content.revertingContent,
-    revertingVideoId: content.revertingVideoId,
-    resettingVideo: content.resettingVideo,
-    resettingVideoId: content.resettingVideoId,
-    creatingHighlight: highlightController.creatingHighlight,
-    creatingHighlightVideoId: highlightController.creatingHighlightVideoId,
-    creatingVocabularyReplacement: vocabulary.creating,
-    deletingHighlightId: highlightController.deletingHighlightId,
-    canRevertTranscript,
-    showRevertTranscriptAction: hasUpdatedTranscript,
-    formattingNotice: content.formattingNotice,
-    formattingNoticeVideoId: content.formattingNoticeVideoId,
-    formattingNoticeTone: content.formattingNoticeTone,
-    citationScrollText,
-    canPersistHighlights: true,
-  });
-  const workspaceContentActions = $derived.by(() => ({
-    onBack: () => {
-      mobileBrowseOpen = true;
-    },
-    onSetMode: dataController.setMode,
-    onStartEdit: content.startEdit,
-    onCancelEdit: content.cancelEdit,
-    onSaveEdit: content.saveEdit,
-    onCleanFormatting: content.cleanFormatting,
-    onRegenerateSummary: content.regenerateSummaryContent,
-    onRevertTranscript: content.revertToOriginalTranscript,
-    onResetVideo: content.resetVideoContent,
-    onDraftChange: (value: string) => {
-      content.draft = value;
-    },
-    onToggleAcknowledge: toggleAcknowledge,
-    onCreateHighlight: highlightController.saveSelectionHighlight,
-    onCreateVocabularyReplacement: vocabulary.open,
-    onDeleteHighlight: highlightController.deleteExistingHighlight,
-    onShowChannels: () => {
-      mobileBrowseOpen = true;
-    },
-    onShowVideos: () => {
-      mobileBrowseOpen = true;
-    },
-    onCitationScrollConsumed,
-  }));
   const workspaceOverlaysState = $derived({
-    errorMessage,
+    errorMessage: pageState.errorMessage,
     showDeleteConfirmation: sidebarState.showDeleteConfirmation,
-    showDeleteAccessPrompt,
+    showDeleteAccessPrompt: pageState.showDeleteAccessPrompt,
     showAddSourceFeedback:
       !!addSourceFeedbackCtrl.feedback && !addSourceFeedbackCtrl.dismissed,
-    showResetVideoConfirmation,
+    showResetVideoConfirmation: pageState.showResetVideoConfirmation,
   });
   const workspaceOverlaysActions = {
-    onDismissError: () => {
-      errorMessage = null;
-    },
+    onDismissError: pageState.clearErrorMessage,
     onConfirmDelete: dataController.confirmDeleteChannel,
     onCancelDelete: () => sidebarState.setShowDeleteConfirmation(false),
     onConfirmAccessPrompt: async () => {
-      showDeleteAccessPrompt = false;
+      pageState.closeDeleteAccessPrompt();
       const redirectTo = `${page.url.pathname}${page.url.search}`;
       await goto(`/login?redirectTo=${encodeURIComponent(redirectTo)}`);
     },
-    onCancelAccessPrompt: () => {
-      showDeleteAccessPrompt = false;
-    },
+    onCancelAccessPrompt: pageState.closeDeleteAccessPrompt,
     onConfirmResetVideo: async () => {
-      showResetVideoConfirmation = false;
+      pageState.closeResetVideoConfirmation();
       await content.resetVideoContent();
     },
-    onCancelResetVideo: () => {
-      showResetVideoConfirmation = false;
-    },
+    onCancelResetVideo: pageState.closeResetVideoConfirmation,
   };
 
   return {
@@ -888,28 +624,23 @@ export function createHomeWorkspacePage() {
     setGuideStep,
     sidebarState,
     get errorMessage() {
-      return errorMessage;
-    },
-    set errorMessage(value) {
-      errorMessage = value;
+      return pageState.errorMessage;
     },
     get videoAcknowledgeSync() {
-      return videoAcknowledgeSync;
+      return pageState.videoAcknowledgeSync;
     },
     handleChannelSyncDateSaved: dataController.handleChannelSyncDateSaved,
     handleDeleteChannel,
     get showDeleteAccessPrompt() {
-      return showDeleteAccessPrompt;
+      return pageState.showDeleteAccessPrompt;
     },
-    set showDeleteAccessPrompt(value) {
-      showDeleteAccessPrompt = value;
-    },
+    openDeleteAccessPrompt: pageState.openDeleteAccessPrompt,
+    closeDeleteAccessPrompt: pageState.closeDeleteAccessPrompt,
     get mobileBrowseOpen() {
-      return mobileBrowseOpen;
+      return pageState.mobileBrowseOpen;
     },
-    set mobileBrowseOpen(value) {
-      mobileBrowseOpen = value;
-    },
+    openMobileBrowse: pageState.openMobileBrowse,
+    closeMobileBrowse: pageState.closeMobileBrowse,
     get selectedVideoId() {
       return selectedVideoId;
     },
@@ -955,7 +686,7 @@ export function createHomeWorkspacePage() {
       return resettingVideoId;
     },
     get aiAvailable() {
-      return aiAvailable;
+      return pageState.aiAvailable;
     },
     get canRevertTranscript() {
       return canRevertTranscript;
@@ -969,33 +700,38 @@ export function createHomeWorkspacePage() {
     get selectedVideo() {
       return selectedVideo;
     },
-    content,
     get showResetVideoConfirmation() {
-      return showResetVideoConfirmation;
+      return pageState.showResetVideoConfirmation;
     },
-    set showResetVideoConfirmation(value) {
-      showResetVideoConfirmation = value;
-    },
-    toggleAcknowledge,
+    openResetVideoConfirmation: pageState.openResetVideoConfirmation,
+    closeResetVideoConfirmation: pageState.closeResetVideoConfirmation,
+    toggleAcknowledge: acknowledgeController.toggleAcknowledge,
     get WorkspaceSearchBarComponent() {
       return persistenceController.WorkspaceSearchBarComponent;
     },
     get searchStatus() {
-      return searchStatus;
+      return pageState.searchStatus;
     },
     handleSearchResultSelection: dataController.handleSearchResultSelection,
     loadMoreVideos: dataController.loadMoreVideos,
     get canManageLibrary() {
       return canManageLibrary;
     },
+    startEdit: content.startEdit,
+    cancelEdit: content.cancelEdit,
+    saveEdit: content.saveEdit,
+    cleanFormatting: content.cleanFormatting,
+    regenerateSummaryContent: content.regenerateSummaryContent,
+    revertToOriginalTranscript: content.revertToOriginalTranscript,
+    setDraft: content.setDraft,
     get workspaceContentSelection() {
-      return workspaceContentSelection;
+      return viewModel.workspaceContentSelection;
     },
     get workspaceContentState() {
-      return workspaceContentState;
+      return viewModel.workspaceContentState;
     },
     get workspaceContentActions() {
-      return workspaceContentActions;
+      return viewModel.workspaceContentActions;
     },
     get workspaceOverlaysState() {
       return workspaceOverlaysState;
@@ -1022,9 +758,7 @@ export function createHomeWorkspacePage() {
     get vocabularyModalValue() {
       return vocabulary.modalValue;
     },
-    set vocabularyModalValue(value) {
-      vocabulary.modalValue = value;
-    },
+    setVocabularyModalValue: vocabulary.setModalValue,
     get creatingVocabularyReplacement() {
       return vocabulary.creating;
     },

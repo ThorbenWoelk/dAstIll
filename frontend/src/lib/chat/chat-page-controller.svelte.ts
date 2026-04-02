@@ -370,6 +370,39 @@ export function createChatPageController() {
     void goto("/?guide=0");
   }
 
+  function openMobileConversations() {
+    mobileTab = "conversations";
+  }
+
+  function closeMobileConversations() {
+    mobileTab = "content";
+  }
+
+  function setDraft(value: string) {
+    draft = value;
+  }
+
+  function pickStarterPrompt(value: string) {
+    setDraft(value);
+  }
+
+  function setDeepResearch(value: boolean) {
+    deepResearch = value;
+  }
+
+  function setSelectedChatModelId(value: string) {
+    selectedChatModelId = value;
+  }
+
+  function bindMessagesViewport(node: HTMLDivElement) {
+    stream.setMessagesViewport(node);
+    return {
+      destroy() {
+        stream.setMessagesViewport(null);
+      },
+    };
+  }
+
   async function loadConversations(options?: { quiet?: boolean }) {
     if (!options?.quiet) {
       loadingConversations = true;
@@ -854,12 +887,11 @@ export function createChatPageController() {
       return aiIndicator;
     },
     openGuide,
-    get mobileTab() {
-      return mobileTab;
+    get isMobileConversationsOpen() {
+      return mobileTab === "conversations";
     },
-    set mobileTab(value: "conversations" | "content") {
-      mobileTab = value;
-    },
+    openMobileConversations,
+    closeMobileConversations,
     get conversations() {
       return conversations;
     },
@@ -916,21 +948,16 @@ export function createChatPageController() {
     get draft() {
       return draft;
     },
-    set draft(value: string) {
-      draft = value;
-    },
+    setDraft,
+    pickStarterPrompt,
     get deepResearch() {
       return deepResearch;
     },
-    set deepResearch(value: boolean) {
-      deepResearch = value;
-    },
+    setDeepResearch,
     get selectedChatModelId() {
       return selectedChatModelId;
     },
-    set selectedChatModelId(value: string) {
-      selectedChatModelId = value;
-    },
+    setSelectedChatModelId,
     get chatClientConfig() {
       return chatClientConfig;
     },
@@ -943,6 +970,8 @@ export function createChatPageController() {
     get isAuthenticated() {
       return isAuthenticated;
     },
+    bindMessagesViewport,
+    handleMessagesViewportScroll: stream.handleMessagesScroll,
     handleSend,
     handleCancel,
     get showDeleteConfirmation() {

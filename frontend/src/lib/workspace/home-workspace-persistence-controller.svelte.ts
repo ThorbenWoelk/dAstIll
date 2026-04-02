@@ -124,7 +124,7 @@ export function createHomeWorkspacePersistenceController(options: {
       sidebarState.setSelectedVideoId(restored.selectedVideoId ?? null);
     }
     if (restored.contentMode && isWorkspaceContentMode(restored.contentMode)) {
-      content.contentMode = restored.contentMode;
+      content.setMode(restored.contentMode);
     }
     if (
       restored.videoTypeFilter &&

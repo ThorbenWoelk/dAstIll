@@ -353,44 +353,23 @@ export function createContentState(options: {
     get contentMode() {
       return contentMode;
     },
-    set contentMode(v) {
-      contentMode = v;
-    },
     get contentText() {
       return contentText;
-    },
-    set contentText(v) {
-      contentText = v;
     },
     get transcriptRenderMode() {
       return transcriptRenderMode;
     },
-    set transcriptRenderMode(v) {
-      transcriptRenderMode = v;
-    },
     get editing() {
       return editing;
-    },
-    set editing(v) {
-      editing = v;
     },
     get draft() {
       return draft;
     },
-    set draft(v) {
-      draft = v;
-    },
     get draftTranscriptRenderMode() {
       return draftTranscriptRenderMode;
     },
-    set draftTranscriptRenderMode(v) {
-      draftTranscriptRenderMode = v;
-    },
     get videoInfo() {
       return videoInfo;
-    },
-    set videoInfo(v) {
-      videoInfo = v;
     },
     get summaryQualityScore() {
       return summaryQualityScore;
@@ -460,6 +439,30 @@ export function createContentState(options: {
       resetSummaryQuality();
     },
 
+    clearDisplayedContent() {
+      contentText = "";
+      draft = "";
+    },
+
+    clearVideoInfo() {
+      videoInfo = null;
+    },
+
+    resetViewState() {
+      resetSummaryQuality();
+      videoInfo = null;
+      editing = false;
+      clearFormattingFeedback();
+    },
+
+    setDraft(value: string) {
+      draft = value;
+    },
+
+    setMode(value: WorkspaceContentMode) {
+      contentMode = value;
+    },
+
     loadContent,
     resetSummaryQuality,
     clearFormattingFeedback,
@@ -471,6 +474,10 @@ export function createContentState(options: {
       editing = true;
       draft = contentText;
       draftTranscriptRenderMode = transcriptRenderMode;
+    },
+
+    stopEditing() {
+      editing = false;
     },
 
     cancelEdit() {

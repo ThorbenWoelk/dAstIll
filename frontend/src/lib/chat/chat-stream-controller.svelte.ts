@@ -207,6 +207,10 @@ export function createChatStreamController(options: {
     await scrollToBottom("smooth");
   }
 
+  function setMessagesViewport(value: HTMLDivElement | null) {
+    messagesViewport = value;
+  }
+
   function clearStreamState() {
     streamStatuses = [];
     streamStartedAt = null;
@@ -390,12 +394,6 @@ export function createChatStreamController(options: {
     get showJumpToLatest() {
       return showJumpToLatest;
     },
-    get messagesViewport() {
-      return messagesViewport;
-    },
-    set messagesViewport(value: HTMLDivElement | null) {
-      messagesViewport = value;
-    },
     buildOptimisticMessage,
     pinToBottom,
     beginOptimisticStream,
@@ -403,6 +401,7 @@ export function createChatStreamController(options: {
     startStream,
     pauseStreamForReconnect,
     resumeStreamAfterReconnect,
+    setMessagesViewport,
     handleMessagesScroll,
     scrollToBottom,
     jumpToLatest,

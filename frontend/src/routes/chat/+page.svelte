@@ -16,6 +16,7 @@
   import { createChatPageController } from "$lib/chat/chat-page-controller.svelte";
 
   const chat = createChatPageController();
+  const bindMessagesViewport = chat.bindMessagesViewport;
 </script>
 
 <WorkspaceShell
@@ -29,8 +30,8 @@
   <div class="flex h-full min-h-0 w-full">
     <div id="conversations-panel">
       <ChatMobileConversationsOverlay
-        open={chat.mobileTab === "conversations"}
-        onClose={() => (chat.mobileTab = "content")}
+        open={chat.isMobileConversationsOpen}
+        onClose={chat.closeMobileConversations}
       >
         <ChatSidebar
           mobileVisible={true}
@@ -70,7 +71,7 @@
       class="fade-in stagger-3 relative z-10 flex min-h-0 min-w-0 flex-col overflow-visible lg:h-full lg:gap-4 lg:px-8 lg:pt-4 lg:pb-6"
     >
       <ChatContentSectionHeader
-        onOpenConversationsMobile={() => (chat.mobileTab = "conversations")}
+        onOpenConversationsMobile={chat.openMobileConversations}
         streamingConversationId={chat.stream.streamingConversationId}
         conversationTitle={chat.headerConversationTitle}
         titleStatus={chat.activeConversation?.id ===
@@ -81,11 +82,11 @@
 
       <div class="relative flex min-h-0 w-full flex-1 flex-col">
         <div
-          bind:this={chat.stream.messagesViewport}
+          use:bindMessagesViewport
           class="custom-scrollbar mobile-bottom-stack-padding min-h-0 flex-1 overflow-y-auto px-4 max-lg:pt-4 sm:px-6 lg:px-0 lg:pr-4 lg:pb-0"
           role="region"
           aria-label="Chat conversation"
-          onscroll={chat.stream.handleMessagesScroll}
+          onscroll={chat.handleMessagesViewportScroll}
         >
           {#if chat.showThreadPlaceholderLoading}
             <div
@@ -182,15 +183,13 @@
             suggestions={CHAT_STARTER_PROMPTS}
             disabled={Boolean(chat.stream.streamingConversationId) ||
               chat.loadingConversation}
-            onPick={(value) => {
-              chat.draft = value;
-            }}
+            onPick={chat.pickStarterPrompt}
           />
         {/if}
         <ChatInput
-          bind:value={chat.draft}
-          bind:deepResearch={chat.deepResearch}
-          bind:selectedModelId={chat.selectedChatModelId}
+          value={chat.draft}
+          deepResearch={chat.deepResearch}
+          selectedModelId={chat.selectedChatModelId}
           modelOptions={chat.chatClientConfig?.models ?? []}
           focusSignal={chat.chatInputFocusSignal}
           disabled={chat.loadingConversation ||
@@ -199,6 +198,9 @@
           busy={Boolean(chat.stream.streamingConversationId) ||
             chat.creatingConversation}
           canCancel={Boolean(chat.stream.streamingConversationId)}
+          onValueChange={chat.setDraft}
+          onDeepResearchChange={chat.setDeepResearch}
+          onSelectedModelIdChange={chat.setSelectedChatModelId}
           onSubmit={(value) => void chat.handleSend(value)}
           onCancel={() => void chat.handleCancel()}
         />
