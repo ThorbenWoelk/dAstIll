@@ -103,7 +103,6 @@ The SvelteKit app currently exposes the following top-level product routes:
 | `/highlights`     | Cross-video highlight browser                                           |
 | `/chat`           | RAG conversations with video content                                    |
 | `/vocabulary`     | Manage custom word replacements for summaries                           |
-| `/channels/[id]`  | Channel overview and channel-scoped operations                          |
 | `/login`          | Firebase sign-in and guest continuation                                 |
 | `/logout`         | Session sign-out                                                        |
 
@@ -120,18 +119,19 @@ The main route is responsible for most user-facing behavior:
 - video list filters
 - transcript / summary / info switching
 - search UI
-- channels-first startup and refresh logic
+- workspace bootstrap, selection restore, and refresh logic
 
 ## Startup Pattern
 
-The main workspace prioritizes first paint responsiveness:
+The main workspace uses a combined bootstrap response:
 
-1. load the subscribed channel list first
-2. render the sidebar and current channel selection immediately
-3. fetch the selected channel snapshot right after render
-4. hydrate transcript / summary content once the selected video is known
+1. request `/api/workspace/bootstrap` during the route load
+2. receive the channel list, selected channel id, AI/search status, and an initial snapshot when available
+3. render the sidebar and apply the selected snapshot immediately
+4. fall back to a snapshot fetch only if the bootstrap response does not include a usable one
+5. hydrate transcript / summary content once the selected video is known
 
-This keeps the channel list off the critical path for the heavier snapshot payload.
+This keeps the initial workspace state coherent while still allowing the deeper snapshot fetch to be retried when needed.
 
 <MermaidDiagram
   caption="Workspace bootstrap flow: the frontend asks for the channel list plus an optional selected-channel snapshot, then hydrates deeper content after the selection is known."
@@ -157,7 +157,7 @@ The payload includes:
 - initial channel snapshot
 - search status
 
-This endpoint is useful for combined consumers and tests. The product frontend loads channels first and defers the selected-channel snapshot until after the sidebar is rendered.
+This endpoint is useful for combined consumers and tests. The product frontend uses it as the primary SSR/bootstrap path and only falls back to a later selected-channel snapshot fetch when the bootstrap payload does not include one.
 
 ## Important API Areas
 

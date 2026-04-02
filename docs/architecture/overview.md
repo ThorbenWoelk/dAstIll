@@ -43,7 +43,7 @@ flowchart LR
   workers[Background workers]
   searchmeta[search_sources state]
   searchproj[search_chunks projection]
-  fts[In-memory Tantivy BM25]
+  fts[libSQL / Turso FTS5]
   vectors[S3 Vectors]
   retrieval[Workspace search + chat retrieval]
 
@@ -83,8 +83,8 @@ dAstIll is a YouTube channel monitoring tool. It:
 - Additional product routes:
   - `/download-queue`
   - `/highlights`
+  - `/vocabulary`
   - `/chat`
-  - `/channels/[id]`
   - `/login` and `/logout`
 
 ### Backend

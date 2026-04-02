@@ -94,9 +94,9 @@ Terraform, Google Cloud Run, AWS IAM (Workload Identity Federation), Google Secr
    # Optional: custom endpoints (e.g. MinIO)
    # S3_ENDPOINT_URL=http://localhost:9000
    # S3_VECTOR_ENDPOINT_URL=http://localhost:9001
-   # Optional: Workload Identity Federation (WIF) for local development
+   # Optional: GCP AWS WIF path used in Cloud Run and some advanced local setups
    # AWS_ROLE_ARN="arn:aws:iam::877173393100:role/dastill-gcp-backend"
-   # AWS_WEB_IDENTITY_TOKEN_FILE="backend-wif-token.jwt"
+   # AWS_WIF_AUDIENCE="<backend-sa-unique-id>"
    BACKEND_PROXY_TOKEN=local-dev-backend-proxy-token
    BACKEND_CORS_ALLOWED_ORIGINS=http://localhost:3543
    YOUTUBE_API_KEY=optional-api-key
@@ -106,7 +106,7 @@ Terraform, Google Cloud Run, AWS IAM (Workload Identity Federation), Google Secr
    OLLAMA_FALLBACK_MODEL=qwen3-coder:30b
    SUMMARY_EVALUATOR_MODEL=qwen3.5:397b-cloud
    SEARCH_SEMANTIC_ENABLED=true
-   OLLAMA_EMBEDDING_MODEL=embeddinggemma
+   OLLAMA_EMBEDDING_MODEL=embeddinggemma:latest
    SEARCH_AUTO_CREATE_VECTOR_INDEX=false
    SUMMARIZE_PATH=/opt/homebrew/bin/summarize
    ```

@@ -31,7 +31,7 @@ pageClass: ui-tour-page
   </div>
   <div class="tour-fact-row">
     <p class="tour-fact-label">Guide entry point</p>
-    <p>The Guide button in the header opens the built-in walkthrough from the workspace.</p>
+    <p>The Guide button in the left navigation rail opens the built-in walkthrough from the workspace.</p>
   </div>
 </div>
 
