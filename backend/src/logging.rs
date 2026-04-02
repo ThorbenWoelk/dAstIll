@@ -1,7 +1,7 @@
 use std::{error::Error, fmt};
 
 use chrono::{SecondsFormat, Utc};
-use tracing::{Event, Subscriber, field::Field};
+use tracing::{Event, Level, Subscriber, field::Field};
 use tracing_subscriber::{
     fmt::{
         FmtContext,
@@ -12,6 +12,21 @@ use tracing_subscriber::{
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct HumanReadableEventFormatter;
+
+const LOGFIRE_AI_TARGET_PREFIXES: &[&str] = &[
+    "dastill::services::chat",
+    "dastill::services::ollama",
+    "dastill::services::search",
+    "dastill::services::summarizer",
+    "dastill::services::summary_evaluator",
+];
+
+pub fn should_send_to_logfire(target: &str, level: &Level) -> bool {
+    *level == Level::ERROR
+        || LOGFIRE_AI_TARGET_PREFIXES
+            .iter()
+            .any(|prefix| target.starts_with(prefix))
+}
 
 impl<S, N> FormatEvent<S, N> for HumanReadableEventFormatter
 where
@@ -115,7 +130,9 @@ fn strip_wrapping_quotes(value: String) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::strip_wrapping_quotes;
+    use tracing::Level;
+
+    use super::{should_send_to_logfire, strip_wrapping_quotes};
 
     #[test]
     fn strips_debug_wrapped_quotes_from_messages() {
@@ -127,5 +144,29 @@ mod tests {
             strip_wrapping_quotes("no wrapping quotes".into()),
             "no wrapping quotes"
         );
+    }
+
+    #[test]
+    fn sends_ai_targets_to_logfire() {
+        assert!(should_send_to_logfire(
+            "dastill::services::chat::reply",
+            &Level::INFO
+        ));
+        assert!(should_send_to_logfire(
+            "dastill::services::search",
+            &Level::WARN
+        ));
+    }
+
+    #[test]
+    fn sends_all_errors_to_logfire() {
+        assert!(should_send_to_logfire(
+            "dastill::handlers::videos",
+            &Level::ERROR
+        ));
+        assert!(!should_send_to_logfire(
+            "dastill::handlers::videos",
+            &Level::INFO
+        ));
     }
 }

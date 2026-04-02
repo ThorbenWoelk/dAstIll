@@ -22,6 +22,13 @@ impl ChatService {
         );
 
         async move {
+            tracing::info!(
+                conversation_id = %conversation_id,
+                reply_model = %reply_model,
+                deep_research,
+                persist_to_store,
+                "chat reply started"
+            );
             let reply_result = self
                 .generate_reply(
                     &state,
@@ -36,6 +43,13 @@ impl ChatService {
 
             match reply_result {
                 Ok(message) => {
+                    tracing::info!(
+                        conversation_id = %conversation_id,
+                        model = message.model.as_deref().unwrap_or("-"),
+                        response_chars = message.content.chars().count(),
+                        source_count = message.sources.len(),
+                        "chat reply completed"
+                    );
                     if persist_to_store {
                         if let Err(error) = persist_assistant_message(
                             &state,
@@ -60,6 +74,7 @@ impl ChatService {
                 }
                 Err(error) => {
                     if error == "cancelled" {
+                        tracing::info!(conversation_id = %conversation_id, "chat reply cancelled");
                         let message = self.build_assistant_message(
                             "Response cancelled.".to_string(),
                             Vec::new(),

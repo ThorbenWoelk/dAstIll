@@ -20,7 +20,7 @@ use dastill::handlers::{
 use dastill::local_env::{
     clear_missing_google_application_credentials, load_dotenv_preserving_existing,
 };
-use dastill::logging::HumanReadableEventFormatter;
+use dastill::logging::{HumanReadableEventFormatter, should_send_to_logfire};
 use dastill::read_cache::ReadCache;
 use dastill::search_progress::SearchProgress;
 use dastill::security::{
@@ -37,10 +37,6 @@ use dastill::workers::{
     spawn_gap_scan_worker, spawn_queue_worker, spawn_refresh_worker, spawn_search_index_worker,
     spawn_summary_evaluation_worker,
 };
-
-fn should_send_to_logfire(target: &str) -> bool {
-    target.starts_with("dastill::services::chat") || target.starts_with("dastill::handlers::search")
-}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -60,14 +56,18 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|_| "dastill=info,tower_http=info".into());
 
     let _logfire_guard = if std::env::var("LOGFIRE_TOKEN").is_ok() {
-        let logfire = logfire::configure().local().finish()?;
+        let logfire = logfire::configure()
+            .local()
+            .with_service_name("dastill-backend")
+            .with_service_version(env!("CARGO_PKG_VERSION"))
+            .finish()?;
         let guard = logfire.clone().shutdown_guard();
 
         let registry = tracing_subscriber::registry().with(env_filter).with(
             logfire
                 .tracing_layer()
                 .with_filter(filter::filter_fn(|metadata| {
-                    should_send_to_logfire(metadata.target())
+                    should_send_to_logfire(metadata.target(), metadata.level())
                 })),
         );
 

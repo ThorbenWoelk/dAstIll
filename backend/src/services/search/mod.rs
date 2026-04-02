@@ -1,11 +1,12 @@
 mod content_processing;
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+use tracing::Instrument;
 
 use crate::services::http::build_http_client;
 use crate::services::text::limit_text as limit_text_base;
@@ -32,7 +33,7 @@ const MAX_ERROR_DETAIL_CHARS: usize = 240;
 const MAX_SNIPPET_CHARS: usize = 420;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, ts_rs::TS)]
-#[ts(export, export_to = "../../frontend/src/lib/bindings/")]
+#[ts(export, export_to = "frontend/src/lib/bindings/")]
 #[serde(rename_all = "snake_case")]
 pub enum SearchSourceKind {
     Transcript,
@@ -260,24 +261,55 @@ impl SearchService {
                 "search embedding model is not configured".to_string(),
             ));
         };
-
-        let _permit = self.acquire_local_permit().await?;
         let total_batches = input.len().div_ceil(SEARCH_EMBED_BATCH_SIZE);
-        let mut embeddings = Vec::with_capacity(input.len());
-        for (batch_index, batch) in input.chunks(SEARCH_EMBED_BATCH_SIZE).enumerate() {
-            let batch_embeddings = self.embed_batch(model, batch).await.map_err(|err| {
-                SearchError::Request(format!(
-                    "embed batch {}/{} failed for {} chunks: {}",
-                    batch_index + 1,
-                    total_batches,
-                    batch.len(),
-                    err
-                ))
-            })?;
-            embeddings.extend(batch_embeddings);
-        }
+        let span = logfire::span!(
+            "search.embed",
+            model = model.clone(),
+            input_count = input.len(),
+            batch_count = total_batches,
+            dimensions = self.dimensions,
+        );
 
-        Ok(embeddings)
+        async move {
+            let started = Instant::now();
+            let _permit = self.acquire_local_permit().await?;
+            let mut embeddings = Vec::with_capacity(input.len());
+            for (batch_index, batch) in input.chunks(SEARCH_EMBED_BATCH_SIZE).enumerate() {
+                let batch_embeddings = match self.embed_batch(model, batch).await {
+                    Ok(value) => value,
+                    Err(err) => {
+                        let error = SearchError::Request(format!(
+                            "embed batch {}/{} failed for {} chunks: {}",
+                            batch_index + 1,
+                            total_batches,
+                            batch.len(),
+                            err
+                        ));
+                        tracing::error!(
+                            model = %model,
+                            batch_index = batch_index + 1,
+                            batch_count = total_batches,
+                            batch_size = batch.len(),
+                            error = %error,
+                            "search embedding batch failed"
+                        );
+                        return Err(error);
+                    }
+                };
+                embeddings.extend(batch_embeddings);
+            }
+
+            tracing::info!(
+                model = %model,
+                input_count = input.len(),
+                batch_count = total_batches,
+                elapsed_ms = started.elapsed().as_millis() as u64,
+                "search embeddings generated"
+            );
+            Ok(embeddings)
+        }
+        .instrument(span)
+        .await
     }
 
     async fn embed_batch(
@@ -360,53 +392,78 @@ impl SearchService {
             .take(SEARCH_RERANK_MAX_CANDIDATES)
             .collect();
         let documents: Vec<String> = top.iter().map(|c| c.chunk_text.clone()).collect();
+        let span = logfire::span!(
+            "search.rerank",
+            model = model.clone(),
+            query_chars = query.chars().count(),
+            candidate_count = top.len(),
+        );
 
-        let _permit = self.acquire_local_permit().await?;
-        let response = self
-            .auth(
-                self.client
-                    .post(format!("{}/api/rerank", self.base_url))
-                    .timeout(SEARCH_RERANK_REQUEST_TIMEOUT)
-                    .json(&RerankRequest {
-                        model: model.as_str(),
-                        query,
-                        documents: &documents,
-                    }),
-            )
-            .send()
-            .await
-            .map_err(|err| SearchError::Request(err.to_string()))?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let detail = response
-                .text()
+        async move {
+            let started = Instant::now();
+            let _permit = self.acquire_local_permit().await?;
+            let response = self
+                .auth(
+                    self.client
+                        .post(format!("{}/api/rerank", self.base_url))
+                        .timeout(SEARCH_RERANK_REQUEST_TIMEOUT)
+                        .json(&RerankRequest {
+                            model: model.as_str(),
+                            query,
+                            documents: &documents,
+                        }),
+                )
+                .send()
                 .await
-                .ok()
-                .map(|t| limit_error_detail(&t))
-                .filter(|t| !t.is_empty());
-            return Err(SearchError::Request(match detail {
-                Some(d) => format!("Ollama rerank request failed ({status}): {d}"),
-                None => format!("Ollama rerank request failed ({status})"),
-            }));
+                .map_err(|err| SearchError::Request(err.to_string()))?;
+
+            if !response.status().is_success() {
+                let status = response.status();
+                let detail = response
+                    .text()
+                    .await
+                    .ok()
+                    .map(|t| limit_error_detail(&t))
+                    .filter(|t| !t.is_empty());
+                let error = SearchError::Request(match detail {
+                    Some(d) => format!("Ollama rerank request failed ({status}): {d}"),
+                    None => format!("Ollama rerank request failed ({status})"),
+                });
+                tracing::error!(
+                    model = %model,
+                    candidate_count = top.len(),
+                    error = %error,
+                    "search rerank failed"
+                );
+                return Err(error);
+            }
+
+            let payload = response
+                .json::<RerankResponse>()
+                .await
+                .map_err(|err| SearchError::InvalidResponse(err.to_string()))?;
+
+            let mut scored: Vec<(usize, f32)> = payload
+                .results
+                .into_iter()
+                .map(|r| (r.index, r.relevance_score))
+                .collect();
+            scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+            let reranked = scored
+                .into_iter()
+                .filter_map(|(idx, _)| top.get(idx).cloned())
+                .collect::<Vec<_>>();
+            tracing::info!(
+                model = %model,
+                candidate_count = reranked.len(),
+                elapsed_ms = started.elapsed().as_millis() as u64,
+                "search rerank completed"
+            );
+            Ok(reranked)
         }
-
-        let payload = response
-            .json::<RerankResponse>()
-            .await
-            .map_err(|err| SearchError::InvalidResponse(err.to_string()))?;
-
-        let mut scored: Vec<(usize, f32)> = payload
-            .results
-            .into_iter()
-            .map(|r| (r.index, r.relevance_score))
-            .collect();
-        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-
-        Ok(scored
-            .into_iter()
-            .filter_map(|(idx, _)| top.get(idx).cloned())
-            .collect())
+        .instrument(span)
+        .await
     }
 
     /// Generate a hypothetical document passage for HyDE using Ollama `/api/generate`.
@@ -423,48 +480,68 @@ impl SearchService {
              Be specific. Output only the passage, nothing else."
         );
 
-        let _permit = self.acquire_local_permit().await?;
-        let response = self
-            .auth(
-                self.client
-                    .post(format!("{}/api/generate", self.base_url))
-                    .timeout(SEARCH_HYDE_REQUEST_TIMEOUT)
-                    .json(&HydeRequest {
-                        model: model.as_str(),
-                        prompt: &prompt,
-                        stream: false,
-                    }),
-            )
-            .send()
-            .await
-            .map_err(|err| SearchError::Request(err.to_string()))?;
+        let span = logfire::span!(
+            "search.hyde",
+            model = model.clone(),
+            query_chars = query.chars().count(),
+        );
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let detail = response
-                .text()
+        async move {
+            let started = Instant::now();
+            let _permit = self.acquire_local_permit().await?;
+            let response = self
+                .auth(
+                    self.client
+                        .post(format!("{}/api/generate", self.base_url))
+                        .timeout(SEARCH_HYDE_REQUEST_TIMEOUT)
+                        .json(&HydeRequest {
+                            model: model.as_str(),
+                            prompt: &prompt,
+                            stream: false,
+                        }),
+                )
+                .send()
                 .await
-                .ok()
-                .map(|t| limit_error_detail(&t))
-                .filter(|t| !t.is_empty());
-            return Err(SearchError::Request(match detail {
-                Some(d) => format!("Ollama HyDE request failed ({status}): {d}"),
-                None => format!("Ollama HyDE request failed ({status})"),
-            }));
-        }
+                .map_err(|err| SearchError::Request(err.to_string()))?;
 
-        let payload = response
-            .json::<HydeResponse>()
-            .await
-            .map_err(|err| SearchError::InvalidResponse(err.to_string()))?;
+            if !response.status().is_success() {
+                let status = response.status();
+                let detail = response
+                    .text()
+                    .await
+                    .ok()
+                    .map(|t| limit_error_detail(&t))
+                    .filter(|t| !t.is_empty());
+                let error = SearchError::Request(match detail {
+                    Some(d) => format!("Ollama HyDE request failed ({status}): {d}"),
+                    None => format!("Ollama HyDE request failed ({status})"),
+                });
+                tracing::error!(model = %model, error = %error, "search HyDE generation failed");
+                return Err(error);
+            }
 
-        let passage = payload.response.trim().to_string();
-        if passage.is_empty() {
-            return Err(SearchError::InvalidResponse(
-                "HyDE generated empty passage".to_string(),
-            ));
+            let payload = response
+                .json::<HydeResponse>()
+                .await
+                .map_err(|err| SearchError::InvalidResponse(err.to_string()))?;
+
+            let passage = payload.response.trim().to_string();
+            if passage.is_empty() {
+                let error =
+                    SearchError::InvalidResponse("HyDE generated empty passage".to_string());
+                tracing::error!(model = %model, error = %error, "search HyDE generation failed");
+                return Err(error);
+            }
+            tracing::info!(
+                model = %model,
+                response_chars = passage.chars().count(),
+                elapsed_ms = started.elapsed().as_millis() as u64,
+                "search HyDE generation completed"
+            );
+            Ok(passage)
         }
-        Ok(passage)
+        .instrument(span)
+        .await
     }
 
     async fn acquire_local_permit(&self) -> Result<Option<OwnedSemaphorePermit>, SearchError> {
