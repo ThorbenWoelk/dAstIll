@@ -73,13 +73,23 @@ Terraform, Google Cloud Run, AWS IAM (Workload Identity Federation), Google Secr
    ```
 
 2. **Configure Environment Variables**:
-   Copy the backend template and fill in your local credentials:
+   Set up the shared local env directory once per machine:
 
    ```bash
-   cp backend/.env.example backend/.env
+   ./scripts/link_shared_env.sh
    ```
 
-   The backend reads `backend/.env` during local startup. A typical local config looks like this:
+   The default local workflow uses `~/.config/dastill/backend.env` and
+   `~/.config/dastill/frontend.env`. The helper above migrates existing worktree-local
+   `.env` files into that shared directory when possible and creates fresh symlinks for the
+   current worktree.
+
+   Backend env precedence is:
+   - shell environment variables
+   - `backend/.env` in the current worktree
+   - `~/.config/dastill/backend.env`
+
+   A typical backend config looks like this:
 
    ```env
    GCP_PROJECT_ID=your-gcp-project-id
@@ -115,7 +125,10 @@ Terraform, Google Cloud Run, AWS IAM (Workload Identity Federation), Google Secr
    If `OLLAMA_URL` points to a remote Ollama endpoint instead of localhost, also set `OLLAMA_API_KEY`.
    If `GOOGLE_APPLICATION_CREDENTIALS` points to a missing file, the backend falls back to application default credentials. If neither is valid, backend startup fails before `/api/health` becomes ready.
 
-   If you run the frontend separately from `start_app.sh`, copy `frontend/.env.example` to `frontend/.env` and set `BACKEND_PROXY_TOKEN`, `BACKEND_API_BASE`, `PUBLIC_DOCS_URL`, `PUBLIC_FIREBASE_API_KEY`, `PUBLIC_FIREBASE_AUTH_DOMAIN`, and `PUBLIC_FIREBASE_PROJECT_ID`. Operator access is granted through the frontend server's `OPERATOR_EMAIL_ALLOWLIST`.
+   If you run the frontend separately from `start_app.sh`, keep its local values in
+   `~/.config/dastill/frontend.env` and run `./scripts/link_shared_env.sh` in each
+   worktree so direct frontend commands still see `frontend/.env`. Operator access is
+   granted through the frontend server's `OPERATOR_EMAIL_ALLOWLIST`.
 
 3. **Understand Search Defaults**:
    `SEARCH_SEMANTIC_ENABLED` overrides the runtime default:

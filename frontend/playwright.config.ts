@@ -1,7 +1,7 @@
 /**
  * Browser E2E only: Playwright hits `baseURL` (the Svelte app). It does not read
  * DB credentials. Data comes from whatever database the running backend is
- * configured to use (e.g. `backend/.env`). Start backend + frontend (e.g.
+ * configured to use (e.g. `~/.config/dastill/backend.env` or `backend/.env`). Start backend + frontend (e.g.
  * `./start_app.sh`) before `bun run test:e2e`.
  */
 import { defineConfig, devices } from "@playwright/test";

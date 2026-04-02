@@ -22,6 +22,18 @@ backend_port=${BACKEND_PORT:-3544}
 docs_port=${DOCS_PORT:-4173}
 ports=($frontend_port $backend_port $docs_port)
 script_path=${0:A}
+if [[ -n "${DASTILL_ENV_DIR:-}" ]]; then
+	shared_env_dir="$DASTILL_ENV_DIR"
+elif [[ -n "${XDG_CONFIG_HOME:-}" ]]; then
+	shared_env_dir="${XDG_CONFIG_HOME}/dastill"
+elif [[ -n "${HOME:-}" ]]; then
+	shared_env_dir="${HOME}/.config/dastill"
+else
+	shared_env_dir="$PWD/.config/dastill"
+fi
+shared_backend_env_file="${shared_env_dir}/backend.env"
+shared_frontend_env_file="${shared_env_dir}/frontend.env"
+typeset -gA initial_env_keys
 
 process_is_running() {
 	local pid=$1
@@ -58,6 +70,44 @@ wait_for_http() {
 	return 1
 }
 
+require_http_status() {
+	local name=$1
+	local url=$2
+	local expected_status=$3
+	local http_status
+
+	set +e
+	http_status=$(curl -sS -o /dev/null -w "%{http_code}" "$url")
+	local curl_exit=$?
+	set -e
+
+	if [[ $curl_exit -ne 0 ]]; then
+		echo "$name could not be reached at $url"
+		return 1
+	fi
+
+	if [[ "$http_status" != "$expected_status" ]]; then
+		echo "$name returned HTTP $http_status at $url (expected $expected_status)"
+		return 1
+	fi
+
+	return 0
+}
+
+capture_initial_env_keys() {
+	initial_env_keys=()
+	while IFS='=' read -r key _; do
+		initial_env_keys[$key]=1
+	done < <(env)
+}
+
+trim_whitespace() {
+	local value=$1
+	value="${value#"${value%%[![:space:]]*}"}"
+	value="${value%"${value##*[![:space:]]}"}"
+	printf '%s' "$value"
+}
+
 read_env_file_value() {
 	local env_file=$1
 	local key=$2
@@ -72,22 +122,78 @@ read_env_file_value() {
 	return 0
 }
 
-start_backend() {
-	pushd backend >/dev/null
-	local summary_model="${OLLAMA_SUMMARY_MODEL:-}"
-	if [[ -z "$summary_model" ]]; then
-		summary_model=$(read_env_file_value ".env" "OLLAMA_SUMMARY_MODEL")
-	fi
-	if [[ -z "$summary_model" ]]; then
-		summary_model=$(read_env_file_value ".env" "OLLAMA_MODEL")
+resolve_env_value() {
+	local key=$1
+	local local_env_file=${2:-}
+	local shared_env_file=${3:-}
+
+	if (( ${+parameters[$key]} )); then
+		printf '%s' "${(P)key}"
+		return 0
 	fi
 
-	local default_chat_model="${OLLAMA_DEFAULT_CHAT_MODEL:-}"
-	if [[ -z "$default_chat_model" ]]; then
-		default_chat_model=$(read_env_file_value ".env" "OLLAMA_DEFAULT_CHAT_MODEL")
+	local value=""
+	if [[ -n "$local_env_file" ]]; then
+		value=$(read_env_file_value "$local_env_file" "$key")
 	fi
+	if [[ -n "$value" ]]; then
+		printf '%s' "$value"
+		return 0
+	fi
+	if [[ -n "$shared_env_file" ]]; then
+		value=$(read_env_file_value "$shared_env_file" "$key")
+	fi
+	printf '%s' "$value"
+	return 0
+}
+
+export_env_file_preserving_shell() {
+	local env_file=$1
+	local line=""
+
+	if [[ ! -f "$env_file" ]]; then
+		return 0
+	fi
+
+	while IFS= read -r line || [[ -n "$line" ]]; do
+		[[ -z "$line" ]] && continue
+		[[ "$line" == \#* ]] && continue
+		[[ "$line" != *=* ]] && continue
+
+		local key=${line%%=*}
+		local value=${line#*=}
+		key=$(trim_whitespace "$key")
+		value=$(trim_whitespace "$value")
+
+		if [[ -z "$key" || "$key" == \#* || -n ${initial_env_keys[$key]-} ]]; then
+			continue
+		fi
+		if [[ "$value" == \"*\" && "$value" == *\" ]]; then
+			value=${value#\"}
+			value=${value%\"}
+		fi
+
+		export "$key=$value"
+	done < "$env_file"
+}
+
+prepare_frontend_env() {
+	export_env_file_preserving_shell "$shared_frontend_env_file"
+	export_env_file_preserving_shell "frontend/.env"
+}
+
+start_backend() {
+	pushd backend >/dev/null
+	local summary_model
+	summary_model=$(resolve_env_value "OLLAMA_SUMMARY_MODEL" ".env" "$shared_backend_env_file")
+	if [[ -z "$summary_model" ]]; then
+		summary_model=$(resolve_env_value "OLLAMA_MODEL" ".env" "$shared_backend_env_file")
+	fi
+
+	local default_chat_model
+	default_chat_model=$(resolve_env_value "OLLAMA_DEFAULT_CHAT_MODEL" ".env" "$shared_backend_env_file")
 	if [[ -z "$default_chat_model" ]]; then
-		default_chat_model=$(read_env_file_value ".env" "OLLAMA_CHAT_MODEL")
+		default_chat_model=$(resolve_env_value "OLLAMA_CHAT_MODEL" ".env" "$shared_backend_env_file")
 	fi
 
 	if [[ -n "$summary_model" ]]; then
@@ -97,16 +203,31 @@ start_backend() {
 		export OLLAMA_DEFAULT_CHAT_MODEL="$default_chat_model"
 	fi
 
+	local use_turso="${START_APP_USE_TURSO:-}"
+	if [[ "$use_turso" == "1" || "$use_turso" == "true" || "$use_turso" == "TRUE" ]]; then
+		echo "Backend search index: using configured Turso/libSQL replica"
+	else
+		export TURSO_DB_URL=""
+		export TURSO_AUTH_TOKEN=""
+		echo "Backend search index: using local libSQL fallback (set START_APP_USE_TURSO=1 to use Turso)"
+	fi
+
 	PORT=$backend_port cargo run --bin dastill > >(tee ../backend.log) 2>&1 &
 	backend_pid=$!
 	popd >/dev/null
 }
 
 start_frontend() {
+	prepare_frontend_env
 	pushd frontend >/dev/null
+	local backend_proxy_token
+	backend_proxy_token=$(resolve_env_value "BACKEND_PROXY_TOKEN" "../backend/.env" "$shared_backend_env_file")
+	if [[ -z "$backend_proxy_token" ]]; then
+		backend_proxy_token="local-dev-backend-proxy-token"
+	fi
 	BACKEND_API_BASE="http://localhost:$backend_port" \
-		BACKEND_PROXY_TOKEN="${BACKEND_PROXY_TOKEN:-local-dev-backend-proxy-token}" \
-		bun run dev -- --host 0.0.0.0 --port $frontend_port > >(tee ../frontend.log) 2>&1 &
+		BACKEND_PROXY_TOKEN="$backend_proxy_token" \
+		bun --no-env-file run dev -- --host 0.0.0.0 --port $frontend_port > >(tee ../frontend.log) 2>&1 &
 	frontend_pid=$!
 	popd >/dev/null
 }
@@ -131,18 +252,21 @@ cleanup() {
 }
 
 check_ollama_models() {
-	local env_file="backend/.env"
-	if [[ ! -f "$env_file" ]]; then
-		echo "Warning: $env_file not found, skipping ollama model check"
+	if ! command -v ollama &>/dev/null; then
+		local model_vars=(OLLAMA_SUMMARY_MODEL OLLAMA_DEFAULT_CHAT_MODEL OLLAMA_FALLBACK_MODEL SUMMARY_EVALUATOR_MODEL OLLAMA_EMBEDDING_MODEL)
+		for var in "${model_vars[@]}"; do
+			local configured_model
+			configured_model=$(resolve_env_value "$var" "backend/.env" "$shared_backend_env_file")
+			if [[ -n "$configured_model" ]]; then
+				echo "Error: ollama is not installed"
+				exit 1
+			fi
+		done
+		if [[ -f "$shared_backend_env_file" || -f "backend/.env" ]]; then
+			echo "Ollama: not installed, but no local model variables are configured"
+		fi
 		return 0
 	fi
-
-	if ! command -v ollama &>/dev/null; then
-		echo "Error: ollama is not installed"
-		exit 1
-	fi
-
-	echo "Ollama: checking models from $env_file"
 
 	local available
 	available=$(ollama list 2>/dev/null | awk 'NR>1 {print $1}') || {
@@ -153,10 +277,22 @@ check_ollama_models() {
 	local model_vars=(OLLAMA_SUMMARY_MODEL OLLAMA_DEFAULT_CHAT_MODEL OLLAMA_FALLBACK_MODEL SUMMARY_EVALUATOR_MODEL OLLAMA_EMBEDDING_MODEL)
 	local missing=()
 	local verified=0
+	local checked_files=()
+	if [[ -f "$shared_backend_env_file" ]]; then
+		checked_files+=("$shared_backend_env_file")
+	fi
+	if [[ -f "backend/.env" ]]; then
+		checked_files+=("backend/.env")
+	fi
+	if (( ${#checked_files[@]} == 0 )); then
+		echo "Ollama: no backend env file found under backend/.env or $shared_backend_env_file"
+	else
+		echo "Ollama: checking models from ${checked_files[*]}"
+	fi
 
 	for var in "${model_vars[@]}"; do
 		local model
-		model=$(grep -E "^${var}=" "$env_file" | cut -d= -f2- || echo "")
+		model=$(resolve_env_value "$var" "backend/.env" "$shared_backend_env_file")
 		[[ -z "$model" ]] && continue
 
 		if [[ "$model" != *":"* ]]; then
@@ -188,6 +324,7 @@ check_ollama_models() {
 	echo "Ollama: ok ($verified model(s) present locally)"
 }
 
+capture_initial_env_keys
 check_ollama_models
 
 if [[ "$mode" == "detach" ]]; then
@@ -254,6 +391,17 @@ start_docs
 if ! wait_for_http "Frontend" "http://localhost:$frontend_port" "$frontend_pid"; then
 	echo "Frontend failed to start. Last frontend log lines:"
 	tail -n 80 frontend.log || true
+	exit 1
+fi
+
+if ! require_http_status \
+	"Frontend workspace bootstrap" \
+	"http://localhost:$frontend_port/api/workspace/bootstrap?limit=20" \
+	"200"; then
+	echo "Frontend is up, but the proxied workspace bootstrap request failed. Last frontend log lines:"
+	tail -n 80 frontend.log || true
+	echo "Last backend log lines:"
+	tail -n 80 backend.log || true
 	exit 1
 fi
 

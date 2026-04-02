@@ -22,6 +22,14 @@ Detached mode:
 
 Detached startup writes supervisor output to `start_app.log` and service logs to `backend.log`, `frontend.log`, and `docs.log`.
 
+Startup now verifies both the backend health endpoint and the initial workspace bootstrap
+response before it reports success. If local startup fails after the backend begins listening,
+check `backend.log` for malformed Firestore video records or credential issues.
+
+By default `./start_app.sh` forces the backend onto the local embedded libSQL search index even if
+`~/.config/dastill/backend.env` contains Turso credentials. Set `START_APP_USE_TURSO=1` when you explicitly want
+local startup to use the configured Turso replica path.
+
 Default docs URL:
 
 ```text
@@ -41,12 +49,16 @@ The docs app also has a production container definition in `docs/Dockerfile`. Ma
 
 ## Backend Environment
 
-Local backend startup reads `backend/.env`.
+Local backend startup now reads the shared machine-local file at
+`~/.config/dastill/backend.env` by default. If you want a one-off worktree override,
+`backend/.env` still works and wins over the shared file. Shell environment variables
+win over both file-based sources.
 
 Typical flow:
 
 ```bash
-cp backend/.env.example backend/.env
+./scripts/link_shared_env.sh
+# edit ~/.config/dastill/backend.env
 ```
 
 Important variables:
@@ -107,7 +119,8 @@ gcloud auth application-default login
 
 If `GOOGLE_APPLICATION_CREDENTIALS` points to a missing file, the backend removes that setting and falls back to application default credentials. If no valid Firestore credentials remain, startup fails before `http://localhost:3544/api/health` becomes ready.
 
-The backend requires AWS credentials in addition to the bucket names. Provide them in `backend/.env`:
+The backend requires AWS credentials in addition to the bucket names. Provide them in
+`~/.config/dastill/backend.env`:
 
 ```bash
 AWS_ACCESS_KEY_ID=...
@@ -120,12 +133,13 @@ In production, Cloud Run uses `AWS_ROLE_ARN` and `AWS_WIF_AUDIENCE` for Workload
 
 ## Logfire Observability
 
-The backend automatically switches to Logfire when `LOGFIRE_TOKEN` is present in `backend/.env`.
+The backend automatically switches to Logfire when `LOGFIRE_TOKEN` is present in
+`~/.config/dastill/backend.env`.
 
 Typical setup:
 
 ```bash
-cp backend/.env.example backend/.env
+./scripts/link_shared_env.sh
 # then uncomment LOGFIRE_TOKEN and paste your token
 ```
 
@@ -146,7 +160,38 @@ Local defaults when you start with `./start_app.sh`:
 | --------------------- | ------------------------------- |
 | `BACKEND_PROXY_TOKEN` | `local-dev-backend-proxy-token` |
 
-If you run the frontend by itself, copy `frontend/.env.example` to `frontend/.env` and set `BACKEND_API_BASE`, `BACKEND_PROXY_TOKEN`, and `PUBLIC_DOCS_URL`.
+If you run the frontend by itself, keep its local values in
+`~/.config/dastill/frontend.env`. The default shared workflow is to keep those values there
+and run `./scripts/link_shared_env.sh` once per worktree so direct frontend commands
+still see `frontend/.env`.
+
+## Shared Env Directory
+
+The recommended local env layout is:
+
+```text
+~/.config/dastill/
+  backend.env
+  frontend.env
+```
+
+Use the helper script from the repo root:
+
+```bash
+./scripts/link_shared_env.sh
+```
+
+What it does:
+
+- migrates an existing worktree-local `backend/.env` or `frontend/.env` into the shared directory when the shared file does not exist yet
+- creates `backend/.env` and `frontend/.env` symlinks that point at the shared files
+- seeds missing shared files from `backend/.env.example` and `frontend/.env.example`
+
+Env precedence for local development is:
+
+1. shell environment variables
+2. worktree-local `backend/.env` or `frontend/.env`
+3. shared `~/.config/dastill/backend.env` or `~/.config/dastill/frontend.env`
 
 Operator access is derived from `OPERATOR_EMAIL_ALLOWLIST` on the frontend server. Users whose Firebase email matches the allowlist receive the `operator` role in proxied backend requests.
 
