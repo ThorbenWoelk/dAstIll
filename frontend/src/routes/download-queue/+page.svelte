@@ -148,8 +148,7 @@
 
         if (!initialChannelId) {
           sidebar.setSelectedChannelId(null);
-          sidebar.setVideos([]);
-          sidebar.setSyncDepth(null);
+          sidebar.resetVideoListState();
         } else {
           sidebar.setSelectedChannelId(initialChannelId);
           await sidebar.refreshAndLoadVideos(initialChannelId, silent);
@@ -419,13 +418,12 @@
           selectedChannelIdAtMount &&
           bootstrapResult.snapshot.channel_id === selectedChannelIdAtMount
         ) {
-          sidebar.setSyncDepth(bootstrapResult.snapshot.sync_depth);
-          sidebar.setVideos(bootstrapResult.snapshot.videos);
-          sidebar.setOffset(
-            bootstrapResult.snapshot.next_offset ??
-              bootstrapResult.snapshot.videos.length,
-          );
-          sidebar.setHasMore(bootstrapResult.snapshot.has_more);
+          sidebar.applyChannelSnapshotState({
+            videos: bootstrapResult.snapshot.videos,
+            has_more: bootstrapResult.snapshot.has_more,
+            next_offset: bootstrapResult.snapshot.next_offset,
+            sync_depth: bootstrapResult.snapshot.sync_depth,
+          });
           void putCachedViewSnapshot(
             buildQueueSnapshotCacheKey(selectedChannelIdAtMount),
             {
@@ -509,9 +507,7 @@
       void putCachedChannels(sidebar.channels, workspaceCacheScopeKey);
 
       // Reload videos with the new sync boundary
-      sidebar.setVideos([]);
-      sidebar.setOffset(0);
-      sidebar.setHasMore(true);
+      sidebar.resetVideoListState();
       await sidebar.refreshAndLoadVideos(sidebar.selectedChannelId);
     } catch (error) {
       if (!presentAuthRequiredNoticeIfNeeded(error)) {

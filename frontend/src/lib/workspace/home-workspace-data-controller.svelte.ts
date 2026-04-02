@@ -107,15 +107,17 @@ export function createHomeWorkspaceDataController(options: {
   }
 
   function restoreCachedChannelVideoState(state: CachedChannelVideoState) {
-    sidebarState.setVideos(cloneVideos(state.videos));
-    sidebarState.setOffset(state.offset);
-    sidebarState.setHasMore(state.hasMore);
-    sidebarState.setHistoryExhausted(state.historyExhausted);
-    sidebarState.setBackfillingHistory(state.backfillingHistory);
+    sidebarState.resetVideoListState({
+      videos: cloneVideos(state.videos),
+      offset: state.offset,
+      hasMore: state.hasMore,
+      historyExhausted: state.historyExhausted,
+      backfillingHistory: state.backfillingHistory,
+      syncDepth: state.syncDepth,
+    });
     options.setAllowLoadedVideoSyncDepthOverride(
       state.allowLoadedVideoSyncDepthOverride,
     );
-    sidebarState.setSyncDepth(cloneSyncDepthState(state.syncDepth));
   }
 
   $effect(() => {
@@ -291,11 +293,13 @@ export function createHomeWorkspaceDataController(options: {
       const acknowledged = resolveAcknowledgedParam(
         sidebarState.acknowledgedFilter,
       );
-      sidebarState.setSyncDepth(snapshot.sync_depth);
       options.setAllowLoadedVideoSyncDepthOverride(false);
-      sidebarState.setVideos(snapshot.videos);
-      sidebarState.setOffset(snapshot.videos.length);
-      sidebarState.setHasMore(snapshot.videos.length === sidebarState.limit);
+      sidebarState.applyChannelSnapshotState({
+        videos: snapshot.videos,
+        has_more: snapshot.videos.length === sidebarState.limit,
+        next_offset: snapshot.videos.length,
+        sync_depth: snapshot.sync_depth,
+      });
       track({
         event: "channel_snapshot_loaded",
         channel_id: channelId,
@@ -390,12 +394,7 @@ export function createHomeWorkspaceDataController(options: {
         sidebarState.setSelectedChannelId(null);
         options.setMobileBrowseOpen(true);
         clearSelectedVideoState();
-        sidebarState.setVideos([]);
-        sidebarState.setSyncDepth(null);
-        sidebarState.setOffset(0);
-        sidebarState.setHasMore(true);
-        sidebarState.setHistoryExhausted(false);
-        sidebarState.setBackfillingHistory(false);
+        sidebarState.resetVideoListState();
         options.setAllowLoadedVideoSyncDepthOverride(false);
       } else {
         const preferredVideoId =
@@ -422,14 +421,10 @@ export function createHomeWorkspaceDataController(options: {
           );
         } else if (!canReuseRenderedSnapshot) {
           clearSelectedVideoState();
-          sidebarState.setSelectedVideoId(preferredVideoId);
-          sidebarState.setVideos([]);
-          sidebarState.setOffset(0);
-          sidebarState.setHasMore(true);
-          sidebarState.setHistoryExhausted(false);
-          sidebarState.setBackfillingHistory(false);
+          sidebarState.resetVideoListState({
+            selectedVideoId: preferredVideoId,
+          });
           options.setAllowLoadedVideoSyncDepthOverride(false);
-          sidebarState.setSyncDepth(null);
           if (!silent) {
             sidebarState.setLoadingVideos(true);
           }
@@ -492,9 +487,8 @@ export function createHomeWorkspaceDataController(options: {
         await selectChannel(nextChannelId);
       } else {
         sidebarState.setSelectedChannelId(null);
-        sidebarState.setSelectedVideoId(null);
         options.setMobileBrowseOpen(true);
-        sidebarState.setVideos([]);
+        sidebarState.resetVideoListState({ selectedVideoId: null });
         content.clearDisplayedContent();
       }
     }
@@ -545,11 +539,7 @@ export function createHomeWorkspaceDataController(options: {
       return;
     }
 
-    sidebarState.setVideos([]);
-    sidebarState.setOffset(0);
-    sidebarState.setHasMore(true);
-    sidebarState.historyExhausted = false;
-    sidebarState.backfillingHistory = false;
+    sidebarState.resetVideoListState();
     options.setAllowLoadedVideoSyncDepthOverride(false);
     await refreshAndLoadVideos(channelId, false, videoId);
   }

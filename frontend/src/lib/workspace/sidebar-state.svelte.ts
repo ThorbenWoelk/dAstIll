@@ -233,6 +233,21 @@ export type SidebarStateResult = {
     summaryStatus: ContentStatus | undefined,
   ) => void;
   updateVideo: (v: Video) => void;
+  resetVideoListState: (options?: {
+    videos?: Video[];
+    offset?: number;
+    hasMore?: boolean;
+    historyExhausted?: boolean;
+    backfillingHistory?: boolean;
+    syncDepth?: ChannelSyncDepthState | null;
+    selectedVideoId?: string | null;
+  }) => void;
+  applyChannelSnapshotState: (snapshot: {
+    videos: Video[];
+    has_more: boolean;
+    next_offset: number | null;
+    sync_depth: ChannelSyncDepthState | null;
+  }) => void;
 
   // Operations
   syncChannelOrderFromList: () => void;
@@ -441,6 +456,40 @@ export function createSidebarState(
 
   function updateVideo(updated: Video) {
     videos = videos.map((v) => (v.id === updated.id ? updated : v));
+  }
+
+  function resetVideoListState(
+    options: {
+      videos?: Video[];
+      offset?: number;
+      hasMore?: boolean;
+      historyExhausted?: boolean;
+      backfillingHistory?: boolean;
+      syncDepth?: ChannelSyncDepthState | null;
+      selectedVideoId?: string | null;
+    } = {},
+  ) {
+    if ("selectedVideoId" in options) {
+      selectedVideoId = options.selectedVideoId ?? null;
+    }
+    videos = dedupeVideosById(options.videos ?? []);
+    offset = options.offset ?? 0;
+    hasMore = options.hasMore ?? true;
+    historyExhausted = options.historyExhausted ?? false;
+    backfillingHistory = options.backfillingHistory ?? false;
+    syncDepth = cloneSyncDepthState(options.syncDepth ?? null);
+  }
+
+  function applyChannelSnapshotState(snapshot: {
+    videos: Video[];
+    has_more: boolean;
+    next_offset: number | null;
+    sync_depth: ChannelSyncDepthState | null;
+  }) {
+    syncDepth = cloneSyncDepthState(snapshot.sync_depth);
+    videos = dedupeVideosById(snapshot.videos);
+    offset = snapshot.next_offset ?? snapshot.videos.length;
+    hasMore = snapshot.has_more;
   }
 
   function setVideoStatus(
@@ -766,6 +815,8 @@ export function createSidebarState(
     setShowDeleteConfirmation,
     setVideoStatus,
     updateVideo,
+    resetVideoListState,
+    applyChannelSnapshotState,
 
     // Operations
     loadInitial,
