@@ -36,6 +36,13 @@ export function createChannelViewCache<TState>(
     delete(key: string) {
       stateByKey.delete(key);
     },
+    deleteByPrefix(prefix: string) {
+      for (const key of stateByKey.keys()) {
+        if (key.startsWith(prefix)) {
+          stateByKey.delete(key);
+        }
+      }
+    },
   };
 }
 
