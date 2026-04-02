@@ -173,12 +173,16 @@ jobs:
           env_file=/tmp/backend_cr_env.txt
           : > "$env_file"
 
+          yaml_escape() {
+            printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+          }
+
           add_env_var() {
             local key="$1"
             local value="${2:-}"
             value="$(printf '%s' "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
             if [ -n "$value" ]; then
-              printf '%s=%s\n' "$key" "$value" >> "$env_file"
+              printf '%s: "%s"\n' "$key" "$(yaml_escape "$value")" >> "$env_file"
             fi
           }
 
@@ -203,10 +207,10 @@ jobs:
           add_env_var DATABRICKS_SCHEMA "$DATABRICKS_SCHEMA"
           add_env_var DATABRICKS_BRONZE_TABLE "$DATABRICKS_BRONZE_TABLE"
           add_env_var GCP_PROJECT_ID "$PROJECT_ID"
-          printf '%s\n' 'SUMMARIZE_PATH=/usr/local/bin/summarize' >> "$env_file"
-          printf '%s\n' 'POLLY_TTS_ENABLED=true' >> "$env_file"
-          printf '%s\n' 'POLLY_TTS_VOICE_ID=Stephen' >> "$env_file"
-          printf '%s\n' 'RUST_LOG=dastill=info,tower_http=info' >> "$env_file"
+          printf '%s\n' 'SUMMARIZE_PATH: "/usr/local/bin/summarize"' >> "$env_file"
+          printf '%s\n' 'POLLY_TTS_ENABLED: "true"' >> "$env_file"
+          printf '%s\n' 'POLLY_TTS_VOICE_ID: "Stephen"' >> "$env_file"
+          printf '%s\n' 'RUST_LOG: "dastill=info,tower_http=info"' >> "$env_file"
 
       - name: Deploy Backend to Cloud Run
         id: deploy
@@ -339,12 +343,16 @@ jobs:
           env_file=/tmp/frontend_cr_env.txt
           : > "$env_file"
 
+          yaml_escape() {
+            printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+          }
+
           add_env_var() {
             local key="$1"
             local value="${2:-}"
             value="$(printf '%s' "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
             if [ -n "$value" ]; then
-              printf '%s=%s\n' "$key" "$value" >> "$env_file"
+              printf '%s: "%s"\n' "$key" "$(yaml_escape "$value")" >> "$env_file"
             fi
           }
 
