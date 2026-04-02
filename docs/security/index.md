@@ -49,7 +49,7 @@ For the detailed done-versus-open breakdown, see [OWASP ASI Status](/security/ow
 - The frontend proxy authenticates to the backend with a shared proxy secret and, in Cloud Run, an identity token for the backend audience.
 - Backend route handlers derive request identity from trusted proxy headers and `AccessContext`.
 - Chat retrieval and chat-internal tools are now constrained to the caller's accessible library scope.
-- Global `db_inspect` is treated as operator-only.
+- Global `db_inspect` is treated as authenticated-only.
 
 ### ASI08 - Cascading failures
 
