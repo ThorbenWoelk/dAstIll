@@ -1,8 +1,34 @@
-export type ContentStatus = "pending" | "loading" | "ready" | "failed";
+import type {
+  AddVideoResult as TransportAddVideoResult,
+  AiHealthResponse as TransportAiHealthResponse,
+  AiStatus as TransportAiStatus,
+  Channel as TransportChannel,
+  ChannelSnapshot as TransportChannelSnapshot,
+  ChannelVideoPage as TransportChannelVideoPage,
+  CleanTranscriptResponse as TransportCleanTranscriptResponse,
+  ContentStatus as TransportContentStatus,
+  CreateHighlightRequest as TransportCreateHighlightRequest,
+  Highlight as TransportHighlight,
+  HighlightChannelGroup as TransportHighlightChannelGroup,
+  HighlightSource as TransportHighlightSource,
+  HighlightVideoGroup as TransportHighlightVideoGroup,
+  SearchMatch as TransportSearchMatch,
+  SearchResponse as TransportSearchResponse,
+  SearchResult as TransportSearchResult,
+  SearchStatus as TransportSearchStatus,
+  Summary as TransportSummary,
+  SyncDepth as TransportSyncDepth,
+  Transcript as TransportTranscript,
+  TranscriptRenderMode as TransportTranscriptRenderMode,
+  Video as TransportVideo,
+  WorkspaceBootstrap as TransportWorkspaceBootstrap,
+} from "./transport-types";
+
+export type ContentStatus = TransportContentStatus;
 export type VideoTypeFilter = "all" | "long" | "short";
-export type AiStatus = "cloud" | "local_only" | "offline";
-export type TranscriptRenderMode = "plain_text" | "markdown";
-export type HighlightSource = "transcript" | "summary";
+export type AiStatus = TransportAiStatus;
+export type TranscriptRenderMode = TransportTranscriptRenderMode;
+export type HighlightSource = TransportHighlightSource;
 export type SearchSourceFilter = "all" | "transcript" | "summary";
 export type ChatRole = "system" | "user" | "assistant";
 export type ChatMessageStatus =
@@ -21,129 +47,24 @@ export type ChatSuggestionKind = "channel" | "video";
 
 export const OTHERS_CHANNEL_ID = "__others__";
 
-export interface Channel {
-  id: string;
-  handle?: string | null;
-  name: string;
-  thumbnail_url?: string | null;
-  added_at: string;
-  earliest_sync_date?: string | null;
-  earliest_sync_date_user_set?: boolean;
-}
-
-export interface SyncDepth {
-  earliest_sync_date: string | null;
-  earliest_sync_date_user_set: boolean;
-  derived_earliest_ready_date: string | null;
-}
-
-export interface ChannelSnapshot {
-  channel_id: string;
-  sync_depth: SyncDepth;
-  /** Total videos for this channel in storage when cheaply available. */
-  channel_video_count: number | null;
-  has_more: boolean;
-  next_offset: number | null;
-  videos: Video[];
-}
-
-export interface ChannelVideoPage {
-  videos: Video[];
-  has_more: boolean;
-  next_offset: number | null;
-}
-
-export interface WorkspaceBootstrap {
-  ai_available: boolean;
-  ai_status: AiStatus;
-  channels: Channel[];
-  selected_channel_id: string | null;
-  snapshot: ChannelSnapshot | null;
-  search_status: SearchStatus;
-}
-
-export interface AiHealthResponse {
-  available: boolean;
-  status: AiStatus;
-}
+export type Channel = TransportChannel;
+export type SyncDepth = TransportSyncDepth;
+export type ChannelSnapshot = TransportChannelSnapshot;
+export type ChannelVideoPage = TransportChannelVideoPage;
+export type WorkspaceBootstrap = TransportWorkspaceBootstrap;
+export type AiHealthResponse = TransportAiHealthResponse;
 
 export type QueueTab = "transcripts" | "summaries" | "evaluations";
 
-export interface Video {
-  id: string;
-  channel_id: string;
-  title: string;
-  thumbnail_url?: string | null;
-  published_at: string;
-  is_short: boolean;
-  transcript_status: ContentStatus;
-  summary_status: ContentStatus;
-  acknowledged: boolean;
-  retry_count?: number;
-  quality_score?: number | null;
-}
-
-export interface AddVideoResult {
-  video: Video;
-  target_channel_id: string;
-  already_exists: boolean;
-}
-
-export interface Transcript {
-  video_id: string;
-  raw_text?: string | null;
-  formatted_markdown?: string | null;
-  render_mode?: TranscriptRenderMode | null;
-}
-
-export interface CleanTranscriptResponse {
-  content: string;
-  preserved_text: boolean;
-  attempts_used: number;
-  max_attempts: number;
-  timed_out: boolean;
-}
-
-export interface Highlight {
-  id: number;
-  video_id: string;
-  source: HighlightSource;
-  text: string;
-  prefix_context: string;
-  suffix_context: string;
-  created_at: string;
-}
-
-export interface CreateHighlightRequest {
-  source: HighlightSource;
-  text: string;
-  prefix_context: string;
-  suffix_context: string;
-}
-
-export interface HighlightVideoGroup {
-  video_id: string;
-  title: string;
-  thumbnail_url?: string | null;
-  published_at: string;
-  highlights: Highlight[];
-}
-
-export interface HighlightChannelGroup {
-  channel_id: string;
-  channel_name: string;
-  channel_thumbnail_url?: string | null;
-  videos: HighlightVideoGroup[];
-}
-
-export interface Summary {
-  video_id: string;
-  content: string;
-  model_used?: string | null;
-  quality_score?: number | null;
-  quality_note?: string | null;
-  quality_model_used?: string | null;
-}
+export type Video = TransportVideo;
+export type AddVideoResult = TransportAddVideoResult;
+export type Transcript = TransportTranscript;
+export type CleanTranscriptResponse = TransportCleanTranscriptResponse;
+export type Highlight = TransportHighlight;
+export type CreateHighlightRequest = TransportCreateHighlightRequest;
+export type HighlightVideoGroup = TransportHighlightVideoGroup;
+export type HighlightChannelGroup = TransportHighlightChannelGroup;
+export type Summary = TransportSummary;
 
 export interface VideoInfo {
   video_id: string;
@@ -159,42 +80,10 @@ export interface VideoInfo {
   view_count?: number | null;
 }
 
-export interface SearchMatch {
-  source: Exclude<SearchSourceFilter, "all">;
-  section_title?: string | null;
-  snippet: string;
-  score: number;
-}
-
-export interface SearchResult {
-  video_id: string;
-  channel_id: string;
-  channel_name: string;
-  video_title: string;
-  published_at: string;
-  matches: SearchMatch[];
-}
-
-export interface SearchResponse {
-  query: string;
-  source: SearchSourceFilter;
-  results: SearchResult[];
-}
-
-export interface SearchStatus {
-  available: boolean;
-  model: string;
-  dimensions: number;
-  pending: number;
-  indexing: number;
-  ready: number;
-  failed: number;
-  total_sources: number;
-  total_chunk_count: number;
-  embedded_chunk_count: number;
-  vector_index_ready: boolean;
-  retrieval_mode: "hybrid_exact" | "hybrid_ann" | "fts_only";
-}
+export type SearchMatch = TransportSearchMatch;
+export type SearchResult = TransportSearchResult;
+export type SearchResponse = TransportSearchResponse;
+export type SearchStatus = TransportSearchStatus;
 
 export interface ChatSource {
   video_id: string;

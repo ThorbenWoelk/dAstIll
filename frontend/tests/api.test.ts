@@ -40,6 +40,7 @@ function video(id: string, channelId = "abc"): Video {
     id,
     channel_id: channelId,
     title: `Video ${id}`,
+    thumbnail_url: null,
     published_at: "2026-03-02T00:00:00.000Z",
     is_short: false,
     transcript_status: "ready",
