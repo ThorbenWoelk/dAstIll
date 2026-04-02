@@ -235,137 +235,155 @@ impl OllamaCore {
 
         async move {
             let started = Instant::now();
-            let ollama_client = self
-                .build_ollama_client()
-                .map_err(OllamaPromptError::GenerationFailed)?;
-
-            let is_cloud = self.uses_cloud_model();
-            let cooldown_active = self.is_cloud_cooldown_active();
-
-            let (response, model_used) = if cooldown_active {
-                match policy {
-                    CooldownStatusPolicy::UseLocalFallback => {
-                        let fallback = self.fallback_model().ok_or_else(|| {
-                            OllamaPromptError::GenerationFailed(
-                                "cloud cooldown active and no fallback model configured"
-                                    .to_string(),
-                            )
-                        })?;
-                        tracing::info!(
-                            operation = operation,
-                            skipped_model = %self.model(),
-                            fallback_model = %fallback,
-                            "skipping cloud model due to active cooldown"
-                        );
-                        let _permit = self
-                            .acquire_local_permit(fallback)
-                            .await
-                            .map_err(OllamaPromptError::GenerationFailed)?;
-                        let agent = ollama_client.agent(fallback).preamble(preamble).build();
-                        let resp = match timeout(
-                            std::time::Duration::from_secs(CLOUD_PROMPT_TIMEOUT_SECS),
-                            agent.prompt(prompt),
-                        )
-                        .await
-                        {
-                            Ok(res) => res.map_err(OllamaPromptError::RequestFailed)?,
-                            Err(_) => {
-                                return Err(OllamaPromptError::GenerationFailed(format!(
-                                    "Ollama prompt timed out after {CLOUD_PROMPT_TIMEOUT_SECS}s"
-                                )))
-                            }
-                        };
-                        (resp, fallback.to_string())
-                    }
-                    CooldownStatusPolicy::Offline => return Err(OllamaPromptError::NotAvailable),
-                }
-            } else {
-                let _permit = self
-                    .acquire_local_permit(self.model())
-                    .await
+            let result: Result<(String, String), OllamaPromptError> = async {
+                let ollama_client = self
+                    .build_ollama_client()
                     .map_err(OllamaPromptError::GenerationFailed)?;
-                let agent = ollama_client.agent(self.model()).preamble(preamble).build();
-                match timeout(
-                    std::time::Duration::from_secs(CLOUD_PROMPT_TIMEOUT_SECS),
-                    agent.prompt(prompt),
-                )
-                .await
-                {
-                    Ok(Ok(resp)) => (resp, self.model().to_string()),
-                    Ok(Err(err)) if is_rate_limited(&err) => {
-                        if is_cloud {
-                            self.activate_cloud_cooldown();
-                        }
-                        match policy {
-                            CooldownStatusPolicy::UseLocalFallback => {
-                                let fallback = self.fallback_model().ok_or_else(|| {
-                                    OllamaPromptError::GenerationFailed(format!(
-                                        "rate limited by provider and no fallback model configured: {err}"
-                                    ))
-                                })?;
-                                tracing::warn!(
-                                    operation = operation,
-                                    primary_model = %self.model(),
-                                    fallback_model = %fallback,
-                                    error = %err,
-                                    "rate limited - falling back to local model"
-                                );
-                                let _permit = self
-                                    .acquire_local_permit(fallback)
-                                    .await
-                                    .map_err(OllamaPromptError::GenerationFailed)?;
-                                let fallback_agent =
-                                    ollama_client.agent(fallback).preamble(preamble).build();
-                                let resp = match timeout(
-                                    std::time::Duration::from_secs(CLOUD_PROMPT_TIMEOUT_SECS),
-                                    fallback_agent.prompt(prompt),
+
+                let is_cloud = self.uses_cloud_model();
+                let cooldown_active = self.is_cloud_cooldown_active();
+
+                let (response, model_used) = if cooldown_active {
+                    match policy {
+                        CooldownStatusPolicy::UseLocalFallback => {
+                            let fallback = self.fallback_model().ok_or_else(|| {
+                                OllamaPromptError::GenerationFailed(
+                                    "cloud cooldown active and no fallback model configured"
+                                        .to_string(),
                                 )
+                            })?;
+                            tracing::info!(
+                                operation = operation,
+                                skipped_model = %self.model(),
+                                fallback_model = %fallback,
+                                "skipping cloud model due to active cooldown"
+                            );
+                            let _permit = self
+                                .acquire_local_permit(fallback)
                                 .await
-                                {
-                                    Ok(res) => res.map_err(OllamaPromptError::RequestFailed)?,
-                                    Err(_) => {
-                                        return Err(OllamaPromptError::GenerationFailed(format!(
-                                            "Ollama prompt timed out after {CLOUD_PROMPT_TIMEOUT_SECS}s"
-                                        )))
-                                    }
-                                };
-                                (resp, fallback.to_string())
+                                .map_err(OllamaPromptError::GenerationFailed)?;
+                            let agent = ollama_client.agent(fallback).preamble(preamble).build();
+                            let resp = match timeout(
+                                std::time::Duration::from_secs(CLOUD_PROMPT_TIMEOUT_SECS),
+                                agent.prompt(prompt),
+                            )
+                            .await
+                            {
+                                Ok(res) => res.map_err(OllamaPromptError::RequestFailed)?,
+                                Err(_) => {
+                                    return Err(OllamaPromptError::GenerationFailed(format!(
+                                        "Ollama prompt timed out after {CLOUD_PROMPT_TIMEOUT_SECS}s"
+                                    )))
+                                }
+                            };
+                            (resp, fallback.to_string())
+                        }
+                        CooldownStatusPolicy::Offline => return Err(OllamaPromptError::NotAvailable),
+                    }
+                } else {
+                    let _permit = self
+                        .acquire_local_permit(self.model())
+                        .await
+                        .map_err(OllamaPromptError::GenerationFailed)?;
+                    let agent = ollama_client.agent(self.model()).preamble(preamble).build();
+                    match timeout(
+                        std::time::Duration::from_secs(CLOUD_PROMPT_TIMEOUT_SECS),
+                        agent.prompt(prompt),
+                    )
+                    .await
+                    {
+                        Ok(Ok(resp)) => (resp, self.model().to_string()),
+                        Ok(Err(err)) if is_rate_limited(&err) => {
+                            if is_cloud {
+                                self.activate_cloud_cooldown();
                             }
-                            CooldownStatusPolicy::Offline => {
-                                if is_cloud {
+                            match policy {
+                                CooldownStatusPolicy::UseLocalFallback => {
+                                    let fallback = self.fallback_model().ok_or_else(|| {
+                                        OllamaPromptError::GenerationFailed(format!(
+                                            "rate limited by provider and no fallback model configured: {err}"
+                                        ))
+                                    })?;
                                     tracing::warn!(
                                         operation = operation,
                                         primary_model = %self.model(),
+                                        fallback_model = %fallback,
                                         error = %err,
-                                        "rate limited - deferring to preserve local capacity"
+                                        "rate limited - falling back to local model"
                                     );
+                                    let _permit = self
+                                        .acquire_local_permit(fallback)
+                                        .await
+                                        .map_err(OllamaPromptError::GenerationFailed)?;
+                                    let fallback_agent =
+                                        ollama_client.agent(fallback).preamble(preamble).build();
+                                    let resp = match timeout(
+                                        std::time::Duration::from_secs(CLOUD_PROMPT_TIMEOUT_SECS),
+                                        fallback_agent.prompt(prompt),
+                                    )
+                                    .await
+                                    {
+                                        Ok(res) => res.map_err(OllamaPromptError::RequestFailed)?,
+                                        Err(_) => {
+                                            return Err(OllamaPromptError::GenerationFailed(format!(
+                                                "Ollama prompt timed out after {CLOUD_PROMPT_TIMEOUT_SECS}s"
+                                            )))
+                                        }
+                                    };
+                                    (resp, fallback.to_string())
                                 }
-                                return Err(OllamaPromptError::NotAvailable);
+                                CooldownStatusPolicy::Offline => {
+                                    if is_cloud {
+                                        tracing::warn!(
+                                            operation = operation,
+                                            primary_model = %self.model(),
+                                            error = %err,
+                                            "rate limited - deferring to preserve local capacity"
+                                        );
+                                    }
+                                    return Err(OllamaPromptError::NotAvailable);
+                                }
                             }
                         }
+                        Ok(Err(err)) => return Err(OllamaPromptError::RequestFailed(err)),
+                        Err(_) => {
+                            return Err(OllamaPromptError::GenerationFailed(format!(
+                                "Ollama prompt timed out after {CLOUD_PROMPT_TIMEOUT_SECS}s"
+                            )))
+                        }
                     }
-                    Ok(Err(err)) => return Err(OllamaPromptError::RequestFailed(err)),
-                    Err(_) => {
-                        return Err(OllamaPromptError::GenerationFailed(format!(
-                            "Ollama prompt timed out after {CLOUD_PROMPT_TIMEOUT_SECS}s"
-                        )))
-                    }
+                };
+
+                if response.trim().is_empty() {
+                    return Err(OllamaPromptError::EmptyResponse);
                 }
-            };
 
-            tracing::info!(
-                operation = operation,
-                model = %model_used,
-                response_chars = response.len(),
-                elapsed_ms = started.elapsed().as_millis() as u64,
-                "completed ollama prompt"
-            );
-
-            if response.trim().is_empty() {
-                return Err(OllamaPromptError::EmptyResponse);
+                Ok((response, model_used))
             }
+            .await;
 
-            Ok((response, model_used))
+            match result {
+                Ok((response, model_used)) => {
+                    tracing::info!(
+                        operation = operation,
+                        model = %model_used,
+                        response_chars = response.len(),
+                        elapsed_ms = started.elapsed().as_millis() as u64,
+                        "completed ollama prompt"
+                    );
+                    Ok((response, model_used))
+                }
+                Err(error) => {
+                    tracing::error!(
+                        operation = operation,
+                        primary_model = %self.model(),
+                        elapsed_ms = started.elapsed().as_millis() as u64,
+                        error = ?error,
+                        "ollama prompt failed"
+                    );
+                    Err(error)
+                }
+            }
         }
         .instrument(span)
         .await
