@@ -477,7 +477,7 @@ pub(crate) async fn execute_db_inspect_query(
 pub(crate) fn db_inspect_forbidden_result() -> DbInspectResult {
     DbInspectResult {
         summary: "Database inspection unavailable".to_string(),
-        output: "Database inspection is restricted to operator sessions.".to_string(),
+        output: "Database inspection requires a signed-in session.".to_string(),
     }
 }
 

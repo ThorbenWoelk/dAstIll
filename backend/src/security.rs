@@ -206,6 +206,10 @@ pub fn scope_cache_key(access_context: &AccessContext) -> String {
     }
 }
 
+pub fn can_use_db_inspect(access_context: &AccessContext) -> bool {
+    access_context.auth_state.is_authenticated()
+}
+
 pub fn can_access_channel(access_context: &AccessContext, channel_id: &str) -> bool {
     channel_id == crate::models::OTHERS_CHANNEL_ID
         || access_context
@@ -583,6 +587,7 @@ mod tests {
     use super::{
         AUTH_STATE_HEADER, AccessContext, AccessRole, AuthState, CLIENT_IP_HEADER, OPERATOR_ROLE,
         ROLE_HEADER, RateLimitTier, RequestRateLimiter, USER_ID_HEADER, build_access_context,
+        can_use_db_inspect,
     };
     use crate::config::SecurityRuntimeConfig;
 
@@ -694,5 +699,32 @@ mod tests {
                 allowed_other_video_ids: vec!["video-z".to_string()],
             }
         );
+    }
+
+    #[test]
+    fn db_inspect_requires_signed_in_session() {
+        assert!(!can_use_db_inspect(&AccessContext {
+            user_id: None,
+            auth_state: AuthState::Anonymous,
+            access_role: AccessRole::Anonymous,
+            allowed_channel_ids: vec!["seeded-channel".to_string()],
+            allowed_other_video_ids: Vec::new(),
+        }));
+
+        assert!(can_use_db_inspect(&AccessContext {
+            user_id: Some("firebase-uid-123".to_string()),
+            auth_state: AuthState::Authenticated,
+            access_role: AccessRole::User,
+            allowed_channel_ids: vec!["channel-a".to_string()],
+            allowed_other_video_ids: Vec::new(),
+        }));
+
+        assert!(can_use_db_inspect(&AccessContext {
+            user_id: Some("firebase-uid-999".to_string()),
+            auth_state: AuthState::Authenticated,
+            access_role: AccessRole::Operator,
+            allowed_channel_ids: vec!["channel-a".to_string()],
+            allowed_other_video_ids: Vec::new(),
+        }));
     }
 }

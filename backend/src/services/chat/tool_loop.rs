@@ -185,8 +185,7 @@ impl ChatService {
 
         match &call {
             PlannedChatToolCall::DbInspect(query) => {
-                let result = if access_context.access_role == crate::security::AccessRole::Operator
-                {
+                let result = if crate::security::can_use_db_inspect(access_context) {
                     tools::execute_db_inspect_query(&state.db, *query)
                         .await
                         .map_err(|error| error.to_string())?
