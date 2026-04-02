@@ -2,7 +2,7 @@
 
 ## Status
 
-Cutover is operationally complete in `dastill`. Cloud Run, Firebase, secrets, local envs, and the app runtime now point at the new project; the `Release` workflow already picked up the frontend URL fix; and the last migration regression, broken Firebase Google sign-in caused by an old-project OAuth client, is fixed live and captured in repo config through `frontend/firebase.json` plus the release workflow's Firebase Auth deploy step. The old shared project no longer retains `dAstIll` Firestore collections. One migration cleanup item is still open: Terraform still owns the Firestore single-field exemption resources in `uplifted-water-273221` because those resources never pinned the project argument explicitly.
+Cutover is operationally complete in `dastill`. Cloud Run, Firebase, secrets, local envs, and the app runtime now point at the new project; the `Release` workflow already picked up the frontend URL fix; the Firebase Google sign-in regression caused by an old-project OAuth client is fixed live and captured in repo config through `frontend/firebase.json` plus the release workflow's Firebase Auth deploy step; and Terraform now pins Firestore single-field exemption resources to `var.project_id` so those resources no longer drift back to `uplifted-water-273221`.
 
 ## Problem
 
@@ -47,4 +47,4 @@ Make the repo ready to run from the `dastill` GCP project, with Terraform, GitHu
 - The old shared project no longer contains the `dastill_preferences`, `dastill_tts_stats`, or `dastill_videos` Firestore collection groups.
 - The release workflow now resolves backend/docs service URLs inside the `deploy-frontend` job instead of publishing them as job outputs, preventing GitHub Actions from blanking the frontend `BACKEND_API_BASE`, `BACKEND_IDENTITY_AUDIENCE`, and `PUBLIC_DOCS_URL` env vars on deploy.
 - Firebase Google sign-in in `dastill` now uses a valid project-local `apps.googleusercontent.com` client again. The source of truth is `frontend/firebase.json`, deployed with `firebase deploy --only auth`, instead of Terraform-managed OAuth client credentials copied from another project.
-- A post-cutover Terraform audit found that Firestore single-field exemption resources are still tracked under `uplifted-water-273221`; that cleanup remains separate from the now-fixed auth regression.
+- Firestore single-field exemption resources now set `project = var.project_id` explicitly, so Terraform tracks those field overrides in `dastill` instead of inheriting stale state targeting from `uplifted-water-273221`.
