@@ -15,7 +15,7 @@ flowchart LR
   searchpending[Mark search_sources pending]
   searchworker[Search index worker]
   chunks[search_chunks]
-  fts[Tantivy BM25]
+  fts[libSQL FTS5]
   vectors[S3 Vectors]
   retrieval[Workspace search + chat]
 

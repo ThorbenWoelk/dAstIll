@@ -26,7 +26,7 @@ flowchart LR
     sources[search_sources]
     chunks[search_chunks]
     vectors[S3 Vectors embeddings]
-    fts[Tantivy BM25 replica]
+    fts[libSQL BM25 / FTS5]
   end
 
   subgraph firestore["Firestore"]
@@ -55,7 +55,7 @@ flowchart LR
   pending[Mark search_sources pending]
   worker[Search index worker]
   chunks[search_chunks objects]
-  fts[In-memory Tantivy]
+  fts[libSQL / Turso FTS5]
   vectors[S3 Vectors]
   results[Search + chat retrieval]
 
@@ -108,7 +108,7 @@ Additional video fields:
 
 - `acknowledged` - user-scoped read state overlaid onto API responses
 - `retry_count` - caps regeneration attempts for summaries
-- `quality_score` - 0-100 rating from the evaluator model
+- `quality_score` - 0-10 rating from the evaluator model
 
 ## API View Models vs Stored Records
 

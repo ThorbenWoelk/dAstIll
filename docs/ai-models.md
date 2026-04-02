@@ -72,7 +72,7 @@ This guard exists to keep generation and judgment independent.
 ### Judgment Criteria
 
 The evaluator compares the generated summary against the canonical transcript and scores
-on a 0-100 scale, writing a `quality_score` and `quality_note` to the summary record.
+on a 0-10 scale, writing a `quality_score` and `quality_note` to the summary record.
 Summaries below the threshold can be automatically requeued for regeneration.
 
 ### Regeneration Cap
@@ -102,7 +102,7 @@ disables itself. FTS continues to work.
 
 ### Example Local Model
 
-`embeddinggemma` is a common local choice for Ollama-backed semantic search:
+`embeddinggemma:latest` is a common local choice for Ollama-backed semantic search:
 
 - optimized for semantic similarity tasks
 - produces 512-dimensional float32 vectors
@@ -113,8 +113,8 @@ long as it exposes `/api/embed` and returns float32 vectors.
 
 ### Local Concurrency
 
-The embedding service shares a semaphore with the summarizer and evaluator services to
-bound concurrent Ollama calls and avoid saturating local GPU/CPU resources.
+The embedding service uses its own semaphore, separate from the summarizer/evaluator
+semaphore, so search traffic and generation traffic can be bounded independently.
 
 ---
 
@@ -263,7 +263,7 @@ all passes). The planner produces:
 
 For each query, the chat service runs:
 
-1. **FTS retrieval** against the in-memory Tantivy index (same BM25 path as workspace
+1. **FTS retrieval** against the libSQL/Turso FTS5 index (same BM25 path as workspace
    search, with keyword snippet extraction)
 2. **Semantic retrieval** via S3 Vectors ANN (if semantic search is enabled and the
    model is available)
