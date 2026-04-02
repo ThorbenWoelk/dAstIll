@@ -117,29 +117,29 @@ export function createHomeWorkspacePersistenceController(options: {
       urlState,
     );
 
-    if ("selectedChannelId" in restored) {
-      sidebarState.setSelectedChannelId(restored.selectedChannelId ?? null);
-    }
-    if ("selectedVideoId" in restored) {
-      sidebarState.setSelectedVideoId(restored.selectedVideoId ?? null);
-    }
+    sidebarState.applyRestoredSidebarState({
+      ...("selectedChannelId" in restored
+        ? { selectedChannelId: restored.selectedChannelId ?? null }
+        : {}),
+      ...("selectedVideoId" in restored
+        ? { selectedVideoId: restored.selectedVideoId ?? null }
+        : {}),
+      ...(restored.videoTypeFilter &&
+      isWorkspaceVideoTypeFilter(restored.videoTypeFilter)
+        ? { videoTypeFilter: restored.videoTypeFilter }
+        : {}),
+      ...(restored.acknowledgedFilter
+        ? { acknowledgedFilter: restored.acknowledgedFilter }
+        : {}),
+      ...(restored.channelSortMode
+        ? { channelSortMode: restored.channelSortMode }
+        : {}),
+      ...(Array.isArray(restored.channelOrder)
+        ? { channelOrder: restored.channelOrder }
+        : {}),
+    });
     if (restored.contentMode && isWorkspaceContentMode(restored.contentMode)) {
       content.setMode(restored.contentMode);
-    }
-    if (
-      restored.videoTypeFilter &&
-      isWorkspaceVideoTypeFilter(restored.videoTypeFilter)
-    ) {
-      sidebarState.setVideoTypeFilter(restored.videoTypeFilter);
-    }
-    if (restored.acknowledgedFilter) {
-      sidebarState.setAcknowledgedFilter(restored.acknowledgedFilter);
-    }
-    if (restored.channelSortMode) {
-      sidebarState.setChannelSortMode(restored.channelSortMode);
-    }
-    if (Array.isArray(restored.channelOrder)) {
-      sidebarState.setChannelOrder(restored.channelOrder);
     }
 
     const url =

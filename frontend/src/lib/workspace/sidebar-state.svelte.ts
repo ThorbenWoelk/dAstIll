@@ -248,6 +248,14 @@ export type SidebarStateResult = {
     next_offset: number | null;
     sync_depth: ChannelSyncDepthState | null;
   }) => void;
+  applyRestoredSidebarState: (options: {
+    selectedChannelId?: string | null;
+    selectedVideoId?: string | null;
+    channelOrder?: string[];
+    channelSortMode?: ChannelSortMode;
+    videoTypeFilter?: VideoTypeFilter;
+    acknowledgedFilter?: AcknowledgedFilter;
+  }) => void;
 
   // Operations
   syncChannelOrderFromList: () => void;
@@ -490,6 +498,34 @@ export function createSidebarState(
     videos = dedupeVideosById(snapshot.videos);
     offset = snapshot.next_offset ?? snapshot.videos.length;
     hasMore = snapshot.has_more;
+  }
+
+  function applyRestoredSidebarState(options: {
+    selectedChannelId?: string | null;
+    selectedVideoId?: string | null;
+    channelOrder?: string[];
+    channelSortMode?: ChannelSortMode;
+    videoTypeFilter?: VideoTypeFilter;
+    acknowledgedFilter?: AcknowledgedFilter;
+  }) {
+    if ("selectedChannelId" in options) {
+      selectedChannelId = options.selectedChannelId ?? null;
+    }
+    if ("selectedVideoId" in options) {
+      selectedVideoId = options.selectedVideoId ?? null;
+    }
+    if (options.channelOrder) {
+      channelOrder = options.channelOrder;
+    }
+    if (options.channelSortMode) {
+      channelSortMode = options.channelSortMode;
+    }
+    if (options.videoTypeFilter) {
+      setVideoTypeFilter(options.videoTypeFilter);
+    }
+    if (options.acknowledgedFilter) {
+      setAcknowledgedFilter(options.acknowledgedFilter);
+    }
   }
 
   function setVideoStatus(
@@ -817,6 +853,7 @@ export function createSidebarState(
     updateVideo,
     resetVideoListState,
     applyChannelSnapshotState,
+    applyRestoredSidebarState,
 
     // Operations
     loadInitial,

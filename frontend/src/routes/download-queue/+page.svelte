@@ -466,30 +466,26 @@
         : parseQueueViewUrlState(new URL(window.location.href)),
     );
 
-    if ("selectedChannelId" in restored) {
-      sidebar.setSelectedChannelId(restored.selectedChannelId ?? null);
-    }
-    if (restored.channelOrder) {
-      sidebar.setChannelOrder(restored.channelOrder);
-    }
-    if (restored.channelSortMode) {
-      sidebar.setChannelSortMode(restored.channelSortMode);
-    }
-    if (typeof restored.selectedVideoId === "string") {
-      sidebar.setSelectedVideoId(restored.selectedVideoId);
-    }
-    if (
-      restored.videoTypeFilter &&
+    sidebar.applyRestoredSidebarState({
+      ...("selectedChannelId" in restored
+        ? { selectedChannelId: restored.selectedChannelId ?? null }
+        : {}),
+      ...(restored.channelOrder ? { channelOrder: restored.channelOrder } : {}),
+      ...(restored.channelSortMode
+        ? { channelSortMode: restored.channelSortMode }
+        : {}),
+      ...(typeof restored.selectedVideoId === "string"
+        ? { selectedVideoId: restored.selectedVideoId }
+        : {}),
+      ...(restored.videoTypeFilter &&
       isWorkspaceVideoTypeFilter(restored.videoTypeFilter)
-    ) {
-      sidebar.setVideoTypeFilter(restored.videoTypeFilter);
-    }
-    if (
-      restored.acknowledgedFilter &&
+        ? { videoTypeFilter: restored.videoTypeFilter }
+        : {}),
+      ...(restored.acknowledgedFilter &&
       isAcknowledgedFilter(restored.acknowledgedFilter)
-    ) {
-      sidebar.setAcknowledgedFilter(restored.acknowledgedFilter);
-    }
+        ? { acknowledgedFilter: restored.acknowledgedFilter }
+        : {}),
+    });
   }
 
   async function saveEarliestSyncDate(value: string) {
