@@ -191,6 +191,15 @@ async fn main() -> anyhow::Result<()> {
     )
     .await
     .map_err(|e| anyhow::anyhow!(e))?;
+    let pruned_malformed_videos = dastill::db::prune_malformed_video_documents(&pool)
+        .await
+        .map_err(|e| anyhow::anyhow!(e))?;
+    if pruned_malformed_videos > 0 {
+        tracing::warn!(
+            pruned_count = pruned_malformed_videos,
+            "pruned malformed Firestore video documents; refresh and gap workers will repopulate them"
+        );
+    }
 
     let client = build_http_client();
     let analytics = databricks_runtime

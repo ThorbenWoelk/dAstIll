@@ -68,13 +68,33 @@ fn deserialize_video_document(document: &FirestoreDocument) -> Result<Video, Sto
     })
 }
 
-fn deserialize_video_documents(
-    documents: Vec<FirestoreDocument>,
-) -> Result<Vec<Video>, StoreError> {
+fn log_malformed_video_document(document: &FirestoreDocument, error: &StoreError, operation: &str) {
+    tracing::warn!(
+        operation,
+        document_path = %document.name,
+        error = %error,
+        "skipping malformed Firestore video document"
+    );
+}
+
+fn deserialize_video_document_lossy(
+    document: &FirestoreDocument,
+    operation: &str,
+) -> Option<Video> {
+    match deserialize_video_document(document) {
+        Ok(video) => Some(video),
+        Err(error) => {
+            log_malformed_video_document(document, &error, operation);
+            None
+        }
+    }
+}
+
+fn deserialize_video_documents(documents: Vec<FirestoreDocument>, operation: &str) -> Vec<Video> {
     documents
         .iter()
-        .map(deserialize_video_document)
-        .collect::<Result<Vec<_>, _>>()
+        .filter_map(|document| deserialize_video_document_lossy(document, operation))
+        .collect()
 }
 
 fn partial_update_document(
@@ -87,6 +107,18 @@ fn partial_update_document(
         store.firestore.get_documents_path()
     );
     Ok(firestore_document_from_serializable(document_path, video)?)
+}
+
+async fn delete_video_document(store: &Store, video_id: &str) -> Result<(), StoreError> {
+    store
+        .firestore
+        .fluent()
+        .delete()
+        .from(COLLECTION)
+        .document_id(video_id)
+        .execute()
+        .await?;
+    Ok(())
 }
 
 fn transcript_storage_key(video_id: &str) -> String {
@@ -138,8 +170,7 @@ pub async fn fs_insert_video(
         .one(&video.id)
         .await?
         .as_ref()
-        .map(deserialize_video_document)
-        .transpose()?;
+        .and_then(|document| deserialize_video_document_lossy(document, "insert_video_existing"));
 
     let (merged, outcome) = if let Some(existing) = existing {
         let merged = Video {
@@ -277,6 +308,45 @@ mod tests {
         assert_eq!(video.retry_count, 2);
         assert_eq!(video.quality_score, Some(7));
     }
+
+    #[test]
+    fn malformed_firestore_video_without_channel_id_is_skipped_in_bulk_reads() {
+        #[derive(serde::Serialize)]
+        struct MalformedVideoRecord {
+            title: String,
+            thumbnail_url: Option<String>,
+            published_at: chrono::DateTime<chrono::Utc>,
+            is_short: bool,
+            transcript_status: ContentStatus,
+            summary_status: ContentStatus,
+            acknowledged: bool,
+            retry_count: u8,
+            quality_score: Option<u8>,
+        }
+
+        let record = MalformedVideoRecord {
+            title: "Broken".to_string(),
+            thumbnail_url: None,
+            published_at: chrono::Utc::now(),
+            is_short: false,
+            transcript_status: ContentStatus::Ready,
+            summary_status: ContentStatus::Pending,
+            acknowledged: false,
+            retry_count: 0,
+            quality_score: None,
+        };
+        let document = firestore_document_from_serializable(
+            format!(
+                "projects/test-project/databases/(default)/documents/{COLLECTION}/broken-video"
+            ),
+            &record,
+        )
+        .expect("malformed firestore document");
+
+        let videos = super::deserialize_video_documents(vec![document], "test_bulk_read");
+
+        assert!(videos.is_empty());
+    }
 }
 
 pub async fn fs_bulk_insert_videos(store: &Store, videos: Vec<Video>) -> Result<usize, StoreError> {
@@ -307,8 +377,7 @@ pub async fn fs_get_video(
         .one(id)
         .await?
         .as_ref()
-        .map(deserialize_video_document)
-        .transpose()?;
+        .and_then(|document| deserialize_video_document_lossy(document, "get_video"));
 
     if include_summary {
         if let Some(ref mut v) = video {
@@ -350,7 +419,10 @@ pub async fn fs_get_videos(
             let Some(document) = maybe_document else {
                 continue;
             };
-            let mut video = deserialize_video_document(&document)?;
+            let Some(mut video) = deserialize_video_document_lossy(&document, "get_videos_batch")
+            else {
+                continue;
+            };
             if include_summary {
                 if let Some(summary) = store
                     .get_json::<crate::models::Summary>(&format!("summaries/{}.json", video.id))
@@ -374,7 +446,43 @@ pub async fn fs_load_all_videos(store: &Store) -> Result<Vec<Video>, StoreError>
         .from(COLLECTION)
         .query()
         .await?;
-    deserialize_video_documents(documents)
+    Ok(deserialize_video_documents(documents, "load_all_videos"))
+}
+
+pub async fn prune_malformed_video_documents(store: &Store) -> Result<usize, StoreError> {
+    let documents = store
+        .firestore
+        .fluent()
+        .select()
+        .from(COLLECTION)
+        .query()
+        .await?;
+
+    let mut pruned = 0usize;
+    for document in documents {
+        let Err(error) = deserialize_video_document(&document) else {
+            continue;
+        };
+        let Ok(video_id) = document_id_from_path(&document).map(str::to_string) else {
+            tracing::error!(
+                document_path = %document.name,
+                error = %error,
+                "encountered malformed Firestore video document with unreadable path"
+            );
+            continue;
+        };
+
+        tracing::warn!(
+            video_id = %video_id,
+            document_path = %document.name,
+            error = %error,
+            "deleting malformed Firestore video document so canonical ingest can repopulate it"
+        );
+        delete_video_document(store, &video_id).await?;
+        pruned += 1;
+    }
+
+    Ok(pruned)
 }
 
 pub async fn fs_update_video_acknowledged(
@@ -466,8 +574,7 @@ pub async fn fs_increment_video_retry_count(
         .one(video_id)
         .await?
         .as_ref()
-        .map(deserialize_video_document)
-        .transpose()?;
+        .and_then(|document| deserialize_video_document_lossy(document, "increment_retry_count"));
 
     if let Some(video) = video {
         let new_count = video.retry_count.saturating_add(1);
@@ -534,7 +641,8 @@ pub async fn fs_list_videos_for_queue_processing(
                 .filter(|q| q.field(path!(Video::transcript_status)).eq(status))
                 .query()
                 .await?,
-        )?;
+            "queue_processing_transcripts",
+        );
         pending_transcripts.extend(batch);
     }
 
@@ -558,7 +666,8 @@ pub async fn fs_list_videos_for_queue_processing(
                 .filter(|q| q.field(path!(Video::summary_status)).eq(status))
                 .query()
                 .await?,
-        )?;
+            "queue_processing_summaries",
+        );
         pending_summaries.extend(batch);
     }
 
@@ -590,7 +699,8 @@ pub async fn fs_heal_queue_videos(store: &Store, max_retries: u8) -> Result<usiz
                 .filter(|q| q.field(path!(Video::transcript_status)).eq(status))
                 .query()
                 .await?,
-        )?;
+            "heal_queue_transcripts",
+        );
         pending_transcripts.extend(batch);
     }
 
@@ -613,7 +723,8 @@ pub async fn fs_heal_queue_videos(store: &Store, max_retries: u8) -> Result<usiz
                 .filter(|q| q.field(path!(Video::summary_status)).eq(status))
                 .query()
                 .await?,
-        )?;
+            "heal_queue_summaries",
+        );
         pending_summaries.extend(batch);
     }
 
