@@ -22,6 +22,8 @@ backend_port=${BACKEND_PORT:-3544}
 docs_port=${DOCS_PORT:-4173}
 ports=($frontend_port $backend_port $docs_port)
 script_path=${0:A}
+repo_root=${script_path:h}
+link_shared_env_script="${repo_root}/scripts/link_shared_env.sh"
 if [[ -n "${DASTILL_ENV_DIR:-}" ]]; then
 	shared_env_dir="$DASTILL_ENV_DIR"
 elif [[ -n "${XDG_CONFIG_HOME:-}" ]]; then
@@ -177,6 +179,27 @@ export_env_file_preserving_shell() {
 	done < "$env_file"
 }
 
+ensure_local_env_files() {
+	local missing_env=0
+
+	[[ -f "$shared_backend_env_file" ]] || missing_env=1
+	[[ -f "$shared_frontend_env_file" ]] || missing_env=1
+	[[ -f "backend/.env" ]] || missing_env=1
+	[[ -f "frontend/.env" ]] || missing_env=1
+
+	if (( missing_env == 0 )); then
+		return 0
+	fi
+
+	echo "Local env files missing; running scripts/link_shared_env.sh"
+	"$link_shared_env_script"
+
+	if [[ ! -f "$shared_backend_env_file" || ! -f "$shared_frontend_env_file" || ! -f "backend/.env" || ! -f "frontend/.env" ]]; then
+		echo "Error: failed to set up local env files under backend/.env, frontend/.env, or ${shared_env_dir}"
+		exit 1
+	fi
+}
+
 prepare_frontend_env() {
 	export_env_file_preserving_shell "$shared_frontend_env_file"
 	export_env_file_preserving_shell "frontend/.env"
@@ -325,6 +348,7 @@ check_ollama_models() {
 }
 
 capture_initial_env_keys
+ensure_local_env_files
 check_ollama_models
 
 if [[ "$mode" == "detach" ]]; then
