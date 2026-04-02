@@ -4,6 +4,14 @@ use crate::models::{
 
 use super::{Store, StoreError};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct HighlightMigrationStats {
+    pub scanned: usize,
+    pub copied: usize,
+    pub skipped_duplicates: usize,
+    pub remapped_ids: usize,
+}
+
 fn highlight_prefix(user_id: &str) -> String {
     format!("user-highlights/{user_id}/")
 }
@@ -37,6 +45,23 @@ fn clamp_highlight_context(input: &str) -> String {
 
 async fn list_user_highlights(store: &Store, user_id: &str) -> Result<Vec<Highlight>, StoreError> {
     store.load_all(&highlight_prefix(user_id)).await
+}
+
+fn highlights_are_equivalent(left: &Highlight, right: &Highlight) -> bool {
+    left.video_id == right.video_id
+        && left.source == right.source
+        && normalize_highlight_text(&left.text) == normalize_highlight_text(&right.text)
+        && left.prefix_context == right.prefix_context
+        && left.suffix_context == right.suffix_context
+}
+
+fn next_available_highlight_id(occupied_ids: &std::collections::HashSet<i64>) -> i64 {
+    loop {
+        let candidate = generate_highlight_id();
+        if !occupied_ids.contains(&candidate) {
+            return candidate;
+        }
+    }
 }
 
 pub async fn create_highlight(
@@ -110,6 +135,51 @@ pub async fn delete_highlight(
         store.delete_key(&key).await?;
     }
     Ok(exists)
+}
+
+pub async fn migrate_user_highlights(
+    store: &Store,
+    from_user_id: &str,
+    to_user_id: &str,
+    dry_run: bool,
+) -> Result<HighlightMigrationStats, StoreError> {
+    let source_highlights = list_user_highlights(store, from_user_id).await?;
+    let mut target_highlights = list_user_highlights(store, to_user_id).await?;
+    let mut occupied_ids = target_highlights
+        .iter()
+        .map(|highlight| highlight.id)
+        .collect::<std::collections::HashSet<_>>();
+    let mut stats = HighlightMigrationStats::default();
+
+    for highlight in source_highlights {
+        stats.scanned += 1;
+
+        if target_highlights
+            .iter()
+            .any(|existing| highlights_are_equivalent(existing, &highlight))
+        {
+            stats.skipped_duplicates += 1;
+            continue;
+        }
+
+        let mut migrated = highlight.clone();
+        if occupied_ids.contains(&migrated.id) {
+            migrated.id = next_available_highlight_id(&occupied_ids);
+            stats.remapped_ids += 1;
+        }
+
+        if !dry_run {
+            store
+                .put_json(&highlight_key(to_user_id, migrated.id), &migrated)
+                .await?;
+        }
+
+        occupied_ids.insert(migrated.id);
+        target_highlights.push(migrated);
+        stats.copied += 1;
+    }
+
+    Ok(stats)
 }
 
 pub(crate) async fn delete_highlights_for_video(
@@ -226,4 +296,50 @@ async fn group_highlights(
     }
 
     Ok(groups)
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::Utc;
+
+    use super::{highlights_are_equivalent, next_available_highlight_id};
+    use crate::models::{Highlight, HighlightSource};
+
+    fn sample_highlight(id: i64) -> Highlight {
+        Highlight {
+            id,
+            video_id: "video-123".to_string(),
+            source: HighlightSource::Summary,
+            text: "Apple  Intelligence   runs  locally".to_string(),
+            prefix_context: "prefix".to_string(),
+            suffix_context: "suffix".to_string(),
+            created_at: Utc::now(),
+        }
+    }
+
+    #[test]
+    fn equivalent_highlights_ignore_text_whitespace_differences() {
+        let left = sample_highlight(1);
+        let mut right = sample_highlight(2);
+        right.text = "Apple Intelligence runs locally".to_string();
+
+        assert!(highlights_are_equivalent(&left, &right));
+    }
+
+    #[test]
+    fn equivalent_highlights_require_matching_video_context() {
+        let left = sample_highlight(1);
+        let mut right = sample_highlight(2);
+        right.video_id = "video-999".to_string();
+
+        assert!(!highlights_are_equivalent(&left, &right));
+    }
+
+    #[test]
+    fn next_available_highlight_id_avoids_existing_ids() {
+        let occupied = std::collections::HashSet::from([1_i64, 2_i64, 3_i64]);
+        let next_id = next_available_highlight_id(&occupied);
+
+        assert!(!occupied.contains(&next_id));
+    }
 }
