@@ -27,6 +27,7 @@ import {
   createChannelViewCache,
   type ChannelSyncDepthState,
 } from "$lib/channel-view-cache";
+import { buildHomeWorkspaceChannelViewCacheKey } from "$lib/workspace/home-workspace-cache-key";
 import {
   putCachedBootstrapMeta,
   putCachedChannels,
@@ -97,19 +98,12 @@ export function createHomeWorkspaceDataController(options: {
   let lastBackfillRequestAtMs = 0;
 
   function getChannelViewKey(channelId: string) {
-    const syncDepth = sidebarState.videoState.syncDepth;
-    const syncKey = syncDepth
-      ? `${syncDepth.earliest_sync_date ?? ""}:${syncDepth.earliest_sync_date_user_set}:${syncDepth.derived_earliest_ready_date ?? ""}`
-      : "";
-    return buildChannelViewCacheKey(
+    return buildHomeWorkspaceChannelViewCacheKey({
       channelId,
-      options.getWorkspaceCacheScopeKey(),
-      sidebarState.videoState.backfillingHistory,
-      sidebarState.videoState.videoTypeFilter,
-      sidebarState.videoState.acknowledgedFilter,
-      sidebarState.videoState.offset,
-      syncKey,
-    );
+      workspaceCacheScopeKey: options.getWorkspaceCacheScopeKey(),
+      videoTypeFilter: sidebarState.videoState.videoTypeFilter,
+      acknowledgedFilter: sidebarState.videoState.acknowledgedFilter,
+    });
   }
 
   function restoreCachedChannelVideoState(state: CachedChannelVideoState) {
@@ -154,6 +148,9 @@ export function createHomeWorkspaceDataController(options: {
   }
 
   async function handleChannelSyncDateSaved(channelId: string) {
+    options.channelVideoStateCache.deleteByPrefix(
+      buildChannelViewCacheKey(channelId, options.getWorkspaceCacheScopeKey()),
+    );
     if (sidebarState.selectedChannelId === channelId) {
       await loadSyncDepth();
     }
@@ -481,7 +478,6 @@ export function createHomeWorkspaceDataController(options: {
       return;
     }
     const channelId = sidebarState.channelIdToDelete;
-    const channelViewKey = getChannelViewKey(channelId);
     sidebarState.setShowDeleteConfirmation(false);
     sidebarState.setChannelIdToDelete(null);
 
@@ -510,7 +506,12 @@ export function createHomeWorkspaceDataController(options: {
     try {
       await deleteChannel(channelId);
       void removeCachedChannel(channelId, options.getWorkspaceCacheScopeKey());
-      options.channelVideoStateCache.delete(channelViewKey);
+      options.channelVideoStateCache.deleteByPrefix(
+        buildChannelViewCacheKey(
+          channelId,
+          options.getWorkspaceCacheScopeKey(),
+        ),
+      );
     } catch (error) {
       sidebarState.setChannels(previousChannels);
       sidebarState.setSelectedChannelId(previousSelectedChannelId);
