@@ -119,6 +119,76 @@ jobs:
             echo 'CR_SECRETS_EOF'
           } >> "$GITHUB_OUTPUT"
 
+      - name: Prepare backend Cloud Run env vars
+        id: backend_env
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+          AWS_WIF_AUDIENCE: ${{ vars.AWS_WIF_AUDIENCE }}
+          S3_DATA_BUCKET: ${{ vars.S3_DATA_BUCKET }}
+          S3_VECTOR_BUCKET: ${{ vars.S3_VECTOR_BUCKET }}
+          S3_VECTOR_INDEX: ${{ vars.S3_VECTOR_INDEX }}
+          TURSO_DB_URL: ${{ vars.TURSO_DB_URL }}
+          DEFAULT_SEEDED_CHANNEL_ID: ${{ vars.DEFAULT_SEEDED_CHANNEL_ID || 'UCbRP3c757lWg9M-U7TyEkXA' }}
+          SEARCH_SEMANTIC_ENABLED: ${{ vars.SEARCH_SEMANTIC_ENABLED || 'true' }}
+          OLLAMA_URL: ${{ vars.OLLAMA_URL }}
+          OLLAMA_SUMMARY_MODEL: ${{ vars.OLLAMA_SUMMARY_MODEL }}
+          OLLAMA_DEFAULT_CHAT_MODEL: ${{ vars.OLLAMA_DEFAULT_CHAT_MODEL || vars.OLLAMA_SUMMARY_MODEL }}
+          OLLAMA_EMBEDDING_MODEL: ${{ vars.OLLAMA_EMBEDDING_MODEL }}
+          SUMMARY_EVALUATOR_MODEL: ${{ vars.SUMMARY_EVALUATOR_MODEL }}
+          BACKEND_CORS_ALLOWED_ORIGINS: ${{ vars.BACKEND_CORS_ALLOWED_ORIGINS }}
+          DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+          DATABRICKS_WAREHOUSE_ID: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
+          DATABRICKS_CATALOG: ${{ vars.DATABRICKS_CATALOG }}
+          DATABRICKS_SCHEMA: ${{ vars.DATABRICKS_SCHEMA }}
+          DATABRICKS_BRONZE_TABLE: ${{ vars.DATABRICKS_BRONZE_TABLE }}
+        run: |
+          set -euo pipefail
+
+          env_file=/tmp/backend_cr_env.txt
+          : > "$env_file"
+
+          add_env_var() {
+            local key="$1"
+            local value="${2:-}"
+            value="$(printf '%s' "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+            if [ -n "$value" ]; then
+              printf '%s=%s\n' "$key" "$value" >> "$env_file"
+            fi
+          }
+
+          add_env_var AWS_REGION "$AWS_REGION"
+          add_env_var AWS_ROLE_ARN "$AWS_ROLE_ARN"
+          add_env_var AWS_WIF_AUDIENCE "$AWS_WIF_AUDIENCE"
+          add_env_var S3_DATA_BUCKET "$S3_DATA_BUCKET"
+          add_env_var S3_VECTOR_BUCKET "$S3_VECTOR_BUCKET"
+          add_env_var S3_VECTOR_INDEX "$S3_VECTOR_INDEX"
+          add_env_var TURSO_DB_URL "$TURSO_DB_URL"
+          add_env_var DEFAULT_SEEDED_CHANNEL_ID "$DEFAULT_SEEDED_CHANNEL_ID"
+          add_env_var SEARCH_SEMANTIC_ENABLED "$SEARCH_SEMANTIC_ENABLED"
+          add_env_var OLLAMA_URL "$OLLAMA_URL"
+          add_env_var OLLAMA_SUMMARY_MODEL "$OLLAMA_SUMMARY_MODEL"
+          add_env_var OLLAMA_DEFAULT_CHAT_MODEL "$OLLAMA_DEFAULT_CHAT_MODEL"
+          add_env_var OLLAMA_EMBEDDING_MODEL "$OLLAMA_EMBEDDING_MODEL"
+          add_env_var SUMMARY_EVALUATOR_MODEL "$SUMMARY_EVALUATOR_MODEL"
+          add_env_var BACKEND_CORS_ALLOWED_ORIGINS "$BACKEND_CORS_ALLOWED_ORIGINS"
+          add_env_var DATABRICKS_HOST "$DATABRICKS_HOST"
+          add_env_var DATABRICKS_WAREHOUSE_ID "$DATABRICKS_WAREHOUSE_ID"
+          add_env_var DATABRICKS_CATALOG "$DATABRICKS_CATALOG"
+          add_env_var DATABRICKS_SCHEMA "$DATABRICKS_SCHEMA"
+          add_env_var DATABRICKS_BRONZE_TABLE "$DATABRICKS_BRONZE_TABLE"
+          add_env_var GCP_PROJECT_ID "$PROJECT_ID"
+          printf '%s\n' 'SUMMARIZE_PATH=/usr/local/bin/summarize' >> "$env_file"
+          printf '%s\n' 'POLLY_TTS_ENABLED=true' >> "$env_file"
+          printf '%s\n' 'POLLY_TTS_VOICE_ID=Stephen' >> "$env_file"
+          printf '%s\n' 'RUST_LOG="dastill=info,tower_http=info"' >> "$env_file"
+
+          {
+            echo 'env_vars<<CR_ENV_EOF'
+            cat "$env_file"
+            echo 'CR_ENV_EOF'
+          } >> "$GITHUB_OUTPUT"
+
       - name: Deploy Backend to Cloud Run
         id: deploy
         uses: google-github-actions/deploy-cloudrun@v3.0.0
@@ -130,32 +200,8 @@ jobs:
           # Quote so newlines from the prior step are preserved for deploy-cloudrun.
           secrets: "${{ steps.backend_secrets.outputs.secrets }}"
           secrets_update_strategy: overwrite
-          env_vars: |
-            AWS_REGION=${{ vars.AWS_REGION }}
-            AWS_ROLE_ARN=${{ vars.AWS_ROLE_ARN }}
-            AWS_WIF_AUDIENCE=${{ vars.AWS_WIF_AUDIENCE }}
-            S3_DATA_BUCKET=${{ vars.S3_DATA_BUCKET }}
-            S3_VECTOR_BUCKET=${{ vars.S3_VECTOR_BUCKET }}
-            S3_VECTOR_INDEX=${{ vars.S3_VECTOR_INDEX }}
-            TURSO_DB_URL=${{ vars.TURSO_DB_URL }}
-            DEFAULT_SEEDED_CHANNEL_ID=${{ vars.DEFAULT_SEEDED_CHANNEL_ID || 'UCbRP3c757lWg9M-U7TyEkXA' }}
-            SEARCH_SEMANTIC_ENABLED=${{ vars.SEARCH_SEMANTIC_ENABLED || 'true' }}
-            OLLAMA_URL=${{ vars.OLLAMA_URL }}
-            OLLAMA_SUMMARY_MODEL=${{ vars.OLLAMA_SUMMARY_MODEL || vars.OLLAMA_MODEL }}
-            OLLAMA_DEFAULT_CHAT_MODEL=${{ vars.OLLAMA_DEFAULT_CHAT_MODEL || vars.OLLAMA_SUMMARY_MODEL || vars.OLLAMA_MODEL }}
-            OLLAMA_EMBEDDING_MODEL=${{ vars.OLLAMA_EMBEDDING_MODEL }}
-            SUMMARY_EVALUATOR_MODEL=${{ vars.SUMMARY_EVALUATOR_MODEL }}
-            SUMMARIZE_PATH=/usr/local/bin/summarize
-            BACKEND_CORS_ALLOWED_ORIGINS=${{ vars.BACKEND_CORS_ALLOWED_ORIGINS }}
-            POLLY_TTS_ENABLED=true
-            POLLY_TTS_VOICE_ID=Stephen
-            DATABRICKS_HOST=${{ vars.DATABRICKS_HOST }}
-            DATABRICKS_WAREHOUSE_ID=${{ vars.DATABRICKS_WAREHOUSE_ID }}
-            DATABRICKS_CATALOG=${{ vars.DATABRICKS_CATALOG }}
-            DATABRICKS_SCHEMA=${{ vars.DATABRICKS_SCHEMA }}
-            DATABRICKS_BRONZE_TABLE=${{ vars.DATABRICKS_BRONZE_TABLE }}
-            GCP_PROJECT_ID=${{ env.PROJECT_ID }}
-            RUST_LOG=dastill=info,tower_http=info
+          env_vars: "${{ steps.backend_env.outputs.env_vars }}"
+          env_vars_update_strategy: overwrite
 
   deploy-docs:
     name: Deploy Docs
@@ -262,6 +308,40 @@ jobs:
             -t $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/frontend:$IMAGE_TAG ./frontend
           docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/frontend:$IMAGE_TAG
 
+      - name: Prepare frontend Cloud Run env vars
+        id: frontend_env
+        env:
+          BACKEND_API_BASE: ${{ steps.service_urls.outputs.backend_url }}
+          BACKEND_IDENTITY_AUDIENCE: ${{ steps.service_urls.outputs.backend_url }}
+          PUBLIC_DOCS_URL: ${{ steps.service_urls.outputs.docs_url }}
+          PUBLIC_CONTACT_EMAIL: ${{ vars.CONTACT_EMAIL }}
+        run: |
+          set -euo pipefail
+
+          env_file=/tmp/frontend_cr_env.txt
+          : > "$env_file"
+
+          add_env_var() {
+            local key="$1"
+            local value="${2:-}"
+            value="$(printf '%s' "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+            if [ -n "$value" ]; then
+              printf '%s=%s\n' "$key" "$value" >> "$env_file"
+            fi
+          }
+
+          add_env_var BACKEND_API_BASE "$BACKEND_API_BASE"
+          add_env_var BACKEND_IDENTITY_AUDIENCE "$BACKEND_IDENTITY_AUDIENCE"
+          add_env_var PUBLIC_DOCS_URL "$PUBLIC_DOCS_URL"
+          add_env_var PUBLIC_CONTACT_EMAIL "$PUBLIC_CONTACT_EMAIL"
+          add_env_var PUBLIC_FIREBASE_PROJECT_ID "$PROJECT_ID"
+
+          {
+            echo 'env_vars<<CR_ENV_EOF'
+            cat "$env_file"
+            echo 'CR_ENV_EOF'
+          } >> "$GITHUB_OUTPUT"
+
       - name: Deploy Frontend to Cloud Run
         uses: google-github-actions/deploy-cloudrun@v3.0.0
         with:
@@ -272,14 +352,8 @@ jobs:
           secrets: |
             BACKEND_PROXY_TOKEN=${{ env.APP_NAME }}-backend-proxy-token:latest
             PUBLIC_FIREBASE_API_KEY=${{ env.APP_NAME }}-firebase-web-api-key:latest
-            PUBLIC_FIREBASE_KEY=${{ env.APP_NAME }}-firebase-web-api-key:latest
             PUBLIC_FIREBASE_AUTH_DOMAIN=${{ env.APP_NAME }}-firebase-auth-domain:latest
           # Overwrite drops legacy secret mounts (e.g. app-auth / app-session) that no longer have IAM.
           secrets_update_strategy: overwrite
-          env_vars: |
-            BACKEND_API_BASE=${{ steps.service_urls.outputs.backend_url }}
-            BACKEND_IDENTITY_AUDIENCE=${{ steps.service_urls.outputs.backend_url }}
-            PUBLIC_DOCS_URL=${{ steps.service_urls.outputs.docs_url }}
-            PUBLIC_CONTACT_EMAIL=${{ vars.CONTACT_EMAIL }}
-            ADDRESS_HEADER=X-Forwarded-For
-            PUBLIC_FIREBASE_PROJECT_ID=${{ env.PROJECT_ID }}
+          env_vars: "${{ steps.frontend_env.outputs.env_vars }}"
+          env_vars_update_strategy: overwrite

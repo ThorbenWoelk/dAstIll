@@ -41,23 +41,17 @@ function requiredPublicEnv(
   return value;
 }
 
-/** Firebase console labels this "API key"; some envs use PUBLIC_FIREBASE_KEY instead. */
 function readFirebaseWebApiKey(): string {
-  const envRecord = env as Record<string, string | undefined>;
   const value =
-    envRecord.PUBLIC_FIREBASE_API_KEY?.trim() ||
-    envRecord.PUBLIC_FIREBASE_KEY?.trim() ||
-    readProcessEnv("PUBLIC_FIREBASE_API_KEY")?.trim() ||
-    readProcessEnv("PUBLIC_FIREBASE_KEY")?.trim();
+    env.PUBLIC_FIREBASE_API_KEY?.trim() ||
+    readProcessEnv("PUBLIC_FIREBASE_API_KEY")?.trim();
   if (value) {
     return value;
   }
   if (shouldUseLocalFallbackConfig()) {
     return LOCAL_DEV_FIREBASE_CONFIG.apiKey;
   }
-  throw new Error(
-    "PUBLIC_FIREBASE_API_KEY (Firebase Web API key) must be set; optional alias PUBLIC_FIREBASE_KEY",
-  );
+  throw new Error("PUBLIC_FIREBASE_API_KEY (Firebase Web API key) must be set");
 }
 
 function readFirebaseAuthEmulatorHost(): string | null {
