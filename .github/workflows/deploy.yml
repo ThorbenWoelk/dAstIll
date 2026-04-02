@@ -189,12 +189,10 @@ jobs:
           service: ${{ format('{0}-backend', env.APP_NAME) }}
           region: ${{ env.REGION }}
           image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_ID }}/backend:${{ env.IMAGE_TAG }}
-          flags: "--service-account=${{ env.APP_NAME }}-backend-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com --memory=1Gi"
+          flags: "--service-account=${{ env.APP_NAME }}-backend-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com --memory=1Gi --env-vars-file=/tmp/backend_cr_env.txt"
           # Quote so newlines from the prior step are preserved for deploy-cloudrun.
           secrets: "${{ steps.backend_secrets.outputs.secrets }}"
           secrets_update_strategy: overwrite
-          env_vars_file: /tmp/backend_cr_env.txt
-          env_vars_update_strategy: overwrite
 
   deploy-docs:
     name: Deploy Docs
@@ -334,12 +332,10 @@ jobs:
           service: ${{ format('{0}-frontend', env.APP_NAME) }}
           region: ${{ env.REGION }}
           image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_ID }}/frontend:${{ env.IMAGE_TAG }}
-          flags: "--service-account=${{ env.APP_NAME }}-frontend-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
+          flags: "--service-account=${{ env.APP_NAME }}-frontend-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com --env-vars-file=/tmp/frontend_cr_env.txt"
           secrets: |
             BACKEND_PROXY_TOKEN=${{ env.APP_NAME }}-backend-proxy-token:latest
             PUBLIC_FIREBASE_API_KEY=${{ env.APP_NAME }}-firebase-web-api-key:latest
             PUBLIC_FIREBASE_AUTH_DOMAIN=${{ env.APP_NAME }}-firebase-auth-domain:latest
           # Overwrite drops legacy secret mounts (e.g. app-auth / app-session) that no longer have IAM.
           secrets_update_strategy: overwrite
-          env_vars_file: /tmp/frontend_cr_env.txt
-          env_vars_update_strategy: overwrite
