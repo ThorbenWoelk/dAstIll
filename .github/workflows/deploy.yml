@@ -120,7 +120,6 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Prepare backend Cloud Run env vars
-        id: backend_env
         env:
           AWS_REGION: ${{ vars.AWS_REGION }}
           AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
@@ -181,13 +180,7 @@ jobs:
           printf '%s\n' 'SUMMARIZE_PATH=/usr/local/bin/summarize' >> "$env_file"
           printf '%s\n' 'POLLY_TTS_ENABLED=true' >> "$env_file"
           printf '%s\n' 'POLLY_TTS_VOICE_ID=Stephen' >> "$env_file"
-          printf '%s\n' 'RUST_LOG="dastill=info,tower_http=info"' >> "$env_file"
-
-          {
-            echo 'env_vars<<CR_ENV_EOF'
-            cat "$env_file"
-            echo 'CR_ENV_EOF'
-          } >> "$GITHUB_OUTPUT"
+          printf '%s\n' 'RUST_LOG=dastill=info,tower_http=info' >> "$env_file"
 
       - name: Deploy Backend to Cloud Run
         id: deploy
@@ -200,7 +193,7 @@ jobs:
           # Quote so newlines from the prior step are preserved for deploy-cloudrun.
           secrets: "${{ steps.backend_secrets.outputs.secrets }}"
           secrets_update_strategy: overwrite
-          env_vars: "${{ steps.backend_env.outputs.env_vars }}"
+          env_vars_file: /tmp/backend_cr_env.txt
           env_vars_update_strategy: overwrite
 
   deploy-docs:
@@ -309,7 +302,6 @@ jobs:
           docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/frontend:$IMAGE_TAG
 
       - name: Prepare frontend Cloud Run env vars
-        id: frontend_env
         env:
           BACKEND_API_BASE: ${{ steps.service_urls.outputs.backend_url }}
           BACKEND_IDENTITY_AUDIENCE: ${{ steps.service_urls.outputs.backend_url }}
@@ -336,12 +328,6 @@ jobs:
           add_env_var PUBLIC_CONTACT_EMAIL "$PUBLIC_CONTACT_EMAIL"
           add_env_var PUBLIC_FIREBASE_PROJECT_ID "$PROJECT_ID"
 
-          {
-            echo 'env_vars<<CR_ENV_EOF'
-            cat "$env_file"
-            echo 'CR_ENV_EOF'
-          } >> "$GITHUB_OUTPUT"
-
       - name: Deploy Frontend to Cloud Run
         uses: google-github-actions/deploy-cloudrun@v3.0.0
         with:
@@ -355,5 +341,5 @@ jobs:
             PUBLIC_FIREBASE_AUTH_DOMAIN=${{ env.APP_NAME }}-firebase-auth-domain:latest
           # Overwrite drops legacy secret mounts (e.g. app-auth / app-session) that no longer have IAM.
           secrets_update_strategy: overwrite
-          env_vars: "${{ steps.frontend_env.outputs.env_vars }}"
+          env_vars_file: /tmp/frontend_cr_env.txt
           env_vars_update_strategy: overwrite
