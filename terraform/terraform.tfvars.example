@@ -9,6 +9,10 @@ youtube_api_key     = "your-youtube-api-key"
 ollama_api_key      = "your-ollama-api-key"
 logfire_token       = "your-logfire-token"
 backend_proxy_token = "replace-with-a-long-random-proxy-token"
+# Optional: set to let Terraform create a Secret Manager version for the backend Turso token.
+# turso_auth_token = "your-turso-auth-token"
+
+# Set GitHub repository variable TURSO_DB_URL=libsql://<db-host> before enabling Turso in prod.
 
 # Google sign-in is configured in frontend/firebase.json and deployed with Firebase Auth.
 

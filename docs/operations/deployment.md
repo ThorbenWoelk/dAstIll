@@ -39,6 +39,7 @@ Secrets are stored in GCP Secret Manager for:
 - `YOUTUBE_API_KEY`
 - `LOGFIRE_TOKEN` (when Logfire observability is enabled for the backend)
 - `BACKEND_PROXY_TOKEN`
+- `TURSO_AUTH_TOKEN` (when Turso-backed keyword search is enabled in production)
 - `DATABRICKS_TOKEN` (only when Databricks ingestion is configured)
 - `firebase_web_api_key` and `firebase_auth_domain` (product frontend; Terraform derives both from the Firebase web app config and writes them to Secret Manager)
 
@@ -48,6 +49,7 @@ Non-secret backend runtime config is passed as plain env values for:
 - `S3_DATA_BUCKET`
 - `S3_VECTOR_BUCKET`
 - `S3_VECTOR_INDEX`
+- `TURSO_DB_URL` (when Turso-backed keyword search is enabled in production)
 - `AWS_ROLE_ARN` (production only)
 - `AWS_WIF_AUDIENCE` (production only)
 - `OLLAMA_URL`
@@ -88,7 +90,7 @@ To cut over from a previous GCP project to the current `dastill` project:
 1. Create or gain access to the `dastill` GCP project, attach billing, and decide the Firestore location before the first apply. The repo now exposes `firestore_location_id` explicitly; the example uses `eur3`.
 2. Update your local `terraform.tfvars` for the new target project. Set `project_id = "dastill"` and keep `app_name = "dastill"` unless you intentionally want new GCP/AWS resource names. If the GitHub Workload Identity Pool lives outside the target project, also set `github_wif_pool_project_number`; otherwise it defaults to the active project number.
 3. Decide how Terraform state will handle the shared AWS resources. Buckets, vector buckets, and the `dastill-gcp-backend` AWS role are keyed by `app_name`, not `project_id`. Reusing the existing state is the simplest cutover. If you start from a fresh state backend, import the existing AWS resources before apply or intentionally rename `app_name` and migrate that data separately.
-4. Apply Terraform against the new project and record the outputs you need for GitHub. At minimum, update repository secrets `GCP_PROJECT_ID`, `GCP_WIF_PROVIDER`, and `GCP_WIF_SA_EMAIL` (the latter is available from `terraform output github_actions_sa_email`). Update repository vars that are outside Terraform ownership in this repo, especially `AWS_ROLE_ARN`, `AWS_WIF_AUDIENCE`, bucket/index names, CORS origins, contact email, and any Databricks settings.
+4. Apply Terraform against the new project and record the outputs you need for GitHub. At minimum, update repository secrets `GCP_PROJECT_ID`, `GCP_WIF_PROVIDER`, and `GCP_WIF_SA_EMAIL` (the latter is available from `terraform output github_actions_sa_email`). Update repository vars that are outside Terraform ownership in this repo, especially `AWS_ROLE_ARN`, `AWS_WIF_AUDIENCE`, bucket/index names, `TURSO_DB_URL` when Turso is enabled, CORS origins, contact email, and any Databricks settings.
 5. Migrate Firestore data explicitly. The app switches to the new database as soon as `GCP_PROJECT_ID` changes, so export from the source project and import into `dastill` before frontend/backend cutover. Example shape:
 
 ```bash
@@ -110,7 +112,8 @@ The GitHub Actions workflow:
 1. Builds and pushes backend, docs, and frontend images to Artifact Registry
 2. Deploys backend, docs, and frontend to Cloud Run (main branch or release dispatch)
 3. Resolves deployed backend and docs URLs for the frontend service env
-4. Deploys the frontend with runtime env including BACKEND_API_BASE, BACKEND_IDENTITY_AUDIENCE, PUBLIC_DOCS_URL, PUBLIC_CONTACT_EMAIL, PUBLIC_FIREBASE_PROJECT_ID, and Firebase client values from Secret Manager mounts
+4. Deploys the backend with runtime env including S3/AWS config, `TURSO_DB_URL`, and Secret Manager mounts such as `TURSO_AUTH_TOKEN` when enabled
+5. Deploys the frontend with runtime env including BACKEND_API_BASE, BACKEND_IDENTITY_AUDIENCE, PUBLIC_DOCS_URL, PUBLIC_CONTACT_EMAIL, PUBLIC_FIREBASE_PROJECT_ID, and Firebase client values from Secret Manager mounts
 ```
 
 ## Docker Layout
@@ -134,6 +137,12 @@ The GitHub Actions workflow:
 ### Search in production
 
 Production defaults to plain FTS mode unless `SEARCH_SEMANTIC_ENABLED=true` is intentionally set.
+
+Keyword search can also use Turso/libSQL for durable FTS storage. In that setup:
+
+- set `turso_auth_token` in `terraform.tfvars` and run `terraform apply`
+- set GitHub repository variable `TURSO_DB_URL=libsql://...`
+- rerun the Release workflow so Cloud Run mounts `TURSO_AUTH_TOKEN` and passes `TURSO_DB_URL`
 
 ### Search vector index
 

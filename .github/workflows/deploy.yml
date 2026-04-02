@@ -96,15 +96,20 @@ jobs:
         id: backend_secrets
         env:
           DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+          TURSO_DB_URL: ${{ vars.TURSO_DB_URL }}
         run: |
           set -euo pipefail
-          trimmed="$(printf '%s' "$DATABRICKS_HOST" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+          databricks_host="$(printf '%s' "$DATABRICKS_HOST" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+          turso_db_url="$(printf '%s' "$TURSO_DB_URL" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
           {
             echo "YOUTUBE_API_KEY=${APP_NAME}-youtube-api-key:latest"
             echo "OLLAMA_API_KEY=${APP_NAME}-ollama-api-key:latest"
             echo "LOGFIRE_TOKEN=${APP_NAME}-logfire-token:latest"
             echo "BACKEND_PROXY_TOKEN=${APP_NAME}-backend-proxy-token:latest"
-            if [ -n "$trimmed" ]; then
+            if [ -n "$turso_db_url" ]; then
+              echo "TURSO_AUTH_TOKEN=${APP_NAME}-turso-auth-token:latest"
+            fi
+            if [ -n "$databricks_host" ]; then
               echo "DATABRICKS_TOKEN=${APP_NAME}-databricks-token:latest"
             fi
           } > /tmp/backend_cr_secrets.txt
@@ -132,6 +137,7 @@ jobs:
             S3_DATA_BUCKET=${{ vars.S3_DATA_BUCKET }}
             S3_VECTOR_BUCKET=${{ vars.S3_VECTOR_BUCKET }}
             S3_VECTOR_INDEX=${{ vars.S3_VECTOR_INDEX }}
+            TURSO_DB_URL=${{ vars.TURSO_DB_URL }}
             DEFAULT_SEEDED_CHANNEL_ID=${{ vars.DEFAULT_SEEDED_CHANNEL_ID || 'UCbRP3c757lWg9M-U7TyEkXA' }}
             SEARCH_SEMANTIC_ENABLED=${{ vars.SEARCH_SEMANTIC_ENABLED || 'true' }}
             OLLAMA_URL=${{ vars.OLLAMA_URL }}

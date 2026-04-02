@@ -134,10 +134,11 @@ Search is intentionally modeled as a derived projection stored in S3:
 
 S3 Vectors provides managed ANN vector storage and retrieval for semantic search.
 
-The backend also maintains an **in-memory Tantivy BM25 index** hydrated from the stored
-`search-chunks/` corpus at startup. All keyword search queries go through this index -
-there is no per-query S3 scan. The Tantivy index is kept in sync by the search index
-worker after every write.
+The backend also maintains a **libSQL/Turso BM25 keyword index**. In production it runs
+through a Turso primary plus a local embedded replica file; locally it can fall back to a
+plain libSQL file. All keyword search queries go through this index - there is no
+per-query S3 scan. The keyword index is kept in sync by the search index worker after
+every write and can be rebuilt from the stored `search-chunks/` projection when empty.
 
 <MermaidDiagram
   caption="Canonical transcript and summary records feed the derived search projection, which then powers both keyword and semantic retrieval."

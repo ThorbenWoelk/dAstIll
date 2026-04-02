@@ -562,7 +562,7 @@ mod tests {
         state::AppState,
     };
 
-    fn test_app_state(db: crate::db::Store) -> AppState {
+    async fn test_app_state(db: crate::db::Store) -> AppState {
         let cooldown = Arc::new(CloudCooldown::cloud());
         let security =
             Arc::new(crate::config::SecurityRuntimeConfig::from_env().expect("security config"));
@@ -600,7 +600,7 @@ mod tests {
             analytics: None,
             active_chats: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
             chat_store_lock: Arc::new(tokio::sync::Mutex::new(())),
-            fts: Arc::new(crate::services::FtsIndex::new().expect("fts index")),
+            fts: Arc::new(crate::services::FtsIndex::new().await.expect("fts index")),
             anonymous_chat_quota_lock: Arc::new(tokio::sync::Mutex::new(())),
             cloud_cooldown: cooldown,
             youtube_quota_cooldown: Arc::new(YouTubeQuotaCooldown::youtube_quota()),
@@ -653,7 +653,7 @@ mod tests {
         .await
         .unwrap();
 
-        let state = test_app_state(store.clone());
+        let state = test_app_state(store.clone()).await;
         let materials = list_search_progress_materials(&store).await.unwrap();
         state
             .search_progress

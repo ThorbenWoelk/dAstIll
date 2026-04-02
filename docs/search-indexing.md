@@ -7,7 +7,7 @@ flowchart LR
   tokenize[Tokenize + remove stopwords]
   hyde[Optional HyDE passage]
   embed[Embed query or HyDE passage]
-  fts[BM25 Tantivy leg]
+  fts[BM25 libSQL FTS5 leg]
   vectors[Vector retrieval leg]
   rrf[RRF fusion]
   rerank[Optional reranker]
@@ -33,7 +33,7 @@ flowchart LR
   chunk[Chunk content]
   embed[Optional embedding batches]
   store[Write search_chunks + source state]
-  fts[Upsert Tantivy source]
+  fts[Upsert libSQL FTS5 source]
   vectors[S3 Vectors]
   retrieval[Keyword + hybrid retrieval]
 
@@ -55,8 +55,8 @@ flowchart LR
 Search is built on three complementary layers that run in parallel and can be combined
 at query time:
 
-1. **In-memory BM25 (Tantivy)** - keyword retrieval with stemming, fast phrase detection,
-   and an FTS pre-ranker for title/phrase signal boosting
+1. **BM25 keyword search (libSQL FTS5)** - keyword retrieval with weighted title/section
+   fields and an FTS pre-ranker for title/phrase signal boosting
 2. **Vector search (S3 Vectors)** - semantic similarity via dense embeddings
 3. **RRF fusion** - merges ranks from both legs; optionally fed to a cross-encoder reranker
 
@@ -71,22 +71,23 @@ Each layer degrades independently without breaking the others.
 
 ## Storage Backend
 
-| Store             | Role                                                                |
-| ----------------- | ------------------------------------------------------------------- |
-| S3 data bucket    | Canonical chunk JSON objects under `search-chunks/`                 |
-| S3 Vectors        | Dense embeddings for ANN retrieval, keyed by chunk ID               |
-| In-memory Tantivy | BM25 index hydrated from S3 at startup; all keyword queries go here |
+| Store          | Role                                                                              |
+| -------------- | --------------------------------------------------------------------------------- |
+| S3 data bucket | Canonical chunk JSON objects under `search-chunks/`                               |
+| Turso / libSQL | Durable keyword index primary plus local embedded replica file for runtime reads  |
+| S3 Vectors     | Dense embeddings for ANN retrieval, keyed by chunk ID                             |
 
-S3 is the durable source of truth. The Tantivy index is a fast in-process replica.
+S3 remains the rebuild source of truth for canonical chunk content. The keyword index lives in
+libSQL/Turso and is bootstrapped from the stored projection when the runtime index is empty.
 
 <MermaidDiagram
-  caption="Index maintenance flow: canonical content becomes pending search sources, then the search worker chunks, embeds, stores, and syncs the in-memory BM25 index."
+  caption="Index maintenance flow: canonical content becomes pending search sources, then the search worker chunks, embeds, stores, and syncs the libSQL FTS5 keyword index."
   :chart="indexMaintenanceDiagram"
 />
 
 ---
 
-## In-Memory FTS Index
+## Keyword Index
 
 ### Schema
 
@@ -104,14 +105,14 @@ S3 is the durable source of truth. The Tantivy index is a fast in-process replic
 | `published_at`  | stored only | ISO 8601 publication date for sort ordering             |
 | `start_sec`     | stored only | Caption start timestamp in seconds (transcript only)    |
 
-The `source_key` field uses the `raw` tokenizer so the full composite value is indexed
-as a single term. `Term::from_field_text` on this field removes exactly the chunks for
-one `(video_id, source_kind)` pair without affecting the other source kind for the same
-video.
+The keyword index stores the same retrieval metadata alongside the FTS5 document so a
+single query can return chunk text, title data, source kind, and optional timestamps
+without a second metadata lookup.
 
 ### Startup Hydration
 
-`populate_fts_index_from_store` runs once at startup (via `tokio::spawn`):
+`populate_fts_index_from_store` runs once at startup only when the runtime keyword index
+is empty:
 
 1. Lists all objects under the `search-chunks/` S3 prefix
 2. Fetches them concurrently (up to 32 in parallel)
@@ -119,17 +120,17 @@ video.
 4. Loads video and channel metadata for each group
 5. Calls `fts.upsert_source` for each group
 
-The FTS index is queryable immediately after startup without waiting for the search
-index worker to iterate.
+When a Turso-backed embedded replica already has indexed rows, startup skips this replay
+and uses the existing local replica immediately.
 
 ### Live Sync
 
-The search index worker keeps the Tantivy index in sync after every write:
+The search index worker keeps the libSQL/Turso keyword index in sync after every write:
 
-- After writing chunks to S3, `fts.upsert_source` replaces in-memory documents for that
+- After writing chunks to S3, `fts.upsert_source` replaces keyword-search rows for that
   `(video_id, source_kind)` pair
 - After clearing a source (content removed or empty draft list), `fts.delete_source`
-  removes the corresponding documents and commits
+  removes the corresponding rows
 
 The `upsert_source` path always deletes the old documents for the source key before
 inserting new ones, so re-indexing a video does not accumulate duplicate chunks.
@@ -148,7 +149,7 @@ has no `search_sources` row yet. Runs at the start of each loop iteration.
 ### Index Pending Sources
 
 Claims pending rows, loads canonical content, chunks it, optionally embeds it, and
-writes the derived chunk projection. After each successful write, the Tantivy index is
+writes the derived chunk projection. After each successful write, the keyword index is
 updated synchronously before the loop moves on.
 
 ### Reconcile
@@ -276,9 +277,9 @@ Falls back to embedding the raw query on any failure (timeout, empty passage).
 
 ### 3. FTS leg
 
-BM25 search against the in-memory Tantivy index. The query parser targets three fields:
+BM25 search against the libSQL FTS5 index. The FTS match query targets three fields:
 `chunk_text`, `video_title`, and `section_title`. Channel and source-kind filters are
-applied as post-query filtering over the result set.
+applied in SQL before the final ranked result set is returned.
 
 The candidate fetch limit varies by execution mode:
 
@@ -402,7 +403,7 @@ The search service only generates embeddings when semantic search is enabled.
 
 If semantic search is disabled:
 
-- search sources are still chunked and indexed in Tantivy
+- search sources are still chunked and indexed in libSQL FTS5
 - FTS still works
 - `embedded_chunk_count` remains `0`
 - `vector_index_ready` remains `false`

@@ -39,9 +39,36 @@ pub use refresh::spawn_refresh_worker;
 pub use search_index::spawn_search_index_worker;
 pub use summary_evaluation::spawn_summary_evaluation_worker;
 
-/// Populate the in-memory FTS index from all ready search chunks stored in S3.
-/// Called once at startup so keyword search works immediately without waiting
-/// for the background index worker to process each source.
+fn parse_bundle_key(key: &str) -> Option<(String, String, String)> {
+    let filename = key
+        .strip_prefix("search-bundles/")
+        .and_then(|value| value.strip_suffix(".json.gz"))?;
+    let mut parts = filename.rsplitn(3, '_');
+    let generation = parts.next()?;
+    let source_kind = parts.next()?;
+    let video_id = parts.next()?;
+    Some((
+        video_id.to_string(),
+        source_kind.to_string(),
+        generation.to_string(),
+    ))
+}
+
+fn parse_chunk_group_key(key: &str) -> Option<(String, String)> {
+    let filename = key
+        .strip_prefix("search-chunks/")
+        .and_then(|value| value.strip_suffix(".json"))?;
+    let mut parts = filename.rsplitn(4, '_');
+    let _chunk_index = parts.next()?;
+    let _content_hash = parts.next()?;
+    let source_kind = parts.next()?;
+    let video_id = parts.next()?;
+    Some((video_id.to_string(), source_kind.to_string()))
+}
+
+/// Populate the keyword search index from all ready search chunks stored in S3.
+/// Called once at startup when the runtime index is empty so keyword search
+/// does not depend on the background worker replaying each source one by one.
 pub async fn populate_fts_index_from_store(state: AppState) {
     use crate::services::fts::{FtsChunk, FtsSourceMeta};
     use crate::services::search::SearchSourceKind;
@@ -91,22 +118,9 @@ pub async fn populate_fts_index_from_store(state: AppState) {
         let mut upserted = 0usize;
 
         for key in bundle_keys {
-            // Key format: search-bundles/{video_id}_{source_kind}_{generation}.json.gz
-            let Some(filename) = key
-                .strip_prefix("search-bundles/")
-                .and_then(|s| s.strip_suffix(".json.gz"))
-            else {
+            let Some((video_id, source_kind_str, generation)) = parse_bundle_key(&key) else {
                 continue;
             };
-
-            let parts: Vec<&str> = filename.split('_').collect();
-            if parts.len() < 3 {
-                continue;
-            }
-
-            let video_id = parts[0].to_string();
-            let source_kind_str = parts[1].to_string();
-            let generation = parts[2].to_string();
 
             let bundle: Vec<ChunkData> = match store.get_json_gz(&key).await {
                 Ok(Some(b)) => b,
@@ -134,7 +148,7 @@ pub async fn populate_fts_index_from_store(state: AppState) {
             let source_kind = SearchSourceKind::from_db_value(&source_kind_str);
             let published_at = video.published_at.to_rfc3339();
 
-            state
+            if let Err(err) = state
                 .fts
                 .upsert_source(
                     FtsSourceMeta {
@@ -147,7 +161,16 @@ pub async fn populate_fts_index_from_store(state: AppState) {
                     },
                     &fts_chunks,
                 )
-                .await;
+                .await
+            {
+                tracing::error!(
+                    video_id,
+                    source_kind = source_kind_str,
+                    error = %err,
+                    "FTS hydration failed to upsert bundled source"
+                );
+                continue;
+            }
             upserted += 1;
         }
 
@@ -177,20 +200,9 @@ pub async fn populate_fts_index_from_store(state: AppState) {
     let mut key_groups: std::collections::HashMap<(String, String), Vec<String>> =
         std::collections::HashMap::new();
     for key in chunk_keys {
-        let Some(filename) = key
-            .strip_prefix("search-chunks/")
-            .and_then(|s| s.strip_suffix(".json"))
-        else {
+        let Some((video_id, source_kind)) = parse_chunk_group_key(&key) else {
             continue;
         };
-
-        let parts: Vec<&str> = filename.split('_').collect();
-        if parts.len() < 4 {
-            continue;
-        }
-
-        let video_id = parts[0].to_string();
-        let source_kind = parts[1].to_string();
         key_groups
             .entry((video_id, source_kind))
             .or_default()
@@ -255,7 +267,7 @@ pub async fn populate_fts_index_from_store(state: AppState) {
         let source_kind = SearchSourceKind::from_db_value(&source_kind_str);
         let published_at = video.published_at.to_rfc3339();
 
-        state
+        if let Err(err) = state
             .fts
             .upsert_source(
                 FtsSourceMeta {
@@ -268,7 +280,16 @@ pub async fn populate_fts_index_from_store(state: AppState) {
                 },
                 &fts_chunks,
             )
-            .await;
+            .await
+        {
+            tracing::error!(
+                video_id,
+                source_kind = source_kind_str,
+                error = %err,
+                "FTS hydration failed to upsert chunk-based source"
+            );
+            continue;
+        }
         upserted += 1;
     }
 
@@ -530,5 +551,38 @@ mod tests {
             failed: 0,
             total_sources: 0,
         }));
+    }
+
+    #[test]
+    fn parse_bundle_key_preserves_video_ids_with_underscores() {
+        let parsed = super::parse_bundle_key(
+            "search-bundles/video_id_with_underscores_transcript_7.json.gz",
+        )
+        .expect("bundle key should parse");
+
+        assert_eq!(
+            parsed,
+            (
+                "video_id_with_underscores".to_string(),
+                "transcript".to_string(),
+                "7".to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn parse_chunk_group_key_preserves_video_ids_with_underscores() {
+        let parsed = super::parse_chunk_group_key(
+            "search-chunks/video_id_with_underscores_summary_hashvalue_12.json",
+        )
+        .expect("chunk key should parse");
+
+        assert_eq!(
+            parsed,
+            (
+                "video_id_with_underscores".to_string(),
+                "summary".to_string()
+            )
+        );
     }
 }

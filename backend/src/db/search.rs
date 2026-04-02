@@ -744,6 +744,7 @@ pub async fn ensure_vector_index(_store: &Store) -> Result<(), StoreError> {
 pub async fn reset_search_projection(store: &Store) -> Result<(), StoreError> {
     store.delete_prefix("search-sources/").await?;
     store.delete_prefix("search-chunks/").await?;
+    store.delete_prefix("search-bundles/").await?;
 
     let all_keys = list_all_vector_keys(store).await;
     for batch in all_keys.chunks(500) {

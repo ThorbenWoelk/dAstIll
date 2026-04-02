@@ -65,6 +65,13 @@ variable "backend_proxy_token" {
   description = "Shared proxy secret for frontend-to-backend requests"
 }
 
+variable "turso_auth_token" {
+  type        = string
+  sensitive   = true
+  default     = ""
+  description = "Optional Turso auth token for the backend keyword-search replica. When set, Terraform writes it to Secret Manager as ${app_name}-turso-auth-token."
+}
+
 variable "databricks_token" {
   type        = string
   sensitive   = true

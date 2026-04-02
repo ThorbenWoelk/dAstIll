@@ -41,6 +41,23 @@ fn chunk_material(material: &db::SearchMaterial) -> Vec<crate::services::search:
     }
 }
 
+async fn mark_source_failed(
+    state: &AppState,
+    video_id: &str,
+    source_kind: SearchSourceKind,
+    content_hash: &str,
+    error_message: &str,
+) {
+    let conn = state.db.connect();
+    let _ =
+        db::mark_search_source_failed(&conn, video_id, source_kind, content_hash, error_message)
+            .await;
+    state
+        .search_progress
+        .set_source_status(video_id, source_kind, SearchProgressSourceStatus::Failed)
+        .await;
+}
+
 async fn backfill_search_sources(state: &AppState) -> bool {
     let _projection_guard = state.search_projection_lock.read().await;
     let materials = {
@@ -305,11 +322,36 @@ async fn process_pending_search_sources(state: &AppState) -> bool {
                 };
 
             let Some(material) = material else {
-                let _ = db::clear_search_source(&conn, &source.video_id, source.source_kind).await;
-                state
+                if let Err(err) = state
                     .fts
                     .delete_source(&source.video_id, source.source_kind)
+                    .await
+                {
+                    mark_source_failed(
+                        state,
+                        &source.video_id,
+                        source.source_kind,
+                        &source.content_hash,
+                        &err,
+                    )
                     .await;
+                    failed_count += 1;
+                    continue;
+                }
+                if let Err(err) =
+                    db::clear_search_source(&conn, &source.video_id, source.source_kind).await
+                {
+                    mark_source_failed(
+                        state,
+                        &source.video_id,
+                        source.source_kind,
+                        &source.content_hash,
+                        &err.to_string(),
+                    )
+                    .await;
+                    failed_count += 1;
+                    continue;
+                }
                 state
                     .search_progress
                     .remove_source(&source.video_id, source.source_kind)
@@ -337,11 +379,36 @@ async fn process_pending_search_sources(state: &AppState) -> bool {
 
             let drafts = chunk_material(&material);
             if drafts.is_empty() {
-                let _ = db::clear_search_source(&conn, &source.video_id, source.source_kind).await;
-                state
+                if let Err(err) = state
                     .fts
                     .delete_source(&source.video_id, source.source_kind)
+                    .await
+                {
+                    mark_source_failed(
+                        state,
+                        &source.video_id,
+                        source.source_kind,
+                        &source.content_hash,
+                        &err,
+                    )
                     .await;
+                    failed_count += 1;
+                    continue;
+                }
+                if let Err(err) =
+                    db::clear_search_source(&conn, &source.video_id, source.source_kind).await
+                {
+                    mark_source_failed(
+                        state,
+                        &source.video_id,
+                        source.source_kind,
+                        &source.content_hash,
+                        &err.to_string(),
+                    )
+                    .await;
+                    failed_count += 1;
+                    continue;
+                }
                 state
                     .search_progress
                     .remove_source(&source.video_id, source.source_kind)
@@ -407,7 +474,10 @@ async fn process_pending_search_sources(state: &AppState) -> bool {
                     "search indexing round complete"
                 );
             }
-            return discovered_count > 0 || failed_count > 0;
+            return discovered_count > 0
+                || cleared_count > 0
+                || requeued_count > 0
+                || failed_count > 0;
         }
 
         if !semantic_enabled {
@@ -457,7 +527,7 @@ async fn process_pending_search_sources(state: &AppState) -> bool {
                                     start_sec: c.start_sec,
                                 })
                                 .collect();
-                            state
+                            if let Err(err) = state
                                 .fts
                                 .upsert_source(
                                     FtsSourceMeta {
@@ -470,7 +540,26 @@ async fn process_pending_search_sources(state: &AppState) -> bool {
                                     },
                                     &fts_chunks,
                                 )
+                                .await
+                            {
+                                tracing::error!(
+                                    video_id = %source.video_id,
+                                    source_kind = source.source_kind.as_str(),
+                                    chunk_count,
+                                    error = %err,
+                                    "search index: keyword index upsert failed"
+                                );
+                                mark_source_failed(
+                                    state,
+                                    &source.video_id,
+                                    source.source_kind,
+                                    &source.content_hash,
+                                    &err,
+                                )
                                 .await;
+                                failed_count += 1;
+                                continue;
+                            }
                             state
                                 .search_progress
                                 .upsert_source(
@@ -632,7 +721,7 @@ async fn process_pending_search_sources(state: &AppState) -> bool {
                                 start_sec: c.start_sec,
                             })
                             .collect();
-                        state
+                        if let Err(err) = state
                             .fts
                             .upsert_source(
                                 FtsSourceMeta {
@@ -645,7 +734,26 @@ async fn process_pending_search_sources(state: &AppState) -> bool {
                                 },
                                 &fts_chunks,
                             )
+                            .await
+                        {
+                            tracing::error!(
+                                video_id = %source.video_id,
+                                source_kind = source.source_kind.as_str(),
+                                chunk_count,
+                                error = %err,
+                                "search index: keyword index upsert failed"
+                            );
+                            mark_source_failed(
+                                state,
+                                &source.video_id,
+                                source.source_kind,
+                                &source.content_hash,
+                                &err,
+                            )
                             .await;
+                            failed_count += 1;
+                            continue;
+                        }
                         state
                             .search_progress
                             .upsert_source(

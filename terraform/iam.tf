@@ -31,6 +31,7 @@ locals {
     youtube_api_key     = google_secret_manager_secret.youtube_api_key.id
     logfire_token       = google_secret_manager_secret.logfire_token.id
     backend_proxy_token = google_secret_manager_secret.backend_proxy_token.id
+    turso_auth_token    = google_secret_manager_secret.turso_auth_token.id
   }
   frontend_secret_ids = merge(
     {

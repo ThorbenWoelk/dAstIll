@@ -62,6 +62,8 @@ Important variables:
 | `AWS_ACCESS_KEY_ID`                 | Local AWS access key used for S3 / S3 Vectors                                              |
 | `AWS_SECRET_ACCESS_KEY`             | Local AWS secret key used for S3 / S3 Vectors                                              |
 | `AWS_SESSION_TOKEN`                 | Optional temporary session token for local AWS auth                                        |
+| `TURSO_DB_URL`                      | Optional Turso/libSQL database URL for durable keyword search                              |
+| `TURSO_AUTH_TOKEN`                  | Turso auth token paired with `TURSO_DB_URL`                                                |
 | `BACKEND_PROXY_TOKEN`               | Shared secret used by the authenticated frontend proxy when it calls the backend           |
 | `BACKEND_CORS_ALLOWED_ORIGINS`      | Comma-separated list of browser origins allowed to call the backend directly               |
 | `AWS_ROLE_ARN` / `AWS_WIF_AUDIENCE` | Production only: GCP Workload Identity Federation for AWS                                  |

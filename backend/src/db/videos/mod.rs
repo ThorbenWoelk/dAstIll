@@ -55,15 +55,7 @@ pub async fn load_all_videos(store: &Store) -> Result<Vec<Video>, StoreError> {
     }
 
     // 2. Cache miss: fetch from Firestore
-    let videos: Vec<Video> = store
-        .firestore
-        .fluent()
-        .select()
-        .from(super::firestore_videos::COLLECTION)
-        .obj()
-        .query()
-        .await
-        .map_err(|e| StoreError::Other(format!("Firestore error: {e}")))?;
+    let videos = super::firestore_videos::fs_load_all_videos(store).await?;
 
     // 3. Populate cache
     store.read_cache.set_videos(videos.clone()).await;

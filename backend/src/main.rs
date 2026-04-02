@@ -11,7 +11,7 @@ use tracing_subscriber::{Layer, filter, layer::SubscriberExt, util::SubscriberIn
 use dastill::cache_headers::add_cache_control;
 use dastill::config::{
     ChatRuntimeConfig, DatabricksRuntimeConfig, OllamaRuntimeConfig, PollyTtsRuntimeConfig,
-    SearchRuntimeConfig, SecurityRuntimeConfig,
+    SearchRuntimeConfig, SecurityRuntimeConfig, TursoRuntimeConfig,
 };
 use dastill::db::init_store;
 use dastill::handlers::{
@@ -126,6 +126,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let search_runtime = SearchRuntimeConfig::from_env();
+    let turso_runtime = TursoRuntimeConfig::from_env().map_err(|err| anyhow::anyhow!(err))?;
     let chat_runtime = ChatRuntimeConfig::from_env();
     let databricks_runtime =
         DatabricksRuntimeConfig::from_env().map_err(|err| anyhow::anyhow!(err))?;
@@ -263,7 +264,18 @@ async fn main() -> anyhow::Result<()> {
         search.semantic_enabled(),
     ));
 
-    let fts = Arc::new(FtsIndex::new().expect("failed to create in-memory FTS index"));
+    let fts_dir = std::env::temp_dir().join("dastill-search-index");
+    let fts_remote = turso_runtime
+        .as_ref()
+        .map(|config| dastill::services::fts::FtsRemoteConfig {
+            url: config.db_url.clone(),
+            auth_token: config.auth_token.clone(),
+        });
+    let fts = Arc::new(
+        FtsIndex::new_in_dir(fts_dir.clone(), fts_remote)
+            .await
+            .expect("failed to create Turso-backed FTS index"),
+    );
     let polly_tts = polly_tts_runtime.map(|cfg| {
         Arc::new(PollyTtsService::new(
             aws_sdk_polly::Client::new(&aws_config),
@@ -347,11 +359,18 @@ async fn main() -> anyhow::Result<()> {
         );
     });
 
-    // Populate the in-memory FTS index from all existing S3 chunks at startup.
-    let fts_hydration_state = state.clone();
-    tokio::spawn(async move {
-        dastill::workers::populate_fts_index_from_store(fts_hydration_state).await;
-    });
+    let should_hydrate_fts = state.fts.doc_count().await == 0;
+    if should_hydrate_fts {
+        let fts_hydration_state = state.clone();
+        tokio::spawn(async move {
+            dastill::workers::populate_fts_index_from_store(fts_hydration_state).await;
+        });
+    } else {
+        tracing::info!(
+            path = %fts_dir.display(),
+            "FTS startup hydration skipped - existing Turso/libSQL index already has data"
+        );
+    }
 
     spawn_queue_worker(state.clone());
     spawn_refresh_worker(state.clone());

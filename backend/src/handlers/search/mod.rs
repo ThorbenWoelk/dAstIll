@@ -444,6 +444,12 @@ pub async fn rebuild_search_projection(
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let _projection_guard = state.search_projection_lock.write().await;
+    state.fts.clear().await.map_err(|err| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("failed to clear keyword search index: {err}"),
+        )
+    })?;
     db::reset_search_projection(&state.db)
         .await
         .map_err(map_db_err)?;

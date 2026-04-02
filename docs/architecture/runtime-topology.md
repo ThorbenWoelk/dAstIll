@@ -41,7 +41,7 @@ sequenceDiagram
   boot->>store: Initialize storage clients
   boot->>state: Build runtime services and shared state
   boot->>bg: Hydrate search progress
-  boot->>bg: Hydrate in-memory FTS index
+  boot->>bg: Hydrate keyword index if libSQL/Turso is empty
   boot->>bg: Spawn queue, refresh, gap, eval, and search workers
   boot->>http: Register routes and bind listener
   http-->>boot: Ready for frontend requests
@@ -98,10 +98,10 @@ At startup the backend:
 3. Connects to S3 data bucket and S3 Vectors bucket
 4. Initializes the mixed S3 / S3 Vectors / Firestore store layer
 5. Hydrates search progress from existing data
-6. Builds shared runtime services (including in-memory FTS index)
+6. Builds shared runtime services (including the libSQL/Turso keyword index)
 7. Spawns background workers
-8. Spawns FTS hydration task: concurrently loads all search-chunks/ S3 objects
-   into the Tantivy index so keyword search is available immediately
+8. If the keyword index is empty, spawns FTS hydration task: concurrently loads
+   all search bundles/chunks into the libSQL/Turso index so keyword search is available
 9. Binds the Axum HTTP listener
 ```
 
@@ -118,7 +118,7 @@ At startup the backend:
 - read cache
 - search projection lock
 - search progress tracker
-- **FTS index** (in-memory Tantivy BM25 index; shared `Arc<RwLock<_>>`)
+- **FTS index** (libSQL/Turso BM25 index; shared `Arc<RwLock<_>>`)
 - chat service
 - active chats tracker (in-progress conversations)
 - chat store lock

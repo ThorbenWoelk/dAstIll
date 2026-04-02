@@ -24,6 +24,12 @@ pub struct SearchRuntimeConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TursoRuntimeConfig {
+    pub db_url: String,
+    pub auth_token: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChatRuntimeConfig {
     pub multi_pass_enabled: bool,
 }
@@ -110,6 +116,24 @@ impl SearchRuntimeConfig {
                 .unwrap_or(false),
             semantic_enabled: optional_bool_env("SEARCH_SEMANTIC_ENABLED")
                 .unwrap_or(default_search_semantic_enabled()),
+        }
+    }
+}
+
+impl TursoRuntimeConfig {
+    pub fn from_env() -> Result<Option<Self>, String> {
+        let db_url = optional_env("TURSO_DB_URL");
+        let auth_token = optional_env("TURSO_AUTH_TOKEN");
+
+        match (db_url, auth_token) {
+            (None, None) => Ok(None),
+            (Some(db_url), Some(auth_token)) => Ok(Some(Self { db_url, auth_token })),
+            (Some(_), None) => {
+                Err("TURSO_AUTH_TOKEN must be set when TURSO_DB_URL is set".to_string())
+            }
+            (None, Some(_)) => {
+                Err("TURSO_DB_URL must be set when TURSO_AUTH_TOKEN is set".to_string())
+            }
         }
     }
 }
@@ -287,7 +311,7 @@ mod tests {
 
     use super::{
         ChatRuntimeConfig, DatabricksRuntimeConfig, OllamaRuntimeConfig, SearchRuntimeConfig,
-        SecurityRuntimeConfig,
+        SecurityRuntimeConfig, TursoRuntimeConfig,
     };
 
     static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -317,6 +341,7 @@ mod tests {
         "DATABRICKS_SCHEMA",
         "DATABRICKS_BRONZE_TABLE",
     ];
+    const TURSO_ENV_KEYS: &[&str] = &["TURSO_DB_URL", "TURSO_AUTH_TOKEN"];
 
     #[test]
     fn from_env_requires_summary_model() {
@@ -730,6 +755,58 @@ mod tests {
         assert_eq!(config.catalog, "workspace");
         assert_eq!(config.schema, "sandbox");
         assert_eq!(config.bronze_table, "bronze_app_events");
+    }
+
+    #[test]
+    fn turso_config_is_optional_when_unset() {
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+
+        let _reset = EnvReset::capture(TURSO_ENV_KEYS);
+        remove_env("TURSO_DB_URL");
+        remove_env("TURSO_AUTH_TOKEN");
+
+        let config = TursoRuntimeConfig::from_env().expect("config parse");
+        assert!(config.is_none());
+    }
+
+    #[test]
+    fn turso_config_requires_paired_values() {
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+
+        let _reset = EnvReset::capture(TURSO_ENV_KEYS);
+        set_env("TURSO_DB_URL", "libsql://prod-db.turso.io");
+        remove_env("TURSO_AUTH_TOKEN");
+        let err = TursoRuntimeConfig::from_env().expect_err("missing token should fail");
+        assert!(err.contains("TURSO_AUTH_TOKEN"));
+
+        remove_env("TURSO_DB_URL");
+        set_env("TURSO_AUTH_TOKEN", "token");
+        let err = TursoRuntimeConfig::from_env().expect_err("missing url should fail");
+        assert!(err.contains("TURSO_DB_URL"));
+    }
+
+    #[test]
+    fn turso_config_loads_complete_credentials() {
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+
+        let _reset = EnvReset::capture(TURSO_ENV_KEYS);
+        set_env("TURSO_DB_URL", "libsql://prod-db.turso.io");
+        set_env("TURSO_AUTH_TOKEN", "token");
+
+        let config = TursoRuntimeConfig::from_env()
+            .expect("config parse")
+            .expect("config should be present");
+        assert_eq!(config.db_url, "libsql://prod-db.turso.io");
+        assert_eq!(config.auth_token, "token");
     }
 
     struct EnvReset {

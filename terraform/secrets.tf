@@ -50,6 +50,20 @@ resource "google_secret_manager_secret_version" "backend_proxy_token" {
   secret_data = var.backend_proxy_token
 }
 
+resource "google_secret_manager_secret" "turso_auth_token" {
+  project   = var.project_id
+  secret_id = "${var.app_name}-turso-auth-token"
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "turso_auth_token" {
+  count       = var.turso_auth_token != "" ? 1 : 0
+  secret      = google_secret_manager_secret.turso_auth_token.id
+  secret_data = var.turso_auth_token
+}
+
 resource "google_secret_manager_secret" "databricks_token" {
   project   = var.project_id
   count     = var.databricks_token != "" ? 1 : 0

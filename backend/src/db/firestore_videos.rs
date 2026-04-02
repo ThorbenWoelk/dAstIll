@@ -1,4 +1,5 @@
 use firestore::*;
+use serde::{Deserialize, Serialize};
 
 use crate::models::{ContentStatus, Video};
 
@@ -10,6 +11,82 @@ impl From<firestore::errors::FirestoreError> for StoreError {
     fn from(err: firestore::errors::FirestoreError) -> Self {
         StoreError::Other(format!("Firestore error: {err}"))
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct StoredVideoRecord {
+    #[serde(default)]
+    id: Option<String>,
+    channel_id: String,
+    title: String,
+    thumbnail_url: Option<String>,
+    published_at: chrono::DateTime<chrono::Utc>,
+    is_short: bool,
+    transcript_status: ContentStatus,
+    summary_status: ContentStatus,
+    acknowledged: bool,
+    #[serde(default)]
+    retry_count: u8,
+    quality_score: Option<u8>,
+}
+
+fn document_id_from_path(document: &FirestoreDocument) -> Result<&str, StoreError> {
+    document
+        .name
+        .rsplit('/')
+        .next()
+        .filter(|id| !id.is_empty())
+        .ok_or_else(|| {
+            StoreError::Other(format!(
+                "Firestore video document missing document ID in path `{}`",
+                document.name
+            ))
+        })
+}
+
+fn deserialize_video_document(document: &FirestoreDocument) -> Result<Video, StoreError> {
+    let record: StoredVideoRecord = firestore_document_to_serializable(document)?;
+    let id = record
+        .id
+        .as_deref()
+        .filter(|id| !id.trim().is_empty())
+        .unwrap_or(document_id_from_path(document)?)
+        .to_string();
+
+    Ok(Video {
+        id,
+        channel_id: record.channel_id,
+        title: record.title,
+        thumbnail_url: record.thumbnail_url,
+        published_at: record.published_at,
+        is_short: record.is_short,
+        transcript_status: record.transcript_status,
+        summary_status: record.summary_status,
+        acknowledged: record.acknowledged,
+        retry_count: record.retry_count,
+        quality_score: record.quality_score,
+    })
+}
+
+fn deserialize_video_documents(
+    documents: Vec<FirestoreDocument>,
+) -> Result<Vec<Video>, StoreError> {
+    documents
+        .iter()
+        .map(deserialize_video_document)
+        .collect::<Result<Vec<_>, _>>()
+}
+
+fn partial_update_document(
+    store: &Store,
+    video_id: &str,
+    video: &Video,
+) -> Result<FirestoreDocument, StoreError> {
+    let document_path = format!(
+        "{}/{COLLECTION}/{video_id}",
+        store.firestore.get_documents_path()
+    );
+    Ok(firestore_document_from_serializable(document_path, video)?)
 }
 
 fn transcript_storage_key(video_id: &str) -> String {
@@ -53,14 +130,16 @@ pub async fn fs_insert_video(
     store: &Store,
     video: &Video,
 ) -> Result<super::VideoInsertOutcome, StoreError> {
-    let existing: Option<Video> = store
+    let existing = store
         .firestore
         .fluent()
         .select()
         .by_id_in(COLLECTION)
-        .obj()
         .one(&video.id)
-        .await?;
+        .await?
+        .as_ref()
+        .map(deserialize_video_document)
+        .transpose()?;
 
     let (merged, outcome) = if let Some(existing) = existing {
         let merged = Video {
@@ -108,7 +187,9 @@ pub async fn fs_insert_video(
 
 #[cfg(test)]
 mod tests {
-    use super::reconcile_video_statuses_from_storage;
+    use firestore::firestore_document_from_serializable;
+
+    use super::{COLLECTION, deserialize_video_document, reconcile_video_statuses_from_storage};
     use crate::models::{ContentStatus, Video};
 
     fn build_video() -> Video {
@@ -151,6 +232,51 @@ mod tests {
         assert_eq!(reconciled.transcript_status, ContentStatus::Ready);
         assert_eq!(reconciled.summary_status, ContentStatus::Pending);
     }
+
+    #[test]
+    fn legacy_firestore_video_without_id_uses_document_id() {
+        #[derive(serde::Serialize)]
+        struct LegacyVideoRecord {
+            channel_id: String,
+            title: String,
+            thumbnail_url: Option<String>,
+            published_at: chrono::DateTime<chrono::Utc>,
+            is_short: bool,
+            transcript_status: ContentStatus,
+            summary_status: ContentStatus,
+            acknowledged: bool,
+            retry_count: u8,
+            quality_score: Option<u8>,
+        }
+
+        let record = LegacyVideoRecord {
+            channel_id: "channel-1".to_string(),
+            title: "Legacy".to_string(),
+            thumbnail_url: None,
+            published_at: chrono::Utc::now(),
+            is_short: false,
+            transcript_status: ContentStatus::Ready,
+            summary_status: ContentStatus::Pending,
+            acknowledged: true,
+            retry_count: 2,
+            quality_score: Some(7),
+        };
+        let document = firestore_document_from_serializable(
+            format!(
+                "projects/test-project/databases/(default)/documents/{COLLECTION}/legacy-video"
+            ),
+            &record,
+        )
+        .expect("legacy firestore document");
+
+        let video = deserialize_video_document(&document).expect("legacy video should deserialize");
+
+        assert_eq!(video.id, "legacy-video");
+        assert_eq!(video.channel_id, "channel-1");
+        assert_eq!(video.title, "Legacy");
+        assert_eq!(video.retry_count, 2);
+        assert_eq!(video.quality_score, Some(7));
+    }
 }
 
 pub async fn fs_bulk_insert_videos(store: &Store, videos: Vec<Video>) -> Result<usize, StoreError> {
@@ -173,14 +299,16 @@ pub async fn fs_get_video(
     id: &str,
     include_summary: bool,
 ) -> Result<Option<Video>, StoreError> {
-    let mut video: Option<Video> = store
+    let mut video = store
         .firestore
         .fluent()
         .select()
         .by_id_in(COLLECTION)
-        .obj()
         .one(id)
-        .await?;
+        .await?
+        .as_ref()
+        .map(deserialize_video_document)
+        .transpose()?;
 
     if include_summary {
         if let Some(ref mut v) = video {
@@ -216,13 +344,13 @@ pub async fn fs_get_videos(
             .fluent()
             .select()
             .by_id_in(COLLECTION)
-            .obj()
             .batch(chunk_ids)
             .await?;
-        while let Some((_id, maybe_video)) = stream.next().await {
-            let Some(mut video): Option<Video> = maybe_video else {
+        while let Some((_id, maybe_document)) = stream.next().await {
+            let Some(document) = maybe_document else {
                 continue;
             };
+            let mut video = deserialize_video_document(&document)?;
             if include_summary {
                 if let Some(summary) = store
                     .get_json::<crate::models::Summary>(&format!("summaries/{}.json", video.id))
@@ -238,23 +366,38 @@ pub async fn fs_get_videos(
     Ok(results)
 }
 
+pub async fn fs_load_all_videos(store: &Store) -> Result<Vec<Video>, StoreError> {
+    let documents = store
+        .firestore
+        .fluent()
+        .select()
+        .from(COLLECTION)
+        .query()
+        .await?;
+    deserialize_video_documents(documents)
+}
+
 pub async fn fs_update_video_acknowledged(
     store: &Store,
     video_id: &str,
     acknowledged: bool,
 ) -> Result<(), StoreError> {
+    let document = partial_update_document(
+        store,
+        video_id,
+        &Video {
+            acknowledged,
+            ..default_video_for_partial_update(video_id)
+        },
+    )?;
     store
         .firestore
         .fluent()
         .update()
         .fields(paths!(Video::{acknowledged}))
         .in_col(COLLECTION)
-        .document_id(video_id)
-        .object(&Video {
-            acknowledged,
-            ..default_video_for_partial_update(video_id)
-        })
-        .execute::<Video>()
+        .document(document)
+        .execute()
         .await?;
     Ok(())
 }
@@ -264,18 +407,22 @@ pub async fn fs_update_video_transcript_status(
     video_id: &str,
     status: ContentStatus,
 ) -> Result<(), StoreError> {
+    let document = partial_update_document(
+        store,
+        video_id,
+        &Video {
+            transcript_status: status,
+            ..default_video_for_partial_update(video_id)
+        },
+    )?;
     store
         .firestore
         .fluent()
         .update()
         .fields(paths!(Video::{transcript_status}))
         .in_col(COLLECTION)
-        .document_id(video_id)
-        .object(&Video {
-            transcript_status: status,
-            ..default_video_for_partial_update(video_id)
-        })
-        .execute::<Video>()
+        .document(document)
+        .execute()
         .await?;
     Ok(())
 }
@@ -285,18 +432,22 @@ pub async fn fs_update_video_summary_status(
     video_id: &str,
     status: ContentStatus,
 ) -> Result<(), StoreError> {
+    let document = partial_update_document(
+        store,
+        video_id,
+        &Video {
+            summary_status: status,
+            ..default_video_for_partial_update(video_id)
+        },
+    )?;
     store
         .firestore
         .fluent()
         .update()
         .fields(paths!(Video::{summary_status}))
         .in_col(COLLECTION)
-        .document_id(video_id)
-        .object(&Video {
-            summary_status: status,
-            ..default_video_for_partial_update(video_id)
-        })
-        .execute::<Video>()
+        .document(document)
+        .execute()
         .await?;
     Ok(())
 }
@@ -307,47 +458,57 @@ pub async fn fs_increment_video_retry_count(
 ) -> Result<(), StoreError> {
     // Firestore doesn't support server-side increment via the fluent API,
     // so we read-then-write (acceptable for queue processing which is serialized).
-    let video: Option<Video> = store
+    let video = store
         .firestore
         .fluent()
         .select()
         .by_id_in(COLLECTION)
-        .obj()
         .one(video_id)
-        .await?;
+        .await?
+        .as_ref()
+        .map(deserialize_video_document)
+        .transpose()?;
 
     if let Some(video) = video {
         let new_count = video.retry_count.saturating_add(1);
+        let document = partial_update_document(
+            store,
+            video_id,
+            &Video {
+                retry_count: new_count,
+                ..default_video_for_partial_update(video_id)
+            },
+        )?;
         store
             .firestore
             .fluent()
             .update()
             .fields(paths!(Video::{retry_count}))
             .in_col(COLLECTION)
-            .document_id(video_id)
-            .object(&Video {
-                retry_count: new_count,
-                ..default_video_for_partial_update(video_id)
-            })
-            .execute::<Video>()
+            .document(document)
+            .execute()
             .await?;
     }
     Ok(())
 }
 
 pub async fn fs_reset_video_retry_count(store: &Store, video_id: &str) -> Result<(), StoreError> {
+    let document = partial_update_document(
+        store,
+        video_id,
+        &Video {
+            retry_count: 0,
+            ..default_video_for_partial_update(video_id)
+        },
+    )?;
     store
         .firestore
         .fluent()
         .update()
         .fields(paths!(Video::{retry_count}))
         .in_col(COLLECTION)
-        .document_id(video_id)
-        .object(&Video {
-            retry_count: 0,
-            ..default_video_for_partial_update(video_id)
-        })
-        .execute::<Video>()
+        .document(document)
+        .execute()
         .await?;
     Ok(())
 }
@@ -364,15 +525,16 @@ pub async fn fs_list_videos_for_queue_processing(
         ContentStatus::Loading,
         ContentStatus::Failed,
     ] {
-        let batch: Vec<Video> = store
-            .firestore
-            .fluent()
-            .select()
-            .from(COLLECTION)
-            .filter(|q| q.field(path!(Video::transcript_status)).eq(status))
-            .obj()
-            .query()
-            .await?;
+        let batch = deserialize_video_documents(
+            store
+                .firestore
+                .fluent()
+                .select()
+                .from(COLLECTION)
+                .filter(|q| q.field(path!(Video::transcript_status)).eq(status))
+                .query()
+                .await?,
+        )?;
         pending_transcripts.extend(batch);
     }
 
@@ -383,19 +545,20 @@ pub async fn fs_list_videos_for_queue_processing(
         ContentStatus::Loading,
         ContentStatus::Failed,
     ] {
-        let batch: Vec<Video> = store
-            .firestore
-            .fluent()
-            .select()
-            .from(COLLECTION)
-            .filter(|q| {
-                q.field(path!(Video::transcript_status))
-                    .eq(ContentStatus::Ready)
-            })
-            .filter(|q| q.field(path!(Video::summary_status)).eq(status))
-            .obj()
-            .query()
-            .await?;
+        let batch = deserialize_video_documents(
+            store
+                .firestore
+                .fluent()
+                .select()
+                .from(COLLECTION)
+                .filter(|q| {
+                    q.field(path!(Video::transcript_status))
+                        .eq(ContentStatus::Ready)
+                })
+                .filter(|q| q.field(path!(Video::summary_status)).eq(status))
+                .query()
+                .await?,
+        )?;
         pending_summaries.extend(batch);
     }
 
@@ -418,15 +581,16 @@ pub async fn fs_heal_queue_videos(store: &Store, max_retries: u8) -> Result<usiz
         ContentStatus::Loading,
         ContentStatus::Failed,
     ] {
-        let batch: Vec<Video> = store
-            .firestore
-            .fluent()
-            .select()
-            .from(COLLECTION)
-            .filter(|q| q.field(path!(Video::transcript_status)).eq(status))
-            .obj()
-            .query()
-            .await?;
+        let batch = deserialize_video_documents(
+            store
+                .firestore
+                .fluent()
+                .select()
+                .from(COLLECTION)
+                .filter(|q| q.field(path!(Video::transcript_status)).eq(status))
+                .query()
+                .await?,
+        )?;
         pending_transcripts.extend(batch);
     }
 
@@ -436,19 +600,20 @@ pub async fn fs_heal_queue_videos(store: &Store, max_retries: u8) -> Result<usiz
         ContentStatus::Loading,
         ContentStatus::Failed,
     ] {
-        let batch: Vec<Video> = store
-            .firestore
-            .fluent()
-            .select()
-            .from(COLLECTION)
-            .filter(|q| {
-                q.field(path!(Video::transcript_status))
-                    .eq(ContentStatus::Ready)
-            })
-            .filter(|q| q.field(path!(Video::summary_status)).eq(status))
-            .obj()
-            .query()
-            .await?;
+        let batch = deserialize_video_documents(
+            store
+                .firestore
+                .fluent()
+                .select()
+                .from(COLLECTION)
+                .filter(|q| {
+                    q.field(path!(Video::transcript_status))
+                        .eq(ContentStatus::Ready)
+                })
+                .filter(|q| q.field(path!(Video::summary_status)).eq(status))
+                .query()
+                .await?,
+        )?;
         pending_summaries.extend(batch);
     }
 

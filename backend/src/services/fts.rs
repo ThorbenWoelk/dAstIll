@@ -1,153 +1,214 @@
-use std::sync::Arc;
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Duration,
+};
 
-use tantivy::collector::TopDocs;
-use tantivy::query::QueryParser;
-use tantivy::schema::{Field, Schema, TextFieldIndexing, TextOptions, Value};
-use tantivy::{Index, IndexWriter, ReloadPolicy, TantivyDocument};
+use libsql::{Builder, Connection, Database, TransactionBehavior, Value, params};
 use tokio::sync::RwLock;
 
-use crate::services::search::{SearchCandidate, SearchSourceKind};
+use crate::{
+    search_query::build_fts_query,
+    services::search::{SearchCandidate, SearchSourceKind},
+};
 
-const WRITER_HEAP_BYTES: usize = 15_000_000; // 15 MB
+const LOCAL_DB_FILENAME: &str = "search-fts.db";
+const REPLICA_SYNC_INTERVAL: Duration = Duration::from_secs(30);
 
-/// In-memory BM25 index over all indexed search chunks.
+/// Local libSQL-backed BM25 index over all indexed search chunks.
 /// Thread-safe via an `Arc<RwLock<FtsIndexInner>>`.
 #[derive(Clone)]
 pub struct FtsIndex(Arc<RwLock<FtsIndexInner>>);
 
 struct FtsIndexInner {
-    index: Index,
-    writer: IndexWriter,
-    // Schema field handles.
-    f_chunk_id: Field,
-    f_video_id: Field,
-    f_channel_id: Field,
-    f_source_kind: Field,
-    /// Composite deletion key: `{video_id}_{source_kind}` — enables per-source-kind deletion
-    /// without affecting the other source kind for the same video.
-    f_source_key: Field,
-    f_section_title: Field,
-    f_chunk_text: Field,
-    f_video_title: Field,
-    f_channel_name: Field,
-    f_published_at: Field,
-    f_start_sec: Field,
+    _db: Database,
+    conn: Connection,
+    db_path: PathBuf,
+}
+
+#[derive(Debug, Clone)]
+pub struct FtsRemoteConfig {
+    pub url: String,
+    pub auth_token: String,
 }
 
 impl FtsIndex {
-    pub fn new() -> Result<Self, tantivy::TantivyError> {
-        let mut schema_builder = Schema::builder();
+    pub async fn new() -> Result<Self, String> {
+        let temp_dir = std::env::temp_dir().join(format!("dastill-fts-{}", rand::random::<u64>()));
+        Self::new_in_dir(temp_dir, None).await
+    }
 
-        // Stored-only keyword fields (used for result reconstruction).
-        let stored_string = || -> TextOptions { TextOptions::default().set_stored() };
-        // Full-text indexed + stored fields.
-        let text_indexed = || -> TextOptions {
-            TextOptions::default()
-                .set_indexing_options(
-                    TextFieldIndexing::default()
-                        .set_tokenizer("en_stem")
-                        .set_index_option(
-                            tantivy::schema::IndexRecordOption::WithFreqsAndPositions,
-                        ),
-                )
-                .set_stored()
-        };
+    pub async fn new_in_dir(
+        index_dir: impl Into<PathBuf>,
+        remote: Option<FtsRemoteConfig>,
+    ) -> Result<Self, String> {
+        let index_dir = index_dir.into();
+        fs::create_dir_all(&index_dir)
+            .map_err(|err| format!("failed to create FTS directory: {err}"))?;
+        let db_path = index_dir.join(LOCAL_DB_FILENAME);
 
-        // Keyword field: indexed as a single term (raw tokenizer) for exact-match deletion.
-        let raw_keyword = || -> TextOptions {
-            TextOptions::default()
-                .set_indexing_options(
-                    TextFieldIndexing::default()
-                        .set_tokenizer("raw")
-                        .set_index_option(tantivy::schema::IndexRecordOption::Basic),
-                )
-                .set_stored()
-        };
+        let db = build_database(&db_path, remote.as_ref()).await?;
+        if remote.is_some() {
+            db.sync()
+                .await
+                .map_err(|err| format!("failed to sync Turso embedded replica: {err}"))?;
+        }
 
-        let f_chunk_id = schema_builder.add_text_field("chunk_id", stored_string());
-        let f_video_id = schema_builder.add_text_field("video_id", stored_string());
-        let f_channel_id = schema_builder.add_text_field("channel_id", stored_string());
-        let f_source_kind = schema_builder.add_text_field("source_kind", stored_string());
-        // Composite deletion key: indexed as keyword for exact term-based deletion.
-        let f_source_key = schema_builder.add_text_field("source_key", raw_keyword());
-        let f_section_title = schema_builder.add_text_field("section_title", text_indexed());
-        let f_chunk_text = schema_builder.add_text_field("chunk_text", text_indexed());
-        let f_video_title = schema_builder.add_text_field("video_title", text_indexed());
-        let f_channel_name = schema_builder.add_text_field("channel_name", stored_string());
-        let f_published_at = schema_builder.add_text_field("published_at", stored_string());
-        // start_sec stored as a string representation of f32 (Tantivy has no float stored field).
-        let f_start_sec = schema_builder.add_text_field("start_sec", stored_string());
-
-        let schema = schema_builder.build();
-        let index = Index::create_in_ram(schema);
-        let writer = index.writer(WRITER_HEAP_BYTES)?;
+        let conn = db
+            .connect()
+            .map_err(|err| format!("failed to connect to FTS database: {err}"))?;
+        initialize_schema(&conn).await?;
 
         Ok(Self(Arc::new(RwLock::new(FtsIndexInner {
-            index,
-            writer,
-            f_chunk_id,
-            f_video_id,
-            f_channel_id,
-            f_source_kind,
-            f_source_key,
-            f_section_title,
-            f_chunk_text,
-            f_video_title,
-            f_channel_name,
-            f_published_at,
-            f_start_sec,
+            _db: db,
+            conn,
+            db_path,
         }))))
     }
 
     /// Add or replace all chunks for a single video+source_kind pair.
     /// Deletes existing documents with the matching video_id + source_kind, then adds the new ones.
-    pub async fn upsert_source(&self, meta: FtsSourceMeta<'_>, chunks: &[FtsChunk]) {
+    pub async fn upsert_source(
+        &self,
+        meta: FtsSourceMeta<'_>,
+        chunks: &[FtsChunk],
+    ) -> Result<(), String> {
         let source_key = format!("{}_{}", meta.video_id, meta.source_kind.as_str());
-        let mut inner = self.0.write().await;
-        delete_source_docs(&mut inner, &source_key);
+        let inner = self.0.write().await;
+        let tx = match inner
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .await
+        {
+            Ok(tx) => tx,
+            Err(err) => {
+                return Err(format!(
+                    "failed to start FTS transaction for {}:{}: {err}",
+                    meta.video_id,
+                    meta.source_kind.as_str()
+                ));
+            }
+        };
 
-        for chunk in chunks {
-            let mut doc = TantivyDocument::default();
-            doc.add_text(inner.f_chunk_id, &chunk.chunk_id);
-            doc.add_text(inner.f_video_id, meta.video_id);
-            doc.add_text(inner.f_channel_id, meta.channel_id);
-            doc.add_text(inner.f_source_kind, meta.source_kind.as_str());
-            doc.add_text(inner.f_source_key, &source_key);
-            doc.add_text(inner.f_chunk_text, &chunk.chunk_text);
-            doc.add_text(inner.f_video_title, meta.video_title);
-            doc.add_text(inner.f_channel_name, meta.channel_name);
-            doc.add_text(inner.f_published_at, meta.published_at);
-            if let Some(title) = &chunk.section_title {
-                doc.add_text(inner.f_section_title, title);
-            }
-            if let Some(sec) = chunk.start_sec {
-                doc.add_text(inner.f_start_sec, sec.to_string());
-            }
-            let _ = inner.writer.add_document(doc);
+        if let Err(err) = tx
+            .execute(
+                "DELETE FROM fts_search WHERE source_key = ?1",
+                params![source_key.clone()],
+            )
+            .await
+        {
+            let _ = tx.rollback().await;
+            return Err(format!(
+                "failed to clear existing FTS rows for {}:{}: {err}",
+                meta.video_id,
+                meta.source_kind.as_str()
+            ));
         }
 
-        let _ = inner.writer.commit();
-        let doc_count = inner
-            .index
-            .reader_builder()
-            .try_into()
-            .map(|r: tantivy::IndexReader| r.searcher().num_docs())
-            .unwrap_or(0);
+        for chunk in chunks {
+            if let Err(err) = tx
+                .execute(
+                    r#"
+                    INSERT INTO fts_search (
+                        chunk_id,
+                        video_id,
+                        channel_id,
+                        source_kind,
+                        source_key,
+                        section_title,
+                        chunk_text,
+                        video_title,
+                        channel_name,
+                        published_at,
+                        start_sec
+                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+                    "#,
+                    params![
+                        chunk.chunk_id.clone(),
+                        meta.video_id,
+                        meta.channel_id,
+                        meta.source_kind.as_str(),
+                        source_key.clone(),
+                        chunk.section_title.clone(),
+                        chunk.chunk_text.clone(),
+                        meta.video_title,
+                        meta.channel_name,
+                        meta.published_at,
+                        chunk.start_sec.map(f64::from),
+                    ],
+                )
+                .await
+            {
+                let _ = tx.rollback().await;
+                return Err(format!(
+                    "failed to insert FTS chunk {} for {}:{}: {err}",
+                    chunk.chunk_id,
+                    meta.video_id,
+                    meta.source_kind.as_str()
+                ));
+            }
+        }
+
+        if let Err(err) = tx.commit().await {
+            return Err(format!(
+                "failed to commit FTS transaction for {}:{}: {err}",
+                meta.video_id,
+                meta.source_kind.as_str()
+            ));
+        }
+
+        let doc_count = match query_doc_count(&inner.conn).await {
+            Ok(doc_count) => doc_count,
+            Err(err) => {
+                tracing::warn!(error = %err, "FTS upsert committed but doc count query failed");
+                0
+            }
+        };
+
         tracing::info!(
             video_id = meta.video_id,
             source_kind = meta.source_kind.as_str(),
             chunks_added = chunks.len(),
             total_docs = doc_count,
-            "fts index updated"
+            "FTS index updated"
         );
+        Ok(())
     }
 
     /// Remove all indexed documents for a video+source_kind pair.
-    pub async fn delete_source(&self, video_id: &str, source_kind: SearchSourceKind) {
+    pub async fn delete_source(
+        &self,
+        video_id: &str,
+        source_kind: SearchSourceKind,
+    ) -> Result<(), String> {
         let source_key = format!("{}_{}", video_id, source_kind.as_str());
-        let mut inner = self.0.write().await;
-        delete_source_docs(&mut inner, &source_key);
-        let _ = inner.writer.commit();
+        let inner = self.0.write().await;
+        inner
+            .conn
+            .execute(
+                "DELETE FROM fts_search WHERE source_key = ?1",
+                params![source_key],
+            )
+            .await
+            .map_err(|err| {
+                format!(
+                    "failed to delete FTS rows for {}:{}: {err}",
+                    video_id,
+                    source_kind.as_str()
+                )
+            })?;
+        Ok(())
+    }
+
+    pub async fn clear(&self) -> Result<(), String> {
+        let inner = self.0.write().await;
+        inner
+            .conn
+            .execute("DELETE FROM fts_search", ())
+            .await
+            .map_err(|err| format!("failed to clear FTS index: {err}"))?;
+        Ok(())
     }
 
     /// BM25 search. Returns candidates ranked by relevance score.
@@ -159,103 +220,115 @@ impl FtsIndex {
         channel_id: Option<&str>,
         limit: usize,
     ) -> Vec<FtsSearchResult> {
-        let inner = self.0.read().await;
-        let reader = match inner
-            .index
-            .reader_builder()
-            .reload_policy(ReloadPolicy::Manual)
-            .try_into()
-        {
-            Ok(r) => r,
-            Err(_) => return Vec::new(),
-        };
-        let searcher = reader.searcher();
+        let match_query = build_fts_query(query);
+        if match_query.is_empty() {
+            return Vec::new();
+        }
 
-        let query_parser = QueryParser::for_index(
-            &inner.index,
-            vec![
-                inner.f_chunk_text,
-                inner.f_video_title,
-                inner.f_section_title,
-            ],
+        let inner = self.0.read().await;
+        let mut sql = String::from(
+            r#"
+            SELECT
+                chunk_id,
+                video_id,
+                channel_id,
+                channel_name,
+                video_title,
+                source_kind,
+                section_title,
+                chunk_text,
+                published_at,
+                start_sec,
+                bm25(fts_search, 1.0, 2.5, 2.0) AS rank_score
+            FROM fts_search
+            WHERE fts_search MATCH ?1
+            "#,
         );
-        let parsed = match query_parser.parse_query(query) {
-            Ok(q) => q,
-            Err(_) => {
-                // Fall back to a fuzzy term search on each word.
-                let escaped: String = query
-                    .split_whitespace()
-                    .map(|w| format!("\"{}\"", w.replace('"', "")))
-                    .collect::<Vec<_>>()
-                    .join(" OR ");
-                match query_parser.parse_query(&escaped) {
-                    Ok(q) => q,
-                    Err(_) => return Vec::new(),
-                }
+
+        let mut bind_values = vec![Value::Text(match_query)];
+        let mut bind_index = 2usize;
+
+        if let Some(source_kind) = source_kind {
+            sql.push_str(&format!(" AND source_kind = ?{bind_index}"));
+            bind_values.push(Value::Text(source_kind.as_str().to_string()));
+            bind_index += 1;
+        }
+
+        if let Some(channel_id) = channel_id {
+            sql.push_str(&format!(" AND channel_id = ?{bind_index}"));
+            bind_values.push(Value::Text(channel_id.to_string()));
+            bind_index += 1;
+        }
+
+        sql.push_str(" ORDER BY rank_score ASC, published_at DESC");
+        sql.push_str(&format!(" LIMIT ?{bind_index}"));
+        bind_values.push(Value::Integer(limit.min(200) as i64));
+
+        let mut rows = match inner
+            .conn
+            .query(&sql, libsql::params_from_iter(bind_values))
+            .await
+        {
+            Ok(rows) => rows,
+            Err(err) => {
+                tracing::error!(error = %err, "FTS query failed");
+                return Vec::new();
             }
         };
-
-        // Over-fetch when filtering to compensate for post-filter reduction.
-        let fetch_limit = if source_kind.is_some() || channel_id.is_some() {
-            (limit * 4).min(200)
-        } else {
-            limit.min(200)
-        };
-
-        let top_docs =
-            match searcher.search(&parsed, &TopDocs::with_limit(fetch_limit).order_by_score()) {
-                Ok(docs) => docs,
-                Err(_) => return Vec::new(),
-            };
 
         let mut results = Vec::new();
-        for (score, doc_address) in top_docs {
-            let doc: TantivyDocument = match searcher.doc(doc_address) {
-                Ok(d) => d,
-                Err(_) => continue,
+        while let Ok(Some(row)) = rows.next().await {
+            let start_sec = match row.get_value(9) {
+                Ok(Value::Null) => None,
+                Ok(Value::Real(value)) => Some(value as f32),
+                Ok(Value::Integer(value)) => Some(value as f32),
+                _ => None,
+            };
+            let score = match row.get_value(10) {
+                Ok(Value::Real(value)) => -(value as f32),
+                Ok(Value::Integer(value)) => -(value as f32),
+                _ => 0.0,
             };
 
-            let get_str = |field: Field| -> String {
-                doc.get_first(field)
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string()
+            let section_title = match row.get_value(6) {
+                Ok(Value::Null) => None,
+                Ok(Value::Text(value)) => Some(value),
+                _ => None,
             };
 
-            let doc_channel_id = get_str(inner.f_channel_id);
-            let doc_source_kind_str = get_str(inner.f_source_kind);
-            let doc_source_kind = SearchSourceKind::from_db_value(&doc_source_kind_str);
-
-            // Apply filters.
-            if let Some(cid) = channel_id {
-                if doc_channel_id != cid {
-                    continue;
-                }
-            }
-            if let Some(sk) = source_kind {
-                if doc_source_kind != sk {
-                    continue;
-                }
-            }
-
-            let start_sec = get_str(inner.f_start_sec)
-                .parse::<f32>()
-                .ok()
-                .filter(|_| !get_str(inner.f_start_sec).is_empty());
+            let (
+                Ok(chunk_id),
+                Ok(video_id),
+                Ok(channel_id),
+                Ok(channel_name),
+                Ok(video_title),
+                Ok(source_kind),
+                Ok(chunk_text),
+                Ok(published_at),
+            ) = (
+                row.get::<String>(0),
+                row.get::<String>(1),
+                row.get::<String>(2),
+                row.get::<String>(3),
+                row.get::<String>(4),
+                row.get::<String>(5),
+                row.get::<String>(7),
+                row.get::<String>(8),
+            )
+            else {
+                continue;
+            };
 
             results.push(FtsSearchResult {
-                chunk_id: get_str(inner.f_chunk_id),
-                video_id: get_str(inner.f_video_id),
-                channel_id: doc_channel_id,
-                channel_name: get_str(inner.f_channel_name),
-                video_title: get_str(inner.f_video_title),
-                source_kind: doc_source_kind,
-                section_title: {
-                    let s = get_str(inner.f_section_title);
-                    if s.is_empty() { None } else { Some(s) }
-                },
-                chunk_text: get_str(inner.f_chunk_text),
-                published_at: get_str(inner.f_published_at),
+                chunk_id,
+                video_id,
+                channel_id,
+                channel_name,
+                video_title,
+                source_kind: SearchSourceKind::from_db_value(&source_kind),
+                section_title,
+                chunk_text,
+                published_at,
                 start_sec,
                 score,
             });
@@ -268,27 +341,76 @@ impl FtsIndex {
         results
     }
 
-    /// Total number of documents in the index (approximate).
+    /// Total number of documents in the index.
     pub async fn doc_count(&self) -> u64 {
         let inner = self.0.read().await;
-        let Ok(reader) = inner
-            .index
-            .reader_builder()
-            .reload_policy(ReloadPolicy::Manual)
-            .try_into()
-        else {
-            return 0;
-        };
-        reader.searcher().num_docs()
+        query_doc_count(&inner.conn).await.unwrap_or(0)
+    }
+
+    pub async fn local_db_path(&self) -> PathBuf {
+        let inner = self.0.read().await;
+        inner.db_path.clone()
     }
 }
 
-fn delete_source_docs(inner: &mut FtsIndexInner, source_key: &str) {
-    use tantivy::Term;
-    // Delete all docs where source_key == "{video_id}_{source_kind}".
-    // This is a precise per-source deletion that does not disturb the other source kind.
-    let term = Term::from_field_text(inner.f_source_key, source_key);
-    inner.writer.delete_term(term);
+async fn build_database(
+    db_path: &Path,
+    remote: Option<&FtsRemoteConfig>,
+) -> Result<Database, String> {
+    if let Some(remote) = remote {
+        Builder::new_remote_replica(db_path, remote.url.clone(), remote.auth_token.clone())
+            .sync_interval(REPLICA_SYNC_INTERVAL)
+            .build()
+            .await
+            .map_err(|err| format!("failed to build Turso embedded replica: {err}"))
+    } else {
+        Builder::new_local(db_path)
+            .build()
+            .await
+            .map_err(|err| format!("failed to build local libSQL database: {err}"))
+    }
+}
+
+async fn initialize_schema(conn: &Connection) -> Result<(), String> {
+    conn.execute_batch(
+        r#"
+        CREATE VIRTUAL TABLE IF NOT EXISTS fts_search USING fts5 (
+            chunk_id UNINDEXED,
+            video_id UNINDEXED,
+            channel_id UNINDEXED,
+            source_kind UNINDEXED,
+            source_key UNINDEXED,
+            section_title,
+            chunk_text,
+            video_title,
+            channel_name UNINDEXED,
+            published_at UNINDEXED,
+            start_sec UNINDEXED,
+            tokenize = 'porter'
+        );
+        "#,
+    )
+    .await
+    .map_err(|err| format!("failed to initialize FTS schema: {err}"))?;
+    Ok(())
+}
+
+async fn query_doc_count(conn: &Connection) -> Result<u64, String> {
+    let mut rows = conn
+        .query("SELECT COUNT(*) FROM fts_search", ())
+        .await
+        .map_err(|err| format!("failed to query FTS doc count: {err}"))?;
+    let Some(row) = rows
+        .next()
+        .await
+        .map_err(|err| format!("failed to read FTS doc count row: {err}"))?
+    else {
+        return Ok(0);
+    };
+    let count = row
+        .get::<i64>(0)
+        .map_err(|err| format!("failed to decode FTS doc count: {err}"))?;
+    Ok(count.max(0) as u64)
 }
 
 /// Data for a single chunk to be inserted into the FTS index.
@@ -345,10 +467,11 @@ impl From<FtsSearchResult> for SearchCandidate {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
 
     #[tokio::test]
-    async fn fts_index_returns_bm25_ranked_results() {
-        let index = FtsIndex::new().expect("index should be created");
+    async fn fts_index_returns_ranked_results() {
+        let index = FtsIndex::new().await.expect("index should be created");
 
         index
             .upsert_source(
@@ -377,7 +500,8 @@ mod tests {
                     },
                 ],
             )
-            .await;
+            .await
+            .expect("source should be indexed");
 
         index
             .upsert_source(
@@ -396,7 +520,8 @@ mod tests {
                     start_sec: None,
                 }],
             )
-            .await;
+            .await
+            .expect("source should be indexed");
 
         let results = index.search("ownership rust", None, None, 10).await;
         assert!(
@@ -409,7 +534,7 @@ mod tests {
 
     #[tokio::test]
     async fn fts_index_filters_by_channel_id() {
-        let index = FtsIndex::new().expect("index should be created");
+        let index = FtsIndex::new().await.expect("index should be created");
 
         for (vid, cid) in [("v1", "ch-a"), ("v2", "ch-b")] {
             index
@@ -429,7 +554,8 @@ mod tests {
                         start_sec: None,
                     }],
                 )
-                .await;
+                .await
+                .expect("source should be indexed");
         }
 
         let results = index
@@ -441,7 +567,7 @@ mod tests {
 
     #[tokio::test]
     async fn fts_index_delete_source_removes_documents() {
-        let index = FtsIndex::new().expect("index should be created");
+        let index = FtsIndex::new().await.expect("index should be created");
 
         index
             .upsert_source(
@@ -460,19 +586,56 @@ mod tests {
                     start_sec: None,
                 }],
             )
-            .await;
+            .await
+            .expect("source should be indexed");
 
         let before = index.search("deleted", None, None, 10).await;
         assert!(!before.is_empty());
 
         index
             .delete_source("video-del", SearchSourceKind::Transcript)
-            .await;
+            .await
+            .expect("delete should succeed");
 
         let after = index.search("deleted", None, None, 10).await;
         assert!(
             after.is_empty(),
             "deleted source should not appear in results"
         );
+    }
+
+    #[tokio::test]
+    async fn fts_index_uses_persistent_local_database_file() {
+        let temp_dir = tempdir().expect("tempdir should be created");
+        let index = FtsIndex::new_in_dir(temp_dir.path(), None)
+            .await
+            .expect("index should be created");
+
+        index
+            .upsert_source(
+                FtsSourceMeta {
+                    video_id: "video-persisted",
+                    source_kind: SearchSourceKind::Summary,
+                    channel_id: "channel-persisted",
+                    channel_name: "Persisted Channel",
+                    video_title: "Persistent FTS",
+                    published_at: "2026-01-03T00:00:00Z",
+                },
+                &[FtsChunk {
+                    chunk_id: "video-persisted_summary_1_0".to_string(),
+                    section_title: Some("Restore".to_string()),
+                    chunk_text: "Persisted libsql search rows should survive reopen.".to_string(),
+                    start_sec: None,
+                }],
+            )
+            .await
+            .expect("source should be indexed");
+
+        let reopened = FtsIndex::new_in_dir(temp_dir.path(), None)
+            .await
+            .expect("index should reopen");
+        let results = reopened.search("persisted reopen", None, None, 10).await;
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].video_id, "video-persisted");
     }
 }
