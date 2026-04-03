@@ -5,7 +5,6 @@ import type { Component } from "svelte";
 
 import { authState } from "$lib/auth-state.svelte";
 import {
-  applySavedChannelOrder,
   loadWorkspaceState,
   restoreWorkspaceSnapshot,
   saveWorkspaceState,
@@ -76,12 +75,6 @@ export function createHomeWorkspacePersistenceController(options: {
   let preferencesHydrated = $state(false);
   let WorkspaceSearchBarComponent = $state<Component | null>(null);
   let preferencesSaveTimer: ReturnType<typeof setTimeout> | null = null;
-
-  function syncChannelOrderFromList() {
-    sidebarState.setChannelOrder(
-      sidebarState.channels.map((channel) => channel.id),
-    );
-  }
 
   function restoreWorkspaceState() {
     const urlState: Partial<WorkspaceViewState> = {};
@@ -298,13 +291,10 @@ export function createHomeWorkspacePersistenceController(options: {
         );
 
         if (bootstrapResult.channels && bootstrapResult.channels.length > 0) {
-          sidebarState.setChannels(
-            applySavedChannelOrder(
-              bootstrapResult.channels,
-              sidebarState.channelOrder,
-            ),
+          sidebarState.applyLoadedChannelsState(
+            bootstrapResult.channels,
+            sidebarState.channelOrder,
           );
-          syncChannelOrderFromList();
         }
 
         if (bootstrapResult.aiAvailable !== null) {

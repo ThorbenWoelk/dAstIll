@@ -268,6 +268,10 @@ export type SidebarStateResult = {
   }) => void;
   clearSelectedVideoSelection: () => void;
   clearChannelSelectionState: () => void;
+  applyLoadedChannelsState: (
+    nextChannels: Channel[],
+    nextChannelOrder?: string[],
+  ) => void;
 
   // Operations
   syncChannelOrderFromList: () => void;
@@ -565,6 +569,14 @@ export function createSidebarState(
   function clearChannelSelectionState() {
     selectedChannelId = null;
     resetVideoListState({ selectedVideoId: null });
+  }
+
+  function applyLoadedChannelsState(
+    nextChannels: Channel[],
+    nextChannelOrder: string[] = channelOrder,
+  ) {
+    channels = applySavedChannelOrder(nextChannels, nextChannelOrder);
+    channelOrder = channelOrderFromList(channels);
   }
 
   function setVideoStatus(
@@ -896,6 +908,7 @@ export function createSidebarState(
     applyRestoredSidebarState,
     clearSelectedVideoSelection,
     clearChannelSelectionState,
+    applyLoadedChannelsState,
 
     // Operations
     loadInitial,

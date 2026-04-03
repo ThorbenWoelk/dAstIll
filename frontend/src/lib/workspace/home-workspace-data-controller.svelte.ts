@@ -16,10 +16,7 @@ import {
 import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
 import { closeSummarySession } from "$lib/analytics/read-time";
 import { track } from "$lib/analytics/tracker";
-import {
-  applySavedChannelOrder,
-  resolveInitialChannelSelection,
-} from "$lib/channel-workspace";
+import { resolveInitialChannelSelection } from "$lib/channel-workspace";
 import {
   buildChannelViewCacheKey,
   cloneSyncDepthState,
@@ -359,10 +356,10 @@ export function createHomeWorkspaceDataController(options: {
         retryDelayMs: 500,
       });
 
-      sidebarState.setChannels(
-        applySavedChannelOrder(bootstrap.channels, sidebarState.channelOrder),
+      sidebarState.applyLoadedChannelsState(
+        bootstrap.channels,
+        sidebarState.channelOrder,
       );
-      sidebarState.syncChannelOrderFromList();
       void putCachedChannels(
         sidebarState.channels,
         options.getWorkspaceCacheScopeKey(),

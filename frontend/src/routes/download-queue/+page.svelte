@@ -134,10 +134,7 @@
         const channelList = await listChannelsWhenAvailable({
           retryDelayMs: 500,
         });
-        sidebar.setChannels(
-          applySavedChannelOrder(channelList, sidebar.channelOrder),
-        );
-        sidebar.syncChannelOrderFromList();
+        sidebar.applyLoadedChannelsState(channelList, sidebar.channelOrder);
         void putCachedChannels(sidebar.channels, workspaceCacheScopeKey);
 
         const initialChannelId = resolveInitialChannelSelection(
@@ -385,13 +382,10 @@
         );
 
         if (bootstrapResult.channels && bootstrapResult.channels.length > 0) {
-          sidebar.setChannels(
-            applySavedChannelOrder(
-              bootstrapResult.channels,
-              sidebar.channelOrder,
-            ),
+          sidebar.applyLoadedChannelsState(
+            bootstrapResult.channels,
+            sidebar.channelOrder,
           );
-          sidebar.syncChannelOrderFromList();
         }
 
         if (bootstrapResult.aiStatus !== null) {
