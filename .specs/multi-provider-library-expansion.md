@@ -48,8 +48,23 @@ Expand dAstIll into a unified multi-provider content library that can ingest and
   - user can log into their New York Times account from dAstIll
   - dAstIll can verify that the user has an active subscription or other entitlement needed to access content
   - user can subscribe to New York Times content sources and ingest entitled content into the unified library model
+- Treat New York Times full-content ingestion as an authenticated browser-session integration, not as an unauthenticated crawler:
+  - discovery and metadata lookup may use public NYT surfaces such as section pages, RSS feeds, or official APIs where available
+  - full article ingestion must assume an authenticated session is required for at least some content
+  - the system must detect and record whether an article was ingested as full text, partial text, or metadata-only because access was not available
+- Do not assume the official NYT developer APIs are sufficient for subscriber-only full article ingestion:
+  - the MVP may use official APIs or feeds for discovery and metadata enrichment
+  - the MVP should plan for article-body extraction to come from the authenticated article-rendering path instead of assuming an API returns the full subscriber article body
+- Make the NYT MVP technically and operationally explicit:
+  - login should happen in a real browser context that accepts NYT cookies and completes any NYT-managed authentication flow
+  - dAstIll should store only the minimum session material needed for continued access, encrypted at rest, with clear expiration and re-auth behavior
+  - article ingestion should load the target NYT article with the authenticated session, determine whether the user is entitled to read it, and only then extract the readable article payload into canonical `ContentPart` records
+  - if the session is valid but the article still cannot be read or extracted, the item should remain metadata-only and surface the failure reason
 - Sequence delivery so the first implementation slice ships a usable New York Times MVP before adding the next non-YouTube provider.
 - Preserve a distinction between public content availability and user-entitled content availability so the system can explain why some provider items are visible but not ingestible.
+- Require an explicit compliance gate before shipping any NYT full-content ingestion path:
+  - if NYT written permission, licensing, or another approved legal basis is required, MVP shipment must not bypass that requirement
+  - a technically feasible but non-compliant scraping path is not sufficient for release
 - Allow website tracking without forcing every tracked page to pretend to be part of a feed or publication series.
 - Present all user subscriptions inside one unified library model rather than separate disconnected product areas.
 - Preserve source grouping semantics by type:
@@ -85,6 +100,7 @@ Expand dAstIll into a unified multi-provider content library that can ingest and
 - Building every possible provider integration in the first pass.
 - Supporting every paid or authenticated publisher in the first pass beyond an initial New York Times implementation.
 - Starting implementation work on a second new provider before the New York Times MVP is shipped and verified.
+- Assuming that "user has an active NYT subscription" by itself makes automated scraping permissible to ship.
 - Final pixel-level UI styling, animation, or visual polish decisions.
 - Advanced recommendation or ranking logic for subscriptions.
 - Collaborative folders or shared libraries.
@@ -151,6 +167,44 @@ Authenticated publishers such as New York Times should plug into the same canoni
 
 The product should also make entitlement state legible. If a New York Times source exists but the connected account no longer has access, the UI should show that the source is authentication-gated or subscription-gated rather than silently failing.
 
+### New York Times technical feasibility
+
+New York Times support should be specified as a two-layer integration rather than a generic "scrape the site" adapter:
+
+- discovery layer
+  - identifies subscribable NYT sources such as sections, newsletters, topics, or author pages
+  - can use public NYT surfaces such as section pages, RSS, and official APIs where those surfaces are enough for discovery and metadata
+- authenticated ingestion layer
+  - uses a user-authorized NYT browser session to open specific article URLs
+  - determines whether the connected account is currently entitled to the article
+  - extracts normalized article content only after successful access is confirmed
+
+For the MVP, the default assumption should be that official NYT APIs are helpful for discovery and metadata but are not the primary mechanism for obtaining subscriber-only article bodies. The article body path should therefore be modeled as "render the article in an authenticated browser context, then extract the readable content representation."
+
+That extraction path should be concrete:
+
+- user initiates NYT login in a browser context controlled by dAstIll or a tightly coupled companion surface
+- NYT completes its own login flow, including cookies and any interactive checks it requires
+- dAstIll retains the minimum viable session state needed to revisit article URLs on the user's behalf
+- sync opens each target article in the authenticated context
+- sync classifies the result as one of:
+  - full article accessible and extractable
+  - article accessible but extraction failed
+  - article not accessible because the user lacks entitlement
+  - article blocked by anti-bot, session expiry, or another technical constraint
+- only the first case creates a full-text `ContentPart`; the other cases create metadata-only items plus machine-readable failure state
+
+The MVP should not assume a plain backend HTTP client can reliably fetch NYT article HTML. NYT uses anti-bot protections and login-dependent rendering behavior, so a naive server-side scraper is likely to be brittle even before legal review.
+
+### New York Times release gate
+
+There is an important distinction between technical possibility and release viability. Even if dAstIll can technically obtain article content through a user-authenticated session, NYT's published restrictions on automated scraping and data mining mean the team must treat release as gated by compliance review, written permission, licensing, or another clearly approved basis. The spec should therefore treat the NYT MVP as having both:
+
+- a technical proof path
+- a compliance approval path
+
+MVP is not complete unless both paths are satisfied.
+
 ### Clutter-free library organization
 
 The product should shift from a "channels and videos" mental model to a broader "sources and items" mental model. The library should avoid a giant flat list of mixed provider entries. A cleaner structure is:
@@ -210,12 +264,16 @@ The New York Times MVP should be treated as the proving ground for:
 - subscribable provider-backed sources
 - ingestion of entitled content into the generic source and item model
 - library presentation that makes auth-gated content understandable
+- a release checklist that separately verifies technical feasibility and compliance approval
 
 ## Open Questions
 
 - Which science engines should be treated as first-wave query-backed publication providers versus enrichment-only providers?
 - Which New York Times content scopes should be first-wave subscribable sources: sections, topics, newsletters, saved articles, author pages, or some smaller subset?
 - What authentication mechanism should the New York Times integration use in the first implementation slice, and what secure credential/session storage is required on the backend?
+- Should the NYT MVP use an embedded browser flow, a browser extension, a local companion process, or another user-session-preserving architecture for authenticated article access?
+- What exact extraction target should the NYT MVP trust first on article pages: rendered DOM, structured data, embedded JSON state, or a provider-specific internal payload exposed to the authenticated page?
+- What compliance or licensing approval is required before any authenticated NYT article extraction can ship to users?
 - What exact exit criteria define the New York Times MVP as shipped, so work on the second provider does not begin prematurely?
 - Should the top-level library surface be organized primarily by source type, by user-defined folders, or by a hybrid of both?
 - Should manually tracked websites support both folder assignment and ad hoc tags in the first pass, or should tags wait for a later iteration?
