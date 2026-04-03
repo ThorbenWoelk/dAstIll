@@ -15,7 +15,8 @@ use crate::{
         ChatConversation, ChatMessage, ChatRole, ChatTitleStatus, CreateConversationRequest,
         EphemeralChatMessageRequest, SendChatMessageRequest, UpdateConversationRequest,
     },
-    security::{AccessContext, AuthState, can_access_video},
+    read_cache::SuggestedVideo,
+    security::{AccessContext, AuthState},
     services::{
         ReplyWorkflowRequest,
         chat::{
@@ -57,8 +58,87 @@ fn active_reply_scope_key(access_context: &AccessContext) -> String {
     access_context.cache_scope_key()
 }
 
+fn video_suggestion_scope_key(access_context: &AccessContext) -> String {
+    format!(
+        "video-suggestions:{}",
+        active_reply_scope_key(access_context)
+    )
+}
+
 fn active_reply_key(access_context: &AccessContext, conversation_id: &str) -> ActiveChatKey {
     ActiveChatKey::new(active_reply_scope_key(access_context), conversation_id)
+}
+
+async fn build_video_suggestion_catalog(
+    store: &db::Store,
+    access_context: &AccessContext,
+) -> Result<Vec<SuggestedVideo>, db::StoreError> {
+    let mut by_id = std::collections::HashMap::<String, SuggestedVideo>::new();
+
+    for channel_id in &access_context.allowed_channel_ids {
+        let mut offset = 0usize;
+        loop {
+            let batch =
+                db::list_channel_videos_window(store, channel_id, 200, offset, true).await?;
+            if batch.is_empty() {
+                break;
+            }
+            let batch_len = batch.len();
+            offset = offset.saturating_add(batch_len);
+            for video in batch {
+                by_id
+                    .entry(video.id.clone())
+                    .or_insert_with(|| SuggestedVideo {
+                        id: video.id,
+                        channel_id: video.channel_id,
+                        title: video.title,
+                        published_at: video.published_at,
+                    });
+            }
+            if batch_len < 200 {
+                break;
+            }
+        }
+    }
+
+    if !access_context.allowed_other_video_ids.is_empty() {
+        let others = db::get_videos(store, &access_context.allowed_other_video_ids, false).await?;
+        for video in others.into_values() {
+            by_id
+                .entry(video.id.clone())
+                .or_insert_with(|| SuggestedVideo {
+                    id: video.id,
+                    channel_id: video.channel_id,
+                    title: video.title,
+                    published_at: video.published_at,
+                });
+        }
+    }
+
+    Ok(by_id.into_values().collect())
+}
+
+async fn load_video_suggestion_catalog(
+    state: &AppState,
+    access_context: &AccessContext,
+) -> Result<Vec<SuggestedVideo>, (StatusCode, String)> {
+    let scope_key = video_suggestion_scope_key(access_context);
+    if let Some(videos) = state
+        .read_cache
+        .get_scoped_video_suggestions(&scope_key)
+        .await
+    {
+        return Ok(videos);
+    }
+
+    let videos = build_video_suggestion_catalog(&state.db, access_context)
+        .await
+        .map_err(map_db_err)?;
+    state
+        .read_cache
+        .set_scoped_video_suggestions(scope_key, videos.clone())
+        .await;
+    Ok(videos)
 }
 
 async fn lookup_active_reply(
@@ -160,7 +240,7 @@ pub async fn suggest_videos(
     Extension(access_context): Extension<AccessContext>,
     Query(query): Query<ChatSuggestionQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let videos = db::load_all_videos(&state.db).await.map_err(map_db_err)?;
+    let videos = load_video_suggestion_catalog(&state, &access_context).await?;
     let channels = match access_context.user_id.as_deref() {
         Some(user_id) => db::list_user_channels_with_virtual_others(&state.db, user_id)
             .await
@@ -178,13 +258,6 @@ pub async fn suggest_videos(
             channels
         }
     };
-    let videos = videos
-        .into_iter()
-        .filter(|video| {
-            can_access_video(&access_context, &video.id, &video.channel_id)
-                || video.channel_id == crate::models::OTHERS_CHANNEL_ID
-        })
-        .collect::<Vec<_>>();
     Ok(Json(rank_video_suggestions(
         &videos,
         &channels,
@@ -628,7 +701,7 @@ fn rank_channel_suggestions(
 }
 
 fn rank_video_suggestions(
-    videos: &[crate::models::Video],
+    videos: &[SuggestedVideo],
     channels: &[crate::models::Channel],
     query: &str,
     limit: usize,
@@ -760,6 +833,7 @@ mod tests {
         Channel, ChatConversation, ChatMessage, ChatMessageStatus, ChatRole, ChatTitleStatus,
         ContentStatus, Video,
     };
+    use crate::read_cache::SuggestedVideo;
     use crate::security::{AccessContext, AccessRole, AuthState};
     use crate::services::ActiveChatHandle;
 
@@ -929,8 +1003,8 @@ mod tests {
         }
     }
 
-    fn sample_video(id: &str, channel_id: &str, title: &str, age_days: i64) -> Video {
-        Video {
+    fn sample_video(id: &str, channel_id: &str, title: &str, age_days: i64) -> SuggestedVideo {
+        let video = Video {
             id: id.to_string(),
             channel_id: channel_id.to_string(),
             title: title.to_string(),
@@ -942,6 +1016,12 @@ mod tests {
             acknowledged: false,
             retry_count: 0,
             quality_score: None,
+        };
+        SuggestedVideo {
+            id: video.id,
+            channel_id: video.channel_id,
+            title: video.title,
+            published_at: video.published_at,
         }
     }
 

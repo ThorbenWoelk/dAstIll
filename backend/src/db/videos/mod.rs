@@ -45,6 +45,27 @@ pub async fn get_videos(
     super::firestore_videos::fs_get_videos(store, ids, include_summary).await
 }
 
+pub async fn list_channel_videos_window(
+    store: &Store,
+    channel_id: &str,
+    limit: usize,
+    offset: usize,
+    descending: bool,
+) -> Result<Vec<Video>, StoreError> {
+    super::firestore_videos::fs_list_channel_videos_window(
+        store,
+        channel_id,
+        limit,
+        offset,
+        if descending {
+            firestore::FirestoreQueryDirection::Descending
+        } else {
+            firestore::FirestoreQueryDirection::Ascending
+        },
+    )
+    .await
+}
+
 /// Fetch every video document from Firestore without any server-side filter or ordering.
 /// Filtering and sorting happen in-memory after this call. This avoids composite indexes,
 /// which would otherwise be the primary Firestore cost driver at this scale.
@@ -251,37 +272,76 @@ pub async fn list_videos_by_channel(
     acknowledged: Option<bool>,
     queue_filter: Option<QueueFilter>,
 ) -> Result<ChannelVideoPageData, StoreError> {
-    let all = load_all_videos(store).await?;
-    let channels = super::channels::list_channels(store).await?;
-    let subscribed = subscribed_channel_ids(&channels);
-    let published_at_not_before = channels
-        .iter()
-        .find(|c| c.id == channel_id)
-        .and_then(channel_sync_floor);
+    let subscribed = subscribed_channel_ids(&super::channels::list_channels(store).await?);
     let options = VideoListOptions {
         limit,
-        offset,
+        offset: 0,
         is_short,
         acknowledged,
         queue_filter,
-        published_at_not_before,
+        published_at_not_before: None,
     };
-    apply_channel_video_filters(store, &all, channel_id, &subscribed, options).await
+    let mut matched = Vec::new();
+    let target_len = offset.saturating_add(limit).saturating_add(1);
+    let mut scanned = 0usize;
+
+    loop {
+        let batch = list_channel_videos_window(store, channel_id, 200, scanned, true).await?;
+        if batch.is_empty() {
+            break;
+        }
+        scanned = scanned.saturating_add(batch.len());
+
+        let page =
+            apply_channel_video_filters(store, &batch, channel_id, &subscribed, options).await?;
+        matched.extend(page.videos);
+        if matched.len() >= target_len || batch.len() < 200 {
+            break;
+        }
+    }
+
+    let has_more = matched.len() > offset.saturating_add(limit);
+    let videos: Vec<Video> = matched.into_iter().skip(offset).take(limit).collect();
+    let next_offset = offset + videos.len();
+
+    Ok(ChannelVideoPageData {
+        videos,
+        has_more,
+        next_offset: has_more.then_some(next_offset),
+    })
 }
 
 pub async fn list_video_ids_by_channel(
     store: &Store,
     channel_id: &str,
 ) -> Result<Vec<String>, StoreError> {
-    let all = load_all_videos(store).await?;
-    let channels = super::channels::list_channels(store).await?;
-    let subscribed = subscribed_channel_ids(&channels);
-    let mut vids: Vec<_> = all
-        .into_iter()
-        .filter(|v| video_matches_channel_scope(v, channel_id, &subscribed))
-        .collect();
-    vids.sort_by(|a, b| b.published_at.cmp(&a.published_at));
-    Ok(vids.into_iter().map(|v| v.id).collect())
+    if channel_id == OTHERS_CHANNEL_ID {
+        let all = load_all_videos(store).await?;
+        let channels = super::channels::list_channels(store).await?;
+        let subscribed = subscribed_channel_ids(&channels);
+        let mut vids: Vec<_> = all
+            .into_iter()
+            .filter(|v| video_matches_channel_scope(v, channel_id, &subscribed))
+            .collect();
+        vids.sort_by(|a, b| b.published_at.cmp(&a.published_at));
+        return Ok(vids.into_iter().map(|v| v.id).collect());
+    }
+
+    let mut ids = Vec::new();
+    let mut scanned = 0usize;
+    loop {
+        let batch = list_channel_videos_window(store, channel_id, 200, scanned, true).await?;
+        if batch.is_empty() {
+            break;
+        }
+        let batch_len = batch.len();
+        scanned = scanned.saturating_add(batch.len());
+        ids.extend(batch.into_iter().map(|video| video.id));
+        if batch_len < 200 {
+            break;
+        }
+    }
+    Ok(ids)
 }
 
 pub async fn get_oldest_ready_video_published_at(
@@ -289,12 +349,23 @@ pub async fn get_oldest_ready_video_published_at(
     channel: &Channel,
 ) -> Result<Option<chrono::DateTime<chrono::Utc>>, StoreError> {
     let floor = channel_sync_floor(channel);
-    let all = load_all_videos(store).await?;
-    Ok(oldest_ready_video_published_at_from_slice(
-        &all,
-        &channel.id,
-        floor,
-    ))
+    let mut scanned = 0usize;
+    loop {
+        let batch = list_channel_videos_window(store, &channel.id, 100, scanned, false).await?;
+        if batch.is_empty() {
+            return Ok(None);
+        }
+        let batch_len = batch.len();
+        scanned = scanned.saturating_add(batch_len);
+        if let Some(published_at) =
+            oldest_ready_video_published_at_from_slice(&batch, &channel.id, floor)
+        {
+            return Ok(Some(published_at));
+        }
+        if batch_len < 100 {
+            return Ok(None);
+        }
+    }
 }
 
 pub async fn list_videos_for_queue_processing(

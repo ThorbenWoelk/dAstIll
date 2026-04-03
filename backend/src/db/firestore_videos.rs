@@ -449,6 +449,34 @@ pub async fn fs_load_all_videos(store: &Store) -> Result<Vec<Video>, StoreError>
     Ok(deserialize_video_documents(documents, "load_all_videos"))
 }
 
+fn usize_to_u32_saturating(value: usize) -> u32 {
+    value.min(u32::MAX as usize) as u32
+}
+
+pub async fn fs_list_channel_videos_window(
+    store: &Store,
+    channel_id: &str,
+    limit: usize,
+    offset: usize,
+    direction: FirestoreQueryDirection,
+) -> Result<Vec<Video>, StoreError> {
+    let documents = store
+        .firestore
+        .fluent()
+        .select()
+        .from(COLLECTION)
+        .filter(|q| q.field(path!(Video::channel_id)).eq(channel_id))
+        .order_by([(path!(Video::published_at), direction)])
+        .offset(usize_to_u32_saturating(offset))
+        .limit(usize_to_u32_saturating(limit))
+        .query()
+        .await?;
+    Ok(deserialize_video_documents(
+        documents,
+        "list_channel_videos_window",
+    ))
+}
+
 pub async fn prune_malformed_video_documents(store: &Store) -> Result<usize, StoreError> {
     let documents = store
         .firestore

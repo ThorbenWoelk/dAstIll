@@ -1,5 +1,7 @@
 use super::*;
 
+const CHANNEL_WINDOW_BATCH_SIZE: usize = 200;
+
 pub async fn load_channel_snapshot_data(
     store: &Store,
     channel_id: &str,
@@ -147,47 +149,95 @@ pub async fn list_user_scoped_videos_by_channel(
         Some(user_id) => crate::db::list_user_video_states(store, user_id).await?,
         None => std::collections::HashMap::new(),
     };
-    let allowed_other_video_ids = allowed_other_video_ids
-        .iter()
-        .cloned()
-        .collect::<HashSet<_>>();
-    let subscribed_channel_ids = allowed_channel_ids.iter().cloned().collect::<HashSet<_>>();
-    let mut filtered = load_all_videos(store)
+    let matches_filters = |video: &Video| {
+        is_short.is_none_or(|value| video.is_short == value)
+            && acknowledged.is_none_or(|value| video.acknowledged == value)
+            && video_visible_in_list(video, queue_filter)
+            && match queue_filter {
+                Some(QueueFilter::AnyIncomplete) => {
+                    video.transcript_status != ContentStatus::Ready
+                        || video.summary_status != ContentStatus::Ready
+                }
+                Some(QueueFilter::TranscriptsOnly) => {
+                    video.transcript_status != ContentStatus::Ready
+                }
+                Some(QueueFilter::SummariesOnly) => {
+                    video.transcript_status == ContentStatus::Ready
+                        && video.summary_status != ContentStatus::Ready
+                }
+                Some(QueueFilter::EvaluationsOnly) => {
+                    video.transcript_status == ContentStatus::Ready
+                        && video.summary_status == ContentStatus::Ready
+                }
+                None => true,
+            }
+    };
+
+    if channel_id == OTHERS_CHANNEL_ID {
+        let allowed_other_video_ids = allowed_other_video_ids
+            .iter()
+            .cloned()
+            .collect::<HashSet<_>>();
+        let subscribed_channel_ids = allowed_channel_ids.iter().cloned().collect::<HashSet<_>>();
+        let mut filtered = get_videos(
+            store,
+            &allowed_other_video_ids.iter().collect::<Vec<_>>(),
+            false,
+        )
         .await?
-        .into_iter()
+        .into_values()
         .map(|video| overlay_user_video_state(video, &user_states))
         .filter(|video| {
-            if channel_id == OTHERS_CHANNEL_ID {
-                allowed_other_video_ids.contains(&video.id)
-                    && !subscribed_channel_ids.contains(&video.channel_id)
-            } else {
-                video.channel_id == channel_id
-            }
+            allowed_other_video_ids.contains(&video.id)
+                && !subscribed_channel_ids.contains(&video.channel_id)
         })
-        .filter(|video| is_short.is_none_or(|value| video.is_short == value))
-        .filter(|video| acknowledged.is_none_or(|value| video.acknowledged == value))
-        .filter(|video| video_visible_in_list(video, queue_filter))
-        .filter(|video| match queue_filter {
-            Some(QueueFilter::AnyIncomplete) => {
-                video.transcript_status != ContentStatus::Ready
-                    || video.summary_status != ContentStatus::Ready
-            }
-            Some(QueueFilter::TranscriptsOnly) => video.transcript_status != ContentStatus::Ready,
-            Some(QueueFilter::SummariesOnly) => {
-                video.transcript_status == ContentStatus::Ready
-                    && video.summary_status != ContentStatus::Ready
-            }
-            Some(QueueFilter::EvaluationsOnly) => {
-                video.transcript_status == ContentStatus::Ready
-                    && video.summary_status == ContentStatus::Ready
-            }
-            None => true,
-        })
+        .filter(matches_filters)
         .collect::<Vec<_>>();
 
-    filtered.sort_by(|left, right| right.published_at.cmp(&left.published_at));
-    let total_len = filtered.len();
-    let videos = filtered
+        filtered.sort_by(|left, right| right.published_at.cmp(&left.published_at));
+        let total_len = filtered.len();
+        let videos = filtered
+            .into_iter()
+            .skip(offset)
+            .take(limit)
+            .collect::<Vec<_>>();
+        let next_offset = offset + videos.len();
+
+        return Ok(Some(ChannelVideoPageData {
+            videos,
+            has_more: total_len > next_offset,
+            next_offset: (total_len > next_offset).then_some(next_offset),
+        }));
+    }
+
+    let target_len = offset.saturating_add(limit).saturating_add(1);
+    let mut matched = Vec::new();
+    let mut scanned = 0usize;
+
+    loop {
+        let batch =
+            list_channel_videos_window(store, channel_id, CHANNEL_WINDOW_BATCH_SIZE, scanned, true)
+                .await?;
+        if batch.is_empty() {
+            break;
+        }
+        let batch_len = batch.len();
+        scanned = scanned.saturating_add(batch_len);
+
+        matched.extend(
+            batch
+                .into_iter()
+                .map(|video| overlay_user_video_state(video, &user_states))
+                .filter(matches_filters),
+        );
+
+        if matched.len() >= target_len || batch_len < CHANNEL_WINDOW_BATCH_SIZE {
+            break;
+        }
+    }
+
+    let has_more = matched.len() > offset.saturating_add(limit);
+    let videos = matched
         .into_iter()
         .skip(offset)
         .take(limit)
@@ -196,8 +246,8 @@ pub async fn list_user_scoped_videos_by_channel(
 
     Ok(Some(ChannelVideoPageData {
         videos,
-        has_more: total_len > next_offset,
-        next_offset: (total_len > next_offset).then_some(next_offset),
+        has_more,
+        next_offset: has_more.then_some(next_offset),
     }))
 }
 

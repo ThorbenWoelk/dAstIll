@@ -4,26 +4,30 @@
 
 Several request-path backend flows still rely on loading the entire Firestore video collection and then filtering and sorting in memory. That creates latency and scalability risk in hot user-facing paths such as channel browsing, chat suggestions, recent-activity chat flows, and other scoped video lookups.
 
-The original fix direction was to add Firestore indexes for those paths. That is no longer acceptable because Firestore indexes are too expensive for this repo's operating constraints.
+The earlier all-no-index direction was too strict. At the current library size, a small number of targeted Firestore indexes is cheaper than continuing to burn read quota on full-collection scans. The real problem is broad read fanout on hot paths, not raw Firestore storage volume.
 
 ## Goal
 
-Replace request-path full-collection video scans in the highest-traffic user-facing flows with app-managed materialized hot-read views backed primarily by Turso or libsql, without requiring new Firestore indexes, while preserving existing endpoint behavior and keeping Firestore as the source of truth.
+Replace request-path full-collection video scans in the highest-traffic user-facing flows with a mixed strategy:
+
+- a minimal set of Firestore indexes for bounded per-channel ordered reads
+- aggressive local caching for hot repeated reads
+- local derived metadata for cases where Firestore indexing is still a poor fit
+
+This must preserve existing endpoint behavior while keeping Firestore as the canonical source of truth.
 
 ## Requirements
 
-- Do not add new Firestore indexes as part of this work.
-- Replace request-path `load_all_videos()` usage in the highest-priority user-facing flows with reads against bounded, materialized hot-read views.
+- Replace request-path `load_all_videos()` usage in the highest-priority user-facing flows with bounded reads.
 - Keep Firestore as the canonical source of truth for video records.
-- Use Turso or libsql as the primary queryable backing store for derived hot-read views in this pass.
-- Define one or more hot-read view shapes that support at least:
-  - channel browse snapshots or paging
-  - chat suggestions and mention resolution
-  - recent-library-activity queries
-- Ensure request-path reads use direct-key lookups, bounded reads, or bounded local/Turso queries rather than full collection scans.
+- Introduce only a small number of Firestore indexes whose read savings clearly outweigh their storage and write costs.
+- Shut off unused Firestore automatic single-field indexes via Terraform rather than keeping broad defaults.
+- Use Firestore for bounded per-channel ordered reads where it is a good fit.
+- Use local cached metadata or local derived lookup state where Firestore indexing is still a poor fit, especially title suggestion paths.
+- Ensure request-path reads use direct-key lookups, bounded Firestore queries, or bounded local cached queries rather than full collection scans.
 - Preserve existing HTTP routes, request parameters, and response payload shapes for the migrated flows.
-- Define how hot-read views are updated when video metadata changes, new videos are ingested, or user-visible status fields change.
-- Define a rebuild or backfill path so the hot-read views can be recreated from existing canonical data if they are empty, stale, or corrupted.
+- Define how caches and local derived lookups are invalidated or refreshed when video metadata changes, new videos are ingested, or user-visible status fields change.
+- Define a rebuild or refill path for any local derived lookup state when it is empty or stale.
 - Define the migration boundary for remaining offline, admin, stats, or low-priority callers that may remain scan-backed for now.
 - Define verification criteria for correctness parity, stale-read handling, and request-path performance improvement.
 
@@ -31,21 +35,20 @@ Replace request-path full-collection video scans in the highest-traffic user-fac
 
 - Redesigning the full storage architecture or moving away from Firestore as the source of truth.
 - Migrating all Firestore data or all application state into Turso.
-- Adding new Firestore composite or single-field indexes to support the hot paths.
+- Reintroducing broad automatic Firestore indexing across the whole `dastill_videos` schema.
 - Reworking every remaining batch, admin, or stats code path in the same pass.
 - Changing UI behavior or introducing new API paging semantics.
 - Generalizing the whole library model beyond current video and channel flows in this pass.
 
 ## Design Considerations
 
-- The repo already has Turso or libsql runtime wiring for search, so a small metadata-oriented hot-read catalog in Turso is a viable option for bounded query paths without introducing another major dependency.
-- Turso should be treated as a derived read-model store, not the new system of record. Firestore remains authoritative and Turso remains rebuildable.
-- Direct per-channel materialized snapshots may still be useful as a local shaping detail, but the first-pass queryable backing store should be Turso or libsql rather than new Firestore query paths.
-- The read model should stay intentionally narrow: only fields needed for hot request paths belong in the hot-read views.
-- Firestore remains authoritative. Materialized views are derived state and must be rebuildable.
+- Firestore should only answer query shapes that map cleanly to a very small index set. In this pass that mainly means per-channel reads ordered by `published_at`.
+- Single-field indexes should be explicitly allowlisted for fields still used by existing Firestore equality queries, rather than relying on broad automatic defaults.
+- The repo already has local cache and libsql or Turso runtime wiring. Those should be used for title-suggestion and repeated hot-read paths before introducing more Firestore indexes.
+- Local derived lookup state should stay intentionally narrow: only the fields needed for hot request paths belong in it.
 - Update paths should be tied to existing ingest, sync, and mutation flows so the system does not depend on request-time repair.
-- The first pass should prioritize user-facing latency wins over architectural completeness.
+- The first pass should prioritize user-facing latency and read-cost wins over architectural completeness.
 
 ## Open Questions
 
-- Should channel browse use only Turso-backed queryable metadata, or should it also maintain pre-shaped per-channel snapshot records for the most latency-sensitive views?
+- Should title-suggestion metadata stay in in-process cache only, or should it be promoted to a durable local libsql or Turso table if scope sizes or cold-start rates grow?

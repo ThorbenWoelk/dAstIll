@@ -8,7 +8,28 @@ resource "google_firestore_database" "default" {
   depends_on = [google_project_service.services["firestore.googleapis.com"]]
 }
 
-# Single-field index exemptions for unqueried fields to save storage and write costs
+# Single-field video index policy: allow only fields still used by equality queries and
+# turn the rest off. Ordered per-channel reads use explicit composite indexes below.
+resource "google_firestore_field" "videos_id_exemption" {
+  provider   = google-beta
+  project    = var.project_id
+  database   = google_firestore_database.default.name
+  collection = "dastill_videos"
+  field      = "id"
+
+  index_config {}
+}
+
+resource "google_firestore_field" "videos_channel_id_exemption" {
+  provider   = google-beta
+  project    = var.project_id
+  database   = google_firestore_database.default.name
+  collection = "dastill_videos"
+  field      = "channel_id"
+
+  index_config {}
+}
+
 resource "google_firestore_field" "videos_title_exemption" {
   provider   = google-beta
   project    = var.project_id
@@ -47,6 +68,102 @@ resource "google_firestore_field" "videos_retry_count_exemption" {
   field      = "retry_count"
 
   index_config {}
+}
+
+resource "google_firestore_field" "videos_published_at_exemption" {
+  provider   = google-beta
+  project    = var.project_id
+  database   = google_firestore_database.default.name
+  collection = "dastill_videos"
+  field      = "published_at"
+
+  index_config {}
+}
+
+resource "google_firestore_field" "videos_is_short_exemption" {
+  provider   = google-beta
+  project    = var.project_id
+  database   = google_firestore_database.default.name
+  collection = "dastill_videos"
+  field      = "is_short"
+
+  index_config {}
+}
+
+resource "google_firestore_field" "videos_acknowledged_exemption" {
+  provider   = google-beta
+  project    = var.project_id
+  database   = google_firestore_database.default.name
+  collection = "dastill_videos"
+  field      = "acknowledged"
+
+  index_config {}
+}
+
+resource "google_firestore_field" "videos_transcript_status_index" {
+  provider   = google-beta
+  project    = var.project_id
+  database   = google_firestore_database.default.name
+  collection = "dastill_videos"
+  field      = "transcript_status"
+
+  index_config {
+    indexes {
+      order       = "ASCENDING"
+      query_scope = "COLLECTION"
+    }
+  }
+}
+
+resource "google_firestore_field" "videos_summary_status_index" {
+  provider   = google-beta
+  project    = var.project_id
+  database   = google_firestore_database.default.name
+  collection = "dastill_videos"
+  field      = "summary_status"
+
+  index_config {
+    indexes {
+      order       = "ASCENDING"
+      query_scope = "COLLECTION"
+    }
+  }
+}
+
+resource "google_firestore_index" "videos_by_channel_published_at_desc" {
+  provider    = google-beta
+  project     = var.project_id
+  database    = google_firestore_database.default.name
+  collection  = "dastill_videos"
+  query_scope = "COLLECTION"
+
+  fields {
+    field_path = "channel_id"
+    order      = "ASCENDING"
+  }
+
+  fields {
+    field_path = "published_at"
+    order      = "DESCENDING"
+  }
+}
+
+resource "google_firestore_index" "videos_by_channel_published_at_asc" {
+  provider    = google-beta
+  project     = var.project_id
+  database    = google_firestore_database.default.name
+  collection  = "dastill_videos"
+  query_scope = "COLLECTION"
+
+  fields {
+    field_path = "channel_id"
+    order      = "ASCENDING"
+  }
+
+  fields {
+    field_path = "published_at"
+    order      = "ASCENDING"
+  }
 }
 
 resource "google_firestore_field" "preferences_vocabulary_replacements_exemption" {
