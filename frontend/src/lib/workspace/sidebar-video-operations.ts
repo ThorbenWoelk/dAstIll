@@ -50,6 +50,7 @@ type SidebarVideoOperationsContext = {
   getVideoStateKey: (channelId: string) => string;
   getChannelOrder: () => string[];
   getSelectedChannelId: () => string | null;
+  getSelectedVideoId: () => string | null;
   getVideos: () => Video[];
   getOffset: () => number;
   getVideoTypeFilter: () => VideoTypeFilter;
@@ -91,6 +92,7 @@ type SidebarVideoOperationsContext = {
   setChannelLoadingState: (loading: boolean) => void;
   setVideoLoadingState: (loading: boolean) => void;
   setRefreshingChannelState: (refreshing: boolean) => void;
+  setSyncDepthState: (depth: ChannelSyncDepthState | null) => void;
   setVideos: (videos: Video[]) => void;
   setVideoTypeFilter: (filter: VideoTypeFilter) => void;
   setAcknowledgedFilter: (filter: AcknowledgedFilter) => void;
@@ -323,6 +325,52 @@ export function createSidebarVideoOperations(
     await refreshAndLoadVideos(channelId, !fromUserInteraction);
   }
 
+  function selectVideo(videoId: string | null) {
+    context.applySelectionState({ selectedVideoId: videoId });
+  }
+
+  async function reloadSelectedChannelVideos(
+    options_local: {
+      reset?: boolean;
+      silent?: boolean;
+      refresh?: boolean;
+      clearMissingSelectedVideo?: boolean;
+    } = {},
+  ) {
+    const selectedChannelId = context.getSelectedChannelId();
+    if (!selectedChannelId) return;
+
+    const selectedVideoId = context.getSelectedVideoId();
+    const reset = options_local.reset ?? false;
+    const silent = options_local.silent ?? false;
+
+    if (reset && options_local.refresh) {
+      context.resetVideoListState();
+    }
+
+    if (options_local.refresh) {
+      await refreshAndLoadVideos(selectedChannelId, silent);
+    } else {
+      await loadVideos(reset, silent);
+    }
+
+    if (
+      !reset ||
+      !options_local.clearMissingSelectedVideo ||
+      !selectedVideoId ||
+      context.getSelectedChannelId() !== selectedChannelId ||
+      context.getSelectedVideoId() !== selectedVideoId
+    ) {
+      return;
+    }
+
+    if (context.getVideos().some((video) => video.id === selectedVideoId)) {
+      return;
+    }
+
+    selectVideo(null);
+  }
+
   async function setVideoTypeFilterAndReload(nextValue: VideoTypeFilter) {
     await applyVideoTypeFilterChange({
       currentFilter: context.getVideoTypeFilter(),
@@ -360,6 +408,8 @@ export function createSidebarVideoOperations(
     refreshAndLoadVideos,
     loadVideos,
     selectChannel,
+    selectVideo,
+    reloadSelectedChannelVideos,
     setVideoTypeFilterAndReload,
     setAcknowledgedFilterAndReload,
     clearAllFiltersAndReload,

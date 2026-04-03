@@ -294,13 +294,22 @@ export type SidebarStateResult = {
   // Operations
   syncChannelOrderFromList: () => void;
   loadInitial: (options?: { silent?: boolean }) => Promise<void>;
+  setSelectedChannel: (channelId: string | null) => void;
   selectChannel: (
     channelId: string,
     videoId?: string | null,
     fromUserInteraction?: boolean,
   ) => Promise<void>;
+  selectVideo: (videoId: string | null) => void;
+  replaceVideos: (videos: Video[]) => void;
   refreshAndLoadVideos: (channelId: string, silent?: boolean) => Promise<void>;
   loadVideos: (reset?: boolean, silent?: boolean) => Promise<void>;
+  reloadSelectedChannelVideos: (options?: {
+    reset?: boolean;
+    silent?: boolean;
+    refresh?: boolean;
+    clearMissingSelectedVideo?: boolean;
+  }) => Promise<void>;
   handleAddChannel: (input: string) => Promise<boolean>;
   handleDeleteChannel: (
     channelId: string,
@@ -682,6 +691,14 @@ export function createSidebarState(
     channels = channels.map((ch) => (ch.id === updated.id ? updated : ch));
   }
 
+  function setSelectedChannel(channelId: string | null) {
+    applySelectionState({ selectedChannelId: channelId });
+  }
+
+  function replaceVideos(nextVideos: Video[]) {
+    setVideos(nextVideos);
+  }
+
   function reorderChannels(nextOrder: string[]) {
     channels = applySavedChannelOrder(channels, nextOrder);
     channelOrder = nextOrder;
@@ -714,6 +731,8 @@ export function createSidebarState(
     refreshAndLoadVideos,
     loadVideos,
     selectChannel,
+    selectVideo,
+    reloadSelectedChannelVideos,
     setVideoTypeFilterAndReload,
     setAcknowledgedFilterAndReload,
     clearAllFiltersAndReload,
@@ -725,6 +744,7 @@ export function createSidebarState(
     getVideoStateKey,
     getChannelOrder: () => channelOrder,
     getSelectedChannelId: () => selectedChannelId,
+    getSelectedVideoId: () => selectedVideoId,
     getVideos: () => videos,
     getOffset: () => offset,
     getVideoTypeFilter: () => videoTypeFilter,
@@ -999,9 +1019,13 @@ export function createSidebarState(
 
     // Operations
     loadInitial,
+    setSelectedChannel,
     selectChannel,
+    selectVideo,
+    replaceVideos,
     refreshAndLoadVideos,
     loadVideos,
+    reloadSelectedChannelVideos,
     handleAddChannel,
     handleDeleteChannel,
     confirmDeleteChannel,

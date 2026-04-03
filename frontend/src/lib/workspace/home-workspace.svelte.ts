@@ -101,10 +101,7 @@ export function createHomeWorkspacePage() {
       if (nextChannelId) {
         void sidebarState.selectChannel(nextChannelId);
       } else {
-        sidebarState.setSelectedChannelId(null);
-        sidebarState.setSelectedVideoId(null);
-        sidebarState.setVideos([]);
-        sidebarState.setSyncDepth(null);
+        sidebarState.clearChannelSelectionState();
         dataController.clearSelectedVideoState();
       }
     },
@@ -403,12 +400,7 @@ export function createHomeWorkspacePage() {
     }
 
     pageState.setHydratedWorkspaceScopeKey(workspaceCacheScopeKey);
-    sidebarState.setVideos([]);
-    sidebarState.setOffset(0);
-    sidebarState.setHasMore(true);
-    sidebarState.setHistoryExhausted(false);
-    sidebarState.setBackfillingHistory(false);
-    sidebarState.setSyncDepth(null);
+    sidebarState.resetVideoListState();
     sidebarState.setLoadingVideos(false);
     void dataController.loadBootstrapRefresh();
   });

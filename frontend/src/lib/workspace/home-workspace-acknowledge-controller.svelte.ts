@@ -66,7 +66,7 @@ export function createHomeWorkspaceAcknowledgeController(options: {
       options.sidebarState.acknowledgedFilter,
     );
     if (videoFromList) {
-      options.sidebarState.setVideos(optimisticList);
+      options.sidebarState.replaceVideos(optimisticList);
     } else {
       options.setPendingSelectedVideo(optimisticVideo);
     }
@@ -85,13 +85,13 @@ export function createHomeWorkspaceAcknowledgeController(options: {
       options.content.clearFormattingFeedback();
       if (videoFromList) {
         if (optimisticList.length === 0) {
-          options.sidebarState.setSelectedVideoId(null);
+          options.sidebarState.selectVideo(null);
           options.content.clearDisplayedContent();
         } else {
           await options.selectVideo(optimisticList[0].id);
         }
       } else {
-        options.sidebarState.setSelectedVideoId(null);
+        options.sidebarState.selectVideo(null);
         options.setPendingSelectedVideo(null);
         options.content.clearDisplayedContent();
       }
@@ -100,7 +100,7 @@ export function createHomeWorkspaceAcknowledgeController(options: {
     try {
       const updated = await updateAcknowledged(targetVideoId, newAcknowledged);
       if (videoFromList) {
-        options.sidebarState.setVideos(
+        options.sidebarState.replaceVideos(
           options.sidebarState.videos
             .map((candidate) =>
               candidate.id === updated.id ? updated : candidate,
@@ -136,15 +136,15 @@ export function createHomeWorkspaceAcknowledgeController(options: {
         options.content.stopEditing();
         options.content.clearFormattingFeedback();
         if (options.sidebarState.videos.length === 0) {
-          options.sidebarState.setSelectedVideoId(null);
+          options.sidebarState.selectVideo(null);
           options.content.clearDisplayedContent();
         } else {
           await options.selectVideo(options.sidebarState.videos[0].id);
         }
       }
     } catch (error) {
-      options.sidebarState.setVideos(previousVideos);
-      options.sidebarState.setSelectedVideoId(previousSelectedVideoId);
+      options.sidebarState.replaceVideos(previousVideos);
+      options.sidebarState.selectVideo(previousSelectedVideoId);
       options.setPendingSelectedVideo(previousPendingSelectedVideo);
       const reverted = resolveRevertedVideoForAcknowledge(
         previousVideos,

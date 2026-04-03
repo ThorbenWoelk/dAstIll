@@ -265,12 +265,12 @@
 
     const timer = window.setInterval(() => {
       void (async () => {
-        await sidebar.loadVideos(true, true);
+        await sidebar.reloadSelectedChannelVideos({
+          reset: true,
+          silent: true,
+          clearMissingSelectedVideo: true,
+        });
         queueVideoRefreshTick += 1;
-        const sel = sidebar.selectedVideoId;
-        if (sel && !sidebar.videos.some((v) => v.id === sel)) {
-          sidebar.clearSelectedVideoSelection();
-        }
       })();
     }, ms);
 
@@ -307,7 +307,7 @@
       id !== null &&
       previousQueueChannelId !== id
     ) {
-      sidebar.clearSelectedVideoSelection();
+      sidebar.selectVideo(null);
     }
     previousQueueChannelId = id;
   });
@@ -494,8 +494,10 @@
       void putCachedChannels(sidebar.channels, workspaceCacheScopeKey);
 
       // Reload videos with the new sync boundary
-      sidebar.resetVideoListState();
-      await sidebar.refreshAndLoadVideos(sidebar.selectedChannelId);
+      await sidebar.reloadSelectedChannelVideos({
+        reset: true,
+        refresh: true,
+      });
     } catch (error) {
       if (!presentAuthRequiredNoticeIfNeeded(error)) {
         errorMessage = (error as Error).message;
@@ -513,9 +515,11 @@
       await ensureTranscript(videoId);
       // Wait a bit for the backend to start the job
       await new Promise((resolve) => setTimeout(resolve, 500));
-      if (sidebar.selectedChannelId) {
-        await sidebar.loadVideos(true, true);
-      }
+      await sidebar.reloadSelectedChannelVideos({
+        reset: true,
+        silent: true,
+        clearMissingSelectedVideo: true,
+      });
     } catch (error) {
       if (!presentAuthRequiredNoticeIfNeeded(error)) {
         errorMessage = (error as Error).message;
@@ -553,7 +557,7 @@
 
   function openQueuedVideo(videoId: string) {
     if (!sidebar.selectedChannelId) return;
-    sidebar.applySelectionState({ selectedVideoId: videoId });
+    sidebar.selectVideo(videoId);
   }
 
   async function handleSearchResultSelection(
