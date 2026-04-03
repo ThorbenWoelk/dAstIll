@@ -272,6 +272,10 @@ export type SidebarStateResult = {
     nextChannels: Channel[],
     nextChannelOrder?: string[],
   ) => void;
+  applySelectionState: (options: {
+    selectedChannelId?: string | null;
+    selectedVideoId?: string | null;
+  }) => void;
   applyChannelPreferencesState: (options: {
     channelOrder?: string[];
     channelSortMode?: ChannelSortMode;
@@ -581,6 +585,18 @@ export function createSidebarState(
   ) {
     channels = applySavedChannelOrder(nextChannels, nextChannelOrder);
     channelOrder = channelOrderFromList(channels);
+  }
+
+  function applySelectionState(options: {
+    selectedChannelId?: string | null;
+    selectedVideoId?: string | null;
+  }) {
+    if ("selectedChannelId" in options) {
+      selectedChannelId = options.selectedChannelId ?? null;
+    }
+    if ("selectedVideoId" in options) {
+      selectedVideoId = options.selectedVideoId ?? null;
+    }
   }
 
   function applyChannelPreferencesState(options: {
@@ -925,6 +941,7 @@ export function createSidebarState(
     clearSelectedVideoSelection,
     clearChannelSelectionState,
     applyLoadedChannelsState,
+    applySelectionState,
     applyChannelPreferencesState,
 
     // Operations

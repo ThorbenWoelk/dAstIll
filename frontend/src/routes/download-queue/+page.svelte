@@ -553,7 +553,7 @@
 
   function openQueuedVideo(videoId: string) {
     if (!sidebar.selectedChannelId) return;
-    sidebar.setSelectedVideoId(videoId);
+    sidebar.applySelectionState({ selectedVideoId: videoId });
   }
 
   async function handleSearchResultSelection(

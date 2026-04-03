@@ -195,7 +195,7 @@ export function createHomeWorkspaceDataController(options: {
       return;
     }
 
-    sidebarState.setSelectedVideoId(preferredVideoId);
+    sidebarState.applySelectionState({ selectedVideoId: preferredVideoId });
     const cachedHighlights =
       options.getVideoHighlightsByVideoId()[preferredVideoId];
     if (!cachedHighlights) {
@@ -395,7 +395,9 @@ export function createHomeWorkspaceDataController(options: {
           initialChannelId === selectionChannelId &&
           sidebarState.videos.length > 0;
 
-        sidebarState.setSelectedChannelId(initialChannelId);
+        sidebarState.applySelectionState({
+          selectedChannelId: initialChannelId,
+        });
 
         if (!silent || preferredVideoId !== selectionVideoId) {
           content.resetViewState();
@@ -509,7 +511,7 @@ export function createHomeWorkspaceDataController(options: {
   ) {
     if (sidebarState.selectedChannelId === channelId && !videoId) return;
 
-    sidebarState.setSelectedChannelId(channelId);
+    sidebarState.applySelectionState({ selectedChannelId: channelId });
     if (!channelId) return;
 
     if (!videoId) {
@@ -807,7 +809,7 @@ export function createHomeWorkspaceDataController(options: {
     if (content.contentMode === "summary" && sidebarState.selectedVideoId) {
       closeSummarySession();
     }
-    sidebarState.setSelectedVideoId(videoId);
+    sidebarState.applySelectionState({ selectedVideoId: videoId });
     if (videoId && sidebarState.selectedChannelId) {
       track({
         event: "video_opened",
