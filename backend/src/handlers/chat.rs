@@ -69,76 +69,19 @@ fn active_reply_key(access_context: &AccessContext, conversation_id: &str) -> Ac
     ActiveChatKey::new(active_reply_scope_key(access_context), conversation_id)
 }
 
-async fn build_video_suggestion_catalog(
-    store: &db::Store,
-    access_context: &AccessContext,
-) -> Result<Vec<SuggestedVideo>, db::StoreError> {
-    let mut by_id = std::collections::HashMap::<String, SuggestedVideo>::new();
-
-    for channel_id in &access_context.allowed_channel_ids {
-        let mut offset = 0usize;
-        loop {
-            let batch =
-                db::list_channel_videos_window(store, channel_id, 200, offset, true).await?;
-            if batch.is_empty() {
-                break;
-            }
-            let batch_len = batch.len();
-            offset = offset.saturating_add(batch_len);
-            for video in batch {
-                by_id
-                    .entry(video.id.clone())
-                    .or_insert_with(|| SuggestedVideo {
-                        id: video.id,
-                        channel_id: video.channel_id,
-                        title: video.title,
-                        published_at: video.published_at,
-                    });
-            }
-            if batch_len < 200 {
-                break;
-            }
-        }
-    }
-
-    if !access_context.allowed_other_video_ids.is_empty() {
-        let others = db::get_videos(store, &access_context.allowed_other_video_ids, false).await?;
-        for video in others.into_values() {
-            by_id
-                .entry(video.id.clone())
-                .or_insert_with(|| SuggestedVideo {
-                    id: video.id,
-                    channel_id: video.channel_id,
-                    title: video.title,
-                    published_at: video.published_at,
-                });
-        }
-    }
-
-    Ok(by_id.into_values().collect())
-}
-
 async fn load_video_suggestion_catalog(
     state: &AppState,
     access_context: &AccessContext,
 ) -> Result<Vec<SuggestedVideo>, (StatusCode, String)> {
     let scope_key = video_suggestion_scope_key(access_context);
-    if let Some(videos) = state
-        .read_cache
-        .get_scoped_video_suggestions(&scope_key)
-        .await
-    {
-        return Ok(videos);
-    }
-
-    let videos = build_video_suggestion_catalog(&state.db, access_context)
-        .await
-        .map_err(map_db_err)?;
-    state
-        .read_cache
-        .set_scoped_video_suggestions(scope_key, videos.clone())
-        .await;
-    Ok(videos)
+    db::load_scoped_video_suggestions(
+        &state.db,
+        &scope_key,
+        &access_context.allowed_channel_ids,
+        &access_context.allowed_other_video_ids,
+    )
+    .await
+    .map_err(map_db_err)
 }
 
 async fn lookup_active_reply(

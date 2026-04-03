@@ -3,6 +3,7 @@ mod scoped_views;
 use std::collections::HashSet;
 
 use crate::models::{Channel, ContentStatus, OTHERS_CHANNEL_ID, OTHERS_CHANNEL_NAME, Video};
+use crate::read_cache::SuggestedVideo;
 
 use super::{
     ChannelSnapshotData, ChannelVideoPageData, QueueFilter, Store, StoreError, VideoInsertOutcome,
@@ -12,6 +13,8 @@ pub use scoped_views::{
     get_user_scoped_video, list_user_scoped_videos_by_channel, load_channel_snapshot_data,
     load_workspace_bootstrap_data,
 };
+
+const VIDEO_SUGGESTION_WINDOW_BATCH_SIZE: usize = 200;
 
 pub async fn insert_video(store: &Store, video: &Video) -> Result<VideoInsertOutcome, StoreError> {
     let outcome = super::firestore_videos::fs_insert_video(store, video).await?;
@@ -64,6 +67,78 @@ pub async fn list_channel_videos_window(
         },
     )
     .await
+}
+
+pub async fn load_scoped_video_suggestions(
+    store: &Store,
+    scope_cache_key: &str,
+    allowed_channel_ids: &[String],
+    allowed_other_video_ids: &[String],
+) -> Result<Vec<SuggestedVideo>, StoreError> {
+    if let Some(videos) = store
+        .read_cache
+        .get_scoped_video_suggestions(scope_cache_key)
+        .await
+    {
+        return Ok(videos);
+    }
+
+    let mut by_id = std::collections::HashMap::<String, SuggestedVideo>::new();
+
+    for channel_id in allowed_channel_ids {
+        let mut offset = 0usize;
+        loop {
+            let batch = list_channel_videos_window(
+                store,
+                channel_id,
+                VIDEO_SUGGESTION_WINDOW_BATCH_SIZE,
+                offset,
+                true,
+            )
+            .await?;
+            if batch.is_empty() {
+                break;
+            }
+
+            let batch_len = batch.len();
+            offset = offset.saturating_add(batch_len);
+            for video in batch {
+                by_id
+                    .entry(video.id.clone())
+                    .or_insert_with(|| SuggestedVideo {
+                        id: video.id,
+                        channel_id: video.channel_id,
+                        title: video.title,
+                        published_at: video.published_at,
+                    });
+            }
+
+            if batch_len < VIDEO_SUGGESTION_WINDOW_BATCH_SIZE {
+                break;
+            }
+        }
+    }
+
+    if !allowed_other_video_ids.is_empty() {
+        let others = get_videos(store, allowed_other_video_ids, false).await?;
+        for video in others.into_values() {
+            by_id
+                .entry(video.id.clone())
+                .or_insert_with(|| SuggestedVideo {
+                    id: video.id,
+                    channel_id: video.channel_id,
+                    title: video.title,
+                    published_at: video.published_at,
+                });
+        }
+    }
+
+    let videos = by_id.into_values().collect::<Vec<_>>();
+    store
+        .read_cache
+        .set_scoped_video_suggestions(scope_cache_key.to_string(), videos.clone())
+        .await;
+    Ok(videos)
 }
 
 /// Fetch every video document from Firestore without any server-side filter or ordering.

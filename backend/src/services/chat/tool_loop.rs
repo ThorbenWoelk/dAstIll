@@ -10,7 +10,7 @@ impl ChatService {
         deep_research: bool,
         active_chat: &ActiveChatHandle,
     ) -> Result<Option<ToolLoopOutcome>, String> {
-        let prompt_scope = tools::resolve_mention_scope(&state.db, prompt)
+        let prompt_scope = tools::resolve_mention_scope(&state.db, access_context, prompt)
             .await
             .unwrap_or_else(|error| {
                 tracing::warn!(error = %error, "failed to resolve tool-loop @mentions");

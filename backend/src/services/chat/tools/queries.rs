@@ -120,6 +120,42 @@ pub(super) struct MentionToken {
     pub(super) text: String,
 }
 
+async fn load_mention_channels(
+    store: &db::Store,
+    access_context: &crate::security::AccessContext,
+) -> Result<Vec<Channel>, db::StoreError> {
+    match access_context.user_id.as_deref() {
+        Some(user_id) if access_context.auth_state == crate::security::AuthState::Authenticated => {
+            db::list_user_channels_with_virtual_others(store, user_id).await
+        }
+        _ => {
+            let mut channels = Vec::new();
+            for channel_id in &access_context.allowed_channel_ids {
+                if let Some(channel) = db::get_channel(store, channel_id).await? {
+                    channels.push(channel);
+                }
+            }
+            Ok(channels)
+        }
+    }
+}
+
+fn suggestion_to_video(video: crate::read_cache::SuggestedVideo) -> Video {
+    Video {
+        id: video.id,
+        channel_id: video.channel_id,
+        title: video.title,
+        thumbnail_url: None,
+        published_at: video.published_at,
+        is_short: false,
+        transcript_status: crate::models::ContentStatus::Pending,
+        summary_status: crate::models::ContentStatus::Pending,
+        acknowledged: false,
+        retry_count: 0,
+        quality_score: None,
+    }
+}
+
 impl DbInspectTarget {
     fn from_tool_value(value: &str) -> Option<Self> {
         match value.trim().to_ascii_lowercase().as_str() {
@@ -181,10 +217,21 @@ fn parse_search_source_kind(value: &str) -> Option<Option<SearchSourceKind>> {
 
 pub(crate) async fn resolve_mention_scope(
     store: &db::Store,
+    access_context: &crate::security::AccessContext,
     input: &str,
 ) -> Result<MentionScope, db::StoreError> {
-    let channels = db::list_channels(store).await?;
-    let videos = db::load_all_videos(store).await?;
+    let channels = load_mention_channels(store, access_context).await?;
+    let scope_key = format!("video-suggestions:{}", access_context.cache_scope_key());
+    let videos = db::load_scoped_video_suggestions(
+        store,
+        &scope_key,
+        &access_context.allowed_channel_ids,
+        &access_context.allowed_other_video_ids,
+    )
+    .await?
+    .into_iter()
+    .map(suggestion_to_video)
+    .collect::<Vec<_>>();
     Ok(resolve_mention_scope_from_catalog(
         input, &channels, &videos,
     ))
