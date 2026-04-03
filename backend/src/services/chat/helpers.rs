@@ -6,7 +6,7 @@ pub(super) async fn finalize_title_generation(
     conversation_id: &str,
     title: Option<String>,
 ) -> Result<(), String> {
-    let _lock = state.chat_store_lock.lock().await;
+    let _lock = state.conversation_store_lock.lock().await;
     let conn = state.db.connect();
     let Some(mut conversation) =
         db::get_conversation_for_scope(&conn, conversation_scope_id, conversation_id)
@@ -42,7 +42,7 @@ pub(super) async fn persist_assistant_message(
     conversation_id: &str,
     message: &ChatMessage,
 ) -> Result<(), String> {
-    let _lock = state.chat_store_lock.lock().await;
+    let _lock = state.conversation_store_lock.lock().await;
     let conn = state.db.connect();
     let Some(mut conversation) =
         db::get_conversation_for_scope(&conn, conversation_scope_id, conversation_id)

@@ -20,7 +20,7 @@ use helpers::*;
 pub use intent::ChatQueryIntent;
 pub(crate) use status::*;
 pub(crate) use types::*;
-pub use types::{ActiveChatHandle, ChatService, ChatStreamEvent, SpawnReplyJob};
+pub use types::{ActiveChatHandle, ChatService, ChatStreamEvent, ReplyWorkflowRequest};
 use utilities::*;
 
 use std::collections::{HashMap, HashSet};

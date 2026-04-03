@@ -21,7 +21,7 @@ import {
   saveEphemeralThreads,
 } from "$lib/chat/ephemeral-session";
 import {
-  cancelConversationGeneration,
+  cancelConversationReply,
   createConversation,
   deleteAllConversations,
   deleteConversation,
@@ -31,7 +31,7 @@ import {
   renameConversation,
   sendConversationMessage,
   sendEphemeralConversationMessage,
-} from "$lib/chat-api";
+} from "$lib/chat/requests";
 import { mobileBottomBar } from "$lib/mobile-navigation/mobileBottomBar";
 import { createAiStatusPoller } from "$lib/utils/ai-poller";
 
@@ -840,7 +840,7 @@ export function createChatPageController() {
     }
 
     try {
-      await cancelConversationGeneration(stream.streamingConversationId);
+      await cancelConversationReply(stream.streamingConversationId);
     } catch (error) {
       if (!presentAuthRequiredNoticeIfNeeded(error)) {
         errorMessage = (error as Error).message;

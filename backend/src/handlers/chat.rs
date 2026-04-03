@@ -17,7 +17,7 @@ use crate::{
     },
     security::{AccessContext, AuthState, can_access_video},
     services::{
-        SpawnReplyJob,
+        ReplyWorkflowRequest,
         chat::{
             default_chat_cloud_model_id, enforce_chat_conversation_storage_limits,
             is_chat_cloud_model_choice, validate_chat_conversation_bounds, validate_chat_prompt,
@@ -49,47 +49,50 @@ pub struct ChatSuggestionItem {
     subtitle: Option<String>,
 }
 
-fn conversation_scope_id(access_context: &AccessContext) -> &str {
+fn conversation_store_scope_id(access_context: &AccessContext) -> &str {
     access_context.user_id.as_deref().unwrap_or("anonymous")
 }
 
-fn active_chat_scope_key(access_context: &AccessContext) -> String {
+fn active_reply_scope_key(access_context: &AccessContext) -> String {
     access_context.cache_scope_key()
 }
 
-fn active_chat_key(access_context: &AccessContext, conversation_id: &str) -> ActiveChatKey {
-    ActiveChatKey::new(active_chat_scope_key(access_context), conversation_id)
+fn active_reply_key(access_context: &AccessContext, conversation_id: &str) -> ActiveChatKey {
+    ActiveChatKey::new(active_reply_scope_key(access_context), conversation_id)
 }
 
-async fn lookup_active_chat(
-    active_chats: &tokio::sync::Mutex<
+async fn lookup_active_reply(
+    active_replies: &tokio::sync::Mutex<
         std::collections::HashMap<ActiveChatKey, crate::services::ActiveChatHandle>,
     >,
     access_context: &AccessContext,
     conversation_id: &str,
 ) -> Result<crate::services::ActiveChatHandle, (StatusCode, String)> {
-    let runtime_key = active_chat_key(access_context, conversation_id);
-    active_chats
+    let runtime_key = active_reply_key(access_context, conversation_id);
+    active_replies
         .lock()
         .await
         .get(&runtime_key)
         .cloned()
-        .ok_or((StatusCode::NOT_FOUND, "Active chat not found".to_string()))
+        .ok_or((StatusCode::NOT_FOUND, "Active reply not found".to_string()))
 }
 
-fn remove_active_chats_for_scope(
-    active_chats: &mut std::collections::HashMap<ActiveChatKey, crate::services::ActiveChatHandle>,
+fn take_active_replies_for_scope(
+    active_replies: &mut std::collections::HashMap<
+        ActiveChatKey,
+        crate::services::ActiveChatHandle,
+    >,
     scope_key: &str,
 ) -> Vec<crate::services::ActiveChatHandle> {
-    let keys = active_chats
+    let keys = active_replies
         .keys()
         .filter(|key| key.scope_key == scope_key)
         .cloned()
         .collect::<Vec<_>>();
     let mut handles = Vec::with_capacity(keys.len());
     for key in keys {
-        if let Some(active_chat) = active_chats.remove(&key) {
-            handles.push(active_chat);
+        if let Some(active_reply) = active_replies.remove(&key) {
+            handles.push(active_reply);
         }
     }
     handles
@@ -120,7 +123,7 @@ fn require_authenticated_persistent_chat(
     Ok(user_id)
 }
 
-pub async fn channel_suggestions(
+pub async fn suggest_channels(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
     Query(query): Query<ChatSuggestionQuery>,
@@ -152,7 +155,7 @@ pub async fn channel_suggestions(
     )))
 }
 
-pub async fn video_suggestions(
+pub async fn suggest_videos(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
     Query(query): Query<ChatSuggestionQuery>,
@@ -193,7 +196,7 @@ pub async fn video_suggestions(
     )))
 }
 
-pub async fn chat_client_config(State(state): State<AppState>) -> impl IntoResponse {
+pub async fn get_client_config(State(state): State<AppState>) -> impl IntoResponse {
     Json(state.chat.chat_client_config())
 }
 
@@ -203,7 +206,7 @@ pub async fn list_conversations(
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     require_authenticated_persistent_chat(&access_context)?;
     let conversations =
-        db::list_conversations_for_scope(&state.db, conversation_scope_id(&access_context))
+        db::list_conversations_for_scope(&state.db, conversation_store_scope_id(&access_context))
             .await
             .map_err(map_db_err)?;
     Ok(Json(conversations))
@@ -222,8 +225,8 @@ pub async fn create_conversation(
     let mut conversation = state.chat.create_conversation(payload.title.clone());
     mark_manual_title_on_create(&mut conversation);
 
-    let scope_id = conversation_scope_id(&access_context);
-    let _lock = state.chat_store_lock.lock().await;
+    let scope_id = conversation_store_scope_id(&access_context);
+    let _lock = state.conversation_store_lock.lock().await;
     db::upsert_conversation_for_scope(&state.db, scope_id, &conversation)
         .await
         .map_err(map_db_err)?;
@@ -243,7 +246,7 @@ pub async fn get_conversation(
     require_authenticated_persistent_chat(&access_context)?;
     let conversation = db::get_conversation_for_scope(
         &state.db,
-        conversation_scope_id(&access_context),
+        conversation_store_scope_id(&access_context),
         &conversation_id,
     )
     .await
@@ -262,9 +265,9 @@ pub async fn update_conversation(
     let title = validate_nonempty(&payload.title, "Conversation title must not be empty")?;
     validate_chat_title_length(title)
         .map_err(|message| (StatusCode::BAD_REQUEST, message.to_string()))?;
-    let scope_id = conversation_scope_id(&access_context);
+    let scope_id = conversation_store_scope_id(&access_context);
 
-    let _lock = state.chat_store_lock.lock().await;
+    let _lock = state.conversation_store_lock.lock().await;
     let Some(mut conversation) =
         db::get_conversation_for_scope(&state.db, scope_id, &conversation_id)
             .await
@@ -288,17 +291,17 @@ pub async fn delete_conversation(
     Path(conversation_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     require_authenticated_persistent_chat(&access_context)?;
-    if let Some(active_chat) = state
-        .active_chats
+    if let Some(active_reply) = state
+        .active_replies
         .lock()
         .await
-        .remove(&active_chat_key(&access_context, &conversation_id))
+        .remove(&active_reply_key(&access_context, &conversation_id))
     {
-        active_chat.cancel();
+        active_reply.cancel();
     }
 
-    let scope_id = conversation_scope_id(&access_context);
-    let _lock = state.chat_store_lock.lock().await;
+    let scope_id = conversation_store_scope_id(&access_context);
+    let _lock = state.conversation_store_lock.lock().await;
     db::delete_conversation_for_scope(&state.db, scope_id, &conversation_id)
         .await
         .map_err(map_db_err)?;
@@ -311,17 +314,17 @@ pub async fn delete_all_conversations(
     Extension(access_context): Extension<AccessContext>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     require_authenticated_persistent_chat(&access_context)?;
-    let scope_key = active_chat_scope_key(&access_context);
-    let active_chats_to_cancel = {
-        let mut active_chats = state.active_chats.lock().await;
-        remove_active_chats_for_scope(&mut active_chats, &scope_key)
+    let scope_key = active_reply_scope_key(&access_context);
+    let active_replies_to_cancel = {
+        let mut active_replies = state.active_replies.lock().await;
+        take_active_replies_for_scope(&mut active_replies, &scope_key)
     };
-    for active_chat in active_chats_to_cancel {
-        active_chat.cancel();
+    for active_reply in active_replies_to_cancel {
+        active_reply.cancel();
     }
 
-    let scope_id = conversation_scope_id(&access_context);
-    let _lock = state.chat_store_lock.lock().await;
+    let scope_id = conversation_store_scope_id(&access_context);
+    let _lock = state.conversation_store_lock.lock().await;
     db::delete_all_conversations_for_scope(&state.db, scope_id)
         .await
         .map_err(map_db_err)?;
@@ -330,7 +333,7 @@ pub async fn delete_all_conversations(
     Ok(StatusCode::NO_CONTENT)
 }
 
-pub async fn send_message(
+pub async fn start_conversation_reply(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
     Path(conversation_id): Path<String>,
@@ -348,17 +351,17 @@ pub async fn send_message(
     validate_chat_prompt(prompt)
         .map_err(|message| (StatusCode::BAD_REQUEST, message.to_string()))?;
 
-    let runtime_key = active_chat_key(&access_context, &conversation_id);
-    let active_chat = {
-        let mut active_chats = state.active_chats.lock().await;
-        if active_chats.contains_key(&runtime_key) {
+    let runtime_key = active_reply_key(&access_context, &conversation_id);
+    let active_reply = {
+        let mut active_replies = state.active_replies.lock().await;
+        if active_replies.contains_key(&runtime_key) {
             return Err((
                 StatusCode::CONFLICT,
                 "Conversation already has an active response".to_string(),
             ));
         }
         let handle = crate::services::ActiveChatHandle::new();
-        active_chats.insert(runtime_key.clone(), handle.clone());
+        active_replies.insert(runtime_key.clone(), handle.clone());
         handle
     };
 
@@ -370,7 +373,7 @@ pub async fn send_message(
     {
         Some(id) if is_chat_cloud_model_choice(id) => id.to_string(),
         Some(_) => {
-            state.active_chats.lock().await.remove(&runtime_key);
+            state.active_replies.lock().await.remove(&runtime_key);
             return Err((
                 StatusCode::BAD_REQUEST,
                 "Unknown chat model. Pick a cloud model from the selector.".to_string(),
@@ -380,34 +383,34 @@ pub async fn send_message(
     };
 
     let maybe_conversation =
-        store_user_message(&state, &access_context, &conversation_id, prompt).await;
+        append_persistent_user_message(&state, &access_context, &conversation_id, prompt).await;
     let (conversation, should_auto_name) = match maybe_conversation {
         Ok(value) => value,
         Err(error) => {
-            state.active_chats.lock().await.remove(&runtime_key);
+            state.active_replies.lock().await.remove(&runtime_key);
             return Err(error);
         }
     };
 
-    state.chat.spawn_reply(SpawnReplyJob {
+    state.chat.start_reply_workflow(ReplyWorkflowRequest {
         state: state.clone(),
         conversation,
         access_context: access_context.clone(),
-        conversation_scope_id: conversation_scope_id(&access_context).to_string(),
-        active_chat_key: runtime_key,
+        conversation_scope_id: conversation_store_scope_id(&access_context).to_string(),
+        active_reply_key: runtime_key,
         prompt: prompt.to_string(),
         should_auto_name,
         deep_research: payload.deep_research,
         reply_model,
-        active_chat: active_chat.clone(),
+        active_reply: active_reply.clone(),
         persist_to_store: true,
     });
 
-    Ok(sse_response(active_chat).await)
+    Ok(reply_sse_response(active_reply).await)
 }
 
 /// Anonymous-only: runs one model turn without reading or writing persisted conversations.
-pub async fn send_ephemeral_message(
+pub async fn start_ephemeral_reply(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
     Json(payload): Json<EphemeralChatMessageRequest>,
@@ -434,17 +437,17 @@ pub async fn send_ephemeral_message(
     validate_ephemeral_conversation(&payload.conversation)?;
 
     let conversation_id = payload.conversation.id.clone();
-    let runtime_key = active_chat_key(&access_context, &conversation_id);
-    let active_chat = {
-        let mut active_chats = state.active_chats.lock().await;
-        if active_chats.contains_key(&runtime_key) {
+    let runtime_key = active_reply_key(&access_context, &conversation_id);
+    let active_reply = {
+        let mut active_replies = state.active_replies.lock().await;
+        if active_replies.contains_key(&runtime_key) {
             return Err((
                 StatusCode::CONFLICT,
                 "Conversation already has an active response".to_string(),
             ));
         }
         let handle = crate::services::ActiveChatHandle::new();
-        active_chats.insert(runtime_key.clone(), handle.clone());
+        active_replies.insert(runtime_key.clone(), handle.clone());
         handle
     };
 
@@ -456,7 +459,7 @@ pub async fn send_ephemeral_message(
     {
         Some(id) if is_chat_cloud_model_choice(id) => id.to_string(),
         Some(_) => {
-            state.active_chats.lock().await.remove(&runtime_key);
+            state.active_replies.lock().await.remove(&runtime_key);
             return Err((
                 StatusCode::BAD_REQUEST,
                 "Unknown chat model. Pick a cloud model from the selector.".to_string(),
@@ -468,72 +471,72 @@ pub async fn send_ephemeral_message(
     let mut conversation = payload.conversation;
     let user_message = state.chat.build_user_message(prompt);
     let provisional_title = state.chat.build_provisional_title(prompt);
-    let should_auto_name = apply_user_message_to_conversation(
+    let should_auto_name = append_user_message_to_conversation(
         &mut conversation,
         user_message,
         provisional_title,
         Utc::now(),
     );
 
-    state.chat.spawn_reply(SpawnReplyJob {
+    state.chat.start_reply_workflow(ReplyWorkflowRequest {
         state: state.clone(),
         conversation,
         access_context: access_context.clone(),
         conversation_scope_id: String::new(),
-        active_chat_key: runtime_key,
+        active_reply_key: runtime_key,
         prompt: prompt.to_string(),
         should_auto_name,
         deep_research: payload.deep_research,
         reply_model,
-        active_chat: active_chat.clone(),
+        active_reply: active_reply.clone(),
         persist_to_store: false,
     });
 
-    Ok(sse_response(active_chat).await)
+    Ok(reply_sse_response(active_reply).await)
 }
 
-pub async fn reconnect_stream(
+pub async fn resume_conversation_reply(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
     Path(conversation_id): Path<String>,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, (StatusCode, String)>
 {
     require_authenticated_persistent_chat(&access_context)?;
-    let active_chat =
-        lookup_active_chat(&state.active_chats, &access_context, &conversation_id).await?;
-    Ok(sse_response(active_chat).await)
+    let active_reply =
+        lookup_active_reply(&state.active_replies, &access_context, &conversation_id).await?;
+    Ok(reply_sse_response(active_reply).await)
 }
 
-pub async fn cancel_message(
+pub async fn cancel_conversation_reply(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
     Path(conversation_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     require_authenticated_persistent_chat(&access_context)?;
-    let active_chat =
-        lookup_active_chat(&state.active_chats, &access_context, &conversation_id).await?;
-    active_chat.cancel();
+    let active_reply =
+        lookup_active_reply(&state.active_replies, &access_context, &conversation_id).await?;
+    active_reply.cancel();
     Ok(StatusCode::ACCEPTED)
 }
 
-async fn sse_response(
-    active_chat: crate::services::ActiveChatHandle,
+async fn reply_sse_response(
+    active_reply: crate::services::ActiveChatHandle,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
-    Sse::new(active_chat.into_sse_stream().await).keep_alive(
+    Sse::new(active_reply.into_sse_stream().await).keep_alive(
         axum::response::sse::KeepAlive::new()
             .interval(std::time::Duration::from_secs(15))
             .text("ping"),
     )
 }
 
-async fn store_user_message(
+async fn append_persistent_user_message(
     state: &AppState,
     access_context: &AccessContext,
     conversation_id: &str,
     prompt: &str,
 ) -> Result<(ChatConversation, bool), (StatusCode, String)> {
-    let scope_id = conversation_scope_id(access_context);
-    let _lock = state.chat_store_lock.lock().await;
+    let scope_id = conversation_store_scope_id(access_context);
+    let _lock = state.conversation_store_lock.lock().await;
     let Some(mut conversation) =
         db::get_conversation_for_scope(&state.db, scope_id, conversation_id)
             .await
@@ -544,7 +547,7 @@ async fn store_user_message(
 
     let user_message = state.chat.build_user_message(prompt);
     let provisional_title = state.chat.build_provisional_title(prompt);
-    let should_auto_name = apply_user_message_to_conversation(
+    let should_auto_name = append_user_message_to_conversation(
         &mut conversation,
         user_message,
         provisional_title,
@@ -557,7 +560,7 @@ async fn store_user_message(
     Ok((conversation, should_auto_name))
 }
 
-fn apply_user_message_to_conversation(
+fn append_user_message_to_conversation(
     conversation: &mut ChatConversation,
     user_message: ChatMessage,
     provisional_title: Option<String>,
@@ -747,10 +750,10 @@ mod tests {
     use chrono::{Duration, Utc};
 
     use super::{
-        active_chat_key, apply_manual_conversation_title, apply_user_message_to_conversation,
-        lookup_active_chat, mark_manual_title_on_create, rank_channel_suggestions,
-        rank_video_suggestions, remove_active_chats_for_scope,
-        require_authenticated_persistent_chat,
+        active_reply_key, append_user_message_to_conversation, apply_manual_conversation_title,
+        lookup_active_reply, mark_manual_title_on_create, rank_channel_suggestions,
+        rank_video_suggestions, require_authenticated_persistent_chat,
+        take_active_replies_for_scope,
     };
     use crate::handlers::validate_nonempty;
     use crate::models::{
@@ -792,7 +795,7 @@ mod tests {
         let mut conversation = sample_conversation(None, ChatTitleStatus::Idle);
         let updated_at = Utc::now();
 
-        let should_auto_name = apply_user_message_to_conversation(
+        let should_auto_name = append_user_message_to_conversation(
             &mut conversation,
             sample_message(ChatRole::User, "Find the best Rust video"),
             Some("Find the best Rust video".to_string()),
@@ -815,7 +818,7 @@ mod tests {
             sample_conversation(Some("My chosen title"), ChatTitleStatus::Manual);
         let updated_at = Utc::now();
 
-        let should_auto_name = apply_user_message_to_conversation(
+        let should_auto_name = append_user_message_to_conversation(
             &mut conversation,
             sample_message(ChatRole::User, "Summarize this channel"),
             Some("Summarize this channel".to_string()),
@@ -840,7 +843,7 @@ mod tests {
             .push(sample_message(ChatRole::Assistant, "First answer"));
         let updated_at = Utc::now();
 
-        let should_auto_name = apply_user_message_to_conversation(
+        let should_auto_name = append_user_message_to_conversation(
             &mut conversation,
             sample_message(ChatRole::User, "Follow-up question"),
             Some("Follow-up question".to_string()),
@@ -887,7 +890,7 @@ mod tests {
     }
 
     #[test]
-    fn channel_suggestions_prefer_handle_prefix_matches() {
+    fn suggest_channels_prefers_handle_prefix_matches() {
         let channels = vec![
             sample_channel("chan-1", "HealthyGamerGG", Some("@healthygamergg")),
             sample_channel("chan-2", "Theo - t3.gg", Some("@t3dotgg")),
@@ -900,7 +903,7 @@ mod tests {
     }
 
     #[test]
-    fn video_suggestions_prefer_newer_titles_on_ties() {
+    fn suggest_videos_prefers_newer_titles_on_ties() {
         let older = sample_video("vid-old", "chan-1", "Effort and Change", 10);
         let newer = sample_video("vid-new", "chan-1", "Effort and Change Again", 1);
         let channels = vec![sample_channel(
@@ -963,13 +966,13 @@ mod tests {
     }
 
     #[test]
-    fn active_chat_key_separates_anonymous_and_authenticated_scope_for_same_id() {
+    fn active_reply_key_separates_anonymous_and_authenticated_scope_for_same_id() {
         let authenticated = auth_context("anonymous");
         let anonymous = anonymous_context();
 
         assert_ne!(
-            active_chat_key(&authenticated, "conv-shared"),
-            active_chat_key(&anonymous, "conv-shared")
+            active_reply_key(&authenticated, "conv-shared"),
+            active_reply_key(&anonymous, "conv-shared")
         );
     }
 
@@ -988,53 +991,53 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn reconnect_and_cancel_require_matching_scope_ownership() {
+    async fn resume_and_cancel_require_matching_scope_ownership() {
         let owner = auth_context("user-a");
         let foreign = auth_context("user-b");
         let conversation_id = "conv-shared".to_string();
-        let owner_key = active_chat_key(&owner, &conversation_id);
-        let active_chats = tokio::sync::Mutex::new(std::collections::HashMap::from([(
+        let owner_key = active_reply_key(&owner, &conversation_id);
+        let active_replies = tokio::sync::Mutex::new(std::collections::HashMap::from([(
             owner_key.clone(),
             ActiveChatHandle::new(),
         )]));
 
-        let reconnect_error = lookup_active_chat(&active_chats, &foreign, &conversation_id)
+        let reconnect_error = lookup_active_reply(&active_replies, &foreign, &conversation_id)
             .await
             .expect_err("foreign reconnect should fail");
         assert_eq!(reconnect_error.0, StatusCode::NOT_FOUND);
 
-        let _ = lookup_active_chat(&active_chats, &owner, &conversation_id)
+        let _ = lookup_active_reply(&active_replies, &owner, &conversation_id)
             .await
             .expect("owner reconnect should succeed");
 
-        let cancel_error = lookup_active_chat(&active_chats, &foreign, &conversation_id)
+        let cancel_error = lookup_active_reply(&active_replies, &foreign, &conversation_id)
             .await
             .expect_err("foreign cancel should fail");
         assert_eq!(cancel_error.0, StatusCode::NOT_FOUND);
-        assert!(active_chats.lock().await.contains_key(&owner_key));
+        assert!(active_replies.lock().await.contains_key(&owner_key));
 
-        let active_chat = lookup_active_chat(&active_chats, &owner, &conversation_id)
+        let active_reply = lookup_active_reply(&active_replies, &owner, &conversation_id)
             .await
             .expect("owner cancel should succeed");
-        active_chat.cancel();
-        assert!(active_chats.lock().await.contains_key(&owner_key));
+        active_reply.cancel();
+        assert!(active_replies.lock().await.contains_key(&owner_key));
     }
 
     #[test]
-    fn remove_active_chats_for_scope_only_takes_matching_scope_entries() {
+    fn take_active_replies_for_scope_only_takes_matching_scope_entries() {
         let authenticated = auth_context("user-a");
         let anonymous = anonymous_context();
         let conversation_id = "conv-shared";
 
-        let authenticated_key = active_chat_key(&authenticated, conversation_id);
-        let anonymous_key = active_chat_key(&anonymous, conversation_id);
-        let mut active_chats = std::collections::HashMap::new();
-        active_chats.insert(authenticated_key.clone(), ActiveChatHandle::new());
-        active_chats.insert(anonymous_key.clone(), ActiveChatHandle::new());
+        let authenticated_key = active_reply_key(&authenticated, conversation_id);
+        let anonymous_key = active_reply_key(&anonymous, conversation_id);
+        let mut active_replies = std::collections::HashMap::new();
+        active_replies.insert(authenticated_key.clone(), ActiveChatHandle::new());
+        active_replies.insert(anonymous_key.clone(), ActiveChatHandle::new());
 
-        let removed = remove_active_chats_for_scope(&mut active_chats, "user:user-a");
+        let removed = take_active_replies_for_scope(&mut active_replies, "user:user-a");
         assert_eq!(removed.len(), 1);
-        assert!(!active_chats.contains_key(&authenticated_key));
-        assert!(active_chats.contains_key(&anonymous_key));
+        assert!(!active_replies.contains_key(&authenticated_key));
+        assert!(active_replies.contains_key(&anonymous_key));
     }
 }

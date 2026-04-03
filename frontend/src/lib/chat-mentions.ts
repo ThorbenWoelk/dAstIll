@@ -1,4 +1,4 @@
-import { getChannelSuggestions, getVideoSuggestions } from "$lib/chat-api";
+import { getChannelSuggestions, getVideoSuggestions } from "$lib/chat/requests";
 
 export type ChatMentionKind = "channel" | "video";
 

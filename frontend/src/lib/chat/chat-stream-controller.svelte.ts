@@ -5,7 +5,7 @@ import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
 import { isAnonymousChatQuotaError } from "$lib/chat/anonymous-quota";
 import type { ChatStreamTiming } from "$lib/chat/conversation-meta";
 import { deriveToolCalls } from "$lib/chat/tool-calls";
-import { reconnectConversationStream } from "$lib/chat-api";
+import { resumeConversationReply } from "$lib/chat/requests";
 import type {
   ChatConversation,
   ChatMessage,
@@ -370,7 +370,7 @@ export function createChatStreamController(options: {
     await startStream(
       conversationId,
       (signal, handlers) =>
-        reconnectConversationStream(conversationId, handlers, { signal }),
+        resumeConversationReply(conversationId, handlers, { signal }),
       { resetStreamingMessage: true },
     );
   }

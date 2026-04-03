@@ -10,7 +10,7 @@ fn conversation_scope(scope_id: &str) -> String {
     }
 }
 
-fn chat_index_key(scope_id: &str) -> String {
+fn conversation_index_key(scope_id: &str) -> String {
     format!(
         "user-conversations/{}/index.json",
         conversation_scope(scope_id)
@@ -25,27 +25,29 @@ fn conversation_key(scope_id: &str, conversation_id: &str) -> String {
     )
 }
 
-async fn load_index(
+async fn load_conversation_summaries(
     store: &Store,
     scope_id: &str,
 ) -> Result<Vec<ChatConversationSummary>, StoreError> {
     Ok(store
-        .get_json::<Vec<ChatConversationSummary>>(&chat_index_key(scope_id))
+        .get_json::<Vec<ChatConversationSummary>>(&conversation_index_key(scope_id))
         .await?
         .unwrap_or_default())
 }
 
-async fn store_index(
+async fn store_conversation_summaries(
     store: &Store,
     scope_id: &str,
     conversations: &[ChatConversationSummary],
 ) -> Result<(), StoreError> {
     store
-        .put_json(&chat_index_key(scope_id), conversations)
+        .put_json(&conversation_index_key(scope_id), conversations)
         .await
 }
 
-fn sort_summaries(mut conversations: Vec<ChatConversationSummary>) -> Vec<ChatConversationSummary> {
+fn sort_conversation_summaries(
+    mut conversations: Vec<ChatConversationSummary>,
+) -> Vec<ChatConversationSummary> {
     conversations.sort_by(|left, right| {
         right
             .updated_at
@@ -60,7 +62,9 @@ pub async fn list_conversations_for_scope(
     store: &Store,
     scope_id: &str,
 ) -> Result<Vec<ChatConversationSummary>, StoreError> {
-    Ok(sort_summaries(load_index(store, scope_id).await?))
+    Ok(sort_conversation_summaries(
+        load_conversation_summaries(store, scope_id).await?,
+    ))
 }
 
 pub async fn get_conversation_for_scope(
@@ -82,7 +86,7 @@ pub async fn upsert_conversation_for_scope(
         .put_json(&conversation_key(scope_id, &conversation.id), conversation)
         .await?;
 
-    let mut index = load_index(store, scope_id).await?;
+    let mut index = load_conversation_summaries(store, scope_id).await?;
     let summary = ChatConversationSummary::from(conversation);
     match index
         .iter_mut()
@@ -91,7 +95,7 @@ pub async fn upsert_conversation_for_scope(
         Some(existing) => *existing = summary,
         None => index.push(summary),
     }
-    store_index(store, scope_id, &sort_summaries(index)).await
+    store_conversation_summaries(store, scope_id, &sort_conversation_summaries(index)).await
 }
 
 pub async fn delete_conversation_for_scope(
@@ -102,20 +106,20 @@ pub async fn delete_conversation_for_scope(
     store
         .delete_key(&conversation_key(scope_id, conversation_id))
         .await?;
-    let mut index = load_index(store, scope_id).await?;
+    let mut index = load_conversation_summaries(store, scope_id).await?;
     index.retain(|conversation| conversation.id != conversation_id);
-    store_index(store, scope_id, &sort_summaries(index)).await
+    store_conversation_summaries(store, scope_id, &sort_conversation_summaries(index)).await
 }
 
 pub async fn delete_all_conversations_for_scope(
     store: &Store,
     scope_id: &str,
 ) -> Result<(), StoreError> {
-    let conversations = load_index(store, scope_id).await?;
+    let conversations = load_conversation_summaries(store, scope_id).await?;
     for conversation in conversations {
         store
             .delete_key(&conversation_key(scope_id, &conversation.id))
             .await?;
     }
-    store_index(store, scope_id, &[]).await
+    store_conversation_summaries(store, scope_id, &[]).await
 }
