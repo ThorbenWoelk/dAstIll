@@ -272,6 +272,10 @@ export type SidebarStateResult = {
     nextChannels: Channel[],
     nextChannelOrder?: string[],
   ) => void;
+  applyChannelPreferencesState: (options: {
+    channelOrder?: string[];
+    channelSortMode?: ChannelSortMode;
+  }) => void;
 
   // Operations
   syncChannelOrderFromList: () => void;
@@ -577,6 +581,18 @@ export function createSidebarState(
   ) {
     channels = applySavedChannelOrder(nextChannels, nextChannelOrder);
     channelOrder = channelOrderFromList(channels);
+  }
+
+  function applyChannelPreferencesState(options: {
+    channelOrder?: string[];
+    channelSortMode?: ChannelSortMode;
+  }) {
+    if (options.channelOrder && options.channelOrder.length > 0) {
+      channelOrder = options.channelOrder;
+    }
+    if (options.channelSortMode) {
+      channelSortMode = options.channelSortMode;
+    }
   }
 
   function setVideoStatus(
@@ -909,6 +925,7 @@ export function createSidebarState(
     clearSelectedVideoSelection,
     clearChannelSelectionState,
     applyLoadedChannelsState,
+    applyChannelPreferencesState,
 
     // Operations
     loadInitial,

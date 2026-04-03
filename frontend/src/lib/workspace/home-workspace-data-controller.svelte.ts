@@ -876,9 +876,6 @@ export function createHomeWorkspaceDataController(options: {
     setMode,
     clearBrowseVideoFilters,
     applyChannelSnapshot,
-    syncChannelOrderFromList: () =>
-      sidebarState.setChannelOrder(
-        sidebarState.channels.map((channel) => channel.id),
-      ),
+    syncChannelOrderFromList: sidebarState.syncChannelOrderFromList,
   };
 }

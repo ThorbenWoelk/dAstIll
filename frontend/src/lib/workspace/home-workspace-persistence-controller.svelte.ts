@@ -275,12 +275,11 @@ export function createHomeWorkspacePersistenceController(options: {
         ]);
 
         if (apiPreferences && authState.current.authState === "authenticated") {
-          if (apiPreferences.channel_order.length > 0) {
-            sidebarState.setChannelOrder(apiPreferences.channel_order);
-          }
-          sidebarState.setChannelSortMode(
-            apiPreferences.channel_sort_mode as ChannelSortMode,
-          );
+          sidebarState.applyChannelPreferencesState({
+            channelOrder: apiPreferences.channel_order,
+            channelSortMode:
+              apiPreferences.channel_sort_mode as ChannelSortMode,
+          });
           options.setVocabularyReplacements(
             apiPreferences.vocabulary_replacements ?? [],
           );
