@@ -495,7 +495,9 @@ export function createHomeWorkspaceDataController(options: {
       );
     } catch (error) {
       sidebarState.setChannels(previousChannels);
-      sidebarState.setSelectedChannelId(previousSelectedChannelId);
+      sidebarState.applySelectionState({
+        selectedChannelId: previousSelectedChannelId,
+      });
       if (!presentAuthRequiredNoticeIfNeeded(error)) {
         options.setErrorMessage((error as Error).message);
       }
@@ -525,7 +527,7 @@ export function createHomeWorkspaceDataController(options: {
     content.clearFormattingFeedback();
     if (hasCachedChannelVideoState && cachedChannelVideoState) {
       restoreCachedChannelVideoState(cachedChannelVideoState);
-      sidebarState.setLoadingVideos(false);
+      sidebarState.setVideoLoadingState(false);
       void refreshAndLoadVideos(channelId, false, videoId, true);
       return;
     }
