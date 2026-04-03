@@ -47,7 +47,6 @@ type SidebarVideoOperationsContext = {
   limit: number;
   channelLastRefreshedAt: SvelteMap<string, number>;
   videoStateCache: SidebarVideoStateCache;
-  syncChannelOrderFromList: () => void;
   getVideoStateKey: (channelId: string) => string;
   getChannelOrder: () => string[];
   getSelectedChannelId: () => string | null;
@@ -57,18 +56,42 @@ type SidebarVideoOperationsContext = {
   getAcknowledgedFilter: () => AcknowledgedFilter;
   getLoadingVideos: () => boolean;
   getVideoListMutationEpoch: () => number;
-  setChannels: (channels: Channel[]) => void;
-  setSelectedChannelId: (channelId: string | null) => void;
-  setSelectedVideoId: (videoId: string | null) => void;
+  applyLoadedChannelsState: (
+    channels: Channel[],
+    channelOrder?: string[],
+  ) => void;
+  applySelectionState: (options: {
+    selectedChannelId?: string | null;
+    selectedVideoId?: string | null;
+  }) => void;
+  clearChannelSelectionState: () => void;
+  resetVideoListState: (options?: {
+    videos?: Video[];
+    offset?: number;
+    hasMore?: boolean;
+    historyExhausted?: boolean;
+    backfillingHistory?: boolean;
+    syncDepth?: ChannelSyncDepthState | null;
+    selectedVideoId?: string | null;
+  }) => void;
+  applyChannelSnapshotState: (snapshot: {
+    videos: Video[];
+    has_more: boolean;
+    next_offset: number | null;
+    sync_depth: ChannelSyncDepthState | null;
+  }) => void;
+  applyVideoPageState: (
+    page: {
+      videos: Video[];
+      has_more: boolean;
+      next_offset: number | null;
+    },
+    options?: { reset?: boolean },
+  ) => void;
+  setChannelLoadingState: (loading: boolean) => void;
+  setVideoLoadingState: (loading: boolean) => void;
+  setRefreshingChannelState: (refreshing: boolean) => void;
   setVideos: (videos: Video[]) => void;
-  setOffset: (offset: number) => void;
-  setHasMore: (hasMore: boolean) => void;
-  setSyncDepth: (syncDepth: ChannelSyncDepthState | null) => void;
-  setLoadingChannels: (loading: boolean) => void;
-  setLoadingVideos: (loading: boolean) => void;
-  setRefreshingChannel: (refreshing: boolean) => void;
-  setHistoryExhausted: (value: boolean) => void;
-  setBackfillingHistory: (value: boolean) => void;
   setVideoTypeFilter: (filter: VideoTypeFilter) => void;
   setAcknowledgedFilter: (filter: AcknowledgedFilter) => void;
 };
@@ -96,7 +119,7 @@ export function createSidebarVideoOperations(
     }
     const silent = options?.silent ?? false;
     if (!silent) {
-      context.setLoadingChannels(true);
+      context.setChannelLoadingState(true);
     }
 
     try {
@@ -107,8 +130,7 @@ export function createSidebarVideoOperations(
         channelList,
         context.getChannelOrder(),
       );
-      context.setChannels(orderedChannels);
-      context.syncChannelOrderFromList();
+      context.applyLoadedChannelsState(channelList, context.getChannelOrder());
       cacheChannels(context.options, orderedChannels);
 
       const initialChannelId = resolveInitialChannelSelection(
@@ -118,11 +140,9 @@ export function createSidebarVideoOperations(
       );
 
       if (!initialChannelId) {
-        context.setSelectedChannelId(null);
-        context.setVideos([]);
-        context.setSyncDepth(null);
+        context.clearChannelSelectionState();
       } else {
-        context.setSelectedChannelId(initialChannelId);
+        context.applySelectionState({ selectedChannelId: initialChannelId });
         await refreshAndLoadVideos(initialChannelId, silent);
       }
     } catch (error) {
@@ -131,7 +151,7 @@ export function createSidebarVideoOperations(
       }
     } finally {
       if (!silent) {
-        context.setLoadingChannels(false);
+        context.setChannelLoadingState(false);
       }
     }
   }
@@ -142,25 +162,26 @@ export function createSidebarVideoOperations(
     silent = false,
   ) {
     if (!silent) {
-      context.setLoadingVideos(true);
+      context.setVideoLoadingState(true);
     }
     try {
       if (context.getSelectedChannelId() !== channelId) return;
-      const deduped = snapshot.videos;
-      context.setSyncDepth(snapshot.sync_depth);
-      context.setVideos(deduped);
-      context.setOffset(deduped.length);
-      context.setHasMore(deduped.length === context.limit);
+      context.applyChannelSnapshotState({
+        videos: snapshot.videos,
+        has_more: snapshot.videos.length === context.limit,
+        next_offset: snapshot.videos.length,
+        sync_depth: snapshot.sync_depth,
+      });
 
       if (context.options.onVideosLoaded) {
         await context.options.onVideosLoaded({
           reset: true,
-          videos: deduped,
+          videos: snapshot.videos,
         });
       }
     } finally {
       if (!silent) {
-        context.setLoadingVideos(false);
+        context.setVideoLoadingState(false);
       }
     }
   }
@@ -197,7 +218,7 @@ export function createSidebarVideoOperations(
           : refreshChannel(channelId),
       shouldReloadAfterRefresh: () =>
         context.getSelectedChannelId() === channelId,
-      onRefreshingChange: context.setRefreshingChannel,
+      onRefreshingChange: context.setRefreshingChannelState,
       onError: (message) => {
         context.options.onError?.(message);
       },
@@ -210,7 +231,7 @@ export function createSidebarVideoOperations(
     if (context.getLoadingVideos() && !silent) return;
 
     if (!silent) {
-      context.setLoadingVideos(true);
+      context.setVideoLoadingState(true);
     }
 
     try {
@@ -241,19 +262,12 @@ export function createSidebarVideoOperations(
             next_offset: (reset ? 0 : currentOffset) + list.length,
           }
         : list;
-      const nextVideos = reset
-        ? page.videos
-        : [...context.getVideos(), ...page.videos];
-      context.setVideos(nextVideos);
-      context.setOffset(
-        page.next_offset ?? (reset ? 0 : currentOffset) + page.videos.length,
-      );
-      context.setHasMore(page.has_more);
+      context.applyVideoPageState(page, { reset });
 
       if (context.options.onVideosLoaded) {
         await context.options.onVideosLoaded({
           reset,
-          videos: context.getVideos(),
+          videos: reset ? page.videos : context.getVideos(),
         });
       }
     } catch (error) {
@@ -262,7 +276,7 @@ export function createSidebarVideoOperations(
       }
     } finally {
       if (!silent) {
-        context.setLoadingVideos(false);
+        context.setVideoLoadingState(false);
       }
     }
   }
@@ -284,26 +298,27 @@ export function createSidebarVideoOperations(
       context.videoStateCache.delete(cacheKey);
     }
 
-    context.setSelectedChannelId(channelId);
-    context.setSelectedVideoId(videoId ?? null);
+    context.applySelectionState({
+      selectedChannelId: channelId,
+      selectedVideoId: videoId ?? null,
+    });
     context.options.onChannelSelected?.(channelId);
 
     if (hasCached && cached) {
-      context.setVideos(cloneVideos(cached.videos));
-      context.setOffset(cached.offset);
-      context.setHasMore(cached.hasMore);
-      context.setSyncDepth(cloneSyncDepthState(cached.syncDepth));
-      context.setLoadingVideos(false);
+      context.resetVideoListState({
+        videos: cloneVideos(cached.videos),
+        offset: cached.offset,
+        hasMore: cached.hasMore,
+        syncDepth: cloneSyncDepthState(cached.syncDepth),
+      });
+      context.setVideoLoadingState(false);
       void refreshAndLoadVideos(channelId, true);
       return;
     }
 
-    context.setVideos(selectedVideoHint ? [selectedVideoHint] : []);
-    context.setOffset(0);
-    context.setHasMore(true);
-    context.setHistoryExhausted(false);
-    context.setBackfillingHistory(false);
-    context.setSyncDepth(null);
+    context.resetVideoListState({
+      videos: selectedVideoHint ? [selectedVideoHint] : [],
+    });
     context.options.onVideoListReset?.();
     await refreshAndLoadVideos(channelId, !fromUserInteraction);
   }
