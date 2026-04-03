@@ -451,8 +451,7 @@ export function createHomeWorkspaceDataController(options: {
       return "auth_required" as const;
     }
 
-    sidebarState.setChannelIdToDelete(channelId);
-    sidebarState.setShowDeleteConfirmation(true);
+    sidebarState.queueChannelDeletion(channelId);
     return "queued" as const;
   }
 
@@ -464,8 +463,7 @@ export function createHomeWorkspaceDataController(options: {
       return;
     }
     const channelId = sidebarState.channelIdToDelete;
-    sidebarState.setShowDeleteConfirmation(false);
-    sidebarState.setChannelIdToDelete(null);
+    sidebarState.clearChannelDeletion();
 
     const previousChannels = [...sidebarState.channels];
     const previousSelectedChannelId = sidebarState.selectedChannelId;

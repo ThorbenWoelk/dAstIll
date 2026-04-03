@@ -280,6 +280,8 @@ export type SidebarStateResult = {
     channelOrder?: string[];
     channelSortMode?: ChannelSortMode;
   }) => void;
+  queueChannelDeletion: (channelId: string) => void;
+  clearChannelDeletion: () => void;
 
   // Operations
   syncChannelOrderFromList: () => void;
@@ -609,6 +611,16 @@ export function createSidebarState(
     if (options.channelSortMode) {
       channelSortMode = options.channelSortMode;
     }
+  }
+
+  function queueChannelDeletion(channelId: string) {
+    channelIdToDelete = channelId;
+    showDeleteConfirmation = true;
+  }
+
+  function clearChannelDeletion() {
+    showDeleteConfirmation = false;
+    channelIdToDelete = null;
   }
 
   function setVideoStatus(
@@ -943,6 +955,8 @@ export function createSidebarState(
     applyLoadedChannelsState,
     applySelectionState,
     applyChannelPreferencesState,
+    queueChannelDeletion,
+    clearChannelDeletion,
 
     // Operations
     loadInitial,
