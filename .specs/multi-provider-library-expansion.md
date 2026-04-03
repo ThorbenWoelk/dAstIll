@@ -6,7 +6,7 @@ dAstIll currently models the world as YouTube channels containing videos with tr
 
 ## Goal
 
-Expand dAstIll into a unified multi-provider content library that can ingest and organize podcasts, publications, saved-search publication feeds, websites, and existing YouTube content as first-class content types. The backend and frontend should both operate on a provider-neutral model, and the library should remain clutter-free by grouping subscriptions according to their natural source type:
+Expand dAstIll into a unified multi-provider content library that can ingest and organize podcasts, publications, saved-search publication feeds, authenticated publisher content such as New York Times subscriptions, websites, and existing YouTube content as first-class content types. The backend and frontend should both operate on a provider-neutral model, and the library should remain clutter-free by grouping subscriptions according to their natural source type. Implementation should begin with a New York Times MVP that proves the authenticated publisher flow end to end before the product targets a second new provider:
 
 - podcast episodes under podcast series
 - publications under publication series when a real series exists
@@ -23,6 +23,7 @@ Expand dAstIll into a unified multi-provider content library that can ingest and
   - podcast series backed by RSS or equivalent feed metadata
   - publication series backed by publisher feeds or provider pages
   - saved-search publication sources backed by a query against a science engine
+  - authenticated publisher sources backed by a user login and entitlement-aware provider access
   - manually tracked websites and pages
   - YouTube channels mapped into the same generic model
 - Support at least these item kinds:
@@ -42,6 +43,13 @@ Expand dAstIll into a unified multi-provider content library that can ingest and
 - Assign stable internal IDs to sources, items, and parts so provider-specific IDs such as YouTube video IDs, RSS GUIDs, DOIs, arXiv IDs, or query hashes do not act as the only primary keys.
 - Preserve provider-specific metadata without leaking provider-specific identity into the core schema.
 - Allow publication subscriptions to be query-backed rather than feed-backed, so a user's current notion of a "channel" can become a saved search scoped to a specific science engine and query.
+- Allow users to connect an authenticated publisher account when a provider requires login to access subscribed content.
+- Support New York Times as a first-wave authenticated publisher provider:
+  - user can log into their New York Times account from dAstIll
+  - dAstIll can verify that the user has an active subscription or other entitlement needed to access content
+  - user can subscribe to New York Times content sources and ingest entitled content into the unified library model
+- Sequence delivery so the first implementation slice ships a usable New York Times MVP before adding the next non-YouTube provider.
+- Preserve a distinction between public content availability and user-entitled content availability so the system can explain why some provider items are visible but not ingestible.
 - Allow website tracking without forcing every tracked page to pretend to be part of a feed or publication series.
 - Present all user subscriptions inside one unified library model rather than separate disconnected product areas.
 - Preserve source grouping semantics by type:
@@ -75,7 +83,8 @@ Expand dAstIll into a unified multi-provider content library that can ingest and
 ## Non-Goals
 
 - Building every possible provider integration in the first pass.
-- Solving paid or authenticated publisher access in this scope.
+- Supporting every paid or authenticated publisher in the first pass beyond an initial New York Times implementation.
+- Starting implementation work on a second new provider before the New York Times MVP is shipped and verified.
 - Final pixel-level UI styling, animation, or visual polish decisions.
 - Advanced recommendation or ranking logic for subscriptions.
 - Collaborative folders or shared libraries.
@@ -106,7 +115,7 @@ This avoids conflating source grouping, item identity, and derived content.
 
 ### Source archetypes
 
-The system should explicitly support three distinct source behaviors because they sync and group content differently:
+The system should explicitly support four distinct source behaviors because they sync and group content differently:
 
 - feed-backed series
   - podcast RSS feeds
@@ -114,6 +123,9 @@ The system should explicitly support three distinct source behaviors because the
 - query-backed series
   - saved searches in OpenAlex, arXiv, Semantic Scholar, or similar engines
   - source identity is the provider plus normalized query definition
+- authenticated publisher sources
+  - providers such as New York Times where content access depends on the user's account entitlement
+  - source identity may depend on both provider metadata and the connected account context
 - manually curated website tracking
   - user adds sites or pages directly
   - does not require provider-managed grouping
@@ -128,8 +140,16 @@ Provider-specific logic should live behind adapters rather than inside the canon
 - text extraction
 - transcript import
 - audio discovery
+- account authentication and session refresh
+- entitlement checks for protected content
 
 The important constraint is that provider differences stop at the adapter boundary.
+
+### Authenticated publisher access
+
+Authenticated publishers such as New York Times should plug into the same canonical model rather than forcing a parallel "connected publishers" product area. The provider adapter should own login flow integration, secure session handling, and entitlement-aware sync behavior. Users should be able to connect their New York Times account, browse subscribable New York Times sources within the same library surface, and ingest articles they are entitled to access.
+
+The product should also make entitlement state legible. If a New York Times source exists but the connected account no longer has access, the UI should show that the source is authentication-gated or subscription-gated rather than silently failing.
 
 ### Clutter-free library organization
 
@@ -147,6 +167,8 @@ This preserves information scent while keeping the top-level list stable even wh
 ### Publication subscriptions
 
 Publication subscriptions may not always map to a real-world publisher series. Some will be saved searches such as "recent multimodal AI papers in OpenAlex" or "recent Google publications matching a query." Those should behave like durable source containers with their own names, sync rules, and item lists.
+
+Publisher-backed subscriptions can also be account-backed rather than feed-backed. For example, a New York Times subscription may expose sections, topics, newsletters, author pages, or saved content areas that the user can subscribe to only after logging in.
 
 ### Podcast subscriptions
 
@@ -179,11 +201,22 @@ This is more durable than a fixed `channel/video` selection model and makes it p
 
 ### Migration strategy
 
-The implementation should be incremental. YouTube should become the first adapter mapped into the new generic model instead of being rewritten out of existence. This reduces migration risk and keeps the app usable while podcasts, publications, and websites are added.
+The implementation should be incremental. Existing YouTube functionality should keep working during the migration, but the first new provider implementation should be New York Times. The team should ship a narrow, end-to-end New York Times MVP first, verify that the canonical model and authenticated publisher flow work in production, and only then start the next provider integration. This reduces migration risk, validates the provider-neutral model against the hardest initial case, and keeps the app usable while broader provider coverage is phased in.
+
+The New York Times MVP should be treated as the proving ground for:
+
+- authenticated provider account connection
+- entitlement-aware sync
+- subscribable provider-backed sources
+- ingestion of entitled content into the generic source and item model
+- library presentation that makes auth-gated content understandable
 
 ## Open Questions
 
 - Which science engines should be treated as first-wave query-backed publication providers versus enrichment-only providers?
+- Which New York Times content scopes should be first-wave subscribable sources: sections, topics, newsletters, saved articles, author pages, or some smaller subset?
+- What authentication mechanism should the New York Times integration use in the first implementation slice, and what secure credential/session storage is required on the backend?
+- What exact exit criteria define the New York Times MVP as shipped, so work on the second provider does not begin prematurely?
 - Should the top-level library surface be organized primarily by source type, by user-defined folders, or by a hybrid of both?
 - Should manually tracked websites support both folder assignment and ad hoc tags in the first pass, or should tags wait for a later iteration?
 - Should the `Websites` area allow direct page tracking only, or also support tracking whole domains as sources with discovered pages beneath them?
