@@ -17,7 +17,7 @@ use crate::{
     },
     security::{AccessContext, AuthState, can_access_video},
     services::{
-        SpawnReplyJob,
+        CHAT_INPUT_BLOCK_MESSAGE, SpawnReplyJob,
         chat::{
             default_chat_cloud_model_id, enforce_chat_conversation_storage_limits,
             is_chat_cloud_model_choice, validate_chat_conversation_bounds, validate_chat_prompt,
@@ -347,6 +347,19 @@ pub async fn send_message(
     }
     validate_chat_prompt(prompt)
         .map_err(|message| (StatusCode::BAD_REQUEST, message.to_string()))?;
+    match state.input_guardrails.evaluate_blocking_input(prompt).await {
+        Ok(verdict) if !verdict.allow => {
+            return Err((StatusCode::FORBIDDEN, CHAT_INPUT_BLOCK_MESSAGE.to_string()));
+        }
+        Ok(_) => {}
+        Err(error) => {
+            tracing::error!(conversation_id = %conversation_id, error = %error, "chat blocking guardrail failed");
+            return Err((
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Chat safety checks are unavailable.".to_string(),
+            ));
+        }
+    }
 
     let runtime_key = active_chat_key(&access_context, &conversation_id);
     let active_chat = {
@@ -402,6 +415,11 @@ pub async fn send_message(
         active_chat: active_chat.clone(),
         persist_to_store: true,
     });
+    state.input_guardrails.spawn_nonblocking_monitor(
+        conversation_id,
+        prompt.to_string(),
+        active_chat.clone(),
+    );
 
     Ok(sse_response(active_chat).await)
 }
@@ -430,6 +448,19 @@ pub async fn send_ephemeral_message(
     }
     validate_chat_prompt(prompt)
         .map_err(|message| (StatusCode::BAD_REQUEST, message.to_string()))?;
+    match state.input_guardrails.evaluate_blocking_input(prompt).await {
+        Ok(verdict) if !verdict.allow => {
+            return Err((StatusCode::FORBIDDEN, CHAT_INPUT_BLOCK_MESSAGE.to_string()));
+        }
+        Ok(_) => {}
+        Err(error) => {
+            tracing::error!(conversation_id = %payload.conversation.id, error = %error, "ephemeral chat blocking guardrail failed");
+            return Err((
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Chat safety checks are unavailable.".to_string(),
+            ));
+        }
+    }
 
     validate_ephemeral_conversation(&payload.conversation)?;
 
@@ -488,6 +519,11 @@ pub async fn send_ephemeral_message(
         active_chat: active_chat.clone(),
         persist_to_store: false,
     });
+    state.input_guardrails.spawn_nonblocking_monitor(
+        conversation_id,
+        prompt.to_string(),
+        active_chat.clone(),
+    );
 
     Ok(sse_response(active_chat).await)
 }

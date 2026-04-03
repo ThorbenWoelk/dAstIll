@@ -10,9 +10,9 @@ use crate::search_progress::SearchProgress;
 use crate::security::RequestRateLimiter;
 use crate::services::PollyTtsService;
 use crate::services::{
-    ActiveChatHandle, ChatService, CloudCooldown, DatabricksSqlService, FtsIndex, SearchService,
-    SummarizerService, SummaryEvaluatorService, TranscriptCooldown, TranscriptService,
-    YouTubeQuotaCooldown, YouTubeService,
+    ActiveChatHandle, ChatService, CloudCooldown, DatabricksSqlService, FtsIndex,
+    InputGuardrailService, SearchService, SummarizerService, SummaryEvaluatorService,
+    TranscriptCooldown, TranscriptService, YouTubeQuotaCooldown, YouTubeService,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -47,6 +47,7 @@ pub struct AppState {
     pub summary_evaluator: Arc<SummaryEvaluatorService>,
     pub search: Arc<SearchService>,
     pub chat: Arc<ChatService>,
+    pub input_guardrails: Arc<InputGuardrailService>,
     pub analytics: Option<Arc<DatabricksSqlService>>,
     pub active_chats: Arc<Mutex<HashMap<ActiveChatKey, ActiveChatHandle>>>,
     pub chat_store_lock: Arc<Mutex<()>>,

@@ -248,6 +248,21 @@ async fn main() -> anyhow::Result<()> {
     let chat = Arc::new(
         ChatService::new(chat_core).with_multi_pass_enabled(chat_runtime.multi_pass_enabled),
     );
+    let guardrail_model = chat_runtime
+        .guardrail_model
+        .clone()
+        .or_else(|| ollama.fallback_model.clone())
+        .or_else(|| ollama.default_chat_model.clone())
+        .unwrap_or_else(|| ollama.summary_model.clone());
+    let input_guardrails = Arc::new(dastill::services::InputGuardrailService::new(
+        OllamaCore::with_client(build_http_client(), &ollama.url, &guardrail_model)
+            .with_fallback_model(ollama.fallback_model.clone())
+            .with_api_key(ollama.api_key.clone())
+            .with_cloud_cooldown(cloud_cooldown.clone())
+            .with_ollama_semaphore(ollama_semaphore.clone()),
+        chat_runtime.prompt_blocklist.clone(),
+        chat_runtime.prompt_allowlist.clone(),
+    ));
 
     let evaluator_core =
         OllamaCore::with_client(client, &ollama.url, &ollama.summary_evaluator_model)
@@ -311,6 +326,7 @@ async fn main() -> anyhow::Result<()> {
         summary_evaluator,
         search,
         chat,
+        input_guardrails,
         analytics,
         active_chats: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         chat_store_lock: Arc::new(tokio::sync::Mutex::new(())),

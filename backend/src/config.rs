@@ -32,6 +32,9 @@ pub struct TursoRuntimeConfig {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChatRuntimeConfig {
     pub multi_pass_enabled: bool,
+    pub guardrail_model: Option<String>,
+    pub prompt_blocklist: Vec<String>,
+    pub prompt_allowlist: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -142,6 +145,9 @@ impl ChatRuntimeConfig {
     pub fn from_env() -> Self {
         Self {
             multi_pass_enabled: optional_bool_env("CHAT_MULTI_PASS_ENABLED").unwrap_or(true),
+            guardrail_model: optional_env("CHAT_GUARDRAIL_MODEL"),
+            prompt_blocklist: optional_csv_env("CHAT_PROMPT_BLOCKLIST").unwrap_or_default(),
+            prompt_allowlist: optional_csv_env("CHAT_PROMPT_ALLOWLIST").unwrap_or_default(),
         }
     }
 }
@@ -616,11 +622,22 @@ mod tests {
             .lock()
             .unwrap_or_else(|err| err.into_inner());
 
-        let _reset = EnvReset::capture(&["CHAT_MULTI_PASS_ENABLED"]);
+        let _reset = EnvReset::capture(&[
+            "CHAT_MULTI_PASS_ENABLED",
+            "CHAT_GUARDRAIL_MODEL",
+            "CHAT_PROMPT_BLOCKLIST",
+            "CHAT_PROMPT_ALLOWLIST",
+        ]);
         remove_env("CHAT_MULTI_PASS_ENABLED");
+        remove_env("CHAT_GUARDRAIL_MODEL");
+        remove_env("CHAT_PROMPT_BLOCKLIST");
+        remove_env("CHAT_PROMPT_ALLOWLIST");
 
         let config = ChatRuntimeConfig::from_env();
         assert!(config.multi_pass_enabled);
+        assert_eq!(config.guardrail_model, None);
+        assert!(config.prompt_blocklist.is_empty());
+        assert!(config.prompt_allowlist.is_empty());
     }
 
     #[test]
@@ -630,11 +647,40 @@ mod tests {
             .lock()
             .unwrap_or_else(|err| err.into_inner());
 
-        let _reset = EnvReset::capture(&["CHAT_MULTI_PASS_ENABLED"]);
+        let _reset = EnvReset::capture(&[
+            "CHAT_MULTI_PASS_ENABLED",
+            "CHAT_GUARDRAIL_MODEL",
+            "CHAT_PROMPT_BLOCKLIST",
+            "CHAT_PROMPT_ALLOWLIST",
+        ]);
         set_env("CHAT_MULTI_PASS_ENABLED", "false");
+        set_env("CHAT_GUARDRAIL_MODEL", "llama-guard:8b");
+        set_env(
+            "CHAT_PROMPT_BLOCKLIST",
+            "ignore previous instructions,reveal system prompt",
+        );
+        set_env(
+            "CHAT_PROMPT_ALLOWLIST",
+            "security training,prompt injection examples",
+        );
 
         let config = ChatRuntimeConfig::from_env();
         assert!(!config.multi_pass_enabled);
+        assert_eq!(config.guardrail_model.as_deref(), Some("llama-guard:8b"));
+        assert_eq!(
+            config.prompt_blocklist,
+            vec![
+                "ignore previous instructions".to_string(),
+                "reveal system prompt".to_string()
+            ]
+        );
+        assert_eq!(
+            config.prompt_allowlist,
+            vec![
+                "security training".to_string(),
+                "prompt injection examples".to_string()
+            ]
+        );
     }
 
     #[test]

@@ -203,10 +203,22 @@ struct SequencedChatEvent {
     event: ChatStreamEvent,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct CancelledChatOutcome {
+    pub(super) status: ChatMessageStatus,
+    pub(super) message: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(super) struct ChatCancellationState {
+    pub(super) cancelled: bool,
+    pub(super) outcome: Option<CancelledChatOutcome>,
+}
+
 #[derive(Debug)]
 struct ActiveChatState {
     next_sequence: AtomicU64,
-    cancel_tx: watch::Sender<bool>,
+    cancel_tx: watch::Sender<ChatCancellationState>,
     events_tx: broadcast::Sender<SequencedChatEvent>,
     buffered_events: Mutex<Vec<SequencedChatEvent>>,
 }
@@ -218,7 +230,7 @@ pub struct ActiveChatHandle {
 
 impl ActiveChatHandle {
     pub fn new() -> Self {
-        let (cancel_tx, _) = watch::channel(false);
+        let (cancel_tx, _) = watch::channel(ChatCancellationState::default());
         let (events_tx, _) = broadcast::channel(256);
         Self {
             inner: Arc::new(ActiveChatState {
@@ -242,11 +254,18 @@ impl ActiveChatHandle {
     }
 
     pub fn cancel(&self) {
-        self.inner.cancel_tx.send_replace(true);
+        self.request_cancellation(None);
+    }
+
+    pub fn reject(&self, status: ChatMessageStatus, message: impl Into<String>) {
+        self.request_cancellation(Some(CancelledChatOutcome {
+            status,
+            message: message.into(),
+        }));
     }
 
     pub(super) fn is_cancelled(&self) -> bool {
-        *self.inner.cancel_tx.borrow()
+        self.inner.cancel_tx.borrow().cancelled
     }
 
     pub(super) fn ensure_not_cancelled(&self) -> Result<(), String> {
@@ -257,8 +276,17 @@ impl ActiveChatHandle {
         }
     }
 
-    pub(super) fn subscribe_cancel(&self) -> watch::Receiver<bool> {
+    pub(super) fn subscribe_cancel(&self) -> watch::Receiver<ChatCancellationState> {
         self.inner.cancel_tx.subscribe()
+    }
+
+    pub(super) fn cancelled_outcome(&self) -> Option<(ChatMessageStatus, String)> {
+        self.inner
+            .cancel_tx
+            .borrow()
+            .outcome
+            .as_ref()
+            .map(|outcome| (outcome.status, outcome.message.clone()))
     }
 
     fn subscribe_events(&self) -> broadcast::Receiver<SequencedChatEvent> {
@@ -310,6 +338,17 @@ impl ActiveChatHandle {
 
         ReceiverStream::new(rx)
     }
+
+    fn request_cancellation(&self, outcome: Option<CancelledChatOutcome>) {
+        if self.inner.cancel_tx.borrow().cancelled {
+            return;
+        }
+
+        self.inner.cancel_tx.send_replace(ChatCancellationState {
+            cancelled: true,
+            outcome,
+        });
+    }
 }
 
 impl Default for ActiveChatHandle {
@@ -335,7 +374,7 @@ where
 
     tokio::select! {
         changed = cancel_rx.changed() => {
-            if changed.is_ok() && *cancel_rx.borrow() {
+            if changed.is_ok() && cancel_rx.borrow().cancelled {
                 Err(cancelled_error())
             } else {
                 Ok(future.await)
