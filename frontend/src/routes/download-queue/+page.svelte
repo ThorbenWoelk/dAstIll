@@ -147,8 +147,7 @@
         );
 
         if (!initialChannelId) {
-          sidebar.setSelectedChannelId(null);
-          sidebar.resetVideoListState();
+          sidebar.clearChannelSelectionState();
         } else {
           sidebar.setSelectedChannelId(initialChannelId);
           await sidebar.refreshAndLoadVideos(initialChannelId, silent);
@@ -275,7 +274,7 @@
         queueVideoRefreshTick += 1;
         const sel = sidebar.selectedVideoId;
         if (sel && !sidebar.videos.some((v) => v.id === sel)) {
-          sidebar.setSelectedVideoId(null);
+          sidebar.clearSelectedVideoSelection();
         }
       })();
     }, ms);
@@ -313,7 +312,7 @@
       id !== null &&
       previousQueueChannelId !== id
     ) {
-      sidebar.setSelectedVideoId(null);
+      sidebar.clearSelectedVideoSelection();
     }
     previousQueueChannelId = id;
   });
@@ -618,7 +617,7 @@
     onBack: () => {},
     onSaveSyncDate: saveEarliestSyncDate,
     onRetryTranscript: retryTranscriptDownload,
-    onClearSelectedVideo: () => sidebar.setSelectedVideoId(null),
+    onClearSelectedVideo: () => sidebar.clearSelectedVideoSelection(),
     onOpenVideoInWorkspace: openVideoTranscriptInWorkspace,
   };
 

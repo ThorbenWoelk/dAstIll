@@ -266,6 +266,8 @@ export type SidebarStateResult = {
     videoTypeFilter?: VideoTypeFilter;
     acknowledgedFilter?: AcknowledgedFilter;
   }) => void;
+  clearSelectedVideoSelection: () => void;
+  clearChannelSelectionState: () => void;
 
   // Operations
   syncChannelOrderFromList: () => void;
@@ -554,6 +556,15 @@ export function createSidebarState(
     if (options.acknowledgedFilter) {
       setAcknowledgedFilter(options.acknowledgedFilter);
     }
+  }
+
+  function clearSelectedVideoSelection() {
+    selectedVideoId = null;
+  }
+
+  function clearChannelSelectionState() {
+    selectedChannelId = null;
+    resetVideoListState({ selectedVideoId: null });
   }
 
   function setVideoStatus(
@@ -883,6 +894,8 @@ export function createSidebarState(
     applyChannelSnapshotState,
     applyVideoPageState,
     applyRestoredSidebarState,
+    clearSelectedVideoSelection,
+    clearChannelSelectionState,
 
     // Operations
     loadInitial,
