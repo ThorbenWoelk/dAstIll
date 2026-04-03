@@ -248,6 +248,16 @@ export type SidebarStateResult = {
     next_offset: number | null;
     sync_depth: ChannelSyncDepthState | null;
   }) => void;
+  applyVideoPageState: (
+    page: {
+      videos: Video[];
+      has_more: boolean;
+      next_offset: number | null;
+    },
+    options?: {
+      reset?: boolean;
+    },
+  ) => void;
   applyRestoredSidebarState: (options: {
     selectedChannelId?: string | null;
     selectedVideoId?: string | null;
@@ -498,6 +508,24 @@ export function createSidebarState(
     videos = dedupeVideosById(snapshot.videos);
     offset = snapshot.next_offset ?? snapshot.videos.length;
     hasMore = snapshot.has_more;
+  }
+
+  function applyVideoPageState(
+    page: {
+      videos: Video[];
+      has_more: boolean;
+      next_offset: number | null;
+    },
+    options: {
+      reset?: boolean;
+    } = {},
+  ) {
+    const nextVideos = options.reset
+      ? page.videos
+      : [...videos, ...page.videos];
+    videos = dedupeVideosById(nextVideos);
+    offset = page.next_offset ?? videos.length;
+    hasMore = page.has_more;
   }
 
   function applyRestoredSidebarState(options: {
@@ -853,6 +881,7 @@ export function createSidebarState(
     updateVideo,
     resetVideoListState,
     applyChannelSnapshotState,
+    applyVideoPageState,
     applyRestoredSidebarState,
 
     // Operations

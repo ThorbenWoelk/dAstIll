@@ -233,15 +233,11 @@ export function createHomeWorkspaceDataController(options: {
       );
       scannedPages += 1;
       if (next.videos.length === 0) {
-        sidebarState.setHasMore(next.has_more);
+        sidebarState.applyVideoPageState(next);
         break;
       }
 
-      sidebarState.setVideos([...sidebarState.videos, ...next.videos]);
-      sidebarState.setOffset(
-        next.next_offset ?? sidebarState.offset + next.videos.length,
-      );
-      sidebarState.setHasMore(next.has_more);
+      sidebarState.applyVideoPageState(next);
       hasSelectedVideo = sidebarState.videos.some(
         (video) => video.id === preferredVideoId,
       );
@@ -611,16 +607,7 @@ export function createHomeWorkspaceDataController(options: {
         return;
       }
 
-      if (reset) {
-        sidebarState.setVideos(list.videos);
-        sidebarState.setOffset(list.next_offset ?? list.videos.length);
-      } else {
-        sidebarState.setVideos([...sidebarState.videos, ...list.videos]);
-        sidebarState.setOffset(
-          list.next_offset ?? sidebarState.offset + list.videos.length,
-        );
-      }
-      sidebarState.setHasMore(list.has_more);
+      sidebarState.applyVideoPageState(list, { reset });
       if (reset) {
         options.setAllowLoadedVideoSyncDepthOverride(false);
         await hydrateSelectedVideo(sidebarState.selectedVideoId, acknowledged);
