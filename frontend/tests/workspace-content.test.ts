@@ -4,6 +4,7 @@ import {
   formatPublishedAt,
   formatSyncDate,
   hasKnownDuration,
+  resolveBackgroundSummaryRefresh,
   resolveSummaryQualityPresentation,
   resolveTranscriptPresentation,
   shouldRetryReadySummaryLoad,
@@ -119,6 +120,48 @@ describe("resolveSummaryQualityPresentation", () => {
       modelUsed: null,
       qualityModelUsed: null,
     });
+  });
+});
+
+describe("resolveBackgroundSummaryRefresh", () => {
+  it("hydrates summary text and quality when nothing is displayed yet", () => {
+    const refresh = resolveBackgroundSummaryRefresh(
+      "",
+      createSummary({
+        content: "Summary: Loaded summary",
+        quality_score: 7.4,
+        quality_note: " Useful and direct. ",
+        model_used: "summary-model",
+        quality_model_used: "eval-model",
+      }),
+    );
+
+    expect(refresh).toEqual({
+      contentText: "Loaded summary",
+      draft: "Loaded summary",
+      shouldClearVideoInfo: true,
+      quality: {
+        score: 7,
+        note: "Useful and direct.",
+        modelUsed: "summary-model",
+        qualityModelUsed: "eval-model",
+      },
+    });
+  });
+
+  it("preserves displayed text while still refreshing quality metadata", () => {
+    const refresh = resolveBackgroundSummaryRefresh(
+      "Already shown summary",
+      createSummary({
+        content: "Summary: New backend summary",
+        quality_score: 9.1,
+      }),
+    );
+
+    expect(refresh.contentText).toBe("Already shown summary");
+    expect(refresh.draft).toBe("Already shown summary");
+    expect(refresh.shouldClearVideoInfo).toBe(false);
+    expect(refresh.quality.score).toBe(9);
   });
 });
 

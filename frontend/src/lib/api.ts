@@ -1,3 +1,4 @@
+import type { QueueTab, VideoTypeFilter } from "./types";
 import type {
   AddVideoResult,
   AiHealthResponse,
@@ -8,7 +9,6 @@ import type {
   CreateHighlightRequest,
   Highlight,
   HighlightChannelGroup,
-  QueueTab,
   SearchResponse,
   SearchSourceFilter,
   SearchStatus,
@@ -19,9 +19,8 @@ import type {
   UserPreferences,
   Video,
   VideoInfo,
-  VideoTypeFilter,
   WorkspaceBootstrap,
-} from "./types";
+} from "./transport-types";
 import {
   API_BASE,
   AuthRequiredError,

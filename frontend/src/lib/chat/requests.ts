@@ -5,10 +5,10 @@ import type {
   ChatMessage,
   ChatSuggestionItem,
   ChatSource,
-  ChatStreamStatus,
   CreateConversationRequest,
   SendChatMessageRequest,
-} from "../types";
+} from "../transport-types";
+import type { ChatStreamStatus } from "../types";
 import { createAbortError, request, resolveApiUrl } from "../api-client";
 
 type ChatStreamHandlers = {

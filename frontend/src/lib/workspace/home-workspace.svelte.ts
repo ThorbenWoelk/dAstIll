@@ -78,8 +78,7 @@ export function createHomeWorkspacePage() {
       dataController.selectVideo(videoId, true, context?.forceReload ?? false),
     onChannelSelected: (channelId: string) => {
       if (!sidebarState.selectedVideoId) {
-        content.resetSummaryQuality();
-        content.clearVideoInfo();
+        content.clearSelectionMetadata();
       }
       const href = buildWorkspaceViewHref({
         selectedChannelId: channelId,
@@ -496,18 +495,15 @@ export function createHomeWorkspacePage() {
       ) {
         return;
       }
-      if (!content.contentText.trim()) {
-        content.cacheLoadedSummary(summary, targetVideoId);
-        content.setDraft(content.contentText);
-        content.clearVideoInfo();
-        if (
-          highlightController.videoHighlightsByVideoId[targetVideoId] ===
+      const hadEmptyContent = !content.contentText.trim();
+      content.applyBackgroundSummaryRefresh(summary, targetVideoId);
+      if (
+        hadEmptyContent &&
+        highlightController.videoHighlightsByVideoId[targetVideoId] ===
           undefined
-        ) {
-          void highlightController.hydrateVideoHighlights(targetVideoId);
-        }
+      ) {
+        void highlightController.hydrateVideoHighlights(targetVideoId);
       }
-      content.applySummaryQuality(summary);
     } catch {
       // Keep previous quality state if background refresh fails.
     }

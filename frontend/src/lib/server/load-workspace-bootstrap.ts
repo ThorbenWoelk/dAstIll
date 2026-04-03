@@ -1,9 +1,5 @@
-import type {
-  ChannelSnapshot,
-  QueueTab,
-  VideoTypeFilter,
-  WorkspaceBootstrap,
-} from "$lib/types";
+import type { QueueTab, VideoTypeFilter } from "$lib/types";
+import type { ChannelSnapshot, WorkspaceBootstrap } from "$lib/transport-types";
 import type {
   AcknowledgedFilter,
   WorkspaceContentMode,

@@ -9,6 +9,7 @@ import {
   cleanTranscriptFormatting,
 } from "$lib/api";
 import {
+  resolveBackgroundSummaryRefresh,
   resolveTranscriptPresentation,
   resolveSummaryQualityPresentation,
   stripContentPrefix,
@@ -346,6 +347,61 @@ export function createContentState(options: {
     formattingAttemptsVideoId = nextState.formattingAttemptsVideoId;
   }
 
+  function resetContentViewState() {
+    resetSummaryQuality();
+    videoInfo = null;
+    editing = false;
+    clearFormattingFeedback();
+  }
+
+  function clearSelectionMetadata() {
+    resetSummaryQuality();
+    videoInfo = null;
+  }
+
+  function resetInteractionState(options?: {
+    clearDisplayedContent?: boolean;
+  }) {
+    editing = false;
+    clearFormattingFeedback();
+    if (options?.clearDisplayedContent) {
+      contentText = "";
+      draft = "";
+    }
+  }
+
+  async function reloadSelectedContent(options?: {
+    nextMode?: WorkspaceContentMode;
+    clearDisplayedContent?: boolean;
+  }) {
+    if (options?.nextMode) {
+      contentMode = options.nextMode;
+    }
+    if (options?.clearDisplayedContent ?? true) {
+      contentText = "";
+      draft = "";
+    }
+    resetContentViewState();
+    await loadContent();
+  }
+
+  function applyBackgroundSummaryRefresh(
+    summary: SummaryPayload,
+    videoId: string,
+  ) {
+    const next = resolveBackgroundSummaryRefresh(contentText, summary);
+    if (next.shouldClearVideoInfo) {
+      cacheLoadedSummary(summary, videoId);
+      contentText = next.contentText;
+      draft = next.draft;
+      videoInfo = null;
+    }
+    summaryQualityScore = next.quality.score;
+    summaryQualityNote = next.quality.note;
+    summaryModelUsed = next.quality.modelUsed;
+    summaryQualityModelUsed = next.quality.qualityModelUsed;
+  }
+
   return {
     get loadingContent() {
       return loadingContent;
@@ -444,15 +500,20 @@ export function createContentState(options: {
       draft = "";
     },
 
+    clearSelectionMetadata,
+
+    resetInteractionState,
+
+    reloadSelectedContent,
+
+    applyBackgroundSummaryRefresh,
+
     clearVideoInfo() {
       videoInfo = null;
     },
 
     resetViewState() {
-      resetSummaryQuality();
-      videoInfo = null;
-      editing = false;
-      clearFormattingFeedback();
+      resetContentViewState();
     },
 
     setDraft(value: string) {

@@ -333,8 +333,7 @@ export function createHomeWorkspaceDataController(options: {
     }
 
     if (content.contentMode !== targetMode) {
-      content.setMode(targetMode);
-      await content.loadContent();
+      await content.reloadSelectedContent({ nextMode: targetMode });
     }
   }
 
@@ -813,15 +812,13 @@ export function createHomeWorkspaceDataController(options: {
         channel_id: sidebarState.selectedChannelId,
       });
     }
-    content.clearDisplayedContent();
     const cachedHighlights = videoId
       ? options.getVideoHighlightsByVideoId()[videoId]
       : null;
     if (videoId && !cachedHighlights) {
       void options.hydrateVideoHighlights(videoId);
     }
-    content.resetViewState();
-    await content.loadContent();
+    await content.reloadSelectedContent();
   }
 
   async function setMode(mode: WorkspaceContentMode) {
@@ -840,8 +837,7 @@ export function createHomeWorkspaceDataController(options: {
         to_mode: mode,
       });
     }
-    content.resetViewState();
-    await content.loadContent();
+    await content.reloadSelectedContent({ nextMode: mode });
   }
 
   async function clearBrowseVideoFilters() {

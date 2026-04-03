@@ -81,19 +81,20 @@ export function createHomeWorkspaceAcknowledgeController(options: {
         options.sidebarState.acknowledgedFilter,
       );
     if (selectionDroppedFromFilter) {
-      options.content.stopEditing();
-      options.content.clearFormattingFeedback();
       if (videoFromList) {
         if (optimisticList.length === 0) {
+          options.content.resetInteractionState({
+            clearDisplayedContent: true,
+          });
           options.sidebarState.selectVideo(null);
-          options.content.clearDisplayedContent();
         } else {
+          options.content.resetInteractionState();
           await options.selectVideo(optimisticList[0].id);
         }
       } else {
+        options.content.resetInteractionState({ clearDisplayedContent: true });
         options.sidebarState.selectVideo(null);
         options.setPendingSelectedVideo(null);
-        options.content.clearDisplayedContent();
       }
     }
 
@@ -133,12 +134,13 @@ export function createHomeWorkspaceAcknowledgeController(options: {
         options.getPendingSelectedVideo(),
       );
       if (!stillSelected) {
-        options.content.stopEditing();
-        options.content.clearFormattingFeedback();
         if (options.sidebarState.videos.length === 0) {
+          options.content.resetInteractionState({
+            clearDisplayedContent: true,
+          });
           options.sidebarState.selectVideo(null);
-          options.content.clearDisplayedContent();
         } else {
+          options.content.resetInteractionState();
           await options.selectVideo(options.sidebarState.videos[0].id);
         }
       }
