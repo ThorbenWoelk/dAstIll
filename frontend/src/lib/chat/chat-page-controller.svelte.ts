@@ -232,11 +232,13 @@ export function createChatPageController() {
     void getChatClientConfig()
       .then((cfg) => {
         chatClientConfig = cfg;
-        selectedChatModelId = pickInitialChatModelId(cfg, chatModelStorageKey);
+        setSelectedChatModelId(
+          pickInitialChatModelId(cfg, chatModelStorageKey),
+        );
       })
       .catch(() => {
         chatClientConfig = null;
-        selectedChatModelId = "";
+        setSelectedChatModelId("");
       });
     const stopAiPoller = createAiStatusPoller({
       onStatus: (status) => {
@@ -371,11 +373,15 @@ export function createChatPageController() {
   }
 
   function openMobileConversations() {
-    mobileTab = "conversations";
+    setMobileTab("conversations");
   }
 
   function closeMobileConversations() {
-    mobileTab = "content";
+    setMobileTab("content");
+  }
+
+  function setMobileTab(value: "conversations" | "content") {
+    mobileTab = value;
   }
 
   function setDraft(value: string) {
@@ -449,7 +455,7 @@ export function createChatPageController() {
           activeConversation = structuredClone(found);
           stream.clearStreamState();
           upsertConversationSummary(conversationToSummary(found));
-          mobileTab = "content";
+          setMobileTab("content");
           stream.pinToBottom();
           await stream.scrollToBottom("auto");
         } else {
@@ -478,7 +484,7 @@ export function createChatPageController() {
         activeConversation = conversation;
         stream.clearStreamState();
         upsertConversationSummary(conversation);
-        mobileTab = "content";
+        setMobileTab("content");
         stream.pinToBottom();
         await stream.scrollToBottom("auto");
       }
@@ -545,7 +551,7 @@ export function createChatPageController() {
         conversations = ephemeralThreads.map(conversationToSummary);
         upsertConversationSummary(conversationToSummary(conversation));
         activeConversation = conversation;
-        mobileTab = "content";
+        setMobileTab("content");
         hydratedConversationId = conversation.id;
         await navigateToConversation(conversation.id);
         chatInputFocusSignal += 1;
@@ -554,7 +560,7 @@ export function createChatPageController() {
         const conversation = await createConversation();
         upsertConversationSummary(conversation);
         activeConversation = conversation;
-        mobileTab = "content";
+        setMobileTab("content");
         hydratedConversationId = conversation.id;
         await navigateToConversation(conversation.id);
         chatInputFocusSignal += 1;
@@ -641,7 +647,7 @@ export function createChatPageController() {
           hydratedConversationId = null;
           stream.abortActiveChatStream();
           stream.clearStreamState();
-          mobileTab = "content";
+          setMobileTab("content");
           await navigateToConversation(null);
         } else {
           await deleteAllConversations();
@@ -650,7 +656,7 @@ export function createChatPageController() {
           hydratedConversationId = null;
           stream.abortActiveChatStream();
           stream.clearStreamState();
-          mobileTab = "content";
+          setMobileTab("content");
           await navigateToConversation(null);
         }
       } catch (error) {
@@ -712,7 +718,7 @@ export function createChatPageController() {
     errorMessage = null;
     stream.abortActiveChatStream();
     stream.clearStreamState();
-    mobileTab = "content";
+    setMobileTab("content");
     await navigateToConversation(conversationId);
   }
 
@@ -734,14 +740,14 @@ export function createChatPageController() {
           saveEphemeralThreads(ephemeralThreads);
           conversations = ephemeralThreads.map(conversationToSummary);
           activeConversation = conversation;
-          mobileTab = "content";
+          setMobileTab("content");
           hydratedConversationId = conversation.id;
           upsertConversationSummary(conversationToSummary(conversation));
           await navigateToConversation(conversation.id);
         } else {
           conversation = await createConversation();
           activeConversation = conversation;
-          mobileTab = "content";
+          setMobileTab("content");
           hydratedConversationId = conversation.id;
           upsertConversationSummary(conversation);
           await navigateToConversation(conversation.id);
@@ -765,7 +771,7 @@ export function createChatPageController() {
         ? structuredClone(conversation)
         : null;
 
-    draft = "";
+    setDraft("");
     await navigateToConversation(conversation.id);
 
     const userMessage = stream.buildOptimisticMessage("user", content);
