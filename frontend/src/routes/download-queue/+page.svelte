@@ -146,8 +146,7 @@
         if (!initialChannelId) {
           sidebar.clearChannelSelectionState();
         } else {
-          sidebar.setSelectedChannelId(initialChannelId);
-          await sidebar.refreshAndLoadVideos(initialChannelId, silent);
+          await sidebar.selectChannel(initialChannelId, null, true);
         }
 
         void refreshAiStatus((status) => {
@@ -191,8 +190,7 @@
       );
     },
     onOpenChannelOverview: async (channelId: string) => {
-      // Switch UI immediately; load selected channel queue data in background.
-      sidebar.setSelectedChannelId(channelId);
+      // Switch UI immediately using the shared channel-selection action.
       void sidebar.selectChannel(channelId, null, true);
     },
   });
