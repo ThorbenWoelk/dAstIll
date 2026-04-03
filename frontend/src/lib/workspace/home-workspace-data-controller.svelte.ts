@@ -135,14 +135,14 @@ export function createHomeWorkspaceDataController(options: {
 
   async function loadSyncDepth() {
     if (!sidebarState.selectedChannelId) {
-      sidebarState.setSyncDepth(null);
+      sidebarState.setSyncDepthState(null);
       return;
     }
     try {
       const depth = await getChannelSyncDepth(sidebarState.selectedChannelId);
-      sidebarState.setSyncDepth(depth as ChannelSyncDepthState);
+      sidebarState.setSyncDepthState(depth as ChannelSyncDepthState);
     } catch {
-      sidebarState.setSyncDepth(null);
+      sidebarState.setSyncDepthState(null);
     }
   }
 
@@ -274,7 +274,7 @@ export function createHomeWorkspaceDataController(options: {
     silent = false,
   ) {
     if (!silent) {
-      sidebarState.setLoadingVideos(true);
+      sidebarState.setVideoLoadingState(true);
       sidebarState.clearSelectedVideoSelection();
       options.setErrorMessage(null);
     }
@@ -317,7 +317,7 @@ export function createHomeWorkspaceDataController(options: {
       }
     } finally {
       if (!silent) {
-        sidebarState.setLoadingVideos(false);
+        sidebarState.setVideoLoadingState(false);
       }
     }
   }
@@ -343,7 +343,7 @@ export function createHomeWorkspaceDataController(options: {
     const previousSelectedChannelId = sidebarState.selectedChannelId;
 
     if (!silent) {
-      sidebarState.setLoadingChannels(true);
+      sidebarState.setChannelLoadingState(true);
       options.setErrorMessage(null);
     }
 
@@ -420,7 +420,7 @@ export function createHomeWorkspaceDataController(options: {
           });
           options.setAllowLoadedVideoSyncDepthOverride(false);
           if (!silent) {
-            sidebarState.setLoadingVideos(true);
+            sidebarState.setVideoLoadingState(true);
           }
           await tick();
           await refreshAndLoadVideos(
@@ -440,8 +440,8 @@ export function createHomeWorkspaceDataController(options: {
       }
     } finally {
       if (!silent) {
-        sidebarState.setLoadingChannels(false);
-        sidebarState.setLoadingVideos(false);
+        sidebarState.setChannelLoadingState(false);
+        sidebarState.setVideoLoadingState(false);
       }
     }
   }
@@ -564,7 +564,7 @@ export function createHomeWorkspaceDataController(options: {
       shouldReloadAfterRefresh: () =>
         sidebarState.selectedChannelId === channelId,
       onRefreshingChange: (refreshing: boolean) => {
-        sidebarState.setRefreshingChannel(refreshing);
+        sidebarState.setRefreshingChannelState(refreshing);
       },
       onError: (message) => {
         if (!options.getErrorMessage()) {
@@ -578,7 +578,7 @@ export function createHomeWorkspaceDataController(options: {
     if (!sidebarState.selectedChannelId) return;
     if (sidebarState.loadingVideos && !silent) return;
 
-    if (!silent) sidebarState.setLoadingVideos(true);
+    if (!silent) sidebarState.setVideoLoadingState(true);
     if (!silent) options.setErrorMessage(null);
 
     try {
@@ -616,7 +616,7 @@ export function createHomeWorkspaceDataController(options: {
       }
     } finally {
       if (!silent) {
-        sidebarState.setLoadingVideos(false);
+        sidebarState.setVideoLoadingState(false);
       }
     }
   }
@@ -636,7 +636,7 @@ export function createHomeWorkspaceDataController(options: {
       return;
     }
 
-    sidebarState.setBackfillingHistory(true);
+    sidebarState.setBackfillState({ backfillingHistory: true });
     options.setErrorMessage(null);
 
     try {
@@ -671,7 +671,7 @@ export function createHomeWorkspaceDataController(options: {
       if (!result) return;
 
       if (result.exhausted) {
-        sidebarState.setHistoryExhausted(true);
+        sidebarState.setBackfillState({ historyExhausted: true });
       }
 
       await loadVideos(false);
@@ -682,7 +682,7 @@ export function createHomeWorkspaceDataController(options: {
         options.setErrorMessage((error as Error).message);
       }
     } finally {
-      sidebarState.setBackfillingHistory(false);
+      sidebarState.setBackfillState({ backfillingHistory: false });
     }
   }
 

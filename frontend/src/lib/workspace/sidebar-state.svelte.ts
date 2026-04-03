@@ -282,6 +282,14 @@ export type SidebarStateResult = {
   }) => void;
   queueChannelDeletion: (channelId: string) => void;
   clearChannelDeletion: () => void;
+  setSyncDepthState: (depth: ChannelSyncDepthState | null) => void;
+  setVideoLoadingState: (value: boolean) => void;
+  setChannelLoadingState: (value: boolean) => void;
+  setRefreshingChannelState: (value: boolean) => void;
+  setBackfillState: (options: {
+    backfillingHistory?: boolean;
+    historyExhausted?: boolean;
+  }) => void;
 
   // Operations
   syncChannelOrderFromList: () => void;
@@ -623,6 +631,34 @@ export function createSidebarState(
     channelIdToDelete = null;
   }
 
+  function setSyncDepthState(depth: ChannelSyncDepthState | null) {
+    syncDepth = depth;
+  }
+
+  function setVideoLoadingState(value: boolean) {
+    loadingVideos = value;
+  }
+
+  function setChannelLoadingState(value: boolean) {
+    loadingChannels = value;
+  }
+
+  function setRefreshingChannelState(value: boolean) {
+    refreshingChannel = value;
+  }
+
+  function setBackfillState(options: {
+    backfillingHistory?: boolean;
+    historyExhausted?: boolean;
+  }) {
+    if ("backfillingHistory" in options) {
+      backfillingHistory = options.backfillingHistory ?? false;
+    }
+    if ("historyExhausted" in options) {
+      historyExhausted = options.historyExhausted ?? false;
+    }
+  }
+
   function setVideoStatus(
     videoId: string,
     transcriptStatus: ContentStatus | undefined,
@@ -957,6 +993,11 @@ export function createSidebarState(
     applyChannelPreferencesState,
     queueChannelDeletion,
     clearChannelDeletion,
+    setSyncDepthState,
+    setVideoLoadingState,
+    setChannelLoadingState,
+    setRefreshingChannelState,
+    setBackfillState,
 
     // Operations
     loadInitial,
