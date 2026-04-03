@@ -312,8 +312,8 @@ async fn main() -> anyhow::Result<()> {
         search,
         chat,
         analytics,
-        active_chats: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
-        chat_store_lock: Arc::new(tokio::sync::Mutex::new(())),
+        active_replies: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+        conversation_store_lock: Arc::new(tokio::sync::Mutex::new(())),
         anonymous_chat_quota_lock: Arc::new(tokio::sync::Mutex::new(())),
         cloud_cooldown,
         youtube_quota_cooldown,
@@ -389,12 +389,12 @@ async fn main() -> anyhow::Result<()> {
 
     let protected_api = Router::new()
         .route("/api/health/ai", get(content::health_ai))
-        .route("/api/chat/config", get(chat::chat_client_config))
+        .route("/api/chat/config", get(chat::get_client_config))
         .route(
             "/api/chat/suggestions/channels",
-            get(chat::channel_suggestions),
+            get(chat::suggest_channels),
         )
-        .route("/api/chat/suggestions/videos", get(chat::video_suggestions))
+        .route("/api/chat/suggestions/videos", get(chat::suggest_videos))
         .route(
             "/api/chat/conversations",
             get(chat::list_conversations)
@@ -409,7 +409,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .route(
             "/api/chat/ephemeral/messages",
-            post(chat::send_ephemeral_message)
+            post(chat::start_ephemeral_reply)
                 .layer(middleware::from_fn_with_state(
                     state.clone(),
                     enforce_expensive_rate_limit,
@@ -421,7 +421,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .route(
             "/api/chat/conversations/{id}/messages",
-            post(chat::send_message)
+            post(chat::start_conversation_reply)
                 .layer(middleware::from_fn_with_state(
                     state.clone(),
                     enforce_expensive_rate_limit,
@@ -433,14 +433,14 @@ async fn main() -> anyhow::Result<()> {
         )
         .route(
             "/api/chat/conversations/{id}/stream",
-            get(chat::reconnect_stream).layer(middleware::from_fn_with_state(
+            get(chat::resume_conversation_reply).layer(middleware::from_fn_with_state(
                 state.clone(),
                 enforce_expensive_rate_limit,
             )),
         )
         .route(
             "/api/chat/conversations/{id}/cancel",
-            post(chat::cancel_message),
+            post(chat::cancel_conversation_reply),
         )
         .route(
             "/api/preferences",

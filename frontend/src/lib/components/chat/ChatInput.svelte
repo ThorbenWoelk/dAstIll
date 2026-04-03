@@ -1,7 +1,10 @@
 <script lang="ts">
   import { tick } from "svelte";
 
-  import { getChannelSuggestions, getVideoSuggestions } from "$lib/chat-api";
+  import {
+    getChannelSuggestions,
+    getVideoSuggestions,
+  } from "$lib/chat/requests";
   import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
   import {
     extractChatMentions,

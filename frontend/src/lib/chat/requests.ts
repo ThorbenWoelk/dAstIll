@@ -1,4 +1,4 @@
-import type { ChatClientConfig } from "$lib/bindings/ChatClientConfig";
+import type { ChatClientConfig } from "../bindings/ChatClientConfig";
 import type {
   ChatConversation,
   ChatConversationSummary,
@@ -8,8 +8,8 @@ import type {
   ChatStreamStatus,
   CreateConversationRequest,
   SendChatMessageRequest,
-} from "$lib/types";
-import { createAbortError, request, resolveApiUrl } from "$lib/api-client";
+} from "../types";
+import { createAbortError, request, resolveApiUrl } from "../api-client";
 
 type ChatStreamHandlers = {
   onStatus?: (status: ChatStreamStatus) => void;
@@ -96,7 +96,7 @@ export function deleteAllConversations() {
   });
 }
 
-export function cancelConversationGeneration(conversationId: string) {
+export function cancelConversationReply(conversationId: string) {
   return request<void>(`/api/chat/conversations/${conversationId}/cancel`, {
     method: "POST",
   });
@@ -108,7 +108,7 @@ export async function sendConversationMessage(
   handlers: ChatStreamHandlers,
   options?: { signal?: AbortSignal },
 ) {
-  return consumeChatStream(
+  return streamChatReply(
     `/api/chat/conversations/${conversationId}/messages`,
     {
       method: "POST",
@@ -130,7 +130,7 @@ export async function sendEphemeralConversationMessage(
   handlers: ChatStreamHandlers,
   options?: { signal?: AbortSignal },
 ) {
-  return consumeChatStream(
+  return streamChatReply(
     "/api/chat/ephemeral/messages",
     {
       method: "POST",
@@ -141,12 +141,12 @@ export async function sendEphemeralConversationMessage(
   );
 }
 
-export async function reconnectConversationStream(
+export async function resumeConversationReply(
   conversationId: string,
   handlers: ChatStreamHandlers,
   options?: { signal?: AbortSignal },
 ) {
-  return consumeChatStream(
+  return streamChatReply(
     `/api/chat/conversations/${conversationId}/stream`,
     {
       method: "GET",
@@ -156,7 +156,55 @@ export async function reconnectConversationStream(
   );
 }
 
-async function consumeChatStream(
+type PendingStreamEvent = {
+  eventName: string;
+  dataLines: string[];
+};
+
+export function flushPendingStreamEvent(
+  pendingEvent: PendingStreamEvent,
+  handlers: ChatStreamHandlers,
+) {
+  if (pendingEvent.dataLines.length === 0) {
+    pendingEvent.eventName = "message";
+    return;
+  }
+
+  const payload = pendingEvent.dataLines.join("\n");
+  pendingEvent.dataLines = [];
+  const data = payload ? JSON.parse(payload) : null;
+
+  switch (pendingEvent.eventName) {
+    case "status":
+      handlers.onStatus?.({
+        stage: data?.stage ?? "retrieving",
+        label: data?.label ?? null,
+        detail: data?.detail ?? null,
+        decision: data?.decision ?? null,
+        plan: data?.plan ?? null,
+        tool: data?.tool ?? null,
+      } satisfies ChatStreamStatus);
+      break;
+    case "sources":
+      handlers.onSources?.((data?.sources ?? []) as ChatSource[]);
+      break;
+    case "token":
+      handlers.onToken?.(data?.token ?? "");
+      break;
+    case "done":
+      handlers.onDone?.(data?.message as ChatMessage);
+      break;
+    case "error":
+      handlers.onError?.(data?.message ?? "Stream failed.");
+      break;
+    default:
+      break;
+  }
+
+  pendingEvent.eventName = "message";
+}
+
+async function streamChatReply(
   path: string,
   init: RequestInit,
   handlers: ChatStreamHandlers,
@@ -181,47 +229,9 @@ async function consumeChatStream(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  let currentEvent = "message";
-  let currentData: string[] = [];
-
-  const dispatch = () => {
-    if (currentData.length === 0) {
-      currentEvent = "message";
-      return;
-    }
-
-    const payload = currentData.join("\n");
-    currentData = [];
-    const data = payload ? JSON.parse(payload) : null;
-
-    switch (currentEvent) {
-      case "status":
-        handlers.onStatus?.({
-          stage: data?.stage ?? "retrieving",
-          label: data?.label ?? null,
-          detail: data?.detail ?? null,
-          decision: data?.decision ?? null,
-          plan: data?.plan ?? null,
-          tool: data?.tool ?? null,
-        } satisfies ChatStreamStatus);
-        break;
-      case "sources":
-        handlers.onSources?.((data?.sources ?? []) as ChatSource[]);
-        break;
-      case "token":
-        handlers.onToken?.(data?.token ?? "");
-        break;
-      case "done":
-        handlers.onDone?.(data?.message as ChatMessage);
-        break;
-      case "error":
-        handlers.onError?.(data?.message ?? "Stream failed.");
-        break;
-      default:
-        break;
-    }
-
-    currentEvent = "message";
+  const pendingEvent: PendingStreamEvent = {
+    eventName: "message",
+    dataLines: [],
   };
 
   try {
@@ -235,38 +245,38 @@ async function consumeChatStream(
       buffer += decoder.decode(value, { stream: true });
       buffer = consumeBufferedEvents(buffer, (line) => {
         if (!line) {
-          dispatch();
+          flushPendingStreamEvent(pendingEvent, handlers);
           return;
         }
         if (line.startsWith(":")) {
           return;
         }
         if (line.startsWith("event:")) {
-          currentEvent = line.slice(6).trim() || "message";
+          pendingEvent.eventName = line.slice(6).trim() || "message";
           return;
         }
         if (line.startsWith("data:")) {
-          currentData.push(line.slice(5).trimStart());
+          pendingEvent.dataLines.push(line.slice(5).trimStart());
         }
       });
     }
 
     buffer = consumeBufferedEvents(buffer, (line) => {
       if (!line) {
-        dispatch();
+        flushPendingStreamEvent(pendingEvent, handlers);
         return;
       }
       if (line.startsWith("event:")) {
-        currentEvent = line.slice(6).trim() || "message";
+        pendingEvent.eventName = line.slice(6).trim() || "message";
         return;
       }
       if (line.startsWith("data:")) {
-        currentData.push(line.slice(5).trimStart());
+        pendingEvent.dataLines.push(line.slice(5).trimStart());
       }
     });
 
-    if (currentData.length > 0) {
-      dispatch();
+    if (pendingEvent.dataLines.length > 0) {
+      flushPendingStreamEvent(pendingEvent, handlers);
     }
   } catch (error) {
     if ((error as Error).name === "AbortError") {

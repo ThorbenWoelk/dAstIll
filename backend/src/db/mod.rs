@@ -1,6 +1,6 @@
 mod channels;
-mod chat;
 mod content;
+mod conversations;
 pub(crate) mod firestore_videos;
 mod helpers;
 mod highlights;
@@ -18,8 +18,8 @@ pub(crate) use crate::read_cache::ReadCache;
 pub(crate) const MAX_CONCURRENT_S3_OPS: usize = 12;
 
 pub use channels::*;
-pub use chat::*;
 pub use content::*;
+pub use conversations::*;
 pub use firestore_videos::*;
 pub use highlights::*;
 pub use preferences::*;

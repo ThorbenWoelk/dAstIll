@@ -16,7 +16,7 @@ pub mod transcript;
 pub mod tts;
 pub mod youtube;
 
-pub use chat::{ActiveChatHandle, ChatService, SpawnReplyJob};
+pub use chat::{ActiveChatHandle, ChatService, ReplyWorkflowRequest};
 pub use databricks::DatabricksSqlService;
 pub use fts::{FtsChunk, FtsIndex};
 pub use http::{

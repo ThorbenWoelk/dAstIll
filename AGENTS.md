@@ -58,6 +58,14 @@ Full list of boundaries, Firebase, and CI steps: [docs/operations/deployment.md]
 - `frag_*.rs` source fragments included via `include!()` are bad practice for hand-written repo code.
 - Use true Rust submodules and explicit internal APIs when refactoring large files instead of adding new `frag_` files.
 
+## Naming Conventions
+
+- Prefer names that describe the domain concept or user-visible behavior.
+- Avoid technical prefixes and suffixes like `_api`, `_util`, `_helper`, or `manager` unless they disambiguate a real domain concept.
+- Name functions for what they do, not how they do it. Prefer `resume_conversation_reply` over transport-shaped names like `reconnect_stream`.
+- If a function starts a larger workflow, name it as a workflow start, not as a low-level mechanism. Avoid names like `spawn_reply` when the code actually runs retrieval, synthesis, persistence, and follow-up work.
+- Extract non-trivial branches into named helpers when the helper name makes the behavior easier to understand.
+
 ## Run the app
 
 From the repo root, start backend, frontend, and docs with [`./start_app.sh`](./start_app.sh). Use `./start_app.sh --detach` to not tie up the shell (follow with `tail -f start_app.log`).
