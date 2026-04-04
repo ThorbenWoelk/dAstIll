@@ -2,7 +2,7 @@
 
 ## Purpose
 
-dAstIll includes a Tauri v2 shell for Android under [`src-tauri/`](../src-tauri).
+dAstIll includes a Tauri v2 shell for Android under `src-tauri/`.
 
 The Android app:
 

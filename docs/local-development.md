@@ -64,7 +64,7 @@ The docs app also has a production container definition in `docs/Dockerfile`. Ma
 
 ## Tauri Android Development
 
-The repo now includes a Tauri v2 shell in [`src-tauri/`](../src-tauri).
+The repo now includes a Tauri v2 shell in `src-tauri/`.
 
 Install the CLI once:
 

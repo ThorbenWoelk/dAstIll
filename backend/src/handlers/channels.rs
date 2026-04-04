@@ -866,6 +866,9 @@ mod tests {
             conversation_store_lock: Arc::new(tokio::sync::Mutex::new(())),
             fts: Arc::new(crate::services::FtsIndex::new().await.expect("fts index")),
             anonymous_chat_quota_lock: Arc::new(tokio::sync::Mutex::new(())),
+            mobile_auth_handoffs: Arc::new(tokio::sync::Mutex::new(
+                std::collections::HashMap::new(),
+            )),
             cloud_cooldown: cooldown,
             youtube_quota_cooldown: Arc::new(YouTubeQuotaCooldown::youtube_quota()),
             transcript_cooldown: Arc::new(TranscriptCooldown::transcript()),
