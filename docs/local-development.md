@@ -34,6 +34,13 @@ Startup now verifies both the backend health endpoint and the initial workspace 
 response before it reports success. If local startup fails after the backend begins listening,
 check `backend.log` for malformed Firestore video records or credential issues.
 
+The workspace add-source input currently accepts:
+
+- YouTube handles and channel URLs
+- `openalex: <query>`
+- `podcast: <feed-url>`
+- `site: <page-url>` or a plain non-YouTube page URL
+
 By default `./start_app.sh` forces the backend onto the local embedded libSQL search index even if
 `~/.config/dastill/backend.env` contains Turso credentials. Set `START_APP_USE_TURSO=1` when you explicitly want
 local startup to use the configured Turso replica path.
@@ -163,7 +170,7 @@ Important variables:
 | `BACKEND_PROXY_TOKEN`               | Shared secret used by the authenticated frontend proxy when it calls the backend            |
 | `BACKEND_CORS_ALLOWED_ORIGINS`      | Comma-separated list of browser origins allowed to call the backend directly                |
 | `AWS_ROLE_ARN` / `AWS_WIF_AUDIENCE` | Production only: GCP Workload Identity Federation for AWS                                   |
-| `YOUTUBE_API_KEY`                   | Optional YouTube Data API access                                                            |
+| `YOUTUBE_API_KEY`                   | Optional YouTube Data API access; project-scoped, so rotate it when `GCP_PROJECT_ID` changes |
 | `OLLAMA_URL`                        | Ollama endpoint                                                                             |
 | `OLLAMA_API_KEY`                    | API key for Ollama cloud (required when using cloud Ollama URL)                             |
 | `OLLAMA_SUMMARY_MODEL`              | Primary summarizer model                                                                    |
@@ -214,6 +221,8 @@ AWS_SECRET_ACCESS_KEY=...
 ```
 
 In production, Cloud Run uses `AWS_ROLE_ARN` and `AWS_WIF_AUDIENCE` for Workload Identity Federation instead of static access keys.
+
+`YOUTUBE_API_KEY` is tied to the Google Cloud project that created it. If you migrate from one GCP project to another, create a fresh key in the target project, update `~/.config/dastill/backend.env`, and keep that value aligned with `terraform/terraform.tfvars` so local and production validation behave the same way.
 
 ## Logfire Observability
 

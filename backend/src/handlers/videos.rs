@@ -140,9 +140,32 @@ pub async fn list_channel_videos(
     .await
     .map_err(map_db_err)?;
     let page = page.ok_or((StatusCode::NOT_FOUND, "Channel not found".to_string()))?;
+    let channel = require_channel_for_access(&state, &access_context, &channel_id).await?;
+    let source = if let Some(profile) = db::get_source_profile(&state.db, &channel_id)
+        .await
+        .map_err(map_db_err)?
+    {
+        profile.source
+    } else {
+        crate::models::fallback_source_from_channel(&channel)
+    };
+
+    let items = page
+        .videos
+        .iter()
+        .map(|video| crate::models::content_item_from_video(video, &source))
+        .collect::<Vec<_>>();
+    let parts = page
+        .videos
+        .iter()
+        .flat_map(|video| crate::models::content_parts_from_video(video, &source))
+        .collect::<Vec<_>>();
 
     Ok(Json(ChannelVideoPagePayload {
+        source_id: channel_id,
         videos: page.videos,
+        items,
+        parts,
         has_more: page.has_more,
         next_offset: page.next_offset,
     }))

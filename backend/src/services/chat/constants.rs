@@ -246,7 +246,13 @@ mod tests {
 
     fn source(index: usize) -> ChatSource {
         ChatSource {
+            source_id: format!("channel-{index}"),
             video_id: format!("video-{index}"),
+            item_id: format!("video-{index}"),
+            provider: crate::models::ProviderKind::YouTube,
+            content_source_kind: crate::models::ContentSourceKind::YouTubeChannel,
+            item_kind: crate::models::ContentItemKind::Video,
+            part_kind: crate::models::ContentPartKind::GeneratedSummary,
             channel_id: format!("channel-{index}"),
             channel_name: format!("Channel {index}"),
             video_title: format!("Video {index}"),

@@ -175,7 +175,8 @@ impl ChatService {
         async move {
             active_chat.ensure_not_cancelled()?;
             let prompt = prompt.trim();
-            let scope = match tools::resolve_mention_scope(&state.db, prompt).await {
+            let scope = match tools::resolve_mention_scope(&state.db, access_context, prompt).await
+            {
                 Ok(scope) => filter_mention_scope_for_access(&state.db, access_context, scope).await,
                 Err(error) => {
                     tracing::warn!(error = %error, "failed to resolve chat @mentions");
@@ -515,7 +516,7 @@ impl ChatService {
     ) -> Result<SearchLibraryExecutionResult, String> {
         active_chat.ensure_not_cancelled()?;
         let candidate_limit = retrieval_candidate_limit(query.limit, 1, 1);
-        let query_scope = tools::resolve_mention_scope(&state.db, &query.query)
+        let query_scope = tools::resolve_mention_scope(&state.db, access_context, &query.query)
             .await
             .unwrap_or_else(|error| {
                 tracing::warn!(error = %error, "failed to resolve search_library @mentions");

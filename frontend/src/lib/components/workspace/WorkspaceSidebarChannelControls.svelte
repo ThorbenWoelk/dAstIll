@@ -1,7 +1,9 @@
 <script lang="ts">
+  import AddSourceDrawer from "$lib/components/AddSourceDrawer.svelte";
   import ChevronIcon from "$lib/components/icons/ChevronIcon.svelte";
   import WorkspaceSidebarVideoFilterControl from "$lib/components/workspace/WorkspaceSidebarVideoFilterControl.svelte";
   import type { VideoTypeFilter } from "$lib/types";
+  import type { AddSourceSubmission } from "$lib/workspace/component-props";
   import type {
     AcknowledgedFilter,
     ChannelSortMode,
@@ -11,9 +13,6 @@
     readOnly,
     channelInputOpen,
     channelSearchOpen,
-    channelInput,
-    channelInputElement = null,
-    onChannelInputElementChange,
     channelSearchQuery,
     channelSortMode,
     selectedChannelId,
@@ -31,8 +30,7 @@
     onVideoTypeFilterChange,
     onAcknowledgedFilterChange,
     onClearAllFilters,
-    onChannelSubmit,
-    onChannelInputChange,
+    onAddSourceSubmit,
     onChannelSearchQueryChange,
     onClearSearch,
     onClearFilters,
@@ -40,9 +38,6 @@
     readOnly: boolean;
     channelInputOpen: boolean;
     channelSearchOpen: boolean;
-    channelInput: string;
-    channelInputElement?: HTMLInputElement | null;
-    onChannelInputElementChange: (element: HTMLInputElement | null) => void;
     channelSearchQuery: string;
     channelSortMode: ChannelSortMode;
     selectedChannelId: string | null;
@@ -62,20 +57,13 @@
       value: AcknowledgedFilter,
     ) => void | Promise<void>;
     onClearAllFilters: () => Promise<void>;
-    onChannelSubmit: (event: SubmitEvent) => void | Promise<void>;
-    onChannelInputChange: (value: string) => void;
+    onAddSourceSubmit: (
+      input: AddSourceSubmission,
+    ) => Promise<boolean> | boolean;
     onChannelSearchQueryChange: (value: string) => void;
     onClearSearch: () => void;
     onClearFilters: () => void;
   } = $props();
-
-  $effect(() => {
-    onChannelInputElementChange(channelInputElement);
-  });
-
-  function handleChannelInputEvent(event: Event) {
-    onChannelInputChange((event.currentTarget as HTMLInputElement).value);
-  }
 
   function handleChannelSearchInputEvent(event: Event) {
     onChannelSearchQueryChange((event.currentTarget as HTMLInputElement).value);
@@ -89,7 +77,7 @@
   <span
     class="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-55"
   >
-    Channels
+    Sources
   </span>
   <div class="flex items-center gap-1">
     {#if !readOnly}
@@ -98,9 +86,7 @@
         id="tour-add-channel"
         class={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${channelInputOpen ? "bg-[var(--accent-wash)] text-[var(--accent)]" : "text-[var(--soft-foreground)] opacity-55 hover:bg-[var(--accent-wash)] hover:opacity-100"}`}
         onclick={() => void onToggleChannelInput()}
-        aria-label={channelInputOpen
-          ? "Close add source"
-          : "Add channel or video"}
+        aria-label={channelInputOpen ? "Close add source" : "Add source"}
       >
         <svg
           width="12"
@@ -122,7 +108,7 @@
       type="button"
       class={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${channelSearchOpen ? "bg-[var(--accent-wash)] text-[var(--accent)]" : "text-[var(--soft-foreground)] opacity-55 hover:bg-[var(--accent-wash)] hover:opacity-100"}`}
       onclick={onToggleSearch}
-      aria-label={channelSearchOpen ? "Close search" : "Search channels"}
+      aria-label={channelSearchOpen ? "Close search" : "Search sources"}
     >
       <svg
         width="12"
@@ -187,55 +173,13 @@
   </div>
 </div>
 
-{#if channelInputOpen}
-  <form
-    class="mx-4 mt-2"
-    onsubmit={onChannelSubmit}
-    aria-label="Add channel or video"
-  >
-    <div
-      class="flex min-w-0 items-center gap-2 border-b border-[var(--accent-border-soft)] pb-1 transition-all focus-within:border-[var(--accent)]/40"
-    >
-      <label for="channel-input" class="sr-only">Add Channel Or Video</label>
-      <input
-        id="channel-input"
-        bind:this={channelInputElement}
-        name="channel"
-        autocomplete="off"
-        spellcheck={false}
-        class="min-w-0 flex-1 bg-transparent py-2 text-[14px] font-medium placeholder:text-[var(--soft-foreground)] placeholder:opacity-40 focus-visible:outline-none"
-        placeholder="Paste handle, channel URL, or video link"
-        value={channelInput}
-        oninput={handleChannelInputEvent}
-      />
-      <button
-        type="submit"
-        class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[var(--foreground)] transition-all hover:bg-[var(--accent-wash)] hover:text-[var(--accent-strong)] disabled:opacity-20"
-        disabled={!channelInput.trim() || addingChannel}
-        aria-label="Add channel or video"
-      >
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="3"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <line x1="12" y1="5" x2="12" y2="19" />
-          <line x1="5" y1="12" x2="19" y2="12" />
-        </svg>
-      </button>
-    </div>
-    {#if addSourceErrorMessage}
-      <p class="mt-2 text-[11px] font-medium text-[var(--danger)] opacity-80">
-        {addSourceErrorMessage}
-      </p>
-    {/if}
-  </form>
-{/if}
+<AddSourceDrawer
+  open={channelInputOpen}
+  busy={addingChannel}
+  errorMessage={addSourceErrorMessage}
+  onClose={() => void onToggleChannelInput()}
+  onSubmit={onAddSourceSubmit}
+/>
 
 {#if channelSearchOpen}
   <div

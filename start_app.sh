@@ -408,8 +408,8 @@ start_frontend() {
 
 start_docs() {
 	pushd docs >/dev/null
-	if [[ ! -d node_modules ]]; then
-		echo "Docs dependencies missing; running bun install"
+	if [[ ! -x "./node_modules/.bin/vitepress" ]]; then
+		echo "Docs dependencies missing; running bun install --frozen-lockfile"
 		bun install --frozen-lockfile
 	fi
 	bun run dev > >(tee ../docs.log) 2>&1 &

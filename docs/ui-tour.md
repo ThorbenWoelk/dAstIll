@@ -8,8 +8,8 @@ pageClass: ui-tour-page
 <div class="tour-intro">
   <p class="tour-eyebrow">Screenshots</p>
   <p class="tour-lede">
-    dAstIll follows a simple flow: check channels, open a video, read the summary or transcript,
-    then use queue or chat when you need more detail.
+    dAstIll follows a simple flow: check sources, open an item, read the summary or transcript-like
+    text, then use queue or chat when you need more detail.
   </p>
   <p class="tour-route-line">
     <strong>Core routes:</strong> Workspace, Queue, Highlights, Vocabulary, Chat, Docs.
@@ -40,7 +40,7 @@ pageClass: ui-tour-page
 <div class="tour-surface-list">
   <article class="tour-surface-row">
     <p class="tour-surface-label">Workspace</p>
-    <p><strong>Main view.</strong> Browse channels, scan recent uploads, and switch the selected video between info, summary, highlights, and transcript.</p>
+    <p><strong>Main view.</strong> Browse sources, scan synced items, and switch the selected item between info, summary, highlights, and transcript-like text.</p>
   </article>
   <article class="tour-surface-row">
     <p class="tour-surface-label">Queue</p>
@@ -58,7 +58,7 @@ pageClass: ui-tour-page
 
 ## Workspace
 
-The workspace is the main screen. On desktop, navigation is on the left, channel and video browsing is in the middle, and the selected content is on the right. You can move from browsing to reading without losing your place.
+The workspace is the main screen. On desktop, navigation is on the left, source and item browsing is in the middle, and the selected content is on the right. You can move from browsing to reading without losing your place.
 
 <figure class="tour-figure tour-figure--wide">
   <img
@@ -71,9 +71,9 @@ The workspace is the main screen. On desktop, navigation is on the left, channel
 </figure>
 
 - The left navigation lets you change routes without losing the current reading view.
-- The middle column lists recent uploads first.
+- The middle column lists recent items first.
 - The content pane focuses on reading, with summary and transcript available as main views.
-- Signed-out visitors still get a usable workspace through the default channel.
+- Signed-out visitors still get a usable workspace through the default seeded source.
 
 ## Queue
 
@@ -89,7 +89,7 @@ The queue is not another library page. It shows content that is still moving thr
   </figcaption>
 </figure>
 
-- Queue state is still channel-scoped, so you can inspect one feed at a time.
+- Queue state is still compatibility-scoped around one selected source at a time.
 - Sync depth lives here because backfill policy is an operational control, not a reading preference.
 - This route uses the same main layout as the workspace, so switching between them is simple.
 

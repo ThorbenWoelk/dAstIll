@@ -5,14 +5,21 @@ pageClass: overview-page
 
 # Documentation
 
-dAstIll tracks your YouTube channels, fetches transcripts, and generates AI summaries so you can decide which videos are worth your time.
+dAstIll tracks subscribed sources, fetches readable content, and generates AI summaries so you can decide what is worth your time.
 
 **Core capabilities:**
 
-- **Channel tracking**: Subscribe to channels, backfill historical videos, and auto-refresh for new content
+- **Source tracking**: Subscribe to YouTube channels, OpenAlex saved searches, podcast RSS feeds, and tracked website pages
 - **AI summarization**: Generate consistent summaries evaluated by an LLM-as-judge for quality
 - **Highlights**: Save important snippets from transcripts and summaries for quick reference
 - **Hybrid search**: Full-text and semantic search across transcripts and summaries with context-aware chunking
+
+**Current supported add-source inputs:**
+
+- YouTube handles and channel URLs
+- `openalex: <query>`
+- `podcast: <feed-url>`
+- `site: <page-url>` or a plain non-YouTube page URL
 
 This site explains how the app works: the UI, the Rust backend, the AI and search pipeline, and the deployment setup.
 

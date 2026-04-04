@@ -42,6 +42,30 @@ async fn refresh_all_channels(state: &AppState) {
                 logfire::span!("worker.refresh.channel", channel.id = channel.id.clone(),);
 
             async {
+                if let Ok(Some(profile)) = db::get_source_profile(&state.db, &channel.id).await {
+                    if profile.source.provider != crate::models::ProviderKind::YouTube {
+                        match crate::services::sync_source_profile(state, &profile).await {
+                            Ok(n) if n > 0 => {
+                                state.read_cache.evict_channel(&channel.id).await;
+                                tracing::info!(
+                                    channel_id = %channel.id,
+                                    new_videos = n,
+                                    "refresh worker synced non-youtube source"
+                                );
+                            }
+                            Ok(_) => {}
+                            Err(err) => {
+                                tracing::warn!(
+                                    channel_id = %channel.id,
+                                    error = %err,
+                                    "refresh worker failed to sync non-youtube source"
+                                );
+                            }
+                        }
+                        return;
+                    }
+                }
+
                 match state.youtube.fetch_videos(&channel.id).await {
                     Ok(videos) => {
                         let conn = state.db.connect();

@@ -13,6 +13,25 @@ Expand dAstIll into a unified multi-provider content library that can ingest and
 - publications under saved-search sources when the subscription is query-backed
 - manually tracked websites under a generic `Websites` area with user-created folders
 
+## Implementation Status
+
+Current branch status:
+
+- canonical `source` / `item` / `part` / `media asset` contracts are implemented
+- generic `source` / `item` deep links are implemented with legacy `channel` / `video` fallback
+- YouTube continues to work through the compatibility layer
+- OpenAlex saved-search subscriptions are implemented as a first query-backed non-auth provider
+- podcast RSS subscriptions are implemented as a first feed-backed non-auth provider
+- manually tracked website pages are implemented as direct tracked sources
+
+Still open in this branch:
+
+- New York Times authenticated publisher flow
+- website folder creation, rename, reorder, and assignment UI
+- a fully source-native library shell that removes the remaining compatibility dependence on `channel` / `video`
+
+This means the branch has intentionally moved ahead on non-auth providers before the NYT lane is complete. The original sequencing note remains useful as product intent, but it is no longer the literal implementation order in this branch.
+
 ## Requirements
 
 - Introduce a provider-neutral canonical model that separates:

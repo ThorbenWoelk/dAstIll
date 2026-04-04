@@ -77,7 +77,14 @@ pub(super) fn group_ranked_candidates(
         let group = grouped
             .entry(candidate.video_id.clone())
             .or_insert_with(|| SearchVideoResultPayload {
+                source_id: candidate.channel_id.clone(),
                 video_id: candidate.video_id.clone(),
+                item_id: candidate.video_id.clone(),
+                provider: crate::models::infer_provider_kind_for_source_id(&candidate.channel_id),
+                source_kind: crate::models::infer_source_kind_for_source_id(&candidate.channel_id),
+                item_kind: crate::models::infer_item_kind_for_source_kind(
+                    crate::models::infer_source_kind_for_source_id(&candidate.channel_id),
+                ),
                 channel_id: candidate.channel_id.clone(),
                 channel_name: candidate.channel_name.clone(),
                 video_title: candidate.video_title.clone(),
@@ -208,7 +215,14 @@ pub(super) fn rank_and_group_candidates(
         let group = grouped
             .entry(candidate.video_id.clone())
             .or_insert_with(|| SearchVideoResultPayload {
+                source_id: candidate.channel_id.clone(),
                 video_id: candidate.video_id.clone(),
+                item_id: candidate.video_id.clone(),
+                provider: crate::models::infer_provider_kind_for_source_id(&candidate.channel_id),
+                source_kind: crate::models::infer_source_kind_for_source_id(&candidate.channel_id),
+                item_kind: crate::models::infer_item_kind_for_source_kind(
+                    crate::models::infer_source_kind_for_source_id(&candidate.channel_id),
+                ),
                 channel_id: candidate.channel_id.clone(),
                 channel_name: candidate.channel_name.clone(),
                 video_title: candidate.video_title.clone(),

@@ -138,7 +138,10 @@ export function createHomeWorkspacePersistenceController(options: {
     const url =
       // eslint-disable-next-line svelte/prefer-svelte-reactivity -- transient URL for one-time restore logic
       typeof window !== "undefined" ? new URL(window.location.href) : null;
-    const videoInUrl = Boolean(url?.searchParams.get("video")?.trim());
+    const videoInUrl = Boolean(
+      url?.searchParams.get("item")?.trim() ??
+      url?.searchParams.get("video")?.trim(),
+    );
 
     if (sidebarState.selectedVideoId) {
       const showVideoPanel = !options.getMobileViewportMq() || videoInUrl;

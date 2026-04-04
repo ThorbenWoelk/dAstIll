@@ -1,5 +1,7 @@
+use std::collections::{HashMap, HashSet};
+
 use crate::models::{
-    Highlight, HighlightChannelGroup, HighlightSource, HighlightVideoGroup, Video,
+    Channel, Highlight, HighlightChannelGroup, HighlightSource, HighlightVideoGroup, Video,
 };
 
 use super::{Store, StoreError};
@@ -226,60 +228,26 @@ async fn group_highlights(
         return Ok(Vec::new());
     }
 
-    let all_videos: Vec<Video> = super::videos::load_all_videos(store).await?;
-    let all_channels = super::channels::list_canonical_channels(store).await?;
-
-    let video_map = all_videos
+    let video_ids = all_highlights
         .iter()
-        .map(|video| (video.id.as_str(), video))
-        .collect::<std::collections::HashMap<_, _>>();
-    let channel_map = all_channels
-        .iter()
-        .map(|channel| (channel.id.as_str(), channel))
-        .collect::<std::collections::HashMap<_, _>>();
+        .map(|highlight| highlight.video_id.as_str())
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let video_map = super::videos::get_videos(store, &video_ids, false).await?;
 
-    let mut groups: Vec<HighlightChannelGroup> = Vec::new();
-
-    for highlight in all_highlights {
-        let Some(video) = video_map.get(highlight.video_id.as_str()) else {
-            continue;
-        };
-        let Some(channel) = channel_map.get(video.channel_id.as_str()) else {
-            continue;
-        };
-
-        let channel_index = groups
-            .iter()
-            .position(|group| group.channel_id == channel.id)
-            .unwrap_or_else(|| {
-                groups.push(HighlightChannelGroup {
-                    channel_id: channel.id.clone(),
-                    channel_name: channel.name.clone(),
-                    channel_thumbnail_url: channel.thumbnail_url.clone(),
-                    videos: Vec::new(),
-                });
-                groups.len() - 1
-            });
-
-        let video_index = groups[channel_index]
-            .videos
-            .iter()
-            .position(|group| group.video_id == video.id)
-            .unwrap_or_else(|| {
-                groups[channel_index].videos.push(HighlightVideoGroup {
-                    video_id: video.id.clone(),
-                    title: video.title.clone(),
-                    thumbnail_url: video.thumbnail_url.clone(),
-                    published_at: video.published_at,
-                    highlights: Vec::new(),
-                });
-                groups[channel_index].videos.len() - 1
-            });
-
-        groups[channel_index].videos[video_index]
-            .highlights
-            .push(highlight);
+    let channel_ids = video_map
+        .values()
+        .map(|video| video.channel_id.clone())
+        .collect::<HashSet<_>>();
+    let mut channel_map = HashMap::<String, Channel>::new();
+    for channel_id in channel_ids {
+        if let Some(channel) = super::channels::get_channel(store, &channel_id).await? {
+            channel_map.insert(channel.id.clone(), channel);
+        }
     }
+
+    let mut groups = group_highlights_from_maps(all_highlights, &video_map, &channel_map);
 
     for group in &mut groups {
         group
@@ -298,12 +266,75 @@ async fn group_highlights(
     Ok(groups)
 }
 
+fn group_highlights_from_maps(
+    all_highlights: Vec<Highlight>,
+    video_map: &HashMap<String, Video>,
+    channel_map: &HashMap<String, Channel>,
+) -> Vec<HighlightChannelGroup> {
+    let mut groups: Vec<HighlightChannelGroup> = Vec::new();
+
+    for highlight in all_highlights {
+        let Some(video) = video_map.get(&highlight.video_id) else {
+            continue;
+        };
+        let Some(channel) = channel_map.get(&video.channel_id) else {
+            continue;
+        };
+
+        let channel_index = groups
+            .iter()
+            .position(|group| group.channel_id == channel.id)
+            .unwrap_or_else(|| {
+                groups.push(HighlightChannelGroup {
+                    source_id: channel.id.clone(),
+                    channel_id: channel.id.clone(),
+                    provider: crate::models::infer_provider_kind_for_source_id(&channel.id),
+                    source_kind: crate::models::infer_source_kind_for_source_id(&channel.id),
+                    channel_name: channel.name.clone(),
+                    channel_thumbnail_url: channel.thumbnail_url.clone(),
+                    videos: Vec::new(),
+                });
+                groups.len() - 1
+            });
+
+        let video_index = groups[channel_index]
+            .videos
+            .iter()
+            .position(|group| group.video_id == video.id)
+            .unwrap_or_else(|| {
+                groups[channel_index].videos.push(HighlightVideoGroup {
+                    source_id: channel.id.clone(),
+                    video_id: video.id.clone(),
+                    item_id: video.id.clone(),
+                    provider: crate::models::infer_provider_kind_for_source_id(&channel.id),
+                    item_kind: crate::models::infer_item_kind_for_source_kind(
+                        crate::models::infer_source_kind_for_source_id(&channel.id),
+                    ),
+                    title: video.title.clone(),
+                    thumbnail_url: video.thumbnail_url.clone(),
+                    published_at: video.published_at,
+                    highlights: Vec::new(),
+                });
+                groups[channel_index].videos.len() - 1
+            });
+
+        groups[channel_index].videos[video_index]
+            .highlights
+            .push(highlight);
+    }
+
+    groups
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
+    use std::collections::HashMap;
 
-    use super::{highlights_are_equivalent, next_available_highlight_id};
-    use crate::models::{Highlight, HighlightSource};
+    use super::{
+        group_highlights_from_maps, highlights_are_equivalent, next_available_highlight_id,
+    };
+    use crate::models::{Channel, ContentStatus, Highlight, HighlightSource, Video};
 
     fn sample_highlight(id: i64) -> Highlight {
         Highlight {
@@ -314,6 +345,34 @@ mod tests {
             prefix_context: "prefix".to_string(),
             suffix_context: "suffix".to_string(),
             created_at: Utc::now(),
+        }
+    }
+
+    fn sample_video(id: &str, channel_id: &str, title: &str) -> Video {
+        Video {
+            id: id.to_string(),
+            channel_id: channel_id.to_string(),
+            title: title.to_string(),
+            thumbnail_url: None,
+            published_at: Utc::now(),
+            is_short: false,
+            transcript_status: ContentStatus::Ready,
+            summary_status: ContentStatus::Ready,
+            acknowledged: false,
+            retry_count: 0,
+            quality_score: None,
+        }
+    }
+
+    fn sample_channel(id: &str, name: &str) -> Channel {
+        Channel {
+            id: id.to_string(),
+            handle: None,
+            name: name.to_string(),
+            thumbnail_url: None,
+            added_at: Utc::now(),
+            earliest_sync_date: None,
+            earliest_sync_date_user_set: false,
         }
     }
 
@@ -341,5 +400,50 @@ mod tests {
         let next_id = next_available_highlight_id(&occupied);
 
         assert!(!occupied.contains(&next_id));
+    }
+
+    #[test]
+    fn group_highlights_from_maps_groups_related_rows_together() {
+        let older = Highlight {
+            id: 1,
+            video_id: "video-123".to_string(),
+            source: HighlightSource::Transcript,
+            text: "older".to_string(),
+            prefix_context: String::new(),
+            suffix_context: String::new(),
+            created_at: Utc::now() - chrono::Duration::minutes(5),
+        };
+        let newer = Highlight {
+            id: 2,
+            video_id: "video-123".to_string(),
+            source: HighlightSource::Summary,
+            text: "newer".to_string(),
+            prefix_context: String::new(),
+            suffix_context: String::new(),
+            created_at: Utc::now(),
+        };
+
+        let video_map = HashMap::from([(
+            "video-123".to_string(),
+            sample_video("video-123", "channel-123", "Video Title"),
+        )]);
+        let channel_map = HashMap::from([(
+            "channel-123".to_string(),
+            sample_channel("channel-123", "Channel Name"),
+        )]);
+
+        let groups =
+            group_highlights_from_maps(vec![older, newer.clone()], &video_map, &channel_map);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].channel_id, "channel-123");
+        assert_eq!(groups[0].videos.len(), 1);
+        assert_eq!(groups[0].videos[0].video_id, "video-123");
+        assert_eq!(groups[0].videos[0].highlights.len(), 2);
+        assert!(
+            groups[0].videos[0]
+                .highlights
+                .iter()
+                .any(|highlight| highlight.id == newer.id)
+        );
     }
 }

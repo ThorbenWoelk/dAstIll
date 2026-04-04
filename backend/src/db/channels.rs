@@ -211,6 +211,7 @@ pub async fn delete_channel(store: &Store, id: &str) -> Result<bool, StoreError>
     }
 
     store.delete_key(&canonical_channel_key(id)).await?;
+    let _ = super::delete_source_profile(store, id).await?;
     Ok(true)
 }
 

@@ -28,9 +28,9 @@ use dastill::security::{
     enforce_expensive_rate_limit, rate_limiter, require_operator_role, require_proxy_auth,
 };
 use dastill::services::{
-    ChatService, Cooldown, DatabricksSqlService, FtsIndex, OllamaCore, PollyTtsService,
-    SearchService, SummarizerService, SummaryEvaluatorService, TranscriptService, YouTubeService,
-    build_http_client,
+    ChatService, Cooldown, DatabricksSqlService, FtsIndex, OllamaCore, OpenAlexPlannerService,
+    OpenAlexService, PodcastFeedService, PollyTtsService, SearchService, SummarizerService,
+    SummaryEvaluatorService, TranscriptService, WebsiteService, YouTubeService, build_http_client,
 };
 use dastill::state::AppState;
 use dastill::workers::{
@@ -212,12 +212,36 @@ async fn main() -> anyhow::Result<()> {
         YouTubeService::with_client(client.clone())
             .with_quota_cooldown(youtube_quota_cooldown.clone()),
     );
+    let openalex = Arc::new(OpenAlexService::with_client(client.clone()));
+    let podcast_feed = Arc::new(PodcastFeedService::with_client(client.clone()));
+    let website = Arc::new(WebsiteService::with_client(client.clone()));
     match youtube.validate_data_api_key().await {
-        Ok(Some(true)) => tracing::info!("YOUTUBE_API_KEY is configured and valid"),
-        Ok(Some(false)) => {
-            tracing::warn!("YOUTUBE_API_KEY is configured but invalid (or quota exceeded)")
+        Ok(dastill::services::DataApiKeyValidation::Valid) => {
+            tracing::info!("YOUTUBE_API_KEY is configured and valid")
         }
-        Ok(None) => tracing::info!("YOUTUBE_API_KEY is not configured - using fallback sources"),
+        Ok(dastill::services::DataApiKeyValidation::QuotaExceeded { message }) => {
+            tracing::warn!(
+                message = message.as_deref().unwrap_or("unknown"),
+                "YOUTUBE_API_KEY is configured but YouTube Data API quota is currently exceeded"
+            )
+        }
+        Ok(dastill::services::DataApiKeyValidation::ServiceDisabled { reason, message }) => {
+            tracing::warn!(
+                reason = reason.as_deref().unwrap_or("unknown"),
+                message = message.as_deref().unwrap_or("unknown"),
+                "YOUTUBE_API_KEY is configured but YouTube Data API v3 is disabled for the active GCP project or the key belongs to a different project"
+            )
+        }
+        Ok(dastill::services::DataApiKeyValidation::Rejected { reason, message }) => {
+            tracing::warn!(
+                reason = reason.as_deref().unwrap_or("unknown"),
+                message = message.as_deref().unwrap_or("unknown"),
+                "YOUTUBE_API_KEY is configured but rejected by YouTube Data API"
+            )
+        }
+        Ok(dastill::services::DataApiKeyValidation::NotConfigured) => {
+            tracing::info!("YOUTUBE_API_KEY is not configured - using fallback sources")
+        }
         Err(err) => tracing::warn!(error = %err, "could not validate YOUTUBE_API_KEY on startup"),
     }
     let transcript_semaphore = Arc::new(tokio::sync::Semaphore::new(1));
@@ -240,6 +264,13 @@ async fn main() -> anyhow::Result<()> {
         .default_chat_model
         .clone()
         .unwrap_or_else(|| ollama.summary_model.clone());
+    let openalex_planner = Arc::new(OpenAlexPlannerService::new(
+        OllamaCore::with_client(build_http_client(), &ollama.url, &chat_model)
+            .with_fallback_model(ollama.fallback_model.clone())
+            .with_api_key(ollama.api_key.clone())
+            .with_cloud_cooldown(cloud_cooldown.clone())
+            .with_ollama_semaphore(ollama_semaphore.clone()),
+    ));
     let chat_core = OllamaCore::with_client(build_http_client(), &ollama.url, &chat_model)
         .with_fallback_model(ollama.fallback_model.clone())
         .with_api_key(ollama.api_key.clone())
@@ -305,6 +336,10 @@ async fn main() -> anyhow::Result<()> {
         search_progress,
         fts,
         youtube,
+        openalex_planner,
+        openalex,
+        podcast_feed,
+        website,
         transcript,
         tts: polly_tts,
         summarizer,
@@ -479,6 +514,13 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/channels",
             get(channels::list_channels).post(channels::add_channel),
+        )
+        .route(
+            "/api/openalex/plan",
+            post(channels::plan_openalex_query).layer(middleware::from_fn_with_state(
+                state.clone(),
+                enforce_expensive_rate_limit,
+            )),
         )
         .route(
             "/api/channels/{id}",

@@ -171,9 +171,13 @@ pub async fn list_user_other_video_ids(
         .cloned()
         .collect::<HashSet<_>>();
     let memberships = list_user_video_memberships(store, user_id).await?;
-    let all_videos = super::videos::load_all_videos(store).await?;
-    let channel_by_video_id = all_videos
-        .into_iter()
+    let membership_video_ids = memberships
+        .iter()
+        .map(|membership| membership.video_id.as_str())
+        .collect::<Vec<_>>();
+    let channel_by_video_id = super::videos::get_videos(store, &membership_video_ids, false)
+        .await?
+        .into_values()
         .map(|video| (video.id, video.channel_id))
         .collect::<HashMap<_, _>>();
 

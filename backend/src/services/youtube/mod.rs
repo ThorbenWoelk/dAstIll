@@ -1,4 +1,5 @@
 use reqwest::Client;
+use serde_json::Value;
 use std::collections::HashSet;
 use std::sync::Arc;
 use thiserror::Error;
@@ -37,6 +38,23 @@ pub struct YouTubeService {
     quota_cooldown: Option<Arc<YouTubeQuotaCooldown>>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DataApiKeyValidation {
+    NotConfigured,
+    Valid,
+    QuotaExceeded {
+        message: Option<String>,
+    },
+    ServiceDisabled {
+        reason: Option<String>,
+        message: Option<String>,
+    },
+    Rejected {
+        reason: Option<String>,
+        message: Option<String>,
+    },
+}
+
 pub(crate) struct WatchMetadata {
     title: String,
     thumbnail_url: Option<String>,
@@ -54,6 +72,12 @@ struct WatchVideoDetails {
     duration_iso8601: Option<String>,
     duration_seconds: Option<u64>,
     view_count: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DataApiErrorDetails {
+    reason: Option<String>,
+    message: Option<String>,
 }
 
 impl YouTubeService {
@@ -82,27 +106,104 @@ impl YouTubeService {
         self
     }
 
+    pub(crate) fn data_api_key_if_available(&self) -> Option<&str> {
+        let api_key = self.api_key.as_deref()?;
+        let cooldown_active = self
+            .quota_cooldown
+            .as_ref()
+            .is_some_and(|cd| cd.is_active());
+
+        if cooldown_active { None } else { Some(api_key) }
+    }
+
     /// Detects if a response body indicates that the YouTube API quota has been exceeded.
     fn is_quota_exceeded(body: &str) -> bool {
         body.contains("quotaExceeded")
     }
 
+    fn parse_data_api_error(body: &str) -> Option<DataApiErrorDetails> {
+        let payload: Value = serde_json::from_str(body).ok()?;
+        let error = payload.get("error")?;
+        let message = error
+            .get("message")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned);
+        let reason = error
+            .get("errors")
+            .and_then(Value::as_array)
+            .and_then(|errors| errors.first())
+            .and_then(|entry| entry.get("reason"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned);
+
+        if reason.is_none() && message.is_none() {
+            None
+        } else {
+            Some(DataApiErrorDetails { reason, message })
+        }
+    }
+
+    fn is_service_disabled(details: &DataApiErrorDetails) -> bool {
+        if matches!(
+            details.reason.as_deref(),
+            Some("accessNotConfigured" | "serviceDisabled")
+        ) {
+            return true;
+        }
+
+        details.message.as_deref().is_some_and(|message| {
+            let normalized = message.to_ascii_lowercase();
+            normalized.contains("youtube data api")
+                && (normalized.contains("has not been used") || normalized.contains("is disabled"))
+        })
+    }
+
+    fn classify_data_api_validation_failure(body: &str) -> DataApiKeyValidation {
+        let details = Self::parse_data_api_error(body);
+
+        if Self::is_quota_exceeded(body)
+            || matches!(
+                details.as_ref().and_then(|entry| entry.reason.as_deref()),
+                Some("quotaExceeded")
+            )
+        {
+            return DataApiKeyValidation::QuotaExceeded {
+                message: details.and_then(|entry| entry.message),
+            };
+        }
+
+        if let Some(details) = details {
+            if Self::is_service_disabled(&details) {
+                return DataApiKeyValidation::ServiceDisabled {
+                    reason: details.reason,
+                    message: details.message,
+                };
+            }
+
+            return DataApiKeyValidation::Rejected {
+                reason: details.reason,
+                message: details.message,
+            };
+        }
+
+        DataApiKeyValidation::Rejected {
+            reason: None,
+            message: None,
+        }
+    }
+
     /// Validates whether the configured YouTube Data API key can make requests.
-    /// Returns:
-    /// - Ok(None): no API key configured
-    /// - Ok(Some(true)): key accepted by the API
-    /// - Ok(Some(false)): key rejected by the API
-    pub async fn validate_data_api_key(&self) -> Result<Option<bool>, YouTubeError> {
+    pub async fn validate_data_api_key(&self) -> Result<DataApiKeyValidation, YouTubeError> {
         let Some(api_key) = self.api_key.as_deref() else {
-            return Ok(None);
+            return Ok(DataApiKeyValidation::NotConfigured);
         };
 
-        if self
-            .quota_cooldown
-            .as_ref()
-            .is_some_and(|cd| cd.is_active())
-        {
-            return Ok(Some(false));
+        if self.data_api_key_if_available().is_none() {
+            return Ok(DataApiKeyValidation::QuotaExceeded { message: None });
         }
 
         let response = self
@@ -117,7 +218,19 @@ impl YouTubeService {
             .send()
             .await?;
 
-        Ok(Some(response.status().is_success()))
+        if response.status().is_success() {
+            return Ok(DataApiKeyValidation::Valid);
+        }
+
+        let body = response.text().await.unwrap_or_default();
+        let validation = Self::classify_data_api_validation_failure(&body);
+        if matches!(validation, DataApiKeyValidation::QuotaExceeded { .. }) {
+            if let Some(cd) = &self.quota_cooldown {
+                cd.activate();
+            }
+        }
+
+        Ok(validation)
     }
 
     /// Resolve various input formats to a channel ID and name.
@@ -247,5 +360,90 @@ impl YouTubeService {
 impl Default for YouTubeService {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DataApiKeyValidation, YouTubeService};
+
+    #[test]
+    fn classifies_quota_exceeded_errors() {
+        let body = r#"{
+          "error": {
+            "code": 403,
+            "message": "The request cannot be completed because you have exceeded your quota.",
+            "errors": [
+              {
+                "message": "The request cannot be completed because you have exceeded your quota.",
+                "domain": "youtube.quota",
+                "reason": "quotaExceeded"
+              }
+            ]
+          }
+        }"#;
+
+        assert_eq!(
+            YouTubeService::classify_data_api_validation_failure(body),
+            DataApiKeyValidation::QuotaExceeded {
+                message: Some(
+                    "The request cannot be completed because you have exceeded your quota."
+                        .to_string()
+                ),
+            }
+        );
+    }
+
+    #[test]
+    fn classifies_disabled_api_errors() {
+        let body = r#"{
+          "error": {
+            "code": 403,
+            "message": "YouTube Data API v3 has not been used in project 123 before or it is disabled. Enable it by visiting the Google API Console.",
+            "errors": [
+              {
+                "message": "YouTube Data API v3 has not been used in project 123 before or it is disabled. Enable it by visiting the Google API Console.",
+                "domain": "usageLimits",
+                "reason": "accessNotConfigured"
+              }
+            ],
+            "status": "PERMISSION_DENIED"
+          }
+        }"#;
+
+        assert_eq!(
+            YouTubeService::classify_data_api_validation_failure(body),
+            DataApiKeyValidation::ServiceDisabled {
+                reason: Some("accessNotConfigured".to_string()),
+                message: Some(
+                    "YouTube Data API v3 has not been used in project 123 before or it is disabled. Enable it by visiting the Google API Console.".to_string()
+                ),
+            }
+        );
+    }
+
+    #[test]
+    fn classifies_other_rejections() {
+        let body = r#"{
+          "error": {
+            "code": 400,
+            "message": "API key not valid. Please pass a valid API key.",
+            "errors": [
+              {
+                "message": "API key not valid. Please pass a valid API key.",
+                "domain": "global",
+                "reason": "badRequest"
+              }
+            ]
+          }
+        }"#;
+
+        assert_eq!(
+            YouTubeService::classify_data_api_validation_failure(body),
+            DataApiKeyValidation::Rejected {
+                reason: Some("badRequest".to_string()),
+                message: Some("API key not valid. Please pass a valid API key.".to_string()),
+            }
+        );
     }
 }

@@ -10,10 +10,16 @@ use std::collections::HashSet;
 
 use crate::audit;
 use crate::db;
+use crate::db::SourceProfileRecord;
 use crate::handlers::query::{VideoListParams, WorkspaceBootstrapParams};
-use crate::models::{AddChannelRequest, Channel, UpdateChannelRequest};
+use crate::models::{
+    AddChannelRequest, Channel, OpenAlexPlanRequest, OpenAlexPlanResponse, UpdateChannelRequest,
+};
 use crate::read_cache::{ChannelSnapshotCacheKey, VideoListCacheKey};
 use crate::security::{AccessContext, AuthState};
+use crate::services::{
+    FeedSourceAdapter, QuerySourceAdapter, persist_source_profile_and_channel, sync_source_profile,
+};
 use crate::state::AppState;
 
 use super::{map_db_err, require_channel, require_channel_for_access};
@@ -35,11 +41,83 @@ fn build_sync_depth_payload(
     }
 }
 
-fn build_snapshot_payload(
+enum AddSourceIntent {
+    YouTubeChannel,
+    OpenAlexQuery(String),
+    PodcastFeed(String),
+    WebsitePage(String),
+}
+
+fn parse_add_source_intent(input: &str) -> AddSourceIntent {
+    let trimmed = input.trim();
+    let lowered = trimmed.to_ascii_lowercase();
+
+    for prefix in ["openalex:", "oa:"] {
+        if lowered.starts_with(prefix) {
+            return AddSourceIntent::OpenAlexQuery(trimmed[prefix.len()..].trim().to_string());
+        }
+    }
+    for prefix in ["podcast:", "feed:"] {
+        if lowered.starts_with(prefix) {
+            return AddSourceIntent::PodcastFeed(trimmed[prefix.len()..].trim().to_string());
+        }
+    }
+    for prefix in ["site:", "website:"] {
+        if lowered.starts_with(prefix) {
+            return AddSourceIntent::WebsitePage(trimmed[prefix.len()..].trim().to_string());
+        }
+    }
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        if trimmed.contains("youtube.com") || trimmed.contains("youtu.be") {
+            AddSourceIntent::YouTubeChannel
+        } else {
+            AddSourceIntent::PodcastFeed(trimmed.to_string())
+        }
+    } else {
+        AddSourceIntent::YouTubeChannel
+    }
+}
+
+async fn source_profile_for_channel(
+    store: &db::Store,
+    channel: &Channel,
+) -> Result<SourceProfileRecord, db::StoreError> {
+    if let Some(profile) = db::get_source_profile(store, &channel.id).await? {
+        Ok(profile)
+    } else {
+        let source = crate::models::fallback_source_from_channel(channel);
+        let container = crate::models::fallback_container_from_source(&source);
+        Ok(SourceProfileRecord {
+            source,
+            container,
+            openalex_query: None,
+        })
+    }
+}
+
+async fn build_snapshot_payload(
+    store: &db::Store,
     snapshot: db::ChannelSnapshotData,
-) -> crate::models::ChannelSnapshotPayload {
-    crate::models::ChannelSnapshotPayload {
+) -> Result<crate::models::ChannelSnapshotPayload, db::StoreError> {
+    let profile = source_profile_for_channel(store, &snapshot.channel).await?;
+    let container = profile.container;
+    let source = profile.source;
+    let items = snapshot
+        .videos
+        .iter()
+        .map(|video| crate::models::content_item_from_video(video, &source))
+        .collect::<Vec<_>>();
+    let parts = snapshot
+        .videos
+        .iter()
+        .flat_map(|video| crate::models::content_parts_from_video(video, &source))
+        .collect::<Vec<_>>();
+
+    Ok(crate::models::ChannelSnapshotPayload {
         channel_id: snapshot.channel.id.clone(),
+        source_id: snapshot.channel.id.clone(),
+        container,
+        source,
         sync_depth: build_sync_depth_payload(
             &snapshot.channel,
             snapshot.derived_earliest_ready_date,
@@ -48,7 +126,9 @@ fn build_snapshot_payload(
         has_more: snapshot.has_more,
         next_offset: snapshot.next_offset,
         videos: snapshot.videos,
-    }
+        items,
+        parts,
+    })
 }
 
 pub async fn list_channels(
@@ -112,8 +192,7 @@ pub async fn workspace_bootstrap(
         }
     };
     let selected_channel = params
-        .selected_channel_id
-        .as_deref()
+        .selected_source_id()
         .and_then(|id| channels.iter().find(|channel| channel.id == id))
         .cloned()
         .or_else(|| channels.first().cloned());
@@ -153,13 +232,33 @@ pub async fn workspace_bootstrap(
         None => None,
     };
     let search_status = super::search::load_search_status_payload(&state);
+    let mut containers = Vec::with_capacity(channels.len());
+    let mut sources = Vec::with_capacity(channels.len());
+    for channel in &channels {
+        let profile = source_profile_for_channel(&state.db, channel)
+            .await
+            .map_err(map_db_err)?;
+        containers.push(profile.container);
+        sources.push(profile.source);
+    }
 
     let payload = crate::models::WorkspaceBootstrapPayload {
         ai_available,
         ai_status,
+        containers,
+        sources,
         channels,
+        selected_source_id: selected_channel.as_ref().map(|channel| channel.id.clone()),
         selected_channel_id: selected_channel.as_ref().map(|channel| channel.id.clone()),
-        snapshot: snapshot.map(build_snapshot_payload),
+        selected_item_id: params.selected_item_id.clone(),
+        snapshot: match snapshot {
+            Some(snapshot) => Some(
+                build_snapshot_payload(&state.db, snapshot)
+                    .await
+                    .map_err(map_db_err)?,
+            ),
+            None => None,
+        },
         search_status,
     };
 
@@ -179,82 +278,210 @@ pub async fn add_channel(
     }
 
     let input = payload.input.trim().to_string();
-    let youtube = state.youtube.clone();
-
-    let (channel_id, name, resolved_thumbnail) = youtube
-        .resolve_channel(&input)
-        .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
-    tracing::info!(
-        channel_id = %channel_id,
-        user_id = %user_id,
-        input = %input,
-        "resolved channel input"
-    );
-
-    let thumbnail = match youtube.fetch_channel_thumbnail(&channel_id).await {
-        Ok(Some(url)) => Some(url),
-        Ok(None) | Err(_) => resolved_thumbnail,
-    };
-
-    let handle = if input.starts_with('@') {
-        Some(input.clone())
-    } else if !input.starts_with("http") && !input.starts_with("UC") {
-        Some(format!("@{input}"))
-    } else {
-        None
-    };
-
     let now = Utc::now();
-    let earliest_sync_date = Some(db::default_earliest_sync_date_floor(now));
 
-    let channel = Channel {
-        id: channel_id.clone(),
-        handle,
-        name,
-        thumbnail_url: thumbnail,
-        added_at: now,
-        earliest_sync_date,
-        earliest_sync_date_user_set: false,
-    };
+    match parse_add_source_intent(&input) {
+        AddSourceIntent::YouTubeChannel => {
+            let resolved = state
+                .youtube
+                .resolve_feed_source(&input)
+                .await
+                .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+            let profile = SourceProfileRecord {
+                source: resolved.source,
+                container: resolved.container,
+                openalex_query: None,
+            };
+            let channel_id = profile.source.id.clone();
+            tracing::info!(
+                channel_id = %channel_id,
+                user_id = %user_id,
+                input = %input,
+                "resolved youtube source input"
+            );
 
-    {
-        db::insert_channel(&state.db, &channel)
-            .await
-            .map_err(map_db_err)?;
-        db::save_user_channel(&state.db, user_id, &channel)
-            .await
-            .map_err(map_db_err)?;
-    }
-    audit::log_channel_subscribe(user_id, &channel, input.len());
+            let channel = Channel {
+                id: channel_id.clone(),
+                handle: profile.source.handle.clone(),
+                name: profile.source.title.clone(),
+                thumbnail_url: profile.source.thumbnail_url.clone(),
+                added_at: now,
+                earliest_sync_date: Some(db::default_earliest_sync_date_floor(now)),
+                earliest_sync_date_user_set: false,
+            };
 
-    let db_pool = state.db.clone();
-    let read_cache = state.read_cache.clone();
-    let channel_id_clone = channel_id.clone();
-    tokio::spawn(async move {
-        match youtube.fetch_videos(&channel_id_clone).await {
-            Ok(videos) => {
-                let inserted_count = crate::db::bulk_insert_videos(&db_pool, videos)
-                    .await
-                    .unwrap_or(0);
-                read_cache.evict_channel(&channel_id_clone).await;
-                tracing::info!(
-                    channel_id = %channel_id_clone,
-                    inserted_count,
-                    "subscribed channel initial sync inserted new videos"
-                );
-            }
-            Err(err) => {
-                tracing::warn!(
-                    channel_id = %channel_id_clone,
-                    error = %err,
-                    "failed to fetch videos after subscribing channel"
-                );
-            }
+            db::insert_channel(&state.db, &channel)
+                .await
+                .map_err(map_db_err)?;
+            db::put_source_profile(&state.db, &profile)
+                .await
+                .map_err(map_db_err)?;
+            db::save_user_channel(&state.db, user_id, &channel)
+                .await
+                .map_err(map_db_err)?;
+            audit::log_channel_subscribe(user_id, &channel, input.len());
+
+            let db_pool = state.db.clone();
+            let read_cache = state.read_cache.clone();
+            let youtube = state.youtube.clone();
+            let channel_id_clone = channel_id.clone();
+            tokio::spawn(async move {
+                match youtube.fetch_videos(&channel_id_clone).await {
+                    Ok(videos) => {
+                        let inserted_count = crate::db::bulk_insert_videos(&db_pool, videos)
+                            .await
+                            .unwrap_or(0);
+                        read_cache.evict_channel(&channel_id_clone).await;
+                        tracing::info!(
+                            channel_id = %channel_id_clone,
+                            inserted_count,
+                            "subscribed channel initial sync inserted new videos"
+                        );
+                    }
+                    Err(err) => {
+                        tracing::warn!(
+                            channel_id = %channel_id_clone,
+                            error = %err,
+                            "failed to fetch videos after subscribing channel"
+                        );
+                    }
+                }
+            });
+
+            Ok((StatusCode::CREATED, Json(channel)))
         }
-    });
+        AddSourceIntent::OpenAlexQuery(query) => {
+            let structured_query =
+                payload
+                    .openalex_query
+                    .clone()
+                    .unwrap_or(crate::models::OpenAlexSavedSearchQuery {
+                        natural_language_query: query.clone(),
+                        query_text: query.clone(),
+                        from_publication_date: None,
+                        to_publication_date: None,
+                        work_type: None,
+                        open_access_only: None,
+                        search_scope: crate::models::OpenAlexSearchScope::TitleAndAbstract,
+                        sort: crate::models::OpenAlexSort::PublicationDateDesc,
+                    });
+            let resolved = state
+                .openalex
+                .resolve_query_source(&structured_query)
+                .await
+                .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+            let profile = SourceProfileRecord {
+                source: resolved.source,
+                container: resolved.container,
+                openalex_query: Some(structured_query),
+            };
+            let channel = persist_source_profile_and_channel(&state.db, &profile)
+                .await
+                .map_err(map_db_err)?;
+            if let Err(err) = sync_source_profile(&state, &profile).await {
+                let _ = db::delete_channel(&state.db, &channel.id).await;
+                return Err((StatusCode::BAD_GATEWAY, err));
+            }
+            db::save_user_channel(
+                &state.db,
+                user_id,
+                &Channel {
+                    added_at: now,
+                    ..channel.clone()
+                },
+            )
+            .await
+            .map_err(map_db_err)?;
+            audit::log_channel_subscribe(user_id, &channel, input.len());
+            state.read_cache.evict_channel(&channel.id).await;
+            Ok((StatusCode::CREATED, Json(channel)))
+        }
+        AddSourceIntent::PodcastFeed(feed_url) => {
+            let profile = match state.podcast_feed.resolve_feed_source(&feed_url).await {
+                Ok(resolved) => SourceProfileRecord {
+                    source: resolved.source,
+                    container: resolved.container,
+                    openalex_query: None,
+                },
+                Err(primary_error) => {
+                    let material = state
+                        .website
+                        .resolve_page(&feed_url)
+                        .await
+                        .map_err(|_| (StatusCode::BAD_REQUEST, primary_error.to_string()))?;
+                    SourceProfileRecord {
+                        source: material.source,
+                        container: material.container,
+                        openalex_query: None,
+                    }
+                }
+            };
+            let channel = persist_source_profile_and_channel(&state.db, &profile)
+                .await
+                .map_err(map_db_err)?;
+            if let Err(err) = sync_source_profile(&state, &profile).await {
+                let _ = db::delete_channel(&state.db, &channel.id).await;
+                return Err((StatusCode::BAD_GATEWAY, err));
+            }
+            db::save_user_channel(
+                &state.db,
+                user_id,
+                &Channel {
+                    added_at: now,
+                    ..channel.clone()
+                },
+            )
+            .await
+            .map_err(map_db_err)?;
+            audit::log_channel_subscribe(user_id, &channel, input.len());
+            state.read_cache.evict_channel(&channel.id).await;
+            Ok((StatusCode::CREATED, Json(channel)))
+        }
+        AddSourceIntent::WebsitePage(url) => {
+            let material = state
+                .website
+                .resolve_page(&url)
+                .await
+                .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+            let profile = SourceProfileRecord {
+                source: material.source,
+                container: material.container,
+                openalex_query: None,
+            };
+            let channel = persist_source_profile_and_channel(&state.db, &profile)
+                .await
+                .map_err(map_db_err)?;
+            if let Err(err) = sync_source_profile(&state, &profile).await {
+                let _ = db::delete_channel(&state.db, &channel.id).await;
+                return Err((StatusCode::BAD_GATEWAY, err));
+            }
+            db::save_user_channel(
+                &state.db,
+                user_id,
+                &Channel {
+                    added_at: now,
+                    ..channel.clone()
+                },
+            )
+            .await
+            .map_err(map_db_err)?;
+            audit::log_channel_subscribe(user_id, &channel, input.len());
+            state.read_cache.evict_channel(&channel.id).await;
+            Ok((StatusCode::CREATED, Json(channel)))
+        }
+    }
+}
 
-    Ok((StatusCode::CREATED, Json(channel)))
+pub async fn plan_openalex_query(
+    State(state): State<AppState>,
+    Json(payload): Json<OpenAlexPlanRequest>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let response: OpenAlexPlanResponse = state
+        .openalex_planner
+        .plan(&payload.natural_language_query)
+        .await
+        .map_err(|error| (StatusCode::BAD_GATEWAY, error))?;
+    Ok(Json(response))
 }
 
 pub async fn get_channel(
@@ -330,14 +557,19 @@ pub async fn get_channel_snapshot(
             .await
             .map_err(map_db_err)?
     };
-    let payload = build_snapshot_payload(db::ChannelSnapshotData {
-        channel,
-        derived_earliest_ready_date: derived,
-        channel_video_count: None,
-        has_more: page.has_more,
-        next_offset: page.next_offset,
-        videos: page.videos,
-    });
+    let payload = build_snapshot_payload(
+        &state.db,
+        db::ChannelSnapshotData {
+            channel,
+            derived_earliest_ready_date: derived,
+            channel_video_count: None,
+            has_more: page.has_more,
+            next_offset: page.next_offset,
+            videos: page.videos,
+        },
+    )
+    .await
+    .map_err(map_db_err)?;
     state
         .read_cache
         .set_channel_snapshot(cache_key, payload.clone())
@@ -419,6 +651,19 @@ pub async fn refresh_channel_videos(
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     tracing::info!(channel_id = %id, "refresh requested - queueing latest videos");
 
+    if let Some(profile) = db::get_source_profile(&state.db, &id)
+        .await
+        .map_err(map_db_err)?
+    {
+        if profile.source.provider != crate::models::ProviderKind::YouTube {
+            let count = sync_source_profile(&state, &profile)
+                .await
+                .map_err(|err| (StatusCode::BAD_GATEWAY, err))?;
+            state.read_cache.evict_channel(&id).await;
+            return Ok(Json(serde_json::json!({ "videos_added": count })));
+        }
+    }
+
     let earliest_sync_date = require_channel(&state, &id).await?.earliest_sync_date;
 
     let videos = state.youtube.fetch_videos(&id).await.map_err(map_db_err)?;
@@ -489,6 +734,19 @@ pub async fn backfill_channel_videos(
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     tracing::info!(channel_id = %id, "backfill requested");
 
+    if let Some(profile) = db::get_source_profile(&state.db, &id)
+        .await
+        .map_err(map_db_err)?
+    {
+        if profile.source.provider != crate::models::ProviderKind::YouTube {
+            return Ok(Json(serde_json::json!({
+                "videos_added": 0,
+                "fetched_count": 0,
+                "exhausted": true
+            })));
+        }
+    }
+
     let batch_limit = params.limit.unwrap_or(15).clamp(1, 100);
 
     require_channel(&state, &id).await?;
@@ -555,9 +813,9 @@ mod tests {
         search_progress::SearchProgress,
         security::{AccessContext, AccessRole, AuthState},
         services::{
-            ChatService, CloudCooldown, OllamaCore, SearchService, SummarizerService,
-            SummaryEvaluatorService, TranscriptCooldown, TranscriptService, YouTubeQuotaCooldown,
-            YouTubeService,
+            ChatService, CloudCooldown, OllamaCore, OpenAlexService, PodcastFeedService,
+            SearchService, SummarizerService, SummaryEvaluatorService, TranscriptCooldown,
+            TranscriptService, WebsiteService, YouTubeQuotaCooldown, YouTubeService,
         },
         state::AppState,
     };
@@ -579,6 +837,12 @@ mod tests {
                 false,
             )),
             youtube: Arc::new(YouTubeService::with_client(Client::new())),
+            openalex_planner: Arc::new(crate::services::OpenAlexPlannerService::new(
+                OllamaCore::new("://invalid-url", "qwen3:8b").with_cloud_cooldown(cooldown.clone()),
+            )),
+            openalex: Arc::new(OpenAlexService::with_client(Client::new())),
+            podcast_feed: Arc::new(PodcastFeedService::with_client(Client::new())),
+            website: Arc::new(WebsiteService::with_client(Client::new())),
             transcript: Arc::new(TranscriptService::with_path("/usr/bin/false")),
             tts: None,
             summarizer: Arc::new(SummarizerService::new(

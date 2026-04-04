@@ -16,6 +16,7 @@ import type { Channel } from "$lib/types";
 import { resolveNextChannelSelection } from "./route-helpers";
 import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
 import { looksLikeYouTubeVideoInput } from "$lib/utils/youtube-input";
+import type { AddSourceSubmission } from "$lib/workspace/component-props";
 
 type SidebarChannelCrudContext = {
   options: SidebarStateOptions;
@@ -55,15 +56,20 @@ function cacheChannels(options: SidebarStateOptions, channels: Channel[]) {
 export function createSidebarChannelCrudOperations(
   context: SidebarChannelCrudContext,
 ) {
-  async function handleAddChannel(input: string): Promise<boolean> {
-    if (!input.trim()) return false;
+  async function handleAddChannel(
+    input: AddSourceSubmission,
+  ): Promise<boolean> {
+    const submittedInput =
+      typeof input === "string" ? input.trim() : input.input.trim();
+    if (!submittedInput) return false;
 
     context.setAddingChannel(true);
     context.options.onError?.(null);
 
-    const submittedInput = input.trim();
-
-    if (looksLikeYouTubeVideoInput(submittedInput)) {
+    if (
+      typeof input === "string" &&
+      looksLikeYouTubeVideoInput(submittedInput)
+    ) {
       try {
         const result = await addVideo(submittedInput);
         const refreshedChannels = await listChannelsWhenAvailable({
@@ -105,12 +111,16 @@ export function createSidebarChannelCrudOperations(
     const previousSelectedId = context.getSelectedChannelId();
 
     const { optimisticChannel, tempId, trimmedInput } =
-      buildOptimisticChannel(input);
+      buildOptimisticChannel(submittedInput);
     context.setChannels([optimisticChannel, ...context.getChannels()]);
     context.setChannelOrder([tempId, ...context.getChannelOrder()]);
 
     try {
-      const channel = await addChannel(trimmedInput);
+      const channel = await addChannel(
+        typeof input === "string"
+          ? trimmedInput
+          : { input: trimmedInput, openalex_query: input.openalex_query },
+      );
       context.setChannels(
         replaceOptimisticChannel(context.getChannels(), tempId, channel),
       );

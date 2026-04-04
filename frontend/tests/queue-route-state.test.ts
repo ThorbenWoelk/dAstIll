@@ -309,8 +309,9 @@ describe("buildQueueGalleryChannelPreviews", () => {
     });
 
     expect(previews["channel-2"]).toBe(basePreview);
-    expect(previews["channel-1"]).toEqual({
+    expect(previews["channel-1"]).toMatchObject({
       channel_id: "channel-1",
+      source_id: "channel-1",
       sync_depth: makeSyncDepth({
         derived_earliest_ready_date: "2024-02-15T00:00:00.000Z",
       }),
@@ -326,5 +327,9 @@ describe("buildQueueGalleryChannelPreviews", () => {
         }),
       ],
     });
+    expect(previews["channel-1"]?.container.kind).toBe("series");
+    expect(previews["channel-1"]?.source.source_kind).toBe("you_tube_channel");
+    expect(previews["channel-1"]?.items).toHaveLength(1);
+    expect(previews["channel-1"]?.parts).toHaveLength(2);
   });
 });

@@ -18,7 +18,9 @@ export type WorkspaceBootstrapPageData = {
   bootstrap: WorkspaceBootstrap | null;
   channelPreviews: Record<string, ChannelSnapshot>;
   channelPreviewsFilterKey: string;
+  selectedSourceId: string | null;
   selectedChannelId: string | null;
+  selectedItemId: string | null;
   selectedVideoId: string | null;
   contentMode: WorkspaceContentMode | null;
   videoTypeFilter: VideoTypeFilter | null;
@@ -69,11 +71,15 @@ export async function loadWorkspaceBootstrapPageData(
   options?: LoadWorkspaceBootstrapOptions,
 ): Promise<WorkspaceBootstrapPageData> {
   const { fetch, url } = event;
-  const selectedChannelId =
+  const selectedSourceId =
+    url.searchParams.get("source") ??
     options?.selectedChannelIdOverride ??
     url.searchParams.get("channel") ??
     null;
-  const selectedVideoId = url.searchParams.get("video") ?? null;
+  const selectedItemId =
+    url.searchParams.get("item") ?? url.searchParams.get("video") ?? null;
+  const selectedChannelId = selectedSourceId;
+  const selectedVideoId = selectedItemId;
   const typeParam = url.searchParams.get("type");
   const ackParam = url.searchParams.get("ack");
   const unified = options?.ssrQueueUnified === true;
@@ -87,8 +93,12 @@ export async function loadWorkspaceBootstrapPageData(
 
   try {
     const params = new URLSearchParams();
-    if (selectedChannelId) {
-      params.set("selected_channel_id", selectedChannelId);
+    if (selectedSourceId) {
+      params.set("selected_source_id", selectedSourceId);
+      params.set("selected_channel_id", selectedSourceId);
+    }
+    if (selectedItemId) {
+      params.set("selected_item_id", selectedItemId);
     }
     params.set("limit", "20");
 
@@ -126,7 +136,9 @@ export async function loadWorkspaceBootstrapPageData(
         bootstrap: null,
         channelPreviews: {},
         channelPreviewsFilterKey: fallbackFilterKey,
+        selectedSourceId,
         selectedChannelId,
+        selectedItemId,
         selectedVideoId,
         contentMode:
           (url.searchParams.get("content") as WorkspaceContentMode) ?? null,
@@ -153,7 +165,9 @@ export async function loadWorkspaceBootstrapPageData(
       bootstrap,
       channelPreviews,
       channelPreviewsFilterKey,
+      selectedSourceId,
       selectedChannelId,
+      selectedItemId,
       selectedVideoId,
       contentMode,
       videoTypeFilter: previewVideoType as VideoTypeFilter,
@@ -164,7 +178,9 @@ export async function loadWorkspaceBootstrapPageData(
       bootstrap: null,
       channelPreviews: {},
       channelPreviewsFilterKey: fallbackFilterKey,
+      selectedSourceId,
       selectedChannelId,
+      selectedItemId,
       selectedVideoId,
       contentMode: null,
       videoTypeFilter: null,
