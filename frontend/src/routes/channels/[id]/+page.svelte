@@ -34,6 +34,7 @@
   import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
   import WorkspaceSidebar from "$lib/components/workspace/WorkspaceSidebar.svelte";
   import WorkspaceMinimalTopBar from "$lib/components/workspace/WorkspaceMinimalTopBar.svelte";
+  import type { AddSourceSubmission } from "$lib/workspace/component-props";
   import {
     applySavedChannelOrder,
     finalizeAddedChannelOrder,
@@ -361,13 +362,17 @@
     }
   }
 
-  async function handleAddChannel(input: string) {
+  async function handleAddChannel(input: AddSourceSubmission) {
     addingChannel = true;
     errorMessage = null;
-    const submittedInput = input.trim();
+    const submittedInput =
+      typeof input === "string" ? input.trim() : input.input.trim();
 
     try {
-      if (looksLikeYouTubeVideoInput(submittedInput)) {
+      if (
+        typeof input === "string" &&
+        looksLikeYouTubeVideoInput(submittedInput)
+      ) {
         const result = await addVideo(submittedInput);
         const nextChannels = applySavedChannelOrder(
           await listChannels(),
@@ -382,7 +387,11 @@
         return true;
       }
 
-      const addedChannel = await addChannel(submittedInput);
+      const addedChannel = await addChannel(
+        typeof input === "string"
+          ? submittedInput
+          : { input: submittedInput, openalex_query: input.openalex_query },
+      );
       const nextOrder = finalizeAddedChannelOrder(
         channelOrder,
         addedChannel.id,

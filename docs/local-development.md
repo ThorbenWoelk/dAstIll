@@ -26,6 +26,13 @@ Startup now verifies both the backend health endpoint and the initial workspace 
 response before it reports success. If local startup fails after the backend begins listening,
 check `backend.log` for malformed Firestore video records or credential issues.
 
+The workspace add-source input currently accepts:
+
+- YouTube handles and channel URLs
+- `openalex: <query>`
+- `podcast: <feed-url>`
+- `site: <page-url>` or a plain non-YouTube page URL
+
 By default `./start_app.sh` forces the backend onto the local embedded libSQL search index even if
 `~/.config/dastill/backend.env` contains Turso credentials. Set `START_APP_USE_TURSO=1` when you explicitly want
 local startup to use the configured Turso replica path.

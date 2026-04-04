@@ -13,6 +13,15 @@ async fn fill_channel_gaps(
     limit: usize,
     until: Option<chrono::DateTime<chrono::Utc>>,
 ) -> Result<usize, String> {
+    if let Some(profile) = db::get_source_profile(&state.db, channel_id)
+        .await
+        .map_err(|err| err.to_string())?
+    {
+        if profile.source.provider != crate::models::ProviderKind::YouTube {
+            return Ok(0);
+        }
+    }
+
     let known_video_ids = {
         let conn = state.db.connect();
         db::list_video_ids_by_channel(&conn, channel_id)

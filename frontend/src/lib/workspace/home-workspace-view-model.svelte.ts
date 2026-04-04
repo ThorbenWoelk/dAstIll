@@ -53,7 +53,9 @@ export function createHomeWorkspaceViewModel(options: {
     if (!cite || options.getLoadingContent()) {
       return null;
     }
-    const videoParam = url.searchParams.get("video")?.trim();
+    const videoParam =
+      url.searchParams.get("item")?.trim() ??
+      url.searchParams.get("video")?.trim();
     const selectedVideoId = options.getSelectedVideoId();
     if (videoParam && selectedVideoId && videoParam !== selectedVideoId) {
       return null;

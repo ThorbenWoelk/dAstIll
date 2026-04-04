@@ -286,7 +286,10 @@ fn group_highlights_from_maps(
             .position(|group| group.channel_id == channel.id)
             .unwrap_or_else(|| {
                 groups.push(HighlightChannelGroup {
+                    source_id: channel.id.clone(),
                     channel_id: channel.id.clone(),
+                    provider: crate::models::infer_provider_kind_for_source_id(&channel.id),
+                    source_kind: crate::models::infer_source_kind_for_source_id(&channel.id),
                     channel_name: channel.name.clone(),
                     channel_thumbnail_url: channel.thumbnail_url.clone(),
                     videos: Vec::new(),
@@ -300,7 +303,13 @@ fn group_highlights_from_maps(
             .position(|group| group.video_id == video.id)
             .unwrap_or_else(|| {
                 groups[channel_index].videos.push(HighlightVideoGroup {
+                    source_id: channel.id.clone(),
                     video_id: video.id.clone(),
+                    item_id: video.id.clone(),
+                    provider: crate::models::infer_provider_kind_for_source_id(&channel.id),
+                    item_kind: crate::models::infer_item_kind_for_source_kind(
+                        crate::models::infer_source_kind_for_source_id(&channel.id),
+                    ),
                     title: video.title.clone(),
                     thumbnail_url: video.thumbnail_url.clone(),
                     published_at: video.published_at,

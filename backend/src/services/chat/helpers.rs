@@ -440,7 +440,26 @@ pub(super) fn retrieved_source_from_search_material(
     RetrievedChatSource {
         source: ChatSource {
             chunk_id: format!("{video_id}_direct_{}", source_kind.as_str()),
-            video_id,
+            source_id: material.channel_id.clone(),
+            video_id: video_id.clone(),
+            item_id: video_id,
+            provider: crate::models::infer_provider_kind_for_source_id(&material.channel_id),
+            content_source_kind: crate::models::infer_source_kind_for_source_id(
+                &material.channel_id,
+            ),
+            item_kind: crate::models::infer_item_kind_for_source_kind(
+                crate::models::infer_source_kind_for_source_id(&material.channel_id),
+            ),
+            part_kind: match source_kind {
+                crate::services::search::SearchSourceKind::Summary => {
+                    crate::models::ContentPartKind::GeneratedSummary
+                }
+                crate::services::search::SearchSourceKind::Transcript => {
+                    crate::models::infer_primary_text_part_kind_for_source_kind(
+                        crate::models::infer_source_kind_for_source_id(&material.channel_id),
+                    )
+                }
+            },
             channel_id: material.channel_id,
             channel_name: material.channel_name,
             video_title: material.video_title,

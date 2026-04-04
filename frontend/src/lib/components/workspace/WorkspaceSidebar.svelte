@@ -20,6 +20,7 @@
   import type { Channel, Video, VideoTypeFilter } from "$lib/types";
   import { OTHERS_CHANNEL_ID } from "$lib/types";
   import type {
+    AddSourceSubmission,
     WorkspaceSidebarChannelActions,
     WorkspaceSidebarChannelState,
     WorkspaceSidebarPreviewProps,
@@ -67,7 +68,7 @@
     },
     channelActions = {
       onChannelSortModeChange: (_next: ChannelSortMode) => {},
-      onAddChannel: async (_input: string) => false,
+      onAddChannel: async (_input: AddSourceSubmission) => false,
       onSelectChannel: async (_channelId: string) => {},
       onDeleteChannel: async (_channelId: string) => {},
       onDeleteAccessRequired: () => {},
@@ -236,9 +237,6 @@
   let channelSearchQuery = $state("");
   let channelSearchOpen = $state(false);
   let channelInputOpen = $state(false);
-
-  let channelInput = $state("");
-  let channelInputElement = $state<HTMLInputElement | null>(null);
   let reorderAnnouncement = $state("");
 
   let syncDatePickerChannelId = $state<string | null>(null);
@@ -375,32 +373,20 @@
     }
   });
 
-  async function handleChannelSubmit(event: SubmitEvent) {
-    event.preventDefault();
-    const submittedInput = channelInput.trim();
-    if (!submittedInput || addingChannel) return;
-    channelInput = "";
-    const success = await onAddChannel(submittedInput);
-    if (!success) {
-      channelInput = submittedInput;
-      return;
+  async function handleAddSourceSubmit(input: AddSourceSubmission) {
+    const success = await onAddChannel(input);
+    if (success) {
+      channelInputOpen = false;
     }
-
-    channelInputOpen = false;
+    return success;
   }
 
-  async function toggleChannelInput() {
+  function toggleChannelInput() {
     channelInputOpen = !channelInputOpen;
-
-    if (!channelInputOpen) {
-      channelInput = "";
-      return;
+    if (channelInputOpen) {
+      channelSearchOpen = false;
+      channelSearchQuery = "";
     }
-
-    channelSearchOpen = false;
-    channelSearchQuery = "";
-    await tick();
-    channelInputElement?.focus();
   }
 
   function handleChannelDragStart(channelId: string, event: DragEvent) {
@@ -560,11 +546,6 @@
       {readOnly}
       {channelInputOpen}
       {channelSearchOpen}
-      {channelInput}
-      {channelInputElement}
-      onChannelInputElementChange={(element) => {
-        channelInputElement = element;
-      }}
       {channelSearchQuery}
       {channelSortMode}
       {selectedChannelId}
@@ -586,10 +567,7 @@
       {onVideoTypeFilterChange}
       {onAcknowledgedFilterChange}
       onClearAllFilters={clearAllFilters}
-      onChannelSubmit={handleChannelSubmit}
-      onChannelInputChange={(value) => {
-        channelInput = value;
-      }}
+      onAddSourceSubmit={handleAddSourceSubmit}
       onChannelSearchQueryChange={(value) => {
         channelSearchQuery = value;
       }}

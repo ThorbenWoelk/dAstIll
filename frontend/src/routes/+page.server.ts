@@ -11,15 +11,21 @@ import { loadWorkspaceBootstrapPageData } from "$lib/server/load-workspace-boots
  * state immediately instead of cold-starting on mount.
  */
 export const load: PageServerLoad = async (event) => {
-  const selectedChannelId = event.url.searchParams.get("channel")?.trim();
-  const selectedVideoId = event.url.searchParams.get("video")?.trim();
+  const selectedSourceId =
+    event.url.searchParams.get("source")?.trim() ??
+    event.url.searchParams.get("channel")?.trim();
+  const selectedItemId =
+    event.url.searchParams.get("item")?.trim() ??
+    event.url.searchParams.get("video")?.trim();
 
-  if (event.isDataRequest && !selectedChannelId && !selectedVideoId) {
+  if (event.isDataRequest && !selectedSourceId && !selectedItemId) {
     return {
       bootstrap: null,
       channelPreviews: {},
       channelPreviewsFilterKey: "all:all:default",
+      selectedSourceId: null,
       selectedChannelId: null,
+      selectedItemId: null,
       selectedVideoId: null,
       contentMode: null,
       videoTypeFilter: null,

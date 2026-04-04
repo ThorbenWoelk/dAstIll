@@ -257,7 +257,11 @@ start_frontend() {
 
 start_docs() {
 	pushd docs >/dev/null
-	./node_modules/.bin/vitepress dev . --host 0.0.0.0 --port $docs_port > >(tee ../docs.log) 2>&1 &
+	if [[ ! -x "./node_modules/.bin/vitepress" ]]; then
+		echo "Docs dependencies missing; running bun install --frozen-lockfile"
+		bun install --frozen-lockfile
+	fi
+	bunx vitepress dev . --host 0.0.0.0 --port $docs_port > >(tee ../docs.log) 2>&1 &
 	docs_pid=$!
 	popd >/dev/null
 }

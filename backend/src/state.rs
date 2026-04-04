@@ -10,8 +10,9 @@ use crate::search_progress::SearchProgress;
 use crate::security::RequestRateLimiter;
 use crate::services::PollyTtsService;
 use crate::services::{
-    ActiveChatHandle, ChatService, CloudCooldown, DatabricksSqlService, FtsIndex, SearchService,
-    SummarizerService, SummaryEvaluatorService, TranscriptCooldown, TranscriptService,
+    ActiveChatHandle, ChatService, CloudCooldown, DatabricksSqlService, FtsIndex,
+    OpenAlexPlannerService, OpenAlexService, PodcastFeedService, SearchService, SummarizerService,
+    SummaryEvaluatorService, TranscriptCooldown, TranscriptService, WebsiteService,
     YouTubeQuotaCooldown, YouTubeService,
 };
 
@@ -41,6 +42,10 @@ pub struct AppState {
     pub search_progress: Arc<SearchProgress>,
     pub fts: Arc<FtsIndex>,
     pub youtube: Arc<YouTubeService>,
+    pub openalex_planner: Arc<OpenAlexPlannerService>,
+    pub openalex: Arc<OpenAlexService>,
+    pub podcast_feed: Arc<PodcastFeedService>,
+    pub website: Arc<WebsiteService>,
     pub transcript: Arc<TranscriptService>,
     pub tts: Option<Arc<PollyTtsService>>,
     pub summarizer: Arc<SummarizerService>,

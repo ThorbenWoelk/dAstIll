@@ -60,14 +60,14 @@ flowchart LR
 
 ## What dAstIll Is
 
-dAstIll is a YouTube channel monitoring tool. It:
+dAstIll is a source monitoring tool that is still migrating off an original YouTube-only model. It:
 
-- **Monitors your channels**: Subscribe to YouTube channels, backfill their video history, and auto-refresh for new uploads
-- **Extracts transcripts**: Pulls transcripts from videos so you can search and read instead of watch
+- **Monitors subscribed sources**: YouTube channels, OpenAlex saved searches, podcast RSS feeds, and tracked website pages
+- **Extracts readable content**: Pulls transcripts, abstracts, show notes, or page text into the reading flow
 - **Generates AI summaries**: Creates consistent, structured summaries using local or cloud LLMs via Ollama
-- **Evaluates summary quality**: Uses a separate LLM-as-a-judge to score summaries against ground-truth transcripts
-- **Enables search**: Full-text and optional semantic search across all transcripts and summaries
-- **Preserves highlights**: Save and organize important snippets from transcripts and summaries
+- **Evaluates summary quality**: Uses a separate LLM-as-a-judge to score summaries against source text
+- **Enables search**: Full-text and optional semantic search across synced text content
+- **Preserves highlights**: Save and organize important snippets from synced content
 
 ## Primary Components
 
