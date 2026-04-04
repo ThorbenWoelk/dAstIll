@@ -25,6 +25,7 @@
     onChange = (_: string) => {},
     onAcknowledgeToggle = undefined,
     acknowledged = false,
+    acknowledgeToggleId = undefined,
     aiAvailable = true,
   }: {
     value?: string;
@@ -50,6 +51,7 @@
     onChange?: (next: string) => void;
     onAcknowledgeToggle?: (() => void) | undefined;
     acknowledged?: boolean;
+    acknowledgeToggleId?: string | undefined;
     aiAvailable?: boolean;
   } = $props();
 
@@ -292,7 +294,7 @@
       {#if onAcknowledgeToggle}
         <button
           type="button"
-          id="mark-read-toggle"
+          id={acknowledgeToggleId}
           class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-all hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 disabled:cursor-not-allowed disabled:opacity-30"
           aria-label={acknowledged ? "Mark as unread" : "Mark as read"}
           aria-pressed={acknowledged}

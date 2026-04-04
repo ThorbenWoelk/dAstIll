@@ -117,6 +117,7 @@
         youtubeUrl={selectedVideoYoutubeUrl}
         value={draft}
         acknowledged={selectedVideoAcknowledged}
+        acknowledgeToggleId="mark-read-toggle"
         {onEdit}
         {onCancel}
         {onSave}

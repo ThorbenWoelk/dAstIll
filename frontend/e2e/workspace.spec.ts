@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { resetClientState } from "./test-helpers";
 
 const READY_MS = 120_000;
 
@@ -38,14 +39,8 @@ async function workspaceHasSeedData(page: Page): Promise<boolean> {
   return (await sidebar.locator("[data-channel-id]").count()) > 0;
 }
 
-test.beforeEach(async ({ context }) => {
-  await context.addInitScript(() => {
-    try {
-      localStorage.clear();
-    } catch {
-      /* ignore */
-    }
-  });
+test.beforeEach(async ({ page }) => {
+  await resetClientState(page);
 });
 
 test("sidebar lists channels and each row shows video titles", async ({
