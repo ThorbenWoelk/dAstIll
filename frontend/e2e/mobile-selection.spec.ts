@@ -8,46 +8,37 @@ test("mobile text selection shows the custom toolbar at the bottom", async ({
   // 1. Navigate to home
   await page.goto("/");
 
-  // 2. Select a channel and video (reuse logic from workspace.spec.ts if needed, but keep it simple)
-  // 2. Select a channel and video from the mobile overlay
-  // The overlay is identified by the "Channels" aria-label in MobileChannelGallery
-  const channelScroller = page.locator('div[aria-label="Channels"]').first();
-  await expect(channelScroller).toBeVisible({ timeout: 15000 });
-
-  const channelButtons = channelScroller.locator(":scope > button");
+  // 2. Ensure the mobile browse region is visible even if the page restored into
+  // a content-first state.
   const browseRegion = page.getByRole("region", { name: "Browse" });
-  const videoButtons = browseRegion.locator("#videos button");
-  const emptyState = browseRegion.getByText("No videos yet.");
-  const channelCount = await channelButtons.count();
-  let foundVideoRows = false;
-
-  for (let i = 0; i < channelCount; i += 1) {
-    const channelRow = channelButtons.nth(i);
-    await expect(channelRow).toBeVisible();
-    await channelRow.click();
-
-    const browseState = async () => {
-      if ((await videoButtons.count()) > 0) return "videos";
-      if (await emptyState.isVisible()) return "empty";
-      return "loading";
-    };
-
-    await expect
-      .poll(browseState, {
-        timeout: 15000,
-        message: "Timed out waiting for mobile browse results to settle",
-      })
-      .not.toBe("loading");
-
-    if ((await browseState()) === "videos") {
-      foundVideoRows = true;
-      break;
+  if ((await browseRegion.count()) === 0) {
+    const backButton = page.getByRole("button", { name: "Back" });
+    if (await backButton.count()) {
+      await backButton.click();
+    } else {
+      await page.getByLabel("Go to dAstIll home").click();
     }
   }
+  await expect(browseRegion).toBeVisible({ timeout: 15000 });
+
+  const videoButtons = browseRegion.locator("aside button");
+  const emptyState = browseRegion.getByText("No videos yet.");
+  const browseState = async () => {
+    if ((await videoButtons.count()) > 0) return "videos";
+    if (await emptyState.isVisible()) return "empty";
+    return "loading";
+  };
+
+  await expect
+    .poll(browseState, {
+      timeout: 15000,
+      message: "Timed out waiting for mobile browse results to settle",
+    })
+    .not.toBe("loading");
 
   test.skip(
-    !foundVideoRows,
-    "Mobile browse overlay has no videos; run against a seeded backend",
+    (await browseState()) !== "videos",
+    "Mobile browse view has no videos; run against a seeded backend",
   );
 
   const videoButton = videoButtons.first();

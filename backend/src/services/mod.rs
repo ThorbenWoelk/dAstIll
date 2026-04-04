@@ -30,4 +30,4 @@ pub use summarizer::SummarizerService;
 pub use summary_evaluator::SummaryEvaluatorService;
 pub use transcript::TranscriptService;
 pub use tts::PollyTtsService;
-pub use youtube::YouTubeService;
+pub use youtube::{DataApiKeyValidation, YouTubeService};
