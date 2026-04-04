@@ -38,3 +38,43 @@ export async function registerAppServiceWorker(
     return false;
   }
 }
+
+type BrowserServiceWorkerContainer = ServiceWorkerContainer & {
+  getRegistrations?: () => Promise<ServiceWorkerRegistration[]>;
+};
+
+export async function unregisterAppServiceWorkers(
+  browserNavigator: BrowserNavigator | undefined = typeof navigator ===
+  "undefined"
+    ? undefined
+    : navigator,
+): Promise<void> {
+  const serviceWorker = browserNavigator?.serviceWorker as
+    | BrowserServiceWorkerContainer
+    | undefined;
+
+  if (!serviceWorker?.getRegistrations) {
+    return;
+  }
+
+  const registrations = await serviceWorker.getRegistrations();
+  await Promise.all(
+    registrations.map((registration) => registration.unregister()),
+  );
+
+  if (typeof caches === "undefined") {
+    return;
+  }
+
+  const cacheNames = await caches.keys();
+  await Promise.all(
+    cacheNames
+      .filter(
+        (name) =>
+          name.startsWith("static-") ||
+          name.startsWith("api-") ||
+          name.startsWith("avatars-"),
+      )
+      .map((name) => caches.delete(name)),
+  );
+}

@@ -1,4 +1,5 @@
 pub mod analytics;
+pub mod auth;
 pub mod channels;
 pub mod chat;
 pub mod content;

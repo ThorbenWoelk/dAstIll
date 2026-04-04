@@ -1,5 +1,13 @@
-import { env } from "$env/dynamic/public";
 import { resolveDocsUrl } from "$lib/docs-url";
 
-export const DOCS_URL = resolveDocsUrl(env.PUBLIC_DOCS_URL);
-export const CONTACT_EMAIL = env.PUBLIC_CONTACT_EMAIL?.trim() || null;
+const publicEnv = (
+  import.meta as {
+    env?: {
+      PUBLIC_DOCS_URL?: string;
+      PUBLIC_CONTACT_EMAIL?: string;
+    };
+  }
+).env;
+
+export const DOCS_URL = resolveDocsUrl(publicEnv?.PUBLIC_DOCS_URL);
+export const CONTACT_EMAIL = publicEnv?.PUBLIC_CONTACT_EMAIL?.trim() || null;

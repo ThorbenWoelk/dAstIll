@@ -1,3 +1,5 @@
+import { getCurrentAuthToken } from "$lib/auth-token";
+
 function normalizeApiBase(value?: string) {
   const normalized = value?.trim();
   if (!normalized) {
@@ -81,6 +83,29 @@ export function resolveApiUrl(path: string): string {
   return `${API_BASE}${path}`;
 }
 
+export async function createApiRequestInit(
+  init?: RequestInit,
+  options?: { includeJsonContentType?: boolean },
+): Promise<RequestInit> {
+  const headers = new Headers(init?.headers);
+  if (
+    options?.includeJsonContentType !== false &&
+    !headers.has("Content-Type")
+  ) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  const token = await getCurrentAuthToken();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  return {
+    ...init,
+    headers,
+  };
+}
+
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const method = (init?.method ?? "GET").toUpperCase();
   // Backend sets short Cache-Control on channel snapshots/lists; the browser HTTP
@@ -96,10 +121,7 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
     response = await fetch(resolveApiUrl(path), {
-      headers: {
-        "Content-Type": "application/json",
-      },
-      ...init,
+      ...(await createApiRequestInit(init)),
       cache,
     });
   } catch (error) {

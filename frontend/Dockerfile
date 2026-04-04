@@ -1,49 +1,42 @@
-# Shared base with Bun available for deterministic installs.
 FROM node:20.20.0-slim AS base
 
 WORKDIR /app
 
-# Install build tooling and Bun.
 RUN apt-get update && apt-get install -y \
-    python3 \
-    make \
-    g++ \
+    ca-certificates \
+    curl \
+    git \
     && rm -rf /var/lib/apt/lists/*
 RUN npm install -g bun
 
-FROM base AS prod-deps
-
-COPY package.json bun.lock .npmrc ./
-RUN bun install --frozen-lockfile --production --ignore-scripts
-
-# Build stage
 FROM base AS builder
 
-# Copy configuration files
-COPY package.json bun.lock .npmrc ./
+ARG VITE_API_BASE
+ARG PUBLIC_DOCS_URL
+ARG PUBLIC_CONTACT_EMAIL
+ARG PUBLIC_FIREBASE_API_KEY
+ARG PUBLIC_FIREBASE_AUTH_DOMAIN
+ARG PUBLIC_FIREBASE_PROJECT_ID
 
-# Install dependencies
+ENV VITE_API_BASE=$VITE_API_BASE
+ENV PUBLIC_DOCS_URL=$PUBLIC_DOCS_URL
+ENV PUBLIC_CONTACT_EMAIL=$PUBLIC_CONTACT_EMAIL
+ENV PUBLIC_FIREBASE_API_KEY=$PUBLIC_FIREBASE_API_KEY
+ENV PUBLIC_FIREBASE_AUTH_DOMAIN=$PUBLIC_FIREBASE_AUTH_DOMAIN
+ENV PUBLIC_FIREBASE_PROJECT_ID=$PUBLIC_FIREBASE_PROJECT_ID
+
+COPY package.json bun.lock .npmrc ./
 RUN bun install --frozen-lockfile
 
-# Copy source
 COPY . .
-
 RUN bun x svelte-kit sync
 RUN bun run build
 
-# Runtime stage
-FROM node:20.20.0-slim AS runtime
+FROM nginx:1.28.2-alpine AS runtime
 
-WORKDIR /app
-ENV NODE_ENV=production
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=builder /app/build /usr/share/nginx/html
 
-# Copy build output
-COPY --from=builder /app/build ./build
-COPY --from=builder /app/package.json ./package.json
-COPY --from=prod-deps /app/node_modules ./node_modules
+EXPOSE 8080
 
-# Expose the frontend port
-EXPOSE 3000
-
-# Start SvelteKit app
-CMD ["node", "build/index.js"]
+CMD ["nginx", "-g", "daemon off;"]

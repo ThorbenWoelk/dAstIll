@@ -27,6 +27,7 @@ This site explains how the app works: the UI, the Rust backend, the AI and searc
 ## Operations
 
 - [Local Development](/local-development) - run the frontend, backend, and docs locally with the expected ports and startup flow.
+- [Tauri Android](/mobile-tauri) - local Android setup, `cargo tauri` commands, smoke tests, and APK output.
 - [Deployment and Operations](/operations/deployment) - Cloud Run services, Terraform ownership, and CI/CD flow.
 - [Content Flow](/flows/content-pipeline) - video ingestion, transcript extraction, summarization, evaluation, and indexing.
 

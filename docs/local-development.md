@@ -14,6 +14,8 @@ From the repo root:
 ./start_app.sh
 ```
 
+`./start_app.sh` always stops any running dAstIll services first, then restarts the stack from a clean state.
+
 Detached mode:
 
 ```bash
@@ -21,6 +23,12 @@ Detached mode:
 ```
 
 Detached startup writes supervisor output to `start_app.log` and service logs to `backend.log`, `frontend.log`, and `docs.log`.
+
+Stop everything cleanly:
+
+```bash
+./end_app.sh
+```
 
 Startup now verifies both the backend health endpoint and the initial workspace bootstrap
 response before it reports success. If local startup fails after the backend begins listening,
@@ -46,6 +54,82 @@ bun run build
 ```
 
 The docs app also has a production container definition in `docs/Dockerfile`. Main-branch pushes build and deploy that image through the repository GitHub Actions workflow.
+
+## Tauri Android Development
+
+The repo now includes a Tauri v2 shell in [`src-tauri/`](../src-tauri).
+
+Install the CLI once:
+
+```bash
+cargo install tauri-cli --version "^2"
+```
+
+If `cargo tauri` is not installed, use `bunx` instead:
+
+```bash
+bunx @tauri-apps/cli@latest dev
+bunx @tauri-apps/cli@latest android dev
+```
+
+Typical local setup:
+
+```bash
+rustup target add aarch64-linux-android armv7-linux-androideabi \
+  i686-linux-android x86_64-linux-android
+
+export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+export NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
+```
+
+Check the Android device list:
+
+```bash
+adb devices
+```
+
+Recommended run loop:
+
+```bash
+./start_app.sh
+```
+
+When an Android emulator or device is connected, `./start_app.sh` starts the Tauri Android shell automatically after the local services are healthy.
+
+To skip the mobile shell:
+
+```bash
+START_APP_SKIP_MOBILE=1 ./start_app.sh
+```
+
+To run the shell manually:
+
+```bash
+cargo tauri android dev
+```
+
+Build APKs:
+
+```bash
+cargo tauri android build -- --apk --debug
+cargo tauri android build -- --apk
+```
+
+APK output:
+
+```text
+src-tauri/gen/android/app/build/outputs/apk/
+```
+
+Android-specific smoke checks:
+
+- app launches without a blank screen
+- anonymous mode works
+- backend data loads
+- Google sign-in works
+- transcript text selection shows native `Highlight` and `Correct` actions
+- highlight creation, correction flow, and highlight deletion still work
 
 ## Backend Environment
 
@@ -150,15 +234,9 @@ Behavior:
 - current AI-related logs cover prompt lifecycle, retrieval timings, fallback/rate-limit events, and chat pipeline milestones
 - raw prompt / generated-title preview logging is not enabled by default
 
-## Frontend Auth And Proxy
+## Frontend Runtime
 
-The SvelteKit frontend proxies `/api/*` requests server-to-server using the backend proxy token. In Cloud Run it also mints an identity token for the backend audience, so the backend service remains non-public even though the product frontend is public.
-
-Local defaults when you start with `./start_app.sh`:
-
-| Variable              | Default                         |
-| --------------------- | ------------------------------- |
-| `BACKEND_PROXY_TOKEN` | `local-dev-backend-proxy-token` |
+The frontend now builds as a static bundle. Browser and Tauri clients call the Rust backend directly using `VITE_API_BASE`, and authenticated requests send the Firebase ID token as `Authorization: Bearer <token>`.
 
 If you run the frontend by itself, keep its local values in
 `~/.config/dastill/frontend.env`. The default shared workflow is to keep those values there
@@ -193,17 +271,17 @@ Env precedence for local development is:
 2. worktree-local `backend/.env` or `frontend/.env`
 3. shared `~/.config/dastill/backend.env` or `~/.config/dastill/frontend.env`
 
-Operator access is derived from `OPERATOR_EMAIL_ALLOWLIST` on the frontend server. Users whose Firebase email matches the allowlist receive the `operator` role in proxied backend requests.
+Operator access is derived from `OPERATOR_EMAIL_ALLOWLIST` on the backend. Users whose Firebase email matches the allowlist receive the `operator` role when the backend validates their bearer token.
 
 ### Auth Model
 
 The current auth model is Firebase-based multi-user auth:
 
-- Signed-in users receive a Firebase-backed session cookie handled by the SvelteKit server.
-- Backend request identity is passed through `AccessContext` on proxied API calls.
+- Signed-in users keep their Firebase browser/session state client-side.
+- Backend request identity is derived directly from the Firebase bearer token.
 - Persistent chat, channels, highlights, and preferences are authenticated user-scoped surfaces.
 - Signed-out browsing remains available, but signed-out chat stays on the ephemeral path and is subject to the anonymous quota.
-- Operator-only backend behavior is keyed off the proxied `operator` role, which comes from `OPERATOR_EMAIL_ALLOWLIST`.
+- Operator-only backend behavior is keyed off the validated Firebase email allowlist.
 
 ## Search Defaults
 

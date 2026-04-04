@@ -1,0 +1,115 @@
+name: Android APK
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/android.yml"
+      - "frontend/**"
+      - "src-tauri/**"
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  REGION: europe-west3
+  APP_NAME: dastill
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+
+      - name: Google Auth
+        uses: google-github-actions/auth@v3.0.0
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_WIF_SA_EMAIL }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v3.0.0
+
+      - name: Resolve frontend build configuration
+        run: |
+          set -euo pipefail
+
+          backend_url="$(gcloud run services describe "${APP_NAME}-backend" \
+            --project "$PROJECT_ID" \
+            --region "$REGION" \
+            --format='value(status.url)')"
+          docs_url="$(gcloud run services describe "${APP_NAME}-docs" \
+            --project "$PROJECT_ID" \
+            --region "$REGION" \
+            --format='value(status.url)')"
+          firebase_api_key="$(gcloud secrets versions access latest --secret="${APP_NAME}-firebase-web-api-key")"
+          firebase_auth_domain="$(gcloud secrets versions access latest --secret="${APP_NAME}-firebase-auth-domain")"
+
+          {
+            echo "VITE_API_BASE=$backend_url"
+            echo "PUBLIC_DOCS_URL=$docs_url"
+            echo "PUBLIC_CONTACT_EMAIL=${{ vars.CONTACT_EMAIL }}"
+            echo "PUBLIC_FIREBASE_PROJECT_ID=$PROJECT_ID"
+            echo "PUBLIC_FIREBASE_API_KEY=$firebase_api_key"
+            echo "PUBLIC_FIREBASE_AUTH_DOMAIN=$firebase_auth_domain"
+          } >> "$GITHUB_ENV"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK components
+        run: |
+          sdkmanager "ndk;28.2.13676358" "build-tools;34.0.0" "platforms;android-34"
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+      - name: Restore Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+        working-directory: frontend
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2"
+
+      - name: Write Android signing config
+        run: |
+          set -euo pipefail
+          cd src-tauri/gen/android
+          echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}" > keystore.properties
+          echo "password=${{ secrets.ANDROID_KEY_PASSWORD }}" >> keystore.properties
+          base64 -d <<< "${{ secrets.ANDROID_KEYSTORE_B64 }}" > "$RUNNER_TEMP/dastill-android.jks"
+          echo "storeFile=$RUNNER_TEMP/dastill-android.jks" >> keystore.properties
+
+      - name: Build Android APK
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
+          NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/28.2.13676358
+        run: cargo tauri android build -- --apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: src-tauri/gen/android/app/build/outputs/apk/release/*.apk

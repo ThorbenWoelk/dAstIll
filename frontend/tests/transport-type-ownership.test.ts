@@ -102,8 +102,8 @@ describe("transport DTO ownership guardrail", () => {
     const coreTransportFiles = [
       "src/lib/api.ts",
       "src/lib/chat/requests.ts",
+      "src/lib/load-workspace-bootstrap.ts",
       "src/lib/ssr-bootstrap.ts",
-      "src/lib/server/load-workspace-bootstrap.ts",
       "src/lib/workspace-cache.ts",
     ];
 

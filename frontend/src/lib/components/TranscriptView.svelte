@@ -13,6 +13,8 @@
     resolveHighlightRanges,
     resolveTooltipPosition,
   } from "$lib/utils/highlights";
+  import { registerNativeSelectionHandlers } from "$lib/native-selection";
+  import { isTauriRuntime } from "$lib/tauri-runtime";
   import { scrollToCitationInArticle } from "$lib/utils/citation-scroll";
 
   type Props = {
@@ -60,6 +62,7 @@
   let containerElement = $state<HTMLDivElement | null>(null);
   let articleElement = $state<HTMLElement | null>(null);
   let isMobile = $state(false);
+  const usesNativeSelectionActions = $derived(isMobile && isTauriRuntime());
 
   $effect(() => {
     if (typeof window === "undefined") return;
@@ -217,34 +220,30 @@
     tooltip = null;
   }
 
-  function updateTooltipFromSelection() {
+  function clearSelection() {
+    const selection = window.getSelection();
+    if (selection) selection.removeAllRanges();
+  }
+
+  function resolveCreateSelectionState() {
     if (
       !articleElement ||
       !highlightEnabled ||
       !highlightSource ||
       !onCreateHighlight
     ) {
-      if (tooltip?.kind === "create") {
-        clearTooltip();
-      }
-      return;
+      return null;
     }
 
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
-      if (tooltip?.kind === "create") {
-        clearTooltip();
-      }
-      return;
+      return null;
     }
 
     const range = selection.getRangeAt(0);
     // Ensure the selection is entirely within the article
     if (!articleElement.contains(range.commonAncestorContainer)) {
-      if (tooltip?.kind === "create") {
-        clearTooltip();
-      }
-      return;
+      return null;
     }
 
     const fullText = articleElement.textContent ?? "";
@@ -259,19 +258,39 @@
       : null;
 
     if (!draft) {
+      return null;
+    }
+
+    const rects = range.getClientRects();
+    if (rects.length === 0) return null;
+
+    // Use the last rect for positioning to stay close to the end of selection
+    const lastRect = rects[rects.length - 1];
+    const containerRect = containerElement?.getBoundingClientRect();
+    if (!containerRect) {
+      return null;
+    }
+
+    return {
+      ...resolveTooltipPosition(lastRect, containerRect),
+      draft,
+    };
+  }
+
+  function resolveHighlightDraftFromSelection() {
+    return resolveCreateSelectionState()?.draft ?? null;
+  }
+
+  function updateTooltipFromSelection() {
+    const selectionState = resolveCreateSelectionState();
+    if (!selectionState) {
       if (tooltip?.kind === "create") {
         clearTooltip();
       }
       return;
     }
 
-    const rects = range.getClientRects();
-    if (rects.length === 0) return;
-
-    // Use the last rect for positioning to stay close to the end of selection
-    const lastRect = rects[rects.length - 1];
-    const containerRect = containerElement?.getBoundingClientRect();
-    if (!containerRect) {
+    if (usesNativeSelectionActions) {
       if (tooltip?.kind === "create") {
         clearTooltip();
       }
@@ -280,8 +299,7 @@
 
     tooltip = {
       kind: "create",
-      ...resolveTooltipPosition(lastRect, containerRect),
-      draft,
+      ...selectionState,
     };
   }
 
@@ -297,8 +315,7 @@
 
     const draft = tooltip.draft;
     const result = onCreateHighlight(draft);
-    const selection = window.getSelection();
-    if (selection) selection.removeAllRanges();
+    clearSelection();
     clearTooltip();
     await result;
   }
@@ -315,8 +332,39 @@
 
     const text = tooltip.draft.text;
     const result = onCreateVocabularyReplacement(text);
-    const selection = window.getSelection();
-    if (selection) selection.removeAllRanges();
+    clearSelection();
+    clearTooltip();
+    await result;
+  }
+
+  async function handleNativeSelectionHighlight() {
+    if (!onCreateHighlight || creatingHighlight) {
+      return;
+    }
+
+    const draft = resolveHighlightDraftFromSelection();
+    if (!draft) {
+      return;
+    }
+
+    const result = onCreateHighlight(draft);
+    clearSelection();
+    clearTooltip();
+    await result;
+  }
+
+  async function handleNativeSelectionCorrect() {
+    if (!onCreateVocabularyReplacement || creatingVocabularyReplacement) {
+      return;
+    }
+
+    const draft = resolveHighlightDraftFromSelection();
+    if (!draft) {
+      return;
+    }
+
+    const result = onCreateVocabularyReplacement(draft.text);
+    clearSelection();
     clearTooltip();
     await result;
   }
@@ -541,6 +589,21 @@
       articleElement?.removeEventListener("click", handleClick);
     };
   });
+
+  $effect(() => {
+    if (!usesNativeSelectionActions) {
+      return;
+    }
+
+    return registerNativeSelectionHandlers(
+      () => {
+        void handleNativeSelectionHighlight();
+      },
+      () => {
+        void handleNativeSelectionCorrect();
+      },
+    );
+  });
 </script>
 
 <div class="relative" bind:this={containerElement}>
@@ -566,57 +629,59 @@
 
   {#if tooltip}
     {#if isMobile}
-      <div
-        role="group"
-        aria-label="Text selection actions"
-        class="text-action-toolbar fixed bottom-[calc(var(--mobile-bottom-stack-height)+1.5rem)] left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-2xl px-2 py-2 shadow-2xl"
-        onpointerdown={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-        }}
-      >
-        {#if tooltip.kind === "create"}
-          <button
-            type="button"
-            class="text-action-btn inline-flex h-9 w-9 items-center justify-center rounded-full text-[var(--soft-foreground)] hover:bg-[var(--accent-wash)] hover:text-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
-            onclick={handleCreateHighlight}
-            disabled={creatingHighlight}
-            aria-label="Save selected text as a highlight"
-            title="Save highlight"
-          >
-            <HighlighterIcon
-              class={`h-4 w-4 ${creatingHighlight ? "animate-pulse" : ""}`}
-            />
-          </button>
-          <button
-            type="button"
-            class="text-action-btn inline-flex items-center justify-center rounded-full px-4 py-2 text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--accent-strong)] hover:bg-[var(--accent-soft)] disabled:cursor-not-allowed disabled:opacity-50"
-            style="background: var(--accent-wash);"
-            onclick={handleCreateVocabularyReplacement}
-            disabled={!onCreateVocabularyReplacement ||
-              creatingVocabularyReplacement}
-          >
-            {creatingVocabularyReplacement ? "Saving" : "Correct"}
-          </button>
-        {:else}
-          <button
-            type="button"
-            class="text-action-btn inline-flex h-9 w-9 items-center justify-center rounded-full text-[var(--soft-foreground)] hover:bg-[var(--danger-soft)] hover:text-[var(--danger)] disabled:cursor-not-allowed disabled:opacity-50"
-            onclick={handleDeleteHighlight}
-            disabled={deletingHighlightId === tooltip.highlightId}
-            aria-label="Delete highlight"
-            title="Delete highlight"
-          >
-            <TrashIcon
-              size={16}
-              strokeWidth={2}
-              class={deletingHighlightId === tooltip.highlightId
-                ? "animate-pulse"
-                : ""}
-            />
-          </button>
-        {/if}
-      </div>
+      {#if tooltip.kind === "delete" || !usesNativeSelectionActions}
+        <div
+          role="group"
+          aria-label="Text selection actions"
+          class="text-action-toolbar fixed bottom-[calc(var(--mobile-bottom-stack-height)+1.5rem)] left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-2xl px-2 py-2 shadow-2xl"
+          onpointerdown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+        >
+          {#if tooltip.kind === "create"}
+            <button
+              type="button"
+              class="text-action-btn inline-flex h-9 w-9 items-center justify-center rounded-full text-[var(--soft-foreground)] hover:bg-[var(--accent-wash)] hover:text-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
+              onclick={handleCreateHighlight}
+              disabled={creatingHighlight}
+              aria-label="Save selected text as a highlight"
+              title="Save highlight"
+            >
+              <HighlighterIcon
+                class={`h-4 w-4 ${creatingHighlight ? "animate-pulse" : ""}`}
+              />
+            </button>
+            <button
+              type="button"
+              class="text-action-btn inline-flex items-center justify-center rounded-full px-4 py-2 text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--accent-strong)] hover:bg-[var(--accent-soft)] disabled:cursor-not-allowed disabled:opacity-50"
+              style="background: var(--accent-wash);"
+              onclick={handleCreateVocabularyReplacement}
+              disabled={!onCreateVocabularyReplacement ||
+                creatingVocabularyReplacement}
+            >
+              {creatingVocabularyReplacement ? "Saving" : "Correct"}
+            </button>
+          {:else}
+            <button
+              type="button"
+              class="text-action-btn inline-flex h-9 w-9 items-center justify-center rounded-full text-[var(--soft-foreground)] hover:bg-[var(--danger-soft)] hover:text-[var(--danger)] disabled:cursor-not-allowed disabled:opacity-50"
+              onclick={handleDeleteHighlight}
+              disabled={deletingHighlightId === tooltip.highlightId}
+              aria-label="Delete highlight"
+              title="Delete highlight"
+            >
+              <TrashIcon
+                size={16}
+                strokeWidth={2}
+                class={deletingHighlightId === tooltip.highlightId
+                  ? "animate-pulse"
+                  : ""}
+              />
+            </button>
+          {/if}
+        </div>
+      {/if}
     {:else}
       <div
         role="group"
@@ -673,9 +738,7 @@
 
 <style>
   .text-action-toolbar {
-    background: var(--surface-frost);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+    background: var(--surface);
     box-shadow:
       0 2px 12px var(--shadow-soft),
       0 1px 3px var(--shadow-strong);

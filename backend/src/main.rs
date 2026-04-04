@@ -15,7 +15,7 @@ use dastill::config::{
 };
 use dastill::db::init_store;
 use dastill::handlers::{
-    analytics, channels, chat, content, highlights, preferences, search, videos,
+    analytics, auth, channels, chat, content, highlights, preferences, search, videos,
 };
 use dastill::local_env::{
     clear_missing_google_application_credentials, load_dotenv_preserving_existing,
@@ -315,6 +315,7 @@ async fn main() -> anyhow::Result<()> {
         active_replies: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         conversation_store_lock: Arc::new(tokio::sync::Mutex::new(())),
         anonymous_chat_quota_lock: Arc::new(tokio::sync::Mutex::new(())),
+        mobile_auth_handoffs: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         cloud_cooldown,
         youtube_quota_cooldown,
         transcript_cooldown,
@@ -467,6 +468,13 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/workspace/bootstrap",
             get(channels::workspace_bootstrap),
+        )
+        .route(
+            "/api/auth/mobile-handoff/{id}",
+            post(auth::create_mobile_auth_handoff)
+                .put(auth::complete_mobile_auth_handoff)
+                .get(auth::get_mobile_auth_handoff)
+                .delete(auth::delete_mobile_auth_handoff),
         )
         .route(
             "/api/channels",

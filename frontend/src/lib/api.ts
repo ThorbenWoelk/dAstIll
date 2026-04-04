@@ -25,6 +25,7 @@ import {
   API_BASE,
   AuthRequiredError,
   BackendUnavailableError,
+  createApiRequestInit,
   createAbortError,
   isAuthRequiredError,
   isSignInRequiredFailure,
@@ -639,9 +640,14 @@ export async function getSummaryAudio(videoId: string): Promise<Blob> {
   try {
     response = await fetch(
       resolveApiUrl(`/api/videos/${videoId}/summary/audio`),
-      {
-        cache: "no-store",
-      },
+      await createApiRequestInit(
+        {
+          cache: "no-store",
+        },
+        {
+          includeJsonContentType: false,
+        },
+      ),
     );
   } catch (error) {
     if ((error as Error).name === "AbortError") {

@@ -63,23 +63,20 @@ Non-secret backend runtime config is passed as plain env values for:
 
 Non-secret product frontend runtime config is passed as plain env values for:
 
-- `BACKEND_API_BASE`
-- `BACKEND_IDENTITY_AUDIENCE`
-- `PUBLIC_DOCS_URL`
-- `PUBLIC_FIREBASE_PROJECT_ID`
-- `PUBLIC_CONTACT_EMAIL`
+- build-time `VITE_API_BASE`
+- build-time `PUBLIC_DOCS_URL`
+- build-time `PUBLIC_FIREBASE_PROJECT_ID`
+- build-time `PUBLIC_CONTACT_EMAIL`
 
 ### Firebase Auth (product frontend)
 
-The SvelteKit app uses the Firebase JS SDK in the browser and **Firebase Admin** on the server for session cookies. The web client reads the Firebase Web API key as **`PUBLIC_FIREBASE_API_KEY`** (alias **`PUBLIC_FIREBASE_KEY`**), plus **`PUBLIC_FIREBASE_AUTH_DOMAIN`** and **`PUBLIC_FIREBASE_PROJECT_ID`**, from `$env/dynamic/public`; the server resolves the same project for Admin SDK initialization.
+The frontend uses the Firebase JS SDK in the browser and in the Tauri WebView. Signed-in requests send the Firebase ID token directly to the backend as `Authorization: Bearer <token>`. The web client reads **`PUBLIC_FIREBASE_API_KEY`**, **`PUBLIC_FIREBASE_AUTH_DOMAIN`**, and **`PUBLIC_FIREBASE_PROJECT_ID`** at build time.
 
 **Terraform (`terraform.tfvars`, not GitHub Variables):** Terraform creates the Firebase project resources and web app, then reads the effective Web API key and auth domain from the Firebase web app config data source before writing them to Secret Manager. Run `terraform apply` so secrets `dastill-firebase-web-api-key` and `dastill-firebase-auth-domain` exist and IAM allows the frontend Cloud Run service account to read them.
 
 **Google sign-in:** anonymous auth stays enabled through Identity Platform. Google sign-in itself is managed through [`frontend/firebase.json`](../../frontend/firebase.json) and should be deployed separately with `bunx firebase-tools@15.12.0 deploy --only auth --project "$PROJECT_ID" --config frontend/firebase.json --non-interactive` when provisioning a new project or when that file changes. That lets Firebase provision the correct project-local Google OAuth client for the web app instead of reusing a copied client ID/secret from another project.
 
-**Release workflow:** uses the Terraform-managed frontend Firebase secrets `dastill-firebase-web-api-key` and `dastill-firebase-auth-domain`, mounting them as `PUBLIC_FIREBASE_API_KEY` and `PUBLIC_FIREBASE_AUTH_DOMAIN`. It sets **`PUBLIC_FIREBASE_PROJECT_ID`** to the GCP project id (`GCP_PROJECT_ID` in the workflow), plus frontend runtime env such as `BACKEND_API_BASE`, `BACKEND_IDENTITY_AUDIENCE`, `PUBLIC_DOCS_URL`, and `PUBLIC_CONTACT_EMAIL`. Routine releases do not redeploy Firebase Auth config.
-
-**GCP:** Terraform grants `roles/firebaseauth.admin` to the frontend Cloud Run service account so the Node server can verify ID tokens and issue session cookies.
+**Release workflow:** resolves the Terraform-managed frontend Firebase secrets `dastill-firebase-web-api-key` and `dastill-firebase-auth-domain` before building the static frontend image. It passes those values into the image build together with `VITE_API_BASE`, `PUBLIC_DOCS_URL`, `PUBLIC_CONTACT_EMAIL`, and `PUBLIC_FIREBASE_PROJECT_ID`. Routine releases do not redeploy Firebase Auth config.
 
 **Authorized domains:** Terraform manages Identity Platform authorized domains. The default set includes `localhost`, the Firebase-hosted domains for the project, the deployed frontend Cloud Run host, and any entries in `firebase_authorized_domains_extra`. Use Terraform rather than console-only edits for managed environments.
 
@@ -114,9 +111,10 @@ The GitHub Actions workflow:
 3. Runs only the matching backend/frontend/docs validation jobs on push and pull request events
 4. On `main`, builds and deploys only the services with deploy-relevant changes
 5. Skips deploys for trivial-only service changes such as `.gitignore`, README, and test-only frontend/backend changes
-6. Resolves deployed backend and docs URLs for the frontend service env when the frontend itself is being deployed
+6. Resolves deployed backend and docs URLs for the frontend image build when the frontend itself is being deployed
 7. Deploys the backend with runtime env including S3/AWS config, `TURSO_DB_URL`, and Secret Manager mounts such as `TURSO_AUTH_TOKEN` when enabled
-8. Deploys the frontend with runtime env including BACKEND_API_BASE, BACKEND_IDENTITY_AUDIENCE, PUBLIC_DOCS_URL, PUBLIC_CONTACT_EMAIL, PUBLIC_FIREBASE_PROJECT_ID, and Firebase client values from Secret Manager mounts
+8. Deploys the frontend as a static nginx image with Firebase and backend URL values baked into the build
+9. Builds Android APK artifacts through `.github/workflows/android.yml` when mobile changes are pushed or manually requested
 ```
 
 ## Docker Layout
@@ -132,8 +130,15 @@ The GitHub Actions workflow:
 
 - built from `frontend/Dockerfile`
 - installs Bun during build
-- generates the SvelteKit production output
-- runs the Node adapter output at runtime
+- generates the static SvelteKit production output
+- serves the bundle from nginx at runtime
+
+### Android artifacts
+
+- built from the Tauri v2 project in `src-tauri/`
+- use `.github/workflows/android.yml`
+- resolve backend/docs/Firebase build values before running `cargo tauri android build`
+- upload a release APK as a workflow artifact
 
 ## Operational Notes
 

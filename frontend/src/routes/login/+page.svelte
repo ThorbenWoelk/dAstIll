@@ -1,19 +1,51 @@
 <script lang="ts">
+  import { onMount } from "svelte";
+  import { page } from "$app/state";
   import { goto } from "$app/navigation";
+  import { normalizeRedirectTarget } from "$lib/auth";
   import { authState } from "$lib/auth-state.svelte";
-  import type { PageData } from "./$types";
-
-  let { data }: { data: PageData } = $props();
+  import { openSystemBrowserLogin } from "$lib/browser-auth";
+  import { isTauriAndroidRuntime } from "$lib/tauri-runtime";
+  import {
+    completeBrowserGoogleAuthHandoff,
+    finishTauriAndroidBrowserAuthHandoff,
+    startTauriAndroidBrowserAuthHandoff,
+  } from "$lib/browser-auth";
 
   const workspaceHref = $derived(
-    data.redirectTo === "/login" ? "/" : data.redirectTo,
+    (() => {
+      const redirectTo = normalizeRedirectTarget(
+        page.url.searchParams.get("redirectTo"),
+      );
+      return redirectTo === "/login" ? "/" : redirectTo;
+    })(),
   );
+  const usesSystemBrowserAuth = $derived(isTauriAndroidRuntime());
+  const mobileBrowserAuthEnabled = $derived(
+    page.url.searchParams.get("mobileBrowserAuth") === "1",
+  );
+  const handoffSessionId = $derived(
+    page.url.searchParams.get("handoffSession")?.trim() ?? "",
+  );
+  let browserAuthNoticeDismissed = $state(false);
+  let browserAuthPending = $state(false);
 
   async function continueToWorkspace() {
     await goto(workspaceHref);
   }
 
   async function handleGoogleSignIn() {
+    if (usesSystemBrowserAuth) {
+      browserAuthPending = true;
+      const sessionId =
+        await startTauriAndroidBrowserAuthHandoff(workspaceHref);
+      await finishTauriAndroidBrowserAuthHandoff(sessionId);
+      browserAuthPending = false;
+      await continueToWorkspace();
+      browserAuthNoticeDismissed = false;
+      return;
+    }
+
     try {
       await authState.signInWithGoogle();
       await continueToWorkspace();
@@ -25,6 +57,24 @@
   async function handleSignOut() {
     await authState.signOut();
   }
+
+  onMount(() => {
+    if (
+      !usesSystemBrowserAuth &&
+      mobileBrowserAuthEnabled &&
+      handoffSessionId
+    ) {
+      void (async () => {
+        browserAuthPending = true;
+        try {
+          await completeBrowserGoogleAuthHandoff(handoffSessionId);
+          await goto(workspaceHref, { replaceState: true });
+        } finally {
+          browserAuthPending = false;
+        }
+      })();
+    }
+  });
 </script>
 
 <svelte:head>
@@ -144,6 +194,15 @@
             {authState.error}
           </div>
         {/if}
+
+        {#if usesSystemBrowserAuth && !browserAuthNoticeDismissed}
+          <div
+            class="rounded-md bg-[var(--surface-strong)] p-3 text-[13px] text-[var(--soft-foreground)]"
+          >
+            Google blocks embedded Android WebView sign-in. dAstIll will open
+            the secure Google login flow in your system browser instead.
+          </div>
+        {/if}
       </section>
 
       <!-- Actions -->
@@ -167,11 +226,15 @@
           <button
             type="button"
             class="inline-flex h-12 w-full items-center justify-center rounded-full bg-[var(--foreground)] px-6 text-[12px] font-bold uppercase tracking-[0.1em] text-[var(--background)] transition hover:scale-[1.01] hover:bg-[var(--accent-strong)] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
-            disabled={authState.syncing}
+            disabled={authState.syncing || browserAuthPending}
             onclick={handleGoogleSignIn}
           >
             <span class={authState.syncing ? "animate-pulse-subtle" : ""}>
-              {authState.syncing ? "Connecting…" : "Continue with Google"}
+              {authState.syncing || browserAuthPending
+                ? "Connecting…"
+                : usesSystemBrowserAuth
+                  ? "Continue in Browser"
+                  : "Continue with Google"}
             </span>
           </button>
           <button

@@ -9,7 +9,12 @@ import type {
   SendChatMessageRequest,
 } from "../transport-types";
 import type { ChatStreamStatus } from "../types";
-import { createAbortError, request, resolveApiUrl } from "../api-client";
+import {
+  createAbortError,
+  createApiRequestInit,
+  request,
+  resolveApiUrl,
+} from "../api-client";
 
 type ChatStreamHandlers = {
   onStatus?: (status: ChatStreamStatus) => void;
@@ -209,12 +214,15 @@ async function streamChatReply(
   init: RequestInit,
   handlers: ChatStreamHandlers,
 ) {
+  const requestInit = await createApiRequestInit(init, {
+    includeJsonContentType: Boolean(init.body),
+  });
+  const headers = new Headers(requestInit.headers);
+  headers.set("Accept", "text/event-stream");
+
   const response = await fetch(resolveApiUrl(path), {
-    headers: {
-      Accept: "text/event-stream",
-      ...(init.body ? { "Content-Type": "application/json" } : {}),
-    },
-    ...init,
+    ...requestInit,
+    headers,
   });
 
   if (!response.ok) {

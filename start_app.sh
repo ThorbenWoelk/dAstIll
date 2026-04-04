@@ -21,9 +21,12 @@ frontend_port=${FRONTEND_PORT:-3543}
 backend_port=${BACKEND_PORT:-3544}
 docs_port=${DOCS_PORT:-4173}
 ports=($frontend_port $backend_port $docs_port)
+mobile_log_file="mobile.log"
+emulator_log_file="emulator.log"
 script_path=${0:A}
 repo_root=${script_path:h}
 link_shared_env_script="${repo_root}/scripts/link_shared_env.sh"
+end_app_script="${repo_root}/end_app.sh"
 if [[ -n "${DASTILL_ENV_DIR:-}" ]]; then
 	shared_env_dir="$DASTILL_ENV_DIR"
 elif [[ -n "${XDG_CONFIG_HOME:-}" ]]; then
@@ -36,6 +39,160 @@ fi
 shared_backend_env_file="${shared_env_dir}/backend.env"
 shared_frontend_env_file="${shared_env_dir}/frontend.env"
 typeset -gA initial_env_keys
+
+resolve_adb_command() {
+	if command -v adb >/dev/null 2>&1; then
+		command -v adb
+		return 0
+	fi
+
+	local candidates=(
+		"${ANDROID_HOME:-}/platform-tools/adb"
+		"${HOME:-}/Library/Android/sdk/platform-tools/adb"
+	)
+
+	local candidate
+	for candidate in "${candidates[@]}"; do
+		if [[ -n "$candidate" && -x "$candidate" ]]; then
+			printf '%s' "$candidate"
+			return 0
+		fi
+	done
+
+	return 1
+}
+
+resolve_java_home() {
+	local candidates=(
+		"${JAVA_HOME:-}"
+		"/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+	)
+
+	local candidate
+	for candidate in "${candidates[@]}"; do
+		if [[ -n "$candidate" && -x "$candidate/bin/java" ]]; then
+			printf '%s' "$candidate"
+			return 0
+		fi
+	done
+
+	return 1
+}
+
+resolve_android_home() {
+	local candidates=(
+		"${ANDROID_HOME:-}"
+		"${HOME:-}/Library/Android/sdk"
+	)
+
+	local candidate
+	for candidate in "${candidates[@]}"; do
+		if [[ -n "$candidate" && -d "$candidate" ]]; then
+			printf '%s' "$candidate"
+			return 0
+		fi
+	done
+
+	return 1
+}
+
+resolve_ndk_home() {
+	if [[ -n "${NDK_HOME:-}" && -d "${NDK_HOME}" ]]; then
+		printf '%s' "$NDK_HOME"
+		return 0
+	fi
+
+	local android_home
+	if ! android_home=$(resolve_android_home); then
+		return 1
+	fi
+
+	local ndk_root="${android_home}/ndk"
+	if [[ ! -d "$ndk_root" ]]; then
+		return 1
+	fi
+
+	ls -1d "$ndk_root"/* 2>/dev/null | sort -V | tail -n 1
+}
+
+prepare_android_toolchain_env() {
+	local resolved_java_home=""
+	local resolved_android_home=""
+	local resolved_ndk_home=""
+
+	if resolved_java_home=$(resolve_java_home); then
+		export JAVA_HOME="$resolved_java_home"
+	fi
+	if resolved_android_home=$(resolve_android_home); then
+		export ANDROID_HOME="$resolved_android_home"
+	fi
+	if resolved_ndk_home=$(resolve_ndk_home); then
+		export NDK_HOME="$resolved_ndk_home"
+	fi
+}
+
+resolve_emulator_command() {
+	if command -v emulator >/dev/null 2>&1; then
+		command -v emulator
+		return 0
+	fi
+
+	local candidates=(
+		"${ANDROID_HOME:-}/emulator/emulator"
+		"${HOME:-}/Library/Android/sdk/emulator/emulator"
+	)
+
+	local candidate
+	for candidate in "${candidates[@]}"; do
+		if [[ -n "$candidate" && -x "$candidate" ]]; then
+			printf '%s' "$candidate"
+			return 0
+		fi
+	done
+
+	return 1
+}
+
+first_available_avd() {
+	local emulator_command
+	if ! emulator_command=$(resolve_emulator_command); then
+		return 1
+	fi
+
+	"$emulator_command" -list-avds 2>/dev/null | awk 'NF { print; exit }'
+}
+
+connected_android_devices() {
+	local adb_command
+	if ! adb_command=$(resolve_adb_command); then
+		return 1
+	fi
+
+	"$adb_command" devices 2>/dev/null | awk 'NR > 1 && $2 == "device" { print $1 }'
+}
+
+setup_adb_reverse() {
+	local adb_command
+	if ! adb_command=$(resolve_adb_command); then
+		return 1
+	fi
+
+	local connected_devices
+	connected_devices=$(connected_android_devices || true)
+	if [[ -z "$connected_devices" ]]; then
+		return 1
+	fi
+
+	local ports_to_reverse=("$frontend_port" "$backend_port" "$docs_port")
+	local device
+	for device in ${(f)connected_devices}; do
+		[[ -z "$device" ]] && continue
+		local port
+		for port in "${ports_to_reverse[@]}"; do
+			"$adb_command" -s "$device" reverse "tcp:${port}" "tcp:${port}" >/dev/null 2>&1 || true
+		done
+	done
+}
 
 process_is_running() {
 	local pid=$1
@@ -243,13 +400,7 @@ start_backend() {
 start_frontend() {
 	prepare_frontend_env
 	pushd frontend >/dev/null
-	local backend_proxy_token
-	backend_proxy_token=$(resolve_env_value "BACKEND_PROXY_TOKEN" "../backend/.env" "$shared_backend_env_file")
-	if [[ -z "$backend_proxy_token" ]]; then
-		backend_proxy_token="local-dev-backend-proxy-token"
-	fi
-	BACKEND_API_BASE="http://localhost:$backend_port" \
-		BACKEND_PROXY_TOKEN="$backend_proxy_token" \
+	VITE_API_BASE="http://localhost:$backend_port" \
 		bun --no-env-file run dev -- --host 0.0.0.0 --port $frontend_port > >(tee ../frontend.log) 2>&1 &
 	frontend_pid=$!
 	popd >/dev/null
@@ -257,21 +408,115 @@ start_frontend() {
 
 start_docs() {
 	pushd docs >/dev/null
-	./node_modules/.bin/vitepress dev . --host 0.0.0.0 --port $docs_port > >(tee ../docs.log) 2>&1 &
+	if [[ ! -d node_modules ]]; then
+		echo "Docs dependencies missing; running bun install"
+		bun install --frozen-lockfile
+	fi
+	bun run dev > >(tee ../docs.log) 2>&1 &
 	docs_pid=$!
 	popd >/dev/null
 }
 
-cleanup() {
-	set +e
-	for port in "${ports[@]}"; do
-		pids=$(lsof -ti :"$port" 2>/dev/null)
-		if [[ -n "$pids" ]]; then
-			echo "Killing processes on port $port: $pids"
-			echo "$pids" | xargs kill -9 2>/dev/null || true
+android_device_connected() {
+	connected_android_devices | grep -q .
+}
+
+wait_for_android_device() {
+	local max_retries=${1:-60}
+	local attempt=1
+
+	while (( attempt <= max_retries )); do
+		if android_device_connected; then
+			return 0
 		fi
+		sleep 2
+		((attempt++))
 	done
-	set -e
+
+	return 1
+}
+
+start_emulator_if_needed() {
+	if android_device_connected; then
+		return 0
+	fi
+
+	local emulator_command
+	if ! emulator_command=$(resolve_emulator_command); then
+		echo "Mobile shell: emulator binary not found, skipping"
+		return 1
+	fi
+
+	local avd_name=${START_APP_ANDROID_AVD:-}
+	if [[ -z "$avd_name" ]]; then
+		avd_name=$(first_available_avd || true)
+	fi
+
+	if [[ -z "$avd_name" ]]; then
+		echo "Mobile shell: no Android device/emulator detected and no AVD is available, skipping"
+		return 1
+	fi
+
+	echo "Mobile shell: starting Android emulator '$avd_name' (log: $emulator_log_file)"
+	"$emulator_command" -avd "$avd_name" > >(tee "$emulator_log_file") 2>&1 &
+	emulator_pid=$!
+
+	if ! wait_for_android_device 90; then
+		echo "Mobile shell: emulator '$avd_name' did not become available"
+		return 1
+	fi
+
+	return 0
+}
+
+resolve_tauri_android_command() {
+	if cargo tauri --version >/dev/null 2>&1; then
+		printf '%s' "cargo tauri android dev"
+		return 0
+	fi
+
+	if command -v bunx >/dev/null 2>&1; then
+		printf '%s' "bunx @tauri-apps/cli@latest android dev"
+		return 0
+	fi
+
+	return 1
+}
+
+start_mobile_shell() {
+	if [[ "${START_APP_SKIP_MOBILE:-}" == "1" || "${START_APP_SKIP_MOBILE:-}" == "true" || "${START_APP_SKIP_MOBILE:-}" == "TRUE" ]]; then
+		echo "Mobile shell: skipped via START_APP_SKIP_MOBILE"
+		return 0
+	fi
+
+	if [[ ! -d "${repo_root}/src-tauri" ]]; then
+		echo "Mobile shell: src-tauri not found, skipping"
+		return 0
+	fi
+
+	prepare_android_toolchain_env
+
+	if ! start_emulator_if_needed; then
+		return 0
+	fi
+
+	setup_adb_reverse || true
+
+	local tauri_command
+	if ! tauri_command=$(resolve_tauri_android_command); then
+		echo "Mobile shell: neither 'cargo tauri' nor 'bunx @tauri-apps/cli' is available, skipping"
+		return 0
+	fi
+
+	pushd "$repo_root" >/dev/null
+	eval "$tauri_command" > >(tee "$mobile_log_file") 2>&1 &
+	mobile_pid=$!
+	popd >/dev/null
+	echo "Starting Android shell (log: $mobile_log_file)"
+}
+
+cleanup() {
+	"$end_app_script" --quiet || true
 }
 
 check_ollama_models() {
@@ -380,7 +625,7 @@ PY
 	exit 0
 fi
 
-echo "Cleaning up old processes on ports $frontend_port, $backend_port, and $docs_port..."
+echo "Stopping any running dAstIll services before restart..."
 cleanup
 trap cleanup EXIT INT TERM
 
@@ -419,12 +664,10 @@ if ! wait_for_http "Frontend" "http://localhost:$frontend_port" "$frontend_pid";
 fi
 
 if ! require_http_status \
-	"Frontend workspace bootstrap" \
-	"http://localhost:$frontend_port/api/workspace/bootstrap?limit=20" \
+	"Backend workspace bootstrap" \
+	"http://localhost:$backend_port/api/workspace/bootstrap?limit=20" \
 	"200"; then
-	echo "Frontend is up, but the proxied workspace bootstrap request failed. Last frontend log lines:"
-	tail -n 80 frontend.log || true
-	echo "Last backend log lines:"
+	echo "Backend is up, but the workspace bootstrap request failed. Last backend log lines:"
 	tail -n 80 backend.log || true
 	exit 1
 fi
@@ -440,4 +683,10 @@ echo "- Frontend: http://localhost:$frontend_port"
 echo "- Backend:  http://localhost:$backend_port"
 echo "- Docs:     http://localhost:$docs_port"
 
-wait $backend_pid $frontend_pid $docs_pid
+start_mobile_shell
+
+if [[ -n "${mobile_pid:-}" ]]; then
+	wait $backend_pid $frontend_pid $docs_pid $mobile_pid
+else
+	wait $backend_pid $frontend_pid $docs_pid
+fi

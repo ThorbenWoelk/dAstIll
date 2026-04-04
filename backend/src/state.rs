@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Instant;
 
 use tokio::sync::{Mutex, RwLock};
 
@@ -30,6 +31,13 @@ impl ActiveChatKey {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct MobileAuthHandoff {
+    pub created_at: Instant,
+    pub google_id_token: Option<String>,
+    pub google_access_token: Option<String>,
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub db: Store,
@@ -51,6 +59,7 @@ pub struct AppState {
     pub active_replies: Arc<Mutex<HashMap<ActiveChatKey, ActiveChatHandle>>>,
     pub conversation_store_lock: Arc<Mutex<()>>,
     pub anonymous_chat_quota_lock: Arc<Mutex<()>>,
+    pub mobile_auth_handoffs: Arc<Mutex<HashMap<String, MobileAuthHandoff>>>,
     pub cloud_cooldown: Arc<CloudCooldown>,
     pub youtube_quota_cooldown: Arc<YouTubeQuotaCooldown>,
     pub transcript_cooldown: Arc<TranscriptCooldown>,

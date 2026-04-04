@@ -3,6 +3,7 @@ pub mod aws_auth;
 pub mod cache_headers;
 pub mod config;
 pub mod db;
+pub mod firebase_auth;
 pub mod handlers;
 pub mod local_env;
 pub mod logging;

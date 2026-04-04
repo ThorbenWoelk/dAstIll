@@ -139,11 +139,13 @@ Terraform, Google Cloud Run, AWS IAM (Workload Identity Federation), Google Secr
    For local hybrid semantic search, configure `OLLAMA_EMBEDDING_MODEL` and leave `SEARCH_SEMANTIC_ENABLED` unset or set it to `true`.
 
 4. **Start the Application**:
-   You can start the frontend, backend, and docs simultaneously using the provided startup script:
+   You can start the frontend, backend, docs, and, when available, the Android shell using the provided startup script:
 
    ```bash
    ./start_app.sh
    ```
+
+   `./start_app.sh` first shuts down any already-running dAstIll services, then starts the full stack again.
 
    To start the app in the background and return your shell immediately:
 
@@ -153,8 +155,98 @@ Terraform, Google Cloud Run, AWS IAM (Workload Identity Federation), Google Secr
 
    Detached mode starts a background supervisor, performs the usual health checks in the background, and writes its startup output to `start_app.log`. The service logs remain in `backend.log`, `frontend.log`, and `docs.log`.
 
+   To stop everything cleanly:
+
+   ```bash
+   ./end_app.sh
+   ```
+
 5. **Sign-In And Roles Locally**:
    Anonymous browsing remains available by default. Signed-in users use the Firebase-backed `/login` flow, and operator-only actions depend on the frontend server's `OPERATOR_EMAIL_ALLOWLIST`.
+
+## Tauri Android Development
+
+dAstIll now includes a Tauri v2 shell for Android in [`src-tauri/`](./src-tauri). The Android app uses the same frontend bundle and talks directly to the Rust backend with Firebase bearer tokens.
+
+Install the Tauri CLI once on your machine:
+
+```bash
+cargo install tauri-cli --version "^2"
+```
+
+If you do not want to install it globally, use `bunx @tauri-apps/cli@latest ...` instead of `cargo tauri ...`.
+
+### Tooling
+
+You need:
+
+- Android Studio
+- Java 17+
+- Android SDK
+- Android NDK
+- Rust Android targets
+
+Typical setup:
+
+```bash
+rustup target add aarch64-linux-android armv7-linux-androideabi \
+  i686-linux-android x86_64-linux-android
+
+export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+export NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
+```
+
+### Run On Android
+
+If an Android emulator or device is connected, `./start_app.sh` launches the mobile shell automatically after the backend, frontend, and docs are ready.
+
+```bash
+./start_app.sh
+```
+
+To skip that auto-launch:
+
+```bash
+START_APP_SKIP_MOBILE=1 ./start_app.sh
+```
+
+If you want to run the shell manually instead:
+
+```bash
+cargo tauri android dev
+```
+
+### Build An APK
+
+Debug APK:
+
+```bash
+cargo tauri android build -- --apk --debug
+```
+
+Release APK:
+
+```bash
+cargo tauri android build -- --apk
+```
+
+APK output:
+
+```text
+src-tauri/gen/android/app/build/outputs/apk/
+```
+
+### What To Verify
+
+- The app launches and loads data from the backend.
+- Anonymous mode works.
+- Google sign-in works in the Android shell.
+- Transcript text selection shows Android native `Highlight` and `Correct` actions.
+- Highlight creation and vocabulary correction still work.
+- Existing highlight deletion still works.
+
+Detailed mobile steps live in [docs/local-development.md](./docs/local-development.md) and [docs/mobile-tauri.md](./docs/mobile-tauri.md).
 
 ## License
 

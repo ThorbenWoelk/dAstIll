@@ -37,13 +37,16 @@ pub struct ChatRuntimeConfig {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SecurityRuntimeConfig {
     pub proxy_token: String,
+    pub firebase_project_id: String,
     pub allowed_origins: Vec<String>,
+    pub operator_email_allowlist: Vec<String>,
     pub default_seeded_channel_id: String,
     pub baseline_rate_limit_per_minute: u32,
     pub expensive_rate_limit_per_minute: u32,
     pub anonymous_chat_quota: u32,
 }
 
+const LOCAL_DEV_FIREBASE_PROJECT_ID: &str = "demo-dastill";
 const LOCAL_DEV_DEFAULT_SEEDED_CHANNEL_ID: &str = "UCbRP3c757lWg9M-U7TyEkXA";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -153,8 +156,19 @@ impl SecurityRuntimeConfig {
                 "BACKEND_PROXY_TOKEN",
                 "local-dev-backend-proxy-token",
             )?,
+            firebase_project_id: optional_env("FIREBASE_PROJECT_ID")
+                .or_else(|| optional_env("PUBLIC_FIREBASE_PROJECT_ID"))
+                .or_else(|| optional_env("GCP_PROJECT_ID"))
+                .or_else(|| optional_env("GOOGLE_CLOUD_PROJECT"))
+                .unwrap_or_else(|| LOCAL_DEV_FIREBASE_PROJECT_ID.to_string()),
             allowed_origins: optional_csv_env("BACKEND_CORS_ALLOWED_ORIGINS")
                 .unwrap_or_else(default_backend_allowed_origins),
+            operator_email_allowlist: optional_csv_env("OPERATOR_EMAIL_ALLOWLIST")
+                .unwrap_or_default()
+                .into_iter()
+                .map(|email| email.trim().to_lowercase())
+                .filter(|email| !email.is_empty())
+                .collect(),
             // Release builds do not use `cfg!(debug_assertions)`; use the same default as local dev
             // when unset so Cloud Run and Docker do not require a duplicate env var.
             default_seeded_channel_id: optional_env("DEFAULT_SEEDED_CHANNEL_ID")
@@ -301,6 +315,9 @@ fn default_backend_allowed_origins() -> Vec<String> {
         "http://127.0.0.1:3000".to_string(),
         "http://localhost:3543".to_string(),
         "http://127.0.0.1:3543".to_string(),
+        "http://tauri.localhost".to_string(),
+        "https://tauri.localhost".to_string(),
+        "tauri://localhost".to_string(),
     ]
 }
 
@@ -328,6 +345,11 @@ mod tests {
     const SECURITY_ENV_KEYS: &[&str] = &[
         "BACKEND_PROXY_TOKEN",
         "BACKEND_CORS_ALLOWED_ORIGINS",
+        "FIREBASE_PROJECT_ID",
+        "PUBLIC_FIREBASE_PROJECT_ID",
+        "GCP_PROJECT_ID",
+        "GOOGLE_CLOUD_PROJECT",
+        "OPERATOR_EMAIL_ALLOWLIST",
         "DEFAULT_SEEDED_CHANNEL_ID",
         "BASELINE_RATE_LIMIT_PER_MINUTE",
         "EXPENSIVE_RATE_LIMIT_PER_MINUTE",
@@ -466,12 +488,18 @@ mod tests {
         let _reset = EnvReset::capture(SECURITY_ENV_KEYS);
         remove_env("BACKEND_PROXY_TOKEN");
         remove_env("BACKEND_CORS_ALLOWED_ORIGINS");
+        remove_env("FIREBASE_PROJECT_ID");
+        remove_env("PUBLIC_FIREBASE_PROJECT_ID");
+        remove_env("GCP_PROJECT_ID");
+        remove_env("GOOGLE_CLOUD_PROJECT");
+        remove_env("OPERATOR_EMAIL_ALLOWLIST");
         remove_env("DEFAULT_SEEDED_CHANNEL_ID");
         remove_env("BASELINE_RATE_LIMIT_PER_MINUTE");
         remove_env("EXPENSIVE_RATE_LIMIT_PER_MINUTE");
 
         let config = SecurityRuntimeConfig::from_env().expect("security config");
         assert_eq!(config.proxy_token, "local-dev-backend-proxy-token");
+        assert_eq!(config.firebase_project_id, "demo-dastill");
         assert_eq!(config.default_seeded_channel_id, "UCbRP3c757lWg9M-U7TyEkXA");
         assert_eq!(config.baseline_rate_limit_per_minute, 600);
         assert_eq!(config.expensive_rate_limit_per_minute, 120);
@@ -496,6 +524,11 @@ mod tests {
             "BACKEND_CORS_ALLOWED_ORIGINS",
             "https://app.example.com,https://ops.example.com",
         );
+        set_env("FIREBASE_PROJECT_ID", "prod-project");
+        set_env(
+            "OPERATOR_EMAIL_ALLOWLIST",
+            "operator@example.com, OWNER@example.com ",
+        );
         set_env("DEFAULT_SEEDED_CHANNEL_ID", "seeded-channel-123");
         set_env("BASELINE_RATE_LIMIT_PER_MINUTE", "90");
         set_env("EXPENSIVE_RATE_LIMIT_PER_MINUTE", "7");
@@ -503,12 +536,20 @@ mod tests {
 
         let config = SecurityRuntimeConfig::from_env().expect("security config");
         assert_eq!(config.proxy_token, "proxy-secret");
+        assert_eq!(config.firebase_project_id, "prod-project");
         assert_eq!(config.default_seeded_channel_id, "seeded-channel-123");
         assert_eq!(
             config.allowed_origins,
             vec![
                 "https://app.example.com".to_string(),
                 "https://ops.example.com".to_string()
+            ]
+        );
+        assert_eq!(
+            config.operator_email_allowlist,
+            vec![
+                "operator@example.com".to_string(),
+                "owner@example.com".to_string()
             ]
         );
         assert_eq!(config.baseline_rate_limit_per_minute, 90);
