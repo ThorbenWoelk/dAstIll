@@ -17,9 +17,7 @@ use dastill::db::init_store;
 use dastill::handlers::{
     analytics, auth, channels, chat, content, highlights, preferences, search, videos,
 };
-use dastill::local_env::{
-    clear_missing_google_application_credentials, load_dotenv_preserving_existing,
-};
+use dastill::local_env::load_dotenv_preserving_existing;
 use dastill::logging::{HumanReadableEventFormatter, should_send_to_logfire};
 use dastill::read_cache::ReadCache;
 use dastill::search_progress::SearchProgress;
@@ -41,12 +39,8 @@ use dastill::workers::{
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Install a process-wide rustls provider before any TLS clients are created.
-    // This build enables `ring` directly and `aws-lc-rs` transitively, so rustls 0.23
-    // cannot always infer a unique default provider at runtime.
-    // We pin `ring` here to keep the Firestore/gcloud TLS path deterministic and aligned
-    // with the legacy AWS rustls 0.21 stack that is still present in the dependency graph.
-    rustls::crypto::ring::default_provider()
+    // Install a process-wide rustls crypto provider before any TLS clients are created.
+    rustls::crypto::aws_lc_rs::default_provider()
         .install_default()
         .expect("failed to install rustls crypto provider");
 
@@ -120,14 +114,10 @@ async fn main() -> anyhow::Result<()> {
         None
     };
 
-    if clear_missing_google_application_credentials() {
-        tracing::warn!(
-            "GOOGLE_APPLICATION_CREDENTIALS points to a missing file - falling back to application-default credentials"
-        );
-    }
-
     let search_runtime = SearchRuntimeConfig::from_env();
-    let turso_runtime = TursoRuntimeConfig::from_env().map_err(|err| anyhow::anyhow!(err))?;
+    let turso_runtime = TursoRuntimeConfig::from_env()
+        .map_err(|err| anyhow::anyhow!(err))?
+        .ok_or_else(|| anyhow::anyhow!("TURSO_DB_URL and TURSO_AUTH_TOKEN must be set"))?;
     let chat_runtime = ChatRuntimeConfig::from_env();
     let databricks_runtime =
         DatabricksRuntimeConfig::from_env().map_err(|err| anyhow::anyhow!(err))?;
@@ -175,16 +165,37 @@ async fn main() -> anyhow::Result<()> {
     }
     let s3v_client = aws_sdk_s3vectors::Client::from_conf(s3v_config_builder.build());
 
-    let gcp_project_id = std::env::var("GCP_PROJECT_ID")
-        .map_err(|_| anyhow::anyhow!("GCP_PROJECT_ID must be set"))?;
-    tracing::info!(project = %gcp_project_id, "connecting to Firestore");
-    let firestore_db = firestore::FirestoreDb::new(&gcp_project_id).await?;
+    // Build a single Turso embedded replica shared by Store and FtsIndex.
+    let fts_dir = std::env::temp_dir().join("dastill-search-index");
+    std::fs::create_dir_all(&fts_dir)?;
+    let turso_db_path = fts_dir.join("search-fts.db");
+    let turso_db = libsql::Builder::new_remote_replica(
+        &turso_db_path,
+        turso_runtime.db_url.clone(),
+        turso_runtime.auth_token.clone(),
+    )
+    .sync_interval(std::time::Duration::from_secs(30))
+    .build()
+    .await
+    .map_err(|err| anyhow::anyhow!("failed to build Turso embedded replica: {err}"))?;
+    turso_db
+        .sync()
+        .await
+        .map_err(|err| anyhow::anyhow!("failed to initial-sync Turso replica: {err}"))?;
+    tracing::info!("Turso embedded replica ready");
+
+    let turso_conn = turso_db
+        .connect()
+        .map_err(|err| anyhow::anyhow!("failed to connect to Turso: {err}"))?;
+    dastill::db::turso_schema::initialize_turso_schema(&turso_conn)
+        .await
+        .map_err(|err| anyhow::anyhow!(err))?;
 
     let read_cache = ReadCache::default();
     let pool = init_store(
         s3_client,
         s3v_client,
-        firestore_db,
+        turso_conn,
         data_bucket,
         vector_bucket,
         vector_index,
@@ -192,15 +203,6 @@ async fn main() -> anyhow::Result<()> {
     )
     .await
     .map_err(|e| anyhow::anyhow!(e))?;
-    let pruned_malformed_videos = dastill::db::prune_malformed_video_documents(&pool)
-        .await
-        .map_err(|e| anyhow::anyhow!(e))?;
-    if pruned_malformed_videos > 0 {
-        tracing::warn!(
-            pruned_count = pruned_malformed_videos,
-            "pruned malformed Firestore video documents; refresh and gap workers will repopulate them"
-        );
-    }
 
     let client = build_http_client();
     let analytics = databricks_runtime
@@ -305,15 +307,8 @@ async fn main() -> anyhow::Result<()> {
         search.semantic_enabled(),
     ));
 
-    let fts_dir = std::env::temp_dir().join("dastill-search-index");
-    let fts_remote = turso_runtime
-        .as_ref()
-        .map(|config| dastill::services::fts::FtsRemoteConfig {
-            url: config.db_url.clone(),
-            auth_token: config.auth_token.clone(),
-        });
     let fts = Arc::new(
-        FtsIndex::new_in_dir(fts_dir.clone(), fts_remote)
+        FtsIndex::new_with_db(turso_db, turso_db_path)
             .await
             .expect("failed to create Turso-backed FTS index"),
     );

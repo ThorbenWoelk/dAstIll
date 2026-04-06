@@ -71,7 +71,7 @@ pub type TranscriptCooldown = Cooldown;
 
 /// Tracks the last time a real user request was received.
 /// Workers check `is_idle()` to skip cycles when nobody is using the app,
-/// eliminating Firestore reads during idle periods.
+/// eliminating unnecessary reads during idle periods.
 pub struct UserActivity {
     last_active_epoch_ms: AtomicU64,
     idle_timeout: Duration,

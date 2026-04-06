@@ -67,6 +67,20 @@ impl FtsIndex {
         }))))
     }
 
+    /// Build from an already-opened `Database` (shares the same Turso replica).
+    pub async fn new_with_db(db: Database, db_path: PathBuf) -> Result<Self, String> {
+        let conn = db
+            .connect()
+            .map_err(|err| format!("failed to connect to shared Turso database for FTS: {err}"))?;
+        initialize_schema(&conn).await?;
+
+        Ok(Self(Arc::new(RwLock::new(FtsIndexInner {
+            _db: db,
+            conn,
+            db_path,
+        }))))
+    }
+
     /// Add or replace all chunks for a single video+source_kind pair.
     /// Deletes existing documents with the matching video_id + source_kind, then adds the new ones.
     pub async fn upsert_source(

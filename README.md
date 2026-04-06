@@ -47,7 +47,7 @@ The app header includes a `Docs` link. In local development it falls back to `ht
 
 ### Backend
 
-Rust, AWS S3, AWS S3 Vectors, Google Firestore, Ollama
+Rust, AWS S3, AWS S3 Vectors, Turso (libSQL), Ollama
 
 ### Infrastructure & Deployment
 
@@ -58,7 +58,7 @@ Terraform, Google Cloud Run, AWS IAM (Workload Identity Federation), Google Secr
 - [Rust](https://rustup.rs/)
 - [Bun](https://bun.sh/)
 - [Ollama](https://ollama.com/) (required for local AI models)
-- Google Cloud credentials for Firestore access, either via `GOOGLE_APPLICATION_CREDENTIALS` or `gcloud auth application-default login`
+- Turso database URL and auth token (`TURSO_DB_URL`, `TURSO_AUTH_TOKEN`)
 - AWS credentials with access to S3 and S3 Vectors (via `~/.aws/credentials` or environment variables)
 - An AWS S3 bucket for data storage and an S3 Vectors bucket for semantic search
 - YouTube Data API Key (optional)
@@ -93,10 +93,8 @@ Terraform, Google Cloud Run, AWS IAM (Workload Identity Federation), Google Secr
 
    ```env
    GCP_PROJECT_ID=your-gcp-project-id
-   # Optional: point to a Firestore service-account JSON for local development.
-   # If unset, the backend falls back to application default credentials from:
-   #   gcloud auth application-default login
-   # GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/service-account.json
+   TURSO_DB_URL=libsql://your-turso-database.turso.io
+   TURSO_AUTH_TOKEN=your-turso-auth-token
    AWS_REGION=eu-central-1
    S3_DATA_BUCKET=your-data-bucket
    S3_VECTOR_BUCKET=your-vectors-bucket
@@ -123,7 +121,6 @@ Terraform, Google Cloud Run, AWS IAM (Workload Identity Federation), Google Secr
 
    `OLLAMA_SUMMARY_MODEL` and `SUMMARY_EVALUATOR_MODEL` must be different. If they match, backend startup exits before serving requests so summary evaluation stays independent from summary generation.
    If `OLLAMA_URL` points to a remote Ollama endpoint instead of localhost, also set `OLLAMA_API_KEY`.
-   If `GOOGLE_APPLICATION_CREDENTIALS` points to a missing file, the backend falls back to application default credentials. If neither is valid, backend startup fails before `/api/health` becomes ready.
 
    If you run the frontend separately from `start_app.sh`, keep its local values in
    `~/.config/dastill/frontend.env` and run `./scripts/link_shared_env.sh` in each
