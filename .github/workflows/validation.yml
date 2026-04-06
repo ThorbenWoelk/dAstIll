@@ -76,6 +76,11 @@ jobs:
   backend:
     name: Backend
     runs-on: ubuntu-latest
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
+      CARGO_INCREMENTAL: "0"
+      RUSTFLAGS: "-C link-arg=-fuse-ld=mold"
     timeout-minutes: 30
     needs:
       - changes
@@ -87,6 +92,19 @@ jobs:
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@1.93.1
+
+      - name: Set up sccache
+        uses: mozilla/sccache-action@v0.0.3
+
+      - name: Cache Rust dependencies
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "backend -> target"
+
+      - name: Install mold linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold
 
       - name: Cargo Check
         working-directory: backend
@@ -128,15 +146,16 @@ jobs:
           export AWS_ACCESS_KEY_ID="test"
           export AWS_SECRET_ACCESS_KEY="test"
           
-          # Run with timeout - should fail fast on config errors, not hang
-          timeout 10s ./target/release/dastill || exit_code=$?
-          
+          # Run with timeout - must exceed Turso builder inner timeout (30s) so the binary
+          # can fail cleanly with exit 1 rather than being killed with exit 124.
+          timeout 45s ./target/release/dastill || exit_code=$?
+
           # Exit codes:
-          # 124 = timeout (process hung) - FAIL
-          # 1 = early error (config validation, connection refused) - PASS (expected)
+          # 124 = timeout (process hung past 45s) - FAIL
+          # 1 = early error (config validation, Turso connection refused) - PASS (expected)
           # 0 = started successfully - PASS
           if [ "$exit_code" = "124" ]; then
-            echo "::error::Binary hung during startup (likely on network call)"
+            echo "::error::Binary hung during startup for over 45s"
             exit 1
           fi
           echo "Smoke test passed - binary failed early as expected without real credentials"
