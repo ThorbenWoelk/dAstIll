@@ -37,7 +37,7 @@ if [[ -n "$FRONTEND_STAGED" ]]; then
     fi
 fi
 
-if [[ -n "$FRONTEND_PKGS" ]]; then
+if [[ -n "$FRONTEND_STAGED" || -n "$FRONTEND_PKGS" ]]; then
     echo "🔒 Running frontend bun audit..."
     if ! (cd frontend && bun audit --production); then
         echo "❌ Frontend audit failed"
@@ -61,7 +61,7 @@ if [[ -n "$BACKEND_STAGED" ]]; then
     fi
 fi
 
-if [[ -n "$BACKEND_PKGS" ]]; then
+if [[ -n "$BACKEND_STAGED" || -n "$BACKEND_PKGS" ]]; then
     echo "🔒 Running backend cargo audit..."
     if ! (cd backend && cargo audit); then
         echo "❌ Backend audit failed"
@@ -100,16 +100,16 @@ if [[ -n "$BACKEND_STAGED" ]] && git diff --cached --name-only | grep -qE 'backe
     export AWS_ACCESS_KEY_ID="test"
     export AWS_SECRET_ACCESS_KEY="test"
     
-    # Run with timeout - should fail fast on config errors, not hang
-    timeout 10s ./backend/target/release/dastill 2>&1 || exit_code=$?
-    
+    # Run with timeout - must exceed Turso builder inner timeout (30s) so the binary
+    # can fail cleanly with exit 1 rather than being killed with exit 124.
+    timeout 45s ./backend/target/release/dastill 2>&1 || exit_code=$?
+
     # Exit codes:
-    # 124 = timeout (process hung) - FAIL
-    # 1 = early error (config validation, connection refused) - PASS (expected)
+    # 124 = timeout (process hung past 45s) - FAIL
+    # 1 = early error (config validation, Turso connection refused) - PASS (expected)
     # 0 = started successfully - PASS
     if [[ "$exit_code" == "124" ]]; then
-        echo "❌ Backend startup hung (likely waiting for network)"
-        echo "   Check for missing timeouts in startup code"
+        echo "❌ Backend startup hung for over 45s"
         exit 1
     fi
     
