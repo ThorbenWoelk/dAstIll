@@ -1,33 +1,26 @@
 # Build stage for the Rust backend (mirror.gcr.io reduces Docker Hub flakes on CI runners)
-FROM mirror.gcr.io/library/rust:1.93.1-slim-bookworm AS builder
-
+FROM mirror.gcr.io/library/rust:1.93.1-slim-bookworm AS chef
 WORKDIR /usr/src/app
+RUN cargo install --locked cargo-chef
 
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS builder
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy dependency manifests first for layer caching
-COPY Cargo.toml Cargo.lock ./
+COPY --from=planner /usr/src/app/recipe.json recipe.json
+# Build dependencies - this is the caching Docker layer!
+RUN cargo chef cook --release --recipe-path recipe.json
 
-# Create dummy lib and main to establish dependency graph
-# This allows cargo to fetch and cache dependencies before copying source
-RUN mkdir -p src/bin && \
-    echo "" > src/lib.rs && \
-    echo "fn main() {}" > src/main.rs && \
-    for f in chat_capability_eval migrate_user_highlights purge_bad_transcripts set_earliest_sync_dates; do \
-        echo "fn main() {}" > "src/bin/$f.rs"; \
-    done && \
-    cargo fetch --locked
-
-# Remove dummy source, copy actual source
-RUN rm -rf src
-COPY src ./src
-
-# Build application (only recompiles changed source)
-RUN cargo build --release
+# Build application
+COPY . .
+RUN cargo build --release --bin dastill
 
 # Runtime stage
 FROM mirror.gcr.io/library/node:22.20.0-bookworm-slim
