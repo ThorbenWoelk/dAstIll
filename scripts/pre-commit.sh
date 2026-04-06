@@ -14,7 +14,7 @@ if ! git rev-parse --git-dir > /dev/null 2>&1; then
 fi
 
 # Frontend checks
-FRONTEND_STAGED=$(git diff --cached --name-only | grep -E '^frontend/.*\.(ts|svelte|css)$' || true)
+FRONTEND_STAGED=$(git diff --cached --name-only | grep -E '^frontend/.*\.(ts|js|svelte|css|html)$' || true)
 FRONTEND_PKGS=$(git diff --cached --name-only | grep -E '^frontend/(package\.json|bun\.lock|bun\.lockb)$' || true)
 
 if [[ -n "$FRONTEND_STAGED" ]]; then
