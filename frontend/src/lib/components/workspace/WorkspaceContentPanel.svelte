@@ -113,7 +113,7 @@
 
   let mobileVisible = $derived(selection.mobileVisible);
   let mobileBackInTopBar = $derived(selection.mobileBackInTopBar ?? false);
-  /** Mobile uses `AppBottomNav` for video actions; this strip is desktop-only (see `max-lg:hidden`). */
+  /** Mobile hides the desktop video action strip (`max-lg:hidden`). */
   let selectedChannel = $derived(selection.selectedChannel);
   let selectedVideo = $derived(selection.selectedVideo);
   let selectedVideoId = $derived(selection.selectedVideoId);

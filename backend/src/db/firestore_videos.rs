@@ -354,10 +354,66 @@ pub async fn fs_bulk_insert_videos(store: &Store, videos: Vec<Video>) -> Result<
         return Ok(0);
     }
 
+    // Batch-fetch existing documents to avoid N individual Firestore reads.
+    let ids: Vec<&str> = videos.iter().map(|v| v.id.as_str()).collect();
+    let mut existing_map = std::collections::HashMap::new();
+    for chunk in ids.chunks(30) {
+        let chunk_ids: Vec<&str> = chunk.to_vec();
+        use tokio_stream::StreamExt;
+        let mut stream = store
+            .firestore
+            .fluent()
+            .select()
+            .by_id_in(COLLECTION)
+            .batch(chunk_ids)
+            .await?;
+        while let Some((_id, maybe_document)) = stream.next().await {
+            let Some(document) = maybe_document else {
+                continue;
+            };
+            if let Some(video) = deserialize_video_document_lossy(&document, "bulk_insert_prefetch") {
+                existing_map.insert(video.id.clone(), video);
+            }
+        }
+    }
+
+    // Only write documents that are new or need hydration from storage.
     let mut inserted = 0usize;
     for video in &videos {
-        let outcome = fs_insert_video(store, video).await?;
+        let (merged, outcome) = if let Some(existing) = existing_map.get(&video.id) {
+            let merged = Video {
+                id: video.id.clone(),
+                channel_id: video.channel_id.clone(),
+                title: video.title.clone(),
+                thumbnail_url: video.thumbnail_url.clone(),
+                published_at: video.published_at,
+                is_short: video.is_short,
+                transcript_status: existing.transcript_status,
+                summary_status: existing.summary_status,
+                acknowledged: existing.acknowledged,
+                retry_count: existing.retry_count,
+                quality_score: existing.quality_score,
+            };
+            (merged, super::VideoInsertOutcome::Existing)
+        } else {
+            (
+                hydrate_inserted_video_from_storage(store, video).await?,
+                super::VideoInsertOutcome::Inserted,
+            )
+        };
+
+        store
+            .firestore
+            .fluent()
+            .update()
+            .in_col(COLLECTION)
+            .document_id(&merged.id)
+            .object(&merged)
+            .execute::<Video>()
+            .await?;
+
         if outcome == super::VideoInsertOutcome::Inserted {
+            tracing::info!(video_id = %video.id, title = %video.title, "inserted new video (firestore bulk)");
             inserted += 1;
         }
     }

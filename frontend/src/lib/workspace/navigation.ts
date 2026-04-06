@@ -26,15 +26,14 @@ export function getAdjacentContentMode(
   return WORKSPACE_CONTENT_MODE_ORDER[targetIndex] ?? null;
 }
 
-/** Letter shown on content tabs after G (L = tab Highlights; G H stays app Highlights page). */
+/** Shortcut hint shown on content tabs while holding Cmd/Ctrl. */
 export function goHintKeyForWorkspaceContentMode(
   mode: WorkspaceContentMode,
-): string {
-  const keys: Record<WorkspaceContentMode, string> = {
-    info: "I",
-    summary: "S",
-    highlights: "L",
-    transcript: "T",
+): string | undefined {
+  const keys: Partial<Record<WorkspaceContentMode, string>> = {
+    info: "7",
+    summary: "8",
+    transcript: "9",
   };
   return keys[mode];
 }

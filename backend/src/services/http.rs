@@ -5,6 +5,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 const CLOUD_COOLDOWN_DURATION: Duration = Duration::from_secs(3600);
 const YOUTUBE_QUOTA_COOLDOWN_DURATION: Duration = Duration::from_secs(24 * 3600);
 const TRANSCRIPT_COOLDOWN_DURATION: Duration = Duration::from_secs(60 * 60);
+const DEFAULT_USER_IDLE_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 
 /// Generic cooldown timer backed by an atomic epoch-ms timestamp.
 /// Once activated, `is_active()` returns true until `duration` elapses.
@@ -67,6 +68,56 @@ impl Cooldown {
 pub type CloudCooldown = Cooldown;
 pub type YouTubeQuotaCooldown = Cooldown;
 pub type TranscriptCooldown = Cooldown;
+
+/// Tracks the last time a real user request was received.
+/// Workers check `is_idle()` to skip cycles when nobody is using the app,
+/// eliminating Firestore reads during idle periods.
+pub struct UserActivity {
+    last_active_epoch_ms: AtomicU64,
+    idle_timeout: Duration,
+}
+
+impl UserActivity {
+    pub fn new(idle_timeout: Duration) -> Self {
+        // Start as idle — workers wait until the first real request arrives.
+        Self {
+            last_active_epoch_ms: AtomicU64::new(0),
+            idle_timeout,
+        }
+    }
+
+    pub fn from_env() -> Self {
+        let timeout = std::env::var("USER_IDLE_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .map(Duration::from_secs)
+            .unwrap_or(DEFAULT_USER_IDLE_TIMEOUT);
+        Self::new(timeout)
+    }
+
+    /// Record that a user request just arrived.
+    pub fn touch(&self) {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        self.last_active_epoch_ms.store(now, Ordering::Relaxed);
+    }
+
+    /// Returns `true` when no user request has been seen within the idle timeout.
+    pub fn is_idle(&self) -> bool {
+        let last = self.last_active_epoch_ms.load(Ordering::Relaxed);
+        if last == 0 {
+            return true;
+        }
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        let elapsed_ms = now.saturating_sub(last);
+        elapsed_ms >= self.idle_timeout.as_millis() as u64
+    }
+}
 
 pub fn build_http_client() -> Client {
     ClientBuilder::new()

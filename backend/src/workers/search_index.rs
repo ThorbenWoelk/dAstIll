@@ -958,6 +958,12 @@ pub fn spawn_search_index_worker(state: AppState) {
             let mut backoff_state = PollBackoffState::default();
 
             loop {
+                if state.user_activity.is_idle() {
+                    tracing::debug!("search index worker skipped - no active user");
+                    sleep_with_backoff(SEARCH_INDEX_POLL_BACKOFF, &mut backoff_state, false).await;
+                    continue;
+                }
+
                 let mut had_activity = backfill_search_sources(&state).await;
                 had_activity |= process_pending_search_sources(&state).await;
                 had_activity |= prune_stale_search_rows(&state).await;

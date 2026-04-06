@@ -119,6 +119,10 @@ pub fn spawn_gap_scan_worker(state: AppState) {
 
         loop {
             sleep(CHANNEL_GAP_SCAN_INTERVAL).await;
+            if state.user_activity.is_idle() {
+                tracing::debug!("gap scan worker skipped - no active user");
+                continue;
+            }
             scan_all_channels_for_gaps(&state).await;
         }
     });

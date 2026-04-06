@@ -26,8 +26,8 @@ pub use chat::{ActiveChatHandle, ChatService, ReplyWorkflowRequest};
 pub use databricks::DatabricksSqlService;
 pub use fts::{FtsChunk, FtsIndex};
 pub use http::{
-    CloudCooldown, Cooldown, TranscriptCooldown, YouTubeQuotaCooldown, build_http_client,
-    is_cloud_model, is_rate_limited,
+    CloudCooldown, Cooldown, TranscriptCooldown, UserActivity, YouTubeQuotaCooldown,
+    build_http_client, is_cloud_model, is_rate_limited,
 };
 pub use ollama::{OllamaCore, OllamaPromptError};
 pub use openalex::{OpenAlexPublicationMaterial, OpenAlexService};

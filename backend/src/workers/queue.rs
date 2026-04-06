@@ -65,6 +65,12 @@ pub fn spawn_queue_worker(state: AppState) {
             }
 
             loop {
+                if state.user_activity.is_idle() {
+                    tracing::debug!("queue worker skipped - no active user");
+                    sleep_with_backoff(QUEUE_POLL_BACKOFF, &mut backoff_state, false).await;
+                    continue;
+                }
+
                 let queue = {
                     let conn = state.db.connect();
                     db::list_videos_for_queue_processing(

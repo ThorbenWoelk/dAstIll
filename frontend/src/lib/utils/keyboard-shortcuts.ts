@@ -73,34 +73,32 @@ export function buildShortcutManual(
           description: "Open shortcuts reference (when not typing in a field)",
         },
         {
-          keys: "G W",
-          description:
-            "Go to Workspace (press G to see hints, then W within a second)",
+          keys: `${mod} + 1`,
+          description: "Go to Workspace",
         },
         {
-          keys: "G Q",
+          keys: `${mod} + 2`,
           description: "Go to Queue",
         },
         {
-          keys: "G H",
+          keys: `${mod} + 3`,
           description: "Go to Highlights",
         },
         {
-          keys: "G C",
+          keys: `${mod} + 4`,
+          description: "Go to Vocabulary",
+        },
+        {
+          keys: `${mod} + 5`,
           description: "Go to Chat",
         },
         {
-          keys: "G D",
+          keys: `${mod} + 6`,
           description: "Open documentation in a new tab",
         },
         {
-          keys: "G M",
-          description:
-            "Focus section tabs (Tab or arrow keys to move between sections)",
-        },
-        {
-          keys: "G U",
-          description: "Open feature guide tour",
+          keys: `${mod} + ,`,
+          description: "Open settings",
         },
       ],
     },
@@ -120,21 +118,15 @@ export function buildShortcutManual(
           description: "Focus search bar (when not typing in a field)",
         },
         {
-          keys: "G I",
-          description:
-            "Switch video panel to Info (press G for hints, then I within a second)",
+          keys: `${mod} + 7`,
+          description: "Switch video panel to Info",
         },
         {
-          keys: "G S",
+          keys: `${mod} + 8`,
           description: "Switch video panel to Summary",
         },
         {
-          keys: "G L",
-          description:
-            "Switch video panel to Highlights (G H opens the Highlights page)",
-        },
-        {
-          keys: "G T",
+          keys: `${mod} + 9`,
           description: "Switch video panel to Transcript",
         },
       ],
@@ -194,11 +186,6 @@ export function buildShortcutManual(
       title: "Feature guide tour",
       rows: [
         {
-          keys: "G U",
-          description:
-            "Open feature guide (press G for hints, then U within a second)",
-        },
-        {
           keys: "Arrow left or Arrow up",
           description: "Previous step",
         },
@@ -215,27 +202,19 @@ export function buildShortcutManual(
   ];
 }
 
-const GO_SEQUENCE_MS = 1000;
-
-/** Second key in the G-then-key navigation chord; labels shown after pressing G. */
+/** Visible shortcut hint badges shown while holding Cmd/Ctrl. */
 export const GO_SEQUENCE_HINTS: readonly { key: string; label: string }[] = [
-  { key: "W", label: "Workspace" },
-  { key: "Q", label: "Queue" },
-  { key: "H", label: "Highlights" },
-  { key: "C", label: "Chat" },
-  { key: "D", label: "Docs" },
-  { key: "M", label: "Section tabs" },
-  { key: "U", label: "Feature guide" },
-  { key: "I", label: "Info (video tab)" },
-  { key: "S", label: "Summary" },
-  { key: "L", label: "Highlights (video tab)" },
-  { key: "T", label: "Transcript" },
+  { key: "1", label: "Workspace" },
+  { key: "2", label: "Queue" },
+  { key: "3", label: "Highlights" },
+  { key: "4", label: "Vocabulary" },
+  { key: "5", label: "Chat" },
+  { key: "6", label: "Docs" },
+  { key: ",", label: "Settings" },
+  { key: "7", label: "Info (video tab)" },
+  { key: "8", label: "Summary (video tab)" },
+  { key: "9", label: "Transcript (video tab)" },
 ] as const;
-
-export type GoSequenceState = {
-  pending: boolean;
-  timeoutId: ReturnType<typeof setTimeout> | null;
-};
 
 export type GoHintBadge = {
   key: string;
@@ -243,18 +222,16 @@ export type GoHintBadge = {
 };
 
 /**
- * One badge per visible `[data-go-hint-key]` target: beside rail rows (desktop),
- * above tab items (mobile), or fallback U above the tab bar.
+ * One badge per visible `[data-go-hint-key]` target: beside rail rows (desktop)
+ * or above tab items (mobile).
  */
 export function computeGoHintBadgeStyles(): GoHintBadge[] {
   if (typeof document === "undefined") {
     return [];
   }
 
-  const isLg = window.matchMedia("(min-width: 1024px)").matches;
   const nodes = document.querySelectorAll<HTMLElement>("[data-go-hint-key]");
   const out: GoHintBadge[] = [];
-  const seen = new Set<string>();
 
   for (const el of nodes) {
     const key = el.dataset.goHintKey?.trim();
@@ -275,50 +252,12 @@ export function computeGoHintBadgeStyles(): GoHintBadge[] {
     }
 
     out.push({ key, style });
-    seen.add(key);
-  }
-
-  if (!isLg && !seen.has("U")) {
-    const mobile = document.getElementById("app-section-nav-mobile");
-    const r = mobile?.getBoundingClientRect();
-    if (r && r.width > 0 && r.height > 0) {
-      const cx = r.left + r.width * 0.9;
-      const top = Math.max(6, r.top - 20);
-      out.push({
-        key: "U",
-        style: `left:${Math.round(cx)}px;top:${Math.round(top)}px;transform:translateX(-50%)`,
-      });
-    }
   }
 
   return out;
 }
 
-export function clearGoSequence(state: GoSequenceState): void {
-  state.pending = false;
-  if (state.timeoutId !== null) {
-    clearTimeout(state.timeoutId);
-    state.timeoutId = null;
-  }
-}
-
-/** Arms the G-prefix sequence; `onExpire` runs when the window elapses without a second key. */
-export function armGoSequence(
-  state: GoSequenceState,
-  onExpire?: () => void,
-): void {
-  state.pending = true;
-  if (state.timeoutId !== null) {
-    clearTimeout(state.timeoutId);
-  }
-  state.timeoutId = setTimeout(() => {
-    state.pending = false;
-    state.timeoutId = null;
-    onExpire?.();
-  }, GO_SEQUENCE_MS);
-}
-
-/** Focus the visible section tab bar (mobile bottom nav or desktop rail) for keyboard navigation. */
+/** Focus the visible section navigation control (mobile section picker or desktop rail). */
 export function focusSectionTabsNav(): void {
   if (typeof document === "undefined") {
     return;

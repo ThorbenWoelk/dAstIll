@@ -30,7 +30,8 @@ use dastill::security::{
 use dastill::services::{
     ChatService, Cooldown, DatabricksSqlService, FtsIndex, OllamaCore, OpenAlexPlannerService,
     OpenAlexService, PodcastFeedService, PollyTtsService, SearchService, SummarizerService,
-    SummaryEvaluatorService, TranscriptService, WebsiteService, YouTubeService, build_http_client,
+    SummaryEvaluatorService, TranscriptService, UserActivity, WebsiteService, YouTubeService,
+    build_http_client,
 };
 use dastill::state::AppState;
 use dastill::workers::{
@@ -326,6 +327,8 @@ async fn main() -> anyhow::Result<()> {
         ))
     });
 
+    let user_activity = Arc::new(UserActivity::from_env());
+
     let state = AppState {
         db: pool.clone(),
         read_cache: Arc::new(read_cache),
@@ -354,6 +357,7 @@ async fn main() -> anyhow::Result<()> {
         cloud_cooldown,
         youtube_quota_cooldown,
         transcript_cooldown,
+        user_activity,
     };
 
     let search_progress_state = state.clone();

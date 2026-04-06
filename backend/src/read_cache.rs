@@ -17,7 +17,7 @@ use crate::{
 
 const DEFAULT_READ_CACHE_TTL: Duration = Duration::from_secs(10);
 const SEARCH_STATUS_CACHE_TTL: Duration = Duration::from_secs(30);
-const VIDEOS_CACHE_TTL: Duration = Duration::from_secs(120);
+const VIDEOS_CACHE_TTL: Duration = Duration::from_secs(600);
 const VIDEO_SUGGESTION_CACHE_TTL: Duration = Duration::from_secs(600);
 /// Maximum number of entries to keep in the cache.
 /// Prevents unbounded memory growth within Cloud Run's 512Mi limit.

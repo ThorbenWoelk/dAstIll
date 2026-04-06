@@ -815,7 +815,7 @@ mod tests {
         services::{
             ChatService, CloudCooldown, OllamaCore, OpenAlexService, PodcastFeedService,
             SearchService, SummarizerService, SummaryEvaluatorService, TranscriptCooldown,
-            TranscriptService, WebsiteService, YouTubeQuotaCooldown, YouTubeService,
+            TranscriptService, UserActivity, WebsiteService, YouTubeQuotaCooldown, YouTubeService,
         },
         state::AppState,
     };
@@ -872,6 +872,7 @@ mod tests {
             cloud_cooldown: cooldown,
             youtube_quota_cooldown: Arc::new(YouTubeQuotaCooldown::youtube_quota()),
             transcript_cooldown: Arc::new(TranscriptCooldown::transcript()),
+            user_activity: Arc::new(UserActivity::from_env()),
         }
     }
 

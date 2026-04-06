@@ -13,7 +13,7 @@ use crate::services::PollyTtsService;
 use crate::services::{
     ActiveChatHandle, ChatService, CloudCooldown, DatabricksSqlService, FtsIndex,
     OpenAlexPlannerService, OpenAlexService, PodcastFeedService, SearchService, SummarizerService,
-    SummaryEvaluatorService, TranscriptCooldown, TranscriptService, WebsiteService,
+    SummaryEvaluatorService, TranscriptCooldown, TranscriptService, UserActivity, WebsiteService,
     YouTubeQuotaCooldown, YouTubeService,
 };
 
@@ -68,4 +68,5 @@ pub struct AppState {
     pub cloud_cooldown: Arc<CloudCooldown>,
     pub youtube_quota_cooldown: Arc<YouTubeQuotaCooldown>,
     pub transcript_cooldown: Arc<TranscriptCooldown>,
+    pub user_activity: Arc<UserActivity>,
 }
