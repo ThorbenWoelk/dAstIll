@@ -74,6 +74,12 @@ pub fn spawn_summary_evaluation_worker(state: AppState) {
             let mut backoff_state = PollBackoffState::default();
 
             loop {
+                if state.user_activity.is_idle() {
+                    tracing::debug!("summary evaluation worker skipped - no active user");
+                    sleep_with_backoff(SUMMARY_EVAL_POLL_BACKOFF, &mut backoff_state, false).await;
+                    continue;
+                }
+
                 let queue = {
                     let conn = state.db.connect();
                     db::list_summaries_pending_quality_eval(&conn, SUMMARY_EVAL_SCAN_LIMIT)

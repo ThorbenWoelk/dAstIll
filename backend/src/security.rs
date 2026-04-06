@@ -635,6 +635,7 @@ pub async fn require_proxy_auth(
         }
     };
     request.extensions_mut().insert(access_context);
+    state.user_activity.touch();
 
     next.run(request).await
 }

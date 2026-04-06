@@ -109,11 +109,15 @@ pub fn spawn_refresh_worker(state: AppState) {
                 "channel refresh worker started"
             );
 
-            // Run an initial refresh at startup so new videos appear immediately.
-            refresh_all_channels(&state).await;
+        // Run an initial refresh at startup so new videos appear immediately.
+        refresh_all_channels(&state).await;
 
             loop {
                 sleep(CHANNEL_REFRESH_INTERVAL).await;
+                if state.user_activity.is_idle() {
+                    tracing::debug!("refresh worker skipped - no active user");
+                    continue;
+                }
                 refresh_all_channels(&state).await;
             }
         }

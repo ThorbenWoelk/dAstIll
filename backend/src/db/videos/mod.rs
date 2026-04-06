@@ -21,6 +21,7 @@ pub async fn insert_video(store: &Store, video: &Video) -> Result<VideoInsertOut
     if outcome == VideoInsertOutcome::Inserted {
         store.read_cache.evict_channel(&video.channel_id).await;
     }
+    // Skip cache eviction for Existing — nothing changed in Firestore.
     Ok(outcome)
 }
 
@@ -448,7 +449,25 @@ pub async fn list_videos_for_queue_processing(
     limit: usize,
     max_retries: u8,
 ) -> Result<Vec<Video>, StoreError> {
-    super::firestore_videos::fs_list_videos_for_queue_processing(store, limit, max_retries).await
+    // Use the cached full-video list instead of 6 separate Firestore queries.
+    let all = load_all_videos(store).await?;
+    let mut candidates: Vec<Video> = all
+        .into_iter()
+        .filter(|v| v.retry_count < max_retries)
+        .filter(|v| {
+            matches!(
+                v.transcript_status,
+                ContentStatus::Pending | ContentStatus::Loading | ContentStatus::Failed
+            ) || (v.transcript_status == ContentStatus::Ready
+                && matches!(
+                    v.summary_status,
+                    ContentStatus::Pending | ContentStatus::Loading | ContentStatus::Failed
+                ))
+        })
+        .collect();
+    candidates.sort_by(|a, b| b.published_at.cmp(&a.published_at));
+    candidates.truncate(limit);
+    Ok(candidates)
 }
 
 pub async fn update_video_transcript_status(
