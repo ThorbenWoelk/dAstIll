@@ -337,4 +337,4 @@ jobs:
           service: ${{ format('{0}-frontend', env.APP_NAME) }}
           region: ${{ env.REGION }}
           image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_ID }}/frontend:${{ env.IMAGE_TAG }}
-          flags: "--service-account=${{ env.APP_NAME }}-frontend-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
+          flags: "--service-account=${{ env.APP_NAME }}-frontend-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com --port=8080"
