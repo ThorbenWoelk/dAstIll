@@ -5,26 +5,20 @@
 //!   cargo run --bin purge_bad_transcripts -- --video-id nDU7Mn-XRWI --video-id nsqGI1VAYbU
 
 use anyhow::{Context, Result, bail};
+use dastill::config::TursoRuntimeConfig;
 use dastill::db::{self, init_store};
-use dastill::local_env::{
-    clear_missing_google_application_credentials, load_dotenv_preserving_existing,
-};
+use dastill::local_env::load_dotenv_preserving_existing;
 use dastill::models::ContentStatus;
 
 const BAD_SNIPPET: &str = "Sup nerds we got things to discuss.";
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    rustls::crypto::ring::default_provider()
+    rustls::crypto::aws_lc_rs::default_provider()
         .install_default()
         .expect("failed to install rustls crypto provider");
 
     load_dotenv_preserving_existing();
-    if clear_missing_google_application_credentials() {
-        eprintln!(
-            "GOOGLE_APPLICATION_CREDENTIALS points to a missing file - falling back to application-default credentials"
-        );
-    }
 
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.is_empty() {
@@ -104,7 +98,9 @@ async fn connect_store() -> Result<db::Store> {
     let vector_index =
         std::env::var("S3_VECTOR_INDEX").unwrap_or_else(|_| "search-chunks".to_string());
     let aws_region = std::env::var("AWS_REGION").unwrap_or_else(|_| "eu-central-1".to_string());
-    let gcp_project_id = std::env::var("GCP_PROJECT_ID").context("GCP_PROJECT_ID must be set")?;
+    let turso = TursoRuntimeConfig::from_env()
+        .map_err(|e| anyhow::anyhow!(e))?
+        .context("TURSO_DB_URL and TURSO_AUTH_TOKEN must be set")?;
 
     let aws_config = dastill::aws_auth::load_aws_sdk_config(aws_region)
         .await
@@ -124,12 +120,24 @@ async fn connect_store() -> Result<db::Store> {
     }
     let s3v_client = aws_sdk_s3vectors::Client::from_conf(s3v_config_builder.build());
 
-    let firestore_db = firestore::FirestoreDb::new(&gcp_project_id).await?;
+    let turso_db = libsql::Builder::new_remote_replica(
+        std::env::temp_dir().join("dastill-bin.db"),
+        turso.db_url,
+        turso.auth_token,
+    )
+    .build()
+    .await
+    .map_err(|e| anyhow::anyhow!("Turso: {e}"))?;
+    turso_db.sync().await.map_err(|e| anyhow::anyhow!("Turso sync: {e}"))?;
+    let turso_conn = turso_db.connect().map_err(|e| anyhow::anyhow!("Turso connect: {e}"))?;
+    dastill::db::turso_schema::initialize_turso_schema(&turso_conn)
+        .await
+        .map_err(|e| anyhow::anyhow!(e))?;
 
     init_store(
         s3_client,
         s3v_client,
-        firestore_db,
+        turso_conn,
         data_bucket,
         vector_bucket,
         vector_index,

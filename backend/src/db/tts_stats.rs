@@ -1,8 +1,8 @@
+use libsql::{params, Value};
 use serde::{Deserialize, Serialize};
 
 use super::{Store, StoreError};
 
-const COLLECTION: &str = "dastill_tts_stats";
 const GLOBAL_DOC_ID: &str = "global";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,45 +29,51 @@ impl TtsGenerationStats {
 }
 
 pub async fn get_tts_stats(store: &Store) -> Result<Option<TtsGenerationStats>, StoreError> {
-    let stats: Option<TtsGenerationStats> = store
-        .firestore
-        .fluent()
-        .select()
-        .by_id_in(COLLECTION)
-        .obj()
-        .one(GLOBAL_DOC_ID)
+    let mut rows = store
+        .turso
+        .query(
+            "SELECT sample_count, total_words, total_duration_secs FROM tts_stats WHERE id = ?1",
+            params![GLOBAL_DOC_ID],
+        )
         .await?;
-    Ok(stats)
+
+    match rows.next().await? {
+        Some(row) => {
+            let sample_count: i64 = row.get(0)?;
+            let total_words: i64 = row.get(1)?;
+            let total_duration_secs: f64 = match row.get_value(2)? {
+                Value::Real(v) => v,
+                Value::Integer(v) => v as f64,
+                _ => 0.0,
+            };
+            Ok(Some(TtsGenerationStats {
+                sample_count: sample_count.max(0) as u32,
+                total_words: total_words.max(0) as u64,
+                total_duration_secs,
+            }))
+        }
+        None => Ok(None),
+    }
 }
 
 /// Append a completed generation sample to the running aggregate.
-/// Uses read-then-write; safe because TTS generation is low-concurrency.
+/// Atomic upsert — no read-then-write needed with SQL.
 pub async fn record_tts_generation(
     store: &Store,
     word_count: u32,
     duration_secs: f64,
 ) -> Result<(), StoreError> {
-    let existing = get_tts_stats(store).await?;
-    let updated = match existing {
-        Some(stats) => TtsGenerationStats {
-            sample_count: stats.sample_count.saturating_add(1),
-            total_words: stats.total_words.saturating_add(u64::from(word_count)),
-            total_duration_secs: stats.total_duration_secs + duration_secs,
-        },
-        None => TtsGenerationStats {
-            sample_count: 1,
-            total_words: u64::from(word_count),
-            total_duration_secs: duration_secs,
-        },
-    };
     store
-        .firestore
-        .fluent()
-        .update()
-        .in_col(COLLECTION)
-        .document_id(GLOBAL_DOC_ID)
-        .object(&updated)
-        .execute::<TtsGenerationStats>()
+        .turso
+        .execute(
+            r#"INSERT INTO tts_stats (id, sample_count, total_words, total_duration_secs)
+               VALUES (?1, 1, ?2, ?3)
+               ON CONFLICT(id) DO UPDATE SET
+                 sample_count = tts_stats.sample_count + 1,
+                 total_words = tts_stats.total_words + excluded.total_words,
+                 total_duration_secs = tts_stats.total_duration_secs + excluded.total_duration_secs"#,
+            params![GLOBAL_DOC_ID, word_count as i64, duration_secs],
+        )
         .await?;
     Ok(())
 }

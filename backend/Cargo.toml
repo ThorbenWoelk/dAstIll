@@ -51,13 +51,13 @@ aws-sdk-sts = { version = "1", features = ["rustls"] }
 aws-smithy-types = "1"
 aws-credential-types = "1.2.11"
 
-# Google Cloud Firestore
-firestore = "0.48"
-rustls = { version = "0.23", features = ["ring"] }
 aws-sdk-polly = "1.98.0"
-# gcloud-sdk (via firestore) pulls in jsonwebtoken without a crypto backend;
-# re-declare it here to force-enable aws_lc_rs for the shared copy
+
+# Firebase Auth token verification
 jsonwebtoken = { version = "10", default-features = false, features = ["aws_lc_rs"] }
+
+# TLS crypto provider (AWS SDK needs a runtime default)
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
 
 
 [dev-dependencies]

@@ -15,12 +15,6 @@ variable "app_name" {
   description = "The application name"
 }
 
-variable "firestore_location_id" {
-  type        = string
-  default     = "eur3"
-  description = "Firestore database location ID for the default database."
-}
-
 variable "firebase_web_app_display_name" {
   type        = string
   default     = "dAstIll Web"
@@ -69,7 +63,7 @@ variable "turso_auth_token" {
   type        = string
   sensitive   = true
   default     = ""
-  description = "Optional Turso auth token for the backend keyword-search replica. When set, Terraform writes it to Secret Manager as <app_name>-turso-auth-token."
+  description = "Turso auth token for the backend database (videos, preferences, TTS stats, keyword search). When set, Terraform writes it to Secret Manager as <app_name>-turso-auth-token."
 }
 
 variable "databricks_token" {
