@@ -20,13 +20,13 @@ describe("resolveCurrentSectionFromPathname", () => {
 });
 
 describe("goHintKeyForSection", () => {
-  it("maps each section to its go chord letter", () => {
-    expect(goHintKeyForSection("workspace")).toBe("W");
-    expect(goHintKeyForSection("queue")).toBe("Q");
-    expect(goHintKeyForSection("highlights")).toBe("H");
-    expect(goHintKeyForSection("vocabulary")).toBe("V");
-    expect(goHintKeyForSection("chat")).toBe("C");
-    expect(goHintKeyForSection("docs")).toBe("D");
+  it("maps each section to its go chord number", () => {
+    expect(goHintKeyForSection("workspace")).toBe("1");
+    expect(goHintKeyForSection("queue")).toBe("2");
+    expect(goHintKeyForSection("highlights")).toBe("3");
+    expect(goHintKeyForSection("vocabulary")).toBe("4");
+    expect(goHintKeyForSection("chat")).toBe("5");
+    expect(goHintKeyForSection("docs")).toBe("6");
   });
 });
 

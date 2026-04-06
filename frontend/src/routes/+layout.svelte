@@ -4,7 +4,6 @@
   import { page } from "$app/state";
   import { onMount } from "svelte";
   import type { AuthContext } from "$lib/auth";
-  import AppBottomNav from "$lib/components/AppBottomNav.svelte";
   import { cleanupLegacyClientStorage } from "$lib/auth-storage";
   import { authState } from "$lib/auth-state.svelte";
   import {
@@ -16,7 +15,6 @@
   import GlobalKeyboardShortcuts from "$lib/components/GlobalKeyboardShortcuts.svelte";
   import MobileViewportInset from "$lib/components/MobileViewportInset.svelte";
   import ServiceWorkerRegistration from "$lib/components/ServiceWorkerRegistration.svelte";
-  import { mobileBottomBar } from "$lib/mobile-navigation/mobileBottomBar";
 
   let {
     data,
@@ -51,21 +49,9 @@
       window.removeEventListener("unhandledrejection", onUnhandledRejection);
   });
 
-  /** Routes that own `mobileBottomBar` via local `$effect`; others default to section nav. */
+  /** Route changes */
   afterNavigate(({ to }) => {
     if (!to) return;
-    const path = to.url.pathname;
-    if (
-      path === "/" ||
-      path.startsWith("/channels/") ||
-      path === "/highlights" ||
-      path === "/vocabulary" ||
-      path === "/download-queue" ||
-      path === "/chat"
-    ) {
-      return;
-    }
-    mobileBottomBar.set({ kind: "sections" });
   });
 
   function confirmAuthRequiredSignIn() {
@@ -103,5 +89,4 @@
   <div class="min-h-0 flex-1">
     {@render children()}
   </div>
-  <AppBottomNav />
 </div>

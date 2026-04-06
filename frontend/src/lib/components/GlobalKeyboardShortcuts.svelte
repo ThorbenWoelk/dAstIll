@@ -8,20 +8,15 @@
   import { DOCS_URL } from "$lib/app-config";
   import KeyboardShortcutsModal from "$lib/components/KeyboardShortcutsModal.svelte";
   import {
-    armGoSequence,
-    clearGoSequence,
     computeGoHintBadgeStyles,
     DASTILL_SET_WORKSPACE_CONTENT_MODE_EVENT,
-    focusSectionTabsNav,
     shouldIgnoreGlobalShortcutNavigation,
     type GoHintBadge,
-    type GoSequenceState,
   } from "$lib/utils/keyboard-shortcuts";
 
   let showManual = $state(false);
   let showGoHints = $state(false);
   let goHintPositions = $state<GoHintBadge[]>([]);
-  const goState: GoSequenceState = { pending: false, timeoutId: null };
 
   $effect(() => {
     if (!showGoHints || typeof document === "undefined") {
@@ -53,11 +48,6 @@
     };
   });
 
-  function dismissGoSequence() {
-    clearGoSequence(goState);
-    showGoHints = false;
-  }
-
   function handleWindowKeydown(event: KeyboardEvent) {
     if (showManual) {
       if (event.key === "Escape") {
@@ -72,21 +62,12 @@
       return;
     }
 
+    // Manual / Help
     if (
-      (event.metaKey || event.ctrlKey) &&
-      !event.altKey &&
-      event.key === "/"
-    ) {
-      event.preventDefault();
-      showManual = true;
-      return;
-    }
-
-    if (
-      event.key === "?" &&
-      !event.metaKey &&
-      !event.ctrlKey &&
-      !event.altKey
+      ((event.metaKey || event.ctrlKey) &&
+        !event.altKey &&
+        event.key === "/") ||
+      (event.key === "?" && !event.metaKey && !event.ctrlKey && !event.altKey)
     ) {
       event.preventDefault();
       showManual = true;
@@ -95,6 +76,7 @@
 
     const pathname = get(page).url.pathname;
 
+    // Chat New Conversation (Shift+Cmd+N)
     if (
       pathname.startsWith("/chat") &&
       event.shiftKey &&
@@ -106,6 +88,7 @@
       return;
     }
 
+    // Search or Chat focus (/)
     if (
       event.key === "/" &&
       !event.metaKey &&
@@ -129,94 +112,63 @@
       }
     }
 
-    const k = event.key.toLowerCase();
+    // Numerical Sections (Cmd+1..6)
+    if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey) {
+      const num = event.key;
+      if (num >= "1" && num <= "9") {
+        const actions: Record<string, () => void> = {
+          "1": () => {
+            void goto("/");
+          },
+          "2": () => {
+            void goto("/download-queue");
+          },
+          "3": () => {
+            void goto("/highlights");
+          },
+          "4": () => {
+            void goto("/vocabulary");
+          },
+          "5": () => {
+            void goto("/chat");
+          },
+          "6": () => {
+            window.open(DOCS_URL, "_blank", "noopener,noreferrer");
+          },
+          "7": () => {
+            window.dispatchEvent(
+              new CustomEvent(DASTILL_SET_WORKSPACE_CONTENT_MODE_EVENT, {
+                detail: { mode: "info" },
+              }),
+            );
+          },
+          "8": () => {
+            window.dispatchEvent(
+              new CustomEvent(DASTILL_SET_WORKSPACE_CONTENT_MODE_EVENT, {
+                detail: { mode: "summary" },
+              }),
+            );
+          },
+          "9": () => {
+            window.dispatchEvent(
+              new CustomEvent(DASTILL_SET_WORKSPACE_CONTENT_MODE_EVENT, {
+                detail: { mode: "transcript" },
+              }),
+            );
+          },
+        };
 
-    if (goState.pending) {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        dismissGoSequence();
-        return;
+        const action = actions[num];
+        if (action) {
+          event.preventDefault();
+          action();
+        }
       }
-      const goActions: Record<string, () => void> = {
-        w: () => {
-          void goto("/");
-        },
-        q: () => {
-          void goto("/download-queue");
-        },
-        h: () => {
-          void goto("/highlights");
-        },
-        v: () => {
-          void goto("/vocabulary");
-        },
-        c: () => {
-          void goto("/chat");
-        },
-        d: () => {
-          window.open(DOCS_URL, "_blank", "noopener,noreferrer");
-        },
-        m: () => {
-          focusSectionTabsNav();
-        },
-        u: () => {
-          window.dispatchEvent(new CustomEvent("dastill:open-guide"));
-        },
-        i: () => {
-          window.dispatchEvent(
-            new CustomEvent(DASTILL_SET_WORKSPACE_CONTENT_MODE_EVENT, {
-              detail: { mode: "info" },
-            }),
-          );
-        },
-        s: () => {
-          window.dispatchEvent(
-            new CustomEvent(DASTILL_SET_WORKSPACE_CONTENT_MODE_EVENT, {
-              detail: { mode: "summary" },
-            }),
-          );
-        },
-        l: () => {
-          window.dispatchEvent(
-            new CustomEvent(DASTILL_SET_WORKSPACE_CONTENT_MODE_EVENT, {
-              detail: { mode: "highlights" },
-            }),
-          );
-        },
-        t: () => {
-          window.dispatchEvent(
-            new CustomEvent(DASTILL_SET_WORKSPACE_CONTENT_MODE_EVENT, {
-              detail: { mode: "transcript" },
-            }),
-          );
-        },
-      };
-      const action = goActions[k];
-      dismissGoSequence();
-      if (action) {
+
+      if (event.key === ",") {
         event.preventDefault();
-        action();
+        window.dispatchEvent(new CustomEvent("dastill:open-settings"));
       }
-      return;
-    }
-
-    if (
-      k === "g" &&
-      !event.metaKey &&
-      !event.ctrlKey &&
-      !event.altKey &&
-      !event.shiftKey
-    ) {
-      event.preventDefault();
-      armGoSequence(goState, () => {
-        showGoHints = false;
-      });
-      showGoHints = true;
-      return;
-    }
-
-    if (event.key === "Escape") {
-      dismissGoSequence();
     }
   }
 
@@ -224,12 +176,34 @@
     const openManual = () => {
       showManual = true;
     };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Meta" || e.key === "Control") {
+        showGoHints = true;
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "Meta" || e.key === "Control") {
+        showGoHints = false;
+      }
+    };
+
+    const handleBlur = () => {
+      showGoHints = false;
+    };
+
     window.addEventListener("keydown", handleWindowKeydown);
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleBlur);
     window.addEventListener("dastill:open-shortcuts", openManual);
     return () => {
       window.removeEventListener("keydown", handleWindowKeydown);
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", handleBlur);
       window.removeEventListener("dastill:open-shortcuts", openManual);
-      dismissGoSequence();
     };
   });
 </script>
@@ -240,7 +214,7 @@
     transition:fade={{ duration: 160 }}
     role="status"
     aria-live="polite"
-    aria-label="Go navigation: press a highlighted letter"
+    aria-label="Shortcut hints: press Cmd and a number"
   >
     {#each goHintPositions as hint, i (`${hint.key}-${i}`)}
       <kbd
@@ -249,11 +223,6 @@
         transition:fade={{ duration: 140 }}>{hint.key}</kbd
       >
     {/each}
-    <p
-      class="fixed bottom-[max(1rem,calc(var(--mobile-tab-bar-height,0px)+0.75rem))] left-1/2 z-[106] -translate-x-1/2 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--soft-foreground)] opacity-70"
-    >
-      Esc to cancel
-    </p>
   </div>
 {/if}
 

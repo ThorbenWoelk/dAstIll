@@ -13,17 +13,17 @@ export type SectionNavigationItem = {
   external: boolean;
 };
 
-/** Letter shown next to a section row after pressing G (go navigation chord). */
+/** Shortcut number (1-6) shown next to a section row after pressing Cmd. */
 export function goHintKeyForSection(
   section: SectionNavigationSection | "docs",
 ): string {
   const keys: Record<SectionNavigationSection | "docs", string> = {
-    workspace: "W",
-    queue: "Q",
-    highlights: "H",
-    vocabulary: "V",
-    chat: "C",
-    docs: "D",
+    workspace: "1",
+    queue: "2",
+    highlights: "3",
+    vocabulary: "4",
+    chat: "5",
+    docs: "6",
   };
   return keys[section];
 }
