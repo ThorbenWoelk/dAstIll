@@ -40,7 +40,8 @@ use dastill::workers::{
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Install a process-wide rustls crypto provider before any TLS clients are created.
-    rustls::crypto::aws_lc_rs::default_provider()
+    // ring is used because aws_lc_rs fails to start on the Cloud Run bookworm-slim image.
+    rustls::crypto::ring::default_provider()
         .install_default()
         .expect("failed to install rustls crypto provider");
 
