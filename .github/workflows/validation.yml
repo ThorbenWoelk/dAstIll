@@ -77,8 +77,6 @@ jobs:
     name: Backend
     runs-on: ubuntu-latest
     env:
-      SCCACHE_GHA_ENABLED: "true"
-      RUSTC_WRAPPER: "sccache"
       CARGO_INCREMENTAL: "0"
       RUSTFLAGS: "-C link-arg=-fuse-ld=mold"
     timeout-minutes: 30
@@ -92,9 +90,6 @@ jobs:
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@1.93.1
-
-      - name: Set up sccache
-        uses: mozilla/sccache-action@v0.0.3
 
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2
