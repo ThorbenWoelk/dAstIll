@@ -9,9 +9,24 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY . .
+# Copy dependency manifests first for layer caching
+COPY Cargo.toml Cargo.lock ./
 
-# Build the application
+# Create dummy lib and main to establish dependency graph
+# This allows cargo to fetch and cache dependencies before copying source
+RUN mkdir -p src/bin && \
+    echo "" > src/lib.rs && \
+    echo "fn main() {}" > src/main.rs && \
+    for f in chat_capability_eval migrate_user_highlights purge_bad_transcripts set_earliest_sync_dates; do \
+        echo "fn main() {}" > "src/bin/$f.rs"; \
+    done && \
+    cargo fetch --locked
+
+# Remove dummy source, copy actual source
+RUN rm -rf src
+COPY src ./src
+
+# Build application (only recompiles changed source)
 RUN cargo build --release
 
 # Runtime stage
