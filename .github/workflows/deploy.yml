@@ -75,9 +75,9 @@ jobs:
     if: needs.changes.outputs.any == 'true'
     uses: ./.github/workflows/validation.yml
     with:
-      run_backend: ${{ needs.changes.outputs.backend == 'true' }}
-      run_frontend: ${{ needs.changes.outputs.frontend == 'true' }}
-      run_docs: ${{ needs.changes.outputs.docs == 'true' }}
+      run_backend: true
+      run_frontend: true
+      run_docs: true
 
   deploy-backend:
     name: Deploy Backend
@@ -188,7 +188,7 @@ jobs:
           service: ${{ format('{0}-backend', env.APP_NAME) }}
           region: ${{ env.REGION }}
           image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_ID }}/backend:${{ env.IMAGE_TAG }}
-          flags: "--service-account=${{ env.APP_NAME }}-backend-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com --memory=1Gi --env-vars-file=/tmp/backend_cr_env.txt"
+          flags: "--service-account=${{ env.APP_NAME }}-backend-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com --memory=1Gi --env-vars-file=/tmp/backend_cr_env.txt --startup-probe=failure-threshold=15,period-seconds=10"
           # Quote so newlines from the prior step are preserved for deploy-cloudrun.
           secrets: "${{ steps.backend_secrets.outputs.secrets }}"
           secrets_update_strategy: overwrite

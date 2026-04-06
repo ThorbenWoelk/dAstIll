@@ -3,26 +3,21 @@ name: Validation
 on:
   workflow_call:
     inputs:
-      run_all:
-        description: Run every component validation job
-        type: boolean
-        required: false
-        default: false
       run_backend:
         description: Run backend validation jobs
         type: boolean
         required: false
-        default: false
+        default: true
       run_frontend:
         description: Run frontend validation jobs
         type: boolean
         required: false
-        default: false
+        default: true
       run_docs:
         description: Run docs validation jobs
         type: boolean
         required: false
-        default: false
+        default: true
   pull_request:
   schedule:
     - cron: "0 6 * * 1"
@@ -41,38 +36,6 @@ jobs:
       - name: Check forbidden tracked artifacts
         run: ./scripts/check_forbidden_artifacts.sh
 
-  changes:
-    name: Detect Changed Areas
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs:
-      - repo-hygiene
-    outputs:
-      backend: ${{ steps.detect.outputs.backend }}
-      frontend: ${{ steps.detect.outputs.frontend }}
-      docs: ${{ steps.detect.outputs.docs }}
-      any: ${{ steps.detect.outputs.any }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6.0.2
-        with:
-          fetch-depth: 0
-
-      - name: Detect changed components
-        id: detect
-        env:
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
-          GITHUB_SHA: ${{ github.sha }}
-          GITHUB_BASE_REF: ${{ github.base_ref }}
-          BEFORE_SHA: ${{ github.event.before || '' }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-          RUN_ALL: ${{ github.event_name == 'workflow_call' && inputs.run_all || false }}
-          RUN_BACKEND: ${{ github.event_name == 'workflow_call' && inputs.run_backend || false }}
-          RUN_FRONTEND: ${{ github.event_name == 'workflow_call' && inputs.run_frontend || false }}
-          RUN_DOCS: ${{ github.event_name == 'workflow_call' && inputs.run_docs || false }}
-        run: ./scripts/detect_changed_components.sh validation
-
   backend:
     name: Backend
     runs-on: ubuntu-latest
@@ -81,8 +44,7 @@ jobs:
       RUSTFLAGS: "-C link-arg=-fuse-ld=mold"
     timeout-minutes: 30
     needs:
-      - changes
-    if: needs.changes.outputs.backend == 'true'
+      - repo-hygiene
 
     steps:
       - name: Checkout
@@ -124,7 +86,6 @@ jobs:
         working-directory: backend
         timeout-minutes: 2
         run: |
-          # Set minimal env for startup check (real values not needed, just need to pass validation)
           export TURSO_DB_URL="libsql://test.local"
           export TURSO_AUTH_TOKEN="test-token"
           export BACKEND_PROXY_TOKEN="test"
@@ -140,15 +101,11 @@ jobs:
           export AWS_REGION="us-east-1"
           export AWS_ACCESS_KEY_ID="test"
           export AWS_SECRET_ACCESS_KEY="test"
-          
-          # Run with timeout - must exceed Turso builder inner timeout (30s) so the binary
+
+          # Must exceed Turso builder inner timeout (30s) so the binary
           # can fail cleanly with exit 1 rather than being killed with exit 124.
           timeout 45s ./target/release/dastill || exit_code=$?
 
-          # Exit codes:
-          # 124 = timeout (process hung past 45s) - FAIL
-          # 1 = early error (config validation, Turso connection refused) - PASS (expected)
-          # 0 = started successfully - PASS
           if [ "$exit_code" = "124" ]; then
             echo "::error::Binary hung during startup for over 45s"
             exit 1
@@ -161,8 +118,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs:
-      - changes
-    if: needs.changes.outputs.frontend == 'true'
+      - repo-hygiene
 
     steps:
       - name: Checkout
@@ -200,8 +156,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs:
-      - changes
-    if: needs.changes.outputs.docs == 'true'
+      - repo-hygiene
 
     steps:
       - name: Checkout
