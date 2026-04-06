@@ -118,6 +118,18 @@ async fn main() -> anyhow::Result<()> {
         None
     };
 
+    // Bind the port immediately so Cloud Run's TCP startup probe succeeds
+    // before the rest of initialization (Turso, AWS, etc.) runs.
+    // The OS kernel queues incoming connections in the backlog until
+    // axum::serve() processes them at the end of startup.
+    let port: u16 = std::env::var("PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(3001);
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    tracing::info!("port {} bound — waiting for initialization", port);
+
     let search_runtime = SearchRuntimeConfig::from_env();
     let turso_runtime = TursoRuntimeConfig::from_env()
         .map_err(|err| anyhow::anyhow!(err))?
@@ -672,14 +684,7 @@ async fn main() -> anyhow::Result<()> {
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 
-    let port: u16 = std::env::var("PORT")
-        .ok()
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(3001);
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
-
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    tracing::info!("backend listening on {}", listener.local_addr()?);
+    tracing::info!("initialization complete — serving on {}", listener.local_addr()?);
     axum::serve(listener, app).await?;
 
     Ok(())
