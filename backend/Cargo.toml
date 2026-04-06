@@ -56,8 +56,8 @@ aws-sdk-polly = "1.98.0"
 # Firebase Auth token verification
 jsonwebtoken = { version = "10", default-features = false, features = ["aws_lc_rs"] }
 
-# TLS crypto provider (AWS SDK needs a runtime default)
-rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
+# TLS crypto provider — ring is proven on the Cloud Run bookworm-slim image
+rustls = { version = "0.23", features = ["ring"] }
 
 
 [dev-dependencies]
