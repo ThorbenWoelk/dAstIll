@@ -15,7 +15,6 @@
   }>();
 
   let menuOpen = $state(false);
-  let filterOpen = $state(false);
   let view = $state<"main" | "appearance" | "help">("main");
 
   function handleSignOut() {
@@ -32,20 +31,14 @@
 
   function closeAll() {
     menuOpen = false;
-    filterOpen = false;
     view = "main";
-  }
-
-  function openSettings() {
-    closeAll();
-    window.dispatchEvent(new CustomEvent("dastill:open-settings"));
   }
 </script>
 
 <div
   class="relative flex w-full items-center gap-0.5 px-0.5"
   use:clickOutside={{
-    enabled: menuOpen || filterOpen,
+    enabled: menuOpen,
     onClickOutside: closeAll,
   }}
 >
@@ -57,7 +50,6 @@
         : ''}"
       onclick={() => {
         menuOpen = !menuOpen;
-        filterOpen = false;
       }}
       aria-haspopup="menu"
       aria-expanded={menuOpen}
@@ -308,177 +300,4 @@
       </div>
     {/if}
   </div>
-
-  {#if !collapsed}
-    <div class="flex shrink-0 items-center gap-0.5 pr-1">
-      <!-- Filter Toggle -->
-      <div class="relative">
-        <button
-          class="flex h-8 w-8 items-center justify-center rounded-[var(--radius-md)] text-[var(--soft-foreground)] opacity-40 transition-all hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] hover:opacity-100 {filterOpen
-            ? 'bg-[var(--accent-wash)] text-[var(--foreground)] opacity-100'
-            : ''}"
-          onclick={() => {
-            filterOpen = !filterOpen;
-            menuOpen = false;
-          }}
-          aria-haspopup="menu"
-          aria-expanded={filterOpen}
-          aria-label="View options"
-        >
-          <svg
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"><path d="M3 6h18M7 12h10M10 18h4" /></svg
-          >
-        </button>
-
-        {#if filterOpen}
-          <div
-            class="absolute bottom-full left-[-130px] mb-2 w-64 rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--surface-strong)] p-1 shadow-[0_8px_30px_rgb(0,0,0,0.12)] z-55 flex flex-col overflow-hidden"
-            role="menu"
-          >
-            <div class="flex flex-col p-1">
-              <div
-                class="px-3 py-1.5 text-[10px] font-bold text-[var(--soft-foreground)] opacity-50 uppercase tracking-wider"
-              >
-                Group by
-              </div>
-              <button
-                class="flex w-full items-center justify-between rounded-[var(--radius-md)] px-3 py-1.5 text-[13.5px] font-medium hover:bg-[var(--accent-wash)]"
-              >
-                <div class="flex items-center gap-2.5">
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    class="opacity-50"
-                    ><rect x="3" y="3" width="7" height="7" rx="1" /><rect
-                      x="14"
-                      y="3"
-                      width="7"
-                      height="7"
-                      rx="1"
-                    /><rect x="14" y="14" width="7" height="7" rx="1" /><rect
-                      x="3"
-                      y="14"
-                      width="7"
-                      height="7"
-                      rx="1"
-                    /></svg
-                  >
-                  <span>Workspace</span>
-                </div>
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="3"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  class="text-[var(--accent-strong)]"
-                  ><polyline points="20 6 9 17 4 12" /></svg
-                >
-              </button>
-              <button
-                class="flex w-full items-center gap-2.5 rounded-[var(--radius-md)] px-3 py-1.5 text-[13.5px] font-medium hover:bg-[var(--accent-wash)]"
-              >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  class="opacity-50"
-                  ><circle cx="12" cy="12" r="10" /><polyline
-                    points="12 6 12 12 16 14"
-                  /></svg
-                >
-                <span>Updated</span>
-              </button>
-            </div>
-            <div
-              class="h-px bg-[var(--border-soft)] opacity-30 mx-1 my-0.5"
-            ></div>
-            <div class="flex flex-col p-1">
-              <div
-                class="px-3 py-1.5 text-[10px] font-bold text-[var(--soft-foreground)] opacity-50 uppercase tracking-wider"
-              >
-                Show
-              </div>
-              <button
-                class="flex w-full items-center justify-between rounded-[var(--radius-md)] px-3 py-1.5 text-[13.5px] font-medium hover:bg-[var(--accent-wash)]"
-              >
-                <div class="flex items-center gap-2.5">
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    class="opacity-50"><circle cx="12" cy="12" r="10" /></svg
-                  >
-                  <span>Status</span>
-                </div>
-                <ChevronIcon
-                  direction="right"
-                  size={12}
-                  strokeWidth={2.5}
-                  className="opacity-20"
-                />
-              </button>
-            </div>
-            <div
-              class="h-px bg-[var(--border-soft)] opacity-30 mx-1 my-0.5"
-            ></div>
-            <div class="p-1">
-              <button
-                class="flex w-full items-center rounded-[var(--radius-md)] px-3 py-1.5 text-[13.5px] font-medium hover:bg-[var(--accent-wash)]"
-                >Mark All Read</button
-              >
-            </div>
-          </div>
-        {/if}
-      </div>
-
-      <!-- Settings Button -->
-      <button
-        class="flex h-8 w-8 items-center justify-center rounded-[var(--radius-md)] text-[var(--soft-foreground)] opacity-40 transition-all hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] hover:opacity-100"
-        onclick={openSettings}
-        aria-label="Settings"
-        data-go-hint-key=","
-      >
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2.5"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          ><path
-            d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"
-          /><circle cx="12" cy="12" r="3" /></svg
-        >
-      </button>
-    </div>
-  {/if}
 </div>

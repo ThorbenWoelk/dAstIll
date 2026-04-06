@@ -18,7 +18,7 @@
     currentSection = "workspace" as SectionNavigationSection,
     aiIndicator = null,
     collapsed = false,
-    width = 180,
+    width = 200,
     onOpenGuide = () => {},
     onOpenShortcuts = () => {
       window.dispatchEvent(new CustomEvent("dastill:open-shortcuts"));
