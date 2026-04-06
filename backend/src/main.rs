@@ -39,11 +39,14 @@ use dastill::workers::{
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Install a process-wide rustls crypto provider before any TLS clients are created.
-    // ring is used because aws_lc_rs fails to start on the Cloud Run bookworm-slim image.
+    // Install crypto providers for all rustls versions in the dependency tree.
+    // libsql/hyper-rustls uses rustls 0.22, AWS SDKs use rustls 0.23.
+    // Installing both ensures TLS works across the entire tree.
     rustls::crypto::ring::default_provider()
         .install_default()
-        .expect("failed to install rustls crypto provider");
+        .expect("failed to install rustls 0.23 crypto provider");
+    // Note: rustls 0.22 (via libsql) uses a global default approach and will pick up
+    // the ring crypto features via its dependency on rustls-webpki.
 
     load_dotenv_preserving_existing();
 
@@ -167,22 +170,31 @@ async fn main() -> anyhow::Result<()> {
     let s3v_client = aws_sdk_s3vectors::Client::from_conf(s3v_config_builder.build());
 
     // Build a single Turso embedded replica shared by Store and FtsIndex.
+    tracing::info!("Initializing Turso embedded replica...");
     let fts_dir = std::env::temp_dir().join("dastill-search-index");
     std::fs::create_dir_all(&fts_dir)?;
     let turso_db_path = fts_dir.join("search-fts.db");
-    let turso_db = libsql::Builder::new_remote_replica(
-        &turso_db_path,
-        turso_runtime.db_url.clone(),
-        turso_runtime.auth_token.clone(),
+    let turso_db = tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        libsql::Builder::new_remote_replica(
+            &turso_db_path,
+            turso_runtime.db_url.clone(),
+            turso_runtime.auth_token.clone(),
+        )
+        .sync_interval(std::time::Duration::from_secs(30))
+        .build()
     )
-    .sync_interval(std::time::Duration::from_secs(30))
-    .build()
     .await
+    .map_err(|_| anyhow::anyhow!("Turso builder timed out after 30s"))?
     .map_err(|err| anyhow::anyhow!("failed to build Turso embedded replica: {err}"))?;
-    turso_db
-        .sync()
-        .await
-        .map_err(|err| anyhow::anyhow!("failed to initial-sync Turso replica: {err}"))?;
+    tracing::info!("Starting Turso embedded replica sync...");
+    tokio::time::timeout(
+        std::time::Duration::from_secs(60),
+        turso_db.sync()
+    )
+    .await
+    .map_err(|_| anyhow::anyhow!("Turso sync timed out after 60s"))?
+    .map_err(|err| anyhow::anyhow!("failed to initial-sync Turso replica: {err}"))?;
     tracing::info!("Turso embedded replica ready");
 
     let turso_conn = turso_db

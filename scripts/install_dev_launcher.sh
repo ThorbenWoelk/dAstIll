@@ -103,3 +103,10 @@ touch "$app_root"
 
 printf "Installed %s\n" "$app_root"
 printf "Launch it from Finder, Spotlight, or Dock.\n"
+
+# Install git pre-commit hook
+if [[ -f "scripts/pre-commit.sh" ]]; then
+    cp scripts/pre-commit.sh .git/hooks/pre-commit
+    chmod +x .git/hooks/pre-commit
+    echo "✅ Installed pre-commit hook"
+fi
