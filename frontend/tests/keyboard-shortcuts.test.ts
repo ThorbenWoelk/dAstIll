@@ -1,16 +1,13 @@
 import { Window as HappyWindow } from "happy-dom";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import {
-  armGoSequence,
   buildShortcutManual,
-  clearGoSequence,
   computeGoHintBadgeStyles,
   GO_SEQUENCE_HINTS,
   isApplePlatform,
   isEditableShortcutTarget,
   isInsideModalDialog,
   shouldIgnoreGlobalShortcutNavigation,
-  type GoSequenceState,
 } from "../src/lib/utils/keyboard-shortcuts";
 
 beforeAll(() => {
@@ -89,18 +86,6 @@ describe("shouldIgnoreGlobalShortcutNavigation", () => {
   });
 });
 
-describe("go sequence helpers", () => {
-  it("arms and clears pending state", () => {
-    const state: GoSequenceState = { pending: false, timeoutId: null };
-    armGoSequence(state);
-    expect(state.pending).toBe(true);
-    expect(state.timeoutId).not.toBeNull();
-    clearGoSequence(state);
-    expect(state.pending).toBe(false);
-    expect(state.timeoutId).toBeNull();
-  });
-});
-
 describe("computeGoHintBadgeStyles", () => {
   it("returns no badges when there are no marked elements", () => {
     document.body.replaceChildren();
@@ -109,19 +94,18 @@ describe("computeGoHintBadgeStyles", () => {
 });
 
 describe("GO_SEQUENCE_HINTS", () => {
-  it("stays aligned with G-then-letter navigation (GlobalKeyboardShortcuts)", () => {
-    expect(GO_SEQUENCE_HINTS.map((h) => h.key.toLowerCase())).toEqual([
-      "w",
-      "q",
-      "h",
-      "c",
-      "d",
-      "m",
-      "u",
-      "i",
-      "s",
-      "l",
-      "t",
+  it("stays aligned with modifier-based navigation hints", () => {
+    expect(GO_SEQUENCE_HINTS.map((h) => h.key)).toEqual([
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      ",",
+      "7",
+      "8",
+      "9",
     ]);
   });
 });
@@ -134,13 +118,14 @@ describe("buildShortcutManual", () => {
     expect(titles).toContain("Workspace home");
     expect(titles).toContain("Chat");
     const everywhere = groups.find((g) => g.title === "Everywhere");
-    expect(everywhere?.rows.some((r) => r.keys.includes("G W"))).toBe(true);
-    expect(everywhere?.rows.some((r) => r.keys.includes("G U"))).toBe(true);
+    expect(everywhere?.rows.some((r) => r.keys === "Cmd + 1")).toBe(true);
+    expect(everywhere?.rows.some((r) => r.keys === "Cmd + 4")).toBe(true);
+    expect(everywhere?.rows.some((r) => r.keys === "Cmd + ,")).toBe(true);
     const workspaceHome = groups.find((g) => g.title === "Workspace home");
-    expect(workspaceHome?.rows.some((r) => r.keys === "G I")).toBe(true);
-    expect(workspaceHome?.rows.some((r) => r.keys === "G T")).toBe(true);
+    expect(workspaceHome?.rows.some((r) => r.keys === "Cmd + 7")).toBe(true);
+    expect(workspaceHome?.rows.some((r) => r.keys === "Cmd + 9")).toBe(true);
     const guideTour = groups.find((g) => g.title === "Feature guide tour");
-    expect(guideTour?.rows[0]?.keys).toBe("G U");
+    expect(guideTour?.rows[0]?.keys).toBe("Arrow left or Arrow up");
   });
 });
 

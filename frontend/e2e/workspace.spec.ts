@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { resetClientState } from "./test-helpers";
 
 const READY_MS = 120_000;
+const PRIMARY_MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
 
 function workspaceSidebar(page: Page) {
   // Two aside#workspace nodes can exist (desktop rail + mobile browse dialog). Exclude the dialog copy.
@@ -176,7 +177,7 @@ test("workspace feature guide opens from guide URL param (same state as Guide co
   await expect(dialog.getByText("Welcome to dAstIll")).toBeVisible();
 });
 
-test("G then W navigates from queue to workspace without full reload hang", async ({
+test("Cmd/Ctrl+1 navigates from queue to workspace without full reload hang", async ({
   page,
 }) => {
   await page.goto("/download-queue");
@@ -184,11 +185,7 @@ test("G then W navigates from queue to workspace without full reload hang", asyn
     .poll(() => new URL(page.url()).pathname)
     .toContain("download-queue");
   await page.waitForTimeout(1500);
-
-  await page.keyboard.press("g");
-  await expect(
-    page.getByLabel("Go navigation: press a highlighted letter"),
-  ).toBeVisible({ timeout: READY_MS });
+  await page.keyboard.press(`${PRIMARY_MODIFIER}+1`);
   await page.keyboard.press("w");
 
   await expect.poll(() => new URL(page.url()).pathname).toBe("/");

@@ -112,7 +112,7 @@
       }
     }
 
-    // Numerical Sections (Cmd+1..6)
+    // Modifier shortcuts (Cmd/Ctrl + 1..9, ,)
     if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey) {
       const num = event.key;
       if (num >= "1" && num <= "9") {
