@@ -106,7 +106,7 @@ jobs:
         env:
           ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
           NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/28.2.13676358
-        run: cargo tauri android build -- --apk
+        run: cargo tauri android build --apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
