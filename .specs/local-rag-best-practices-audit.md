@@ -2,11 +2,6 @@
 
 ## Context
 
-dAstIll has the strongest retrieval architecture across all repos (hybrid BM25 + vector +
-RRF, background indexing worker, batch embedding, graceful degradation). This spec is not
-about fixing broken things — it is about auditing existing behavior against the local RAG
-best practices checklist and documenting what is already good and what could be hardened.
-
 Reference: `totos-vault/Knowledge Base/AI/RAG/Local RAG Best Practices.md`
 
 ## Checklist Audit

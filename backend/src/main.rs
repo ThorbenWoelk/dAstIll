@@ -37,6 +37,34 @@ use dastill::workers::{
     spawn_summary_evaluation_worker,
 };
 
+async fn build_turso_replica(
+    db_path: &std::path::Path,
+    config: &TursoRuntimeConfig,
+) -> anyhow::Result<libsql::Database> {
+    let db = tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        libsql::Builder::new_remote_replica(
+            db_path,
+            config.db_url.clone(),
+            config.auth_token.clone(),
+        )
+        .sync_protocol(libsql::SyncProtocol::V2)
+        .sync_interval(std::time::Duration::from_secs(30))
+        .build(),
+    )
+    .await
+    .map_err(|_| anyhow::anyhow!("Turso builder timed out after 30s"))?
+    .map_err(|err| anyhow::anyhow!("failed to build Turso embedded replica: {err}"))?;
+
+    tracing::info!("Starting Turso embedded replica sync...");
+    tokio::time::timeout(std::time::Duration::from_secs(120), db.sync())
+        .await
+        .map_err(|_| anyhow::anyhow!("Turso initial sync timed out after 120s"))?
+        .map_err(|err| anyhow::anyhow!("failed to initial-sync Turso replica: {err}"))?;
+    tracing::info!("Turso embedded replica ready");
+    Ok(db)
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Install crypto providers for all rustls versions in the dependency tree.
@@ -132,8 +160,7 @@ async fn main() -> anyhow::Result<()> {
 
     let search_runtime = SearchRuntimeConfig::from_env();
     let turso_runtime = TursoRuntimeConfig::from_env()
-        .map_err(|err| anyhow::anyhow!(err))?
-        .ok_or_else(|| anyhow::anyhow!("TURSO_DB_URL and TURSO_AUTH_TOKEN must be set"))?;
+        .map_err(|err| anyhow::anyhow!(err))?;
     let chat_runtime = ChatRuntimeConfig::from_env();
     let databricks_runtime =
         DatabricksRuntimeConfig::from_env().map_err(|err| anyhow::anyhow!(err))?;
@@ -182,36 +209,39 @@ async fn main() -> anyhow::Result<()> {
     let s3v_client = aws_sdk_s3vectors::Client::from_conf(s3v_config_builder.build());
 
     // Build a single Turso embedded replica shared by Store and FtsIndex.
-    tracing::info!("Initializing Turso embedded replica...");
     let fts_dir = std::env::temp_dir().join("dastill-search-index");
     std::fs::create_dir_all(&fts_dir)?;
     let turso_db_path = fts_dir.join("search-fts.db");
-    let turso_db = tokio::time::timeout(
-        std::time::Duration::from_secs(30),
-        libsql::Builder::new_remote_replica(
-            &turso_db_path,
-            turso_runtime.db_url.clone(),
-            turso_runtime.auth_token.clone(),
-        )
-        .sync_interval(std::time::Duration::from_secs(30))
-        .build()
-    )
-    .await
-    .map_err(|_| anyhow::anyhow!("Turso builder timed out after 30s"))?
-    .map_err(|err| anyhow::anyhow!("failed to build Turso embedded replica: {err}"))?;
-    tracing::info!("Starting Turso embedded replica sync...");
-    tokio::time::timeout(
-        std::time::Duration::from_secs(60),
-        turso_db.sync()
-    )
-    .await
-    .map_err(|_| anyhow::anyhow!("Turso sync timed out after 60s"))?
-    .map_err(|err| anyhow::anyhow!("failed to initial-sync Turso replica: {err}"))?;
-    tracing::info!("Turso embedded replica ready");
+
+    let turso_db = if let Some(config) = turso_runtime {
+        tracing::info!("Initializing Turso embedded replica...");
+        match build_turso_replica(&turso_db_path, &config).await {
+            Ok(db) => db,
+            Err(first_err) => {
+                tracing::warn!(
+                    "Turso replica failed ({first_err}), wiping stale local replica and retrying..."
+                );
+                let _ = std::fs::remove_dir_all(&fts_dir);
+                std::fs::create_dir_all(&fts_dir)?;
+                build_turso_replica(&turso_db_path, &config)
+                    .await
+                    .map_err(|err| anyhow::anyhow!("Turso replica retry also failed: {err}"))?
+            }
+        }
+    } else {
+        tracing::info!(path = %turso_db_path.display(), "Initializing local libSQL database (no Turso config)...");
+        libsql::Builder::new_local(&turso_db_path)
+            .build()
+            .await
+            .map_err(|err| anyhow::anyhow!("failed to build local libSQL database: {err}"))?
+    };
 
     let turso_conn = turso_db
         .connect()
         .map_err(|err| anyhow::anyhow!("failed to connect to Turso: {err}"))?;
+    turso_conn
+        .busy_timeout(std::time::Duration::from_secs(5))
+        .map_err(|err| anyhow::anyhow!("failed to set Turso busy timeout: {err}"))?;
     dastill::db::turso_schema::initialize_turso_schema(&turso_conn)
         .await
         .map_err(|err| anyhow::anyhow!(err))?;

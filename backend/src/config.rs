@@ -125,6 +125,11 @@ impl SearchRuntimeConfig {
 
 impl TursoRuntimeConfig {
     pub fn from_env() -> Result<Option<Self>, String> {
+        let use_turso = optional_env("START_APP_USE_TURSO").unwrap_or_default();
+        if !matches!(use_turso.as_str(), "1" | "true" | "TRUE") {
+            return Ok(None);
+        }
+
         let db_url = optional_env("TURSO_DB_URL");
         let auth_token = optional_env("TURSO_AUTH_TOKEN");
 
@@ -363,7 +368,7 @@ mod tests {
         "DATABRICKS_SCHEMA",
         "DATABRICKS_BRONZE_TABLE",
     ];
-    const TURSO_ENV_KEYS: &[&str] = &["TURSO_DB_URL", "TURSO_AUTH_TOKEN"];
+    const TURSO_ENV_KEYS: &[&str] = &["TURSO_DB_URL", "TURSO_AUTH_TOKEN", "START_APP_USE_TURSO"];
 
     #[test]
     fn from_env_requires_summary_model() {
@@ -821,6 +826,7 @@ mod tests {
             .unwrap_or_else(|err| err.into_inner());
 
         let _reset = EnvReset::capture(TURSO_ENV_KEYS);
+        set_env("START_APP_USE_TURSO", "1");
         set_env("TURSO_DB_URL", "libsql://prod-db.turso.io");
         remove_env("TURSO_AUTH_TOKEN");
         let err = TursoRuntimeConfig::from_env().expect_err("missing token should fail");
@@ -840,6 +846,7 @@ mod tests {
             .unwrap_or_else(|err| err.into_inner());
 
         let _reset = EnvReset::capture(TURSO_ENV_KEYS);
+        set_env("START_APP_USE_TURSO", "1");
         set_env("TURSO_DB_URL", "libsql://prod-db.turso.io");
         set_env("TURSO_AUTH_TOKEN", "token");
 

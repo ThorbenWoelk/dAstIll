@@ -38,7 +38,6 @@ else
 fi
 shared_backend_env_file="${shared_env_dir}/backend.env"
 shared_frontend_env_file="${shared_env_dir}/frontend.env"
-typeset -gA initial_env_keys
 
 resolve_adb_command() {
 	if command -v adb >/dev/null 2>&1; then
@@ -253,20 +252,6 @@ require_http_status() {
 	return 0
 }
 
-capture_initial_env_keys() {
-	initial_env_keys=()
-	while IFS='=' read -r key _; do
-		initial_env_keys[$key]=1
-	done < <(env)
-}
-
-trim_whitespace() {
-	local value=$1
-	value="${value#"${value%%[![:space:]]*}"}"
-	value="${value%"${value##*[![:space:]]}"}"
-	printf '%s' "$value"
-}
-
 read_env_file_value() {
 	local env_file=$1
 	local key=$2
@@ -306,35 +291,7 @@ resolve_env_value() {
 	return 0
 }
 
-export_env_file_preserving_shell() {
-	local env_file=$1
-	local line=""
 
-	if [[ ! -f "$env_file" ]]; then
-		return 0
-	fi
-
-	while IFS= read -r line || [[ -n "$line" ]]; do
-		[[ -z "$line" ]] && continue
-		[[ "$line" == \#* ]] && continue
-		[[ "$line" != *=* ]] && continue
-
-		local key=${line%%=*}
-		local value=${line#*=}
-		key=$(trim_whitespace "$key")
-		value=$(trim_whitespace "$value")
-
-		if [[ -z "$key" || "$key" == \#* || -n ${initial_env_keys[$key]-} ]]; then
-			continue
-		fi
-		if [[ "$value" == \"*\" && "$value" == *\" ]]; then
-			value=${value#\"}
-			value=${value%\"}
-		fi
-
-		export "$key=$value"
-	done < "$env_file"
-}
 
 ensure_local_env_files() {
 	local missing_env=0
@@ -357,48 +314,14 @@ ensure_local_env_files() {
 	fi
 }
 
-prepare_frontend_env() {
-	export_env_file_preserving_shell "$shared_frontend_env_file"
-	export_env_file_preserving_shell "frontend/.env"
-}
-
 start_backend() {
 	pushd backend >/dev/null
-	local summary_model
-	summary_model=$(resolve_env_value "OLLAMA_SUMMARY_MODEL" ".env" "$shared_backend_env_file")
-	if [[ -z "$summary_model" ]]; then
-		summary_model=$(resolve_env_value "OLLAMA_MODEL" ".env" "$shared_backend_env_file")
-	fi
-
-	local default_chat_model
-	default_chat_model=$(resolve_env_value "OLLAMA_DEFAULT_CHAT_MODEL" ".env" "$shared_backend_env_file")
-	if [[ -z "$default_chat_model" ]]; then
-		default_chat_model=$(resolve_env_value "OLLAMA_CHAT_MODEL" ".env" "$shared_backend_env_file")
-	fi
-
-	if [[ -n "$summary_model" ]]; then
-		export OLLAMA_SUMMARY_MODEL="$summary_model"
-	fi
-	if [[ -n "$default_chat_model" ]]; then
-		export OLLAMA_DEFAULT_CHAT_MODEL="$default_chat_model"
-	fi
-
-	local use_turso="${START_APP_USE_TURSO:-}"
-	if [[ "$use_turso" == "1" || "$use_turso" == "true" || "$use_turso" == "TRUE" ]]; then
-		echo "Backend search index: using configured Turso/libSQL replica"
-	else
-		export TURSO_DB_URL=""
-		export TURSO_AUTH_TOKEN=""
-		echo "Backend search index: using local libSQL fallback (set START_APP_USE_TURSO=1 to use Turso)"
-	fi
-
 	PORT=$backend_port cargo run --bin dastill > >(tee ../backend.log) 2>&1 &
 	backend_pid=$!
 	popd >/dev/null
 }
 
 start_frontend() {
-	prepare_frontend_env
 	pushd frontend >/dev/null
 	VITE_API_BASE="http://localhost:$backend_port" \
 		bun --no-env-file run dev -- --host 0.0.0.0 --port $frontend_port > >(tee ../frontend.log) 2>&1 &
@@ -592,7 +515,6 @@ check_ollama_models() {
 	echo "Ollama: ok ($verified model(s) present locally)"
 }
 
-capture_initial_env_keys
 ensure_local_env_files
 check_ollama_models
 

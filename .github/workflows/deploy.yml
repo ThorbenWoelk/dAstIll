@@ -188,7 +188,7 @@ jobs:
           service: ${{ format('{0}-backend', env.APP_NAME) }}
           region: ${{ env.REGION }}
           image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_ID }}/backend:${{ env.IMAGE_TAG }}
-          flags: "--service-account=${{ env.APP_NAME }}-backend-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com --memory=1Gi --env-vars-file=/tmp/backend_cr_env.txt --startup-probe=failureThreshold=15,periodSeconds=10"
+          flags: "--service-account=${{ env.APP_NAME }}-backend-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com --memory=1Gi --env-vars-file=/tmp/backend_cr_env.txt --startup-probe=tcpSocket.port=3001,failureThreshold=15,periodSeconds=10"
           # Quote so newlines from the prior step are preserved for deploy-cloudrun.
           secrets: "${{ steps.backend_secrets.outputs.secrets }}"
           secrets_update_strategy: overwrite
