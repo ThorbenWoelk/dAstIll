@@ -3,31 +3,17 @@ name: Release
 run-name: >-
   ${{
     github.event_name == 'workflow_dispatch'
-      && format('Release ({0})', github.event.inputs.target || 'all')
+      && 'Release (manual)'
       || format('Release: {0}', github.event.head_commit.message || 'unknown message')
   }}
 
 on:
   push:
     branches: ["main"]
-    paths:
-      - 'backend/**'
-      - 'frontend/**'
-      - 'docs/**'
   workflow_dispatch:
-    inputs:
-      target:
-        description: Deploy scope
-        type: choice
-        options:
-          - all
-          - backend
-          - docs
-          - frontend
-        default: all
 
 concurrency:
-  group: release-${{ github.sha }}-${{ github.event.inputs.target || 'auto' }}
+  group: release-${{ github.sha }}
   cancel-in-progress: true
 
 env:
@@ -42,37 +28,8 @@ permissions:
   id-token: write
 
 jobs:
-  changes:
-    name: Detect Deploy Scope
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    outputs:
-      backend: ${{ steps.detect.outputs.backend }}
-      frontend: ${{ steps.detect.outputs.frontend }}
-      docs: ${{ steps.detect.outputs.docs }}
-      any: ${{ steps.detect.outputs.any }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6.0.2
-        with:
-          fetch-depth: 0
-
-      - name: Detect deployable components
-        id: detect
-        env:
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
-          GITHUB_SHA: ${{ github.sha }}
-          GITHUB_BASE_REF: ${{ github.base_ref }}
-          BEFORE_SHA: ${{ github.event.before || '' }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-          TARGET: ${{ github.event.inputs.target || 'all' }}
-        run: ./scripts/detect_changed_components.sh deploy
-
   checks:
     name: Checks
-    needs: changes
-    if: needs.changes.outputs.any == 'true'
     uses: ./.github/workflows/validation.yml
     with:
       run_backend: true
@@ -81,10 +38,7 @@ jobs:
 
   deploy-backend:
     name: Deploy Backend
-    needs:
-      - changes
-      - checks
-    if: needs.changes.outputs.backend == 'true' && (needs.checks.result == 'success' || needs.checks.result == 'skipped')
+    needs: checks
     runs-on: ubuntu-latest
     timeout-minutes: 60
     outputs:
@@ -189,16 +143,12 @@ jobs:
           region: ${{ env.REGION }}
           image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_ID }}/backend:${{ env.IMAGE_TAG }}
           flags: "--service-account=${{ env.APP_NAME }}-backend-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com --memory=1Gi --env-vars-file=/tmp/backend_cr_env.txt --startup-probe=tcpSocket.port=3001,failureThreshold=15,periodSeconds=10"
-          # Quote so newlines from the prior step are preserved for deploy-cloudrun.
           secrets: "${{ steps.backend_secrets.outputs.secrets }}"
           secrets_update_strategy: overwrite
 
   deploy-docs:
     name: Deploy Docs
-    needs:
-      - changes
-      - checks
-    if: needs.changes.outputs.docs == 'true' && (needs.checks.result == 'success' || needs.checks.result == 'skipped')
+    needs: checks
     runs-on: ubuntu-latest
     timeout-minutes: 60
     outputs:
@@ -246,11 +196,9 @@ jobs:
   deploy-frontend:
     name: Deploy Frontend
     needs:
-      - changes
       - checks
       - deploy-backend
       - deploy-docs
-    if: always() && needs.changes.outputs.frontend == 'true' && (needs.checks.result == 'success' || needs.checks.result == 'skipped') && (needs.deploy-backend.result == 'success' || needs.deploy-backend.result == 'skipped') && (needs.deploy-docs.result == 'success' || needs.deploy-docs.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
