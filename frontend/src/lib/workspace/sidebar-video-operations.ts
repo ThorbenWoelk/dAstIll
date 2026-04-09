@@ -323,7 +323,18 @@ export function createSidebarVideoOperations(
       videos: selectedVideoHint ? [selectedVideoHint] : [],
     });
     context.options.onVideoListReset?.();
-    await refreshAndLoadVideos(channelId, !fromUserInteraction);
+    if (fromUserInteraction) {
+      // Eagerly show loading state before the network fetch so the skeleton
+      // renders immediately instead of flashing "No videos yet."
+      context.setVideoLoadingState(true);
+      try {
+        await refreshAndLoadVideos(channelId, false);
+      } finally {
+        context.setVideoLoadingState(false);
+      }
+    } else {
+      await refreshAndLoadVideos(channelId, true);
+    }
   }
 
   function selectVideo(videoId: string | null) {

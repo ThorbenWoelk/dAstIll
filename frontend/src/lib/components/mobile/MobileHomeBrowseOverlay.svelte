@@ -63,6 +63,7 @@
       }}
       onAddChannel={readOnly ? undefined : channelActions.onAddChannel}
       addingChannel={channelState.addingChannel}
+      loadingChannels={channelState.loadingChannels}
       {addSourceErrorMessage}
     />
 
