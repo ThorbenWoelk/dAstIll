@@ -159,8 +159,7 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("port {} bound — waiting for initialization", port);
 
     let search_runtime = SearchRuntimeConfig::from_env();
-    let turso_runtime = TursoRuntimeConfig::from_env()
-        .map_err(|err| anyhow::anyhow!(err))?;
+    let turso_runtime = TursoRuntimeConfig::from_env().map_err(|err| anyhow::anyhow!(err))?;
     let chat_runtime = ChatRuntimeConfig::from_env();
     let databricks_runtime =
         DatabricksRuntimeConfig::from_env().map_err(|err| anyhow::anyhow!(err))?;
@@ -714,7 +713,10 @@ async fn main() -> anyhow::Result<()> {
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 
-    tracing::info!("initialization complete — serving on {}", listener.local_addr()?);
+    tracing::info!(
+        "initialization complete — serving on {}",
+        listener.local_addr()?
+    );
     axum::serve(listener, app).await?;
 
     Ok(())

@@ -6,7 +6,7 @@ use std::{
 
 use axum::http::HeaderValue;
 use jsonwebtoken::{
-    Algorithm, DecodingKey, Validation, decode, decode_header, dangerous::insecure_decode,
+    Algorithm, DecodingKey, Validation, dangerous::insecure_decode, decode, decode_header,
 };
 use reqwest::header::CACHE_CONTROL;
 use serde::Deserialize;
@@ -117,17 +117,17 @@ async fn verify_signed_token(
     token: &str,
     config: &SecurityRuntimeConfig,
 ) -> Result<FirebaseClaims, String> {
-    let header =
-        decode_header(token).map_err(|error| format!("failed to decode Firebase token header: {error}"))?;
+    let header = decode_header(token)
+        .map_err(|error| format!("failed to decode Firebase token header: {error}"))?;
     let kid = header
         .kid
         .as_deref()
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| "Firebase token is missing key id".to_string())?;
 
-    let jwk = get_securetoken_key(kid).await?.ok_or_else(|| {
-        format!("Firebase token key `{kid}` was not found in Google's key set")
-    })?;
+    let jwk = get_securetoken_key(kid)
+        .await?
+        .ok_or_else(|| format!("Firebase token key `{kid}` was not found in Google's key set"))?;
     let decoding_key = DecodingKey::from_rsa_components(&jwk.n, &jwk.e)
         .map_err(|error| format!("failed to construct Firebase decoding key: {error}"))?;
 
@@ -251,8 +251,8 @@ mod tests {
     use serde::Serialize;
 
     use super::{
-        FirebaseAuthState, VerifiedClientIdentity, build_verified_identity, parse_cache_control_max_age,
-        verify_bearer_identity,
+        FirebaseAuthState, VerifiedClientIdentity, build_verified_identity,
+        parse_cache_control_max_age, verify_bearer_identity,
     };
     use crate::config::SecurityRuntimeConfig;
 

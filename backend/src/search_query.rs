@@ -45,3 +45,13 @@ pub fn build_fts_query(query: &str) -> String {
         .collect::<Vec<_>>()
         .join(" AND ")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::meaningful_search_terms;
+
+    #[test]
+    fn meaningful_search_terms_keeps_claude() {
+        assert_eq!(meaningful_search_terms("claude"), vec!["claude"]);
+    }
+}

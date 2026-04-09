@@ -487,3 +487,170 @@ fn count_title_term_matches(title: &str, terms: &[String]) -> usize {
         .filter(|term| title_terms.contains(*term))
         .count()
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{collections::HashSet, sync::Arc};
+
+    use axum::{
+        Extension,
+        body::to_bytes,
+        extract::{Query, State},
+        response::IntoResponse,
+    };
+    use reqwest::Client;
+    use tokio::sync::RwLock;
+
+    use super::{SearchExecutionMode, SearchParams, search};
+    use crate::{
+        models::SearchResponsePayload,
+        search_progress::SearchProgress,
+        security::{AccessContext, AccessRole, AuthState},
+        services::fts::FtsSourceMeta,
+        services::{
+            ChatService, CloudCooldown, FtsChunk, OllamaCore, OpenAlexPlannerService,
+            OpenAlexService, PodcastFeedService, SearchService, SearchSourceKind,
+            SummarizerService, SummaryEvaluatorService, TranscriptCooldown, TranscriptService,
+            UserActivity, WebsiteService, YouTubeQuotaCooldown, YouTubeService,
+        },
+        state::AppState,
+    };
+
+    async fn test_app_state() -> AppState {
+        let db = crate::db::Store::for_test().await;
+        let cooldown = Arc::new(CloudCooldown::cloud());
+        let security =
+            Arc::new(crate::config::SecurityRuntimeConfig::from_env().expect("security config"));
+        AppState {
+            db,
+            read_cache: Arc::new(crate::read_cache::ReadCache::default()),
+            security: security.clone(),
+            request_rate_limiter: crate::security::rate_limiter(security.as_ref()),
+            search_auto_create_vector_index: false,
+            search_projection_lock: Arc::new(RwLock::new(())),
+            search_progress: Arc::new(SearchProgress::new(
+                None,
+                crate::services::search::SEARCH_EMBEDDING_DIMENSIONS,
+                false,
+            )),
+            youtube: Arc::new(YouTubeService::with_client(Client::new())),
+            openalex_planner: Arc::new(OpenAlexPlannerService::new(
+                OllamaCore::new("://invalid-url", "qwen3:8b").with_cloud_cooldown(cooldown.clone()),
+            )),
+            openalex: Arc::new(OpenAlexService::with_client(Client::new())),
+            podcast_feed: Arc::new(PodcastFeedService::with_client(Client::new())),
+            website: Arc::new(WebsiteService::with_client(Client::new())),
+            transcript: Arc::new(TranscriptService::with_path("/usr/bin/false")),
+            tts: None,
+            summarizer: Arc::new(SummarizerService::new(
+                OllamaCore::new("://invalid-url", "qwen3:8b").with_cloud_cooldown(cooldown.clone()),
+            )),
+            summary_evaluator: Arc::new(SummaryEvaluatorService::new(
+                OllamaCore::new("://invalid-url", "qwen3.5:397b-cloud")
+                    .with_cloud_cooldown(cooldown.clone()),
+            )),
+            search: Arc::new(SearchService::with_config(
+                "://invalid-url",
+                None,
+                crate::services::search::SEARCH_EMBEDDING_DIMENSIONS,
+                false,
+            )),
+            chat: Arc::new(ChatService::new(
+                OllamaCore::new("://invalid-url", "qwen3:8b").with_cloud_cooldown(cooldown.clone()),
+            )),
+            analytics: None,
+            active_replies: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+            conversation_store_lock: Arc::new(tokio::sync::Mutex::new(())),
+            fts: Arc::new(crate::services::FtsIndex::new().await.expect("fts index")),
+            anonymous_chat_quota_lock: Arc::new(tokio::sync::Mutex::new(())),
+            mobile_auth_handoffs: Arc::new(tokio::sync::Mutex::new(
+                std::collections::HashMap::new(),
+            )),
+            cloud_cooldown: cooldown,
+            youtube_quota_cooldown: Arc::new(YouTubeQuotaCooldown::youtube_quota()),
+            transcript_cooldown: Arc::new(TranscriptCooldown::transcript()),
+            user_activity: Arc::new(UserActivity::from_env()),
+        }
+    }
+
+    #[tokio::test]
+    async fn keyword_search_returns_only_accessible_results() {
+        let state = test_app_state().await;
+
+        for (video_id, channel_id, title) in [
+            ("video-channel", "channel-a", "Scoped channel result"),
+            (
+                "video-other",
+                "channel-hidden",
+                "Explicit video membership result",
+            ),
+            ("video-forbidden", "channel-hidden", "Forbidden result"),
+        ] {
+            state
+                .fts
+                .upsert_source(
+                    FtsSourceMeta {
+                        video_id,
+                        source_kind: SearchSourceKind::Transcript,
+                        channel_id,
+                        channel_name: "Channel",
+                        video_title: title,
+                        published_at: "2026-04-09T00:00:00Z",
+                    },
+                    &[FtsChunk {
+                        chunk_id: format!("{video_id}_transcript_0"),
+                        section_title: None,
+                        chunk_text: "Claude appears in this indexed transcript.".to_string(),
+                        start_sec: None,
+                    }],
+                )
+                .await
+                .expect("fts source should be indexed");
+        }
+
+        let response = search(
+            State(state),
+            Extension(AccessContext {
+                user_id: Some("user-1".to_string()),
+                auth_state: AuthState::Authenticated,
+                access_role: AccessRole::User,
+                allowed_channel_ids: vec!["channel-a".to_string()],
+                allowed_other_video_ids: vec!["video-other".to_string()],
+            }),
+            Query(SearchParams {
+                q: "claude".to_string(),
+                source: None,
+                limit: Some(10),
+                channel_id: None,
+                mode: Some(SearchExecutionMode::Keyword),
+            }),
+        )
+        .await
+        .expect("search should succeed")
+        .into_response();
+
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("response body should read");
+        let payload: SearchResponsePayload =
+            serde_json::from_slice(&body).expect("payload should deserialize");
+        let video_ids = payload
+            .results
+            .iter()
+            .map(|result| result.video_id.clone())
+            .collect::<HashSet<_>>();
+
+        assert!(
+            video_ids.contains("video-channel"),
+            "channel-scoped result should be returned"
+        );
+        assert!(
+            video_ids.contains("video-other"),
+            "explicitly allowed other video should be returned"
+        );
+        assert!(
+            !video_ids.contains("video-forbidden"),
+            "out-of-scope video should be filtered out"
+        );
+    }
+}

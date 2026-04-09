@@ -44,11 +44,14 @@ pub async fn create_mobile_auth_handoff(
             google_access_token: None,
         });
 
-    Ok((StatusCode::CREATED, Json(MobileAuthHandoffStatusPayload {
-        status: "pending",
-        google_id_token: None,
-        google_access_token: None,
-    })))
+    Ok((
+        StatusCode::CREATED,
+        Json(MobileAuthHandoffStatusPayload {
+            status: "pending",
+            google_id_token: None,
+            google_access_token: None,
+        }),
+    ))
 }
 
 pub async fn complete_mobile_auth_handoff(
@@ -59,7 +62,10 @@ pub async fn complete_mobile_auth_handoff(
     let google_id_token = payload.google_id_token.trim();
     let google_access_token = payload.google_access_token.trim();
     if google_id_token.is_empty() || google_access_token.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "Google auth tokens are required".to_string()));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Google auth tokens are required".to_string(),
+        ));
     }
 
     let mut handoffs = state.mobile_auth_handoffs.lock().await;

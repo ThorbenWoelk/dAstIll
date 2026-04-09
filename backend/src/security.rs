@@ -258,10 +258,12 @@ fn resolve_authenticated_access_role(
 ) -> AccessRole {
     let normalized_email = email.map(|value| value.trim().to_lowercase());
 
-    if normalized_email
-        .as_ref()
-        .is_some_and(|email| config.operator_email_allowlist.iter().any(|value| value == email))
-    {
+    if normalized_email.as_ref().is_some_and(|email| {
+        config
+            .operator_email_allowlist
+            .iter()
+            .any(|value| value == email)
+    }) {
         AccessRole::Operator
     } else {
         AccessRole::User
@@ -401,7 +403,9 @@ async fn ensure_canonical_seeded_channel(state: &AppState) -> Result<(), String>
         .youtube
         .resolve_channel(channel_id)
         .await
-        .map_err(|error| format!("failed to resolve default seeded channel `{channel_id}`: {error}"))?;
+        .map_err(|error| {
+            format!("failed to resolve default seeded channel `{channel_id}`: {error}")
+        })?;
 
     let now = chrono::Utc::now();
     let channel = crate::models::Channel {

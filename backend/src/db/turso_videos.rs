@@ -1,4 +1,4 @@
-use libsql::{params, Value};
+use libsql::{Value, params};
 
 use crate::models::{ContentStatus, Video};
 
@@ -106,8 +106,7 @@ async fn hydrate_inserted_video_from_storage(
     ))
 }
 
-const SELECT_ALL_COLUMNS: &str =
-    "id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, acknowledged, retry_count, quality_score";
+const SELECT_ALL_COLUMNS: &str = "id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, acknowledged, retry_count, quality_score";
 
 /// Upsert a video, preserving processing state fields when the row already exists.
 pub async fn ts_insert_video(
@@ -210,11 +209,12 @@ pub async fn ts_bulk_insert_videos(store: &Store, videos: Vec<Video>) -> Result<
             .map(|(i, _)| format!("?{}", i + 1))
             .collect::<Vec<_>>()
             .join(", ");
-        let sql = format!(
-            "SELECT {SELECT_ALL_COLUMNS} FROM videos WHERE id IN ({placeholders})"
-        );
+        let sql = format!("SELECT {SELECT_ALL_COLUMNS} FROM videos WHERE id IN ({placeholders})");
         let values: Vec<Value> = chunk.iter().map(|id| Value::Text(id.clone())).collect();
-        let mut rows = store.turso.query(&sql, libsql::params_from_iter(values)).await?;
+        let mut rows = store
+            .turso
+            .query(&sql, libsql::params_from_iter(values))
+            .await?;
         while let Some(row) = rows.next().await? {
             if let Ok(video) = row_to_video(&row) {
                 existing_map.insert(video.id.clone(), video);
@@ -336,14 +336,15 @@ pub async fn ts_get_videos(
             .map(|(i, _)| format!("?{}", i + 1))
             .collect::<Vec<_>>()
             .join(", ");
-        let sql = format!(
-            "SELECT {SELECT_ALL_COLUMNS} FROM videos WHERE id IN ({placeholders})"
-        );
+        let sql = format!("SELECT {SELECT_ALL_COLUMNS} FROM videos WHERE id IN ({placeholders})");
         let values: Vec<Value> = chunk
             .iter()
             .map(|id| Value::Text(id.as_ref().to_string()))
             .collect();
-        let mut rows = store.turso.query(&sql, libsql::params_from_iter(values)).await?;
+        let mut rows = store
+            .turso
+            .query(&sql, libsql::params_from_iter(values))
+            .await?;
         while let Some(row) = rows.next().await? {
             let mut video = row_to_video(&row)?;
             if include_summary {
@@ -364,10 +365,7 @@ pub async fn ts_get_videos(
 pub async fn ts_load_all_videos(store: &Store) -> Result<Vec<Video>, StoreError> {
     let mut rows = store
         .turso
-        .query(
-            &format!("SELECT {SELECT_ALL_COLUMNS} FROM videos"),
-            (),
-        )
+        .query(&format!("SELECT {SELECT_ALL_COLUMNS} FROM videos"), ())
         .await?;
 
     let mut videos = Vec::new();
@@ -395,10 +393,7 @@ pub async fn ts_list_channel_videos_window(
     );
     let mut rows = store
         .turso
-        .query(
-            &sql,
-            params![channel_id, limit as i64, offset as i64],
-        )
+        .query(&sql, params![channel_id, limit as i64, offset as i64])
         .await?;
 
     let mut videos = Vec::new();
@@ -552,7 +547,9 @@ pub async fn ts_update_video_quality_score(
 
 #[cfg(test)]
 mod tests {
-    use super::{content_status_from_str, content_status_to_str, reconcile_video_statuses_from_storage};
+    use super::{
+        content_status_from_str, content_status_to_str, reconcile_video_statuses_from_storage,
+    };
     use crate::models::{ContentStatus, Video};
 
     fn build_video() -> Video {
@@ -604,7 +601,10 @@ mod tests {
             ContentStatus::Ready,
             ContentStatus::Failed,
         ] {
-            assert_eq!(content_status_from_str(content_status_to_str(status)), status);
+            assert_eq!(
+                content_status_from_str(content_status_to_str(status)),
+                status
+            );
         }
     }
 }

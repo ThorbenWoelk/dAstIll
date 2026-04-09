@@ -1,4 +1,4 @@
-use libsql::{params, Value};
+use libsql::{Value, params};
 use serde::{Deserialize, Serialize};
 
 use super::{Store, StoreError};

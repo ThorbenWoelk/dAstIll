@@ -56,14 +56,8 @@ pub async fn list_channel_videos_window(
     offset: usize,
     descending: bool,
 ) -> Result<Vec<Video>, StoreError> {
-    super::turso_videos::ts_list_channel_videos_window(
-        store,
-        channel_id,
-        limit,
-        offset,
-        descending,
-    )
-    .await
+    super::turso_videos::ts_list_channel_videos_window(store, channel_id, limit, offset, descending)
+        .await
 }
 
 pub async fn load_scoped_video_suggestions(

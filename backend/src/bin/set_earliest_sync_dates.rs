@@ -56,8 +56,13 @@ async fn main() -> Result<()> {
     .build()
     .await
     .map_err(|e| anyhow::anyhow!("Turso: {e}"))?;
-    turso_db.sync().await.map_err(|e| anyhow::anyhow!("Turso sync: {e}"))?;
-    let turso_conn = turso_db.connect().map_err(|e| anyhow::anyhow!("Turso connect: {e}"))?;
+    turso_db
+        .sync()
+        .await
+        .map_err(|e| anyhow::anyhow!("Turso sync: {e}"))?;
+    let turso_conn = turso_db
+        .connect()
+        .map_err(|e| anyhow::anyhow!("Turso connect: {e}"))?;
     dastill::db::turso_schema::initialize_turso_schema(&turso_conn)
         .await
         .map_err(|e| anyhow::anyhow!(e))?;
