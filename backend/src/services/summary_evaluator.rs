@@ -194,7 +194,7 @@ fn parse_model_params_billions(model: &str) -> Option<u16> {
 
 fn known_cloud_model_params_billions(model: &str) -> Option<u16> {
     match model {
-        "glm-5:cloud" => Some(744),
+        "glm-5.1:cloud" => Some(744),
         _ => None,
     }
 }
@@ -270,7 +270,7 @@ mod tests {
 
     #[test]
     fn evaluator_model_policy_accepts_large_cloud_models() {
-        assert!(SummaryEvaluatorService::validate_model_policy("glm-5:cloud").is_ok());
+        assert!(SummaryEvaluatorService::validate_model_policy("glm-5.1:cloud").is_ok());
         assert!(SummaryEvaluatorService::validate_model_policy("qwen3.5:397b-cloud").is_ok());
         assert!(SummaryEvaluatorService::validate_model_policy("llama3.3:70b-cloud").is_ok());
     }

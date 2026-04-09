@@ -576,7 +576,7 @@ mod tests {
     #[test]
     fn indicator_status_reports_cloud_when_primary_model_is_cloud_and_available() {
         let summarizer = SummarizerService::new(
-            OllamaCore::new("http://localhost:11434", "glm-5:cloud")
+            OllamaCore::new("http://localhost:11434", "glm-5.1:cloud")
                 .with_fallback_model(Some("qwen3-coder:30b".to_string())),
         );
 
@@ -586,7 +586,7 @@ mod tests {
     #[test]
     fn indicator_status_reports_local_only_when_cloud_cooldown_uses_local_fallback() {
         let summarizer = SummarizerService::new(
-            OllamaCore::new("http://localhost:11434", "glm-5:cloud")
+            OllamaCore::new("http://localhost:11434", "glm-5.1:cloud")
                 .with_fallback_model(Some("qwen3-coder:30b".to_string())),
         );
 
@@ -596,7 +596,7 @@ mod tests {
     #[test]
     fn indicator_status_reports_offline_when_cloud_cooldown_has_no_local_fallback() {
         let summarizer = SummarizerService::new(
-            OllamaCore::new("http://localhost:11434", "glm-5:cloud").with_fallback_model(None),
+            OllamaCore::new("http://localhost:11434", "glm-5.1:cloud").with_fallback_model(None),
         );
 
         assert_eq!(summarizer.indicator_status(true, true), AiStatus::Offline);
@@ -616,7 +616,7 @@ mod tests {
     #[test]
     fn indicator_status_reports_offline_when_endpoint_is_unreachable() {
         let summarizer = SummarizerService::new(
-            OllamaCore::new("http://localhost:11434", "glm-5:cloud")
+            OllamaCore::new("http://localhost:11434", "glm-5.1:cloud")
                 .with_fallback_model(Some("qwen3-coder:30b".to_string())),
         );
 

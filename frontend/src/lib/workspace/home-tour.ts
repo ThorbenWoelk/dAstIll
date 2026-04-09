@@ -65,7 +65,7 @@ export function createHomeTourSteps(ctx: TourContext): TourStep[] {
       },
     },
     {
-      selector: "#channel-input",
+      selector: "#drawer-source-input",
       title: "Add a Channel",
       body: "Paste a URL or handle here to subscribe to a channel. New uploads are tracked automatically.",
       placement: "bottom",

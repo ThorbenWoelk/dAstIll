@@ -109,8 +109,8 @@ Terraform, Google Cloud Run, AWS IAM (Workload Identity Federation), Google Secr
    BACKEND_CORS_ALLOWED_ORIGINS=http://localhost:3543
    YOUTUBE_API_KEY=optional-api-key
    OLLAMA_URL=http://localhost:11434
-   OLLAMA_SUMMARY_MODEL=glm-5:cloud
-   OLLAMA_DEFAULT_CHAT_MODEL=glm-5:cloud
+   OLLAMA_SUMMARY_MODEL=glm-5.1:cloud
+   OLLAMA_DEFAULT_CHAT_MODEL=glm-5.1:cloud
    OLLAMA_FALLBACK_MODEL=qwen3-coder:30b
    SUMMARY_EVALUATOR_MODEL=qwen3.5:397b-cloud
    SEARCH_SEMANTIC_ENABLED=true

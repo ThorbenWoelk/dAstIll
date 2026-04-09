@@ -255,6 +255,7 @@
             </button>
             <button
               class="flex w-full items-center gap-3 rounded-[var(--radius-md)] px-3 py-1.5 text-[14px] font-medium transition-colors hover:bg-[var(--accent-wash)]"
+              id="guide-trigger"
               onclick={() => {
                 menuOpen = false;
                 onOpenGuide?.();
