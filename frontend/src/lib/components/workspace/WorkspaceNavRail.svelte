@@ -106,11 +106,11 @@
 </script>
 
 <aside
-  class="relative z-50 hidden h-full shrink-0 flex-col bg-[var(--panel-surface)] lg:flex"
+  class="relative z-50 flex h-full shrink-0 flex-col bg-[var(--panel-surface)]"
   style="width: {width}px;"
 >
   {#if collapsed}
-    <div class="flex items-center justify-center px-1.5 pt-3 pb-1">
+    <div class="hidden items-center justify-center px-1.5 pt-3 pb-1 lg:flex">
       <button
         type="button"
         class="inline-flex h-7 w-7 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-60 transition-all hover:bg-[var(--accent-wash)] hover:opacity-100"
@@ -145,7 +145,7 @@
 
       <button
         type="button"
-        class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-55 transition-all hover:bg-[var(--accent-wash)] hover:opacity-100"
+        class="hidden h-6 w-6 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-55 transition-all hover:bg-[var(--accent-wash)] hover:opacity-100 lg:inline-flex"
         onclick={onToggleCollapse}
         aria-label="Collapse sidebar"
       >

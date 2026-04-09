@@ -70,6 +70,7 @@
     } catch {
       // ignore
     }
+    if (window.innerWidth < 1024) navWidth = NAV_MIN;
   });
 
   function persist() {
@@ -101,6 +102,7 @@
     } catch {
       // ignore
     }
+    if (window.innerWidth < 1024) navWidth = NAV_MIN;
   });
 
   function handleResizeStart(target: "nav" | "sidebar", event: PointerEvent) {
