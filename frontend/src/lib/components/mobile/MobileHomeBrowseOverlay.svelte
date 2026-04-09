@@ -8,13 +8,11 @@
     WorkspaceSidebarVideoState,
   } from "$lib/workspace/component-props";
   import WorkspaceSidebar from "$lib/components/workspace/WorkspaceSidebar.svelte";
-  import MobileChannelGallery from "$lib/components/mobile/MobileChannelGallery.svelte";
 
   let {
     open,
     channels,
     selectedChannelId,
-    onSelectChannel,
     onClose,
     channelState,
     channelActions,
@@ -28,12 +26,12 @@
     previewScope = { kind: "default" } as NonNullable<
       WorkspaceSidebarPreviewProps["previewScope"]
     >,
+    previewSessionKey = undefined as string | undefined,
     onChannelSyncDateSaved = undefined,
   }: {
     open: boolean;
     channels: Channel[];
     selectedChannelId: string | null;
-    onSelectChannel: (channelId: string) => void;
     onClose: () => void;
     channelState: WorkspaceSidebarChannelState;
     channelActions: WorkspaceSidebarChannelActions;
@@ -45,55 +43,40 @@
     initialChannelPreviews?: Record<string, ChannelSnapshot>;
     initialChannelPreviewsFilterKey?: string | undefined;
     previewScope?: WorkspaceSidebarPreviewProps["previewScope"];
+    previewSessionKey?: string;
     onChannelSyncDateSaved?: (channelId: string) => void | Promise<void>;
   } = $props();
 </script>
 
 {#if open}
-  <!-- No full-screen backdrop button: it sat in the same stacking context as the sheet and could steal taps from "Synced to" on some engines. -->
   <section
     class="relative z-[70] flex h-full min-h-0 flex-col overflow-hidden bg-[var(--background)] lg:hidden"
     aria-label="Browse"
   >
-    <MobileChannelGallery
-      {channels}
-      {selectedChannelId}
-      onSelectChannel={(channelId) => {
-        onSelectChannel(channelId);
+    <WorkspaceSidebar
+      videoListMode="per_channel_preview"
+      {previewSessionKey}
+      shell={{
+        collapsed: false,
+        width: undefined,
+        mobileVisible: true,
+        onToggleCollapse: onClose,
       }}
-      onAddChannel={readOnly ? undefined : channelActions.onAddChannel}
-      addingChannel={channelState.addingChannel}
-      loadingChannels={channelState.loadingChannels}
+      channelState={{
+        ...channelState,
+        channels,
+        selectedChannelId,
+        canDeleteChannels,
+      }}
+      {channelActions}
+      {videoState}
+      {videoActions}
+      {readOnly}
       {addSourceErrorMessage}
+      {initialChannelPreviews}
+      {initialChannelPreviewsFilterKey}
+      {previewScope}
+      {onChannelSyncDateSaved}
     />
-
-    <div class="min-h-0 flex-1 overflow-hidden">
-      <WorkspaceSidebar
-        videoListMode="selected_channel"
-        shell={{
-          collapsed: false,
-          width: undefined,
-          mobileVisible: true,
-          onToggleCollapse: onClose,
-        }}
-        channelState={{
-          ...channelState,
-          channels,
-          selectedChannelId,
-          canDeleteChannels,
-        }}
-        {channelActions}
-        {videoState}
-        {videoActions}
-        {readOnly}
-        {addSourceErrorMessage}
-        {initialChannelPreviews}
-        {initialChannelPreviewsFilterKey}
-        {previewScope}
-        hideChannelUi
-        suppressVideoLoadMoreButton
-        {onChannelSyncDateSaved}
-      />
-    </div>
   </section>
 {/if}
