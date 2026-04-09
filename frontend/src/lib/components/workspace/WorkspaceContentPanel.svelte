@@ -223,7 +223,7 @@
 
     return Boolean(
       target.closest(
-        "button, a, input, textarea, select, label, [role='button'], [role='tab'], article, .prose, mark",
+        "button, a, input, textarea, select, label, [role='button'], [role='tab'], mark",
       ),
     );
   }
