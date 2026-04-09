@@ -41,6 +41,7 @@ import {
   createHomeWorkspaceDataController,
   type CachedChannelVideoState,
 } from "$lib/workspace/home-workspace-data-controller.svelte";
+import { clearWorkspaceForScopeChange } from "$lib/workspace/home-workspace-auth-scope";
 import { createHomeWorkspaceAcknowledgeController } from "$lib/workspace/home-workspace-acknowledge-controller.svelte";
 import { createHomeWorkspacePageState } from "$lib/workspace/home-workspace-page-state.svelte";
 import { createHomeWorkspacePersistenceController } from "$lib/workspace/home-workspace-persistence-controller.svelte";
@@ -399,8 +400,7 @@ export function createHomeWorkspacePage() {
     }
 
     pageState.setHydratedWorkspaceScopeKey(workspaceCacheScopeKey);
-    sidebarState.resetVideoListState();
-    sidebarState.setLoadingVideos(false);
+    clearWorkspaceForScopeChange(sidebarState);
     void dataController.loadBootstrapRefresh();
   });
 

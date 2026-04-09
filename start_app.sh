@@ -252,6 +252,52 @@ require_http_status() {
 	return 0
 }
 
+diagnose_aws_startup_access() {
+	local aws_region="${AWS_REGION:-eu-central-1}"
+	local sts_output=""
+	local sts_status=0
+
+	echo "Checking AWS identity used by backend startup..."
+
+	if ! command -v aws >/dev/null 2>&1; then
+		echo "AWS CLI is not installed, so startup cannot verify your current AWS session."
+		echo "Hint: local startup requires AWS access to S3. Log into AWS for the profile used by this shell (for example \`aws sso login\`) or export AWS credentials in $shared_backend_env_file."
+		return 0
+	fi
+
+	set +e
+	sts_output=$(AWS_PAGER="" AWS_REGION="$aws_region" aws sts get-caller-identity --output text 2>&1)
+	sts_status=$?
+	set -e
+
+	if [[ $sts_status -eq 0 ]]; then
+		echo "AWS identity check succeeded: $sts_output"
+		echo "Startup still failed, so inspect backend.log for the underlying S3/bootstrap error."
+		return 0
+	fi
+
+	echo "AWS identity check failed:"
+	echo "$sts_output"
+
+	local normalized_output="${sts_output:l}"
+	if [[ "$normalized_output" == *"unable to locate credentials"* ]] ||
+		[[ "$normalized_output" == *"sso session"* ]] ||
+		[[ "$normalized_output" == *"token has expired"* ]] ||
+		[[ "$normalized_output" == *"expiredtoken"* ]] ||
+		[[ "$normalized_output" == *"could not be found"* ]]; then
+		local aws_profile="${AWS_PROFILE:-${AWS_DEFAULT_PROFILE:-}}"
+		echo "Hint: you do not appear to be logged into AWS for local backend startup."
+		if [[ -n "$aws_profile" ]]; then
+			echo "Run: aws sso login --profile $aws_profile"
+		else
+			echo "Run: aws sso login"
+		fi
+		echo "If you do not use SSO, export AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY (and AWS_SESSION_TOKEN when needed) in $shared_backend_env_file."
+	else
+		echo "Hint: local startup requires working AWS access to S3. Verify the active profile, region, and any temporary session credentials used by this shell."
+	fi
+}
+
 read_env_file_value() {
 	local env_file=$1
 	local key=$2
@@ -589,7 +635,11 @@ if ! require_http_status \
 	"Backend workspace bootstrap" \
 	"http://localhost:$backend_port/api/workspace/bootstrap?limit=20" \
 	"200"; then
-	echo "Backend is up, but the workspace bootstrap request failed. Last backend log lines:"
+	echo "Backend is up, but the workspace bootstrap request failed."
+	if grep -Eiq "S3 error|dispatch failure|credential|access context" backend.log 2>/dev/null; then
+		diagnose_aws_startup_access
+	fi
+	echo "Last backend log lines:"
 	tail -n 80 backend.log || true
 	exit 1
 fi

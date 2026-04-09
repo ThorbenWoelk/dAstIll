@@ -96,6 +96,7 @@
 
   const sidebar = createSidebarState({
     limit: 20,
+    enableBackgroundRefresh: false,
     getViewCacheScopeKey: () => "queue",
     onSelectVideo: openQueuedVideo,
     onChannelSelected: (_id) => {},

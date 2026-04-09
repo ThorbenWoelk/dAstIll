@@ -32,6 +32,7 @@ function makeVideo(
     transcript_status: overrides.transcript_status,
     summary_status: overrides.summary_status,
     acknowledged: false,
+    retry_count: 0,
     ...overrides,
   };
 }
@@ -120,10 +121,35 @@ describe("deriveQueueStats", () => {
     ]);
 
     expect(stats).toEqual({
-      total: 4,
+      total: 3,
       loading: 1,
       pending: 1,
       failed: 1,
+      skipped: 0,
+    });
+  });
+
+  it("excludes rows the worker will skip after retry exhaustion", () => {
+    const stats = deriveQueueStats([
+      makeVideo({
+        id: "exhausted-transcript",
+        transcript_status: "failed",
+        summary_status: "pending",
+        retry_count: 3,
+      }),
+      makeVideo({
+        id: "pending-summary",
+        transcript_status: "ready",
+        summary_status: "pending",
+      }),
+    ]);
+
+    expect(stats).toEqual({
+      total: 1,
+      loading: 0,
+      pending: 1,
+      failed: 0,
+      skipped: 1,
     });
   });
 });

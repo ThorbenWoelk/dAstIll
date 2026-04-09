@@ -10,6 +10,7 @@ type ChannelRefreshWorkflowOptions<TSnapshot> = {
   channelId: string;
   refreshedAtByChannel: Map<string, number>;
   ttlMs: number;
+  enableRefresh?: boolean;
   bypassTtl?: boolean;
   initialSilent?: boolean;
   /**
@@ -29,6 +30,7 @@ export async function loadChannelSnapshotWithRefresh<TSnapshot>({
   channelId,
   refreshedAtByChannel,
   ttlMs,
+  enableRefresh = true,
   bypassTtl = false,
   initialSilent = false,
   getMutationEpoch,
@@ -45,6 +47,10 @@ export async function loadChannelSnapshotWithRefresh<TSnapshot>({
     return;
   }
   await applySnapshot(snapshot, initialSilent);
+
+  if (!enableRefresh) {
+    return;
+  }
 
   if (
     !bypassTtl &&

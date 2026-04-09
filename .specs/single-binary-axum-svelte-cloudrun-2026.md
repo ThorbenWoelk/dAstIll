@@ -1,107 +1,267 @@
-# Frontend → Firebase Hosting
+# Static Web Hosting Migration (Firebase Hosting, backend stays on Cloud Run)
 
-## Context
+## Recommendation
 
-- **Problem**: The frontend is a pure static SPA (Svelte 5, adapter-static) served by an nginx container on Cloud Run. This is operational overhead with no benefit: it pays for a Cloud Run service, adds a cold-start path, requires Docker builds on every frontend change, and forces a hardcoded CORS origin in the backend config. Firebase Hosting already exists in the project (Terraform `firebase.tf`) and is the right tool for the job.
-- **Goal**: Serve the frontend from Firebase Hosting. The frontend Cloud Run service (`dastill-frontend`) is decommissioned. API calls from the browser stay same-origin via a Firebase Hosting rewrite rule that proxies `/api/**` to the backend Cloud Run service — eliminating CORS entirely in production.
-- **Linear**: —
+Move the static Svelte frontend and the static docs site off Cloud Run and onto Firebase Hosting.
+
+Do not combine that migration with a blanket `/api/**` Firebase Hosting rewrite to the backend.
+
+That rewrite pattern looks attractive for CORS removal, but it is a bad fit for this app right now because the product already uses long-lived streaming endpoints. Firebase Hosting rewrites to Cloud Run are subject to a 60-second request timeout, while this backend explicitly supports multi-minute chat streams.
+
+The clean version of this migration is:
+
+- Firebase Hosting serves static frontend assets.
+- Firebase Hosting serves static docs assets.
+- The backend remains a standalone Cloud Run service.
+- The frontend continues to call the backend directly via its public base URL.
+- CORS remains enabled for the frontend origin and localhost dev.
+
+This removes the frontend container, the docs container, both image build/push paths, and both static-site Cloud Run services.
 
 ---
 
-## Key Facts (from codebase audit)
+## Why this version
 
-- All Axum routes already have the `/api` prefix — no backend route changes needed.
-- `firebase.json` exists but only contains auth emulator config — needs a `hosting` section.
-- No `.firebaserc` in the repo yet.
-- `VITE_API_BASE` is baked into the Docker image at build time and currently set to the full backend Cloud Run URL.
-- `BACKEND_CORS_ALLOWED_ORIGINS` in `deploy.yml` is hardcoded to the Cloud Run frontend URL.
-- `terraform/firebase.tf` derives `firebase_frontend_host` from `google_cloud_run_v2_service.frontend.uri`. This local must be updated to the Firebase Hosting domain after migration.
-- `terraform/iam.tf` contains a `frontend_sa` service account with Cloud Run invoker + Firebase Admin bindings. These can be removed (static SPA on Firebase Hosting needs no service account).
-- `terraform/cloud_run.tf` contains `google_cloud_run_v2_service.frontend` and its public IAM binding — both removed in Phase 4.
-- Firebase Hosting rewrites proxy at the network edge; from the browser's perspective requests to `/api/**` are same-origin. No `Origin` header is sent on same-origin requests, so the backend CORS layer is not triggered in production. Localhost CORS origins remain valid for local dev.
+### What gets better
+
+- Static assets move to a CDN-backed product that is designed for SPAs.
+- The repo no longer builds and deploys an nginx image just to serve `frontend/build/`.
+- The repo no longer builds and deploys an nginx image just to serve VitePress docs.
+- The frontend no longer has Cloud Run cold-start behavior.
+- The docs site no longer has Cloud Run cold-start behavior.
+- The frontend no longer needs a service account or Cloud Run IAM surface.
+- Docs no longer need a Cloud Run runtime surface either.
+- Static-site deploys become simpler and faster.
+
+### What does not get magically better
+
+- Backend costs do not change.
+- CORS does not disappear in this first migration.
+- Firebase Hosting is not automatically cheaper than today in every traffic shape.
+
+### Why the original same-origin rewrite plan is too risky
+
+- The frontend already uses streamed responses and SSE-like long-lived flows.
+- The backend chat path is intentionally configured for streams that can last up to 30 minutes.
+- Firebase Hosting rewrites to Cloud Run have a 60-second timeout.
+
+That means the original "proxy all `/api/**` through Hosting" plan can break chat and status streams even if normal JSON endpoints work.
+
+---
+
+## Cost Reality
+
+This migration probably makes sense, but mostly for architecture and delivery quality, not because it is guaranteed to slash cost.
+
+### Current frontend cost model
+
+Today the static-site costs come from:
+
+- Cloud Run frontend request/CPU/RAM usage
+- Cloud Run docs request/CPU/RAM usage
+- Cloud Build time for frontend image builds
+- Cloud Build time for docs image builds
+- Artifact Registry storage for frontend images
+- Artifact Registry storage for docs images
+
+Relevant official pricing as checked on April 9, 2026:
+
+- Cloud Run request-based services include a free tier of 2 million requests/month, 180,000 vCPU-seconds/month, and 360,000 GiB-seconds/month.
+- Cloud Build includes 2,500 free build-minutes/month, then charges per build minute.
+- Artifact Registry includes 0.5 GB free storage, then charges per GB-month.
+
+### Firebase Hosting cost model
+
+Relevant official pricing as checked on April 9, 2026:
+
+- Hosting includes 10 GB storage free.
+- Hosting includes 360 MB/day data transfer free.
+- After that, Hosting charges $0.026/GB stored and $0.15/GB transferred.
+
+### Practical interpretation for this repo
+
+- The current built frontend is small: roughly 3.1 MB in `frontend/build/`.
+- The docs site is also a plain static build produced by VitePress.
+- If every visit were a completely cold load, the Hosting free transfer tier would cover roughly 100 to 120 full loads/day.
+- In practice, immutable JS/CSS chunks are CDN-cached and browser-cached, so real transfer per repeat user should be lower than a full cold load.
+- The current frontend and docs Cloud Run services also may already sit mostly inside free tiers if traffic is modest.
+
+### Bottom line on cost
+
+- If traffic is low to moderate, the direct dollar difference may be small either way.
+- If traffic grows, Hosting is still a better product fit for static assets, but bandwidth becomes the main cost driver.
+- The strongest reasons to do this migration are operational simplification, CDN delivery, and removing an unnecessary runtime, not a guaranteed big savings number.
+
+---
+
+## Target Architecture
+
+### Phase 1 target
+
+- `PROJECT_ID.web.app` serves the static SPA from Firebase Hosting.
+- Docs are served from Firebase Hosting as well.
+- The frontend uses a configured backend base URL for API calls.
+- The backend stays on Cloud Run at its current service URL.
+- `BACKEND_CORS_ALLOWED_ORIGINS` includes the Firebase Hosting origin and local dev origins.
+- Docs remain a separate static site, but no longer on Cloud Run.
+
+### Explicit non-goal for this migration
+
+- No Firebase Hosting rewrite for `/api/**` in this phase.
+
+### Optional future phase
+
+Only after production validation, consider Firebase Hosting rewrites for short-lived non-streaming endpoints. Keep streaming endpoints direct unless you can prove they stay comfortably under Hosting's timeout constraints.
+
+### Docs URL strategy
+
+Use one of these, explicitly:
+
+- Preferred: a separate Hosting site or custom domain for docs, such as `docs.example.com`
+- Acceptable: the default Hosting subdomain for docs if a separate custom domain is not needed yet
+
+Do not force docs under the same Hosting site unless you explicitly want a path-based information architecture like `/docs`.
+
+---
+
+## Repo Facts That Shape The Plan
+
+- `frontend/src/lib/api-client.ts` already handles an empty or absent `VITE_API_BASE` safely, but it also supports a full backend URL.
+- `frontend/vite.config.ts` already proxies `/api` in local dev.
+- The frontend currently depends on streamed API responses for chat and on `EventSource` for search status.
+- The backend chat streaming path is intentionally configured for long-running streams.
+- `frontend/firebase.json` currently contains emulator/auth config only and is not in the repo root where Hosting config should live.
+- `docs/` is a static VitePress site currently packaged into its own nginx container.
+- The deploy workflow currently resolves both backend and docs URLs dynamically before building the frontend image.
+- `PUBLIC_DOCS_URL` is still required by the frontend, so frontend deploy independence requires either resolving docs URL directly inside the frontend job or moving docs to a stable configured URL source.
 
 ---
 
 ## Implementation Plan
 
-- [ ] **Phase 1: Firebase Hosting config**
-  - Add `hosting` block to `frontend/firebase.json`:
-    - `public: "build"` (Svelte static output dir)
-    - SPA fallback: `{ "source": "**", "destination": "/index.html" }`
-    - API proxy rewrite before the SPA fallback: `{ "source": "/api/**", "run": { "serviceId": "dastill-backend", "region": "europe-west3" } }`
-    - Add `headers` rule for static asset cache-control (`**/*.js`, `**/*.css` → `Cache-Control: public,max-age=31536000,immutable`; `index.html` → `Cache-Control: no-cache`)
-  - Create `.firebaserc` at repo root pointing to `$PROJECT_ID`.
-  - Move `firebase.json` from `frontend/` to repo root (Firebase CLI expects it at root alongside `.firebaserc`). Update any path references.
+- [ ] **Phase 1: Root Firebase config for static hosting**
+  - Move Firebase config to repo root.
+  - Merge the existing auth emulator config into a root `firebase.json`.
+  - Add Hosting config for the app with:
+    - `public: "frontend/build"`
+    - SPA fallback to `/index.html`
+    - cache headers for immutable built assets
+    - `index.html` set to `Cache-Control: no-cache`
+  - Add Hosting config for docs with:
+    - `public: "docs/.vitepress/dist"`
+    - standard static asset caching
+    - no SPA fallback unless docs navigation actually requires one
+  - Add `.firebaserc` at repo root pointing to the existing Firebase project.
+  - Do not add a `/api/**` Cloud Run rewrite in this phase.
 
-- [ ] **Phase 2: Frontend build config**
-  - Change `VITE_API_BASE` from the full backend URL to an empty string `""`. Relative fetch paths (`/api/...`) work naturally with Firebase Hosting rewrite in production and with the Vite dev proxy in local dev.
-  - Verify `frontend/src/lib/api-client.ts` handles an empty `VITE_API_BASE` correctly (it normalises by stripping trailing slash — an empty string produces `""`, which prepends nothing to paths like `/api/health`). Add a unit test if not covered.
-  - Remove `PUBLIC_CONTACT_EMAIL` and any other build-arg env vars that were only needed by the nginx/Cloud Run setup if they are no longer used.
+- [ ] **Phase 2: Frontend build stays static, API stays direct**
+  - Keep the frontend static build.
+  - Keep `VITE_API_BASE` as an explicit backend origin for production builds.
+  - Continue using the existing Vite dev proxy for local dev.
+  - Add or update a unit test around API URL resolution so production direct-origin and local relative-path behavior are both covered.
+  - Keep `PUBLIC_DOCS_URL` unless docs are given a stable custom domain or another stable source.
 
-- [ ] **Phase 3: CI/CD — deploy workflow**
-  - Add Firebase CLI to the deploy job: `npm install -g firebase-tools` (or use `w9jds/firebase-action`).
-  - Replace the "Build and Push Frontend Image" + "Deploy Frontend to Cloud Run" steps with:
-    1. Build frontend static files: `bun install --frozen-lockfile && bun run build` with `VITE_API_BASE=""` and the other `PUBLIC_*` build args (Firebase config still needed).
-    2. Deploy to hosting: `firebase deploy --only hosting --project $PROJECT_ID --token $FIREBASE_TOKEN` (or use WIF-based gcloud auth which is already set up).
-  - Remove the Docker build step, the artifact registry push, and the Cloud Run deploy step for the frontend.
-  - Update `BACKEND_CORS_ALLOWED_ORIGINS` in the backend deploy step: replace the Cloud Run frontend URL with the Firebase Hosting domain (`https://$PROJECT_ID.web.app`) — or remove it entirely since same-origin rewrites make it unreachable in production. Keep localhost origins for local dev via the existing defaults in `config.rs`.
-  - Remove "Resolve backend and docs URLs" steps that exist solely for passing `VITE_API_BASE` into the Docker build.
-  - The `deploy-frontend` job no longer needs to `needs: [deploy-backend, deploy-docs]` (it needed the URLs only for `VITE_API_BASE`). It can run independently after `checks`.
+- [ ] **Phase 3: CI/CD switch from container deploy to Hosting deploy**
+  - Remove the frontend Docker build/push/deploy steps from `.github/workflows/deploy.yml`.
+  - Remove the docs Docker build/push/deploy steps from `.github/workflows/deploy.yml`.
+  - Build frontend static files in CI with Bun.
+  - Build docs static files in CI with Bun.
+  - Deploy Hosting from the repo root using Firebase CLI with the existing Google auth flow.
+  - Use ADC/WIF-based auth already established in the workflow, not `FIREBASE_TOKEN`.
+  - Frontend deploy may run after `checks` without `needs: deploy-backend` or `needs: deploy-docs`, as long as the job can resolve the current backend URL and configured docs URL itself.
+  - Prefer making the docs URL stable as part of this migration so the frontend no longer depends on deploy-time discovery of a docs Cloud Run URL.
 
-- [ ] **Phase 4: Terraform — add Hosting, remove Cloud Run frontend**
-  - In `terraform/firebase.tf`:
-    - Add `google_firebase_hosting_site` resource (or use the default site `$PROJECT_ID.web.app`).
-    - Update `firebase_frontend_host` local to the Firebase Hosting domain instead of the Cloud Run frontend URI: `"${var.project_id}.web.app"`.
-    - The `firebase_authorized_domains` local already includes `${var.project_id}.web.app` — verify it stays in the list after removing the Cloud Run URI.
-  - In `terraform/cloud_run.tf`:
-    - Remove `google_cloud_run_v2_service.frontend` resource.
-    - Remove `google_cloud_run_v2_service_iam_member.frontend_public`.
-  - In `terraform/iam.tf`:
-    - Remove `google_service_account.frontend_sa`.
-    - Remove `google_secret_manager_secret_iam_member.frontend_secrets` (frontend_secret_ids map).
-    - Remove `google_cloud_run_v2_service_iam_member.backend_frontend_invoker` (frontend SA → backend invoker).
-    - Remove `google_project_iam_member.frontend_firebase_auth` (static SPA has no server-side Firebase Admin).
-    - Remove `google_service_account_iam_member.sa_user_frontend`.
-  - Remove `frontend` from the `cicd_secret_ids` merge in `iam.tf` if it only existed for the Cloud Run deploy SA.
-  - Run `terraform plan` and verify only frontend Cloud Run and frontend SA resources are destroyed.
+- [ ] **Phase 4: Backend config changes**
+  - Update backend deploy env so `BACKEND_CORS_ALLOWED_ORIGINS` includes:
+    - `https://PROJECT_ID.web.app`
+    - any production custom frontend domain if used
+    - existing localhost dev origins
+  - Do not remove CORS entirely.
 
-- [ ] **Phase 5: Cleanup**
-  - Delete `frontend/Dockerfile` and `frontend/nginx.conf` (no longer needed).
-  - Remove the frontend service from `detect_changed_components.sh` Cloud Run–specific logic if any.
-  - Decommission the `dastill-frontend` Cloud Run service: `gcloud run services delete dastill-frontend --region europe-west3` (or let Terraform handle it via `terraform apply`).
-  - Update any docs (e.g., `docs/operations/deployment.md`) that reference the Cloud Run frontend URL or Docker-based frontend deploy.
+- [ ] **Phase 5: Terraform cleanup**
+  - Remove the frontend Cloud Run service from `terraform/cloud_run.tf`.
+  - Remove the docs Cloud Run service from `terraform/cloud_run.tf`.
+  - Remove the frontend public IAM binding.
+  - Remove the docs public IAM binding.
+  - Remove the frontend service account and frontend-specific IAM grants from `terraform/iam.tf`.
+  - Remove the docs service account and docs-specific IAM grants from `terraform/iam.tf` if nothing else uses them.
+  - Remove frontend secret-access bindings that only existed for the frontend runtime container.
+  - Remove docs runtime bindings that only existed for the docs runtime container.
+  - Keep Firebase project/web-app/auth resources that are still needed by the browser app.
+  - Add Terraform-managed Hosting site resources only if you need multiple Hosting sites or want Terraform to explicitly own them.
+  - Run `terraform plan` and verify that the destroys are limited to the frontend/docs Cloud Run runtime surfaces and their unused IAM/service-account pieces.
+
+- [ ] **Phase 6: Cleanup**
+  - Delete `frontend/Dockerfile`.
+  - Delete `frontend/nginx.conf`.
+  - Delete `docs/Dockerfile`.
+  - Delete `docs/nginx.conf`.
+  - Update deployment docs to describe Hosting-based frontend deploys.
+  - Update deployment docs to describe Hosting-based docs deploys.
+  - Remove any frontend/docs image or artifact references that are no longer used.
+
+- [ ] **Phase 7: Optional follow-up investigation, not part of this migration**
+  - Evaluate whether a split routing model is worth it:
+    - static frontend on Hosting
+    - short-lived JSON endpoints optionally behind Hosting rewrites
+    - streaming endpoints remain direct to Cloud Run
+  - Only do this if the added complexity is worth the reduced CORS surface.
 
 ---
 
 ## Requirements
 
-- [ ] `https://$PROJECT_ID.web.app` serves the SPA and the app is fully functional (auth, chat, search).
-- [ ] `https://$PROJECT_ID.web.app/api/health` returns a 200 from the backend (Firebase Hosting rewrite is active).
-- [ ] No `Access-Control-Allow-Origin` request/response headers present on API calls from the production frontend (same-origin — CORS not involved).
-- [ ] `dastill-frontend` Cloud Run service is deleted; no billing accrues for it.
-- [ ] Frontend deploy in CI no longer builds or pushes a Docker image.
-- [ ] Frontend deploys independently of the backend (no `needs: deploy-backend` in the frontend job).
-- [ ] Local dev still works: Vite dev server proxies `/api/**` to `localhost:3001` (existing `vite.config.ts` proxy config), no change needed.
-- [ ] `terraform plan` after Phase 4 changes shows zero diff (Hosting resource exists, frontend Cloud Run + SA are gone).
-- [ ] `bun run check` and `bun run test` pass after `VITE_API_BASE` change.
+- [ ] `https://PROJECT_ID.web.app` serves the SPA successfully.
+- [ ] Docs are served successfully from their chosen Hosting URL.
+- [ ] Firebase Auth still works from the Hosting origin.
+- [ ] The frontend can call the backend successfully using the configured backend origin.
+- [ ] Chat streaming still works.
+- [ ] Search status streaming still works.
+- [ ] The frontend Cloud Run service is deleted.
+- [ ] The docs Cloud Run service is deleted.
+- [ ] The frontend CI job no longer builds or pushes a frontend container image.
+- [ ] The docs CI job no longer builds or pushes a docs container image.
+- [ ] Local development still works with the existing Vite proxy.
+- [ ] `terraform plan` only removes the no-longer-used frontend/docs runtime resources.
 
 ---
 
 ## Verification Gates
 
-- [ ] **Unit test**: `api-client.ts` handles `VITE_API_BASE=""` — all API URLs resolve correctly as root-relative paths.
-- [ ] **Local smoke test**: `firebase serve --only hosting` with the built `frontend/build/` dir; SPA routes work, `/api/**` returns the rewrite target (or 404 from backend — not a 404 from hosting).
-- [ ] **Terraform plan**: no surprise destroys; only expected frontend Cloud Run + frontend SA removals.
-- [ ] **Deploy dry run**: CI `deploy-frontend` job completes without Docker or Cloud Run steps.
-- [ ] **Production smoke**: `https://$PROJECT_ID.web.app` loads, Firebase Auth works, at least one API call succeeds via the rewrite.
-- [ ] **CORS verification**: DevTools Network tab shows no CORS preflight (`OPTIONS`) requests to `/api/**` from production.
+- [ ] `bun install --frozen-lockfile`
+- [ ] `bun run format:check`
+- [ ] `bun run lint`
+- [ ] `bun run check`
+- [ ] `bun run test`
+- [ ] `bun run build`
+- [ ] Local Hosting smoke test for SPA routes
+- [ ] Docs Hosting smoke test
+- [ ] Production smoke test from `PROJECT_ID.web.app`
+- [ ] Production smoke test from the docs Hosting URL
+- [ ] Production chat stream smoke test
+- [ ] Production search status stream smoke test
+- [ ] `terraform plan` reviewed before apply
 
 ---
 
-## Non-Goals
+## Rejected For Now
 
-- Changing the backend routing structure (routes already have `/api` prefix — no change needed).
-- Migrating Firebase Auth configuration (emulator config, providers — untouched).
-- Moving the docs service (remains a separate Cloud Run deployment).
-- Adding SSR or edge functions — this stays a static SPA.
-- Changing the Vite dev proxy configuration — local dev flow is unaffected.
+- Firebase Hosting rewrite for all `/api/**`
+  - Rejected because Hosting applies a 60-second timeout to rewritten Cloud Run requests, which is incompatible with this app's long-running stream behavior.
+
+- Removing CORS entirely
+  - Rejected because the backend remains on its own origin in this migration.
+
+- Claiming meaningful guaranteed cost savings up front
+  - Rejected because the current frontend may already fit mostly within Google free tiers, and Hosting cost becomes bandwidth-shaped at scale.
+
+---
+
+## Sources checked on April 9, 2026
+
+- Firebase Pricing: Hosting storage and transfer pricing
+- Firebase Hosting with Cloud Run docs: Hosting rewrite behavior and 60-second timeout
+- Firebase Hosting cache docs: cookie stripping behavior for rewrites
+- Cloud Run pricing: free tier and request-based pricing
+- Cloud Build pricing
+- Artifact Registry pricing

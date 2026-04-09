@@ -202,6 +202,7 @@ export function createSidebarVideoOperations(
       channelId,
       refreshedAtByChannel: context.channelLastRefreshedAt,
       ttlMs: CHANNEL_REFRESH_TTL_MS,
+      enableRefresh: context.options.enableBackgroundRefresh ?? true,
       initialSilent: silent,
       getMutationEpoch: context.getVideoListMutationEpoch,
       loadSnapshot: () =>

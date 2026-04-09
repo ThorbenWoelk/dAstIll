@@ -70,6 +70,7 @@ export function createChatPageController() {
   let aiStatus = $state<AiStatus | null>(null);
   let mobileTab = $state<"conversations" | "content">("content");
   let hydratedConversationId = $state<string | null>(null);
+  let hydratedConversationScopeKey = $state<string | null>(null);
   let handledPromptKey = $state<string | null>(null);
   let deleteConversationId = $state<string | null>(null);
   let confirmDeleteAll = $state(false);
@@ -82,6 +83,15 @@ export function createChatPageController() {
     getScopedStorageKey(
       "dastill.chat.cloudModel",
       getAuthStorageScopeKey(authState.current),
+    ),
+  );
+  const chatStorageScopeKey = $derived(
+    getAuthStorageScopeKey(authState.current),
+  );
+  const ephemeralThreadsStorageKey = $derived(
+    getScopedStorageKey(
+      "dastill.chat.ephemeralThreads.v1",
+      chatStorageScopeKey,
     ),
   );
 
@@ -415,7 +425,7 @@ export function createChatPageController() {
     }
     try {
       if (authState.current.authState === "anonymous") {
-        ephemeralThreads = loadEphemeralThreads();
+        ephemeralThreads = loadEphemeralThreads(chatStorageScopeKey);
         conversations = ephemeralThreads.map(conversationToSummary);
         const conversationId = requestedConversationId;
         if (!conversationId && !promptFromUrl && conversations[0]) {
@@ -534,7 +544,7 @@ export function createChatPageController() {
               : thread,
           );
     ephemeralThreads = merged;
-    saveEphemeralThreads(merged);
+    saveEphemeralThreads(chatStorageScopeKey, merged);
     conversations = merged.map(conversationToSummary);
   }
 
@@ -547,7 +557,7 @@ export function createChatPageController() {
       if (authState.current.authState === "anonymous") {
         const conversation = createEmptyEphemeralConversation();
         ephemeralThreads = [conversation, ...ephemeralThreads];
-        saveEphemeralThreads(ephemeralThreads);
+        saveEphemeralThreads(chatStorageScopeKey, ephemeralThreads);
         conversations = ephemeralThreads.map(conversationToSummary);
         upsertConversationSummary(conversationToSummary(conversation));
         activeConversation = conversation;
@@ -593,7 +603,7 @@ export function createChatPageController() {
             : thread,
         );
         ephemeralThreads = next;
-        saveEphemeralThreads(next);
+        saveEphemeralThreads(chatStorageScopeKey, next);
         conversations = next.map(conversationToSummary);
         if (activeConversation?.id === conversationId) {
           activeConversation = {
@@ -640,7 +650,7 @@ export function createChatPageController() {
 
       try {
         if (authState.current.authState === "anonymous") {
-          clearEphemeralThreads();
+          clearEphemeralThreads(chatStorageScopeKey);
           ephemeralThreads = [];
           conversations = [];
           activeConversation = null;
@@ -682,7 +692,7 @@ export function createChatPageController() {
           (conversation) => conversation.id !== conversationId,
         );
         ephemeralThreads = nextThreads;
-        saveEphemeralThreads(nextThreads);
+        saveEphemeralThreads(chatStorageScopeKey, nextThreads);
         conversations = nextThreads.map(conversationToSummary);
         if (activeConversation?.id === conversationId) {
           activeConversation = null;
@@ -737,7 +747,7 @@ export function createChatPageController() {
         if (authState.current.authState === "anonymous") {
           conversation = createEmptyEphemeralConversation();
           ephemeralThreads = [conversation, ...ephemeralThreads];
-          saveEphemeralThreads(ephemeralThreads);
+          saveEphemeralThreads(chatStorageScopeKey, ephemeralThreads);
           conversations = ephemeralThreads.map(conversationToSummary);
           activeConversation = conversation;
           setMobileTab("content");
@@ -833,6 +843,28 @@ export function createChatPageController() {
       { resetStreamingMessage: false },
     );
   }
+
+  $effect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (hydratedConversationScopeKey === null) {
+      hydratedConversationScopeKey = ephemeralThreadsStorageKey;
+      return;
+    }
+
+    if (hydratedConversationScopeKey === ephemeralThreadsStorageKey) {
+      return;
+    }
+
+    hydratedConversationScopeKey = ephemeralThreadsStorageKey;
+    activeConversation = null;
+    hydratedConversationId = null;
+    stream.abortActiveChatStream();
+    stream.clearStreamState();
+    void loadConversations({ quiet: true });
+  });
 
   async function handleCancel() {
     if (!stream.streamingConversationId) {

@@ -122,6 +122,18 @@ Some API payloads intentionally merge canonical and user-scoped records:
 - Anonymous requests do not persist these user-scoped records. They operate against the
   seeded default channel scope exposed by `AccessContext`.
 
+## Client-Side Storage
+
+Browser storage is only a cache or UI-state layer. It is not the source of truth for
+channels, videos, transcripts, summaries, or other canonical content.
+
+- Canonical and user-owned records stay on the backend in the stores described above.
+- IndexedDB, `localStorage`, and `sessionStorage` hold derived startup caches, layout
+  preferences, and ephemeral draft state only.
+- Any browser-stored user data must be keyed by auth scope so one signed-in user,
+  signed-out visitor, or anonymous Firebase identity cannot read another scope's data
+  from the same browser profile.
+
 ## Search Projection
 
 Search is intentionally modeled as a derived projection stored in S3:
