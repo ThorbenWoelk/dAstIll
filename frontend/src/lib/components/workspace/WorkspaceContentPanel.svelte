@@ -113,7 +113,7 @@
 
   let mobileVisible = $derived(selection.mobileVisible);
   let mobileBackInTopBar = $derived(selection.mobileBackInTopBar ?? false);
-  /** Mobile hides the desktop video action strip (`max-lg:hidden`). */
+  /** Desktop video action strip — rendered in WorkspaceDesktopTopBar. Mobile uses WorkspaceContentMobileHeader. */
   let selectedChannel = $derived(selection.selectedChannel);
   let selectedVideo = $derived(selection.selectedVideo);
   let selectedVideoId = $derived(selection.selectedVideoId);

@@ -123,7 +123,7 @@
     {#if selectedVideoId && !loadingContent && !editing}
       <div
         id="content-actions"
-        class="relative z-20 flex h-10 items-center justify-end self-end max-lg:hidden lg:shrink-0 lg:self-auto"
+        class="relative z-20 flex h-10 items-center justify-end self-end lg:shrink-0 lg:self-auto"
       >
         <ContentEditor
           editing={false}
