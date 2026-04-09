@@ -12,6 +12,7 @@
     onSelectChannel,
     onAddChannel,
     addingChannel = false,
+    loadingChannels = false,
     addSourceErrorMessage = null as string | null,
     /** When set with `queueUnifiedSummary`, cards show pipeline queue counts from each snapshot. */
     channelPreviews = undefined as Record<string, ChannelSnapshot> | undefined,
@@ -23,6 +24,7 @@
     /** When set, shows a + control and optional inline add form. */
     onAddChannel?: (input: AddSourceSubmission) => Promise<boolean> | boolean;
     addingChannel?: boolean;
+    loadingChannels?: boolean;
     addSourceErrorMessage?: string | null;
     channelPreviews?: Record<string, ChannelSnapshot>;
     queueUnifiedSummary?: boolean;
@@ -131,6 +133,27 @@
       style="scroll-snap-type: x mandatory"
       aria-label="Sources"
     >
+      {#if loadingChannels && channels.length === 0}
+        {#each Array.from({ length: 4 }) as _, i (i)}
+          <div
+            class="flex w-[64vw] max-w-[14rem] shrink-0 snap-center flex-col overflow-hidden rounded-[var(--radius-md)] bg-[var(--surface-strong)] shadow-sm"
+            aria-hidden="true"
+          >
+            <div
+              class="h-20 w-full animate-pulse bg-[var(--border)] opacity-60"
+            ></div>
+            <div class="flex flex-col gap-1 px-3 py-2">
+              <div
+                class="h-3 w-3/4 animate-pulse rounded-full bg-[var(--border)] opacity-60"
+              ></div>
+              <div
+                class="mt-1 h-2 w-1/2 animate-pulse rounded-full bg-[var(--border)] opacity-40"
+              ></div>
+            </div>
+          </div>
+        {/each}
+      {/if}
+
       {#each channels as channel, index (channel.id)}
         {@const thumb = normalizeThumbnail(channel.thumbnail_url)}
         {@const active = selectedChannelId === channel.id}

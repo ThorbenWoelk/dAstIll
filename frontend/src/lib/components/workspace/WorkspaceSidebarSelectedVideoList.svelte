@@ -111,7 +111,13 @@
         disabled={loadingVideos || backfillingHistory}
       >
         {#if loadingVideos || backfillingHistory}
-          Loading...
+          <span class="inline-flex items-center gap-1.5">
+            <span
+              class="h-2.5 w-2.5 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--accent)]"
+              aria-hidden="true"
+            ></span>
+            Loading
+          </span>
         {:else if hasMore}
           Load More
         {:else}
