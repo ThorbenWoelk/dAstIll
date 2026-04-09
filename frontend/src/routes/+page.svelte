@@ -7,6 +7,7 @@
   import WorkspaceDesktopTopBar from "$lib/components/workspace/WorkspaceDesktopTopBar.svelte";
   import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
   import WorkspaceSidebar from "$lib/components/workspace/WorkspaceSidebar.svelte";
+  import WorkspaceSidebarVideoFilterControl from "$lib/components/workspace/WorkspaceSidebarVideoFilterControl.svelte";
   import FeatureGuide from "$lib/components/FeatureGuide.svelte";
   import { setFeatureGuideSuppressesAuthRequiredNotice } from "$lib/auth-required-notice";
   import { createHomeWorkspacePage } from "$lib/workspace/home-workspace.svelte";
@@ -63,7 +64,23 @@
       onBack={hw.openMobileBrowse}
     >
       {#snippet trailing()}
-        <div class="w-10 shrink-0" aria-hidden="true"></div>
+        {#if hw.mobileBrowseOpen}
+          <div
+            class="flex min-w-0 shrink-0 items-center justify-end"
+            aria-label="Video filters"
+          >
+            <WorkspaceSidebarVideoFilterControl
+              videoTypeFilter={hw.sidebarState.videoState.videoTypeFilter}
+              acknowledgedFilter={hw.sidebarState.videoState.acknowledgedFilter}
+              disabled={hw.browseFilterDisabled}
+              onSelectVideoType={hw.onBrowseVideoTypeFilterChange}
+              onSelectAcknowledged={hw.onBrowseAcknowledgedFilterChange}
+              onClearAllFilters={hw.clearBrowseVideoFilters}
+            />
+          </div>
+        {:else}
+          <div class="w-10 shrink-0" aria-hidden="true"></div>
+        {/if}
       {/snippet}
     </MobileYouTubeTopNav>
   {/snippet}
@@ -112,7 +129,9 @@
     open={hw.mobileBrowseOpen}
     channels={hw.sidebarState.channels}
     selectedChannelId={hw.sidebarState.selectedChannelId}
-    previewSessionKey="workspace-sidebar-navigation"
+    onSelectChannel={(channelId) => {
+      void hw.sidebarState.selectChannel(channelId);
+    }}
     onClose={hw.closeMobileBrowse}
     channelState={{
       ...hw.sidebarState.channelState,
