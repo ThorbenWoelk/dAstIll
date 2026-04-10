@@ -518,7 +518,10 @@ start_mobile_shell() {
 	fi
 
 	pushd "$repo_root" >/dev/null
-	eval "$tauri_command" > >(tee "$mobile_log_file") 2>&1 &
+	VITE_API_BASE="http://127.0.0.1:$backend_port" \
+	PUBLIC_DOCS_URL="http://127.0.0.1:$docs_port" \
+	PUBLIC_BROWSER_AUTH_BASE_URL="http://127.0.0.1:$frontend_port" \
+		eval "$tauri_command" > >(tee "$mobile_log_file") 2>&1 &
 	mobile_pid=$!
 	popd >/dev/null
 	echo "Starting Android shell (log: $mobile_log_file)"

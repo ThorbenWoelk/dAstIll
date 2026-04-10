@@ -76,6 +76,14 @@ cargo tauri android dev
 
 This assumes the backend is reachable locally and the Android app can call it through the configured `VITE_API_BASE`.
 
+When you start the app through `./start_app.sh`, the launcher now injects:
+
+- `VITE_API_BASE=http://127.0.0.1:3544`
+- `PUBLIC_DOCS_URL=http://127.0.0.1:4173`
+- `PUBLIC_BROWSER_AUTH_BASE_URL=http://127.0.0.1:3543`
+
+That matches the `adb reverse` port forwarding that `start_app.sh` also sets up for the Android device or emulator.
+
 ## Auth Handoff
 
 Google blocks sign-in inside the Android WebView used by Tauri. The current app handles that by:

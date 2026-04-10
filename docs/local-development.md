@@ -109,6 +109,12 @@ Recommended run loop:
 
 When an Android emulator or device is connected, `./start_app.sh` starts the Tauri Android shell automatically after the local services are healthy.
 
+For that mobile-shell launch, `./start_app.sh` also injects local mobile build values that line up with `adb reverse`:
+
+- `VITE_API_BASE=http://127.0.0.1:3544`
+- `PUBLIC_DOCS_URL=http://127.0.0.1:4173`
+- `PUBLIC_BROWSER_AUTH_BASE_URL=http://127.0.0.1:3543`
+
 To skip the mobile shell:
 
 ```bash
