@@ -74,7 +74,7 @@ test("mobile tabs stay scrollable and shortcut hints stay hidden", async ({
   const mobileTabsCue = page.locator("[data-mobile-content-tabs-cue]");
 
   await expect(mobileTabs).toBeVisible();
-  await expect(mobileTabsCue).toBeVisible();
+  await expect(mobileTabsCue).toHaveCount(0);
 
   const tabMetrics = await mobileTabs.evaluate((node) => ({
     clientWidth: node.clientWidth,

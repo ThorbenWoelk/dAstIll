@@ -95,24 +95,8 @@
     <div class="min-w-0 flex-1" id="workspace-tabs-mobile">
       <div class="relative -mx-4 min-w-0 flex-1 px-4 sm:mx-0 sm:px-0">
         <div
-          class="pointer-events-none absolute inset-y-0 right-0 z-10 flex items-center justify-end pr-4 sm:pr-0"
-          data-mobile-content-tabs-cue
-          aria-hidden="true"
-        >
-          <div
-            class="absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-[var(--surface)] via-[var(--surface)] to-transparent"
-          ></div>
-          <div
-            class="relative z-10 inline-flex items-center gap-1 rounded-full border border-[var(--accent-border-soft)] bg-[var(--surface-strong)] px-2 py-1 text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] shadow-[var(--shadow-soft)]"
-          >
-            <span>Swipe</span>
-            <ChevronIcon direction="right" size={11} strokeWidth={2.2} />
-          </div>
-        </div>
-
-        <div
           data-mobile-content-tabs
-          class="custom-scrollbar flex min-w-0 items-end overflow-x-auto border-b border-[var(--accent-border-soft)] pr-14 [-ms-overflow-style:none] [scroll-padding-inline:1rem] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:flex lg:min-w-max lg:gap-5 lg:pr-0"
+          class="custom-scrollbar flex min-w-0 items-end overflow-x-auto border-b border-[var(--accent-border-soft)] [-ms-overflow-style:none] [scroll-padding-inline:1rem] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:flex lg:min-w-max lg:gap-5"
         >
           {#each WORKSPACE_CONTENT_MODE_ORDER as mode}
             <button

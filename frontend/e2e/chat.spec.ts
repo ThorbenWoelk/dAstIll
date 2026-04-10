@@ -17,6 +17,7 @@ test("delete all clears chat history from the sidebar", async ({ page }) => {
   await expect
     .poll(() => sidebar.getByLabel("Delete conversation").count())
     .toBe(1);
+  await expect(newConversationButton).toBeEnabled();
   await newConversationButton.click();
   await expect
     .poll(() => sidebar.getByLabel("Delete conversation").count())

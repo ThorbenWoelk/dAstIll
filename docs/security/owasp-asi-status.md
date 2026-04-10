@@ -48,4 +48,4 @@ Reference material:
 
 - [Security Overview](/security/)
 - [Deployment and Operations](/operations/deployment)
-- [Local development](/local-development)
+- [Local development](/operations/local-development)

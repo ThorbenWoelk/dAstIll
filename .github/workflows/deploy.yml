@@ -24,6 +24,7 @@ env:
   DEPLOY_SHA: ${{ github.sha }}
   DOCS_URL_OVERRIDE: ${{ vars.DOCS_URL }}
   FRONTEND_URL_OVERRIDE: ${{ vars.FRONTEND_URL }}
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 permissions:
   contents: read
