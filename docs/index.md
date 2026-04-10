@@ -7,6 +7,8 @@ pageClass: overview-page
 
 dAstIll tracks subscribed sources, fetches readable content, and generates AI summaries so you can decide what is worth your time.
 
+> Latest UI Tour refresh: April 10, 2026. The [UI Tour](/ui-tour) now documents the current mobile web flow first.
+
 **Core capabilities:**
 
 - **Source tracking**: Subscribe to YouTube channels, OpenAlex saved searches, podcast RSS feeds, and tracked website pages
@@ -26,7 +28,7 @@ dAstIll tracks subscribed sources, fetches readable content, and generates AI su
 This site explains how the app works: the UI, the Rust backend, the AI and search pipeline, and the deployment setup.
 
 - [System Overview](/architecture/overview) - major components, app/backend/docs boundaries, and repo structure.
-- [UI Tour](/ui-tour) - screenshots of the current desktop and mobile UI.
+- [UI Tour](/ui-tour) - screenshots of the current mobile-web-first UI tour, with desktop notes where they matter.
 - [Runtime Topology](/architecture/runtime-topology) - active processes, startup sequence, and shared runtime state.
 - [Frontend and API](/architecture/frontend-and-api) - Svelte routes, startup flow, and handler boundaries.
 - [Data Model](/architecture/data-model) - canonical tables, derived search projection, and status fields.
