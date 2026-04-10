@@ -2,10 +2,7 @@
   import ContentEditor from "$lib/components/ContentEditor.svelte";
   import ChevronIcon from "$lib/components/icons/ChevronIcon.svelte";
   import type { Video } from "$lib/types";
-  import {
-    goHintKeyForWorkspaceContentMode,
-    WORKSPACE_CONTENT_MODE_ORDER,
-  } from "$lib/workspace/navigation";
+  import { WORKSPACE_CONTENT_MODE_ORDER } from "$lib/workspace/navigation";
   import type { WorkspaceContentMode } from "$lib/workspace/types";
 
   const CONTENT_MODE_LABELS: Record<WorkspaceContentMode, string> = {
@@ -96,21 +93,38 @@
   {/if}
   <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
     <div class="min-w-0 flex-1" id="workspace-tabs-mobile">
-      <div class="-mx-4 min-w-0 flex-1 px-4 sm:mx-0 sm:px-0">
+      <div class="relative -mx-4 min-w-0 flex-1 px-4 sm:mx-0 sm:px-0">
         <div
-          class="grid w-full grid-cols-4 items-center border-b border-[var(--accent-border-soft)] lg:flex lg:min-w-max lg:gap-5"
+          class="pointer-events-none absolute inset-y-0 right-0 z-10 flex items-center justify-end pr-4 sm:pr-0"
+          data-mobile-content-tabs-cue
+          aria-hidden="true"
+        >
+          <div
+            class="absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-[var(--surface)] via-[var(--surface)] to-transparent"
+          ></div>
+          <div
+            class="relative z-10 inline-flex items-center gap-1 rounded-full border border-[var(--accent-border-soft)] bg-[var(--surface-strong)] px-2 py-1 text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] shadow-[var(--shadow-soft)]"
+          >
+            <span>Swipe</span>
+            <ChevronIcon direction="right" size={11} strokeWidth={2.2} />
+          </div>
+        </div>
+
+        <div
+          data-mobile-content-tabs
+          class="custom-scrollbar flex min-w-0 items-end overflow-x-auto border-b border-[var(--accent-border-soft)] pr-14 [-ms-overflow-style:none] [scroll-padding-inline:1rem] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:flex lg:min-w-max lg:gap-5 lg:pr-0"
         >
           {#each WORKSPACE_CONTENT_MODE_ORDER as mode}
             <button
               type="button"
               data-workspace-content-tab={mode}
-              data-go-hint-key={goHintKeyForWorkspaceContentMode(mode)}
-              class={`-mb-px min-w-0 border-b-2 px-1 pb-3 text-center text-[11px] font-bold uppercase tracking-[0.12em] transition-colors ${
+              class={`relative z-0 -mb-px shrink-0 rounded-t-full bg-[var(--surface)] px-4 pb-3 pt-1.5 text-center text-[11px] font-bold uppercase tracking-[0.12em] transition-colors first:ml-0 -ml-3 ${
                 contentMode === mode
-                  ? "border-[var(--accent)] text-[var(--accent-strong)]"
-                  : "border-transparent text-[var(--soft-foreground)] opacity-75 hover:text-[var(--foreground)] hover:opacity-100"
+                  ? "z-10 border-b-2 border-[var(--accent)] text-[var(--accent-strong)]"
+                  : "border-b-2 border-transparent text-[var(--soft-foreground)] opacity-75 hover:text-[var(--foreground)] hover:opacity-100"
               }`}
               aria-pressed={contentMode === mode}
+              aria-label={`${CONTENT_MODE_LABELS[mode]} tab`}
               onclick={() => void onSetMode(mode)}
             >
               {CONTENT_MODE_LABELS[mode]}

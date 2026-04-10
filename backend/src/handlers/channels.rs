@@ -18,7 +18,8 @@ use crate::models::{
 use crate::read_cache::{ChannelSnapshotCacheKey, VideoListCacheKey};
 use crate::security::{AccessContext, AuthState};
 use crate::services::{
-    FeedSourceAdapter, QuerySourceAdapter, persist_source_profile_and_channel, sync_source_profile,
+    FeedSourceAdapter, QuerySourceAdapter, SearchSourceKind, persist_source_profile_and_channel,
+    sync_source_profile,
 };
 use crate::state::AppState;
 
@@ -76,6 +77,25 @@ fn parse_add_source_intent(input: &str) -> AddSourceIntent {
     } else {
         AddSourceIntent::YouTubeChannel
     }
+}
+
+async fn delete_channel_with_search_cleanup(
+    state: &AppState,
+    channel_id: &str,
+) -> Result<bool, String> {
+    let video_ids = db::list_video_ids_by_channel(&state.db, channel_id)
+        .await
+        .map_err(|err| err.to_string())?;
+
+    for video_id in &video_ids {
+        for source_kind in [SearchSourceKind::Transcript, SearchSourceKind::Summary] {
+            state.fts.delete_source(video_id, source_kind).await?;
+        }
+    }
+
+    db::delete_channel(&state.db, channel_id)
+        .await
+        .map_err(|err| err.to_string())
 }
 
 async fn source_profile_for_channel(
@@ -379,7 +399,7 @@ pub async fn add_channel(
                 .await
                 .map_err(map_db_err)?;
             if let Err(err) = sync_source_profile(&state, &profile).await {
-                let _ = db::delete_channel(&state.db, &channel.id).await;
+                let _ = delete_channel_with_search_cleanup(&state, &channel.id).await;
                 return Err((StatusCode::BAD_GATEWAY, err));
             }
             db::save_user_channel(
@@ -420,7 +440,7 @@ pub async fn add_channel(
                 .await
                 .map_err(map_db_err)?;
             if let Err(err) = sync_source_profile(&state, &profile).await {
-                let _ = db::delete_channel(&state.db, &channel.id).await;
+                let _ = delete_channel_with_search_cleanup(&state, &channel.id).await;
                 return Err((StatusCode::BAD_GATEWAY, err));
             }
             db::save_user_channel(
@@ -452,7 +472,7 @@ pub async fn add_channel(
                 .await
                 .map_err(map_db_err)?;
             if let Err(err) = sync_source_profile(&state, &profile).await {
-                let _ = db::delete_channel(&state.db, &channel.id).await;
+                let _ = delete_channel_with_search_cleanup(&state, &channel.id).await;
                 return Err((StatusCode::BAD_GATEWAY, err));
             }
             db::save_user_channel(
