@@ -37,7 +37,7 @@ Default local docs URL:
 http://localhost:4173
 ```
 
-The app header includes a `Docs` link. In local development it falls back to `http://localhost:4173`; in deployed environments the frontend reads `PUBLIC_DOCS_URL` at runtime.
+The app header includes a `Docs` link. In local development it falls back to `http://localhost:4173`; in deployed environments the frontend reads `PUBLIC_DOCS_URL` at build time.
 
 ## Tech Stack
 
@@ -51,7 +51,7 @@ Rust, AWS S3, AWS S3 Vectors, Turso (libSQL), Ollama
 
 ### Infrastructure & Deployment
 
-Terraform, Google Cloud Run, AWS IAM (Workload Identity Federation), Google Secret Manager, Artifact Registry, GitHub Actions, Docker
+Terraform, Firebase Hosting, Google Cloud Run, AWS IAM (Workload Identity Federation), Google Secret Manager, Artifact Registry, GitHub Actions, Docker
 
 ## Prerequisites
 

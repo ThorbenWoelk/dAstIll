@@ -1,6 +1,6 @@
 import { getCurrentAuthToken } from "$lib/auth-token";
 
-function normalizeApiBase(value?: string) {
+export function normalizeApiBase(value?: string) {
   const normalized = value?.trim();
   if (!normalized) {
     return "";
@@ -79,8 +79,8 @@ export function createAbortError(): Error {
   return error;
 }
 
-export function resolveApiUrl(path: string): string {
-  return `${API_BASE}${path}`;
+export function resolveApiUrl(path: string, apiBase = API_BASE): string {
+  return `${apiBase}${path}`;
 }
 
 export async function createApiRequestInit(

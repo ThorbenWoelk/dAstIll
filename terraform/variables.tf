@@ -24,7 +24,7 @@ variable "firebase_web_app_display_name" {
 variable "firebase_authorized_domains_extra" {
   type        = list(string)
   default     = []
-  description = "Extra Firebase Auth authorized domains to keep in addition to localhost, firebaseapp/web.app, and the Cloud Run frontend hostname."
+  description = "Extra Firebase Auth authorized domains to keep in addition to localhost and the Firebase-hosted project domains."
 }
 
 variable "aws_region" {
@@ -90,14 +90,14 @@ variable "firebase_google_client_id" {
   type        = string
   sensitive   = true
   default     = ""
-  description = "Deprecated. Ignored. Google sign-in is managed via frontend/firebase.json and a separate one-time or maintenance auth deploy."
+  description = "Deprecated. Ignored. Google sign-in is managed via the repo-root firebase.json and a separate one-time or maintenance auth deploy."
 }
 
 variable "firebase_google_client_secret" {
   type        = string
   sensitive   = true
   default     = ""
-  description = "Deprecated. Ignored. Google sign-in is managed via frontend/firebase.json and a separate one-time or maintenance auth deploy."
+  description = "Deprecated. Ignored. Google sign-in is managed via the repo-root firebase.json and a separate one-time or maintenance auth deploy."
 }
 
 variable "billing_export_enabled" {

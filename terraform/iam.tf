@@ -104,6 +104,18 @@ resource "google_project_iam_member" "cloud_run_admin" {
   member  = "serviceAccount:${google_service_account.github_actions_sa.email}"
 }
 
+resource "google_project_iam_member" "firebase_hosting_admin" {
+  project = var.project_id
+  role    = "roles/firebasehosting.admin"
+  member  = "serviceAccount:${google_service_account.github_actions_sa.email}"
+}
+
+resource "google_project_iam_member" "firebase_api_keys_viewer" {
+  project = var.project_id
+  role    = "roles/serviceusage.apiKeysViewer"
+  member  = "serviceAccount:${google_service_account.github_actions_sa.email}"
+}
+
 # Grant Firebase Auth access to the backend service account
 resource "google_project_iam_member" "backend_firebase_auth" {
   project = var.project_id
@@ -111,7 +123,6 @@ resource "google_project_iam_member" "backend_firebase_auth" {
   member  = "serviceAccount:${google_service_account.backend_sa.email}"
 }
 
-# SvelteKit server uses Firebase Admin (session cookies, token verify) on the frontend Cloud Run service.
 resource "google_project_iam_member" "frontend_firebase_auth" {
   project = var.project_id
   role    = "roles/firebaseauth.admin"

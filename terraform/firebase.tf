@@ -1,4 +1,5 @@
 locals {
+  firebase_docs_site_id = "${var.project_id}-docs"
   firebase_frontend_host = trimsuffix(
     trimprefix(google_cloud_run_v2_service.frontend.uri, "https://"),
     "/",
@@ -39,6 +40,15 @@ data "google_firebase_web_app_config" "frontend" {
   depends_on = [google_firebase_web_app.frontend]
 }
 
+resource "google_firebase_hosting_site" "docs" {
+  provider = google-beta
+  project  = var.project_id
+  site_id  = local.firebase_docs_site_id
+  app_id   = google_firebase_web_app.frontend.app_id
+
+  depends_on = [google_firebase_project.default]
+}
+
 resource "google_identity_platform_config" "default" {
   provider           = google-beta
   project            = var.project_id
@@ -59,4 +69,8 @@ output "firebase_web_app_id" {
 
 output "firebase_auth_domain" {
   value = data.google_firebase_web_app_config.frontend.auth_domain
+}
+
+output "firebase_docs_url" {
+  value = google_firebase_hosting_site.docs.default_url
 }

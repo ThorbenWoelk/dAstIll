@@ -16,7 +16,7 @@ backend_proxy_token = "replace-with-a-long-random-proxy-token"
 # The TURSO_DB_URL env var is set inline in .github/workflows/deploy.yml.
 # turso_auth_token = "your-turso-auth-token"
 
-# Google sign-in is configured in frontend/firebase.json and deployed with Firebase Auth.
+# Google sign-in is configured in the repo-root firebase.json and deployed with Firebase Auth.
 
 # Optional: set to let Terraform store the PAT; omit or "" if the secret already exists in GCP.
 # databricks_token = "your-databricks-personal-access-token"

@@ -22,6 +22,8 @@ env:
   APP_NAME: dastill
   REPO_ID: dastill
   DEPLOY_SHA: ${{ github.sha }}
+  DOCS_URL_OVERRIDE: ${{ vars.DOCS_URL }}
+  FRONTEND_URL_OVERRIDE: ${{ vars.FRONTEND_URL }}
 
 permissions:
   contents: read
@@ -80,6 +82,10 @@ jobs:
             case "$path" in
               backend/*)
                 backend=true
+                ;;
+              firebase.json|.firebaserc)
+                docs=true
+                frontend=true
                 ;;
               docs/*)
                 docs=true
@@ -166,6 +172,16 @@ jobs:
 
           env_file=/tmp/backend_cr_env.txt
           : > "$env_file"
+          allowed_origins="https://${PROJECT_ID}.web.app,https://${PROJECT_ID}.firebaseapp.com,http://localhost:3000,http://127.0.0.1:3000,http://localhost:3543,http://127.0.0.1:3543"
+          existing_frontend_url="$(gcloud run services describe "${APP_NAME}-frontend" --project "$PROJECT_ID" --region "$REGION" --format='value(status.url)' 2>/dev/null || true)"
+
+          if [ -n "${FRONTEND_URL_OVERRIDE:-}" ]; then
+            allowed_origins="${allowed_origins},${FRONTEND_URL_OVERRIDE}"
+          fi
+
+          if [ -n "$existing_frontend_url" ]; then
+            allowed_origins="${allowed_origins},${existing_frontend_url}"
+          fi
 
           yaml_escape() {
             printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
@@ -194,7 +210,7 @@ jobs:
           add_env_var OLLAMA_DEFAULT_CHAT_MODEL "glm-5.1:cloud"
           add_env_var OLLAMA_EMBEDDING_MODEL "embeddinggemma"
           add_env_var SUMMARY_EVALUATOR_MODEL "gemma4:31b-cloud"
-          add_env_var BACKEND_CORS_ALLOWED_ORIGINS "https://dastill-frontend-x4m5feb54q-ey.a.run.app"
+          add_env_var BACKEND_CORS_ALLOWED_ORIGINS "$allowed_origins"
           add_env_var GCP_PROJECT_ID "$PROJECT_ID"
           printf '%s\n' 'SUMMARIZE_PATH: "/usr/local/bin/summarize"' >> "$env_file"
           printf '%s\n' 'POLLY_TTS_ENABLED: "true"' >> "$env_file"
@@ -220,11 +236,6 @@ jobs:
     if: needs.detect-changes.outputs.docs == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    outputs:
-      url: ${{ steps.deploy.outputs.url }}
-
-    env:
-      IMAGE_TAG: ${{ github.sha }}
 
     steps:
       - name: Checkout
@@ -237,28 +248,22 @@ jobs:
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_WIF_SA_EMAIL }}
+          create_credentials_file: true
+          export_environment_variables: true
 
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v3.0.0
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2.2.0
 
-      - name: Configure Docker
-        run: gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
+      - name: Install Docs Dependencies
+        working-directory: docs
+        run: bun install --frozen-lockfile
 
-      - name: Build and Push Docs Image
-        uses: docker/build-push-action@v6
-        with:
-          context: ./docs
-          push: true
-          tags: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_ID }}/docs:${{ env.IMAGE_TAG }}
+      - name: Build Docs
+        working-directory: docs
+        run: bun run build
 
-      - name: Deploy Docs to Cloud Run
-        id: deploy
-        uses: google-github-actions/deploy-cloudrun@v3.0.0
-        with:
-          service: ${{ format('{0}-docs', env.APP_NAME) }}
-          region: ${{ env.REGION }}
-          image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_ID }}/docs:${{ env.IMAGE_TAG }}
-          flags: "--allow-unauthenticated --service-account=${{ env.APP_NAME }}-docs-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
+      - name: Deploy Docs to Firebase Hosting
+        run: bunx firebase-tools@15.12.0 deploy --only hosting:docs --project "$PROJECT_ID" --non-interactive
 
   deploy-frontend:
     name: Deploy Frontend
@@ -266,13 +271,9 @@ jobs:
       - detect-changes
       - checks
       - deploy-backend
-      - deploy-docs
-    if: always() && needs.detect-changes.outputs.frontend == 'true' && needs.deploy-backend.result != 'failure' && needs.deploy-docs.result != 'failure'
+    if: always() && needs.detect-changes.outputs.frontend == 'true' && needs.deploy-backend.result != 'failure'
     runs-on: ubuntu-latest
     timeout-minutes: 60
-
-    env:
-      IMAGE_TAG: ${{ github.sha }}
 
     steps:
       - name: Checkout
@@ -285,12 +286,14 @@ jobs:
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_WIF_SA_EMAIL }}
+          create_credentials_file: true
+          export_environment_variables: true
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v3.0.0
 
-      - name: Configure Docker
-        run: gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2.2.0
 
       - name: Resolve backend and docs URLs
         id: service_urls
@@ -298,7 +301,7 @@ jobs:
           set -euo pipefail
 
           backend_url="$(gcloud run services describe "${APP_NAME}-backend" --project "$PROJECT_ID" --region "$REGION" --format='value(status.url)')"
-          docs_url="$(gcloud run services describe "${APP_NAME}-docs" --project "$PROJECT_ID" --region "$REGION" --format='value(status.url)')"
+          docs_url="${DOCS_URL_OVERRIDE:-https://${PROJECT_ID}-docs.web.app}"
 
           echo "backend_url=$backend_url" >> "$GITHUB_OUTPUT"
           echo "docs_url=$docs_url" >> "$GITHUB_OUTPUT"
@@ -320,27 +323,21 @@ jobs:
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
 
-      - name: Build and Push Frontend Image
+      - name: Install Frontend Dependencies
+        working-directory: frontend
+        run: bun install --frozen-lockfile
+
+      - name: Build Frontend
         env:
           VITE_API_BASE: ${{ steps.service_urls.outputs.backend_url }}
           PUBLIC_DOCS_URL: ${{ steps.service_urls.outputs.docs_url }}
+          PUBLIC_CONTACT_EMAIL: ${{ vars.CONTACT_EMAIL }}
           PUBLIC_FIREBASE_API_KEY: ${{ steps.frontend_build_env.outputs.public_firebase_api_key }}
           PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ steps.frontend_build_env.outputs.public_firebase_auth_domain }}
           PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        working-directory: frontend
         run: |
-          docker build \
-            --build-arg VITE_API_BASE="$VITE_API_BASE" \
-            --build-arg PUBLIC_DOCS_URL="$PUBLIC_DOCS_URL" \
-            --build-arg PUBLIC_FIREBASE_API_KEY="$PUBLIC_FIREBASE_API_KEY" \
-            --build-arg PUBLIC_FIREBASE_AUTH_DOMAIN="$PUBLIC_FIREBASE_AUTH_DOMAIN" \
-            --build-arg PUBLIC_FIREBASE_PROJECT_ID="$PUBLIC_FIREBASE_PROJECT_ID" \
-            -t $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/frontend:$IMAGE_TAG ./frontend
-          docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/frontend:$IMAGE_TAG
+          bun run build
 
-      - name: Deploy Frontend to Cloud Run
-        uses: google-github-actions/deploy-cloudrun@v3.0.0
-        with:
-          service: ${{ format('{0}-frontend', env.APP_NAME) }}
-          region: ${{ env.REGION }}
-          image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_ID }}/frontend:${{ env.IMAGE_TAG }}
-          flags: "--service-account=${{ env.APP_NAME }}-frontend-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com --port=8080"
+      - name: Deploy Frontend to Firebase Hosting
+        run: bunx firebase-tools@15.12.0 deploy --only hosting:app --project "$PROJECT_ID" --non-interactive
