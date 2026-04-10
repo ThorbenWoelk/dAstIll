@@ -29,6 +29,33 @@ pub(crate) use generation::{ensure_summary, ensure_summary_for_queue, ensure_tra
 pub(crate) const MIN_SUMMARY_QUALITY_SCORE_FOR_ACCEPTANCE: u8 = 7;
 pub(crate) const MAX_SUMMARY_AUTO_REGEN_ATTEMPTS: u8 = 2;
 
+fn map_fts_err(err: String) -> (StatusCode, String) {
+    (StatusCode::INTERNAL_SERVER_ERROR, err)
+}
+
+async fn delete_video_search_source(
+    state: &AppState,
+    video_id: &str,
+    source_kind: SearchSourceKind,
+) -> Result<(), (StatusCode, String)> {
+    state
+        .fts
+        .delete_source(video_id, source_kind)
+        .await
+        .map_err(map_fts_err)?;
+
+    match source_kind {
+        SearchSourceKind::Transcript => db::delete_transcript(&state.db, video_id)
+            .await
+            .map_err(map_db_err)?,
+        SearchSourceKind::Summary => db::delete_summary(&state.db, video_id)
+            .await
+            .map_err(map_db_err)?,
+    };
+
+    Ok(())
+}
+
 pub(crate) fn should_auto_regenerate_summary(
     summary_status: ContentStatus,
     quality_score: Option<u8>,
@@ -374,11 +401,7 @@ pub async fn regenerate_summary(
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     tracing::info!(video_id = %video_id, "summary regeneration requested");
     let video = require_video(&state, &video_id).await?;
-    {
-        db::delete_summary(&state.db, &video_id)
-            .await
-            .map_err(map_db_err)?;
-    }
+    delete_video_search_source(&state, &video_id, SearchSourceKind::Summary).await?;
     evict_video_scope_cache(&state, &video.channel_id).await?;
 
     let summary = ensure_summary(&state, &video_id).await?;
@@ -395,12 +418,8 @@ pub async fn reset_video(
     let video = require_video(&state, &video_id).await?;
     audit::log_video_reset(&video_id, &video.channel_id);
 
-    db::delete_transcript(&state.db, &video_id)
-        .await
-        .map_err(map_db_err)?;
-    db::delete_summary(&state.db, &video_id)
-        .await
-        .map_err(map_db_err)?;
+    delete_video_search_source(&state, &video_id, SearchSourceKind::Transcript).await?;
+    delete_video_search_source(&state, &video_id, SearchSourceKind::Summary).await?;
     // Reset regen counter so the queue won't skip re-generation thinking it already tried.
     db::reset_summary_auto_regen_attempts(&state.db, &video_id)
         .await
