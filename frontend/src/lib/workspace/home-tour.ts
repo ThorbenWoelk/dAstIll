@@ -54,11 +54,9 @@ export function createHomeTourSteps(ctx: TourContext): TourStep[] {
       selector: "#workspace",
       title: "Welcome to dAstIll",
       body:
-        "dAstIll helps you keep up with YouTube without the doom-scrolling. " +
-        "It pulls transcripts from your favorite channels and creates AI summaries, " +
-        "so you can quickly decide which videos are worth your time. " +
-        "Note: This is a showcase app. It's not intended to be a production-ready multi-user application. " +
-        "In fact, the business model of YouTube prevent this from ever becoming that. I'm just having fun with it.",
+        "Use the workspace to browse followed sources, open a recent item, " +
+        "and read the summary or transcript without leaving the main shell. " +
+        "On mobile web, the flow is browse first, then read, then jump to queue or chat when you need more depth.",
       placement: "right",
       prepare: () => {
         ctx.mobileBrowseOpen = true;
@@ -66,8 +64,8 @@ export function createHomeTourSteps(ctx: TourContext): TourStep[] {
     },
     {
       selector: "#drawer-source-input",
-      title: "Add a Channel",
-      body: "Paste a URL or handle here to subscribe to a channel. New uploads are tracked automatically.",
+      title: "Add a source",
+      body: "Paste a YouTube URL or handle here to add a source. The add flow stays in the browse sheet so you can keep your place.",
       placement: "bottom",
       prepare: () => {
         void tourPrepareOpenAddChannel();
@@ -76,8 +74,8 @@ export function createHomeTourSteps(ctx: TourContext): TourStep[] {
     },
     {
       selector: "#workspace-tabs-mobile",
-      title: "Read the Transcript",
-      body: "Every video's spoken content is available as a full transcript you can read at your own pace.",
+      title: "Open the transcript",
+      body: "Transcript keeps the full spoken text available when you need detail, want to verify a claim, or want to capture a precise highlight.",
       placement: "bottom",
       prepare: async () => {
         await tourPrepareFirstVideoIfNeeded();
@@ -89,8 +87,8 @@ export function createHomeTourSteps(ctx: TourContext): TourStep[] {
     },
     {
       selector: "#workspace-tabs-mobile",
-      title: "AI Summary",
-      body: "The Summary tab shows the distilled version so you can decide if the full video is still worth watching.",
+      title: "Read the summary",
+      body: "Summary is the fastest mobile read. Use it to decide whether the item deserves a deeper transcript pass or can be cleared quickly.",
       placement: "bottom",
       prepare: async () => {
         await tourPrepareFirstVideoIfNeeded();
@@ -102,8 +100,8 @@ export function createHomeTourSteps(ctx: TourContext): TourStep[] {
     },
     {
       selector: '[data-tour-target="nav-chat"]',
-      title: "AI Chat",
-      body: "Chat with your library. Our agentic RAG-based LLM system let's you ask questions about specific videos and will even do deep research for you.",
+      title: "Open library chat",
+      body: "Chat across the same library when you want synthesis instead of one-item reading. Deep research stays in the conversation flow.",
       placement: "right",
       prepare: () => {
         ctx.mobileBrowseOpen = true;
@@ -117,8 +115,8 @@ export function createHomeTourSteps(ctx: TourContext): TourStep[] {
     },
     {
       selector: "#workspace",
-      title: "Other features",
-      body: "Search, sort, and filter videos. Set earliest date to sync from and load more videos to go further back in time.",
+      title: "Browse tools",
+      body: "Search, filter, change sync depth, and load older items from the same workspace shell instead of opening a separate management page.",
       placement: "bottom",
       prepare: () => {
         ctx.mobileBrowseOpen = true;
@@ -127,8 +125,8 @@ export function createHomeTourSteps(ctx: TourContext): TourStep[] {
     },
     {
       selector: "#mark-read-toggle",
-      title: "Mark as read",
-      body: "Tip: Use it with the read filter in the library to get that sweet dopamine feeling of progress.",
+      title: "Mark items read",
+      body: "Use this to clear items after you finish triaging them. It works best together with the read filter back in browse.",
       placement: "bottom",
       prepare: async () => {
         if (ctx.contentMode === "info" || ctx.contentMode === "highlights") {
@@ -145,8 +143,8 @@ export function createHomeTourSteps(ctx: TourContext): TourStep[] {
     },
     {
       selector: "#workspace-tabs-mobile",
-      title: "Your Highlights",
-      body: "Found something worth remembering? Select any text in the transcript or summary and save it as a highlight. All your saved passages for this video appear here.",
+      title: "Save highlights",
+      body: "Select text in the transcript or summary and save it here. Highlights turn quick mobile reading into something you can return to later.",
       placement: "bottom",
       prepare: async () => {
         await tourPrepareFirstVideoIfNeeded();
@@ -158,8 +156,8 @@ export function createHomeTourSteps(ctx: TourContext): TourStep[] {
     },
     {
       selector: "#ai-status-pill",
-      title: "AI availability",
-      body: "This dot beside the logo shows whether the AI backend is reachable for summaries and chat. Reading still works without it.",
+      title: "Check AI status",
+      body: "This dot beside the logo shows whether summaries and chat are currently reachable. Reading still works even when AI is unavailable.",
       placement: "bottom",
       prepare: () => {
         ctx.mobileBrowseOpen = true;
@@ -172,8 +170,8 @@ export function createHomeTourSteps(ctx: TourContext): TourStep[] {
     },
     {
       selector: "#guide-trigger",
-      title: "Come back to this guide any time",
-      body: "Reopen this guide at any time.",
+      title: "Reopen the guide",
+      body: "Come back to this walkthrough any time from the workspace.",
       placement: "right",
       prepare: () => {
         ctx.mobileBrowseOpen = true;
