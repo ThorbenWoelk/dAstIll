@@ -173,14 +173,9 @@ jobs:
           env_file=/tmp/backend_cr_env.txt
           : > "$env_file"
           allowed_origins="https://${PROJECT_ID}.web.app,https://${PROJECT_ID}.firebaseapp.com,http://localhost:3000,http://127.0.0.1:3000,http://localhost:3543,http://127.0.0.1:3543"
-          existing_frontend_url="$(gcloud run services describe "${APP_NAME}-frontend" --project "$PROJECT_ID" --region "$REGION" --format='value(status.url)' 2>/dev/null || true)"
 
           if [ -n "${FRONTEND_URL_OVERRIDE:-}" ]; then
             allowed_origins="${allowed_origins},${FRONTEND_URL_OVERRIDE}"
-          fi
-
-          if [ -n "$existing_frontend_url" ]; then
-            allowed_origins="${allowed_origins},${existing_frontend_url}"
           fi
 
           yaml_escape() {

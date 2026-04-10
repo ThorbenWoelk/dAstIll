@@ -49,56 +49,6 @@ resource "google_cloud_run_v2_service" "backend" {
   }
 }
 
-resource "google_cloud_run_v2_service" "frontend" {
-  provider            = google-beta
-  name                = "${var.app_name}-frontend"
-  project             = var.project_id
-  location            = var.region
-  ingress             = "INGRESS_TRAFFIC_ALL"
-  deletion_protection = false
-
-  scaling {
-    min_instance_count    = local.cloud_run_default_scaling.min_instance_count
-    manual_instance_count = local.cloud_run_default_scaling.manual_instance_count
-  }
-
-  depends_on = [
-    google_secret_manager_secret_iam_member.frontend_secrets,
-  ]
-
-  template {
-    service_account = google_service_account.frontend_sa.email
-    containers {
-      image = "us-docker.pkg.dev/cloudrun/container/hello"
-
-      ports {
-        container_port = 3000
-      }
-
-      resources {
-        cpu_idle          = true
-        startup_cpu_boost = true
-        limits = {
-          cpu    = "1000m"
-          memory = "256Mi"
-        }
-      }
-    }
-  }
-
-  lifecycle {
-    ignore_changes = [template, client, client_version]
-  }
-}
-
-resource "google_cloud_run_v2_service_iam_member" "frontend_public" {
-  project  = var.project_id
-  location = google_cloud_run_v2_service.frontend.location
-  name     = google_cloud_run_v2_service.frontend.name
-  role     = "roles/run.invoker"
-  member   = "allUsers"
-}
-
 resource "google_cloud_run_v2_service_iam_member" "backend_public" {
   project  = var.project_id
   location = google_cloud_run_v2_service.backend.location
@@ -109,58 +59,4 @@ resource "google_cloud_run_v2_service_iam_member" "backend_public" {
 
 output "backend_url" {
   value = google_cloud_run_v2_service.backend.uri
-}
-
-output "frontend_url" {
-  value = google_cloud_run_v2_service.frontend.uri
-}
-
-resource "google_cloud_run_v2_service" "docs" {
-  provider            = google-beta
-  name                = "${var.app_name}-docs"
-  project             = var.project_id
-  location            = var.region
-  ingress             = "INGRESS_TRAFFIC_ALL"
-  deletion_protection = false
-
-  scaling {
-    min_instance_count    = local.cloud_run_default_scaling.min_instance_count
-    manual_instance_count = local.cloud_run_default_scaling.manual_instance_count
-  }
-
-  template {
-    service_account = google_service_account.docs_sa.email
-    containers {
-      image = "us-docker.pkg.dev/cloudrun/container/hello"
-
-      ports {
-        container_port = 8080
-      }
-
-      resources {
-        cpu_idle          = true
-        startup_cpu_boost = true
-        limits = {
-          cpu    = "1000m"
-          memory = "256Mi"
-        }
-      }
-    }
-  }
-
-  lifecycle {
-    ignore_changes = [template, client, client_version]
-  }
-}
-
-resource "google_cloud_run_v2_service_iam_member" "docs_public" {
-  project  = var.project_id
-  location = google_cloud_run_v2_service.docs.location
-  name     = google_cloud_run_v2_service.docs.name
-  role     = "roles/run.invoker"
-  member   = "allUsers"
-}
-
-output "docs_url" {
-  value = google_cloud_run_v2_service.docs.uri
 }

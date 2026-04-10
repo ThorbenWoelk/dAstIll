@@ -1,12 +1,10 @@
 # Deployment and Operations
 
-## Rollout Shape
+## Current Production Shape
 
-During the first Hosting rollout, production keeps the current three Cloud Run services while adding two static Hosting targets in parallel:
+The repository now runs one runtime service and two static Hosting targets:
 
 - backend on Cloud Run
-- product frontend on Cloud Run
-- docs frontend on Cloud Run
 - product frontend on Firebase Hosting
 - docs frontend on Firebase Hosting
 
@@ -14,7 +12,7 @@ During the first Hosting rollout, production keeps the current three Cloud Run s
 
 Terraform manages:
 
-- Cloud Run services (GCP)
+- Cloud Run backend (GCP)
 - Firebase project resources, the web app, and the docs Hosting site (GCP)
 - service accounts and IAM (GCP and AWS)
 - AWS S3 bucket for data storage
@@ -86,7 +84,7 @@ The frontend uses the Firebase JS SDK in the browser and in the Tauri WebView. S
 
 **Android browser-auth handoff:** if the Tauri Android shell should open a browser-hosted login page on a different origin than the product frontend itself, set `PUBLIC_BROWSER_AUTH_BASE_URL` for the frontend build. That value controls the origin used for the system-browser `/login` handoff flow.
 
-**Authorized domains:** Terraform manages Identity Platform authorized domains. During phase 1, the default set includes `localhost`, the Firebase-hosted domains for the project, the existing frontend Cloud Run host, and any entries in `firebase_authorized_domains_extra`. Use Terraform rather than console-only edits for managed environments.
+**Authorized domains:** Terraform manages Identity Platform authorized domains. The default set includes `localhost`, the Firebase-hosted domains for the project, and any entries in `firebase_authorized_domains_extra`. Use Terraform rather than console-only edits for managed environments.
 
 ## Project Migration
 
@@ -108,7 +106,7 @@ gcloud firestore import gs://<shared-migration-bucket>/<export-prefix> \
 ```
 
 7. Enable Firebase on the new project, set any optional Firebase Terraform inputs you need such as `firebase_authorized_domains_extra`, then re-apply Terraform so it creates the web app, the docs Hosting site, refreshes Secret Manager with the effective frontend Firebase values, and updates authorized domains through Identity Platform. Keep Google sign-in configuration in the repo-root `firebase.json` and deploy it separately with `bunx firebase-tools@15.12.0 deploy --only auth --project "$PROJECT_ID" --non-interactive`.
-8. Re-run the release workflow after the GitHub secret/var cutover so the backend Cloud Run service and the frontend/docs Hosting targets pick up the new project ID, Firebase config, backend URL, docs URL, and the latest Secret Manager versions. Keep the existing frontend/docs Cloud Run services until the Hosting smoke tests pass, then remove them in a follow-up cleanup rollout.
+8. Re-run the release workflow after the GitHub secret/var cutover so the backend Cloud Run service and the frontend/docs Hosting targets pick up the new project ID, Firebase config, backend URL, docs URL, and the latest Secret Manager versions.
 
 ## CI/CD Flow
 
@@ -139,7 +137,7 @@ The GitHub Actions workflow:
 
 - the frontend is built in CI from `frontend/` with Bun and published from `frontend/build`
 - the docs site is built in CI from `docs/` with Bun and published from `docs/.vitepress/dist`
-- phase 1 adds Firebase Hosting in parallel while leaving the existing frontend/docs Cloud Run services in place for rollback and cutover safety
+- Firebase Hosting serves both static outputs directly, so there are no frontend/docs runtime containers in production
 
 ### Android artifacts
 
@@ -166,11 +164,13 @@ ANN index creation is intentionally not part of startup migrations because it is
 
 ### Docs frontend
 
-The docs site is now built for Firebase Hosting and deployed from the repo root, but the existing docs Cloud Run service remains in Terraform during phase 1 so cleanup can happen separately after production verification.
+The docs site is deployed as its own Firebase Hosting site and remains operationally separate from the product frontend.
 
-The product frontend links to the docs site through a build-time `PUBLIC_DOCS_URL`. Local development still falls back to `http://localhost:4173` when that variable is unset.
+The `main`-branch deploy workflow publishes the docs Hosting revision directly from the repo root, so the site is reachable immediately after each successful deployment.
 
-Terraform grants the GitHub Actions deploy identity the Cloud Run permissions needed for the backend and the legacy static services plus Firebase Hosting permissions for the new static sites.
+The product frontend links to this docs site through a build-time `PUBLIC_DOCS_URL`. Local development still falls back to `http://localhost:4173` when that variable is unset.
+
+Terraform grants the GitHub Actions deploy identity the Cloud Run permissions needed for the backend plus Firebase Hosting permissions for the static sites.
 
 ## Billing Export
 

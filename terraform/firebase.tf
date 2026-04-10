@@ -1,9 +1,5 @@
 locals {
   firebase_docs_site_id = "${var.project_id}-docs"
-  firebase_frontend_host = trimsuffix(
-    trimprefix(google_cloud_run_v2_service.frontend.uri, "https://"),
-    "/",
-  )
   firebase_authorized_domains = distinct(
     concat(
       [
@@ -11,7 +7,6 @@ locals {
         "${var.project_id}.firebaseapp.com",
         "${var.project_id}.web.app",
       ],
-      compact([local.firebase_frontend_host]),
       var.firebase_authorized_domains_extra,
     ),
   )
