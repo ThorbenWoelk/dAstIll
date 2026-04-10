@@ -3,12 +3,4 @@ import type { ContentSourceKind } from "./ContentSourceKind";
 import type { HighlightVideoGroup } from "./HighlightVideoGroup";
 import type { ProviderKind } from "./ProviderKind";
 
-export type HighlightChannelGroup = {
-  source_id: string;
-  channel_id: string;
-  provider: ProviderKind;
-  source_kind: ContentSourceKind;
-  channel_name: string;
-  channel_thumbnail_url: string | null;
-  videos: Array<HighlightVideoGroup>;
-};
+export type HighlightChannelGroup = { source_id: string, channel_id: string, provider: ProviderKind, source_kind: ContentSourceKind, channel_name: string, channel_thumbnail_url: string | null, videos: Array<HighlightVideoGroup>, };

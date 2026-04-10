@@ -3,13 +3,4 @@ import type { ContentItemKind } from "./ContentItemKind";
 import type { ProviderIdentity } from "./ProviderIdentity";
 import type { ProviderKind } from "./ProviderKind";
 
-export type ContentItem = {
-  id: string;
-  source_id: string;
-  provider: ProviderKind;
-  item_kind: ContentItemKind;
-  title: string;
-  thumbnail_url?: string;
-  published_at?: string;
-  external_ids: Array<ProviderIdentity>;
-};
+export type ContentItem = { id: string, source_id: string, provider: ProviderKind, item_kind: ContentItemKind, title: string, thumbnail_url?: string, published_at?: string, external_ids: Array<ProviderIdentity>, };

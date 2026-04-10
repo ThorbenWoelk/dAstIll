@@ -32,7 +32,6 @@ import {
   sendConversationMessage,
   sendEphemeralConversationMessage,
 } from "$lib/chat/requests";
-import { mobileBottomBar } from "$lib/mobile-navigation/mobileBottomBar";
 import { createAiStatusPoller } from "$lib/utils/ai-poller";
 
 import { createChatStreamController } from "$lib/chat/chat-stream-controller.svelte";
@@ -912,13 +911,6 @@ export function createChatPageController() {
       ...conversations.filter((candidate) => candidate.id !== conversation.id),
     ].sort((left, right) => right.updated_at.localeCompare(left.updated_at));
   }
-
-  $effect(() => {
-    mobileBottomBar.set({ kind: "hidden" });
-    return () => {
-      mobileBottomBar.set({ kind: "sections" });
-    };
-  });
 
   return {
     get aiIndicator() {

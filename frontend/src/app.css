@@ -196,7 +196,10 @@
   --space-lg: 24px;
   --space-xl: 32px;
   --mobile-viewport-offset-bottom: 0px;
-  --mobile-bottom-stack-height: var(--mobile-viewport-offset-bottom);
+  --mobile-tab-bar-height: 0px;
+  --mobile-bottom-stack-height: calc(
+    var(--mobile-tab-bar-height) + var(--mobile-viewport-offset-bottom)
+  );
 
   /* Saved text highlights (transcript / summary) */
   --reader-highlight-bg: color-mix(in srgb, rgb(248 231 162) 84%, white);
@@ -733,6 +736,10 @@ a[href],
 
 /* Mobile bottom-stack padding */
 @media (max-width: 1023px) {
+  :root {
+    --mobile-tab-bar-height: calc(52px + env(safe-area-inset-bottom));
+  }
+
   .page-shell {
     padding-top: max(1rem, env(safe-area-inset-top));
     padding-bottom: calc(var(--mobile-bottom-stack-height) + 2rem);
