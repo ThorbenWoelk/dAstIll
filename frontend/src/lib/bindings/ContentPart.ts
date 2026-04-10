@@ -3,4 +3,12 @@ import type { ContentPartKind } from "./ContentPartKind";
 import type { ContentStatus } from "./ContentStatus";
 import type { ProviderKind } from "./ProviderKind";
 
-export type ContentPart = { id: string, source_id: string, item_id: string, provider: ProviderKind, part_kind: ContentPartKind, status: ContentStatus, text_available: boolean, };
+export type ContentPart = {
+  id: string;
+  source_id: string;
+  item_id: string;
+  provider: ProviderKind;
+  part_kind: ContentPartKind;
+  status: ContentStatus;
+  text_available: boolean;
+};

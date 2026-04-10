@@ -237,6 +237,10 @@ The handlers are thin orchestration points. Durable logic primarily lives in:
 
 The UI and backend communicate with typed JSON payloads plus SSE streams rather than GraphQL or server actions. The product frontend centralizes request logic in `frontend/src/lib/api.ts`, while chat and search status streams use `EventSource`.
 
+For manual backend debugging, the backend also exposes a live OpenAPI document at
+`/api/openapi.json`. During local development, Postman should import the running backend URL
+instead of relying on the checked-in `backend/openapi.postman.yaml` snapshot.
+
 ## Search UI Pattern
 
 The search UI is global to the workspace, not scoped to a single video panel. It:

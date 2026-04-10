@@ -42,6 +42,7 @@ flate2 = "1.0"
 
 # Types generation
 ts-rs = { version = "10.0", features = ["chrono-impl"] }
+utoipa = { version = "5", features = ["axum_extras", "chrono"] }
 
 # AWS S3 + S3 Vectors
 aws-config = { version = "1", features = ["behavior-version-latest", "credentials-login", "rustls"] }

@@ -3,4 +3,12 @@ import type { ProviderKind } from "./ProviderKind";
 import type { SourceBackingKind } from "./SourceBackingKind";
 import type { SubscriptionContainerKind } from "./SubscriptionContainerKind";
 
-export type SubscriptionContainer = { id: string, kind: SubscriptionContainerKind, title: string, provider: ProviderKind, backing_kind: SourceBackingKind, user_editable: boolean, source_ids: Array<string>, };
+export type SubscriptionContainer = {
+  id: string;
+  kind: SubscriptionContainerKind;
+  title: string;
+  provider: ProviderKind;
+  backing_kind: SourceBackingKind;
+  user_editable: boolean;
+  source_ids: Array<string>;
+};

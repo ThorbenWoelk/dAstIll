@@ -706,7 +706,8 @@ async fn main() -> anyhow::Result<()> {
         ));
 
     let app = Router::new()
-        .route("/api/health", get(|| async { "ok" }))
+        .route("/api/health", get(dastill::openapi::health))
+        .route("/api/openapi.json", get(dastill::openapi::get_openapi_json))
         .merge(protected_api)
         .layer(middleware::from_fn(add_cache_control))
         .layer(build_cors_layer(security_runtime.as_ref()).map_err(|err| anyhow::anyhow!(err))?)

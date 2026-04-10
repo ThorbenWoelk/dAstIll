@@ -8,6 +8,7 @@ pub mod handlers;
 pub mod local_env;
 pub mod logging;
 pub mod models;
+pub mod openapi;
 pub mod read_cache;
 pub mod search_progress;
 pub mod search_query;

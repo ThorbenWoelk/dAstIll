@@ -8,6 +8,7 @@ use axum::{
 };
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use utoipa::{IntoParams, ToSchema};
 
 use crate::{
     audit, db,
@@ -33,7 +34,7 @@ use super::{map_db_err, require_present, validate_nonempty};
 const CHAT_SUGGESTION_LIMIT_DEFAULT: usize = 8;
 const CHAT_SUGGESTION_LIMIT_MAX: usize = 12;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, IntoParams)]
 pub struct ChatSuggestionQuery {
     #[serde(default)]
     q: String,
@@ -41,7 +42,7 @@ pub struct ChatSuggestionQuery {
     limit: Option<usize>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ChatSuggestionItem {
     kind: &'static str,
     id: String,
@@ -146,6 +147,15 @@ fn require_authenticated_persistent_chat(
     Ok(user_id)
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/chat/suggestions/channels",
+    params(ChatSuggestionQuery),
+    responses(
+        (status = 200, description = "Channel suggestions", body = [ChatSuggestionItem]),
+        (status = 500, description = "Request failed", body = String)
+    )
+)]
 pub async fn suggest_channels(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
@@ -178,6 +188,15 @@ pub async fn suggest_channels(
     )))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/chat/suggestions/videos",
+    params(ChatSuggestionQuery),
+    responses(
+        (status = 200, description = "Video suggestions", body = [ChatSuggestionItem]),
+        (status = 500, description = "Request failed", body = String)
+    )
+)]
 pub async fn suggest_videos(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
@@ -212,10 +231,25 @@ pub async fn suggest_videos(
     )))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/chat/config",
+    responses(
+        (status = 200, description = "Chat client configuration", body = crate::models::ChatClientConfig)
+    )
+)]
 pub async fn get_client_config(State(state): State<AppState>) -> impl IntoResponse {
     Json(state.chat.chat_client_config())
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/chat/conversations",
+    responses(
+        (status = 200, description = "Conversation summaries", body = [crate::models::ChatConversationSummary]),
+        (status = 403, description = "Sign-in required", body = String)
+    )
+)]
 pub async fn list_conversations(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
@@ -228,6 +262,16 @@ pub async fn list_conversations(
     Ok(Json(conversations))
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/chat/conversations",
+    request_body = CreateConversationRequest,
+    responses(
+        (status = 201, description = "Created conversation", body = ChatConversation),
+        (status = 400, description = "Invalid title", body = String),
+        (status = 403, description = "Sign-in required", body = String)
+    )
+)]
 pub async fn create_conversation(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
@@ -254,6 +298,18 @@ pub async fn create_conversation(
     Ok((StatusCode::CREATED, Json(conversation)))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/chat/conversations/{id}",
+    params(
+        ("id" = String, Path, description = "Conversation id")
+    ),
+    responses(
+        (status = 200, description = "Conversation", body = ChatConversation),
+        (status = 403, description = "Sign-in required", body = String),
+        (status = 404, description = "Conversation not found", body = String)
+    )
+)]
 pub async fn get_conversation(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
@@ -271,6 +327,20 @@ pub async fn get_conversation(
     Ok(Json(conversation))
 }
 
+#[utoipa::path(
+    put,
+    path = "/api/chat/conversations/{id}",
+    params(
+        ("id" = String, Path, description = "Conversation id")
+    ),
+    request_body = UpdateConversationRequest,
+    responses(
+        (status = 200, description = "Updated conversation", body = ChatConversation),
+        (status = 400, description = "Invalid title", body = String),
+        (status = 403, description = "Sign-in required", body = String),
+        (status = 404, description = "Conversation not found", body = String)
+    )
+)]
 pub async fn update_conversation(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
@@ -301,6 +371,17 @@ pub async fn update_conversation(
     Ok(Json(conversation))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/chat/conversations/{id}",
+    params(
+        ("id" = String, Path, description = "Conversation id")
+    ),
+    responses(
+        (status = 204, description = "Deleted conversation"),
+        (status = 403, description = "Sign-in required", body = String)
+    )
+)]
 pub async fn delete_conversation(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
@@ -325,6 +406,14 @@ pub async fn delete_conversation(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/chat/conversations",
+    responses(
+        (status = 204, description = "Deleted all conversations for the scope"),
+        (status = 403, description = "Sign-in required", body = String)
+    )
+)]
 pub async fn delete_all_conversations(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
@@ -349,6 +438,21 @@ pub async fn delete_all_conversations(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/chat/conversations/{id}/messages",
+    params(
+        ("id" = String, Path, description = "Conversation id")
+    ),
+    request_body = SendChatMessageRequest,
+    responses(
+        (status = 200, description = "Server-sent reply stream", body = String, content_type = "text/event-stream"),
+        (status = 400, description = "Invalid prompt", body = String),
+        (status = 403, description = "Sign-in required", body = String),
+        (status = 404, description = "Conversation not found", body = String),
+        (status = 409, description = "Conversation already has an active response", body = String)
+    )
+)]
 pub async fn start_conversation_reply(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
@@ -426,6 +530,17 @@ pub async fn start_conversation_reply(
 }
 
 /// Anonymous-only: runs one model turn without reading or writing persisted conversations.
+#[utoipa::path(
+    post,
+    path = "/api/chat/ephemeral/messages",
+    request_body = EphemeralChatMessageRequest,
+    responses(
+        (status = 200, description = "Server-sent reply stream", body = String, content_type = "text/event-stream"),
+        (status = 400, description = "Invalid prompt or conversation payload", body = String),
+        (status = 403, description = "Ephemeral chat is only for anonymous callers", body = String),
+        (status = 409, description = "Conversation already has an active response", body = String)
+    )
+)]
 pub async fn start_ephemeral_reply(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
@@ -511,6 +626,18 @@ pub async fn start_ephemeral_reply(
     Ok(reply_sse_response(active_reply).await)
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/chat/conversations/{id}/stream",
+    params(
+        ("id" = String, Path, description = "Conversation id")
+    ),
+    responses(
+        (status = 200, description = "Server-sent reply stream", body = String, content_type = "text/event-stream"),
+        (status = 403, description = "Sign-in required", body = String),
+        (status = 404, description = "Active reply not found", body = String)
+    )
+)]
 pub async fn resume_conversation_reply(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
@@ -523,6 +650,18 @@ pub async fn resume_conversation_reply(
     Ok(reply_sse_response(active_reply).await)
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/chat/conversations/{id}/cancel",
+    params(
+        ("id" = String, Path, description = "Conversation id")
+    ),
+    responses(
+        (status = 202, description = "Cancelled active reply"),
+        (status = 403, description = "Sign-in required", body = String),
+        (status = 404, description = "Active reply not found", body = String)
+    )
+)]
 pub async fn cancel_conversation_reply(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,

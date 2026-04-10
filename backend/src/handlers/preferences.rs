@@ -14,6 +14,14 @@ use crate::{
 
 use super::map_db_err;
 
+#[utoipa::path(
+    get,
+    path = "/api/preferences",
+    responses(
+        (status = 200, description = "User preferences", body = UserPreferences),
+        (status = 500, description = "Request failed", body = String)
+    )
+)]
 pub async fn get_preferences(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
@@ -29,6 +37,16 @@ pub async fn get_preferences(
     Ok(Json(prefs))
 }
 
+#[utoipa::path(
+    put,
+    path = "/api/preferences",
+    request_body = UserPreferences,
+    responses(
+        (status = 204, description = "Saved preferences"),
+        (status = 403, description = "Sign-in required", body = String),
+        (status = 500, description = "Request failed", body = String)
+    )
+)]
 pub async fn save_preferences(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,

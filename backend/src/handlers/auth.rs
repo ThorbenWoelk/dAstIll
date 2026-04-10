@@ -7,19 +7,20 @@ use axum::{
     response::IntoResponse,
 };
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 use crate::state::{AppState, MobileAuthHandoff};
 
 const MOBILE_AUTH_HANDOFF_TTL: Duration = Duration::from_secs(5 * 60);
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct MobileAuthHandoffStatusPayload {
     pub status: &'static str,
     pub google_id_token: Option<String>,
     pub google_access_token: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct CompleteMobileAuthHandoffPayload {
     pub google_id_token: String,
     pub google_access_token: String,
@@ -30,6 +31,17 @@ fn prune_expired_handoffs(state: &mut std::collections::HashMap<String, MobileAu
     state.retain(|_, handoff| now.duration_since(handoff.created_at) < MOBILE_AUTH_HANDOFF_TTL);
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/auth/mobile-handoff/{id}",
+    params(
+        ("id" = String, Path, description = "Mobile auth handoff session id")
+    ),
+    responses(
+        (status = 201, description = "Created or reused handoff session", body = MobileAuthHandoffStatusPayload),
+        (status = 400, description = "Request failed", body = String)
+    )
+)]
 pub async fn create_mobile_auth_handoff(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
@@ -54,6 +66,18 @@ pub async fn create_mobile_auth_handoff(
     ))
 }
 
+#[utoipa::path(
+    put,
+    path = "/api/auth/mobile-handoff/{id}",
+    params(
+        ("id" = String, Path, description = "Mobile auth handoff session id")
+    ),
+    request_body = CompleteMobileAuthHandoffPayload,
+    responses(
+        (status = 200, description = "Completed handoff session", body = MobileAuthHandoffStatusPayload),
+        (status = 400, description = "Request failed", body = String)
+    )
+)]
 pub async fn complete_mobile_auth_handoff(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
@@ -87,6 +111,16 @@ pub async fn complete_mobile_auth_handoff(
     }))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/auth/mobile-handoff/{id}",
+    params(
+        ("id" = String, Path, description = "Mobile auth handoff session id")
+    ),
+    responses(
+        (status = 200, description = "Current handoff status", body = MobileAuthHandoffStatusPayload)
+    )
+)]
 pub async fn get_mobile_auth_handoff(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
@@ -119,6 +153,16 @@ pub async fn get_mobile_auth_handoff(
     }))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/auth/mobile-handoff/{id}",
+    params(
+        ("id" = String, Path, description = "Mobile auth handoff session id")
+    ),
+    responses(
+        (status = 204, description = "Deleted handoff session")
+    )
+)]
 pub async fn delete_mobile_auth_handoff(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
