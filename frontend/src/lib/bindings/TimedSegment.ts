@@ -4,10 +4,8 @@
  * A time-stamped caption segment from yt-dlp json3 output.
  * Only present on transcripts extracted via the yt-dlp fallback path.
  */
-export type TimedSegment = {
-  /**
-   * Start position in the video, in seconds.
-   */
-  start_sec: number;
-  text: string;
-};
+export type TimedSegment = { 
+/**
+ * Start position in the video, in seconds.
+ */
+start_sec: number, text: string, };

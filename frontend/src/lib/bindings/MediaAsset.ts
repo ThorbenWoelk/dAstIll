@@ -2,13 +2,4 @@
 import type { MediaAssetKind } from "./MediaAssetKind";
 import type { ProviderKind } from "./ProviderKind";
 
-export type MediaAsset = {
-  id: string;
-  source_id: string;
-  item_id: string;
-  provider: ProviderKind;
-  asset_kind: MediaAssetKind;
-  title: string;
-  url?: string;
-  mime_type?: string;
-};
+export type MediaAsset = { id: string, source_id: string, item_id: string, provider: ProviderKind, asset_kind: MediaAssetKind, title: string, url?: string, mime_type?: string, };

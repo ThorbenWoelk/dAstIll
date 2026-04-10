@@ -2,13 +2,4 @@
 import type { OpenAlexSearchScope } from "./OpenAlexSearchScope";
 import type { OpenAlexSort } from "./OpenAlexSort";
 
-export type OpenAlexSavedSearchQuery = {
-  natural_language_query: string;
-  query_text: string;
-  from_publication_date: string | null;
-  to_publication_date: string | null;
-  work_type: string | null;
-  open_access_only: boolean | null;
-  search_scope: OpenAlexSearchScope;
-  sort: OpenAlexSort;
-};
+export type OpenAlexSavedSearchQuery = { natural_language_query: string, query_text: string, from_publication_date: string | null, to_publication_date: string | null, work_type: string | null, open_access_only: boolean | null, search_scope: OpenAlexSearchScope, sort: OpenAlexSort, };

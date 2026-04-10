@@ -3,14 +3,4 @@ import type { ContentItemKind } from "./ContentItemKind";
 import type { Highlight } from "./Highlight";
 import type { ProviderKind } from "./ProviderKind";
 
-export type HighlightVideoGroup = {
-  source_id: string;
-  video_id: string;
-  item_id: string;
-  provider: ProviderKind;
-  item_kind: ContentItemKind;
-  title: string;
-  thumbnail_url: string | null;
-  published_at: string;
-  highlights: Array<Highlight>;
-};
+export type HighlightVideoGroup = { source_id: string, video_id: string, item_id: string, provider: ProviderKind, item_kind: ContentItemKind, title: string, thumbnail_url: string | null, published_at: string, highlights: Array<Highlight>, };
