@@ -13,6 +13,7 @@ env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   REGION: europe-west3
   APP_NAME: dastill
+  DOCS_URL_OVERRIDE: ${{ vars.DOCS_URL }}
 
 permissions:
   contents: read
@@ -44,10 +45,7 @@ jobs:
             --project "$PROJECT_ID" \
             --region "$REGION" \
             --format='value(status.url)')"
-          docs_url="$(gcloud run services describe "${APP_NAME}-docs" \
-            --project "$PROJECT_ID" \
-            --region "$REGION" \
-            --format='value(status.url)')"
+          docs_url="${DOCS_URL_OVERRIDE:-https://${PROJECT_ID}-docs.web.app}"
           firebase_api_key="$(gcloud secrets versions access latest --secret="${APP_NAME}-firebase-web-api-key")"
           firebase_auth_domain="$(gcloud secrets versions access latest --secret="${APP_NAME}-firebase-auth-domain")"
 

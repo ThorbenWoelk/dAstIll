@@ -65,7 +65,7 @@ cd docs
 bun run build
 ```
 
-The docs app also has a production container definition in `docs/Dockerfile`. Main-branch pushes build and deploy that image through the repository GitHub Actions workflow.
+The docs app is deployed from the static VitePress build through Firebase Hosting. Main-branch pushes build the site and publish `docs/.vitepress/dist` through the repository GitHub Actions workflow.
 
 ## Tauri Android Development
 
@@ -251,6 +251,8 @@ Behavior:
 ## Frontend Runtime
 
 The frontend now builds as a static bundle. Browser and Tauri clients call the Rust backend directly using `VITE_API_BASE`, and authenticated requests send the Firebase ID token as `Authorization: Bearer <token>`.
+
+In production the static frontend and docs are served by Firebase Hosting. Local development still uses the Vite dev server for the app and VitePress for docs.
 
 Optional browser-auth override for the Android system-browser sign-in handoff:
 

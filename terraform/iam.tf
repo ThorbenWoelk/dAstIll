@@ -4,18 +4,6 @@ resource "google_service_account" "backend_sa" {
   display_name = "${var.app_name} Backend Service Account"
 }
 
-resource "google_service_account" "frontend_sa" {
-  project      = var.project_id
-  account_id   = "${var.app_name}-frontend-sa"
-  display_name = "${var.app_name} Frontend Service Account"
-}
-
-resource "google_service_account" "docs_sa" {
-  project      = var.project_id
-  account_id   = "${var.app_name}-docs-sa"
-  display_name = "${var.app_name} Docs Service Account"
-}
-
 # Service Account for GitHub Actions
 resource "google_service_account" "github_actions_sa" {
   project      = var.project_id
@@ -33,16 +21,15 @@ locals {
     backend_proxy_token = google_secret_manager_secret.backend_proxy_token.id
     turso_auth_token    = google_secret_manager_secret.turso_auth_token.id
   }
-  frontend_secret_ids = merge(
+  frontend_build_secret_ids = merge(
     {
-      backend_proxy_token = google_secret_manager_secret.backend_proxy_token.id
     },
     local.firebase_secrets_enabled ? {
       firebase_web_api_key = google_secret_manager_secret.firebase_web_api_key[0].id
       firebase_auth_domain = google_secret_manager_secret.firebase_auth_domain[0].id
     } : {},
   )
-  cicd_secret_ids = merge(local.backend_secret_ids, local.frontend_secret_ids)
+  cicd_secret_ids = merge(local.backend_secret_ids, local.frontend_build_secret_ids)
 }
 
 # Explicit bindings so Cloud Run (backend SA) and deploy (GitHub SA) can read DATABRICKS_TOKEN.
@@ -67,26 +54,11 @@ resource "google_secret_manager_secret_iam_member" "backend_secrets" {
   member    = "serviceAccount:${google_service_account.backend_sa.email}"
 }
 
-resource "google_secret_manager_secret_iam_member" "frontend_secrets" {
-  for_each  = local.frontend_secret_ids
-  secret_id = each.value
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.frontend_sa.email}"
-}
-
 resource "google_secret_manager_secret_iam_member" "cicd_secrets" {
   for_each  = local.cicd_secret_ids
   secret_id = each.value
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.github_actions_sa.email}"
-}
-
-resource "google_cloud_run_v2_service_iam_member" "backend_frontend_invoker" {
-  project  = var.project_id
-  location = google_cloud_run_v2_service.backend.location
-  name     = google_cloud_run_v2_service.backend.name
-  role     = "roles/run.invoker"
-  member   = "serviceAccount:${google_service_account.frontend_sa.email}"
 }
 
 # CICD Permissions
@@ -104,18 +76,23 @@ resource "google_project_iam_member" "cloud_run_admin" {
   member  = "serviceAccount:${google_service_account.github_actions_sa.email}"
 }
 
+resource "google_project_iam_member" "firebase_hosting_admin" {
+  project = var.project_id
+  role    = "roles/firebasehosting.admin"
+  member  = "serviceAccount:${google_service_account.github_actions_sa.email}"
+}
+
+resource "google_project_iam_member" "firebase_api_keys_viewer" {
+  project = var.project_id
+  role    = "roles/serviceusage.apiKeysViewer"
+  member  = "serviceAccount:${google_service_account.github_actions_sa.email}"
+}
+
 # Grant Firebase Auth access to the backend service account
 resource "google_project_iam_member" "backend_firebase_auth" {
   project = var.project_id
   role    = "roles/firebaseauth.admin"
   member  = "serviceAccount:${google_service_account.backend_sa.email}"
-}
-
-# SvelteKit server uses Firebase Admin (session cookies, token verify) on the frontend Cloud Run service.
-resource "google_project_iam_member" "frontend_firebase_auth" {
-  project = var.project_id
-  role    = "roles/firebaseauth.admin"
-  member  = "serviceAccount:${google_service_account.frontend_sa.email}"
 }
 
 output "backend_sa_email" {
@@ -144,18 +121,6 @@ resource "google_service_account_iam_member" "backend_token_creator" {
   service_account_id = google_service_account.backend_sa.name
   role               = "roles/iam.serviceAccountTokenCreator"
   member             = "serviceAccount:${google_service_account.backend_sa.email}"
-}
-
-resource "google_service_account_iam_member" "sa_user_frontend" {
-  service_account_id = google_service_account.frontend_sa.name
-  role               = "roles/iam.serviceAccountUser"
-  member             = "serviceAccount:${google_service_account.github_actions_sa.email}"
-}
-
-resource "google_service_account_iam_member" "sa_user_docs" {
-  service_account_id = google_service_account.docs_sa.name
-  role               = "roles/iam.serviceAccountUser"
-  member             = "serviceAccount:${google_service_account.github_actions_sa.email}"
 }
 
 # Needed for gcloud auth configure-docker if using impersonation/WIF in some contexts
