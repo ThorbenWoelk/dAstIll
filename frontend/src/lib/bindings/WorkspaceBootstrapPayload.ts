@@ -6,4 +6,15 @@ import type { ContentSource } from "./ContentSource";
 import type { SearchStatusPayload } from "./SearchStatusPayload";
 import type { SubscriptionContainer } from "./SubscriptionContainer";
 
-export type WorkspaceBootstrapPayload = { ai_available: boolean, ai_status: AiStatus, containers: Array<SubscriptionContainer>, sources: Array<ContentSource>, channels: Array<Channel>, selected_source_id: string | null, selected_channel_id: string | null, selected_item_id?: string, snapshot: ChannelSnapshotPayload | null, search_status: SearchStatusPayload, };
+export type WorkspaceBootstrapPayload = {
+  ai_available: boolean;
+  ai_status: AiStatus;
+  containers: Array<SubscriptionContainer>;
+  sources: Array<ContentSource>;
+  channels: Array<Channel>;
+  selected_source_id: string | null;
+  selected_channel_id: string | null;
+  selected_item_id?: string;
+  snapshot: ChannelSnapshotPayload | null;
+  search_status: SearchStatusPayload;
+};

@@ -5,8 +5,24 @@ import type { ContentSourceKind } from "./ContentSourceKind";
 import type { ProviderKind } from "./ProviderKind";
 import type { SearchSourceKind } from "./SearchSourceKind";
 
-export type ChatSource = { source_id: string, video_id: string, item_id: string, provider: ProviderKind, content_source_kind: ContentSourceKind, item_kind: ContentItemKind, part_kind: ContentPartKind, channel_id: string, channel_name: string, video_title: string, source_kind: SearchSourceKind, section_title: string | null, snippet: string, score: number, 
-/**
- * Stable id for the indexed transcript/summary chunk (search excerpt).
- */
-chunk_id: string, retrieval_pass?: number, };
+export type ChatSource = {
+  source_id: string;
+  video_id: string;
+  item_id: string;
+  provider: ProviderKind;
+  content_source_kind: ContentSourceKind;
+  item_kind: ContentItemKind;
+  part_kind: ContentPartKind;
+  channel_id: string;
+  channel_name: string;
+  video_title: string;
+  source_kind: SearchSourceKind;
+  section_title: string | null;
+  snippet: string;
+  score: number;
+  /**
+   * Stable id for the indexed transcript/summary chunk (search excerpt).
+   */
+  chunk_id: string;
+  retrieval_pass?: number;
+};

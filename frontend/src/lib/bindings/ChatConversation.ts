@@ -2,4 +2,11 @@
 import type { ChatMessage } from "./ChatMessage";
 import type { ChatTitleStatus } from "./ChatTitleStatus";
 
-export type ChatConversation = { id: string, title: string | null, title_status: ChatTitleStatus, created_at: string, updated_at: string, messages: Array<ChatMessage>, };
+export type ChatConversation = {
+  id: string;
+  title: string | null;
+  title_status: ChatTitleStatus;
+  created_at: string;
+  updated_at: string;
+  messages: Array<ChatMessage>;
+};

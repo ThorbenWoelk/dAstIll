@@ -4,4 +4,9 @@ import type { ChatConversation } from "./ChatConversation";
 /**
  * Anonymous-only chat turn: full conversation state is carried by the client; nothing is written to the store.
  */
-export type EphemeralChatMessageRequest = { conversation: ChatConversation, content: string, deep_research: boolean, model?: string, };
+export type EphemeralChatMessageRequest = {
+  conversation: ChatConversation;
+  content: string;
+  deep_research: boolean;
+  model?: string;
+};
