@@ -9,6 +9,8 @@ import { defineConfig, devices } from "@playwright/test";
 const baseURL =
   process.env.PLAYWRIGHT_BASE_URL?.replace(/\/$/, "") ??
   "http://127.0.0.1:3543";
+const signedInStorageState = "playwright/.auth/user.json";
+const signedInEnabled = process.env.PLAYWRIGHT_SIGNED_IN === "1";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -26,5 +28,35 @@ export default defineConfig({
     ...devices["Desktop Chrome"],
     viewport: { width: 1280, height: 900 },
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    {
+      name: "guest-chromium",
+      testIgnore: ["./e2e/signed-in/**"],
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: { cookies: [], origins: [] },
+      },
+    },
+    ...(signedInEnabled
+      ? [
+          {
+            name: "signed-in-setup",
+            testMatch: /e2e\/signed-in\/auth\.setup\.ts/,
+            use: {
+              ...devices["Desktop Chrome"],
+              storageState: { cookies: [], origins: [] },
+            },
+          },
+          {
+            name: "signed-in-chromium",
+            dependencies: ["signed-in-setup"],
+            testMatch: /e2e\/signed-in\/.*\.spec\.ts/,
+            use: {
+              ...devices["Desktop Chrome"],
+              storageState: signedInStorageState,
+            },
+          },
+        ]
+      : []),
+  ],
 });

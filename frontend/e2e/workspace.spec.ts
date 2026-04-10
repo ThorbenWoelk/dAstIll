@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { resetClientState } from "./test-helpers";
+import { openFreshGuestPage } from "./test-helpers";
 
 const READY_MS = 120_000;
 const PRIMARY_MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
@@ -9,6 +9,10 @@ function workspaceSidebar(page: Page) {
   return page
     .locator('xpath=//aside[@id="workspace"][not(ancestor::*[@role="dialog"])]')
     .first();
+}
+
+function workspaceDesktopTabs(page: Page) {
+  return page.locator("#workspace-tabs-desktop").first();
 }
 
 async function workspaceHasSeedData(page: Page): Promise<boolean> {
@@ -41,7 +45,7 @@ async function workspaceHasSeedData(page: Page): Promise<boolean> {
 }
 
 test.beforeEach(async ({ page }) => {
-  await resetClientState(page);
+  await openFreshGuestPage(page, "/");
 });
 
 test("sidebar lists channels and each row shows video titles", async ({
@@ -87,19 +91,25 @@ test("switching content tabs shows different views", async ({ page }) => {
   });
   await sidebar.locator("#videos").getByRole("button").first().click();
 
-  await page.getByRole("button", { name: "Transcript", exact: true }).click();
+  await workspaceDesktopTabs(page)
+    .getByRole("button", { name: "Transcript", exact: true })
+    .click();
   await expect(page.locator("#content-view article")).toBeVisible({
     timeout: READY_MS,
   });
   await expect(page.locator("#content-view article")).not.toBeEmpty();
 
-  await page.getByRole("button", { name: "Info", exact: true }).click();
+  await workspaceDesktopTabs(page)
+    .getByRole("button", { name: "Info", exact: true })
+    .click();
   await expect(page.getByText("Published").first()).toBeVisible({
     timeout: READY_MS,
   });
   await expect(page.locator("#content-view article")).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Summary", exact: true }).click();
+  await workspaceDesktopTabs(page)
+    .getByRole("button", { name: "Summary", exact: true })
+    .click();
   await expect(page.locator("#content-view article")).toBeVisible({
     timeout: READY_MS,
   });
@@ -135,7 +145,9 @@ test("summary and transcript match the selected video after changing channel", a
   }
 
   await selectChannelAndFirstVideo(0);
-  await page.getByRole("button", { name: "Transcript", exact: true }).click();
+  await workspaceDesktopTabs(page)
+    .getByRole("button", { name: "Transcript", exact: true })
+    .click();
   await expect(page.locator("#content-view article")).toBeVisible({
     timeout: READY_MS,
   });
@@ -144,7 +156,9 @@ test("summary and transcript match the selected video after changing channel", a
   ).trim();
 
   await selectChannelAndFirstVideo(1);
-  await page.getByRole("button", { name: "Transcript", exact: true }).click();
+  await workspaceDesktopTabs(page)
+    .getByRole("button", { name: "Transcript", exact: true })
+    .click();
   await expect(page.locator("#content-view article")).toBeVisible({
     timeout: READY_MS,
   });
@@ -154,7 +168,9 @@ test("summary and transcript match the selected video after changing channel", a
   expect(transcriptB.length).toBeGreaterThan(0);
   expect(transcriptB).not.toBe(transcriptA);
 
-  await page.getByRole("button", { name: "Summary", exact: true }).click();
+  await workspaceDesktopTabs(page)
+    .getByRole("button", { name: "Summary", exact: true })
+    .click();
   await expect(page.locator("#content-view article")).toBeVisible({
     timeout: READY_MS,
   });

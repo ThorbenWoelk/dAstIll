@@ -1,33 +1,28 @@
 import { expect, test } from "@playwright/test";
+import { openFreshGuestPage } from "./test-helpers";
 
-test.beforeEach(async ({ context }) => {
-  await context.addInitScript(() => {
-    try {
-      localStorage.clear();
-      sessionStorage.clear();
-    } catch {
-      /* ignore */
-    }
-  });
-});
+function desktopChatSidebar(page: import("@playwright/test").Page) {
+  return page.locator("#conversations-panel > .hidden.lg\\:flex").first();
+}
 
 test("delete all clears chat history from the sidebar", async ({ page }) => {
-  await page.goto("/chat");
-  await page.waitForTimeout(1500);
-  const newConversationButton = page
-    .getByRole("button", { name: "New", exact: true })
-    .first();
+  await openFreshGuestPage(page, "/chat");
+  const sidebar = desktopChatSidebar(page);
+  const newConversationButton = sidebar.getByRole("button", {
+    name: "New",
+    exact: true,
+  });
   await expect(newConversationButton).toBeVisible();
   await newConversationButton.click();
   await expect
-    .poll(() => page.getByLabel("Delete conversation").count())
+    .poll(() => sidebar.getByLabel("Delete conversation").count())
     .toBe(1);
   await newConversationButton.click();
   await expect
-    .poll(() => page.getByLabel("Delete conversation").count())
+    .poll(() => sidebar.getByLabel("Delete conversation").count())
     .toBe(2);
 
-  const deleteAllButton = page.getByRole("button", {
+  const deleteAllButton = sidebar.getByRole("button", {
     name: "Delete all conversations",
   });
   await expect(deleteAllButton).toBeVisible();
@@ -52,5 +47,5 @@ test("delete all clears chat history from the sidebar", async ({ page }) => {
   await expect
     .poll(() => new URL(page.url()).searchParams.get("id"))
     .toBe(null);
-  await expect(page.getByLabel("Delete conversation")).toHaveCount(0);
+  await expect(sidebar.getByLabel("Delete conversation")).toHaveCount(0);
 });
