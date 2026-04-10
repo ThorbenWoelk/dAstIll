@@ -2,7 +2,7 @@
 
 <script setup>
 const frontendBoundaryDiagram = String.raw`
-flowchart LR
+flowchart TB
   routes[Svelte routes + workspace controllers]
   api[frontend/src/lib/api.ts]
 
@@ -57,7 +57,7 @@ sequenceDiagram
 `;
 
 const requestTrustDiagram = String.raw`
-flowchart LR
+flowchart TB
   browser[Browser]
   tauri[Tauri Android]
   ui[Product UI]

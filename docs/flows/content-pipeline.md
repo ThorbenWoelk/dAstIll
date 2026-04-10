@@ -2,14 +2,14 @@
 
 <script setup>
 const contentPipelineDiagram = String.raw`
-flowchart LR
-  channel[Channel add, refresh, or backfill]
+flowchart TB
+  channel[Channel add,<br/>refresh, or backfill]
   discover[Video discovery]
   queue[Queue worker]
   transcript[Transcript extraction]
-  transcriptstore[Store transcript<br/>set transcript_status ready]
+  transcriptstore[Store transcript<br/>transcript_status: ready]
   summary[Summary generation]
-  summarystore[Store summary<br/>set summary_status ready]
+  summarystore[Store summary<br/>summary_status: ready]
   eval[Summary evaluation worker]
   quality[quality_score + optional requeue]
   searchpending[Mark search_sources pending]
@@ -39,7 +39,7 @@ flowchart LR
 `;
 
 const userScopedWritesDiagram = String.raw`
-flowchart LR
+flowchart TB
   ui[User actions in workspace]
   ack[Acknowledge video]
   hl[Create highlight]

@@ -2,7 +2,7 @@
 
 <script setup>
 const storageOwnershipDiagram = String.raw`
-flowchart LR
+flowchart TB
   subgraph s3canonical["S3-backed canonical records"]
     channels[channels]
     transcripts[transcripts]
@@ -26,7 +26,7 @@ flowchart LR
   subgraph search["Derived search projection"]
     sources[search_sources]
     chunks[search_chunks]
-    vectors[S3 Vectors embeddings]
+    vectors[S3 Vectors<br/>embeddings]
     fts[libSQL BM25 / FTS5]
   end
 
@@ -51,7 +51,7 @@ flowchart LR
 `;
 
 const searchProjectionDiagram = String.raw`
-flowchart LR
+flowchart TB
   transcript[Transcript content]
   summary[Summary content]
   pending[Mark search_sources pending]

@@ -2,7 +2,7 @@
 
 <script setup>
 const queryPathDiagram = String.raw`
-flowchart LR
+flowchart TB
   query[User query]
   tokenize[Tokenize + remove stopwords]
   hyde[Optional HyDE passage]
@@ -26,7 +26,7 @@ flowchart LR
 `;
 
 const indexMaintenanceDiagram = String.raw`
-flowchart LR
+flowchart TB
   canonical[Ready transcript or summary]
   pending[search_sources pending]
   claim[Search worker claims source]
