@@ -282,6 +282,8 @@ diagnose_aws_startup_access() {
 	local normalized_output="${sts_output:l}"
 	if [[ "$normalized_output" == *"unable to locate credentials"* ]] ||
 		[[ "$normalized_output" == *"sso session"* ]] ||
+		[[ "$normalized_output" == *"session has expired"* ]] ||
+		[[ "$normalized_output" == *"reauthenticate"* ]] ||
 		[[ "$normalized_output" == *"token has expired"* ]] ||
 		[[ "$normalized_output" == *"expiredtoken"* ]] ||
 		[[ "$normalized_output" == *"could not be found"* ]]; then
@@ -296,6 +298,44 @@ diagnose_aws_startup_access() {
 	else
 		echo "Hint: local startup requires working AWS access to S3. Verify the active profile, region, and any temporary session credentials used by this shell."
 	fi
+}
+
+aws_startup_access_issue_detected() {
+	if grep -Eiq \
+		"unable to locate credentials|failed to refresh cached Login token|session has expired|token has expired|expiredtoken|refresh token has expired|AccessDeniedException" \
+		backend.log 2>/dev/null; then
+		return 0
+	fi
+
+	if ! command -v aws >/dev/null 2>&1; then
+		return 1
+	fi
+
+	local aws_region="${AWS_REGION:-eu-central-1}"
+	local sts_output=""
+	local sts_status=0
+
+	set +e
+	sts_output=$(AWS_PAGER="" AWS_REGION="$aws_region" aws sts get-caller-identity --output text 2>&1)
+	sts_status=$?
+	set -e
+
+	if [[ $sts_status -eq 0 ]]; then
+		return 1
+	fi
+
+	local normalized_output="${sts_output:l}"
+	if [[ "$normalized_output" == *"unable to locate credentials"* ]] ||
+		[[ "$normalized_output" == *"sso session"* ]] ||
+		[[ "$normalized_output" == *"session has expired"* ]] ||
+		[[ "$normalized_output" == *"token has expired"* ]] ||
+		[[ "$normalized_output" == *"expiredtoken"* ]] ||
+		[[ "$normalized_output" == *"could not be found"* ]] ||
+		[[ "$normalized_output" == *"reauthenticate"* ]]; then
+		return 0
+	fi
+
+	return 1
 }
 
 read_env_file_value() {
@@ -485,7 +525,7 @@ start_mobile_shell() {
 }
 
 cleanup() {
-	"$end_app_script" --quiet || true
+	DASTILL_SKIP_PIDS="$$ ${PPID:-}" "$end_app_script" --quiet || true
 }
 
 check_ollama_models() {
@@ -636,12 +676,17 @@ if ! require_http_status \
 	"http://localhost:$backend_port/api/workspace/bootstrap?limit=20" \
 	"200"; then
 	echo "Backend is up, but the workspace bootstrap request failed."
-	if grep -Eiq "S3 error|dispatch failure|credential|access context" backend.log 2>/dev/null; then
+	if aws_startup_access_issue_detected; then
 		diagnose_aws_startup_access
+		echo "Startup failed because backend AWS access is unavailable."
+		echo "Last backend log lines:"
+		tail -n 80 backend.log || true
+		exit 1
+	else
+		echo "Last backend log lines:"
+		tail -n 80 backend.log || true
+		exit 1
 	fi
-	echo "Last backend log lines:"
-	tail -n 80 backend.log || true
-	exit 1
 fi
 
 if ! wait_for_http "Docs" "http://localhost:$docs_port" "$docs_pid"; then

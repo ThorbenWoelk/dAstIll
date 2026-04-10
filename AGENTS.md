@@ -14,6 +14,7 @@ Deeper domain-specific guidance belongs in dedicated docs and should be linked f
 - Do not duplicate large guidance blocks across multiple markdown files.
 - When frontend rules change, update `design.md` and keep only the pointer here.
 - Keep repo guidance legible for agents: short entry points here, detailed source-of-truth docs elsewhere.
+- Never put required environment values into [`start_app.sh`](./start_app.sh); adjust the shared/local `.env` files and their setup flow instead.
 
 ## Documentation Split
 

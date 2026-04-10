@@ -30,9 +30,14 @@ Stop everything cleanly:
 ./end_app.sh
 ```
 
-Startup now verifies both the backend health endpoint and the initial workspace bootstrap
-response before it reports success. If local startup fails after the backend begins listening,
-check `backend.log` for malformed Firestore video records or credential issues.
+Startup verifies both the backend health endpoint and the initial workspace bootstrap
+response before it reports success. If the bootstrap probe fails because local AWS credentials are
+missing or expired, startup stops and prints an explicit login hint so you can refresh the AWS
+session first. Other bootstrap failures also stop startup; check `backend.log`.
+
+When you use `./start_app.sh`, it also augments `BACKEND_CORS_ALLOWED_ORIGINS` for local runtime
+so the backend accepts both the web frontend and the Tauri Android shell (`http://tauri.localhost`)
+even if your shared env file only lists the browser origin.
 
 The workspace add-source input currently accepts:
 
@@ -154,49 +159,49 @@ Typical flow:
 
 Important variables:
 
-| Variable                            | Purpose                                                                                     |
-| ----------------------------------- | ------------------------------------------------------------------------------------------- |
-| `GCP_PROJECT_ID`                    | Google Cloud project id used for Firestore                                                  |
-| `GOOGLE_APPLICATION_CREDENTIALS`    | Optional path to a local Firestore service-account JSON; falls back to ADC if unset/missing |
-| `AWS_REGION`                        | AWS region for S3 and S3 Vectors                                                            |
-| `S3_DATA_BUCKET`                    | S3 bucket for data storage                                                                  |
-| `S3_VECTOR_BUCKET`                  | S3 Vectors bucket for semantic search                                                       |
-| `S3_VECTOR_INDEX`                   | S3 Vectors index name for embeddings                                                        |
-| `AWS_ACCESS_KEY_ID`                 | Local AWS access key used for S3 / S3 Vectors                                               |
-| `AWS_SECRET_ACCESS_KEY`             | Local AWS secret key used for S3 / S3 Vectors                                               |
-| `AWS_SESSION_TOKEN`                 | Optional temporary session token for local AWS auth                                         |
-| `TURSO_DB_URL`                      | Optional Turso/libSQL database URL for durable keyword search                               |
-| `TURSO_AUTH_TOKEN`                  | Turso auth token paired with `TURSO_DB_URL`                                                 |
-| `BACKEND_PROXY_TOKEN`               | Shared secret used by the authenticated frontend proxy when it calls the backend            |
-| `BACKEND_CORS_ALLOWED_ORIGINS`      | Comma-separated list of browser origins allowed to call the backend directly                |
-| `AWS_ROLE_ARN` / `AWS_WIF_AUDIENCE` | Production only: GCP Workload Identity Federation for AWS                                   |
+| Variable                            | Purpose                                                                                      |
+| ----------------------------------- | -------------------------------------------------------------------------------------------- |
+| `GCP_PROJECT_ID`                    | Google Cloud project id used for Firestore                                                   |
+| `GOOGLE_APPLICATION_CREDENTIALS`    | Optional path to a local Firestore service-account JSON; falls back to ADC if unset/missing  |
+| `AWS_REGION`                        | AWS region for S3 and S3 Vectors                                                             |
+| `S3_DATA_BUCKET`                    | S3 bucket for data storage                                                                   |
+| `S3_VECTOR_BUCKET`                  | S3 Vectors bucket for semantic search                                                        |
+| `S3_VECTOR_INDEX`                   | S3 Vectors index name for embeddings                                                         |
+| `AWS_ACCESS_KEY_ID`                 | Local AWS access key used for S3 / S3 Vectors                                                |
+| `AWS_SECRET_ACCESS_KEY`             | Local AWS secret key used for S3 / S3 Vectors                                                |
+| `AWS_SESSION_TOKEN`                 | Optional temporary session token for local AWS auth                                          |
+| `TURSO_DB_URL`                      | Optional Turso/libSQL database URL for durable keyword search                                |
+| `TURSO_AUTH_TOKEN`                  | Turso auth token paired with `TURSO_DB_URL`                                                  |
+| `BACKEND_PROXY_TOKEN`               | Shared secret for trusted first-party callers that use the backend's proxy-auth header path  |
+| `BACKEND_CORS_ALLOWED_ORIGINS`      | Comma-separated list of browser origins allowed to call the backend directly                 |
+| `AWS_ROLE_ARN` / `AWS_WIF_AUDIENCE` | Production only: GCP Workload Identity Federation for AWS                                    |
 | `YOUTUBE_API_KEY`                   | Optional YouTube Data API access; project-scoped, so rotate it when `GCP_PROJECT_ID` changes |
-| `OLLAMA_URL`                        | Ollama endpoint                                                                             |
-| `OLLAMA_API_KEY`                    | API key for Ollama cloud (required when using cloud Ollama URL)                             |
-| `OLLAMA_SUMMARY_MODEL`              | Primary summarizer model                                                                    |
-| `OLLAMA_FALLBACK_MODEL`             | Local fallback used when the primary summarizer is cloud-backed and rate-limited            |
-| `OLLAMA_DEFAULT_CHAT_MODEL`         | Default chat model for RAG conversations (falls back to `OLLAMA_SUMMARY_MODEL` if not set)  |
-| `SUMMARY_EVALUATOR_MODEL`           | Quality evaluator model - must differ from `OLLAMA_SUMMARY_MODEL`                           |
-| `OLLAMA_EMBEDDING_MODEL`            | Search embedding model (required when semantic search is enabled)                           |
-| `SEARCH_SEMANTIC_ENABLED`           | Explicit override for semantic search behavior                                              |
-| `SEARCH_AUTO_CREATE_VECTOR_INDEX`   | Optional ANN index creation after backlog clears                                            |
-| `SEARCH_RERANK_MODEL`               | Optional cross-encoder reranker model name (Ollama `/api/rerank`)                           |
-| `SEARCH_HYDE_MODEL`                 | Optional HyDE generation model name (Ollama `/api/generate`, short queries only)            |
-| `CHAT_MULTI_PASS_ENABLED`           | Enable multi-pass retrieval for chat (default: `true`)                                      |
-| `DEFAULT_SEEDED_CHANNEL_ID`         | Fallback channel ID for empty workspace (default: set in config)                            |
-| `BASELINE_RATE_LIMIT_PER_MINUTE`    | Baseline API rate limit per client (default: `600`)                                         |
-| `EXPENSIVE_RATE_LIMIT_PER_MINUTE`   | Rate limit for AI/chat/search mutations (default: `120`)                                    |
-| `ANONYMOUS_CHAT_QUOTA`              | Message quota for anonymous chat users (default: `30`)                                      |
-| `SUMMARIZE_PATH`                    | Path to the transcript extraction CLI                                                       |
-| `LOGFIRE_TOKEN`                     | Optional Logfire token for backend tracing / AI pipeline observability                      |
-| `DATABRICKS_HOST`                   | Databricks workspace URL for analytics ingestion                                            |
-| `DATABRICKS_TOKEN`                  | Databricks personal access token                                                            |
-| `DATABRICKS_WAREHOUSE_ID`           | Databricks SQL warehouse ID                                                                 |
-| `POLLY_TTS_ENABLED`                 | Enable Amazon Polly TTS for summary audio (default: `false`)                                |
-| `POLLY_TTS_VOICE_ID`                | Polly voice ID (default: `Joanna`)                                                          |
-| `POLLY_TTS_ENGINE`                  | Polly engine: `standard` or `neural` (default: `neural`)                                    |
-| `POLLY_TTS_OUTPUT_FORMAT`           | Polly output format (default: `wav`)                                                        |
-| `POLLY_TTS_SAMPLE_RATE`             | Polly sample rate in Hz (default: `16000`)                                                  |
+| `OLLAMA_URL`                        | Ollama endpoint                                                                              |
+| `OLLAMA_API_KEY`                    | API key for Ollama cloud (required when using cloud Ollama URL)                              |
+| `OLLAMA_SUMMARY_MODEL`              | Primary summarizer model                                                                     |
+| `OLLAMA_FALLBACK_MODEL`             | Local fallback used when the primary summarizer is cloud-backed and rate-limited             |
+| `OLLAMA_DEFAULT_CHAT_MODEL`         | Default chat model for RAG conversations (falls back to `OLLAMA_SUMMARY_MODEL` if not set)   |
+| `SUMMARY_EVALUATOR_MODEL`           | Quality evaluator model - must differ from `OLLAMA_SUMMARY_MODEL`                            |
+| `OLLAMA_EMBEDDING_MODEL`            | Search embedding model (required when semantic search is enabled)                            |
+| `SEARCH_SEMANTIC_ENABLED`           | Explicit override for semantic search behavior                                               |
+| `SEARCH_AUTO_CREATE_VECTOR_INDEX`   | Optional ANN index creation after backlog clears                                             |
+| `SEARCH_RERANK_MODEL`               | Optional cross-encoder reranker model name (Ollama `/api/rerank`)                            |
+| `SEARCH_HYDE_MODEL`                 | Optional HyDE generation model name (Ollama `/api/generate`, short queries only)             |
+| `CHAT_MULTI_PASS_ENABLED`           | Enable multi-pass retrieval for chat (default: `true`)                                       |
+| `DEFAULT_SEEDED_CHANNEL_ID`         | Fallback channel ID for empty workspace (default: set in config)                             |
+| `BASELINE_RATE_LIMIT_PER_MINUTE`    | Baseline API rate limit per client (default: `600`)                                          |
+| `EXPENSIVE_RATE_LIMIT_PER_MINUTE`   | Rate limit for AI/chat/search mutations (default: `120`)                                     |
+| `ANONYMOUS_CHAT_QUOTA`              | Message quota for anonymous chat users (default: `30`)                                       |
+| `SUMMARIZE_PATH`                    | Path to the transcript extraction CLI                                                        |
+| `LOGFIRE_TOKEN`                     | Optional Logfire token for backend tracing / AI pipeline observability                       |
+| `DATABRICKS_HOST`                   | Databricks workspace URL for analytics ingestion                                             |
+| `DATABRICKS_TOKEN`                  | Databricks personal access token                                                             |
+| `DATABRICKS_WAREHOUSE_ID`           | Databricks SQL warehouse ID                                                                  |
+| `POLLY_TTS_ENABLED`                 | Enable Amazon Polly TTS for summary audio (default: `false`)                                 |
+| `POLLY_TTS_VOICE_ID`                | Polly voice ID (default: `Joanna`)                                                           |
+| `POLLY_TTS_ENGINE`                  | Polly engine: `standard` or `neural` (default: `neural`)                                     |
+| `POLLY_TTS_OUTPUT_FORMAT`           | Polly output format (default: `wav`)                                                         |
+| `POLLY_TTS_SAMPLE_RATE`             | Polly sample rate in Hz (default: `16000`)                                                   |
 
 The backend also needs Firestore credentials locally. Use one of these paths:
 
@@ -247,6 +252,10 @@ Behavior:
 
 The frontend now builds as a static bundle. Browser and Tauri clients call the Rust backend directly using `VITE_API_BASE`, and authenticated requests send the Firebase ID token as `Authorization: Bearer <token>`.
 
+Optional browser-auth override for the Android system-browser sign-in handoff:
+
+- `PUBLIC_BROWSER_AUTH_BASE_URL` or `VITE_BROWSER_AUTH_BASE_URL` forces the browser origin used when the Tauri Android shell opens the external `/login` flow.
+
 If you run the frontend by itself, keep its local values in
 `~/.config/dastill/frontend.env`. The default shared workflow is to keep those values there
 and run `./scripts/link_shared_env.sh` once per worktree so direct frontend commands
@@ -287,7 +296,7 @@ Operator access is derived from `OPERATOR_EMAIL_ALLOWLIST` on the backend. Users
 The current auth model is Firebase-based multi-user auth:
 
 - Signed-in users keep their Firebase browser/session state client-side.
-- Backend request identity is derived directly from the Firebase bearer token.
+- Backend request identity is derived either from trusted first-party proxy headers or from direct Firebase bearer-token validation.
 - Persistent chat, channels, highlights, and preferences are authenticated user-scoped surfaces.
 - Signed-out browsing remains available, but signed-out chat stays on the ephemeral path and is subject to the anonymous quota.
 - Operator-only backend behavior is keyed off the validated Firebase email allowlist.
