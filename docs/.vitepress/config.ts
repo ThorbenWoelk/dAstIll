@@ -15,17 +15,16 @@ export default defineConfig({
     nav: [
       { text: "Overview", link: "/" },
       { text: "Architecture", link: "/architecture/overview" },
-      { text: "AI & Search", link: "/ai-models" },
+      { text: "AI & Search", link: "/pipelines/ai-models" },
       { text: "Operations", link: "/operations/deployment" },
-      { text: "UI Tour", link: "/ui-tour" },
+      { text: "UI Tour", link: "/guides/ui-tour" },
     ],
     sidebar: [
       {
         text: "Introduction",
         items: [
           { text: "Overview", link: "/" },
-          { text: "Local Development", link: "/local-development" },
-          { text: "UI Tour", link: "/ui-tour" },
+          { text: "UI Tour", link: "/guides/ui-tour" },
         ],
       },
       {
@@ -40,14 +39,18 @@ export default defineConfig({
       {
         text: "Pipelines",
         items: [
-          { text: "Content Pipeline", link: "/flows/content-pipeline" },
-          { text: "Search Indexing", link: "/search-indexing" },
-          { text: "AI Models", link: "/ai-models" },
+          { text: "Content Pipeline", link: "/pipelines/content-pipeline" },
+          { text: "Search Indexing", link: "/pipelines/search-indexing" },
+          { text: "AI Models", link: "/pipelines/ai-models" },
         ],
       },
       {
         text: "Operations",
-        items: [{ text: "Deployment", link: "/operations/deployment" }],
+        items: [
+          { text: "Deployment", link: "/operations/deployment" },
+          { text: "Local Development", link: "/operations/local-development" },
+          { text: "Tauri Android", link: "/operations/mobile-tauri" },
+        ],
       },
     ],
     socialLinks: [

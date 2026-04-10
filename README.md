@@ -20,8 +20,8 @@ Detailed project documentation lives in the separate docs frontend under [`docs/
 
 - Docs landing page source: [`docs/index.md`](./docs/index.md)
 - Architecture overview: [`docs/architecture/overview.md`](./docs/architecture/overview.md)
-- Search indexing and retrieval: [`docs/search-indexing.md`](./docs/search-indexing.md)
-- AI model behavior: [`docs/ai-models.md`](./docs/ai-models.md)
+- Search indexing and retrieval: [`docs/pipelines/search-indexing.md`](./docs/pipelines/search-indexing.md)
+- AI model behavior: [`docs/pipelines/ai-models.md`](./docs/pipelines/ai-models.md)
 
 Run the docs frontend locally:
 
@@ -257,7 +257,7 @@ src-tauri/gen/android/app/build/outputs/apk/
 - Highlight creation and vocabulary correction still work.
 - Existing highlight deletion still works.
 
-Detailed mobile steps live in [docs/local-development.md](./docs/local-development.md) and [docs/mobile-tauri.md](./docs/mobile-tauri.md).
+Detailed mobile steps live in [docs/operations/local-development.md](./docs/operations/local-development.md) and [docs/operations/mobile-tauri.md](./docs/operations/mobile-tauri.md).
 
 ## License
 

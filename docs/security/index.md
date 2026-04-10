@@ -90,5 +90,5 @@ When making security-relevant changes, verify at least the following:
 
 - [OWASP ASI Status](/security/owasp-asi-status)
 - [Deployment and Operations](/operations/deployment)
-- [Local development](/local-development)
-- [AI Models](/ai-models)
+- [Local development](/operations/local-development)
+- [AI Models](/pipelines/ai-models)
