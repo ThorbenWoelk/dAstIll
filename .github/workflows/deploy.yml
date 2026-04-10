@@ -120,7 +120,7 @@ jobs:
           add_env_var OLLAMA_SUMMARY_MODEL "glm-5.1:cloud"
           add_env_var OLLAMA_DEFAULT_CHAT_MODEL "glm-5.1:cloud"
           add_env_var OLLAMA_EMBEDDING_MODEL "embeddinggemma"
-          add_env_var SUMMARY_EVALUATOR_MODEL "deepseek-v3.1:671b-cloud"
+          add_env_var SUMMARY_EVALUATOR_MODEL "gemma4:31b-cloud"
           add_env_var BACKEND_CORS_ALLOWED_ORIGINS "https://dastill-frontend-x4m5feb54q-ey.a.run.app"
           add_env_var GCP_PROJECT_ID "$PROJECT_ID"
           printf '%s\n' 'SUMMARIZE_PATH: "/usr/local/bin/summarize"' >> "$env_file"

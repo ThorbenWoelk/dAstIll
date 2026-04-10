@@ -11,7 +11,9 @@ dAstIll tracks subscribed sources, fetches readable content, and generates AI su
 
 - **Source tracking**: Subscribe to YouTube channels, OpenAlex saved searches, podcast RSS feeds, and tracked website pages
 - **AI summarization**: Generate consistent summaries evaluated by an LLM-as-judge for quality
+- **Library chat**: Ask grounded questions across your saved library, with a per-message deep-research mode for wider synthesis
 - **Highlights**: Save important snippets from transcripts and summaries for quick reference
+- **Summary audio**: Generate spoken playback for ready summaries when Polly TTS is enabled
 - **Hybrid search**: Full-text and semantic search across transcripts and summaries with context-aware chunking
 
 **Current supported add-source inputs:**

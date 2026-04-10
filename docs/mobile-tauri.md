@@ -9,6 +9,7 @@ The Android app:
 - uses the static frontend build from `frontend/`
 - talks directly to the Rust backend
 - sends Firebase bearer tokens in `Authorization` headers
+- uses a mobile-auth handoff so Google sign-in can complete in the system browser instead of the embedded Android WebView
 - replaces the custom transcript selection create-toolbar with Android native `Highlight` and `Correct` actions
 
 ## Install The CLI
@@ -65,10 +66,27 @@ From the repo root:
 
 ```bash
 ./start_app.sh
+```
+
+When an Android device or emulator is available, `./start_app.sh` also attempts to launch the Tauri Android shell automatically after the local services are healthy. If you want to run it yourself, use:
+
+```bash
 cargo tauri android dev
 ```
 
 This assumes the backend is reachable locally and the Android app can call it through the configured `VITE_API_BASE`.
+
+## Auth Handoff
+
+Google blocks sign-in inside the Android WebView used by Tauri. The current app handles that by:
+
+1. creating a short-lived `/api/auth/mobile-handoff/{id}` session on the backend
+2. opening `/login?mobileBrowserAuth=1&handoffSession=<id>` in the system browser
+3. completing Google sign-in in the browser
+4. posting the reusable Google tokens back to the handoff session
+5. polling that session from the Android shell and finishing Firebase sign-in locally
+
+If your browser-hosted login page lives on a different origin than the Tauri-loaded frontend, set `PUBLIC_BROWSER_AUTH_BASE_URL` (or `VITE_BROWSER_AUTH_BASE_URL`) in the frontend env so the mobile shell opens the correct browser origin for the handoff.
 
 ## Smoke Checklist
 

@@ -68,6 +68,7 @@ Non-secret product frontend runtime config is passed as plain env values for:
 - build-time `VITE_API_BASE`
 - build-time `PUBLIC_DOCS_URL`
 - build-time `PUBLIC_FIREBASE_PROJECT_ID`
+- optional build-time `PUBLIC_BROWSER_AUTH_BASE_URL`
 - build-time `PUBLIC_CONTACT_EMAIL`
 
 ### Firebase Auth (product frontend)
@@ -79,6 +80,8 @@ The frontend uses the Firebase JS SDK in the browser and in the Tauri WebView. S
 **Google sign-in:** anonymous auth stays enabled through Identity Platform. Google sign-in itself is managed through [`frontend/firebase.json`](../../frontend/firebase.json) and should be deployed separately with `bunx firebase-tools@15.12.0 deploy --only auth --project "$PROJECT_ID" --config frontend/firebase.json --non-interactive` when provisioning a new project or when that file changes. That lets Firebase provision the correct project-local Google OAuth client for the web app instead of reusing a copied client ID/secret from another project.
 
 **Release workflow:** resolves the Terraform-managed frontend Firebase secrets `dastill-firebase-web-api-key` and `dastill-firebase-auth-domain` before building the static frontend image. It passes those values into the image build together with `VITE_API_BASE`, `PUBLIC_DOCS_URL`, `PUBLIC_CONTACT_EMAIL`, and `PUBLIC_FIREBASE_PROJECT_ID`. Routine releases do not redeploy Firebase Auth config.
+
+**Android browser-auth handoff:** if the Tauri Android shell should open a browser-hosted login page on a different origin than the product frontend itself, set `PUBLIC_BROWSER_AUTH_BASE_URL` for the frontend build. That value controls the origin used for the system-browser `/login` handoff flow.
 
 **Authorized domains:** Terraform manages Identity Platform authorized domains. The default set includes `localhost`, the Firebase-hosted domains for the project, the deployed frontend Cloud Run host, and any entries in `firebase_authorized_domains_extra`. Use Terraform rather than console-only edits for managed environments.
 
@@ -134,6 +137,7 @@ The GitHub Actions workflow:
 - built from `frontend/Dockerfile`
 - installs Bun during build
 - generates the static SvelteKit production output
+- includes the manifest and browser service worker assets used by the web PWA shell
 - serves the bundle from nginx at runtime
 
 ### Android artifacts

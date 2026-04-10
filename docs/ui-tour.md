@@ -12,14 +12,14 @@ pageClass: ui-tour-page
     text, then use queue or chat when you need more detail.
   </p>
   <p class="tour-route-line">
-    <strong>Core routes:</strong> Workspace, Queue, Highlights, Vocabulary, Chat, Docs.
+    <strong>Core routes:</strong> Workspace, Channel overview, Queue, Highlights, Vocabulary, Chat, Docs.
   </p>
 </div>
 
 <div class="tour-facts">
   <div class="tour-fact-row">
     <p class="tour-fact-label">Capture date</p>
-    <p>April 1, 2026. All screenshots below were taken again from the deployed app for this update.</p>
+    <p>April 1, 2026. The screenshots below reflect that build and may lag small copy or layout updates described on this page.</p>
   </div>
   <div class="tour-fact-row">
     <p class="tour-fact-label">Primary loop</p>
@@ -47,8 +47,12 @@ pageClass: ui-tour-page
     <p><strong>Processing status.</strong> See transcript extraction, summary generation, failures, and backfill depth without leaving the main layout.</p>
   </article>
   <article class="tour-surface-row">
+    <p class="tour-surface-label">Channel overview</p>
+    <p><strong>Source-level view.</strong> Open a dedicated channel route to inspect one source, manage sync depth, and review that channel without the full reader layout.</p>
+  </article>
+  <article class="tour-surface-row">
     <p class="tour-surface-label">Chat</p>
-    <p><strong>Library chat.</strong> Ask questions across the same library and review tool steps, evidence, and cited answers.</p>
+    <p><strong>Library chat.</strong> Ask questions across the same library, switch models per conversation, and turn on deep research for broader synthesis.</p>
   </article>
   <article class="tour-surface-row">
     <p class="tour-surface-label">Saved items</p>
@@ -72,7 +76,8 @@ The workspace is the main screen. On desktop, navigation is on the left, source 
 
 - The left navigation lets you change routes without losing the current reading view.
 - The middle column lists recent items first.
-- The content pane focuses on reading, with summary and transcript available as main views.
+- The content pane focuses on reading, with info, summary, highlights, and transcript available as main views.
+- Ready summaries can also expose generated summary-audio playback when TTS is enabled on the backend.
 - Signed-out visitors still get a usable workspace through the default seeded source.
 
 ## Queue
@@ -133,8 +138,10 @@ On mobile, the layout puts reading first. The tab strip stays at the top of the 
 
 Not every route needs a full screenshot to understand its role:
 
+- `Channel overview` at `/channels/[id]` is the source-focused management view used when you want to inspect one channel without opening a selected video in the main reader.
 - `Highlights` is the saved excerpt library built from transcript or summary selections.
 - `Vocabulary` stores replacement rules for future summaries.
+- `Login` supports guest browsing, standard web Google sign-in, and the Android system-browser auth handoff used by the Tauri shell.
 - `Docs` is a separate VitePress frontend linked from the product header.
 - `Guide` reopens the in-product walkthrough overlay from inside the workspace.
 

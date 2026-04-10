@@ -81,6 +81,12 @@ In active development, dAstIll typically runs as three separate processes:
 3. docs/ VitePress dev server
 ```
 
+When you use `./start_app.sh` with an Android device or emulator connected, an optional fourth process can also appear:
+
+```text
+4. Tauri Android shell (auto-launched after the local services are healthy)
+```
+
 Only the backend process owns durable state changes and worker execution.
 
 <MermaidDiagram
@@ -116,14 +122,21 @@ At startup the backend:
 
 - S3 store (data + vectors clients)
 - read cache
+- security/runtime auth config
 - search projection lock
 - search progress tracker
 - **FTS index** (libSQL/Turso BM25 index; shared `Arc<RwLock<_>>`)
 - chat service
 - active chats tracker (in-progress conversations)
 - chat store lock
+- anonymous chat quota lock
+- mobile auth handoff sessions
 - YouTube service
+- OpenAlex planner and OpenAlex service
+- podcast feed service
+- website ingestion service
 - transcript service
+- optional Polly TTS service
 - summarizer service
 - summary evaluator service
 - search service (embedding, reranker, HyDE)
@@ -220,10 +233,14 @@ The summarizer/evaluator side and the search embedding side each use a separate 
 Serves interactive workspace features:
 
 - channel management
+- per-channel overview and sync controls
 - video browsing
 - transcript and summary editing
+- summary-audio playback when TTS is enabled
 - highlights
 - search
+- library chat
+- a browser-only service worker / PWA shell for cached static assets, API GET responses, and thumbnails
 
 ### Docs UI
 

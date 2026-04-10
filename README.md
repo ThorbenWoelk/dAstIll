@@ -112,7 +112,7 @@ Terraform, Google Cloud Run, AWS IAM (Workload Identity Federation), Google Secr
    OLLAMA_SUMMARY_MODEL=glm-5.1:cloud
    OLLAMA_DEFAULT_CHAT_MODEL=glm-5.1:cloud
    OLLAMA_FALLBACK_MODEL=qwen3-coder:30b
-   SUMMARY_EVALUATOR_MODEL=qwen3.5:397b-cloud
+   SUMMARY_EVALUATOR_MODEL=gemma4:31b-cloud
    SEARCH_SEMANTIC_ENABLED=true
    OLLAMA_EMBEDDING_MODEL=embeddinggemma:latest
    SEARCH_AUTO_CREATE_VECTOR_INDEX=false

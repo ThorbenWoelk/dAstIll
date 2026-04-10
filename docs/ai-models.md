@@ -61,7 +61,7 @@ processing is stalled.
 The evaluator is stricter than the summarizer by design:
 
 - it must be a **cloud model** (local models are not accepted)
-- it must represent a model larger than **40B parameters** (enforced by name pattern check)
+- it must represent a cloud model with at least **31B parameters** (enforced by name pattern check)
 - it must not be the same model string as `OLLAMA_SUMMARY_MODEL`
 - its cooldown policy is `offline` rather than local fallback - evaluation pauses instead
   of consuming local capacity when the cloud is unavailable

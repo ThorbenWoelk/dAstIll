@@ -46,8 +46,8 @@ For the detailed done-versus-open breakdown, see [OWASP ASI Status](/security/ow
 
 ### ASI03 - Identity and privilege abuse
 
-- The frontend proxy authenticates to the backend with a shared proxy secret and, in Cloud Run, an identity token for the backend audience.
-- Backend route handlers derive request identity from trusted proxy headers and `AccessContext`.
+- The backend accepts two first-party auth modes: trusted proxy headers behind `x-dastill-proxy-auth`, or direct Firebase bearer-token validation from browser and Tauri clients.
+- Backend route handlers always derive request identity into `AccessContext` before scoping channel, video, search, and chat access.
 - Chat retrieval and chat-internal tools are now constrained to the caller's accessible library scope.
 - Global `db_inspect` is treated as authenticated-only.
 

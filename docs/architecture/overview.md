@@ -66,6 +66,8 @@ dAstIll is a source monitoring tool that is still migrating off an original YouT
 - **Extracts readable content**: Pulls transcripts, abstracts, show notes, or page text into the reading flow
 - **Generates AI summaries**: Creates consistent, structured summaries using local or cloud LLMs via Ollama
 - **Evaluates summary quality**: Uses a separate LLM-as-a-judge to score summaries against source text
+- **Supports library chat**: Lets users ask grounded questions across their saved content, with optional deep-research mode for wider synthesis
+- **Synthesizes summary audio**: Can generate spoken playback for summaries through Amazon Polly when TTS is enabled
 - **Enables search**: Full-text and optional semantic search across synced text content
 - **Preserves highlights**: Save and organize important snippets from synced content
 
@@ -81,11 +83,13 @@ dAstIll is a source monitoring tool that is still migrating off an original YouT
 - Built with **SvelteKit** in `frontend/`
 - Main workspace route at `/`
 - Additional product routes:
+  - `/channels/[id]`
   - `/download-queue`
   - `/highlights`
   - `/vocabulary`
   - `/chat`
   - `/login` and `/logout`
+- Browser builds register a service worker for static assets, API GET responses, and channel/video thumbnails; the registration is disabled in dev mode and in the Tauri runtime
 
 ### Backend
 

@@ -35,7 +35,7 @@ impl From<OllamaPromptError> for SummaryEvaluatorError {
 }
 
 impl SummaryEvaluatorService {
-    pub const MIN_EVALUATOR_PARAMS_B: u16 = 41;
+    pub const MIN_EVALUATOR_PARAMS_B: u16 = 31;
 
     pub fn new(core: OllamaCore) -> Self {
         Self { core }
@@ -58,7 +58,7 @@ impl SummaryEvaluatorService {
 
         if params_b < Self::MIN_EVALUATOR_PARAMS_B {
             return Err(format!(
-                "summary evaluator model must be >40B parameters, got `{model}`"
+                "summary evaluator model must be at least 31B parameters, got `{model}`"
             ));
         }
 
@@ -271,6 +271,7 @@ mod tests {
     #[test]
     fn evaluator_model_policy_accepts_large_cloud_models() {
         assert!(SummaryEvaluatorService::validate_model_policy("glm-5.1:cloud").is_ok());
+        assert!(SummaryEvaluatorService::validate_model_policy("gemma4:31b-cloud").is_ok());
         assert!(SummaryEvaluatorService::validate_model_policy("qwen3.5:397b-cloud").is_ok());
         assert!(SummaryEvaluatorService::validate_model_policy("llama3.3:70b-cloud").is_ok());
     }
@@ -283,10 +284,10 @@ mod tests {
     }
 
     #[test]
-    fn evaluator_model_policy_rejects_models_at_or_below_40b() {
-        let err = SummaryEvaluatorService::validate_model_policy("qwen3-coder:40b-cloud")
-            .expect_err("40b cloud evaluator model should be rejected");
-        assert!(err.contains(">40B"));
+    fn evaluator_model_policy_rejects_models_below_31b() {
+        let err = SummaryEvaluatorService::validate_model_policy("qwen3:30b-cloud")
+            .expect_err("30b cloud evaluator model should be rejected");
+        assert!(err.contains("at least 31B"));
     }
 
     #[test]

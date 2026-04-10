@@ -8,6 +8,7 @@ flowchart LR
     transcripts[transcripts]
     summaries[summaries]
     videoinfo[video_info]
+    ttscache[summary-audio cache]
   end
 
   subgraph firestorecanonical["Firestore-backed records"]
@@ -38,6 +39,7 @@ flowchart LR
   videos --> transcripts
   videos --> summaries
   videos --> videoinfo
+  summaries --> ttscache
   transcripts --> sources
   summaries --> sources
   sources --> chunks
@@ -181,6 +183,17 @@ Each chunk is stored as an S3 object with:
 - `token_count`
 
 Embeddings are stored separately in S3 Vectors.
+
+## Generated Audio Cache
+
+Summary audio is not treated as canonical source content. It is a derived cache generated from the current summary text when Polly TTS is enabled.
+
+- storage key shape: `summary-audio/{video_id}/{audio_hash}.{ext}`
+- cache invalidation key: a hash of the current summary content plus the active Polly voice/engine/output settings
+- read path: `GET /api/videos/{id}/summary/audio`
+- generation path: `POST /api/videos/{id}/summary/audio`
+
+If the summary changes or the TTS settings change, the cache key changes and the old audio is no longer reused.
 
 ## User-Scoped Library Records
 
