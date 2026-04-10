@@ -207,8 +207,10 @@ pub fn scope_cache_key(access_context: &AccessContext) -> String {
     }
 }
 
-pub fn can_use_db_inspect(access_context: &AccessContext) -> bool {
-    access_context.auth_state.is_authenticated()
+pub fn can_use_db_inspect(_access_context: &AccessContext) -> bool {
+    // `db_inspect` is limited to read-only library metadata queries.
+    // Scope filtering happens inside the query execution path.
+    true
 }
 
 pub fn can_access_channel(access_context: &AccessContext, channel_id: &str) -> bool {
@@ -872,8 +874,8 @@ mod tests {
     }
 
     #[test]
-    fn db_inspect_requires_signed_in_session() {
-        assert!(!can_use_db_inspect(&AccessContext {
+    fn db_inspect_is_available_for_read_only_queries() {
+        assert!(can_use_db_inspect(&AccessContext {
             user_id: None,
             auth_state: AuthState::Anonymous,
             access_role: AccessRole::Anonymous,

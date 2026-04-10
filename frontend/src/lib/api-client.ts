@@ -1,5 +1,7 @@
 import { getCurrentAuthToken } from "$lib/auth-token";
 
+const TAURI_ANDROID_DEV_API_BASE = "http://127.0.0.1:3544";
+
 export function normalizeApiBase(value?: string) {
   const normalized = value?.trim();
   if (!normalized) {
@@ -12,6 +14,32 @@ export function normalizeApiBase(value?: string) {
 export const API_BASE = normalizeApiBase(
   (import.meta as { env?: { VITE_API_BASE?: string } }).env?.VITE_API_BASE,
 );
+
+export function resolveImplicitApiBase(
+  apiBase = API_BASE,
+  options?: { currentOrigin?: string; userAgent?: string },
+): string {
+  if (apiBase) {
+    return apiBase;
+  }
+
+  const currentOrigin =
+    options?.currentOrigin ??
+    (typeof window !== "undefined" ? window.location.origin : undefined);
+  const userAgent =
+    options?.userAgent ??
+    (typeof navigator !== "undefined" ? navigator.userAgent : undefined);
+
+  if (
+    currentOrigin === "http://tauri.localhost" &&
+    userAgent &&
+    /android/i.test(userAgent)
+  ) {
+    return TAURI_ANDROID_DEV_API_BASE;
+  }
+
+  return "";
+}
 
 export class BackendUnavailableError extends Error {
   constructor(message = "Backend is unreachable.") {
@@ -80,7 +108,7 @@ export function createAbortError(): Error {
 }
 
 export function resolveApiUrl(path: string, apiBase = API_BASE): string {
-  return `${apiBase}${path}`;
+  return `${resolveImplicitApiBase(apiBase)}${path}`;
 }
 
 export async function createApiRequestInit(

@@ -186,6 +186,31 @@
   margin-bottom: 1rem;
 }
 
+.ui-tour-page .tour-update-banner {
+  display: grid;
+  gap: 0.35rem;
+  margin: 1rem 0 1.2rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 18px;
+  background:
+    radial-gradient(
+      circle at top right,
+      rgba(183, 61, 32, 0.1),
+      transparent 42%
+    ),
+    linear-gradient(180deg, rgba(255, 252, 249, 0.98), #fbf7f2);
+}
+
+.ui-tour-page .tour-update-banner p {
+  margin: 0;
+}
+
+.ui-tour-page .tour-update-banner p:last-child {
+  color: var(--vp-c-text-2);
+  line-height: 1.65;
+}
+
 .ui-tour-page .tour-eyebrow,
 .ui-tour-page .tour-fact-label,
 .ui-tour-page .tour-surface-label {
@@ -282,6 +307,17 @@
   border-color: var(--vp-c-border);
   background: linear-gradient(180deg, #20242a, #181b20);
   box-shadow: 0 18px 36px rgba(0, 0, 0, 0.22);
+}
+
+.dark .ui-tour-page .tour-update-banner {
+  border-color: var(--vp-c-border);
+  background:
+    radial-gradient(
+      circle at top right,
+      rgba(222, 105, 66, 0.18),
+      transparent 42%
+    ),
+    linear-gradient(180deg, rgba(34, 37, 43, 0.96), rgba(26, 29, 34, 0.98));
 }
 
 @media (max-width: 900px) {

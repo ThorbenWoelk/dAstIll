@@ -3,23 +3,52 @@ use std::env;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
-fn shared_local_env_path() -> Option<PathBuf> {
+fn shared_local_dir() -> Option<PathBuf> {
     if let Some(config_home) = env::var_os("XDG_CONFIG_HOME").filter(|value| !value.is_empty()) {
-        return Some(
-            PathBuf::from(config_home)
-                .join("dastill")
-                .join("backend.env"),
-        );
+        return Some(PathBuf::from(config_home).join("dastill"));
     }
 
     env::var_os("HOME")
         .filter(|value| !value.is_empty())
-        .map(|home| {
-            PathBuf::from(home)
-                .join(".config")
-                .join("dastill")
-                .join("backend.env")
-        })
+        .map(|home| PathBuf::from(home).join(".config").join("dastill"))
+}
+
+fn shared_local_env_path() -> Option<PathBuf> {
+    shared_local_dir().map(|dir| dir.join("backend.env"))
+}
+
+fn shared_local_aws_credentials_path() -> Option<PathBuf> {
+    shared_local_dir().map(|dir| dir.join("aws").join("credentials"))
+}
+
+fn shared_local_aws_config_path() -> Option<PathBuf> {
+    shared_local_dir().map(|dir| dir.join("aws").join("config"))
+}
+
+fn set_env_var_if_missing_and_file_exists(key: &str, path: Option<PathBuf>) {
+    if env::var_os(key).is_some() {
+        return;
+    }
+
+    let Some(path) = path else {
+        return;
+    };
+    if !path.is_file() {
+        return;
+    }
+
+    unsafe { env::set_var(key, path) };
+}
+
+fn apply_shared_local_aws_file_defaults() {
+    // Permanent local AWS credentials should live outside repo-owned .env files.
+    // When the shared machine-local files exist, prefer them automatically unless
+    // the shell or dotenv files already set explicit AWS SDK paths.
+    set_env_var_if_missing_and_file_exists(
+        "AWS_SHARED_CREDENTIALS_FILE",
+        shared_local_aws_credentials_path(),
+    );
+    set_env_var_if_missing_and_file_exists("AWS_CONFIG_FILE", shared_local_aws_config_path());
 }
 
 fn load_dotenv_file(path: &Path, shell_env_keys: &HashSet<OsString>) {
@@ -53,6 +82,7 @@ pub fn load_dotenv_preserving_existing() {
     }
 
     load_dotenv_file(Path::new(".env"), &shell_env_keys);
+    apply_shared_local_aws_file_defaults();
 }
 
 pub fn clear_missing_google_application_credentials() -> bool {
@@ -152,6 +182,102 @@ mod tests {
         load_dotenv_preserving_existing();
 
         assert_eq!(env::var("SET_ME").as_deref(), Ok("from-local"));
+    }
+
+    #[test]
+    fn load_dotenv_sets_shared_aws_files_when_unset() {
+        let _guard = TEST_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+
+        let temp = tempdir().expect("tempdir");
+        let config_home = temp.path().join("config-home");
+        let aws_dir = config_home.join("dastill").join("aws");
+        std::fs::create_dir_all(&aws_dir).expect("create shared aws dir");
+        let credentials_path = aws_dir.join("credentials");
+        let config_path = aws_dir.join("config");
+        std::fs::write(
+            &credentials_path,
+            "[default]\naws_access_key_id=test\naws_secret_access_key=test\n",
+        )
+        .expect("write shared credentials");
+        std::fs::write(&config_path, "[default]\nregion=eu-central-1\n").expect("write aws config");
+        let _reset = TestReset::capture_with_env(
+            &[
+                "AWS_SHARED_CREDENTIALS_FILE",
+                "AWS_CONFIG_FILE",
+                "XDG_CONFIG_HOME",
+                "HOME",
+            ],
+            temp.path(),
+            &[("XDG_CONFIG_HOME", Some(config_home.as_os_str()))],
+        );
+        unsafe {
+            env::remove_var("AWS_SHARED_CREDENTIALS_FILE");
+            env::remove_var("AWS_CONFIG_FILE");
+        }
+
+        load_dotenv_preserving_existing();
+
+        assert_eq!(
+            env::var_os("AWS_SHARED_CREDENTIALS_FILE"),
+            Some(credentials_path.into_os_string())
+        );
+        assert_eq!(
+            env::var_os("AWS_CONFIG_FILE"),
+            Some(config_path.into_os_string())
+        );
+    }
+
+    #[test]
+    fn load_dotenv_keeps_explicit_aws_file_paths() {
+        let _guard = TEST_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+
+        let temp = tempdir().expect("tempdir");
+        let config_home = temp.path().join("config-home");
+        let aws_dir = config_home.join("dastill").join("aws");
+        std::fs::create_dir_all(&aws_dir).expect("create shared aws dir");
+        std::fs::write(
+            aws_dir.join("credentials"),
+            "[default]\naws_access_key_id=test\naws_secret_access_key=test\n",
+        )
+        .expect("write shared credentials");
+        std::fs::write(aws_dir.join("config"), "[default]\nregion=eu-central-1\n")
+            .expect("write aws config");
+        let explicit_credentials = temp.path().join("custom-credentials");
+        let explicit_config = temp.path().join("custom-config");
+        let _reset = TestReset::capture_with_env(
+            &[
+                "AWS_SHARED_CREDENTIALS_FILE",
+                "AWS_CONFIG_FILE",
+                "XDG_CONFIG_HOME",
+                "HOME",
+            ],
+            temp.path(),
+            &[
+                ("XDG_CONFIG_HOME", Some(config_home.as_os_str())),
+                (
+                    "AWS_SHARED_CREDENTIALS_FILE",
+                    Some(explicit_credentials.as_os_str()),
+                ),
+                ("AWS_CONFIG_FILE", Some(explicit_config.as_os_str())),
+            ],
+        );
+
+        load_dotenv_preserving_existing();
+
+        assert_eq!(
+            env::var_os("AWS_SHARED_CREDENTIALS_FILE"),
+            Some(explicit_credentials.into_os_string())
+        );
+        assert_eq!(
+            env::var_os("AWS_CONFIG_FILE"),
+            Some(explicit_config.into_os_string())
+        );
     }
 
     #[test]
