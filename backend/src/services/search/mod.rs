@@ -15,6 +15,8 @@ pub const SEARCH_EMBEDDING_DIMENSIONS: usize = 512;
 pub const SEARCH_TRANSCRIPT_TARGET_WORDS: usize = 300;
 pub const SEARCH_TRANSCRIPT_OVERLAP_WORDS: usize = 40;
 pub const SEARCH_SUMMARY_TARGET_WORDS: usize = 300;
+pub const SEARCH_TRANSCRIPT_MAX_CHUNKS: usize = 80;
+pub const SEARCH_SUMMARY_MAX_CHUNKS: usize = 80;
 // Re-export so callers don't need to know about the fusion module.
 pub use crate::services::fusion::SEARCH_RRF_K;
 pub use crate::services::fusion::fuse_ranked_matches;

@@ -152,6 +152,9 @@ Claims pending rows, loads canonical content, chunks it, optionally embeds it, a
 writes the derived chunk projection. After each successful write, the keyword index is
 updated synchronously before the loop moves on.
 
+Upstream content write paths also avoid re-marking unchanged ready sources as `pending`.
+The worker re-embeds a source only after it has been explicitly requeued.
+
 ### Reconcile
 
 Finds stale indexed rows and requeues them when:
@@ -186,7 +189,9 @@ This keeps summary searchability from being starved behind a large transcript ba
 | -------------------------- | ----- | ------------------------------------------------------------- |
 | `TRANSCRIPT_TARGET_WORDS`  | 300   | Target words per transcript chunk                             |
 | `TRANSCRIPT_OVERLAP_WORDS` | 40    | Overlap words between consecutive transcript chunks           |
+| `TRANSCRIPT_MAX_CHUNKS`    | 80    | Hard cap per transcript source; target chunk size scales up   |
 | `SUMMARY_TARGET_WORDS`     | 300   | Target words per summary section chunk                        |
+| `SUMMARY_MAX_CHUNKS`       | 80    | Hard cap per summary source including the full-document chunk |
 | `EMBEDDING_DIMENSIONS`     | 512   | Vector dimensions for the common embeddinggemma configuration |
 | `EMBED_BATCH_SIZE`         | 8     | Chunks per embedding API request                              |
 
@@ -211,6 +216,10 @@ previous chunk prefix the next chunk.
 
 Paragraph chunking sets `start_sec` to null.
 
+For very long transcripts, the worker raises the effective target chunk size so the final
+projection stays within `TRANSCRIPT_MAX_CHUNKS` (80). This preserves full coverage while
+preventing pathological transcripts from producing hundreds of embeddings.
+
 ### Summary Chunking
 
 Summary chunking produces two tiers per document:
@@ -223,6 +232,9 @@ Summary chunking produces two tiers per document:
    Sections under `SUMMARY_TARGET_WORDS` (300) become a single chunk with the section
    title preserved. Longer sections are split into word-based sub-chunks. Each chunk
    carries its `section_title` for display and optional filtering.
+
+The full-document summary chunk is always retained. Section/detail chunks are capped so a
+single summary source never exceeds `SUMMARY_MAX_CHUNKS` (80) total chunks.
 
 ### Chunk Content Normalization
 
@@ -422,6 +434,39 @@ There is no separate hard-coded fallback in the search service. The embedding se
 - batches embedding requests (up to 8 chunks per request)
 - validates that returned dimensions match the configured model
 - checks model availability at startup via Ollama `/api/tags`
+
+## Benchmark Procedure
+
+Do not treat indexing performance numbers as stable architecture facts. Measure them in
+the environment you care about and store the dated output separately from this doc.
+
+### Record the Environment
+
+Capture the values that materially affect indexing cost:
+
+- `OLLAMA_URL`
+- `OLLAMA_EMBEDDING_MODEL`
+- `SEARCH_SEMANTIC_ENABLED`
+- embedding batch size
+- machine CPU / memory
+- whether Ollama is local or remote to the backend
+
+### Run a Representative Reindex
+
+Use a representative dataset and capture:
+
+- wall-clock duration for the full reindex
+- total sources processed
+- total chunks written
+- embedded chunk count
+- per-batch or aggregate embedding latency
+- peak CPU and memory during the run
+
+### Store the Measurement Note
+
+Write dated benchmark notes to a separate artifact such as
+`docs/benchmarks/search-indexing-YYYY-MM-DD.md` or an equivalent PR / issue artifact.
+Include the environment details with the measurements so future comparisons remain valid.
 
 ### Embedding Input Format
 
