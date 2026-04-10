@@ -1,3 +1,7 @@
+---
+aside: false
+---
+
 # Content Pipeline
 
 <script setup>
@@ -6,36 +10,25 @@ flowchart TB
   channel[Channel add,<br/>refresh, or backfill]
   discover[Video discovery]
   queue[Queue worker]
-  transcript[Transcript extraction]
-  transcriptstore[Store transcript<br/>transcript_status: ready]
-  summary[Summary generation]
-  summarystore[Store summary<br/>summary_status: ready]
-  eval[Summary evaluation worker]
-  quality[quality_score + optional requeue]
-  searchpending[Mark search_sources pending]
+  transcript[Transcript ready]
+  summary[Summary ready]
+  eval[Summary evaluation]
+  searchpending[Mark search pending]
   searchworker[Search index worker]
-  chunks[search_chunks]
-  fts[libSQL FTS5]
-  vectors[S3 Vectors]
+  projection[Search projection]
   retrieval[Workspace search + chat]
 
   channel --> discover
   discover --> queue
   queue --> transcript
-  transcript --> transcriptstore
-  transcriptstore --> summary
-  summary --> summarystore
-  summarystore --> eval
-  eval --> quality
-  transcriptstore --> searchpending
-  summarystore --> searchpending
-  quality --> searchpending
+  transcript --> summary
+  summary --> eval
+  transcript --> searchpending
+  summary --> searchpending
+  eval --> searchpending
   searchpending --> searchworker
-  searchworker --> chunks
-  searchworker --> fts
-  searchworker --> vectors
-  fts --> retrieval
-  vectors --> retrieval
+  searchworker --> projection
+  projection --> retrieval
 `;
 
 const userScopedWritesDiagram = String.raw`
@@ -43,12 +36,12 @@ flowchart TB
   ui[User actions in workspace]
   ack[Acknowledge video]
   hl[Create highlight]
-  subscriptions[Channel membership changes]
-  videostate[user-video-states prefix]
-  highlights[user-highlights prefix]
-  channelscope[user-channel-subscriptions prefix]
+  subscriptions[Update subscriptions]
+  videostate[user-video-states]
+  highlights[user-highlights]
+  channelscope[user-channel-subscriptions]
   api[Backend read model]
-  responses[Scoped channel/video responses]
+  responses[Scoped responses]
 
   ui --> ack --> videostate
   ui --> hl --> highlights

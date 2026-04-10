@@ -15,6 +15,7 @@ const svg = ref("");
 const error = ref<string | null>(null);
 const mounted = ref(false);
 let renderVersion = 0;
+const diagramId = `dastill-docs-diagram-${Math.random().toString(36).slice(2)}`;
 
 async function waitForFonts() {
   if (typeof document === "undefined" || !("fonts" in document)) return;
@@ -64,20 +65,20 @@ async function renderDiagram() {
     securityLevel: "strict",
     theme: isDark.value ? "dark" : "neutral",
     fontFamily: '"Avenir Next", "Helvetica Neue", "Segoe UI", sans-serif',
-    fontSize: 16,
+    fontSize: 14,
     htmlLabels: true,
     flowchart: {
-      useMaxWidth: false,
+      useMaxWidth: true,
     },
     sequence: {
-      useMaxWidth: false,
+      useMaxWidth: true,
       wrap: true,
     },
   });
 
   try {
     const { svg: renderedSvg } = await mermaid.render(
-      `dastill-docs-diagram-${version}`,
+      `${diagramId}-${version}`,
       source,
     );
 

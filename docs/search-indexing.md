@@ -1,27 +1,26 @@
+---
+aside: false
+---
+
 # Search Indexing
 
 <script setup>
 const queryPathDiagram = String.raw`
 flowchart TB
   query[User query]
-  tokenize[Tokenize + remove stopwords]
-  hyde[Optional HyDE passage]
-  embed[Embed query or HyDE passage]
-  fts[BM25 libSQL FTS5 leg]
-  vectors[Vector retrieval leg]
-  rrf[RRF fusion]
+  keyword[Keyword leg<br/>BM25 / FTS5]
+  semanticprep[Optional HyDE<br/>+ embedding]
+  vectors[Vector leg]
+  fusion[RRF fusion]
   rerank[Optional reranker]
-  results[Search results + chat sources]
+  results[Search + chat results]
 
-  query --> tokenize
-  tokenize --> fts
-  tokenize --> hyde
-  tokenize --> embed
-  hyde --> embed
-  embed --> vectors
-  fts --> rrf
-  vectors --> rrf
-  rrf --> rerank
+  query --> keyword
+  query --> semanticprep
+  semanticprep --> vectors
+  keyword --> fusion
+  vectors --> fusion
+  fusion --> rerank
   rerank --> results
 `;
 
@@ -29,23 +28,18 @@ const indexMaintenanceDiagram = String.raw`
 flowchart TB
   canonical[Ready transcript or summary]
   pending[search_sources pending]
-  claim[Search worker claims source]
-  chunk[Chunk content]
-  embed[Optional embedding batches]
-  store[Write search_chunks + source state]
-  fts[Upsert libSQL FTS5 source]
+  worker[Search index worker]
+  chunks[search_chunks]
+  keyword[libSQL FTS5]
   vectors[S3 Vectors]
   retrieval[Keyword + hybrid retrieval]
 
   canonical --> pending
-  pending --> claim
-  claim --> chunk
-  chunk --> embed
-  chunk --> store
-  embed --> store
-  store --> fts
-  store --> vectors
-  fts --> retrieval
+  pending --> worker
+  worker --> chunks
+  worker --> keyword
+  worker --> vectors
+  keyword --> retrieval
   vectors --> retrieval
 `;
 </script>

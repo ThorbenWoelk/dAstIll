@@ -1,59 +1,44 @@
+---
+aside: false
+---
+
 # System Overview
 
 <script setup>
 const systemContextDiagram = String.raw`
 flowchart TB
   browser[Browser]
-
-  subgraph surfaces["User-facing surfaces"]
-    app[Product UI<br/>SvelteKit]
-    docs[Docs UI<br/>VitePress]
-  end
-
   backend[Backend<br/>Rust + Axum]
-
-  subgraph storage["Durable storage"]
-    s3[S3 data bucket<br/>canonical content + search chunks]
-    vectors[S3 Vectors<br/>semantic embeddings]
-    firestore[Firestore<br/>videos, prefs, TTS stats]
-  end
-
-  subgraph external["External integrations"]
-    youtube[YouTube APIs<br/>+ subtitle fetch]
-    ollama[Ollama models]
-    polly[Amazon Polly]
-  end
+  app[Product UI<br/>SvelteKit]
+  docs[Docs UI<br/>VitePress]
+  sources[Content sources<br/>YouTube + subtitles]
+  ai[AI services<br/>Ollama + Polly]
+  storage[Data stores<br/>S3, S3 Vectors, Firestore]
 
   browser --> app
   browser --> docs
   app --> backend
-  backend --> s3
-  backend --> vectors
-  backend --> firestore
-  backend --> youtube
-  backend --> ollama
-  backend --> polly
-  docs --> browser
+  backend --> sources
+  backend --> ai
+  backend --> storage
 `;
 
 const canonicalFlowDiagram = String.raw`
 flowchart TB
-  youtube[YouTube channel + video source]
-  canonical[Canonical content<br/>channels, videos, transcripts,<br/>summaries, video_info]
+  source[Video source]
+  canonical[Canonical content]
   workers[Background workers]
-  searchmeta[search_sources state]
-  searchproj[search_chunks projection]
-  fts[libSQL / Turso FTS5]
-  vectors[S3 Vectors]
-  retrieval[Workspace search + chat retrieval]
+  projection[Search projection]
+  keyword[Keyword index<br/>libSQL / Turso]
+  vectors[Semantic index<br/>S3 Vectors]
+  retrieval[Workspace search + chat]
 
-  youtube --> canonical
+  source --> canonical
   canonical --> workers
-  workers --> searchmeta
-  searchmeta --> searchproj
-  searchproj --> fts
-  searchproj --> vectors
-  fts --> retrieval
+  workers --> projection
+  projection --> keyword
+  projection --> vectors
+  keyword --> retrieval
   vectors --> retrieval
 `;
 </script>

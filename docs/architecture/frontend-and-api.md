@@ -1,38 +1,20 @@
+---
+aside: false
+---
+
 # Frontend and API
 
 <script setup>
 const frontendBoundaryDiagram = String.raw`
 flowchart TB
-  routes[Svelte routes + workspace controllers]
-  api[frontend/src/lib/api.ts]
-
-  subgraph handlers["Axum handler modules"]
-    channels[channels.rs]
-    videos[videos.rs]
-    content[content.rs]
-    search[search.rs]
-    chat[chat.rs]
-    highlights[highlights.rs]
-    prefs[preferences.rs]
-  end
-
-  services[db/* + services/* + workers/*]
+  routes[Workspace routes]
+  api[Shared API client]
+  handlers[Axum handlers]
+  services[db + services + workers]
 
   routes --> api
-  api --> channels
-  api --> videos
-  api --> content
-  api --> search
-  api --> chat
-  api --> highlights
-  api --> prefs
-  channels --> services
-  videos --> services
-  content --> services
-  search --> services
-  chat --> services
-  highlights --> services
-  prefs --> services
+  api --> handlers
+  handlers --> services
 `;
 
 const workspaceBootstrapDiagram = String.raw`
@@ -61,18 +43,16 @@ flowchart TB
   browser[Browser]
   tauri[Tauri Android]
   ui[Product UI]
-  trusted[Trusted first-party caller]
-  bearer[Authorization: Bearer Firebase ID token]
-  proxy[x-dastill-proxy-auth + x-dastill-* headers]
+  direct[Firebase bearer token]
+  proxy[Trusted proxy headers]
   backend[Axum backend]
   scope[AccessContext]
-  authz[Scoped channel, video, search, and chat access]
+  authz[Scoped access]
 
   browser --> ui
   tauri --> ui
-  ui --> bearer
-  trusted --> proxy
-  bearer --> backend
+  ui --> direct
+  direct --> backend
   proxy --> backend
   backend --> scope
   scope --> authz
@@ -80,19 +60,16 @@ flowchart TB
 
 const apiFamiliesDiagram = String.raw`
 flowchart TD
-  ui[Workspace + route UIs]
+  ui[Workspace UI]
+  library[Library + content APIs]
+  search[Search APIs]
+  chat[Chat + SSE APIs]
+  user[Highlights + preferences]
 
-  ui --> bootstrap[Bootstrap + channels + videos]
-  ui --> contentapi[Transcript + summary + video info]
-  ui --> searchapi[Search + search status + rebuild]
-  ui --> chatapi[Chat config + conversations + SSE streams]
-  ui --> userapi[Highlights + preferences + analytics]
-
-  bootstrap --> channels[channels.rs + videos.rs]
-  contentapi --> content[content.rs + videos.rs]
-  searchapi --> search[search.rs]
-  chatapi --> chat[chat.rs]
-  userapi --> userhandlers[highlights.rs + preferences.rs + analytics.rs]
+  ui --> library
+  ui --> search
+  ui --> chat
+  ui --> user
 `;
 </script>
 

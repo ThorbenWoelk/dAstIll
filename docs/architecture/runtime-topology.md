@@ -1,3 +1,7 @@
+---
+aside: false
+---
+
 # Runtime Topology
 
 <script setup>
@@ -6,68 +10,49 @@ flowchart TB
   browser[Browser]
   frontend[frontend/<br/>SvelteKit dev server]
   docs[docs/<br/>VitePress dev server]
-  backend[backend/<br/>Axum API + workers]
-  appstate[AppState shared services]
-
-  subgraph workers["Long-lived backend tasks"]
-    queue[Queue]
-    refresh[Refresh]
-    gap[Gap scan]
-    eval[Summary evaluation]
-    search[Search index]
-    fts[FTS hydration]
-  end
+  backend[backend/<br/>Axum API + worker host]
+  appstate[AppState]
+  workers[Worker loops]
 
   browser --> frontend
   browser --> docs
   frontend --> backend
   backend --> appstate
-  appstate --> queue
-  appstate --> refresh
-  appstate --> gap
-  appstate --> eval
-  appstate --> search
-  appstate --> fts
+  appstate --> workers
 `;
 
 const startupSequenceDiagram = String.raw`
 sequenceDiagram
-  participant boot as backend main
-  participant store as S3 + S3 Vectors + Firestore
+  participant boot as Boot
+  participant store as Storage
   participant state as AppState
-  participant bg as background tasks
-  participant http as Axum router
+  participant workers as Workers
+  participant http as HTTP
 
-  boot->>store: Initialize storage clients
-  boot->>state: Build runtime services and shared state
-  boot->>bg: Hydrate search progress
-  boot->>bg: Hydrate keyword index if libSQL/Turso is empty
-  boot->>bg: Spawn queue, refresh, gap, eval, and search workers
-  boot->>http: Register routes and bind listener
-  http-->>boot: Ready for frontend requests
+  boot->>store: init storage clients
+  boot->>state: build shared runtime
+  boot->>workers: hydrate search + FTS
+  boot->>workers: start worker loops
+  boot->>http: bind routes + listener
+  http-->>boot: ready
 `;
 
 const concurrencyDiagram = String.raw`
 flowchart TD
   appstate[AppState]
-  lock[search_projection_lock]
-  cooldowns[Cooldowns + semaphores]
-  queue[Queue worker]
-  search[Search index worker]
-  eval[Summary evaluation worker]
-  chat[Chat service]
   http[HTTP handlers]
+  workers[Queue, eval,<br/>and search workers]
+  chat[Chat service]
+  lock[Projection lock]
+  limits[Cooldowns + semaphores]
 
-  appstate --> queue
-  appstate --> search
-  appstate --> eval
-  appstate --> chat
   appstate --> http
-  search --> lock
+  appstate --> workers
+  appstate --> chat
   http --> lock
-  queue --> cooldowns
-  eval --> cooldowns
-  chat --> cooldowns
+  workers --> lock
+  workers --> limits
+  chat --> limits
 `;
 </script>
 
