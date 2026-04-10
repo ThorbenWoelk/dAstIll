@@ -5,4 +5,19 @@ import type { ProviderKind } from "./ProviderKind";
 import type { SourceBackingKind } from "./SourceBackingKind";
 import type { SubscriptionContainerKind } from "./SubscriptionContainerKind";
 
-export type ContentSource = { id: string, provider: ProviderKind, source_kind: ContentSourceKind, container_id: string, container_kind: SubscriptionContainerKind, backing_kind: SourceBackingKind, title: string, subtitle?: string, handle?: string, thumbnail_url?: string, requires_auth: boolean, public_content_available: boolean, entitled_content_available: boolean, external_ids: Array<ProviderIdentity>, };
+export type ContentSource = {
+  id: string;
+  provider: ProviderKind;
+  source_kind: ContentSourceKind;
+  container_id: string;
+  container_kind: SubscriptionContainerKind;
+  backing_kind: SourceBackingKind;
+  title: string;
+  subtitle?: string;
+  handle?: string;
+  thumbnail_url?: string;
+  requires_auth: boolean;
+  public_content_available: boolean;
+  entitled_content_available: boolean;
+  external_ids: Array<ProviderIdentity>;
+};

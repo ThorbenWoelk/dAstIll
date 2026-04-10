@@ -4,4 +4,16 @@ import type { ContentSourceKind } from "./ContentSourceKind";
 import type { ProviderKind } from "./ProviderKind";
 import type { SearchMatchPayload } from "./SearchMatchPayload";
 
-export type SearchVideoResultPayload = { source_id: string, video_id: string, item_id: string, provider: ProviderKind, source_kind: ContentSourceKind, item_kind: ContentItemKind, channel_id: string, channel_name: string, video_title: string, published_at: string, matches: Array<SearchMatchPayload>, };
+export type SearchVideoResultPayload = {
+  source_id: string;
+  video_id: string;
+  item_id: string;
+  provider: ProviderKind;
+  source_kind: ContentSourceKind;
+  item_kind: ContentItemKind;
+  channel_id: string;
+  channel_name: string;
+  video_title: string;
+  published_at: string;
+  matches: Array<SearchMatchPayload>;
+};
