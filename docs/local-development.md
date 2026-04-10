@@ -109,12 +109,6 @@ Recommended run loop:
 
 When an Android emulator or device is connected, `./start_app.sh` starts the Tauri Android shell automatically after the local services are healthy.
 
-For that mobile-shell launch, `./start_app.sh` also injects local mobile build values that line up with `adb reverse`:
-
-- `VITE_API_BASE=http://127.0.0.1:3544`
-- `PUBLIC_DOCS_URL=http://127.0.0.1:4173`
-- `PUBLIC_BROWSER_AUTH_BASE_URL=http://127.0.0.1:3543`
-
 To skip the mobile shell:
 
 ```bash
@@ -221,8 +215,38 @@ gcloud auth application-default login
 
 If `GOOGLE_APPLICATION_CREDENTIALS` points to a missing file, the backend removes that setting and falls back to application default credentials. If no valid Firestore credentials remain, startup fails before `http://localhost:3544/api/health` becomes ready.
 
-The backend requires AWS credentials in addition to the bucket names. Provide them in
-`~/.config/dastill/backend.env`:
+The backend requires AWS credentials in addition to the bucket names.
+
+Recommended local path:
+
+1. log into AWS CLI with the profile you want to use, for example:
+
+```bash
+aws sso login
+# or:
+aws sso login --profile your-profile
+```
+
+2. confirm the CLI can export programmatic credentials:
+
+```bash
+aws configure export-credentials --format env
+# or:
+aws configure export-credentials --profile your-profile --format env
+```
+
+3. sync those credentials into the shared backend env file:
+
+```bash
+./scripts/sync_aws_programmatic_credentials.sh
+# or:
+./scripts/sync_aws_programmatic_credentials.sh your-profile
+```
+
+That writes the exported values into `~/.config/dastill/backend.env`, so local backend
+startup stays independent from your AWS CLI login state after the sync step.
+
+You can also provide static or temporary credentials in `~/.config/dastill/backend.env` directly:
 
 ```bash
 AWS_ACCESS_KEY_ID=...
@@ -268,6 +292,8 @@ If you run the frontend by itself, keep its local values in
 `~/.config/dastill/frontend.env`. The default shared workflow is to keep those values there
 and run `./scripts/link_shared_env.sh` once per worktree so direct frontend commands
 still see `frontend/.env`.
+
+The Tauri Android dev shell uses the same shared/local frontend env files. When `VITE_API_BASE` is unset and the app is running from `http://tauri.localhost`, the frontend falls back to `http://127.0.0.1:3544`, which matches the `adb reverse` mapping created by `./start_app.sh`.
 
 ## Shared Env Directory
 

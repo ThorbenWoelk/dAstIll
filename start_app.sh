@@ -261,7 +261,7 @@ diagnose_aws_startup_access() {
 
 	if ! command -v aws >/dev/null 2>&1; then
 		echo "AWS CLI is not installed, so startup cannot verify your current AWS session."
-		echo "Hint: local startup requires AWS access to S3. Log into AWS for the profile used by this shell (for example \`aws sso login\`) or export AWS credentials in $shared_backend_env_file."
+		echo "Hint: local startup requires programmatic AWS credentials in $shared_backend_env_file."
 		return 0
 	fi
 
@@ -291,12 +291,14 @@ diagnose_aws_startup_access() {
 		echo "Hint: you do not appear to be logged into AWS for local backend startup."
 		if [[ -n "$aws_profile" ]]; then
 			echo "Run: aws sso login --profile $aws_profile"
+			echo "Then sync programmatic credentials into the shared env file with: ./scripts/sync_aws_programmatic_credentials.sh $aws_profile"
 		else
 			echo "Run: aws sso login"
+			echo "Then sync programmatic credentials into the shared env file with: ./scripts/sync_aws_programmatic_credentials.sh"
 		fi
-		echo "If you do not use SSO, export AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY (and AWS_SESSION_TOKEN when needed) in $shared_backend_env_file."
+		echo "If you do not use SSO, write AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY (and AWS_SESSION_TOKEN when needed) directly into $shared_backend_env_file."
 	else
-		echo "Hint: local startup requires working AWS access to S3. Verify the active profile, region, and any temporary session credentials used by this shell."
+		echo "Hint: local startup requires working programmatic AWS credentials in $shared_backend_env_file. Verify the active profile, region, and the synced values there."
 	fi
 }
 
@@ -518,10 +520,7 @@ start_mobile_shell() {
 	fi
 
 	pushd "$repo_root" >/dev/null
-	VITE_API_BASE="http://127.0.0.1:$backend_port" \
-	PUBLIC_DOCS_URL="http://127.0.0.1:$docs_port" \
-	PUBLIC_BROWSER_AUTH_BASE_URL="http://127.0.0.1:$frontend_port" \
-		eval "$tauri_command" > >(tee "$mobile_log_file") 2>&1 &
+	eval "$tauri_command" > >(tee "$mobile_log_file") 2>&1 &
 	mobile_pid=$!
 	popd >/dev/null
 	echo "Starting Android shell (log: $mobile_log_file)"
