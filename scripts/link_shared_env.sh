@@ -15,6 +15,7 @@ else
 fi
 
 mkdir -p "$shared_env_dir"
+mkdir -p "$shared_env_dir/aws"
 
 link_env_file() {
 	local worktree_relative_path=$1

@@ -32,8 +32,9 @@ Stop everything cleanly:
 
 Startup verifies both the backend health endpoint and the initial workspace bootstrap
 response before it reports success. If the bootstrap probe fails because local AWS credentials are
-missing or expired, startup stops and prints an explicit login hint so you can refresh the AWS
-session first. Other bootstrap failures also stop startup; check `backend.log`.
+missing, expired, or still pinned to a temporary session in `backend.env`, startup stops and prints
+an explicit hint about the credential source it found. Other bootstrap failures also stop startup;
+check `backend.log`.
 
 When you use `./start_app.sh`, it also augments `BACKEND_CORS_ALLOWED_ORIGINS` for local runtime
 so the backend accepts both the web frontend and the Tauri Android shell (`http://tauri.localhost`)
@@ -167,9 +168,11 @@ Important variables:
 | `S3_DATA_BUCKET`                    | S3 bucket for data storage                                                                   |
 | `S3_VECTOR_BUCKET`                  | S3 Vectors bucket for semantic search                                                        |
 | `S3_VECTOR_INDEX`                   | S3 Vectors index name for embeddings                                                         |
-| `AWS_ACCESS_KEY_ID`                 | Local AWS access key used for S3 / S3 Vectors                                                |
-| `AWS_SECRET_ACCESS_KEY`             | Local AWS secret key used for S3 / S3 Vectors                                                |
-| `AWS_SESSION_TOKEN`                 | Optional temporary session token for local AWS auth                                          |
+| `AWS_SHARED_CREDENTIALS_FILE`       | Optional override for the shared AWS credentials file used by the local SDK default chain     |
+| `AWS_CONFIG_FILE`                   | Optional override for the shared AWS config file (region/profile metadata)                    |
+| `AWS_ACCESS_KEY_ID`                 | Fallback inline AWS access key used for S3 / S3 Vectors; avoid for routine local development  |
+| `AWS_SECRET_ACCESS_KEY`             | Fallback inline AWS secret key paired with `AWS_ACCESS_KEY_ID`                                |
+| `AWS_SESSION_TOKEN`                 | Temporary session token only; do not keep this set for permanent local development            |
 | `TURSO_DB_URL`                      | Optional Turso/libSQL database URL for durable keyword search                                |
 | `TURSO_AUTH_TOKEN`                  | Turso auth token paired with `TURSO_DB_URL`                                                  |
 | `BACKEND_PROXY_TOKEN`               | Shared secret for trusted first-party callers that use the backend's proxy-auth header path  |
@@ -215,15 +218,39 @@ gcloud auth application-default login
 
 If `GOOGLE_APPLICATION_CREDENTIALS` points to a missing file, the backend removes that setting and falls back to application default credentials. If no valid Firestore credentials remain, startup fails before `http://localhost:3544/api/health` becomes ready.
 
-The backend requires AWS credentials in addition to the bucket names. Provide them in
-`~/.config/dastill/backend.env`:
+The preferred local AWS setup is a shared credentials file outside the repo-owned `.env` files.
+Create these machine-local files:
 
 ```bash
-AWS_ACCESS_KEY_ID=...
-AWS_SECRET_ACCESS_KEY=...
-# Optional for temporary credentials:
-# AWS_SESSION_TOKEN=...
+mkdir -p ~/.config/dastill/aws
+cat > ~/.config/dastill/aws/credentials <<'EOF'
+[default]
+aws_access_key_id = YOUR_LONG_LIVED_ACCESS_KEY
+aws_secret_access_key = YOUR_LONG_LIVED_SECRET_KEY
+EOF
+
+cat > ~/.config/dastill/aws/config <<'EOF'
+[default]
+region = eu-central-1
+EOF
 ```
+
+The backend auto-detects `~/.config/dastill/aws/credentials` and `~/.config/dastill/aws/config`
+when they exist. You only need `AWS_SHARED_CREDENTIALS_FILE` / `AWS_CONFIG_FILE` in
+`~/.config/dastill/backend.env` if you want to override those default paths.
+
+Inline `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` in `~/.config/dastill/backend.env` are still
+supported as a fallback, but they override the shared credentials file. Remove any old
+`AWS_SESSION_TOKEN` line if you want permanent local credentials; leaving a stale session token in
+`backend.env` forces the backend onto temporary STS credentials even when the AWS CLI can log in.
+
+To migrate an existing permanent inline keypair out of `backend.env`:
+
+```bash
+./scripts/migrate_local_aws_credentials.sh
+```
+
+That helper intentionally refuses to migrate temporary `ASIA...` / `AWS_SESSION_TOKEN` credentials.
 
 In production, Cloud Run uses `AWS_ROLE_ARN` and `AWS_WIF_AUDIENCE` for Workload Identity Federation instead of static access keys.
 

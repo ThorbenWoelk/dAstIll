@@ -5,25 +5,32 @@ pageClass: ui-tour-page
 
 # UI Tour
 
+<div class="tour-update-banner">
+  <p class="tour-fact-label">Latest update</p>
+  <p>
+    April 10, 2026. This page now documents the current <strong>mobile web</strong> UI first and uses refreshed screenshots from that layout.
+  </p>
+</div>
+
 <div class="tour-intro">
-  <p class="tour-eyebrow">Screenshots</p>
+  <p class="tour-eyebrow">Mobile Web First</p>
   <p class="tour-lede">
-    dAstIll follows a simple flow: check sources, open an item, read the summary or transcript-like
-    text, then use queue or chat when you need more detail.
+    dAstIll works best as a short loop: browse followed sources, open a recent item, read the
+    summary or transcript, then switch to queue or chat when you need more detail.
   </p>
   <p class="tour-route-line">
-    <strong>Core routes:</strong> Workspace, Channel overview, Queue, Highlights, Vocabulary, Chat, Docs.
+    <strong>Core routes:</strong> Workspace, Queue, Highlights, Vocabulary, Chat, Docs.
   </p>
 </div>
 
 <div class="tour-facts">
   <div class="tour-fact-row">
-    <p class="tour-fact-label">Capture date</p>
-    <p>April 1, 2026. The screenshots below reflect that build and may lag small copy or layout updates described on this page.</p>
+    <p class="tour-fact-label">Primary format</p>
+    <p>The screenshots below use the current phone-sized web layout. Desktop still exists, but this tour is intentionally mobile-led.</p>
   </div>
   <div class="tour-fact-row">
     <p class="tour-fact-label">Primary loop</p>
-    <p>Browse, read, check processing status, ask questions. The routes are separate, but they use the same content and layout structure.</p>
+    <p>Browse, read, check processing status, ask questions. The routes are separate, but they keep the same content and state model.</p>
   </div>
   <div class="tour-fact-row">
     <p class="tour-fact-label">Signed-out experience</p>
@@ -31,7 +38,7 @@ pageClass: ui-tour-page
   </div>
   <div class="tour-fact-row">
     <p class="tour-fact-label">Guide entry point</p>
-    <p>The Guide button in the left navigation rail opens the built-in walkthrough from the workspace.</p>
+    <p>The Guide button in the navigation rail reopens the built-in walkthrough from inside the workspace.</p>
   </div>
 </div>
 
@@ -60,79 +67,81 @@ pageClass: ui-tour-page
   </article>
 </div>
 
-## Workspace
+## Mobile Browse
 
-The workspace is the main screen. On desktop, navigation is on the left, source and item browsing is in the middle, and the selected content is on the right. You can move from browsing to reading without losing your place.
+The workspace opens in browse mode first. On mobile web, the compact rail keeps the main routes visible while the channel and recent-item list stay in the primary scroll area.
 
-<figure class="tour-figure tour-figure--wide">
+<figure class="tour-figure tour-figure--mobile">
   <img
-    src="./images/ui-tour-workspace-desktop.png"
-    alt="Desktop workspace showing the section rail, channel list, recent videos, and the selected video's AI summary."
+    src="./images/ui-tour-mobile-browse.png"
+    alt="Mobile workspace browse view showing the navigation rail, followed channels, recent items, and sync date context."
   />
   <figcaption>
-    Desktop workspace. The selected video stays in focus while the main pane swaps between info, summary, highlights, and transcript.
+    Mobile browse view. You can scan followed sources, recent items, and sync context before opening a specific item.
   </figcaption>
 </figure>
 
-- The left navigation lets you change routes without losing the current reading view.
-- The middle column lists recent items first.
-- The content pane focuses on reading, with info, summary, highlights, and transcript available as main views.
-- Ready summaries can also expose generated summary-audio playback when TTS is enabled on the backend.
-- Signed-out visitors still get a usable workspace through the default seeded source.
+- The navigation rail stays visible even on a phone-sized viewport.
+- Browse stays focused on source selection and recent items instead of splitting attention with reading tools.
+- Sync context stays visible in the browse flow so you can tell how far back the library reaches.
 
-## Queue
+## Mobile Reading
 
-The queue is not another library page. It shows content that is still moving through the pipeline. When work is pending, this route shows incomplete transcripts, missing summaries, retries, and sync boundaries. When the system is caught up, the page shows a clear state instead of disappearing.
-
-<figure class="tour-figure tour-figure--wide">
-  <img
-    src="./images/ui-tour-queue-desktop.png"
-    alt="Desktop queue view showing a clear processing state, sync depth controls, and the shared page layout."
-  />
-  <figcaption>
-    Queue route in a clear state on April 1, 2026. The layout stays useful even when no items are currently waiting.
-  </figcaption>
-</figure>
-
-- Queue state is still compatibility-scoped around one selected source at a time.
-- Sync depth lives here because backfill policy is an operational control, not a reading preference.
-- This route uses the same main layout as the workspace, so switching between them is simple.
-
-## Chat
-
-Chat uses the same transcripts and summaries, but the workflow is different. Instead of opening one video and reading it, you ask questions across the library. Model choice and deep-research mode stay in the conversation flow instead of being hidden in settings.
-
-<figure class="tour-figure tour-figure--wide">
-  <img
-    src="./images/ui-tour-chat-desktop.png"
-    alt="Desktop chat view showing an anonymous prompt about leaked source code, streamed planning steps, library search activity, and a grounded answer."
-  />
-  <figcaption>
-    Chat during a live anonymous prompt. The UI streams tool progress, shows invoked search work, and then renders a grounded answer in the same thread.
-  </figcaption>
-</figure>
-
-- Conversations have their own sidebar, rename flow, and delete controls.
-- Anonymous usage is allowed, but it is quota-limited and conversation history is temporary.
-- Tool progress is visible instead of hidden, so you can see what the assistant is doing.
-
-## Mobile
-
-On mobile, the layout puts reading first. The tab strip stays at the top of the content, while bottom navigation handles route changes. The result is a smaller layout that still keeps the main modes available.
+Once you open an item, the layout shifts from browsing to reading. The tab strip keeps summary, transcript, highlights, and info in one place without hiding the surrounding route shell.
 
 <figure class="tour-figure tour-figure--mobile">
   <img
     src="./images/ui-tour-mobile-workspace.png"
-    alt="Mobile workspace showing the selected video's summary view, tab strip, and bottom navigation."
+    alt="Mobile workspace reading view showing the summary tab, item actions, and the selected video's content."
   />
   <figcaption>
-    Mobile workspace summary view. Reading remains primary, while section switches move to the bottom navigation bar.
+    Mobile reading view on the summary tab. The content is primary, while navigation and route changes stay lightweight around it.
   </figcaption>
 </figure>
 
-- The mobile layout prioritizes the selected video's content over the surrounding UI.
-- The same content modes remain available through a compact top tab strip.
-- Navigation, queue, highlights, and chat stay reachable without needing a separate mobile-only navigation model.
+- Summary is the fastest way to triage an item on mobile.
+- Info, transcript, and highlights stay one tap away in the same content strip.
+- Item-level actions stay near the top of the reading view instead of moving into a separate menu.
+
+## Queue
+
+Queue is the operational route. It shows which items are still waiting on transcript or summary work and keeps the current channel's processing state in view.
+
+<figure class="tour-figure tour-figure--mobile">
+  <img
+    src="./images/ui-tour-mobile-queue.png"
+    alt="Mobile queue view showing actionable items, waiting items, failed work, and the processing status panel."
+  />
+  <figcaption>
+    Mobile queue view. The same shell stays in place, but the main pane switches to processing status, waiting work, and failure context.
+  </figcaption>
+</figure>
+
+- Queue is still scoped around the selected source.
+- Processing counts are visible without leaving the page.
+- The route stays useful even when the channel is nearly caught up because the state panel explains what the queue means.
+
+## Chat
+
+Chat uses the same library, but the workflow changes from reading one item to asking across many. On mobile web, the rail still gives you quick route changes while the conversation area stays focused on the draft and answer thread.
+
+<figure class="tour-figure tour-figure--mobile">
+  <img
+    src="./images/ui-tour-mobile-chat.png"
+    alt="Mobile chat view showing the route rail, starter prompts, and the message composer."
+  />
+  <figcaption>
+    Mobile chat view. Starter prompts, the draft area, and deep-research controls stay visible without needing a separate settings step.
+  </figcaption>
+</figure>
+
+- Anonymous chat stays available, but with limited quota and temporary history.
+- Deep research and model choice stay in the conversation flow.
+- Chat is strongest as a follow-up after you have already browsed or read a few items.
+
+## Desktop Note
+
+Desktop still uses the same routes and content states. The difference is density: desktop can show browsing and reading side by side, while mobile web keeps one primary task in focus.
 
 ## Additional Surfaces
 
