@@ -179,6 +179,10 @@
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Meta" || e.key === "Control") {
+        if (!window.matchMedia("(min-width: 1024px)").matches) {
+          showGoHints = false;
+          return;
+        }
         showGoHints = true;
       }
     };
