@@ -6,19 +6,8 @@ import type { SubscriptionContainer } from "./SubscriptionContainer";
 import type { SyncDepthPayload } from "./SyncDepthPayload";
 import type { Video } from "./Video";
 
-export type ChannelSnapshotPayload = {
-  channel_id: string;
-  source_id: string;
-  container: SubscriptionContainer;
-  source: ContentSource;
-  sync_depth: SyncDepthPayload;
-  /**
-   * Total videos stored for this channel when cheaply available.
-   */
-  channel_video_count: number | null;
-  has_more: boolean;
-  next_offset: number | null;
-  videos: Array<Video>;
-  items: Array<ContentItem>;
-  parts: Array<ContentPart>;
-};
+export type ChannelSnapshotPayload = { channel_id: string, source_id: string, container: SubscriptionContainer, source: ContentSource, sync_depth: SyncDepthPayload, 
+/**
+ * Total videos stored for this channel when cheaply available.
+ */
+channel_video_count: number | null, has_more: boolean, next_offset: number | null, videos: Array<Video>, items: Array<ContentItem>, parts: Array<ContentPart>, };

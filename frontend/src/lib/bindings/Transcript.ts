@@ -2,13 +2,8 @@
 import type { TimedSegment } from "./TimedSegment";
 import type { TranscriptRenderMode } from "./TranscriptRenderMode";
 
-export type Transcript = {
-  video_id: string;
-  raw_text: string | null;
-  formatted_markdown: string | null;
-  render_mode: TranscriptRenderMode;
-  /**
-   * Timed segments from yt-dlp. Present only when the yt-dlp fallback path ran.
-   */
-  timed_text?: Array<TimedSegment>;
-};
+export type Transcript = { video_id: string, raw_text: string | null, formatted_markdown: string | null, render_mode: TranscriptRenderMode, 
+/**
+ * Timed segments from yt-dlp. Present only when the yt-dlp fallback path ran.
+ */
+timed_text?: Array<TimedSegment>, };

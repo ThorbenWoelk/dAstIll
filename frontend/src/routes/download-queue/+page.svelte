@@ -24,6 +24,7 @@
   import ErrorToast from "$lib/components/ErrorToast.svelte";
   import MobileChannelGallery from "$lib/components/mobile/MobileChannelGallery.svelte";
   import MobileYouTubeTopNav from "$lib/components/mobile/MobileYouTubeTopNav.svelte";
+  import WorkspaceSidebarVideoFilterControl from "$lib/components/workspace/WorkspaceSidebarVideoFilterControl.svelte";
   import QueueContentPanel from "$lib/components/queue/QueueContentPanel.svelte";
   import {
     buildQueueGalleryChannelPreviews,
@@ -92,7 +93,6 @@
   } from "$lib/workspace/types";
   import { createAiStatusPoller, refreshAiStatus } from "$lib/utils/ai-poller";
   import { createSidebarState } from "$lib/workspace/sidebar-state.svelte";
-  import { mobileBottomBar } from "$lib/mobile-navigation/mobileBottomBar";
 
   const sidebar = createSidebarState({
     limit: 20,
@@ -628,6 +628,10 @@
   const shellToggleSidebar = sidebar.toggleSidebar;
   const queueSidebar = sidebar;
 
+  const queueFilterDisabled = $derived(
+    !queueSidebar.selectedChannelId || queueSidebar.loadingVideos,
+  );
+
   async function clearQueueBrowseVideoFilters() {
     const actions = queueSidebar.videoActions;
     if (actions.onClearAllFilters) {
@@ -637,39 +641,33 @@
       await actions.onAcknowledgedFilterChange("all");
     }
   }
-
-  // Use primitive sidebar fields, not `videoState`: the derived `videoState` object
-  // changes on every video list update and would retrigger this effect constantly,
-  // spamming `mobileBottomBar.set` and breaking taps on section nav (mobile).
-  const queueBrowseFilterDisabled = $derived(
-    !queueSidebar.selectedChannelId || queueSidebar.loadingVideos,
-  );
-
-  $effect(() => {
-    if (sidebar.selectedChannelId) {
-      mobileBottomBar.set({
-        kind: "sectionsWithVideoFilter",
-        filter: {
-          videoTypeFilter: sidebar.videoTypeFilter,
-          acknowledgedFilter: sidebar.acknowledgedFilter,
-          disabled: queueBrowseFilterDisabled,
-          onSelectVideoType: sidebar.videoActions.onVideoTypeFilterChange,
-          onSelectAcknowledged: sidebar.videoActions.onAcknowledgedFilterChange,
-          onClearAllFilters: clearQueueBrowseVideoFilters,
-        },
-      });
-    } else {
-      mobileBottomBar.set({ kind: "sections" });
-    }
-    return () => {
-      mobileBottomBar.set({ kind: "sections" });
-    };
-  });
 </script>
 
 <WorkspaceShell currentSection="queue" {aiIndicator} onOpenGuide={openGuide}>
   {#snippet mobileTopBar()}
-    <MobileYouTubeTopNav />
+    <MobileYouTubeTopNav>
+      {#snippet trailing()}
+        {#if queueSidebar.selectedChannelId}
+          <div
+            class="flex min-w-0 shrink-0 items-center justify-end"
+            aria-label="Video filters"
+          >
+            <WorkspaceSidebarVideoFilterControl
+              videoTypeFilter={queueSidebar.videoTypeFilter}
+              acknowledgedFilter={queueSidebar.acknowledgedFilter}
+              disabled={queueFilterDisabled}
+              onSelectVideoType={queueSidebar.videoActions
+                .onVideoTypeFilterChange}
+              onSelectAcknowledged={queueSidebar.videoActions
+                .onAcknowledgedFilterChange}
+              onClearAllFilters={clearQueueBrowseVideoFilters}
+            />
+          </div>
+        {:else}
+          <div class="w-10 shrink-0" aria-hidden="true"></div>
+        {/if}
+      {/snippet}
+    </MobileYouTubeTopNav>
   {/snippet}
   {#snippet sidebar({
     collapsed: shellCollapsed,

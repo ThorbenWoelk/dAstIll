@@ -25,7 +25,6 @@ import {
 import { resolveNextChannelSelection } from "$lib/workspace/route-helpers";
 import { shouldRetryReadySummaryLoad } from "$lib/workspace/content";
 import { createSidebarState } from "$lib/workspace/sidebar-state.svelte";
-import { mobileBottomBar } from "$lib/mobile-navigation/mobileBottomBar";
 import {
   type AcknowledgedFilter,
   type WorkspaceContentMode,
@@ -402,57 +401,6 @@ export function createHomeWorkspacePage() {
     pageState.setHydratedWorkspaceScopeKey(workspaceCacheScopeKey);
     clearWorkspaceForScopeChange(sidebarState);
     void dataController.loadBootstrapRefresh();
-  });
-
-  $effect(() => {
-    if (pageState.mobileBrowseOpen) {
-      mobileBottomBar.set({ kind: "hidden" });
-      return () => {
-        mobileBottomBar.set({ kind: "sections" });
-      };
-    }
-
-    const inVideoDetail =
-      !pageState.mobileBrowseOpen && Boolean(selectedVideoId) && !editing;
-    if (!inVideoDetail) {
-      mobileBottomBar.set({ kind: "sections" });
-    } else {
-      mobileBottomBar.set({
-        kind: "videoActions",
-        youtubeUrl: selectedVideoYoutubeUrl,
-        showRegenerate: contentMode === "summary",
-        regenerating: selectedVideoId
-          ? content.regeneratingSummaryVideoIds.includes(selectedVideoId)
-          : false,
-        aiAvailable: pageState.aiAvailable ?? false,
-        onRegenerate: content.regenerateSummaryContent,
-        showFormatAction: contentMode === "transcript",
-        formatting:
-          content.formattingContent &&
-          content.formattingVideoId === selectedVideoId,
-        onFormat: content.cleanFormatting,
-        showRevertAction: hasUpdatedTranscript,
-        reverting:
-          content.revertingContent &&
-          content.revertingVideoId === selectedVideoId,
-        canRevert: canRevertTranscript,
-        onRevert: content.revertToOriginalTranscript,
-        busy: loadingContent,
-        onRequestResetVideo: pageState.openResetVideoConfirmation,
-        resetting:
-          content.resettingVideo &&
-          content.resettingVideoId === selectedVideoId,
-        showAcknowledgeToggle: true,
-        acknowledged: selectedVideo?.acknowledged ?? false,
-        onAcknowledgeToggle: acknowledgeController.toggleAcknowledge,
-        showEditAction:
-          contentMode === "transcript" || contentMode === "summary",
-        onEdit: content.startEdit,
-      });
-    }
-    return () => {
-      mobileBottomBar.set({ kind: "sections" });
-    };
   });
 
   $effect(() => {

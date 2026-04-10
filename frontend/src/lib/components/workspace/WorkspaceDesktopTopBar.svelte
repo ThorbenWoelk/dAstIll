@@ -68,16 +68,16 @@
   } = $props();
 </script>
 
-<div class="flex items-center gap-6" id="workspace-tabs-desktop">
+<div class="flex items-center gap-1" id="workspace-tabs-desktop">
   {#each WORKSPACE_CONTENT_MODE_ORDER as mode}
     <button
       type="button"
       data-workspace-content-tab={mode}
       data-go-hint-key={goHintKeyForWorkspaceContentMode(mode)}
-      class={`-mb-px inline-flex h-6 items-center border-b-2 text-[11px] font-bold uppercase tracking-[0.12em] transition-colors ${
+      class={`inline-flex h-7 items-center rounded-full px-3 text-[11px] font-bold uppercase tracking-[0.1em] transition-colors ${
         contentMode === mode
-          ? "border-[var(--accent)] text-[var(--accent-strong)]"
-          : "border-transparent text-[var(--soft-foreground)] opacity-75 hover:text-[var(--foreground)] hover:opacity-100"
+          ? "bg-[var(--accent-wash-strong)] text-[var(--accent-strong)] shadow-sm"
+          : "text-[var(--soft-foreground)] opacity-75 hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] hover:opacity-100"
       }`}
       aria-pressed={contentMode === mode}
       onclick={() => void onSetMode(mode)}

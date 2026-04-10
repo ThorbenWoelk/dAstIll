@@ -18,7 +18,9 @@
   import SignInRequiredModal from "$lib/components/SignInRequiredModal.svelte";
   import GlobalKeyboardShortcuts from "$lib/components/GlobalKeyboardShortcuts.svelte";
   import MobileViewportInset from "$lib/components/MobileViewportInset.svelte";
+  import MobileBottomTabBar from "$lib/components/mobile/MobileBottomTabBar.svelte";
   import ServiceWorkerRegistration from "$lib/components/ServiceWorkerRegistration.svelte";
+  import { resolveCurrentSectionFromPathname } from "$lib/mobile-navigation/resolveCurrentSectionFromPathname";
   import { applyStoredTheme } from "$lib/theme";
 
   let {
@@ -104,6 +106,14 @@
     if (!to) return;
   });
 
+  let currentSection = $derived(
+    resolveCurrentSectionFromPathname(page.url.pathname),
+  );
+  let showBottomTabBar = $derived(
+    !page.url.pathname.startsWith("/login") &&
+      !page.url.pathname.startsWith("/logout"),
+  );
+
   function confirmAuthRequiredSignIn() {
     const redirectTo = `${page.url.pathname}${page.url.search}`;
     dismissAuthRequiredNotice();
@@ -139,4 +149,7 @@
   <div class="min-h-0 flex-1">
     {@render children()}
   </div>
+  {#if showBottomTabBar}
+    <MobileBottomTabBar {currentSection} />
+  {/if}
 </div>
