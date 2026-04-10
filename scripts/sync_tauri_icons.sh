@@ -65,12 +65,10 @@ for file in "${files[@]}"; do
 done
 
 if [[ -d "$android_res_dir" ]]; then
-  mkdir -p \
-    "$android_res_dir/mipmap-anydpi-v26" \
-    "$android_res_dir/values"
-  cp "$tmp_dir/android/mipmap-anydpi-v26/ic_launcher.xml" \
-    "$android_res_dir/mipmap-anydpi-v26/ic_launcher.xml"
-  cp "$tmp_dir/android/values/ic_launcher_background.xml" \
+  # Keep Android on the raster launcher assets so the native home-screen icon
+  # matches the web/PWA install artwork instead of Android's adaptive treatment.
+  rm -f \
+    "$android_res_dir/mipmap-anydpi-v26/ic_launcher.xml" \
     "$android_res_dir/values/ic_launcher_background.xml"
 
   for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do

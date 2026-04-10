@@ -252,6 +252,17 @@ To migrate an existing permanent inline keypair out of `backend.env`:
 
 That helper intentionally refuses to migrate temporary `ASIA...` / `AWS_SESSION_TOKEN` credentials.
 
+If you only have temporary SSO-backed credentials available, log in with the profile you want and
+sync the exported keypair into `~/.config/dastill/backend.env`:
+
+```bash
+aws sso login --profile your-profile
+./scripts/sync_aws_programmatic_credentials.sh your-profile
+```
+
+That path is useful for short-lived sessions, but the shared credentials file remains the preferred
+permanent local setup.
+
 In production, Cloud Run uses `AWS_ROLE_ARN` and `AWS_WIF_AUDIENCE` for Workload Identity Federation instead of static access keys.
 
 `YOUTUBE_API_KEY` is tied to the Google Cloud project that created it. If you migrate from one GCP project to another, create a fresh key in the target project, update `~/.config/dastill/backend.env`, and keep that value aligned with `terraform/terraform.tfvars` so local and production validation behave the same way.
@@ -289,6 +300,8 @@ If you run the frontend by itself, keep its local values in
 `~/.config/dastill/frontend.env`. The default shared workflow is to keep those values there
 and run `./scripts/link_shared_env.sh` once per worktree so direct frontend commands
 still see `frontend/.env`.
+
+The Tauri Android dev shell uses the same shared/local frontend env files. When `VITE_API_BASE` is unset and the app is running from `http://tauri.localhost`, the frontend falls back to `http://127.0.0.1:3544`, which matches the `adb reverse` mapping created by `./start_app.sh`.
 
 ## Shared Env Directory
 

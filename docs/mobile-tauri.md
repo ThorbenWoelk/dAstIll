@@ -76,6 +76,10 @@ cargo tauri android dev
 
 This assumes the backend is reachable locally and the Android app can call it through the configured `VITE_API_BASE`.
 
+For local Android development, keep frontend build values in the shared/local frontend env files rather than in `start_app.sh`.
+
+The frontend also has a Tauri Android dev fallback for `http://tauri.localhost`: when `VITE_API_BASE` is unset there, it uses `http://127.0.0.1:3544`, which matches the `adb reverse` port forwarding set up by `./start_app.sh`.
+
 ## Auth Handoff
 
 Google blocks sign-in inside the Android WebView used by Tauri. The current app handles that by:

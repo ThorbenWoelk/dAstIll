@@ -299,6 +299,15 @@ diagnose_aws_startup_access() {
 		echo "Backend startup is using inline AWS credentials from env files."
 		if [[ -n "$inline_session_token" || "${inline_access_key:u}" == ASIA* ]]; then
 			echo "Hint: $shared_backend_env_file still pins temporary session credentials."
+			if command -v aws >/dev/null 2>&1; then
+				if [[ "$aws_profile" == "default" ]]; then
+					echo "Refresh them with: aws sso login"
+					echo "Then rerun: ./scripts/sync_aws_programmatic_credentials.sh"
+				else
+					echo "Refresh them with: aws sso login --profile $aws_profile"
+					echo "Then rerun: ./scripts/sync_aws_programmatic_credentials.sh $aws_profile"
+				fi
+			fi
 			echo "For permanent local dev, remove AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY/AWS_SESSION_TOKEN from $shared_backend_env_file"
 			echo "and define a long-lived aws_access_key_id/aws_secret_access_key pair in $shared_aws_credentials_file instead."
 		else
@@ -323,6 +332,11 @@ diagnose_aws_startup_access() {
 		if [[ -n "$export_summary" ]]; then
 			echo "AWS CLI currently resolves credentials for this shell, but local backend startup is not configured to use a permanent credentials file."
 			echo "$export_summary"
+			if [[ "$aws_profile" == "default" ]]; then
+				echo "If you need a temporary fallback, run: ./scripts/sync_aws_programmatic_credentials.sh"
+			else
+				echo "If you need a temporary fallback, run: ./scripts/sync_aws_programmatic_credentials.sh $aws_profile"
+			fi
 		fi
 	fi
 
