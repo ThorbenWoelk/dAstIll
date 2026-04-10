@@ -2,6 +2,7 @@ import type { ChatConversation, ChatConversationSummary } from "$lib/types";
 import { getScopedStorageKey } from "$lib/auth-storage";
 
 const STORAGE_KEY = "dastill.chat.ephemeralThreads.v1";
+const ANONYMOUS_BOOTSTRAP_SCOPE_KEY = "anonymous:bootstrap";
 
 function storageKeyForScope(scopeKey: string): string {
   return getScopedStorageKey(STORAGE_KEY, scopeKey);
@@ -31,6 +32,26 @@ export function loadEphemeralThreads(scopeKey: string): ChatConversation[] {
   const scopedThreads = parseStoredThreads(sessionStorage.getItem(scopedKey));
   if (scopedThreads.length > 0) {
     return scopedThreads;
+  }
+
+  const shouldMigrateBootstrapThreads =
+    scopeKey.startsWith("anonymous:") &&
+    scopeKey !== ANONYMOUS_BOOTSTRAP_SCOPE_KEY;
+  if (shouldMigrateBootstrapThreads) {
+    const bootstrapKey = storageKeyForScope(ANONYMOUS_BOOTSTRAP_SCOPE_KEY);
+    const bootstrapThreads = parseStoredThreads(
+      sessionStorage.getItem(bootstrapKey),
+    );
+    if (bootstrapThreads.length > 0) {
+      try {
+        sessionStorage.setItem(scopedKey, JSON.stringify(bootstrapThreads));
+        sessionStorage.removeItem(bootstrapKey);
+      } catch {
+        // Best effort only. Even if migration persistence fails, return the data.
+      }
+
+      return bootstrapThreads;
+    }
   }
 
   const legacyThreads = parseStoredThreads(sessionStorage.getItem(STORAGE_KEY));

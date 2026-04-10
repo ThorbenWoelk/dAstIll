@@ -5,8 +5,8 @@ pageClass: overview-page
 
 # Documentation
 
-Keep up with your content without the bad habits. 
-dAstIll tracks any source for you and provides distraction-free AI summaries so you can consciously decide on what's worth your time. 
+Keep up with your content without the bad habits.
+dAstIll tracks any source for you and provides distraction-free AI summaries so you can consciously decide on what's worth your time.
 
 **Core capabilities:**
 

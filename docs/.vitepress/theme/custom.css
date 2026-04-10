@@ -123,8 +123,8 @@
 
 .vp-doc .mermaid-diagram svg {
   display: block;
-  width: auto;
-  max-width: none;
+  width: 100%;
+  max-width: 100%;
   height: auto;
   margin: 0 auto;
 }

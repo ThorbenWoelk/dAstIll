@@ -88,6 +88,22 @@ describe("ephemeral-session", () => {
     ).toBeNull();
   });
 
+  it("migrates bootstrap-scoped anonymous threads into the resolved scope", () => {
+    const bootstrapThreads = [createEmptyEphemeralConversation()];
+
+    sessionStorage.setItem(
+      "dastill.chat.ephemeralThreads.v1:anonymous:bootstrap",
+      JSON.stringify(bootstrapThreads),
+    );
+
+    expect(loadEphemeralThreads("anonymous:uid-123")).toEqual(bootstrapThreads);
+    expect(
+      sessionStorage.getItem(
+        "dastill.chat.ephemeralThreads.v1:anonymous:bootstrap",
+      ),
+    ).toBeNull();
+  });
+
   it("clears only the requested auth scope", () => {
     saveEphemeralThreads("anonymous:scope-a", [
       createEmptyEphemeralConversation(),

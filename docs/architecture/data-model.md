@@ -1,53 +1,21 @@
+---
+aside: false
+---
+
 # Data Model
 
 <script setup>
 const storageOwnershipDiagram = String.raw`
 flowchart TB
-  subgraph s3canonical["S3-backed canonical records"]
-    channels[channels]
-    transcripts[transcripts]
-    summaries[summaries]
-    videoinfo[video_info]
-    ttscache[summary-audio cache]
-  end
+  canonical[Canonical content]
+  audio[Generated audio cache]
+  userstate[User-scoped state]
+  search[Derived search]
+  appstate[Firestore app state]
 
-  subgraph firestorecanonical["Firestore-backed records"]
-    videos[videos]
-  end
-
-  subgraph userstate["User-scoped S3 records"]
-    subscriptions[user-channel-subscriptions]
-    memberships[user-video-memberships]
-    videostate[user-video-states]
-    highlights[user-highlights]
-    chats[user-conversations]
-  end
-
-  subgraph search["Derived search projection"]
-    sources[search_sources]
-    chunks[search_chunks]
-    vectors[S3 Vectors<br/>embeddings]
-    fts[libSQL BM25 / FTS5]
-  end
-
-  subgraph firestore["Firestore"]
-    prefs[dastill_preferences]
-    tts[dastill_tts_stats]
-  end
-
-  channels --> videos
-  videos --> transcripts
-  videos --> summaries
-  videos --> videoinfo
-  summaries --> ttscache
-  transcripts --> sources
-  summaries --> sources
-  sources --> chunks
-  chunks --> vectors
-  chunks --> fts
-  subscriptions --> videos
-  memberships --> videos
-  videostate --> videos
+  canonical --> audio
+  canonical --> search
+  userstate --> canonical
 `;
 
 const searchProjectionDiagram = String.raw`
@@ -56,18 +24,18 @@ flowchart TB
   summary[Summary content]
   pending[Mark search_sources pending]
   worker[Search index worker]
-  chunks[search_chunks objects]
-  fts[libSQL / Turso FTS5]
-  vectors[S3 Vectors]
-  results[Search + chat retrieval]
+  chunks[search_chunks]
+  keyword[Keyword index<br/>libSQL / Turso]
+  vectors[Semantic index<br/>S3 Vectors]
+  results[Search + chat]
 
   transcript --> pending
   summary --> pending
   pending --> worker
   worker --> chunks
-  worker --> fts
+  worker --> keyword
   worker --> vectors
-  fts --> results
+  keyword --> results
   vectors --> results
 `;
 </script>
