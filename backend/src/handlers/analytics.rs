@@ -5,6 +5,20 @@ use crate::state::AppState;
 
 const MAX_BATCH_SIZE: usize = 200;
 
+#[utoipa::path(
+    post,
+    path = "/api/analytics/events",
+    request_body(
+        content = String,
+        content_type = "application/json",
+        description = "JSON array of analytics event payloads"
+    ),
+    responses(
+        (status = 202, description = "Accepted analytics batch"),
+        (status = 204, description = "Ignored empty batch"),
+        (status = 413, description = "Batch exceeded the maximum size", body = String)
+    )
+)]
 pub async fn ingest_events(
     State(state): State<AppState>,
     Json(events): Json<Vec<Value>>,

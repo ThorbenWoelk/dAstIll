@@ -13,6 +13,7 @@ use serde::Deserialize;
 use std::convert::Infallible;
 use std::time::{Duration, Instant};
 use tokio_stream::{StreamExt, wrappers::WatchStream};
+use utoipa::{IntoParams, ToSchema};
 
 use crate::db;
 use crate::models::{
@@ -29,7 +30,7 @@ use crate::state::AppState;
 use super::map_db_err;
 use ranking::*;
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SearchSourceFilter {
     All,
@@ -55,7 +56,7 @@ impl SearchSourceFilter {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, IntoParams)]
 pub struct SearchParams {
     pub q: String,
     pub source: Option<SearchSourceFilter>,
@@ -64,7 +65,7 @@ pub struct SearchParams {
     pub mode: Option<SearchExecutionMode>,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SearchExecutionMode {
     Keyword,
@@ -155,6 +156,17 @@ fn resolve_semantic_exact_source_kind(source: SearchSourceFilter) -> Option<Sear
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/search",
+    params(SearchParams),
+    responses(
+        (status = 200, description = "Search results", body = SearchResponsePayload),
+        (status = 400, description = "Invalid query", body = String),
+        (status = 403, description = "Channel access denied", body = String),
+        (status = 503, description = "Semantic search unavailable", body = String)
+    )
+)]
 pub async fn search(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
@@ -414,12 +426,26 @@ pub async fn search(
     }))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/search/status",
+    responses(
+        (status = 200, description = "Search status payload", body = SearchStatusPayload)
+    )
+)]
 pub async fn search_status(
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     Ok(Json(load_search_status_payload(&state)))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/search/status/stream",
+    responses(
+        (status = 200, description = "Server-sent search status stream", body = String, content_type = "text/event-stream")
+    )
+)]
 pub async fn search_status_stream(
     State(state): State<AppState>,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
@@ -440,6 +466,14 @@ pub(crate) fn load_search_status_payload(state: &AppState) -> SearchStatusPayloa
     state.search_progress.snapshot()
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/search/rebuild",
+    responses(
+        (status = 202, description = "Search rebuild accepted"),
+        (status = 500, description = "Request failed", body = String)
+    )
+)]
 pub async fn rebuild_search_projection(
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {

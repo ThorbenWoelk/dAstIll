@@ -57,6 +57,26 @@ Default docs URL:
 http://localhost:4173
 ```
 
+## Postman Debugging
+
+The backend now exposes a live OpenAPI document for local debugging.
+
+When you run the full stack with `./start_app.sh`, import this URL into Postman:
+
+```text
+http://localhost:3544/api/openapi.json
+```
+
+If you run the backend binary by itself instead of `./start_app.sh`, the default port is `3001`:
+
+```text
+http://localhost:3001/api/openapi.json
+```
+
+Use the live OpenAPI URL as the source of truth during debugging. It reflects the running backend.
+The checked-in `backend/openapi.postman.yaml` file is only a snapshot artifact and should not be
+treated as the authoritative contract for local debugging.
+
 ## Docs Frontend
 
 Build the static docs site:

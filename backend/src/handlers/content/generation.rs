@@ -1,5 +1,17 @@
 use super::*;
 
+#[utoipa::path(
+    put,
+    path = "/api/videos/{id}/summary",
+    params(
+        ("id" = String, Path, description = "Video id")
+    ),
+    request_body = UpdateContentRequest,
+    responses(
+        (status = 200, description = "Updated summary", body = Summary),
+        (status = 404, description = "Video not found", body = String)
+    )
+)]
 pub async fn update_summary(
     State(state): State<AppState>,
     Path(video_id): Path<String>,
