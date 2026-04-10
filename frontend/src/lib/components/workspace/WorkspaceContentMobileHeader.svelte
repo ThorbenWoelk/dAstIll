@@ -93,28 +93,26 @@
   {/if}
   <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
     <div class="min-w-0 flex-1" id="workspace-tabs-mobile">
-      <div class="relative -mx-4 min-w-0 flex-1 px-4 sm:mx-0 sm:px-0">
-        <div
-          data-mobile-content-tabs
-          class="custom-scrollbar flex min-w-0 items-end overflow-x-auto border-b border-[var(--accent-border-soft)] [-ms-overflow-style:none] [scroll-padding-inline:1rem] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:flex lg:min-w-max lg:gap-5"
-        >
-          {#each WORKSPACE_CONTENT_MODE_ORDER as mode}
-            <button
-              type="button"
-              data-workspace-content-tab={mode}
-              class={`relative z-0 -mb-px shrink-0 rounded-t-full bg-[var(--surface)] px-4 pb-3 pt-1.5 text-center text-[11px] font-bold uppercase tracking-[0.12em] transition-colors first:ml-0 -ml-3 ${
-                contentMode === mode
-                  ? "z-10 border-b-2 border-[var(--accent)] text-[var(--accent-strong)]"
-                  : "border-b-2 border-transparent text-[var(--soft-foreground)] opacity-75 hover:text-[var(--foreground)] hover:opacity-100"
-              }`}
-              aria-pressed={contentMode === mode}
-              aria-label={`${CONTENT_MODE_LABELS[mode]} tab`}
-              onclick={() => void onSetMode(mode)}
-            >
-              {CONTENT_MODE_LABELS[mode]}
-            </button>
-          {/each}
-        </div>
+      <div
+        data-mobile-content-tabs
+        class="custom-scrollbar flex min-w-0 items-center gap-1 overflow-x-auto [-ms-overflow-style:none] [scroll-padding-inline:0.5rem] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+        {#each WORKSPACE_CONTENT_MODE_ORDER as mode}
+          <button
+            type="button"
+            data-workspace-content-tab={mode}
+            class={`shrink-0 rounded-full px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] transition-colors ${
+              contentMode === mode
+                ? "bg-[var(--accent-wash-strong)] text-[var(--accent-strong)] shadow-sm"
+                : "text-[var(--soft-foreground)] opacity-65 hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] hover:opacity-100"
+            }`}
+            aria-pressed={contentMode === mode}
+            aria-label={`${CONTENT_MODE_LABELS[mode]} tab`}
+            onclick={() => void onSetMode(mode)}
+          >
+            {CONTENT_MODE_LABELS[mode]}
+          </button>
+        {/each}
       </div>
     </div>
 
