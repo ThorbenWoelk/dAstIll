@@ -2,20 +2,20 @@
 
 <script setup>
 const processModelDiagram = String.raw`
-flowchart LR
+flowchart TB
   browser[Browser]
   frontend[frontend/<br/>SvelteKit dev server]
   docs[docs/<br/>VitePress dev server]
-  backend[backend/<br/>Axum API + worker host]
+  backend[backend/<br/>Axum API + workers]
   appstate[AppState shared services]
 
   subgraph workers["Long-lived backend tasks"]
-    queue[Queue worker]
-    refresh[Refresh worker]
-    gap[Gap scan worker]
-    eval[Summary evaluation worker]
-    search[Search index worker]
-    fts[FTS hydration task]
+    queue[Queue]
+    refresh[Refresh]
+    gap[Gap scan]
+    eval[Summary evaluation]
+    search[Search index]
+    fts[FTS hydration]
   end
 
   browser --> frontend

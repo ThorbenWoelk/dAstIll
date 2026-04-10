@@ -16,6 +16,17 @@ const error = ref<string | null>(null);
 const mounted = ref(false);
 let renderVersion = 0;
 
+async function waitForFonts() {
+  if (typeof document === "undefined" || !("fonts" in document)) return;
+
+  try {
+    await document.fonts.ready;
+  } catch {
+    // If the browser does not fully support the FontFaceSet promise,
+    // continue with rendering instead of blocking the docs page.
+  }
+}
+
 function collectSlotText(nodes: VNode[] | undefined): string {
   if (!nodes) return "";
 
@@ -46,11 +57,22 @@ async function renderDiagram() {
 
   const version = ++renderVersion;
 
+  await waitForFonts();
+
   mermaid.initialize({
     startOnLoad: false,
     securityLevel: "strict",
     theme: isDark.value ? "dark" : "neutral",
     fontFamily: '"Avenir Next", "Helvetica Neue", "Segoe UI", sans-serif',
+    fontSize: 16,
+    htmlLabels: true,
+    flowchart: {
+      useMaxWidth: false,
+    },
+    sequence: {
+      useMaxWidth: false,
+      wrap: true,
+    },
   });
 
   try {

@@ -108,6 +108,7 @@
 
 .vp-doc .mermaid-diagram {
   overflow-x: auto;
+  overflow-y: hidden;
   padding: 1rem;
   border: 1px solid var(--vp-c-divider);
   border-radius: 18px;
@@ -122,8 +123,10 @@
 
 .vp-doc .mermaid-diagram svg {
   display: block;
-  width: 100%;
+  width: auto;
+  max-width: none;
   height: auto;
+  margin: 0 auto;
 }
 
 .vp-doc .mermaid-diagram-caption {

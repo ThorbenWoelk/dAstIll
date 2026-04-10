@@ -2,7 +2,7 @@
 
 <script setup>
 const systemContextDiagram = String.raw`
-flowchart LR
+flowchart TB
   browser[Browser]
 
   subgraph surfaces["User-facing surfaces"]
@@ -13,13 +13,13 @@ flowchart LR
   backend[Backend<br/>Rust + Axum]
 
   subgraph storage["Durable storage"]
-    s3[S3 data bucket<br/>channels, transcript/summary blobs, user-scoped records, search chunks]
+    s3[S3 data bucket<br/>canonical content + search chunks]
     vectors[S3 Vectors<br/>semantic embeddings]
-    firestore[Firestore<br/>videos, preferences, TTS stats]
+    firestore[Firestore<br/>videos, prefs, TTS stats]
   end
 
   subgraph external["External integrations"]
-    youtube[YouTube APIs + subtitle fetch]
+    youtube[YouTube APIs<br/>+ subtitle fetch]
     ollama[Ollama models]
     polly[Amazon Polly]
   end
@@ -37,9 +37,9 @@ flowchart LR
 `;
 
 const canonicalFlowDiagram = String.raw`
-flowchart LR
+flowchart TB
   youtube[YouTube channel + video source]
-  canonical[Canonical content<br/>channels, videos, transcripts, summaries, video_info]
+  canonical[Canonical content<br/>channels, videos, transcripts,<br/>summaries, video_info]
   workers[Background workers]
   searchmeta[search_sources state]
   searchproj[search_chunks projection]
