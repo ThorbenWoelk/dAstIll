@@ -94,6 +94,13 @@ jobs:
               frontend/*)
                 frontend=true
                 ;;
+              *)
+                # Unrecognized paths (root files, .github/, etc.) could affect
+                # any service — deploy everything to be safe.
+                backend=true
+                docs=true
+                frontend=true
+                ;;
             esac
           done <<EOF
           $changed_files
