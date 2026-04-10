@@ -24,5 +24,14 @@ resource "google_artifact_registry_repository" "repo" {
     }
   }
 
+  cleanup_policies {
+    id     = "delete-old-tagged"
+    action = "DELETE"
+    condition {
+      tag_state  = "TAGGED"
+      older_than = "2592000s"
+    }
+  }
+
   depends_on = [google_project_service.services]
 }
