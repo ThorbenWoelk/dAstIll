@@ -202,13 +202,12 @@ test("Cmd/Ctrl+1 navigates from queue to workspace without full reload hang", as
     .toContain("download-queue");
   await page.waitForTimeout(1500);
   await page.keyboard.press(`${PRIMARY_MODIFIER}+1`);
-  await page.keyboard.press("w");
 
   await expect.poll(() => new URL(page.url()).pathname).toBe("/");
   await expect(workspaceSidebar(page)).toBeVisible({ timeout: READY_MS });
 });
 
-test("mark read toggle flips aria-pressed on desktop", async ({ page }) => {
+test("guest mark read toggle opens the sign-in prompt", async ({ page }) => {
   const hasData = await workspaceHasSeedData(page);
   if (!hasData) {
     test.skip(true, "Workspace has no channels; run against a seeded backend");
@@ -232,13 +231,13 @@ test("mark read toggle flips aria-pressed on desktop", async ({ page }) => {
   await expect(toggle).toBeVisible({ timeout: READY_MS });
   const before = await toggle.getAttribute("aria-pressed");
   await toggle.click();
-  await expect(toggle).toHaveAttribute(
-    "aria-pressed",
-    before === "true" ? "false" : "true",
-  );
+  await expect(
+    page.getByRole("dialog", { name: "Sign in required" }),
+  ).toBeVisible();
+  await expect(toggle).toHaveAttribute("aria-pressed", before ?? "false");
 });
 
-test("unread filter keeps unread videos and removes them after marking read", async ({
+test("guest unread filter keeps videos visible when mark read requires sign-in", async ({
   page,
 }) => {
   const hasData = await workspaceHasSeedData(page);
@@ -279,8 +278,10 @@ test("unread filter keeps unread videos and removes them after marking read", as
   ).toBeVisible();
 
   await toggle.click();
-  await expect(toggle).toHaveAttribute("aria-label", "Mark as unread");
+  await expect(
+    page.getByRole("dialog", { name: "Sign in required" }),
+  ).toBeVisible();
   await expect(
     sidebar.locator("#videos").getByText(targetTitle, { exact: true }),
-  ).toHaveCount(0);
+  ).toBeVisible();
 });
