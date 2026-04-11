@@ -33,6 +33,7 @@ import {
 } from "$lib/workspace-cache";
 import {
   loadChannelSnapshotWithRefresh,
+  resolveSnapshotPageState,
   resolveNextChannelSelection,
 } from "$lib/workspace/route-helpers";
 import type {
@@ -302,12 +303,9 @@ export function createHomeWorkspaceDataController(options: {
         sidebarState.acknowledgedFilter,
       );
       options.setAllowLoadedVideoSyncDepthOverride(false);
-      sidebarState.applyChannelSnapshotState({
-        videos: snapshot.videos,
-        has_more: snapshot.videos.length === sidebarState.limit,
-        next_offset: snapshot.videos.length,
-        sync_depth: snapshot.sync_depth,
-      });
+      sidebarState.applyChannelSnapshotState(
+        resolveSnapshotPageState(snapshot),
+      );
       track({
         event: "channel_snapshot_loaded",
         channel_id: channelId,
