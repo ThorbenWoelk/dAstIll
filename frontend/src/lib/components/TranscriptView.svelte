@@ -5,6 +5,7 @@
     Highlight,
     HighlightSource,
   } from "$lib/types";
+  import CheckIcon from "$lib/components/icons/CheckIcon.svelte";
   import HighlighterIcon from "$lib/components/icons/HighlighterIcon.svelte";
   import TrashIcon from "$lib/components/icons/TrashIcon.svelte";
   import {
@@ -654,13 +655,20 @@
             </button>
             <button
               type="button"
-              class="text-action-btn inline-flex items-center justify-center rounded-full px-4 py-2 text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--accent-strong)] hover:bg-[var(--accent-soft)] disabled:cursor-not-allowed disabled:opacity-50"
-              style="background: var(--accent-wash);"
+              class="text-action-btn inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--accent-wash)] text-[var(--accent-strong)] hover:bg-[var(--accent-soft)] disabled:cursor-not-allowed disabled:opacity-50"
               onclick={handleCreateVocabularyReplacement}
               disabled={!onCreateVocabularyReplacement ||
                 creatingVocabularyReplacement}
+              aria-label="Correct spelling"
+              title={creatingVocabularyReplacement
+                ? "Saving correction"
+                : "Correct spelling"}
             >
-              {creatingVocabularyReplacement ? "Saving" : "Correct"}
+              <CheckIcon
+                size={16}
+                strokeWidth={2.5}
+                className={creatingVocabularyReplacement ? "animate-pulse" : ""}
+              />
             </button>
           {:else}
             <button
@@ -705,13 +713,20 @@
           </button>
           <button
             type="button"
-            class="text-action-btn inline-flex items-center justify-center rounded-full px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--accent-strong)] hover:bg-[var(--accent-soft)] disabled:cursor-not-allowed disabled:opacity-50"
-            style="background: var(--accent-wash);"
+            class="text-action-btn inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--accent-wash)] text-[var(--accent-strong)] hover:bg-[var(--accent-soft)] disabled:cursor-not-allowed disabled:opacity-50"
             onclick={handleCreateVocabularyReplacement}
             disabled={!onCreateVocabularyReplacement ||
               creatingVocabularyReplacement}
+            aria-label="Correct spelling"
+            title={creatingVocabularyReplacement
+              ? "Saving correction"
+              : "Correct spelling"}
           >
-            {creatingVocabularyReplacement ? "Saving" : "Correct"}
+            <CheckIcon
+              size={14}
+              strokeWidth={2.5}
+              className={creatingVocabularyReplacement ? "animate-pulse" : ""}
+            />
           </button>
         {:else}
           <button
