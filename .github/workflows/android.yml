@@ -120,9 +120,11 @@ jobs:
         run: |
           set -euo pipefail
 
-          apk_path="$(find src-tauri/gen/android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n 1)"
+          apk_root="src-tauri/gen/android/app/build/outputs/apk"
+          apk_path="$(find "$apk_root" -type f -path '*/release/*.apk' | sort | head -n 1)"
           if [ -z "$apk_path" ]; then
-            echo "No release APK found" >&2
+            echo "No release APK found under $apk_root" >&2
+            find "$apk_root" -maxdepth 4 -type f 2>/dev/null >&2 || true
             exit 1
           fi
 
