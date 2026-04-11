@@ -65,6 +65,7 @@
       summaryQualityNote: null,
       summaryModelUsed: null,
       summaryQualityModelUsed: null,
+      summaryTags: [],
       videoInfo: null,
       contentHtml: "",
       contentText: "",
@@ -133,6 +134,7 @@
   let summaryQualityNote = $derived(content.summaryQualityNote);
   let summaryModelUsed = $derived(content.summaryModelUsed);
   let summaryQualityModelUsed = $derived(content.summaryQualityModelUsed);
+  let summaryTags = $derived(content.summaryTags);
   let videoInfo = $derived(content.videoInfo);
   let contentHtml = $derived(content.contentHtml);
   let contentText = $derived(content.contentText);
@@ -433,6 +435,7 @@
         {summaryQualityNote}
         {summaryModelUsed}
         {summaryQualityModelUsed}
+        {summaryTags}
         {onShowChannels}
         {onShowVideos}
       />
@@ -492,25 +495,29 @@
     <nav
       id="workspace-tabs-mobile"
       data-mobile-content-tabs
-      class="fixed bottom-0 left-0 right-0 z-[60] border-t border-[var(--border-soft)]/50 bg-[var(--surface)]/100 px-3 pt-2 pb-[max(0.4rem,env(safe-area-inset-bottom))] lg:hidden"
+      class="fixed bottom-0 left-0 right-0 z-[60] border-t border-[var(--border-soft)]/50 bg-[var(--surface)]/100 px-4 pt-1.5 pb-[max(0.45rem,env(safe-area-inset-bottom))] lg:hidden"
       aria-label="Content tabs"
     >
-      <div
-        class="no-scrollbar mx-auto flex min-w-max items-center gap-2 overflow-x-auto pb-1"
-      >
+      <div class="mx-auto grid max-w-[36rem] grid-cols-4 items-end gap-1">
         {#each WORKSPACE_CONTENT_MODE_ORDER as mode}
           <button
             type="button"
             data-workspace-content-tab={mode}
-            class={`flex min-h-[44px] min-w-[8.25rem] items-center justify-center rounded-full px-4 text-[11px] font-bold uppercase tracking-[0.1em] transition-colors ${
+            class={`relative flex min-h-[46px] min-w-0 items-center justify-center px-1 pb-1.5 pt-3 text-[11px] font-bold uppercase tracking-[0.1em] transition-colors ${
               contentMode === mode
-                ? "bg-[var(--foreground)] text-[var(--background)] shadow-sm"
-                : "border border-[var(--border-soft)] text-[var(--soft-foreground)] active:bg-[var(--accent-wash)] active:text-[var(--foreground)]"
+                ? "text-[var(--foreground)]"
+                : "text-[var(--soft-foreground)] active:text-[var(--foreground)]"
             }`}
             aria-pressed={contentMode === mode}
             onclick={() => void onSetMode(mode)}
           >
-            {CONTENT_MODE_LABELS[mode]}
+            {#if contentMode === mode}
+              <span
+                class="absolute left-1/2 top-0.5 h-1 w-8 -translate-x-1/2 rounded-full bg-[var(--foreground)]"
+                aria-hidden="true"
+              ></span>
+            {/if}
+            <span class="truncate">{CONTENT_MODE_LABELS[mode]}</span>
           </button>
         {/each}
       </div>

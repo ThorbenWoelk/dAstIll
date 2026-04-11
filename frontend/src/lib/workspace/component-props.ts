@@ -122,6 +122,7 @@ export interface WorkspaceContentState {
   summaryQualityNote: string | null;
   summaryModelUsed: string | null;
   summaryQualityModelUsed: string | null;
+  summaryTags: string[];
   videoInfo: VideoInfo | null;
   contentHtml: string;
   contentText: string;

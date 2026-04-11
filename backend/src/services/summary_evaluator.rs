@@ -157,7 +157,7 @@ Scoring guide:
 - 0-2: Summary is mostly hallucinated or almost entirely missing transcript content.
 
 Return strict JSON only with this schema:
-{{"score": <integer 0-10>, "incoherence_note": "<concise, poignant, markdown-formatted note with bullet points, categorized for hallucinations and other suitable categories (e.g., omissions, factual errors)>"}}
+{{"score": <integer 0-10>, "incoherence_note": "<concise, poignant, markdown-formatted note with bullet points, categorized for hallucinations and other suitable categories (e.g., omissions, factual errors)>", "tags": ["<topic>", "<area of expertise>", "<sentiment>"]}}
 
 Rules:
 - Write a critical but realistic review of the content.
@@ -165,6 +165,7 @@ Rules:
 - Focus on substantive problems; do not pad the note with praise and do not invent flaws.
 - Reserve the lowest scores for genuinely broken summaries and acknowledge when the summary is mostly sound apart from limited issues.
 - Formatting: Use concise, pointed bullet points. Categorize using bold headers like **Hallucinations**, **Factually Incorrect**, or **Omissions**.
+- Tags: Return 2-4 short title-case tags that read like editorial descriptors, not sentences. Aim for patterns such as "AI Security", "Tech Knowledge", "Blackpilled". Prefer one topic/domain tag, one expertise/frame tag, and one sentiment/stance tag when the transcript supports them.
 - Example:
   **Factually Incorrect**:
   - website is 'bugsapplesloves.com', not 'bugs.apple.com'
@@ -210,6 +211,30 @@ fn known_cloud_model_params_billions(model: &str) -> Option<u16> {
 struct EvaluatorResponse {
     score: i64,
     incoherence_note: Option<String>,
+    tags: Option<Vec<String>>,
+}
+
+fn normalize_tags(tags: Option<Vec<String>>) -> Vec<String> {
+    let mut normalized = Vec::new();
+
+    for tag in tags.unwrap_or_default() {
+        let cleaned = tag.trim().trim_matches('.').to_string();
+        if cleaned.is_empty() {
+            continue;
+        }
+        if normalized
+            .iter()
+            .any(|existing: &String| existing.eq_ignore_ascii_case(&cleaned))
+        {
+            continue;
+        }
+        normalized.push(cleaned);
+        if normalized.len() >= 4 {
+            break;
+        }
+    }
+
+    normalized
 }
 
 fn parse_evaluation_response(raw: &str) -> Result<SummaryEvaluationResult, SummaryEvaluatorError> {
@@ -234,6 +259,7 @@ fn parse_evaluation_response(raw: &str) -> Result<SummaryEvaluationResult, Summa
         quality_score: score,
         quality_note: note,
         quality_model_used: None,
+        summary_tags: normalize_tags(parsed.tags),
     })
 }
 
@@ -309,13 +335,21 @@ mod tests {
     #[test]
     fn parse_evaluation_response_handles_plain_json() {
         let parsed = parse_evaluation_response(
-            "{\"score\":8,\"incoherence_note\":\"**Omissions**:\\n- Overstates one claim\"}",
+            "{\"score\":8,\"incoherence_note\":\"**Omissions**:\\n- Overstates one claim\",\"tags\":[\"AI Security\",\"Tech Knowledge\",\"Blackpilled\"]}",
         )
         .unwrap();
         assert_eq!(parsed.quality_score, 8);
         assert_eq!(
             parsed.quality_note,
             Some("**Omissions**:\n- Overstates one claim".to_string())
+        );
+        assert_eq!(
+            parsed.summary_tags,
+            vec![
+                "AI Security".to_string(),
+                "Tech Knowledge".to_string(),
+                "Blackpilled".to_string()
+            ]
         );
     }
 
@@ -327,12 +361,31 @@ mod tests {
         .unwrap();
         assert_eq!(parsed.quality_score, 10);
         assert_eq!(parsed.quality_note, None);
+        assert!(parsed.summary_tags.is_empty());
     }
 
     #[test]
     fn parse_evaluation_response_clamps_score_range() {
         let parsed = parse_evaluation_response("{\"score\":12,\"incoherence_note\":null}").unwrap();
         assert_eq!(parsed.quality_score, 10);
+        assert!(parsed.summary_tags.is_empty());
+    }
+
+    #[test]
+    fn parse_evaluation_response_normalizes_tags() {
+        let parsed = parse_evaluation_response(
+            "{\"score\":7,\"incoherence_note\":null,\"tags\":[\" AI Security. \",\"ai security\",\"Tech Knowledge\",\"Blackpilled\",\"Too Many\",\"Ignored\"]}",
+        )
+        .unwrap();
+        assert_eq!(
+            parsed.summary_tags,
+            vec![
+                "AI Security".to_string(),
+                "Tech Knowledge".to_string(),
+                "Blackpilled".to_string(),
+                "Too Many".to_string()
+            ]
+        );
     }
 
     #[test]

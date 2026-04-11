@@ -24,6 +24,7 @@ describe("summary audio session", () => {
 
     const generation = generateSummaryAudio("video-1", () => request.promise);
     expect(readSummaryAudioSession("video-1").status).toBe("generating");
+    expect(readSummaryAudioSession("video-1").audioRequested).toBe(true);
 
     syncSummaryAudioDebugState("video-1", {
       cache_hit: false,
@@ -42,6 +43,7 @@ describe("summary audio session", () => {
 
     expect(readSummaryAudioSession("video-1")).toMatchObject({
       status: "ready",
+      audioRequested: false,
       audioSrc: "/api/videos/video-1/summary/audio",
     });
   });
@@ -74,6 +76,7 @@ describe("summary audio session", () => {
     setSummaryAudioUnavailable("video-1", "Polly TTS is not configured");
     expect(readSummaryAudioSession("video-1")).toMatchObject({
       status: "unavailable",
+      audioRequested: true,
       summaryAudioError: "Sorry, audio playback is not available right now.",
     });
 
@@ -85,6 +88,7 @@ describe("summary audio session", () => {
 
     expect(readSummaryAudioSession("video-1")).toMatchObject({
       status: "unavailable",
+      audioRequested: true,
       summaryAudioError: "Sorry, audio playback is not available right now.",
       summaryWordCount: 120,
       estimatedSecs: 7,

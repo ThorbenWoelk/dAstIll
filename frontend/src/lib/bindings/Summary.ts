@@ -7,4 +7,5 @@ export type Summary = {
   quality_score: number | null;
   quality_note: string | null;
   quality_model_used: string | null;
+  summary_tags: Array<string>;
 };

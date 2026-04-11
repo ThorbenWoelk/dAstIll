@@ -18,6 +18,7 @@ export interface SummaryQualityPresentation {
   note: string | null;
   modelUsed: string | null;
   qualityModelUsed: string | null;
+  tags: string[];
 }
 
 export interface BackgroundSummaryRefreshPresentation {
@@ -64,6 +65,9 @@ export function resolveSummaryQualityPresentation(
     note: summary.quality_note?.trim() || null,
     modelUsed: summary.model_used ?? null,
     qualityModelUsed: summary.quality_model_used ?? null,
+    tags: (summary.summary_tags ?? [])
+      .map((tag: string) => tag.trim())
+      .filter(Boolean),
   };
 }
 

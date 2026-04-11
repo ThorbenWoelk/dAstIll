@@ -96,7 +96,7 @@
 <svelte:window onkeydown={handleWindowKeydown} />
 
 <div
-  class="relative"
+  class="relative z-[95]"
   use:clickOutside={{
     enabled: filterMenuOpen,
     onClickOutside: () => (filterMenuOpen = false),
@@ -106,7 +106,7 @@
     type="button"
     id="video-filter-button"
     bind:this={videoFilterButtonEl}
-    class={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${videoTypeFilter !== "all" || acknowledgedFilter !== "all" || filterMenuOpen ? "bg-[var(--accent)] text-white" : "text-[var(--soft-foreground)] opacity-55 hover:bg-[var(--accent-wash)] hover:opacity-100"}`}
+    class={`inline-flex h-5 w-5 items-center justify-center rounded-full transition-colors ${videoTypeFilter !== "all" || acknowledgedFilter !== "all" || filterMenuOpen ? "bg-[var(--accent)] text-white" : "text-[var(--soft-foreground)] opacity-55 hover:bg-[var(--accent-wash)] hover:opacity-100"}`}
     onclick={() => {
       filterMenuOpen = !filterMenuOpen;
     }}
@@ -116,8 +116,8 @@
     aria-expanded={filterMenuOpen}
   >
     <svg
-      width="12"
-      height="12"
+      width="10"
+      height="10"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -137,7 +137,7 @@
       role="menu"
       aria-label="Video filters"
       style={videoFilterMenuStyle || "visibility:hidden"}
-      class="fixed z-[90] w-52 overflow-hidden rounded-[var(--radius-md)] border border-[var(--accent-border-soft)] bg-[var(--surface-strong)] shadow-xl popover-rise"
+      class="fixed z-[110] w-52 overflow-hidden rounded-[var(--radius-md)] border border-[var(--accent-border-soft)] bg-[var(--surface-strong)] shadow-xl popover-rise"
     >
       <div class="space-y-4 p-2">
         <div class="grid gap-1">

@@ -74,6 +74,7 @@ export function createContentState(options: {
   let summaryQualityNote = $state<string | null>(null);
   let summaryModelUsed = $state<string | null>(null);
   let summaryQualityModelUsed = $state<string | null>(null);
+  let summaryTags = $state<string[]>([]);
 
   let formattingContent = $state(false);
   let formattingVideoId = $state<string | null>(null);
@@ -104,6 +105,7 @@ export function createContentState(options: {
     summaryQualityNote = nextState.note;
     summaryModelUsed = nextState.modelUsed;
     summaryQualityModelUsed = nextState.qualityModelUsed;
+    summaryTags = nextState.tags;
   }
 
   function applySummaryQuality(summary: SummaryPayload) {
@@ -400,6 +402,7 @@ export function createContentState(options: {
     summaryQualityNote = next.quality.note;
     summaryModelUsed = next.quality.modelUsed;
     summaryQualityModelUsed = next.quality.qualityModelUsed;
+    summaryTags = next.quality.tags;
   }
 
   return {
@@ -438,6 +441,9 @@ export function createContentState(options: {
     },
     get summaryQualityModelUsed() {
       return summaryQualityModelUsed;
+    },
+    get summaryTags() {
+      return summaryTags;
     },
 
     get formattingContent() {
@@ -493,6 +499,7 @@ export function createContentState(options: {
       editing = false;
       videoInfo = null;
       resetSummaryQuality();
+      summaryTags = [];
     },
 
     clearDisplayedContent() {

@@ -237,6 +237,7 @@ async fn ensure_summary_internal(
         quality_score: None,
         quality_note: None,
         quality_model_used: None,
+        summary_tags: Vec::new(),
     };
 
     db::upsert_summary(&state.db, &summary)

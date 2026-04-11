@@ -558,6 +558,8 @@ pub struct Summary {
     pub quality_score: Option<u8>,
     pub quality_note: Option<String>,
     pub quality_model_used: Option<String>,
+    #[serde(default)]
+    pub summary_tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, TS, ToSchema)]
@@ -575,6 +577,7 @@ pub struct SummaryEvaluationResult {
     pub quality_score: u8,
     pub quality_note: Option<String>,
     pub quality_model_used: Option<String>,
+    pub summary_tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, TS, ToSchema)]

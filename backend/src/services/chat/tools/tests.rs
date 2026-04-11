@@ -468,6 +468,7 @@ mod tests {
             quality_score: None,
             quality_note: None,
             quality_model_used: None,
+            summary_tags: Vec::new(),
         }
     }
 

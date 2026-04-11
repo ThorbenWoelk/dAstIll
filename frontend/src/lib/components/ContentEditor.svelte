@@ -201,12 +201,15 @@
     ></textarea>
   </div>
 {:else}
-  <div class="flex flex-wrap items-center gap-4">
-    <div class="flex flex-wrap items-center gap-4">
+  <div
+    class="flex flex-wrap items-center gap-4 max-lg:w-full max-lg:flex-nowrap max-lg:justify-between max-lg:gap-0"
+  >
+    <div class="flex flex-wrap items-center gap-4 max-lg:contents">
       {#if showFormatAction}
         <ContentActionButton
           compact
           icon="format"
+          goHintKey="*"
           loading={formatting}
           disabled={busy || formatting || reverting || !aiAvailable}
           label={formatActionLabel}
@@ -229,6 +232,7 @@
         <ContentActionButton
           compact
           icon="regenerate"
+          goHintKey="*"
           loading={regenerating}
           disabled={busy ||
             formatting ||
@@ -242,11 +246,12 @@
       {/if}
     </div>
 
-    <div class="ml-auto flex flex-wrap items-center gap-4">
+    <div class="ml-auto flex flex-wrap items-center gap-4 max-lg:contents">
       {#if youtubeUrl}
         <ContentActionButton
           compact
           icon="youtube"
+          goHintKey="]"
           href={youtubeUrl}
           label="Open video on YouTube"
           tooltip="Open on YouTube"
@@ -255,6 +260,7 @@
       {#if onReset}
         <button
           type="button"
+          data-go-hint-key="↵"
           class="inline-flex h-8 w-8 items-center justify-center rounded-full text-[var(--danger)] opacity-40 transition-all hover:bg-[var(--danger)]/10 hover:opacity-100 disabled:pointer-events-none disabled:opacity-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--danger)]/30"
           aria-label="Reset video - wipe transcript and summary"
           disabled={busy || resetting}
@@ -295,6 +301,7 @@
         <button
           type="button"
           id={acknowledgeToggleId}
+          data-go-hint-key="."
           class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-all hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 disabled:cursor-not-allowed disabled:opacity-30"
           aria-label={acknowledged ? "Mark as unread" : "Mark as read"}
           aria-pressed={acknowledged}
@@ -327,6 +334,7 @@
         <ContentActionButton
           compact
           icon="edit"
+          goHintKey="["
           disabled={busy}
           label="Edit distillation"
           tooltip="Edit distillation"

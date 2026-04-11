@@ -184,7 +184,7 @@
           type="button"
           class={`group relative snap-center flex w-[64vw] max-w-[14rem] shrink-0 flex-col overflow-hidden rounded-[var(--radius-md)] bg-[var(--surface-strong)] shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${
             active
-              ? "ring-1 ring-[var(--accent)]/25"
+              ? "shadow-[0_14px_34px_color-mix(in_srgb,var(--foreground)_12%,transparent)]"
               : "hover:bg-[var(--panel-surface)]"
           }`}
           onclick={() => onSelectChannel(channel.id)}

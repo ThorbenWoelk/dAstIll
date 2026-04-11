@@ -24,6 +24,7 @@
 
   let status = $state<SummaryAudioStatus>("missing");
   let summaryAudioError = $state<string | null>(null);
+  let audioRequested = $state(false);
   let audioPlayer = $state<HTMLAudioElement | null>(null);
   let audioSrc = $state<string | null>(null);
   let currentTime = $state(0);
@@ -70,6 +71,7 @@
     const session = readSummaryAudioSession(videoIdValue);
     status = session.status;
     summaryAudioError = session.summaryAudioError;
+    audioRequested = session.audioRequested;
     audioSrc = session.audioSrc;
     currentTime = session.currentTime;
     duration = session.duration;
@@ -130,9 +132,11 @@
         return;
       }
       if (resp.status === 503) {
-        const message =
-          (await resp.text()) || "Text-to-speech is currently unavailable.";
-        setSummaryAudioUnavailable(videoId, message);
+        if (readSummaryAudioSession(videoId).audioRequested) {
+          const message =
+            (await resp.text()) || "Text-to-speech is currently unavailable.";
+          setSummaryAudioUnavailable(videoId, message);
+        }
       }
     } catch (e) {
       console.error("Failed to check audio status", e);
@@ -290,7 +294,7 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <div class="waveform-player">
-  {#if status === "unavailable"}
+  {#if status === "unavailable" && audioRequested}
     <div class="waveform-area waveform-area-unavailable" role="status">
       <div class="waveform-bars waveform-bars-idle" aria-hidden="true">
         {#each waveformBars as height}
@@ -446,7 +450,7 @@
     </div>
   {/if}
 
-  {#if summaryAudioError}
+  {#if summaryAudioError && status !== "unavailable"}
     <span class="waveform-error">{summaryAudioError}</span>
   {/if}
 
@@ -710,5 +714,75 @@
 
   .ml-px {
     margin-left: 1px;
+  }
+
+  @media (max-width: 1023px) {
+    .waveform-player {
+      margin-bottom: 0;
+      min-width: 0;
+    }
+
+    .waveform-area,
+    .waveform-area-unavailable {
+      gap: 0.3rem;
+    }
+
+    .waveform-bars {
+      height: 26px;
+    }
+
+    .waveform-generate-btn {
+      min-width: 0;
+    }
+
+    .waveform-generate-overlay {
+      justify-content: flex-start;
+      padding: 0 0.35rem;
+      gap: 0.35rem;
+    }
+
+    .waveform-generate-label,
+    .waveform-status-label {
+      font-size: 9px;
+      letter-spacing: 0.1em;
+    }
+
+    .waveform-area-unavailable {
+      justify-content: center;
+    }
+
+    .waveform-unavailable-copy {
+      gap: 0.04rem;
+    }
+
+    .waveform-unavailable-text {
+      font-size: 10px;
+      line-height: 1.25;
+    }
+
+    .waveform-area-active {
+      grid-template-columns: auto 1fr auto;
+      gap: 0.45rem;
+    }
+
+    .waveform-controls {
+      gap: 0.15rem;
+    }
+
+    .waveform-play-btn {
+      width: 24px;
+      height: 24px;
+    }
+
+    .waveform-rate-btn {
+      min-width: 24px;
+      height: 18px;
+      font-size: 8px;
+      padding: 0 3px;
+    }
+
+    .waveform-time-text {
+      font-size: 9px;
+    }
   }
 </style>

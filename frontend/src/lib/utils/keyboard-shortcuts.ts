@@ -118,16 +118,41 @@ export function buildShortcutManual(
           description: "Focus search bar (when not typing in a field)",
         },
         {
-          keys: `${mod} + 7`,
+          keys: `${mod} + I`,
           description: "Switch video panel to Info",
         },
         {
-          keys: `${mod} + 8`,
+          keys: `${mod} + S`,
           description: "Switch video panel to Summary",
         },
         {
-          keys: `${mod} + 9`,
+          keys: `${mod} + H`,
+          description: "Switch video panel to Highlights",
+        },
+        {
+          keys: `${mod} + T`,
           description: "Switch video panel to Transcript",
+        },
+        {
+          keys: `${mod} + *`,
+          description:
+            "Run the primary summary/transcript action when available",
+        },
+        {
+          keys: `${mod} + ]`,
+          description: "Open the current item on YouTube when available",
+        },
+        {
+          keys: `${mod} + [`,
+          description: "Edit the current summary or transcript when available",
+        },
+        {
+          keys: `${mod} + Return`,
+          description: "Delete / reset the current item when available",
+        },
+        {
+          keys: `${mod} + .`,
+          description: "Toggle the read check when available",
         },
       ],
     },
@@ -210,10 +235,15 @@ export const GO_SEQUENCE_HINTS: readonly { key: string; label: string }[] = [
   { key: "4", label: "Vocabulary" },
   { key: "5", label: "Chat" },
   { key: "6", label: "Docs" },
-  { key: ",", label: "Settings" },
-  { key: "7", label: "Info (video tab)" },
-  { key: "8", label: "Summary (video tab)" },
-  { key: "9", label: "Transcript (video tab)" },
+  { key: "I", label: "Info (video tab)" },
+  { key: "S", label: "Summary (video tab)" },
+  { key: "H", label: "Highlights (video tab)" },
+  { key: "T", label: "Transcript (video tab)" },
+  { key: "*", label: "Primary action" },
+  { key: "]", label: "Open on YouTube" },
+  { key: "[", label: "Edit action" },
+  { key: "↵", label: "Delete / reset action" },
+  { key: ".", label: "Read check action" },
 ] as const;
 
 export type GoHintBadge = {
@@ -221,10 +251,7 @@ export type GoHintBadge = {
   style: string;
 };
 
-/**
- * One badge per visible `[data-go-hint-key]` target: beside rail rows (desktop)
- * or above tab items (mobile).
- */
+/** One badge per visible `[data-go-hint-key]` target, rendered over the target itself. */
 export function computeGoHintBadgeStyles(): GoHintBadge[] {
   if (typeof document === "undefined") {
     return [];
@@ -239,17 +266,11 @@ export function computeGoHintBadgeStyles(): GoHintBadge[] {
     if (el.getClientRects().length === 0) continue;
 
     const r = el.getBoundingClientRect();
-    const inMobileNav = Boolean(el.closest("#app-section-nav-mobile"));
-
-    let style: string;
-    if (inMobileNav) {
-      const top = Math.max(6, r.top - 20);
-      const cx = r.left + r.width / 2;
-      style = `left:${Math.round(cx)}px;top:${Math.round(top)}px;transform:translateX(-50%)`;
-    } else {
-      const gap = 8;
-      style = `left:${Math.round(r.right + gap)}px;top:${Math.round(r.top + r.height / 2)}px;transform:translateY(-50%)`;
-    }
+    const top = Math.round(r.top + r.height * 0.86);
+    const isCompactTarget = r.width <= 44;
+    const rightInset = isCompactTarget ? -8 : 6;
+    const left = Math.round(r.right + rightInset);
+    const style = `left:${left}px;top:${top}px;transform:translate(-100%,-50%)`;
 
     out.push({ key, style });
   }

@@ -16,6 +16,7 @@
     tooltip = "",
     tooltipAnchor = undefined,
     tooltipPlacement = "bottom",
+    goHintKey = undefined,
     href = null,
     onClick = () => {},
   }: {
@@ -28,6 +29,7 @@
     tooltip?: string;
     tooltipAnchor?: string | undefined;
     tooltipPlacement?: string | undefined;
+    goHintKey?: string | undefined;
     href?: string | null;
     onClick?: () => void;
   } = $props();
@@ -49,6 +51,7 @@
     rel="noopener noreferrer"
     class={`${buttonClass} ${className}`}
     aria-label={label}
+    data-go-hint-key={goHintKey}
     data-tooltip={tooltip}
     data-tooltip-anchor={tooltipAnchor}
     data-tooltip-placement={tooltipPlacement}
@@ -75,6 +78,7 @@
     onclick={onClick}
     {disabled}
     aria-label={label}
+    data-go-hint-key={goHintKey}
     data-tooltip={tooltip}
     data-tooltip-anchor={tooltipAnchor}
     data-tooltip-placement={tooltipPlacement}

@@ -359,7 +359,7 @@
           onclick={closeAll}
         ></button>
         <div
-          class="relative z-10 flex max-h-[min(36rem,85vh)] w-full flex-col overflow-hidden rounded-t-[calc(var(--radius-lg)+0.25rem)] border-t border-[var(--border-soft)] bg-[var(--surface-strong)] px-2 pt-2 shadow-2xl"
+          class="workspace-user-menu-sheet relative z-10 flex max-h-[min(36rem,85vh)] w-full flex-col overflow-hidden rounded-t-[calc(var(--radius-lg)+0.25rem)] border-t border-[var(--border-soft)] bg-[var(--surface-strong)] px-2 pt-2 shadow-2xl"
           role="dialog"
           aria-modal="true"
           aria-label="Settings"
@@ -373,7 +373,7 @@
       </div>
 
       <div
-        class="absolute bottom-full left-0 z-[55] hidden w-72 flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--surface-strong)] p-1.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] lg:flex mb-2"
+        class="workspace-user-menu-panel absolute bottom-full left-0 z-[55] hidden w-72 flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--surface-strong)] p-1.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] lg:flex mb-2"
         role="menu"
       >
         {@render menuContent()}
@@ -381,3 +381,28 @@
     {/if}
   </div>
 </div>
+
+<style>
+  .workspace-user-menu-panel,
+  .workspace-user-menu-sheet {
+    --background: #faf9f6;
+    --foreground: #1a1a1a;
+    --soft-foreground: #5a5a5a;
+    --surface: #ffffff;
+    --surface-strong: #fffdf9;
+    --border-soft: color-mix(in srgb, #e8e2d9 88%, white);
+    --accent-wash: color-mix(in srgb, var(--accent) 8%, var(--surface));
+    color: var(--foreground);
+  }
+
+  :global(.dark) .workspace-user-menu-panel,
+  :global(.dark) .workspace-user-menu-sheet {
+    --background: #111315;
+    --foreground: #f4efe9;
+    --soft-foreground: #b8b1aa;
+    --surface: #181b1f;
+    --surface-strong: #1d2126;
+    --border-soft: color-mix(in srgb, #363d45 78%, white);
+    --accent-wash: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  }
+</style>

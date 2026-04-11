@@ -140,6 +140,7 @@ pub fn spawn_summary_evaluation_worker(state: AppState) {
                                     Some(result.quality_score),
                                     result.quality_note.as_deref(),
                                     result.quality_model_used.as_deref(),
+                                    Some(&result.summary_tags),
                                 )
                                 .await;
                                 evict_video_scope_cache(&state, &job.video_id).await;

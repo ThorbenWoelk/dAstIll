@@ -82,6 +82,7 @@ export function createHomeWorkspaceViewModel(options: {
     summaryQualityNote: options.content.summaryQualityNote,
     summaryModelUsed: options.content.summaryModelUsed,
     summaryQualityModelUsed: options.content.summaryQualityModelUsed,
+    summaryTags: options.content.summaryTags,
     videoInfo: options.getVideoInfo(),
     contentHtml: options.getContentHtml(),
     contentText: options.getContentText(),
