@@ -611,7 +611,7 @@
   {#if mode === "markdown"}
     <article
       bind:this={articleElement}
-      class={`prose max-w-none break-words leading-relaxed transition-opacity duration-500 prose-headings:font-serif prose-headings:font-bold prose-headings:tracking-tight prose-h1:text-xl prose-h2:text-lg prose-h3:text-base prose-p:text-[17px] prose-p:leading-[1.75] prose-p:tracking-[-0.01em] prose-strong:font-bold prose-a:text-[var(--accent)] prose-a:underline-offset-4 prose-blockquote:border-l-[var(--accent)] prose-blockquote:bg-[var(--accent-soft)]/30 prose-blockquote:py-1 prose-blockquote:px-6 prose-blockquote:rounded-r-lg ${
+      class={`workspace-article prose max-w-none break-words leading-relaxed transition-opacity duration-500 prose-headings:font-serif prose-headings:font-bold prose-headings:tracking-tight prose-h1:text-[clamp(2rem,4vw,3rem)] prose-h2:text-[clamp(1.4rem,2.2vw,1.8rem)] prose-h3:text-[1.1rem] prose-p:text-[18px] prose-p:leading-[1.82] prose-p:tracking-[-0.01em] prose-strong:font-bold prose-a:text-[var(--accent)] prose-a:underline-offset-4 prose-blockquote:border-l-[var(--accent)] prose-blockquote:bg-[var(--accent-soft)]/30 prose-blockquote:py-1 prose-blockquote:px-6 prose-blockquote:rounded-r-lg ${
         formatting ? "opacity-40 grayscale blur-[1px]" : "opacity-100"
       }`}
     >
@@ -620,7 +620,7 @@
   {:else}
     <article
       bind:this={articleElement}
-      class={`max-w-none whitespace-pre-wrap break-words text-[17px] leading-[1.75] tracking-[-0.01em] text-[var(--foreground)] transition-opacity duration-500 ${
+      class={`workspace-plain-text max-w-none whitespace-pre-wrap break-words text-[18px] leading-[1.85] tracking-[-0.01em] text-[var(--foreground)] transition-opacity duration-500 ${
         formatting ? "opacity-40 grayscale blur-[1px]" : "opacity-100"
       }`}
     >
@@ -764,6 +764,13 @@
     transition: all 200ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
+  .workspace-article,
+  .workspace-plain-text {
+    width: 100%;
+    max-width: 54rem;
+    margin: 0 auto;
+  }
+
   :global(.prose h1, .prose h2, .prose h3) {
     font-variation-settings:
       "opsz" 72,
@@ -788,5 +795,12 @@
 
   :global(mark.reader-highlight:hover) {
     background: var(--reader-highlight-bg-hover);
+  }
+
+  @media (max-width: 1023px) {
+    .workspace-article,
+    .workspace-plain-text {
+      max-width: 100%;
+    }
   }
 </style>

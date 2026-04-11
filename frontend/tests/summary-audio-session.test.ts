@@ -5,6 +5,7 @@ import {
   readSummaryAudioSession,
   resetSummaryAudioSessionsForTesting,
   resolveSummaryAudioTimelineState,
+  setSummaryAudioUnavailable,
   syncSummaryAudioDebugState,
 } from "../src/lib/workspace/summary-audio-session";
 
@@ -64,6 +65,29 @@ describe("summary audio session", () => {
       sliderMax: 180,
       sliderValue: 45,
       progressPercent: 25,
+    });
+  });
+
+  it("keeps the unavailable audio state until a later successful debug sync", () => {
+    resetSummaryAudioSessionsForTesting();
+
+    setSummaryAudioUnavailable("video-1", "Polly TTS is not configured");
+    expect(readSummaryAudioSession("video-1")).toMatchObject({
+      status: "unavailable",
+      summaryAudioError: "Sorry, audio playback is not available right now.",
+    });
+
+    syncSummaryAudioDebugState("video-1", {
+      cache_hit: false,
+      word_count: 120,
+      estimated_secs: 7,
+    });
+
+    expect(readSummaryAudioSession("video-1")).toMatchObject({
+      status: "unavailable",
+      summaryAudioError: "Sorry, audio playback is not available right now.",
+      summaryWordCount: 120,
+      estimatedSecs: 7,
     });
   });
 });

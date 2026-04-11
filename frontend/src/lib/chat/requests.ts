@@ -15,6 +15,7 @@ import {
   request,
   resolveApiUrl,
 } from "../api-client";
+import { normalizeUserErrorMessage } from "../user-error";
 
 type ChatStreamHandlers = {
   onStatus?: (status: ChatStreamStatus) => void;
@@ -200,7 +201,9 @@ export function flushPendingStreamEvent(
       handlers.onDone?.(data?.message as ChatMessage);
       break;
     case "error":
-      handlers.onError?.(data?.message ?? "Stream failed.");
+      handlers.onError?.(
+        normalizeUserErrorMessage(data?.message ?? "Stream failed."),
+      );
       break;
     default:
       break;
@@ -227,11 +230,18 @@ async function streamChatReply(
 
   if (!response.ok) {
     const message = await response.text();
-    throw new Error(message || `Request failed (${response.status})`);
+    throw new Error(
+      normalizeUserErrorMessage(
+        message || `Request failed (${response.status})`,
+        {
+          status: response.status,
+        },
+      ),
+    );
   }
 
   if (!response.body) {
-    throw new Error("Streaming response body is unavailable.");
+    throw new Error("Sorry, the reply could not be loaded.");
   }
 
   const reader = response.body.getReader();

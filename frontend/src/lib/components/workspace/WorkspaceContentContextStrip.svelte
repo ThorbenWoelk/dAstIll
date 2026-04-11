@@ -39,11 +39,18 @@
     onShowChannels: () => void;
     onShowVideos: () => void;
   } = $props();
+
+  const CONTENT_MODE_EYEBROW: Record<WorkspaceContentMode, string> = {
+    transcript: "Source transcript",
+    summary: "Distilled summary",
+    highlights: "Saved highlights",
+    info: "Video context",
+  };
 </script>
 
 {#if selectedVideoId && !loadingContent && selectedVideo}
   <nav
-    class="mb-3 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[12px] text-[var(--soft-foreground)] opacity-60 sm:mb-4"
+    class="mb-3 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--soft-foreground)] opacity-60 sm:mb-4"
     aria-label="Breadcrumb"
   >
     {#if selectedChannel}
@@ -70,20 +77,38 @@
     {/if}
     <button
       type="button"
-      class="text-left font-medium text-[var(--foreground)] opacity-80 transition-opacity hover:opacity-100"
+      class="text-left font-medium tracking-normal text-[var(--foreground)] opacity-80 transition-opacity hover:opacity-100"
       onclick={onShowVideos}
     >
       {selectedVideo.title}
     </button>
   </nav>
+
+  <div class="content-hero">
+    <div class="content-hero-copy">
+      <p class="content-hero-eyebrow">{CONTENT_MODE_EYEBROW[contentMode]}</p>
+      <h1 class="content-hero-title">{selectedVideo.title}</h1>
+    </div>
+
+    {#if contentMode === "summary"}
+      <div class="content-hero-meta">
+        <WorkspaceSummaryMeta
+          score={summaryQualityScore}
+          note={summaryQualityNote}
+          modelUsed={summaryModelUsed}
+          qualityModelUsed={summaryQualityModelUsed}
+        />
+      </div>
+    {/if}
+  </div>
 {/if}
 
 {#if contentMode === "transcript" && selectedVideoId && ((formattingContent && formattingVideoId === selectedVideoId) || (formattingNotice && formattingNoticeVideoId === selectedVideoId))}
   <div
-    class={`mb-4 flex flex-wrap items-center gap-3 rounded-[var(--radius-md)] border p-4 transition-all duration-500 sm:mb-8 ${
+    class={`mb-5 flex flex-wrap items-center gap-3 rounded-[var(--radius-full)] border px-4 py-3 transition-all duration-500 sm:mb-8 sm:px-5 ${
       formattingNoticeTone === "warning"
-        ? "border-[var(--accent)]/20 bg-[var(--accent-soft)]/50 text-[var(--accent-strong)]"
-        : "border-[var(--accent-border-soft)] bg-[var(--accent-wash)] text-[var(--soft-foreground)]"
+        ? "border-[var(--accent)]/20 bg-[var(--accent-soft)] text-[var(--accent-strong)]"
+        : "border-[var(--accent-border-soft)] bg-[var(--surface)] text-[var(--soft-foreground)]"
     }`}
     role="status"
     aria-live="polite"
@@ -111,7 +136,7 @@
         <polyline points="12 6 12 12 16 14" />
       </svg>
     {/if}
-    <p class="text-[12px] font-bold uppercase tracking-wide">
+    <p class="text-[11px] font-bold uppercase tracking-[0.12em]">
       {formattingContent && formattingVideoId === selectedVideoId
         ? formattingNotice || "Refining transcript with Ollama..."
         : formattingNotice}
@@ -125,27 +150,80 @@
       videoId={selectedVideoId}
       summaryReady={selectedVideo?.summary_status === "ready"}
     />
-    <WorkspaceSummaryMeta
-      score={summaryQualityScore}
-      note={summaryQualityNote}
-      modelUsed={summaryModelUsed}
-      qualityModelUsed={summaryQualityModelUsed}
-    />
   </div>
 {/if}
 
 <style>
-  .summary-embed-strip {
+  .content-hero {
     display: grid;
-    grid-template-columns: 1fr auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 1.5rem;
+    align-items: start;
+    margin-bottom: 1.5rem;
+  }
+
+  .content-hero-copy {
+    min-width: 0;
+    max-width: 58rem;
+  }
+
+  .content-hero-eyebrow {
+    margin: 0 0 0.55rem;
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--soft-foreground);
+    opacity: 0.7;
+  }
+
+  .content-hero-title {
+    margin: 0;
+    font-family: "Fraunces", serif;
+    font-size: clamp(2.2rem, 5vw, 4.3rem);
+    line-height: 0.98;
+    letter-spacing: -0.04em;
+    text-wrap: balance;
+    font-variation-settings:
+      "opsz" 72,
+      "wght" 650;
+  }
+
+  .content-hero-meta {
+    padding-top: 0.4rem;
+  }
+
+  .summary-embed-strip {
+    display: block;
+    max-width: 42rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .summary-embed-strip :global(.waveform-player) {
+    width: 100%;
+    max-width: 42rem;
     align-items: start;
   }
 
   @media (max-width: 1023px) {
-    .summary-embed-strip {
+    .content-hero {
       grid-template-columns: 1fr;
-      gap: 0;
+      gap: 0.85rem;
+      margin-bottom: 1.1rem;
+    }
+
+    .content-hero-title {
+      font-size: clamp(1.8rem, 8.5vw, 3rem);
+      line-height: 1.02;
+    }
+
+    .content-hero-meta {
+      padding-top: 0;
+    }
+
+    .summary-embed-strip {
+      max-width: none;
+      margin-bottom: 0.25rem;
     }
   }
 </style>

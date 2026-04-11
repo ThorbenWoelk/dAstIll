@@ -81,8 +81,10 @@
   ondragover={onDragOver}
   ondrop={onDrop}
   ondragend={onDragEnd}
-  class={`group relative flex w-full min-w-0 items-center gap-2 rounded-[var(--radius-sm)] px-2 py-2 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${trailingSpaceClass} ${
-    active ? "bg-[var(--accent-wash)]" : "hover:bg-[var(--accent-wash)]"
+  class={`group relative flex w-full min-w-0 items-center gap-3 rounded-[18px] px-3 py-2.5 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${trailingSpaceClass} ${
+    active
+      ? "bg-[var(--panel-surface)] ring-1 ring-[var(--accent-border-soft)]"
+      : "hover:bg-[var(--accent-wash)]"
   } ${dragging || loading ? "opacity-40" : ""} ${dragOver ? "ring-2 ring-[var(--accent)]/30" : ""} ${loading ? "animate-pulse" : ""} ${draggableEnabled ? (dragging ? "cursor-grabbing" : "cursor-grab") : ""}`}
   onclick={onSelect}
   disabled={loading}
@@ -92,7 +94,9 @@
       class="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-r-full bg-[var(--accent)]"
     ></div>
   {/if}
-  <div class="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-[var(--muted)]">
+  <div
+    class="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-[var(--muted)]"
+  >
     <img
       src={avatarUrl}
       alt={channel.name}
@@ -106,12 +110,12 @@
   </div>
   <div class="min-w-0 flex-1">
     <p
-      class="truncate text-[14px] font-semibold leading-tight tracking-tight text-[var(--foreground)]"
+      class="truncate text-[13px] font-semibold leading-tight tracking-tight text-[var(--foreground)]"
     >
       {channel.name}
     </p>
     <p
-      class="mt-1 truncate text-[11px] font-medium text-[var(--soft-foreground)] opacity-40"
+      class="mt-1 truncate text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--soft-foreground)] opacity-45"
     >
       {channel.handle ?? channel.id}
     </p>
