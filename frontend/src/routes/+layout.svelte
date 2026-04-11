@@ -62,14 +62,9 @@
   }
 
   $effect(() => {
-    authState.setServerAuth(
-      data.auth ?? {
-        userId: null,
-        authState: "anonymous",
-        accessRole: "anonymous",
-        email: null,
-      },
-    );
+    if (data.auth) {
+      authState.setServerAuth(data.auth);
+    }
   });
 
   $effect(() => {

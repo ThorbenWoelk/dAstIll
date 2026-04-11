@@ -147,6 +147,32 @@ describe("auth state controller", () => {
     });
   });
 
+  it("preserves an established Firebase session when server auth falls back to anonymous", async () => {
+    const { authState } = await loadAuthStateModule();
+    await authState.signInWithGoogle();
+
+    mockSignOut.mockClear();
+    mockSignInAnonymously.mockClear();
+
+    authState.setServerAuth({
+      userId: null,
+      authState: "anonymous",
+      accessRole: "anonymous",
+      email: null,
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mockSignOut).not.toHaveBeenCalled();
+    expect(mockSignInAnonymously).not.toHaveBeenCalled();
+    expect(authState.current).toEqual({
+      userId: "google-123",
+      authState: "authenticated",
+      accessRole: "user",
+      email: "person@example.com",
+    });
+  });
+
   it("signs in with Google without exchanging a server session", async () => {
     const { authState } = await loadAuthStateModule();
 
