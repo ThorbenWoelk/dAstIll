@@ -125,7 +125,7 @@ export function createHomeWorkspacePage() {
       persistenceController.replaceWorkspaceUrl(href);
     },
     onOpenChannelOverview: async (channelId: string) => {
-      await goto(`/channels/${encodeURIComponent(channelId)}`);
+      await sidebarState.selectChannel(channelId);
     },
     onChannelAdded: (channel: Channel) => {
       void addSourceFeedbackCtrl.trackAddedChannel(channel);

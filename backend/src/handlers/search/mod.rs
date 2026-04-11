@@ -542,10 +542,10 @@ mod tests {
         security::{AccessContext, AccessRole, AuthState},
         services::fts::FtsSourceMeta,
         services::{
-            ChatService, CloudCooldown, FtsChunk, OllamaCore, OpenAlexPlannerService,
-            OpenAlexService, PodcastFeedService, SearchService, SearchSourceKind,
-            SummarizerService, SummaryEvaluatorService, TranscriptCooldown, TranscriptService,
-            UserActivity, WebsiteService, YouTubeQuotaCooldown, YouTubeService,
+            ChatService, CloudCooldown, FtsChunk, InputGuardrailService, OllamaCore,
+            OpenAlexPlannerService, OpenAlexService, PodcastFeedService, SearchService,
+            SearchSourceKind, SummarizerService, SummaryEvaluatorService, TranscriptCooldown,
+            TranscriptService, UserActivity, WebsiteService, YouTubeQuotaCooldown, YouTubeService,
         },
         state::AppState,
     };
@@ -591,6 +591,11 @@ mod tests {
             )),
             chat: Arc::new(ChatService::new(
                 OllamaCore::new("://invalid-url", "qwen3:8b").with_cloud_cooldown(cooldown.clone()),
+            )),
+            input_guardrails: Arc::new(InputGuardrailService::new(
+                OllamaCore::new("://invalid-url", "qwen3:8b").with_cloud_cooldown(cooldown.clone()),
+                Vec::new(),
+                Vec::new(),
             )),
             analytics: None,
             active_replies: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),

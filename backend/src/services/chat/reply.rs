@@ -75,12 +75,14 @@ impl ChatService {
                 Err(error) => {
                     if error == "cancelled" {
                         tracing::info!(conversation_id = %conversation_id, "chat reply cancelled");
-                        let message = self.build_assistant_message(
-                            "Response cancelled.".to_string(),
-                            Vec::new(),
-                            ChatMessageStatus::Cancelled,
-                            None,
-                        );
+                        let (status, content) = active_reply
+                            .cancelled_outcome()
+                            .unwrap_or((
+                                ChatMessageStatus::Cancelled,
+                                "Response cancelled.".to_string(),
+                            ));
+                        let message =
+                            self.build_assistant_message(content, Vec::new(), status, None);
                         if persist_to_store {
                             let _ = persist_assistant_message(
                                 &state,

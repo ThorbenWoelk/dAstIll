@@ -189,9 +189,22 @@ export function createHomeWorkspaceDataController(options: {
       return;
     }
 
+    const fallbackVideoId =
+      sidebarState.videos.find(
+        (video) =>
+          video.transcript_status === "ready" &&
+          video.summary_status === "ready",
+      )?.id ??
+      sidebarState.videos.find((video) => video.transcript_status === "ready")
+        ?.id ??
+      sidebarState.videos[0]?.id ??
+      null;
+
     if (!preferredVideoId) {
       options.setPendingSelectedVideo(null);
-      void selectVideo(sidebarState.videos[0].id);
+      if (fallbackVideoId) {
+        void selectVideo(fallbackVideoId);
+      }
       return;
     }
 
@@ -250,7 +263,9 @@ export function createHomeWorkspaceDataController(options: {
         return;
       }
 
-      void selectVideo(sidebarState.videos[0].id);
+      if (fallbackVideoId) {
+        void selectVideo(fallbackVideoId);
+      }
       return;
     }
 

@@ -19,7 +19,7 @@ use crate::{
     read_cache::SuggestedVideo,
     security::{AccessContext, AuthState},
     services::{
-        ReplyWorkflowRequest,
+        CHAT_INPUT_BLOCK_MESSAGE, ReplyWorkflowRequest,
         chat::{
             default_chat_cloud_model_id, enforce_chat_conversation_storage_limits,
             is_chat_cloud_model_choice, validate_chat_conversation_bounds, validate_chat_prompt,
@@ -470,6 +470,19 @@ pub async fn start_conversation_reply(
     }
     validate_chat_prompt(prompt)
         .map_err(|message| (StatusCode::BAD_REQUEST, message.to_string()))?;
+    match state.input_guardrails.evaluate_blocking_input(prompt).await {
+        Ok(verdict) if !verdict.allow => {
+            return Err((StatusCode::FORBIDDEN, CHAT_INPUT_BLOCK_MESSAGE.to_string()));
+        }
+        Ok(_) => {}
+        Err(error) => {
+            tracing::error!(conversation_id = %conversation_id, error = %error, "chat blocking guardrail failed");
+            return Err((
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Chat safety checks are unavailable.".to_string(),
+            ));
+        }
+    }
 
     let runtime_key = active_reply_key(&access_context, &conversation_id);
     let active_reply = {
@@ -525,6 +538,11 @@ pub async fn start_conversation_reply(
         active_reply: active_reply.clone(),
         persist_to_store: true,
     });
+    state.input_guardrails.spawn_nonblocking_monitor(
+        conversation_id,
+        prompt.to_string(),
+        active_reply.clone(),
+    );
 
     Ok(reply_sse_response(active_reply).await)
 }
@@ -564,6 +582,19 @@ pub async fn start_ephemeral_reply(
     }
     validate_chat_prompt(prompt)
         .map_err(|message| (StatusCode::BAD_REQUEST, message.to_string()))?;
+    match state.input_guardrails.evaluate_blocking_input(prompt).await {
+        Ok(verdict) if !verdict.allow => {
+            return Err((StatusCode::FORBIDDEN, CHAT_INPUT_BLOCK_MESSAGE.to_string()));
+        }
+        Ok(_) => {}
+        Err(error) => {
+            tracing::error!(conversation_id = %payload.conversation.id, error = %error, "ephemeral chat blocking guardrail failed");
+            return Err((
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Chat safety checks are unavailable.".to_string(),
+            ));
+        }
+    }
 
     validate_ephemeral_conversation(&payload.conversation)?;
 
@@ -622,6 +653,11 @@ pub async fn start_ephemeral_reply(
         active_reply: active_reply.clone(),
         persist_to_store: false,
     });
+    state.input_guardrails.spawn_nonblocking_monitor(
+        conversation_id,
+        prompt.to_string(),
+        active_reply.clone(),
+    );
 
     Ok(reply_sse_response(active_reply).await)
 }

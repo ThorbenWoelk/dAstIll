@@ -1004,6 +1004,11 @@ mod tests {
             chat: Arc::new(ChatService::new(
                 OllamaCore::new("://invalid-url", "qwen3:8b").with_cloud_cooldown(cooldown.clone()),
             )),
+            input_guardrails: Arc::new(crate::services::InputGuardrailService::new(
+                OllamaCore::new("://invalid-url", "qwen3:8b").with_cloud_cooldown(cooldown.clone()),
+                Vec::new(),
+                Vec::new(),
+            )),
             analytics: None,
             active_replies: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
             conversation_store_lock: Arc::new(tokio::sync::Mutex::new(())),
