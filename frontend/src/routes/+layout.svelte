@@ -18,9 +18,8 @@
   import SignInRequiredModal from "$lib/components/SignInRequiredModal.svelte";
   import GlobalKeyboardShortcuts from "$lib/components/GlobalKeyboardShortcuts.svelte";
   import MobileViewportInset from "$lib/components/MobileViewportInset.svelte";
-  import MobileBottomTabBar from "$lib/components/mobile/MobileBottomTabBar.svelte";
+  import MobileSectionDrawer from "$lib/components/mobile/MobileSectionDrawer.svelte";
   import ServiceWorkerRegistration from "$lib/components/ServiceWorkerRegistration.svelte";
-  import { resolveCurrentSectionFromPathname } from "$lib/mobile-navigation/resolveCurrentSectionFromPathname";
   import { applyStoredTheme } from "$lib/theme";
 
   let {
@@ -106,13 +105,31 @@
     if (!to) return;
   });
 
-  let currentSection = $derived(
-    resolveCurrentSectionFromPathname(page.url.pathname),
-  );
-  let showBottomTabBar = $derived(
+  let sectionDrawerOpen = $state(false);
+  let showDrawer = $derived(
     !page.url.pathname.startsWith("/login") &&
       !page.url.pathname.startsWith("/logout"),
   );
+
+  $effect(() => {
+    if (typeof window === "undefined") return;
+
+    function handleOpenDrawer() {
+      sectionDrawerOpen = true;
+    }
+    window.addEventListener("dastill:open-section-drawer", handleOpenDrawer);
+    return () =>
+      window.removeEventListener(
+        "dastill:open-section-drawer",
+        handleOpenDrawer,
+      );
+  });
+
+  // Close drawer on navigation
+  $effect(() => {
+    page.url.pathname;
+    sectionDrawerOpen = false;
+  });
 
   function confirmAuthRequiredSignIn() {
     const redirectTo = `${page.url.pathname}${page.url.search}`;
@@ -149,7 +166,12 @@
   <div class="min-h-0 flex-1">
     {@render children()}
   </div>
-  {#if showBottomTabBar}
-    <MobileBottomTabBar {currentSection} />
+  {#if showDrawer}
+    <MobileSectionDrawer
+      open={sectionDrawerOpen}
+      onClose={() => {
+        sectionDrawerOpen = false;
+      }}
+    />
   {/if}
 </div>
