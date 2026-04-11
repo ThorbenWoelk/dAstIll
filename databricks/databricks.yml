@@ -37,6 +37,8 @@ targets:
 
   prod:
     mode: production
+    workspace:
+      root_path: /Shared/.bundle/${bundle.name}/prod
     variables:
       # Match GitHub Actions / Cloud Run DATABRICKS_SCHEMA when not sandbox.
       bronze_schema: analytics
