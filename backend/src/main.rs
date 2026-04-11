@@ -576,11 +576,16 @@ async fn main() -> anyhow::Result<()> {
             get(channels::workspace_bootstrap),
         )
         .route(
+            "/api/auth/mobile-handoff",
+            post(auth::create_mobile_auth_handoff),
+        )
+        .route(
             "/api/auth/mobile-handoff/{id}",
-            post(auth::create_mobile_auth_handoff)
-                .put(auth::complete_mobile_auth_handoff)
-                .get(auth::get_mobile_auth_handoff)
-                .delete(auth::delete_mobile_auth_handoff),
+            axum::routing::put(auth::complete_mobile_auth_handoff),
+        )
+        .route(
+            "/api/auth/mobile-handoff/{id}/redeem",
+            post(auth::redeem_mobile_auth_handoff),
         )
         .route(
             "/api/channels",

@@ -37,9 +37,9 @@
   async function handleGoogleSignIn() {
     if (usesSystemBrowserAuth) {
       browserAuthPending = true;
-      const sessionId =
+      const { handoffSessionId, redeemToken } =
         await startTauriAndroidBrowserAuthHandoff(workspaceHref);
-      await finishTauriAndroidBrowserAuthHandoff(sessionId);
+      await finishTauriAndroidBrowserAuthHandoff(handoffSessionId, redeemToken);
       browserAuthPending = false;
       await continueToWorkspace();
       browserAuthNoticeDismissed = false;

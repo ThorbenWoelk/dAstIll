@@ -35,6 +35,9 @@ impl ActiveChatKey {
 #[derive(Debug, Clone)]
 pub struct MobileAuthHandoff {
     pub created_at: Instant,
+    pub creator_binding_hash: String,
+    pub complete_token_hash: String,
+    pub redeem_token_hash: String,
     pub google_id_token: Option<String>,
     pub google_access_token: Option<String>,
 }

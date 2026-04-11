@@ -84,11 +84,13 @@ The frontend also has a Tauri Android dev fallback for `http://tauri.localhost`:
 
 Google blocks sign-in inside the Android WebView used by Tauri. The current app handles that by:
 
-1. creating a short-lived `/api/auth/mobile-handoff/{id}` session on the backend
-2. opening `/login?mobileBrowserAuth=1&handoffSession=<id>` in the system browser
+1. creating a short-lived `/api/auth/mobile-handoff` session on the backend
+2. opening `/login?mobileBrowserAuth=1&handoffSession=<id>` in the system browser with a completion secret in the URL fragment
 3. completing Google sign-in in the browser
-4. posting the reusable Google tokens back to the handoff session
-5. polling that session from the Android shell and finishing Firebase sign-in locally
+4. posting the Google tokens back to the handoff session with the completion secret
+5. redeeming the completed handoff once from the Android shell with a separate redeem secret, then finishing Firebase sign-in locally
+
+The browser no longer polls or fetches reusable Google tokens over `GET`. The redeem step is one-shot and bound to the creator of the handoff.
 
 If your browser-hosted login page lives on a different origin than the Tauri-loaded frontend, set `PUBLIC_BROWSER_AUTH_BASE_URL` (or `VITE_BROWSER_AUTH_BASE_URL`) in the frontend env so the mobile shell opens the correct browser origin for the handoff.
 
