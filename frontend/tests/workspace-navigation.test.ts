@@ -20,11 +20,11 @@ describe("WORKSPACE_CONTENT_MODE_ORDER", () => {
 });
 
 describe("goHintKeyForWorkspaceContentMode", () => {
-  it("maps numeric modifier hints to the supported content tabs", () => {
-    expect(goHintKeyForWorkspaceContentMode("info")).toBe("7");
-    expect(goHintKeyForWorkspaceContentMode("summary")).toBe("8");
-    expect(goHintKeyForWorkspaceContentMode("highlights")).toBeUndefined();
-    expect(goHintKeyForWorkspaceContentMode("transcript")).toBe("9");
+  it("maps letter modifier hints to the supported content tabs", () => {
+    expect(goHintKeyForWorkspaceContentMode("info")).toBe("I");
+    expect(goHintKeyForWorkspaceContentMode("summary")).toBe("S");
+    expect(goHintKeyForWorkspaceContentMode("highlights")).toBe("H");
+    expect(goHintKeyForWorkspaceContentMode("transcript")).toBe("T");
   });
 });
 

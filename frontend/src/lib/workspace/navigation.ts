@@ -31,9 +31,10 @@ export function goHintKeyForWorkspaceContentMode(
   mode: WorkspaceContentMode,
 ): string | undefined {
   const keys: Partial<Record<WorkspaceContentMode, string>> = {
-    info: "7",
-    summary: "8",
-    transcript: "9",
+    info: "I",
+    summary: "S",
+    highlights: "H",
+    transcript: "T",
   };
   return keys[mode];
 }

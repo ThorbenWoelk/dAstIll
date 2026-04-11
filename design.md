@@ -9,6 +9,8 @@ Muted, zen, minimalistic. Content first, no decorative chrome. Prefer restraint 
 
 **Borders and boxes**: Use as little as possible. Prefer whitespace, typography weight, and color contrast to create separation and hierarchy. Borders and background boxes around text or UI elements should be a last resort.
 
+**No accent outline chrome**: Do not use decorative accent-colored line borders, outline rings, or thin red/orange strokes around cards, rows, pills, or spotlighted elements. The accent family may tint fills, text, or soft glows, but it must not appear as a visible perimeter stroke except when conveying a true semantic state such as danger or destructive confirmation.
+
 ---
 
 ## Visual Atoms
@@ -98,6 +100,15 @@ All pages (Workspace, Queue, Highlights) must share the same `AppShell` structur
 - **Page Nav (Header)**: Rounded pills, uppercase, tracking-wide.
 - **Content Tabs**: `Toggle.svelte` (pill style). Avoid underline tabs.
 - **Mobile Bottom Bar**: Shared app-level navigation for **Workspace | Queue | Highlights | Settings**.
+
+### Shortcut Naming
+
+- Shortcut hints must follow one clear grammar across the app.
+- **Navigation** uses numbers: `Cmd/Ctrl + 1..6`.
+- **Content modes / tabs** use mnemonic letters: for example `I`, `S`, `H`, `T`.
+- **Inline actions** use symbols only. Do not assign letter shortcuts to action-row buttons when a symbol shortcut is available.
+- Keep hint labels visually short. Prefer one-character hint chips over wordy badges.
+- When adding a new shortcut, update both the visible hint and the actual keyboard handler in the same change.
 
 ---
 

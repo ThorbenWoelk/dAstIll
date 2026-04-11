@@ -58,7 +58,7 @@
 </script>
 
 <aside
-  class="relative z-50 hidden h-full shrink-0 flex-col border-r border-[var(--border-soft)] bg-[var(--panel-surface)] lg:flex"
+  class="workspace-nav-rail relative z-50 hidden h-full shrink-0 flex-col border-r border-[var(--border-soft)] bg-[var(--panel-surface)] lg:flex"
   style="width: {width}px;"
 >
   {#if collapsed}
@@ -186,3 +186,37 @@
     </span>
   </div>
 </aside>
+
+<style>
+  .workspace-nav-rail {
+    --background: #121417;
+    --foreground: #f5efe8;
+    --soft-foreground: #b7ada4;
+    --surface: color-mix(in srgb, white 10%, #121417);
+    --surface-strong: color-mix(in srgb, white 14%, #121417);
+    --panel-surface: #121417;
+    --panel-surface-strong: color-mix(in srgb, white 8%, #121417);
+    --border: color-mix(in srgb, white 18%, #121417);
+    --border-soft: color-mix(in srgb, white 10%, #121417);
+    --muted: color-mix(in srgb, white 8%, #121417);
+    --color-swatch: color-mix(in srgb, var(--accent) 88%, white);
+    --accent-wash: color-mix(in srgb, var(--accent) 20%, #121417);
+    --accent-wash-strong: color-mix(in srgb, var(--accent) 28%, #121417);
+  }
+
+  :global(.dark) .workspace-nav-rail {
+    --background: #f4efe8;
+    --foreground: #17181a;
+    --soft-foreground: #6b6259;
+    --surface: color-mix(in srgb, black 4%, #f4efe8);
+    --surface-strong: color-mix(in srgb, black 8%, #f4efe8);
+    --panel-surface: #f4efe8;
+    --panel-surface-strong: color-mix(in srgb, black 3%, #f4efe8);
+    --border: color-mix(in srgb, black 16%, #f4efe8);
+    --border-soft: color-mix(in srgb, black 10%, #f4efe8);
+    --muted: color-mix(in srgb, black 4%, #f4efe8);
+    --color-swatch: color-mix(in srgb, var(--accent) 88%, black);
+    --accent-wash: color-mix(in srgb, var(--accent) 16%, #f4efe8);
+    --accent-wash-strong: color-mix(in srgb, var(--accent) 22%, #f4efe8);
+  }
+</style>

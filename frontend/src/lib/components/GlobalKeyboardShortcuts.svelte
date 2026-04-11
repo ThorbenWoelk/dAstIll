@@ -18,6 +18,23 @@
   let showGoHints = $state(false);
   let goHintPositions = $state<GoHintBadge[]>([]);
 
+  function triggerHintedAction(key: string): boolean {
+    if (typeof document === "undefined") {
+      return false;
+    }
+
+    const nodes = Array.from(
+      document.querySelectorAll<HTMLElement>(`[data-go-hint-key="${key}"]`),
+    );
+    const target = nodes.find((node) => node.getClientRects().length > 0);
+    if (!target) {
+      return false;
+    }
+
+    target.click();
+    return true;
+  }
+
   $effect(() => {
     if (!showGoHints || typeof document === "undefined") {
       untrack(() => {
@@ -112,10 +129,10 @@
       }
     }
 
-    // Modifier shortcuts (Cmd/Ctrl + 1..9, ,)
-    if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey) {
+    // Modifier shortcuts
+    if ((event.metaKey || event.ctrlKey) && !event.altKey) {
       const num = event.key;
-      if (num >= "1" && num <= "9") {
+      if (!event.shiftKey && num >= "1" && num <= "6") {
         const actions: Record<string, () => void> = {
           "1": () => {
             void goto("/");
@@ -135,39 +152,60 @@
           "6": () => {
             window.open(DOCS_URL, "_blank", "noopener,noreferrer");
           },
-          "7": () => {
-            window.dispatchEvent(
-              new CustomEvent(DASTILL_SET_WORKSPACE_CONTENT_MODE_EVENT, {
-                detail: { mode: "info" },
-              }),
-            );
-          },
-          "8": () => {
-            window.dispatchEvent(
-              new CustomEvent(DASTILL_SET_WORKSPACE_CONTENT_MODE_EVENT, {
-                detail: { mode: "summary" },
-              }),
-            );
-          },
-          "9": () => {
-            window.dispatchEvent(
-              new CustomEvent(DASTILL_SET_WORKSPACE_CONTENT_MODE_EVENT, {
-                detail: { mode: "transcript" },
-              }),
-            );
-          },
         };
 
         const action = actions[num];
         if (action) {
           event.preventDefault();
           action();
+          return;
         }
       }
 
-      if (event.key === ",") {
+      if (!event.shiftKey) {
+        const contentModeKeys: Record<
+          string,
+          "info" | "summary" | "highlights" | "transcript"
+        > = {
+          i: "info",
+          s: "summary",
+          h: "highlights",
+          t: "transcript",
+        };
+        const mode = contentModeKeys[event.key.toLowerCase()];
+        if (mode) {
+          event.preventDefault();
+          window.dispatchEvent(
+            new CustomEvent(DASTILL_SET_WORKSPACE_CONTENT_MODE_EVENT, {
+              detail: { mode },
+            }),
+          );
+          return;
+        }
+      }
+
+      const actionHintKey =
+        event.key === "Enter"
+          ? "↵"
+          : event.key === "."
+            ? "."
+            : event.key === "*"
+              ? "*"
+              : event.key === "]"
+                ? "]"
+                : event.key === "["
+                  ? "["
+                  : null;
+
+      if (actionHintKey && triggerHintedAction(actionHintKey)) {
+        event.preventDefault();
+        return;
+      }
+
+      if (!event.shiftKey && event.key === ",") {
         event.preventDefault();
         window.dispatchEvent(new CustomEvent("dastill:open-settings"));
+        return;
       }
     }
   }
@@ -218,11 +256,11 @@
     transition:fade={{ duration: 160 }}
     role="status"
     aria-live="polite"
-    aria-label="Shortcut hints: press Cmd and a number"
+    aria-label="Shortcut hints: hold Cmd or Ctrl"
   >
     {#each goHintPositions as hint, i (`${hint.key}-${i}`)}
       <kbd
-        class="fixed z-[106] inline-flex min-h-[1.5rem] min-w-[1.5rem] items-center justify-center rounded-[var(--radius-sm)] border border-[var(--accent-border-soft)] bg-[var(--surface-frost)] px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-[var(--accent-strong)] shadow-[var(--shadow-soft)] backdrop-blur-[10px]"
+        class="fixed z-[106] inline-flex min-h-[1.35rem] min-w-[1.35rem] items-center justify-center rounded-[var(--radius-sm)] bg-[color-mix(in_srgb,var(--surface)_84%,transparent)] px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-[var(--foreground)] shadow-[0_10px_22px_color-mix(in_srgb,var(--foreground)_14%,transparent)] backdrop-blur-[8px]"
         style={hint.style}
         transition:fade={{ duration: 140 }}>{hint.key}</kbd
       >

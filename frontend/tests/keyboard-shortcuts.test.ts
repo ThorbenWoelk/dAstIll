@@ -102,10 +102,15 @@ describe("GO_SEQUENCE_HINTS", () => {
       "4",
       "5",
       "6",
-      ",",
-      "7",
-      "8",
-      "9",
+      "I",
+      "S",
+      "H",
+      "T",
+      "*",
+      "]",
+      "[",
+      "↵",
+      ".",
     ]);
   });
 });
@@ -122,8 +127,15 @@ describe("buildShortcutManual", () => {
     expect(everywhere?.rows.some((r) => r.keys === "Cmd + 4")).toBe(true);
     expect(everywhere?.rows.some((r) => r.keys === "Cmd + ,")).toBe(true);
     const workspaceHome = groups.find((g) => g.title === "Workspace home");
-    expect(workspaceHome?.rows.some((r) => r.keys === "Cmd + 7")).toBe(true);
-    expect(workspaceHome?.rows.some((r) => r.keys === "Cmd + 9")).toBe(true);
+    expect(workspaceHome?.rows.some((r) => r.keys === "Cmd + I")).toBe(true);
+    expect(workspaceHome?.rows.some((r) => r.keys === "Cmd + T")).toBe(true);
+    expect(workspaceHome?.rows.some((r) => r.keys === "Cmd + *")).toBe(true);
+    expect(workspaceHome?.rows.some((r) => r.keys === "Cmd + ]")).toBe(true);
+    expect(workspaceHome?.rows.some((r) => r.keys === "Cmd + [")).toBe(true);
+    expect(workspaceHome?.rows.some((r) => r.keys === "Cmd + Return")).toBe(
+      true,
+    );
+    expect(workspaceHome?.rows.some((r) => r.keys === "Cmd + .")).toBe(true);
     const guideTour = groups.find((g) => g.title === "Feature guide tour");
     expect(guideTour?.rows[0]?.keys).toBe("Arrow left or Arrow up");
   });

@@ -274,6 +274,38 @@
     );
   }
 
+  .workspace-mobile-header {
+    --background: #121417;
+    --foreground: #f5efe8;
+    --soft-foreground: #b7ada4;
+    --surface: color-mix(in srgb, white 10%, #121417);
+    --surface-strong: color-mix(in srgb, white 14%, #121417);
+    --panel-surface: #121417;
+    --panel-surface-strong: color-mix(in srgb, white 8%, #121417);
+    --border: color-mix(in srgb, white 18%, #121417);
+    --border-soft: color-mix(in srgb, white 10%, #121417);
+    --muted: color-mix(in srgb, white 8%, #121417);
+    --color-swatch: color-mix(in srgb, var(--accent) 88%, white);
+    --accent-wash: color-mix(in srgb, var(--accent) 20%, #121417);
+    --accent-wash-strong: color-mix(in srgb, var(--accent) 28%, #121417);
+  }
+
+  :global(.dark) .workspace-mobile-header {
+    --background: #f4efe8;
+    --foreground: #17181a;
+    --soft-foreground: #6b6259;
+    --surface: color-mix(in srgb, black 4%, #f4efe8);
+    --surface-strong: color-mix(in srgb, black 8%, #f4efe8);
+    --panel-surface: #f4efe8;
+    --panel-surface-strong: color-mix(in srgb, black 3%, #f4efe8);
+    --border: color-mix(in srgb, black 16%, #f4efe8);
+    --border-soft: color-mix(in srgb, black 10%, #f4efe8);
+    --muted: color-mix(in srgb, black 4%, #f4efe8);
+    --color-swatch: color-mix(in srgb, var(--accent) 88%, black);
+    --accent-wash: color-mix(in srgb, var(--accent) 16%, #f4efe8);
+    --accent-wash-strong: color-mix(in srgb, var(--accent) 22%, #f4efe8);
+  }
+
   .workspace-desktop-header {
     min-height: 4.5rem;
     padding: 0 1.75rem;
@@ -321,8 +353,8 @@
       min-height: calc(3rem + var(--safe-area-inset-top));
       background: linear-gradient(
         180deg,
-        color-mix(in srgb, var(--surface) 98%, var(--background)) 0%,
-        color-mix(in srgb, var(--surface) 92%, var(--accent-soft)) 100%
+        color-mix(in srgb, var(--surface) 96%, var(--background)) 0%,
+        color-mix(in srgb, var(--surface) 90%, var(--panel-surface)) 100%
       );
     }
   }

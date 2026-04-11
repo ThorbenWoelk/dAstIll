@@ -83,7 +83,11 @@
   {#if selectedVideoId && !loadingContent && !editing}
     <div
       id="content-actions"
-      class="relative z-20 ml-auto flex h-10 items-center justify-end"
+      class={`relative z-20 flex h-10 items-center ${
+        mobileBackInTopBar
+          ? "w-full justify-stretch"
+          : "ml-auto flex-1 justify-end"
+      }`}
     >
       <ContentEditor
         editing={false}

@@ -23,22 +23,22 @@
     {#if showBackInsteadOfMenu}
       <button
         type="button"
-        class="inline-flex h-10 w-10 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-80 transition hover:bg-[var(--accent-wash)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+        class="inline-flex h-9 w-9 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-80 transition hover:bg-[var(--accent-wash)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
         aria-label="Back"
         onclick={() => onBack?.()}
       >
-        <ChevronIcon direction="left" size={20} strokeWidth={2.2} />
+        <ChevronIcon direction="left" size={18} strokeWidth={2.2} />
       </button>
     {:else}
       <button
         type="button"
-        class="inline-flex h-10 w-10 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-80 transition hover:bg-[var(--accent-wash)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+        class="inline-flex h-9 w-9 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-80 transition hover:bg-[var(--accent-wash)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
         aria-label="Open menu"
         onclick={openSectionDrawer}
       >
         <svg
-          width="20"
-          height="20"
+          width="18"
+          height="18"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"

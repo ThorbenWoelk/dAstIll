@@ -16,6 +16,7 @@
   } = $props();
 
   let drawerOpen = $state(false);
+  let triggerEl = $state<HTMLButtonElement | null>(null);
 
   const displayScore = $derived(
     score !== null
@@ -33,6 +34,17 @@
     drawerOpen = false;
   }
 
+  function handleDrawerClickOutside(event: PointerEvent) {
+    if (
+      triggerEl &&
+      event.target instanceof Node &&
+      triggerEl.contains(event.target)
+    ) {
+      return;
+    }
+    closeDrawer();
+  }
+
   function handleKeydown(e: KeyboardEvent) {
     if (drawerOpen && e.key === "Escape") {
       e.preventDefault();
@@ -46,6 +58,7 @@
 <div class="summary-meta-gutter" role="status" aria-live="polite">
   {#if displayScore !== null}
     <button
+      bind:this={triggerEl}
       type="button"
       class="meta-score-block"
       onclick={toggleDrawer}
@@ -76,7 +89,10 @@
     id="summary-quality-note"
     role="complementary"
     aria-label="Quality evaluation"
-    use:clickOutside={{ enabled: drawerOpen, onClickOutside: closeDrawer }}
+    use:clickOutside={{
+      enabled: drawerOpen,
+      onClickOutside: handleDrawerClickOutside,
+    }}
     transition:fly={{ x: 320, duration: 200 }}
   >
     <header class="eval-drawer-header">

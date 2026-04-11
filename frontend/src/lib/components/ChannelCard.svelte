@@ -86,17 +86,12 @@
   ondragend={onDragEnd}
   class={`group relative flex w-full min-w-0 items-center gap-3 rounded-[18px] px-3 py-2.5 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${trailingSpaceClass} ${
     active
-      ? "bg-[var(--panel-surface)] ring-1 ring-[var(--accent-border-soft)]"
+      ? "bg-[var(--panel-surface)] shadow-[0_10px_30px_color-mix(in_srgb,var(--foreground)_8%,transparent)]"
       : "hover:bg-[var(--accent-wash)]"
-  } ${dragging || loading ? "opacity-40" : ""} ${dragOver ? "ring-2 ring-[var(--accent)]/30" : ""} ${loading ? "animate-pulse" : ""} ${draggableEnabled ? (dragging ? "cursor-grabbing" : "cursor-grab") : ""}`}
+  } ${dragging || loading ? "opacity-40" : ""} ${dragOver ? "shadow-[0_0_0_1px_var(--border-soft),0_16px_34px_color-mix(in_srgb,var(--foreground)_10%,transparent)]" : ""} ${loading ? "animate-pulse" : ""} ${draggableEnabled ? (dragging ? "cursor-grabbing" : "cursor-grab") : ""}`}
   onclick={onSelect}
   disabled={loading}
 >
-  {#if active}
-    <div
-      class="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-r-full bg-[var(--accent)]"
-    ></div>
-  {/if}
   <div
     class="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-[var(--muted)]"
   >

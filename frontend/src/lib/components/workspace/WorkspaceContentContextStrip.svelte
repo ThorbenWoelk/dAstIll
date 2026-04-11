@@ -115,7 +115,7 @@
     </div>
 
     {#if contentMode === "summary"}
-      <div class="content-hero-meta">
+      <div class="content-hero-meta hidden lg:block">
         <WorkspaceSummaryMeta
           score={summaryQualityScore}
           note={summaryQualityNote}
@@ -170,6 +170,14 @@
 
 {#if contentMode === "summary" && selectedVideoId && !loadingContent}
   <div class="summary-embed-strip">
+    <div class="summary-embed-strip-mobile-eval lg:hidden">
+      <WorkspaceSummaryMeta
+        score={summaryQualityScore}
+        note={summaryQualityNote}
+        modelUsed={summaryModelUsed}
+        qualityModelUsed={summaryQualityModelUsed}
+      />
+    </div>
     <WorkspaceSummaryAudioPlayer
       videoId={selectedVideoId}
       summaryReady={selectedVideo?.summary_status === "ready"}
@@ -267,8 +275,17 @@
     }
 
     .summary-embed-strip {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      align-items: center;
+      gap: 0.85rem;
       max-width: none;
       margin-bottom: 0.25rem;
+    }
+
+    .summary-embed-strip-mobile-eval {
+      min-width: 0;
+      align-self: start;
     }
   }
 </style>

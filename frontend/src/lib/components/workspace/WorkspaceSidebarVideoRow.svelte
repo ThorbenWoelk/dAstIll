@@ -21,7 +21,7 @@
 
 <button
   type="button"
-  class={`group flex w-full items-center gap-2 rounded-[18px] px-3 py-2.5 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${selected ? "bg-[var(--panel-surface)] ring-1 ring-[var(--accent-border-soft)]" : "hover:bg-[var(--accent-wash)]"} ${className}`}
+  class={`group flex w-full items-center gap-2 rounded-[18px] px-3 py-2.5 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${selected ? "bg-[var(--panel-surface)] shadow-[0_10px_28px_color-mix(in_srgb,var(--foreground)_8%,transparent)]" : "hover:bg-[var(--accent-wash)]"} ${className}`}
   {onclick}
   {onmouseenter}
   {onmouseleave}
