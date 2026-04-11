@@ -58,7 +58,7 @@ export function parseThemeMode(value: string | null | undefined): ThemeMode {
   if (value === "light" || value === "dark" || value === "system") {
     return value;
   }
-  return "system";
+  return "light";
 }
 
 export function parseColorScheme(

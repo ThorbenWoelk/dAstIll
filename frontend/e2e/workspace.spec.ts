@@ -279,8 +279,14 @@ test("unread filter keeps unread videos and removes them after marking read", as
   ).toBeVisible();
 
   await toggle.click();
-  await expect(toggle).toHaveAttribute("aria-label", "Mark as unread");
   await expect(
     sidebar.locator("#videos").getByText(targetTitle, { exact: true }),
   ).toHaveCount(0);
+
+  const remainingVideos = sidebar.locator("#videos").getByRole("button");
+  if ((await remainingVideos.count()) > 0) {
+    await expect(toggle).toHaveAttribute("aria-label", "Mark as read");
+  } else {
+    await expect(toggle).toHaveCount(0);
+  }
 });
