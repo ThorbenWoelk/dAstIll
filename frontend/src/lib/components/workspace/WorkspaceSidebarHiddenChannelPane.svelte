@@ -73,7 +73,7 @@
       >
         Pick a channel above.
       </p>
-    {:else if loadingVideos && videos.length === 0}
+    {:else if (loadingVideos || refreshingChannel) && videos.length === 0}
       <div class="space-y-1 px-1" role="status" aria-live="polite">
         {#each Array.from({ length: 6 }) as _, i (i)}
           <div class="animate-pulse px-2 py-1.5">
@@ -86,7 +86,7 @@
           </div>
         {/each}
       </div>
-    {:else if videos.length === 0 && !refreshingChannel}
+    {:else if videos.length === 0}
       <p
         class="px-2 py-2 text-[14px] font-medium italic text-[var(--soft-foreground)] opacity-55"
       >

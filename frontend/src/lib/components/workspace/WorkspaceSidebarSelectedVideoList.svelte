@@ -48,7 +48,7 @@
 </script>
 
 <div class={wrapperClass} id={listId}>
-  {#if loadingVideos && videos.length === 0}
+  {#if (loadingVideos || refreshingChannel) && videos.length === 0}
     <div class="space-y-1 px-1" role="status" aria-live="polite">
       {#each Array.from({ length: 4 }) as _, i (i)}
         <div class="animate-pulse px-2 py-1.5">
@@ -61,13 +61,29 @@
         </div>
       {/each}
     </div>
-  {:else if videos.length === 0 && !refreshingChannel}
+  {:else if videos.length === 0}
     <p
       class="px-3 py-2 text-[12px] italic text-[var(--soft-foreground)] opacity-50"
     >
       {emptyLabel}
     </p>
   {:else}
+    {#if refreshingChannel}
+      <div
+        class="mb-1 flex items-center gap-1.5 px-3 py-1"
+        role="status"
+        aria-live="polite"
+        aria-label="Syncing"
+      >
+        <span
+          class="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent)] opacity-60"
+          aria-hidden="true"
+        ></span>
+        <span class="text-[10px] text-[var(--soft-foreground)] opacity-50"
+          >Syncing</span
+        >
+      </div>
+    {/if}
     {#if showPendingSelectedVideo && pendingSelectedVideo}
       <button
         type="button"
