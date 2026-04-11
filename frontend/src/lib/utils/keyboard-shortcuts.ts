@@ -1,3 +1,14 @@
+import {
+  SECTION_NAVIGATION_ITEMS,
+  goHintKeyForSection,
+  type AppNavigationSection,
+} from "$lib/section-navigation";
+import {
+  WORKSPACE_CONTENT_MODE_ORDER,
+  goHintKeyForWorkspaceContentMode,
+} from "$lib/workspace/navigation";
+import type { WorkspaceContentMode } from "$lib/workspace/types";
+
 /**
  * Shared helpers for app-wide keyboard shortcuts and the shortcuts reference modal.
  */
@@ -14,11 +25,7 @@ export type GlobalSectionShortcut =
   | "/chat"
   | "docs";
 
-export type WorkspaceContentModeShortcut =
-  | "info"
-  | "summary"
-  | "highlights"
-  | "transcript";
+export type WorkspaceContentModeShortcut = WorkspaceContentMode;
 
 type PrimaryModifierShortcut = {
   key: string;
@@ -41,73 +48,6 @@ type InlineActionShortcutDefinition = {
   description: string;
   hintLabel: string;
 };
-
-const GLOBAL_SECTION_SHORTCUTS: readonly GlobalSectionShortcutDefinition[] = [
-  {
-    key: "1",
-    description: "Go to Workspace",
-    destination: "/",
-    hintLabel: "Workspace",
-  },
-  {
-    key: "2",
-    description: "Go to Queue",
-    destination: "/download-queue",
-    hintLabel: "Queue",
-  },
-  {
-    key: "3",
-    description: "Go to Highlights",
-    destination: "/highlights",
-    hintLabel: "Highlights",
-  },
-  {
-    key: "4",
-    description: "Go to Vocabulary",
-    destination: "/vocabulary",
-    hintLabel: "Vocabulary",
-  },
-  {
-    key: "5",
-    description: "Go to Chat",
-    destination: "/chat",
-    hintLabel: "Chat",
-  },
-  {
-    key: "6",
-    description: "Open documentation in a new tab",
-    destination: "docs",
-    hintLabel: "Docs",
-  },
-] as const;
-
-const WORKSPACE_CONTENT_MODE_SHORTCUTS: readonly WorkspaceContentShortcutDefinition[] =
-  [
-    {
-      key: "I",
-      description: "Switch video panel to Info",
-      mode: "info",
-      hintLabel: "Info (video tab)",
-    },
-    {
-      key: "S",
-      description: "Switch video panel to Summary",
-      mode: "summary",
-      hintLabel: "Summary (video tab)",
-    },
-    {
-      key: "H",
-      description: "Switch video panel to Highlights",
-      mode: "highlights",
-      hintLabel: "Highlights (video tab)",
-    },
-    {
-      key: "T",
-      description: "Switch video panel to Transcript",
-      mode: "transcript",
-      hintLabel: "Transcript (video tab)",
-    },
-  ] as const;
 
 const INLINE_ACTION_SHORTCUTS: readonly InlineActionShortcutDefinition[] = [
   {
@@ -141,6 +81,38 @@ const INLINE_ACTION_SHORTCUTS: readonly InlineActionShortcutDefinition[] = [
     hintLabel: "Read check action",
   },
 ] as const;
+
+const GLOBAL_SECTION_SHORTCUT_DESCRIPTIONS: Record<
+  AppNavigationSection,
+  string
+> = {
+  workspace: "Go to Workspace",
+  queue: "Go to Queue",
+  highlights: "Go to Highlights",
+  vocabulary: "Go to Vocabulary",
+  chat: "Go to Chat",
+  docs: "Open documentation in a new tab",
+};
+
+const WORKSPACE_CONTENT_MODE_SHORTCUT_DESCRIPTIONS: Record<
+  WorkspaceContentModeShortcut,
+  string
+> = {
+  info: "Switch video panel to Info",
+  summary: "Switch video panel to Summary",
+  highlights: "Switch video panel to Highlights",
+  transcript: "Switch video panel to Transcript",
+};
+
+const WORKSPACE_CONTENT_MODE_SHORTCUT_HINT_LABELS: Record<
+  WorkspaceContentModeShortcut,
+  string
+> = {
+  info: "Info (video tab)",
+  summary: "Summary (video tab)",
+  highlights: "Highlights (video tab)",
+  transcript: "Transcript (video tab)",
+};
 
 const EDITABLE_SELECTORS =
   "input:not([type='hidden']):not([disabled]), textarea:not([disabled]), select:not([disabled]), [contenteditable='true'], [contenteditable='']";
@@ -182,6 +154,39 @@ export function resolveInlineActionHintKey(key: string): string | null {
     null
   );
 }
+
+function buildGlobalSectionShortcuts(): readonly GlobalSectionShortcutDefinition[] {
+  return SECTION_NAVIGATION_ITEMS.map((item) => ({
+    key: goHintKeyForSection(item.section),
+    description: GLOBAL_SECTION_SHORTCUT_DESCRIPTIONS[item.section],
+    destination:
+      item.section === "docs"
+        ? "docs"
+        : (item.href as Exclude<GlobalSectionShortcut, "docs">),
+    hintLabel: item.label,
+  }));
+}
+
+function buildWorkspaceContentModeShortcuts(): readonly WorkspaceContentShortcutDefinition[] {
+  return WORKSPACE_CONTENT_MODE_ORDER.map((mode) => {
+    const key = goHintKeyForWorkspaceContentMode(mode);
+    if (!key) {
+      throw new Error(
+        `Missing workspace content shortcut key for mode: ${mode}`,
+      );
+    }
+
+    return {
+      key,
+      description: WORKSPACE_CONTENT_MODE_SHORTCUT_DESCRIPTIONS[mode],
+      mode,
+      hintLabel: WORKSPACE_CONTENT_MODE_SHORTCUT_HINT_LABELS[mode],
+    };
+  });
+}
+
+const GLOBAL_SECTION_SHORTCUTS = buildGlobalSectionShortcuts();
+const WORKSPACE_CONTENT_MODE_SHORTCUTS = buildWorkspaceContentModeShortcuts();
 
 export function isEditableShortcutTarget(target: EventTarget | null): boolean {
   if (!target || !(target instanceof Element)) {
