@@ -37,7 +37,7 @@
   } = $props();
 
   let open = $state(false);
-  let mode = $state<ThemeMode>("system");
+  let mode = $state<ThemeMode>("light");
   let color = $state<ColorScheme>(DEFAULT_COLOR);
   let isDark = $state(false);
   let mediaQueryList = $state<MediaQueryList | null>(null);

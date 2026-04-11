@@ -70,10 +70,10 @@ describe("parseThemeMode", () => {
     expect(parseThemeMode("system")).toBe("system");
   });
 
-  it("defaults to system for unknown values", () => {
-    expect(parseThemeMode("auto")).toBe("system");
-    expect(parseThemeMode(null)).toBe("system");
-    expect(parseThemeMode(undefined)).toBe("system");
+  it("defaults to light for unknown values", () => {
+    expect(parseThemeMode("auto")).toBe("light");
+    expect(parseThemeMode(null)).toBe("light");
+    expect(parseThemeMode(undefined)).toBe("light");
   });
 });
 
@@ -178,5 +178,31 @@ describe("applyThemeState", () => {
     expect(documentLike.documentElement.style.colorScheme).toBe("dark");
     expect(metaAttributes.content).toBe(DARK_THEME_COLOR);
     expect(elAttributes["data-color"]).toBe("plum");
+  });
+
+  it("defaults to light mode when no stored theme exists", () => {
+    const { documentLike, toggles, metaAttributes, elAttributes } =
+      createDocumentLike();
+    const storage = {
+      getItem(key: string) {
+        if (key === COLOR_STORAGE_KEY) {
+          return null;
+        }
+        if (key === THEME_STORAGE_KEY) {
+          return null;
+        }
+        return null;
+      },
+    };
+
+    const result = applyStoredTheme(documentLike, storage, true);
+
+    expect(result.mode).toBe("light");
+    expect(result.color).toBe(DEFAULT_COLOR);
+    expect(result.state.isDark).toBe(false);
+    expect(toggles).toEqual([["dark", false]]);
+    expect(documentLike.documentElement.style.colorScheme).toBe("light");
+    expect(metaAttributes.content).toBe(LIGHT_THEME_COLOR);
+    expect(elAttributes["data-color"]).toBe(DEFAULT_COLOR);
   });
 });
