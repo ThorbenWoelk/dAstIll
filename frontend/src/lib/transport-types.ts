@@ -229,6 +229,7 @@ export type Summary = Compat<
     quality_score?: BindingSummary["quality_score"] | null;
     quality_note?: BindingSummary["quality_note"];
     quality_model_used?: BindingSummary["quality_model_used"];
+    summary_tags?: BindingSummary["summary_tags"];
   }
 >;
 

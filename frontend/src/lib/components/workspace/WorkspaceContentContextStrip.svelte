@@ -19,6 +19,7 @@
     summaryQualityNote = null as string | null,
     summaryModelUsed = null as string | null,
     summaryQualityModelUsed = null as string | null,
+    summaryTags = [] as string[],
     onShowChannels,
     onShowVideos,
   }: {
@@ -36,16 +37,27 @@
     summaryQualityNote?: string | null;
     summaryModelUsed?: string | null;
     summaryQualityModelUsed?: string | null;
+    summaryTags?: string[];
     onShowChannels: () => void;
     onShowVideos: () => void;
   } = $props();
 
-  const CONTENT_MODE_EYEBROW: Record<WorkspaceContentMode, string> = {
+  const CONTENT_MODE_EYEBROW: Record<
+    Exclude<WorkspaceContentMode, "summary">,
+    string
+  > = {
     transcript: "Source transcript",
-    summary: "Distilled summary",
     highlights: "Saved highlights",
     info: "Video context",
   };
+
+  function contentModeEyebrow(mode: WorkspaceContentMode): string | null {
+    if (mode === "summary") {
+      return null;
+    }
+
+    return CONTENT_MODE_EYEBROW[mode];
+  }
 </script>
 
 {#if selectedVideoId && !loadingContent && selectedVideo}
@@ -86,7 +98,19 @@
 
   <div class="content-hero">
     <div class="content-hero-copy">
-      <p class="content-hero-eyebrow">{CONTENT_MODE_EYEBROW[contentMode]}</p>
+      {#if contentMode === "summary"}
+        {#if summaryTags.length > 0}
+          <div class="content-hero-tags" aria-label="Summary tags">
+            {#each summaryTags as tag (tag)}
+              <span class="content-hero-tag">{tag}</span>
+            {/each}
+          </div>
+        {/if}
+      {:else}
+        <p class="content-hero-eyebrow">
+          {contentModeEyebrow(contentMode)}
+        </p>
+      {/if}
       <h1 class="content-hero-title">{selectedVideo.title}</h1>
     </div>
 
@@ -175,6 +199,27 @@
     text-transform: uppercase;
     color: var(--soft-foreground);
     opacity: 0.7;
+  }
+
+  .content-hero-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    margin: 0 0 0.8rem;
+  }
+
+  .content-hero-tag {
+    display: inline-flex;
+    align-items: center;
+    min-height: 1.85rem;
+    padding: 0.28rem 0.75rem;
+    border-radius: 9999px;
+    background: color-mix(in srgb, var(--surface) 88%, var(--accent-soft));
+    border: 1px solid var(--accent-border-soft);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--foreground);
   }
 
   .content-hero-title {

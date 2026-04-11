@@ -125,6 +125,7 @@ pub async fn save_manual_summary(
         quality_score: None,
         quality_note: None,
         quality_model_used: None,
+        summary_tags: Vec::new(),
     };
     store.put_json(&summary_key(video_id), &summary).await?;
     // Reset auto_regen_attempts
@@ -142,12 +143,16 @@ pub async fn update_summary_quality(
     quality_score: Option<u8>,
     quality_note: Option<&str>,
     quality_model_used: Option<&str>,
+    summary_tags: Option<&[String]>,
 ) -> Result<(), StoreError> {
     let key = summary_key(video_id);
     if let Some(mut summary) = store.get_json::<Summary>(&key).await? {
         summary.quality_score = quality_score;
         summary.quality_note = quality_note.map(ToOwned::to_owned);
         summary.quality_model_used = quality_model_used.map(ToOwned::to_owned);
+        if let Some(tags) = summary_tags {
+            summary.summary_tags = tags.to_vec();
+        }
         store.put_json(&key, &summary).await?;
     }
     Ok(())
@@ -222,7 +227,9 @@ pub async fn list_summaries_pending_quality_eval(
     let mut results = Vec::new();
 
     for summary in summaries {
-        if summary.quality_score.is_some() || summary.quality_note.is_some() {
+        let has_quality = summary.quality_score.is_some() || summary.quality_note.is_some();
+        let has_tags = !summary.summary_tags.is_empty();
+        if has_quality && has_tags {
             continue;
         }
         if summary.content.trim().is_empty() {

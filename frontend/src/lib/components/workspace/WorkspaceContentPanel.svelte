@@ -65,6 +65,7 @@
       summaryQualityNote: null,
       summaryModelUsed: null,
       summaryQualityModelUsed: null,
+      summaryTags: [],
       videoInfo: null,
       contentHtml: "",
       contentText: "",
@@ -133,6 +134,7 @@
   let summaryQualityNote = $derived(content.summaryQualityNote);
   let summaryModelUsed = $derived(content.summaryModelUsed);
   let summaryQualityModelUsed = $derived(content.summaryQualityModelUsed);
+  let summaryTags = $derived(content.summaryTags);
   let videoInfo = $derived(content.videoInfo);
   let contentHtml = $derived(content.contentHtml);
   let contentText = $derived(content.contentText);
@@ -433,6 +435,7 @@
         {summaryQualityNote}
         {summaryModelUsed}
         {summaryQualityModelUsed}
+        {summaryTags}
         {onShowChannels}
         {onShowVideos}
       />
