@@ -301,7 +301,11 @@
         ? 'justify-center'
         : ''}"
       onclick={() => {
-        menuOpen = !menuOpen;
+        if (menuOpen) {
+          closeAll();
+        } else {
+          menuOpen = true;
+        }
       }}
       aria-haspopup="menu"
       aria-expanded={menuOpen}
