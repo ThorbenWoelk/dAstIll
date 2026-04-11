@@ -145,6 +145,11 @@ export function createSidebarVideoOperations(
         context.clearChannelSelectionState();
       } else {
         context.applySelectionState({ selectedChannelId: initialChannelId });
+        // Set video loading eagerly so the skeleton shows during the network
+        // fetch instead of flashing "No videos yet."
+        if (!silent) {
+          context.setVideoLoadingState(true);
+        }
         await refreshAndLoadVideos(initialChannelId, silent);
       }
     } catch (error) {
@@ -154,6 +159,9 @@ export function createSidebarVideoOperations(
     } finally {
       if (!silent) {
         context.setChannelLoadingState(false);
+        // applyChannelSnapshot resets this in the happy path; this covers
+        // the case where loadSnapshot() throws before applySnapshot runs.
+        context.setVideoLoadingState(false);
       }
     }
   }
@@ -323,17 +331,15 @@ export function createSidebarVideoOperations(
       videos: selectedVideoHint ? [selectedVideoHint] : [],
     });
     context.options.onVideoListReset?.();
-    if (fromUserInteraction) {
-      // Eagerly show loading state before the network fetch so the skeleton
-      // renders immediately instead of flashing "No videos yet."
-      context.setVideoLoadingState(true);
-      try {
-        await refreshAndLoadVideos(channelId, false);
-      } finally {
-        context.setVideoLoadingState(false);
-      }
-    } else {
-      await refreshAndLoadVideos(channelId, true);
+    // Set loading eagerly in both paths: user-initiated (non-silent) and
+    // programmatic (silent snapshot but still show skeleton in the UI).
+    context.setVideoLoadingState(true);
+    try {
+      await refreshAndLoadVideos(channelId, !fromUserInteraction);
+    } finally {
+      // applyChannelSnapshot resets this in the happy path via its own
+      // finally block; this clears it if loadSnapshot() throws first.
+      context.setVideoLoadingState(false);
     }
   }
 

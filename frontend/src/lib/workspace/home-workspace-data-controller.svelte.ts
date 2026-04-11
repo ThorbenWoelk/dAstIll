@@ -529,7 +529,20 @@ export function createHomeWorkspaceDataController(options: {
 
     sidebarState.resetVideoListState();
     options.setAllowLoadedVideoSyncDepthOverride(false);
-    await refreshAndLoadVideos(channelId, false, videoId);
+    // Set loading eagerly so the skeleton renders during the network fetch
+    // instead of briefly flashing "No videos yet."
+    sidebarState.setVideoLoadingState(true);
+    try {
+      await refreshAndLoadVideos(channelId, false, videoId);
+    } catch (error) {
+      if (!presentAuthRequiredNoticeIfNeeded(error)) {
+        options.setErrorMessage((error as Error).message);
+      }
+    } finally {
+      // applyChannelSnapshot resets this in the happy path; this covers
+      // the case where loadSnapshot() throws before applySnapshot runs.
+      sidebarState.setVideoLoadingState(false);
+    }
   }
 
   async function refreshAndLoadVideos(

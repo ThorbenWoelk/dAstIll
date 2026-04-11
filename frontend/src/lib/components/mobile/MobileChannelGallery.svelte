@@ -153,6 +153,20 @@
           </div>
         {/each}
       {/if}
+      {#if loadingChannels && channels.length > 0}
+        <!-- Subtle pulse dot during background channel refresh -->
+        <div
+          class="flex shrink-0 snap-center items-center justify-center self-stretch pl-1 pr-2"
+          role="status"
+          aria-live="polite"
+          aria-label="Refreshing channels"
+        >
+          <span
+            class="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent)] opacity-50"
+            aria-hidden="true"
+          ></span>
+        </div>
+      {/if}
 
       {#each channels as channel, index (channel.id)}
         {@const thumb = normalizeThumbnail(channel.thumbnail_url)}
