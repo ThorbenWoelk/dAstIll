@@ -120,14 +120,32 @@
 {/if}
 
 {#if contentMode === "summary" && selectedVideoId && !loadingContent}
-  <WorkspaceSummaryMeta
-    score={summaryQualityScore}
-    note={summaryQualityNote}
-    modelUsed={summaryModelUsed}
-    qualityModelUsed={summaryQualityModelUsed}
-  />
-  <WorkspaceSummaryAudioPlayer
-    videoId={selectedVideoId}
-    summaryReady={selectedVideo?.summary_status === "ready"}
-  />
+  <div class="summary-embed-strip">
+    <WorkspaceSummaryAudioPlayer
+      videoId={selectedVideoId}
+      summaryReady={selectedVideo?.summary_status === "ready"}
+    />
+    <WorkspaceSummaryMeta
+      score={summaryQualityScore}
+      note={summaryQualityNote}
+      modelUsed={summaryModelUsed}
+      qualityModelUsed={summaryQualityModelUsed}
+    />
+  </div>
 {/if}
+
+<style>
+  .summary-embed-strip {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 1.5rem;
+    align-items: start;
+  }
+
+  @media (max-width: 1023px) {
+    .summary-embed-strip {
+      grid-template-columns: 1fr;
+      gap: 0;
+    }
+  }
+</style>
