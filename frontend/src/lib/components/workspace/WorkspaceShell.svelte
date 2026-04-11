@@ -213,9 +213,12 @@
   <div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
     {#if mobileTopBar}
       <header
-        class="flex h-12 shrink-0 items-center justify-between gap-4 border-b border-[var(--border-soft)]/50 bg-[var(--surface)] px-4 lg:hidden"
+        class="shrink-0 border-b border-[var(--border-soft)]/50 bg-[var(--surface)] lg:hidden"
+        style="padding-top: var(--safe-area-inset-top);"
       >
-        {@render mobileTopBar()}
+        <div class="flex h-12 items-center justify-between gap-4 px-4">
+          {@render mobileTopBar()}
+        </div>
       </header>
     {/if}
     {#if topBar}
