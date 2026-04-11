@@ -112,6 +112,27 @@ pub async fn get_summary(store: &Store, video_id: &str) -> Result<Option<Summary
     store.get_json(&summary_key(video_id)).await
 }
 
+fn apply_summary_quality_update(
+    summary: &mut Summary,
+    quality_score: Option<u8>,
+    quality_note: Option<&str>,
+    quality_model_used: Option<&str>,
+    summary_tags: Option<&[String]>,
+) {
+    summary.quality_score = quality_score;
+    summary.quality_note = quality_note.map(ToOwned::to_owned);
+    summary.quality_model_used = quality_model_used.map(ToOwned::to_owned);
+    if let Some(tags) = summary_tags {
+        summary.summary_tags = tags.to_vec();
+        summary.summary_tags_evaluated = true;
+    }
+}
+
+fn summary_needs_quality_eval(summary: &Summary) -> bool {
+    let has_quality = summary.quality_score.is_some() || summary.quality_note.is_some();
+    !has_quality || !summary.summary_tags_evaluated
+}
+
 pub async fn save_manual_summary(
     store: &Store,
     video_id: &str,
@@ -126,6 +147,7 @@ pub async fn save_manual_summary(
         quality_note: None,
         quality_model_used: None,
         summary_tags: Vec::new(),
+        summary_tags_evaluated: false,
     };
     store.put_json(&summary_key(video_id), &summary).await?;
     // Reset auto_regen_attempts
@@ -147,12 +169,13 @@ pub async fn update_summary_quality(
 ) -> Result<(), StoreError> {
     let key = summary_key(video_id);
     if let Some(mut summary) = store.get_json::<Summary>(&key).await? {
-        summary.quality_score = quality_score;
-        summary.quality_note = quality_note.map(ToOwned::to_owned);
-        summary.quality_model_used = quality_model_used.map(ToOwned::to_owned);
-        if let Some(tags) = summary_tags {
-            summary.summary_tags = tags.to_vec();
-        }
+        apply_summary_quality_update(
+            &mut summary,
+            quality_score,
+            quality_note,
+            quality_model_used,
+            summary_tags,
+        );
         store.put_json(&key, &summary).await?;
     }
     Ok(())
@@ -227,9 +250,7 @@ pub async fn list_summaries_pending_quality_eval(
     let mut results = Vec::new();
 
     for summary in summaries {
-        let has_quality = summary.quality_score.is_some() || summary.quality_note.is_some();
-        let has_tags = !summary.summary_tags.is_empty();
-        if has_quality && has_tags {
+        if !summary_needs_quality_eval(&summary) {
             continue;
         }
         if summary.content.trim().is_empty() {
@@ -270,4 +291,66 @@ pub async fn list_summaries_pending_quality_eval(
     }
 
     Ok(results)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::models::Summary;
+
+    fn sample_summary(video_id: &str) -> Summary {
+        Summary {
+            video_id: video_id.to_string(),
+            content: "summary".to_string(),
+            model_used: Some("summary-model".to_string()),
+            quality_score: None,
+            quality_note: None,
+            quality_model_used: None,
+            summary_tags: Vec::new(),
+            summary_tags_evaluated: false,
+        }
+    }
+
+    #[test]
+    fn apply_summary_quality_update_marks_tags_as_evaluated_even_when_empty() {
+        let mut summary = sample_summary("video-1");
+
+        super::apply_summary_quality_update(
+            &mut summary,
+            Some(8),
+            Some("Solid"),
+            Some("eval-model"),
+            Some(&Vec::new()),
+        );
+
+        assert_eq!(summary.quality_score, Some(8));
+        assert_eq!(summary.quality_note.as_deref(), Some("Solid"));
+        assert_eq!(summary.quality_model_used.as_deref(), Some("eval-model"));
+        assert!(summary.summary_tags.is_empty());
+        assert!(summary.summary_tags_evaluated);
+    }
+
+    #[test]
+    fn summary_needs_quality_eval_skips_completed_empty_tag_evaluations() {
+        let mut summary = sample_summary("video-2");
+
+        super::apply_summary_quality_update(
+            &mut summary,
+            Some(7),
+            Some("Good"),
+            Some("eval-model"),
+            Some(&Vec::new()),
+        );
+
+        assert!(!super::summary_needs_quality_eval(&summary));
+    }
+
+    #[test]
+    fn summary_needs_quality_eval_keeps_legacy_tagless_summaries_pending() {
+        let mut summary = sample_summary("video-3");
+        summary.quality_score = Some(9);
+        summary.quality_note = Some("Legacy evaluation".to_string());
+        summary.quality_model_used = Some("old-eval".to_string());
+
+        assert!(super::summary_needs_quality_eval(&summary));
+    }
 }
