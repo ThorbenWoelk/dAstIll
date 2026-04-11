@@ -19,6 +19,7 @@ import {
   applyVideoTypeFilterChange,
   clearSidebarVideoFilters,
   loadChannelSnapshotWithRefresh,
+  resolveSnapshotPageState,
 } from "$lib/workspace/route-helpers";
 import { putCachedChannels } from "$lib/workspace-cache";
 import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
@@ -176,12 +177,7 @@ export function createSidebarVideoOperations(
     }
     try {
       if (context.getSelectedChannelId() !== channelId) return;
-      context.applyChannelSnapshotState({
-        videos: snapshot.videos,
-        has_more: snapshot.videos.length === context.limit,
-        next_offset: snapshot.videos.length,
-        sync_depth: snapshot.sync_depth,
-      });
+      context.applyChannelSnapshotState(resolveSnapshotPageState(snapshot));
 
       if (context.options.onVideosLoaded) {
         await context.options.onVideosLoaded({

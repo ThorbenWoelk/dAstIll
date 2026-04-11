@@ -6,10 +6,12 @@ import {
   filterVideosByType,
   resolveInitialPreviewExpandedChannelId,
   resolveNextChannelSelection,
+  resolveSnapshotPageState,
   resolveVirtualWindow,
   shouldLoadAllChannelVideosForSelection,
   shouldForceReloadMissingSelectedVideo,
 } from "../src/lib/workspace/route-helpers";
+import { shouldRunSidebarPreviewSlideTransition } from "../src/lib/workspace/sidebar-layout";
 import { resolveSidebarPreviewFilterKey } from "../src/lib/workspace/sidebar-preview-scope";
 import { videosBelongToChannel } from "../src/lib/workspace/sidebar-state.svelte";
 import type { Video } from "../src/lib/types";
@@ -407,5 +409,72 @@ describe("applyAcknowledgedFilterChange", () => {
     expect(nextFilter).toBe("unack");
     expect(nextVideos.map((video) => video.id)).toEqual(["video-1"]);
     expect(reloadCount).toBe(1);
+  });
+});
+
+describe("resolveSnapshotPageState", () => {
+  it("preserves backend pagination when a snapshot is empty but not exhausted", () => {
+    expect(
+      resolveSnapshotPageState({
+        videos: [],
+        has_more: true,
+        next_offset: 20,
+        sync_depth: null,
+      }),
+    ).toEqual({
+      videos: [],
+      has_more: true,
+      next_offset: 20,
+      sync_depth: null,
+    });
+  });
+
+  it("falls back to the current page size when next_offset is missing", () => {
+    const videos = [
+      makeVideo({ id: "video-1", is_short: false, acknowledged: false }),
+    ];
+
+    expect(
+      resolveSnapshotPageState({
+        videos,
+        has_more: false,
+        next_offset: null,
+        sync_depth: null,
+      }),
+    ).toEqual({
+      videos,
+      has_more: false,
+      next_offset: 1,
+      sync_depth: null,
+    });
+  });
+});
+
+describe("shouldRunSidebarPreviewSlideTransition", () => {
+  it("skips slide transitions for the hidden desktop sidebar on mobile", () => {
+    expect(
+      shouldRunSidebarPreviewSlideTransition({
+        mobileVisible: false,
+        desktopViewport: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("keeps slide transitions for visible desktop sidebars", () => {
+    expect(
+      shouldRunSidebarPreviewSlideTransition({
+        mobileVisible: false,
+        desktopViewport: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("keeps slide transitions for visible mobile sidebars", () => {
+    expect(
+      shouldRunSidebarPreviewSlideTransition({
+        mobileVisible: true,
+        desktopViewport: false,
+      }),
+    ).toBe(true);
   });
 });
