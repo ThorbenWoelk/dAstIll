@@ -8,6 +8,66 @@ test.beforeEach(async ({ page }) => {
   await resetClientState(page);
 });
 
+test("mobile header reserves the top safe area", async ({ page }) => {
+  await page.goto("/");
+
+  const viewportMeta = page.locator('meta[name="viewport"]');
+  await expect(viewportMeta).toHaveAttribute("content", /viewport-fit=cover/);
+
+  const header = page.getByRole("banner");
+  const main = page.locator("#main-content");
+
+  await expect(header).toBeVisible();
+  await expect(main).toBeVisible();
+
+  const before = await page.evaluate(() => {
+    const headerEl = document.querySelector("header");
+    const mainEl = document.getElementById("main-content");
+
+    if (
+      !(headerEl instanceof HTMLElement) ||
+      !(mainEl instanceof HTMLElement)
+    ) {
+      throw new Error("Workspace shell layout is missing");
+    }
+
+    return {
+      headerHeight: Math.round(headerEl.getBoundingClientRect().height),
+      mainTop: Math.round(mainEl.getBoundingClientRect().top),
+    };
+  });
+
+  await page.evaluate(() => {
+    document.documentElement.style.setProperty("--safe-area-inset-top", "24px");
+  });
+
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const headerEl = document.querySelector("header");
+        if (!(headerEl instanceof HTMLElement)) {
+          throw new Error("Workspace shell header is missing");
+        }
+
+        return Math.round(headerEl.getBoundingClientRect().height);
+      }),
+    )
+    .toBe(before.headerHeight + 24);
+
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const mainEl = document.getElementById("main-content");
+        if (!(mainEl instanceof HTMLElement)) {
+          throw new Error("Workspace shell main content is missing");
+        }
+
+        return Math.round(mainEl.getBoundingClientRect().top);
+      }),
+    )
+    .toBe(before.mainTop + 24);
+});
+
 test("mobile tabs stay scrollable and shortcut hints stay hidden", async ({
   page,
 }) => {
