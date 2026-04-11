@@ -7,6 +7,7 @@
     readSummaryAudioSession,
     resetSummaryAudioPlayback,
     resolveSummaryAudioTimelineState,
+    setSummaryAudioUnavailable,
     setSummaryAudioStatus,
     subscribeToSummaryAudioSession,
     syncSummaryAudioDebugState,
@@ -36,6 +37,9 @@
   const BAR_COUNT = 80;
   const timelineState = $derived(
     resolveSummaryAudioTimelineState(currentTime, duration),
+  );
+  const unavailableMessage = $derived(
+    summaryAudioError || "Text-to-speech is currently unavailable.",
   );
 
   let unsubscribeSession: (() => void) | null = null;
@@ -86,7 +90,12 @@
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    if (status === "missing" || status === "generating") return;
+    if (
+      status === "missing" ||
+      status === "unavailable" ||
+      status === "generating"
+    )
+      return;
 
     if (
       e.target instanceof HTMLInputElement ||
@@ -118,6 +127,12 @@
       if (resp.ok) {
         const data = await resp.json();
         syncSummaryAudioDebugState(videoId, data);
+        return;
+      }
+      if (resp.status === 503) {
+        const message =
+          (await resp.text()) || "Text-to-speech is currently unavailable.";
+        setSummaryAudioUnavailable(videoId, message);
       }
     } catch (e) {
       console.error("Failed to check audio status", e);
@@ -223,6 +238,7 @@
       !audioPlayer ||
       !timelineState.knownDuration ||
       status === "missing" ||
+      status === "unavailable" ||
       status === "generating"
     )
       return;
@@ -274,7 +290,19 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <div class="waveform-player">
-  {#if status === "missing"}
+  {#if status === "unavailable"}
+    <div class="waveform-area waveform-area-unavailable" role="status">
+      <div class="waveform-bars waveform-bars-idle" aria-hidden="true">
+        {#each waveformBars as height}
+          <div class="waveform-bar" style="height: {height * 100}%"></div>
+        {/each}
+      </div>
+      <div class="waveform-unavailable-copy">
+        <span class="waveform-status-label">Audio unavailable</span>
+        <span class="waveform-unavailable-text">{unavailableMessage}</span>
+      </div>
+    </div>
+  {:else if status === "missing"}
     <!-- Generate prompt with waveform preview -->
     <button
       class="waveform-generate-btn"
@@ -495,10 +523,6 @@
     opacity: 0.4;
   }
 
-  .waveform-generate-btn:hover .waveform-generate-overlay {
-    opacity: 1;
-  }
-
   .waveform-generate-overlay {
     position: absolute;
     inset: 0;
@@ -506,9 +530,16 @@
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-    opacity: 0;
-    transition: opacity 0.15s ease;
+    opacity: 1;
+    transition:
+      opacity 0.15s ease,
+      transform 0.15s ease;
     color: var(--accent-strong);
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface) 58%, transparent) 0%,
+      color-mix(in srgb, var(--surface) 72%, transparent) 100%
+    );
   }
 
   .waveform-generate-label {
@@ -516,6 +547,10 @@
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.08em;
+  }
+
+  .waveform-generate-btn:hover .waveform-generate-overlay {
+    transform: translateY(-1px);
   }
 
   /* Generating animation */
@@ -547,6 +582,23 @@
     grid-template-rows: auto;
     align-items: center;
     gap: 0.75rem;
+  }
+
+  .waveform-area-unavailable {
+    gap: 0.55rem;
+    opacity: 0.72;
+  }
+
+  .waveform-unavailable-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 0.12rem;
+  }
+
+  .waveform-unavailable-text {
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--soft-foreground);
   }
 
   .waveform-controls {

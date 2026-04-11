@@ -168,7 +168,7 @@
   }
 </script>
 
-<div class="flex h-full">
+<div class="workspace-shell flex h-full">
   <a
     href="#main-content"
     class="skip-link absolute left-4 top-4 z-50 rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white"
@@ -210,10 +210,12 @@
     ></div>
   {/if}
 
-  <div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+  <div
+    class="workspace-main flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+  >
     {#if mobileTopBar}
       <header
-        class="shrink-0 border-b border-[var(--border-soft)]/50 bg-[var(--surface)] lg:hidden"
+        class="workspace-mobile-header shrink-0 lg:hidden"
         style="padding-top: var(--safe-area-inset-top);"
       >
         <div class="flex h-12 items-center justify-between gap-4 px-4">
@@ -223,7 +225,7 @@
     {/if}
     {#if topBar}
       <header
-        class="hidden h-12 shrink-0 items-center justify-between gap-4 border-b border-[var(--border-soft)]/50 bg-[var(--surface)] px-6 lg:flex"
+        class="workspace-desktop-header hidden shrink-0 items-center justify-between gap-4 lg:flex"
       >
         {@render topBar()}
       </header>
@@ -232,7 +234,7 @@
     <main
       id="main-content"
       tabindex="-1"
-      class="min-h-0 flex-1 overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
+      class="workspace-content-frame min-h-0 flex-1 overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
     >
       {@render children()}
     </main>
@@ -240,6 +242,51 @@
 </div>
 
 <style>
+  .workspace-shell {
+    background:
+      radial-gradient(
+        140% 110% at 50% -8%,
+        color-mix(in srgb, var(--background) 88%, var(--accent-soft)) 0%,
+        var(--background) 60%
+      ),
+      var(--background);
+  }
+
+  .workspace-main {
+    position: relative;
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface) 94%, var(--accent-soft)) 0%,
+      var(--background) 100%
+    );
+  }
+
+  .workspace-mobile-header,
+  .workspace-desktop-header {
+    position: relative;
+    z-index: 5;
+    border-bottom: 1px solid
+      color-mix(in srgb, var(--border-soft) 92%, var(--background));
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface) 96%, var(--background)) 0%,
+      color-mix(in srgb, var(--surface) 92%, var(--accent-soft)) 100%
+    );
+  }
+
+  .workspace-desktop-header {
+    min-height: 4.5rem;
+    padding: 0 1.75rem;
+  }
+
+  .workspace-content-frame {
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface) 96%, var(--background)) 0%,
+      color-mix(in srgb, var(--background) 92%, var(--surface)) 100%
+    );
+  }
+
   .resize-handle {
     width: 4px;
     flex-shrink: 0;
@@ -267,5 +314,16 @@
 
   .resize-handle.active::after {
     opacity: 1;
+  }
+
+  @media (max-width: 1023px) {
+    .workspace-mobile-header {
+      min-height: calc(3rem + var(--safe-area-inset-top));
+      background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--surface) 98%, var(--background)) 0%,
+        color-mix(in srgb, var(--surface) 92%, var(--accent-soft)) 100%
+      );
+    }
   }
 </style>

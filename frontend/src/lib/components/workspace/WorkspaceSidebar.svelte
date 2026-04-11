@@ -484,7 +484,7 @@
 
 <aside
   id="workspace"
-  class={`flex flex-col bg-[var(--surface)] ${mobileVisible ? "h-full w-full min-w-0" : "hidden lg:flex"} lg:h-full lg:shrink-0`}
+  class={`flex flex-col border-r border-[var(--border-soft)] bg-[var(--surface)] ${mobileVisible ? "h-full w-full min-w-0" : "hidden lg:flex"} lg:h-full lg:shrink-0`}
   style={mobileVisible
     ? undefined
     : `width: ${width ?? (collapsed ? 52 : 280)}px;`}
@@ -583,7 +583,7 @@
     <div class="sr-only" aria-live="polite">{reorderAnnouncement}</div>
 
     <div
-      class="custom-scrollbar flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pt-2 pb-4"
+      class="custom-scrollbar flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 pt-2 pb-5"
       aria-busy={loadingChannels}
     >
       {#if loadingChannels && channels.length === 0}

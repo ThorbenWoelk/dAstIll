@@ -71,4 +71,23 @@ describe("flushPendingStreamEvent", () => {
     });
     expect(pendingEvent).toEqual({ eventName: "message", dataLines: [] });
   });
+
+  it("normalizes technical error payloads before surfacing them", () => {
+    const pendingEvent = {
+      eventName: "error",
+      dataLines: [JSON.stringify({ message: "Polly TTS is not configured" })],
+    };
+    let receivedMessage: string | null = null;
+
+    flushPendingStreamEvent(pendingEvent, {
+      onError: (message) => {
+        receivedMessage = message;
+      },
+    });
+
+    expect(receivedMessage).toBe(
+      "Sorry, audio playback is not available right now.",
+    );
+    expect(pendingEvent).toEqual({ eventName: "message", dataLines: [] });
+  });
 });

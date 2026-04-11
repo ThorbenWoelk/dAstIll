@@ -1,7 +1,9 @@
 import { resolveApiUrl } from "$lib/api-client";
+import { normalizeUserErrorMessage } from "$lib/user-error";
 
 export type SummaryAudioStatus =
   | "missing"
+  | "unavailable"
   | "generating"
   | "ready"
   | "playing"
@@ -135,10 +137,23 @@ export function syncSummaryAudioDebugState(
       return session;
     }
 
+    if (session.status === "unavailable") {
+      return session;
+    }
+
     session.status = "missing";
     session.audioSrc = null;
     return session;
   });
+}
+
+export function setSummaryAudioUnavailable(videoId: string, message: string) {
+  updateSession(videoId, (session) => ({
+    ...session,
+    status: "unavailable",
+    summaryAudioError: normalizeUserErrorMessage(message, { status: 503 }),
+    audioSrc: null,
+  }));
 }
 
 export async function generateSummaryAudio(
@@ -170,17 +185,23 @@ export async function generateSummaryAudio(
       }
 
       const message = (await response.text()) || "Failed to generate audio.";
+      if (response.status === 503) {
+        setSummaryAudioUnavailable(videoId, message);
+        return;
+      }
       updateSession(videoId, (session) => ({
         ...session,
         status: "missing",
-        summaryAudioError: message,
+        summaryAudioError: normalizeUserErrorMessage(message, {
+          status: response.status,
+        }),
         audioSrc: null,
       }));
     } catch {
       updateSession(videoId, (session) => ({
         ...session,
         status: "missing",
-        summaryAudioError: "Failed to generate audio.",
+        summaryAudioError: "Sorry, audio playback could not be prepared.",
         audioSrc: null,
       }));
     } finally {

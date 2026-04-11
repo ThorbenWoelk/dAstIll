@@ -130,17 +130,19 @@
     display: flex;
     flex-direction: column;
     align-items: flex-end;
-    gap: 0.75rem;
+    gap: 0.85rem;
   }
 
   .meta-score-block {
     display: flex;
     flex-direction: column;
     align-items: flex-end;
-    gap: 0;
-    background: none;
+    gap: 0.15rem;
+    min-width: 5rem;
     border: none;
-    padding: 0;
+    border-left: 2px solid var(--accent-border-soft);
+    padding: 0.2rem 0 0.2rem 1rem;
+    background: none;
     cursor: default;
     text-align: right;
     font-family: inherit;
@@ -158,7 +160,7 @@
 
   .meta-score-value {
     font-family: "Fraunces", serif;
-    font-size: 2.5rem;
+    font-size: 3.05rem;
     font-weight: 300;
     line-height: 1;
     letter-spacing: -0.03em;
@@ -197,13 +199,12 @@
     font-size: 10px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.12em;
     color: var(--soft-foreground);
     opacity: 0.5;
     margin-top: 2px;
   }
 
-  /* Right-edge drawer — no scrim, content stays visible */
   .eval-drawer {
     position: fixed;
     top: 0;
@@ -299,9 +300,11 @@
     margin-top: 0.25rem;
     margin-bottom: 0.5rem;
   }
+
   .eval-note-markdown :global(li) {
     margin-bottom: 0.125rem;
   }
+
   .eval-note-markdown :global(strong) {
     display: block;
     margin-top: 0.5rem;
@@ -311,6 +314,7 @@
     letter-spacing: 0.06em;
     color: var(--soft-foreground);
   }
+
   .eval-note-markdown :global(p) {
     margin-bottom: 0.25rem;
   }
@@ -329,17 +333,35 @@
     opacity: 0.45;
   }
 
-  /* Mobile: bottom sheet */
   @media (max-width: 1023px) {
     .summary-meta-gutter {
+      align-items: flex-start;
+      margin-bottom: 0;
+    }
+
+    .meta-score-block {
       flex-direction: row;
       align-items: center;
       gap: 0.5rem;
-      margin-bottom: 0.5rem;
+      min-width: 0;
+      border: 1px solid var(--accent-border-soft);
+      border-left-width: 1px;
+      border-radius: 9999px;
+      background: var(--surface);
+      padding: 0.55rem 0.9rem;
+      text-align: left;
     }
 
     .meta-score-value {
-      font-size: 1.75rem;
+      font-size: 1.6rem;
+    }
+
+    .meta-score-pending {
+      height: auto;
+    }
+
+    .meta-score-label {
+      margin-top: 0;
     }
 
     .eval-drawer {

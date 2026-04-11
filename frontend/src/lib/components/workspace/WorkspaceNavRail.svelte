@@ -58,7 +58,7 @@
 </script>
 
 <aside
-  class="relative z-50 hidden h-full shrink-0 flex-col bg-[var(--panel-surface)] lg:flex"
+  class="relative z-50 hidden h-full shrink-0 flex-col border-r border-[var(--border-soft)] bg-[var(--panel-surface)] lg:flex"
   style="width: {width}px;"
 >
   {#if collapsed}
@@ -73,7 +73,7 @@
       </button>
     </div>
   {:else}
-    <div class="flex items-center justify-between gap-3 px-4 pt-3 pb-1">
+    <div class="flex items-center justify-between gap-3 px-4 pt-4 pb-2">
       <div class="flex min-w-0 flex-1 items-center gap-2">
         <a
           href="/"
@@ -108,7 +108,7 @@
 
   <nav
     id="app-section-nav-rail"
-    class={`space-y-0.5 ${collapsed ? "mt-1 px-1.5" : "mt-3 px-2"}`}
+    class={`space-y-1 ${collapsed ? "mt-1 px-1.5" : "mt-4 px-2.5"}`}
     aria-label="Sections"
   >
     {#each navItems as item (item.section)}
@@ -128,12 +128,12 @@
             : item.section === "workspace"
               ? "nav-workspace-link"
               : undefined}
-        class={`flex items-center gap-2 rounded-[var(--radius-sm)] transition-colors ${
-          collapsed ? "justify-center px-0 py-2" : "px-3 py-2"
+        class={`flex items-center gap-2 rounded-full transition-colors ${
+          collapsed ? "justify-center px-0 py-2.5" : "px-3.5 py-2.5"
         } ${
           item.active
-            ? "bg-[var(--accent-wash)] text-[var(--accent-strong)] font-semibold"
-            : "text-[var(--soft-foreground)] hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]"
+            ? "bg-[var(--surface)] text-[var(--foreground)] font-semibold shadow-sm"
+            : "text-[var(--soft-foreground)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
         }`}
         aria-current={item.active ? "page" : undefined}
         data-tooltip={collapsed ? item.label : undefined}
@@ -156,7 +156,7 @@
           {/each}
         </svg>
         {#if !collapsed}
-          <span class="min-w-0 truncate text-[14px] font-medium"
+          <span class="min-w-0 truncate text-[13px] font-medium"
             >{item.label}</span
           >
           {#if item.external}
@@ -170,7 +170,9 @@
     {/each}
   </nav>
 
-  <div class="mt-auto flex flex-col gap-3 pb-3 {collapsed ? 'px-1.5' : 'px-2'}">
+  <div
+    class="mt-auto flex flex-col gap-3 pb-3 {collapsed ? 'px-1.5' : 'px-2.5'}"
+  >
     <WorkspaceUserMenu {collapsed} {onOpenGuide} {onOpenShortcuts} />
   </div>
 

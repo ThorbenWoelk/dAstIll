@@ -35,6 +35,7 @@ import {
   request,
   resolveApiUrl,
 } from "./api-client";
+import { normalizeUserErrorMessage } from "./user-error";
 
 export {
   API_BASE,
@@ -689,7 +690,14 @@ export async function getSummaryAudio(videoId: string): Promise<Blob> {
 
   if (!response.ok) {
     const message = await response.text();
-    throw new Error(message || `Request failed (${response.status})`);
+    throw new Error(
+      normalizeUserErrorMessage(
+        message || `Request failed (${response.status})`,
+        {
+          status: response.status,
+        },
+      ),
+    );
   }
 
   return response.blob();
