@@ -1,13 +1,15 @@
 mod channels;
-mod chat;
 mod content;
-pub(crate) mod firestore_videos;
+mod conversations;
 mod helpers;
 mod highlights;
 mod preferences;
 mod search;
+mod source_profiles;
 mod stats;
 mod tts_stats;
+pub mod turso_schema;
+pub(crate) mod turso_videos;
 mod user_scope;
 mod video_info;
 mod videos;
@@ -18,14 +20,15 @@ pub(crate) use crate::read_cache::ReadCache;
 pub(crate) const MAX_CONCURRENT_S3_OPS: usize = 12;
 
 pub use channels::*;
-pub use chat::*;
 pub use content::*;
-pub use firestore_videos::*;
+pub use conversations::*;
 pub use highlights::*;
 pub use preferences::*;
 pub use search::*;
+pub use source_profiles::*;
 pub use stats::*;
 pub use tts_stats::*;
+pub use turso_videos::*;
 pub use user_scope::*;
 pub use video_info::*;
 pub use videos::*;
@@ -68,7 +71,7 @@ impl From<serde_json::Error> for StoreError {
 pub struct Store {
     pub(crate) s3: aws_sdk_s3::Client,
     pub(crate) s3v: aws_sdk_s3vectors::Client,
-    pub(crate) firestore: firestore::FirestoreDb,
+    pub(crate) turso: libsql::Connection,
     pub(crate) data_bucket: String,
     pub(crate) vector_bucket: String,
     pub(crate) vector_index: String,
@@ -85,15 +88,20 @@ impl Store {
         let config = aws_config::load_from_env().await;
         let s3 = aws_sdk_s3::Client::new(&config);
         let s3v = aws_sdk_s3vectors::Client::new(&config);
-        let gcp_project =
-            std::env::var("GCP_PROJECT_ID").unwrap_or_else(|_| "dastill-test".to_string());
-        let firestore = firestore::FirestoreDb::new(&gcp_project)
+        let turso_db = libsql::Builder::new_local(":memory:")
+            .build()
             .await
-            .expect("failed to create Firestore client for tests");
+            .expect("failed to create in-memory Turso database for tests");
+        let turso_conn = turso_db
+            .connect()
+            .expect("failed to connect to test Turso database");
+        turso_schema::initialize_turso_schema(&turso_conn)
+            .await
+            .expect("failed to initialize Turso schema for tests");
         Store {
             s3,
             s3v,
-            firestore,
+            turso: turso_conn,
             data_bucket: std::env::var("S3_DATA_BUCKET")
                 .unwrap_or_else(|_| "dastill-test".to_string()),
             vector_bucket: std::env::var("S3_VECTOR_BUCKET")
@@ -236,7 +244,7 @@ pub enum QueueFilter {
 pub async fn init_store(
     s3: aws_sdk_s3::Client,
     s3v: aws_sdk_s3vectors::Client,
-    firestore: firestore::FirestoreDb,
+    turso: libsql::Connection,
     data_bucket: String,
     vector_bucket: String,
     vector_index: String,
@@ -245,7 +253,7 @@ pub async fn init_store(
     Ok(Store {
         s3,
         s3v,
-        firestore,
+        turso,
         data_bucket,
         vector_bucket,
         vector_index,

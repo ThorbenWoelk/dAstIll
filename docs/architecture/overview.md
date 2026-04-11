@@ -1,73 +1,60 @@
+---
+aside: false
+---
+
 # System Overview
 
 <script setup>
 const systemContextDiagram = String.raw`
-flowchart LR
+flowchart TB
   browser[Browser]
-
-  subgraph surfaces["User-facing surfaces"]
-    app[Product UI<br/>SvelteKit]
-    docs[Docs UI<br/>VitePress]
-  end
-
   backend[Backend<br/>Rust + Axum]
-
-  subgraph storage["Durable storage"]
-    s3[S3 data bucket<br/>channels, transcript/summary blobs, user-scoped records, search chunks]
-    vectors[S3 Vectors<br/>semantic embeddings]
-    firestore[Firestore<br/>videos, preferences, TTS stats]
-  end
-
-  subgraph external["External integrations"]
-    youtube[YouTube APIs + subtitle fetch]
-    ollama[Ollama models]
-    polly[Amazon Polly]
-  end
+  app[Product UI<br/>SvelteKit]
+  docs[Docs UI<br/>VitePress]
+  sources[Content sources<br/>YouTube + subtitles]
+  ai[AI services<br/>Ollama + Polly]
+  storage[Data stores<br/>S3, S3 Vectors, Firestore]
 
   browser --> app
   browser --> docs
   app --> backend
-  backend --> s3
-  backend --> vectors
-  backend --> firestore
-  backend --> youtube
-  backend --> ollama
-  backend --> polly
-  docs --> browser
+  backend --> sources
+  backend --> ai
+  backend --> storage
 `;
 
 const canonicalFlowDiagram = String.raw`
-flowchart LR
-  youtube[YouTube channel + video source]
-  canonical[Canonical content<br/>channels, videos, transcripts, summaries, video_info]
+flowchart TB
+  source[Video source]
+  canonical[Canonical content]
   workers[Background workers]
-  searchmeta[search_sources state]
-  searchproj[search_chunks projection]
-  fts[libSQL / Turso FTS5]
-  vectors[S3 Vectors]
-  retrieval[Workspace search + chat retrieval]
+  projection[Search projection]
+  keyword[Keyword index<br/>libSQL / Turso]
+  vectors[Semantic index<br/>S3 Vectors]
+  retrieval[Workspace search + chat]
 
-  youtube --> canonical
+  source --> canonical
   canonical --> workers
-  workers --> searchmeta
-  searchmeta --> searchproj
-  searchproj --> fts
-  searchproj --> vectors
-  fts --> retrieval
+  workers --> projection
+  projection --> keyword
+  projection --> vectors
+  keyword --> retrieval
   vectors --> retrieval
 `;
 </script>
 
 ## What dAstIll Is
 
-dAstIll is a YouTube channel monitoring tool. It:
+dAstIll is a source monitoring tool that is still migrating off an original YouTube-only model. It:
 
-- **Monitors your channels**: Subscribe to YouTube channels, backfill their video history, and auto-refresh for new uploads
-- **Extracts transcripts**: Pulls transcripts from videos so you can search and read instead of watch
+- **Monitors subscribed sources**: YouTube channels, OpenAlex saved searches, podcast RSS feeds, and tracked website pages
+- **Extracts readable content**: Pulls transcripts, abstracts, show notes, or page text into the reading flow
 - **Generates AI summaries**: Creates consistent, structured summaries using local or cloud LLMs via Ollama
-- **Evaluates summary quality**: Uses a separate LLM-as-a-judge to score summaries against ground-truth transcripts
-- **Enables search**: Full-text and optional semantic search across all transcripts and summaries
-- **Preserves highlights**: Save and organize important snippets from transcripts and summaries
+- **Evaluates summary quality**: Uses a separate LLM-as-a-judge to score summaries against source text
+- **Supports library chat**: Lets users ask grounded questions across their saved content, with optional deep-research mode for wider synthesis
+- **Synthesizes summary audio**: Can generate spoken playback for summaries through Amazon Polly when TTS is enabled
+- **Enables search**: Full-text and optional semantic search across synced text content
+- **Preserves highlights**: Save and organize important snippets from synced content
 
 ## Primary Components
 
@@ -81,11 +68,13 @@ dAstIll is a YouTube channel monitoring tool. It:
 - Built with **SvelteKit** in `frontend/`
 - Main workspace route at `/`
 - Additional product routes:
+  - `/channels/[id]`
   - `/download-queue`
   - `/highlights`
   - `/vocabulary`
   - `/chat`
   - `/login` and `/logout`
+- Browser builds register a service worker for static assets, API GET responses, and channel/video thumbnails; the registration is disabled in dev mode and in the Tauri runtime
 
 ### Backend
 

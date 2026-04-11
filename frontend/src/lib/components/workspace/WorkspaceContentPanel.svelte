@@ -17,6 +17,13 @@
     resolveSwipedContentMode,
     WORKSPACE_CONTENT_MODE_ORDER,
   } from "$lib/workspace/navigation";
+
+  const CONTENT_MODE_LABELS: Record<WorkspaceContentMode, string> = {
+    transcript: "Transcript",
+    summary: "Summary",
+    highlights: "Highlights",
+    info: "Info",
+  };
   import WorkspaceContentMobileHeader from "$lib/components/workspace/WorkspaceContentMobileHeader.svelte";
   import WorkspaceContentSurface from "$lib/components/workspace/WorkspaceContentSurface.svelte";
   import { shouldRetryReadySummaryLoad } from "$lib/workspace/content";
@@ -113,7 +120,7 @@
 
   let mobileVisible = $derived(selection.mobileVisible);
   let mobileBackInTopBar = $derived(selection.mobileBackInTopBar ?? false);
-  /** Mobile uses `AppBottomNav` for video actions; this strip is desktop-only (see `max-lg:hidden`). */
+  /** Desktop video action strip — rendered in WorkspaceDesktopTopBar. Mobile uses WorkspaceContentMobileHeader. */
   let selectedChannel = $derived(selection.selectedChannel);
   let selectedVideo = $derived(selection.selectedVideo);
   let selectedVideoId = $derived(selection.selectedVideoId);
@@ -197,6 +204,27 @@
   let onShowVideos = $derived(actions.onShowVideos);
   let onCitationScrollConsumed = $derived(actions.onCitationScrollConsumed);
 
+  let showMobileContentTabs = $derived(
+    mobileVisible && Boolean(selectedVideoId) && !editing,
+  );
+
+  $effect(() => {
+    if (typeof document === "undefined") return;
+    const height = showMobileContentTabs
+      ? "calc(48px + max(0.25rem, env(safe-area-inset-bottom)))"
+      : "0px";
+    document.documentElement.style.setProperty(
+      "--mobile-tab-bar-height",
+      height,
+    );
+    return () => {
+      document.documentElement.style.setProperty(
+        "--mobile-tab-bar-height",
+        "0px",
+      );
+    };
+  });
+
   let showResetConfirm = $state(false);
   async function confirmResetVideo() {
     showResetConfirm = false;
@@ -223,7 +251,7 @@
 
     return Boolean(
       target.closest(
-        "button, a, input, textarea, select, label, [role='button'], [role='tab'], article, .prose, mark",
+        "button, a, input, textarea, select, label, [role='button'], [role='tab'], mark",
       ),
     );
   }
@@ -365,7 +393,6 @@
     {selectedVideoYoutubeUrl}
     {draft}
     {onBack}
-    {onSetMode}
     {onStartEdit}
     {onCancelEdit}
     {onSaveEdit}
@@ -458,6 +485,29 @@
       {onCitationScrollConsumed}
     />
   </div>
+
+  {#if showMobileContentTabs}
+    <nav
+      class="fixed bottom-0 left-0 right-0 z-[60] flex items-center gap-1 border-t border-[var(--border-soft)]/50 bg-[var(--surface)] px-3 pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] lg:hidden"
+      aria-label="Content tabs"
+    >
+      {#each WORKSPACE_CONTENT_MODE_ORDER as mode}
+        <button
+          type="button"
+          data-workspace-content-tab={mode}
+          class={`flex min-h-[44px] flex-1 items-center justify-center rounded-full text-[11px] font-bold uppercase tracking-[0.08em] transition-colors ${
+            contentMode === mode
+              ? "bg-[var(--accent-wash-strong)] text-[var(--accent-strong)] shadow-sm"
+              : "text-[var(--soft-foreground)] opacity-60 active:bg-[var(--accent-wash)] active:text-[var(--foreground)] active:opacity-100"
+          }`}
+          aria-pressed={contentMode === mode}
+          onclick={() => void onSetMode(mode)}
+        >
+          {CONTENT_MODE_LABELS[mode]}
+        </button>
+      {/each}
+    </nav>
+  {/if}
 </section>
 
 {#if overlays.errorMessage}

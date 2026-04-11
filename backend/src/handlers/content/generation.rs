@@ -1,5 +1,17 @@
 use super::*;
 
+#[utoipa::path(
+    put,
+    path = "/api/videos/{id}/summary",
+    params(
+        ("id" = String, Path, description = "Video id")
+    ),
+    request_body = UpdateContentRequest,
+    responses(
+        (status = 200, description = "Updated summary", body = Summary),
+        (status = 404, description = "Video not found", body = String)
+    )
+)]
 pub async fn update_summary(
     State(state): State<AppState>,
     Path(video_id): Path<String>,
@@ -80,7 +92,7 @@ pub(crate) async fn ensure_transcript(
         .await
         .map_err(map_db_err)?;
     sync_search_source(
-        &state.db,
+        state,
         video_id,
         SearchSourceKind::Transcript,
         transcript_text(&transcript),
@@ -234,7 +246,7 @@ async fn ensure_summary_internal(
         .await
         .map_err(map_db_err)?;
     sync_search_source(
-        &state.db,
+        state,
         video_id,
         SearchSourceKind::Summary,
         Some(summary.content.as_str()),
@@ -266,7 +278,7 @@ pub(super) async fn save_manual_transcript_content(
             .await
             .map_err(map_db_err)?;
     sync_search_source(
-        &state.db,
+        state,
         video_id,
         SearchSourceKind::Transcript,
         transcript_text(&transcript),
@@ -287,7 +299,7 @@ async fn save_manual_summary_content(
         .await
         .map_err(map_db_err)?;
     sync_search_source(
-        &state.db,
+        state,
         video_id,
         SearchSourceKind::Summary,
         Some(summary.content.as_str()),
@@ -309,7 +321,7 @@ fn transcript_text(transcript: &Transcript) -> Option<&str> {
 }
 
 async fn sync_search_source(
-    conn: &crate::db::Store,
+    state: &AppState,
     video_id: &str,
     source_kind: SearchSourceKind,
     content: Option<&str>,
@@ -317,9 +329,27 @@ async fn sync_search_source(
     match content.map(str::trim) {
         Some(content) if !content.is_empty() => {
             let content_hash = hash_search_content(content);
-            db::mark_search_source_pending(conn, video_id, source_kind, &content_hash).await
+            let current = db::get_search_source_state(&state.db, video_id, source_kind).await?;
+            if db::should_refresh_search_source(
+                current.as_ref(),
+                &content_hash,
+                state.search.semantic_enabled(),
+                state.search.model(),
+            ) {
+                db::mark_search_source_pending(&state.db, video_id, source_kind, &content_hash)
+                    .await
+            } else {
+                Ok(())
+            }
         }
-        _ => db::clear_search_source(conn, video_id, source_kind).await,
+        _ => {
+            state
+                .fts
+                .delete_source(video_id, source_kind)
+                .await
+                .map_err(crate::db::StoreError::Other)?;
+            db::clear_search_source(&state.db, video_id, source_kind).await
+        }
     }
 }
 

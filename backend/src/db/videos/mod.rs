@@ -3,6 +3,7 @@ mod scoped_views;
 use std::collections::HashSet;
 
 use crate::models::{Channel, ContentStatus, OTHERS_CHANNEL_ID, OTHERS_CHANNEL_NAME, Video};
+use crate::read_cache::SuggestedVideo;
 
 use super::{
     ChannelSnapshotData, ChannelVideoPageData, QueueFilter, Store, StoreError, VideoInsertOutcome,
@@ -13,16 +14,19 @@ pub use scoped_views::{
     load_workspace_bootstrap_data,
 };
 
+const VIDEO_SUGGESTION_WINDOW_BATCH_SIZE: usize = 200;
+
 pub async fn insert_video(store: &Store, video: &Video) -> Result<VideoInsertOutcome, StoreError> {
-    let outcome = super::firestore_videos::fs_insert_video(store, video).await?;
+    let outcome = super::turso_videos::ts_insert_video(store, video).await?;
     if outcome == VideoInsertOutcome::Inserted {
         store.read_cache.evict_channel(&video.channel_id).await;
     }
+    // Skip cache eviction for Existing — nothing changed.
     Ok(outcome)
 }
 
 pub async fn bulk_insert_videos(store: &Store, videos: Vec<Video>) -> Result<usize, StoreError> {
-    let count = super::firestore_videos::fs_bulk_insert_videos(store, videos).await?;
+    let count = super::turso_videos::ts_bulk_insert_videos(store, videos).await?;
     if count > 0 {
         store.read_cache.evict_channel_list().await;
     }
@@ -34,7 +38,7 @@ pub async fn get_video(
     id: &str,
     include_summary: bool,
 ) -> Result<Option<Video>, StoreError> {
-    super::firestore_videos::fs_get_video(store, id, include_summary).await
+    super::turso_videos::ts_get_video(store, id, include_summary).await
 }
 
 pub async fn get_videos(
@@ -42,20 +46,102 @@ pub async fn get_videos(
     ids: &[impl AsRef<str>],
     include_summary: bool,
 ) -> Result<std::collections::HashMap<String, Video>, StoreError> {
-    super::firestore_videos::fs_get_videos(store, ids, include_summary).await
+    super::turso_videos::ts_get_videos(store, ids, include_summary).await
 }
 
-/// Fetch every video document from Firestore without any server-side filter or ordering.
-/// Filtering and sorting happen in-memory after this call. This avoids composite indexes,
-/// which would otherwise be the primary Firestore cost driver at this scale.
+pub async fn list_channel_videos_window(
+    store: &Store,
+    channel_id: &str,
+    limit: usize,
+    offset: usize,
+    descending: bool,
+) -> Result<Vec<Video>, StoreError> {
+    super::turso_videos::ts_list_channel_videos_window(store, channel_id, limit, offset, descending)
+        .await
+}
+
+pub async fn load_scoped_video_suggestions(
+    store: &Store,
+    scope_cache_key: &str,
+    allowed_channel_ids: &[String],
+    allowed_other_video_ids: &[String],
+) -> Result<Vec<SuggestedVideo>, StoreError> {
+    if let Some(videos) = store
+        .read_cache
+        .get_scoped_video_suggestions(scope_cache_key)
+        .await
+    {
+        return Ok(videos);
+    }
+
+    let mut by_id = std::collections::HashMap::<String, SuggestedVideo>::new();
+
+    for channel_id in allowed_channel_ids {
+        let mut offset = 0usize;
+        loop {
+            let batch = list_channel_videos_window(
+                store,
+                channel_id,
+                VIDEO_SUGGESTION_WINDOW_BATCH_SIZE,
+                offset,
+                true,
+            )
+            .await?;
+            if batch.is_empty() {
+                break;
+            }
+
+            let batch_len = batch.len();
+            offset = offset.saturating_add(batch_len);
+            for video in batch {
+                by_id
+                    .entry(video.id.clone())
+                    .or_insert_with(|| SuggestedVideo {
+                        id: video.id,
+                        channel_id: video.channel_id,
+                        title: video.title,
+                        published_at: video.published_at,
+                    });
+            }
+
+            if batch_len < VIDEO_SUGGESTION_WINDOW_BATCH_SIZE {
+                break;
+            }
+        }
+    }
+
+    if !allowed_other_video_ids.is_empty() {
+        let others = get_videos(store, allowed_other_video_ids, false).await?;
+        for video in others.into_values() {
+            by_id
+                .entry(video.id.clone())
+                .or_insert_with(|| SuggestedVideo {
+                    id: video.id,
+                    channel_id: video.channel_id,
+                    title: video.title,
+                    published_at: video.published_at,
+                });
+        }
+    }
+
+    let videos = by_id.into_values().collect::<Vec<_>>();
+    store
+        .read_cache
+        .set_scoped_video_suggestions(scope_cache_key.to_string(), videos.clone())
+        .await;
+    Ok(videos)
+}
+
+/// Fetch every video row from Turso.
+/// Filtering and sorting happen in-memory after this call.
 pub async fn load_all_videos(store: &Store) -> Result<Vec<Video>, StoreError> {
     // 1. Try cache first (TTL-based)
     if let Some(videos) = store.read_cache.get_videos().await {
         return Ok(videos);
     }
 
-    // 2. Cache miss: fetch from Firestore
-    let videos = super::firestore_videos::fs_load_all_videos(store).await?;
+    // 2. Cache miss: fetch from Turso
+    let videos = super::turso_videos::ts_load_all_videos(store).await?;
 
     // 3. Populate cache
     store.read_cache.set_videos(videos.clone()).await;
@@ -251,37 +337,76 @@ pub async fn list_videos_by_channel(
     acknowledged: Option<bool>,
     queue_filter: Option<QueueFilter>,
 ) -> Result<ChannelVideoPageData, StoreError> {
-    let all = load_all_videos(store).await?;
-    let channels = super::channels::list_channels(store).await?;
-    let subscribed = subscribed_channel_ids(&channels);
-    let published_at_not_before = channels
-        .iter()
-        .find(|c| c.id == channel_id)
-        .and_then(channel_sync_floor);
+    let subscribed = subscribed_channel_ids(&super::channels::list_channels(store).await?);
     let options = VideoListOptions {
         limit,
-        offset,
+        offset: 0,
         is_short,
         acknowledged,
         queue_filter,
-        published_at_not_before,
+        published_at_not_before: None,
     };
-    apply_channel_video_filters(store, &all, channel_id, &subscribed, options).await
+    let mut matched = Vec::new();
+    let target_len = offset.saturating_add(limit).saturating_add(1);
+    let mut scanned = 0usize;
+
+    loop {
+        let batch = list_channel_videos_window(store, channel_id, 200, scanned, true).await?;
+        if batch.is_empty() {
+            break;
+        }
+        scanned = scanned.saturating_add(batch.len());
+
+        let page =
+            apply_channel_video_filters(store, &batch, channel_id, &subscribed, options).await?;
+        matched.extend(page.videos);
+        if matched.len() >= target_len || batch.len() < 200 {
+            break;
+        }
+    }
+
+    let has_more = matched.len() > offset.saturating_add(limit);
+    let videos: Vec<Video> = matched.into_iter().skip(offset).take(limit).collect();
+    let next_offset = offset + videos.len();
+
+    Ok(ChannelVideoPageData {
+        videos,
+        has_more,
+        next_offset: has_more.then_some(next_offset),
+    })
 }
 
 pub async fn list_video_ids_by_channel(
     store: &Store,
     channel_id: &str,
 ) -> Result<Vec<String>, StoreError> {
-    let all = load_all_videos(store).await?;
-    let channels = super::channels::list_channels(store).await?;
-    let subscribed = subscribed_channel_ids(&channels);
-    let mut vids: Vec<_> = all
-        .into_iter()
-        .filter(|v| video_matches_channel_scope(v, channel_id, &subscribed))
-        .collect();
-    vids.sort_by(|a, b| b.published_at.cmp(&a.published_at));
-    Ok(vids.into_iter().map(|v| v.id).collect())
+    if channel_id == OTHERS_CHANNEL_ID {
+        let all = load_all_videos(store).await?;
+        let channels = super::channels::list_channels(store).await?;
+        let subscribed = subscribed_channel_ids(&channels);
+        let mut vids: Vec<_> = all
+            .into_iter()
+            .filter(|v| video_matches_channel_scope(v, channel_id, &subscribed))
+            .collect();
+        vids.sort_by(|a, b| b.published_at.cmp(&a.published_at));
+        return Ok(vids.into_iter().map(|v| v.id).collect());
+    }
+
+    let mut ids = Vec::new();
+    let mut scanned = 0usize;
+    loop {
+        let batch = list_channel_videos_window(store, channel_id, 200, scanned, true).await?;
+        if batch.is_empty() {
+            break;
+        }
+        let batch_len = batch.len();
+        scanned = scanned.saturating_add(batch.len());
+        ids.extend(batch.into_iter().map(|video| video.id));
+        if batch_len < 200 {
+            break;
+        }
+    }
+    Ok(ids)
 }
 
 pub async fn get_oldest_ready_video_published_at(
@@ -289,12 +414,23 @@ pub async fn get_oldest_ready_video_published_at(
     channel: &Channel,
 ) -> Result<Option<chrono::DateTime<chrono::Utc>>, StoreError> {
     let floor = channel_sync_floor(channel);
-    let all = load_all_videos(store).await?;
-    Ok(oldest_ready_video_published_at_from_slice(
-        &all,
-        &channel.id,
-        floor,
-    ))
+    let mut scanned = 0usize;
+    loop {
+        let batch = list_channel_videos_window(store, &channel.id, 100, scanned, false).await?;
+        if batch.is_empty() {
+            return Ok(None);
+        }
+        let batch_len = batch.len();
+        scanned = scanned.saturating_add(batch_len);
+        if let Some(published_at) =
+            oldest_ready_video_published_at_from_slice(&batch, &channel.id, floor)
+        {
+            return Ok(Some(published_at));
+        }
+        if batch_len < 100 {
+            return Ok(None);
+        }
+    }
 }
 
 pub async fn list_videos_for_queue_processing(
@@ -302,7 +438,25 @@ pub async fn list_videos_for_queue_processing(
     limit: usize,
     max_retries: u8,
 ) -> Result<Vec<Video>, StoreError> {
-    super::firestore_videos::fs_list_videos_for_queue_processing(store, limit, max_retries).await
+    // Use the cached full-video list instead of 6 separate Firestore queries.
+    let all = load_all_videos(store).await?;
+    let mut candidates: Vec<Video> = all
+        .into_iter()
+        .filter(|v| v.retry_count < max_retries)
+        .filter(|v| {
+            matches!(
+                v.transcript_status,
+                ContentStatus::Pending | ContentStatus::Loading | ContentStatus::Failed
+            ) || (v.transcript_status == ContentStatus::Ready
+                && matches!(
+                    v.summary_status,
+                    ContentStatus::Pending | ContentStatus::Loading | ContentStatus::Failed
+                ))
+        })
+        .collect();
+    candidates.sort_by(|a, b| b.published_at.cmp(&a.published_at));
+    candidates.truncate(limit);
+    Ok(candidates)
 }
 
 pub async fn update_video_transcript_status(
@@ -310,7 +464,7 @@ pub async fn update_video_transcript_status(
     video_id: &str,
     status: ContentStatus,
 ) -> Result<(), StoreError> {
-    super::firestore_videos::fs_update_video_transcript_status(store, video_id, status).await?;
+    super::turso_videos::ts_update_video_transcript_status(store, video_id, status).await?;
     store.read_cache.evict_videos().await;
     Ok(())
 }
@@ -320,7 +474,7 @@ pub async fn update_video_summary_status(
     video_id: &str,
     status: ContentStatus,
 ) -> Result<(), StoreError> {
-    super::firestore_videos::fs_update_video_summary_status(store, video_id, status).await?;
+    super::turso_videos::ts_update_video_summary_status(store, video_id, status).await?;
     store.read_cache.evict_videos().await;
     Ok(())
 }
@@ -330,17 +484,17 @@ pub async fn update_video_acknowledged(
     video_id: &str,
     acknowledged: bool,
 ) -> Result<(), StoreError> {
-    super::firestore_videos::fs_update_video_acknowledged(store, video_id, acknowledged).await?;
+    super::turso_videos::ts_update_video_acknowledged(store, video_id, acknowledged).await?;
     store.read_cache.evict_videos().await;
     Ok(())
 }
 
 pub async fn increment_video_retry_count(store: &Store, video_id: &str) -> Result<(), StoreError> {
-    super::firestore_videos::fs_increment_video_retry_count(store, video_id).await
+    super::turso_videos::ts_increment_video_retry_count(store, video_id).await
 }
 
 pub async fn reset_video_retry_count(store: &Store, video_id: &str) -> Result<(), StoreError> {
-    super::firestore_videos::fs_reset_video_retry_count(store, video_id).await
+    super::turso_videos::ts_reset_video_retry_count(store, video_id).await
 }
 
 /// Repair stale `loading` rows and re-queue videos that hit `max_retries` (excluded from
@@ -368,15 +522,11 @@ pub(crate) fn apply_heal_queue_video_fields(video: &mut Video, max_retries: u8) 
 }
 
 pub async fn heal_queue_videos(store: &Store, max_retries: u8) -> Result<usize, StoreError> {
-    super::firestore_videos::fs_heal_queue_videos(store, max_retries).await
+    super::turso_videos::ts_heal_queue_videos(store, max_retries).await
 }
 
 /// Build a channel snapshot. Loads the full video list once and derives both
 /// the oldest-ready date and the filtered/sorted video page from the same slice.
-///
-/// Note: filtering and sorting are done in-memory rather than via Firestore composite
-/// indexes. Ideally Firestore would handle ordering/filtering server-side, but composite
-/// indexes carry significant storage and write costs that dominate the bill at this scale.
 async fn build_channel_snapshot_data(
     store: &Store,
     channel: Channel,

@@ -1,4 +1,30 @@
 use super::*;
+use std::collections::{HashMap, HashSet};
+
+#[derive(Debug, Clone)]
+pub(super) struct DbInspectScope {
+    pub(super) channels: Vec<Channel>,
+    pub(super) videos: Vec<Video>,
+    pub(super) summaries: Vec<Summary>,
+    pub(super) transcripts: Vec<Transcript>,
+    pub(super) visible_channel_names: HashMap<String, String>,
+    pub(super) allowed_other_video_ids: HashSet<String>,
+}
+
+impl DbInspectScope {
+    pub(super) fn channel_name_for_video(&self, video: &Video) -> String {
+        if self.allowed_other_video_ids.contains(&video.id)
+            && !self.visible_channel_names.contains_key(&video.channel_id)
+        {
+            return crate::models::OTHERS_CHANNEL_NAME.to_string();
+        }
+
+        self.visible_channel_names
+            .get(&video.channel_id)
+            .cloned()
+            .unwrap_or_else(|| video.channel_id.clone())
+    }
+}
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub(crate) struct DbInspectToolInput {
@@ -120,6 +146,42 @@ pub(super) struct MentionToken {
     pub(super) text: String,
 }
 
+async fn load_mention_channels(
+    store: &db::Store,
+    access_context: &crate::security::AccessContext,
+) -> Result<Vec<Channel>, db::StoreError> {
+    match access_context.user_id.as_deref() {
+        Some(user_id) if access_context.auth_state == crate::security::AuthState::Authenticated => {
+            db::list_user_channels_with_virtual_others(store, user_id).await
+        }
+        _ => {
+            let mut channels = Vec::new();
+            for channel_id in &access_context.allowed_channel_ids {
+                if let Some(channel) = db::get_channel(store, channel_id).await? {
+                    channels.push(channel);
+                }
+            }
+            Ok(channels)
+        }
+    }
+}
+
+fn suggestion_to_video(video: crate::read_cache::SuggestedVideo) -> Video {
+    Video {
+        id: video.id,
+        channel_id: video.channel_id,
+        title: video.title,
+        thumbnail_url: None,
+        published_at: video.published_at,
+        is_short: false,
+        transcript_status: crate::models::ContentStatus::Pending,
+        summary_status: crate::models::ContentStatus::Pending,
+        acknowledged: false,
+        retry_count: 0,
+        quality_score: None,
+    }
+}
+
 impl DbInspectTarget {
     fn from_tool_value(value: &str) -> Option<Self> {
         match value.trim().to_ascii_lowercase().as_str() {
@@ -181,10 +243,21 @@ fn parse_search_source_kind(value: &str) -> Option<Option<SearchSourceKind>> {
 
 pub(crate) async fn resolve_mention_scope(
     store: &db::Store,
+    access_context: &crate::security::AccessContext,
     input: &str,
 ) -> Result<MentionScope, db::StoreError> {
-    let channels = db::list_channels(store).await?;
-    let videos = db::load_all_videos(store).await?;
+    let channels = load_mention_channels(store, access_context).await?;
+    let scope_key = format!("video-suggestions:{}", access_context.cache_scope_key());
+    let videos = db::load_scoped_video_suggestions(
+        store,
+        &scope_key,
+        &access_context.allowed_channel_ids,
+        &access_context.allowed_other_video_ids,
+    )
+    .await?
+    .into_iter()
+    .map(suggestion_to_video)
+    .collect::<Vec<_>>();
     Ok(resolve_mention_scope_from_catalog(
         input, &channels, &videos,
     ))
@@ -437,34 +510,38 @@ pub(crate) fn build_recent_library_activity_query(
 
 pub(crate) async fn execute_db_inspect_query(
     store: &db::Store,
+    access_context: &crate::security::AccessContext,
     query: DbInspectQuery,
 ) -> Result<DbInspectResult, db::StoreError> {
+    let scope = load_db_inspect_scope(store, access_context).await?;
+
     match query.operation {
         DbInspectOperation::Count => {
-            let count = match query.target {
-                DbInspectTarget::Summaries => db::count_summaries(store).await,
-                DbInspectTarget::Transcripts => db::count_transcripts(store).await,
-                DbInspectTarget::Videos => db::count_videos(store).await,
-                DbInspectTarget::Channels => db::count_channels(store).await,
-            }?;
+            let count = count_db_inspect_scope(&scope, query.target);
             let output = format_db_count_answer(query.target, count);
             Ok(DbInspectResult {
                 summary: describe_db_inspect_query(query),
                 output,
             })
         }
-        DbInspectOperation::List => execute_list_query(store, query).await,
+        DbInspectOperation::List => execute_list_query(store, access_context, query).await,
         DbInspectOperation::Breakdown => {
             let counts = match query.target {
-                DbInspectTarget::Summaries => db::summaries_by_channel(store).await,
-                DbInspectTarget::Transcripts => db::transcripts_by_channel(store).await,
-                DbInspectTarget::Videos => db::videos_by_channel(store).await,
+                DbInspectTarget::Summaries => {
+                    breakdown_scope_by_channel(&scope, DbInspectTarget::Summaries)
+                }
+                DbInspectTarget::Transcripts => {
+                    breakdown_scope_by_channel(&scope, DbInspectTarget::Transcripts)
+                }
+                DbInspectTarget::Videos => {
+                    breakdown_scope_by_channel(&scope, DbInspectTarget::Videos)
+                }
                 DbInspectTarget::Channels => {
                     return Err(db::StoreError::Other(
                         "cannot break channels down by channel".to_string(),
                     ));
                 }
-            }?;
+            };
             let output = format_breakdown_by_channel_output(query.target, &counts);
             Ok(DbInspectResult {
                 summary: describe_db_inspect_query(query),
@@ -477,7 +554,7 @@ pub(crate) async fn execute_db_inspect_query(
 pub(crate) fn db_inspect_forbidden_result() -> DbInspectResult {
     DbInspectResult {
         summary: "Database inspection unavailable".to_string(),
-        output: "Database inspection requires a signed-in session.".to_string(),
+        output: "Database inspection is unavailable for this request.".to_string(),
     }
 }
 
@@ -540,4 +617,132 @@ fn format_db_count_answer(target: DbInspectTarget, count: usize) -> String {
         return format!("There is 1 {} in the database.", target.singular());
     }
     format!("There are {count} {} in the database.", target.plural())
+}
+
+pub(super) async fn load_db_inspect_scope(
+    store: &db::Store,
+    access_context: &crate::security::AccessContext,
+) -> Result<DbInspectScope, db::StoreError> {
+    let mut channels = Vec::new();
+    let mut visible_channel_names = HashMap::new();
+    for channel_id in &access_context.allowed_channel_ids {
+        if let Some(channel) = db::get_channel(store, channel_id).await? {
+            visible_channel_names.insert(channel.id.clone(), channel.name.clone());
+            channels.push(channel);
+        }
+    }
+
+    let scope_key = format!("video-suggestions:{}", access_context.cache_scope_key());
+    let suggested_videos = db::load_scoped_video_suggestions(
+        store,
+        &scope_key,
+        &access_context.allowed_channel_ids,
+        &access_context.allowed_other_video_ids,
+    )
+    .await?;
+    let video_ids = suggested_videos
+        .into_iter()
+        .map(|video| video.id)
+        .collect::<Vec<_>>();
+    let videos = if video_ids.is_empty() {
+        Vec::new()
+    } else {
+        let mut videos = db::get_videos(store, &video_ids, false)
+            .await?
+            .into_values()
+            .collect::<Vec<_>>();
+        videos.sort_by(|left, right| {
+            right
+                .published_at
+                .cmp(&left.published_at)
+                .then_with(|| left.id.cmp(&right.id))
+        });
+        videos
+    };
+
+    let allowed_other_video_ids = access_context
+        .allowed_other_video_ids
+        .iter()
+        .cloned()
+        .collect::<HashSet<_>>();
+    if !allowed_other_video_ids.is_empty() {
+        channels.push(db::build_virtual_others_channel(chrono::Utc::now()));
+    }
+    channels.sort_by(|left, right| {
+        left.name
+            .cmp(&right.name)
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    channels.dedup_by(|left, right| left.id == right.id);
+
+    let mut summaries = Vec::new();
+    let mut transcripts = Vec::new();
+    for video in &videos {
+        if let Some(summary) = db::get_summary(store, &video.id).await? {
+            summaries.push(summary);
+        }
+        if let Some(transcript) = db::get_transcript(store, &video.id).await? {
+            transcripts.push(transcript);
+        }
+    }
+    summaries.sort_by(|left, right| left.video_id.cmp(&right.video_id));
+    transcripts.sort_by(|left, right| left.video_id.cmp(&right.video_id));
+
+    Ok(DbInspectScope {
+        channels,
+        videos,
+        summaries,
+        transcripts,
+        visible_channel_names,
+        allowed_other_video_ids,
+    })
+}
+
+pub(super) fn count_db_inspect_scope(scope: &DbInspectScope, target: DbInspectTarget) -> usize {
+    match target {
+        DbInspectTarget::Summaries => scope.summaries.len(),
+        DbInspectTarget::Transcripts => scope.transcripts.len(),
+        DbInspectTarget::Videos => scope.videos.len(),
+        DbInspectTarget::Channels => scope.channels.len(),
+    }
+}
+
+pub(super) fn breakdown_scope_by_channel(
+    scope: &DbInspectScope,
+    target: DbInspectTarget,
+) -> Vec<(String, usize)> {
+    let mut counts = HashMap::<String, usize>::new();
+    let videos = match target {
+        DbInspectTarget::Summaries => scope
+            .summaries
+            .iter()
+            .filter_map(|summary| {
+                scope
+                    .videos
+                    .iter()
+                    .find(|video| video.id == summary.video_id)
+            })
+            .collect::<Vec<_>>(),
+        DbInspectTarget::Transcripts => scope
+            .transcripts
+            .iter()
+            .filter_map(|transcript| {
+                scope
+                    .videos
+                    .iter()
+                    .find(|video| video.id == transcript.video_id)
+            })
+            .collect::<Vec<_>>(),
+        DbInspectTarget::Videos => scope.videos.iter().collect::<Vec<_>>(),
+        DbInspectTarget::Channels => Vec::new(),
+    };
+
+    for video in videos {
+        let name = scope.channel_name_for_video(video);
+        *counts.entry(name).or_insert(0) += 1;
+    }
+
+    let mut result = counts.into_iter().collect::<Vec<_>>();
+    result.sort_by(|left, right| left.0.cmp(&right.0));
+    result
 }

@@ -21,7 +21,7 @@ import {
   saveEphemeralThreads,
 } from "$lib/chat/ephemeral-session";
 import {
-  cancelConversationGeneration,
+  cancelConversationReply,
   createConversation,
   deleteAllConversations,
   deleteConversation,
@@ -31,8 +31,7 @@ import {
   renameConversation,
   sendConversationMessage,
   sendEphemeralConversationMessage,
-} from "$lib/chat-api";
-import { mobileBottomBar } from "$lib/mobile-navigation/mobileBottomBar";
+} from "$lib/chat/requests";
 import { createAiStatusPoller } from "$lib/utils/ai-poller";
 
 import { createChatStreamController } from "$lib/chat/chat-stream-controller.svelte";
@@ -70,6 +69,7 @@ export function createChatPageController() {
   let aiStatus = $state<AiStatus | null>(null);
   let mobileTab = $state<"conversations" | "content">("content");
   let hydratedConversationId = $state<string | null>(null);
+  let hydratedConversationScopeKey = $state<string | null>(null);
   let handledPromptKey = $state<string | null>(null);
   let deleteConversationId = $state<string | null>(null);
   let confirmDeleteAll = $state(false);
@@ -82,6 +82,15 @@ export function createChatPageController() {
     getScopedStorageKey(
       "dastill.chat.cloudModel",
       getAuthStorageScopeKey(authState.current),
+    ),
+  );
+  const chatStorageScopeKey = $derived(
+    getAuthStorageScopeKey(authState.current),
+  );
+  const ephemeralThreadsStorageKey = $derived(
+    getScopedStorageKey(
+      "dastill.chat.ephemeralThreads.v1",
+      chatStorageScopeKey,
     ),
   );
 
@@ -232,11 +241,13 @@ export function createChatPageController() {
     void getChatClientConfig()
       .then((cfg) => {
         chatClientConfig = cfg;
-        selectedChatModelId = pickInitialChatModelId(cfg, chatModelStorageKey);
+        setSelectedChatModelId(
+          pickInitialChatModelId(cfg, chatModelStorageKey),
+        );
       })
       .catch(() => {
         chatClientConfig = null;
-        selectedChatModelId = "";
+        setSelectedChatModelId("");
       });
     const stopAiPoller = createAiStatusPoller({
       onStatus: (status) => {
@@ -371,11 +382,15 @@ export function createChatPageController() {
   }
 
   function openMobileConversations() {
-    mobileTab = "conversations";
+    setMobileTab("conversations");
   }
 
   function closeMobileConversations() {
-    mobileTab = "content";
+    setMobileTab("content");
+  }
+
+  function setMobileTab(value: "conversations" | "content") {
+    mobileTab = value;
   }
 
   function setDraft(value: string) {
@@ -409,7 +424,7 @@ export function createChatPageController() {
     }
     try {
       if (authState.current.authState === "anonymous") {
-        ephemeralThreads = loadEphemeralThreads();
+        ephemeralThreads = loadEphemeralThreads(chatStorageScopeKey);
         conversations = ephemeralThreads.map(conversationToSummary);
         const conversationId = requestedConversationId;
         if (!conversationId && !promptFromUrl && conversations[0]) {
@@ -449,7 +464,7 @@ export function createChatPageController() {
           activeConversation = structuredClone(found);
           stream.clearStreamState();
           upsertConversationSummary(conversationToSummary(found));
-          mobileTab = "content";
+          setMobileTab("content");
           stream.pinToBottom();
           await stream.scrollToBottom("auto");
         } else {
@@ -478,7 +493,7 @@ export function createChatPageController() {
         activeConversation = conversation;
         stream.clearStreamState();
         upsertConversationSummary(conversation);
-        mobileTab = "content";
+        setMobileTab("content");
         stream.pinToBottom();
         await stream.scrollToBottom("auto");
       }
@@ -528,7 +543,7 @@ export function createChatPageController() {
               : thread,
           );
     ephemeralThreads = merged;
-    saveEphemeralThreads(merged);
+    saveEphemeralThreads(chatStorageScopeKey, merged);
     conversations = merged.map(conversationToSummary);
   }
 
@@ -541,11 +556,11 @@ export function createChatPageController() {
       if (authState.current.authState === "anonymous") {
         const conversation = createEmptyEphemeralConversation();
         ephemeralThreads = [conversation, ...ephemeralThreads];
-        saveEphemeralThreads(ephemeralThreads);
+        saveEphemeralThreads(chatStorageScopeKey, ephemeralThreads);
         conversations = ephemeralThreads.map(conversationToSummary);
         upsertConversationSummary(conversationToSummary(conversation));
         activeConversation = conversation;
-        mobileTab = "content";
+        setMobileTab("content");
         hydratedConversationId = conversation.id;
         await navigateToConversation(conversation.id);
         chatInputFocusSignal += 1;
@@ -554,7 +569,7 @@ export function createChatPageController() {
         const conversation = await createConversation();
         upsertConversationSummary(conversation);
         activeConversation = conversation;
-        mobileTab = "content";
+        setMobileTab("content");
         hydratedConversationId = conversation.id;
         await navigateToConversation(conversation.id);
         chatInputFocusSignal += 1;
@@ -587,7 +602,7 @@ export function createChatPageController() {
             : thread,
         );
         ephemeralThreads = next;
-        saveEphemeralThreads(next);
+        saveEphemeralThreads(chatStorageScopeKey, next);
         conversations = next.map(conversationToSummary);
         if (activeConversation?.id === conversationId) {
           activeConversation = {
@@ -634,14 +649,14 @@ export function createChatPageController() {
 
       try {
         if (authState.current.authState === "anonymous") {
-          clearEphemeralThreads();
+          clearEphemeralThreads(chatStorageScopeKey);
           ephemeralThreads = [];
           conversations = [];
           activeConversation = null;
           hydratedConversationId = null;
           stream.abortActiveChatStream();
           stream.clearStreamState();
-          mobileTab = "content";
+          setMobileTab("content");
           await navigateToConversation(null);
         } else {
           await deleteAllConversations();
@@ -650,7 +665,7 @@ export function createChatPageController() {
           hydratedConversationId = null;
           stream.abortActiveChatStream();
           stream.clearStreamState();
-          mobileTab = "content";
+          setMobileTab("content");
           await navigateToConversation(null);
         }
       } catch (error) {
@@ -676,7 +691,7 @@ export function createChatPageController() {
           (conversation) => conversation.id !== conversationId,
         );
         ephemeralThreads = nextThreads;
-        saveEphemeralThreads(nextThreads);
+        saveEphemeralThreads(chatStorageScopeKey, nextThreads);
         conversations = nextThreads.map(conversationToSummary);
         if (activeConversation?.id === conversationId) {
           activeConversation = null;
@@ -712,7 +727,7 @@ export function createChatPageController() {
     errorMessage = null;
     stream.abortActiveChatStream();
     stream.clearStreamState();
-    mobileTab = "content";
+    setMobileTab("content");
     await navigateToConversation(conversationId);
   }
 
@@ -731,17 +746,17 @@ export function createChatPageController() {
         if (authState.current.authState === "anonymous") {
           conversation = createEmptyEphemeralConversation();
           ephemeralThreads = [conversation, ...ephemeralThreads];
-          saveEphemeralThreads(ephemeralThreads);
+          saveEphemeralThreads(chatStorageScopeKey, ephemeralThreads);
           conversations = ephemeralThreads.map(conversationToSummary);
           activeConversation = conversation;
-          mobileTab = "content";
+          setMobileTab("content");
           hydratedConversationId = conversation.id;
           upsertConversationSummary(conversationToSummary(conversation));
           await navigateToConversation(conversation.id);
         } else {
           conversation = await createConversation();
           activeConversation = conversation;
-          mobileTab = "content";
+          setMobileTab("content");
           hydratedConversationId = conversation.id;
           upsertConversationSummary(conversation);
           await navigateToConversation(conversation.id);
@@ -765,7 +780,7 @@ export function createChatPageController() {
         ? structuredClone(conversation)
         : null;
 
-    draft = "";
+    setDraft("");
     await navigateToConversation(conversation.id);
 
     const userMessage = stream.buildOptimisticMessage("user", content);
@@ -828,13 +843,35 @@ export function createChatPageController() {
     );
   }
 
+  $effect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (hydratedConversationScopeKey === null) {
+      hydratedConversationScopeKey = ephemeralThreadsStorageKey;
+      return;
+    }
+
+    if (hydratedConversationScopeKey === ephemeralThreadsStorageKey) {
+      return;
+    }
+
+    hydratedConversationScopeKey = ephemeralThreadsStorageKey;
+    activeConversation = null;
+    hydratedConversationId = null;
+    stream.abortActiveChatStream();
+    stream.clearStreamState();
+    void loadConversations({ quiet: true });
+  });
+
   async function handleCancel() {
     if (!stream.streamingConversationId) {
       return;
     }
 
     try {
-      await cancelConversationGeneration(stream.streamingConversationId);
+      await cancelConversationReply(stream.streamingConversationId);
     } catch (error) {
       if (!presentAuthRequiredNoticeIfNeeded(error)) {
         errorMessage = (error as Error).message;
@@ -874,13 +911,6 @@ export function createChatPageController() {
       ...conversations.filter((candidate) => candidate.id !== conversation.id),
     ].sort((left, right) => right.updated_at.localeCompare(left.updated_at));
   }
-
-  $effect(() => {
-    mobileBottomBar.set({ kind: "hidden" });
-    return () => {
-      mobileBottomBar.set({ kind: "sections" });
-    };
-  });
 
   return {
     get aiIndicator() {

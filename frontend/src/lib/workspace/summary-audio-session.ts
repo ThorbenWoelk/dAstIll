@@ -1,3 +1,5 @@
+import { resolveApiUrl } from "$lib/api-client";
+
 export type SummaryAudioStatus =
   | "missing"
   | "generating"
@@ -46,7 +48,7 @@ function cloneSession(session: SummaryAudioSession): SummaryAudioSession {
 }
 
 function audioSrcForVideo(videoId: string) {
-  return `/api/videos/${videoId}/summary/audio`;
+  return resolveApiUrl(`/api/videos/${videoId}/summary/audio`);
 }
 
 function sanitizeFinitePositive(value: number) {

@@ -14,6 +14,7 @@ use sha2::{Digest, Sha256};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
 use crate::config::SecurityRuntimeConfig;
+use crate::firebase_auth::{FirebaseAuthState, VerifiedClientIdentity, verify_bearer_identity};
 use crate::state::AppState;
 
 pub const CLIENT_IP_HEADER: &str = "x-dastill-client-ip";
@@ -206,8 +207,10 @@ pub fn scope_cache_key(access_context: &AccessContext) -> String {
     }
 }
 
-pub fn can_use_db_inspect(access_context: &AccessContext) -> bool {
-    access_context.auth_state.is_authenticated()
+pub fn can_use_db_inspect(_access_context: &AccessContext) -> bool {
+    // `db_inspect` is limited to read-only library metadata queries.
+    // Scope filtering happens inside the query execution path.
+    true
 }
 
 pub fn can_access_channel(access_context: &AccessContext, channel_id: &str) -> bool {
@@ -248,6 +251,24 @@ fn resolve_access_role(headers: &axum::http::HeaderMap, auth_state: AuthState) -
     {
         Some(OPERATOR_ROLE) => AccessRole::Operator,
         _ => AccessRole::User,
+    }
+}
+
+fn resolve_authenticated_access_role(
+    config: &SecurityRuntimeConfig,
+    email: Option<&str>,
+) -> AccessRole {
+    let normalized_email = email.map(|value| value.trim().to_lowercase());
+
+    if normalized_email.as_ref().is_some_and(|email| {
+        config
+            .operator_email_allowlist
+            .iter()
+            .any(|value| value == email)
+    }) {
+        AccessRole::Operator
+    } else {
+        AccessRole::User
     }
 }
 
@@ -303,6 +324,8 @@ async fn load_authenticated_allowed_channel_ids(
     state: &AppState,
     user_id: &str,
 ) -> Result<Vec<String>, String> {
+    ensure_canonical_seeded_channel(state).await?;
+
     crate::db::ensure_user_seeded_channel_subscription(
         &state.db,
         user_id,
@@ -363,6 +386,122 @@ async fn resolve_access_context(
     Ok(build_access_context(
         headers,
         &state.security.default_seeded_channel_id,
+        authenticated_channel_ids,
+        authenticated_other_video_ids,
+    ))
+}
+
+async fn ensure_canonical_seeded_channel(state: &AppState) -> Result<(), String> {
+    let channel_id = state.security.default_seeded_channel_id.as_str();
+    if crate::db::get_channel(&state.db, channel_id)
+        .await
+        .map_err(|error| error.to_string())?
+        .is_some()
+    {
+        return Ok(());
+    }
+
+    let (resolved_channel_id, name, thumbnail_url) = state
+        .youtube
+        .resolve_channel(channel_id)
+        .await
+        .map_err(|error| {
+            format!("failed to resolve default seeded channel `{channel_id}`: {error}")
+        })?;
+
+    let now = chrono::Utc::now();
+    let channel = crate::models::Channel {
+        id: resolved_channel_id,
+        handle: None,
+        name,
+        thumbnail_url,
+        added_at: now,
+        earliest_sync_date: Some(crate::db::default_earliest_sync_date_floor(now)),
+        earliest_sync_date_user_set: false,
+    };
+
+    crate::db::insert_channel(&state.db, &channel)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+fn build_access_context_from_identity(
+    state: &AppState,
+    identity: Option<&VerifiedClientIdentity>,
+    authenticated_channel_ids: Vec<String>,
+    authenticated_other_video_ids: Vec<String>,
+) -> AccessContext {
+    let auth_state = match identity.map(|identity| &identity.auth_state) {
+        Some(FirebaseAuthState::Authenticated) => AuthState::Authenticated,
+        _ => AuthState::Anonymous,
+    };
+
+    let access_role = if auth_state.is_authenticated() {
+        resolve_authenticated_access_role(
+            state.security.as_ref(),
+            identity.and_then(|identity| identity.email.as_deref()),
+        )
+    } else {
+        AccessRole::Anonymous
+    };
+
+    let user_id = if auth_state.is_authenticated() {
+        identity.and_then(|identity| identity.user_id.clone())
+    } else {
+        None
+    };
+
+    AccessContext {
+        user_id,
+        auth_state,
+        access_role,
+        allowed_channel_ids: resolve_allowed_channel_ids(
+            auth_state,
+            &state.security.default_seeded_channel_id,
+            authenticated_channel_ids,
+        ),
+        allowed_other_video_ids: resolve_allowed_other_video_ids(
+            auth_state,
+            authenticated_other_video_ids,
+        ),
+    }
+}
+
+async fn resolve_access_context_from_identity(
+    state: &AppState,
+    identity: Option<VerifiedClientIdentity>,
+) -> Result<AccessContext, String> {
+    let Some(identity) = identity else {
+        ensure_canonical_seeded_channel(state).await?;
+        return Ok(build_access_context_from_identity(
+            state,
+            None,
+            Vec::new(),
+            Vec::new(),
+        ));
+    };
+
+    let Some(user_id) = identity
+        .user_id
+        .as_deref()
+        .filter(|_| matches!(identity.auth_state, FirebaseAuthState::Authenticated))
+    else {
+        ensure_canonical_seeded_channel(state).await?;
+        return Ok(build_access_context_from_identity(
+            state,
+            Some(&identity),
+            Vec::new(),
+            Vec::new(),
+        ));
+    };
+
+    let authenticated_channel_ids = load_authenticated_allowed_channel_ids(state, user_id).await?;
+    let authenticated_other_video_ids =
+        load_authenticated_allowed_other_video_ids(state, user_id).await?;
+
+    Ok(build_access_context_from_identity(
+        state,
+        Some(&identity),
         authenticated_channel_ids,
         authenticated_other_video_ids,
     ))
@@ -451,6 +590,7 @@ pub async fn require_proxy_auth(
     mut request: Request,
     next: Next,
 ) -> Response {
+    let supplied_proxy_auth = request.headers().get(PROXY_AUTH_HEADER).is_some();
     let is_authorized = request
         .headers()
         .get(PROXY_AUTH_HEADER)
@@ -458,22 +598,50 @@ pub async fn require_proxy_auth(
         .map(|value| secure_equals(value, &state.security.proxy_token))
         .unwrap_or(false);
 
-    if !is_authorized {
+    if supplied_proxy_auth && !is_authorized {
         return (StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
     }
 
-    let access_context = match resolve_access_context(&state, request.headers()).await {
-        Ok(access_context) => access_context,
-        Err(error) => {
-            tracing::error!(error = %error, "failed to resolve request access context");
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to resolve request access context",
-            )
-                .into_response();
+    let access_context = if is_authorized {
+        match resolve_access_context(&state, request.headers()).await {
+            Ok(access_context) => access_context,
+            Err(error) => {
+                tracing::error!(error = %error, "failed to resolve request access context");
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to resolve request access context",
+                )
+                    .into_response();
+            }
+        }
+    } else {
+        let identity = match verify_bearer_identity(
+            request.headers().get(header::AUTHORIZATION),
+            state.security.as_ref(),
+        )
+        .await
+        {
+            Ok(identity) => identity,
+            Err(error) => {
+                tracing::warn!(error = %error, "rejected direct client authorization");
+                return (StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
+            }
+        };
+
+        match resolve_access_context_from_identity(&state, identity).await {
+            Ok(access_context) => access_context,
+            Err(error) => {
+                tracing::error!(error = %error, "failed to resolve direct request access context");
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to resolve request access context",
+                )
+                    .into_response();
+            }
         }
     };
     request.extensions_mut().insert(access_context);
+    state.user_activity.touch();
 
     next.run(request).await
 }
@@ -557,7 +725,7 @@ pub fn build_cors_layer(config: &SecurityRuntimeConfig) -> Result<CorsLayer, Str
             Method::DELETE,
             Method::OPTIONS,
         ])
-        .allow_headers([header::ACCEPT, header::CONTENT_TYPE]);
+        .allow_headers([header::ACCEPT, header::AUTHORIZATION, header::CONTENT_TYPE]);
 
     if config.allowed_origins.is_empty() {
         return Ok(cors_layer);
@@ -601,7 +769,9 @@ mod tests {
     fn request_rate_limiter_blocks_after_limit_is_reached() {
         let config = SecurityRuntimeConfig {
             proxy_token: "test".to_string(),
+            firebase_project_id: "demo-dastill".to_string(),
             allowed_origins: vec![],
+            operator_email_allowlist: vec![],
             default_seeded_channel_id: "seeded-channel".to_string(),
             baseline_rate_limit_per_minute: 2,
             expensive_rate_limit_per_minute: 1,
@@ -631,7 +801,9 @@ mod tests {
     fn request_rate_limiter_resets_after_window_expires() {
         let config = SecurityRuntimeConfig {
             proxy_token: "test".to_string(),
+            firebase_project_id: "demo-dastill".to_string(),
             allowed_origins: vec![],
+            operator_email_allowlist: vec![],
             default_seeded_channel_id: "seeded-channel".to_string(),
             baseline_rate_limit_per_minute: 1,
             expensive_rate_limit_per_minute: 1,
@@ -702,8 +874,8 @@ mod tests {
     }
 
     #[test]
-    fn db_inspect_requires_signed_in_session() {
-        assert!(!can_use_db_inspect(&AccessContext {
+    fn db_inspect_is_available_for_read_only_queries() {
+        assert!(can_use_db_inspect(&AccessContext {
             user_id: None,
             auth_state: AuthState::Anonymous,
             access_role: AccessRole::Anonymous,

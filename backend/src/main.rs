@@ -15,11 +15,9 @@ use dastill::config::{
 };
 use dastill::db::init_store;
 use dastill::handlers::{
-    analytics, channels, chat, content, highlights, preferences, search, videos,
+    analytics, auth, channels, chat, content, highlights, preferences, search, videos,
 };
-use dastill::local_env::{
-    clear_missing_google_application_credentials, load_dotenv_preserving_existing,
-};
+use dastill::local_env::load_dotenv_preserving_existing;
 use dastill::logging::{HumanReadableEventFormatter, should_send_to_logfire};
 use dastill::read_cache::ReadCache;
 use dastill::search_progress::SearchProgress;
@@ -28,8 +26,9 @@ use dastill::security::{
     enforce_expensive_rate_limit, rate_limiter, require_operator_role, require_proxy_auth,
 };
 use dastill::services::{
-    ChatService, Cooldown, DatabricksSqlService, FtsIndex, OllamaCore, PollyTtsService,
-    SearchService, SummarizerService, SummaryEvaluatorService, TranscriptService, YouTubeService,
+    ChatService, Cooldown, DatabricksSqlService, FtsIndex, OllamaCore, OpenAlexPlannerService,
+    OpenAlexService, PodcastFeedService, PollyTtsService, SearchService, SummarizerService,
+    SummaryEvaluatorService, TranscriptService, UserActivity, WebsiteService, YouTubeService,
     build_http_client,
 };
 use dastill::state::AppState;
@@ -38,16 +37,44 @@ use dastill::workers::{
     spawn_summary_evaluation_worker,
 };
 
+async fn build_turso_replica(
+    db_path: &std::path::Path,
+    config: &TursoRuntimeConfig,
+) -> anyhow::Result<libsql::Database> {
+    let db = tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        libsql::Builder::new_remote_replica(
+            db_path,
+            config.db_url.clone(),
+            config.auth_token.clone(),
+        )
+        .sync_protocol(libsql::SyncProtocol::V2)
+        .sync_interval(std::time::Duration::from_secs(30))
+        .build(),
+    )
+    .await
+    .map_err(|_| anyhow::anyhow!("Turso builder timed out after 30s"))?
+    .map_err(|err| anyhow::anyhow!("failed to build Turso embedded replica: {err}"))?;
+
+    tracing::info!("Starting Turso embedded replica sync...");
+    tokio::time::timeout(std::time::Duration::from_secs(120), db.sync())
+        .await
+        .map_err(|_| anyhow::anyhow!("Turso initial sync timed out after 120s"))?
+        .map_err(|err| anyhow::anyhow!("failed to initial-sync Turso replica: {err}"))?;
+    tracing::info!("Turso embedded replica ready");
+    Ok(db)
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Install a process-wide rustls provider before any TLS clients are created.
-    // This build enables `ring` directly and `aws-lc-rs` transitively, so rustls 0.23
-    // cannot always infer a unique default provider at runtime.
-    // We pin `ring` here to keep the Firestore/gcloud TLS path deterministic and aligned
-    // with the legacy AWS rustls 0.21 stack that is still present in the dependency graph.
+    // Install crypto providers for all rustls versions in the dependency tree.
+    // libsql/hyper-rustls uses rustls 0.22, AWS SDKs use rustls 0.23.
+    // Installing both ensures TLS works across the entire tree.
     rustls::crypto::ring::default_provider()
         .install_default()
-        .expect("failed to install rustls crypto provider");
+        .expect("failed to install rustls 0.23 crypto provider");
+    // Note: rustls 0.22 (via libsql) uses a global default approach and will pick up
+    // the ring crypto features via its dependency on rustls-webpki.
 
     load_dotenv_preserving_existing();
 
@@ -119,11 +146,17 @@ async fn main() -> anyhow::Result<()> {
         None
     };
 
-    if clear_missing_google_application_credentials() {
-        tracing::warn!(
-            "GOOGLE_APPLICATION_CREDENTIALS points to a missing file - falling back to application-default credentials"
-        );
-    }
+    // Bind the port immediately so Cloud Run's TCP startup probe succeeds
+    // before the rest of initialization (Turso, AWS, etc.) runs.
+    // The OS kernel queues incoming connections in the backlog until
+    // axum::serve() processes them at the end of startup.
+    let port: u16 = std::env::var("PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(3001);
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    tracing::info!("port {} bound — waiting for initialization", port);
 
     let search_runtime = SearchRuntimeConfig::from_env();
     let turso_runtime = TursoRuntimeConfig::from_env().map_err(|err| anyhow::anyhow!(err))?;
@@ -174,16 +207,49 @@ async fn main() -> anyhow::Result<()> {
     }
     let s3v_client = aws_sdk_s3vectors::Client::from_conf(s3v_config_builder.build());
 
-    let gcp_project_id = std::env::var("GCP_PROJECT_ID")
-        .map_err(|_| anyhow::anyhow!("GCP_PROJECT_ID must be set"))?;
-    tracing::info!(project = %gcp_project_id, "connecting to Firestore");
-    let firestore_db = firestore::FirestoreDb::new(&gcp_project_id).await?;
+    // Build a single Turso embedded replica shared by Store and FtsIndex.
+    let fts_dir = std::env::temp_dir().join("dastill-search-index");
+    std::fs::create_dir_all(&fts_dir)?;
+    let turso_db_path = fts_dir.join("search-fts.db");
+
+    let turso_db = if let Some(config) = turso_runtime {
+        tracing::info!("Initializing Turso embedded replica...");
+        match build_turso_replica(&turso_db_path, &config).await {
+            Ok(db) => db,
+            Err(first_err) => {
+                tracing::warn!(
+                    "Turso replica failed ({first_err}), wiping stale local replica and retrying..."
+                );
+                let _ = std::fs::remove_dir_all(&fts_dir);
+                std::fs::create_dir_all(&fts_dir)?;
+                build_turso_replica(&turso_db_path, &config)
+                    .await
+                    .map_err(|err| anyhow::anyhow!("Turso replica retry also failed: {err}"))?
+            }
+        }
+    } else {
+        tracing::info!(path = %turso_db_path.display(), "Initializing local libSQL database (no Turso config)...");
+        libsql::Builder::new_local(&turso_db_path)
+            .build()
+            .await
+            .map_err(|err| anyhow::anyhow!("failed to build local libSQL database: {err}"))?
+    };
+
+    let turso_conn = turso_db
+        .connect()
+        .map_err(|err| anyhow::anyhow!("failed to connect to Turso: {err}"))?;
+    turso_conn
+        .busy_timeout(std::time::Duration::from_secs(5))
+        .map_err(|err| anyhow::anyhow!("failed to set Turso busy timeout: {err}"))?;
+    dastill::db::turso_schema::initialize_turso_schema(&turso_conn)
+        .await
+        .map_err(|err| anyhow::anyhow!(err))?;
 
     let read_cache = ReadCache::default();
     let pool = init_store(
         s3_client,
         s3v_client,
-        firestore_db,
+        turso_conn,
         data_bucket,
         vector_bucket,
         vector_index,
@@ -191,15 +257,6 @@ async fn main() -> anyhow::Result<()> {
     )
     .await
     .map_err(|e| anyhow::anyhow!(e))?;
-    let pruned_malformed_videos = dastill::db::prune_malformed_video_documents(&pool)
-        .await
-        .map_err(|e| anyhow::anyhow!(e))?;
-    if pruned_malformed_videos > 0 {
-        tracing::warn!(
-            pruned_count = pruned_malformed_videos,
-            "pruned malformed Firestore video documents; refresh and gap workers will repopulate them"
-        );
-    }
 
     let client = build_http_client();
     let analytics = databricks_runtime
@@ -212,12 +269,36 @@ async fn main() -> anyhow::Result<()> {
         YouTubeService::with_client(client.clone())
             .with_quota_cooldown(youtube_quota_cooldown.clone()),
     );
+    let openalex = Arc::new(OpenAlexService::with_client(client.clone()));
+    let podcast_feed = Arc::new(PodcastFeedService::with_client(client.clone()));
+    let website = Arc::new(WebsiteService::with_client(client.clone()));
     match youtube.validate_data_api_key().await {
-        Ok(Some(true)) => tracing::info!("YOUTUBE_API_KEY is configured and valid"),
-        Ok(Some(false)) => {
-            tracing::warn!("YOUTUBE_API_KEY is configured but invalid (or quota exceeded)")
+        Ok(dastill::services::DataApiKeyValidation::Valid) => {
+            tracing::info!("YOUTUBE_API_KEY is configured and valid")
         }
-        Ok(None) => tracing::info!("YOUTUBE_API_KEY is not configured - using fallback sources"),
+        Ok(dastill::services::DataApiKeyValidation::QuotaExceeded { message }) => {
+            tracing::warn!(
+                message = message.as_deref().unwrap_or("unknown"),
+                "YOUTUBE_API_KEY is configured but YouTube Data API quota is currently exceeded"
+            )
+        }
+        Ok(dastill::services::DataApiKeyValidation::ServiceDisabled { reason, message }) => {
+            tracing::warn!(
+                reason = reason.as_deref().unwrap_or("unknown"),
+                message = message.as_deref().unwrap_or("unknown"),
+                "YOUTUBE_API_KEY is configured but YouTube Data API v3 is disabled for the active GCP project or the key belongs to a different project"
+            )
+        }
+        Ok(dastill::services::DataApiKeyValidation::Rejected { reason, message }) => {
+            tracing::warn!(
+                reason = reason.as_deref().unwrap_or("unknown"),
+                message = message.as_deref().unwrap_or("unknown"),
+                "YOUTUBE_API_KEY is configured but rejected by YouTube Data API"
+            )
+        }
+        Ok(dastill::services::DataApiKeyValidation::NotConfigured) => {
+            tracing::info!("YOUTUBE_API_KEY is not configured - using fallback sources")
+        }
         Err(err) => tracing::warn!(error = %err, "could not validate YOUTUBE_API_KEY on startup"),
     }
     let transcript_semaphore = Arc::new(tokio::sync::Semaphore::new(1));
@@ -240,6 +321,13 @@ async fn main() -> anyhow::Result<()> {
         .default_chat_model
         .clone()
         .unwrap_or_else(|| ollama.summary_model.clone());
+    let openalex_planner = Arc::new(OpenAlexPlannerService::new(
+        OllamaCore::with_client(build_http_client(), &ollama.url, &chat_model)
+            .with_fallback_model(ollama.fallback_model.clone())
+            .with_api_key(ollama.api_key.clone())
+            .with_cloud_cooldown(cloud_cooldown.clone())
+            .with_ollama_semaphore(ollama_semaphore.clone()),
+    ));
     let chat_core = OllamaCore::with_client(build_http_client(), &ollama.url, &chat_model)
         .with_fallback_model(ollama.fallback_model.clone())
         .with_api_key(ollama.api_key.clone())
@@ -288,15 +376,8 @@ async fn main() -> anyhow::Result<()> {
         search.semantic_enabled(),
     ));
 
-    let fts_dir = std::env::temp_dir().join("dastill-search-index");
-    let fts_remote = turso_runtime
-        .as_ref()
-        .map(|config| dastill::services::fts::FtsRemoteConfig {
-            url: config.db_url.clone(),
-            auth_token: config.auth_token.clone(),
-        });
     let fts = Arc::new(
-        FtsIndex::new_in_dir(fts_dir.clone(), fts_remote)
+        FtsIndex::new_with_db(turso_db, turso_db_path)
             .await
             .expect("failed to create Turso-backed FTS index"),
     );
@@ -310,6 +391,8 @@ async fn main() -> anyhow::Result<()> {
         ))
     });
 
+    let user_activity = Arc::new(UserActivity::from_env());
+
     let state = AppState {
         db: pool.clone(),
         read_cache: Arc::new(read_cache),
@@ -320,6 +403,10 @@ async fn main() -> anyhow::Result<()> {
         search_progress,
         fts,
         youtube,
+        openalex_planner,
+        openalex,
+        podcast_feed,
+        website,
         transcript,
         tts: polly_tts,
         summarizer,
@@ -328,12 +415,14 @@ async fn main() -> anyhow::Result<()> {
         chat,
         input_guardrails,
         analytics,
-        active_chats: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
-        chat_store_lock: Arc::new(tokio::sync::Mutex::new(())),
+        active_replies: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+        conversation_store_lock: Arc::new(tokio::sync::Mutex::new(())),
         anonymous_chat_quota_lock: Arc::new(tokio::sync::Mutex::new(())),
+        mobile_auth_handoffs: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         cloud_cooldown,
         youtube_quota_cooldown,
         transcript_cooldown,
+        user_activity,
     };
 
     let search_progress_state = state.clone();
@@ -405,12 +494,12 @@ async fn main() -> anyhow::Result<()> {
 
     let protected_api = Router::new()
         .route("/api/health/ai", get(content::health_ai))
-        .route("/api/chat/config", get(chat::chat_client_config))
+        .route("/api/chat/config", get(chat::get_client_config))
         .route(
             "/api/chat/suggestions/channels",
-            get(chat::channel_suggestions),
+            get(chat::suggest_channels),
         )
-        .route("/api/chat/suggestions/videos", get(chat::video_suggestions))
+        .route("/api/chat/suggestions/videos", get(chat::suggest_videos))
         .route(
             "/api/chat/conversations",
             get(chat::list_conversations)
@@ -425,7 +514,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .route(
             "/api/chat/ephemeral/messages",
-            post(chat::send_ephemeral_message)
+            post(chat::start_ephemeral_reply)
                 .layer(middleware::from_fn_with_state(
                     state.clone(),
                     enforce_expensive_rate_limit,
@@ -437,7 +526,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .route(
             "/api/chat/conversations/{id}/messages",
-            post(chat::send_message)
+            post(chat::start_conversation_reply)
                 .layer(middleware::from_fn_with_state(
                     state.clone(),
                     enforce_expensive_rate_limit,
@@ -449,14 +538,14 @@ async fn main() -> anyhow::Result<()> {
         )
         .route(
             "/api/chat/conversations/{id}/stream",
-            get(chat::reconnect_stream).layer(middleware::from_fn_with_state(
+            get(chat::resume_conversation_reply).layer(middleware::from_fn_with_state(
                 state.clone(),
                 enforce_expensive_rate_limit,
             )),
         )
         .route(
             "/api/chat/conversations/{id}/cancel",
-            post(chat::cancel_message),
+            post(chat::cancel_conversation_reply),
         )
         .route(
             "/api/preferences",
@@ -485,8 +574,22 @@ async fn main() -> anyhow::Result<()> {
             get(channels::workspace_bootstrap),
         )
         .route(
+            "/api/auth/mobile-handoff/{id}",
+            post(auth::create_mobile_auth_handoff)
+                .put(auth::complete_mobile_auth_handoff)
+                .get(auth::get_mobile_auth_handoff)
+                .delete(auth::delete_mobile_auth_handoff),
+        )
+        .route(
             "/api/channels",
             get(channels::list_channels).post(channels::add_channel),
+        )
+        .route(
+            "/api/openalex/plan",
+            post(channels::plan_openalex_query).layer(middleware::from_fn_with_state(
+                state.clone(),
+                enforce_expensive_rate_limit,
+            )),
         )
         .route(
             "/api/channels/{id}",
@@ -619,21 +722,18 @@ async fn main() -> anyhow::Result<()> {
         ));
 
     let app = Router::new()
-        .route("/api/health", get(|| async { "ok" }))
+        .route("/api/health", get(dastill::openapi::health))
+        .route("/api/openapi.json", get(dastill::openapi::get_openapi_json))
         .merge(protected_api)
         .layer(middleware::from_fn(add_cache_control))
         .layer(build_cors_layer(security_runtime.as_ref()).map_err(|err| anyhow::anyhow!(err))?)
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 
-    let port: u16 = std::env::var("PORT")
-        .ok()
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(3001);
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
-
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    tracing::info!("backend listening on {}", listener.local_addr()?);
+    tracing::info!(
+        "initialization complete — serving on {}",
+        listener.local_addr()?
+    );
     axum::serve(listener, app).await?;
 
     Ok(())

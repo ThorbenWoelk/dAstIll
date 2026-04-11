@@ -40,13 +40,16 @@ pub struct ChatRuntimeConfig {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SecurityRuntimeConfig {
     pub proxy_token: String,
+    pub firebase_project_id: String,
     pub allowed_origins: Vec<String>,
+    pub operator_email_allowlist: Vec<String>,
     pub default_seeded_channel_id: String,
     pub baseline_rate_limit_per_minute: u32,
     pub expensive_rate_limit_per_minute: u32,
     pub anonymous_chat_quota: u32,
 }
 
+const LOCAL_DEV_FIREBASE_PROJECT_ID: &str = "demo-dastill";
 const LOCAL_DEV_DEFAULT_SEEDED_CHANNEL_ID: &str = "UCbRP3c757lWg9M-U7TyEkXA";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -125,6 +128,11 @@ impl SearchRuntimeConfig {
 
 impl TursoRuntimeConfig {
     pub fn from_env() -> Result<Option<Self>, String> {
+        let use_turso = optional_env("START_APP_USE_TURSO").unwrap_or_default();
+        if !matches!(use_turso.as_str(), "1" | "true" | "TRUE") {
+            return Ok(None);
+        }
+
         let db_url = optional_env("TURSO_DB_URL");
         let auth_token = optional_env("TURSO_AUTH_TOKEN");
 
@@ -159,8 +167,19 @@ impl SecurityRuntimeConfig {
                 "BACKEND_PROXY_TOKEN",
                 "local-dev-backend-proxy-token",
             )?,
+            firebase_project_id: optional_env("FIREBASE_PROJECT_ID")
+                .or_else(|| optional_env("PUBLIC_FIREBASE_PROJECT_ID"))
+                .or_else(|| optional_env("GCP_PROJECT_ID"))
+                .or_else(|| optional_env("GOOGLE_CLOUD_PROJECT"))
+                .unwrap_or_else(|| LOCAL_DEV_FIREBASE_PROJECT_ID.to_string()),
             allowed_origins: optional_csv_env("BACKEND_CORS_ALLOWED_ORIGINS")
                 .unwrap_or_else(default_backend_allowed_origins),
+            operator_email_allowlist: optional_csv_env("OPERATOR_EMAIL_ALLOWLIST")
+                .unwrap_or_default()
+                .into_iter()
+                .map(|email| email.trim().to_lowercase())
+                .filter(|email| !email.is_empty())
+                .collect(),
             // Release builds do not use `cfg!(debug_assertions)`; use the same default as local dev
             // when unset so Cloud Run and Docker do not require a duplicate env var.
             default_seeded_channel_id: optional_env("DEFAULT_SEEDED_CHANNEL_ID")
@@ -307,6 +326,9 @@ fn default_backend_allowed_origins() -> Vec<String> {
         "http://127.0.0.1:3000".to_string(),
         "http://localhost:3543".to_string(),
         "http://127.0.0.1:3543".to_string(),
+        "http://tauri.localhost".to_string(),
+        "https://tauri.localhost".to_string(),
+        "tauri://localhost".to_string(),
     ]
 }
 
@@ -334,6 +356,11 @@ mod tests {
     const SECURITY_ENV_KEYS: &[&str] = &[
         "BACKEND_PROXY_TOKEN",
         "BACKEND_CORS_ALLOWED_ORIGINS",
+        "FIREBASE_PROJECT_ID",
+        "PUBLIC_FIREBASE_PROJECT_ID",
+        "GCP_PROJECT_ID",
+        "GOOGLE_CLOUD_PROJECT",
+        "OPERATOR_EMAIL_ALLOWLIST",
         "DEFAULT_SEEDED_CHANNEL_ID",
         "BASELINE_RATE_LIMIT_PER_MINUTE",
         "EXPENSIVE_RATE_LIMIT_PER_MINUTE",
@@ -347,7 +374,7 @@ mod tests {
         "DATABRICKS_SCHEMA",
         "DATABRICKS_BRONZE_TABLE",
     ];
-    const TURSO_ENV_KEYS: &[&str] = &["TURSO_DB_URL", "TURSO_AUTH_TOKEN"];
+    const TURSO_ENV_KEYS: &[&str] = &["TURSO_DB_URL", "TURSO_AUTH_TOKEN", "START_APP_USE_TURSO"];
 
     #[test]
     fn from_env_requires_summary_model() {
@@ -360,7 +387,7 @@ mod tests {
         remove_env("OLLAMA_URL");
         remove_env("OLLAMA_API_KEY");
         remove_env("OLLAMA_SUMMARY_MODEL");
-        set_env("SUMMARY_EVALUATOR_MODEL", "glm-5:cloud");
+        set_env("SUMMARY_EVALUATOR_MODEL", "glm-5.1:cloud");
 
         let err = OllamaRuntimeConfig::from_env(true).expect_err("missing model should fail");
         assert!(err.contains("OLLAMA_SUMMARY_MODEL"));
@@ -376,7 +403,7 @@ mod tests {
         let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
         remove_env("OLLAMA_URL");
         remove_env("OLLAMA_API_KEY");
-        set_env("OLLAMA_SUMMARY_MODEL", "glm-5:cloud");
+        set_env("OLLAMA_SUMMARY_MODEL", "glm-5.1:cloud");
         remove_env("SUMMARY_EVALUATOR_MODEL");
 
         let err = OllamaRuntimeConfig::from_env(true).expect_err("missing evaluator should fail");
@@ -393,7 +420,7 @@ mod tests {
         let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
         remove_env("OLLAMA_URL");
         remove_env("OLLAMA_API_KEY");
-        set_env("OLLAMA_SUMMARY_MODEL", "glm-5:cloud");
+        set_env("OLLAMA_SUMMARY_MODEL", "glm-5.1:cloud");
         set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
         remove_env("OLLAMA_EMBEDDING_MODEL");
 
@@ -412,7 +439,7 @@ mod tests {
         let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
         remove_env("OLLAMA_URL");
         remove_env("OLLAMA_API_KEY");
-        set_env("OLLAMA_SUMMARY_MODEL", "glm-5:cloud");
+        set_env("OLLAMA_SUMMARY_MODEL", "glm-5.1:cloud");
         set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
         remove_env("OLLAMA_EMBEDDING_MODEL");
 
@@ -430,7 +457,7 @@ mod tests {
         let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
         remove_env("OLLAMA_URL");
         remove_env("OLLAMA_API_KEY");
-        set_env("OLLAMA_SUMMARY_MODEL", "glm-5:cloud");
+        set_env("OLLAMA_SUMMARY_MODEL", "glm-5.1:cloud");
         set_env("OLLAMA_FALLBACK_MODEL", "   ");
         set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
         set_env("OLLAMA_EMBEDDING_MODEL", "embeddinggemma");
@@ -449,13 +476,13 @@ mod tests {
         let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
         remove_env("OLLAMA_URL");
         remove_env("OLLAMA_API_KEY");
-        set_env("OLLAMA_SUMMARY_MODEL", "glm-5:cloud");
+        set_env("OLLAMA_SUMMARY_MODEL", "glm-5.1:cloud");
         set_env("OLLAMA_FALLBACK_MODEL", "qwen3-coder:30b");
         set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
         set_env("OLLAMA_EMBEDDING_MODEL", "embeddinggemma");
 
         let config = OllamaRuntimeConfig::from_env(true).expect("config");
-        assert_eq!(config.summary_model, "glm-5:cloud");
+        assert_eq!(config.summary_model, "glm-5.1:cloud");
         assert_eq!(config.default_chat_model, None);
         assert_eq!(config.fallback_model.as_deref(), Some("qwen3-coder:30b"));
         assert_eq!(config.summary_evaluator_model, "qwen3.5:397b-cloud");
@@ -472,12 +499,18 @@ mod tests {
         let _reset = EnvReset::capture(SECURITY_ENV_KEYS);
         remove_env("BACKEND_PROXY_TOKEN");
         remove_env("BACKEND_CORS_ALLOWED_ORIGINS");
+        remove_env("FIREBASE_PROJECT_ID");
+        remove_env("PUBLIC_FIREBASE_PROJECT_ID");
+        remove_env("GCP_PROJECT_ID");
+        remove_env("GOOGLE_CLOUD_PROJECT");
+        remove_env("OPERATOR_EMAIL_ALLOWLIST");
         remove_env("DEFAULT_SEEDED_CHANNEL_ID");
         remove_env("BASELINE_RATE_LIMIT_PER_MINUTE");
         remove_env("EXPENSIVE_RATE_LIMIT_PER_MINUTE");
 
         let config = SecurityRuntimeConfig::from_env().expect("security config");
         assert_eq!(config.proxy_token, "local-dev-backend-proxy-token");
+        assert_eq!(config.firebase_project_id, "demo-dastill");
         assert_eq!(config.default_seeded_channel_id, "UCbRP3c757lWg9M-U7TyEkXA");
         assert_eq!(config.baseline_rate_limit_per_minute, 600);
         assert_eq!(config.expensive_rate_limit_per_minute, 120);
@@ -502,6 +535,11 @@ mod tests {
             "BACKEND_CORS_ALLOWED_ORIGINS",
             "https://app.example.com,https://ops.example.com",
         );
+        set_env("FIREBASE_PROJECT_ID", "prod-project");
+        set_env(
+            "OPERATOR_EMAIL_ALLOWLIST",
+            "operator@example.com, OWNER@example.com ",
+        );
         set_env("DEFAULT_SEEDED_CHANNEL_ID", "seeded-channel-123");
         set_env("BASELINE_RATE_LIMIT_PER_MINUTE", "90");
         set_env("EXPENSIVE_RATE_LIMIT_PER_MINUTE", "7");
@@ -509,12 +547,20 @@ mod tests {
 
         let config = SecurityRuntimeConfig::from_env().expect("security config");
         assert_eq!(config.proxy_token, "proxy-secret");
+        assert_eq!(config.firebase_project_id, "prod-project");
         assert_eq!(config.default_seeded_channel_id, "seeded-channel-123");
         assert_eq!(
             config.allowed_origins,
             vec![
                 "https://app.example.com".to_string(),
                 "https://ops.example.com".to_string()
+            ]
+        );
+        assert_eq!(
+            config.operator_email_allowlist,
+            vec![
+                "operator@example.com".to_string(),
+                "owner@example.com".to_string()
             ]
         );
         assert_eq!(config.baseline_rate_limit_per_minute, 90);
@@ -532,7 +578,7 @@ mod tests {
         let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
         remove_env("OLLAMA_URL");
         remove_env("OLLAMA_API_KEY");
-        set_env("OLLAMA_SUMMARY_MODEL", "glm-5:cloud");
+        set_env("OLLAMA_SUMMARY_MODEL", "glm-5.1:cloud");
         set_env("OLLAMA_DEFAULT_CHAT_MODEL", "qwen3-chat:latest");
         set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
         set_env("OLLAMA_EMBEDDING_MODEL", "embeddinggemma");
@@ -693,7 +739,7 @@ mod tests {
         let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
         set_env("OLLAMA_URL", "https://ollama.cloud.example.com");
         remove_env("OLLAMA_API_KEY");
-        set_env("OLLAMA_SUMMARY_MODEL", "glm-5:cloud");
+        set_env("OLLAMA_SUMMARY_MODEL", "glm-5.1:cloud");
         set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
         set_env("OLLAMA_EMBEDDING_MODEL", "embeddinggemma");
 
@@ -712,7 +758,7 @@ mod tests {
         let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
         set_env("OLLAMA_URL", "https://ollama.cloud.example.com");
         set_env("OLLAMA_API_KEY", "sk-test-key");
-        set_env("OLLAMA_SUMMARY_MODEL", "glm-5:cloud");
+        set_env("OLLAMA_SUMMARY_MODEL", "glm-5.1:cloud");
         set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
         set_env("OLLAMA_EMBEDDING_MODEL", "embeddinggemma");
 
@@ -730,7 +776,7 @@ mod tests {
         let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
         set_env("OLLAMA_URL", "http://localhost:11434");
         remove_env("OLLAMA_API_KEY");
-        set_env("OLLAMA_SUMMARY_MODEL", "glm-5:cloud");
+        set_env("OLLAMA_SUMMARY_MODEL", "glm-5.1:cloud");
         set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
         set_env("OLLAMA_EMBEDDING_MODEL", "embeddinggemma");
 
@@ -826,6 +872,7 @@ mod tests {
             .unwrap_or_else(|err| err.into_inner());
 
         let _reset = EnvReset::capture(TURSO_ENV_KEYS);
+        set_env("START_APP_USE_TURSO", "1");
         set_env("TURSO_DB_URL", "libsql://prod-db.turso.io");
         remove_env("TURSO_AUTH_TOKEN");
         let err = TursoRuntimeConfig::from_env().expect_err("missing token should fail");
@@ -845,6 +892,7 @@ mod tests {
             .unwrap_or_else(|err| err.into_inner());
 
         let _reset = EnvReset::capture(TURSO_ENV_KEYS);
+        set_env("START_APP_USE_TURSO", "1");
         set_env("TURSO_DB_URL", "libsql://prod-db.turso.io");
         set_env("TURSO_AUTH_TOKEN", "token");
 

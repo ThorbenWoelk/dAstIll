@@ -148,6 +148,7 @@ export type SidebarStateOptions = {
     snapshotOptions: Parameters<typeof getChannelSnapshot>[1],
     silent: boolean,
   ) => Promise<ChannelSnapshot>;
+  enableBackgroundRefresh?: boolean;
   onRefreshChannel?: (channelId: string) => Promise<{ videos_added: number }>;
   onListVideos?: (
     channelId: string,
@@ -294,13 +295,22 @@ export type SidebarStateResult = {
   // Operations
   syncChannelOrderFromList: () => void;
   loadInitial: (options?: { silent?: boolean }) => Promise<void>;
+  setSelectedChannel: (channelId: string | null) => void;
   selectChannel: (
     channelId: string,
     videoId?: string | null,
     fromUserInteraction?: boolean,
   ) => Promise<void>;
+  selectVideo: (videoId: string | null) => void;
+  replaceVideos: (videos: Video[]) => void;
   refreshAndLoadVideos: (channelId: string, silent?: boolean) => Promise<void>;
   loadVideos: (reset?: boolean, silent?: boolean) => Promise<void>;
+  reloadSelectedChannelVideos: (options?: {
+    reset?: boolean;
+    silent?: boolean;
+    refresh?: boolean;
+    clearMissingSelectedVideo?: boolean;
+  }) => Promise<void>;
   handleAddChannel: (input: string) => Promise<boolean>;
   handleDeleteChannel: (
     channelId: string,
@@ -682,6 +692,14 @@ export function createSidebarState(
     channels = channels.map((ch) => (ch.id === updated.id ? updated : ch));
   }
 
+  function setSelectedChannel(channelId: string | null) {
+    applySelectionState({ selectedChannelId: channelId });
+  }
+
+  function replaceVideos(nextVideos: Video[]) {
+    setVideos(nextVideos);
+  }
+
   function reorderChannels(nextOrder: string[]) {
     channels = applySavedChannelOrder(channels, nextOrder);
     channelOrder = nextOrder;
@@ -714,6 +732,8 @@ export function createSidebarState(
     refreshAndLoadVideos,
     loadVideos,
     selectChannel,
+    selectVideo,
+    reloadSelectedChannelVideos,
     setVideoTypeFilterAndReload,
     setAcknowledgedFilterAndReload,
     clearAllFiltersAndReload,
@@ -722,28 +742,27 @@ export function createSidebarState(
     limit,
     channelLastRefreshedAt,
     videoStateCache,
-    syncChannelOrderFromList,
     getVideoStateKey,
     getChannelOrder: () => channelOrder,
     getSelectedChannelId: () => selectedChannelId,
+    getSelectedVideoId: () => selectedVideoId,
     getVideos: () => videos,
     getOffset: () => offset,
     getVideoTypeFilter: () => videoTypeFilter,
     getAcknowledgedFilter: () => acknowledgedFilter,
     getLoadingVideos: () => loadingVideos,
     getVideoListMutationEpoch: () => videoListMutationEpoch,
-    setChannels,
-    setSelectedChannelId,
-    setSelectedVideoId,
     setVideos,
-    setOffset,
-    setHasMore,
-    setSyncDepth,
-    setLoadingChannels,
-    setLoadingVideos,
-    setRefreshingChannel,
-    setHistoryExhausted,
-    setBackfillingHistory,
+    applyLoadedChannelsState,
+    applySelectionState,
+    clearChannelSelectionState,
+    resetVideoListState,
+    applyChannelSnapshotState,
+    applyVideoPageState,
+    setSyncDepthState,
+    setChannelLoadingState,
+    setVideoLoadingState,
+    setRefreshingChannelState,
     setVideoTypeFilter,
     setAcknowledgedFilter,
   });
@@ -756,12 +775,12 @@ export function createSidebarState(
       getSelectedChannelId: () => selectedChannelId,
       setChannels,
       setChannelOrder,
-      setSelectedChannelId,
-      setVideos,
-      setSyncDepth,
+      applyLoadedChannelsState,
+      applySelectionState,
+      clearChannelSelectionState,
       setAddingChannel,
-      setChannelIdToDelete,
-      setShowDeleteConfirmation,
+      queueChannelDeletion,
+      clearChannelDeletion,
       syncChannelOrderFromList,
       replaceOptimisticChannelId,
       selectChannel,
@@ -1001,9 +1020,13 @@ export function createSidebarState(
 
     // Operations
     loadInitial,
+    setSelectedChannel,
     selectChannel,
+    selectVideo,
+    replaceVideos,
     refreshAndLoadVideos,
     loadVideos,
+    reloadSelectedChannelVideos,
     handleAddChannel,
     handleDeleteChannel,
     confirmDeleteChannel,

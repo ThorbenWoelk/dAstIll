@@ -101,21 +101,21 @@ impl ChatService {
         trim_to_option(content).map(|value| limit_text(&value, CHAT_TITLE_MAX_CHARS))
     }
 
-    pub fn spawn_reply(&self, job: SpawnReplyJob) {
+    pub fn start_reply_workflow(&self, request: ReplyWorkflowRequest) {
         let service = self.clone();
-        let SpawnReplyJob {
+        let ReplyWorkflowRequest {
             state,
             conversation,
             access_context,
             conversation_scope_id,
-            active_chat_key,
+            active_reply_key,
             prompt,
             should_auto_name,
             deep_research,
             reply_model,
-            active_chat,
+            active_reply,
             persist_to_store,
-        } = job;
+        } = request;
         tokio::spawn(async move {
             if persist_to_store && should_auto_name {
                 let naming_service = service.clone();
@@ -136,16 +136,16 @@ impl ChatService {
             }
 
             service
-                .run_reply(
+                .run_reply_workflow(
                     state,
                     conversation,
                     access_context,
                     conversation_scope_id,
-                    active_chat_key,
+                    active_reply_key,
                     prompt,
                     deep_research,
                     reply_model,
-                    active_chat,
+                    active_reply,
                     persist_to_store,
                 )
                 .await;

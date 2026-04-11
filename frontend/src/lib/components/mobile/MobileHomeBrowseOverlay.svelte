@@ -50,7 +50,7 @@
 </script>
 
 {#if open}
-  <!-- z-[70] above .mobile-tab-bar (z-60). No full-screen backdrop button: it sat in the same stacking context as the sheet and could steal taps from "Synced to" on some engines. -->
+  <!-- No full-screen backdrop button: it sat in the same stacking context as the sheet and could steal taps from "Synced to" on some engines. -->
   <section
     class="relative z-[70] flex h-full min-h-0 flex-col overflow-hidden bg-[var(--background)] lg:hidden"
     aria-label="Browse"
@@ -63,6 +63,7 @@
       }}
       onAddChannel={readOnly ? undefined : channelActions.onAddChannel}
       addingChannel={channelState.addingChannel}
+      loadingChannels={channelState.loadingChannels}
       {addSourceErrorMessage}
     />
 

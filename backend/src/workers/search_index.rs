@@ -161,10 +161,12 @@ async fn reconcile_search_sources(state: &AppState) -> bool {
             continue;
         };
 
-        let needs_refresh = state_row.content_hash != content_hash
-            || state_row.index_status == "failed"
-            || (state.search.semantic_enabled()
-                && state_row.embedding_model.as_deref() != state.search.model());
+        let needs_refresh = db::should_refresh_search_source(
+            Some(&state_row),
+            &content_hash,
+            state.search.semantic_enabled(),
+            state.search.model(),
+        );
 
         if needs_refresh {
             if let Err(err) = db::mark_search_source_pending(
@@ -958,6 +960,12 @@ pub fn spawn_search_index_worker(state: AppState) {
             let mut backoff_state = PollBackoffState::default();
 
             loop {
+                if state.user_activity.is_idle() {
+                    tracing::debug!("search index worker skipped - no active user");
+                    sleep_with_backoff(SEARCH_INDEX_POLL_BACKOFF, &mut backoff_state, false).await;
+                    continue;
+                }
+
                 let mut had_activity = backfill_search_sources(&state).await;
                 had_activity |= process_pending_search_sources(&state).await;
                 had_activity |= prune_stale_search_rows(&state).await;

@@ -2,6 +2,7 @@ import type {
   Channel,
   CreateHighlightRequest,
   Highlight,
+  OpenAlexSavedSearchQuery,
   TranscriptRenderMode,
   Video,
   VideoInfo,
@@ -16,6 +17,13 @@ import type {
   WorkspaceContentMode,
 } from "$lib/workspace/types";
 import type { ChannelSnapshot, QueueTab } from "$lib/types";
+
+export type AddSourceSubmission =
+  | string
+  | {
+      input: string;
+      openalex_query?: OpenAlexSavedSearchQuery;
+    };
 
 export interface WorkspaceSidebarShellProps {
   collapsed: boolean;
@@ -35,7 +43,7 @@ export interface WorkspaceSidebarChannelState {
 
 export interface WorkspaceSidebarChannelActions {
   onChannelSortModeChange: (next: ChannelSortMode) => void;
-  onAddChannel: (input: string) => Promise<boolean> | boolean;
+  onAddChannel: (input: AddSourceSubmission) => Promise<boolean> | boolean;
   onSelectChannel: (channelId: string) => Promise<void> | void;
   onOpenChannelOverview?: (channelId: string) => Promise<void> | void;
   onDeleteChannel: (channelId: string) => Promise<void> | void;

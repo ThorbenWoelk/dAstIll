@@ -20,6 +20,13 @@ export interface SummaryQualityPresentation {
   qualityModelUsed: string | null;
 }
 
+export interface BackgroundSummaryRefreshPresentation {
+  contentText: string;
+  draft: string;
+  shouldClearVideoInfo: boolean;
+  quality: SummaryQualityPresentation;
+}
+
 export function stripContentPrefix(text: string): string {
   return text.replace(/^(?:Transcript|Summary):\s*/i, "").trimStart();
 }
@@ -57,6 +64,23 @@ export function resolveSummaryQualityPresentation(
     note: summary.quality_note?.trim() || null,
     modelUsed: summary.model_used ?? null,
     qualityModelUsed: summary.quality_model_used ?? null,
+  };
+}
+
+export function resolveBackgroundSummaryRefresh(
+  currentContentText: string,
+  summary: Summary,
+): BackgroundSummaryRefreshPresentation {
+  const hasDisplayedContent = currentContentText.trim().length > 0;
+  const hydratedContent = stripContentPrefix(
+    summary.content || "Summary unavailable.",
+  );
+
+  return {
+    contentText: hasDisplayedContent ? currentContentText : hydratedContent,
+    draft: hasDisplayedContent ? currentContentText : hydratedContent,
+    shouldClearVideoInfo: !hasDisplayedContent,
+    quality: resolveSummaryQualityPresentation(summary),
   };
 }
 

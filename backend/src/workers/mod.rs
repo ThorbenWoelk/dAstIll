@@ -66,6 +66,140 @@ fn parse_chunk_group_key(key: &str) -> Option<(String, String)> {
     Some((video_id.to_string(), source_kind.to_string()))
 }
 
+fn fts_chunks_from_material(
+    material: &crate::db::SearchMaterial,
+) -> Vec<crate::services::fts::FtsChunk> {
+    let drafts = match material.source_kind {
+        crate::services::search::SearchSourceKind::Transcript => {
+            crate::services::search::chunk_transcript_content(
+                &material.content,
+                crate::services::search::SEARCH_TRANSCRIPT_TARGET_WORDS,
+                crate::services::search::SEARCH_TRANSCRIPT_OVERLAP_WORDS,
+                material.timed_segments.as_deref(),
+            )
+        }
+        crate::services::search::SearchSourceKind::Summary => {
+            crate::services::search::chunk_summary_content(
+                &material.content,
+                crate::services::search::SEARCH_SUMMARY_TARGET_WORDS,
+            )
+        }
+    };
+    let content_hash = crate::services::search::hash_search_content(&material.content);
+    drafts
+        .into_iter()
+        .enumerate()
+        .map(|(index, draft)| crate::services::fts::FtsChunk {
+            chunk_id: format!(
+                "{}_{}_{}_{}",
+                material.video_id,
+                material.source_kind.as_str(),
+                content_hash,
+                index
+            ),
+            section_title: draft.section_title,
+            chunk_text: draft.text,
+            start_sec: draft.start_sec,
+        })
+        .collect()
+}
+
+async fn populate_fts_index_from_materials(
+    fts: &crate::services::FtsIndex,
+    materials: &[crate::db::SearchMaterial],
+) -> usize {
+    let mut upserted = 0usize;
+
+    for material in materials {
+        let chunks = fts_chunks_from_material(material);
+        if chunks.is_empty() {
+            continue;
+        }
+
+        if let Err(err) = fts
+            .upsert_source(
+                crate::services::fts::FtsSourceMeta {
+                    video_id: &material.video_id,
+                    source_kind: material.source_kind,
+                    channel_id: &material.channel_id,
+                    channel_name: &material.channel_name,
+                    video_title: &material.video_title,
+                    published_at: &material.published_at,
+                },
+                &chunks,
+            )
+            .await
+        {
+            tracing::error!(
+                video_id = %material.video_id,
+                source_kind = material.source_kind.as_str(),
+                error = %err,
+                "FTS hydration failed to upsert raw material"
+            );
+            continue;
+        }
+
+        upserted += 1;
+    }
+
+    upserted
+}
+
+async fn load_all_search_materials(
+    store: &crate::db::Store,
+) -> Result<Vec<crate::db::SearchMaterial>, crate::db::StoreError> {
+    let videos = crate::db::load_all_videos(store).await?;
+    let mut materials = Vec::new();
+
+    for video in videos {
+        if video.summary_status == crate::models::ContentStatus::Ready
+            && let Some(material) = crate::db::load_search_material(
+                store,
+                &video.id,
+                crate::services::search::SearchSourceKind::Summary,
+            )
+            .await?
+        {
+            materials.push(material);
+        }
+
+        if video.transcript_status == crate::models::ContentStatus::Ready
+            && let Some(material) = crate::db::load_search_material(
+                store,
+                &video.id,
+                crate::services::search::SearchSourceKind::Transcript,
+            )
+            .await?
+        {
+            materials.push(material);
+        }
+    }
+
+    Ok(materials)
+}
+
+async fn fallback_fts_hydration_to_raw_materials(
+    state: &AppState,
+    store: &crate::db::Store,
+) -> bool {
+    let materials = match load_all_search_materials(store).await {
+        Ok(materials) => materials,
+        Err(err) => {
+            tracing::error!(error = %err, "FTS hydration: failed to load raw search materials");
+            return false;
+        }
+    };
+
+    let upserted = populate_fts_index_from_materials(state.fts.as_ref(), &materials).await;
+    let doc_count = state.fts.doc_count().await;
+    tracing::info!(
+        sources = upserted,
+        doc_count,
+        "FTS hydration (raw materials) complete"
+    );
+    true
+}
+
 /// Populate the keyword search index from all ready search chunks stored in S3.
 /// Called once at startup when the runtime index is empty so keyword search
 /// does not depend on the background worker replaying each source one by one.
@@ -180,6 +314,12 @@ pub async fn populate_fts_index_from_store(state: AppState) {
             doc_count,
             "FTS hydration (bundled) complete"
         );
+        if doc_count == 0 {
+            tracing::warn!(
+                "FTS hydration (bundled) produced no documents, falling back to raw materials"
+            );
+            let _ = fallback_fts_hydration_to_raw_materials(&state, &store).await;
+        }
         return;
     }
 
@@ -193,7 +333,7 @@ pub async fn populate_fts_index_from_store(state: AppState) {
     };
 
     if chunk_keys.is_empty() {
-        tracing::info!("FTS hydration: no chunks or bundles found, skipping");
+        let _ = fallback_fts_hydration_to_raw_materials(&state, &store).await;
         return;
     }
 
@@ -299,6 +439,12 @@ pub async fn populate_fts_index_from_store(state: AppState) {
         doc_count,
         "FTS hydration (legacy) complete"
     );
+    if doc_count == 0 {
+        tracing::warn!(
+            "FTS hydration (legacy) produced no documents, falling back to raw materials"
+        );
+        let _ = fallback_fts_hydration_to_raw_materials(&state, &store).await;
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -387,9 +533,10 @@ mod tests {
     use super::summary_evaluation::{
         should_queue_summary_auto_regeneration, should_run_summary_evaluation,
     };
-    use super::{PollBackoff, PollBackoffState, QueueTask};
-    use crate::db::SearchSourceCounts;
+    use super::{PollBackoff, PollBackoffState, QueueTask, populate_fts_index_from_materials};
+    use crate::db::{SearchMaterial, SearchSourceCounts};
     use crate::models::{AiStatus, ContentStatus, Video};
+    use crate::services::search::SearchSourceKind;
 
     fn video_with_statuses(
         transcript_status: ContentStatus,
@@ -583,6 +730,56 @@ mod tests {
                 "video_id_with_underscores".to_string(),
                 "summary".to_string()
             )
+        );
+    }
+
+    #[tokio::test]
+    async fn populate_fts_index_hydrates_from_raw_search_material_when_chunks_are_missing() {
+        let fts = crate::services::FtsIndex::new()
+            .await
+            .expect("fts index should be created");
+        let materials = vec![
+            SearchMaterial {
+                video_id: "video-search".to_string(),
+                channel_id: "channel-search".to_string(),
+                channel_name: "Search Channel".to_string(),
+                video_title: "Claude keyword search".to_string(),
+                published_at: "2026-04-09T00:00:00Z".to_string(),
+                source_kind: SearchSourceKind::Transcript,
+                content: "Claude is mentioned in the transcript as a known-good keyword."
+                    .to_string(),
+                timed_segments: None,
+            },
+            SearchMaterial {
+                video_id: "video-search".to_string(),
+                channel_id: "channel-search".to_string(),
+                channel_name: "Search Channel".to_string(),
+                video_title: "Claude keyword search".to_string(),
+                published_at: "2026-04-09T00:00:00Z".to_string(),
+                source_kind: SearchSourceKind::Summary,
+                content: "Summary also mentions Claude for keyword search verification."
+                    .to_string(),
+                timed_segments: None,
+            },
+        ];
+
+        let upserted = populate_fts_index_from_materials(&fts, &materials).await;
+        let doc_count = fts.doc_count().await;
+        let matches = fts.search("claude", None, None, 10).await;
+
+        assert_eq!(
+            upserted, 2,
+            "expected transcript and summary sources to hydrate"
+        );
+        assert!(
+            doc_count >= 2,
+            "expected transcript and summary chunks to hydrate"
+        );
+        assert!(
+            matches
+                .iter()
+                .any(|result| result.video_id == "video-search"),
+            "expected hydrated FTS index to return the known keyword"
         );
     }
 }

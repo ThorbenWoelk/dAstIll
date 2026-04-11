@@ -24,6 +24,7 @@
   import ErrorToast from "$lib/components/ErrorToast.svelte";
   import MobileChannelGallery from "$lib/components/mobile/MobileChannelGallery.svelte";
   import MobileYouTubeTopNav from "$lib/components/mobile/MobileYouTubeTopNav.svelte";
+  import WorkspaceSidebarVideoFilterControl from "$lib/components/workspace/WorkspaceSidebarVideoFilterControl.svelte";
   import QueueContentPanel from "$lib/components/queue/QueueContentPanel.svelte";
   import {
     buildQueueGalleryChannelPreviews,
@@ -92,10 +93,10 @@
   } from "$lib/workspace/types";
   import { createAiStatusPoller, refreshAiStatus } from "$lib/utils/ai-poller";
   import { createSidebarState } from "$lib/workspace/sidebar-state.svelte";
-  import { mobileBottomBar } from "$lib/mobile-navigation/mobileBottomBar";
 
   const sidebar = createSidebarState({
     limit: 20,
+    enableBackgroundRefresh: false,
     getViewCacheScopeKey: () => "queue",
     onSelectVideo: openQueuedVideo,
     onChannelSelected: (_id) => {},
@@ -265,12 +266,12 @@
 
     const timer = window.setInterval(() => {
       void (async () => {
-        await sidebar.loadVideos(true, true);
+        await sidebar.reloadSelectedChannelVideos({
+          reset: true,
+          silent: true,
+          clearMissingSelectedVideo: true,
+        });
         queueVideoRefreshTick += 1;
-        const sel = sidebar.selectedVideoId;
-        if (sel && !sidebar.videos.some((v) => v.id === sel)) {
-          sidebar.clearSelectedVideoSelection();
-        }
       })();
     }, ms);
 
@@ -307,7 +308,7 @@
       id !== null &&
       previousQueueChannelId !== id
     ) {
-      sidebar.clearSelectedVideoSelection();
+      sidebar.selectVideo(null);
     }
     previousQueueChannelId = id;
   });
@@ -419,10 +420,15 @@
             buildQueueSnapshotCacheKey(selectedChannelIdAtMount),
             {
               channel_id: selectedChannelIdAtMount,
+              source_id: bootstrapResult.snapshot.source_id,
+              container: bootstrapResult.snapshot.container,
+              source: bootstrapResult.snapshot.source,
               channel_video_count: bootstrapResult.snapshot.channel_video_count,
               has_more: bootstrapResult.snapshot.has_more,
               next_offset: bootstrapResult.snapshot.next_offset,
               videos: bootstrapResult.snapshot.videos,
+              items: bootstrapResult.snapshot.items,
+              parts: bootstrapResult.snapshot.parts,
               sync_depth: bootstrapResult.snapshot.sync_depth,
             },
             workspaceCacheScopeKey,
@@ -494,8 +500,10 @@
       void putCachedChannels(sidebar.channels, workspaceCacheScopeKey);
 
       // Reload videos with the new sync boundary
-      sidebar.resetVideoListState();
-      await sidebar.refreshAndLoadVideos(sidebar.selectedChannelId);
+      await sidebar.reloadSelectedChannelVideos({
+        reset: true,
+        refresh: true,
+      });
     } catch (error) {
       if (!presentAuthRequiredNoticeIfNeeded(error)) {
         errorMessage = (error as Error).message;
@@ -513,9 +521,11 @@
       await ensureTranscript(videoId);
       // Wait a bit for the backend to start the job
       await new Promise((resolve) => setTimeout(resolve, 500));
-      if (sidebar.selectedChannelId) {
-        await sidebar.loadVideos(true, true);
-      }
+      await sidebar.reloadSelectedChannelVideos({
+        reset: true,
+        silent: true,
+        clearMissingSelectedVideo: true,
+      });
     } catch (error) {
       if (!presentAuthRequiredNoticeIfNeeded(error)) {
         errorMessage = (error as Error).message;
@@ -553,7 +563,7 @@
 
   function openQueuedVideo(videoId: string) {
     if (!sidebar.selectedChannelId) return;
-    sidebar.applySelectionState({ selectedVideoId: videoId });
+    sidebar.selectVideo(videoId);
   }
 
   async function handleSearchResultSelection(
@@ -618,6 +628,10 @@
   const shellToggleSidebar = sidebar.toggleSidebar;
   const queueSidebar = sidebar;
 
+  const queueFilterDisabled = $derived(
+    !queueSidebar.selectedChannelId || queueSidebar.loadingVideos,
+  );
+
   async function clearQueueBrowseVideoFilters() {
     const actions = queueSidebar.videoActions;
     if (actions.onClearAllFilters) {
@@ -627,39 +641,33 @@
       await actions.onAcknowledgedFilterChange("all");
     }
   }
-
-  // Use primitive sidebar fields, not `videoState`: the derived `videoState` object
-  // changes on every video list update and would retrigger this effect constantly,
-  // spamming `mobileBottomBar.set` and breaking taps on section nav (mobile).
-  const queueBrowseFilterDisabled = $derived(
-    !queueSidebar.selectedChannelId || queueSidebar.loadingVideos,
-  );
-
-  $effect(() => {
-    if (sidebar.selectedChannelId) {
-      mobileBottomBar.set({
-        kind: "sectionsWithVideoFilter",
-        filter: {
-          videoTypeFilter: sidebar.videoTypeFilter,
-          acknowledgedFilter: sidebar.acknowledgedFilter,
-          disabled: queueBrowseFilterDisabled,
-          onSelectVideoType: sidebar.videoActions.onVideoTypeFilterChange,
-          onSelectAcknowledged: sidebar.videoActions.onAcknowledgedFilterChange,
-          onClearAllFilters: clearQueueBrowseVideoFilters,
-        },
-      });
-    } else {
-      mobileBottomBar.set({ kind: "sections" });
-    }
-    return () => {
-      mobileBottomBar.set({ kind: "sections" });
-    };
-  });
 </script>
 
 <WorkspaceShell currentSection="queue" {aiIndicator} onOpenGuide={openGuide}>
   {#snippet mobileTopBar()}
-    <MobileYouTubeTopNav />
+    <MobileYouTubeTopNav>
+      {#snippet trailing()}
+        {#if queueSidebar.selectedChannelId}
+          <div
+            class="flex min-w-0 shrink-0 items-center justify-end"
+            aria-label="Video filters"
+          >
+            <WorkspaceSidebarVideoFilterControl
+              videoTypeFilter={queueSidebar.videoTypeFilter}
+              acknowledgedFilter={queueSidebar.acknowledgedFilter}
+              disabled={queueFilterDisabled}
+              onSelectVideoType={queueSidebar.videoActions
+                .onVideoTypeFilterChange}
+              onSelectAcknowledged={queueSidebar.videoActions
+                .onAcknowledgedFilterChange}
+              onClearAllFilters={clearQueueBrowseVideoFilters}
+            />
+          </div>
+        {:else}
+          <div class="w-10 shrink-0" aria-hidden="true"></div>
+        {/if}
+      {/snippet}
+    </MobileYouTubeTopNav>
   {/snippet}
   {#snippet sidebar({
     collapsed: shellCollapsed,

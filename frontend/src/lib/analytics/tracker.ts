@@ -7,7 +7,7 @@
  */
 
 import type { AnalyticsEvent, AnalyticsEventName } from "./events";
-import { resolveApiUrl } from "$lib/api-client";
+import { createApiRequestInit, resolveApiUrl } from "$lib/api-client";
 
 // Distributive Omit preserves the discriminated union structure.
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
@@ -53,11 +53,17 @@ async function sendBatch(batch: AnalyticsEvent[]): Promise<void> {
   if (batch.length === 0) return;
   try {
     await fetch(resolveApiUrl("/api/analytics/events"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(batch),
-      // keepalive allows delivery even when the page is closing.
-      keepalive: true,
+      ...(await createApiRequestInit(
+        {
+          method: "POST",
+          body: JSON.stringify(batch),
+          // keepalive allows delivery even when the page is closing.
+          keepalive: true,
+        },
+        {
+          includeJsonContentType: true,
+        },
+      )),
     });
   } catch {
     // intentionally silent

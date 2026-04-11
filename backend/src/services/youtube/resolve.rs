@@ -247,6 +247,25 @@ impl YouTubeService {
         &self,
         video_id: &str,
     ) -> Result<WatchMetadata, YouTubeError> {
+        if let Some(api_key) = self.data_api_key_if_available() {
+            match self.fetch_video_info_from_data_api(video_id, api_key).await {
+                Ok(info) => {
+                    return Ok(WatchMetadata {
+                        title: info.title,
+                        thumbnail_url: info.thumbnail_url,
+                        published_at: info.published_at,
+                    });
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        video_id = %video_id,
+                        error = %err,
+                        "Data API watch metadata fetch failed, falling back to watch page scrape"
+                    );
+                }
+            }
+        }
+
         let watch_url = format!("https://www.youtube.com/watch?v={video_id}");
         tracing::debug!(video_id = %video_id, "fetching watch metadata via full page");
 
@@ -281,6 +300,19 @@ impl YouTubeService {
     }
 
     pub async fn fetch_video_info(&self, video_id: &str) -> Result<VideoInfo, YouTubeError> {
+        if let Some(api_key) = self.data_api_key_if_available() {
+            match self.fetch_video_info_from_data_api(video_id, api_key).await {
+                Ok(info) => return Ok(info),
+                Err(err) => {
+                    tracing::warn!(
+                        video_id = %video_id,
+                        error = %err,
+                        "Data API video info fetch failed, falling back to watch page scrape"
+                    );
+                }
+            }
+        }
+
         let watch_url = format!("https://www.youtube.com/watch?v={video_id}");
         let response = self
             .client
@@ -317,53 +349,35 @@ impl YouTubeService {
                     "watch page scrape (info)".to_string(),
                 ));
             }
-
-            if let Some(api_key) = self.api_key.as_deref() {
-                let cooldown_active = self
-                    .quota_cooldown
-                    .as_ref()
-                    .is_some_and(|cd| cd.is_active());
-
-                if !cooldown_active {
-                    return self.fetch_video_info_from_data_api(video_id, api_key).await;
-                }
-            }
             return Err(YouTubeError::ChannelNotFound);
         };
 
         if video_info_missing_channel_identity(&info) {
-            let cooldown_active = self
-                .quota_cooldown
-                .as_ref()
-                .is_some_and(|cd| cd.is_active());
-
-            if let Some(api_key) = self.api_key.as_deref() {
-                if !cooldown_active {
-                    if let Ok(data_api_info) =
-                        self.fetch_video_info_from_data_api(video_id, api_key).await
-                    {
-                        if video_info_missing_channel_identity(&info) {
-                            info.channel_id = data_api_info.channel_id.clone();
-                            info.channel_name = data_api_info.channel_name.clone();
-                        }
-                        if info.description.is_none() {
-                            info.description = data_api_info.description.clone();
-                        }
-                        if info.thumbnail_url.is_none() {
-                            info.thumbnail_url = data_api_info.thumbnail_url.clone();
-                        }
-                        if info.published_at.is_none() {
-                            info.published_at = data_api_info.published_at;
-                        }
-                        if info.duration_iso8601.is_none() {
-                            info.duration_iso8601 = data_api_info.duration_iso8601.clone();
-                        }
-                        if info.duration_seconds.is_none() {
-                            info.duration_seconds = data_api_info.duration_seconds;
-                        }
-                        if info.view_count.is_none() {
-                            info.view_count = data_api_info.view_count;
-                        }
+            if let Some(api_key) = self.data_api_key_if_available() {
+                if let Ok(data_api_info) =
+                    self.fetch_video_info_from_data_api(video_id, api_key).await
+                {
+                    if video_info_missing_channel_identity(&info) {
+                        info.channel_id = data_api_info.channel_id.clone();
+                        info.channel_name = data_api_info.channel_name.clone();
+                    }
+                    if info.description.is_none() {
+                        info.description = data_api_info.description.clone();
+                    }
+                    if info.thumbnail_url.is_none() {
+                        info.thumbnail_url = data_api_info.thumbnail_url.clone();
+                    }
+                    if info.published_at.is_none() {
+                        info.published_at = data_api_info.published_at;
+                    }
+                    if info.duration_iso8601.is_none() {
+                        info.duration_iso8601 = data_api_info.duration_iso8601.clone();
+                    }
+                    if info.duration_seconds.is_none() {
+                        info.duration_seconds = data_api_info.duration_seconds;
+                    }
+                    if info.view_count.is_none() {
+                        info.view_count = data_api_info.view_count;
                     }
                 }
             }

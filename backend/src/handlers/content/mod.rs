@@ -1,4 +1,4 @@
-mod generation;
+pub mod generation;
 
 use axum::{
     Json,
@@ -6,12 +6,13 @@ use axum::{
     http::{StatusCode, header},
     response::IntoResponse,
 };
+use utoipa::ToSchema;
 
 use crate::audit;
 use crate::db;
 use crate::models::{
-    CleanTranscriptResponse, ContentStatus, Summary, Transcript, TranscriptRenderMode,
-    UpdateContentRequest,
+    AiHealthPayload, CleanTranscriptResponse, ContentStatus, Summary, Transcript,
+    TranscriptRenderMode, UpdateContentRequest,
 };
 use crate::services::SearchSourceKind;
 use crate::services::search::hash_search_content;
@@ -29,6 +30,33 @@ pub(crate) use generation::{ensure_summary, ensure_summary_for_queue, ensure_tra
 pub(crate) const MIN_SUMMARY_QUALITY_SCORE_FOR_ACCEPTANCE: u8 = 7;
 pub(crate) const MAX_SUMMARY_AUTO_REGEN_ATTEMPTS: u8 = 2;
 
+fn map_fts_err(err: String) -> (StatusCode, String) {
+    (StatusCode::INTERNAL_SERVER_ERROR, err)
+}
+
+async fn delete_video_search_source(
+    state: &AppState,
+    video_id: &str,
+    source_kind: SearchSourceKind,
+) -> Result<(), (StatusCode, String)> {
+    state
+        .fts
+        .delete_source(video_id, source_kind)
+        .await
+        .map_err(map_fts_err)?;
+
+    match source_kind {
+        SearchSourceKind::Transcript => db::delete_transcript(&state.db, video_id)
+            .await
+            .map_err(map_db_err)?,
+        SearchSourceKind::Summary => db::delete_summary(&state.db, video_id)
+            .await
+            .map_err(map_db_err)?,
+    };
+
+    Ok(())
+}
+
 pub(crate) fn should_auto_regenerate_summary(
     summary_status: ContentStatus,
     quality_score: Option<u8>,
@@ -43,6 +71,17 @@ pub(crate) fn should_auto_regenerate_summary(
         && auto_regen_attempts < MAX_SUMMARY_AUTO_REGEN_ATTEMPTS
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/videos/{id}/transcript",
+    params(
+        ("id" = String, Path, description = "Video id")
+    ),
+    responses(
+        (status = 200, description = "Transcript", body = Transcript),
+        (status = 404, description = "Transcript not found", body = String)
+    )
+)]
 pub async fn get_transcript(
     State(state): State<AppState>,
     Path(video_id): Path<String>,
@@ -56,6 +95,18 @@ pub async fn get_transcript(
     Ok(Json(transcript))
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/videos/{id}/transcript/ensure",
+    params(
+        ("id" = String, Path, description = "Video id")
+    ),
+    responses(
+        (status = 200, description = "Generated or cached transcript", body = Transcript),
+        (status = 404, description = "Video not found", body = String),
+        (status = 500, description = "Request failed", body = String)
+    )
+)]
 pub async fn generate_transcript(
     State(state): State<AppState>,
     Path(video_id): Path<String>,
@@ -65,6 +116,18 @@ pub async fn generate_transcript(
     Ok(Json(transcript))
 }
 
+#[utoipa::path(
+    put,
+    path = "/api/videos/{id}/transcript",
+    params(
+        ("id" = String, Path, description = "Video id")
+    ),
+    request_body = UpdateContentRequest,
+    responses(
+        (status = 200, description = "Updated transcript", body = Transcript),
+        (status = 404, description = "Video not found", body = String)
+    )
+)]
 pub async fn update_transcript(
     State(state): State<AppState>,
     Path(video_id): Path<String>,
@@ -76,6 +139,20 @@ pub async fn update_transcript(
     Ok(Json(transcript))
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/videos/{id}/transcript/clean",
+    params(
+        ("id" = String, Path, description = "Video id")
+    ),
+    request_body = UpdateContentRequest,
+    responses(
+        (status = 200, description = "Formatting cleanup result", body = CleanTranscriptResponse),
+        (status = 404, description = "Video not found", body = String),
+        (status = 503, description = "Summarizer unavailable", body = String),
+        (status = 500, description = "Request failed", body = String)
+    )
+)]
 pub async fn clean_transcript_formatting(
     State(state): State<AppState>,
     Path(video_id): Path<String>,
@@ -166,6 +243,17 @@ pub async fn clean_transcript_formatting(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/videos/{id}/summary",
+    params(
+        ("id" = String, Path, description = "Video id")
+    ),
+    responses(
+        (status = 200, description = "Summary", body = Summary),
+        (status = 404, description = "Summary not found", body = String)
+    )
+)]
 pub async fn get_summary(
     State(state): State<AppState>,
     Path(video_id): Path<String>,
@@ -207,6 +295,18 @@ async fn get_summary_audio_cache_info(
     Ok((key, content_type.to_string(), tts_text))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/videos/{id}/summary/audio",
+    params(
+        ("id" = String, Path, description = "Video id")
+    ),
+    responses(
+        (status = 200, description = "Cached summary audio", body = String, content_type = "audio/wav"),
+        (status = 404, description = "Summary audio not available", body = String),
+        (status = 503, description = "TTS unavailable", body = String)
+    )
+)]
 pub async fn get_summary_audio(
     State(state): State<AppState>,
     Path(video_id): Path<String>,
@@ -253,6 +353,18 @@ pub async fn get_summary_audio(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/videos/{id}/summary/audio",
+    params(
+        ("id" = String, Path, description = "Video id")
+    ),
+    responses(
+        (status = 200, description = "Generated or reused summary audio"),
+        (status = 404, description = "Summary not found", body = String),
+        (status = 503, description = "TTS unavailable", body = String)
+    )
+)]
 pub async fn generate_summary_audio(
     State(state): State<AppState>,
     Path(video_id): Path<String>,
@@ -304,7 +416,7 @@ pub async fn generate_summary_audio(
     Ok(StatusCode::OK)
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, ToSchema)]
 pub struct SummaryAudioDebugResponse {
     ok: bool,
     cache_hit: bool,
@@ -313,6 +425,18 @@ pub struct SummaryAudioDebugResponse {
     estimated_secs: Option<f32>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/videos/{id}/summary/audio/debug",
+    params(
+        ("id" = String, Path, description = "Video id")
+    ),
+    responses(
+        (status = 200, description = "Summary audio cache and timing details", body = SummaryAudioDebugResponse),
+        (status = 404, description = "Summary not found", body = String),
+        (status = 503, description = "TTS unavailable", body = String)
+    )
+)]
 pub async fn get_summary_audio_debug(
     State(state): State<AppState>,
     Path(video_id): Path<String>,
@@ -359,6 +483,18 @@ pub async fn get_summary_audio_debug(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/videos/{id}/summary/ensure",
+    params(
+        ("id" = String, Path, description = "Video id")
+    ),
+    responses(
+        (status = 200, description = "Generated or cached summary", body = Summary),
+        (status = 404, description = "Video not found", body = String),
+        (status = 503, description = "Summarizer unavailable", body = String)
+    )
+)]
 pub async fn generate_summary(
     State(state): State<AppState>,
     Path(video_id): Path<String>,
@@ -368,17 +504,25 @@ pub async fn generate_summary(
     Ok(Json(summary))
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/videos/{id}/summary/regenerate",
+    params(
+        ("id" = String, Path, description = "Video id")
+    ),
+    responses(
+        (status = 200, description = "Regenerated summary", body = Summary),
+        (status = 404, description = "Video not found", body = String),
+        (status = 503, description = "Summarizer unavailable", body = String)
+    )
+)]
 pub async fn regenerate_summary(
     State(state): State<AppState>,
     Path(video_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     tracing::info!(video_id = %video_id, "summary regeneration requested");
     let video = require_video(&state, &video_id).await?;
-    {
-        db::delete_summary(&state.db, &video_id)
-            .await
-            .map_err(map_db_err)?;
-    }
+    delete_video_search_source(&state, &video_id, SearchSourceKind::Summary).await?;
     evict_video_scope_cache(&state, &video.channel_id).await?;
 
     let summary = ensure_summary(&state, &video_id).await?;
@@ -387,6 +531,17 @@ pub async fn regenerate_summary(
 
 /// Wipe transcript, summary, quality metadata, and search vectors for a video,
 /// then reset its status fields to `pending` so the queue re-processes it from scratch.
+#[utoipa::path(
+    post,
+    path = "/api/videos/{id}/reset",
+    params(
+        ("id" = String, Path, description = "Video id")
+    ),
+    responses(
+        (status = 204, description = "Reset video processing state"),
+        (status = 404, description = "Video not found", body = String)
+    )
+)]
 pub async fn reset_video(
     State(state): State<AppState>,
     Path(video_id): Path<String>,
@@ -395,12 +550,8 @@ pub async fn reset_video(
     let video = require_video(&state, &video_id).await?;
     audit::log_video_reset(&video_id, &video.channel_id);
 
-    db::delete_transcript(&state.db, &video_id)
-        .await
-        .map_err(map_db_err)?;
-    db::delete_summary(&state.db, &video_id)
-        .await
-        .map_err(map_db_err)?;
+    delete_video_search_source(&state, &video_id, SearchSourceKind::Transcript).await?;
+    delete_video_search_source(&state, &video_id, SearchSourceKind::Summary).await?;
     // Reset regen counter so the queue won't skip re-generation thinking it already tried.
     db::reset_summary_auto_regen_attempts(&state.db, &video_id)
         .await
@@ -418,6 +569,13 @@ pub async fn reset_video(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/health/ai",
+    responses(
+        (status = 200, description = "AI availability status", body = AiHealthPayload)
+    )
+)]
 pub async fn health_ai(State(state): State<AppState>) -> impl IntoResponse {
     let available = state.summarizer.is_available().await;
     let status = state

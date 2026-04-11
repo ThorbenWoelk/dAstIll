@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy } from "svelte";
+  import { createApiRequestInit, resolveApiUrl } from "$lib/api-client";
   import {
     generateSummaryAudio,
     markSummaryAudioPlaybackStopped,
@@ -85,7 +86,12 @@
   async function checkAudioStatus() {
     if (!videoId) return;
     try {
-      const resp = await fetch(`/api/videos/${videoId}/summary/audio/debug`);
+      const resp = await fetch(
+        resolveApiUrl(`/api/videos/${videoId}/summary/audio/debug`),
+        await createApiRequestInit(undefined, {
+          includeJsonContentType: false,
+        }),
+      );
       if (resp.ok) {
         const data = await resp.json();
         syncSummaryAudioDebugState(videoId, data);
@@ -97,10 +103,18 @@
 
   async function generateAudio() {
     if (!videoId) return;
-    await generateSummaryAudio(videoId, () =>
-      fetch(`/api/videos/${videoId}/summary/audio`, {
-        method: "POST",
-      }),
+    await generateSummaryAudio(videoId, async () =>
+      fetch(
+        resolveApiUrl(`/api/videos/${videoId}/summary/audio`),
+        await createApiRequestInit(
+          {
+            method: "POST",
+          },
+          {
+            includeJsonContentType: false,
+          },
+        ),
+      ),
     );
   }
 

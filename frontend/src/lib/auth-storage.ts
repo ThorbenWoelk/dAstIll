@@ -10,6 +10,12 @@ export const LEGACY_WORKSPACE_CACHE_DB = "dastill-workspace-cache";
 
 const STORAGE_CLEANUP_KEY = "dastill.storage.cleanup.v1";
 
+/**
+ * Browser storage policy:
+ * - canonical content stays on the backend
+ * - client-side storage is only for UI state, caches, and ephemeral drafts
+ * - any user-sensitive client state must be partitioned by auth scope
+ */
 export function getAuthStorageScopeKey(
   auth: Pick<AuthContext, "authState" | "userId"> | null | undefined,
 ): string {

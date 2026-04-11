@@ -21,9 +21,12 @@ frontend_port=${FRONTEND_PORT:-3543}
 backend_port=${BACKEND_PORT:-3544}
 docs_port=${DOCS_PORT:-4173}
 ports=($frontend_port $backend_port $docs_port)
+mobile_log_file="mobile.log"
+emulator_log_file="emulator.log"
 script_path=${0:A}
 repo_root=${script_path:h}
 link_shared_env_script="${repo_root}/scripts/link_shared_env.sh"
+end_app_script="${repo_root}/end_app.sh"
 if [[ -n "${DASTILL_ENV_DIR:-}" ]]; then
 	shared_env_dir="$DASTILL_ENV_DIR"
 elif [[ -n "${XDG_CONFIG_HOME:-}" ]]; then
@@ -35,7 +38,163 @@ else
 fi
 shared_backend_env_file="${shared_env_dir}/backend.env"
 shared_frontend_env_file="${shared_env_dir}/frontend.env"
-typeset -gA initial_env_keys
+shared_aws_dir="${shared_env_dir}/aws"
+shared_aws_credentials_file="${shared_aws_dir}/credentials"
+shared_aws_config_file="${shared_aws_dir}/config"
+
+resolve_adb_command() {
+	if command -v adb >/dev/null 2>&1; then
+		command -v adb
+		return 0
+	fi
+
+	local candidates=(
+		"${ANDROID_HOME:-}/platform-tools/adb"
+		"${HOME:-}/Library/Android/sdk/platform-tools/adb"
+	)
+
+	local candidate
+	for candidate in "${candidates[@]}"; do
+		if [[ -n "$candidate" && -x "$candidate" ]]; then
+			printf '%s' "$candidate"
+			return 0
+		fi
+	done
+
+	return 1
+}
+
+resolve_java_home() {
+	local candidates=(
+		"${JAVA_HOME:-}"
+		"/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+	)
+
+	local candidate
+	for candidate in "${candidates[@]}"; do
+		if [[ -n "$candidate" && -x "$candidate/bin/java" ]]; then
+			printf '%s' "$candidate"
+			return 0
+		fi
+	done
+
+	return 1
+}
+
+resolve_android_home() {
+	local candidates=(
+		"${ANDROID_HOME:-}"
+		"${HOME:-}/Library/Android/sdk"
+	)
+
+	local candidate
+	for candidate in "${candidates[@]}"; do
+		if [[ -n "$candidate" && -d "$candidate" ]]; then
+			printf '%s' "$candidate"
+			return 0
+		fi
+	done
+
+	return 1
+}
+
+resolve_ndk_home() {
+	if [[ -n "${NDK_HOME:-}" && -d "${NDK_HOME}" ]]; then
+		printf '%s' "$NDK_HOME"
+		return 0
+	fi
+
+	local android_home
+	if ! android_home=$(resolve_android_home); then
+		return 1
+	fi
+
+	local ndk_root="${android_home}/ndk"
+	if [[ ! -d "$ndk_root" ]]; then
+		return 1
+	fi
+
+	ls -1d "$ndk_root"/* 2>/dev/null | sort -V | tail -n 1
+}
+
+prepare_android_toolchain_env() {
+	local resolved_java_home=""
+	local resolved_android_home=""
+	local resolved_ndk_home=""
+
+	if resolved_java_home=$(resolve_java_home); then
+		export JAVA_HOME="$resolved_java_home"
+	fi
+	if resolved_android_home=$(resolve_android_home); then
+		export ANDROID_HOME="$resolved_android_home"
+	fi
+	if resolved_ndk_home=$(resolve_ndk_home); then
+		export NDK_HOME="$resolved_ndk_home"
+	fi
+}
+
+resolve_emulator_command() {
+	if command -v emulator >/dev/null 2>&1; then
+		command -v emulator
+		return 0
+	fi
+
+	local candidates=(
+		"${ANDROID_HOME:-}/emulator/emulator"
+		"${HOME:-}/Library/Android/sdk/emulator/emulator"
+	)
+
+	local candidate
+	for candidate in "${candidates[@]}"; do
+		if [[ -n "$candidate" && -x "$candidate" ]]; then
+			printf '%s' "$candidate"
+			return 0
+		fi
+	done
+
+	return 1
+}
+
+first_available_avd() {
+	local emulator_command
+	if ! emulator_command=$(resolve_emulator_command); then
+		return 1
+	fi
+
+	"$emulator_command" -list-avds 2>/dev/null | awk 'NF { print; exit }'
+}
+
+connected_android_devices() {
+	local adb_command
+	if ! adb_command=$(resolve_adb_command); then
+		return 1
+	fi
+
+	"$adb_command" devices 2>/dev/null | awk 'NR > 1 && $2 == "device" { print $1 }'
+}
+
+setup_adb_reverse() {
+	local adb_command
+	if ! adb_command=$(resolve_adb_command); then
+		return 1
+	fi
+
+	local connected_devices
+	connected_devices=$(connected_android_devices || true)
+	if [[ -z "$connected_devices" ]]; then
+		return 1
+	fi
+
+	local ports_to_reverse=("$frontend_port" "$backend_port" "$docs_port")
+	local device
+	for device in ${(f)connected_devices}; do
+		[[ -z "$device" ]] && continue
+		local port
+		for port in "${ports_to_reverse[@]}"; do
+			"$adb_command" -s "$device" reverse "tcp:${port}" "tcp:${port}" >/dev/null 2>&1 || true
+		done
+	done
+}
 
 process_is_running() {
 	local pid=$1
@@ -96,18 +255,102 @@ require_http_status() {
 	return 0
 }
 
-capture_initial_env_keys() {
-	initial_env_keys=()
-	while IFS='=' read -r key _; do
-		initial_env_keys[$key]=1
-	done < <(env)
+diagnose_aws_startup_access() {
+	echo "Checking AWS credentials configured for backend startup..."
+
+	local inline_access_key
+	inline_access_key=$(resolve_env_value "AWS_ACCESS_KEY_ID" "backend/.env" "$shared_backend_env_file")
+	local inline_secret_key
+	inline_secret_key=$(resolve_env_value "AWS_SECRET_ACCESS_KEY" "backend/.env" "$shared_backend_env_file")
+	local inline_session_token
+	inline_session_token=$(resolve_env_value "AWS_SESSION_TOKEN" "backend/.env" "$shared_backend_env_file")
+	local explicit_credentials_file
+	explicit_credentials_file=$(resolve_env_value "AWS_SHARED_CREDENTIALS_FILE" "backend/.env" "$shared_backend_env_file")
+	local explicit_config_file
+	explicit_config_file=$(resolve_env_value "AWS_CONFIG_FILE" "backend/.env" "$shared_backend_env_file")
+	local aws_profile
+	aws_profile=$(resolve_env_value "AWS_PROFILE" "backend/.env" "$shared_backend_env_file")
+	if [[ -z "$aws_profile" ]]; then
+		aws_profile=$(resolve_env_value "AWS_DEFAULT_PROFILE" "backend/.env" "$shared_backend_env_file")
+	fi
+	if [[ -z "$aws_profile" ]]; then
+		aws_profile="default"
+	fi
+
+	local credentials_file=""
+	if [[ -n "$explicit_credentials_file" ]]; then
+		credentials_file=${~explicit_credentials_file}
+	elif [[ -f "$shared_aws_credentials_file" ]]; then
+		credentials_file="$shared_aws_credentials_file"
+	elif [[ -n "${HOME:-}" && -f "${HOME}/.aws/credentials" ]]; then
+		credentials_file="${HOME}/.aws/credentials"
+	fi
+
+	local config_file=""
+	if [[ -n "$explicit_config_file" ]]; then
+		config_file=${~explicit_config_file}
+	elif [[ -f "$shared_aws_config_file" ]]; then
+		config_file="$shared_aws_config_file"
+	elif [[ -n "${HOME:-}" && -f "${HOME}/.aws/config" ]]; then
+		config_file="${HOME}/.aws/config"
+	fi
+
+	if [[ -n "$inline_access_key" || -n "$inline_secret_key" || -n "$inline_session_token" ]]; then
+		echo "Backend startup is using inline AWS credentials from env files."
+		if [[ -n "$inline_session_token" || "${inline_access_key:u}" == ASIA* ]]; then
+			echo "Hint: $shared_backend_env_file still pins temporary session credentials."
+			if command -v aws >/dev/null 2>&1; then
+				if [[ "$aws_profile" == "default" ]]; then
+					echo "Refresh them with: aws sso login"
+					echo "Then rerun: ./scripts/sync_aws_programmatic_credentials.sh"
+				else
+					echo "Refresh them with: aws sso login --profile $aws_profile"
+					echo "Then rerun: ./scripts/sync_aws_programmatic_credentials.sh $aws_profile"
+				fi
+			fi
+			echo "For permanent local dev, remove AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY/AWS_SESSION_TOKEN from $shared_backend_env_file"
+			echo "and define a long-lived aws_access_key_id/aws_secret_access_key pair in $shared_aws_credentials_file instead."
+		else
+			echo "Inline credentials look like long-lived access keys, so the failure is not caused by missing AWS CLI login."
+			echo "Inspect backend.log for the underlying S3/bootstrap error."
+		fi
+		return 0
+	fi
+
+	if [[ -n "$credentials_file" ]]; then
+		echo "Backend startup will use AWS credentials file: $credentials_file (profile: $aws_profile)"
+		if [[ -n "$config_file" ]]; then
+			echo "AWS config file: $config_file"
+		fi
+		echo "If that profile still resolves temporary or expired credentials, replace it with a static aws_access_key_id/aws_secret_access_key pair for permanent local dev."
+		return 0
+	fi
+
+	if command -v aws >/dev/null 2>&1; then
+		local export_summary
+		export_summary=$(AWS_PAGER="" aws configure export-credentials --format process 2>/dev/null | ruby -rjson -e 'j=JSON.parse(STDIN.read); ak=j["AccessKeyId"].to_s; puts "prefix=#{ak[0,4]}"; puts "session=#{j.key?("SessionToken") && !j["SessionToken"].to_s.empty? ? "yes" : "no"}"' 2>/dev/null || true)
+		if [[ -n "$export_summary" ]]; then
+			echo "AWS CLI currently resolves credentials for this shell, but local backend startup is not configured to use a permanent credentials file."
+			echo "$export_summary"
+			if [[ "$aws_profile" == "default" ]]; then
+				echo "If you need a temporary fallback, run: ./scripts/sync_aws_programmatic_credentials.sh"
+			else
+				echo "If you need a temporary fallback, run: ./scripts/sync_aws_programmatic_credentials.sh $aws_profile"
+			fi
+		fi
+	fi
+
+	echo "Hint: configure permanent local AWS credentials in $shared_aws_credentials_file and keep only bucket/index settings in $shared_backend_env_file."
 }
 
-trim_whitespace() {
-	local value=$1
-	value="${value#"${value%%[![:space:]]*}"}"
-	value="${value%"${value##*[![:space:]]}"}"
-	printf '%s' "$value"
+aws_startup_access_issue_detected() {
+	if grep -Eiq \
+		"unable to locate credentials|failed to refresh cached Login token|session has expired|token has expired|expiredtoken|refresh token has expired|AccessDeniedException" \
+		backend.log 2>/dev/null; then
+		return 0
+	fi
+
+	return 1
 }
 
 read_env_file_value() {
@@ -149,35 +392,7 @@ resolve_env_value() {
 	return 0
 }
 
-export_env_file_preserving_shell() {
-	local env_file=$1
-	local line=""
 
-	if [[ ! -f "$env_file" ]]; then
-		return 0
-	fi
-
-	while IFS= read -r line || [[ -n "$line" ]]; do
-		[[ -z "$line" ]] && continue
-		[[ "$line" == \#* ]] && continue
-		[[ "$line" != *=* ]] && continue
-
-		local key=${line%%=*}
-		local value=${line#*=}
-		key=$(trim_whitespace "$key")
-		value=$(trim_whitespace "$value")
-
-		if [[ -z "$key" || "$key" == \#* || -n ${initial_env_keys[$key]-} ]]; then
-			continue
-		fi
-		if [[ "$value" == \"*\" && "$value" == *\" ]]; then
-			value=${value#\"}
-			value=${value%\"}
-		fi
-
-		export "$key=$value"
-	done < "$env_file"
-}
 
 ensure_local_env_files() {
 	local missing_env=0
@@ -200,56 +415,16 @@ ensure_local_env_files() {
 	fi
 }
 
-prepare_frontend_env() {
-	export_env_file_preserving_shell "$shared_frontend_env_file"
-	export_env_file_preserving_shell "frontend/.env"
-}
-
 start_backend() {
 	pushd backend >/dev/null
-	local summary_model
-	summary_model=$(resolve_env_value "OLLAMA_SUMMARY_MODEL" ".env" "$shared_backend_env_file")
-	if [[ -z "$summary_model" ]]; then
-		summary_model=$(resolve_env_value "OLLAMA_MODEL" ".env" "$shared_backend_env_file")
-	fi
-
-	local default_chat_model
-	default_chat_model=$(resolve_env_value "OLLAMA_DEFAULT_CHAT_MODEL" ".env" "$shared_backend_env_file")
-	if [[ -z "$default_chat_model" ]]; then
-		default_chat_model=$(resolve_env_value "OLLAMA_CHAT_MODEL" ".env" "$shared_backend_env_file")
-	fi
-
-	if [[ -n "$summary_model" ]]; then
-		export OLLAMA_SUMMARY_MODEL="$summary_model"
-	fi
-	if [[ -n "$default_chat_model" ]]; then
-		export OLLAMA_DEFAULT_CHAT_MODEL="$default_chat_model"
-	fi
-
-	local use_turso="${START_APP_USE_TURSO:-}"
-	if [[ "$use_turso" == "1" || "$use_turso" == "true" || "$use_turso" == "TRUE" ]]; then
-		echo "Backend search index: using configured Turso/libSQL replica"
-	else
-		export TURSO_DB_URL=""
-		export TURSO_AUTH_TOKEN=""
-		echo "Backend search index: using local libSQL fallback (set START_APP_USE_TURSO=1 to use Turso)"
-	fi
-
 	PORT=$backend_port cargo run --bin dastill > >(tee ../backend.log) 2>&1 &
 	backend_pid=$!
 	popd >/dev/null
 }
 
 start_frontend() {
-	prepare_frontend_env
 	pushd frontend >/dev/null
-	local backend_proxy_token
-	backend_proxy_token=$(resolve_env_value "BACKEND_PROXY_TOKEN" "../backend/.env" "$shared_backend_env_file")
-	if [[ -z "$backend_proxy_token" ]]; then
-		backend_proxy_token="local-dev-backend-proxy-token"
-	fi
-	BACKEND_API_BASE="http://localhost:$backend_port" \
-		BACKEND_PROXY_TOKEN="$backend_proxy_token" \
+	VITE_API_BASE="http://localhost:$backend_port" \
 		bun --no-env-file run dev -- --host 0.0.0.0 --port $frontend_port > >(tee ../frontend.log) 2>&1 &
 	frontend_pid=$!
 	popd >/dev/null
@@ -257,21 +432,115 @@ start_frontend() {
 
 start_docs() {
 	pushd docs >/dev/null
-	./node_modules/.bin/vitepress dev . --host 0.0.0.0 --port $docs_port > >(tee ../docs.log) 2>&1 &
+	if [[ ! -x "./node_modules/.bin/vitepress" ]]; then
+		echo "Docs dependencies missing; running bun install --frozen-lockfile"
+		bun install --frozen-lockfile
+	fi
+	bun run dev > >(tee ../docs.log) 2>&1 &
 	docs_pid=$!
 	popd >/dev/null
 }
 
-cleanup() {
-	set +e
-	for port in "${ports[@]}"; do
-		pids=$(lsof -ti :"$port" 2>/dev/null)
-		if [[ -n "$pids" ]]; then
-			echo "Killing processes on port $port: $pids"
-			echo "$pids" | xargs kill -9 2>/dev/null || true
+android_device_connected() {
+	connected_android_devices | grep -q .
+}
+
+wait_for_android_device() {
+	local max_retries=${1:-60}
+	local attempt=1
+
+	while (( attempt <= max_retries )); do
+		if android_device_connected; then
+			return 0
 		fi
+		sleep 2
+		((attempt++))
 	done
-	set -e
+
+	return 1
+}
+
+start_emulator_if_needed() {
+	if android_device_connected; then
+		return 0
+	fi
+
+	local emulator_command
+	if ! emulator_command=$(resolve_emulator_command); then
+		echo "Mobile shell: emulator binary not found, skipping"
+		return 1
+	fi
+
+	local avd_name=${START_APP_ANDROID_AVD:-}
+	if [[ -z "$avd_name" ]]; then
+		avd_name=$(first_available_avd || true)
+	fi
+
+	if [[ -z "$avd_name" ]]; then
+		echo "Mobile shell: no Android device/emulator detected and no AVD is available, skipping"
+		return 1
+	fi
+
+	echo "Mobile shell: starting Android emulator '$avd_name' (log: $emulator_log_file)"
+	"$emulator_command" -avd "$avd_name" > >(tee "$emulator_log_file") 2>&1 &
+	emulator_pid=$!
+
+	if ! wait_for_android_device 90; then
+		echo "Mobile shell: emulator '$avd_name' did not become available"
+		return 1
+	fi
+
+	return 0
+}
+
+resolve_tauri_android_command() {
+	if cargo tauri --version >/dev/null 2>&1; then
+		printf '%s' "cargo tauri android dev"
+		return 0
+	fi
+
+	if command -v bunx >/dev/null 2>&1; then
+		printf '%s' "bunx @tauri-apps/cli@latest android dev"
+		return 0
+	fi
+
+	return 1
+}
+
+start_mobile_shell() {
+	if [[ "${START_APP_SKIP_MOBILE:-}" == "1" || "${START_APP_SKIP_MOBILE:-}" == "true" || "${START_APP_SKIP_MOBILE:-}" == "TRUE" ]]; then
+		echo "Mobile shell: skipped via START_APP_SKIP_MOBILE"
+		return 0
+	fi
+
+	if [[ ! -d "${repo_root}/src-tauri" ]]; then
+		echo "Mobile shell: src-tauri not found, skipping"
+		return 0
+	fi
+
+	prepare_android_toolchain_env
+
+	if ! start_emulator_if_needed; then
+		return 0
+	fi
+
+	setup_adb_reverse || true
+
+	local tauri_command
+	if ! tauri_command=$(resolve_tauri_android_command); then
+		echo "Mobile shell: neither 'cargo tauri' nor 'bunx @tauri-apps/cli' is available, skipping"
+		return 0
+	fi
+
+	pushd "$repo_root" >/dev/null
+	eval "$tauri_command" > >(tee "$mobile_log_file") 2>&1 &
+	mobile_pid=$!
+	popd >/dev/null
+	echo "Starting Android shell (log: $mobile_log_file)"
+}
+
+cleanup() {
+	DASTILL_SKIP_PIDS="$$ ${PPID:-}" "$end_app_script" --quiet || true
 }
 
 check_ollama_models() {
@@ -347,7 +616,6 @@ check_ollama_models() {
 	echo "Ollama: ok ($verified model(s) present locally)"
 }
 
-capture_initial_env_keys
 ensure_local_env_files
 check_ollama_models
 
@@ -380,7 +648,7 @@ PY
 	exit 0
 fi
 
-echo "Cleaning up old processes on ports $frontend_port, $backend_port, and $docs_port..."
+echo "Stopping any running dAstIll services before restart..."
 cleanup
 trap cleanup EXIT INT TERM
 
@@ -394,6 +662,9 @@ start_backend
 
 if ! wait_for_http "Backend" "http://localhost:$backend_port/api/health" "$backend_pid"; then
 	echo "Backend failed to start. Last backend log lines:"
+	if aws_startup_access_issue_detected; then
+		diagnose_aws_startup_access
+	fi
 	tail -n 80 backend.log || true
 	exit 1
 fi
@@ -419,14 +690,21 @@ if ! wait_for_http "Frontend" "http://localhost:$frontend_port" "$frontend_pid";
 fi
 
 if ! require_http_status \
-	"Frontend workspace bootstrap" \
-	"http://localhost:$frontend_port/api/workspace/bootstrap?limit=20" \
+	"Backend workspace bootstrap" \
+	"http://localhost:$backend_port/api/workspace/bootstrap?limit=20" \
 	"200"; then
-	echo "Frontend is up, but the proxied workspace bootstrap request failed. Last frontend log lines:"
-	tail -n 80 frontend.log || true
-	echo "Last backend log lines:"
-	tail -n 80 backend.log || true
-	exit 1
+	echo "Backend is up, but the workspace bootstrap request failed."
+	if aws_startup_access_issue_detected; then
+		diagnose_aws_startup_access
+		echo "Startup failed because backend AWS access is unavailable."
+		echo "Last backend log lines:"
+		tail -n 80 backend.log || true
+		exit 1
+	else
+		echo "Last backend log lines:"
+		tail -n 80 backend.log || true
+		exit 1
+	fi
 fi
 
 if ! wait_for_http "Docs" "http://localhost:$docs_port" "$docs_pid"; then
@@ -440,4 +718,10 @@ echo "- Frontend: http://localhost:$frontend_port"
 echo "- Backend:  http://localhost:$backend_port"
 echo "- Docs:     http://localhost:$docs_port"
 
-wait $backend_pid $frontend_pid $docs_pid
+start_mobile_shell
+
+if [[ -n "${mobile_pid:-}" ]]; then
+	wait $backend_pid $frontend_pid $docs_pid $mobile_pid
+else
+	wait $backend_pid $frontend_pid $docs_pid
+fi

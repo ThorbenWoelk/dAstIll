@@ -21,7 +21,6 @@
   import { buildWorkspaceViewHref } from "$lib/view-url";
   import { formatShortDate } from "$lib/utils/date";
   import { removeHighlightFromGroups } from "$lib/utils/highlights";
-  import { mobileBottomBar } from "$lib/mobile-navigation/mobileBottomBar";
 
   let aiStatus = $state<AiStatus | null>(null);
   let groups = $state<HighlightChannelGroup[]>([]);
@@ -151,13 +150,6 @@
         copyResetTimer = null;
       }
       stopPoller();
-    };
-  });
-
-  $effect(() => {
-    mobileBottomBar.set({ kind: "hidden" });
-    return () => {
-      mobileBottomBar.set({ kind: "sections" });
     };
   });
 </script>

@@ -6,6 +6,7 @@ use axum::{
 };
 use chrono::Utc;
 use std::collections::HashSet;
+use utoipa::IntoParams;
 
 use crate::audit;
 use crate::db;
@@ -108,7 +109,7 @@ use super::{
     require_video_for_access,
 };
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, IntoParams)]
 pub struct VideoInfoBackfillParams {
     pub limit: Option<usize>,
     pub force: Option<bool>,
@@ -116,6 +117,18 @@ pub struct VideoInfoBackfillParams {
     pub heal_placeholders: Option<bool>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/channels/{id}/videos",
+    params(
+        ("id" = String, Path, description = "Channel id"),
+        VideoListParams
+    ),
+    responses(
+        (status = 200, description = "Channel videos page", body = ChannelVideoPagePayload),
+        (status = 404, description = "Channel not found", body = String)
+    )
+)]
 pub async fn list_channel_videos(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
@@ -140,14 +153,48 @@ pub async fn list_channel_videos(
     .await
     .map_err(map_db_err)?;
     let page = page.ok_or((StatusCode::NOT_FOUND, "Channel not found".to_string()))?;
+    let channel = require_channel_for_access(&state, &access_context, &channel_id).await?;
+    let source = if let Some(profile) = db::get_source_profile(&state.db, &channel_id)
+        .await
+        .map_err(map_db_err)?
+    {
+        profile.source
+    } else {
+        crate::models::fallback_source_from_channel(&channel)
+    };
+
+    let items = page
+        .videos
+        .iter()
+        .map(|video| crate::models::content_item_from_video(video, &source))
+        .collect::<Vec<_>>();
+    let parts = page
+        .videos
+        .iter()
+        .flat_map(|video| crate::models::content_parts_from_video(video, &source))
+        .collect::<Vec<_>>();
 
     Ok(Json(ChannelVideoPagePayload {
+        source_id: channel_id,
         videos: page.videos,
+        items,
+        parts,
         has_more: page.has_more,
         next_offset: page.next_offset,
     }))
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/videos",
+    request_body = AddVideoRequest,
+    responses(
+        (status = 200, description = "Video already existed and was added to the caller scope", body = AddVideoResponse),
+        (status = 201, description = "Created manual video membership", body = AddVideoResponse),
+        (status = 400, description = "Invalid video input", body = String),
+        (status = 403, description = "Sign-in required", body = String)
+    )
+)]
 pub async fn add_manual_video(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
@@ -264,6 +311,17 @@ pub async fn add_manual_video(
     ))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/videos/{id}",
+    params(
+        ("id" = String, Path, description = "Video id")
+    ),
+    responses(
+        (status = 200, description = "Video record", body = Video),
+        (status = 404, description = "Video not found", body = String)
+    )
+)]
 pub async fn get_video(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
@@ -274,6 +332,17 @@ pub async fn get_video(
     ))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/videos/{id}/info",
+    params(
+        ("id" = String, Path, description = "Video id")
+    ),
+    responses(
+        (status = 200, description = "Stored video info", body = VideoInfo),
+        (status = 404, description = "Video info not found", body = String)
+    )
+)]
 pub async fn get_video_info(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
@@ -292,6 +361,17 @@ pub async fn get_video_info(
     Ok(Json(cached))
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/videos/{id}/info/ensure",
+    params(
+        ("id" = String, Path, description = "Video id")
+    ),
+    responses(
+        (status = 200, description = "Generated or refreshed video info", body = VideoInfo),
+        (status = 404, description = "Video not found", body = String)
+    )
+)]
 pub async fn ensure_video_info(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
@@ -347,6 +427,15 @@ pub async fn ensure_video_info(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/videos/info/backfill",
+    params(VideoInfoBackfillParams),
+    responses(
+        (status = 200, description = "Video info backfill result", body = crate::openapi::VideoInfoBackfillResponse),
+        (status = 500, description = "Request failed", body = String)
+    )
+)]
 pub async fn backfill_video_info(
     State(state): State<AppState>,
     Query(params): Query<VideoInfoBackfillParams>,
@@ -421,6 +510,19 @@ pub async fn backfill_video_info(
     })))
 }
 
+#[utoipa::path(
+    put,
+    path = "/api/videos/{id}/acknowledged",
+    params(
+        ("id" = String, Path, description = "Video id")
+    ),
+    request_body = crate::models::UpdateAcknowledgedRequest,
+    responses(
+        (status = 200, description = "Updated acknowledged state", body = Video),
+        (status = 403, description = "Sign-in required", body = String),
+        (status = 404, description = "Video not found", body = String)
+    )
+)]
 pub async fn update_video_acknowledged(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,

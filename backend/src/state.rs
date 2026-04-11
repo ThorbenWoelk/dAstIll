@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Instant;
 
 use tokio::sync::{Mutex, RwLock};
 
@@ -11,8 +12,9 @@ use crate::security::RequestRateLimiter;
 use crate::services::PollyTtsService;
 use crate::services::{
     ActiveChatHandle, ChatService, CloudCooldown, DatabricksSqlService, FtsIndex,
-    InputGuardrailService, SearchService, SummarizerService, SummaryEvaluatorService,
-    TranscriptCooldown, TranscriptService, YouTubeQuotaCooldown, YouTubeService,
+    InputGuardrailService, OpenAlexPlannerService, OpenAlexService, PodcastFeedService,
+    SearchService, SummarizerService, SummaryEvaluatorService, TranscriptCooldown,
+    TranscriptService, UserActivity, WebsiteService, YouTubeQuotaCooldown, YouTubeService,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -30,6 +32,13 @@ impl ActiveChatKey {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct MobileAuthHandoff {
+    pub created_at: Instant,
+    pub google_id_token: Option<String>,
+    pub google_access_token: Option<String>,
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub db: Store,
@@ -41,6 +50,10 @@ pub struct AppState {
     pub search_progress: Arc<SearchProgress>,
     pub fts: Arc<FtsIndex>,
     pub youtube: Arc<YouTubeService>,
+    pub openalex_planner: Arc<OpenAlexPlannerService>,
+    pub openalex: Arc<OpenAlexService>,
+    pub podcast_feed: Arc<PodcastFeedService>,
+    pub website: Arc<WebsiteService>,
     pub transcript: Arc<TranscriptService>,
     pub tts: Option<Arc<PollyTtsService>>,
     pub summarizer: Arc<SummarizerService>,
@@ -49,10 +62,12 @@ pub struct AppState {
     pub chat: Arc<ChatService>,
     pub input_guardrails: Arc<InputGuardrailService>,
     pub analytics: Option<Arc<DatabricksSqlService>>,
-    pub active_chats: Arc<Mutex<HashMap<ActiveChatKey, ActiveChatHandle>>>,
-    pub chat_store_lock: Arc<Mutex<()>>,
+    pub active_replies: Arc<Mutex<HashMap<ActiveChatKey, ActiveChatHandle>>>,
+    pub conversation_store_lock: Arc<Mutex<()>>,
     pub anonymous_chat_quota_lock: Arc<Mutex<()>>,
+    pub mobile_auth_handoffs: Arc<Mutex<HashMap<String, MobileAuthHandoff>>>,
     pub cloud_cooldown: Arc<CloudCooldown>,
     pub youtube_quota_cooldown: Arc<YouTubeQuotaCooldown>,
     pub transcript_cooldown: Arc<TranscriptCooldown>,
+    pub user_activity: Arc<UserActivity>,
 }

@@ -10,7 +10,7 @@ impl ChatService {
         deep_research: bool,
         active_chat: &ActiveChatHandle,
     ) -> Result<Option<ToolLoopOutcome>, String> {
-        let prompt_scope = tools::resolve_mention_scope(&state.db, prompt)
+        let prompt_scope = tools::resolve_mention_scope(&state.db, access_context, prompt)
             .await
             .unwrap_or_else(|error| {
                 tracing::warn!(error = %error, "failed to resolve tool-loop @mentions");
@@ -186,7 +186,7 @@ impl ChatService {
         match &call {
             PlannedChatToolCall::DbInspect(query) => {
                 let result = if crate::security::can_use_db_inspect(access_context) {
-                    tools::execute_db_inspect_query(&state.db, *query)
+                    tools::execute_db_inspect_query(&state.db, access_context, *query)
                         .await
                         .map_err(|error| error.to_string())?
                 } else {

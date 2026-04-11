@@ -1,7 +1,7 @@
 import { dev } from "$app/environment";
-import { env } from "$env/dynamic/public";
 import { getApps, initializeApp, type FirebaseApp } from "firebase/app";
-import { connectAuthEmulator, getAuth, type Auth } from "firebase/auth";
+import * as firebaseAuth from "firebase/auth";
+import type { Auth } from "firebase/auth";
 
 export interface FirebaseClientConfig {
   apiKey: string;
@@ -14,6 +14,18 @@ const LOCAL_DEV_FIREBASE_CONFIG: FirebaseClientConfig = {
   authDomain: "demo-dastill.firebaseapp.com",
   projectId: "demo-dastill",
 };
+
+const publicEnv = (
+  import.meta as {
+    env?: {
+      PUBLIC_FIREBASE_API_KEY?: string;
+      PUBLIC_FIREBASE_AUTH_DOMAIN?: string;
+      PUBLIC_FIREBASE_AUTH_EMULATOR_HOST?: string;
+      PUBLIC_FIREBASE_PROJECT_ID?: string;
+      FIREBASE_AUTH_EMULATOR_HOST?: string;
+    };
+  }
+).env;
 
 function readProcessEnv(key: string): string | undefined {
   return typeof process !== "undefined" ? process.env[key] : undefined;
@@ -28,22 +40,23 @@ function shouldUseLocalFallbackConfig(): boolean {
 }
 
 function requiredPublicEnv(
-  key: keyof typeof env,
+  key: string,
   localFallback: string,
+  value?: string,
 ): string {
-  const value = env[key]?.trim();
-  if (!value) {
+  const normalizedValue = value?.trim();
+  if (!normalizedValue) {
     if (shouldUseLocalFallbackConfig()) {
       return localFallback;
     }
     throw new Error(`${key} must be set`);
   }
-  return value;
+  return normalizedValue;
 }
 
 function readFirebaseWebApiKey(): string {
   const value =
-    env.PUBLIC_FIREBASE_API_KEY?.trim() ||
+    publicEnv?.PUBLIC_FIREBASE_API_KEY?.trim() ||
     readProcessEnv("PUBLIC_FIREBASE_API_KEY")?.trim();
   if (value) {
     return value;
@@ -56,7 +69,7 @@ function readFirebaseWebApiKey(): string {
 
 function readFirebaseAuthEmulatorHost(): string | null {
   const configuredHost =
-    env.PUBLIC_FIREBASE_AUTH_EMULATOR_HOST?.trim() ??
+    publicEnv?.PUBLIC_FIREBASE_AUTH_EMULATOR_HOST?.trim() ??
     import.meta.env.PUBLIC_FIREBASE_AUTH_EMULATOR_HOST ??
     import.meta.env.FIREBASE_AUTH_EMULATOR_HOST ??
     readProcessEnv("FIREBASE_AUTH_EMULATOR_HOST");
@@ -73,22 +86,29 @@ export const firebaseConfig: FirebaseClientConfig = {
   authDomain: requiredPublicEnv(
     "PUBLIC_FIREBASE_AUTH_DOMAIN",
     LOCAL_DEV_FIREBASE_CONFIG.authDomain,
+    publicEnv?.PUBLIC_FIREBASE_AUTH_DOMAIN,
   ),
   projectId: requiredPublicEnv(
     "PUBLIC_FIREBASE_PROJECT_ID",
     LOCAL_DEV_FIREBASE_CONFIG.projectId,
+    publicEnv?.PUBLIC_FIREBASE_PROJECT_ID,
   ),
 };
 
 export const firebaseApp: FirebaseApp =
   getApps()[0] ?? initializeApp(firebaseConfig);
 
-export const auth: Auth = getAuth(firebaseApp);
+export const auth: Auth = firebaseAuth.getAuth(firebaseApp);
 
 const authEmulatorHost = readFirebaseAuthEmulatorHost();
 
-if (typeof window !== "undefined" && authEmulatorHost && !auth.emulatorConfig) {
-  connectAuthEmulator(auth, `http://${authEmulatorHost}`, {
+if (
+  typeof window !== "undefined" &&
+  authEmulatorHost &&
+  !auth.emulatorConfig &&
+  typeof firebaseAuth.connectAuthEmulator === "function"
+) {
+  firebaseAuth.connectAuthEmulator(auth, `http://${authEmulatorHost}`, {
     disableWarnings: true,
   });
 }

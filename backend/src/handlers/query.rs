@@ -1,8 +1,9 @@
 use serde::Deserialize;
+use utoipa::{IntoParams, ToSchema};
 
 use crate::db;
 
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum VideoTypeFilter {
     All,
@@ -20,7 +21,7 @@ impl VideoTypeFilter {
     }
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueueTab {
     Transcripts,
@@ -28,7 +29,7 @@ pub enum QueueTab {
     Evaluations,
 }
 
-#[derive(Debug, Default, Deserialize, Clone)]
+#[derive(Debug, Default, Deserialize, Clone, IntoParams)]
 pub struct VideoListParams {
     pub limit: Option<usize>,
     pub offset: Option<usize>,
@@ -76,9 +77,11 @@ impl VideoListParams {
     }
 }
 
-#[derive(Debug, Default, Deserialize, Clone)]
+#[derive(Debug, Default, Deserialize, Clone, IntoParams)]
 pub struct WorkspaceBootstrapParams {
+    pub selected_source_id: Option<String>,
     pub selected_channel_id: Option<String>,
+    pub selected_item_id: Option<String>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
     pub include_shorts: Option<bool>,
@@ -89,6 +92,12 @@ pub struct WorkspaceBootstrapParams {
 }
 
 impl WorkspaceBootstrapParams {
+    pub fn selected_source_id(&self) -> Option<&str> {
+        self.selected_source_id
+            .as_deref()
+            .or(self.selected_channel_id.as_deref())
+    }
+
     pub fn video_params(&self) -> VideoListParams {
         VideoListParams {
             limit: self.limit,
@@ -152,7 +161,9 @@ mod tests {
     #[test]
     fn workspace_bootstrap_params_preserve_video_filters() {
         let params = WorkspaceBootstrapParams {
+            selected_source_id: Some("source-123".to_string()),
             selected_channel_id: Some("channel-123".to_string()),
+            selected_item_id: Some("item-456".to_string()),
             limit: Some(30),
             offset: Some(5),
             include_shorts: Some(false),
@@ -170,5 +181,16 @@ mod tests {
         assert_eq!(video_params.acknowledged, Some(true));
         assert_eq!(video_params.queue_only, Some(true));
         assert_eq!(video_params.queue_tab, Some(QueueTab::Transcripts));
+        assert_eq!(params.selected_source_id(), Some("source-123"));
+    }
+
+    #[test]
+    fn workspace_bootstrap_params_fall_back_to_channel_id_for_source_selection() {
+        let params = WorkspaceBootstrapParams {
+            selected_channel_id: Some("channel-123".to_string()),
+            ..WorkspaceBootstrapParams::default()
+        };
+
+        assert_eq!(params.selected_source_id(), Some("channel-123"));
     }
 }

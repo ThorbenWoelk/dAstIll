@@ -1,8 +1,9 @@
 <script lang="ts">
+  import AddSourceDrawer from "$lib/components/AddSourceDrawer.svelte";
   import defaultChannelIcon from "$lib/assets/channel-default.svg";
   import type { Channel, ChannelSnapshot } from "$lib/types";
+  import type { AddSourceSubmission } from "$lib/workspace/component-props";
   import { queueStageCardSummary } from "$lib/workspace/queue-stage-card-summary";
-
   import { tick } from "svelte";
 
   let {
@@ -11,6 +12,7 @@
     onSelectChannel,
     onAddChannel,
     addingChannel = false,
+    loadingChannels = false,
     addSourceErrorMessage = null as string | null,
     /** When set with `queueUnifiedSummary`, cards show pipeline queue counts from each snapshot. */
     channelPreviews = undefined as Record<string, ChannelSnapshot> | undefined,
@@ -20,40 +22,19 @@
     selectedChannelId: string | null;
     onSelectChannel: (channelId: string) => void;
     /** When set, shows a + control and optional inline add form. */
-    onAddChannel?: (input: string) => Promise<boolean> | boolean;
+    onAddChannel?: (input: AddSourceSubmission) => Promise<boolean> | boolean;
     addingChannel?: boolean;
+    loadingChannels?: boolean;
     addSourceErrorMessage?: string | null;
     channelPreviews?: Record<string, ChannelSnapshot>;
     queueUnifiedSummary?: boolean;
   } = $props();
 
-  let addFormOpen = $state(false);
-  let addInput = $state("");
-  let addInputEl = $state<HTMLInputElement | null>(null);
+  let addDrawerOpen = $state(false);
 
-  async function toggleAddForm() {
+  function toggleAddDrawer() {
     if (!onAddChannel) return;
-    addFormOpen = !addFormOpen;
-    if (!addFormOpen) {
-      addInput = "";
-      return;
-    }
-    await tick();
-    addInputEl?.focus({ preventScroll: false });
-  }
-
-  async function handleAddSubmit(event: SubmitEvent) {
-    event.preventDefault();
-    if (!onAddChannel) return;
-    const submittedInput = addInput.trim();
-    if (!submittedInput || addingChannel) return;
-    addInput = "";
-    const success = await onAddChannel(submittedInput);
-    if (!success) {
-      addInput = submittedInput;
-      return;
-    }
-    addFormOpen = false;
+    addDrawerOpen = !addDrawerOpen;
   }
 
   const normalizeThumbnail = (thumbnailUrl?: string | null): string | null => {
@@ -150,8 +131,43 @@
       bind:this={scrollerEl}
       class="custom-scrollbar flex min-w-0 max-w-full flex-nowrap gap-2 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [scroll-padding-inline:1rem] [&::-webkit-scrollbar]:hidden"
       style="scroll-snap-type: x mandatory"
-      aria-label="Channels"
+      aria-label="Sources"
     >
+      {#if loadingChannels && channels.length === 0}
+        {#each Array.from({ length: 4 }) as _, i (i)}
+          <div
+            class="flex w-[64vw] max-w-[14rem] shrink-0 snap-center flex-col overflow-hidden rounded-[var(--radius-md)] bg-[var(--surface-strong)] shadow-sm"
+            aria-hidden="true"
+          >
+            <div
+              class="h-20 w-full animate-pulse bg-[var(--border)] opacity-60"
+            ></div>
+            <div class="flex flex-col gap-1 px-3 py-2">
+              <div
+                class="h-3 w-3/4 animate-pulse rounded-full bg-[var(--border)] opacity-60"
+              ></div>
+              <div
+                class="mt-1 h-2 w-1/2 animate-pulse rounded-full bg-[var(--border)] opacity-40"
+              ></div>
+            </div>
+          </div>
+        {/each}
+      {/if}
+      {#if loadingChannels && channels.length > 0}
+        <!-- Subtle pulse dot during background channel refresh -->
+        <div
+          class="flex shrink-0 snap-center items-center justify-center self-stretch pl-1 pr-2"
+          role="status"
+          aria-live="polite"
+          aria-label="Refreshing channels"
+        >
+          <span
+            class="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent)] opacity-50"
+            aria-hidden="true"
+          ></span>
+        </div>
+      {/if}
+
       {#each channels as channel, index (channel.id)}
         {@const thumb = normalizeThumbnail(channel.thumbnail_url)}
         {@const active = selectedChannelId === channel.id}
@@ -225,12 +241,14 @@
         >
           <button
             type="button"
-            class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 {addFormOpen
+            class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 {addDrawerOpen
               ? 'bg-[var(--accent-wash)] text-[var(--foreground)]'
               : ''}"
-            onclick={() => void toggleAddForm()}
-            aria-label={addFormOpen ? "Close add channel" : "Add channel"}
-            aria-expanded={addFormOpen}
+            onclick={toggleAddDrawer}
+            aria-label={addDrawerOpen
+              ? "Close add source drawer"
+              : "Add source"}
+            aria-expanded={addDrawerOpen}
           >
             <svg
               width="18"
@@ -252,58 +270,15 @@
     </div>
   </div>
 
-  {#if onAddChannel && addFormOpen}
-    <form
-      class="px-4 pb-3"
-      onsubmit={handleAddSubmit}
-      aria-label="Add channel or video"
-    >
-      <div
-        class="flex min-w-0 items-center gap-2 border-b border-[var(--accent-border-soft)] pb-1 transition-all focus-within:border-[var(--accent)]/40"
-      >
-        <label for="mobile-channel-add-input" class="sr-only"
-          >Add channel or video</label
-        >
-        <input
-          id="mobile-channel-add-input"
-          bind:this={addInputEl}
-          name="channel"
-          autocomplete="off"
-          spellcheck={false}
-          class="min-w-0 flex-1 bg-transparent py-2 text-[14px] font-medium placeholder:text-[var(--soft-foreground)] placeholder:opacity-40 focus-visible:outline-none"
-          placeholder="Paste handle, channel URL, or video link"
-          bind:value={addInput}
-        />
-        <button
-          type="submit"
-          class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--foreground)] transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--accent-strong)] disabled:opacity-30"
-          disabled={!addInput.trim() || addingChannel}
-          aria-label="Submit add channel"
-        >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-            ><line x1="12" y1="5" x2="12" y2="19" /><line
-              x1="5"
-              y1="12"
-              x2="19"
-              y2="12"
-            /></svg
-          >
-        </button>
-      </div>
-      {#if addSourceErrorMessage}
-        <p class="mt-2 text-[11px] font-medium text-[var(--danger)] opacity-90">
-          {addSourceErrorMessage}
-        </p>
-      {/if}
-    </form>
+  {#if onAddChannel}
+    <AddSourceDrawer
+      open={addDrawerOpen}
+      busy={addingChannel}
+      errorMessage={addSourceErrorMessage}
+      onClose={() => {
+        addDrawerOpen = false;
+      }}
+      onSubmit={onAddChannel}
+    />
   {/if}
 </div>

@@ -1,4 +1,8 @@
-import type { Channel, ChannelSnapshot, WorkspaceBootstrap } from "$lib/types";
+import type {
+  Channel,
+  ChannelSnapshot,
+  WorkspaceBootstrap,
+} from "$lib/transport-types";
 
 const DB_NAME = "dastill-workspace-cache";
 const DB_VERSION = 2;

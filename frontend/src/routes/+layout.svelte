@@ -4,8 +4,11 @@
   import { page } from "$app/state";
   import { onMount } from "svelte";
   import type { AuthContext } from "$lib/auth";
-  import AppBottomNav from "$lib/components/AppBottomNav.svelte";
-  import { cleanupLegacyClientStorage } from "$lib/auth-storage";
+  import {
+    cleanupLegacyClientStorage,
+    getAuthStorageScopeKey,
+    getScopedStorageKey,
+  } from "$lib/auth-storage";
   import { authState } from "$lib/auth-state.svelte";
   import {
     authRequiredNotice,
@@ -15,8 +18,9 @@
   import SignInRequiredModal from "$lib/components/SignInRequiredModal.svelte";
   import GlobalKeyboardShortcuts from "$lib/components/GlobalKeyboardShortcuts.svelte";
   import MobileViewportInset from "$lib/components/MobileViewportInset.svelte";
+  import MobileSectionDrawer from "$lib/components/mobile/MobileSectionDrawer.svelte";
   import ServiceWorkerRegistration from "$lib/components/ServiceWorkerRegistration.svelte";
-  import { mobileBottomBar } from "$lib/mobile-navigation/mobileBottomBar";
+  import { applyStoredTheme } from "$lib/theme";
 
   let {
     data,
@@ -25,6 +29,37 @@
     data: { auth?: AuthContext };
     children: import("svelte").Snippet;
   } = $props();
+
+  let themeMediaQuery = $state<MediaQueryList | null>(null);
+  let themeStorageKey = $derived(
+    getScopedStorageKey(
+      "dastill-theme-appearance",
+      getAuthStorageScopeKey(authState.current),
+    ),
+  );
+  let colorStorageKey = $derived(
+    getScopedStorageKey(
+      "dastill-theme-color",
+      getAuthStorageScopeKey(authState.current),
+    ),
+  );
+
+  function syncTheme() {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    applyStoredTheme(
+      document,
+      window.localStorage,
+      themeMediaQuery?.matches ??
+        window.matchMedia("(prefers-color-scheme: dark)").matches,
+      {
+        themeKey: themeStorageKey,
+        colorKey: colorStorageKey,
+      },
+    );
+  }
 
   $effect(() => {
     authState.setServerAuth(
@@ -37,35 +72,63 @@
     );
   });
 
+  $effect(() => {
+    authState.current;
+    syncTheme();
+  });
+
   onMount(() => {
     void cleanupLegacyClientStorage();
     void authState.start();
+    themeMediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    syncTheme();
+
+    const onThemeChange = () => {
+      syncTheme();
+    };
 
     const onUnhandledRejection = (event: PromiseRejectionEvent) => {
       if (presentAuthRequiredNoticeIfNeeded(event.reason)) {
         event.preventDefault();
       }
     };
+    themeMediaQuery.addEventListener("change", onThemeChange);
     window.addEventListener("unhandledrejection", onUnhandledRejection);
-    return () =>
+    return () => {
+      themeMediaQuery?.removeEventListener("change", onThemeChange);
       window.removeEventListener("unhandledrejection", onUnhandledRejection);
+    };
   });
 
-  /** Routes that own `mobileBottomBar` via local `$effect`; others default to section nav. */
+  /** Route changes */
   afterNavigate(({ to }) => {
     if (!to) return;
-    const path = to.url.pathname;
-    if (
-      path === "/" ||
-      path.startsWith("/channels/") ||
-      path === "/highlights" ||
-      path === "/vocabulary" ||
-      path === "/download-queue" ||
-      path === "/chat"
-    ) {
-      return;
+  });
+
+  let sectionDrawerOpen = $state(false);
+  let showDrawer = $derived(
+    !page.url.pathname.startsWith("/login") &&
+      !page.url.pathname.startsWith("/logout"),
+  );
+
+  $effect(() => {
+    if (typeof window === "undefined") return;
+
+    function handleOpenDrawer() {
+      sectionDrawerOpen = true;
     }
-    mobileBottomBar.set({ kind: "sections" });
+    window.addEventListener("dastill:open-section-drawer", handleOpenDrawer);
+    return () =>
+      window.removeEventListener(
+        "dastill:open-section-drawer",
+        handleOpenDrawer,
+      );
+  });
+
+  // Close drawer on navigation
+  $effect(() => {
+    page.url.pathname;
+    sectionDrawerOpen = false;
   });
 
   function confirmAuthRequiredSignIn() {
@@ -103,5 +166,12 @@
   <div class="min-h-0 flex-1">
     {@render children()}
   </div>
-  <AppBottomNav />
+  {#if showDrawer}
+    <MobileSectionDrawer
+      open={sectionDrawerOpen}
+      onClose={() => {
+        sectionDrawerOpen = false;
+      }}
+    />
+  {/if}
 </div>

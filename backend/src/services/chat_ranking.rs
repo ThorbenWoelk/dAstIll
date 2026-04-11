@@ -47,7 +47,30 @@ pub(super) fn rank_chat_sources(
             .or_insert(0) += 1;
         selected.push(RetrievedChatSource {
             source: ChatSource {
+                source_id: candidate.candidate.channel_id.clone(),
                 video_id: candidate.candidate.video_id.clone(),
+                item_id: candidate.candidate.video_id.clone(),
+                provider: crate::models::infer_provider_kind_for_source_id(
+                    &candidate.candidate.channel_id,
+                ),
+                content_source_kind: crate::models::infer_source_kind_for_source_id(
+                    &candidate.candidate.channel_id,
+                ),
+                item_kind: crate::models::infer_item_kind_for_source_kind(
+                    crate::models::infer_source_kind_for_source_id(&candidate.candidate.channel_id),
+                ),
+                part_kind: match candidate.candidate.source_kind {
+                    crate::services::search::SearchSourceKind::Summary => {
+                        crate::models::ContentPartKind::GeneratedSummary
+                    }
+                    crate::services::search::SearchSourceKind::Transcript => {
+                        crate::models::infer_primary_text_part_kind_for_source_kind(
+                            crate::models::infer_source_kind_for_source_id(
+                                &candidate.candidate.channel_id,
+                            ),
+                        )
+                    }
+                },
                 channel_id: candidate.candidate.channel_id.clone(),
                 channel_name: candidate.candidate.channel_name.clone(),
                 video_title: candidate.candidate.video_title.clone(),

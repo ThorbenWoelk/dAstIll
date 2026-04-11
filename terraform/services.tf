@@ -5,11 +5,11 @@ locals {
       "artifactregistry.googleapis.com",
       "secretmanager.googleapis.com",
       "firebase.googleapis.com",
+      "firebasehosting.googleapis.com",
       "iam.googleapis.com",
       "iamcredentials.googleapis.com",
       "sts.googleapis.com",
       "cloudresourcemanager.googleapis.com",
-      "firestore.googleapis.com",
       "identitytoolkit.googleapis.com",
     ],
     var.billing_export_enabled ? [

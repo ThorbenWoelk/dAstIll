@@ -32,6 +32,7 @@ function makeVideo(
     transcript_status: overrides.transcript_status,
     summary_status: overrides.summary_status,
     acknowledged: false,
+    retry_count: 0,
     ...overrides,
   };
 }
@@ -120,10 +121,35 @@ describe("deriveQueueStats", () => {
     ]);
 
     expect(stats).toEqual({
-      total: 4,
+      total: 3,
       loading: 1,
       pending: 1,
       failed: 1,
+      skipped: 0,
+    });
+  });
+
+  it("excludes rows the worker will skip after retry exhaustion", () => {
+    const stats = deriveQueueStats([
+      makeVideo({
+        id: "exhausted-transcript",
+        transcript_status: "failed",
+        summary_status: "pending",
+        retry_count: 3,
+      }),
+      makeVideo({
+        id: "pending-summary",
+        transcript_status: "ready",
+        summary_status: "pending",
+      }),
+    ]);
+
+    expect(stats).toEqual({
+      total: 1,
+      loading: 0,
+      pending: 1,
+      failed: 0,
+      skipped: 1,
     });
   });
 });
@@ -309,8 +335,9 @@ describe("buildQueueGalleryChannelPreviews", () => {
     });
 
     expect(previews["channel-2"]).toBe(basePreview);
-    expect(previews["channel-1"]).toEqual({
+    expect(previews["channel-1"]).toMatchObject({
       channel_id: "channel-1",
+      source_id: "channel-1",
       sync_depth: makeSyncDepth({
         derived_earliest_ready_date: "2024-02-15T00:00:00.000Z",
       }),
@@ -326,5 +353,9 @@ describe("buildQueueGalleryChannelPreviews", () => {
         }),
       ],
     });
+    expect(previews["channel-1"]?.container.kind).toBe("series");
+    expect(previews["channel-1"]?.source.source_kind).toBe("you_tube_channel");
+    expect(previews["channel-1"]?.items).toHaveLength(1);
+    expect(previews["channel-1"]?.parts).toHaveLength(2);
   });
 });

@@ -4,8 +4,6 @@ import {
   deleteChannel,
   listChannelsWhenAvailable,
 } from "$lib/api";
-import type { ChannelSyncDepthState } from "$lib/channel-view-cache";
-import { applySavedChannelOrder } from "$lib/channel-workspace";
 import {
   buildOptimisticChannel,
   removeChannelFromCollection,
@@ -14,10 +12,11 @@ import {
 } from "$lib/workspace/channel-actions";
 import { putCachedChannels } from "$lib/workspace-cache";
 import type { SidebarStateOptions } from "./sidebar-state.svelte";
-import type { Channel, Video } from "$lib/types";
+import type { Channel } from "$lib/types";
 import { resolveNextChannelSelection } from "./route-helpers";
 import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
 import { looksLikeYouTubeVideoInput } from "$lib/utils/youtube-input";
+import type { AddSourceSubmission } from "$lib/workspace/component-props";
 
 type SidebarChannelCrudContext = {
   options: SidebarStateOptions;
@@ -26,12 +25,18 @@ type SidebarChannelCrudContext = {
   getSelectedChannelId: () => string | null;
   setChannels: (channels: Channel[]) => void;
   setChannelOrder: (channelOrder: string[]) => void;
-  setSelectedChannelId: (channelId: string | null) => void;
-  setVideos: (videos: Video[]) => void;
-  setSyncDepth: (syncDepth: ChannelSyncDepthState | null) => void;
+  applyLoadedChannelsState: (
+    channels: Channel[],
+    channelOrder?: string[],
+  ) => void;
+  applySelectionState: (options: {
+    selectedChannelId?: string | null;
+    selectedVideoId?: string | null;
+  }) => void;
+  clearChannelSelectionState: () => void;
   setAddingChannel: (adding: boolean) => void;
-  setChannelIdToDelete: (channelId: string | null) => void;
-  setShowDeleteConfirmation: (visible: boolean) => void;
+  queueChannelDeletion: (channelId: string) => void;
+  clearChannelDeletion: () => void;
   syncChannelOrderFromList: () => void;
   replaceOptimisticChannelId: (tempId: string, realId: string) => void;
   selectChannel: (
@@ -51,31 +56,37 @@ function cacheChannels(options: SidebarStateOptions, channels: Channel[]) {
 export function createSidebarChannelCrudOperations(
   context: SidebarChannelCrudContext,
 ) {
-  async function handleAddChannel(input: string): Promise<boolean> {
-    if (!input.trim()) return false;
+  async function handleAddChannel(
+    input: AddSourceSubmission,
+  ): Promise<boolean> {
+    const submittedInput =
+      typeof input === "string" ? input.trim() : input.input.trim();
+    if (!submittedInput) return false;
 
     context.setAddingChannel(true);
     context.options.onError?.(null);
 
-    const submittedInput = input.trim();
-
-    if (looksLikeYouTubeVideoInput(submittedInput)) {
+    if (
+      typeof input === "string" &&
+      looksLikeYouTubeVideoInput(submittedInput)
+    ) {
       try {
         const result = await addVideo(submittedInput);
-        const refreshedChannels = applySavedChannelOrder(
-          await listChannelsWhenAvailable({
-            retryDelayMs: 500,
-          }),
+        const refreshedChannels = await listChannelsWhenAvailable({
+          retryDelayMs: 500,
+        });
+        context.applyLoadedChannelsState(
+          refreshedChannels,
           context.getChannelOrder(),
         );
-        context.setChannels(refreshedChannels);
-        context.syncChannelOrderFromList();
         cacheChannels(context.options, refreshedChannels);
 
         if (context.options.onVideoAdded) {
           await context.options.onVideoAdded(result);
         } else {
-          context.setSelectedChannelId(result.target_channel_id);
+          context.applySelectionState({
+            selectedChannelId: result.target_channel_id,
+          });
           await context.selectChannel(
             result.target_channel_id,
             result.video.id,
@@ -100,12 +111,16 @@ export function createSidebarChannelCrudOperations(
     const previousSelectedId = context.getSelectedChannelId();
 
     const { optimisticChannel, tempId, trimmedInput } =
-      buildOptimisticChannel(input);
+      buildOptimisticChannel(submittedInput);
     context.setChannels([optimisticChannel, ...context.getChannels()]);
     context.setChannelOrder([tempId, ...context.getChannelOrder()]);
 
     try {
-      const channel = await addChannel(trimmedInput);
+      const channel = await addChannel(
+        typeof input === "string"
+          ? trimmedInput
+          : { input: trimmedInput, openalex_query: input.openalex_query },
+      );
       context.setChannels(
         replaceOptimisticChannel(context.getChannels(), tempId, channel),
       );
@@ -116,12 +131,14 @@ export function createSidebarChannelCrudOperations(
       if (context.options.onChannelAdded) {
         await context.options.onChannelAdded(channel);
       } else {
-        context.setSelectedChannelId(channel.id);
+        context.applySelectionState({ selectedChannelId: channel.id });
       }
       return true;
     } catch (error) {
       context.setChannels(previousChannels);
-      context.setSelectedChannelId(previousSelectedId);
+      context.applySelectionState({
+        selectedChannelId: previousSelectedId,
+      });
       context.syncChannelOrderFromList();
       if (!presentAuthRequiredNoticeIfNeeded(error)) {
         context.options.onError?.((error as Error).message);
@@ -141,8 +158,7 @@ export function createSidebarChannelCrudOperations(
       onAccessRequired();
       return;
     }
-    context.setChannelIdToDelete(channelId);
-    context.setShowDeleteConfirmation(true);
+    context.queueChannelDeletion(channelId);
   }
 
   async function confirmDeleteChannel(channelId: string, isOperator: boolean) {
@@ -166,9 +182,7 @@ export function createSidebarChannelCrudOperations(
       if (nextChannelId) {
         await context.selectChannel(nextChannelId);
       } else {
-        context.setSelectedChannelId(null);
-        context.setVideos([]);
-        context.setSyncDepth(null);
+        context.clearChannelSelectionState();
         context.options.onChannelDeselected?.();
       }
     }
@@ -183,8 +197,7 @@ export function createSidebarChannelCrudOperations(
         context.options.onError?.((error as Error).message);
       }
     } finally {
-      context.setChannelIdToDelete(null);
-      context.setShowDeleteConfirmation(false);
+      context.clearChannelDeletion();
     }
   }
 

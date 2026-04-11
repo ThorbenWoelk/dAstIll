@@ -189,13 +189,26 @@ export function createHomeWorkspaceDataController(options: {
       return;
     }
 
+    const fallbackVideoId =
+      sidebarState.videos.find(
+        (video) =>
+          video.transcript_status === "ready" &&
+          video.summary_status === "ready",
+      )?.id ??
+      sidebarState.videos.find((video) => video.transcript_status === "ready")
+        ?.id ??
+      sidebarState.videos[0]?.id ??
+      null;
+
     if (!preferredVideoId) {
       options.setPendingSelectedVideo(null);
-      void selectVideo(sidebarState.videos[0].id);
+      if (fallbackVideoId) {
+        void selectVideo(fallbackVideoId);
+      }
       return;
     }
 
-    sidebarState.applySelectionState({ selectedVideoId: preferredVideoId });
+    sidebarState.selectVideo(preferredVideoId);
     const cachedHighlights =
       options.getVideoHighlightsByVideoId()[preferredVideoId];
     if (!cachedHighlights) {
@@ -250,7 +263,9 @@ export function createHomeWorkspaceDataController(options: {
         return;
       }
 
-      void selectVideo(sidebarState.videos[0].id);
+      if (fallbackVideoId) {
+        void selectVideo(fallbackVideoId);
+      }
       return;
     }
 
@@ -333,8 +348,7 @@ export function createHomeWorkspaceDataController(options: {
     }
 
     if (content.contentMode !== targetMode) {
-      content.setMode(targetMode);
-      await content.loadContent();
+      await content.reloadSelectedContent({ nextMode: targetMode });
     }
   }
 
@@ -395,9 +409,7 @@ export function createHomeWorkspaceDataController(options: {
           initialChannelId === selectionChannelId &&
           sidebarState.videos.length > 0;
 
-        sidebarState.applySelectionState({
-          selectedChannelId: initialChannelId,
-        });
+        sidebarState.setSelectedChannel(initialChannelId);
 
         if (!silent || preferredVideoId !== selectionVideoId) {
           content.resetViewState();
@@ -495,7 +507,7 @@ export function createHomeWorkspaceDataController(options: {
       );
     } catch (error) {
       sidebarState.setChannels(previousChannels);
-      sidebarState.setSelectedChannelId(previousSelectedChannelId);
+      sidebarState.setSelectedChannel(previousSelectedChannelId);
       if (!presentAuthRequiredNoticeIfNeeded(error)) {
         options.setErrorMessage((error as Error).message);
       }
@@ -509,7 +521,7 @@ export function createHomeWorkspaceDataController(options: {
   ) {
     if (sidebarState.selectedChannelId === channelId && !videoId) return;
 
-    sidebarState.applySelectionState({ selectedChannelId: channelId });
+    sidebarState.setSelectedChannel(channelId);
     if (!channelId) return;
 
     if (!videoId) {
@@ -525,14 +537,27 @@ export function createHomeWorkspaceDataController(options: {
     content.clearFormattingFeedback();
     if (hasCachedChannelVideoState && cachedChannelVideoState) {
       restoreCachedChannelVideoState(cachedChannelVideoState);
-      sidebarState.setLoadingVideos(false);
+      sidebarState.setVideoLoadingState(false);
       void refreshAndLoadVideos(channelId, false, videoId, true);
       return;
     }
 
     sidebarState.resetVideoListState();
     options.setAllowLoadedVideoSyncDepthOverride(false);
-    await refreshAndLoadVideos(channelId, false, videoId);
+    // Set loading eagerly so the skeleton renders during the network fetch
+    // instead of briefly flashing "No videos yet."
+    sidebarState.setVideoLoadingState(true);
+    try {
+      await refreshAndLoadVideos(channelId, false, videoId);
+    } catch (error) {
+      if (!presentAuthRequiredNoticeIfNeeded(error)) {
+        options.setErrorMessage((error as Error).message);
+      }
+    } finally {
+      // applyChannelSnapshot resets this in the happy path; this covers
+      // the case where loadSnapshot() throws before applySnapshot runs.
+      sidebarState.setVideoLoadingState(false);
+    }
   }
 
   async function refreshAndLoadVideos(
@@ -807,7 +832,7 @@ export function createHomeWorkspaceDataController(options: {
     if (content.contentMode === "summary" && sidebarState.selectedVideoId) {
       closeSummarySession();
     }
-    sidebarState.applySelectionState({ selectedVideoId: videoId });
+    sidebarState.selectVideo(videoId);
     if (videoId && sidebarState.selectedChannelId) {
       track({
         event: "video_opened",
@@ -815,15 +840,13 @@ export function createHomeWorkspaceDataController(options: {
         channel_id: sidebarState.selectedChannelId,
       });
     }
-    content.clearDisplayedContent();
     const cachedHighlights = videoId
       ? options.getVideoHighlightsByVideoId()[videoId]
       : null;
     if (videoId && !cachedHighlights) {
       void options.hydrateVideoHighlights(videoId);
     }
-    content.resetViewState();
-    await content.loadContent();
+    await content.reloadSelectedContent();
   }
 
   async function setMode(mode: WorkspaceContentMode) {
@@ -842,8 +865,7 @@ export function createHomeWorkspaceDataController(options: {
         to_mode: mode,
       });
     }
-    content.resetViewState();
-    await content.loadContent();
+    await content.reloadSelectedContent({ nextMode: mode });
   }
 
   async function clearBrowseVideoFilters() {

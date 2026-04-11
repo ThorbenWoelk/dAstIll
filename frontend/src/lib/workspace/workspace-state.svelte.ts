@@ -66,8 +66,8 @@ export function createWorkspaceState(options: {
     silent = false,
   ) {
     if (!silent) {
-      sidebarState.setLoadingVideos(true);
-      sidebarState.setSelectedVideoId(null);
+      sidebarState.setVideoLoadingState(true);
+      sidebarState.clearSelectedVideoSelection();
       options.setErrorMessage(null);
     }
     try {
@@ -76,10 +76,12 @@ export function createWorkspaceState(options: {
       }
 
       const isAck = resolveAcknowledgedParam(sidebarState.acknowledgedFilter);
-      sidebarState.setSyncDepth(snapshot.sync_depth);
-      sidebarState.setVideos(snapshot.videos);
-      sidebarState.setOffset(snapshot.next_offset ?? snapshot.videos.length);
-      sidebarState.setHasMore(snapshot.has_more);
+      sidebarState.applyChannelSnapshotState({
+        videos: snapshot.videos,
+        has_more: snapshot.has_more,
+        next_offset: snapshot.next_offset,
+        sync_depth: snapshot.sync_depth,
+      });
       track({
         event: "channel_snapshot_loaded",
         channel_id: channelId,
@@ -102,7 +104,7 @@ export function createWorkspaceState(options: {
       }
     } finally {
       if (!silent) {
-        sidebarState.setLoadingVideos(false);
+        sidebarState.setVideoLoadingState(false);
       }
     }
   }
@@ -139,7 +141,7 @@ export function createWorkspaceState(options: {
       shouldReloadAfterRefresh: () =>
         sidebarState.selectedChannelId === channelId,
       onRefreshingChange: (refreshing: boolean) => {
-        sidebarState.setRefreshingChannel(refreshing);
+        sidebarState.setRefreshingChannelState(refreshing);
       },
       onError: (message) => {
         if (!options.getErrorMessage()) {
@@ -153,7 +155,7 @@ export function createWorkspaceState(options: {
     if (!sidebarState.selectedChannelId) return;
     if (sidebarState.loadingVideos && !silent) return;
 
-    if (!silent) sidebarState.setLoadingVideos(true);
+    if (!silent) sidebarState.setVideoLoadingState(true);
     if (!silent) options.setErrorMessage(null);
 
     try {
@@ -174,16 +176,7 @@ export function createWorkspaceState(options: {
       )
         return;
 
-      if (reset) {
-        sidebarState.setVideos(list.videos);
-        sidebarState.setOffset(list.next_offset ?? list.videos.length);
-      } else {
-        sidebarState.setVideos([...sidebarState.videos, ...list.videos]);
-        sidebarState.setOffset(
-          list.next_offset ?? sidebarState.offset + list.videos.length,
-        );
-      }
-      sidebarState.setHasMore(list.has_more);
+      sidebarState.applyVideoPageState(list, { reset });
 
       if (reset) {
         await options.hydrateSelectedVideo(sidebarState.selectedVideoId, isAck);
@@ -196,7 +189,7 @@ export function createWorkspaceState(options: {
       }
     } finally {
       if (!silent) {
-        sidebarState.setLoadingVideos(false);
+        sidebarState.setVideoLoadingState(false);
       }
     }
   }
@@ -214,7 +207,7 @@ export function createWorkspaceState(options: {
       return;
     }
 
-    sidebarState.setBackfillingHistory(true);
+    sidebarState.setBackfillState({ backfillingHistory: true });
     options.setErrorMessage(null);
 
     try {
@@ -247,7 +240,7 @@ export function createWorkspaceState(options: {
       if (!result) return;
 
       if (result.exhausted) {
-        sidebarState.setHistoryExhausted(true);
+        sidebarState.setBackfillState({ historyExhausted: true });
       }
 
       await loadVideos(false);
@@ -257,7 +250,7 @@ export function createWorkspaceState(options: {
         options.setErrorMessage((error as Error).message);
       }
     } finally {
-      sidebarState.setBackfillingHistory(false);
+      sidebarState.setBackfillState({ backfillingHistory: false });
     }
   }
 
@@ -304,15 +297,9 @@ export function createWorkspaceState(options: {
       );
 
       if (!initialChannelId) {
-        sidebarState.setSelectedChannelId(null);
+        sidebarState.clearChannelSelectionState();
         options.setMobileBrowseOpen(true);
         options.clearSelectedVideoState();
-        sidebarState.setVideos([]);
-        sidebarState.setSyncDepth(null);
-        sidebarState.setOffset(0);
-        sidebarState.setHasMore(true);
-        sidebarState.setHistoryExhausted(false);
-        sidebarState.setBackfillingHistory(false);
       } else {
         const preferredVideoId =
           initialChannelId === selectionChannelId ? selectionVideoId : null;
@@ -320,7 +307,9 @@ export function createWorkspaceState(options: {
           initialChannelId === selectionChannelId &&
           sidebarState.videos.length > 0;
 
-        sidebarState.setSelectedChannelId(initialChannelId);
+        sidebarState.applySelectionState({
+          selectedChannelId: initialChannelId,
+        });
         options.clearSelectedVideoState(); // Note: in page.svelte it also cleared contentMode, but we want to be more specific
 
         if (
@@ -335,15 +324,11 @@ export function createWorkspaceState(options: {
           );
         } else if (!canReuseRenderedSnapshot) {
           options.clearSelectedVideoState();
-          sidebarState.setSelectedVideoId(preferredVideoId);
-          sidebarState.setVideos([]);
-          sidebarState.setOffset(0);
-          sidebarState.setHasMore(true);
-          sidebarState.setHistoryExhausted(false);
-          sidebarState.setBackfillingHistory(false);
-          sidebarState.setSyncDepth(null);
+          sidebarState.resetVideoListState({
+            selectedVideoId: preferredVideoId,
+          });
           if (!silent) {
-            sidebarState.setLoadingVideos(true);
+            sidebarState.setVideoLoadingState(true);
           }
           await tick();
           await refreshAndLoadVideos(

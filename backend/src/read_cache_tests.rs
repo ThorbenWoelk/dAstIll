@@ -22,11 +22,16 @@ fn sample_channel(id: &str) -> Channel {
 }
 
 fn sample_bootstrap() -> WorkspaceBootstrapPayload {
+    let channel = sample_channel("abc");
     WorkspaceBootstrapPayload {
         ai_available: true,
         ai_status: AiStatus::Cloud,
-        channels: vec![sample_channel("abc")],
+        containers: vec![crate::models::youtube_series_container(&channel)],
+        sources: vec![crate::models::youtube_content_source(&channel)],
+        channels: vec![channel],
+        selected_source_id: Some("abc".to_string()),
         selected_channel_id: Some("abc".to_string()),
+        selected_item_id: None,
         snapshot: None,
         search_status: SearchStatusPayload {
             available: true,
@@ -42,6 +47,27 @@ fn sample_bootstrap() -> WorkspaceBootstrapPayload {
             vector_index_ready: true,
             retrieval_mode: "hybrid_ann".to_string(),
         },
+    }
+}
+
+fn sample_channel_snapshot(channel_id: &str) -> crate::models::ChannelSnapshotPayload {
+    let channel = sample_channel(channel_id);
+    crate::models::ChannelSnapshotPayload {
+        channel_id: channel_id.to_string(),
+        source_id: channel_id.to_string(),
+        container: crate::models::youtube_series_container(&channel),
+        source: crate::models::youtube_content_source(&channel),
+        sync_depth: crate::models::SyncDepthPayload {
+            earliest_sync_date: None,
+            earliest_sync_date_user_set: false,
+            derived_earliest_ready_date: None,
+        },
+        channel_video_count: Some(0),
+        has_more: false,
+        next_offset: None,
+        videos: vec![],
+        items: vec![],
+        parts: vec![],
     }
 }
 
@@ -182,38 +208,10 @@ async fn evict_channel_removes_only_matching_channel_snapshot_entries() {
         .set_channels(scope_b.to_string(), vec![sample_channel("channel-b")])
         .await;
     cache
-        .set_channel_snapshot(
-            key_a.clone(),
-            crate::models::ChannelSnapshotPayload {
-                channel_id: "channel-a".to_string(),
-                sync_depth: crate::models::SyncDepthPayload {
-                    earliest_sync_date: None,
-                    earliest_sync_date_user_set: false,
-                    derived_earliest_ready_date: None,
-                },
-                channel_video_count: Some(0),
-                has_more: false,
-                next_offset: None,
-                videos: vec![],
-            },
-        )
+        .set_channel_snapshot(key_a.clone(), sample_channel_snapshot("channel-a"))
         .await;
     cache
-        .set_channel_snapshot(
-            key_b.clone(),
-            crate::models::ChannelSnapshotPayload {
-                channel_id: "channel-b".to_string(),
-                sync_depth: crate::models::SyncDepthPayload {
-                    earliest_sync_date: None,
-                    earliest_sync_date_user_set: false,
-                    derived_earliest_ready_date: None,
-                },
-                channel_video_count: Some(0),
-                has_more: false,
-                next_offset: None,
-                videos: vec![],
-            },
-        )
+        .set_channel_snapshot(key_b.clone(), sample_channel_snapshot("channel-b"))
         .await;
     cache
         .set_workspace_bootstrap(bootstrap_key_a.clone(), sample_bootstrap())
@@ -360,21 +358,7 @@ async fn evict_channel_list_removes_channels_and_all_workspace_bootstraps() {
         .set_workspace_bootstrap(key_b.clone(), sample_bootstrap())
         .await;
     cache
-        .set_channel_snapshot(
-            snapshot_key_a.clone(),
-            crate::models::ChannelSnapshotPayload {
-                channel_id: "channel-a".to_string(),
-                sync_depth: crate::models::SyncDepthPayload {
-                    earliest_sync_date: None,
-                    earliest_sync_date_user_set: false,
-                    derived_earliest_ready_date: None,
-                },
-                channel_video_count: Some(0),
-                has_more: false,
-                next_offset: None,
-                videos: vec![],
-            },
-        )
+        .set_channel_snapshot(snapshot_key_a.clone(), sample_channel_snapshot("channel-a"))
         .await;
     cache.set_search_status(sample_search_status()).await;
 

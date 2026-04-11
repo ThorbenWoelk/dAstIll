@@ -13,7 +13,6 @@
   import CloseIcon from "$lib/components/icons/CloseIcon.svelte";
   import SearchIcon from "$lib/components/icons/SearchIcon.svelte";
   import SearchResultsPopover from "$lib/components/SearchResultsPopover.svelte";
-  import ThemePanel from "$lib/components/ThemePanel.svelte";
   import { authState } from "$lib/auth-state.svelte";
   import {
     getAuthStorageScopeKey,
@@ -733,7 +732,6 @@
   >
     <SearchIcon size={15} strokeWidth={2.4} />
   </button>
-  <ThemePanel />
 </div>
 
 {#if mobileSearchOpen}
@@ -780,9 +778,7 @@
       <div class="min-w-0 lg:flex lg:items-center lg:gap-2">
         {@render searchForm()}
         {@render searchStatusInfo()}
-        <div class="mt-3 hidden shrink-0 lg:mt-0 lg:block">
-          <ThemePanel />
-        </div>
+        <div class="mt-3 hidden shrink-0 lg:mt-0 lg:block"></div>
       </div>
     </div>
   </div>

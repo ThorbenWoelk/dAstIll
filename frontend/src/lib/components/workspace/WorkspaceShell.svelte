@@ -11,7 +11,7 @@
   import type { SectionNavigationSection } from "$lib/section-navigation";
   import WorkspaceNavRail from "$lib/components/workspace/WorkspaceNavRail.svelte";
 
-  const NAV_DEFAULT = 180;
+  const NAV_DEFAULT = 200;
   const NAV_MIN = 52;
   const NAV_SNAP = 100;
   const SIDEBAR_DEFAULT = 280;
@@ -70,6 +70,7 @@
     } catch {
       // ignore
     }
+    if (window.innerWidth < 1024) navWidth = NAV_MIN;
   });
 
   function persist() {
@@ -101,6 +102,7 @@
     } catch {
       // ignore
     }
+    if (window.innerWidth < 1024) navWidth = NAV_MIN;
   });
 
   function handleResizeStart(target: "nav" | "sidebar", event: PointerEvent) {

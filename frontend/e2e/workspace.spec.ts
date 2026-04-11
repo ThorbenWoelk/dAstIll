@@ -1,12 +1,18 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openFreshGuestPage } from "./test-helpers";
 
 const READY_MS = 120_000;
+const PRIMARY_MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
 
 function workspaceSidebar(page: Page) {
   // Two aside#workspace nodes can exist (desktop rail + mobile browse dialog). Exclude the dialog copy.
   return page
     .locator('xpath=//aside[@id="workspace"][not(ancestor::*[@role="dialog"])]')
     .first();
+}
+
+function workspaceDesktopTabs(page: Page) {
+  return page.locator("#workspace-tabs-desktop").first();
 }
 
 async function workspaceHasSeedData(page: Page): Promise<boolean> {
@@ -38,14 +44,8 @@ async function workspaceHasSeedData(page: Page): Promise<boolean> {
   return (await sidebar.locator("[data-channel-id]").count()) > 0;
 }
 
-test.beforeEach(async ({ context }) => {
-  await context.addInitScript(() => {
-    try {
-      localStorage.clear();
-    } catch {
-      /* ignore */
-    }
-  });
+test.beforeEach(async ({ page }) => {
+  await openFreshGuestPage(page, "/");
 });
 
 test("sidebar lists channels and each row shows video titles", async ({
@@ -91,19 +91,25 @@ test("switching content tabs shows different views", async ({ page }) => {
   });
   await sidebar.locator("#videos").getByRole("button").first().click();
 
-  await page.getByRole("button", { name: "Transcript", exact: true }).click();
+  await workspaceDesktopTabs(page)
+    .getByRole("button", { name: "Transcript", exact: true })
+    .click();
   await expect(page.locator("#content-view article")).toBeVisible({
     timeout: READY_MS,
   });
   await expect(page.locator("#content-view article")).not.toBeEmpty();
 
-  await page.getByRole("button", { name: "Info", exact: true }).click();
+  await workspaceDesktopTabs(page)
+    .getByRole("button", { name: "Info", exact: true })
+    .click();
   await expect(page.getByText("Published").first()).toBeVisible({
     timeout: READY_MS,
   });
   await expect(page.locator("#content-view article")).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Summary", exact: true }).click();
+  await workspaceDesktopTabs(page)
+    .getByRole("button", { name: "Summary", exact: true })
+    .click();
   await expect(page.locator("#content-view article")).toBeVisible({
     timeout: READY_MS,
   });
@@ -139,7 +145,9 @@ test("summary and transcript match the selected video after changing channel", a
   }
 
   await selectChannelAndFirstVideo(0);
-  await page.getByRole("button", { name: "Transcript", exact: true }).click();
+  await workspaceDesktopTabs(page)
+    .getByRole("button", { name: "Transcript", exact: true })
+    .click();
   await expect(page.locator("#content-view article")).toBeVisible({
     timeout: READY_MS,
   });
@@ -148,7 +156,9 @@ test("summary and transcript match the selected video after changing channel", a
   ).trim();
 
   await selectChannelAndFirstVideo(1);
-  await page.getByRole("button", { name: "Transcript", exact: true }).click();
+  await workspaceDesktopTabs(page)
+    .getByRole("button", { name: "Transcript", exact: true })
+    .click();
   await expect(page.locator("#content-view article")).toBeVisible({
     timeout: READY_MS,
   });
@@ -158,7 +168,9 @@ test("summary and transcript match the selected video after changing channel", a
   expect(transcriptB.length).toBeGreaterThan(0);
   expect(transcriptB).not.toBe(transcriptA);
 
-  await page.getByRole("button", { name: "Summary", exact: true }).click();
+  await workspaceDesktopTabs(page)
+    .getByRole("button", { name: "Summary", exact: true })
+    .click();
   await expect(page.locator("#content-view article")).toBeVisible({
     timeout: READY_MS,
   });
@@ -181,7 +193,7 @@ test("workspace feature guide opens from guide URL param (same state as Guide co
   await expect(dialog.getByText("Welcome to dAstIll")).toBeVisible();
 });
 
-test("G then W navigates from queue to workspace without full reload hang", async ({
+test("Cmd/Ctrl+1 navigates from queue to workspace without full reload hang", async ({
   page,
 }) => {
   await page.goto("/download-queue");
@@ -189,11 +201,7 @@ test("G then W navigates from queue to workspace without full reload hang", asyn
     .poll(() => new URL(page.url()).pathname)
     .toContain("download-queue");
   await page.waitForTimeout(1500);
-
-  await page.keyboard.press("g");
-  await expect(
-    page.getByLabel("Go navigation: press a highlighted letter"),
-  ).toBeVisible({ timeout: READY_MS });
+  await page.keyboard.press(`${PRIMARY_MODIFIER}+1`);
   await page.keyboard.press("w");
 
   await expect.poll(() => new URL(page.url()).pathname).toBe("/");

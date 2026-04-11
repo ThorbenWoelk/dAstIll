@@ -66,7 +66,7 @@ export function createHomeWorkspaceAcknowledgeController(options: {
       options.sidebarState.acknowledgedFilter,
     );
     if (videoFromList) {
-      options.sidebarState.setVideos(optimisticList);
+      options.sidebarState.replaceVideos(optimisticList);
     } else {
       options.setPendingSelectedVideo(optimisticVideo);
     }
@@ -81,26 +81,27 @@ export function createHomeWorkspaceAcknowledgeController(options: {
         options.sidebarState.acknowledgedFilter,
       );
     if (selectionDroppedFromFilter) {
-      options.content.stopEditing();
-      options.content.clearFormattingFeedback();
       if (videoFromList) {
         if (optimisticList.length === 0) {
-          options.sidebarState.setSelectedVideoId(null);
-          options.content.clearDisplayedContent();
+          options.content.resetInteractionState({
+            clearDisplayedContent: true,
+          });
+          options.sidebarState.selectVideo(null);
         } else {
+          options.content.resetInteractionState();
           await options.selectVideo(optimisticList[0].id);
         }
       } else {
-        options.sidebarState.setSelectedVideoId(null);
+        options.content.resetInteractionState({ clearDisplayedContent: true });
+        options.sidebarState.selectVideo(null);
         options.setPendingSelectedVideo(null);
-        options.content.clearDisplayedContent();
       }
     }
 
     try {
       const updated = await updateAcknowledged(targetVideoId, newAcknowledged);
       if (videoFromList) {
-        options.sidebarState.setVideos(
+        options.sidebarState.replaceVideos(
           options.sidebarState.videos
             .map((candidate) =>
               candidate.id === updated.id ? updated : candidate,
@@ -133,18 +134,19 @@ export function createHomeWorkspaceAcknowledgeController(options: {
         options.getPendingSelectedVideo(),
       );
       if (!stillSelected) {
-        options.content.stopEditing();
-        options.content.clearFormattingFeedback();
         if (options.sidebarState.videos.length === 0) {
-          options.sidebarState.setSelectedVideoId(null);
-          options.content.clearDisplayedContent();
+          options.content.resetInteractionState({
+            clearDisplayedContent: true,
+          });
+          options.sidebarState.selectVideo(null);
         } else {
+          options.content.resetInteractionState();
           await options.selectVideo(options.sidebarState.videos[0].id);
         }
       }
     } catch (error) {
-      options.sidebarState.setVideos(previousVideos);
-      options.sidebarState.setSelectedVideoId(previousSelectedVideoId);
+      options.sidebarState.replaceVideos(previousVideos);
+      options.sidebarState.selectVideo(previousSelectedVideoId);
       options.setPendingSelectedVideo(previousPendingSelectedVideo);
       const reverted = resolveRevertedVideoForAcknowledge(
         previousVideos,

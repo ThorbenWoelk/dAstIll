@@ -26,6 +26,17 @@ pub fn chunk_summary_content(content: &str, target_words: usize) -> Vec<ChunkDra
         return chunks;
     }
 
+    let max_section_chunks = SEARCH_SUMMARY_MAX_CHUNKS.saturating_sub(1).max(1);
+    let total_section_words: usize = sections
+        .iter()
+        .map(|(_, body)| count_words(&normalize_source_text(body)))
+        .sum();
+    let target_words = target_words.max(required_target_words(
+        total_section_words,
+        0,
+        max_section_chunks,
+    ));
+
     for (title, body) in sections {
         let normalized_body = normalize_source_text(&body);
         if normalized_body.is_empty() {
@@ -56,6 +67,10 @@ pub fn chunk_summary_content(content: &str, target_words: usize) -> Vec<ChunkDra
         }
     }
 
+    if chunks.len() > SEARCH_SUMMARY_MAX_CHUNKS {
+        chunks.truncate(SEARCH_SUMMARY_MAX_CHUNKS);
+    }
+
     chunks
 }
 
@@ -65,6 +80,16 @@ pub fn chunk_transcript_content(
     overlap_words: usize,
     timed_segments: Option<&[crate::models::TimedSegment]>,
 ) -> Vec<ChunkDraft> {
+    let total_words = timed_segments
+        .filter(|segments| !segments.is_empty())
+        .map(total_timed_segment_words)
+        .unwrap_or_else(|| count_words(&normalize_source_text(content)));
+    let target_words = target_words.max(required_target_words(
+        total_words,
+        overlap_words,
+        SEARCH_TRANSCRIPT_MAX_CHUNKS,
+    ));
+
     if let Some(segments) = timed_segments.filter(|s| !s.is_empty()) {
         return chunk_transcript_timed(segments, target_words, overlap_words);
     }
@@ -185,6 +210,24 @@ pub fn vector_to_json(embedding: &[f32]) -> String {
     }
     json.push(']');
     json
+}
+
+fn required_target_words(total_words: usize, overlap_words: usize, max_chunks: usize) -> usize {
+    if total_words == 0 {
+        return 0;
+    }
+
+    let max_chunks = max_chunks.max(1);
+    total_words
+        .saturating_add(overlap_words.saturating_mul(max_chunks.saturating_sub(1)))
+        .div_ceil(max_chunks)
+}
+
+fn total_timed_segment_words(segments: &[crate::models::TimedSegment]) -> usize {
+    segments
+        .iter()
+        .map(|segment| count_words(&segment.text))
+        .sum()
 }
 
 pub fn build_embedding_input(
@@ -457,6 +500,7 @@ mod tests {
         chunk_transcript_content, extract_keyword_snippet, fuse_ranked_matches,
         hash_search_content, truncate_chunk_for_display,
     };
+    use crate::services::search::{SEARCH_SUMMARY_MAX_CHUNKS, SEARCH_TRANSCRIPT_MAX_CHUNKS};
 
     #[derive(Debug, Deserialize)]
     struct TestEmbedRequest {
@@ -562,6 +606,20 @@ mod tests {
     }
 
     #[test]
+    fn chunk_summary_content_caps_total_chunk_count() {
+        let sections = (0..120)
+            .map(|index| format!("## Section {index}\nalpha beta gamma delta epsilon"))
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        let summary = format!("# Summary\n\n{sections}");
+
+        let chunks = chunk_summary_content(&summary, 5);
+
+        assert_eq!(chunks.len(), SEARCH_SUMMARY_MAX_CHUNKS);
+        assert!(chunks[0].is_full_document);
+    }
+
+    #[test]
     fn chunk_transcript_content_splits_long_paragraphs_with_overlap() {
         let transcript = [
             "Paragraph one introduces semantic search and vector indexes with practical examples.",
@@ -592,6 +650,22 @@ mod tests {
         assert_eq!(chunks.len(), 2);
         assert_eq!(chunks[0].text, "Alpha beta gamma delta.");
         assert_eq!(chunks[1].text, "Second paragraph starts here today.");
+    }
+
+    #[test]
+    fn chunk_transcript_content_caps_total_chunk_count_for_long_inputs() {
+        let transcript = std::iter::repeat_n("alpha beta gamma delta epsilon", 2_000)
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        let chunks = chunk_transcript_content(&transcript, 20, 4, None);
+
+        assert!(
+            chunks.len() <= SEARCH_TRANSCRIPT_MAX_CHUNKS,
+            "expected at most {} chunks, got {}",
+            SEARCH_TRANSCRIPT_MAX_CHUNKS,
+            chunks.len()
+        );
     }
 
     #[test]

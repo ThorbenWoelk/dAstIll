@@ -1,3 +1,4 @@
+import type { QueueTab, VideoTypeFilter } from "./types";
 import type {
   AddVideoResult,
   AiHealthResponse,
@@ -8,7 +9,8 @@ import type {
   CreateHighlightRequest,
   Highlight,
   HighlightChannelGroup,
-  QueueTab,
+  OpenAlexPlanResponse,
+  OpenAlexSavedSearchQuery,
   SearchResponse,
   SearchSourceFilter,
   SearchStatus,
@@ -19,13 +21,13 @@ import type {
   UserPreferences,
   Video,
   VideoInfo,
-  VideoTypeFilter,
   WorkspaceBootstrap,
-} from "./types";
+} from "./transport-types";
 import {
   API_BASE,
   AuthRequiredError,
   BackendUnavailableError,
+  createApiRequestInit,
   createAbortError,
   isAuthRequiredError,
   isSignInRequiredFailure,
@@ -329,13 +331,21 @@ function appendVideoQueryParams(
 
 export function getWorkspaceBootstrap(
   options?: VideoQueryOptions & {
+    selectedSourceId?: string | null;
     selectedChannelId?: string | null;
+    selectedItemId?: string | null;
     bypassCache?: boolean;
   },
 ) {
   const params = new URLSearchParams();
-  if (options?.selectedChannelId) {
-    params.set("selected_channel_id", options.selectedChannelId);
+  const selectedSourceId =
+    options?.selectedSourceId ?? options?.selectedChannelId;
+  if (selectedSourceId) {
+    params.set("selected_source_id", selectedSourceId);
+    params.set("selected_channel_id", selectedSourceId);
+  }
+  if (options?.selectedItemId) {
+    params.set("selected_item_id", options.selectedItemId);
   }
   appendVideoQueryParams(params, options);
 
@@ -414,13 +424,34 @@ export function getWorkspaceBootstrapWhenAvailable(
   );
 }
 
-export function addChannel(input: string) {
+export function addChannel(
+  input:
+    | string
+    | {
+        input: string;
+        openalex_query?: OpenAlexSavedSearchQuery;
+      },
+) {
+  const payload =
+    typeof input === "string"
+      ? { input }
+      : {
+          input: input.input,
+          openalex_query: input.openalex_query,
+        };
   return request<Channel>("/api/channels", {
     method: "POST",
-    body: JSON.stringify({ input }),
+    body: JSON.stringify(payload),
   }).then((result) => {
     invalidateChannelListCache();
     return result;
+  });
+}
+
+export function planOpenAlexQuery(naturalLanguageQuery: string) {
+  return request<OpenAlexPlanResponse>("/api/openalex/plan", {
+    method: "POST",
+    body: JSON.stringify({ natural_language_query: naturalLanguageQuery }),
   });
 }
 
@@ -640,9 +671,14 @@ export async function getSummaryAudio(videoId: string): Promise<Blob> {
   try {
     response = await fetch(
       resolveApiUrl(`/api/videos/${videoId}/summary/audio`),
-      {
-        cache: "no-store",
-      },
+      await createApiRequestInit(
+        {
+          cache: "no-store",
+        },
+        {
+          includeJsonContentType: false,
+        },
+      ),
     );
   } catch (error) {
     if ((error as Error).name === "AbortError") {

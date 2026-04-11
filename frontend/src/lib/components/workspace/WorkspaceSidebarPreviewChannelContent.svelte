@@ -110,9 +110,18 @@
     {/if}
 
     {#if channelVideoCollection.loadingMore}
-      <p class="px-2 pt-2 text-[10px] text-[var(--soft-foreground)] opacity-50">
-        Loading videos...
-      </p>
+      <div class="space-y-1 px-1 pt-1" role="status" aria-live="polite">
+        {#each Array.from({ length: 2 }) as _, i (i)}
+          <div class="animate-pulse px-2 py-1.5">
+            <div
+              class="h-3 w-11/12 rounded-full bg-[var(--border)] opacity-60"
+            ></div>
+            <div
+              class="mt-1 h-2 w-1/3 rounded-full bg-[var(--border)] opacity-40"
+            ></div>
+          </div>
+        {/each}
+      </div>
     {/if}
 
     {#if channelVideoCollection.loadedMode === "paged" && channelVideoCollection.hasMore && !channelVideoCollection.loadingMore}

@@ -68,6 +68,21 @@ pub async fn mark_search_source_pending(
     store.put_json(&key, &record).await
 }
 
+pub fn should_refresh_search_source(
+    current: Option<&SearchSourceState>,
+    content_hash: &str,
+    semantic_enabled: bool,
+    runtime_embedding_model: Option<&str>,
+) -> bool {
+    let Some(current) = current else {
+        return true;
+    };
+
+    current.content_hash != content_hash
+        || current.index_status == "failed"
+        || (semantic_enabled && current.embedding_model.as_deref() != runtime_embedding_model)
+}
+
 pub async fn clear_search_source(
     store: &Store,
     video_id: &str,
@@ -759,4 +774,79 @@ pub async fn reset_search_projection(store: &Store) -> Result<(), StoreError> {
         req.send().await.ok();
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn state(
+        content_hash: &str,
+        index_status: &str,
+        embedding_model: Option<&str>,
+    ) -> SearchSourceState {
+        SearchSourceState {
+            id: 1,
+            source_generation: 1,
+            video_id: "video-1".to_string(),
+            source_kind: SearchSourceKind::Transcript,
+            content_hash: content_hash.to_string(),
+            embedding_model: embedding_model.map(ToOwned::to_owned),
+            index_status: index_status.to_string(),
+            last_indexed_at: None,
+            last_error: None,
+        }
+    }
+
+    #[test]
+    fn refresh_required_when_source_missing() {
+        assert!(should_refresh_search_source(
+            None,
+            "hash-a",
+            true,
+            Some("embed-a")
+        ));
+    }
+
+    #[test]
+    fn ready_source_with_same_hash_and_model_does_not_refresh() {
+        let current = state("hash-a", "ready", Some("embed-a"));
+
+        assert!(!should_refresh_search_source(
+            Some(&current),
+            "hash-a",
+            true,
+            Some("embed-a")
+        ));
+    }
+
+    #[test]
+    fn failed_source_refreshes_even_when_hash_matches() {
+        let current = state("hash-a", "failed", Some("embed-a"));
+
+        assert!(should_refresh_search_source(
+            Some(&current),
+            "hash-a",
+            true,
+            Some("embed-a")
+        ));
+    }
+
+    #[test]
+    fn embedding_model_drift_refreshes_only_when_semantic_is_enabled() {
+        let current = state("hash-a", "ready", Some("embed-a"));
+
+        assert!(should_refresh_search_source(
+            Some(&current),
+            "hash-a",
+            true,
+            Some("embed-b")
+        ));
+        assert!(!should_refresh_search_source(
+            Some(&current),
+            "hash-a",
+            false,
+            Some("embed-b")
+        ));
+    }
 }

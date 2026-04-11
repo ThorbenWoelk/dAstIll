@@ -405,7 +405,13 @@ mod tests {
                 &plan,
                 &[RetrievedChatSource {
                     source: ChatSource {
+                        source_id: "chan_1".to_string(),
                         video_id: "vid_1".to_string(),
+                        item_id: "vid_1".to_string(),
+                        provider: crate::models::ProviderKind::YouTube,
+                        content_source_kind: crate::models::ContentSourceKind::YouTubeChannel,
+                        item_kind: crate::models::ContentItemKind::Video,
+                        part_kind: crate::models::ContentPartKind::Transcript,
                         channel_id: "chan_1".to_string(),
                         channel_name: "Channel One".to_string(),
                         video_title: "Video One".to_string(),

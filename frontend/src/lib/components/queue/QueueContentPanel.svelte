@@ -19,7 +19,7 @@
       selectedChannelId: null,
       selectedVideoId: null,
       selectedQueueVideo: null,
-      queueStats: { total: 0, loading: 0, pending: 0, failed: 0 },
+      queueStats: { total: 0, loading: 0, pending: 0, failed: 0, skipped: 0 },
       failedTranscriptVideos: [],
       retryingTranscriptVideoId: null,
       effectiveEarliestSyncDate: null,
@@ -46,8 +46,8 @@
 
   const QUEUE_EYEBROW = "Processing queue";
   const QUEUE_DETAIL =
-    "Track transcript extraction, summary generation, and failures for this channel in one place.";
-  const QUEUE_STAGE_TITLE = "Pipeline status";
+    "Track actionable transcript and summary work for this channel using the same task rules as the backend worker.";
+  const QUEUE_STAGE_TITLE = "Worker-aligned queue";
 
   $effect(() => {
     localSyncDateInput = panelState.earliestSyncDateInput;
@@ -214,7 +214,7 @@
           >
             <span class="font-medium text-[var(--foreground)]">
               {panelState.queueStats.total}
-              <span class="text-[var(--soft-foreground)]"> in queue</span>
+              <span class="text-[var(--soft-foreground)]"> actionable</span>
             </span>
             <span class="text-[var(--soft-foreground)]">
               {panelState.queueStats.pending} waiting
@@ -231,6 +231,14 @@
                 class="rounded-full bg-[var(--danger-soft)] px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.06em] text-[var(--danger-foreground)]"
               >
                 {panelState.queueStats.failed} failed
+              </span>
+            {/if}
+            {#if panelState.queueStats.skipped > 0}
+              <span
+                class="rounded-full bg-[var(--surface-strong)] px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.06em] text-[var(--soft-foreground)]"
+                title="Skipped after retry exhaustion"
+              >
+                {panelState.queueStats.skipped} skipped
               </span>
             {/if}
           </div>
@@ -272,11 +280,20 @@
               </p>
             {/if}
 
-            {#if panelState.queueStats.total === 0}
+            {#if panelState.queueStats.total === 0 && panelState.queueStats.skipped === 0}
               <p
                 class="mt-4 text-[12px] text-[var(--soft-foreground)] opacity-70"
               >
                 Everything for this stage is currently clear.
+              </p>
+            {/if}
+
+            {#if panelState.queueStats.total === 0 && panelState.queueStats.skipped > 0}
+              <p
+                class="mt-4 text-[12px] text-[var(--soft-foreground)] opacity-70"
+              >
+                No actionable work remains. Some items are currently skipped
+                after exhausting retries.
               </p>
             {/if}
           </div>

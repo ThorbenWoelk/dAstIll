@@ -417,55 +417,61 @@ pub(super) fn trim_to_option(input: &str) -> Option<String> {
 
 pub(super) async fn execute_list_query(
     store: &db::Store,
+    access_context: &crate::security::AccessContext,
     query: DbInspectQuery,
 ) -> Result<DbInspectResult, db::StoreError> {
+    let scope = load_db_inspect_scope(store, access_context).await?;
+    let output = format_db_inspect_list_output(&scope, query);
+
+    Ok(DbInspectResult {
+        summary: describe_db_inspect_query(query),
+        output,
+    })
+}
+
+pub(super) fn format_db_inspect_list_output(
+    scope: &DbInspectScope,
+    query: DbInspectQuery,
+) -> String {
     let output = match query.target {
         DbInspectTarget::Summaries => {
-            let mut items: Vec<Summary> = store.load_all("summaries/").await?;
-            items.sort_by(|left, right| left.video_id.cmp(&right.video_id));
-            let rows = items
-                .into_iter()
+            let rows = scope
+                .summaries
+                .iter()
                 .take(query.limit)
                 .map(|summary| format!("- {}", summary.video_id))
                 .collect::<Vec<_>>();
             format_list_output("summary video ids", rows)
         }
         DbInspectTarget::Transcripts => {
-            let mut items: Vec<Transcript> = store.load_all("transcripts/").await?;
-            items.sort_by(|left, right| left.video_id.cmp(&right.video_id));
-            let rows = items
-                .into_iter()
+            let rows = scope
+                .transcripts
+                .iter()
                 .take(query.limit)
                 .map(|transcript| format!("- {}", transcript.video_id))
                 .collect::<Vec<_>>();
             format_list_output("transcript video ids", rows)
         }
         DbInspectTarget::Videos => {
-            let mut items: Vec<Video> = store.load_all("videos/").await?;
-            items.sort_by(|left, right| right.published_at.cmp(&left.published_at));
-            let rows = items
-                .into_iter()
+            let rows = scope
+                .videos
+                .iter()
                 .take(query.limit)
                 .map(|video| format!("- {} - {}", video.id, video.title))
                 .collect::<Vec<_>>();
             format_list_output("videos", rows)
         }
         DbInspectTarget::Channels => {
-            let mut items: Vec<Channel> = store.load_all("channels/").await?;
-            items.sort_by(|left, right| left.name.cmp(&right.name));
-            let rows = items
-                .into_iter()
+            let rows = scope
+                .channels
+                .iter()
                 .take(query.limit)
                 .map(|channel| format!("- {} - {}", channel.id, channel.name))
                 .collect::<Vec<_>>();
             format_list_output("channels", rows)
         }
     };
-
-    Ok(DbInspectResult {
-        summary: describe_db_inspect_query(query),
-        output,
-    })
+    output
 }
 
 pub(super) fn format_breakdown_by_channel_output(

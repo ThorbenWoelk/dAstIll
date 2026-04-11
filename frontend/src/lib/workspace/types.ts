@@ -64,6 +64,7 @@ export interface QueueStats {
   loading: number;
   pending: number;
   failed: number;
+  skipped: number;
 }
 
 export interface DistillationStatusCopy {

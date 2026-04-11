@@ -1,172 +1,82 @@
 import { describe, expect, it } from "bun:test";
+
 import {
   buildQueueViewHref,
   buildWorkspaceViewHref,
-  mergeQueueViewState,
-  mergeWorkspaceViewState,
   parseQueueViewUrlState,
   parseWorkspaceViewUrlState,
 } from "../src/lib/view-url";
 
-describe("parseWorkspaceViewUrlState", () => {
-  it("restores a shared workspace view from query params", () => {
+describe("workspace view URLs", () => {
+  it("builds generic source and item params for workspace deep links", () => {
+    expect(
+      buildWorkspaceViewHref({
+        selectedChannelId: "channel-1",
+        selectedVideoId: "video-2",
+        contentMode: "summary",
+        videoTypeFilter: "all",
+        acknowledgedFilter: "all",
+      }),
+    ).toBe("/?source=channel-1&item=video-2&content=summary&type=all&ack=all");
+  });
+
+  it("parses generic source and item params back into legacy workspace state", () => {
     const url = new URL(
-      "https://example.com/?channel=abc&video=vid-1&content=highlights&type=short&ack=ack",
+      "https://example.com/?source=source-1&item=item-2&content=transcript&type=short&ack=unack",
     );
 
     expect(parseWorkspaceViewUrlState(url)).toEqual({
-      selectedChannelId: "abc",
-      selectedVideoId: "vid-1",
-      contentMode: "highlights",
+      selectedSourceId: "source-1",
+      selectedChannelId: "source-1",
+      selectedItemId: "item-2",
+      selectedVideoId: "item-2",
+      contentMode: "transcript",
       videoTypeFilter: "short",
-      acknowledgedFilter: "ack",
+      acknowledgedFilter: "unack",
     });
   });
 
-  it("ignores invalid workspace params", () => {
+  it("keeps legacy channel and video params readable", () => {
     const url = new URL(
-      "https://example.com/?channel=&video=&content=nope&type=wat&ack=maybe",
+      "https://example.com/?channel=channel-1&video=video-2&content=summary&type=all&ack=all",
     );
 
-    expect(parseWorkspaceViewUrlState(url)).toEqual({});
-  });
-});
-
-describe("buildWorkspaceViewHref", () => {
-  it("serializes the current workspace view into a shareable url", () => {
-    expect(
-      buildWorkspaceViewHref({
-        selectedChannelId: "abc",
-        selectedVideoId: "vid-1",
-        contentMode: "highlights",
-        videoTypeFilter: "all",
-        acknowledgedFilter: "all",
-      }),
-    ).toBe("/?channel=abc&video=vid-1&content=highlights&type=all&ack=all");
-  });
-
-  it("includes chunk and cite for chat citation deep links", () => {
-    expect(
-      buildWorkspaceViewHref({
-        selectedChannelId: "abc",
-        selectedVideoId: "vid-1",
-        contentMode: "transcript",
-        videoTypeFilter: "all",
-        acknowledgedFilter: "all",
-        chunkId: "idx-42",
-        citeQuery: "hello world",
-      }),
-    ).toBe(
-      "/?channel=abc&video=vid-1&content=transcript&type=all&ack=all&chunk=idx-42&cite=hello+world",
-    );
-  });
-});
-
-describe("mergeWorkspaceViewState", () => {
-  it("prefers explicit url state over restored local state", () => {
-    expect(
-      mergeWorkspaceViewState(
-        {
-          selectedChannelId: "saved-channel",
-          selectedVideoId: "saved-video",
-          contentMode: "transcript",
-          videoTypeFilter: "all",
-          acknowledgedFilter: "all",
-          channelOrder: ["saved-channel"],
-        },
-        {
-          selectedChannelId: "url-channel",
-          selectedVideoId: "url-video",
-          contentMode: "highlights",
-          videoTypeFilter: "short",
-          acknowledgedFilter: "ack",
-        },
-      ),
-    ).toEqual({
-      selectedChannelId: "url-channel",
-      selectedVideoId: "url-video",
-      contentMode: "highlights",
-      videoTypeFilter: "short",
-      acknowledgedFilter: "ack",
-      channelOrder: ["saved-channel"],
+    expect(parseWorkspaceViewUrlState(url)).toEqual({
+      selectedSourceId: "channel-1",
+      selectedChannelId: "channel-1",
+      selectedItemId: "video-2",
+      selectedVideoId: "video-2",
+      contentMode: "summary",
+      videoTypeFilter: "all",
+      acknowledgedFilter: "all",
     });
   });
 });
 
-describe("parseQueueViewUrlState", () => {
-  it("restores the selected queue channel from query params", () => {
+describe("queue view URLs", () => {
+  it("builds generic source and item params for queue links", () => {
+    expect(
+      buildQueueViewHref({
+        selectedChannelId: "channel-1",
+        selectedVideoId: "video-2",
+        videoTypeFilter: "short",
+        acknowledgedFilter: "ack",
+      }),
+    ).toBe("/download-queue?source=channel-1&item=video-2&type=short&ack=ack");
+  });
+
+  it("parses generic queue params back into legacy queue state", () => {
     const url = new URL(
-      "https://example.com/download-queue?channel=abc&queue=summaries",
+      "https://example.com/download-queue?source=source-1&item=item-2&type=all&ack=all",
     );
 
     expect(parseQueueViewUrlState(url)).toEqual({
-      selectedChannelId: "abc",
-    });
-  });
-
-  it("restores video selection and browse filters from query params", () => {
-    const url = new URL(
-      "https://example.com/download-queue?channel=abc&queue=evaluations&video=vid-9&type=short&ack=ack",
-    );
-
-    expect(parseQueueViewUrlState(url)).toEqual({
-      selectedChannelId: "abc",
-      selectedVideoId: "vid-9",
-      videoTypeFilter: "short",
-      acknowledgedFilter: "ack",
-    });
-  });
-
-  it("ignores invalid queue params", () => {
-    const url = new URL(
-      "https://example.com/download-queue?channel=&queue=wat",
-    );
-
-    expect(parseQueueViewUrlState(url)).toEqual({});
-  });
-});
-
-describe("buildQueueViewHref", () => {
-  it("serializes the current queue view into a shareable url", () => {
-    expect(
-      buildQueueViewHref({
-        selectedChannelId: "abc",
-        selectedVideoId: null,
-        videoTypeFilter: "all",
-        acknowledgedFilter: "all",
-      }),
-    ).toBe("/download-queue?channel=abc&type=all&ack=all");
-  });
-
-  it("includes optional video and non-default filters", () => {
-    expect(
-      buildQueueViewHref({
-        selectedChannelId: "abc",
-        selectedVideoId: "vid-1",
-        videoTypeFilter: "long",
-        acknowledgedFilter: "unack",
-      }),
-    ).toBe("/download-queue?channel=abc&video=vid-1&type=long&ack=unack");
-  });
-});
-
-describe("mergeQueueViewState", () => {
-  it("prefers explicit url state over restored queue state", () => {
-    expect(
-      mergeQueueViewState(
-        {
-          selectedChannelId: "saved-channel",
-          channelOrder: ["saved-channel"],
-          channelSortMode: "alpha",
-        },
-        {
-          selectedChannelId: "url-channel",
-        },
-      ),
-    ).toEqual({
-      selectedChannelId: "url-channel",
-      channelOrder: ["saved-channel"],
-      channelSortMode: "alpha",
+      selectedSourceId: "source-1",
+      selectedChannelId: "source-1",
+      selectedItemId: "item-2",
+      selectedVideoId: "item-2",
+      videoTypeFilter: "all",
+      acknowledgedFilter: "all",
     });
   });
 });

@@ -523,18 +523,18 @@ pub(crate) struct OllamaRequestMessage {
     pub(crate) content: String,
 }
 
-/// Inputs for [`ChatService::spawn_reply`], grouped to stay within `clippy::too_many_arguments`.
-pub struct SpawnReplyJob {
+/// Inputs for [`ChatService::start_reply_workflow`], grouped to stay within `clippy::too_many_arguments`.
+pub struct ReplyWorkflowRequest {
     pub state: AppState,
     pub conversation: ChatConversation,
     pub access_context: crate::security::AccessContext,
     pub conversation_scope_id: String,
-    pub active_chat_key: ActiveChatKey,
+    pub active_reply_key: ActiveChatKey,
     pub prompt: String,
     pub should_auto_name: bool,
     pub deep_research: bool,
     pub reply_model: String,
-    pub active_chat: ActiveChatHandle,
+    pub active_reply: ActiveChatHandle,
     /// When false, assistant output and titles are not persisted (ephemeral / client-local history).
     pub persist_to_store: bool,
 }

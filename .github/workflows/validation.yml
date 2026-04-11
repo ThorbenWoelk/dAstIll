@@ -3,29 +3,22 @@ name: Validation
 on:
   workflow_call:
     inputs:
-      run_all:
-        description: Run every component validation job
-        type: boolean
-        required: false
-        default: false
       run_backend:
         description: Run backend validation jobs
         type: boolean
         required: false
-        default: false
+        default: true
       run_frontend:
         description: Run frontend validation jobs
         type: boolean
         required: false
-        default: false
+        default: true
       run_docs:
         description: Run docs validation jobs
         type: boolean
         required: false
-        default: false
+        default: true
   pull_request:
-  push:
-    branches: ["main"]
   schedule:
     - cron: "0 6 * * 1"
   workflow_dispatch:
@@ -43,45 +36,16 @@ jobs:
       - name: Check forbidden tracked artifacts
         run: ./scripts/check_forbidden_artifacts.sh
 
-  changes:
-    name: Detect Changed Areas
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs:
-      - repo-hygiene
-    outputs:
-      backend: ${{ steps.detect.outputs.backend }}
-      frontend: ${{ steps.detect.outputs.frontend }}
-      docs: ${{ steps.detect.outputs.docs }}
-      any: ${{ steps.detect.outputs.any }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6.0.2
-        with:
-          fetch-depth: 0
-
-      - name: Detect changed components
-        id: detect
-        env:
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
-          GITHUB_SHA: ${{ github.sha }}
-          GITHUB_BASE_REF: ${{ github.base_ref }}
-          BEFORE_SHA: ${{ github.event.before || '' }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-          RUN_ALL: ${{ github.event_name == 'workflow_call' && inputs.run_all || false }}
-          RUN_BACKEND: ${{ github.event_name == 'workflow_call' && inputs.run_backend || false }}
-          RUN_FRONTEND: ${{ github.event_name == 'workflow_call' && inputs.run_frontend || false }}
-          RUN_DOCS: ${{ github.event_name == 'workflow_call' && inputs.run_docs || false }}
-        run: ./scripts/detect_changed_components.sh validation
-
   backend:
     name: Backend
+    if: github.event_name != 'workflow_call' || inputs.run_backend
     runs-on: ubuntu-latest
+    env:
+      CARGO_INCREMENTAL: "0"
+      RUSTFLAGS: "-C link-arg=-fuse-ld=mold"
     timeout-minutes: 30
     needs:
-      - changes
-    if: needs.changes.outputs.backend == 'true'
+      - repo-hygiene
 
     steps:
       - name: Checkout
@@ -89,6 +53,16 @@ jobs:
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@1.93.1
+
+      - name: Cache Rust dependencies
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "backend -> target"
+
+      - name: Install mold linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold
 
       - name: Cargo Check
         working-directory: backend
@@ -105,13 +79,48 @@ jobs:
         working-directory: backend
         run: cargo audit
 
+      - name: Build Release Binary
+        working-directory: backend
+        run: cargo build --release --bin dastill
+
+      - name: Smoke Test - Binary Startup
+        working-directory: backend
+        timeout-minutes: 2
+        run: |
+          export TURSO_DB_URL="libsql://test.local"
+          export TURSO_AUTH_TOKEN="test-token"
+          export BACKEND_PROXY_TOKEN="test"
+          export GCP_PROJECT_ID="test"
+          export YOUTUBE_API_KEY="test"
+          export OLLAMA_URL="http://localhost:11434"
+          export OLLAMA_API_KEY="test"
+          export OLLAMA_SUMMARY_MODEL="test"
+          export SUMMARY_EVALUATOR_MODEL="test"
+          export BACKEND_CORS_ALLOWED_ORIGINS="http://localhost:3000"
+          export S3_DATA_BUCKET="test"
+          export S3_VECTOR_BUCKET="test"
+          export AWS_REGION="us-east-1"
+          export AWS_ACCESS_KEY_ID="test"
+          export AWS_SECRET_ACCESS_KEY="test"
+
+          # Must exceed Turso builder inner timeout (30s) so the binary
+          # can fail cleanly with exit 1 rather than being killed with exit 124.
+          timeout 45s ./target/release/dastill || exit_code=$?
+
+          if [ "$exit_code" = "124" ]; then
+            echo "::error::Binary hung during startup for over 45s"
+            exit 1
+          fi
+          echo "Smoke test passed - binary failed early as expected without real credentials"
+          exit 0
+
   frontend:
     name: Frontend
+    if: github.event_name != 'workflow_call' || inputs.run_frontend
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs:
-      - changes
-    if: needs.changes.outputs.frontend == 'true'
+      - repo-hygiene
 
     steps:
       - name: Checkout
@@ -146,11 +155,11 @@ jobs:
 
   docs:
     name: Docs
+    if: github.event_name != 'workflow_call' || inputs.run_docs
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs:
-      - changes
-    if: needs.changes.outputs.docs == 'true'
+      - repo-hygiene
 
     steps:
       - name: Checkout

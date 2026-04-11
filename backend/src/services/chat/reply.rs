@@ -1,17 +1,17 @@
 use super::*;
 
 impl ChatService {
-    pub(super) async fn run_reply(
+    pub(super) async fn run_reply_workflow(
         &self,
         state: AppState,
         conversation: ChatConversation,
         access_context: crate::security::AccessContext,
         conversation_scope_id: String,
-        active_chat_key: ActiveChatKey,
+        active_reply_key: ActiveChatKey,
         prompt: String,
         deep_research: bool,
         reply_model: String,
-        active_chat: ActiveChatHandle,
+        active_reply: ActiveChatHandle,
         persist_to_store: bool,
     ) {
         let conversation_id = conversation.id.clone();
@@ -37,7 +37,7 @@ impl ChatService {
                     &prompt,
                     deep_research,
                     &reply_model,
-                    &active_chat,
+                    &active_reply,
                 )
                 .await;
 
@@ -60,22 +60,22 @@ impl ChatService {
                         .await
                         {
                             tracing::error!(conversation_id = %conversation_id, error = %error, "failed to persist assistant message");
-                            active_chat
+                            active_reply
                                 .emit(ChatStreamEvent::Error {
                                     message: "Failed to store chat response.".to_string(),
                                 })
                                 .await;
                         } else {
-                            active_chat.emit(ChatStreamEvent::Done { message }).await;
+                            active_reply.emit(ChatStreamEvent::Done { message }).await;
                         }
                     } else {
-                        active_chat.emit(ChatStreamEvent::Done { message }).await;
+                        active_reply.emit(ChatStreamEvent::Done { message }).await;
                     }
                 }
                 Err(error) => {
                     if error == "cancelled" {
                         tracing::info!(conversation_id = %conversation_id, "chat reply cancelled");
-                        let (status, content) = active_chat
+                        let (status, content) = active_reply
                             .cancelled_outcome()
                             .unwrap_or((
                                 ChatMessageStatus::Cancelled,
@@ -92,9 +92,9 @@ impl ChatService {
                             )
                             .await;
                         }
-                        active_chat.emit(ChatStreamEvent::Done { message }).await;
-                        let mut active_chats = state.active_chats.lock().await;
-                        active_chats.remove(&active_chat_key);
+                        active_reply.emit(ChatStreamEvent::Done { message }).await;
+                        let mut active_replies = state.active_replies.lock().await;
+                        active_replies.remove(&active_reply_key);
                         return;
                     }
                     tracing::error!(conversation_id = %conversation_id, error = %error, "chat reply failed");
@@ -113,14 +113,14 @@ impl ChatService {
                         )
                         .await;
                     }
-                    active_chat
+                    active_reply
                         .emit(ChatStreamEvent::Error { message: error })
                         .await;
                 }
             }
 
-            let mut active_chats = state.active_chats.lock().await;
-            active_chats.remove(&active_chat_key);
+            let mut active_replies = state.active_replies.lock().await;
+            active_replies.remove(&active_reply_key);
         }
         .instrument(span)
         .await;

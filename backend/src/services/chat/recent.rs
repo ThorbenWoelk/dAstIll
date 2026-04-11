@@ -7,6 +7,8 @@ use crate::services::search::SearchSourceKind;
 use super::constants::CHAT_RECENT_ACTIVITY_VIDEO_LIMIT;
 use super::tools::RecentLibraryActivityQuery;
 
+const RECENT_ACTIVITY_BATCH_SIZE: usize = 50;
+
 #[derive(Debug, Clone)]
 pub(crate) struct RecentLibraryActivityResult {
     pub(crate) summary: String,
@@ -60,31 +62,51 @@ pub(crate) async fn execute_recent_library_activity_query(
         .map_err(|error| error.to_string())?
         .ok_or_else(|| format!("channel `{channel_id}` not found"))?;
 
-    let mut videos = db::load_all_videos(store)
-        .await
-        .map_err(|error| error.to_string())?
-        .into_iter()
-        .filter(|video| video.channel_id == channel.id)
-        .collect::<Vec<_>>();
-    videos.sort_by(|left, right| right.published_at.cmp(&left.published_at));
-
-    let recent_total = videos.len();
     let limit_videos = query
         .limit_videos
         .clamp(1, CHAT_RECENT_ACTIVITY_VIDEO_LIMIT.max(1));
+    let mut recent_window = Vec::new();
+    let mut ready_videos = Vec::new();
+    let mut scanned = 0usize;
+    let mut saw_any_video = false;
 
-    let ready_videos = videos
+    while ready_videos.len() < limit_videos {
+        let batch = db::list_channel_videos_window(
+            store,
+            &channel.id,
+            RECENT_ACTIVITY_BATCH_SIZE,
+            scanned,
+            true,
+        )
+        .await
+        .map_err(|error| error.to_string())?;
+        if batch.is_empty() {
+            break;
+        }
+
+        saw_any_video = true;
+        let batch_len = batch.len();
+        scanned = scanned.saturating_add(batch_len);
+
+        for video in batch {
+            if recent_window.len() < limit_videos {
+                recent_window.push(video.clone());
+            }
+            if (video.summary_status == ContentStatus::Ready
+                || video.transcript_status == ContentStatus::Ready)
+                && ready_videos.len() < limit_videos
+            {
+                ready_videos.push(video);
+            }
+        }
+
+        if batch_len < RECENT_ACTIVITY_BATCH_SIZE {
+            break;
+        }
+    }
+
+    let unprocessed_recent = recent_window
         .iter()
-        .filter(|video| {
-            video.summary_status == ContentStatus::Ready
-                || video.transcript_status == ContentStatus::Ready
-        })
-        .take(limit_videos)
-        .cloned()
-        .collect::<Vec<_>>();
-    let unprocessed_recent = videos
-        .iter()
-        .take(limit_videos)
         .filter(|video| {
             video.summary_status != ContentStatus::Ready
                 && video.transcript_status != ContentStatus::Ready
@@ -106,13 +128,12 @@ pub(crate) async fn execute_recent_library_activity_query(
     );
 
     if rows.is_empty() {
-        let output = if recent_total == 0 {
+        let output = if !saw_any_video {
             format!("{} is not present in the library yet.", channel.name)
         } else {
             format!(
-                "Recent library activity for {} could not be reviewed because none of the latest {} videos are fully processed yet. This does not say anything about real-time off-platform activity.",
-                channel.name,
-                limit_videos.min(recent_total)
+                "Recent library activity for {} could not be reviewed because none of the latest {} videos examined were fully processed yet. This does not say anything about real-time off-platform activity.",
+                channel.name, limit_videos
             )
         };
         return Ok(RecentLibraryActivityResult {

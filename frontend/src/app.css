@@ -195,21 +195,10 @@
   --space-md: 16px;
   --space-lg: 24px;
   --space-xl: 32px;
-  --mobile-tab-bar-height: calc(3.5rem + env(safe-area-inset-bottom));
-  /** Video action row in `AppBottomNav` (single horizontal strip; scroll if needed). */
-  --mobile-video-actions-bar-height: calc(
-    3.75rem + env(safe-area-inset-bottom)
-  );
-  /** Row above section tabs when hosting library filters (see `AppBottomNav`). */
-  --mobile-footer-toolbar-height: 2.75rem;
-  --mobile-bottom-nav-height: 0px;
-  --mobile-bottom-overlay-height: 0px;
   --mobile-viewport-offset-bottom: 0px;
-  --mobile-bottom-fixed-height: calc(
-    var(--mobile-bottom-nav-height) + var(--mobile-viewport-offset-bottom)
-  );
+  --mobile-tab-bar-height: 0px;
   --mobile-bottom-stack-height: calc(
-    var(--mobile-bottom-fixed-height) + var(--mobile-bottom-overlay-height)
+    var(--mobile-tab-bar-height) + var(--mobile-viewport-offset-bottom)
   );
 
   /* Saved text highlights (transcript / summary) */
@@ -421,18 +410,6 @@ h4,
 .page-shell {
   padding-top: max(1rem, env(safe-area-inset-top));
   padding-bottom: max(1rem, env(safe-area-inset-bottom));
-}
-
-.page-shell--with-mobile-nav {
-  --mobile-bottom-nav-height: 0px;
-  --mobile-bottom-overlay-height: 0px;
-}
-
-@media (max-width: 1023px) {
-  .page-shell--with-mobile-nav {
-    --mobile-bottom-nav-height: var(--mobile-tab-bar-height);
-    --mobile-bottom-overlay-height: 0px;
-  }
 }
 
 .skip-link {
@@ -757,7 +734,8 @@ a[href],
   }
 }
 
-/* Mobile tab bar bottom padding */
+/* Mobile bottom-stack padding — --mobile-tab-bar-height is set dynamically
+   by WorkspaceContentPanel when content tabs are visible. */
 @media (max-width: 1023px) {
   .page-shell {
     padding-top: max(1rem, env(safe-area-inset-top));
@@ -784,158 +762,12 @@ a[href],
   }
 
   .mobile-bottom-nav-offset {
-    bottom: calc(var(--mobile-bottom-fixed-height) + 1.5rem);
+    bottom: calc(var(--mobile-bottom-stack-height) + 1.5rem);
   }
 
   .mobile-bottom-stack-offset {
     bottom: calc(var(--mobile-bottom-stack-height) + 1rem);
   }
-}
-
-/* Mobile tab bar */
-.mobile-tab-bar {
-  display: none;
-}
-
-@media (max-width: 1023px) {
-  .mobile-tab-bar {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: 60;
-    display: flex;
-    justify-content: stretch;
-    align-items: center;
-    height: var(--mobile-tab-bar-height);
-    padding-bottom: env(safe-area-inset-bottom);
-    background: var(--panel-surface-strong);
-    border-top: 1px solid var(--accent-border-soft);
-    box-shadow: 0 -12px 30px var(--shadow-soft);
-  }
-
-  .mobile-tab-bar--actions {
-    justify-content: center;
-  }
-
-  .mobile-tab-bar--video-actions {
-    height: var(--mobile-video-actions-bar-height);
-    min-height: var(--mobile-video-actions-bar-height);
-  }
-
-  .mobile-video-actions-row {
-    display: grid;
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(0, 1fr);
-    align-items: center;
-    width: 100%;
-    min-width: 0;
-    padding: var(--space-sm) var(--space-md);
-  }
-
-  .mobile-video-action-slot {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 0;
-  }
-
-  .mobile-video-action-button {
-    height: 2.75rem;
-    width: 2.75rem;
-    border-radius: var(--radius-full);
-  }
-
-  /* Hide bottom navigation behind the mobile drawer overlay. */
-  body[data-mobile-drawer-open="true"] .mobile-tab-bar,
-  body[data-mobile-drawer-open="true"] .mobile-footer-stack {
-    display: none;
-  }
-
-  .mobile-footer-stack {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: 60;
-    display: flex;
-    flex-direction: column;
-    background: var(--panel-surface-strong);
-    border-top: 1px solid var(--accent-border-soft);
-    box-shadow: 0 -12px 30px var(--shadow-soft);
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-
-  .mobile-footer-toolbar {
-    display: flex;
-    min-height: var(--mobile-footer-toolbar-height);
-    align-items: center;
-    justify-content: center;
-    border-bottom: 1px solid var(--accent-border-soft);
-    padding: var(--space-xs) var(--space-md);
-  }
-
-  .mobile-tab-bar.mobile-tab-bar--in-stack {
-    position: relative;
-    bottom: auto;
-    left: auto;
-    right: auto;
-    height: auto;
-    min-height: 3.5rem;
-    padding-bottom: 0;
-    border-top: none;
-    box-shadow: none;
-  }
-}
-
-.mobile-tab-item {
-  display: flex;
-  flex: 1 1 0;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  gap: 0px;
-  min-width: 0;
-  align-self: stretch;
-  padding: 10px var(--space-sm);
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--soft-foreground);
-  opacity: 0.72;
-  border-radius: var(--radius-full);
-  transition:
-    background-color 200ms,
-    color 200ms,
-    opacity 200ms,
-    transform 200ms;
-  background: none;
-  border: none;
-  cursor: pointer;
-  text-decoration: none;
-}
-
-.mobile-tab-item-label {
-  display: none;
-}
-
-.mobile-tab-item--center {
-  background: var(--panel-surface);
-  border: 1px solid var(--accent-border-soft);
-  box-shadow: 0 10px 26px var(--shadow-soft);
-  opacity: 0.95;
-}
-
-.mobile-tab-item--active {
-  color: var(--accent);
-  opacity: 1;
-  transform: translateY(-1px);
-  background: var(--accent-wash);
-}
-
-.mobile-tab-item--active svg {
-  transform: scale(1.08);
 }
 
 /* Chat assistant: citation markers as superscript links */

@@ -165,3 +165,26 @@ export function applyColorScheme(
 ) {
   documentLike.documentElement.setAttribute("data-color", color);
 }
+
+export function applyStoredTheme(
+  documentLike: ThemeDocumentLike,
+  storage: Pick<Storage, "getItem">,
+  systemPrefersDark: boolean,
+  options?: {
+    themeKey?: string;
+    colorKey?: string;
+  },
+) {
+  const mode = readThemeMode(storage, options?.themeKey ?? THEME_STORAGE_KEY);
+  const color = readColorScheme(
+    storage,
+    options?.colorKey ?? COLOR_STORAGE_KEY,
+  );
+  const preference = resolveModePreference(mode, systemPrefersDark);
+  const state = resolveThemeState(preference, systemPrefersDark);
+
+  applyThemeState(documentLike, state);
+  applyColorScheme(documentLike, color);
+
+  return { mode, color, state };
+}

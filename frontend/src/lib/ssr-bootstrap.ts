@@ -4,7 +4,7 @@ import type {
   ChannelSnapshot,
   SearchStatus,
   WorkspaceBootstrap,
-} from "$lib/types";
+} from "$lib/transport-types";
 import {
   getCachedBootstrapMeta,
   getCachedChannels,

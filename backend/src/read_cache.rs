@@ -4,6 +4,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use chrono::{DateTime, Utc};
 use tokio::sync::RwLock;
 
 use crate::{
@@ -16,10 +17,19 @@ use crate::{
 
 const DEFAULT_READ_CACHE_TTL: Duration = Duration::from_secs(10);
 const SEARCH_STATUS_CACHE_TTL: Duration = Duration::from_secs(30);
-const VIDEOS_CACHE_TTL: Duration = Duration::from_secs(120);
+const VIDEOS_CACHE_TTL: Duration = Duration::from_secs(600);
+const VIDEO_SUGGESTION_CACHE_TTL: Duration = Duration::from_secs(600);
 /// Maximum number of entries to keep in the cache.
 /// Prevents unbounded memory growth within Cloud Run's 512Mi limit.
 pub(crate) const MAX_CACHE_SIZE: usize = 512;
+
+#[derive(Debug, Clone)]
+pub struct SuggestedVideo {
+    pub id: String,
+    pub channel_id: String,
+    pub title: String,
+    pub published_at: DateTime<Utc>,
+}
 
 #[derive(Clone)]
 pub struct ReadCache {
@@ -37,6 +47,7 @@ struct CacheEntry {
 enum ReadCacheValue {
     Channels(Vec<Channel>),
     Videos(Vec<Video>),
+    ScopedVideoSuggestions(Vec<SuggestedVideo>),
     WorkspaceBootstrap(WorkspaceBootstrapPayload),
     ChannelSnapshot(ChannelSnapshotPayload),
     SyncDepth(SyncDepthPayload),
@@ -47,6 +58,7 @@ enum ReadCacheValue {
 pub enum ReadCacheKey {
     Channels(String),
     Videos,
+    ScopedVideoSuggestions(String),
     WorkspaceBootstrap(WorkspaceBootstrapCacheKey),
     ChannelSnapshot(ChannelSnapshotCacheKey),
     ChannelSyncDepth(String, String),
@@ -140,6 +152,24 @@ impl ReadCache {
             videos,
             ReadCacheValue::Videos,
             VIDEOS_CACHE_TTL,
+        )
+        .await;
+    }
+
+    pub async fn get_scoped_video_suggestions(&self, scope: &str) -> Option<Vec<SuggestedVideo>> {
+        self.get_typed(
+            &ReadCacheKey::ScopedVideoSuggestions(scope.to_string()),
+            ReadCacheValue::into_scoped_video_suggestions,
+        )
+        .await
+    }
+
+    pub async fn set_scoped_video_suggestions(&self, scope: String, videos: Vec<SuggestedVideo>) {
+        self.set_typed_with_ttl(
+            ReadCacheKey::ScopedVideoSuggestions(scope),
+            videos,
+            ReadCacheValue::ScopedVideoSuggestions,
+            VIDEO_SUGGESTION_CACHE_TTL,
         )
         .await;
     }
@@ -251,6 +281,7 @@ impl ReadCache {
         let mut entries = self.entries.write().await;
         entries.retain(|key, _| match key {
             ReadCacheKey::Videos => false, // Evict all videos cache if any channel changes
+            ReadCacheKey::ScopedVideoSuggestions(_) => false,
             ReadCacheKey::ChannelSnapshot(k) => k.channel_id != channel_id,
             ReadCacheKey::WorkspaceBootstrap(k) => match &k.selected_channel_id {
                 // Evict null-keyed entries: null resolves to the first channel via fallback,
@@ -272,6 +303,7 @@ impl ReadCache {
             !matches!(
                 key,
                 ReadCacheKey::Channels(_)
+                    | ReadCacheKey::ScopedVideoSuggestions(_)
                     | ReadCacheKey::WorkspaceBootstrap(_)
                     | ReadCacheKey::Videos
             )
@@ -368,6 +400,13 @@ impl ReadCacheValue {
     fn into_videos(self) -> Option<Vec<Video>> {
         match self {
             Self::Videos(videos) => Some(videos),
+            _ => None,
+        }
+    }
+
+    fn into_scoped_video_suggestions(self) -> Option<Vec<SuggestedVideo>> {
+        match self {
+            Self::ScopedVideoSuggestions(videos) => Some(videos),
             _ => None,
         }
     }

@@ -15,6 +15,18 @@ const svg = ref("");
 const error = ref<string | null>(null);
 const mounted = ref(false);
 let renderVersion = 0;
+const diagramId = `dastill-docs-diagram-${Math.random().toString(36).slice(2)}`;
+
+async function waitForFonts() {
+  if (typeof document === "undefined" || !("fonts" in document)) return;
+
+  try {
+    await document.fonts.ready;
+  } catch {
+    // If the browser does not fully support the FontFaceSet promise,
+    // continue with rendering instead of blocking the docs page.
+  }
+}
 
 function collectSlotText(nodes: VNode[] | undefined): string {
   if (!nodes) return "";
@@ -46,16 +58,27 @@ async function renderDiagram() {
 
   const version = ++renderVersion;
 
+  await waitForFonts();
+
   mermaid.initialize({
     startOnLoad: false,
     securityLevel: "strict",
     theme: isDark.value ? "dark" : "neutral",
     fontFamily: '"Avenir Next", "Helvetica Neue", "Segoe UI", sans-serif',
+    fontSize: 14,
+    htmlLabels: true,
+    flowchart: {
+      useMaxWidth: true,
+    },
+    sequence: {
+      useMaxWidth: true,
+      wrap: true,
+    },
   });
 
   try {
     const { svg: renderedSvg } = await mermaid.render(
-      `dastill-docs-diagram-${version}`,
+      `${diagramId}-${version}`,
       source,
     );
 

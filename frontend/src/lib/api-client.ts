@@ -1,4 +1,8 @@
-function normalizeApiBase(value?: string) {
+import { getCurrentAuthToken } from "$lib/auth-token";
+
+const TAURI_ANDROID_DEV_API_BASE = "http://127.0.0.1:3544";
+
+export function normalizeApiBase(value?: string) {
   const normalized = value?.trim();
   if (!normalized) {
     return "";
@@ -10,6 +14,32 @@ function normalizeApiBase(value?: string) {
 export const API_BASE = normalizeApiBase(
   (import.meta as { env?: { VITE_API_BASE?: string } }).env?.VITE_API_BASE,
 );
+
+export function resolveImplicitApiBase(
+  apiBase = API_BASE,
+  options?: { currentOrigin?: string; userAgent?: string },
+): string {
+  if (apiBase) {
+    return apiBase;
+  }
+
+  const currentOrigin =
+    options?.currentOrigin ??
+    (typeof window !== "undefined" ? window.location.origin : undefined);
+  const userAgent =
+    options?.userAgent ??
+    (typeof navigator !== "undefined" ? navigator.userAgent : undefined);
+
+  if (
+    currentOrigin === "http://tauri.localhost" &&
+    userAgent &&
+    /android/i.test(userAgent)
+  ) {
+    return TAURI_ANDROID_DEV_API_BASE;
+  }
+
+  return "";
+}
 
 export class BackendUnavailableError extends Error {
   constructor(message = "Backend is unreachable.") {
@@ -77,8 +107,31 @@ export function createAbortError(): Error {
   return error;
 }
 
-export function resolveApiUrl(path: string): string {
-  return `${API_BASE}${path}`;
+export function resolveApiUrl(path: string, apiBase = API_BASE): string {
+  return `${resolveImplicitApiBase(apiBase)}${path}`;
+}
+
+export async function createApiRequestInit(
+  init?: RequestInit,
+  options?: { includeJsonContentType?: boolean },
+): Promise<RequestInit> {
+  const headers = new Headers(init?.headers);
+  if (
+    options?.includeJsonContentType !== false &&
+    !headers.has("Content-Type")
+  ) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  const token = await getCurrentAuthToken();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  return {
+    ...init,
+    headers,
+  };
 }
 
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -96,10 +149,7 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
     response = await fetch(resolveApiUrl(path), {
-      headers: {
-        "Content-Type": "application/json",
-      },
-      ...init,
+      ...(await createApiRequestInit(init)),
       cache,
     });
   } catch (error) {

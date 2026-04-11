@@ -14,7 +14,10 @@ export type WorkspaceViewState = Pick<
   | "contentMode"
   | "videoTypeFilter"
   | "acknowledgedFilter"
->;
+> & {
+  selectedSourceId?: string | null;
+  selectedItemId?: string | null;
+};
 
 /** Same as workspace view plus optional deep-link fields for chat citations. */
 export type WorkspaceViewHrefParams = WorkspaceViewState & {
@@ -25,6 +28,8 @@ export type WorkspaceViewHrefParams = WorkspaceViewState & {
 export type QueueViewState = {
   selectedChannelId: string | null;
   selectedVideoId?: string | null;
+  selectedSourceId?: string | null;
+  selectedItemId?: string | null;
   videoTypeFilter?: VideoTypeFilter;
   acknowledgedFilter?: AcknowledgedFilter;
 };
@@ -41,17 +46,21 @@ export function parseWorkspaceViewUrlState(
   url: URL,
 ): Partial<WorkspaceViewState> {
   const restored: Partial<WorkspaceViewState> = {};
-  const selectedChannelId = parseNonEmptyParam(url, "channel");
-  const selectedVideoId = parseNonEmptyParam(url, "video");
+  const selectedSourceId =
+    parseNonEmptyParam(url, "source") ?? parseNonEmptyParam(url, "channel");
+  const selectedItemId =
+    parseNonEmptyParam(url, "item") ?? parseNonEmptyParam(url, "video");
   const contentMode = parseNonEmptyParam(url, "content");
   const videoTypeFilter = parseNonEmptyParam(url, "type");
   const acknowledgedFilter = parseNonEmptyParam(url, "ack");
 
-  if (selectedChannelId) {
-    restored.selectedChannelId = selectedChannelId;
+  if (selectedSourceId) {
+    restored.selectedSourceId = selectedSourceId;
+    restored.selectedChannelId = selectedSourceId;
   }
-  if (selectedVideoId) {
-    restored.selectedVideoId = selectedVideoId;
+  if (selectedItemId) {
+    restored.selectedItemId = selectedItemId;
+    restored.selectedVideoId = selectedItemId;
   }
   if (isWorkspaceContentMode(contentMode)) {
     restored.contentMode = contentMode;
@@ -68,11 +77,13 @@ export function parseWorkspaceViewUrlState(
 
 export function buildWorkspaceViewHref(state: WorkspaceViewHrefParams) {
   const params = new URLSearchParams();
-  if (state.selectedChannelId) {
-    params.set("channel", state.selectedChannelId);
+  const selectedSourceId = state.selectedSourceId ?? state.selectedChannelId;
+  const selectedItemId = state.selectedItemId ?? state.selectedVideoId;
+  if (selectedSourceId) {
+    params.set("source", selectedSourceId);
   }
-  if (state.selectedVideoId) {
-    params.set("video", state.selectedVideoId);
+  if (selectedItemId) {
+    params.set("item", selectedItemId);
   }
   params.set("content", state.contentMode);
   params.set("type", state.videoTypeFilter);
@@ -99,16 +110,20 @@ export function mergeWorkspaceViewState(
 
 export function parseQueueViewUrlState(url: URL): Partial<QueueViewState> {
   const restored: Partial<QueueViewState> = {};
-  const selectedChannelId = parseNonEmptyParam(url, "channel");
-  const selectedVideoId = parseNonEmptyParam(url, "video");
+  const selectedSourceId =
+    parseNonEmptyParam(url, "source") ?? parseNonEmptyParam(url, "channel");
+  const selectedItemId =
+    parseNonEmptyParam(url, "item") ?? parseNonEmptyParam(url, "video");
   const videoTypeFilter = parseNonEmptyParam(url, "type");
   const acknowledgedFilter = parseNonEmptyParam(url, "ack");
 
-  if (selectedChannelId) {
-    restored.selectedChannelId = selectedChannelId;
+  if (selectedSourceId) {
+    restored.selectedSourceId = selectedSourceId;
+    restored.selectedChannelId = selectedSourceId;
   }
-  if (selectedVideoId) {
-    restored.selectedVideoId = selectedVideoId;
+  if (selectedItemId) {
+    restored.selectedItemId = selectedItemId;
+    restored.selectedVideoId = selectedItemId;
   }
   if (isWorkspaceVideoTypeFilter(videoTypeFilter)) {
     restored.videoTypeFilter = videoTypeFilter;
@@ -122,11 +137,13 @@ export function parseQueueViewUrlState(url: URL): Partial<QueueViewState> {
 
 export function buildQueueViewHref(state: QueueViewHrefParams) {
   const params = new URLSearchParams();
-  if (state.selectedChannelId) {
-    params.set("channel", state.selectedChannelId);
+  const selectedSourceId = state.selectedSourceId ?? state.selectedChannelId;
+  const selectedItemId = state.selectedItemId ?? state.selectedVideoId;
+  if (selectedSourceId) {
+    params.set("source", selectedSourceId);
   }
-  if (state.selectedVideoId) {
-    params.set("video", state.selectedVideoId);
+  if (selectedItemId) {
+    params.set("item", selectedItemId);
   }
   params.set("type", state.videoTypeFilter ?? "all");
   params.set("ack", state.acknowledgedFilter ?? "all");

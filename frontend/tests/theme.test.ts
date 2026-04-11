@@ -3,8 +3,11 @@ import { describe, expect, it } from "bun:test";
 import {
   DARK_THEME_COLOR,
   LIGHT_THEME_COLOR,
+  THEME_STORAGE_KEY,
+  COLOR_STORAGE_KEY,
   applyThemeState,
   applyColorScheme,
+  applyStoredTheme,
   parseThemePreference,
   parseThemeMode,
   parseColorScheme,
@@ -149,5 +152,31 @@ describe("applyThemeState", () => {
     applyColorScheme(documentLike, "sage");
 
     expect(elAttributes["data-color"]).toBe("sage");
+  });
+
+  it("applies the stored mode and color together", () => {
+    const { documentLike, toggles, metaAttributes, elAttributes } =
+      createDocumentLike();
+    const storage = {
+      getItem(key: string) {
+        if (key === THEME_STORAGE_KEY) {
+          return "dark";
+        }
+        if (key === COLOR_STORAGE_KEY) {
+          return "plum";
+        }
+        return null;
+      },
+    };
+
+    const result = applyStoredTheme(documentLike, storage, false);
+
+    expect(result.mode).toBe("dark");
+    expect(result.color).toBe("plum");
+    expect(result.state.isDark).toBe(true);
+    expect(toggles).toEqual([["dark", true]]);
+    expect(documentLike.documentElement.style.colorScheme).toBe("dark");
+    expect(metaAttributes.content).toBe(DARK_THEME_COLOR);
+    expect(elAttributes["data-color"]).toBe("plum");
   });
 });

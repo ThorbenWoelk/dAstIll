@@ -25,7 +25,6 @@ import {
 import { resolveNextChannelSelection } from "$lib/workspace/route-helpers";
 import { shouldRetryReadySummaryLoad } from "$lib/workspace/content";
 import { createSidebarState } from "$lib/workspace/sidebar-state.svelte";
-import { mobileBottomBar } from "$lib/mobile-navigation/mobileBottomBar";
 import {
   type AcknowledgedFilter,
   type WorkspaceContentMode,
@@ -41,6 +40,7 @@ import {
   createHomeWorkspaceDataController,
   type CachedChannelVideoState,
 } from "$lib/workspace/home-workspace-data-controller.svelte";
+import { clearWorkspaceForScopeChange } from "$lib/workspace/home-workspace-auth-scope";
 import { createHomeWorkspaceAcknowledgeController } from "$lib/workspace/home-workspace-acknowledge-controller.svelte";
 import { createHomeWorkspacePageState } from "$lib/workspace/home-workspace-page-state.svelte";
 import { createHomeWorkspacePersistenceController } from "$lib/workspace/home-workspace-persistence-controller.svelte";
@@ -78,8 +78,7 @@ export function createHomeWorkspacePage() {
       dataController.selectVideo(videoId, true, context?.forceReload ?? false),
     onChannelSelected: (channelId: string) => {
       if (!sidebarState.selectedVideoId) {
-        content.resetSummaryQuality();
-        content.clearVideoInfo();
+        content.clearSelectionMetadata();
       }
       const href = buildWorkspaceViewHref({
         selectedChannelId: channelId,
@@ -101,10 +100,7 @@ export function createHomeWorkspacePage() {
       if (nextChannelId) {
         void sidebarState.selectChannel(nextChannelId);
       } else {
-        sidebarState.setSelectedChannelId(null);
-        sidebarState.setSelectedVideoId(null);
-        sidebarState.setVideos([]);
-        sidebarState.setSyncDepth(null);
+        sidebarState.clearChannelSelectionState();
         dataController.clearSelectedVideoState();
       }
     },
@@ -129,7 +125,7 @@ export function createHomeWorkspacePage() {
       persistenceController.replaceWorkspaceUrl(href);
     },
     onOpenChannelOverview: async (channelId: string) => {
-      await goto(`/channels/${encodeURIComponent(channelId)}`);
+      await sidebarState.selectChannel(channelId);
     },
     onChannelAdded: (channel: Channel) => {
       void addSourceFeedbackCtrl.trackAddedChannel(channel);
@@ -403,65 +399,8 @@ export function createHomeWorkspacePage() {
     }
 
     pageState.setHydratedWorkspaceScopeKey(workspaceCacheScopeKey);
-    sidebarState.setVideos([]);
-    sidebarState.setOffset(0);
-    sidebarState.setHasMore(true);
-    sidebarState.setHistoryExhausted(false);
-    sidebarState.setBackfillingHistory(false);
-    sidebarState.setSyncDepth(null);
-    sidebarState.setLoadingVideos(false);
+    clearWorkspaceForScopeChange(sidebarState);
     void dataController.loadBootstrapRefresh();
-  });
-
-  $effect(() => {
-    if (pageState.mobileBrowseOpen) {
-      mobileBottomBar.set({ kind: "hidden" });
-      return () => {
-        mobileBottomBar.set({ kind: "sections" });
-      };
-    }
-
-    const inVideoDetail =
-      !pageState.mobileBrowseOpen && Boolean(selectedVideoId) && !editing;
-    if (!inVideoDetail) {
-      mobileBottomBar.set({ kind: "sections" });
-    } else {
-      mobileBottomBar.set({
-        kind: "videoActions",
-        youtubeUrl: selectedVideoYoutubeUrl,
-        showRegenerate: contentMode === "summary",
-        regenerating: selectedVideoId
-          ? content.regeneratingSummaryVideoIds.includes(selectedVideoId)
-          : false,
-        aiAvailable: pageState.aiAvailable ?? false,
-        onRegenerate: content.regenerateSummaryContent,
-        showFormatAction: contentMode === "transcript",
-        formatting:
-          content.formattingContent &&
-          content.formattingVideoId === selectedVideoId,
-        onFormat: content.cleanFormatting,
-        showRevertAction: hasUpdatedTranscript,
-        reverting:
-          content.revertingContent &&
-          content.revertingVideoId === selectedVideoId,
-        canRevert: canRevertTranscript,
-        onRevert: content.revertToOriginalTranscript,
-        busy: loadingContent,
-        onRequestResetVideo: pageState.openResetVideoConfirmation,
-        resetting:
-          content.resettingVideo &&
-          content.resettingVideoId === selectedVideoId,
-        showAcknowledgeToggle: true,
-        acknowledged: selectedVideo?.acknowledged ?? false,
-        onAcknowledgeToggle: acknowledgeController.toggleAcknowledge,
-        showEditAction:
-          contentMode === "transcript" || contentMode === "summary",
-        onEdit: content.startEdit,
-      });
-    }
-    return () => {
-      mobileBottomBar.set({ kind: "sections" });
-    };
   });
 
   $effect(() => {
@@ -504,18 +443,15 @@ export function createHomeWorkspacePage() {
       ) {
         return;
       }
-      if (!content.contentText.trim()) {
-        content.cacheLoadedSummary(summary, targetVideoId);
-        content.setDraft(content.contentText);
-        content.clearVideoInfo();
-        if (
-          highlightController.videoHighlightsByVideoId[targetVideoId] ===
+      const hadEmptyContent = !content.contentText.trim();
+      content.applyBackgroundSummaryRefresh(summary, targetVideoId);
+      if (
+        hadEmptyContent &&
+        highlightController.videoHighlightsByVideoId[targetVideoId] ===
           undefined
-        ) {
-          void highlightController.hydrateVideoHighlights(targetVideoId);
-        }
+      ) {
+        void highlightController.hydrateVideoHighlights(targetVideoId);
       }
-      content.applySummaryQuality(summary);
     } catch {
       // Keep previous quality state if background refresh fails.
     }

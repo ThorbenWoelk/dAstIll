@@ -1,10 +1,18 @@
 import type { AuthContext } from "$lib/auth";
-import { cloneAuthContext } from "$lib/auth";
+import {
+  buildAnonymousAuthContext,
+  buildAuthenticatedAuthContext,
+  cloneAuthContext,
+} from "$lib/auth";
 import { resetApiCacheForAuthChange } from "$lib/api-cache-reset";
 import { getAuthStorageScopeKey } from "$lib/auth-storage";
+import { configureAuthTokenResolver } from "$lib/auth-token";
 import { createSubscriber } from "svelte/reactivity";
 
 type FirebaseUserLike = {
+  uid: string;
+  email: string | null;
+  isAnonymous: boolean;
   getIdToken: (forceRefresh?: boolean) => Promise<string>;
 };
 
@@ -47,6 +55,11 @@ async function importFirebaseAuthModule() {
     import("firebase/auth"),
   ]);
 
+  configureAuthTokenResolver(async () => {
+    const user = auth.currentUser;
+    return user ? user.getIdToken() : null;
+  });
+
   return {
     auth,
     GoogleAuthProvider: firebaseAuth.GoogleAuthProvider,
@@ -57,49 +70,12 @@ async function importFirebaseAuthModule() {
   };
 }
 
-async function parseSessionResponse(response: Response): Promise<AuthContext> {
-  let payload: unknown;
-  try {
-    payload = await response.json();
-  } catch {
-    payload = null;
+function buildAuthContextFromFirebaseUser(user: FirebaseUserLike): AuthContext {
+  if (user.isAnonymous) {
+    return buildAnonymousAuthContext(user.uid);
   }
 
-  if (!response.ok) {
-    const message =
-      typeof payload === "object" &&
-      payload !== null &&
-      "message" in payload &&
-      typeof payload.message === "string"
-        ? payload.message
-        : `Auth request failed (${response.status})`;
-    throw new Error(message);
-  }
-
-  if (
-    typeof payload !== "object" ||
-    payload === null ||
-    !("authState" in payload) ||
-    !("accessRole" in payload)
-  ) {
-    throw new Error("Auth response payload was malformed.");
-  }
-
-  return normalizeAuthContext(payload as AuthContext);
-}
-
-async function exchangeUserSession(
-  user: FirebaseUserLike,
-): Promise<AuthContext> {
-  const idToken = await user.getIdToken(true);
-  const response = await fetch("/auth/session", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ idToken }),
-  });
-  return parseSessionResponse(response);
+  return buildAuthenticatedAuthContext(user.uid, user.email);
 }
 
 class AuthStateController implements AuthController {
@@ -211,7 +187,7 @@ class AuthStateController implements AuthController {
 
       try {
         const credential = await signInAnonymously(auth);
-        const nextAuth = await exchangeUserSession(credential.user);
+        const nextAuth = buildAuthContextFromFirebaseUser(credential.user);
         this.#setState({
           current: nextAuth,
           ready: true,
@@ -266,10 +242,26 @@ class AuthStateController implements AuthController {
 
     this.#started = true;
     const { auth, onAuthStateChanged } = await importFirebaseAuthModule();
-    onAuthStateChanged(auth, () => undefined);
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        this.#setState({
+          current: buildAuthContextFromFirebaseUser(user as FirebaseUserLike),
+          ready: true,
+          error: null,
+        });
+        return;
+      }
 
-    if (this.#current.userId) {
+      if (!this.#syncing && this.#bootstrapPromise === null) {
+        void this.#bootstrapAnonymousSession().catch(() => undefined);
+      }
+    });
+
+    if (auth.currentUser) {
       this.#setState({
+        current: buildAuthContextFromFirebaseUser(
+          auth.currentUser as FirebaseUserLike,
+        ),
         ready: true,
       });
       return;
@@ -292,7 +284,7 @@ class AuthStateController implements AuthController {
       }
       const provider = new GoogleAuthProvider();
       const credential = await signInWithPopup(auth, provider);
-      const nextAuth = await exchangeUserSession(credential.user);
+      const nextAuth = buildAuthContextFromFirebaseUser(credential.user);
       this.#setState({
         current: nextAuth,
         ready: true,
@@ -312,11 +304,6 @@ class AuthStateController implements AuthController {
   }
 
   async signOut() {
-    const response = await fetch("/auth/session", {
-      method: "DELETE",
-    });
-    await parseSessionResponse(response);
-
     const { auth, signOut: signOutFirebase } = await importFirebaseAuthModule();
     if (auth.currentUser) {
       await signOutFirebase(auth);

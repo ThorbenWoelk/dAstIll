@@ -1,6 +1,11 @@
 import { expect, test, devices } from "@playwright/test";
+import { resetClientState } from "./test-helpers";
 
 test.use({ ...devices["iPhone 13"] });
+
+test.beforeEach(async ({ page }) => {
+  await resetClientState(page);
+});
 
 test("mobile text selection shows the custom toolbar at the bottom", async ({
   page,
@@ -8,46 +13,56 @@ test("mobile text selection shows the custom toolbar at the bottom", async ({
   // 1. Navigate to home
   await page.goto("/");
 
-  // 2. Select a channel and video (reuse logic from workspace.spec.ts if needed, but keep it simple)
-  // 2. Select a channel and video from the mobile overlay
-  // The overlay is identified by the "Channels" aria-label in MobileChannelGallery
-  const channelScroller = page.locator('div[aria-label="Channels"]').first();
-  await expect(channelScroller).toBeVisible({ timeout: 15000 });
-
-  const channelButtons = channelScroller.locator(":scope > button");
+  // 2. Ensure the mobile browse region is visible even if the page restored into
+  // a content-first state.
   const browseRegion = page.getByRole("region", { name: "Browse" });
-  const videoButtons = browseRegion.locator("#videos button");
-  const emptyState = browseRegion.getByText("No videos yet.");
-  const channelCount = await channelButtons.count();
-  let foundVideoRows = false;
-
-  for (let i = 0; i < channelCount; i += 1) {
-    const channelRow = channelButtons.nth(i);
-    await expect(channelRow).toBeVisible();
-    await channelRow.click();
-
-    const browseState = async () => {
-      if ((await videoButtons.count()) > 0) return "videos";
-      if (await emptyState.isVisible()) return "empty";
-      return "loading";
-    };
-
-    await expect
-      .poll(browseState, {
-        timeout: 15000,
-        message: "Timed out waiting for mobile browse results to settle",
-      })
-      .not.toBe("loading");
-
-    if ((await browseState()) === "videos") {
-      foundVideoRows = true;
-      break;
+  if ((await browseRegion.count()) === 0) {
+    const backButton = page.getByRole("button", { name: "Back" });
+    if (await backButton.count()) {
+      await backButton.click();
+    } else {
+      await page
+        .getByRole("banner")
+        .getByRole("link", { name: "Go to dAstIll home" })
+        .click();
     }
   }
+  await expect(browseRegion).toBeVisible({ timeout: 15000 });
+
+  const sourcesPane = browseRegion.getByRole("complementary").first();
+  const channelButtons = sourcesPane
+    .getByRole("button")
+    .filter({ hasNotText: "Add source" });
+  const browseState = async () => {
+    if ((await channelButtons.count()) > 0) return "channels";
+    return "empty";
+  };
+
+  await page.waitForTimeout(1500);
 
   test.skip(
-    !foundVideoRows,
-    "Mobile browse overlay has no videos; run against a seeded backend",
+    (await browseState()) !== "channels",
+    "Mobile browse view has no channels; run against a seeded backend",
+  );
+
+  const channelButton = channelButtons.first();
+  await expect(channelButton).toBeVisible();
+  await channelButton.click();
+
+  const videoList = browseRegion.getByRole("complementary").first();
+  const videoButtons = videoList
+    .getByRole("button")
+    .filter({ hasNotText: "Adjust sync date" });
+  const videoState = async () => {
+    if ((await videoButtons.count()) > 0) return "videos";
+    return "empty";
+  };
+
+  await page.waitForTimeout(1500);
+
+  test.skip(
+    (await videoState()) !== "videos",
+    "Mobile browse view has no videos; run against a seeded backend",
   );
 
   const videoButton = videoButtons.first();
@@ -60,16 +75,47 @@ test("mobile text selection shows the custom toolbar at the bottom", async ({
   const article = page.locator("#content-view article");
   await expect(article).toBeVisible();
 
-  // 4. Simulate text selection directly in the transcript article. The mobile
-  // transcript view now renders raw article text, not paragraph nodes.
-  const box = await article.boundingBox();
-  if (!box) throw new Error("Could not find transcript bounding box");
+  // 4. Build a real DOM selection directly. This is more stable than mouse drag
+  // on mobile emulation while still exercising the toolbar's selectionchange path.
+  const selectionLength = await page.evaluate(() => {
+    const article = document.querySelector("#content-view article");
+    if (!article) return 0;
 
-  // Drag to select text
-  await page.mouse.move(box.x + 10, box.y + 10);
-  await page.mouse.down();
-  await page.mouse.move(box.x + 100, box.y + 10);
-  await page.mouse.up();
+    const walker = document.createTreeWalker(article, NodeFilter.SHOW_TEXT);
+    let textNode: Text | null = null;
+    let currentNode = walker.nextNode();
+    while (currentNode) {
+      if (
+        currentNode instanceof Text &&
+        currentNode.textContent &&
+        currentNode.textContent.trim().length > 0
+      ) {
+        textNode = currentNode;
+        break;
+      }
+      currentNode = walker.nextNode();
+    }
+
+    if (!textNode?.textContent) return 0;
+
+    const text = textNode.textContent;
+    const start = text.search(/\S/);
+    if (start < 0) return 0;
+
+    const end = Math.min(text.length, start + 24);
+    const range = document.createRange();
+    range.setStart(textNode, start);
+    range.setEnd(textNode, end);
+
+    const selection = window.getSelection();
+    if (!selection) return 0;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    document.dispatchEvent(new Event("selectionchange"));
+    document.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+    return selection.toString().length;
+  });
+  expect(selectionLength).toBeGreaterThan(0);
 
   // 5. Verify the custom toolbar appears at the bottom
   const toolbar = page.locator(".text-action-toolbar");

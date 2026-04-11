@@ -51,13 +51,7 @@
     const run = () => {
       updateVideoFilterMenuPosition();
     };
-    void tick().then(() => {
-      run();
-      requestAnimationFrame(() => {
-        run();
-        requestAnimationFrame(run);
-      });
-    });
+    void tick().then(run);
     const onLayout = () => run();
     window.addEventListener("resize", onLayout);
     window.addEventListener("scroll", onLayout, true);
@@ -73,17 +67,29 @@
 
   async function selectVideoType(value: VideoTypeFilter) {
     filterMenuOpen = false;
-    await onSelectVideoType(value);
+    try {
+      await onSelectVideoType(value);
+    } finally {
+      await tick();
+    }
   }
 
   async function selectAcknowledged(value: AcknowledgedFilter) {
     filterMenuOpen = false;
-    await onSelectAcknowledged(value);
+    try {
+      await onSelectAcknowledged(value);
+    } finally {
+      await tick();
+    }
   }
 
   async function clearAllFilters() {
     filterMenuOpen = false;
-    await onClearAllFilters();
+    try {
+      await onClearAllFilters();
+    } finally {
+      await tick();
+    }
   }
 </script>
 
