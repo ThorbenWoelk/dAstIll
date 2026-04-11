@@ -93,9 +93,42 @@ impl SummaryEvaluatorService {
             ));
         }
 
-        let transcript_word_count = transcript.split_whitespace().count();
-        let prompt = format!(
-            r#"Video Title: {video_title}
+        let prompt = evaluation_prompt(video_title, transcript, summary);
+
+        let (raw, model_used) = self
+            .prompt_model("summary_quality_evaluation", evaluation_preamble(), &prompt)
+            .await?;
+
+        let mut evaluation = parse_evaluation_response(&raw)?;
+        evaluation.quality_model_used = Some(model_used);
+        Ok(evaluation)
+    }
+
+    pub fn model(&self) -> &str {
+        self.core.model()
+    }
+
+    async fn prompt_model(
+        &self,
+        operation: &str,
+        preamble: &str,
+        prompt: &str,
+    ) -> Result<(String, String), SummaryEvaluatorError> {
+        self.core
+            .prompt_with_fallback(operation, preamble, prompt, CooldownStatusPolicy::Offline)
+            .await
+            .map_err(Into::into)
+    }
+}
+
+fn evaluation_preamble() -> &'static str {
+    "You are a strict evaluator writing a critical but realistic review of a summary against its transcript. Do not sugar-coat weak summaries, but do not exaggerate small issues into fatal flaws. Judge only what the transcript supports. Penalize hallucinations and substantive omissions equally. Omission of confidently identifiable sponsor or ad segments does not count against completeness. A short generic summary of a long detailed editorial transcript is a failing summary."
+}
+
+fn evaluation_prompt(video_title: &str, transcript: &str, summary: &str) -> String {
+    let transcript_word_count = transcript.split_whitespace().count();
+    format!(
+        r#"Video Title: {video_title}
 
 Transcript ({transcript_word_count} words):
 {transcript}
@@ -127,42 +160,16 @@ Return strict JSON only with this schema:
 {{"score": <integer 0-10>, "incoherence_note": "<concise, poignant, markdown-formatted note with bullet points, categorized for hallucinations and other suitable categories (e.g., omissions, factual errors)>"}}
 
 Rules:
-- Be harsh. A short, generic summary of a long, detailed editorial transcript should score low.
-- Formatting: Use concise, poignant bullet points. Categorize using bold headers like **Hallucinations**, **Factually Incorrect**, or **Omissions**.
+- Write a critical but realistic review of the content.
+- Do not sugar-coat obvious misses, but do not destroy the summary over minor phrasing issues.
+- Focus on substantive problems; do not pad the note with praise and do not invent flaws.
+- Reserve the lowest scores for genuinely broken summaries and acknowledge when the summary is mostly sound apart from limited issues.
+- Formatting: Use concise, pointed bullet points. Categorize using bold headers like **Hallucinations**, **Factually Incorrect**, or **Omissions**.
 - Example:
-  **Factually Incorrect**: 
+  **Factually Incorrect**:
   - website is 'bugsapplesloves.com', not 'bugs.apple.com'
 - Do not include extra keys, comments, or explain your reasoning outside the JSON."#
-        );
-
-        let (raw, model_used) = self
-            .prompt_model(
-                "summary_quality_evaluation",
-                "You are a strict, skeptical evaluator. You check summaries for two failure modes: hallucination (claims not in the transcript) and omission (substantive transcript content missing from the summary). You penalize both equally. Omission of confidently identifiable sponsor or ad segments does not count against completeness. A short generic summary of a long detailed editorial transcript is a failing summary.",
-                &prompt,
-            )
-            .await?;
-
-        let mut evaluation = parse_evaluation_response(&raw)?;
-        evaluation.quality_model_used = Some(model_used);
-        Ok(evaluation)
-    }
-
-    pub fn model(&self) -> &str {
-        self.core.model()
-    }
-
-    async fn prompt_model(
-        &self,
-        operation: &str,
-        preamble: &str,
-        prompt: &str,
-    ) -> Result<(String, String), SummaryEvaluatorError> {
-        self.core
-            .prompt_with_fallback(operation, preamble, prompt, CooldownStatusPolicy::Offline)
-            .await
-            .map_err(Into::into)
-    }
+    )
 }
 
 fn parse_model_params_billions(model: &str) -> Option<u16> {
@@ -232,7 +239,9 @@ fn parse_evaluation_response(raw: &str) -> Result<SummaryEvaluationResult, Summa
 
 #[cfg(test)]
 mod tests {
-    use super::{SummaryEvaluatorService, parse_evaluation_response};
+    use super::{
+        SummaryEvaluatorService, evaluation_preamble, evaluation_prompt, parse_evaluation_response,
+    };
     use crate::models::AiStatus;
     use crate::services::ollama::OllamaCore;
 
@@ -324,5 +333,19 @@ mod tests {
     fn parse_evaluation_response_clamps_score_range() {
         let parsed = parse_evaluation_response("{\"score\":12,\"incoherence_note\":null}").unwrap();
         assert_eq!(parsed.quality_score, 10);
+    }
+
+    #[test]
+    fn evaluation_prompt_sets_critical_but_realistic_tone() {
+        let prompt = evaluation_prompt(
+            "Example title",
+            "This is a detailed transcript with several sections.",
+            "- A short summary",
+        );
+
+        assert!(evaluation_preamble().contains("critical but realistic review"));
+        assert!(prompt.contains("Write a critical but realistic review of the content."));
+        assert!(prompt.contains("Do not sugar-coat obvious misses, but do not destroy the summary over minor phrasing issues."));
+        assert!(prompt.contains("Focus on substantive problems; do not pad the note with praise and do not invent flaws."));
     }
 }
