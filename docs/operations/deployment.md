@@ -61,6 +61,10 @@ Non-secret backend runtime config is passed as plain env values for:
 - `OLLAMA_DEFAULT_CHAT_MODEL`
 - `OLLAMA_EMBEDDING_MODEL`
 - `SUMMARY_EVALUATOR_MODEL`
+- `DATABRICKS_HOST` (when Databricks ingestion is enabled)
+- `DATABRICKS_WAREHOUSE_ID` (when Databricks ingestion is enabled)
+- `DATABRICKS_CATALOG` (when Databricks ingestion is enabled)
+- `DATABRICKS_SCHEMA` (when Databricks ingestion is enabled)
 - `SUMMARIZE_PATH`
 - log level
 

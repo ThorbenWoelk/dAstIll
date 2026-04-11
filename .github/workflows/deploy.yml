@@ -167,6 +167,7 @@ jobs:
             echo "LOGFIRE_TOKEN=${APP_NAME}-logfire-token:latest"
             echo "BACKEND_PROXY_TOKEN=${APP_NAME}-backend-proxy-token:latest"
             echo "TURSO_AUTH_TOKEN=${APP_NAME}-turso-auth-token:latest"
+            echo "DATABRICKS_TOKEN=${APP_NAME}-databricks-token:latest"
           } > /tmp/backend_cr_secrets.txt
           {
             echo 'secrets<<CR_SECRETS_EOF'
@@ -213,6 +214,10 @@ jobs:
           add_env_var OLLAMA_DEFAULT_CHAT_MODEL "glm-5.1:cloud"
           add_env_var OLLAMA_EMBEDDING_MODEL "embeddinggemma"
           add_env_var SUMMARY_EVALUATOR_MODEL "gemma4:31b-cloud"
+          add_env_var DATABRICKS_HOST "https://dbc-7a303243-287b.cloud.databricks.com"
+          add_env_var DATABRICKS_WAREHOUSE_ID "769c25a6f2a3bf22"
+          add_env_var DATABRICKS_CATALOG "workspace"
+          add_env_var DATABRICKS_SCHEMA "analytics"
           add_env_var BACKEND_CORS_ALLOWED_ORIGINS "$allowed_origins"
           add_env_var GCP_PROJECT_ID "$PROJECT_ID"
           printf '%s\n' 'SUMMARIZE_PATH: "/usr/local/bin/summarize"' >> "$env_file"
