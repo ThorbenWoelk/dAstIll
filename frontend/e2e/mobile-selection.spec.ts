@@ -125,7 +125,9 @@ test("mobile text selection shows the custom toolbar at the bottom", async ({
   await expect(
     toolbar.locator('button[aria-label="Save selected text as a highlight"]'),
   ).toBeVisible();
-  await expect(toolbar.getByRole("button", { name: "Correct" })).toBeVisible();
+  await expect(
+    toolbar.getByRole("button", { name: "Correct spelling" }),
+  ).toBeVisible();
 
   // 7. Verify swipe doesn't trigger if we are selecting
   // (In reality, the above mouse move already verifies that preventDefault didn't kill selection)
