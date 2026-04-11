@@ -10,6 +10,9 @@
   import {
     computeGoHintBadgeStyles,
     DASTILL_SET_WORKSPACE_CONTENT_MODE_EVENT,
+    resolveGlobalSectionShortcut,
+    resolveInlineActionHintKey,
+    resolveWorkspaceContentModeShortcut,
     shouldIgnoreGlobalShortcutNavigation,
     type GoHintBadge,
   } from "$lib/utils/keyboard-shortcuts";
@@ -33,6 +36,15 @@
 
     target.click();
     return true;
+  }
+
+  function runGlobalSectionShortcut(destination: string): void {
+    if (destination === "docs") {
+      window.open(DOCS_URL, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    void goto(destination);
   }
 
   $effect(() => {
@@ -131,48 +143,17 @@
 
     // Modifier shortcuts
     if ((event.metaKey || event.ctrlKey) && !event.altKey) {
-      const num = event.key;
-      if (!event.shiftKey && num >= "1" && num <= "6") {
-        const actions: Record<string, () => void> = {
-          "1": () => {
-            void goto("/");
-          },
-          "2": () => {
-            void goto("/download-queue");
-          },
-          "3": () => {
-            void goto("/highlights");
-          },
-          "4": () => {
-            void goto("/vocabulary");
-          },
-          "5": () => {
-            void goto("/chat");
-          },
-          "6": () => {
-            window.open(DOCS_URL, "_blank", "noopener,noreferrer");
-          },
-        };
-
-        const action = actions[num];
-        if (action) {
+      if (!event.shiftKey) {
+        const destination = resolveGlobalSectionShortcut(event.key);
+        if (destination) {
           event.preventDefault();
-          action();
+          runGlobalSectionShortcut(destination);
           return;
         }
       }
 
       if (!event.shiftKey) {
-        const contentModeKeys: Record<
-          string,
-          "info" | "summary" | "highlights" | "transcript"
-        > = {
-          i: "info",
-          s: "summary",
-          h: "highlights",
-          t: "transcript",
-        };
-        const mode = contentModeKeys[event.key.toLowerCase()];
+        const mode = resolveWorkspaceContentModeShortcut(event.key);
         if (mode) {
           event.preventDefault();
           window.dispatchEvent(
@@ -184,19 +165,7 @@
         }
       }
 
-      const actionHintKey =
-        event.key === "Enter"
-          ? "↵"
-          : event.key === "."
-            ? "."
-            : event.key === "*"
-              ? "*"
-              : event.key === "]"
-                ? "]"
-                : event.key === "["
-                  ? "["
-                  : null;
-
+      const actionHintKey = resolveInlineActionHintKey(event.key);
       if (actionHintKey && triggerHintedAction(actionHintKey)) {
         event.preventDefault();
         return;
