@@ -20,6 +20,7 @@ use dastill::handlers::{
 use dastill::local_env::load_dotenv_preserving_existing;
 use dastill::logging::{HumanReadableEventFormatter, should_send_to_logfire};
 use dastill::read_cache::ReadCache;
+use dastill::runtime_paths::local_libsql_dir;
 use dastill::search_progress::SearchProgress;
 use dastill::security::{
     build_cors_layer, enforce_anonymous_chat_quota, enforce_baseline_rate_limit,
@@ -208,9 +209,10 @@ async fn main() -> anyhow::Result<()> {
     let s3v_client = aws_sdk_s3vectors::Client::from_conf(s3v_config_builder.build());
 
     // Build a single Turso embedded replica shared by Store and FtsIndex.
-    let fts_dir = std::env::temp_dir().join("dastill-search-index");
+    let fts_dir = local_libsql_dir(&std::env::temp_dir(), port);
     std::fs::create_dir_all(&fts_dir)?;
     let turso_db_path = fts_dir.join("search-fts.db");
+    tracing::info!(path = %turso_db_path.display(), "using embedded libSQL path");
 
     let turso_db = if let Some(config) = turso_runtime {
         tracing::info!("Initializing Turso embedded replica...");
