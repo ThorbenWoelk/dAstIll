@@ -8,10 +8,14 @@
     onBack,
   }: {
     trailing?: Snippet;
-    /** When true, left control is a back arrow. */
+    /** When true, left control is a back arrow instead of hamburger. */
     showBackInsteadOfMenu?: boolean;
     onBack?: () => void;
   } = $props();
+
+  function openSectionDrawer() {
+    window.dispatchEvent(new CustomEvent("dastill:open-section-drawer"));
+  }
 </script>
 
 <div class="grid w-full grid-cols-[auto_1fr_auto] items-center gap-2">
@@ -26,7 +30,28 @@
         <ChevronIcon direction="left" size={20} strokeWidth={2.2} />
       </button>
     {:else}
-      <div class="w-10" aria-hidden="true"></div>
+      <button
+        type="button"
+        class="inline-flex h-10 w-10 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-80 transition hover:bg-[var(--accent-wash)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+        aria-label="Open menu"
+        onclick={openSectionDrawer}
+      >
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M4 6h16" />
+          <path d="M4 12h16" />
+          <path d="M4 18h16" />
+        </svg>
+      </button>
     {/if}
   </div>
 

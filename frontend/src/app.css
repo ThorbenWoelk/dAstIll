@@ -734,12 +734,9 @@ a[href],
   }
 }
 
-/* Mobile bottom-stack padding */
+/* Mobile bottom-stack padding — --mobile-tab-bar-height is set dynamically
+   by WorkspaceContentPanel when content tabs are visible. */
 @media (max-width: 1023px) {
-  :root {
-    --mobile-tab-bar-height: calc(52px + env(safe-area-inset-bottom));
-  }
-
   .page-shell {
     padding-top: max(1rem, env(safe-area-inset-top));
     padding-bottom: calc(var(--mobile-bottom-stack-height) + 2rem);
