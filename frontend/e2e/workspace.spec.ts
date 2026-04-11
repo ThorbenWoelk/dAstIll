@@ -2,7 +2,10 @@ import { expect, test, type Page } from "@playwright/test";
 import { openFreshGuestPage } from "./test-helpers";
 
 const READY_MS = 120_000;
-const PRIMARY_MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
+// Chromium on macOS reserves Cmd+<number> for browser tab switching, so Playwright
+// never delivers that chord to the page. Use Ctrl there to keep the app-level
+// shortcut path covered in automation; the app still supports Cmd for humans.
+const PRIMARY_MODIFIER = "Control";
 
 function workspaceSidebar(page: Page) {
   // Two aside#workspace nodes can exist (desktop rail + mobile browse dialog). Exclude the dialog copy.
