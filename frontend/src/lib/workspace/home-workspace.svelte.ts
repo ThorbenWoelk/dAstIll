@@ -22,13 +22,16 @@ import {
   cloneVideos,
   createChannelViewCache,
 } from "$lib/channel-view-cache";
+import { loadWorkspaceState } from "$lib/channel-workspace";
 import { resolveNextChannelSelection } from "$lib/workspace/route-helpers";
 import { shouldRetryReadySummaryLoad } from "$lib/workspace/content";
 import { createSidebarState } from "$lib/workspace/sidebar-state.svelte";
 import {
   type AcknowledgedFilter,
   type WorkspaceContentMode,
+  isAcknowledgedFilter,
   isWorkspaceContentMode,
+  isWorkspaceVideoTypeFilter,
 } from "$lib/workspace/types";
 import { createGuideState } from "$lib/workspace/guide-state.svelte";
 import { createHomeTourSteps } from "$lib/workspace/home-tour";
@@ -400,6 +403,23 @@ export function createHomeWorkspacePage() {
 
     pageState.setHydratedWorkspaceScopeKey(workspaceCacheScopeKey);
     clearWorkspaceForScopeChange(sidebarState);
+    // Restore filter preferences saved under the incoming auth scope so that
+    // the subsequent loadBootstrapRefresh uses the correct filter values.
+    if (typeof localStorage !== "undefined") {
+      const saved = loadWorkspaceState(localStorage, workspaceStorageKey);
+      if (
+        saved?.acknowledgedFilter &&
+        isAcknowledgedFilter(saved.acknowledgedFilter)
+      ) {
+        sidebarState.setAcknowledgedFilter(saved.acknowledgedFilter);
+      }
+      if (
+        saved?.videoTypeFilter &&
+        isWorkspaceVideoTypeFilter(saved.videoTypeFilter)
+      ) {
+        sidebarState.setVideoTypeFilter(saved.videoTypeFilter);
+      }
+    }
     void dataController.loadBootstrapRefresh();
   });
 

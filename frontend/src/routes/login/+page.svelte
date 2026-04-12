@@ -31,7 +31,7 @@
   let browserAuthPending = $state(false);
 
   async function continueToWorkspace() {
-    await goto(workspaceHref);
+    await goto(workspaceHref, { replaceState: true });
   }
 
   async function handleGoogleSignIn() {
