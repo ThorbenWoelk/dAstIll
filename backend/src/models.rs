@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use utoipa::ToSchema;
@@ -8,6 +8,12 @@ use crate::services::search::SearchSourceKind;
 pub const OTHERS_CHANNEL_ID: &str = "__others__";
 pub const OTHERS_CHANNEL_NAME: &str = "Others";
 
+fn legacy_added_at_default() -> DateTime<Utc> {
+    Utc.timestamp_opt(0, 0)
+        .single()
+        .expect("unix epoch should be representable")
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct Channel {
@@ -15,6 +21,7 @@ pub struct Channel {
     pub handle: Option<String>,
     pub name: String,
     pub thumbnail_url: Option<String>,
+    #[serde(default = "legacy_added_at_default")]
     pub added_at: DateTime<Utc>,
     pub earliest_sync_date: Option<DateTime<Utc>>,
     #[serde(default)]
@@ -1087,4 +1094,34 @@ pub struct ChatClientConfig {
     pub default_model: String,
     /// Curated Ollama cloud models the client may offer in a selector.
     pub models: Vec<ChatModelOption>,
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::TimeZone;
+
+    use super::Channel;
+
+    #[test]
+    fn channel_deserialization_defaults_legacy_added_at() {
+        let channel: Channel = serde_json::from_str(
+            r#"{
+                "id":"chan-1",
+                "handle":"@legacy",
+                "name":"Legacy Channel",
+                "thumbnail_url":null,
+                "earliest_sync_date":null,
+                "earliest_sync_date_user_set":false
+            }"#,
+        )
+        .expect("legacy channel JSON should deserialize");
+
+        assert_eq!(
+            channel.added_at,
+            chrono::Utc
+                .timestamp_opt(0, 0)
+                .single()
+                .expect("unix epoch should be representable")
+        );
+    }
 }
