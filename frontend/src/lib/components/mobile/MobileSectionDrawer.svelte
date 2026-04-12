@@ -61,7 +61,8 @@
   <!-- Backdrop -->
   <button
     type="button"
-    class="fixed inset-0 z-[70] bg-black/50 backdrop-blur-[2px] lg:hidden"
+    class="fixed inset-0 bg-black/50 backdrop-blur-[2px] lg:hidden"
+    style="z-index: var(--z-mobile-section-drawer-backdrop);"
     aria-label="Close menu"
     onclick={handleBackdropClick}
     tabindex="-1"
@@ -69,8 +70,8 @@
 
   <!-- Drawer -->
   <nav
-    class="fixed inset-y-0 left-0 z-[71] flex w-[280px] flex-col bg-[var(--surface)] shadow-xl lg:hidden"
-    style="padding-top: max(0.75rem, env(safe-area-inset-top)); padding-bottom: max(0.75rem, env(safe-area-inset-bottom));"
+    class="fixed inset-y-0 left-0 flex w-[280px] flex-col bg-[var(--surface)] shadow-xl lg:hidden"
+    style="z-index: var(--z-mobile-section-drawer-panel); padding-top: max(0.75rem, env(safe-area-inset-top)); padding-bottom: max(0.75rem, env(safe-area-inset-bottom));"
     aria-label="App sections"
   >
     <div class="flex items-center justify-between px-4 pb-4">

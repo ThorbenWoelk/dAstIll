@@ -140,7 +140,8 @@
 {#if open}
   <!-- No full-screen backdrop button: it sat in the same stacking context as the sheet and could steal taps from "Synced to" on some engines. -->
   <section
-    class="relative z-[70] flex h-full min-h-0 flex-col overflow-hidden bg-[var(--background)] lg:hidden"
+    class="relative flex h-full min-h-0 flex-col overflow-hidden bg-[var(--background)] lg:hidden"
+    style="z-index: var(--z-mobile-browse-overlay);"
     aria-label="Browse"
     use:swipeChannelAction
   >
