@@ -70,6 +70,7 @@
             aria-label="Video filters"
           >
             <WorkspaceSidebarVideoFilterControl
+              size="md"
               videoTypeFilter={hw.sidebarState.videoState.videoTypeFilter}
               acknowledgedFilter={hw.sidebarState.videoState.acknowledgedFilter}
               disabled={hw.browseFilterDisabled}

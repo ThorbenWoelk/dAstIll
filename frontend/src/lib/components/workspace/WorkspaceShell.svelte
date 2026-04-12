@@ -356,6 +356,11 @@
         color-mix(in srgb, var(--surface) 96%, var(--background)) 0%,
         color-mix(in srgb, var(--surface) 90%, var(--panel-surface)) 100%
       );
+      /* Remove the stacking context so position:fixed children (filter popup at
+         z-[110]) participate in the root stacking context instead of being capped
+         at this element's z-index: 5. Without a stacking context the popup clears
+         MobileHomeBrowseOverlay (z-[70]) and MobileSectionDrawer (z-[71]). */
+      z-index: auto;
     }
   }
 </style>

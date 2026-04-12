@@ -13,6 +13,7 @@
     videoTypeFilter,
     acknowledgedFilter,
     disabled = false,
+    size = "sm",
     onSelectVideoType,
     onSelectAcknowledged,
     onClearAllFilters,
@@ -20,6 +21,8 @@
     videoTypeFilter: VideoTypeFilter;
     acknowledgedFilter: AcknowledgedFilter;
     disabled?: boolean;
+    /** "sm" = desktop sidebar (h-5 w-5), "md" = mobile top-nav (h-9 w-9) */
+    size?: "sm" | "md";
     onSelectVideoType: (value: VideoTypeFilter) => void | Promise<void>;
     onSelectAcknowledged: (value: AcknowledgedFilter) => void | Promise<void>;
     onClearAllFilters: () => void | Promise<void>;
@@ -106,7 +109,7 @@
     type="button"
     id="video-filter-button"
     bind:this={videoFilterButtonEl}
-    class={`inline-flex h-5 w-5 items-center justify-center rounded-full transition-colors ${videoTypeFilter !== "all" || acknowledgedFilter !== "all" || filterMenuOpen ? "bg-[var(--accent)] text-white" : "text-[var(--soft-foreground)] opacity-55 hover:bg-[var(--accent-wash)] hover:opacity-100"}`}
+    class={`inline-flex items-center justify-center rounded-full transition-colors ${size === "md" ? "h-9 w-9" : "h-5 w-5"} ${videoTypeFilter !== "all" || acknowledgedFilter !== "all" || filterMenuOpen ? "bg-[var(--accent)] text-white" : "text-[var(--soft-foreground)] opacity-55 hover:bg-[var(--accent-wash)] hover:opacity-100"}`}
     onclick={() => {
       filterMenuOpen = !filterMenuOpen;
     }}
@@ -115,22 +118,43 @@
     aria-haspopup="menu"
     aria-expanded={filterMenuOpen}
   >
-    <svg
-      width="10"
-      height="10"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2.5"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      ><line x1="3" y1="6" x2="21" y2="6" /><line
-        x1="7"
-        y1="12"
-        x2="17"
-        y2="12"
-      /><line x1="10" y1="18" x2="14" y2="18" /></svg
-    >
+    {#if size === "md"}
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2.2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+        ><line x1="3" y1="6" x2="21" y2="6" /><line
+          x1="7"
+          y1="12"
+          x2="17"
+          y2="12"
+        /><line x1="10" y1="18" x2="14" y2="18" /></svg
+      >
+    {:else}
+      <svg
+        width="10"
+        height="10"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+        ><line x1="3" y1="6" x2="21" y2="6" /><line
+          x1="7"
+          y1="12"
+          x2="17"
+          y2="12"
+        /><line x1="10" y1="18" x2="14" y2="18" /></svg
+      >
+    {/if}
   </button>
   {#if filterMenuOpen}
     <div
