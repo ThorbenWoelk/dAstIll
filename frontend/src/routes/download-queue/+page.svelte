@@ -23,8 +23,8 @@
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
   import ErrorToast from "$lib/components/ErrorToast.svelte";
   import MobileChannelGallery from "$lib/components/mobile/MobileChannelGallery.svelte";
+  import MobileTopBarVideoFilters from "$lib/components/mobile/MobileTopBarVideoFilters.svelte";
   import MobileYouTubeTopNav from "$lib/components/mobile/MobileYouTubeTopNav.svelte";
-  import WorkspaceSidebarVideoFilterControl from "$lib/components/workspace/WorkspaceSidebarVideoFilterControl.svelte";
   import QueueContentPanel from "$lib/components/queue/QueueContentPanel.svelte";
   import {
     buildQueueGalleryChannelPreviews,
@@ -647,25 +647,16 @@
   {#snippet mobileTopBar()}
     <MobileYouTubeTopNav>
       {#snippet trailing()}
-        {#if queueSidebar.selectedChannelId}
-          <div
-            class="flex min-w-0 shrink-0 items-center justify-end"
-            aria-label="Video filters"
-          >
-            <WorkspaceSidebarVideoFilterControl
-              videoTypeFilter={queueSidebar.videoTypeFilter}
-              acknowledgedFilter={queueSidebar.acknowledgedFilter}
-              disabled={queueFilterDisabled}
-              onSelectVideoType={queueSidebar.videoActions
-                .onVideoTypeFilterChange}
-              onSelectAcknowledged={queueSidebar.videoActions
-                .onAcknowledgedFilterChange}
-              onClearAllFilters={clearQueueBrowseVideoFilters}
-            />
-          </div>
-        {:else}
-          <div class="w-10 shrink-0" aria-hidden="true"></div>
-        {/if}
+        <MobileTopBarVideoFilters
+          visible={Boolean(queueSidebar.selectedChannelId)}
+          videoTypeFilter={queueSidebar.videoTypeFilter}
+          acknowledgedFilter={queueSidebar.acknowledgedFilter}
+          disabled={queueFilterDisabled}
+          onSelectVideoType={queueSidebar.videoActions.onVideoTypeFilterChange}
+          onSelectAcknowledged={queueSidebar.videoActions
+            .onAcknowledgedFilterChange}
+          onClearAllFilters={clearQueueBrowseVideoFilters}
+        />
       {/snippet}
     </MobileYouTubeTopNav>
   {/snippet}
