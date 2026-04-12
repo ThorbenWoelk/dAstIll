@@ -81,10 +81,12 @@ When making security-relevant changes, verify at least the following:
 
 1. `./scripts/check_forbidden_artifacts.sh`
 2. `cd backend && cargo check && cargo test`
-3. `cd frontend && bun run format:check && bun run lint && bun run check && bun run test && bun run build`
-4. Confirm signed-out chat uses the ephemeral path and cannot use persistent conversation routes.
-5. Confirm signed-in chat cannot retrieve content, highlights, or recent-activity evidence outside the caller's library scope.
-6. Confirm oversized chat prompts or oversized client-supplied conversation payloads are rejected with `400 Bad Request`.
+3. `cd backend && ./scripts/cargo_audit.sh`
+   Current upstream-only waivers in that script must carry an explicit `review_after` date and should be re-reviewed instead of silently carried forward.
+4. `cd frontend && bun run format:check && bun run lint && bun run check && bun run test && bun run build`
+5. Confirm signed-out chat uses the ephemeral path and cannot use persistent conversation routes.
+6. Confirm signed-in chat cannot retrieve content, highlights, or recent-activity evidence outside the caller's library scope.
+7. Confirm oversized chat prompts or oversized client-supplied conversation payloads are rejected with `400 Bad Request`.
 
 ## Related Docs
 
