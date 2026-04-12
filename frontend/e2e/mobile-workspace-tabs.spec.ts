@@ -1,4 +1,4 @@
-import { devices, expect, test } from "@playwright/test";
+import { devices, expect, test, type Page } from "@playwright/test";
 
 import { resetClientState } from "./test-helpers";
 
@@ -7,6 +7,286 @@ test.use({ ...devices["iPhone 13"] });
 test.beforeEach(async ({ page }) => {
   await resetClientState(page);
 });
+
+type MockWorkspaceBootstrapOptions = {
+  channelId: string;
+  channelName: string;
+  channelHandle: string;
+  containerId: string;
+  videoId: string;
+  videoTitle: string;
+  qualityScore: number;
+  selectedItemId?: string;
+  totalChunkCount?: number;
+};
+
+function buildMockWorkspaceBootstrap(options: MockWorkspaceBootstrapOptions) {
+  const {
+    channelId,
+    channelName,
+    channelHandle,
+    containerId,
+    videoId,
+    videoTitle,
+    qualityScore,
+    selectedItemId,
+    totalChunkCount = 4,
+  } = options;
+
+  const source = {
+    id: channelId,
+    provider: "you_tube" as const,
+    source_kind: "you_tube_channel" as const,
+    container_id: containerId,
+    container_kind: "series" as const,
+    backing_kind: "feed" as const,
+    title: channelName,
+    subtitle: channelHandle,
+    handle: channelHandle,
+    thumbnail_url: null,
+    requires_auth: false,
+    public_content_available: true,
+    entitled_content_available: true,
+    external_ids: [{ provider: "you_tube" as const, external_id: channelId }],
+  };
+
+  const syncDepth = {
+    earliest_sync_date: "2026-04-01T00:00:00.000Z",
+    earliest_sync_date_user_set: false,
+    derived_earliest_ready_date: "2026-04-10T00:00:00.000Z",
+  };
+
+  return {
+    ai_available: true,
+    ai_status: "cloud" as const,
+    containers: [
+      {
+        id: containerId,
+        kind: "series" as const,
+        title: `${channelName} container`,
+        provider: "you_tube" as const,
+        backing_kind: "feed" as const,
+        user_editable: true,
+        source_ids: [channelId],
+      },
+    ],
+    sources: [source],
+    channels: [
+      {
+        id: channelId,
+        handle: channelHandle,
+        name: channelName,
+        thumbnail_url: null,
+        added_at: "2026-04-12T09:00:00.000Z",
+        earliest_sync_date: syncDepth.earliest_sync_date,
+        earliest_sync_date_user_set: false,
+      },
+    ],
+    selected_source_id: channelId,
+    selected_channel_id: channelId,
+    ...(selectedItemId ? { selected_item_id: selectedItemId } : {}),
+    snapshot: {
+      channel_id: channelId,
+      source_id: channelId,
+      container: {
+        id: containerId,
+        kind: "series" as const,
+        title: `${channelName} container`,
+        provider: "you_tube" as const,
+        backing_kind: "feed" as const,
+        user_editable: true,
+        source_ids: [channelId],
+      },
+      source,
+      sync_depth: syncDepth,
+      channel_video_count: 1,
+      has_more: false,
+      next_offset: null,
+      videos: [
+        {
+          id: videoId,
+          channel_id: channelId,
+          title: videoTitle,
+          thumbnail_url: null,
+          published_at: "2026-04-11T18:30:00.000Z",
+          is_short: false,
+          transcript_status: "ready" as const,
+          summary_status: "ready" as const,
+          acknowledged: false,
+          retry_count: 0,
+          quality_score: qualityScore,
+        },
+      ],
+      items: [],
+      parts: [],
+    },
+    search_status: {
+      available: true,
+      model: "embeddinggemma",
+      dimensions: 768,
+      pending: 0,
+      indexing: 0,
+      ready: 1,
+      failed: 0,
+      total_sources: 1,
+      total_chunk_count: totalChunkCount,
+      embedded_chunk_count: totalChunkCount,
+      vector_index_ready: true,
+      retrieval_mode: "hybrid_ann",
+    },
+  };
+}
+
+async function installMockWorkspaceApi(
+  page: Page,
+  options: {
+    bootstrap: ReturnType<typeof buildMockWorkspaceBootstrap>;
+    summary?: {
+      video_id: string;
+      content: string;
+      model_used: string;
+      quality_score: number;
+      quality_note: string;
+      quality_model_used: string;
+      summary_tags: string[];
+      summary_tags_evaluated: boolean;
+    };
+    videoInfo?: {
+      video_id: string;
+      watch_url: string;
+      title: string;
+      description: string;
+      thumbnail_url: null;
+      channel_name: string;
+      channel_id: string;
+      published_at: string;
+      duration_iso8601: string;
+      duration_seconds: number;
+      view_count: number;
+    };
+  },
+) {
+  const { bootstrap, summary, videoInfo } = options;
+  const channelId = bootstrap.selected_channel_id;
+
+  await page.route("**/api/**", async (route) => {
+    const url = new URL(route.request().url());
+
+    if (url.pathname === "/api/workspace/bootstrap") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(bootstrap),
+      });
+      return;
+    }
+
+    if (url.pathname === `/api/channels/${channelId}/snapshot`) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(bootstrap.snapshot),
+      });
+      return;
+    }
+
+    if (url.pathname === `/api/channels/${channelId}/videos`) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          source_id: channelId,
+          videos: [],
+          items: [],
+          parts: [],
+          has_more: false,
+          next_offset: null,
+        }),
+      });
+      return;
+    }
+
+    if (url.pathname === `/api/channels/${channelId}/sync-depth`) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(bootstrap.snapshot.sync_depth),
+      });
+      return;
+    }
+
+    if (url.pathname === `/api/channels/${channelId}/backfill`) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          videos_added: 0,
+          fetched_count: 0,
+          exhausted: true,
+        }),
+      });
+      return;
+    }
+
+    if (summary && url.pathname === `/api/videos/${summary.video_id}/summary`) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(summary),
+      });
+      return;
+    }
+
+    if (
+      summary &&
+      url.pathname === `/api/videos/${summary.video_id}/summary/audio/debug`
+    ) {
+      await route.fulfill({
+        status: 404,
+        contentType: "text/plain",
+        body: "audio not generated",
+      });
+      return;
+    }
+
+    if (
+      videoInfo &&
+      url.pathname === `/api/videos/${videoInfo.video_id}/info/ensure`
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(videoInfo),
+      });
+      return;
+    }
+
+    await route.continue();
+  });
+}
+
+async function navigateViaInjectedLink(page: Page, href: string) {
+  await page.evaluate(
+    ({ nextHref }) => {
+      const existing = document.getElementById("__test-route");
+      existing?.remove();
+      const link = document.createElement("a");
+      link.id = "__test-route";
+      link.href = nextHref;
+      link.textContent = "route";
+      document.body.appendChild(link);
+    },
+    { nextHref: href },
+  );
+
+  await page.evaluate(() => {
+    const link = document.getElementById("__test-route");
+    if (!(link instanceof HTMLAnchorElement)) {
+      throw new Error("Client navigation link was not mounted");
+    }
+    link.click();
+  });
+}
 
 test("mobile header reserves the top safe area", async ({ page }) => {
   await page.goto("/");
@@ -73,211 +353,21 @@ test("mobile filter button opens the filter menu above the browse overlay", asyn
 }) => {
   const selectedChannelId = "channel-filter";
   const selectedPath = `/?source=${selectedChannelId}`;
-
-  const bootstrap = {
-    ai_available: true,
-    ai_status: "cloud",
-    containers: [
-      {
-        id: "container-filter",
-        kind: "series",
-        title: "Filter test container",
-        provider: "you_tube",
-        backing_kind: "feed",
-        user_editable: true,
-        source_ids: [selectedChannelId],
-      },
-    ],
-    sources: [
-      {
-        id: selectedChannelId,
-        provider: "you_tube",
-        source_kind: "you_tube_channel",
-        container_id: "container-filter",
-        container_kind: "series",
-        backing_kind: "feed",
-        title: "Filter test channel",
-        subtitle: "@filter-test",
-        handle: "@filter-test",
-        thumbnail_url: null,
-        requires_auth: false,
-        public_content_available: true,
-        entitled_content_available: true,
-        external_ids: [
-          { provider: "you_tube", external_id: selectedChannelId },
-        ],
-      },
-    ],
-    channels: [
-      {
-        id: selectedChannelId,
-        handle: "@filter-test",
-        name: "Filter test channel",
-        thumbnail_url: null,
-        added_at: "2026-04-12T09:00:00.000Z",
-        earliest_sync_date: "2026-04-01T00:00:00.000Z",
-        earliest_sync_date_user_set: false,
-      },
-    ],
-    selected_source_id: selectedChannelId,
-    selected_channel_id: selectedChannelId,
-    snapshot: {
-      channel_id: selectedChannelId,
-      source_id: selectedChannelId,
-      container: {
-        id: "container-filter",
-        kind: "series",
-        title: "Filter test container",
-        provider: "you_tube",
-        backing_kind: "feed",
-        user_editable: true,
-        source_ids: [selectedChannelId],
-      },
-      source: {
-        id: selectedChannelId,
-        provider: "you_tube",
-        source_kind: "you_tube_channel",
-        container_id: "container-filter",
-        container_kind: "series",
-        backing_kind: "feed",
-        title: "Filter test channel",
-        subtitle: "@filter-test",
-        handle: "@filter-test",
-        thumbnail_url: null,
-        requires_auth: false,
-        public_content_available: true,
-        entitled_content_available: true,
-        external_ids: [
-          { provider: "you_tube", external_id: selectedChannelId },
-        ],
-      },
-      sync_depth: {
-        earliest_sync_date: "2026-04-01T00:00:00.000Z",
-        earliest_sync_date_user_set: false,
-        derived_earliest_ready_date: "2026-04-10T00:00:00.000Z",
-      },
-      channel_video_count: 1,
-      has_more: false,
-      next_offset: null,
-      videos: [
-        {
-          id: "video-filter",
-          channel_id: selectedChannelId,
-          title: "Filter fixture video",
-          thumbnail_url: null,
-          published_at: "2026-04-11T18:30:00.000Z",
-          is_short: false,
-          transcript_status: "ready",
-          summary_status: "ready",
-          acknowledged: false,
-          retry_count: 0,
-          quality_score: 7,
-        },
-      ],
-      items: [],
-      parts: [],
-    },
-    search_status: {
-      available: true,
-      model: "embeddinggemma",
-      dimensions: 768,
-      pending: 0,
-      indexing: 0,
-      ready: 1,
-      failed: 0,
-      total_sources: 1,
-      total_chunk_count: 4,
-      embedded_chunk_count: 4,
-      vector_index_ready: true,
-      retrieval_mode: "hybrid_ann",
-    },
-  };
-
-  await page.route("**/api/**", async (route) => {
-    const url = new URL(route.request().url());
-
-    if (url.pathname === "/api/workspace/bootstrap") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(bootstrap),
-      });
-      return;
-    }
-
-    if (url.pathname === `/api/channels/${selectedChannelId}/snapshot`) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(bootstrap.snapshot),
-      });
-      return;
-    }
-
-    if (url.pathname === `/api/channels/${selectedChannelId}/videos`) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          source_id: selectedChannelId,
-          videos: [],
-          items: [],
-          parts: [],
-          has_more: false,
-          next_offset: null,
-        }),
-      });
-      return;
-    }
-
-    if (url.pathname === `/api/channels/${selectedChannelId}/sync-depth`) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(bootstrap.snapshot.sync_depth),
-      });
-      return;
-    }
-
-    if (url.pathname === `/api/channels/${selectedChannelId}/backfill`) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          videos_added: 0,
-          fetched_count: 0,
-          exhausted: true,
-        }),
-      });
-      return;
-    }
-
-    await route.continue();
+  const bootstrap = buildMockWorkspaceBootstrap({
+    channelId: selectedChannelId,
+    channelName: "Filter test channel",
+    channelHandle: "@filter-test",
+    containerId: "container-filter",
+    videoId: "video-filter",
+    videoTitle: "Filter fixture video",
+    qualityScore: 7,
   });
+
+  await installMockWorkspaceApi(page, { bootstrap });
 
   await page.goto("/");
   await expect(page.getByRole("banner")).toBeVisible();
-
-  await page.evaluate(
-    ({ href }) => {
-      const existing = document.getElementById("__test-route");
-      existing?.remove();
-      const link = document.createElement("a");
-      link.id = "__test-route";
-      link.href = href;
-      link.textContent = "route";
-      document.body.appendChild(link);
-    },
-    { href: selectedPath },
-  );
-
-  await page.evaluate(() => {
-    const link = document.getElementById("__test-route");
-    if (!(link instanceof HTMLAnchorElement)) {
-      throw new Error("Client navigation link was not mounted");
-    }
-    link.click();
-  });
+  await navigateViaInjectedLink(page, selectedPath);
 
   const filterButton = page
     .getByRole("banner")
@@ -388,126 +478,17 @@ test("mobile summary eval pill opens the quality drawer", async ({ page }) => {
   const selectedChannelId = "channel-eval";
   const selectedVideoId = "video-eval";
   const selectedPath = `/?source=${selectedChannelId}&item=${selectedVideoId}&content=summary`;
-
-  const bootstrap = {
-    ai_available: true,
-    ai_status: "cloud",
-    containers: [
-      {
-        id: "container-eval",
-        kind: "series",
-        title: "Quality test container",
-        provider: "you_tube",
-        backing_kind: "feed",
-        user_editable: true,
-        source_ids: [selectedChannelId],
-      },
-    ],
-    sources: [
-      {
-        id: selectedChannelId,
-        provider: "you_tube",
-        source_kind: "you_tube_channel",
-        container_id: "container-eval",
-        container_kind: "series",
-        backing_kind: "feed",
-        title: "Quality test channel",
-        subtitle: "@quality-test",
-        handle: "@quality-test",
-        thumbnail_url: null,
-        requires_auth: false,
-        public_content_available: true,
-        entitled_content_available: true,
-        external_ids: [
-          { provider: "you_tube", external_id: selectedChannelId },
-        ],
-      },
-    ],
-    channels: [
-      {
-        id: selectedChannelId,
-        handle: "@quality-test",
-        name: "Quality test channel",
-        thumbnail_url: null,
-        added_at: "2026-04-12T09:00:00.000Z",
-        earliest_sync_date: "2026-04-01T00:00:00.000Z",
-        earliest_sync_date_user_set: false,
-      },
-    ],
-    selected_source_id: selectedChannelId,
-    selected_channel_id: selectedChannelId,
-    selected_item_id: selectedVideoId,
-    snapshot: {
-      channel_id: selectedChannelId,
-      source_id: selectedChannelId,
-      container: {
-        id: "container-eval",
-        kind: "series",
-        title: "Quality test container",
-        provider: "you_tube",
-        backing_kind: "feed",
-        user_editable: true,
-        source_ids: [selectedChannelId],
-      },
-      source: {
-        id: selectedChannelId,
-        provider: "you_tube",
-        source_kind: "you_tube_channel",
-        container_id: "container-eval",
-        container_kind: "series",
-        backing_kind: "feed",
-        title: "Quality test channel",
-        subtitle: "@quality-test",
-        handle: "@quality-test",
-        thumbnail_url: null,
-        requires_auth: false,
-        public_content_available: true,
-        entitled_content_available: true,
-        external_ids: [
-          { provider: "you_tube", external_id: selectedChannelId },
-        ],
-      },
-      sync_depth: {
-        earliest_sync_date: "2026-04-01T00:00:00.000Z",
-        earliest_sync_date_user_set: false,
-        derived_earliest_ready_date: "2026-04-10T00:00:00.000Z",
-      },
-      channel_video_count: 1,
-      has_more: false,
-      next_offset: null,
-      videos: [
-        {
-          id: selectedVideoId,
-          channel_id: selectedChannelId,
-          title: "Mobile eval regression fixture",
-          thumbnail_url: null,
-          published_at: "2026-04-11T18:30:00.000Z",
-          is_short: false,
-          transcript_status: "ready",
-          summary_status: "ready",
-          acknowledged: false,
-          retry_count: 0,
-          quality_score: 8,
-        },
-      ],
-      items: [],
-      parts: [],
-    },
-    search_status: {
-      available: true,
-      model: "embeddinggemma",
-      dimensions: 768,
-      pending: 0,
-      indexing: 0,
-      ready: 1,
-      failed: 0,
-      total_sources: 1,
-      total_chunk_count: 8,
-      embedded_chunk_count: 8,
-      vector_index_ready: true,
-      retrieval_mode: "hybrid_ann",
-    },
-  };
+  const bootstrap = buildMockWorkspaceBootstrap({
+    channelId: selectedChannelId,
+    channelName: "Quality test channel",
+    channelHandle: "@quality-test",
+    containerId: "container-eval",
+    videoId: selectedVideoId,
+    videoTitle: "Mobile eval regression fixture",
+    qualityScore: 8,
+    selectedItemId: selectedVideoId,
+    totalChunkCount: 8,
+  });
 
   const summary = {
     video_id: selectedVideoId,
@@ -536,118 +517,11 @@ test("mobile summary eval pill opens the quality drawer", async ({ page }) => {
     view_count: 1280,
   };
 
-  await page.route("**/api/**", async (route) => {
-    const url = new URL(route.request().url());
-
-    if (url.pathname === "/api/workspace/bootstrap") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(bootstrap),
-      });
-      return;
-    }
-
-    if (url.pathname === `/api/channels/${selectedChannelId}/snapshot`) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(bootstrap.snapshot),
-      });
-      return;
-    }
-
-    if (url.pathname === `/api/channels/${selectedChannelId}/backfill`) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          videos_added: 0,
-          fetched_count: 0,
-          exhausted: true,
-        }),
-      });
-      return;
-    }
-
-    if (url.pathname === `/api/channels/${selectedChannelId}/videos`) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          source_id: selectedChannelId,
-          videos: [],
-          items: [],
-          parts: [],
-          has_more: false,
-          next_offset: null,
-        }),
-      });
-      return;
-    }
-
-    if (url.pathname === `/api/channels/${selectedChannelId}/sync-depth`) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(bootstrap.snapshot.sync_depth),
-      });
-      return;
-    }
-
-    if (url.pathname === `/api/videos/${selectedVideoId}/summary`) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(summary),
-      });
-      return;
-    }
-
-    if (url.pathname === `/api/videos/${selectedVideoId}/summary/audio/debug`) {
-      await route.fulfill({
-        status: 404,
-        contentType: "text/plain",
-        body: "audio not generated",
-      });
-      return;
-    }
-
-    if (url.pathname === `/api/videos/${selectedVideoId}/info/ensure`) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(videoInfo),
-      });
-      return;
-    }
-
-    await route.continue();
-  });
+  await installMockWorkspaceApi(page, { bootstrap, summary, videoInfo });
 
   await page.goto("/");
   await expect(page.getByRole("banner")).toBeVisible();
-
-  await page.evaluate(
-    ({ href }) => {
-      const existing = document.getElementById("__test-route");
-      existing?.remove();
-      const link = document.createElement("a");
-      link.id = "__test-route";
-      link.href = href;
-      link.textContent = "route";
-      document.body.appendChild(link);
-    },
-    { href: selectedPath },
-  );
-
-  await page.evaluate(() => {
-    const link = document.getElementById("__test-route");
-    if (!(link instanceof HTMLAnchorElement)) {
-      throw new Error("Client navigation link was not mounted");
-    }
-    link.click();
-  });
+  await navigateViaInjectedLink(page, selectedPath);
   await expect
     .poll(() => new URL(page.url()).search)
     .toContain(`source=${selectedChannelId}`);
