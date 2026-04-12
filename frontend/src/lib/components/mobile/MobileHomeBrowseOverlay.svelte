@@ -47,6 +47,87 @@
     previewScope?: WorkspaceSidebarPreviewProps["previewScope"];
     onChannelSyncDateSaved?: (channelId: string) => void | Promise<void>;
   } = $props();
+
+  // ---------------------------------------------------------------------------
+  // Channel swipe navigation
+  // Horizontal swipe on the video list changes the active channel.
+  // - Swipe left  → next channel
+  // - Swipe right → previous channel  (ignored when starting from the left
+  //   device edge ≤40px to avoid clashing with any edge-back system gesture)
+  // Vertical scrolling of the video list is unaffected (different axis).
+  // ---------------------------------------------------------------------------
+
+  const SWIPE_THRESHOLD_PX = 60;
+  const SWIPE_EDGE_PX = 40;
+
+  function selectPrevChannel() {
+    const idx = channels.findIndex((c) => c.id === selectedChannelId);
+    if (idx > 0) onSelectChannel(channels[idx - 1].id);
+  }
+
+  function selectNextChannel() {
+    const idx = channels.findIndex((c) => c.id === selectedChannelId);
+    if (idx >= 0 && idx < channels.length - 1)
+      onSelectChannel(channels[idx + 1].id);
+  }
+
+  interface SwipeState {
+    startX: number;
+    startY: number;
+  }
+  let swipeState: SwipeState | null = null;
+
+  function swipeChannelAction(node: HTMLElement) {
+    function handleStart(e: TouchEvent) {
+      if (e.touches.length !== 1) {
+        swipeState = null;
+        return;
+      }
+      swipeState = {
+        startX: e.touches[0].clientX,
+        startY: e.touches[0].clientY,
+      };
+    }
+
+    function handleEnd(e: TouchEvent) {
+      if (!swipeState || e.changedTouches.length !== 1) {
+        swipeState = null;
+        return;
+      }
+      const { startX, startY } = swipeState;
+      swipeState = null;
+      const dx = e.changedTouches[0].clientX - startX;
+      const dy = e.changedTouches[0].clientY - startY;
+      // Ignore gestures that are too short or too diagonal.
+      if (
+        Math.abs(dx) < SWIPE_THRESHOLD_PX ||
+        Math.abs(dy) > Math.abs(dx) * 0.8
+      )
+        return;
+      if (dx < 0) {
+        selectNextChannel();
+      } else if (startX > SWIPE_EDGE_PX) {
+        // Right swipe not from edge → previous channel.
+        selectPrevChannel();
+      }
+    }
+
+    function handleCancel() {
+      swipeState = null;
+    }
+
+    node.addEventListener("touchstart", handleStart, { passive: true });
+    node.addEventListener("touchend", handleEnd, { passive: true });
+    node.addEventListener("touchcancel", handleCancel, { passive: true });
+
+    return {
+      destroy() {
+        node.removeEventListener("touchstart", handleStart);
+        node.removeEventListener("touchend", handleEnd);
+        node.removeEventListener("touchcancel", handleCancel);
+      },
+    };
+  }
 </script>
 
 {#if open}
@@ -67,7 +148,8 @@
       {addSourceErrorMessage}
     />
 
-    <div class="min-h-0 flex-1 overflow-hidden">
+    <!-- Video list: swipe left/right to change channel, scroll up/down for content. -->
+    <div class="min-h-0 flex-1 overflow-hidden" use:swipeChannelAction>
       <WorkspaceSidebar
         videoListMode="selected_channel"
         shell={{
