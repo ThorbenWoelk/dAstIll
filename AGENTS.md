@@ -86,7 +86,7 @@ Navigate to the respective frontend and backend folders and run the following be
 
 1. `cargo check`
 2. `cargo test`
-3. `cargo audit` (use `cargo update` when you intend to refresh `Cargo.lock`; otherwise `cargo audit` alone is the usual local check).
+3. `./scripts/cargo_audit.sh` (use `cargo update` when you intend to refresh `Cargo.lock`; keep the script allowlist short and remove entries as upstream crates publish fixes).
 
 **Frontend** (`frontend/`):
 
