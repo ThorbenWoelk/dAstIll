@@ -264,7 +264,7 @@
   .workspace-mobile-header,
   .workspace-desktop-header {
     position: relative;
-    z-index: 5;
+    z-index: var(--z-shell-header);
     border-bottom: 1px solid
       color-mix(in srgb, var(--border-soft) 92%, var(--background));
     background: linear-gradient(
@@ -324,7 +324,7 @@
     flex-shrink: 0;
     cursor: col-resize;
     position: relative;
-    z-index: 20;
+    z-index: var(--z-shell-resize-handle);
   }
 
   .resize-handle::after {
@@ -358,8 +358,8 @@
       );
       /* Remove the stacking context so position:fixed children (filter popup at
          z-[110]) participate in the root stacking context instead of being capped
-         at this element's z-index: 5. Without a stacking context the popup clears
-         MobileHomeBrowseOverlay (z-[70]) and MobileSectionDrawer (z-[71]). */
+         at this element's z-index. Without a stacking context the popup clears
+         browse overlay and section drawer root layers. */
       z-index: auto;
     }
   }

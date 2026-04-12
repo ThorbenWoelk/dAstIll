@@ -127,6 +127,13 @@ All pages (Workspace, Queue, Highlights) must share the same `AppShell` structur
 - Use solid design tokens for these layers: `--surface`, `--surface-strong`, `--surface-overlay`, `--surface-overlay-strong`, `--tooltip-bg`.
 - If a popup-style component needs depth, use spacing and solid tone contrast first; avoid translucency tricks.
 
+### Overlay Layer Contract
+
+- Do not introduce raw mobile overlay `z-index` values in feature components when the layer already belongs to the shared shell contract. Use the root overlay tokens in `frontend/src/app.css` instead.
+- Treat `position: fixed` UI as **overlay-bearing**. It must not live under a transformed ancestor unless that anchoring is explicitly intended.
+- If a mobile header, shell, drawer, or panel uses animation, prefer opacity-only entry animation when a descendant popup/popover/drawer must stay viewport-anchored.
+- Any new mobile top-bar popup or drawer needs one Playwright assertion that tap/click makes the overlay visible above the browse/content shell.
+
 ---
 
 ## Design Debt (P0/P1)

@@ -99,7 +99,8 @@
 <svelte:window onkeydown={handleWindowKeydown} />
 
 <div
-  class="relative z-[95]"
+  class="relative"
+  style="z-index: var(--z-mobile-popover-anchor);"
   use:clickOutside={{
     enabled: filterMenuOpen,
     onClickOutside: () => (filterMenuOpen = false),
@@ -160,8 +161,8 @@
     <div
       role="menu"
       aria-label="Video filters"
-      style={videoFilterMenuStyle || "visibility:hidden"}
-      class="fixed z-[110] w-52 overflow-hidden rounded-[var(--radius-md)] border border-[var(--accent-border-soft)] bg-[var(--surface-strong)] shadow-xl popover-rise"
+      style={`${videoFilterMenuStyle || "visibility:hidden;"}z-index:var(--z-mobile-popover);`}
+      class="fixed w-52 overflow-hidden rounded-[var(--radius-md)] border border-[var(--accent-border-soft)] bg-[var(--surface-strong)] shadow-xl popover-rise"
     >
       <div class="space-y-4 p-2">
         <div class="grid gap-1">
