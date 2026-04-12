@@ -77,7 +77,7 @@ jobs:
 
       - name: Cargo Audit
         working-directory: backend
-        run: cargo audit
+        run: ./scripts/cargo_audit.sh
 
       - name: Build Release Binary
         working-directory: backend

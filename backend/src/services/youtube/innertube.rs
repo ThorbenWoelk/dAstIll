@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 
-use rand::Rng;
 use serde_json::Value;
 use tokio::time::{Duration, sleep};
 
@@ -8,6 +7,19 @@ use crate::models::Video;
 
 use super::video_builder::build_pending_video;
 use super::{YouTubeError, YouTubeService};
+
+fn metadata_jitter_delay_ms() -> u64 {
+    let mut bytes = [0_u8; 8];
+    if rustls::crypto::ring::default_provider()
+        .secure_random
+        .fill(&mut bytes)
+        .is_ok()
+    {
+        return 500 + (u64::from_le_bytes(bytes) % 1000);
+    }
+
+    1000
+}
 
 impl YouTubeService {
     pub(crate) async fn fetch_videos_backfill_missing_via_innertube(
@@ -40,7 +52,7 @@ impl YouTubeService {
                 let is_missing = !known_video_ids.contains(&id);
                 if is_missing || until.is_some() {
                     // Jittered delay to avoid rate limiting
-                    let delay_ms = rand::thread_rng().gen_range(500..1500);
+                    let delay_ms = metadata_jitter_delay_ms();
                     sleep(Duration::from_millis(delay_ms)).await;
 
                     match self.fetch_watch_metadata(&id).await {

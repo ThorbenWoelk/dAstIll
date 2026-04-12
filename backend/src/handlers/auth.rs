@@ -6,7 +6,6 @@ use axum::{
     http::{HeaderMap, StatusCode, header},
     response::IntoResponse,
 };
-use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use utoipa::ToSchema;
@@ -54,7 +53,10 @@ fn prune_expired_handoffs(state: &mut std::collections::HashMap<String, MobileAu
 
 fn mint_nonce() -> String {
     let mut bytes = [0_u8; MOBILE_AUTH_HANDOFF_TOKEN_BYTES];
-    rand::thread_rng().fill_bytes(&mut bytes);
+    rustls::crypto::ring::default_provider()
+        .secure_random
+        .fill(&mut bytes)
+        .expect("OS randomness must be available for auth handoff secrets");
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
