@@ -77,9 +77,16 @@
   }
   let swipeState: SwipeState | null = null;
 
+  function isInteractiveTarget(target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLElement)) return false;
+    return Boolean(
+      target.closest("button, a, input, textarea, select, [role='button']"),
+    );
+  }
+
   function swipeChannelAction(node: HTMLElement) {
     function handleStart(e: TouchEvent) {
-      if (e.touches.length !== 1) {
+      if (e.touches.length !== 1 || isInteractiveTarget(e.target)) {
         swipeState = null;
         return;
       }
@@ -135,6 +142,7 @@
   <section
     class="relative z-[70] flex h-full min-h-0 flex-col overflow-hidden bg-[var(--background)] lg:hidden"
     aria-label="Browse"
+    use:swipeChannelAction
   >
     <MobileChannelGallery
       {channels}
@@ -148,8 +156,8 @@
       {addSourceErrorMessage}
     />
 
-    <!-- Video list: swipe left/right to change channel, scroll up/down for content. -->
-    <div class="min-h-0 flex-1 overflow-hidden" use:swipeChannelAction>
+    <!-- Video list: scroll up/down for content. Channel swipe is on the outer section. -->
+    <div class="min-h-0 flex-1 overflow-hidden">
       <WorkspaceSidebar
         videoListMode="selected_channel"
         shell={{
