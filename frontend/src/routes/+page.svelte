@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import AddSourceFeedbackToast from "$lib/components/AddSourceFeedbackToast.svelte";
   import VocabularyReplacementModal from "$lib/components/VocabularyReplacementModal.svelte";
   import WorkspaceContentPanel from "$lib/components/workspace/WorkspaceContentPanel.svelte";
@@ -18,6 +19,41 @@
     setFeatureGuideSuppressesAuthRequiredNotice(hw.guideOpen);
     return () => {
       setFeatureGuideSuppressesAuthRequiredNotice(false);
+    };
+  });
+
+  // ---------------------------------------------------------------------------
+  // Mobile back-swipe guard
+  //
+  // On mobile (web + Tauri Android), the OS back gesture fires history.back(),
+  // which would navigate away from the app (to the login page or close it).
+  // We prevent that by maintaining a synthetic history entry while on this page.
+  //
+  // Strategy:
+  //   1. On mount push one guard entry so there is always an entry to pop back
+  //      to before the browser would try to leave the page.
+  //   2. When the guard entry is popped (popstate) and we are in video view,
+  //      open the browse overlay. If already in browse view, the guard just
+  //      re-pushes itself so the next back also stays on this page.
+  // ---------------------------------------------------------------------------
+  const BACK_GUARD_STATE = { dastill_back_guard: true };
+
+  onMount(() => {
+    // Push the initial guard entry on top of the current history entry.
+    history.pushState(BACK_GUARD_STATE, "");
+
+    function handlePopState() {
+      if (!hw.mobileBrowseOpen) {
+        // Video view → back means "show channel list".
+        hw.openMobileBrowse();
+      }
+      // Always re-push the guard so subsequent back presses are also caught.
+      history.pushState(BACK_GUARD_STATE, "");
+    }
+
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
     };
   });
 </script>

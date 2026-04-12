@@ -176,7 +176,7 @@
               type="button"
               role="menuitemradio"
               aria-checked={videoTypeFilter === opt.value}
-              class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[14px] font-medium transition-colors ${videoTypeFilter === opt.value ? "bg-[var(--accent-wash-strong)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--accent-wash)]"}`}
+              class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[14px] font-medium transition-colors ${videoTypeFilter === opt.value ? "text-[var(--foreground)]" : "text-[var(--foreground)] hover:bg-[var(--accent-wash)]"}`}
               onclick={() => void selectVideoType(opt.value)}
             >
               <span>{opt.label}</span>
