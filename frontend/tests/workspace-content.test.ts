@@ -31,6 +31,7 @@ function createSummary(overrides: Partial<Summary> = {}): Summary {
     model_used: null,
     quality_model_used: null,
     summary_tags: [],
+    summary_tags_evaluated: false,
     ...overrides,
   };
 }

@@ -7,7 +7,14 @@ on:
       - ".github/workflows/android.yml"
       - "frontend/**"
       - "src-tauri/**"
+  release:
+    types: [published]
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing GitHub release tag to attach the APK to"
+        required: false
+        type: string
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
@@ -16,7 +23,7 @@ env:
   DOCS_URL_OVERRIDE: ${{ vars.DOCS_URL }}
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
 
 jobs:
@@ -27,6 +34,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ github.event.release.tag_name || github.event.inputs.release_tag || github.ref }}
 
       - name: Google Auth
         uses: google-github-actions/auth@v3.0.0
@@ -106,8 +115,41 @@ jobs:
           NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/28.2.13676358
         run: cargo tauri android build --apk
 
+      - name: Prepare APK asset
+        id: apk_asset
+        run: |
+          set -euo pipefail
+
+          apk_root="src-tauri/gen/android/app/build/outputs/apk"
+          apk_path="$(find "$apk_root" -type f -path '*/release/*.apk' | sort | head -n 1)"
+          if [ -z "$apk_path" ]; then
+            echo "No release APK found under $apk_root" >&2
+            find "$apk_root" -maxdepth 4 -type f 2>/dev/null >&2 || true
+            exit 1
+          fi
+
+          release_tag="${{ github.event.release.tag_name || github.event.inputs.release_tag || github.ref_name }}"
+          if [ -z "$release_tag" ]; then
+            release_tag="${GITHUB_SHA}"
+          fi
+          safe_tag="${release_tag//\//-}"
+
+          mkdir -p dist/android
+          asset_path="dist/android/dAstIll-${safe_tag}-android.apk"
+          cp "$apk_path" "$asset_path"
+
+          echo "asset_path=$asset_path" >> "$GITHUB_OUTPUT"
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: android-apk
-          path: src-tauri/gen/android/app/build/outputs/apk/release/*.apk
+          path: ${{ steps.apk_asset.outputs.asset_path }}
+
+      - name: Attach APK to GitHub release
+        if: github.event_name == 'release' || github.event.inputs.release_tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.release.tag_name || github.event.inputs.release_tag }}
+          files: ${{ steps.apk_asset.outputs.asset_path }}
+          fail_on_unmatched_files: true

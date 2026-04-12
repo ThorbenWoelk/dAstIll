@@ -1,3 +1,14 @@
+import {
+  SECTION_NAVIGATION_ITEMS,
+  goHintKeyForSection,
+  type AppNavigationSection,
+} from "$lib/section-navigation";
+import {
+  WORKSPACE_CONTENT_MODE_ORDER,
+  goHintKeyForWorkspaceContentMode,
+} from "$lib/workspace/navigation";
+import type { WorkspaceContentMode } from "$lib/workspace/types";
+
 /**
  * Shared helpers for app-wide keyboard shortcuts and the shortcuts reference modal.
  */
@@ -6,8 +17,176 @@
 export const DASTILL_SET_WORKSPACE_CONTENT_MODE_EVENT =
   "dastill:set-workspace-content-mode" as const;
 
+export type GlobalSectionShortcut =
+  | "/"
+  | "/download-queue"
+  | "/highlights"
+  | "/vocabulary"
+  | "/chat"
+  | "docs";
+
+export type WorkspaceContentModeShortcut = WorkspaceContentMode;
+
+type PrimaryModifierShortcut = {
+  key: string;
+  description: string;
+};
+
+type GlobalSectionShortcutDefinition = PrimaryModifierShortcut & {
+  destination: GlobalSectionShortcut;
+  hintLabel: string;
+};
+
+type WorkspaceContentShortcutDefinition = PrimaryModifierShortcut & {
+  mode: WorkspaceContentModeShortcut;
+  hintLabel: string;
+};
+
+type InlineActionShortcutDefinition = {
+  eventKey: string;
+  hintKey: string;
+  description: string;
+  hintLabel: string;
+};
+
+const INLINE_ACTION_SHORTCUTS: readonly InlineActionShortcutDefinition[] = [
+  {
+    eventKey: "*",
+    hintKey: "*",
+    description: "Run the primary summary/transcript action when available",
+    hintLabel: "Primary action",
+  },
+  {
+    eventKey: "]",
+    hintKey: "]",
+    description: "Open the current item on YouTube when available",
+    hintLabel: "Open on YouTube",
+  },
+  {
+    eventKey: "[",
+    hintKey: "[",
+    description: "Edit the current summary or transcript when available",
+    hintLabel: "Edit action",
+  },
+  {
+    eventKey: "Enter",
+    hintKey: "↵",
+    description: "Delete / reset the current item when available",
+    hintLabel: "Delete / reset action",
+  },
+  {
+    eventKey: ".",
+    hintKey: ".",
+    description: "Toggle the read check when available",
+    hintLabel: "Read check action",
+  },
+] as const;
+
+const GLOBAL_SECTION_SHORTCUT_DESCRIPTIONS: Record<
+  AppNavigationSection,
+  string
+> = {
+  workspace: "Go to Workspace",
+  queue: "Go to Queue",
+  highlights: "Go to Highlights",
+  vocabulary: "Go to Vocabulary",
+  chat: "Go to Chat",
+  docs: "Open documentation in a new tab",
+};
+
+const WORKSPACE_CONTENT_MODE_SHORTCUT_DESCRIPTIONS: Record<
+  WorkspaceContentModeShortcut,
+  string
+> = {
+  info: "Switch video panel to Info",
+  summary: "Switch video panel to Summary",
+  highlights: "Switch video panel to Highlights",
+  transcript: "Switch video panel to Transcript",
+};
+
+const WORKSPACE_CONTENT_MODE_SHORTCUT_HINT_LABELS: Record<
+  WorkspaceContentModeShortcut,
+  string
+> = {
+  info: "Info (video tab)",
+  summary: "Summary (video tab)",
+  highlights: "Highlights (video tab)",
+  transcript: "Transcript (video tab)",
+};
+
 const EDITABLE_SELECTORS =
   "input:not([type='hidden']):not([disabled]), textarea:not([disabled]), select:not([disabled]), [contenteditable='true'], [contenteditable='']";
+
+function withPrimaryModifier(
+  mod: "Cmd" | "Ctrl",
+  rows: readonly PrimaryModifierShortcut[],
+): ShortcutManualRow[] {
+  return rows.map(({ key, description }) => ({
+    keys: `${mod} + ${key}`,
+    description,
+  }));
+}
+
+export function resolveGlobalSectionShortcut(
+  key: string,
+): GlobalSectionShortcut | null {
+  const normalized = key.trim();
+  return (
+    GLOBAL_SECTION_SHORTCUTS.find((entry) => entry.key === normalized)
+      ?.destination ?? null
+  );
+}
+
+export function resolveWorkspaceContentModeShortcut(
+  key: string,
+): WorkspaceContentModeShortcut | null {
+  const normalized = key.trim().toLowerCase();
+  return (
+    WORKSPACE_CONTENT_MODE_SHORTCUTS.find(
+      (entry) => entry.key.toLowerCase() === normalized,
+    )?.mode ?? null
+  );
+}
+
+export function resolveInlineActionHintKey(key: string): string | null {
+  return (
+    INLINE_ACTION_SHORTCUTS.find((entry) => entry.eventKey === key)?.hintKey ??
+    null
+  );
+}
+
+function buildGlobalSectionShortcuts(): readonly GlobalSectionShortcutDefinition[] {
+  return SECTION_NAVIGATION_ITEMS.map((item) => ({
+    key: goHintKeyForSection(item.section),
+    description: GLOBAL_SECTION_SHORTCUT_DESCRIPTIONS[item.section],
+    destination:
+      item.section === "docs"
+        ? "docs"
+        : (item.href as Exclude<GlobalSectionShortcut, "docs">),
+    hintLabel: item.label,
+  }));
+}
+
+function buildWorkspaceContentModeShortcuts(): readonly WorkspaceContentShortcutDefinition[] {
+  return WORKSPACE_CONTENT_MODE_ORDER.map((mode) => {
+    const key = goHintKeyForWorkspaceContentMode(mode);
+    if (!key) {
+      throw new Error(
+        `Missing workspace content shortcut key for mode: ${mode}`,
+      );
+    }
+
+    return {
+      key,
+      description: WORKSPACE_CONTENT_MODE_SHORTCUT_DESCRIPTIONS[mode],
+      mode,
+      hintLabel: WORKSPACE_CONTENT_MODE_SHORTCUT_HINT_LABELS[mode],
+    };
+  });
+}
+
+const GLOBAL_SECTION_SHORTCUTS = buildGlobalSectionShortcuts();
+const WORKSPACE_CONTENT_MODE_SHORTCUTS = buildWorkspaceContentModeShortcuts();
 
 export function isEditableShortcutTarget(target: EventTarget | null): boolean {
   if (!target || !(target instanceof Element)) {
@@ -72,30 +251,7 @@ export function buildShortcutManual(
           keys: "?",
           description: "Open shortcuts reference (when not typing in a field)",
         },
-        {
-          keys: `${mod} + 1`,
-          description: "Go to Workspace",
-        },
-        {
-          keys: `${mod} + 2`,
-          description: "Go to Queue",
-        },
-        {
-          keys: `${mod} + 3`,
-          description: "Go to Highlights",
-        },
-        {
-          keys: `${mod} + 4`,
-          description: "Go to Vocabulary",
-        },
-        {
-          keys: `${mod} + 5`,
-          description: "Go to Chat",
-        },
-        {
-          keys: `${mod} + 6`,
-          description: "Open documentation in a new tab",
-        },
+        ...withPrimaryModifier(mod, GLOBAL_SECTION_SHORTCUTS),
         {
           keys: `${mod} + ,`,
           description: "Open settings",
@@ -117,43 +273,11 @@ export function buildShortcutManual(
           keys: "/",
           description: "Focus search bar (when not typing in a field)",
         },
-        {
-          keys: `${mod} + I`,
-          description: "Switch video panel to Info",
-        },
-        {
-          keys: `${mod} + S`,
-          description: "Switch video panel to Summary",
-        },
-        {
-          keys: `${mod} + H`,
-          description: "Switch video panel to Highlights",
-        },
-        {
-          keys: `${mod} + T`,
-          description: "Switch video panel to Transcript",
-        },
-        {
-          keys: `${mod} + *`,
-          description:
-            "Run the primary summary/transcript action when available",
-        },
-        {
-          keys: `${mod} + ]`,
-          description: "Open the current item on YouTube when available",
-        },
-        {
-          keys: `${mod} + [`,
-          description: "Edit the current summary or transcript when available",
-        },
-        {
-          keys: `${mod} + Return`,
-          description: "Delete / reset the current item when available",
-        },
-        {
-          keys: `${mod} + .`,
-          description: "Toggle the read check when available",
-        },
+        ...withPrimaryModifier(mod, WORKSPACE_CONTENT_MODE_SHORTCUTS),
+        ...INLINE_ACTION_SHORTCUTS.map(({ eventKey, description }) => ({
+          keys: `${mod} + ${eventKey === "Enter" ? "Return" : eventKey}`,
+          description,
+        })),
       ],
     },
     {
@@ -229,21 +353,18 @@ export function buildShortcutManual(
 
 /** Visible shortcut hint badges shown while holding Cmd/Ctrl. */
 export const GO_SEQUENCE_HINTS: readonly { key: string; label: string }[] = [
-  { key: "1", label: "Workspace" },
-  { key: "2", label: "Queue" },
-  { key: "3", label: "Highlights" },
-  { key: "4", label: "Vocabulary" },
-  { key: "5", label: "Chat" },
-  { key: "6", label: "Docs" },
-  { key: "I", label: "Info (video tab)" },
-  { key: "S", label: "Summary (video tab)" },
-  { key: "H", label: "Highlights (video tab)" },
-  { key: "T", label: "Transcript (video tab)" },
-  { key: "*", label: "Primary action" },
-  { key: "]", label: "Open on YouTube" },
-  { key: "[", label: "Edit action" },
-  { key: "↵", label: "Delete / reset action" },
-  { key: ".", label: "Read check action" },
+  ...GLOBAL_SECTION_SHORTCUTS.map(({ key, hintLabel }) => ({
+    key,
+    label: hintLabel,
+  })),
+  ...WORKSPACE_CONTENT_MODE_SHORTCUTS.map(({ key, hintLabel }) => ({
+    key,
+    label: hintLabel,
+  })),
+  ...INLINE_ACTION_SHORTCUTS.map(({ hintKey, hintLabel }) => ({
+    key: hintKey,
+    label: hintLabel,
+  })),
 ] as const;
 
 export type GoHintBadge = {

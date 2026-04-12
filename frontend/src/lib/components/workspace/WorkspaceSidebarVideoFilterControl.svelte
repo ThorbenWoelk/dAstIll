@@ -13,6 +13,7 @@
     videoTypeFilter,
     acknowledgedFilter,
     disabled = false,
+    size = "sm",
     onSelectVideoType,
     onSelectAcknowledged,
     onClearAllFilters,
@@ -20,6 +21,8 @@
     videoTypeFilter: VideoTypeFilter;
     acknowledgedFilter: AcknowledgedFilter;
     disabled?: boolean;
+    /** "sm" = desktop sidebar (h-5 w-5), "md" = mobile top-nav (h-9 w-9) */
+    size?: "sm" | "md";
     onSelectVideoType: (value: VideoTypeFilter) => void | Promise<void>;
     onSelectAcknowledged: (value: AcknowledgedFilter) => void | Promise<void>;
     onClearAllFilters: () => void | Promise<void>;
@@ -96,7 +99,8 @@
 <svelte:window onkeydown={handleWindowKeydown} />
 
 <div
-  class="relative z-[95]"
+  class="relative"
+  style="z-index: var(--z-mobile-popover-anchor);"
   use:clickOutside={{
     enabled: filterMenuOpen,
     onClickOutside: () => (filterMenuOpen = false),
@@ -106,7 +110,7 @@
     type="button"
     id="video-filter-button"
     bind:this={videoFilterButtonEl}
-    class={`inline-flex h-5 w-5 items-center justify-center rounded-full transition-colors ${videoTypeFilter !== "all" || acknowledgedFilter !== "all" || filterMenuOpen ? "bg-[var(--accent)] text-white" : "text-[var(--soft-foreground)] opacity-55 hover:bg-[var(--accent-wash)] hover:opacity-100"}`}
+    class={`inline-flex items-center justify-center rounded-full transition-colors ${size === "md" ? "h-9 w-9" : "h-5 w-5"} ${videoTypeFilter !== "all" || acknowledgedFilter !== "all" || filterMenuOpen ? "bg-[var(--accent)] text-white" : "text-[var(--soft-foreground)] opacity-55 hover:bg-[var(--accent-wash)] hover:opacity-100"}`}
     onclick={() => {
       filterMenuOpen = !filterMenuOpen;
     }}
@@ -115,29 +119,50 @@
     aria-haspopup="menu"
     aria-expanded={filterMenuOpen}
   >
-    <svg
-      width="10"
-      height="10"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2.5"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      ><line x1="3" y1="6" x2="21" y2="6" /><line
-        x1="7"
-        y1="12"
-        x2="17"
-        y2="12"
-      /><line x1="10" y1="18" x2="14" y2="18" /></svg
-    >
+    {#if size === "md"}
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2.2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+        ><line x1="3" y1="6" x2="21" y2="6" /><line
+          x1="7"
+          y1="12"
+          x2="17"
+          y2="12"
+        /><line x1="10" y1="18" x2="14" y2="18" /></svg
+      >
+    {:else}
+      <svg
+        width="10"
+        height="10"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+        ><line x1="3" y1="6" x2="21" y2="6" /><line
+          x1="7"
+          y1="12"
+          x2="17"
+          y2="12"
+        /><line x1="10" y1="18" x2="14" y2="18" /></svg
+      >
+    {/if}
   </button>
   {#if filterMenuOpen}
     <div
       role="menu"
       aria-label="Video filters"
-      style={videoFilterMenuStyle || "visibility:hidden"}
-      class="fixed z-[110] w-52 overflow-hidden rounded-[var(--radius-md)] border border-[var(--accent-border-soft)] bg-[var(--surface-strong)] shadow-xl popover-rise"
+      style={`${videoFilterMenuStyle || "visibility:hidden;"}z-index:var(--z-mobile-popover);`}
+      class="fixed w-52 overflow-hidden rounded-[var(--radius-md)] border border-[var(--accent-border-soft)] bg-[var(--surface-strong)] shadow-xl popover-rise"
     >
       <div class="space-y-4 p-2">
         <div class="grid gap-1">
@@ -151,7 +176,7 @@
               type="button"
               role="menuitemradio"
               aria-checked={videoTypeFilter === opt.value}
-              class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[14px] font-medium transition-colors ${videoTypeFilter === opt.value ? "bg-[var(--accent-wash-strong)] text-[var(--accent-strong)]" : "text-[var(--foreground)] hover:bg-[var(--accent-wash)]"}`}
+              class={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-3 py-2 text-left text-[14px] font-medium transition-colors ${videoTypeFilter === opt.value ? "text-[var(--foreground)]" : "text-[var(--foreground)] hover:bg-[var(--accent-wash)]"}`}
               onclick={() => void selectVideoType(opt.value)}
             >
               <span>{opt.label}</span>

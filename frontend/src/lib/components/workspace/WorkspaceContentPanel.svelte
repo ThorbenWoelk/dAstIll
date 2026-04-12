@@ -372,7 +372,7 @@
 </script>
 
 <section
-  class={`fade-in stagger-3 workspace-content-shell relative z-10 flex min-h-0 min-w-0 flex-col overflow-visible border-0 lg:h-full lg:gap-4 ${mobileVisible ? "h-full" : "hidden lg:flex"}`}
+  class={`${mobileVisible ? "fade-in-opacity" : "fade-in"} stagger-3 workspace-content-shell relative z-10 flex min-h-0 min-w-0 flex-col overflow-visible border-0 lg:h-full lg:gap-4 ${mobileVisible ? "h-full" : "hidden lg:flex"}`}
   id="content-view"
 >
   <WorkspaceContentMobileHeader
@@ -495,7 +495,8 @@
     <nav
       id="workspace-tabs-mobile"
       data-mobile-content-tabs
-      class="fixed bottom-0 left-0 right-0 z-[60] border-t border-[var(--border-soft)]/50 bg-[var(--surface)]/100 px-4 pt-1.5 pb-[max(0.45rem,env(safe-area-inset-bottom))] lg:hidden"
+      class="fixed bottom-0 left-0 right-0 border-t border-[var(--border-soft)]/50 bg-[var(--surface)]/100 px-4 pt-1.5 pb-[max(0.45rem,env(safe-area-inset-bottom))] lg:hidden"
+      style="z-index: var(--z-mobile-tab-bar);"
       aria-label="Content tabs"
     >
       <div class="mx-auto grid max-w-[36rem] grid-cols-4 items-end gap-1">

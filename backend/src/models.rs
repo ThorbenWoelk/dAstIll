@@ -560,6 +560,8 @@ pub struct Summary {
     pub quality_model_used: Option<String>,
     #[serde(default)]
     pub summary_tags: Vec<String>,
+    #[serde(default)]
+    pub summary_tags_evaluated: bool,
 }
 
 #[derive(Debug, Clone, TS, ToSchema)]

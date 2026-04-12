@@ -655,7 +655,7 @@
             </button>
             <button
               type="button"
-              class="text-action-btn inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--accent-wash)] text-[var(--accent-strong)] hover:bg-[var(--accent-soft)] disabled:cursor-not-allowed disabled:opacity-50"
+              class="text-action-btn inline-flex h-9 w-9 items-center justify-center rounded-full text-[var(--soft-foreground)] hover:bg-[var(--accent-wash)] hover:text-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
               onclick={handleCreateVocabularyReplacement}
               disabled={!onCreateVocabularyReplacement ||
                 creatingVocabularyReplacement}
@@ -713,7 +713,7 @@
           </button>
           <button
             type="button"
-            class="text-action-btn inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--accent-wash)] text-[var(--accent-strong)] hover:bg-[var(--accent-soft)] disabled:cursor-not-allowed disabled:opacity-50"
+            class="text-action-btn inline-flex h-8 w-8 items-center justify-center rounded-full text-[var(--soft-foreground)] hover:bg-[var(--accent-wash)] hover:text-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
             onclick={handleCreateVocabularyReplacement}
             disabled={!onCreateVocabularyReplacement ||
               creatingVocabularyReplacement}

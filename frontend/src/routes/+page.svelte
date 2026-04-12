@@ -1,13 +1,14 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import AddSourceFeedbackToast from "$lib/components/AddSourceFeedbackToast.svelte";
   import VocabularyReplacementModal from "$lib/components/VocabularyReplacementModal.svelte";
+  import MobileTopBarVideoFilters from "$lib/components/mobile/MobileTopBarVideoFilters.svelte";
   import WorkspaceContentPanel from "$lib/components/workspace/WorkspaceContentPanel.svelte";
   import MobileYouTubeTopNav from "$lib/components/mobile/MobileYouTubeTopNav.svelte";
   import MobileHomeBrowseOverlay from "$lib/components/mobile/MobileHomeBrowseOverlay.svelte";
   import WorkspaceDesktopTopBar from "$lib/components/workspace/WorkspaceDesktopTopBar.svelte";
   import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
   import WorkspaceSidebar from "$lib/components/workspace/WorkspaceSidebar.svelte";
-  import WorkspaceSidebarVideoFilterControl from "$lib/components/workspace/WorkspaceSidebarVideoFilterControl.svelte";
   import FeatureGuide from "$lib/components/FeatureGuide.svelte";
   import { setFeatureGuideSuppressesAuthRequiredNotice } from "$lib/auth-required-notice";
   import { createHomeWorkspacePage } from "$lib/workspace/home-workspace.svelte";
@@ -18,6 +19,41 @@
     setFeatureGuideSuppressesAuthRequiredNotice(hw.guideOpen);
     return () => {
       setFeatureGuideSuppressesAuthRequiredNotice(false);
+    };
+  });
+
+  // ---------------------------------------------------------------------------
+  // Mobile back-swipe guard
+  //
+  // On mobile (web + Tauri Android), the OS back gesture fires history.back(),
+  // which would navigate away from the app (to the login page or close it).
+  // We prevent that by maintaining a synthetic history entry while on this page.
+  //
+  // Strategy:
+  //   1. On mount push one guard entry so there is always an entry to pop back
+  //      to before the browser would try to leave the page.
+  //   2. When the guard entry is popped (popstate) and we are in video view,
+  //      open the browse overlay. If already in browse view, the guard just
+  //      re-pushes itself so the next back also stays on this page.
+  // ---------------------------------------------------------------------------
+  const BACK_GUARD_STATE = { dastill_back_guard: true };
+
+  onMount(() => {
+    // Push the initial guard entry on top of the current history entry.
+    history.pushState(BACK_GUARD_STATE, "");
+
+    function handlePopState() {
+      if (!hw.mobileBrowseOpen) {
+        // Video view → back means "show channel list".
+        hw.openMobileBrowse();
+      }
+      // Always re-push the guard so subsequent back presses are also caught.
+      history.pushState(BACK_GUARD_STATE, "");
+    }
+
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
     };
   });
 </script>
@@ -64,23 +100,15 @@
       onBack={hw.openMobileBrowse}
     >
       {#snippet trailing()}
-        {#if hw.mobileBrowseOpen}
-          <div
-            class="flex min-w-0 shrink-0 items-center justify-end"
-            aria-label="Video filters"
-          >
-            <WorkspaceSidebarVideoFilterControl
-              videoTypeFilter={hw.sidebarState.videoState.videoTypeFilter}
-              acknowledgedFilter={hw.sidebarState.videoState.acknowledgedFilter}
-              disabled={hw.browseFilterDisabled}
-              onSelectVideoType={hw.onBrowseVideoTypeFilterChange}
-              onSelectAcknowledged={hw.onBrowseAcknowledgedFilterChange}
-              onClearAllFilters={hw.clearBrowseVideoFilters}
-            />
-          </div>
-        {:else}
-          <div class="w-10 shrink-0" aria-hidden="true"></div>
-        {/if}
+        <MobileTopBarVideoFilters
+          visible={hw.mobileBrowseOpen}
+          videoTypeFilter={hw.sidebarState.videoState.videoTypeFilter}
+          acknowledgedFilter={hw.sidebarState.videoState.acknowledgedFilter}
+          disabled={hw.browseFilterDisabled}
+          onSelectVideoType={hw.onBrowseVideoTypeFilterChange}
+          onSelectAcknowledged={hw.onBrowseAcknowledgedFilterChange}
+          onClearAllFilters={hw.clearBrowseVideoFilters}
+        />
       {/snippet}
     </MobileYouTubeTopNav>
   {/snippet}

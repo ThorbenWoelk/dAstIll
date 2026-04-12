@@ -202,6 +202,15 @@
   --mobile-bottom-stack-height: calc(
     var(--mobile-tab-bar-height) + var(--mobile-viewport-offset-bottom)
   );
+  --z-shell-header: 5;
+  --z-shell-resize-handle: 20;
+  --z-mobile-tab-bar: 60;
+  --z-mobile-browse-overlay: 70;
+  --z-mobile-section-drawer-backdrop: 70;
+  --z-mobile-section-drawer-panel: 71;
+  --z-mobile-sheet: 80;
+  --z-mobile-popover-anchor: 95;
+  --z-mobile-popover: 110;
 
   /* Saved text highlights (transcript / summary) */
   --reader-highlight-bg: color-mix(in srgb, rgb(248 231 162) 84%, white);

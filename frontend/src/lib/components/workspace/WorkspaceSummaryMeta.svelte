@@ -234,7 +234,7 @@
     box-shadow:
       -4px 0 16px rgba(0, 0, 0, 0.06),
       -1px 0 4px rgba(0, 0, 0, 0.03);
-    z-index: 50;
+    z-index: var(--z-mobile-sheet);
     overflow-y: auto;
   }
 
