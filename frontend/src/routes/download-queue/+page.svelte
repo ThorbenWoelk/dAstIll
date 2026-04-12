@@ -21,11 +21,7 @@
     updateChannel,
   } from "$lib/api";
   import { resolveAiIndicatorPresentation } from "$lib/ai-status";
-  import ErrorToast from "$lib/components/ErrorToast.svelte";
-  import MobileChannelGallery from "$lib/components/mobile/MobileChannelGallery.svelte";
-  import MobileTopBarVideoFilters from "$lib/components/mobile/MobileTopBarVideoFilters.svelte";
-  import MobileYouTubeTopNav from "$lib/components/mobile/MobileYouTubeTopNav.svelte";
-  import QueueContentPanel from "$lib/components/queue/QueueContentPanel.svelte";
+  import QueueWorkspaceShell from "$lib/components/queue/QueueWorkspaceShell.svelte";
   import {
     buildQueueGalleryChannelPreviews,
     deriveEarliestSyncDateInput,
@@ -33,7 +29,6 @@
     deriveQueueRefreshCadence,
     deriveQueueStats,
   } from "$lib/queue/route-state";
-  import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
   import WorkspaceSidebar from "$lib/components/workspace/WorkspaceSidebar.svelte";
   import { resolveBootstrapOnMount } from "$lib/ssr-bootstrap";
   import {
@@ -643,113 +638,32 @@
   }
 </script>
 
-<WorkspaceShell currentSection="queue" {aiIndicator} onOpenGuide={openGuide}>
-  {#snippet mobileTopBar()}
-    <MobileYouTubeTopNav>
-      {#snippet trailing()}
-        <MobileTopBarVideoFilters
-          visible={Boolean(queueSidebar.selectedChannelId)}
-          videoTypeFilter={queueSidebar.videoTypeFilter}
-          acknowledgedFilter={queueSidebar.acknowledgedFilter}
-          disabled={queueFilterDisabled}
-          onSelectVideoType={queueSidebar.videoActions.onVideoTypeFilterChange}
-          onSelectAcknowledged={queueSidebar.videoActions
-            .onAcknowledgedFilterChange}
-          onClearAllFilters={clearQueueBrowseVideoFilters}
-        />
-      {/snippet}
-    </MobileYouTubeTopNav>
-  {/snippet}
-  {#snippet sidebar({
-    collapsed: shellCollapsed,
-    toggle: shellToggleSidebar,
-    width: shellWidth,
-  })}
-    <WorkspaceSidebar
-      videoListMode="per_channel_preview"
-      previewSessionKey="download-queue-sidebar-navigation"
-      addSourceErrorMessage={errorMessage}
-      initialChannelPreviews={page.data.channelPreviews ?? {}}
-      initialChannelPreviewsFilterKey={page.data.channelPreviewsFilterKey ??
-        "all:all:unified"}
-      previewScope={{ kind: "unified" }}
-      {queueVideoRefreshTick}
-      readOnly={true}
-      shell={{
-        collapsed: shellCollapsed,
-        width: shellWidth,
-        mobileVisible: false,
-        onToggleCollapse: shellToggleSidebar,
-      }}
-      channelState={queueSidebar.channelState}
-      channelActions={queueSidebar.channelActions}
-      videoState={queueSidebar.videoState}
-      videoActions={queueSidebar.videoActions}
-    />
-  {/snippet}
-
-  <div
-    class="flex h-full min-h-0 flex-col lg:flex-row"
-    aria-label="Download queue"
-  >
-    <div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden lg:hidden">
-      <MobileChannelGallery
-        channels={queueSidebar.channels}
-        selectedChannelId={queueSidebar.selectedChannelId}
-        onSelectChannel={(channelId) => {
-          void queueSidebar.selectChannel(channelId);
-        }}
-        channelPreviews={galleryChannelPreviews}
-        queueUnifiedSummary={true}
-      />
-      <div
-        class="min-h-0 flex-1 overflow-hidden border-t border-[var(--border-soft)]/50"
-      >
-        <WorkspaceSidebar
-          videoListMode="selected_channel"
-          addSourceErrorMessage={errorMessage}
-          initialChannelPreviews={page.data.channelPreviews ?? {}}
-          initialChannelPreviewsFilterKey={page.data.channelPreviewsFilterKey ??
-            "all:all:unified"}
-          previewScope={{ kind: "unified" }}
-          {queueVideoRefreshTick}
-          readOnly={true}
-          shell={{
-            collapsed: false,
-            width: undefined,
-            mobileVisible: true,
-            onToggleCollapse: () => {},
-          }}
-          channelState={{
-            ...queueSidebar.channelState,
-            channels: queueSidebar.channels,
-            selectedChannelId: queueSidebar.selectedChannelId,
-            canDeleteChannels: false,
-          }}
-          channelActions={queueSidebar.channelActions}
-          videoState={queueSidebar.videoState}
-          videoActions={queueSidebar.videoActions}
-          hideChannelUi
-        />
-      </div>
-    </div>
-
-    <div
-      class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden lg:min-w-0"
-    >
-      <QueueContentPanel
-        hideMobileBack
-        readOnly={true}
-        state={queueContentPanelState}
-        actions={queueContentPanelActions}
-      />
-    </div>
-  </div>
-
-  {#if errorMessage}
-    <ErrorToast
-      message={errorMessage}
-      onDismiss={() => (errorMessage = null)}
-    />
-  {/if}
-</WorkspaceShell>
+<QueueWorkspaceShell
+  {aiIndicator}
+  {openGuide}
+  selectedChannelId={queueSidebar.selectedChannelId}
+  videoTypeFilter={queueSidebar.videoTypeFilter}
+  acknowledgedFilter={queueSidebar.acknowledgedFilter}
+  {queueFilterDisabled}
+  onSelectVideoType={queueSidebar.videoActions.onVideoTypeFilterChange}
+  onSelectAcknowledged={queueSidebar.videoActions.onAcknowledgedFilterChange}
+  onClearAllFilters={clearQueueBrowseVideoFilters}
+  {shellCollapsed}
+  {shellWidth}
+  {shellToggleSidebar}
+  {errorMessage}
+  onDismissError={() => (errorMessage = null)}
+  initialChannelPreviews={page.data.channelPreviews ?? {}}
+  initialChannelPreviewsFilterKey={page.data.channelPreviewsFilterKey ??
+    "all:all:unified"}
+  {queueVideoRefreshTick}
+  channelState={queueSidebar.channelState}
+  channelActions={queueSidebar.channelActions}
+  videoState={queueSidebar.videoState}
+  videoActions={queueSidebar.videoActions}
+  channels={queueSidebar.channels}
+  onSelectChannel={queueSidebar.selectChannel}
+  {galleryChannelPreviews}
+  {queueContentPanelState}
+  {queueContentPanelActions}
+/>
