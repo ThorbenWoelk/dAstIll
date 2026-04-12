@@ -103,16 +103,43 @@ jobs:
           export AWS_ACCESS_KEY_ID="test"
           export AWS_SECRET_ACCESS_KEY="test"
 
-          # Must exceed Turso builder inner timeout (30s) so the binary
-          # can fail cleanly with exit 1 rather than being killed with exit 124.
-          timeout 45s ./target/release/dastill || exit_code=$?
+          smoke_log="$(mktemp)"
+          ./target/release/dastill >"$smoke_log" 2>&1 &
+          smoke_pid=$!
+          startup_ready=0
+          exit_code=""
 
-          if [ "$exit_code" = "124" ]; then
-            echo "::error::Binary hung during startup for over 45s"
-            exit 1
+          for _ in $(seq 1 45); do
+            if grep -q "initialization complete" "$smoke_log"; then
+              startup_ready=1
+              break
+            fi
+
+            if ! kill -0 "$smoke_pid" 2>/dev/null; then
+              wait "$smoke_pid" || exit_code=$?
+              break
+            fi
+
+            sleep 1
+          done
+
+          if [ "$startup_ready" = "1" ]; then
+            echo "Smoke test passed - binary initialized successfully"
+            kill "$smoke_pid" 2>/dev/null || true
+            wait "$smoke_pid" || true
+            exit 0
           fi
-          echo "Smoke test passed - binary failed early as expected without real credentials"
-          exit 0
+
+          if [ -n "$exit_code" ]; then
+            echo "Smoke test passed - binary failed early as expected without real credentials"
+            exit 0
+          fi
+
+          echo "::error::Binary neither exited nor became ready within 45s"
+          cat "$smoke_log"
+          kill "$smoke_pid" 2>/dev/null || true
+          wait "$smoke_pid" || true
+          exit 1
 
   frontend:
     name: Frontend

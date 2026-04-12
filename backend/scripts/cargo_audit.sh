@@ -10,7 +10,7 @@ today_utc="$(date -u +%F)"
 IGNORED_ADVISORIES=(
   "RUSTSEC-2025-0141|2026-07-01|bincode via libsql replication/sync stack"
   "RUSTSEC-2025-0134|2026-07-01|rustls-pemfile via libsql -> hyper-rustls 0.25"
-  "RUSTSEC-2026-0097|2026-07-01|rand via libsql/aws-config/logfire transitive trees"
+  "RUSTSEC-2026-0097|2026-07-01|rand via libsql/aws-config/logfire/reqwest transitive trees"
 )
 
 echo "cargo audit allowlist:"
