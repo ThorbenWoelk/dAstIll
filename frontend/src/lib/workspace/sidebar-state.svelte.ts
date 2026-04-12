@@ -148,6 +148,7 @@ export type SidebarStateOptions = {
     snapshotOptions: Parameters<typeof getChannelSnapshot>[1],
     silent: boolean,
   ) => Promise<ChannelSnapshot>;
+  enableBackgroundRefresh?: boolean;
   onRefreshChannel?: (channelId: string) => Promise<{ videos_added: number }>;
   onListVideos?: (
     channelId: string,

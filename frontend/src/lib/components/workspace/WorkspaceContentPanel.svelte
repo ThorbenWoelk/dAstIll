@@ -17,6 +17,13 @@
     resolveSwipedContentMode,
     WORKSPACE_CONTENT_MODE_ORDER,
   } from "$lib/workspace/navigation";
+
+  const CONTENT_MODE_LABELS: Record<WorkspaceContentMode, string> = {
+    transcript: "Transcript",
+    summary: "Summary",
+    highlights: "Highlights",
+    info: "Info",
+  };
   import WorkspaceContentMobileHeader from "$lib/components/workspace/WorkspaceContentMobileHeader.svelte";
   import WorkspaceContentSurface from "$lib/components/workspace/WorkspaceContentSurface.svelte";
   import { shouldRetryReadySummaryLoad } from "$lib/workspace/content";
@@ -58,6 +65,7 @@
       summaryQualityNote: null,
       summaryModelUsed: null,
       summaryQualityModelUsed: null,
+      summaryTags: [],
       videoInfo: null,
       contentHtml: "",
       contentText: "",
@@ -113,7 +121,7 @@
 
   let mobileVisible = $derived(selection.mobileVisible);
   let mobileBackInTopBar = $derived(selection.mobileBackInTopBar ?? false);
-  /** Mobile hides the desktop video action strip (`max-lg:hidden`). */
+  /** Desktop video action strip — rendered in WorkspaceDesktopTopBar. Mobile uses WorkspaceContentMobileHeader. */
   let selectedChannel = $derived(selection.selectedChannel);
   let selectedVideo = $derived(selection.selectedVideo);
   let selectedVideoId = $derived(selection.selectedVideoId);
@@ -126,6 +134,7 @@
   let summaryQualityNote = $derived(content.summaryQualityNote);
   let summaryModelUsed = $derived(content.summaryModelUsed);
   let summaryQualityModelUsed = $derived(content.summaryQualityModelUsed);
+  let summaryTags = $derived(content.summaryTags);
   let videoInfo = $derived(content.videoInfo);
   let contentHtml = $derived(content.contentHtml);
   let contentText = $derived(content.contentText);
@@ -197,6 +206,27 @@
   let onShowVideos = $derived(actions.onShowVideos);
   let onCitationScrollConsumed = $derived(actions.onCitationScrollConsumed);
 
+  let showMobileContentTabs = $derived(
+    mobileVisible && Boolean(selectedVideoId) && !editing,
+  );
+
+  $effect(() => {
+    if (typeof document === "undefined") return;
+    const height = showMobileContentTabs
+      ? "calc(48px + max(0.25rem, env(safe-area-inset-bottom)))"
+      : "0px";
+    document.documentElement.style.setProperty(
+      "--mobile-tab-bar-height",
+      height,
+    );
+    return () => {
+      document.documentElement.style.setProperty(
+        "--mobile-tab-bar-height",
+        "0px",
+      );
+    };
+  });
+
   let showResetConfirm = $state(false);
   async function confirmResetVideo() {
     showResetConfirm = false;
@@ -223,7 +253,7 @@
 
     return Boolean(
       target.closest(
-        "button, a, input, textarea, select, label, [role='button'], [role='tab'], article, .prose, mark",
+        "button, a, input, textarea, select, label, [role='button'], [role='tab'], mark",
       ),
     );
   }
@@ -342,7 +372,7 @@
 </script>
 
 <section
-  class={`fade-in stagger-3 relative z-10 flex min-h-0 min-w-0 flex-col overflow-visible border-0 lg:h-full lg:gap-4 ${mobileVisible ? "h-full" : "hidden lg:flex"}`}
+  class={`${mobileVisible ? "fade-in-opacity" : "fade-in"} stagger-3 workspace-content-shell relative z-10 flex min-h-0 min-w-0 flex-col overflow-visible border-0 lg:h-full lg:gap-4 ${mobileVisible ? "h-full" : "hidden lg:flex"}`}
   id="content-view"
 >
   <WorkspaceContentMobileHeader
@@ -365,7 +395,6 @@
     {selectedVideoYoutubeUrl}
     {draft}
     {onBack}
-    {onSetMode}
     {onStartEdit}
     {onCancelEdit}
     {onSaveEdit}
@@ -380,7 +409,7 @@
   />
 
   <div
-    class="custom-scrollbar mobile-bottom-stack-padding w-full min-h-0 flex-1 overflow-y-auto px-4 max-lg:pt-4 sm:px-6 lg:px-8 lg:pt-4 lg:pb-4"
+    class="custom-scrollbar mobile-bottom-stack-padding w-full min-h-0 flex-1 overflow-y-auto px-4 max-lg:pt-4 sm:px-6 lg:px-10 lg:pt-6 lg:pb-6 xl:px-14"
     role="region"
     aria-label="Content panel"
     ontouchstart={handleSwipeStart}
@@ -390,74 +419,111 @@
       touchGesture = null;
     }}
   >
-    <WorkspaceContentContextStrip
-      {selectedChannel}
-      {selectedVideo}
-      {selectedVideoId}
-      {contentMode}
-      {loadingContent}
-      {formattingContent}
-      {formattingVideoId}
-      {formattingNotice}
-      {formattingNoticeVideoId}
-      {formattingNoticeTone}
-      {summaryQualityScore}
-      {summaryQualityNote}
-      {summaryModelUsed}
-      {summaryQualityModelUsed}
-      {onShowChannels}
-      {onShowVideos}
-    />
+    <div class="mx-auto flex w-full max-w-[84rem] flex-col">
+      <WorkspaceContentContextStrip
+        {selectedChannel}
+        {selectedVideo}
+        {selectedVideoId}
+        {contentMode}
+        {loadingContent}
+        {formattingContent}
+        {formattingVideoId}
+        {formattingNotice}
+        {formattingNoticeVideoId}
+        {formattingNoticeTone}
+        {summaryQualityScore}
+        {summaryQualityNote}
+        {summaryModelUsed}
+        {summaryQualityModelUsed}
+        {summaryTags}
+        {onShowChannels}
+        {onShowVideos}
+      />
 
-    <WorkspaceContentSurface
-      {selectedVideoId}
-      {selectedVideo}
-      {contentMode}
-      {loadingContent}
-      {editing}
-      {aiAvailable}
-      {summaryRegeneratingForSelection}
-      {contentText}
-      {contentHtml}
-      {transcriptRenderMode}
-      {contentHighlights}
-      {contentHighlightSource}
-      {creatingHighlight}
-      {creatingHighlightVideoId}
-      {creatingVocabularyReplacement}
-      {deletingHighlightId}
-      {selectedVideoHighlights}
-      {videoInfo}
-      {draft}
-      {formattingContent}
-      {formattingVideoId}
-      {revertingContent}
-      {revertingVideoId}
-      {resettingVideo}
-      {resettingVideoId}
-      {showRevertTranscriptAction}
-      {canRevertTranscript}
-      {selectedVideoYoutubeUrl}
-      {citationScrollText}
-      {summaryBodyRetrying}
-      {canPersistHighlights}
-      {onStartEdit}
-      {onCancelEdit}
-      {onSaveEdit}
-      {onCleanFormatting}
-      {onRegenerateSummary}
-      {onRevertTranscript}
-      onRequestResetVideo={() => {
-        showResetConfirm = true;
-      }}
-      {onDraftChange}
-      {onToggleAcknowledge}
-      {onCreateHighlight}
-      {onCreateVocabularyReplacement}
-      {onDeleteHighlight}
-      {onCitationScrollConsumed}
-    />
+      <WorkspaceContentSurface
+        {selectedVideoId}
+        {selectedVideo}
+        {contentMode}
+        {loadingContent}
+        {editing}
+        {aiAvailable}
+        {summaryRegeneratingForSelection}
+        {contentText}
+        {contentHtml}
+        {transcriptRenderMode}
+        {contentHighlights}
+        {contentHighlightSource}
+        {creatingHighlight}
+        {creatingHighlightVideoId}
+        {creatingVocabularyReplacement}
+        {deletingHighlightId}
+        {selectedVideoHighlights}
+        {videoInfo}
+        {draft}
+        {formattingContent}
+        {formattingVideoId}
+        {revertingContent}
+        {revertingVideoId}
+        {resettingVideo}
+        {resettingVideoId}
+        {showRevertTranscriptAction}
+        {canRevertTranscript}
+        {selectedVideoYoutubeUrl}
+        {citationScrollText}
+        {summaryBodyRetrying}
+        {canPersistHighlights}
+        {onStartEdit}
+        {onCancelEdit}
+        {onSaveEdit}
+        {onCleanFormatting}
+        {onRegenerateSummary}
+        {onRevertTranscript}
+        onRequestResetVideo={() => {
+          showResetConfirm = true;
+        }}
+        {onDraftChange}
+        {onToggleAcknowledge}
+        {onCreateHighlight}
+        {onCreateVocabularyReplacement}
+        {onDeleteHighlight}
+        {onCitationScrollConsumed}
+      />
+    </div>
   </div>
+
+  {#if showMobileContentTabs}
+    <nav
+      id="workspace-tabs-mobile"
+      data-mobile-content-tabs
+      class="fixed bottom-0 left-0 right-0 border-t border-[var(--border-soft)]/50 bg-[var(--surface)]/100 px-4 pt-1.5 pb-[max(0.45rem,env(safe-area-inset-bottom))] lg:hidden"
+      style="z-index: var(--z-mobile-tab-bar);"
+      aria-label="Content tabs"
+    >
+      <div class="mx-auto grid max-w-[36rem] grid-cols-4 items-end gap-1">
+        {#each WORKSPACE_CONTENT_MODE_ORDER as mode}
+          <button
+            type="button"
+            data-workspace-content-tab={mode}
+            class={`relative flex min-h-[46px] min-w-0 items-center justify-center px-1 pb-1.5 pt-3 text-[11px] font-bold uppercase tracking-[0.1em] transition-colors ${
+              contentMode === mode
+                ? "text-[var(--foreground)]"
+                : "text-[var(--soft-foreground)] active:text-[var(--foreground)]"
+            }`}
+            aria-pressed={contentMode === mode}
+            onclick={() => void onSetMode(mode)}
+          >
+            {#if contentMode === mode}
+              <span
+                class="absolute left-1/2 top-0.5 h-1 w-8 -translate-x-1/2 rounded-full bg-[var(--foreground)]"
+                aria-hidden="true"
+              ></span>
+            {/if}
+            <span class="truncate">{CONTENT_MODE_LABELS[mode]}</span>
+          </button>
+        {/each}
+      </div>
+    </nav>
+  {/if}
 </section>
 
 {#if overlays.errorMessage}

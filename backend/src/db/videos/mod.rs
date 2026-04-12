@@ -17,16 +17,16 @@ pub use scoped_views::{
 const VIDEO_SUGGESTION_WINDOW_BATCH_SIZE: usize = 200;
 
 pub async fn insert_video(store: &Store, video: &Video) -> Result<VideoInsertOutcome, StoreError> {
-    let outcome = super::firestore_videos::fs_insert_video(store, video).await?;
+    let outcome = super::turso_videos::ts_insert_video(store, video).await?;
     if outcome == VideoInsertOutcome::Inserted {
         store.read_cache.evict_channel(&video.channel_id).await;
     }
-    // Skip cache eviction for Existing — nothing changed in Firestore.
+    // Skip cache eviction for Existing — nothing changed.
     Ok(outcome)
 }
 
 pub async fn bulk_insert_videos(store: &Store, videos: Vec<Video>) -> Result<usize, StoreError> {
-    let count = super::firestore_videos::fs_bulk_insert_videos(store, videos).await?;
+    let count = super::turso_videos::ts_bulk_insert_videos(store, videos).await?;
     if count > 0 {
         store.read_cache.evict_channel_list().await;
     }
@@ -38,7 +38,7 @@ pub async fn get_video(
     id: &str,
     include_summary: bool,
 ) -> Result<Option<Video>, StoreError> {
-    super::firestore_videos::fs_get_video(store, id, include_summary).await
+    super::turso_videos::ts_get_video(store, id, include_summary).await
 }
 
 pub async fn get_videos(
@@ -46,7 +46,7 @@ pub async fn get_videos(
     ids: &[impl AsRef<str>],
     include_summary: bool,
 ) -> Result<std::collections::HashMap<String, Video>, StoreError> {
-    super::firestore_videos::fs_get_videos(store, ids, include_summary).await
+    super::turso_videos::ts_get_videos(store, ids, include_summary).await
 }
 
 pub async fn list_channel_videos_window(
@@ -56,18 +56,8 @@ pub async fn list_channel_videos_window(
     offset: usize,
     descending: bool,
 ) -> Result<Vec<Video>, StoreError> {
-    super::firestore_videos::fs_list_channel_videos_window(
-        store,
-        channel_id,
-        limit,
-        offset,
-        if descending {
-            firestore::FirestoreQueryDirection::Descending
-        } else {
-            firestore::FirestoreQueryDirection::Ascending
-        },
-    )
-    .await
+    super::turso_videos::ts_list_channel_videos_window(store, channel_id, limit, offset, descending)
+        .await
 }
 
 pub async fn load_scoped_video_suggestions(
@@ -142,17 +132,16 @@ pub async fn load_scoped_video_suggestions(
     Ok(videos)
 }
 
-/// Fetch every video document from Firestore without any server-side filter or ordering.
-/// Filtering and sorting happen in-memory after this call. This avoids composite indexes,
-/// which would otherwise be the primary Firestore cost driver at this scale.
+/// Fetch every video row from Turso.
+/// Filtering and sorting happen in-memory after this call.
 pub async fn load_all_videos(store: &Store) -> Result<Vec<Video>, StoreError> {
     // 1. Try cache first (TTL-based)
     if let Some(videos) = store.read_cache.get_videos().await {
         return Ok(videos);
     }
 
-    // 2. Cache miss: fetch from Firestore
-    let videos = super::firestore_videos::fs_load_all_videos(store).await?;
+    // 2. Cache miss: fetch from Turso
+    let videos = super::turso_videos::ts_load_all_videos(store).await?;
 
     // 3. Populate cache
     store.read_cache.set_videos(videos.clone()).await;
@@ -475,7 +464,7 @@ pub async fn update_video_transcript_status(
     video_id: &str,
     status: ContentStatus,
 ) -> Result<(), StoreError> {
-    super::firestore_videos::fs_update_video_transcript_status(store, video_id, status).await?;
+    super::turso_videos::ts_update_video_transcript_status(store, video_id, status).await?;
     store.read_cache.evict_videos().await;
     Ok(())
 }
@@ -485,7 +474,7 @@ pub async fn update_video_summary_status(
     video_id: &str,
     status: ContentStatus,
 ) -> Result<(), StoreError> {
-    super::firestore_videos::fs_update_video_summary_status(store, video_id, status).await?;
+    super::turso_videos::ts_update_video_summary_status(store, video_id, status).await?;
     store.read_cache.evict_videos().await;
     Ok(())
 }
@@ -495,17 +484,17 @@ pub async fn update_video_acknowledged(
     video_id: &str,
     acknowledged: bool,
 ) -> Result<(), StoreError> {
-    super::firestore_videos::fs_update_video_acknowledged(store, video_id, acknowledged).await?;
+    super::turso_videos::ts_update_video_acknowledged(store, video_id, acknowledged).await?;
     store.read_cache.evict_videos().await;
     Ok(())
 }
 
 pub async fn increment_video_retry_count(store: &Store, video_id: &str) -> Result<(), StoreError> {
-    super::firestore_videos::fs_increment_video_retry_count(store, video_id).await
+    super::turso_videos::ts_increment_video_retry_count(store, video_id).await
 }
 
 pub async fn reset_video_retry_count(store: &Store, video_id: &str) -> Result<(), StoreError> {
-    super::firestore_videos::fs_reset_video_retry_count(store, video_id).await
+    super::turso_videos::ts_reset_video_retry_count(store, video_id).await
 }
 
 /// Repair stale `loading` rows and re-queue videos that hit `max_retries` (excluded from
@@ -533,15 +522,11 @@ pub(crate) fn apply_heal_queue_video_fields(video: &mut Video, max_retries: u8) 
 }
 
 pub async fn heal_queue_videos(store: &Store, max_retries: u8) -> Result<usize, StoreError> {
-    super::firestore_videos::fs_heal_queue_videos(store, max_retries).await
+    super::turso_videos::ts_heal_queue_videos(store, max_retries).await
 }
 
 /// Build a channel snapshot. Loads the full video list once and derives both
 /// the oldest-ready date and the filtered/sorted video page from the same slice.
-///
-/// Note: filtering and sorting are done in-memory rather than via Firestore composite
-/// indexes. Ideally Firestore would handle ordering/filtering server-side, but composite
-/// indexes carry significant storage and write costs that dominate the bill at this scale.
 async fn build_channel_snapshot_data(
     store: &Store,
     channel: Channel,

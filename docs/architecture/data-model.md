@@ -1,71 +1,41 @@
+---
+aside: false
+---
+
 # Data Model
 
 <script setup>
 const storageOwnershipDiagram = String.raw`
-flowchart LR
-  subgraph s3canonical["S3-backed canonical records"]
-    channels[channels]
-    transcripts[transcripts]
-    summaries[summaries]
-    videoinfo[video_info]
-  end
+flowchart TB
+  canonical[Canonical content]
+  audio[Generated audio cache]
+  userstate[User-scoped state]
+  search[Derived search]
+  appstate[Firestore app state]
 
-  subgraph firestorecanonical["Firestore-backed records"]
-    videos[videos]
-  end
-
-  subgraph userstate["User-scoped S3 records"]
-    subscriptions[user-channel-subscriptions]
-    memberships[user-video-memberships]
-    videostate[user-video-states]
-    highlights[user-highlights]
-    chats[user-conversations]
-  end
-
-  subgraph search["Derived search projection"]
-    sources[search_sources]
-    chunks[search_chunks]
-    vectors[S3 Vectors embeddings]
-    fts[libSQL BM25 / FTS5]
-  end
-
-  subgraph firestore["Firestore"]
-    prefs[dastill_preferences]
-    tts[dastill_tts_stats]
-  end
-
-  channels --> videos
-  videos --> transcripts
-  videos --> summaries
-  videos --> videoinfo
-  transcripts --> sources
-  summaries --> sources
-  sources --> chunks
-  chunks --> vectors
-  chunks --> fts
-  subscriptions --> videos
-  memberships --> videos
-  videostate --> videos
+  canonical --> audio
+  canonical --> search
+  userstate --> canonical
 `;
 
 const searchProjectionDiagram = String.raw`
-flowchart LR
+flowchart TB
   transcript[Transcript content]
   summary[Summary content]
   pending[Mark search_sources pending]
   worker[Search index worker]
-  chunks[search_chunks objects]
-  fts[libSQL / Turso FTS5]
-  vectors[S3 Vectors]
-  results[Search + chat retrieval]
+  chunks[search_chunks]
+  keyword[Keyword index<br/>libSQL / Turso]
+  vectors[Semantic index<br/>S3 Vectors]
+  results[Search + chat]
 
   transcript --> pending
   summary --> pending
   pending --> worker
   worker --> chunks
-  worker --> fts
+  worker --> keyword
   worker --> vectors
-  fts --> results
+  keyword --> results
   vectors --> results
 `;
 </script>
@@ -122,6 +92,18 @@ Some API payloads intentionally merge canonical and user-scoped records:
 - Anonymous requests do not persist these user-scoped records. They operate against the
   seeded default channel scope exposed by `AccessContext`.
 
+## Client-Side Storage
+
+Browser storage is only a cache or UI-state layer. It is not the source of truth for
+channels, videos, transcripts, summaries, or other canonical content.
+
+- Canonical and user-owned records stay on the backend in the stores described above.
+- IndexedDB, `localStorage`, and `sessionStorage` hold derived startup caches, layout
+  preferences, and ephemeral draft state only.
+- Any browser-stored user data must be keyed by auth scope so one signed-in user,
+  signed-out visitor, or anonymous Firebase identity cannot read another scope's data
+  from the same browser profile.
+
 ## Search Projection
 
 Search is intentionally modeled as a derived projection stored in S3:
@@ -169,6 +151,17 @@ Each chunk is stored as an S3 object with:
 - `token_count`
 
 Embeddings are stored separately in S3 Vectors.
+
+## Generated Audio Cache
+
+Summary audio is not treated as canonical source content. It is a derived cache generated from the current summary text when Polly TTS is enabled.
+
+- storage key shape: `summary-audio/{video_id}/{audio_hash}.{ext}`
+- cache invalidation key: a hash of the current summary content plus the active Polly voice/engine/output settings
+- read path: `GET /api/videos/{id}/summary/audio`
+- generation path: `POST /api/videos/{id}/summary/audio`
+
+If the summary changes or the TTS settings change, the cache key changes and the old audio is no longer reused.
 
 ## User-Scoped Library Records
 

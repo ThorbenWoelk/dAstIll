@@ -1,12 +1,23 @@
 import { Window as HappyWindow } from "happy-dom";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import {
+  SECTION_NAVIGATION_ITEMS,
+  goHintKeyForSection,
+} from "../src/lib/section-navigation";
+import {
+  WORKSPACE_CONTENT_MODE_ORDER,
+  goHintKeyForWorkspaceContentMode,
+} from "../src/lib/workspace/navigation";
+import {
   buildShortcutManual,
   computeGoHintBadgeStyles,
   GO_SEQUENCE_HINTS,
   isApplePlatform,
   isEditableShortcutTarget,
   isInsideModalDialog,
+  resolveGlobalSectionShortcut,
+  resolveInlineActionHintKey,
+  resolveWorkspaceContentModeShortcut,
   shouldIgnoreGlobalShortcutNavigation,
 } from "../src/lib/utils/keyboard-shortcuts";
 
@@ -102,11 +113,69 @@ describe("GO_SEQUENCE_HINTS", () => {
       "4",
       "5",
       "6",
-      ",",
-      "7",
-      "8",
-      "9",
+      "I",
+      "S",
+      "H",
+      "T",
+      "*",
+      "]",
+      "[",
+      "↵",
+      ".",
     ]);
+  });
+
+  it("reuses section and content-mode hint contracts", () => {
+    expect(GO_SEQUENCE_HINTS.slice(0, SECTION_NAVIGATION_ITEMS.length)).toEqual(
+      SECTION_NAVIGATION_ITEMS.map((item) => ({
+        key: goHintKeyForSection(item.section),
+        label: item.label,
+      })),
+    );
+
+    expect(
+      GO_SEQUENCE_HINTS.slice(
+        SECTION_NAVIGATION_ITEMS.length,
+        SECTION_NAVIGATION_ITEMS.length + WORKSPACE_CONTENT_MODE_ORDER.length,
+      ).map((hint) => hint.key),
+    ).toEqual(
+      WORKSPACE_CONTENT_MODE_ORDER.map((mode) =>
+        goHintKeyForWorkspaceContentMode(mode),
+      ),
+    );
+  });
+});
+
+describe("resolveGlobalSectionShortcut", () => {
+  it("maps the global number shortcuts to sections and docs", () => {
+    expect(resolveGlobalSectionShortcut("1")).toBe("/");
+    expect(resolveGlobalSectionShortcut("2")).toBe("/download-queue");
+    expect(resolveGlobalSectionShortcut("3")).toBe("/highlights");
+    expect(resolveGlobalSectionShortcut("4")).toBe("/vocabulary");
+    expect(resolveGlobalSectionShortcut("5")).toBe("/chat");
+    expect(resolveGlobalSectionShortcut("6")).toBe("docs");
+    expect(resolveGlobalSectionShortcut("7")).toBeNull();
+  });
+});
+
+describe("resolveWorkspaceContentModeShortcut", () => {
+  it("accepts mnemonic keys case-insensitively", () => {
+    expect(resolveWorkspaceContentModeShortcut("i")).toBe("info");
+    expect(resolveWorkspaceContentModeShortcut("S")).toBe("summary");
+    expect(resolveWorkspaceContentModeShortcut("h")).toBe("highlights");
+    expect(resolveWorkspaceContentModeShortcut("T")).toBe("transcript");
+    expect(resolveWorkspaceContentModeShortcut("x")).toBeNull();
+  });
+});
+
+describe("resolveInlineActionHintKey", () => {
+  it("normalizes inline action shortcut keys", () => {
+    expect(resolveInlineActionHintKey("Enter")).toBe("↵");
+    expect(resolveInlineActionHintKey(".")).toBe(".");
+    expect(resolveInlineActionHintKey("*")).toBe("*");
+    expect(resolveInlineActionHintKey("]")).toBe("]");
+    expect(resolveInlineActionHintKey("[")).toBe("[");
+    expect(resolveInlineActionHintKey("x")).toBeNull();
   });
 });
 
@@ -122,10 +191,27 @@ describe("buildShortcutManual", () => {
     expect(everywhere?.rows.some((r) => r.keys === "Cmd + 4")).toBe(true);
     expect(everywhere?.rows.some((r) => r.keys === "Cmd + ,")).toBe(true);
     const workspaceHome = groups.find((g) => g.title === "Workspace home");
-    expect(workspaceHome?.rows.some((r) => r.keys === "Cmd + 7")).toBe(true);
-    expect(workspaceHome?.rows.some((r) => r.keys === "Cmd + 9")).toBe(true);
+    expect(workspaceHome?.rows.some((r) => r.keys === "Cmd + I")).toBe(true);
+    expect(workspaceHome?.rows.some((r) => r.keys === "Cmd + T")).toBe(true);
+    expect(workspaceHome?.rows.some((r) => r.keys === "Cmd + *")).toBe(true);
+    expect(workspaceHome?.rows.some((r) => r.keys === "Cmd + ]")).toBe(true);
+    expect(workspaceHome?.rows.some((r) => r.keys === "Cmd + [")).toBe(true);
+    expect(workspaceHome?.rows.some((r) => r.keys === "Cmd + Return")).toBe(
+      true,
+    );
+    expect(workspaceHome?.rows.some((r) => r.keys === "Cmd + .")).toBe(true);
     const guideTour = groups.find((g) => g.title === "Feature guide tour");
     expect(guideTour?.rows[0]?.keys).toBe("Arrow left or Arrow up");
+  });
+
+  it("swaps the primary modifier label for Ctrl layouts", () => {
+    const groups = buildShortcutManual("Ctrl");
+    const everywhere = groups.find((g) => g.title === "Everywhere");
+    const workspaceHome = groups.find((g) => g.title === "Workspace home");
+    expect(everywhere?.rows.some((r) => r.keys === "Ctrl + 1")).toBe(true);
+    expect(everywhere?.rows.some((r) => r.keys === "Ctrl + ,")).toBe(true);
+    expect(workspaceHome?.rows.some((r) => r.keys === "Ctrl + K")).toBe(true);
+    expect(workspaceHome?.rows.some((r) => r.keys === "Ctrl + H")).toBe(true);
   });
 });
 

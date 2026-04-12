@@ -7,6 +7,7 @@
     readSummaryAudioSession,
     resetSummaryAudioPlayback,
     resolveSummaryAudioTimelineState,
+    setSummaryAudioUnavailable,
     setSummaryAudioStatus,
     subscribeToSummaryAudioSession,
     syncSummaryAudioDebugState,
@@ -23,6 +24,7 @@
 
   let status = $state<SummaryAudioStatus>("missing");
   let summaryAudioError = $state<string | null>(null);
+  let audioRequested = $state(false);
   let audioPlayer = $state<HTMLAudioElement | null>(null);
   let audioSrc = $state<string | null>(null);
   let currentTime = $state(0);
@@ -30,18 +32,46 @@
   let playbackRate = $state(1);
   let summaryWordCount = $state<number | null>(null);
   let estimatedSecs = $state<number | null>(null);
+  let waveformContainer = $state<HTMLDivElement | null>(null);
 
   const playbackRates = [1, 1.25, 1.5, 2, 2.5, 3, 0.75];
+  const BAR_COUNT = 80;
   const timelineState = $derived(
     resolveSummaryAudioTimelineState(currentTime, duration),
   );
+  const unavailableMessage = $derived(
+    summaryAudioError || "Text-to-speech is currently unavailable.",
+  );
 
   let unsubscribeSession: (() => void) | null = null;
+
+  // Generate a deterministic waveform pattern from the videoId
+  function generateWaveformBars(id: string | null): number[] {
+    if (!id) return Array(BAR_COUNT).fill(0.3);
+    let seed = 0;
+    for (let i = 0; i < id.length; i++) {
+      seed = ((seed << 5) - seed + id.charCodeAt(i)) | 0;
+    }
+    const bars: number[] = [];
+    for (let i = 0; i < BAR_COUNT; i++) {
+      seed = (seed * 16807 + 0) % 2147483647;
+      const base = (seed & 0xffff) / 0xffff;
+      // Shape: gentle arc with variation
+      const position = i / BAR_COUNT;
+      const envelope =
+        0.3 + 0.7 * Math.sin(position * Math.PI) * (0.5 + 0.5 * base);
+      bars.push(Math.max(0.08, Math.min(1, envelope)));
+    }
+    return bars;
+  }
+
+  const waveformBars = $derived(generateWaveformBars(videoId));
 
   function applySession(videoIdValue: string) {
     const session = readSummaryAudioSession(videoIdValue);
     status = session.status;
     summaryAudioError = session.summaryAudioError;
+    audioRequested = session.audioRequested;
     audioSrc = session.audioSrc;
     currentTime = session.currentTime;
     duration = session.duration;
@@ -62,9 +92,13 @@
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    if (status === "missing" || status === "generating") return;
+    if (
+      status === "missing" ||
+      status === "unavailable" ||
+      status === "generating"
+    )
+      return;
 
-    // Ignore if typing in an input
     if (
       e.target instanceof HTMLInputElement ||
       e.target instanceof HTMLTextAreaElement
@@ -95,6 +129,14 @@
       if (resp.ok) {
         const data = await resp.json();
         syncSummaryAudioDebugState(videoId, data);
+        return;
+      }
+      if (resp.status === 503) {
+        if (readSummaryAudioSession(videoId).audioRequested) {
+          const message =
+            (await resp.text()) || "Text-to-speech is currently unavailable.";
+          setSummaryAudioUnavailable(videoId, message);
+        }
       }
     } catch (e) {
       console.error("Failed to check audio status", e);
@@ -194,11 +236,22 @@
     }
   }
 
-  function handleScrub(e: Event) {
-    const target = e.target as HTMLInputElement;
-    if (audioPlayer) {
-      audioPlayer.currentTime = parseFloat(target.value);
-    }
+  function handleWaveformClick(e: MouseEvent) {
+    if (
+      !waveformContainer ||
+      !audioPlayer ||
+      !timelineState.knownDuration ||
+      status === "missing" ||
+      status === "unavailable" ||
+      status === "generating"
+    )
+      return;
+    const rect = waveformContainer.getBoundingClientRect();
+    const fraction = Math.max(
+      0,
+      Math.min(1, (e.clientX - rect.left) / rect.width),
+    );
+    audioPlayer.currentTime = fraction * duration;
   }
 
   $effect(() => {
@@ -240,82 +293,89 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<div class="mb-4 flex flex-col gap-1.5">
-  <div class="flex items-center gap-3 py-1">
-    <div class="flex items-center gap-1">
-      {#if status === "generating" || status === "loading"}
-        <div
-          class="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--accent-soft)]/20 text-[var(--accent-strong)]"
+<div class="waveform-player">
+  {#if status === "unavailable" && audioRequested}
+    <div class="waveform-area waveform-area-unavailable" role="status">
+      <div class="waveform-bars waveform-bars-idle" aria-hidden="true">
+        {#each waveformBars as height}
+          <div class="waveform-bar" style="height: {height * 100}%"></div>
+        {/each}
+      </div>
+      <div class="waveform-unavailable-copy">
+        <span class="waveform-status-label">Audio unavailable</span>
+        <span class="waveform-unavailable-text">{unavailableMessage}</span>
+      </div>
+    </div>
+  {:else if status === "missing"}
+    <!-- Generate prompt with waveform preview -->
+    <button
+      class="waveform-generate-btn"
+      onclick={generateAudio}
+      disabled={!summaryReady}
+      title={summaryReady ? "Generate audio" : "Summary not yet available"}
+    >
+      <div class="waveform-bars waveform-bars-idle" aria-hidden="true">
+        {#each waveformBars as height}
+          <div class="waveform-bar" style="height: {height * 100}%"></div>
+        {/each}
+      </div>
+      <div class="waveform-generate-overlay">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
         >
-          <span
-            class="h-4 w-4 animate-spin rounded-full border-2 border-[var(--soft-foreground)]/30 border-t-[var(--accent)]"
-          ></span>
-        </div>
-      {:else if status === "missing"}
+          <polygon points="5 3 19 12 5 21 5 3" />
+        </svg>
+        <span class="waveform-generate-label">
+          {#if summaryWordCount !== null}
+            {@const speakMins = Math.round(summaryWordCount / 140) || 1}
+            Generate ~{speakMins}m audio
+          {:else}
+            Generate audio
+          {/if}
+        </span>
+      </div>
+    </button>
+  {:else if status === "generating" || status === "loading"}
+    <!-- Generating state with animated waveform -->
+    <div class="waveform-area">
+      <div class="waveform-bars waveform-bars-generating" aria-hidden="true">
+        {#each waveformBars as height, i}
+          <div
+            class="waveform-bar"
+            style="height: {height * 100}%; animation-delay: {i * 20}ms"
+          ></div>
+        {/each}
+      </div>
+      <span class="waveform-status-label">
+        {status === "generating" ? "Generating audio..." : "Loading..."}
+      </span>
+    </div>
+  {:else}
+    <!-- Active player with interactive waveform -->
+    <div class="waveform-area waveform-area-active">
+      <div class="waveform-controls">
         <button
-          onclick={generateAudio}
-          disabled={!summaryReady}
-          class="group flex h-10 w-10 items-center justify-center rounded-full bg-[var(--accent-soft)]/40 text-[var(--accent-strong)] transition-all hover:bg-[var(--accent-wash)] hover:scale-105 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
-          title={summaryReady
-            ? "Generate Summary Audio"
-            : "Summary not yet available"}
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="7 10 12 15 17 10" />
-            <line x1="12" x2="12" y1="3" y2="15" />
-          </svg>
-        </button>
-      {:else}
-        <button
-          onclick={() => skip(-10)}
-          class="relative flex h-8 w-8 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-60 transition-all hover:bg-[var(--accent-wash)] hover:opacity-100 active:scale-95"
-          title="Back 10s (Arrow Left)"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-            <path d="M3 3v5h5" />
-          </svg>
-          <span
-            class="absolute bottom-0.5 right-0.5 text-[8px] font-bold leading-none"
-            style="letter-spacing: -0.03em">10</span
-          >
-        </button>
-
-        <button
+          class="waveform-play-btn"
           onclick={togglePlay}
-          class="group flex h-10 w-10 items-center justify-center rounded-full bg-[var(--accent-soft)]/40 text-[var(--accent-strong)] transition-all hover:bg-[var(--accent-wash)] hover:scale-105 active:scale-95"
           title={status === "playing" ? "Pause (Space)" : "Play (Space)"}
         >
           {#if status === "playing"}
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              width="18"
-              height="18"
+              width="12"
+              height="12"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              stroke-width="2"
+              stroke-width="2.5"
               stroke-linecap="round"
               stroke-linejoin="round"
             >
@@ -325,15 +385,15 @@
           {:else}
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              width="18"
-              height="18"
+              width="12"
+              height="12"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              stroke-width="2"
+              stroke-width="2.5"
               stroke-linecap="round"
               stroke-linejoin="round"
-              class="ml-0.5"
+              class="ml-px"
             >
               <polygon points="5 3 19 12 5 21 5 3" />
             </svg>
@@ -341,64 +401,43 @@
         </button>
 
         <button
-          onclick={() => skip(10)}
-          class="relative flex h-8 w-8 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-60 transition-all hover:bg-[var(--accent-wash)] hover:opacity-100 active:scale-95"
-          title="Forward 10s (Arrow Right)"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
-            <path d="M21 3v5h-5" />
-          </svg>
-          <span
-            class="absolute bottom-0.5 left-0.5 text-[8px] font-bold leading-none"
-            style="letter-spacing: -0.03em">10</span
-          >
-        </button>
-
-        <button
+          class="waveform-rate-btn"
           onclick={cyclePlaybackRate}
-          class="ml-1 flex h-8 min-w-[32px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-[var(--soft-foreground)] opacity-60 transition-all hover:bg-[var(--accent-wash)] hover:opacity-100 active:scale-95"
-          title="Cycle Playback Speed"
+          title="Playback speed"
         >
           {playbackRate}x
         </button>
-      {/if}
-    </div>
+      </div>
 
-    <div class="flex flex-1 flex-col gap-1.5 min-w-0">
-      <div class="flex items-center justify-between">
-        {#if status === "generating" || status === "loading"}
-          <span
-            class="text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--soft-foreground)] opacity-70"
-          >
-            {status === "generating" ? "Generating audio" : "Loading"}
-          </span>
-        {:else if status === "missing" && summaryWordCount !== null}
-          {@const speakMins = Math.round(summaryWordCount / 140) || 1}
-          <span class="text-[10px] text-[var(--soft-foreground)] opacity-50">
-            {summaryWordCount} words &middot; ~{speakMins} min audio
-            {#if estimatedSecs !== null}
-              &middot; ~{Math.round(estimatedSecs)}s to generate
-            {/if}
-          </span>
-        {:else}
-          <div></div>
-        {/if}
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div
+        class="waveform-bars waveform-bars-interactive"
+        bind:this={waveformContainer}
+        onclick={handleWaveformClick}
+        role="slider"
+        tabindex="0"
+        aria-label="Audio progress"
+        aria-valuenow={Math.round(currentTime)}
+        aria-valuemin={0}
+        aria-valuemax={Math.round(duration)}
+      >
+        {#each waveformBars as height, i}
+          {@const barProgress = i / BAR_COUNT}
+          <div
+            class="waveform-bar {barProgress <=
+            timelineState.progressPercent / 100
+              ? 'waveform-bar-played'
+              : 'waveform-bar-unplayed'}"
+            style="height: {height * 100}%"
+          ></div>
+        {/each}
+      </div>
+
+      <div class="waveform-time">
         {#if currentTime > 0 || duration > 0}
           {@const knownDuration = isFinite(duration) && duration > 0}
-          <span
-            class="text-[10px] tabular-nums text-[var(--soft-foreground)] opacity-50"
-          >
+          <span class="waveform-time-text">
             {Math.floor(currentTime / 60)}:{(currentTime % 60)
               .toFixed(0)
               .padStart(2, "0")}{#if knownDuration}
@@ -408,36 +447,11 @@
           </span>
         {/if}
       </div>
-      <div class="group relative flex h-4 items-center">
-        <input
-          type="range"
-          min="0"
-          max={timelineState.sliderMax}
-          step="0.1"
-          value={timelineState.sliderValue}
-          oninput={handleScrub}
-          disabled={status === "missing" ||
-            status === "generating" ||
-            !timelineState.knownDuration}
-          class="timeline-slider w-full cursor-pointer appearance-none bg-transparent"
-        />
-        <div
-          class="pointer-events-none absolute h-1 w-full rounded-full bg-[var(--soft-foreground)]/10"
-          aria-hidden="true"
-        >
-          <div
-            class="h-full rounded-full bg-[var(--accent)] transition-all duration-75"
-            style="width: {timelineState.progressPercent}%"
-          ></div>
-        </div>
-      </div>
     </div>
-  </div>
+  {/if}
 
-  {#if summaryAudioError}
-    <span class="px-1 text-[10px] font-medium text-[var(--danger)]"
-      >{summaryAudioError}</span
-    >
+  {#if summaryAudioError && status !== "unavailable"}
+    <span class="waveform-error">{summaryAudioError}</span>
   {/if}
 
   {#if audioSrc}
@@ -460,46 +474,315 @@
 </div>
 
 <style>
-  .timeline-slider {
-    z-index: 10;
+  .waveform-player {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-bottom: 1.5rem;
   }
 
-  .timeline-slider::-webkit-slider-thumb {
-    appearance: none;
-    height: 12px;
-    width: 12px;
-    border-radius: 50%;
-    background: var(--accent-strong);
+  /* Waveform bars container */
+  .waveform-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 1.5px;
+    height: 40px;
+    width: 100%;
+  }
+
+  .waveform-bar {
+    flex: 1;
+    min-width: 0;
+    border-radius: 1px;
+    background: var(--accent);
+    opacity: 0.25;
+    transition:
+      opacity 0.1s ease,
+      background 0.1s ease;
+  }
+
+  /* Idle / generate state */
+  .waveform-generate-btn {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    background: none;
+    border: none;
+    padding: 0;
     cursor: pointer;
-    border: 2px solid var(--panel-surface);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    opacity: 0;
+    font-family: inherit;
+    color: inherit;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
     transition: opacity 0.15s ease;
   }
 
-  .group:hover .timeline-slider::-webkit-slider-thumb {
-    opacity: 1;
+  .waveform-generate-btn:disabled {
+    pointer-events: none;
+    opacity: 0.3;
   }
 
-  .timeline-slider:focus::-webkit-slider-thumb {
-    opacity: 1;
-    box-shadow: 0 0 0 3px var(--accent-soft);
+  .waveform-generate-btn:hover .waveform-bars-idle .waveform-bar {
+    opacity: 0.4;
   }
 
-  /* Firefox */
-  .timeline-slider::-moz-range-thumb {
-    height: 12px;
-    width: 12px;
+  .waveform-generate-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    opacity: 1;
+    transition:
+      opacity 0.15s ease,
+      transform 0.15s ease;
+    color: var(--accent-strong);
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface) 58%, transparent) 0%,
+      color-mix(in srgb, var(--surface) 72%, transparent) 100%
+    );
+  }
+
+  .waveform-generate-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .waveform-generate-btn:hover .waveform-generate-overlay {
+    transform: translateY(-1px);
+  }
+
+  /* Generating animation */
+  .waveform-bars-generating .waveform-bar {
+    animation: wave-pulse 1.2s ease-in-out infinite alternate;
+  }
+
+  @keyframes wave-pulse {
+    0% {
+      opacity: 0.15;
+      transform: scaleY(0.6);
+    }
+    100% {
+      opacity: 0.5;
+      transform: scaleY(1);
+    }
+  }
+
+  /* Active/interactive waveform */
+  .waveform-area {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+
+  .waveform-area-active {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    grid-template-rows: auto;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .waveform-area-unavailable {
+    gap: 0.55rem;
+    opacity: 0.72;
+  }
+
+  .waveform-unavailable-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 0.12rem;
+  }
+
+  .waveform-unavailable-text {
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--soft-foreground);
+  }
+
+  .waveform-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .waveform-play-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
     border-radius: 50%;
-    background: var(--accent-strong);
+    background: var(--accent-soft);
+    border: none;
+    color: var(--accent-strong);
     cursor: pointer;
-    border: 2px solid var(--panel-surface);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    opacity: 0;
-    transition: opacity 0.15s ease;
+    transition: all 0.15s ease;
+    padding: 0;
   }
 
-  .group:hover .timeline-slider::-moz-range-thumb {
+  .waveform-play-btn:hover {
+    background: var(--accent-wash);
+    transform: scale(1.05);
+  }
+
+  .waveform-play-btn:active {
+    transform: scale(0.95);
+  }
+
+  .waveform-rate-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    height: 20px;
+    border-radius: 9999px;
+    background: none;
+    border: none;
+    color: var(--soft-foreground);
+    font-size: 9px;
+    font-weight: 700;
+    cursor: pointer;
+    padding: 0 4px;
+    opacity: 0.5;
+    transition: opacity 0.15s ease;
+    font-family: inherit;
+  }
+
+  .waveform-rate-btn:hover {
     opacity: 1;
+  }
+
+  .waveform-bars-interactive {
+    cursor: pointer;
+  }
+
+  .waveform-bars-interactive:hover .waveform-bar {
+    opacity: 0.35;
+  }
+
+  .waveform-bars-interactive:hover .waveform-bar-played {
+    opacity: 0.9;
+  }
+
+  .waveform-bar-played {
+    opacity: 0.8;
+    background: var(--accent);
+  }
+
+  .waveform-bar-unplayed {
+    opacity: 0.2;
+    background: var(--accent);
+  }
+
+  .waveform-time {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+  }
+
+  .waveform-time-text {
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+    color: var(--soft-foreground);
+    opacity: 0.5;
+    white-space: nowrap;
+  }
+
+  .waveform-status-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--soft-foreground);
+    opacity: 0.6;
+    text-align: center;
+    margin-top: 0.25rem;
+  }
+
+  .waveform-error {
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--danger);
+    padding: 0 0.25rem;
+  }
+
+  .ml-px {
+    margin-left: 1px;
+  }
+
+  @media (max-width: 1023px) {
+    .waveform-player {
+      margin-bottom: 0;
+      min-width: 0;
+    }
+
+    .waveform-area,
+    .waveform-area-unavailable {
+      gap: 0.3rem;
+    }
+
+    .waveform-bars {
+      height: 26px;
+    }
+
+    .waveform-generate-btn {
+      min-width: 0;
+    }
+
+    .waveform-generate-overlay {
+      justify-content: flex-start;
+      padding: 0 0.35rem;
+      gap: 0.35rem;
+    }
+
+    .waveform-generate-label,
+    .waveform-status-label {
+      font-size: 9px;
+      letter-spacing: 0.1em;
+    }
+
+    .waveform-area-unavailable {
+      justify-content: center;
+    }
+
+    .waveform-unavailable-copy {
+      gap: 0.04rem;
+    }
+
+    .waveform-unavailable-text {
+      font-size: 10px;
+      line-height: 1.25;
+    }
+
+    .waveform-area-active {
+      grid-template-columns: auto 1fr auto;
+      gap: 0.45rem;
+    }
+
+    .waveform-controls {
+      gap: 0.15rem;
+    }
+
+    .waveform-play-btn {
+      width: 24px;
+      height: 24px;
+    }
+
+    .waveform-rate-btn {
+      min-width: 24px;
+      height: 18px;
+      font-size: 8px;
+      padding: 0 3px;
+    }
+
+    .waveform-time-text {
+      font-size: 9px;
+    }
   }
 </style>

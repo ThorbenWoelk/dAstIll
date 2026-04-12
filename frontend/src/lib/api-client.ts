@@ -1,6 +1,9 @@
 import { getCurrentAuthToken } from "$lib/auth-token";
+import { normalizeUserErrorMessage } from "$lib/user-error";
 
-function normalizeApiBase(value?: string) {
+const TAURI_ANDROID_DEV_API_BASE = "http://127.0.0.1:3544";
+
+export function normalizeApiBase(value?: string) {
   const normalized = value?.trim();
   if (!normalized) {
     return "";
@@ -13,8 +16,36 @@ export const API_BASE = normalizeApiBase(
   (import.meta as { env?: { VITE_API_BASE?: string } }).env?.VITE_API_BASE,
 );
 
+export function resolveImplicitApiBase(
+  apiBase = API_BASE,
+  options?: { currentOrigin?: string; userAgent?: string },
+): string {
+  if (apiBase) {
+    return apiBase;
+  }
+
+  const currentOrigin =
+    options?.currentOrigin ??
+    (typeof window !== "undefined" ? window.location.origin : undefined);
+  const userAgent =
+    options?.userAgent ??
+    (typeof navigator !== "undefined" ? navigator.userAgent : undefined);
+
+  if (
+    currentOrigin === "http://tauri.localhost" &&
+    userAgent &&
+    /android/i.test(userAgent)
+  ) {
+    return TAURI_ANDROID_DEV_API_BASE;
+  }
+
+  return "";
+}
+
 export class BackendUnavailableError extends Error {
-  constructor(message = "Backend is unreachable.") {
+  constructor(
+    message = "Sorry, we could not connect right now. Please try again.",
+  ) {
     super(message);
     this.name = "BackendUnavailableError";
   }
@@ -79,8 +110,8 @@ export function createAbortError(): Error {
   return error;
 }
 
-export function resolveApiUrl(path: string): string {
-  return `${API_BASE}${path}`;
+export function resolveApiUrl(path: string, apiBase = API_BASE): string {
+  return `${resolveImplicitApiBase(apiBase)}${path}`;
 }
 
 export async function createApiRequestInit(
@@ -149,7 +180,7 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
         message,
       });
       throw new RateLimitedError(
-        message.trim() || "Rate limit exceeded",
+        normalizeUserErrorMessage(message, { status: 429 }),
         retryAfterMs,
       );
     }
@@ -164,7 +195,14 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
     console.error(`[API Error] ${method} ${path}`, {
       status: response.status,
     });
-    throw new Error(trimmed || `Request failed (${response.status})`);
+    throw new Error(
+      normalizeUserErrorMessage(
+        trimmed || `Request failed (${response.status})`,
+        {
+          status: response.status,
+        },
+      ),
+    );
   }
 
   if (response.status === 204) {

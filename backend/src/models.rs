@@ -1,13 +1,14 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
+use utoipa::ToSchema;
 
 use crate::services::search::SearchSourceKind;
 
 pub const OTHERS_CHANNEL_ID: &str = "__others__";
 pub const OTHERS_CHANNEL_NAME: &str = "Others";
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct Channel {
     pub id: String,
@@ -37,7 +38,7 @@ pub struct UserChannelSubscription {
     pub earliest_sync_date_user_set: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderKind {
@@ -51,7 +52,7 @@ pub enum ProviderKind {
     Manual,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 #[serde(rename_all = "snake_case")]
 pub enum SourceBackingKind {
@@ -61,7 +62,7 @@ pub enum SourceBackingKind {
     Manual,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 #[serde(rename_all = "snake_case")]
 pub enum SubscriptionContainerKind {
@@ -71,7 +72,7 @@ pub enum SubscriptionContainerKind {
     StandaloneTrackedSource,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 #[serde(rename_all = "snake_case")]
 pub enum ContentSourceKind {
@@ -84,7 +85,7 @@ pub enum ContentSourceKind {
     StandaloneTrackedSource,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 #[serde(rename_all = "snake_case")]
 pub enum ContentItemKind {
@@ -95,7 +96,7 @@ pub enum ContentItemKind {
     Video,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 #[serde(rename_all = "snake_case")]
 pub enum ContentPartKind {
@@ -107,7 +108,7 @@ pub enum ContentPartKind {
     GeneratedSummary,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 #[serde(rename_all = "snake_case")]
 pub enum MediaAssetKind {
@@ -115,14 +116,14 @@ pub enum MediaAssetKind {
     GeneratedSummaryAudio,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct ProviderIdentity {
     pub provider: ProviderKind,
     pub external_id: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct SubscriptionContainer {
     pub id: String,
@@ -136,7 +137,7 @@ pub struct SubscriptionContainer {
     pub source_ids: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct ContentSource {
     pub id: String,
@@ -165,7 +166,7 @@ pub struct ContentSource {
     pub external_ids: Vec<ProviderIdentity>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct ContentItem {
     pub id: String,
@@ -183,7 +184,7 @@ pub struct ContentItem {
     pub external_ids: Vec<ProviderIdentity>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct ContentPart {
     pub id: String,
@@ -195,7 +196,7 @@ pub struct ContentPart {
     pub text_available: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct MediaAsset {
     pub id: String,
@@ -467,7 +468,7 @@ pub fn content_parts_from_video(video: &Video, source: &ContentSource) -> Vec<Co
     ]
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 #[serde(rename_all = "snake_case")]
 pub enum ContentStatus {
@@ -477,7 +478,7 @@ pub enum ContentStatus {
     Failed,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct Video {
     pub id: String,
@@ -508,7 +509,7 @@ pub struct UserVideoState {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct VideoInfo {
     pub video_id: String,
@@ -526,7 +527,7 @@ pub struct VideoInfo {
 
 /// A time-stamped caption segment from yt-dlp json3 output.
 /// Only present on transcripts extracted via the yt-dlp fallback path.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct TimedSegment {
     /// Start position in the video, in seconds.
@@ -534,7 +535,7 @@ pub struct TimedSegment {
     pub text: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct Transcript {
     pub video_id: String,
@@ -548,7 +549,7 @@ pub struct Transcript {
     pub timed_text: Option<Vec<TimedSegment>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct Summary {
     pub video_id: String,
@@ -557,9 +558,13 @@ pub struct Summary {
     pub quality_score: Option<u8>,
     pub quality_note: Option<String>,
     pub quality_model_used: Option<String>,
+    #[serde(default)]
+    pub summary_tags: Vec<String>,
+    #[serde(default)]
+    pub summary_tags_evaluated: bool,
 }
 
-#[derive(Debug, Clone, TS)]
+#[derive(Debug, Clone, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct SummaryEvaluationJob {
     pub video_id: String,
@@ -568,15 +573,16 @@ pub struct SummaryEvaluationJob {
     pub summary_content: String,
 }
 
-#[derive(Debug, Clone, TS)]
+#[derive(Debug, Clone, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct SummaryEvaluationResult {
     pub quality_score: u8,
     pub quality_note: Option<String>,
     pub quality_model_used: Option<String>,
+    pub summary_tags: Vec<String>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct UserPreferences {
     /// Ordered list of channel IDs for the "custom" sort mode.
@@ -594,7 +600,7 @@ fn default_channel_sort_mode() -> String {
     "custom".to_string()
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, TS, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS, PartialEq, Eq, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct VocabularyReplacement {
     pub from: String,
@@ -603,7 +609,7 @@ pub struct VocabularyReplacement {
     pub added_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 #[serde(rename_all = "snake_case")]
 pub enum OpenAlexSearchScope {
@@ -617,7 +623,7 @@ impl Default for OpenAlexSearchScope {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 #[serde(rename_all = "snake_case")]
 pub enum OpenAlexSort {
@@ -631,7 +637,7 @@ impl Default for OpenAlexSort {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct OpenAlexSavedSearchQuery {
     pub natural_language_query: String,
@@ -650,13 +656,13 @@ pub struct OpenAlexSavedSearchQuery {
     pub sort: OpenAlexSort,
 }
 
-#[derive(Debug, Deserialize, TS)]
+#[derive(Debug, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct OpenAlexPlanRequest {
     pub natural_language_query: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct OpenAlexPlanResponse {
     pub query: OpenAlexSavedSearchQuery,
@@ -665,7 +671,7 @@ pub struct OpenAlexPlanResponse {
     pub display_label: String,
 }
 
-#[derive(Debug, Deserialize, TS)]
+#[derive(Debug, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct AddChannelRequest {
     #[serde(default)]
@@ -674,13 +680,13 @@ pub struct AddChannelRequest {
     pub openalex_query: Option<OpenAlexSavedSearchQuery>,
 }
 
-#[derive(Debug, Deserialize, TS)]
+#[derive(Debug, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct AddVideoRequest {
     pub input: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct AddVideoResponse {
     pub video: Video,
@@ -688,14 +694,14 @@ pub struct AddVideoResponse {
     pub already_exists: bool,
 }
 
-#[derive(Debug, Deserialize, TS)]
+#[derive(Debug, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct UpdateChannelRequest {
     pub earliest_sync_date: Option<DateTime<Utc>>,
     pub earliest_sync_date_user_set: Option<bool>,
 }
 
-#[derive(Debug, Deserialize, TS)]
+#[derive(Debug, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct UpdateContentRequest {
     pub content: String,
@@ -703,13 +709,13 @@ pub struct UpdateContentRequest {
     pub render_mode: Option<TranscriptRenderMode>,
 }
 
-#[derive(Debug, Deserialize, TS)]
+#[derive(Debug, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct UpdateAcknowledgedRequest {
     pub acknowledged: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 #[serde(rename_all = "snake_case")]
 pub enum HighlightSource {
@@ -717,7 +723,7 @@ pub enum HighlightSource {
     Summary,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct Highlight {
     pub id: i64,
@@ -729,7 +735,7 @@ pub struct Highlight {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Deserialize, TS)]
+#[derive(Debug, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct CreateHighlightRequest {
     pub source: HighlightSource,
@@ -740,7 +746,7 @@ pub struct CreateHighlightRequest {
     pub suffix_context: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct HighlightVideoGroup {
     pub source_id: String,
@@ -754,7 +760,7 @@ pub struct HighlightVideoGroup {
     pub highlights: Vec<Highlight>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct HighlightChannelGroup {
     pub source_id: String,
@@ -766,7 +772,7 @@ pub struct HighlightChannelGroup {
     pub videos: Vec<HighlightVideoGroup>,
 }
 
-#[derive(Debug, Serialize, TS)]
+#[derive(Debug, Serialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct CleanTranscriptResponse {
     pub content: String,
@@ -776,7 +782,7 @@ pub struct CleanTranscriptResponse {
     pub timed_out: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 #[serde(rename_all = "snake_case")]
 pub enum TranscriptRenderMode {
@@ -790,7 +796,7 @@ impl Default for TranscriptRenderMode {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 #[serde(rename_all = "snake_case")]
 pub enum AiStatus {
@@ -799,14 +805,14 @@ pub enum AiStatus {
     Offline,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct AiHealthPayload {
     pub available: bool,
     pub status: AiStatus,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct SyncDepthPayload {
     pub earliest_sync_date: Option<String>,
@@ -814,7 +820,7 @@ pub struct SyncDepthPayload {
     pub derived_earliest_ready_date: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct ChannelSnapshotPayload {
     pub channel_id: String,
@@ -831,7 +837,7 @@ pub struct ChannelSnapshotPayload {
     pub parts: Vec<ContentPart>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct ChannelVideoPagePayload {
     pub source_id: String,
@@ -842,7 +848,7 @@ pub struct ChannelVideoPagePayload {
     pub next_offset: Option<usize>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct WorkspaceBootstrapPayload {
     pub ai_available: bool,
@@ -859,7 +865,7 @@ pub struct WorkspaceBootstrapPayload {
     pub search_status: SearchStatusPayload,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct SearchMatchPayload {
     pub source: SearchSourceKind,
@@ -873,7 +879,7 @@ pub struct SearchMatchPayload {
     pub start_sec: Option<f32>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct SearchVideoResultPayload {
     pub source_id: String,
@@ -889,7 +895,7 @@ pub struct SearchVideoResultPayload {
     pub matches: Vec<SearchMatchPayload>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct SearchResponsePayload {
     pub query: String,
@@ -897,7 +903,7 @@ pub struct SearchResponsePayload {
     pub results: Vec<SearchVideoResultPayload>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct SearchStatusPayload {
     pub available: bool,
@@ -914,7 +920,7 @@ pub struct SearchStatusPayload {
     pub retrieval_mode: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 #[serde(rename_all = "snake_case")]
 pub enum ChatRole {
@@ -923,7 +929,7 @@ pub enum ChatRole {
     Assistant,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 #[serde(rename_all = "snake_case")]
 pub enum ChatMessageStatus {
@@ -934,7 +940,7 @@ pub enum ChatMessageStatus {
     Failed,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 #[serde(rename_all = "snake_case")]
 pub enum ChatTitleStatus {
@@ -944,7 +950,7 @@ pub enum ChatTitleStatus {
     Manual,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct ChatSource {
     pub source_id: String,
@@ -969,7 +975,7 @@ pub struct ChatSource {
     pub retrieval_pass: Option<usize>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct ChatMessage {
     pub id: String,
@@ -997,7 +1003,7 @@ pub struct ChatMessage {
     pub total_duration_ns: Option<u64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct ChatConversationSummary {
     pub id: String,
@@ -1007,7 +1013,7 @@ pub struct ChatConversationSummary {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct ChatConversation {
     pub id: String,
@@ -1031,20 +1037,20 @@ impl From<&ChatConversation> for ChatConversationSummary {
     }
 }
 
-#[derive(Debug, Deserialize, TS)]
+#[derive(Debug, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct CreateConversationRequest {
     pub title: Option<String>,
 }
 
-#[derive(Debug, Deserialize, TS)]
+#[derive(Debug, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct UpdateConversationRequest {
     pub title: String,
 }
 
 /// Anonymous-only chat turn: full conversation state is carried by the client; nothing is written to the store.
-#[derive(Debug, Deserialize, TS)]
+#[derive(Debug, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct EphemeralChatMessageRequest {
     pub conversation: ChatConversation,
@@ -1056,7 +1062,7 @@ pub struct EphemeralChatMessageRequest {
     pub model: Option<String>,
 }
 
-#[derive(Debug, Deserialize, TS)]
+#[derive(Debug, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct SendChatMessageRequest {
     pub content: String,
@@ -1069,14 +1075,14 @@ pub struct SendChatMessageRequest {
     pub model: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct ChatModelOption {
     pub id: String,
     pub label: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct ChatClientConfig {
     /// Default cloud model id when the client omits `model` on send.

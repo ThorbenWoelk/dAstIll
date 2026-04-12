@@ -195,8 +195,22 @@
   --space-md: 16px;
   --space-lg: 24px;
   --space-xl: 32px;
+  --safe-area-inset-top: env(safe-area-inset-top, 0px);
+  --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
   --mobile-viewport-offset-bottom: 0px;
-  --mobile-bottom-stack-height: var(--mobile-viewport-offset-bottom);
+  --mobile-tab-bar-height: 0px;
+  --mobile-bottom-stack-height: calc(
+    var(--mobile-tab-bar-height) + var(--mobile-viewport-offset-bottom)
+  );
+  --z-shell-header: 5;
+  --z-shell-resize-handle: 20;
+  --z-mobile-tab-bar: 60;
+  --z-mobile-browse-overlay: 70;
+  --z-mobile-section-drawer-backdrop: 70;
+  --z-mobile-section-drawer-panel: 71;
+  --z-mobile-sheet: 80;
+  --z-mobile-popover-anchor: 95;
+  --z-mobile-popover: 110;
 
   /* Saved text highlights (transcript / summary) */
   --reader-highlight-bg: color-mix(in srgb, rgb(248 231 162) 84%, white);
@@ -405,8 +419,8 @@ h4,
 }
 
 .page-shell {
-  padding-top: max(1rem, env(safe-area-inset-top));
-  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  padding-top: max(1rem, var(--safe-area-inset-top));
+  padding-bottom: max(1rem, var(--safe-area-inset-bottom));
 }
 
 .skip-link {
@@ -731,10 +745,11 @@ a[href],
   }
 }
 
-/* Mobile bottom-stack padding */
+/* Mobile bottom-stack padding — --mobile-tab-bar-height is set dynamically
+   by WorkspaceContentPanel when content tabs are visible. */
 @media (max-width: 1023px) {
   .page-shell {
-    padding-top: max(1rem, env(safe-area-inset-top));
+    padding-top: max(1rem, var(--safe-area-inset-top));
     padding-bottom: calc(var(--mobile-bottom-stack-height) + 2rem);
   }
 

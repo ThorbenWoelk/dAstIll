@@ -11,7 +11,7 @@
   import type { SectionNavigationSection } from "$lib/section-navigation";
   import WorkspaceNavRail from "$lib/components/workspace/WorkspaceNavRail.svelte";
 
-  const NAV_DEFAULT = 180;
+  const NAV_DEFAULT = 200;
   const NAV_MIN = 52;
   const NAV_SNAP = 100;
   const SIDEBAR_DEFAULT = 280;
@@ -70,6 +70,7 @@
     } catch {
       // ignore
     }
+    if (window.innerWidth < 1024) navWidth = NAV_MIN;
   });
 
   function persist() {
@@ -101,6 +102,7 @@
     } catch {
       // ignore
     }
+    if (window.innerWidth < 1024) navWidth = NAV_MIN;
   });
 
   function handleResizeStart(target: "nav" | "sidebar", event: PointerEvent) {
@@ -166,7 +168,7 @@
   }
 </script>
 
-<div class="flex h-full">
+<div class="workspace-shell flex h-full">
   <a
     href="#main-content"
     class="skip-link absolute left-4 top-4 z-50 rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white"
@@ -208,17 +210,22 @@
     ></div>
   {/if}
 
-  <div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+  <div
+    class="workspace-main flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+  >
     {#if mobileTopBar}
       <header
-        class="flex h-12 shrink-0 items-center justify-between gap-4 border-b border-[var(--border-soft)]/50 bg-[var(--surface)] px-4 lg:hidden"
+        class="workspace-mobile-header shrink-0 lg:hidden"
+        style="padding-top: var(--safe-area-inset-top);"
       >
-        {@render mobileTopBar()}
+        <div class="flex h-12 items-center justify-between gap-4 px-4">
+          {@render mobileTopBar()}
+        </div>
       </header>
     {/if}
     {#if topBar}
       <header
-        class="hidden h-12 shrink-0 items-center justify-between gap-4 border-b border-[var(--border-soft)]/50 bg-[var(--surface)] px-6 lg:flex"
+        class="workspace-desktop-header hidden shrink-0 items-center justify-between gap-4 lg:flex"
       >
         {@render topBar()}
       </header>
@@ -227,7 +234,7 @@
     <main
       id="main-content"
       tabindex="-1"
-      class="min-h-0 flex-1 overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
+      class="workspace-content-frame min-h-0 flex-1 overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
     >
       {@render children()}
     </main>
@@ -235,12 +242,89 @@
 </div>
 
 <style>
+  .workspace-shell {
+    background:
+      radial-gradient(
+        140% 110% at 50% -8%,
+        color-mix(in srgb, var(--background) 88%, var(--accent-soft)) 0%,
+        var(--background) 60%
+      ),
+      var(--background);
+  }
+
+  .workspace-main {
+    position: relative;
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface) 94%, var(--accent-soft)) 0%,
+      var(--background) 100%
+    );
+  }
+
+  .workspace-mobile-header,
+  .workspace-desktop-header {
+    position: relative;
+    z-index: var(--z-shell-header);
+    border-bottom: 1px solid
+      color-mix(in srgb, var(--border-soft) 92%, var(--background));
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface) 96%, var(--background)) 0%,
+      color-mix(in srgb, var(--surface) 92%, var(--accent-soft)) 100%
+    );
+  }
+
+  .workspace-mobile-header {
+    --background: #121417;
+    --foreground: #f5efe8;
+    --soft-foreground: #b7ada4;
+    --surface: color-mix(in srgb, white 10%, #121417);
+    --surface-strong: color-mix(in srgb, white 14%, #121417);
+    --panel-surface: #121417;
+    --panel-surface-strong: color-mix(in srgb, white 8%, #121417);
+    --border: color-mix(in srgb, white 18%, #121417);
+    --border-soft: color-mix(in srgb, white 10%, #121417);
+    --muted: color-mix(in srgb, white 8%, #121417);
+    --color-swatch: color-mix(in srgb, var(--accent) 88%, white);
+    --accent-wash: color-mix(in srgb, var(--accent) 20%, #121417);
+    --accent-wash-strong: color-mix(in srgb, var(--accent) 28%, #121417);
+  }
+
+  :global(.dark) .workspace-mobile-header {
+    --background: #f4efe8;
+    --foreground: #17181a;
+    --soft-foreground: #6b6259;
+    --surface: color-mix(in srgb, black 4%, #f4efe8);
+    --surface-strong: color-mix(in srgb, black 8%, #f4efe8);
+    --panel-surface: #f4efe8;
+    --panel-surface-strong: color-mix(in srgb, black 3%, #f4efe8);
+    --border: color-mix(in srgb, black 16%, #f4efe8);
+    --border-soft: color-mix(in srgb, black 10%, #f4efe8);
+    --muted: color-mix(in srgb, black 4%, #f4efe8);
+    --color-swatch: color-mix(in srgb, var(--accent) 88%, black);
+    --accent-wash: color-mix(in srgb, var(--accent) 16%, #f4efe8);
+    --accent-wash-strong: color-mix(in srgb, var(--accent) 22%, #f4efe8);
+  }
+
+  .workspace-desktop-header {
+    min-height: 4.5rem;
+    padding: 0 1.75rem;
+  }
+
+  .workspace-content-frame {
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface) 96%, var(--background)) 0%,
+      color-mix(in srgb, var(--background) 92%, var(--surface)) 100%
+    );
+  }
+
   .resize-handle {
     width: 4px;
     flex-shrink: 0;
     cursor: col-resize;
     position: relative;
-    z-index: 20;
+    z-index: var(--z-shell-resize-handle);
   }
 
   .resize-handle::after {
@@ -262,5 +346,21 @@
 
   .resize-handle.active::after {
     opacity: 1;
+  }
+
+  @media (max-width: 1023px) {
+    .workspace-mobile-header {
+      min-height: calc(3rem + var(--safe-area-inset-top));
+      background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--surface) 96%, var(--background)) 0%,
+        color-mix(in srgb, var(--surface) 90%, var(--panel-surface)) 100%
+      );
+      /* Remove the stacking context so position:fixed children (filter popup at
+         z-[110]) participate in the root stacking context instead of being capped
+         at this element's z-index. Without a stacking context the popup clears
+         browse overlay and section drawer root layers. */
+      z-index: auto;
+    }
   }
 </style>

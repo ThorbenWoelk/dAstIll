@@ -1,6 +1,7 @@
 import type {
   Channel,
   ChannelSnapshot,
+  ContentStatus,
   ContentItem,
   ContentPart,
   ContentSource,
@@ -13,6 +14,9 @@ import { defaultEarliestSyncFloorDateInputValue } from "$lib/workspace/sidebar-s
 import type { QueueStats } from "$lib/workspace/types";
 
 export type QueueRefreshCadence = "off" | "fast" | "slow" | "idle";
+const MAX_DISTILLATION_RETRIES = 3;
+
+type QueueTaskState = "pending" | "loading" | "failed" | "settled" | "skipped";
 
 function buildQueuePreviewContainer(channelId: string): SubscriptionContainer {
   return {
@@ -93,25 +97,37 @@ export function videoPipelineInFlight(video: Video): boolean {
   );
 }
 
+function queueTaskState(video: Video): QueueTaskState {
+  if ((video.retry_count ?? 0) >= MAX_DISTILLATION_RETRIES) {
+    return "skipped";
+  }
+
+  if (video.transcript_status !== "ready") {
+    return contentStatusToQueueTaskState(video.transcript_status);
+  }
+
+  return contentStatusToQueueTaskState(video.summary_status);
+}
+
+function contentStatusToQueueTaskState(status: ContentStatus): QueueTaskState {
+  if (status === "pending") return "pending";
+  if (status === "loading") return "loading";
+  if (status === "failed") return "failed";
+  return "settled";
+}
+
 export function deriveQueueStats(videos: Video[]): QueueStats {
+  const actionableStates = videos
+    .map(queueTaskState)
+    .filter((state) => state !== "settled" && state !== "skipped");
+  const skipped = videos.filter((video) => queueTaskState(video) === "skipped");
+
   return {
-    total: videos.length,
-    loading: videos.filter(
-      (video) =>
-        video.transcript_status === "loading" ||
-        video.summary_status === "loading",
-    ).length,
-    pending: videos.filter(
-      (video) =>
-        video.transcript_status === "pending" ||
-        (video.transcript_status === "ready" &&
-          video.summary_status === "pending"),
-    ).length,
-    failed: videos.filter(
-      (video) =>
-        video.transcript_status === "failed" ||
-        video.summary_status === "failed",
-    ).length,
+    total: actionableStates.length,
+    loading: actionableStates.filter((state) => state === "loading").length,
+    pending: actionableStates.filter((state) => state === "pending").length,
+    failed: actionableStates.filter((state) => state === "failed").length,
+    skipped: skipped.length,
   };
 }
 

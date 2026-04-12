@@ -1,7 +1,9 @@
 import { resolveApiUrl } from "$lib/api-client";
+import { normalizeUserErrorMessage } from "$lib/user-error";
 
 export type SummaryAudioStatus =
   | "missing"
+  | "unavailable"
   | "generating"
   | "ready"
   | "playing"
@@ -16,6 +18,7 @@ export type SummaryAudioDebugPayload = {
 export type SummaryAudioSession = {
   status: SummaryAudioStatus;
   summaryAudioError: string | null;
+  audioRequested: boolean;
   audioSrc: string | null;
   currentTime: number;
   duration: number;
@@ -34,6 +37,7 @@ function createDefaultSession(_videoId: string): SummaryAudioSession {
   return {
     status: "missing",
     summaryAudioError: null,
+    audioRequested: false,
     audioSrc: null,
     currentTime: 0,
     duration: 0,
@@ -121,6 +125,7 @@ export function syncSummaryAudioDebugState(
       session.status = "ready";
       session.audioSrc = audioSrcForVideo(videoId);
       session.summaryAudioError = null;
+      session.audioRequested = false;
       return session;
     }
 
@@ -135,10 +140,24 @@ export function syncSummaryAudioDebugState(
       return session;
     }
 
+    if (session.status === "unavailable") {
+      return session;
+    }
+
     session.status = "missing";
     session.audioSrc = null;
     return session;
   });
+}
+
+export function setSummaryAudioUnavailable(videoId: string, message: string) {
+  updateSession(videoId, (session) => ({
+    ...session,
+    status: "unavailable",
+    summaryAudioError: normalizeUserErrorMessage(message, { status: 503 }),
+    audioRequested: true,
+    audioSrc: null,
+  }));
 }
 
 export async function generateSummaryAudio(
@@ -152,6 +171,7 @@ export async function generateSummaryAudio(
 
   updateSession(videoId, (session) => ({
     ...session,
+    audioRequested: true,
     status: "generating",
     summaryAudioError: null,
   }));
@@ -164,23 +184,32 @@ export async function generateSummaryAudio(
           ...session,
           status: "ready",
           summaryAudioError: null,
+          audioRequested: false,
           audioSrc: audioSrcForVideo(videoId),
         }));
         return;
       }
 
       const message = (await response.text()) || "Failed to generate audio.";
+      if (response.status === 503) {
+        setSummaryAudioUnavailable(videoId, message);
+        return;
+      }
       updateSession(videoId, (session) => ({
         ...session,
         status: "missing",
-        summaryAudioError: message,
+        summaryAudioError: normalizeUserErrorMessage(message, {
+          status: response.status,
+        }),
+        audioRequested: true,
         audioSrc: null,
       }));
     } catch {
       updateSession(videoId, (session) => ({
         ...session,
         status: "missing",
-        summaryAudioError: "Failed to generate audio.",
+        summaryAudioError: "Sorry, audio playback could not be prepared.",
+        audioRequested: true,
         audioSrc: null,
       }));
     } finally {
@@ -230,6 +259,7 @@ export function setSummaryAudioStatus(
 ) {
   updateSession(videoId, (session) => ({
     ...session,
+    audioRequested: true,
     status,
   }));
 }
@@ -241,6 +271,10 @@ export function markSummaryAudioPlaybackStopped(videoId: string) {
       session.status === "playing" || session.status === "loading"
         ? "ready"
         : session.status,
+    audioRequested:
+      session.status === "playing" || session.status === "loading"
+        ? true
+        : session.audioRequested,
   }));
 }
 
@@ -248,6 +282,7 @@ export function resetSummaryAudioPlayback(videoId: string) {
   updateSession(videoId, (session) => ({
     ...session,
     status: "ready",
+    audioRequested: true,
     currentTime: 0,
   }));
 }

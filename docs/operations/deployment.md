@@ -2,17 +2,18 @@
 
 ## Current Production Shape
 
-The repository defines **three** Cloud Run services:
+The repository now runs one runtime service and two static Hosting targets:
 
-- backend
-- product frontend
-- docs frontend
+- backend on Cloud Run
+- product frontend on Firebase Hosting
+- docs frontend on Firebase Hosting
 
 ## Infrastructure Ownership
 
 Terraform manages:
 
-- Cloud Run services (GCP)
+- Cloud Run backend (GCP)
+- Firebase project resources, the web app, and the docs Hosting site (GCP)
 - service accounts and IAM (GCP and AWS)
 - AWS S3 bucket for data storage
 - AWS S3 Vectors bucket and index for semantic search
@@ -60,6 +61,10 @@ Non-secret backend runtime config is passed as plain env values for:
 - `OLLAMA_DEFAULT_CHAT_MODEL`
 - `OLLAMA_EMBEDDING_MODEL`
 - `SUMMARY_EVALUATOR_MODEL`
+- `DATABRICKS_HOST` (when Databricks ingestion is enabled)
+- `DATABRICKS_WAREHOUSE_ID` (when Databricks ingestion is enabled)
+- `DATABRICKS_CATALOG` (when Databricks ingestion is enabled)
+- `DATABRICKS_SCHEMA` (when Databricks ingestion is enabled)
 - `SUMMARIZE_PATH`
 - log level
 
@@ -68,19 +73,22 @@ Non-secret product frontend runtime config is passed as plain env values for:
 - build-time `VITE_API_BASE`
 - build-time `PUBLIC_DOCS_URL`
 - build-time `PUBLIC_FIREBASE_PROJECT_ID`
+- optional build-time `PUBLIC_BROWSER_AUTH_BASE_URL`
 - build-time `PUBLIC_CONTACT_EMAIL`
 
 ### Firebase Auth (product frontend)
 
 The frontend uses the Firebase JS SDK in the browser and in the Tauri WebView. Signed-in requests send the Firebase ID token directly to the backend as `Authorization: Bearer <token>`. The web client reads **`PUBLIC_FIREBASE_API_KEY`**, **`PUBLIC_FIREBASE_AUTH_DOMAIN`**, and **`PUBLIC_FIREBASE_PROJECT_ID`** at build time.
 
-**Terraform (`terraform.tfvars`, not GitHub Variables):** Terraform creates the Firebase project resources and web app, then reads the effective Web API key and auth domain from the Firebase web app config data source before writing them to Secret Manager. Run `terraform apply` so secrets `dastill-firebase-web-api-key` and `dastill-firebase-auth-domain` exist and IAM allows the frontend Cloud Run service account to read them.
+**Terraform (`terraform.tfvars`, not GitHub Variables):** Terraform creates the Firebase project resources and web app, then reads the effective Web API key and auth domain from the Firebase web app config data source before writing them to Secret Manager. Run `terraform apply` so secrets `dastill-firebase-web-api-key` and `dastill-firebase-auth-domain` exist and the GitHub Actions deploy identity can read them during Hosting builds.
 
-**Google sign-in:** anonymous auth stays enabled through Identity Platform. Google sign-in itself is managed through [`frontend/firebase.json`](../../frontend/firebase.json) and should be deployed separately with `bunx firebase-tools@15.12.0 deploy --only auth --project "$PROJECT_ID" --config frontend/firebase.json --non-interactive` when provisioning a new project or when that file changes. That lets Firebase provision the correct project-local Google OAuth client for the web app instead of reusing a copied client ID/secret from another project.
+**Google sign-in:** anonymous auth stays enabled through Identity Platform. Google sign-in itself is managed through the repo-root [`firebase.json`](../../firebase.json) and should be deployed separately with `bunx firebase-tools@15.12.0 deploy --only auth --project "$PROJECT_ID" --non-interactive` when provisioning a new project or when that file changes. That lets Firebase provision the correct project-local Google OAuth client for the web app instead of reusing a copied client ID/secret from another project.
 
-**Release workflow:** resolves the Terraform-managed frontend Firebase secrets `dastill-firebase-web-api-key` and `dastill-firebase-auth-domain` before building the static frontend image. It passes those values into the image build together with `VITE_API_BASE`, `PUBLIC_DOCS_URL`, `PUBLIC_CONTACT_EMAIL`, and `PUBLIC_FIREBASE_PROJECT_ID`. Routine releases do not redeploy Firebase Auth config.
+**Release workflow:** resolves the Terraform-managed frontend Firebase secrets `dastill-firebase-web-api-key` and `dastill-firebase-auth-domain` before building the static frontend bundle. It passes those values into the build together with `VITE_API_BASE`, `PUBLIC_DOCS_URL`, `PUBLIC_CONTACT_EMAIL`, and `PUBLIC_FIREBASE_PROJECT_ID`. Routine releases do not redeploy Firebase Auth config.
 
-**Authorized domains:** Terraform manages Identity Platform authorized domains. The default set includes `localhost`, the Firebase-hosted domains for the project, the deployed frontend Cloud Run host, and any entries in `firebase_authorized_domains_extra`. Use Terraform rather than console-only edits for managed environments.
+**Android browser-auth handoff:** if the Tauri Android shell should open a browser-hosted login page on a different origin than the product frontend itself, set `PUBLIC_BROWSER_AUTH_BASE_URL` for the frontend build. That value controls the origin used for the system-browser `/login` handoff flow.
+
+**Authorized domains:** Terraform manages Identity Platform authorized domains. The default set includes `localhost`, the Firebase-hosted domains for the project, and any entries in `firebase_authorized_domains_extra`. Use Terraform rather than console-only edits for managed environments.
 
 ## Project Migration
 
@@ -101,8 +109,8 @@ gcloud firestore import gs://<shared-migration-bucket>/<export-prefix> \
   --project=dastill
 ```
 
-7. Enable Firebase on the new project, set any optional Firebase Terraform inputs you need such as `firebase_authorized_domains_extra`, then re-apply Terraform so it creates the web app, refreshes Secret Manager with the effective frontend Firebase values, and updates authorized domains through Identity Platform. Keep Google sign-in configuration in `frontend/firebase.json` and deploy it separately with `bunx firebase-tools@15.12.0 deploy --only auth --project "$PROJECT_ID" --config frontend/firebase.json --non-interactive`.
-8. Re-run the release workflow after the GitHub secret/var cutover so Cloud Run revisions pick up the new project ID, Firebase config, backend URL, docs URL, and the latest Secret Manager versions.
+7. Enable Firebase on the new project, set any optional Firebase Terraform inputs you need such as `firebase_authorized_domains_extra`, then re-apply Terraform so it creates the web app, the docs Hosting site, refreshes Secret Manager with the effective frontend Firebase values, and updates authorized domains through Identity Platform. Keep Google sign-in configuration in the repo-root `firebase.json` and deploy it separately with `bunx firebase-tools@15.12.0 deploy --only auth --project "$PROJECT_ID" --non-interactive`.
+8. Re-run the release workflow after the GitHub secret/var cutover so the backend Cloud Run service and the frontend/docs Hosting targets pick up the new project ID, Firebase config, backend URL, docs URL, and the latest Secret Manager versions.
 
 ## CI/CD Flow
 
@@ -110,13 +118,13 @@ The GitHub Actions workflow:
 
 ```text
 1. Runs repo hygiene on every validation run
-2. Detects which of `backend/`, `frontend/`, and `docs/` changed
+2. Detects which of `backend/`, `frontend/`, `docs/`, and the root Firebase Hosting config changed
 3. Runs only the matching backend/frontend/docs validation jobs on push and pull request events
-4. On `main`, builds and deploys only the services with deploy-relevant changes
+4. On `main`, builds and deploys only the surfaces with deploy-relevant changes
 5. Skips deploys for trivial-only service changes such as `.gitignore`, README, and test-only frontend/backend changes
-6. Resolves deployed backend and docs URLs for the frontend image build when the frontend itself is being deployed
+6. Resolves the backend Cloud Run URL and a stable docs Hosting URL when the frontend itself is being deployed
 7. Deploys the backend with runtime env including S3/AWS config, `TURSO_DB_URL`, and Secret Manager mounts such as `TURSO_AUTH_TOKEN` when enabled
-8. Deploys the frontend as a static nginx image with Firebase and backend URL values baked into the build
+8. Builds the static frontend and docs bundles with Bun, then deploys them with Firebase CLI using Workload Identity Federation credentials
 9. Builds Android APK artifacts through `.github/workflows/android.yml` when mobile changes are pushed or manually requested
 ```
 
@@ -129,12 +137,11 @@ The GitHub Actions workflow:
 - runs the `dastill` binary in a slim Debian runtime image
 - bundles a `summarize` script path for transcript extraction
 
-### Frontend image
+### Frontend and docs bundles
 
-- built from `frontend/Dockerfile`
-- installs Bun during build
-- generates the static SvelteKit production output
-- serves the bundle from nginx at runtime
+- the frontend is built in CI from `frontend/` with Bun and published from `frontend/build`
+- the docs site is built in CI from `docs/` with Bun and published from `docs/.vitepress/dist`
+- Firebase Hosting serves both static outputs directly, so there are no frontend/docs runtime containers in production
 
 ### Android artifacts
 
@@ -161,13 +168,13 @@ ANN index creation is intentionally not part of startup migrations because it is
 
 ### Docs frontend
 
-The docs site is deployed as its own Cloud Run service from `docs/Dockerfile`. It serves the static VitePress build through nginx and remains operationally separate from the product frontend.
+The docs site is deployed as its own Firebase Hosting site and remains operationally separate from the product frontend.
 
-The `main`-branch deploy workflow publishes the docs revision with unauthenticated access enabled, so the service is reachable immediately after each successful deployment.
+The `main`-branch deploy workflow publishes the docs Hosting revision directly from the repo root, so the site is reachable immediately after each successful deployment.
 
-The product frontend links to this docs service through a `PUBLIC_DOCS_URL` runtime env var on the frontend Cloud Run service. Local development falls back to `http://localhost:4173` when that variable is unset.
+The product frontend links to this docs site through a build-time `PUBLIC_DOCS_URL`. Local development still falls back to `http://localhost:4173` when that variable is unset.
 
-Terraform grants the GitHub Actions deploy identity Cloud Run admin permissions and service-account-user bindings so the workflow can keep managing all three Cloud Run services.
+Terraform grants the GitHub Actions deploy identity the Cloud Run permissions needed for the backend plus Firebase Hosting permissions for the static sites.
 
 ## Billing Export
 

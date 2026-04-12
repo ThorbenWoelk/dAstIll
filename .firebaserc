@@ -1,0 +1,13 @@
+{
+  "projects": {
+    "default": "dastill"
+  },
+  "targets": {
+    "dastill": {
+      "hosting": {
+        "app": ["dastill"],
+        "docs": ["dastill-docs"]
+      }
+    }
+  }
+}

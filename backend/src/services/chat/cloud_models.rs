@@ -13,8 +13,8 @@ pub const CHAT_CLOUD_MODEL_CHOICES: &[ChatCloudModelEntry] = &[
         label: "Gemini 3 Flash",
     },
     ChatCloudModelEntry {
-        id: "glm-5:cloud",
-        label: "GLM 5",
+        id: "glm-5.1:cloud",
+        label: "GLM 5.1",
     },
     ChatCloudModelEntry {
         id: "qwen3.5:397b-cloud",
@@ -84,7 +84,10 @@ mod tests {
 
     #[test]
     fn default_prefers_configured_when_allowed() {
-        assert_eq!(default_chat_cloud_model_id("glm-5:cloud"), "glm-5:cloud");
+        assert_eq!(
+            default_chat_cloud_model_id("glm-5.1:cloud"),
+            "glm-5.1:cloud"
+        );
         assert_eq!(
             default_chat_cloud_model_id("qwen3:8b"),
             CHAT_CLOUD_MODEL_CHOICES[0].id

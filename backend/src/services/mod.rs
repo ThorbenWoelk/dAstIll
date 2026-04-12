@@ -7,6 +7,7 @@ pub mod databricks;
 pub mod fts;
 pub mod fusion;
 pub mod http;
+pub mod input_guardrails;
 pub mod ollama;
 pub mod openalex;
 pub mod openalex_planner;
@@ -29,6 +30,7 @@ pub use http::{
     CloudCooldown, Cooldown, TranscriptCooldown, UserActivity, YouTubeQuotaCooldown,
     build_http_client, is_cloud_model, is_rate_limited,
 };
+pub use input_guardrails::{CHAT_INPUT_BLOCK_MESSAGE, InputGuardrailService};
 pub use ollama::{OllamaCore, OllamaPromptError};
 pub use openalex::{OpenAlexPublicationMaterial, OpenAlexService};
 pub use openalex_planner::OpenAlexPlannerService;

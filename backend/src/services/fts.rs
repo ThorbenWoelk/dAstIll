@@ -1,8 +1,9 @@
 use std::{
     fs,
     path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
     sync::Arc,
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use libsql::{Builder, Connection, Database, TransactionBehavior, Value, params};
@@ -15,6 +16,7 @@ use crate::{
 
 const LOCAL_DB_FILENAME: &str = "search-fts.db";
 const REPLICA_SYNC_INTERVAL: Duration = Duration::from_secs(30);
+static FTS_TEMP_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Local libSQL-backed BM25 index over all indexed search chunks.
 /// Thread-safe via an `Arc<RwLock<FtsIndexInner>>`.
@@ -35,7 +37,15 @@ pub struct FtsRemoteConfig {
 
 impl FtsIndex {
     pub async fn new() -> Result<Self, String> {
-        let temp_dir = std::env::temp_dir().join(format!("dastill-fts-{}", rand::random::<u64>()));
+        let counter = FTS_TEMP_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let unique_suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or_default();
+        let temp_dir = std::env::temp_dir().join(format!(
+            "dastill-fts-{}-{unique_suffix}-{counter}",
+            std::process::id(),
+        ));
         Self::new_in_dir(temp_dir, None).await
     }
 
@@ -58,6 +68,20 @@ impl FtsIndex {
         let conn = db
             .connect()
             .map_err(|err| format!("failed to connect to FTS database: {err}"))?;
+        initialize_schema(&conn).await?;
+
+        Ok(Self(Arc::new(RwLock::new(FtsIndexInner {
+            _db: db,
+            conn,
+            db_path,
+        }))))
+    }
+
+    /// Build from an already-opened `Database` (shares the same Turso replica).
+    pub async fn new_with_db(db: Database, db_path: PathBuf) -> Result<Self, String> {
+        let conn = db
+            .connect()
+            .map_err(|err| format!("failed to connect to shared Turso database for FTS: {err}"))?;
         initialize_schema(&conn).await?;
 
         Ok(Self(Arc::new(RwLock::new(FtsIndexInner {

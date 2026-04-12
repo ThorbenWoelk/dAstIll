@@ -32,6 +32,9 @@ pub struct TursoRuntimeConfig {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChatRuntimeConfig {
     pub multi_pass_enabled: bool,
+    pub guardrail_model: Option<String>,
+    pub prompt_blocklist: Vec<String>,
+    pub prompt_allowlist: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -125,6 +128,11 @@ impl SearchRuntimeConfig {
 
 impl TursoRuntimeConfig {
     pub fn from_env() -> Result<Option<Self>, String> {
+        let use_turso = optional_env("START_APP_USE_TURSO").unwrap_or_default();
+        if !matches!(use_turso.as_str(), "1" | "true" | "TRUE") {
+            return Ok(None);
+        }
+
         let db_url = optional_env("TURSO_DB_URL");
         let auth_token = optional_env("TURSO_AUTH_TOKEN");
 
@@ -145,6 +153,9 @@ impl ChatRuntimeConfig {
     pub fn from_env() -> Self {
         Self {
             multi_pass_enabled: optional_bool_env("CHAT_MULTI_PASS_ENABLED").unwrap_or(true),
+            guardrail_model: optional_env("CHAT_GUARDRAIL_MODEL"),
+            prompt_blocklist: optional_csv_env("CHAT_PROMPT_BLOCKLIST").unwrap_or_default(),
+            prompt_allowlist: optional_csv_env("CHAT_PROMPT_ALLOWLIST").unwrap_or_default(),
         }
     }
 }
@@ -363,7 +374,7 @@ mod tests {
         "DATABRICKS_SCHEMA",
         "DATABRICKS_BRONZE_TABLE",
     ];
-    const TURSO_ENV_KEYS: &[&str] = &["TURSO_DB_URL", "TURSO_AUTH_TOKEN"];
+    const TURSO_ENV_KEYS: &[&str] = &["TURSO_DB_URL", "TURSO_AUTH_TOKEN", "START_APP_USE_TURSO"];
 
     #[test]
     fn from_env_requires_summary_model() {
@@ -376,7 +387,7 @@ mod tests {
         remove_env("OLLAMA_URL");
         remove_env("OLLAMA_API_KEY");
         remove_env("OLLAMA_SUMMARY_MODEL");
-        set_env("SUMMARY_EVALUATOR_MODEL", "glm-5:cloud");
+        set_env("SUMMARY_EVALUATOR_MODEL", "glm-5.1:cloud");
 
         let err = OllamaRuntimeConfig::from_env(true).expect_err("missing model should fail");
         assert!(err.contains("OLLAMA_SUMMARY_MODEL"));
@@ -392,7 +403,7 @@ mod tests {
         let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
         remove_env("OLLAMA_URL");
         remove_env("OLLAMA_API_KEY");
-        set_env("OLLAMA_SUMMARY_MODEL", "glm-5:cloud");
+        set_env("OLLAMA_SUMMARY_MODEL", "glm-5.1:cloud");
         remove_env("SUMMARY_EVALUATOR_MODEL");
 
         let err = OllamaRuntimeConfig::from_env(true).expect_err("missing evaluator should fail");
@@ -409,7 +420,7 @@ mod tests {
         let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
         remove_env("OLLAMA_URL");
         remove_env("OLLAMA_API_KEY");
-        set_env("OLLAMA_SUMMARY_MODEL", "glm-5:cloud");
+        set_env("OLLAMA_SUMMARY_MODEL", "glm-5.1:cloud");
         set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
         remove_env("OLLAMA_EMBEDDING_MODEL");
 
@@ -428,7 +439,7 @@ mod tests {
         let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
         remove_env("OLLAMA_URL");
         remove_env("OLLAMA_API_KEY");
-        set_env("OLLAMA_SUMMARY_MODEL", "glm-5:cloud");
+        set_env("OLLAMA_SUMMARY_MODEL", "glm-5.1:cloud");
         set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
         remove_env("OLLAMA_EMBEDDING_MODEL");
 
@@ -446,7 +457,7 @@ mod tests {
         let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
         remove_env("OLLAMA_URL");
         remove_env("OLLAMA_API_KEY");
-        set_env("OLLAMA_SUMMARY_MODEL", "glm-5:cloud");
+        set_env("OLLAMA_SUMMARY_MODEL", "glm-5.1:cloud");
         set_env("OLLAMA_FALLBACK_MODEL", "   ");
         set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
         set_env("OLLAMA_EMBEDDING_MODEL", "embeddinggemma");
@@ -465,13 +476,13 @@ mod tests {
         let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
         remove_env("OLLAMA_URL");
         remove_env("OLLAMA_API_KEY");
-        set_env("OLLAMA_SUMMARY_MODEL", "glm-5:cloud");
+        set_env("OLLAMA_SUMMARY_MODEL", "glm-5.1:cloud");
         set_env("OLLAMA_FALLBACK_MODEL", "qwen3-coder:30b");
         set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
         set_env("OLLAMA_EMBEDDING_MODEL", "embeddinggemma");
 
         let config = OllamaRuntimeConfig::from_env(true).expect("config");
-        assert_eq!(config.summary_model, "glm-5:cloud");
+        assert_eq!(config.summary_model, "glm-5.1:cloud");
         assert_eq!(config.default_chat_model, None);
         assert_eq!(config.fallback_model.as_deref(), Some("qwen3-coder:30b"));
         assert_eq!(config.summary_evaluator_model, "qwen3.5:397b-cloud");
@@ -567,7 +578,7 @@ mod tests {
         let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
         remove_env("OLLAMA_URL");
         remove_env("OLLAMA_API_KEY");
-        set_env("OLLAMA_SUMMARY_MODEL", "glm-5:cloud");
+        set_env("OLLAMA_SUMMARY_MODEL", "glm-5.1:cloud");
         set_env("OLLAMA_DEFAULT_CHAT_MODEL", "qwen3-chat:latest");
         set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
         set_env("OLLAMA_EMBEDDING_MODEL", "embeddinggemma");
@@ -657,11 +668,22 @@ mod tests {
             .lock()
             .unwrap_or_else(|err| err.into_inner());
 
-        let _reset = EnvReset::capture(&["CHAT_MULTI_PASS_ENABLED"]);
+        let _reset = EnvReset::capture(&[
+            "CHAT_MULTI_PASS_ENABLED",
+            "CHAT_GUARDRAIL_MODEL",
+            "CHAT_PROMPT_BLOCKLIST",
+            "CHAT_PROMPT_ALLOWLIST",
+        ]);
         remove_env("CHAT_MULTI_PASS_ENABLED");
+        remove_env("CHAT_GUARDRAIL_MODEL");
+        remove_env("CHAT_PROMPT_BLOCKLIST");
+        remove_env("CHAT_PROMPT_ALLOWLIST");
 
         let config = ChatRuntimeConfig::from_env();
         assert!(config.multi_pass_enabled);
+        assert_eq!(config.guardrail_model, None);
+        assert!(config.prompt_blocklist.is_empty());
+        assert!(config.prompt_allowlist.is_empty());
     }
 
     #[test]
@@ -671,11 +693,40 @@ mod tests {
             .lock()
             .unwrap_or_else(|err| err.into_inner());
 
-        let _reset = EnvReset::capture(&["CHAT_MULTI_PASS_ENABLED"]);
+        let _reset = EnvReset::capture(&[
+            "CHAT_MULTI_PASS_ENABLED",
+            "CHAT_GUARDRAIL_MODEL",
+            "CHAT_PROMPT_BLOCKLIST",
+            "CHAT_PROMPT_ALLOWLIST",
+        ]);
         set_env("CHAT_MULTI_PASS_ENABLED", "false");
+        set_env("CHAT_GUARDRAIL_MODEL", "llama-guard:8b");
+        set_env(
+            "CHAT_PROMPT_BLOCKLIST",
+            "ignore previous instructions,reveal system prompt",
+        );
+        set_env(
+            "CHAT_PROMPT_ALLOWLIST",
+            "security training,prompt injection examples",
+        );
 
         let config = ChatRuntimeConfig::from_env();
         assert!(!config.multi_pass_enabled);
+        assert_eq!(config.guardrail_model.as_deref(), Some("llama-guard:8b"));
+        assert_eq!(
+            config.prompt_blocklist,
+            vec![
+                "ignore previous instructions".to_string(),
+                "reveal system prompt".to_string()
+            ]
+        );
+        assert_eq!(
+            config.prompt_allowlist,
+            vec![
+                "security training".to_string(),
+                "prompt injection examples".to_string()
+            ]
+        );
     }
 
     #[test]
@@ -688,7 +739,7 @@ mod tests {
         let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
         set_env("OLLAMA_URL", "https://ollama.cloud.example.com");
         remove_env("OLLAMA_API_KEY");
-        set_env("OLLAMA_SUMMARY_MODEL", "glm-5:cloud");
+        set_env("OLLAMA_SUMMARY_MODEL", "glm-5.1:cloud");
         set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
         set_env("OLLAMA_EMBEDDING_MODEL", "embeddinggemma");
 
@@ -707,7 +758,7 @@ mod tests {
         let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
         set_env("OLLAMA_URL", "https://ollama.cloud.example.com");
         set_env("OLLAMA_API_KEY", "sk-test-key");
-        set_env("OLLAMA_SUMMARY_MODEL", "glm-5:cloud");
+        set_env("OLLAMA_SUMMARY_MODEL", "glm-5.1:cloud");
         set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
         set_env("OLLAMA_EMBEDDING_MODEL", "embeddinggemma");
 
@@ -725,7 +776,7 @@ mod tests {
         let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
         set_env("OLLAMA_URL", "http://localhost:11434");
         remove_env("OLLAMA_API_KEY");
-        set_env("OLLAMA_SUMMARY_MODEL", "glm-5:cloud");
+        set_env("OLLAMA_SUMMARY_MODEL", "glm-5.1:cloud");
         set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
         set_env("OLLAMA_EMBEDDING_MODEL", "embeddinggemma");
 
@@ -821,6 +872,7 @@ mod tests {
             .unwrap_or_else(|err| err.into_inner());
 
         let _reset = EnvReset::capture(TURSO_ENV_KEYS);
+        set_env("START_APP_USE_TURSO", "1");
         set_env("TURSO_DB_URL", "libsql://prod-db.turso.io");
         remove_env("TURSO_AUTH_TOKEN");
         let err = TursoRuntimeConfig::from_env().expect_err("missing token should fail");
@@ -840,6 +892,7 @@ mod tests {
             .unwrap_or_else(|err| err.into_inner());
 
         let _reset = EnvReset::capture(TURSO_ENV_KEYS);
+        set_env("START_APP_USE_TURSO", "1");
         set_env("TURSO_DB_URL", "libsql://prod-db.turso.io");
         set_env("TURSO_AUTH_TOKEN", "token");
 

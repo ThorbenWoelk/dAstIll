@@ -1,14 +1,15 @@
+use libsql::params;
+
 use crate::models::UserPreferences;
 
 use super::{Store, StoreError};
 
-const COLLECTION: &str = "dastill_preferences";
-const DOCUMENT_ID: &str = "user";
+const LEGACY_DOCUMENT_ID: &str = "user";
 
 fn preferences_document_id(user_id: &str) -> String {
     let trimmed = user_id.trim();
     if trimmed.is_empty() {
-        DOCUMENT_ID.to_string()
+        LEGACY_DOCUMENT_ID.to_string()
     } else {
         trimmed.to_string()
     }
@@ -35,21 +36,28 @@ fn normalize_preferences(mut preferences: UserPreferences) -> UserPreferences {
 }
 
 pub async fn get_preferences(store: &Store) -> Result<UserPreferences, StoreError> {
-    get_user_preferences(store, DOCUMENT_ID).await
+    get_user_preferences(store, LEGACY_DOCUMENT_ID).await
 }
 
 pub async fn get_user_preferences(
     store: &Store,
     user_id: &str,
 ) -> Result<UserPreferences, StoreError> {
-    let prefs: Option<UserPreferences> = store
-        .firestore
-        .fluent()
-        .select()
-        .by_id_in(COLLECTION)
-        .obj()
-        .one(&preferences_document_id(user_id))
+    let doc_id = preferences_document_id(user_id);
+    let mut rows = store
+        .turso
+        .query(
+            "SELECT data FROM preferences WHERE user_id = ?1",
+            params![doc_id],
+        )
         .await?;
+
+    let prefs = if let Some(row) = rows.next().await? {
+        let json: String = row.get(0)?;
+        serde_json::from_str::<UserPreferences>(&json).ok()
+    } else {
+        None
+    };
     Ok(normalize_preferences(prefs.unwrap_or_default()))
 }
 
@@ -57,7 +65,7 @@ pub async fn save_preferences(
     store: &Store,
     preferences: &UserPreferences,
 ) -> Result<(), StoreError> {
-    save_user_preferences(store, DOCUMENT_ID, preferences).await
+    save_user_preferences(store, LEGACY_DOCUMENT_ID, preferences).await
 }
 
 pub async fn save_user_preferences(
@@ -66,58 +74,58 @@ pub async fn save_user_preferences(
     preferences: &UserPreferences,
 ) -> Result<(), StoreError> {
     let normalized = normalize_preferences(preferences.clone());
+    let json = serde_json::to_string(&normalized)?;
+    let doc_id = preferences_document_id(user_id);
     store
-        .firestore
-        .fluent()
-        .update()
-        .in_col(COLLECTION)
-        .document_id(&preferences_document_id(user_id))
-        .object(&normalized)
-        .execute::<UserPreferences>()
+        .turso
+        .execute(
+            "INSERT INTO preferences (user_id, data) VALUES (?1, ?2) ON CONFLICT(user_id) DO UPDATE SET data = excluded.data",
+            params![doc_id, json],
+        )
         .await?;
     Ok(())
 }
 
 pub async fn migrate_legacy_preferences(store: &Store, user_id: &str) -> Result<(), StoreError> {
     let user_doc_id = preferences_document_id(user_id);
-    if user_doc_id == DOCUMENT_ID {
+    if user_doc_id == LEGACY_DOCUMENT_ID {
         return Ok(());
     }
 
-    let user_exists: bool = store
-        .firestore
-        .fluent()
-        .select()
-        .by_id_in(COLLECTION)
-        .obj::<UserPreferences>()
-        .one(&user_doc_id)
-        .await?
-        .is_some();
-
-    if user_exists {
+    // Check if user already has preferences
+    let mut rows = store
+        .turso
+        .query(
+            "SELECT 1 FROM preferences WHERE user_id = ?1",
+            params![user_doc_id.clone()],
+        )
+        .await?;
+    if rows.next().await?.is_some() {
         return Ok(());
     }
 
-    let legacy_prefs: Option<UserPreferences> = store
-        .firestore
-        .fluent()
-        .select()
-        .by_id_in(COLLECTION)
-        .obj()
-        .one(DOCUMENT_ID)
+    // Copy legacy preferences to user
+    let mut legacy_rows = store
+        .turso
+        .query(
+            "SELECT data FROM preferences WHERE user_id = ?1",
+            params![LEGACY_DOCUMENT_ID],
+        )
         .await?;
 
-    if let Some(prefs) = legacy_prefs {
-        let normalized = normalize_preferences(prefs);
-        store
-            .firestore
-            .fluent()
-            .update()
-            .in_col(COLLECTION)
-            .document_id(&user_doc_id)
-            .object(&normalized)
-            .execute::<UserPreferences>()
-            .await?;
+    if let Some(row) = legacy_rows.next().await? {
+        let json: String = row.get(0)?;
+        if let Ok(prefs) = serde_json::from_str::<UserPreferences>(&json) {
+            let normalized = normalize_preferences(prefs);
+            let normalized_json = serde_json::to_string(&normalized)?;
+            store
+                .turso
+                .execute(
+                    "INSERT INTO preferences (user_id, data) VALUES (?1, ?2) ON CONFLICT(user_id) DO UPDATE SET data = excluded.data",
+                    params![user_doc_id, normalized_json],
+                )
+                .await?;
+        }
     }
 
     Ok(())

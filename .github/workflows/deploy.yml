@@ -3,31 +3,17 @@ name: Release
 run-name: >-
   ${{
     github.event_name == 'workflow_dispatch'
-      && format('Release ({0})', github.event.inputs.target || 'all')
+      && 'Release (manual)'
       || format('Release: {0}', github.event.head_commit.message || 'unknown message')
   }}
 
 on:
   push:
     branches: ["main"]
-    paths:
-      - 'backend/**'
-      - 'frontend/**'
-      - 'docs/**'
   workflow_dispatch:
-    inputs:
-      target:
-        description: Deploy scope
-        type: choice
-        options:
-          - all
-          - backend
-          - docs
-          - frontend
-        default: all
 
 concurrency:
-  group: release-${{ github.sha }}-${{ github.event.inputs.target || 'auto' }}
+  group: release-${{ github.sha }}
   cancel-in-progress: true
 
 env:
@@ -36,21 +22,22 @@ env:
   APP_NAME: dastill
   REPO_ID: dastill
   DEPLOY_SHA: ${{ github.sha }}
+  DOCS_URL_OVERRIDE: ${{ vars.DOCS_URL }}
+  FRONTEND_URL_OVERRIDE: ${{ vars.FRONTEND_URL }}
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 permissions:
   contents: read
   id-token: write
 
 jobs:
-  changes:
-    name: Detect Deploy Scope
+  detect-changes:
+    name: Detect Deploy Changes
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     outputs:
-      backend: ${{ steps.detect.outputs.backend }}
-      frontend: ${{ steps.detect.outputs.frontend }}
-      docs: ${{ steps.detect.outputs.docs }}
-      any: ${{ steps.detect.outputs.any }}
+      backend: ${{ steps.changes.outputs.backend }}
+      docs: ${{ steps.changes.outputs.docs }}
+      frontend: ${{ steps.changes.outputs.frontend }}
 
     steps:
       - name: Checkout
@@ -58,37 +45,89 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Detect deployable components
-        id: detect
-        env:
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
-          GITHUB_SHA: ${{ github.sha }}
-          GITHUB_BASE_REF: ${{ github.base_ref }}
-          BEFORE_SHA: ${{ github.event.before || '' }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-          TARGET: ${{ github.event.inputs.target || 'all' }}
-        run: ./scripts/detect_changed_components.sh deploy
+      - name: Detect changed services
+        id: changes
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            {
+              echo "backend=true"
+              echo "docs=true"
+              echo "frontend=true"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          before_sha="${{ github.event.before }}"
+          if [ -z "$before_sha" ] || [ "$before_sha" = "0000000000000000000000000000000000000000" ]; then
+            before_sha="$(git rev-parse HEAD^ 2>/dev/null || true)"
+          fi
+
+          if [ -z "$before_sha" ]; then
+            {
+              echo "backend=true"
+              echo "docs=true"
+              echo "frontend=true"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          changed_files="$(git diff --name-only "$before_sha" "$GITHUB_SHA")"
+
+          backend=false
+          docs=false
+          frontend=false
+
+          while IFS= read -r path; do
+            case "$path" in
+              backend/*)
+                backend=true
+                ;;
+              firebase.json|.firebaserc)
+                docs=true
+                frontend=true
+                ;;
+              docs/*)
+                docs=true
+                ;;
+              frontend/*)
+                frontend=true
+                ;;
+              *)
+                # Unrecognized paths (root files, .github/, etc.) could affect
+                # any service — deploy everything to be safe.
+                backend=true
+                docs=true
+                frontend=true
+                ;;
+            esac
+          done <<EOF
+          $changed_files
+          EOF
+
+          {
+            echo "backend=$backend"
+            echo "docs=$docs"
+            echo "frontend=$frontend"
+          } >> "$GITHUB_OUTPUT"
 
   checks:
     name: Checks
-    needs: changes
-    if: needs.changes.outputs.any == 'true'
     uses: ./.github/workflows/validation.yml
     with:
-      run_backend: ${{ needs.changes.outputs.backend == 'true' }}
-      run_frontend: ${{ needs.changes.outputs.frontend == 'true' }}
-      run_docs: ${{ needs.changes.outputs.docs == 'true' }}
+      run_backend: true
+      run_frontend: true
+      run_docs: true
 
   deploy-backend:
     name: Deploy Backend
     needs:
-      - changes
+      - detect-changes
       - checks
-    if: needs.changes.outputs.backend == 'true' && (needs.checks.result == 'success' || needs.checks.result == 'skipped')
+    if: needs.detect-changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    outputs:
-      url: ${{ steps.deploy.outputs.url }}
 
     env:
       IMAGE_TAG: ${{ github.sha }}
@@ -112,32 +151,23 @@ jobs:
         run: gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
 
       - name: Build and Push Backend Image
-        run: |
-          docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/backend:$IMAGE_TAG ./backend
-          docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/backend:$IMAGE_TAG
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_ID }}/backend:${{ env.IMAGE_TAG }}
 
-      # Mount DATABRICKS_TOKEN only when Databricks is configured. Otherwise Cloud Run
-      # still resolves :latest and fails if the secret has no enabled versions.
       - name: Prepare backend Cloud Run secrets
         id: backend_secrets
-        env:
-          DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
-          TURSO_DB_URL: ${{ vars.TURSO_DB_URL }}
         run: |
           set -euo pipefail
-          databricks_host="$(printf '%s' "$DATABRICKS_HOST" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-          turso_db_url="$(printf '%s' "$TURSO_DB_URL" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
           {
             echo "YOUTUBE_API_KEY=${APP_NAME}-youtube-api-key:latest"
             echo "OLLAMA_API_KEY=${APP_NAME}-ollama-api-key:latest"
             echo "LOGFIRE_TOKEN=${APP_NAME}-logfire-token:latest"
             echo "BACKEND_PROXY_TOKEN=${APP_NAME}-backend-proxy-token:latest"
-            if [ -n "$turso_db_url" ]; then
-              echo "TURSO_AUTH_TOKEN=${APP_NAME}-turso-auth-token:latest"
-            fi
-            if [ -n "$databricks_host" ]; then
-              echo "DATABRICKS_TOKEN=${APP_NAME}-databricks-token:latest"
-            fi
+            echo "TURSO_AUTH_TOKEN=${APP_NAME}-turso-auth-token:latest"
+            echo "DATABRICKS_TOKEN=${APP_NAME}-databricks-token:latest"
           } > /tmp/backend_cr_secrets.txt
           {
             echo 'secrets<<CR_SECRETS_EOF'
@@ -146,32 +176,16 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Prepare backend Cloud Run env vars
-        env:
-          AWS_REGION: ${{ vars.AWS_REGION }}
-          AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
-          AWS_WIF_AUDIENCE: ${{ vars.AWS_WIF_AUDIENCE }}
-          S3_DATA_BUCKET: ${{ vars.S3_DATA_BUCKET }}
-          S3_VECTOR_BUCKET: ${{ vars.S3_VECTOR_BUCKET }}
-          S3_VECTOR_INDEX: ${{ vars.S3_VECTOR_INDEX }}
-          TURSO_DB_URL: ${{ vars.TURSO_DB_URL }}
-          DEFAULT_SEEDED_CHANNEL_ID: ${{ vars.DEFAULT_SEEDED_CHANNEL_ID || 'UCbRP3c757lWg9M-U7TyEkXA' }}
-          SEARCH_SEMANTIC_ENABLED: ${{ vars.SEARCH_SEMANTIC_ENABLED || 'true' }}
-          OLLAMA_URL: ${{ vars.OLLAMA_URL }}
-          OLLAMA_SUMMARY_MODEL: ${{ vars.OLLAMA_SUMMARY_MODEL }}
-          OLLAMA_DEFAULT_CHAT_MODEL: ${{ vars.OLLAMA_DEFAULT_CHAT_MODEL || vars.OLLAMA_SUMMARY_MODEL }}
-          OLLAMA_EMBEDDING_MODEL: ${{ vars.OLLAMA_EMBEDDING_MODEL }}
-          SUMMARY_EVALUATOR_MODEL: ${{ vars.SUMMARY_EVALUATOR_MODEL }}
-          BACKEND_CORS_ALLOWED_ORIGINS: ${{ vars.BACKEND_CORS_ALLOWED_ORIGINS }}
-          DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
-          DATABRICKS_WAREHOUSE_ID: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
-          DATABRICKS_CATALOG: ${{ vars.DATABRICKS_CATALOG }}
-          DATABRICKS_SCHEMA: ${{ vars.DATABRICKS_SCHEMA }}
-          DATABRICKS_BRONZE_TABLE: ${{ vars.DATABRICKS_BRONZE_TABLE }}
         run: |
           set -euo pipefail
 
           env_file=/tmp/backend_cr_env.txt
           : > "$env_file"
+          allowed_origins="https://${PROJECT_ID}.web.app,https://${PROJECT_ID}.firebaseapp.com,http://localhost:3000,http://127.0.0.1:3000,http://localhost:3543,http://127.0.0.1:3543"
+
+          if [ -n "${FRONTEND_URL_OVERRIDE:-}" ]; then
+            allowed_origins="${allowed_origins},${FRONTEND_URL_OVERRIDE}"
+          fi
 
           yaml_escape() {
             printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
@@ -186,26 +200,25 @@ jobs:
             fi
           }
 
-          add_env_var AWS_REGION "$AWS_REGION"
-          add_env_var AWS_ROLE_ARN "$AWS_ROLE_ARN"
-          add_env_var AWS_WIF_AUDIENCE "$AWS_WIF_AUDIENCE"
-          add_env_var S3_DATA_BUCKET "$S3_DATA_BUCKET"
-          add_env_var S3_VECTOR_BUCKET "$S3_VECTOR_BUCKET"
-          add_env_var S3_VECTOR_INDEX "$S3_VECTOR_INDEX"
-          add_env_var TURSO_DB_URL "$TURSO_DB_URL"
-          add_env_var DEFAULT_SEEDED_CHANNEL_ID "$DEFAULT_SEEDED_CHANNEL_ID"
-          add_env_var SEARCH_SEMANTIC_ENABLED "$SEARCH_SEMANTIC_ENABLED"
-          add_env_var OLLAMA_URL "$OLLAMA_URL"
-          add_env_var OLLAMA_SUMMARY_MODEL "$OLLAMA_SUMMARY_MODEL"
-          add_env_var OLLAMA_DEFAULT_CHAT_MODEL "$OLLAMA_DEFAULT_CHAT_MODEL"
-          add_env_var OLLAMA_EMBEDDING_MODEL "$OLLAMA_EMBEDDING_MODEL"
-          add_env_var SUMMARY_EVALUATOR_MODEL "$SUMMARY_EVALUATOR_MODEL"
-          add_env_var BACKEND_CORS_ALLOWED_ORIGINS "$BACKEND_CORS_ALLOWED_ORIGINS"
-          add_env_var DATABRICKS_HOST "$DATABRICKS_HOST"
-          add_env_var DATABRICKS_WAREHOUSE_ID "$DATABRICKS_WAREHOUSE_ID"
-          add_env_var DATABRICKS_CATALOG "$DATABRICKS_CATALOG"
-          add_env_var DATABRICKS_SCHEMA "$DATABRICKS_SCHEMA"
-          add_env_var DATABRICKS_BRONZE_TABLE "$DATABRICKS_BRONZE_TABLE"
+          add_env_var AWS_REGION "eu-central-1"
+          add_env_var AWS_ROLE_ARN "arn:aws:iam::877173393100:role/dastill-gcp-backend"
+          add_env_var AWS_WIF_AUDIENCE "105579049790067983119"
+          add_env_var S3_DATA_BUCKET "dastill-data-eu-central-1"
+          add_env_var S3_VECTOR_BUCKET "dastill-vectors"
+          add_env_var S3_VECTOR_INDEX "search-chunks"
+          add_env_var TURSO_DB_URL "libsql://dastill-totos-dbs.aws-eu-west-1.turso.io"
+          add_env_var DEFAULT_SEEDED_CHANNEL_ID "UCbRP3c757lWg9M-U7TyEkXA"
+          add_env_var SEARCH_SEMANTIC_ENABLED "true"
+          add_env_var OLLAMA_URL "https://ollama.com"
+          add_env_var OLLAMA_SUMMARY_MODEL "glm-5.1:cloud"
+          add_env_var OLLAMA_DEFAULT_CHAT_MODEL "glm-5.1:cloud"
+          add_env_var OLLAMA_EMBEDDING_MODEL "embeddinggemma"
+          add_env_var SUMMARY_EVALUATOR_MODEL "gemma4:31b-cloud"
+          add_env_var DATABRICKS_HOST "https://dbc-7a303243-287b.cloud.databricks.com"
+          add_env_var DATABRICKS_WAREHOUSE_ID "769c25a6f2a3bf22"
+          add_env_var DATABRICKS_CATALOG "workspace"
+          add_env_var DATABRICKS_SCHEMA "analytics"
+          add_env_var BACKEND_CORS_ALLOWED_ORIGINS "$allowed_origins"
           add_env_var GCP_PROJECT_ID "$PROJECT_ID"
           printf '%s\n' 'SUMMARIZE_PATH: "/usr/local/bin/summarize"' >> "$env_file"
           printf '%s\n' 'POLLY_TTS_ENABLED: "true"' >> "$env_file"
@@ -219,24 +232,18 @@ jobs:
           service: ${{ format('{0}-backend', env.APP_NAME) }}
           region: ${{ env.REGION }}
           image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_ID }}/backend:${{ env.IMAGE_TAG }}
-          flags: "--service-account=${{ env.APP_NAME }}-backend-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com --memory=1Gi --env-vars-file=/tmp/backend_cr_env.txt"
-          # Quote so newlines from the prior step are preserved for deploy-cloudrun.
+          flags: "--service-account=${{ env.APP_NAME }}-backend-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com --memory=1Gi --env-vars-file=/tmp/backend_cr_env.txt --startup-probe=tcpSocket.port=3001,failureThreshold=15,periodSeconds=10"
           secrets: "${{ steps.backend_secrets.outputs.secrets }}"
           secrets_update_strategy: overwrite
 
   deploy-docs:
     name: Deploy Docs
     needs:
-      - changes
+      - detect-changes
       - checks
-    if: needs.changes.outputs.docs == 'true' && (needs.checks.result == 'success' || needs.checks.result == 'skipped')
+    if: needs.detect-changes.outputs.docs == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    outputs:
-      url: ${{ steps.deploy.outputs.url }}
-
-    env:
-      IMAGE_TAG: ${{ github.sha }}
 
     steps:
       - name: Checkout
@@ -249,41 +256,32 @@ jobs:
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_WIF_SA_EMAIL }}
+          create_credentials_file: true
+          export_environment_variables: true
 
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v3.0.0
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2.2.0
 
-      - name: Configure Docker
-        run: gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
+      - name: Install Docs Dependencies
+        working-directory: docs
+        run: bun install --frozen-lockfile
 
-      - name: Build and Push Docs Image
-        run: |
-          docker build \
-            -t $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/docs:$IMAGE_TAG ./docs
-          docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/docs:$IMAGE_TAG
+      - name: Build Docs
+        working-directory: docs
+        run: bun run build
 
-      - name: Deploy Docs to Cloud Run
-        id: deploy
-        uses: google-github-actions/deploy-cloudrun@v3.0.0
-        with:
-          service: ${{ format('{0}-docs', env.APP_NAME) }}
-          region: ${{ env.REGION }}
-          image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_ID }}/docs:${{ env.IMAGE_TAG }}
-          flags: "--allow-unauthenticated --service-account=${{ env.APP_NAME }}-docs-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
+      - name: Deploy Docs to Firebase Hosting
+        run: bunx firebase-tools@15.12.0 deploy --only hosting:docs --project "$PROJECT_ID" --non-interactive
 
   deploy-frontend:
     name: Deploy Frontend
     needs:
-      - changes
+      - detect-changes
       - checks
       - deploy-backend
-      - deploy-docs
-    if: always() && needs.changes.outputs.frontend == 'true' && (needs.checks.result == 'success' || needs.checks.result == 'skipped') && (needs.deploy-backend.result == 'success' || needs.deploy-backend.result == 'skipped') && (needs.deploy-docs.result == 'success' || needs.deploy-docs.result == 'skipped')
+    if: always() && needs.detect-changes.outputs.frontend == 'true' && needs.deploy-backend.result != 'failure'
     runs-on: ubuntu-latest
     timeout-minutes: 60
-
-    env:
-      IMAGE_TAG: ${{ github.sha }}
 
     steps:
       - name: Checkout
@@ -296,31 +294,22 @@ jobs:
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_WIF_SA_EMAIL }}
+          create_credentials_file: true
+          export_environment_variables: true
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v3.0.0
 
-      - name: Configure Docker
-        run: gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2.2.0
 
       - name: Resolve backend and docs URLs
         id: service_urls
-        env:
-          DEPLOYED_BACKEND_URL: ${{ needs.deploy-backend.outputs.url }}
-          DEPLOYED_DOCS_URL: ${{ needs.deploy-docs.outputs.url }}
         run: |
           set -euo pipefail
 
-          backend_url="$DEPLOYED_BACKEND_URL"
-          docs_url="$DEPLOYED_DOCS_URL"
-
-          if [ -z "$backend_url" ]; then
-            backend_url="$(gcloud run services describe "${APP_NAME}-backend" --project "$PROJECT_ID" --region "$REGION" --format='value(status.url)')"
-          fi
-
-          if [ -z "$docs_url" ]; then
-            docs_url="$(gcloud run services describe "${APP_NAME}-docs" --project "$PROJECT_ID" --region "$REGION" --format='value(status.url)')"
-          fi
+          backend_url="$(gcloud run services describe "${APP_NAME}-backend" --project "$PROJECT_ID" --region "$REGION" --format='value(status.url)')"
+          docs_url="${DOCS_URL_OVERRIDE:-https://${PROJECT_ID}-docs.web.app}"
 
           echo "backend_url=$backend_url" >> "$GITHUB_OUTPUT"
           echo "docs_url=$docs_url" >> "$GITHUB_OUTPUT"
@@ -342,7 +331,11 @@ jobs:
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
 
-      - name: Build and Push Frontend Image
+      - name: Install Frontend Dependencies
+        working-directory: frontend
+        run: bun install --frozen-lockfile
+
+      - name: Build Frontend
         env:
           VITE_API_BASE: ${{ steps.service_urls.outputs.backend_url }}
           PUBLIC_DOCS_URL: ${{ steps.service_urls.outputs.docs_url }}
@@ -350,21 +343,9 @@ jobs:
           PUBLIC_FIREBASE_API_KEY: ${{ steps.frontend_build_env.outputs.public_firebase_api_key }}
           PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ steps.frontend_build_env.outputs.public_firebase_auth_domain }}
           PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        working-directory: frontend
         run: |
-          docker build \
-            --build-arg VITE_API_BASE="$VITE_API_BASE" \
-            --build-arg PUBLIC_DOCS_URL="$PUBLIC_DOCS_URL" \
-            --build-arg PUBLIC_CONTACT_EMAIL="$PUBLIC_CONTACT_EMAIL" \
-            --build-arg PUBLIC_FIREBASE_API_KEY="$PUBLIC_FIREBASE_API_KEY" \
-            --build-arg PUBLIC_FIREBASE_AUTH_DOMAIN="$PUBLIC_FIREBASE_AUTH_DOMAIN" \
-            --build-arg PUBLIC_FIREBASE_PROJECT_ID="$PUBLIC_FIREBASE_PROJECT_ID" \
-            -t $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/frontend:$IMAGE_TAG ./frontend
-          docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_ID/frontend:$IMAGE_TAG
+          bun run build
 
-      - name: Deploy Frontend to Cloud Run
-        uses: google-github-actions/deploy-cloudrun@v3.0.0
-        with:
-          service: ${{ format('{0}-frontend', env.APP_NAME) }}
-          region: ${{ env.REGION }}
-          image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_ID }}/frontend:${{ env.IMAGE_TAG }}
-          flags: "--service-account=${{ env.APP_NAME }}-frontend-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
+      - name: Deploy Frontend to Firebase Hosting
+        run: bunx firebase-tools@15.12.0 deploy --only hosting:app --project "$PROJECT_ID" --non-interactive

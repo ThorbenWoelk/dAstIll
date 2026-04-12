@@ -68,16 +68,16 @@
   } = $props();
 </script>
 
-<div class="flex items-center gap-6" id="workspace-tabs-desktop">
+<div class="flex min-w-0 items-center gap-2" id="workspace-tabs-desktop">
   {#each WORKSPACE_CONTENT_MODE_ORDER as mode}
     <button
       type="button"
       data-workspace-content-tab={mode}
       data-go-hint-key={goHintKeyForWorkspaceContentMode(mode)}
-      class={`-mb-px inline-flex h-6 items-center border-b-2 text-[11px] font-bold uppercase tracking-[0.12em] transition-colors ${
+      class={`inline-flex h-8 items-center rounded-full px-3.5 text-[10px] font-bold uppercase tracking-[0.12em] transition-all ${
         contentMode === mode
-          ? "border-[var(--accent)] text-[var(--accent-strong)]"
-          : "border-transparent text-[var(--soft-foreground)] opacity-75 hover:text-[var(--foreground)] hover:opacity-100"
+          ? "bg-[var(--foreground)] text-[var(--background)] shadow-sm"
+          : "text-[var(--soft-foreground)] opacity-80 hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] hover:opacity-100"
       }`}
       aria-pressed={contentMode === mode}
       onclick={() => void onSetMode(mode)}
@@ -94,7 +94,7 @@
 
   {#if selectedVideoId && !loadingContent && !editing}
     <div
-      class="ml-2 border-l border-[var(--border-soft)] pl-4"
+      class="ml-2 flex items-center border-l border-[var(--border-soft)] pl-4"
       id="content-actions"
     >
       <ContentEditor

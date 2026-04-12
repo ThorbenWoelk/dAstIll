@@ -192,6 +192,9 @@
     await tick();
     await new Promise<void>((r) => requestAnimationFrame(() => r()));
 
+    // Guard: close() may have been called while we were awaiting
+    if (!open) return;
+
     clearTourTarget();
     tourSpotlight = null;
 
@@ -274,33 +277,7 @@
       }
     }}
   >
-    <!-- Four scrim strips leave a true viewport hole so the target stays full brightness (not dimmed by opacity). -->
-    {#if tourSpotlight}
-      <div
-        class="tour-scrim tour-scrim--top"
-        style="height:{tourSpotlight.top}px"
-        aria-hidden="true"
-      ></div>
-      <div
-        class="tour-scrim tour-scrim--left"
-        style="top:{tourSpotlight.top}px;width:{tourSpotlight.left}px;height:{tourSpotlight.bottom -
-          tourSpotlight.top}px"
-        aria-hidden="true"
-      ></div>
-      <div
-        class="tour-scrim tour-scrim--right"
-        style="top:{tourSpotlight.top}px;left:{tourSpotlight.right}px;height:{tourSpotlight.bottom -
-          tourSpotlight.top}px"
-        aria-hidden="true"
-      ></div>
-      <div
-        class="tour-scrim tour-scrim--bottom"
-        style="top:{tourSpotlight.bottom}px"
-        aria-hidden="true"
-      ></div>
-    {:else}
-      <div class="tour-scrim tour-scrim--full" aria-hidden="true"></div>
-    {/if}
+    <div class="tour-scrim tour-scrim--full" aria-hidden="true"></div>
 
     <!-- Card: use Next / keyboard; backdrop clicks do not advance. -->
     <div class="tour-card" bind:this={cardEl} style={cardStyle}>
@@ -426,26 +403,6 @@
     inset: 0;
   }
 
-  .tour-scrim--top {
-    top: 0;
-    left: 0;
-    right: 0;
-  }
-
-  .tour-scrim--left {
-    left: 0;
-  }
-
-  .tour-scrim--right {
-    right: 0;
-  }
-
-  .tour-scrim--bottom {
-    left: 0;
-    right: 0;
-    bottom: 0;
-  }
-
   @keyframes tour-in {
     from {
       opacity: 0;
@@ -459,16 +416,29 @@
     position: fixed;
     z-index: 1;
     pointer-events: auto;
-    width: min(360px, calc(100vw - 24px));
+    width: min(380px, calc(100vw - 24px));
     background: var(--surface);
     border-radius: 16px;
+    border-top: 2px solid var(--accent);
     box-shadow:
-      0 20px 60px var(--shadow-strong),
+      0 24px 64px var(--shadow-strong),
       0 0 0 1px var(--border-soft);
     overflow: hidden;
+    animation: tour-card-in 320ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
     transition:
-      top 180ms cubic-bezier(0.16, 1, 0.3, 1),
-      left 180ms cubic-bezier(0.16, 1, 0.3, 1);
+      top 200ms cubic-bezier(0.16, 1, 0.3, 1),
+      left 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes tour-card-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
   }
 
   .tour-card-header {
@@ -485,31 +455,31 @@
   }
 
   .tour-pip {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
     border-radius: 999px;
     border: none;
     background: var(--border);
     cursor: pointer;
     padding: 0;
-    transition: all 250ms cubic-bezier(0.16, 1, 0.3, 1);
+    transition: all 280ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .tour-pip--active {
-    width: 18px;
+    width: 20px;
     background: var(--accent);
   }
 
   .tour-pip--done {
     background: var(--accent);
-    opacity: 0.3;
+    opacity: 0.25;
   }
 
   .tour-step-label {
     font-size: 10px;
     font-weight: 700;
     color: var(--soft-foreground);
-    opacity: 0.35;
+    opacity: 0.45;
     margin-left: 6px;
     font-variant-numeric: tabular-nums;
   }
@@ -535,14 +505,14 @@
   }
 
   .tour-card-body {
-    padding: 14px 18px 8px;
-    animation: tour-step-in 280ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    padding: 16px 20px 8px;
+    animation: tour-step-in 300ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
 
   @keyframes tour-step-in {
     from {
       opacity: 0;
-      transform: translateY(6px);
+      transform: translateY(8px);
     }
     to {
       opacity: 1;
@@ -552,17 +522,18 @@
 
   .tour-title {
     font-family: "Fraunces", ui-serif, Georgia, serif;
-    font-size: 17px;
-    font-weight: 700;
+    font-size: 18px;
+    font-weight: 600;
+    font-variation-settings: "opsz" 72;
     color: var(--foreground);
-    margin: 0 0 6px;
-    letter-spacing: -0.01em;
-    line-height: 1.3;
+    margin: 0 0 8px;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
   }
 
   .tour-body {
     font-size: 13px;
-    line-height: 1.6;
+    line-height: 1.65;
     color: var(--soft-foreground);
     margin: 0;
   }
@@ -571,7 +542,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 14px 14px;
+    padding: 12px 16px 16px;
   }
 
   .tour-nav-back,
@@ -584,14 +555,14 @@
     font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.07em;
     border-radius: 999px;
-    padding: 8px 16px;
+    padding: 8px 18px;
     transition: all 180ms;
   }
 
   .tour-nav-back {
-    background: var(--surface-strong);
+    background: transparent;
     color: var(--soft-foreground);
     opacity: 0.5;
   }
@@ -613,10 +584,10 @@
     font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.07em;
     color: var(--soft-foreground);
     text-decoration: none;
-    opacity: 0.6;
+    opacity: 0.5;
     transition:
       opacity 180ms ease,
       color 180ms ease;
@@ -639,21 +610,29 @@
 
   @media (prefers-reduced-motion: reduce) {
     .tour-root,
-    .tour-card-body,
-    .tour-card {
+    .tour-card,
+    .tour-card-body {
       animation: none !important;
       transition: none !important;
     }
   }
 
-  /* Ring the step target; scrim hole keeps content at full brightness. */
+  /* Soft halo highlight; avoid hard borders around the target itself. */
   :global(.tour-step-target) {
     position: relative;
-    z-index: 1;
-    border-radius: var(--radius-sm);
+    z-index: 10001 !important;
+    border: none !important;
+    border-color: transparent !important;
+    outline: none !important;
     box-shadow:
-      0 0 0 2px var(--accent),
-      0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent),
-      0 12px 40px color-mix(in srgb, var(--foreground) 12%, transparent);
+      0 16px 38px color-mix(in srgb, var(--foreground) 10%, transparent),
+      0 6px 18px color-mix(in srgb, var(--foreground) 8%, transparent) !important;
+    transform: translateY(-1px);
+  }
+
+  :global(.tour-step-target::before),
+  :global(.tour-step-target::after) {
+    border-color: transparent !important;
+    box-shadow: none !important;
   }
 </style>

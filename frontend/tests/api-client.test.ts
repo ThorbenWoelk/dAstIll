@@ -1,51 +1,66 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { describe, expect, it } from "bun:test";
 
-import { createApiRequestInit, request } from "../src/lib/api-client";
-import { configureAuthTokenResolver } from "../src/lib/auth-token";
+import {
+  normalizeApiBase,
+  resolveApiUrl,
+  resolveImplicitApiBase,
+} from "../src/lib/api-client";
 
-const originalFetch = globalThis.fetch;
-
-beforeEach(() => {
-  configureAuthTokenResolver(async () => "firebase-token-123");
-});
-
-afterEach(() => {
-  globalThis.fetch = originalFetch;
-  configureAuthTokenResolver(async () => null);
-});
-
-describe("api client", () => {
-  it("adds the Firebase bearer token to JSON requests", async () => {
-    const fetchMock = mock(
-      async (_input: string | URL | Request, _init?: RequestInit) =>
-        new Response(JSON.stringify({ ok: true }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-    );
-    globalThis.fetch = fetchMock as typeof fetch;
-
-    await request<{ ok: boolean }>("/api/test");
-
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [, init] = fetchMock.mock.calls[0]!;
-    const headers = new Headers(init?.headers);
-    expect(headers.get("Authorization")).toBe("Bearer firebase-token-123");
-    expect(headers.get("Content-Type")).toBe("application/json");
+describe("normalizeApiBase", () => {
+  it("keeps local proxy mode when the API base is unset", () => {
+    expect(normalizeApiBase()).toBe("");
+    expect(normalizeApiBase("   ")).toBe("");
   });
 
-  it("can prepare request init without forcing a JSON content type", async () => {
-    const init = await createApiRequestInit(
-      {
-        method: "GET",
-      },
-      {
-        includeJsonContentType: false,
-      },
+  it("trims surrounding whitespace and a trailing slash", () => {
+    expect(normalizeApiBase(" https://backend.example.com/ ")).toBe(
+      "https://backend.example.com",
     );
+  });
+});
 
-    const headers = new Headers(init.headers);
-    expect(headers.get("Authorization")).toBe("Bearer firebase-token-123");
-    expect(headers.has("Content-Type")).toBe(false);
+describe("resolveApiUrl", () => {
+  it("uses a relative path when no production API origin is configured", () => {
+    expect(resolveApiUrl("/api/channels", normalizeApiBase())).toBe(
+      "/api/channels",
+    );
+  });
+
+  it("uses the configured backend origin for production builds", () => {
+    expect(
+      resolveApiUrl(
+        "/api/channels",
+        normalizeApiBase("https://backend.example.com/"),
+      ),
+    ).toBe("https://backend.example.com/api/channels");
+  });
+});
+
+describe("resolveImplicitApiBase", () => {
+  it("keeps the configured api base when present", () => {
+    expect(
+      resolveImplicitApiBase("https://backend.example.com", {
+        currentOrigin: "http://tauri.localhost",
+        userAgent: "Android",
+      }),
+    ).toBe("https://backend.example.com");
+  });
+
+  it("falls back to the reversed localhost backend for tauri android dev", () => {
+    expect(
+      resolveImplicitApiBase("", {
+        currentOrigin: "http://tauri.localhost",
+        userAgent: "Mozilla/5.0 (Linux; Android 14)",
+      }),
+    ).toBe("http://127.0.0.1:3544");
+  });
+
+  it("keeps relative api paths for non-tauri clients when the api base is unset", () => {
+    expect(
+      resolveImplicitApiBase("", {
+        currentOrigin: "http://localhost:3543",
+        userAgent: "Mozilla/5.0",
+      }),
+    ).toBe("");
   });
 });

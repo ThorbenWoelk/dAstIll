@@ -11,6 +11,7 @@
     goHintKeyForSection,
     type SectionNavigationSection,
   } from "$lib/section-navigation";
+  import { sectionIcon } from "$lib/section-navigation-icons";
   import { authState } from "$lib/auth-state.svelte";
   import WorkspaceUserMenu from "./WorkspaceUserMenu.svelte";
 
@@ -18,7 +19,7 @@
     currentSection = "workspace" as SectionNavigationSection,
     aiIndicator = null,
     collapsed = false,
-    width = 180,
+    width = 200,
     onOpenGuide = () => {},
     onOpenShortcuts = () => {
       window.dispatchEvent(new CustomEvent("dastill:open-shortcuts"));
@@ -46,55 +47,6 @@
       window.removeEventListener("dastill:open-guide", onOpenGuideEvent);
   });
 
-  function navIcon(section: string): { viewBox: string; paths: string[] } {
-    switch (section) {
-      case "workspace":
-        return {
-          viewBox: "0 0 24 24",
-          paths: ["M3 4h6v16H3z", "M10 4h5v16h-5z", "M16 4h5v16h-5z"],
-        };
-      case "queue":
-        return {
-          viewBox: "0 0 24 24",
-          paths: ["M4 7h16", "M4 12h12", "M4 17h9"],
-        };
-      case "highlights":
-        return {
-          viewBox: "0 0 24 24",
-          paths: [
-            "M7 4h10l2 4v10a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8z",
-            "M9 12h6",
-            "M9 16h4",
-            "M9 4v4h6V4",
-          ],
-        };
-      case "vocabulary":
-        return {
-          viewBox: "0 0 24 24",
-          paths: ["M4 6h16", "M4 12h10", "M4 18h7", "M18 10l2 2-4 4-2-2z"],
-        };
-      case "chat":
-        return {
-          viewBox: "0 0 24 24",
-          paths: [
-            "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z",
-            "M8 9h8",
-            "M8 13h5",
-          ],
-        };
-      case "docs":
-        return {
-          viewBox: "0 0 24 24",
-          paths: [
-            "M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z",
-            "M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z",
-          ],
-        };
-      default:
-        return { viewBox: "0 0 24 24", paths: [] };
-    }
-  }
-
   async function handleSignIn() {
     await goto("/login");
   }
@@ -106,11 +58,11 @@
 </script>
 
 <aside
-  class="relative z-50 hidden h-full shrink-0 flex-col bg-[var(--panel-surface)] lg:flex"
+  class="workspace-nav-rail relative z-50 hidden h-full shrink-0 flex-col border-r border-[var(--border-soft)] bg-[var(--panel-surface)] lg:flex"
   style="width: {width}px;"
 >
   {#if collapsed}
-    <div class="flex items-center justify-center px-1.5 pt-3 pb-1">
+    <div class="hidden items-center justify-center px-1.5 pt-3 pb-1 lg:flex">
       <button
         type="button"
         class="inline-flex h-7 w-7 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-60 transition-all hover:bg-[var(--accent-wash)] hover:opacity-100"
@@ -121,7 +73,7 @@
       </button>
     </div>
   {:else}
-    <div class="flex items-center justify-between gap-3 px-4 pt-3 pb-1">
+    <div class="flex items-center justify-between gap-3 px-4 pt-4 pb-2">
       <div class="flex min-w-0 flex-1 items-center gap-2">
         <a
           href="/"
@@ -145,7 +97,7 @@
 
       <button
         type="button"
-        class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-55 transition-all hover:bg-[var(--accent-wash)] hover:opacity-100"
+        class="hidden h-6 w-6 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-55 transition-all hover:bg-[var(--accent-wash)] hover:opacity-100 lg:inline-flex"
         onclick={onToggleCollapse}
         aria-label="Collapse sidebar"
       >
@@ -156,11 +108,11 @@
 
   <nav
     id="app-section-nav-rail"
-    class={`space-y-0.5 ${collapsed ? "mt-1 px-1.5" : "mt-3 px-2"}`}
+    class={`space-y-1 ${collapsed ? "mt-1 px-1.5" : "mt-4 px-2.5"}`}
     aria-label="Sections"
   >
     {#each navItems as item (item.section)}
-      {@const icon = navIcon(item.section)}
+      {@const icon = sectionIcon(item.section)}
       <a
         href={item.href}
         target={item.external ? "_blank" : undefined}
@@ -176,12 +128,12 @@
             : item.section === "workspace"
               ? "nav-workspace-link"
               : undefined}
-        class={`flex items-center gap-2 rounded-[var(--radius-sm)] transition-colors ${
-          collapsed ? "justify-center px-0 py-2" : "px-3 py-2"
+        class={`flex items-center gap-2 rounded-full transition-colors ${
+          collapsed ? "justify-center px-0 py-2.5" : "px-3.5 py-2.5"
         } ${
           item.active
-            ? "bg-[var(--accent-wash)] text-[var(--accent-strong)] font-semibold"
-            : "text-[var(--soft-foreground)] hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]"
+            ? "bg-[var(--surface)] text-[var(--foreground)] font-semibold shadow-sm"
+            : "text-[var(--soft-foreground)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
         }`}
         aria-current={item.active ? "page" : undefined}
         data-tooltip={collapsed ? item.label : undefined}
@@ -204,7 +156,7 @@
           {/each}
         </svg>
         {#if !collapsed}
-          <span class="min-w-0 truncate text-[14px] font-medium"
+          <span class="min-w-0 truncate text-[13px] font-medium"
             >{item.label}</span
           >
           {#if item.external}
@@ -218,7 +170,9 @@
     {/each}
   </nav>
 
-  <div class="mt-auto flex flex-col gap-3 pb-3 {collapsed ? 'px-1.5' : 'px-2'}">
+  <div
+    class="mt-auto flex flex-col gap-3 pb-3 {collapsed ? 'px-1.5' : 'px-2.5'}"
+  >
     <WorkspaceUserMenu {collapsed} {onOpenGuide} {onOpenShortcuts} />
   </div>
 
@@ -232,3 +186,37 @@
     </span>
   </div>
 </aside>
+
+<style>
+  .workspace-nav-rail {
+    --background: #121417;
+    --foreground: #f5efe8;
+    --soft-foreground: #b7ada4;
+    --surface: color-mix(in srgb, white 10%, #121417);
+    --surface-strong: color-mix(in srgb, white 14%, #121417);
+    --panel-surface: #121417;
+    --panel-surface-strong: color-mix(in srgb, white 8%, #121417);
+    --border: color-mix(in srgb, white 18%, #121417);
+    --border-soft: color-mix(in srgb, white 10%, #121417);
+    --muted: color-mix(in srgb, white 8%, #121417);
+    --color-swatch: color-mix(in srgb, var(--accent) 88%, white);
+    --accent-wash: color-mix(in srgb, var(--accent) 20%, #121417);
+    --accent-wash-strong: color-mix(in srgb, var(--accent) 28%, #121417);
+  }
+
+  :global(.dark) .workspace-nav-rail {
+    --background: #f4efe8;
+    --foreground: #17181a;
+    --soft-foreground: #6b6259;
+    --surface: color-mix(in srgb, black 4%, #f4efe8);
+    --surface-strong: color-mix(in srgb, black 8%, #f4efe8);
+    --panel-surface: #f4efe8;
+    --panel-surface-strong: color-mix(in srgb, black 3%, #f4efe8);
+    --border: color-mix(in srgb, black 16%, #f4efe8);
+    --border-soft: color-mix(in srgb, black 10%, #f4efe8);
+    --muted: color-mix(in srgb, black 4%, #f4efe8);
+    --color-swatch: color-mix(in srgb, var(--accent) 88%, black);
+    --accent-wash: color-mix(in srgb, var(--accent) 16%, #f4efe8);
+    --accent-wash-strong: color-mix(in srgb, var(--accent) 22%, #f4efe8);
+  }
+</style>

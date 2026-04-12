@@ -9,6 +9,8 @@ Muted, zen, minimalistic. Content first, no decorative chrome. Prefer restraint 
 
 **Borders and boxes**: Use as little as possible. Prefer whitespace, typography weight, and color contrast to create separation and hierarchy. Borders and background boxes around text or UI elements should be a last resort.
 
+**No accent outline chrome**: Do not use decorative accent-colored line borders, outline rings, or thin red/orange strokes around cards, rows, pills, or spotlighted elements. The accent family may tint fills, text, or soft glows, but it must not appear as a visible perimeter stroke except when conveying a true semantic state such as danger or destructive confirmation.
+
 ---
 
 ## Visual Atoms
@@ -99,6 +101,15 @@ All pages (Workspace, Queue, Highlights) must share the same `AppShell` structur
 - **Content Tabs**: `Toggle.svelte` (pill style). Avoid underline tabs.
 - **Mobile Bottom Bar**: Shared app-level navigation for **Workspace | Queue | Highlights | Settings**.
 
+### Shortcut Naming
+
+- Shortcut hints must follow one clear grammar across the app.
+- **Navigation** uses numbers: `Cmd/Ctrl + 1..6`.
+- **Content modes / tabs** use mnemonic letters: for example `I`, `S`, `H`, `T`.
+- **Inline actions** use symbols only. Do not assign letter shortcuts to action-row buttons when a symbol shortcut is available.
+- Keep hint labels visually short. Prefer one-character hint chips over wordy badges.
+- When adding a new shortcut, update both the visible hint and the actual keyboard handler in the same change.
+
 ---
 
 ## Interaction Model
@@ -115,6 +126,13 @@ All pages (Workspace, Queue, Highlights) must share the same `AppShell` structur
 - Backdrops/scrims must also be opaque - no alpha colors (`rgba`, `/xx` opacity utility backgrounds, `transparent`, or color-mix results that introduce transparency).
 - Use solid design tokens for these layers: `--surface`, `--surface-strong`, `--surface-overlay`, `--surface-overlay-strong`, `--tooltip-bg`.
 - If a popup-style component needs depth, use spacing and solid tone contrast first; avoid translucency tricks.
+
+### Overlay Layer Contract
+
+- Do not introduce raw mobile overlay `z-index` values in feature components when the layer already belongs to the shared shell contract. Use the root overlay tokens in `frontend/src/app.css` instead.
+- Treat `position: fixed` UI as **overlay-bearing**. It must not live under a transformed ancestor unless that anchoring is explicitly intended.
+- If a mobile header, shell, drawer, or panel uses animation, prefer opacity-only entry animation when a descendant popup/popover/drawer must stay viewport-anchored.
+- Any new mobile top-bar popup or drawer needs one Playwright assertion that tap/click makes the overlay visible above the browse/content shell.
 
 ---
 

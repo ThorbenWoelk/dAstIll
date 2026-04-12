@@ -145,6 +145,19 @@ class AuthStateController implements AuthController {
 
   setServerAuth(nextAuth: AuthContext) {
     const normalizedAuth = normalizeAuthContext(nextAuth);
+    const shouldPreserveEstablishedClientSession =
+      typeof window !== "undefined" &&
+      normalizedAuth.authState === "anonymous" &&
+      normalizedAuth.userId === null &&
+      this.#current.userId !== null;
+
+    // `data.auth` can be omitted when no server-side auth handshake exists.
+    // Once Firebase has established a local session, do not treat that
+    // anonymous placeholder as an instruction to sign the user out.
+    if (shouldPreserveEstablishedClientSession) {
+      return;
+    }
+
     const shouldRebootstrapAnonymousSession =
       typeof window !== "undefined" &&
       this.#started &&

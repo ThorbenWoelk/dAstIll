@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tracing::Instrument;
+use utoipa::ToSchema;
 
 use crate::services::http::build_http_client;
 use crate::services::text::limit_text as limit_text_base;
@@ -15,6 +16,8 @@ pub const SEARCH_EMBEDDING_DIMENSIONS: usize = 512;
 pub const SEARCH_TRANSCRIPT_TARGET_WORDS: usize = 300;
 pub const SEARCH_TRANSCRIPT_OVERLAP_WORDS: usize = 40;
 pub const SEARCH_SUMMARY_TARGET_WORDS: usize = 300;
+pub const SEARCH_TRANSCRIPT_MAX_CHUNKS: usize = 80;
+pub const SEARCH_SUMMARY_MAX_CHUNKS: usize = 80;
 // Re-export so callers don't need to know about the fusion module.
 pub use crate::services::fusion::SEARCH_RRF_K;
 pub use crate::services::fusion::fuse_ranked_matches;
@@ -32,7 +35,7 @@ const SEARCH_RERANK_MAX_CANDIDATES: usize = 50;
 const MAX_ERROR_DETAIL_CHARS: usize = 240;
 const MAX_SNIPPET_CHARS: usize = 420;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, ts_rs::TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, ts_rs::TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 #[serde(rename_all = "snake_case")]
 pub enum SearchSourceKind {

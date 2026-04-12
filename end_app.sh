@@ -21,6 +21,7 @@ ports=($frontend_port $backend_port $docs_port)
 script_path=${0:A}
 repo_root=${script_path:h}
 android_app_id="com.dastill.app"
+skip_pids=(${=DASTILL_SKIP_PIDS:-})
 
 log() {
 	if (( quiet == 0 )); then
@@ -93,6 +94,12 @@ collect_matching_pids() {
 }
 
 typeset -A unique_pids
+typeset -A skip_pid_map
+
+for pid in "${skip_pids[@]}"; do
+	[[ "$pid" =~ ^[0-9]+$ ]] || continue
+	skip_pid_map[$pid]=1
+done
 
 for port in "${ports[@]}"; do
 	for pid in ${(f)"$(collect_listener_pids "$port")"}; do
@@ -104,6 +111,7 @@ match_patterns=(
 	"$repo_root/start_app.sh"
 	"/repos/dAstIll/start_app.sh"
 	"cargo tauri android dev"
+	"cargo-tauri tauri android dev"
 	"@tauri-apps/cli@latest android dev"
 	"$repo_root/src-tauri/gen/android/gradlew"
 	"tauri android android-studio-script"
@@ -119,6 +127,15 @@ for pattern in "${match_patterns[@]}"; do
 done
 
 pids=(${(k)unique_pids})
+
+filtered_pids=()
+for pid in "${pids[@]}"; do
+	if [[ -n "${skip_pid_map[$pid]:-}" ]]; then
+		continue
+	fi
+	filtered_pids+=("$pid")
+done
+pids=("${filtered_pids[@]}")
 
 if (( ${#pids[@]} > 0 )); then
 	log "Stopping dAstIll processes: ${(j: :)pids}"

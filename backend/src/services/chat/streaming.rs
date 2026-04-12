@@ -161,7 +161,7 @@ impl ChatService {
         conversation: &ChatConversation,
         grounding_context: String,
         active_chat: &ActiveChatHandle,
-        cancel_rx: &mut watch::Receiver<bool>,
+        cancel_rx: &mut watch::Receiver<ChatCancellationState>,
         conversation_only: bool,
         reply_model: &str,
     ) -> Result<(String, Option<OllamaStreamStats>), String> {
@@ -242,7 +242,7 @@ impl ChatService {
                 loop {
                     tokio::select! {
                         changed = cancel_rx.changed() => {
-                            if changed.is_ok() && *cancel_rx.borrow() {
+                            if changed.is_ok() && cancel_rx.borrow().cancelled {
                                 return Err("cancelled".to_string());
                             }
                         }

@@ -60,7 +60,6 @@
   import { channelOrderFromList } from "$lib/workspace/channels";
   import { createChannelOverviewAddSourceFeedbackController } from "$lib/workspace/channel-overview-add-source-feedback.svelte";
   import { resolveSyncDateInputValue } from "$lib/workspace/sidebar-sync-date";
-  import { mobileBottomBar } from "$lib/mobile-navigation/mobileBottomBar";
   import type {
     AcknowledgedFilter,
     ChannelSortMode,
@@ -83,16 +82,6 @@
   let channelIdToDelete = $state<string | null>(null);
   let mobileChannelsDrawerOpen = $state(false);
   let workspaceStateHydrated = $state(false);
-  $effect(() => {
-    if (mobileChannelsDrawerOpen) {
-      mobileBottomBar.set({ kind: "sections" });
-    } else {
-      mobileBottomBar.set({ kind: "hidden" });
-    }
-    return () => {
-      mobileBottomBar.set({ kind: "sections" });
-    };
-  });
   let channelOrder = $state<string[]>([]);
   let channelSortMode = $state<ChannelSortMode>("custom");
   let videoTypeFilter = $state<VideoTypeFilter>("all");

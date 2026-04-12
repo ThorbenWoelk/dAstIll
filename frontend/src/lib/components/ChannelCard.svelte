@@ -72,6 +72,9 @@
       onDelete(e);
     }
   }
+
+  const deleteButtonRevealClass =
+    "pointer-events-none opacity-0 max-lg:hidden lg:group-hover:pointer-events-auto lg:group-hover:opacity-30 lg:group-focus-within:pointer-events-auto lg:group-focus-within:opacity-30 focus-visible:pointer-events-auto focus-visible:opacity-100 hover:!opacity-100";
 </script>
 
 <button
@@ -81,18 +84,17 @@
   ondragover={onDragOver}
   ondrop={onDrop}
   ondragend={onDragEnd}
-  class={`group relative flex w-full min-w-0 items-center gap-2 rounded-[var(--radius-sm)] px-2 py-2 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${trailingSpaceClass} ${
-    active ? "bg-[var(--accent-wash)]" : "hover:bg-[var(--accent-wash)]"
-  } ${dragging || loading ? "opacity-40" : ""} ${dragOver ? "ring-2 ring-[var(--accent)]/30" : ""} ${loading ? "animate-pulse" : ""} ${draggableEnabled ? (dragging ? "cursor-grabbing" : "cursor-grab") : ""}`}
+  class={`group relative flex w-full min-w-0 items-center gap-3 rounded-[18px] px-3 py-2.5 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${trailingSpaceClass} ${
+    active
+      ? "bg-[var(--panel-surface)] shadow-[0_10px_30px_color-mix(in_srgb,var(--foreground)_8%,transparent)]"
+      : "hover:bg-[var(--accent-wash)]"
+  } ${dragging || loading ? "opacity-40" : ""} ${dragOver ? "shadow-[0_0_0_1px_var(--border-soft),0_16px_34px_color-mix(in_srgb,var(--foreground)_10%,transparent)]" : ""} ${loading ? "animate-pulse" : ""} ${draggableEnabled ? (dragging ? "cursor-grabbing" : "cursor-grab") : ""}`}
   onclick={onSelect}
   disabled={loading}
 >
-  {#if active}
-    <div
-      class="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-r-full bg-[var(--accent)]"
-    ></div>
-  {/if}
-  <div class="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-[var(--muted)]">
+  <div
+    class="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-[var(--muted)]"
+  >
     <img
       src={avatarUrl}
       alt={channel.name}
@@ -106,34 +108,40 @@
   </div>
   <div class="min-w-0 flex-1">
     <p
-      class="truncate text-[14px] font-semibold leading-tight tracking-tight text-[var(--foreground)]"
+      class="truncate text-[13px] font-semibold leading-tight tracking-tight text-[var(--foreground)]"
     >
       {channel.name}
     </p>
     <p
-      class="mt-1 truncate text-[11px] font-medium text-[var(--soft-foreground)] opacity-40"
+      class="mt-1 truncate text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--soft-foreground)] opacity-45"
     >
       {channel.handle ?? channel.id}
     </p>
   </div>
   {#if !loading}
     {#if expanded !== undefined}
-      <div
-        role="button"
-        tabindex="0"
-        class={`shrink-0 flex h-7 w-7 items-center justify-center rounded-full transition-all duration-200 ${showDelete ? "opacity-100" : "opacity-0 lg:group-hover:opacity-30 pointer-events-none lg:pointer-events-auto max-lg:hidden"} hover:!opacity-100 text-[var(--soft-foreground)] hover:text-[var(--danger)]`}
-        onclick={(e) => {
-          e.stopPropagation();
-          onDelete(e);
-        }}
-        onkeydown={handleDeleteKeydown}
-        aria-label="Delete channel"
-      >
-        <TrashIcon size={13} strokeWidth={2.5} />
-      </div>
-      {#if !showDelete}
+      <span class="relative h-7 w-7 shrink-0">
+        {#if showDelete}
+          <div
+            role="button"
+            tabindex="0"
+            class={`absolute inset-0 flex items-center justify-center rounded-full text-[var(--soft-foreground)] transition-all duration-200 ${deleteButtonRevealClass} hover:text-[var(--danger)]`}
+            onclick={(e) => {
+              e.stopPropagation();
+              onDelete(e);
+            }}
+            onkeydown={handleDeleteKeydown}
+            aria-label="Delete channel"
+          >
+            <TrashIcon size={13} strokeWidth={2.5} />
+          </div>
+        {/if}
         <span
-          class={`shrink-0 transition-all duration-200 ${expanded ? "text-[var(--soft-foreground)] opacity-50" : "text-[var(--soft-foreground)] opacity-20"}`}
+          class={`absolute inset-0 flex items-center justify-center transition-all duration-200 ${expanded ? "text-[var(--soft-foreground)] opacity-50" : "text-[var(--soft-foreground)] opacity-20"} ${
+            showDelete
+              ? "lg:group-hover:opacity-0 lg:group-focus-within:opacity-0"
+              : ""
+          }`}
         >
           <ChevronIcon
             direction={expanded ? "down" : "right"}
@@ -141,12 +149,12 @@
             strokeWidth={2.5}
           />
         </span>
-      {/if}
-    {:else}
+      </span>
+    {:else if showDelete}
       <div
         role="button"
         tabindex="0"
-        class={`absolute right-1 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center transition-all duration-200 ${showDelete ? "opacity-100 translate-x-0" : "opacity-0 lg:group-hover:opacity-30 translate-x-2 pointer-events-none lg:pointer-events-auto max-lg:hidden"} hover:!opacity-100 text-[var(--soft-foreground)] hover:text-[var(--danger)]`}
+        class={`absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-all duration-200 translate-x-2 lg:group-hover:translate-x-0 lg:group-focus-within:translate-x-0 focus-visible:translate-x-0 ${deleteButtonRevealClass} hover:text-[var(--danger)]`}
         onclick={(e) => {
           e.stopPropagation();
           onDelete(e);

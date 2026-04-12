@@ -100,12 +100,16 @@ classify_deploy_file() {
   local file="$1"
 
   case "$file" in
+    firebase.json|.firebaserc)
+      docs=true
+      frontend=true
+      ;;
     backend/tests/*|backend/scripts/*|backend/.cargo/audit.toml|backend/openapi.postman.yaml|backend/package.json|backend/bun.lock|backend/.env.example|backend/.gitignore|backend/README.md)
       ;;
     backend/*)
       backend=true
       ;;
-    frontend/tests/*|frontend/e2e/*|frontend/scripts/*|frontend/playwright.config.ts|frontend/firebase.json|frontend/.env.example|frontend/.gitignore|frontend/.prettierignore|frontend/.prettierrc|frontend/README.md|frontend/eslint.config.js)
+    frontend/tests/*|frontend/e2e/*|frontend/scripts/*|frontend/playwright.config.ts|frontend/.env.example|frontend/.gitignore|frontend/.prettierignore|frontend/.prettierrc|frontend/README.md|frontend/eslint.config.js)
       ;;
     frontend/*)
       frontend=true

@@ -1,10 +1,10 @@
 <script lang="ts">
   import AddSourceDrawer from "$lib/components/AddSourceDrawer.svelte";
   import defaultChannelIcon from "$lib/assets/channel-default.svg";
+  import ChevronIcon from "$lib/components/icons/ChevronIcon.svelte";
   import type { Channel, ChannelSnapshot } from "$lib/types";
   import type { AddSourceSubmission } from "$lib/workspace/component-props";
   import { queueStageCardSummary } from "$lib/workspace/queue-stage-card-summary";
-  import { tick } from "svelte";
 
   let {
     channels,
@@ -12,6 +12,7 @@
     onSelectChannel,
     onAddChannel,
     addingChannel = false,
+    loadingChannels = false,
     addSourceErrorMessage = null as string | null,
     /** When set with `queueUnifiedSummary`, cards show pipeline queue counts from each snapshot. */
     channelPreviews = undefined as Record<string, ChannelSnapshot> | undefined,
@@ -23,6 +24,7 @@
     /** When set, shows a + control and optional inline add form. */
     onAddChannel?: (input: AddSourceSubmission) => Promise<boolean> | boolean;
     addingChannel?: boolean;
+    loadingChannels?: boolean;
     addSourceErrorMessage?: string | null;
     channelPreviews?: Record<string, ChannelSnapshot>;
     queueUnifiedSummary?: boolean;
@@ -40,186 +42,170 @@
     return trimmed ? trimmed : null;
   };
 
-  let scrollerEl = $state<HTMLDivElement | null>(null);
-  let cardEls = $state<Map<string, HTMLButtonElement>>(new Map());
+  const selectedIdx = $derived(
+    selectedChannelId !== null
+      ? channels.findIndex((c) => c.id === selectedChannelId)
+      : -1,
+  );
+  const displayChannel = $derived(
+    selectedIdx >= 0 ? channels[selectedIdx] : (channels[0] ?? null),
+  );
+  const displayIdx = $derived(selectedIdx >= 0 ? selectedIdx : 0);
+  const prevChannelId = $derived(
+    displayIdx > 0 ? (channels[displayIdx - 1]?.id ?? null) : null,
+  );
+  const nextChannelId = $derived(
+    displayIdx >= 0 && displayIdx < channels.length - 1
+      ? (channels[displayIdx + 1]?.id ?? null)
+      : null,
+  );
 
-  function setCardEl(channelId: string, el: HTMLButtonElement | null) {
-    if (!el) {
-      cardEls.delete(channelId);
-      return;
-    }
-    cardEls.set(channelId, el);
-  }
-
-  function scrollSelectedCardToCenter() {
-    const container = scrollerEl;
-    if (!container) return;
-    const selected = selectedChannelId;
-    if (!selected) return;
-    const el = cardEls.get(selected);
-    if (!el) return;
-
-    const elRect = el.getBoundingClientRect();
-    const cr = container.getBoundingClientRect();
-    const elCenterInContent =
-      container.scrollLeft + (elRect.left - cr.left) + elRect.width / 2;
-    const viewMid = container.clientWidth / 2;
-    const maxScroll = Math.max(
-      0,
-      container.scrollWidth - container.clientWidth,
-    );
-    const nextLeft = Math.max(
-      0,
-      Math.min(elCenterInContent - viewMid, maxScroll),
-    );
-
-    container.scrollTo({ left: nextLeft, behavior: "smooth" });
-  }
-
+  // Preload adjacent thumbnails so swipe feels instant.
   $effect(() => {
-    void channels;
-    const selected = selectedChannelId;
-    if (!selected) return;
-    if (!scrollerEl) return;
-
-    void tick().then(() => {
-      scrollSelectedCardToCenter();
-    });
-  });
-
-  function registerCard(node: HTMLButtonElement, channelId: string) {
-    setCardEl(channelId, node);
-    return {
-      destroy() {
-        setCardEl(channelId, null);
-      },
-    };
-  }
-
-  const EAGER_THUMB_COUNT = 12;
-
-  /** Warm Cache API + browser cache for thumbnails past the eager strip (idle). */
-  $effect(() => {
-    if (typeof window === "undefined" || !("requestIdleCallback" in window)) {
-      return;
-    }
-    const urls = channels
-      .slice(EAGER_THUMB_COUNT)
-      .map((c) => normalizeThumbnail(c.thumbnail_url))
+    if (typeof window === "undefined") return;
+    const urls = [prevChannelId, nextChannelId]
+      .map((id) => {
+        if (!id) return null;
+        const ch = channels.find((c) => c.id === id);
+        return ch ? normalizeThumbnail(ch.thumbnail_url) : null;
+      })
       .filter((u): u is string => Boolean(u));
-    if (urls.length === 0) return;
-
-    const id = window.requestIdleCallback(
-      () => {
-        for (const url of urls.slice(0, 24)) {
-          const img = new Image();
-          img.referrerPolicy = "no-referrer";
-          img.src = url;
-        }
-      },
-      { timeout: 2000 },
-    );
-    return () => window.cancelIdleCallback(id);
+    for (const url of urls) {
+      const img = new Image();
+      img.referrerPolicy = "no-referrer";
+      img.src = url;
+    }
   });
+
+  // Max dots shown before switching to "N / total" counter.
+  const MAX_DOTS = 9;
 </script>
 
 <div class="lg:hidden">
-  <div class="pl-4 pr-2 pt-3">
+  {#if loadingChannels && channels.length === 0}
+    <!-- Loading skeleton -->
     <div
-      bind:this={scrollerEl}
-      class="custom-scrollbar flex min-w-0 max-w-full flex-nowrap gap-2 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [scroll-padding-inline:1rem] [&::-webkit-scrollbar]:hidden"
-      style="scroll-snap-type: x mandatory"
-      aria-label="Sources"
-    >
-      {#each channels as channel, index (channel.id)}
-        {@const thumb = normalizeThumbnail(channel.thumbnail_url)}
-        {@const active = selectedChannelId === channel.id}
-        <!-- Lazy-loading hurts horizontal strips: off-axis images stay deferred. Eager first strip. -->
-        {@const thumbLoading = index < EAGER_THUMB_COUNT ? "eager" : "lazy"}
-        {@const thumbFetchPriority = active || index < 4 ? "high" : "auto"}
-        {@const preview = channelPreviews?.[channel.id]}
-        {@const queueLine =
-          queueUnifiedSummary && preview
-            ? queueStageCardSummary(preview.videos, "unified")
-            : null}
-        <button
-          use:registerCard={channel.id}
-          type="button"
-          class={`group relative snap-center flex w-[64vw] max-w-[14rem] shrink-0 flex-col overflow-hidden rounded-[var(--radius-md)] bg-[var(--surface-strong)] shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${
-            active
-              ? "ring-1 ring-[var(--accent)]/25"
-              : "hover:bg-[var(--panel-surface)]"
-          }`}
-          onclick={() => onSelectChannel(channel.id)}
-          aria-current={active ? "true" : undefined}
-          aria-label={channel.name}
-        >
-          <div class="relative h-20 w-full bg-[var(--muted)]">
-            <img
-              src={thumb ?? defaultChannelIcon}
-              alt={channel.name}
-              class="h-full w-full object-cover"
-              loading={thumbLoading}
-              decoding="async"
-              fetchpriority={thumbFetchPriority}
-              sizes="(max-width: 1024px) 64vw, 14rem"
-              referrerpolicy="no-referrer"
-            />
-            <div
-              class={`absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent transition-opacity ${
-                active ? "opacity-100" : "opacity-80 group-hover:opacity-100"
-              }`}
-              aria-hidden="true"
-            ></div>
-          </div>
-          <div class="flex min-w-0 flex-1 flex-col gap-1 px-3 py-2">
-            <div class="min-w-0">
-              <div
-                class="truncate text-[13px] font-semibold leading-tight text-[var(--foreground)]"
-              >
-                {channel.name}
-              </div>
-              {#if queueLine}
-                <div
-                  class="mt-1 line-clamp-2 text-[11px] font-medium leading-snug text-[var(--soft-foreground)] opacity-80"
-                >
-                  {queueLine}
-                </div>
-              {:else}
-                <div
-                  class="mt-1 truncate text-[11px] font-medium text-[var(--soft-foreground)] opacity-60"
-                >
-                  {channel.handle ?? channel.id}
-                </div>
-              {/if}
-            </div>
-          </div>
-        </button>
-      {/each}
+      class="relative h-[88px] w-full animate-pulse bg-[var(--muted)] opacity-60"
+      aria-hidden="true"
+    ></div>
+    <div class="flex items-center gap-2 px-4 py-2">
+      <div
+        class="h-2 w-24 animate-pulse rounded-full bg-[var(--border)] opacity-50"
+      ></div>
+    </div>
+  {:else if displayChannel}
+    {@const thumb = normalizeThumbnail(displayChannel.thumbnail_url)}
+    {@const preview = channelPreviews?.[displayChannel.id]}
+    {@const queueLine =
+      queueUnifiedSummary && preview
+        ? queueStageCardSummary(preview.videos, "unified")
+        : null}
 
-      {#if onAddChannel}
-        <div
-          class="flex w-9 shrink-0 snap-center flex-col items-center justify-center self-stretch pr-2"
-          role="presentation"
+    <!-- Channel banner -->
+    <div class="relative h-[88px] w-full overflow-hidden bg-[var(--muted)]">
+      <img
+        src={thumb ?? defaultChannelIcon}
+        alt={displayChannel.name}
+        class="h-full w-full object-cover"
+        fetchpriority="high"
+        decoding="async"
+        referrerpolicy="no-referrer"
+      />
+      <!-- Gradient for legibility -->
+      <div
+        class="absolute inset-0 bg-gradient-to-t from-black/65 via-black/15 to-transparent"
+        aria-hidden="true"
+      ></div>
+
+      <!-- Channel name + subtitle -->
+      <div class="absolute bottom-0 left-0 right-0 px-4 pb-2.5">
+        <p class="truncate text-[14px] font-semibold leading-snug text-white">
+          {displayChannel.name}
+        </p>
+        {#if queueLine}
+          <p class="mt-0.5 truncate text-[11px] leading-tight text-white/70">
+            {queueLine}
+          </p>
+        {:else if displayChannel.handle}
+          <p class="mt-0.5 truncate text-[11px] leading-tight text-white/60">
+            {displayChannel.handle}
+          </p>
+        {/if}
+      </div>
+
+      <!-- Prev arrow -->
+      {#if prevChannelId}
+        <button
+          type="button"
+          class="absolute left-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/35 text-white transition-colors hover:bg-black/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+          onclick={() => prevChannelId && onSelectChannel(prevChannelId)}
+          aria-label="Previous channel"
         >
+          <ChevronIcon direction="left" size={16} strokeWidth={2.5} />
+        </button>
+      {/if}
+
+      <!-- Next arrow -->
+      {#if nextChannelId}
+        <button
+          type="button"
+          class="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/35 text-white transition-colors hover:bg-black/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+          onclick={() => nextChannelId && onSelectChannel(nextChannelId)}
+          aria-label="Next channel"
+        >
+          <ChevronIcon direction="right" size={16} strokeWidth={2.5} />
+        </button>
+      {/if}
+    </div>
+
+    <!-- Dot nav + add button -->
+    {#if channels.length > 1 || onAddChannel}
+      <div
+        class="flex items-center gap-3 px-4 py-2"
+        aria-label="Channel navigation"
+      >
+        <!-- Dots or counter -->
+        <div class="flex min-w-0 flex-1 items-center gap-1.5">
+          {#if channels.length <= MAX_DOTS}
+            {#each channels as ch, i (ch.id)}
+              <button
+                type="button"
+                class="h-1.5 shrink-0 rounded-full transition-all focus-visible:outline-none {i ===
+                displayIdx
+                  ? 'w-4 bg-[var(--accent)]'
+                  : 'w-1.5 bg-[var(--soft-foreground)] opacity-25 hover:opacity-50'}"
+                onclick={() => onSelectChannel(ch.id)}
+                aria-label={ch.name}
+                aria-current={i === displayIdx ? "true" : undefined}
+              ></button>
+            {/each}
+          {:else}
+            <span
+              class="text-[11px] font-medium tabular-nums text-[var(--soft-foreground)] opacity-50"
+            >
+              {displayIdx + 1} / {channels.length}
+            </span>
+          {/if}
+        </div>
+
+        <!-- Add channel -->
+        {#if onAddChannel}
           <button
             type="button"
-            class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 {addDrawerOpen
+            class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] focus-visible:outline-none {addDrawerOpen
               ? 'bg-[var(--accent-wash)] text-[var(--foreground)]'
               : ''}"
             onclick={toggleAddDrawer}
-            aria-label={addDrawerOpen
-              ? "Close add source drawer"
-              : "Add source"}
+            aria-label={addDrawerOpen ? "Close add source" : "Add source"}
             aria-expanded={addDrawerOpen}
           >
             <svg
-              width="18"
-              height="18"
+              width="14"
+              height="14"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              stroke-width="2.2"
+              stroke-width="2.5"
               stroke-linecap="round"
               stroke-linejoin="round"
               aria-hidden="true"
@@ -228,10 +214,10 @@
               <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
           </button>
-        </div>
-      {/if}
-    </div>
-  </div>
+        {/if}
+      </div>
+    {/if}
+  {/if}
 
   {#if onAddChannel}
     <AddSourceDrawer

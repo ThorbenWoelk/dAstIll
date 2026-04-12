@@ -7,6 +7,7 @@ use axum::{
 use chrono::Utc;
 use serde::Deserialize;
 use std::collections::HashSet;
+use utoipa::IntoParams;
 
 use crate::audit;
 use crate::db;
@@ -18,13 +19,14 @@ use crate::models::{
 use crate::read_cache::{ChannelSnapshotCacheKey, VideoListCacheKey};
 use crate::security::{AccessContext, AuthState};
 use crate::services::{
-    FeedSourceAdapter, QuerySourceAdapter, persist_source_profile_and_channel, sync_source_profile,
+    FeedSourceAdapter, QuerySourceAdapter, SearchSourceKind, persist_source_profile_and_channel,
+    sync_source_profile,
 };
 use crate::state::AppState;
 
 use super::{map_db_err, require_channel, require_channel_for_access};
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 pub struct BackfillParams {
     pub limit: Option<usize>,
     pub until: Option<chrono::DateTime<chrono::Utc>>,
@@ -76,6 +78,25 @@ fn parse_add_source_intent(input: &str) -> AddSourceIntent {
     } else {
         AddSourceIntent::YouTubeChannel
     }
+}
+
+async fn delete_channel_with_search_cleanup(
+    state: &AppState,
+    channel_id: &str,
+) -> Result<bool, String> {
+    let video_ids = db::list_video_ids_by_channel(&state.db, channel_id)
+        .await
+        .map_err(|err| err.to_string())?;
+
+    for video_id in &video_ids {
+        for source_kind in [SearchSourceKind::Transcript, SearchSourceKind::Summary] {
+            state.fts.delete_source(video_id, source_kind).await?;
+        }
+    }
+
+    db::delete_channel(&state.db, channel_id)
+        .await
+        .map_err(|err| err.to_string())
 }
 
 async fn source_profile_for_channel(
@@ -131,6 +152,14 @@ async fn build_snapshot_payload(
     })
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/channels",
+    responses(
+        (status = 200, description = "Accessible channels", body = [Channel]),
+        (status = 500, description = "Request failed", body = String)
+    )
+)]
 pub async fn list_channels(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
@@ -159,6 +188,16 @@ pub async fn list_channels(
     Ok(Json(channels))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/workspace/bootstrap",
+    params(WorkspaceBootstrapParams),
+    responses(
+        (status = 200, description = "Workspace bootstrap payload", body = crate::models::WorkspaceBootstrapPayload),
+        (status = 404, description = "Channel not found", body = String),
+        (status = 500, description = "Request failed", body = String)
+    )
+)]
 pub async fn workspace_bootstrap(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
@@ -265,6 +304,17 @@ pub async fn workspace_bootstrap(
     Ok(Json(payload))
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/channels",
+    request_body = AddChannelRequest,
+    responses(
+        (status = 201, description = "Subscribed source channel", body = Channel),
+        (status = 400, description = "Invalid source input", body = String),
+        (status = 403, description = "Sign-in required", body = String),
+        (status = 502, description = "Upstream source resolution failed", body = String)
+    )
+)]
 pub async fn add_channel(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
@@ -379,7 +429,7 @@ pub async fn add_channel(
                 .await
                 .map_err(map_db_err)?;
             if let Err(err) = sync_source_profile(&state, &profile).await {
-                let _ = db::delete_channel(&state.db, &channel.id).await;
+                let _ = delete_channel_with_search_cleanup(&state, &channel.id).await;
                 return Err((StatusCode::BAD_GATEWAY, err));
             }
             db::save_user_channel(
@@ -420,7 +470,7 @@ pub async fn add_channel(
                 .await
                 .map_err(map_db_err)?;
             if let Err(err) = sync_source_profile(&state, &profile).await {
-                let _ = db::delete_channel(&state.db, &channel.id).await;
+                let _ = delete_channel_with_search_cleanup(&state, &channel.id).await;
                 return Err((StatusCode::BAD_GATEWAY, err));
             }
             db::save_user_channel(
@@ -452,7 +502,7 @@ pub async fn add_channel(
                 .await
                 .map_err(map_db_err)?;
             if let Err(err) = sync_source_profile(&state, &profile).await {
-                let _ = db::delete_channel(&state.db, &channel.id).await;
+                let _ = delete_channel_with_search_cleanup(&state, &channel.id).await;
                 return Err((StatusCode::BAD_GATEWAY, err));
             }
             db::save_user_channel(
@@ -472,6 +522,15 @@ pub async fn add_channel(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/openalex/plan",
+    request_body = OpenAlexPlanRequest,
+    responses(
+        (status = 200, description = "Planned OpenAlex query", body = OpenAlexPlanResponse),
+        (status = 502, description = "Planner failed", body = String)
+    )
+)]
 pub async fn plan_openalex_query(
     State(state): State<AppState>,
     Json(payload): Json<OpenAlexPlanRequest>,
@@ -484,6 +543,17 @@ pub async fn plan_openalex_query(
     Ok(Json(response))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/channels/{id}",
+    params(
+        ("id" = String, Path, description = "Channel id")
+    ),
+    responses(
+        (status = 200, description = "Channel", body = Channel),
+        (status = 404, description = "Channel not found", body = String)
+    )
+)]
 pub async fn get_channel(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
@@ -494,6 +564,17 @@ pub async fn get_channel(
     ))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/channels/{id}/sync-depth",
+    params(
+        ("id" = String, Path, description = "Channel id")
+    ),
+    responses(
+        (status = 200, description = "Channel sync depth", body = crate::models::SyncDepthPayload),
+        (status = 404, description = "Channel not found", body = String)
+    )
+)]
 pub async fn get_channel_sync_depth(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
@@ -511,6 +592,18 @@ pub async fn get_channel_sync_depth(
     Ok(Json(payload))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/channels/{id}/snapshot",
+    params(
+        ("id" = String, Path, description = "Channel id"),
+        VideoListParams
+    ),
+    responses(
+        (status = 200, description = "Channel snapshot", body = crate::models::ChannelSnapshotPayload),
+        (status = 404, description = "Channel not found", body = String)
+    )
+)]
 pub async fn get_channel_snapshot(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
@@ -577,6 +670,18 @@ pub async fn get_channel_snapshot(
     Ok(Json(payload))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/channels/{id}",
+    params(
+        ("id" = String, Path, description = "Channel id")
+    ),
+    responses(
+        (status = 204, description = "Deleted channel subscription"),
+        (status = 403, description = "Sign-in required", body = String),
+        (status = 404, description = "Channel not found", body = String)
+    )
+)]
 pub async fn delete_channel(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
@@ -603,6 +708,19 @@ pub async fn delete_channel(
     }
 }
 
+#[utoipa::path(
+    put,
+    path = "/api/channels/{id}",
+    params(
+        ("id" = String, Path, description = "Channel id")
+    ),
+    request_body = UpdateChannelRequest,
+    responses(
+        (status = 200, description = "Updated channel subscription", body = Channel),
+        (status = 403, description = "Sign-in required", body = String),
+        (status = 404, description = "Channel not found", body = String)
+    )
+)]
 pub async fn update_channel(
     State(state): State<AppState>,
     Extension(access_context): Extension<AccessContext>,
@@ -645,6 +763,18 @@ pub async fn update_channel(
 const REFRESH_BACKFILL_BATCH: usize = 50;
 const REFRESH_BACKFILL_MAX_ROUNDS: usize = 20;
 
+#[utoipa::path(
+    post,
+    path = "/api/channels/{id}/refresh",
+    params(
+        ("id" = String, Path, description = "Channel id")
+    ),
+    responses(
+        (status = 200, description = "Refresh result", body = crate::openapi::VideosAddedResponse),
+        (status = 404, description = "Channel not found", body = String),
+        (status = 502, description = "Upstream source fetch failed", body = String)
+    )
+)]
 pub async fn refresh_channel_videos(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -727,6 +857,19 @@ pub async fn refresh_channel_videos(
     Ok(Json(serde_json::json!({ "videos_added": count })))
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/channels/{id}/backfill",
+    params(
+        ("id" = String, Path, description = "Channel id"),
+        BackfillParams
+    ),
+    responses(
+        (status = 200, description = "Backfill result", body = crate::openapi::ChannelBackfillResponse),
+        (status = 404, description = "Channel not found", body = String),
+        (status = 502, description = "Upstream source fetch failed", body = String)
+    )
+)]
 pub async fn backfill_channel_videos(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -860,6 +1003,11 @@ mod tests {
             )),
             chat: Arc::new(ChatService::new(
                 OllamaCore::new("://invalid-url", "qwen3:8b").with_cloud_cooldown(cooldown.clone()),
+            )),
+            input_guardrails: Arc::new(crate::services::InputGuardrailService::new(
+                OllamaCore::new("://invalid-url", "qwen3:8b").with_cloud_cooldown(cooldown.clone()),
+                Vec::new(),
+                Vec::new(),
             )),
             analytics: None,
             active_replies: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),

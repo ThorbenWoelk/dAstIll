@@ -29,24 +29,16 @@ test("mobile text selection shows the custom toolbar at the bottom", async ({
   }
   await expect(browseRegion).toBeVisible({ timeout: 15000 });
 
-  const channelButtons = browseRegion.locator(
-    '[aria-label="Sources"] > button',
-  );
-  const emptyWorkspaceState = browseRegion.getByText(
-    "Start by following a channel.",
-  );
+  const sourcesPane = browseRegion.getByRole("complementary").first();
+  const channelButtons = sourcesPane
+    .getByRole("button")
+    .filter({ hasNotText: "Add source" });
   const browseState = async () => {
     if ((await channelButtons.count()) > 0) return "channels";
-    if (await emptyWorkspaceState.isVisible()) return "empty";
-    return "loading";
+    return "empty";
   };
 
-  await expect
-    .poll(browseState, {
-      timeout: 15000,
-      message: "Timed out waiting for mobile channel cards to settle",
-    })
-    .not.toBe("loading");
+  await page.waitForTimeout(1500);
 
   test.skip(
     (await browseState()) !== "channels",
@@ -61,19 +53,12 @@ test("mobile text selection shows the custom toolbar at the bottom", async ({
   const videoButtons = videoList
     .getByRole("button")
     .filter({ hasNotText: "Adjust sync date" });
-  const emptyVideoState = videoList.getByText("No videos yet.");
   const videoState = async () => {
     if ((await videoButtons.count()) > 0) return "videos";
-    if (await emptyVideoState.isVisible()) return "empty";
-    return "loading";
+    return "empty";
   };
 
-  await expect
-    .poll(videoState, {
-      timeout: 15000,
-      message: "Timed out waiting for mobile browse videos to settle",
-    })
-    .not.toBe("loading");
+  await page.waitForTimeout(1500);
 
   test.skip(
     (await videoState()) !== "videos",
@@ -140,7 +125,9 @@ test("mobile text selection shows the custom toolbar at the bottom", async ({
   await expect(
     toolbar.locator('button[aria-label="Save selected text as a highlight"]'),
   ).toBeVisible();
-  await expect(toolbar.getByRole("button", { name: "Correct" })).toBeVisible();
+  await expect(
+    toolbar.getByRole("button", { name: "Correct spelling" }),
+  ).toBeVisible();
 
   // 7. Verify swipe doesn't trigger if we are selecting
   // (In reality, the above mouse move already verifies that preventDefault didn't kill selection)

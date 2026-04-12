@@ -402,7 +402,7 @@ mod tests {
 
     #[test]
     fn indicator_status_uses_local_fallback_when_policy_allows_it() {
-        let core = OllamaCore::new("http://localhost:11434", "glm-5:cloud")
+        let core = OllamaCore::new("http://localhost:11434", "glm-5.1:cloud")
             .with_fallback_model(Some("qwen3-coder:30b".to_string()));
 
         assert_eq!(
@@ -413,7 +413,7 @@ mod tests {
 
     #[test]
     fn indicator_status_reports_offline_when_policy_disallows_local_fallback() {
-        let core = OllamaCore::new("http://localhost:11434", "glm-5:cloud")
+        let core = OllamaCore::new("http://localhost:11434", "glm-5.1:cloud")
             .with_fallback_model(Some("qwen3-coder:30b".to_string()));
 
         assert_eq!(
@@ -445,7 +445,7 @@ mod tests {
 
     #[test]
     fn build_ollama_client_succeeds_with_api_key() {
-        let core = OllamaCore::new("https://cloud.example.com", "glm-5:cloud")
+        let core = OllamaCore::new("https://cloud.example.com", "glm-5.1:cloud")
             .with_api_key(Some("test-key-123".to_string()));
         assert!(core.build_ollama_client().is_ok());
     }

@@ -21,19 +21,20 @@
 
 <button
   type="button"
-  class={`group flex w-full items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${selected ? "bg-[var(--accent-wash)]" : "hover:bg-[var(--accent-wash)]"} ${className}`}
+  class={`group flex w-full items-center gap-2 rounded-[18px] px-3 py-2.5 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${selected ? "bg-[var(--panel-surface)] shadow-[0_10px_28px_color-mix(in_srgb,var(--foreground)_8%,transparent)]" : "hover:bg-[var(--accent-wash)]"} ${className}`}
   {onclick}
   {onmouseenter}
   {onmouseleave}
 >
   <div class="min-w-0 flex-1">
     <p
-      class="line-clamp-2 text-[12px] font-medium leading-tight tracking-tight text-[var(--foreground)]"
+      class="line-clamp-2 text-[13px] font-medium leading-[1.35] tracking-tight text-[var(--foreground)]"
     >
       {video.title}
     </p>
     <div class="mt-1 flex items-center gap-2">
-      <span class="text-[10px] text-[var(--soft-foreground)] opacity-50"
+      <span
+        class="text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--soft-foreground)] opacity-45"
         >{formatShortDate(video.published_at)}</span
       >
       {#if video.transcript_status === "loading" || video.summary_status === "loading"}

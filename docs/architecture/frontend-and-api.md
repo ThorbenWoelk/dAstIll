@@ -1,38 +1,20 @@
+---
+aside: false
+---
+
 # Frontend and API
 
 <script setup>
 const frontendBoundaryDiagram = String.raw`
-flowchart LR
-  routes[Svelte routes + workspace controllers]
-  api[frontend/src/lib/api.ts]
-
-  subgraph handlers["Axum handler modules"]
-    channels[channels.rs]
-    videos[videos.rs]
-    content[content.rs]
-    search[search.rs]
-    chat[chat.rs]
-    highlights[highlights.rs]
-    prefs[preferences.rs]
-  end
-
-  services[db/* + services/* + workers/*]
+flowchart TB
+  routes[Workspace routes]
+  api[Shared API client]
+  handlers[Axum handlers]
+  services[db + services + workers]
 
   routes --> api
-  api --> channels
-  api --> videos
-  api --> content
-  api --> search
-  api --> chat
-  api --> highlights
-  api --> prefs
-  channels --> services
-  videos --> services
-  content --> services
-  search --> services
-  chat --> services
-  highlights --> services
-  prefs --> services
+  api --> handlers
+  handlers --> services
 `;
 
 const workspaceBootstrapDiagram = String.raw`
@@ -56,39 +38,38 @@ sequenceDiagram
   ui->>content: Load transcript/summary/info for selected video
 `;
 
-const proxyBoundaryDiagram = String.raw`
-flowchart LR
+const requestTrustDiagram = String.raw`
+flowchart TB
   browser[Browser]
+  tauri[Tauri Android]
   ui[Product UI]
-  proxy[SvelteKit API proxy]
-  headers[x-dastill-* proxy headers]
+  direct[Firebase bearer token]
+  proxy[Trusted proxy headers]
   backend[Axum backend]
   scope[AccessContext]
-  authz[Scoped channel, video, search, and chat access]
+  authz[Scoped access]
 
   browser --> ui
-  ui -->|relative /api/...| proxy
-  proxy --> headers
-  headers --> backend
+  tauri --> ui
+  ui --> direct
+  direct --> backend
+  proxy --> backend
   backend --> scope
   scope --> authz
 `;
 
 const apiFamiliesDiagram = String.raw`
 flowchart TD
-  ui[Workspace + route UIs]
+  ui[Workspace UI]
+  library[Library + content APIs]
+  search[Search APIs]
+  chat[Chat + SSE APIs]
+  user[Highlights + preferences]
 
-  ui --> bootstrap[Bootstrap + channels + videos]
-  ui --> contentapi[Transcript + summary + video info]
-  ui --> searchapi[Search + search status + rebuild]
-  ui --> chatapi[Chat config + conversations + SSE streams]
-  ui --> userapi[Highlights + preferences + analytics]
-
-  bootstrap --> channels[channels.rs + videos.rs]
-  contentapi --> content[content.rs + videos.rs]
-  searchapi --> search[search.rs]
-  chatapi --> chat[chat.rs]
-  userapi --> userhandlers[highlights.rs + preferences.rs + analytics.rs]
+  ui --> library
+  ui --> search
+  ui --> chat
+  ui --> user
 `;
 </script>
 
@@ -99,6 +80,7 @@ The SvelteKit app currently exposes the following top-level product routes:
 | Route             | Purpose                                                                 |
 | ----------------- | ----------------------------------------------------------------------- |
 | `/`               | Main workspace for channels, videos, summaries, transcripts, and search |
+| `/channels/[id]`  | Dedicated per-channel overview and management view                      |
 | `/download-queue` | Queue-oriented operational view                                         |
 | `/highlights`     | Cross-video highlight browser                                           |
 | `/chat`           | RAG conversations with video content                                    |
@@ -118,6 +100,7 @@ The main route is responsible for most user-facing behavior:
 - channel selection
 - video list filters
 - transcript / summary / info switching
+- summary-audio playback when TTS is configured
 - search UI
 - workspace bootstrap, selection restore, and refresh logic
 
@@ -138,9 +121,18 @@ This keeps the initial workspace state coherent while still allowing the deeper 
   :chart="workspaceBootstrapDiagram"
 />
 
+## Request Trust Model
+
+The current frontend no longer depends on a SvelteKit API proxy route layer for normal product traffic.
+
+- Browser and Tauri clients call the Rust backend directly using `VITE_API_BASE`.
+- Signed-in direct requests send `Authorization: Bearer <firebase-id-token>`.
+- Trusted first-party callers can still use `x-dastill-proxy-auth` plus `x-dastill-*` headers when they need proxy-style identity forwarding.
+- The backend accepts either mode and always resolves an `AccessContext` before channel, video, search, or chat authorization decisions.
+
 <MermaidDiagram
-  caption="All product API traffic goes through the SvelteKit proxy layer, which adds trusted proxy/auth headers before the Rust backend builds request scope and authorization state."
-  :chart="proxyBoundaryDiagram"
+  caption="Request trust modes: normal product clients authenticate directly with Firebase bearer tokens, while trusted first-party callers can still use the proxy-auth header path."
+  :chart="requestTrustDiagram"
 />
 
 The backend exposes a combined convenience endpoint:
@@ -178,9 +170,15 @@ This endpoint is useful for combined consumers and tests. The product frontend u
 
 - fetch transcript
 - fetch summary
+- generate and fetch cached summary audio
 - clean transcript formatting
 - manually update transcript or summary
 - regenerate summary
+
+### Auth and Session Handoff
+
+- create, poll, complete, and delete Android mobile-auth handoff sessions
+- support system-browser Google sign-in for the Tauri Android shell
 
 ### Highlights
 
@@ -202,6 +200,7 @@ This endpoint is useful for combined consumers and tests. The product frontend u
 - stream AI responses via server-sent events
 - cancel in-progress message generation
 - reconnect to ongoing streams
+- allow a per-message deep-research flag to widen retrieval budgets
 - signed-in users use persistent conversations; signed-out visitors use the ephemeral chat path
 
 ### Analytics
@@ -219,9 +218,10 @@ This endpoint is useful for combined consumers and tests. The product frontend u
 
 The backend handler modules are split by concern:
 
+- `auth.rs` - Android mobile-auth handoff session lifecycle
 - `channels.rs` - channel CRUD, sync, refresh, backfill
 - `videos.rs` - video listing, video info retrieval and enrichment
-- `content.rs` - transcripts, summaries, AI health status
+- `content.rs` - transcripts, summaries, summary audio, AI health status
 - `highlights.rs` - highlight CRUD
 - `search.rs` - search queries, status, rebuilds
 - `chat.rs` - conversations, message streaming, RAG context retrieval
@@ -235,7 +235,11 @@ The handlers are thin orchestration points. Durable logic primarily lives in:
 
 ## Frontend-to-Backend Contract Style
 
-The UI and backend communicate with typed JSON payloads rather than GraphQL or server actions. The product frontend centralizes request logic in `frontend/src/lib/api.ts`.
+The UI and backend communicate with typed JSON payloads plus SSE streams rather than GraphQL or server actions. The product frontend centralizes request logic in `frontend/src/lib/api.ts`, while chat and search status streams use `EventSource`.
+
+For manual backend debugging, the backend also exposes a live OpenAPI document at
+`/api/openapi.json`. During local development, Postman should import the running backend URL
+instead of relying on the checked-in `backend/openapi.postman.yaml` snapshot.
 
 ## Search UI Pattern
 

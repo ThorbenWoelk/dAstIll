@@ -19,6 +19,7 @@ import {
   applyVideoTypeFilterChange,
   clearSidebarVideoFilters,
   loadChannelSnapshotWithRefresh,
+  resolveSnapshotPageState,
 } from "$lib/workspace/route-helpers";
 import { putCachedChannels } from "$lib/workspace-cache";
 import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
@@ -145,6 +146,11 @@ export function createSidebarVideoOperations(
         context.clearChannelSelectionState();
       } else {
         context.applySelectionState({ selectedChannelId: initialChannelId });
+        // Set video loading eagerly so the skeleton shows during the network
+        // fetch instead of flashing "No videos yet."
+        if (!silent) {
+          context.setVideoLoadingState(true);
+        }
         await refreshAndLoadVideos(initialChannelId, silent);
       }
     } catch (error) {
@@ -154,6 +160,9 @@ export function createSidebarVideoOperations(
     } finally {
       if (!silent) {
         context.setChannelLoadingState(false);
+        // applyChannelSnapshot resets this in the happy path; this covers
+        // the case where loadSnapshot() throws before applySnapshot runs.
+        context.setVideoLoadingState(false);
       }
     }
   }
@@ -168,12 +177,7 @@ export function createSidebarVideoOperations(
     }
     try {
       if (context.getSelectedChannelId() !== channelId) return;
-      context.applyChannelSnapshotState({
-        videos: snapshot.videos,
-        has_more: snapshot.videos.length === context.limit,
-        next_offset: snapshot.videos.length,
-        sync_depth: snapshot.sync_depth,
-      });
+      context.applyChannelSnapshotState(resolveSnapshotPageState(snapshot));
 
       if (context.options.onVideosLoaded) {
         await context.options.onVideosLoaded({
@@ -202,6 +206,7 @@ export function createSidebarVideoOperations(
       channelId,
       refreshedAtByChannel: context.channelLastRefreshedAt,
       ttlMs: CHANNEL_REFRESH_TTL_MS,
+      enableRefresh: context.options.enableBackgroundRefresh ?? true,
       initialSilent: silent,
       getMutationEpoch: context.getVideoListMutationEpoch,
       loadSnapshot: () =>
@@ -322,7 +327,16 @@ export function createSidebarVideoOperations(
       videos: selectedVideoHint ? [selectedVideoHint] : [],
     });
     context.options.onVideoListReset?.();
-    await refreshAndLoadVideos(channelId, !fromUserInteraction);
+    // Set loading eagerly in both paths: user-initiated (non-silent) and
+    // programmatic (silent snapshot but still show skeleton in the UI).
+    context.setVideoLoadingState(true);
+    try {
+      await refreshAndLoadVideos(channelId, !fromUserInteraction);
+    } finally {
+      // applyChannelSnapshot resets this in the happy path via its own
+      // finally block; this clears it if loadSnapshot() throws first.
+      context.setVideoLoadingState(false);
+    }
   }
 
   function selectVideo(videoId: string | null) {

@@ -30,6 +30,8 @@ function createSummary(overrides: Partial<Summary> = {}): Summary {
     quality_note: null,
     model_used: null,
     quality_model_used: null,
+    summary_tags: [],
+    summary_tags_evaluated: false,
     ...overrides,
   };
 }
@@ -110,6 +112,7 @@ describe("resolveSummaryQualityPresentation", () => {
       note: "**Faithfulness**: \\n- Dense and accurate.",
       modelUsed: "summary-model",
       qualityModelUsed: "eval-model",
+      tags: [],
     });
   });
 
@@ -119,7 +122,18 @@ describe("resolveSummaryQualityPresentation", () => {
       note: null,
       modelUsed: null,
       qualityModelUsed: null,
+      tags: [],
     });
+  });
+
+  it("preserves concise summary tags when present", () => {
+    expect(
+      resolveSummaryQualityPresentation(
+        createSummary({
+          summary_tags: ["AI Security", "Tech Knowledge", "Blackpilled"],
+        }),
+      ).tags,
+    ).toEqual(["AI Security", "Tech Knowledge", "Blackpilled"]);
   });
 });
 
@@ -145,6 +159,7 @@ describe("resolveBackgroundSummaryRefresh", () => {
         note: "Useful and direct.",
         modelUsed: "summary-model",
         qualityModelUsed: "eval-model",
+        tags: [],
       },
     });
   });

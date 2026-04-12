@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { clickOutside } from "$lib/actions/click-outside";
   import { renderMarkdown } from "../../utils/markdown";
+  import { fly } from "svelte/transition";
 
   let {
     score = null,
@@ -13,105 +15,382 @@
     qualityModelUsed?: string | null;
   } = $props();
 
-  let noteExpanded = $state(false);
+  let drawerOpen = $state(false);
+  let triggerEl = $state<HTMLButtonElement | null>(null);
+
+  const displayScore = $derived(
+    score !== null
+      ? Number.isInteger(score)
+        ? String(score)
+        : score.toFixed(1)
+      : null,
+  );
+
+  function toggleDrawer() {
+    if (note) drawerOpen = !drawerOpen;
+  }
+
+  function closeDrawer() {
+    drawerOpen = false;
+  }
+
+  function handleDrawerClickOutside(event: PointerEvent) {
+    if (
+      triggerEl &&
+      event.target instanceof Node &&
+      triggerEl.contains(event.target)
+    ) {
+      return;
+    }
+    closeDrawer();
+  }
+
+  function handleKeydown(e: KeyboardEvent) {
+    if (drawerOpen && e.key === "Escape") {
+      e.preventDefault();
+      closeDrawer();
+    }
+  }
 </script>
 
-<div
-  class="mb-2 flex flex-col gap-1 text-[11px] text-[var(--soft-foreground)] opacity-40"
->
-  <span>Distilled by {modelUsed ?? "unknown model"}</span>
-  <div
-    class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1"
-    role="status"
-    aria-live="polite"
-  >
-    <svg
-      class={`mt-1 ${note && noteExpanded ? "row-span-2" : ""}`}
-      width="12"
-      height="12"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="3"
-      stroke-linecap="round"
-      stroke-linejoin="round"
+<svelte:window onkeydown={handleKeydown} />
+
+<div class="summary-meta-gutter" role="status" aria-live="polite">
+  {#if displayScore !== null}
+    <button
+      bind:this={triggerEl}
+      type="button"
+      class="meta-score-block"
+      onclick={toggleDrawer}
+      aria-expanded={drawerOpen}
+      aria-controls="summary-quality-note"
+      title={note
+        ? drawerOpen
+          ? "Hide evaluation"
+          : "Show evaluation"
+        : undefined}
     >
-      <polygon
-        points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"
-      ></polygon>
-    </svg>
-    <div class="flex min-w-0 flex-wrap items-center gap-2">
-      <span class="font-bold uppercase tracking-[0.08em]">
-        {#if score !== null}
-          Quality Analysis: {score}/10
-        {:else}
-          Evaluating quality...
-        {/if}
+      <span class="meta-score-value">{displayScore}</span>
+      <span class="meta-score-label">Quality</span>
+    </button>
+  {:else}
+    <div class="meta-score-block">
+      <span class="meta-score-value meta-score-pending">
+        <span class="meta-score-dot"></span>
       </span>
-      {#if note}
-        <button
-          type="button"
-          class="inline-flex items-center gap-1 rounded-[var(--radius-sm)] text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--soft-foreground)] opacity-70 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30"
-          aria-expanded={noteExpanded}
-          aria-controls="summary-quality-note"
-          onclick={() => {
-            noteExpanded = !noteExpanded;
-          }}
-        >
-          {noteExpanded ? "Hide eval" : "Show eval"}
-          <svg
-            class={`h-3 w-3 transition-transform ${noteExpanded ? "rotate-180" : ""}`}
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </button>
-      {/if}
-      {#if qualityModelUsed}
-        <span
-          class="text-[10px] font-medium normal-case tracking-normal text-[var(--soft-foreground)] opacity-70"
-        >
-          Eval by {qualityModelUsed}
-        </span>
-      {/if}
+      <span class="meta-score-label">Evaluating</span>
     </div>
-    {#if note && noteExpanded}
-      <div
-        id="summary-quality-note"
-        class="eval-note-markdown min-w-0 italic leading-relaxed"
-      >
-        {@html renderMarkdown(note)}
-      </div>
-    {/if}
-  </div>
+  {/if}
 </div>
 
+{#if drawerOpen && note}
+  <div
+    class="eval-drawer"
+    id="summary-quality-note"
+    role="complementary"
+    aria-label="Quality evaluation"
+    use:clickOutside={{
+      enabled: drawerOpen,
+      onClickOutside: handleDrawerClickOutside,
+    }}
+    transition:fly={{ x: 320, duration: 200 }}
+  >
+    <header class="eval-drawer-header">
+      <div>
+        <p class="eval-drawer-eyebrow">Evaluation</p>
+        <p class="eval-drawer-score">
+          {displayScore}<span class="eval-drawer-score-max">/10</span>
+        </p>
+      </div>
+      <button
+        type="button"
+        class="eval-drawer-close"
+        onclick={closeDrawer}
+        aria-label="Close evaluation"
+      >
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </button>
+    </header>
+
+    <div class="eval-drawer-body">
+      <div class="eval-note-markdown">
+        {@html renderMarkdown(note)}
+      </div>
+    </div>
+
+    <footer class="eval-drawer-footer">
+      {#if qualityModelUsed}
+        <span class="eval-drawer-meta">Eval by {qualityModelUsed}</span>
+      {/if}
+      {#if modelUsed}
+        <span class="eval-drawer-meta">Distilled by {modelUsed}</span>
+      {/if}
+    </footer>
+  </div>
+{/if}
+
 <style>
+  .summary-meta-gutter {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.85rem;
+  }
+
+  .meta-score-block {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.15rem;
+    min-width: 5rem;
+    border: none;
+    border-left: 2px solid var(--accent-border-soft);
+    padding: 0.2rem 0 0.2rem 1rem;
+    background: none;
+    cursor: default;
+    text-align: right;
+    font-family: inherit;
+    color: inherit;
+    transition: opacity 0.15s ease;
+  }
+
+  button.meta-score-block {
+    cursor: pointer;
+  }
+
+  button.meta-score-block:hover {
+    opacity: 0.7;
+  }
+
+  .meta-score-value {
+    font-family: "Fraunces", serif;
+    font-size: 3.05rem;
+    font-weight: 300;
+    line-height: 1;
+    letter-spacing: -0.03em;
+    color: var(--foreground);
+    font-variation-settings: "opsz" 72;
+  }
+
+  .meta-score-pending {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    height: 2.5rem;
+  }
+
+  .meta-score-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--soft-foreground);
+    opacity: 0.3;
+    animation: pulse-dot 1.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse-dot {
+    0%,
+    100% {
+      opacity: 0.2;
+    }
+    50% {
+      opacity: 0.5;
+    }
+  }
+
+  .meta-score-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--soft-foreground);
+    opacity: 0.5;
+    margin-top: 2px;
+  }
+
+  .eval-drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 340px;
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+    border-left: 1px solid var(--border-soft);
+    box-shadow:
+      -4px 0 16px rgba(0, 0, 0, 0.06),
+      -1px 0 4px rgba(0, 0, 0, 0.03);
+    z-index: var(--z-mobile-sheet);
+    overflow-y: auto;
+  }
+
+  .eval-drawer-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.25rem 1.25rem 0.75rem;
+  }
+
+  .eval-drawer-eyebrow {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--soft-foreground);
+    opacity: 0.6;
+  }
+
+  .eval-drawer-score {
+    font-family: "Fraunces", serif;
+    font-size: 2rem;
+    font-weight: 300;
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+    color: var(--foreground);
+    font-variation-settings: "opsz" 72;
+    margin-top: 0.25rem;
+  }
+
+  .eval-drawer-score-max {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--soft-foreground);
+    opacity: 0.5;
+    letter-spacing: 0;
+    font-family: "Manrope", system-ui, sans-serif;
+    margin-left: 2px;
+  }
+
+  .eval-drawer-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: none;
+    background: none;
+    color: var(--soft-foreground);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition:
+      background 0.15s ease,
+      color 0.15s ease;
+  }
+
+  .eval-drawer-close:hover {
+    background: var(--accent-wash);
+    color: var(--foreground);
+  }
+
+  .eval-drawer-body {
+    flex: 1;
+    padding: 0 1.25rem 1.25rem;
+  }
+
+  .eval-note-markdown {
+    font-size: 13px;
+    line-height: 1.65;
+    color: var(--foreground);
+    opacity: 0.8;
+  }
+
   .eval-note-markdown :global(ul) {
     list-style-type: disc;
-    margin-left: 1rem;
+    margin-left: 1.25rem;
     margin-top: 0.25rem;
     margin-bottom: 0.5rem;
   }
+
   .eval-note-markdown :global(li) {
     margin-bottom: 0.125rem;
   }
+
   .eval-note-markdown :global(strong) {
     display: block;
     margin-top: 0.5rem;
     font-weight: 700;
     text-transform: uppercase;
     font-size: 9px;
-    letter-spacing: 0.05em;
-    font-style: normal;
+    letter-spacing: 0.06em;
+    color: var(--soft-foreground);
   }
+
   .eval-note-markdown :global(p) {
     margin-bottom: 0.25rem;
+  }
+
+  .eval-drawer-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    padding: 0.75rem 1.25rem;
+    border-top: 1px solid var(--border-soft);
+  }
+
+  .eval-drawer-meta {
+    font-size: 10px;
+    color: var(--soft-foreground);
+    opacity: 0.45;
+  }
+
+  @media (max-width: 1023px) {
+    .summary-meta-gutter {
+      align-items: flex-start;
+      margin-bottom: 0;
+    }
+
+    .meta-score-block {
+      flex-direction: row;
+      align-items: center;
+      gap: 0.5rem;
+      min-width: 0;
+      border: 1px solid var(--accent-border-soft);
+      border-left-width: 1px;
+      border-radius: 9999px;
+      background: var(--surface);
+      padding: 0.55rem 0.9rem;
+      text-align: left;
+    }
+
+    .meta-score-value {
+      font-size: 1.6rem;
+    }
+
+    .meta-score-pending {
+      height: auto;
+    }
+
+    .meta-score-label {
+      margin-top: 0;
+    }
+
+    .eval-drawer {
+      top: auto;
+      left: 0;
+      width: 100%;
+      max-height: 60vh;
+      border-left: none;
+      border-top: 1px solid var(--border-soft);
+      border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+      box-shadow:
+        0 -4px 16px rgba(0, 0, 0, 0.06),
+        0 -1px 4px rgba(0, 0, 0, 0.03);
+    }
   }
 </style>

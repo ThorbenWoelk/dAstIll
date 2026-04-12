@@ -64,3 +64,11 @@ export async function resetClientState(page: Page): Promise<void> {
 
   await page.goto("about:blank");
 }
+
+export async function openFreshGuestPage(
+  page: Page,
+  path = "/",
+): Promise<void> {
+  await resetClientState(page);
+  await page.goto(path);
+}

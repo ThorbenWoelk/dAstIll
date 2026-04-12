@@ -10,6 +10,9 @@
   import {
     computeGoHintBadgeStyles,
     DASTILL_SET_WORKSPACE_CONTENT_MODE_EVENT,
+    resolveGlobalSectionShortcut,
+    resolveInlineActionHintKey,
+    resolveWorkspaceContentModeShortcut,
     shouldIgnoreGlobalShortcutNavigation,
     type GoHintBadge,
   } from "$lib/utils/keyboard-shortcuts";
@@ -17,6 +20,32 @@
   let showManual = $state(false);
   let showGoHints = $state(false);
   let goHintPositions = $state<GoHintBadge[]>([]);
+
+  function triggerHintedAction(key: string): boolean {
+    if (typeof document === "undefined") {
+      return false;
+    }
+
+    const nodes = Array.from(
+      document.querySelectorAll<HTMLElement>(`[data-go-hint-key="${key}"]`),
+    );
+    const target = nodes.find((node) => node.getClientRects().length > 0);
+    if (!target) {
+      return false;
+    }
+
+    target.click();
+    return true;
+  }
+
+  function runGlobalSectionShortcut(destination: string): void {
+    if (destination === "docs") {
+      window.open(DOCS_URL, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    void goto(destination);
+  }
 
   $effect(() => {
     if (!showGoHints || typeof document === "undefined") {
@@ -112,62 +141,40 @@
       }
     }
 
-    // Modifier shortcuts (Cmd/Ctrl + 1..9, ,)
-    if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey) {
-      const num = event.key;
-      if (num >= "1" && num <= "9") {
-        const actions: Record<string, () => void> = {
-          "1": () => {
-            void goto("/");
-          },
-          "2": () => {
-            void goto("/download-queue");
-          },
-          "3": () => {
-            void goto("/highlights");
-          },
-          "4": () => {
-            void goto("/vocabulary");
-          },
-          "5": () => {
-            void goto("/chat");
-          },
-          "6": () => {
-            window.open(DOCS_URL, "_blank", "noopener,noreferrer");
-          },
-          "7": () => {
-            window.dispatchEvent(
-              new CustomEvent(DASTILL_SET_WORKSPACE_CONTENT_MODE_EVENT, {
-                detail: { mode: "info" },
-              }),
-            );
-          },
-          "8": () => {
-            window.dispatchEvent(
-              new CustomEvent(DASTILL_SET_WORKSPACE_CONTENT_MODE_EVENT, {
-                detail: { mode: "summary" },
-              }),
-            );
-          },
-          "9": () => {
-            window.dispatchEvent(
-              new CustomEvent(DASTILL_SET_WORKSPACE_CONTENT_MODE_EVENT, {
-                detail: { mode: "transcript" },
-              }),
-            );
-          },
-        };
-
-        const action = actions[num];
-        if (action) {
+    // Modifier shortcuts
+    if ((event.metaKey || event.ctrlKey) && !event.altKey) {
+      if (!event.shiftKey) {
+        const destination = resolveGlobalSectionShortcut(event.key);
+        if (destination) {
           event.preventDefault();
-          action();
+          runGlobalSectionShortcut(destination);
+          return;
         }
       }
 
-      if (event.key === ",") {
+      if (!event.shiftKey) {
+        const mode = resolveWorkspaceContentModeShortcut(event.key);
+        if (mode) {
+          event.preventDefault();
+          window.dispatchEvent(
+            new CustomEvent(DASTILL_SET_WORKSPACE_CONTENT_MODE_EVENT, {
+              detail: { mode },
+            }),
+          );
+          return;
+        }
+      }
+
+      const actionHintKey = resolveInlineActionHintKey(event.key);
+      if (actionHintKey && triggerHintedAction(actionHintKey)) {
+        event.preventDefault();
+        return;
+      }
+
+      if (!event.shiftKey && event.key === ",") {
         event.preventDefault();
         window.dispatchEvent(new CustomEvent("dastill:open-settings"));
+        return;
       }
     }
   }
@@ -179,6 +186,10 @@
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Meta" || e.key === "Control") {
+        if (!window.matchMedia("(min-width: 1024px)").matches) {
+          showGoHints = false;
+          return;
+        }
         showGoHints = true;
       }
     };
@@ -214,11 +225,11 @@
     transition:fade={{ duration: 160 }}
     role="status"
     aria-live="polite"
-    aria-label="Shortcut hints: press Cmd and a number"
+    aria-label="Shortcut hints: hold Cmd or Ctrl"
   >
     {#each goHintPositions as hint, i (`${hint.key}-${i}`)}
       <kbd
-        class="fixed z-[106] inline-flex min-h-[1.5rem] min-w-[1.5rem] items-center justify-center rounded-[var(--radius-sm)] border border-[var(--accent-border-soft)] bg-[var(--surface-frost)] px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-[var(--accent-strong)] shadow-[var(--shadow-soft)] backdrop-blur-[10px]"
+        class="fixed z-[106] inline-flex min-h-[1.35rem] min-w-[1.35rem] items-center justify-center rounded-[var(--radius-sm)] bg-[color-mix(in_srgb,var(--surface)_84%,transparent)] px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-[var(--foreground)] shadow-[0_10px_22px_color-mix(in_srgb,var(--foreground)_14%,transparent)] backdrop-blur-[8px]"
         style={hint.style}
         transition:fade={{ duration: 140 }}>{hint.key}</kbd
       >

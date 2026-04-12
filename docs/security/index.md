@@ -46,8 +46,8 @@ For the detailed done-versus-open breakdown, see [OWASP ASI Status](/security/ow
 
 ### ASI03 - Identity and privilege abuse
 
-- The frontend proxy authenticates to the backend with a shared proxy secret and, in Cloud Run, an identity token for the backend audience.
-- Backend route handlers derive request identity from trusted proxy headers and `AccessContext`.
+- The backend accepts two first-party auth modes: trusted proxy headers behind `x-dastill-proxy-auth`, or direct Firebase bearer-token validation from browser and Tauri clients.
+- Backend route handlers always derive request identity into `AccessContext` before scoping channel, video, search, and chat access.
 - Chat retrieval and chat-internal tools are now constrained to the caller's accessible library scope.
 - Global `db_inspect` is treated as authenticated-only.
 
@@ -81,14 +81,16 @@ When making security-relevant changes, verify at least the following:
 
 1. `./scripts/check_forbidden_artifacts.sh`
 2. `cd backend && cargo check && cargo test`
-3. `cd frontend && bun run format:check && bun run lint && bun run check && bun run test && bun run build`
-4. Confirm signed-out chat uses the ephemeral path and cannot use persistent conversation routes.
-5. Confirm signed-in chat cannot retrieve content, highlights, or recent-activity evidence outside the caller's library scope.
-6. Confirm oversized chat prompts or oversized client-supplied conversation payloads are rejected with `400 Bad Request`.
+3. `cd backend && ./scripts/cargo_audit.sh`
+   Current upstream-only waivers in that script must carry an explicit `review_after` date and should be re-reviewed instead of silently carried forward.
+4. `cd frontend && bun run format:check && bun run lint && bun run check && bun run test && bun run build`
+5. Confirm signed-out chat uses the ephemeral path and cannot use persistent conversation routes.
+6. Confirm signed-in chat cannot retrieve content, highlights, or recent-activity evidence outside the caller's library scope.
+7. Confirm oversized chat prompts or oversized client-supplied conversation payloads are rejected with `400 Bad Request`.
 
 ## Related Docs
 
 - [OWASP ASI Status](/security/owasp-asi-status)
 - [Deployment and Operations](/operations/deployment)
-- [Local development](/local-development)
-- [AI Models](/ai-models)
+- [Local development](/operations/local-development)
+- [AI Models](/pipelines/ai-models)

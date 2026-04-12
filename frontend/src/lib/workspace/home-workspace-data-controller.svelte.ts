@@ -33,6 +33,7 @@ import {
 } from "$lib/workspace-cache";
 import {
   loadChannelSnapshotWithRefresh,
+  resolveSnapshotPageState,
   resolveNextChannelSelection,
 } from "$lib/workspace/route-helpers";
 import type {
@@ -189,9 +190,22 @@ export function createHomeWorkspaceDataController(options: {
       return;
     }
 
+    const fallbackVideoId =
+      sidebarState.videos.find(
+        (video) =>
+          video.transcript_status === "ready" &&
+          video.summary_status === "ready",
+      )?.id ??
+      sidebarState.videos.find((video) => video.transcript_status === "ready")
+        ?.id ??
+      sidebarState.videos[0]?.id ??
+      null;
+
     if (!preferredVideoId) {
       options.setPendingSelectedVideo(null);
-      void selectVideo(sidebarState.videos[0].id);
+      if (fallbackVideoId) {
+        void selectVideo(fallbackVideoId);
+      }
       return;
     }
 
@@ -250,7 +264,9 @@ export function createHomeWorkspaceDataController(options: {
         return;
       }
 
-      void selectVideo(sidebarState.videos[0].id);
+      if (fallbackVideoId) {
+        void selectVideo(fallbackVideoId);
+      }
       return;
     }
 
@@ -287,12 +303,9 @@ export function createHomeWorkspaceDataController(options: {
         sidebarState.acknowledgedFilter,
       );
       options.setAllowLoadedVideoSyncDepthOverride(false);
-      sidebarState.applyChannelSnapshotState({
-        videos: snapshot.videos,
-        has_more: snapshot.videos.length === sidebarState.limit,
-        next_offset: snapshot.videos.length,
-        sync_depth: snapshot.sync_depth,
-      });
+      sidebarState.applyChannelSnapshotState(
+        resolveSnapshotPageState(snapshot),
+      );
       track({
         event: "channel_snapshot_loaded",
         channel_id: channelId,
@@ -529,7 +542,20 @@ export function createHomeWorkspaceDataController(options: {
 
     sidebarState.resetVideoListState();
     options.setAllowLoadedVideoSyncDepthOverride(false);
-    await refreshAndLoadVideos(channelId, false, videoId);
+    // Set loading eagerly so the skeleton renders during the network fetch
+    // instead of briefly flashing "No videos yet."
+    sidebarState.setVideoLoadingState(true);
+    try {
+      await refreshAndLoadVideos(channelId, false, videoId);
+    } catch (error) {
+      if (!presentAuthRequiredNoticeIfNeeded(error)) {
+        options.setErrorMessage((error as Error).message);
+      }
+    } finally {
+      // applyChannelSnapshot resets this in the happy path; this covers
+      // the case where loadSnapshot() throws before applySnapshot runs.
+      sidebarState.setVideoLoadingState(false);
+    }
   }
 
   async function refreshAndLoadVideos(

@@ -38,7 +38,9 @@ else
 fi
 shared_backend_env_file="${shared_env_dir}/backend.env"
 shared_frontend_env_file="${shared_env_dir}/frontend.env"
-typeset -gA initial_env_keys
+shared_aws_dir="${shared_env_dir}/aws"
+shared_aws_credentials_file="${shared_aws_dir}/credentials"
+shared_aws_config_file="${shared_aws_dir}/config"
 
 resolve_adb_command() {
 	if command -v adb >/dev/null 2>&1; then
@@ -253,18 +255,102 @@ require_http_status() {
 	return 0
 }
 
-capture_initial_env_keys() {
-	initial_env_keys=()
-	while IFS='=' read -r key _; do
-		initial_env_keys[$key]=1
-	done < <(env)
+diagnose_aws_startup_access() {
+	echo "Checking AWS credentials configured for backend startup..."
+
+	local inline_access_key
+	inline_access_key=$(resolve_env_value "AWS_ACCESS_KEY_ID" "backend/.env" "$shared_backend_env_file")
+	local inline_secret_key
+	inline_secret_key=$(resolve_env_value "AWS_SECRET_ACCESS_KEY" "backend/.env" "$shared_backend_env_file")
+	local inline_session_token
+	inline_session_token=$(resolve_env_value "AWS_SESSION_TOKEN" "backend/.env" "$shared_backend_env_file")
+	local explicit_credentials_file
+	explicit_credentials_file=$(resolve_env_value "AWS_SHARED_CREDENTIALS_FILE" "backend/.env" "$shared_backend_env_file")
+	local explicit_config_file
+	explicit_config_file=$(resolve_env_value "AWS_CONFIG_FILE" "backend/.env" "$shared_backend_env_file")
+	local aws_profile
+	aws_profile=$(resolve_env_value "AWS_PROFILE" "backend/.env" "$shared_backend_env_file")
+	if [[ -z "$aws_profile" ]]; then
+		aws_profile=$(resolve_env_value "AWS_DEFAULT_PROFILE" "backend/.env" "$shared_backend_env_file")
+	fi
+	if [[ -z "$aws_profile" ]]; then
+		aws_profile="default"
+	fi
+
+	local credentials_file=""
+	if [[ -n "$explicit_credentials_file" ]]; then
+		credentials_file=${~explicit_credentials_file}
+	elif [[ -f "$shared_aws_credentials_file" ]]; then
+		credentials_file="$shared_aws_credentials_file"
+	elif [[ -n "${HOME:-}" && -f "${HOME}/.aws/credentials" ]]; then
+		credentials_file="${HOME}/.aws/credentials"
+	fi
+
+	local config_file=""
+	if [[ -n "$explicit_config_file" ]]; then
+		config_file=${~explicit_config_file}
+	elif [[ -f "$shared_aws_config_file" ]]; then
+		config_file="$shared_aws_config_file"
+	elif [[ -n "${HOME:-}" && -f "${HOME}/.aws/config" ]]; then
+		config_file="${HOME}/.aws/config"
+	fi
+
+	if [[ -n "$inline_access_key" || -n "$inline_secret_key" || -n "$inline_session_token" ]]; then
+		echo "Backend startup is using inline AWS credentials from env files."
+		if [[ -n "$inline_session_token" || "${inline_access_key:u}" == ASIA* ]]; then
+			echo "Hint: $shared_backend_env_file still pins temporary session credentials."
+			if command -v aws >/dev/null 2>&1; then
+				if [[ "$aws_profile" == "default" ]]; then
+					echo "Refresh them with: aws sso login"
+					echo "Then rerun: ./scripts/sync_aws_programmatic_credentials.sh"
+				else
+					echo "Refresh them with: aws sso login --profile $aws_profile"
+					echo "Then rerun: ./scripts/sync_aws_programmatic_credentials.sh $aws_profile"
+				fi
+			fi
+			echo "For permanent local dev, remove AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY/AWS_SESSION_TOKEN from $shared_backend_env_file"
+			echo "and define a long-lived aws_access_key_id/aws_secret_access_key pair in $shared_aws_credentials_file instead."
+		else
+			echo "Inline credentials look like long-lived access keys, so the failure is not caused by missing AWS CLI login."
+			echo "Inspect backend.log for the underlying S3/bootstrap error."
+		fi
+		return 0
+	fi
+
+	if [[ -n "$credentials_file" ]]; then
+		echo "Backend startup will use AWS credentials file: $credentials_file (profile: $aws_profile)"
+		if [[ -n "$config_file" ]]; then
+			echo "AWS config file: $config_file"
+		fi
+		echo "If that profile still resolves temporary or expired credentials, replace it with a static aws_access_key_id/aws_secret_access_key pair for permanent local dev."
+		return 0
+	fi
+
+	if command -v aws >/dev/null 2>&1; then
+		local export_summary
+		export_summary=$(AWS_PAGER="" aws configure export-credentials --format process 2>/dev/null | ruby -rjson -e 'j=JSON.parse(STDIN.read); ak=j["AccessKeyId"].to_s; puts "prefix=#{ak[0,4]}"; puts "session=#{j.key?("SessionToken") && !j["SessionToken"].to_s.empty? ? "yes" : "no"}"' 2>/dev/null || true)
+		if [[ -n "$export_summary" ]]; then
+			echo "AWS CLI currently resolves credentials for this shell, but local backend startup is not configured to use a permanent credentials file."
+			echo "$export_summary"
+			if [[ "$aws_profile" == "default" ]]; then
+				echo "If you need a temporary fallback, run: ./scripts/sync_aws_programmatic_credentials.sh"
+			else
+				echo "If you need a temporary fallback, run: ./scripts/sync_aws_programmatic_credentials.sh $aws_profile"
+			fi
+		fi
+	fi
+
+	echo "Hint: configure permanent local AWS credentials in $shared_aws_credentials_file and keep only bucket/index settings in $shared_backend_env_file."
 }
 
-trim_whitespace() {
-	local value=$1
-	value="${value#"${value%%[![:space:]]*}"}"
-	value="${value%"${value##*[![:space:]]}"}"
-	printf '%s' "$value"
+aws_startup_access_issue_detected() {
+	if grep -Eiq \
+		"unable to locate credentials|failed to refresh cached Login token|session has expired|token has expired|expiredtoken|refresh token has expired|AccessDeniedException" \
+		backend.log 2>/dev/null; then
+		return 0
+	fi
+
+	return 1
 }
 
 read_env_file_value() {
@@ -306,35 +392,7 @@ resolve_env_value() {
 	return 0
 }
 
-export_env_file_preserving_shell() {
-	local env_file=$1
-	local line=""
 
-	if [[ ! -f "$env_file" ]]; then
-		return 0
-	fi
-
-	while IFS= read -r line || [[ -n "$line" ]]; do
-		[[ -z "$line" ]] && continue
-		[[ "$line" == \#* ]] && continue
-		[[ "$line" != *=* ]] && continue
-
-		local key=${line%%=*}
-		local value=${line#*=}
-		key=$(trim_whitespace "$key")
-		value=$(trim_whitespace "$value")
-
-		if [[ -z "$key" || "$key" == \#* || -n ${initial_env_keys[$key]-} ]]; then
-			continue
-		fi
-		if [[ "$value" == \"*\" && "$value" == *\" ]]; then
-			value=${value#\"}
-			value=${value%\"}
-		fi
-
-		export "$key=$value"
-	done < "$env_file"
-}
 
 ensure_local_env_files() {
 	local missing_env=0
@@ -357,48 +415,14 @@ ensure_local_env_files() {
 	fi
 }
 
-prepare_frontend_env() {
-	export_env_file_preserving_shell "$shared_frontend_env_file"
-	export_env_file_preserving_shell "frontend/.env"
-}
-
 start_backend() {
 	pushd backend >/dev/null
-	local summary_model
-	summary_model=$(resolve_env_value "OLLAMA_SUMMARY_MODEL" ".env" "$shared_backend_env_file")
-	if [[ -z "$summary_model" ]]; then
-		summary_model=$(resolve_env_value "OLLAMA_MODEL" ".env" "$shared_backend_env_file")
-	fi
-
-	local default_chat_model
-	default_chat_model=$(resolve_env_value "OLLAMA_DEFAULT_CHAT_MODEL" ".env" "$shared_backend_env_file")
-	if [[ -z "$default_chat_model" ]]; then
-		default_chat_model=$(resolve_env_value "OLLAMA_CHAT_MODEL" ".env" "$shared_backend_env_file")
-	fi
-
-	if [[ -n "$summary_model" ]]; then
-		export OLLAMA_SUMMARY_MODEL="$summary_model"
-	fi
-	if [[ -n "$default_chat_model" ]]; then
-		export OLLAMA_DEFAULT_CHAT_MODEL="$default_chat_model"
-	fi
-
-	local use_turso="${START_APP_USE_TURSO:-}"
-	if [[ "$use_turso" == "1" || "$use_turso" == "true" || "$use_turso" == "TRUE" ]]; then
-		echo "Backend search index: using configured Turso/libSQL replica"
-	else
-		export TURSO_DB_URL=""
-		export TURSO_AUTH_TOKEN=""
-		echo "Backend search index: using local libSQL fallback (set START_APP_USE_TURSO=1 to use Turso)"
-	fi
-
 	PORT=$backend_port cargo run --bin dastill > >(tee ../backend.log) 2>&1 &
 	backend_pid=$!
 	popd >/dev/null
 }
 
 start_frontend() {
-	prepare_frontend_env
 	pushd frontend >/dev/null
 	VITE_API_BASE="http://localhost:$backend_port" \
 		bun --no-env-file run dev -- --host 0.0.0.0 --port $frontend_port > >(tee ../frontend.log) 2>&1 &
@@ -516,7 +540,7 @@ start_mobile_shell() {
 }
 
 cleanup() {
-	"$end_app_script" --quiet || true
+	DASTILL_SKIP_PIDS="$$ ${PPID:-}" "$end_app_script" --quiet || true
 }
 
 check_ollama_models() {
@@ -592,7 +616,6 @@ check_ollama_models() {
 	echo "Ollama: ok ($verified model(s) present locally)"
 }
 
-capture_initial_env_keys
 ensure_local_env_files
 check_ollama_models
 
@@ -639,6 +662,9 @@ start_backend
 
 if ! wait_for_http "Backend" "http://localhost:$backend_port/api/health" "$backend_pid"; then
 	echo "Backend failed to start. Last backend log lines:"
+	if aws_startup_access_issue_detected; then
+		diagnose_aws_startup_access
+	fi
 	tail -n 80 backend.log || true
 	exit 1
 fi
@@ -667,9 +693,18 @@ if ! require_http_status \
 	"Backend workspace bootstrap" \
 	"http://localhost:$backend_port/api/workspace/bootstrap?limit=20" \
 	"200"; then
-	echo "Backend is up, but the workspace bootstrap request failed. Last backend log lines:"
-	tail -n 80 backend.log || true
-	exit 1
+	echo "Backend is up, but the workspace bootstrap request failed."
+	if aws_startup_access_issue_detected; then
+		diagnose_aws_startup_access
+		echo "Startup failed because backend AWS access is unavailable."
+		echo "Last backend log lines:"
+		tail -n 80 backend.log || true
+		exit 1
+	else
+		echo "Last backend log lines:"
+		tail -n 80 backend.log || true
+		exit 1
+	fi
 fi
 
 if ! wait_for_http "Docs" "http://localhost:$docs_port" "$docs_pid"; then

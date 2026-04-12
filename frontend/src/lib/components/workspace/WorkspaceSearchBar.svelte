@@ -615,6 +615,48 @@
             aria-hidden="true"
           ></span>
         {:else}
+          {#if searchStatus && searchCoverageHint}
+            <div class="group relative shrink-0">
+              <button
+                type="button"
+                class="inline-flex h-5 w-5 items-center justify-center text-[var(--soft-foreground)] opacity-65 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+                aria-label="Search index status"
+              >
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.4"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="16" x2="12" y2="12"></line>
+                  <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                </svg>
+              </button>
+              <div
+                class="pointer-events-none absolute right-0 top-full z-50 mt-2 w-56 rounded-lg border border-[var(--accent-border-soft)] bg-[var(--panel-surface-strong)] p-3 opacity-0 shadow-lg transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
+              >
+                <p
+                  class="text-[11px] font-bold tabular-nums text-[var(--foreground)]"
+                >
+                  {searchCoverageHint}
+                </p>
+                <p
+                  class="mt-1 text-[10px] leading-snug text-[var(--soft-foreground)]"
+                >
+                  {searchStatus.ready} / {searchStatus.total_sources} keyword sources
+                  indexed{searchStatus.available &&
+                  searchStatus.total_chunk_count > 0
+                    ? `. ${searchStatus.embedded_chunk_count} / ${searchStatus.total_chunk_count} semantic chunks embedded`
+                    : ""}. Mode: {searchCapabilityLabel(searchStatus)}.
+                </p>
+              </div>
+            </div>
+          {/if}
           {#if searchQuery.length > 0}
             <button
               type="button"
@@ -681,46 +723,6 @@
   </div>
 {/snippet}
 
-{#snippet searchStatusInfo()}
-  {#if !searchLoading && searchStatus && searchCoverageHint}
-    <div class="group relative shrink-0">
-      <button
-        type="button"
-        class="inline-flex h-5 w-5 items-center justify-center text-[var(--soft-foreground)] opacity-65 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
-        aria-label="Search index status"
-      >
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2.4"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <circle cx="12" cy="12" r="10"></circle>
-          <line x1="12" y1="16" x2="12" y2="12"></line>
-          <line x1="12" y1="8" x2="12.01" y2="8"></line>
-        </svg>
-      </button>
-      <div
-        class="pointer-events-none absolute right-0 top-full z-50 mt-2 w-56 rounded-lg border border-[var(--accent-border-soft)] bg-[var(--panel-surface-strong)] p-3 opacity-0 shadow-lg transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
-      >
-        <p class="text-[11px] font-bold tabular-nums text-[var(--foreground)]">
-          {searchCoverageHint}
-        </p>
-        <p class="mt-1 text-[10px] leading-snug text-[var(--soft-foreground)]">
-          {searchStatus.ready} / {searchStatus.total_sources} keyword sources indexed{searchStatus.available &&
-          searchStatus.total_chunk_count > 0
-            ? `. ${searchStatus.embedded_chunk_count} / ${searchStatus.total_chunk_count} semantic chunks embedded`
-            : ""}. Mode: {searchCapabilityLabel(searchStatus)}.
-        </p>
-      </div>
-    </div>
-  {/if}
-{/snippet}
-
 <div class="flex items-center justify-self-end gap-2 lg:hidden">
   <button
     type="button"
@@ -775,10 +777,8 @@
 {:else}
   <div class="hidden min-w-0 lg:col-span-1 lg:col-start-3 lg:block">
     <div class="relative min-w-0">
-      <div class="min-w-0 lg:flex lg:items-center lg:gap-2">
+      <div class="min-w-0">
         {@render searchForm()}
-        {@render searchStatusInfo()}
-        <div class="mt-3 hidden shrink-0 lg:mt-0 lg:block"></div>
       </div>
     </div>
   </div>

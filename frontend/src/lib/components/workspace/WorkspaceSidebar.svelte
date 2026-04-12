@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from "svelte";
+  import { onMount, tick } from "svelte";
   import { slide } from "svelte/transition";
   import { getTranscript, getVideo, updateChannel } from "$lib/api";
   import { authState } from "$lib/auth-state.svelte";
@@ -48,6 +48,7 @@
     createSidebarPreviewController,
     createEmptyChannelVideoCollection,
   } from "$lib/workspace/sidebar-preview-controller.svelte";
+  import { shouldRunSidebarPreviewSlideTransition } from "$lib/workspace/sidebar-layout";
   import { resolveSidebarPreviewSessionKey } from "$lib/workspace/sidebar-preview-session";
   import type { ChannelSnapshot, SyncDepth } from "$lib/types";
 
@@ -161,8 +162,30 @@
   let width = $derived(shell.width);
   let onToggleCollapse = $derived(shell.onToggleCollapse);
   let mobileVisible = $derived(shell.mobileVisible);
+  let desktopViewport = $state(
+    typeof window !== "undefined" &&
+      window.matchMedia("(min-width: 1024px)").matches,
+  );
+  let shouldAnimatePreviewExpansion = $derived(
+    shouldRunSidebarPreviewSlideTransition({
+      mobileVisible,
+      desktopViewport,
+    }),
+  );
   /** Always above trigger: dialog appears above the button so it's visible without scrolling. */
   let syncDatePopupStackClass = "flex flex-col-reverse gap-2";
+
+  onMount(() => {
+    const mediaQuery = window.matchMedia("(min-width: 1024px)");
+    const syncDesktopViewport = () => {
+      desktopViewport = mediaQuery.matches;
+    };
+    syncDesktopViewport();
+    mediaQuery.addEventListener("change", syncDesktopViewport);
+    return () => {
+      mediaQuery.removeEventListener("change", syncDesktopViewport);
+    };
+  });
 
   function scrollIntoViewWhenSelected(node: HTMLElement, selected: boolean) {
     let wasSelected = selected;
@@ -484,7 +507,7 @@
 
 <aside
   id="workspace"
-  class={`flex flex-col bg-[var(--surface)] ${mobileVisible ? "h-full w-full min-w-0" : "hidden lg:flex"} lg:h-full lg:shrink-0`}
+  class={`flex flex-col border-r border-[var(--border-soft)] bg-[var(--surface)] ${mobileVisible ? "h-full w-full min-w-0" : "hidden lg:flex"} lg:h-full lg:shrink-0`}
   style={mobileVisible
     ? undefined
     : `width: ${width ?? (collapsed ? 52 : 280)}px;`}
@@ -583,7 +606,7 @@
     <div class="sr-only" aria-live="polite">{reorderAnnouncement}</div>
 
     <div
-      class="custom-scrollbar flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pt-2 pb-4"
+      class="custom-scrollbar flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 pt-2 pb-5"
       aria-busy={loadingChannels}
     >
       {#if loadingChannels && channels.length === 0}
@@ -678,7 +701,7 @@
               previewController.resolveRenderedCollectionVideos(
                 channelVideoCollection,
               )}
-            <div transition:slide={{ duration: 180 }}>
+            {#snippet previewContent()}
               <WorkspaceSidebarPreviewChannelContent
                 {channel}
                 {channelVideoCollection}
@@ -713,7 +736,16 @@
                 onSaveSyncDate={() =>
                   void previewController.saveChannelSyncDate(channel)}
               />
-            </div>
+            {/snippet}
+            {#if shouldAnimatePreviewExpansion}
+              <div transition:slide={{ duration: 180 }}>
+                {@render previewContent()}
+              </div>
+            {:else}
+              <div>
+                {@render previewContent()}
+              </div>
+            {/if}
           {:else if isExpanded}
             <WorkspaceSidebarSelectedChannelContent
               {videos}

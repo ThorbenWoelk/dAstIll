@@ -7,7 +7,6 @@
   import MobileYouTubeTopNav from "$lib/components/mobile/MobileYouTubeTopNav.svelte";
   import ErrorToast from "$lib/components/ErrorToast.svelte";
   import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
-  import { mobileBottomBar } from "$lib/mobile-navigation/mobileBottomBar";
   import type { AiStatus, VocabularyReplacement } from "$lib/types";
   import { createAiStatusPoller } from "$lib/utils/ai-poller";
   import { formatVocabularyAddedAt } from "$lib/vocabulary";
@@ -59,13 +58,6 @@
         aiStatus = payload.status;
       },
     });
-  });
-
-  $effect(() => {
-    mobileBottomBar.set({ kind: "hidden" });
-    return () => {
-      mobileBottomBar.set({ kind: "sections" });
-    };
   });
 </script>
 

@@ -72,10 +72,10 @@
 
 <div
   id="tour-library-tools"
-  class="flex h-12 items-center justify-between gap-2 border-b border-[var(--border-soft)]/50 px-4"
+  class="flex h-14 items-center justify-between gap-2 px-4 pt-2"
 >
   <span
-    class="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-55"
+    class="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--soft-foreground)] opacity-55"
   >
     Sources
   </span>
@@ -183,7 +183,7 @@
 
 {#if channelSearchOpen}
   <div
-    class="mx-4 mt-2 flex items-center gap-2 border-b border-[var(--accent-border-soft)] px-1 pb-2"
+    class="mx-4 mt-1 flex items-center gap-2 rounded-full border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] px-3 py-2"
   >
     <svg
       width="12"
@@ -234,7 +234,7 @@
 {#if activeFilterLabel}
   <div class="mx-4 mt-2 flex items-center gap-2">
     <span
-      class="text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--accent)]"
+      class="rounded-full bg-[var(--accent-wash)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--accent-strong)]"
     >
       {activeFilterLabel}
     </span>

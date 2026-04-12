@@ -20,8 +20,8 @@ Detailed project documentation lives in the separate docs frontend under [`docs/
 
 - Docs landing page source: [`docs/index.md`](./docs/index.md)
 - Architecture overview: [`docs/architecture/overview.md`](./docs/architecture/overview.md)
-- Search indexing and retrieval: [`docs/search-indexing.md`](./docs/search-indexing.md)
-- AI model behavior: [`docs/ai-models.md`](./docs/ai-models.md)
+- Search indexing and retrieval: [`docs/pipelines/search-indexing.md`](./docs/pipelines/search-indexing.md)
+- AI model behavior: [`docs/pipelines/ai-models.md`](./docs/pipelines/ai-models.md)
 
 Run the docs frontend locally:
 
@@ -37,7 +37,7 @@ Default local docs URL:
 http://localhost:4173
 ```
 
-The app header includes a `Docs` link. In local development it falls back to `http://localhost:4173`; in deployed environments the frontend reads `PUBLIC_DOCS_URL` at runtime.
+The app header includes a `Docs` link. In local development it falls back to `http://localhost:4173`; in deployed environments the frontend reads `PUBLIC_DOCS_URL` at build time.
 
 ## Tech Stack
 
@@ -47,19 +47,19 @@ The app header includes a `Docs` link. In local development it falls back to `ht
 
 ### Backend
 
-Rust, AWS S3, AWS S3 Vectors, Google Firestore, Ollama
+Rust, AWS S3, AWS S3 Vectors, Turso (libSQL), Ollama
 
 ### Infrastructure & Deployment
 
-Terraform, Google Cloud Run, AWS IAM (Workload Identity Federation), Google Secret Manager, Artifact Registry, GitHub Actions, Docker
+Terraform, Firebase Hosting, Google Cloud Run, AWS IAM (Workload Identity Federation), Google Secret Manager, Artifact Registry, GitHub Actions, Docker
 
 ## Prerequisites
 
 - [Rust](https://rustup.rs/)
 - [Bun](https://bun.sh/)
 - [Ollama](https://ollama.com/) (required for local AI models)
-- Google Cloud credentials for Firestore access, either via `GOOGLE_APPLICATION_CREDENTIALS` or `gcloud auth application-default login`
-- AWS credentials with access to S3 and S3 Vectors (via `~/.aws/credentials` or environment variables)
+- Turso database URL and auth token (`TURSO_DB_URL`, `TURSO_AUTH_TOKEN`)
+- AWS credentials with access to S3 and S3 Vectors (prefer the shared machine-local file at `~/.config/dastill/aws/credentials`)
 - An AWS S3 bucket for data storage and an S3 Vectors bucket for semantic search
 - YouTube Data API Key (optional)
 
@@ -93,17 +93,23 @@ Terraform, Google Cloud Run, AWS IAM (Workload Identity Federation), Google Secr
 
    ```env
    GCP_PROJECT_ID=your-gcp-project-id
-   # Optional: point to a Firestore service-account JSON for local development.
-   # If unset, the backend falls back to application default credentials from:
-   #   gcloud auth application-default login
-   # GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/service-account.json
+   TURSO_DB_URL=libsql://your-turso-database.turso.io
+   TURSO_AUTH_TOKEN=your-turso-auth-token
    AWS_REGION=eu-central-1
    S3_DATA_BUCKET=your-data-bucket
    S3_VECTOR_BUCKET=your-vectors-bucket
    S3_VECTOR_INDEX=search-chunks
+   # Preferred: shared machine-local AWS credentials/config files
+   # AWS_SHARED_CREDENTIALS_FILE=/Users/you/.config/dastill/aws/credentials
+   # AWS_CONFIG_FILE=/Users/you/.config/dastill/aws/config
    # Optional: custom endpoints (e.g. MinIO)
    # S3_ENDPOINT_URL=http://localhost:9000
    # S3_VECTOR_ENDPOINT_URL=http://localhost:9001
+   # Fallback only: inline AWS credentials. Avoid AWS_SESSION_TOKEN for routine
+   # local development because temporary session creds will expire.
+   # AWS_ACCESS_KEY_ID=your-aws-access-key-id
+   # AWS_SECRET_ACCESS_KEY=your-aws-secret-access-key
+   # AWS_SESSION_TOKEN=your-aws-session-token
    # Optional: GCP AWS WIF path used in Cloud Run and some advanced local setups
    # AWS_ROLE_ARN="arn:aws:iam::877173393100:role/dastill-gcp-backend"
    # AWS_WIF_AUDIENCE="<backend-sa-unique-id>"
@@ -111,10 +117,10 @@ Terraform, Google Cloud Run, AWS IAM (Workload Identity Federation), Google Secr
    BACKEND_CORS_ALLOWED_ORIGINS=http://localhost:3543
    YOUTUBE_API_KEY=optional-api-key
    OLLAMA_URL=http://localhost:11434
-   OLLAMA_SUMMARY_MODEL=glm-5:cloud
-   OLLAMA_DEFAULT_CHAT_MODEL=glm-5:cloud
+   OLLAMA_SUMMARY_MODEL=glm-5.1:cloud
+   OLLAMA_DEFAULT_CHAT_MODEL=glm-5.1:cloud
    OLLAMA_FALLBACK_MODEL=qwen3-coder:30b
-   SUMMARY_EVALUATOR_MODEL=qwen3.5:397b-cloud
+   SUMMARY_EVALUATOR_MODEL=gemma4:31b-cloud
    SEARCH_SEMANTIC_ENABLED=true
    OLLAMA_EMBEDDING_MODEL=embeddinggemma:latest
    SEARCH_AUTO_CREATE_VECTOR_INDEX=false
@@ -123,12 +129,17 @@ Terraform, Google Cloud Run, AWS IAM (Workload Identity Federation), Google Secr
 
    `OLLAMA_SUMMARY_MODEL` and `SUMMARY_EVALUATOR_MODEL` must be different. If they match, backend startup exits before serving requests so summary evaluation stays independent from summary generation.
    If `OLLAMA_URL` points to a remote Ollama endpoint instead of localhost, also set `OLLAMA_API_KEY`.
-   If `GOOGLE_APPLICATION_CREDENTIALS` points to a missing file, the backend falls back to application default credentials. If neither is valid, backend startup fails before `/api/health` becomes ready.
 
    If you run the frontend separately from `start_app.sh`, keep its local values in
    `~/.config/dastill/frontend.env` and run `./scripts/link_shared_env.sh` in each
    worktree so direct frontend commands still see `frontend/.env`. Operator access is
    granted through the frontend server's `OPERATOR_EMAIL_ALLOWLIST`.
+
+   If an old `~/.config/dastill/backend.env` still contains `AWS_ACCESS_KEY_ID`,
+   `AWS_SECRET_ACCESS_KEY`, and especially `AWS_SESSION_TOKEN`, those inline values
+   override the shared credentials file and can pin local dev to expired STS
+   credentials. For permanent local credentials, move the keypair into
+   `~/.config/dastill/aws/credentials` and remove the inline AWS credential lines.
 
 3. **Understand Search Defaults**:
    `SEARCH_SEMANTIC_ENABLED` overrides the runtime default:
@@ -246,7 +257,7 @@ src-tauri/gen/android/app/build/outputs/apk/
 - Highlight creation and vocabulary correction still work.
 - Existing highlight deletion still works.
 
-Detailed mobile steps live in [docs/local-development.md](./docs/local-development.md) and [docs/mobile-tauri.md](./docs/mobile-tauri.md).
+Detailed mobile steps live in [docs/operations/local-development.md](./docs/operations/local-development.md) and [docs/operations/mobile-tauri.md](./docs/operations/mobile-tauri.md).
 
 ## License
 

@@ -22,14 +22,16 @@ import {
   cloneVideos,
   createChannelViewCache,
 } from "$lib/channel-view-cache";
+import { loadWorkspaceState } from "$lib/channel-workspace";
 import { resolveNextChannelSelection } from "$lib/workspace/route-helpers";
 import { shouldRetryReadySummaryLoad } from "$lib/workspace/content";
 import { createSidebarState } from "$lib/workspace/sidebar-state.svelte";
-import { mobileBottomBar } from "$lib/mobile-navigation/mobileBottomBar";
 import {
   type AcknowledgedFilter,
   type WorkspaceContentMode,
+  isAcknowledgedFilter,
   isWorkspaceContentMode,
+  isWorkspaceVideoTypeFilter,
 } from "$lib/workspace/types";
 import { createGuideState } from "$lib/workspace/guide-state.svelte";
 import { createHomeTourSteps } from "$lib/workspace/home-tour";
@@ -41,6 +43,7 @@ import {
   createHomeWorkspaceDataController,
   type CachedChannelVideoState,
 } from "$lib/workspace/home-workspace-data-controller.svelte";
+import { clearWorkspaceForScopeChange } from "$lib/workspace/home-workspace-auth-scope";
 import { createHomeWorkspaceAcknowledgeController } from "$lib/workspace/home-workspace-acknowledge-controller.svelte";
 import { createHomeWorkspacePageState } from "$lib/workspace/home-workspace-page-state.svelte";
 import { createHomeWorkspacePersistenceController } from "$lib/workspace/home-workspace-persistence-controller.svelte";
@@ -125,7 +128,7 @@ export function createHomeWorkspacePage() {
       persistenceController.replaceWorkspaceUrl(href);
     },
     onOpenChannelOverview: async (channelId: string) => {
-      await goto(`/channels/${encodeURIComponent(channelId)}`);
+      await sidebarState.selectChannel(channelId);
     },
     onChannelAdded: (channel: Channel) => {
       void addSourceFeedbackCtrl.trackAddedChannel(channel);
@@ -399,60 +402,25 @@ export function createHomeWorkspacePage() {
     }
 
     pageState.setHydratedWorkspaceScopeKey(workspaceCacheScopeKey);
-    sidebarState.resetVideoListState();
-    sidebarState.setLoadingVideos(false);
+    clearWorkspaceForScopeChange(sidebarState);
+    // Restore filter preferences saved under the incoming auth scope so that
+    // the subsequent loadBootstrapRefresh uses the correct filter values.
+    if (typeof localStorage !== "undefined") {
+      const saved = loadWorkspaceState(localStorage, workspaceStorageKey);
+      if (
+        saved?.acknowledgedFilter &&
+        isAcknowledgedFilter(saved.acknowledgedFilter)
+      ) {
+        sidebarState.setAcknowledgedFilter(saved.acknowledgedFilter);
+      }
+      if (
+        saved?.videoTypeFilter &&
+        isWorkspaceVideoTypeFilter(saved.videoTypeFilter)
+      ) {
+        sidebarState.setVideoTypeFilter(saved.videoTypeFilter);
+      }
+    }
     void dataController.loadBootstrapRefresh();
-  });
-
-  $effect(() => {
-    if (pageState.mobileBrowseOpen) {
-      mobileBottomBar.set({ kind: "hidden" });
-      return () => {
-        mobileBottomBar.set({ kind: "sections" });
-      };
-    }
-
-    const inVideoDetail =
-      !pageState.mobileBrowseOpen && Boolean(selectedVideoId) && !editing;
-    if (!inVideoDetail) {
-      mobileBottomBar.set({ kind: "sections" });
-    } else {
-      mobileBottomBar.set({
-        kind: "videoActions",
-        youtubeUrl: selectedVideoYoutubeUrl,
-        showRegenerate: contentMode === "summary",
-        regenerating: selectedVideoId
-          ? content.regeneratingSummaryVideoIds.includes(selectedVideoId)
-          : false,
-        aiAvailable: pageState.aiAvailable ?? false,
-        onRegenerate: content.regenerateSummaryContent,
-        showFormatAction: contentMode === "transcript",
-        formatting:
-          content.formattingContent &&
-          content.formattingVideoId === selectedVideoId,
-        onFormat: content.cleanFormatting,
-        showRevertAction: hasUpdatedTranscript,
-        reverting:
-          content.revertingContent &&
-          content.revertingVideoId === selectedVideoId,
-        canRevert: canRevertTranscript,
-        onRevert: content.revertToOriginalTranscript,
-        busy: loadingContent,
-        onRequestResetVideo: pageState.openResetVideoConfirmation,
-        resetting:
-          content.resettingVideo &&
-          content.resettingVideoId === selectedVideoId,
-        showAcknowledgeToggle: true,
-        acknowledged: selectedVideo?.acknowledged ?? false,
-        onAcknowledgeToggle: acknowledgeController.toggleAcknowledge,
-        showEditAction:
-          contentMode === "transcript" || contentMode === "summary",
-        onEdit: content.startEdit,
-      });
-    }
-    return () => {
-      mobileBottomBar.set({ kind: "sections" });
-    };
   });
 
   $effect(() => {

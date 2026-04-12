@@ -1,4 +1,9 @@
-import type { Channel, Video, VideoTypeFilter } from "$lib/types";
+import type {
+  Channel,
+  ChannelSnapshot,
+  Video,
+  VideoTypeFilter,
+} from "$lib/types";
 import {
   markChannelRefreshed,
   shouldRefreshChannel,
@@ -10,6 +15,7 @@ type ChannelRefreshWorkflowOptions<TSnapshot> = {
   channelId: string;
   refreshedAtByChannel: Map<string, number>;
   ttlMs: number;
+  enableRefresh?: boolean;
   bypassTtl?: boolean;
   initialSilent?: boolean;
   /**
@@ -29,6 +35,7 @@ export async function loadChannelSnapshotWithRefresh<TSnapshot>({
   channelId,
   refreshedAtByChannel,
   ttlMs,
+  enableRefresh = true,
   bypassTtl = false,
   initialSilent = false,
   getMutationEpoch,
@@ -45,6 +52,10 @@ export async function loadChannelSnapshotWithRefresh<TSnapshot>({
     return;
   }
   await applySnapshot(snapshot, initialSilent);
+
+  if (!enableRefresh) {
+    return;
+  }
 
   if (
     !bypassTtl &&
@@ -226,6 +237,20 @@ export async function clearSidebarVideoFilters(params: {
   params.setAcknowledgedFilter("all");
   await params.reload();
   return true;
+}
+
+export function resolveSnapshotPageState(
+  snapshot: Pick<
+    ChannelSnapshot,
+    "videos" | "has_more" | "next_offset" | "sync_depth"
+  >,
+) {
+  return {
+    videos: snapshot.videos,
+    has_more: snapshot.has_more,
+    next_offset: snapshot.next_offset ?? snapshot.videos.length,
+    sync_depth: snapshot.sync_depth,
+  };
 }
 
 export function resolveNextChannelSelection(

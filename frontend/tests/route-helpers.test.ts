@@ -121,4 +121,34 @@ describe("loadChannelSnapshotWithRefresh", () => {
 
     expect(events).toEqual(["load"]);
   });
+
+  it("does not call refresh when background refresh is disabled", async () => {
+    const events: string[] = [];
+
+    await loadChannelSnapshotWithRefresh({
+      channelId: "channel-1",
+      refreshedAtByChannel: new Map(),
+      ttlMs: 1_000,
+      enableRefresh: false,
+      loadSnapshot: async () => {
+        events.push("load");
+        return { id: "snapshot-1" };
+      },
+      applySnapshot: async (snapshot, silent) => {
+        events.push(`apply:${snapshot.id}:${silent ?? false}`);
+      },
+      refreshChannel: async () => {
+        events.push("refresh");
+      },
+      shouldReloadAfterRefresh: () => true,
+      onRefreshingChange: (refreshing) => {
+        events.push(`refreshing:${refreshing}`);
+      },
+      onError: (message) => {
+        events.push(`error:${message}`);
+      },
+    });
+
+    expect(events).toEqual(["load", "apply:snapshot-1:false"]);
+  });
 });

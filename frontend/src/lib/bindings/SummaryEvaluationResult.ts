@@ -4,4 +4,5 @@ export type SummaryEvaluationResult = {
   quality_score: number;
   quality_note: string | null;
   quality_model_used: string | null;
+  summary_tags: Array<string>;
 };

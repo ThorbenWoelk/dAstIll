@@ -36,3 +36,4 @@ frontend/build/
 frontend/.vite/
 frontend/playwright-report/
 frontend/test-results/
+.git/hooks/pre-commit

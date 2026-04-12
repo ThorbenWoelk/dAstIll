@@ -1,14 +1,21 @@
 import { expect, test, type Page } from "@playwright/test";
-import { resetClientState } from "./test-helpers";
+import { openFreshGuestPage } from "./test-helpers";
 
 const READY_MS = 120_000;
-const PRIMARY_MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
+// Chromium on macOS reserves Cmd+<number> for browser tab switching, so Playwright
+// never delivers that chord to the page. Use Ctrl there to keep the app-level
+// shortcut path covered in automation; the app still supports Cmd for humans.
+const PRIMARY_MODIFIER = "Control";
 
 function workspaceSidebar(page: Page) {
   // Two aside#workspace nodes can exist (desktop rail + mobile browse dialog). Exclude the dialog copy.
   return page
     .locator('xpath=//aside[@id="workspace"][not(ancestor::*[@role="dialog"])]')
     .first();
+}
+
+function workspaceDesktopTabs(page: Page) {
+  return page.locator("#workspace-tabs-desktop").first();
 }
 
 async function workspaceHasSeedData(page: Page): Promise<boolean> {
@@ -41,7 +48,7 @@ async function workspaceHasSeedData(page: Page): Promise<boolean> {
 }
 
 test.beforeEach(async ({ page }) => {
-  await resetClientState(page);
+  await openFreshGuestPage(page, "/");
 });
 
 test("sidebar lists channels and each row shows video titles", async ({
@@ -87,19 +94,25 @@ test("switching content tabs shows different views", async ({ page }) => {
   });
   await sidebar.locator("#videos").getByRole("button").first().click();
 
-  await page.getByRole("button", { name: "Transcript", exact: true }).click();
+  await workspaceDesktopTabs(page)
+    .getByRole("button", { name: "Transcript", exact: true })
+    .click();
   await expect(page.locator("#content-view article")).toBeVisible({
     timeout: READY_MS,
   });
   await expect(page.locator("#content-view article")).not.toBeEmpty();
 
-  await page.getByRole("button", { name: "Info", exact: true }).click();
+  await workspaceDesktopTabs(page)
+    .getByRole("button", { name: "Info", exact: true })
+    .click();
   await expect(page.getByText("Published").first()).toBeVisible({
     timeout: READY_MS,
   });
   await expect(page.locator("#content-view article")).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Summary", exact: true }).click();
+  await workspaceDesktopTabs(page)
+    .getByRole("button", { name: "Summary", exact: true })
+    .click();
   await expect(page.locator("#content-view article")).toBeVisible({
     timeout: READY_MS,
   });
@@ -135,7 +148,9 @@ test("summary and transcript match the selected video after changing channel", a
   }
 
   await selectChannelAndFirstVideo(0);
-  await page.getByRole("button", { name: "Transcript", exact: true }).click();
+  await workspaceDesktopTabs(page)
+    .getByRole("button", { name: "Transcript", exact: true })
+    .click();
   await expect(page.locator("#content-view article")).toBeVisible({
     timeout: READY_MS,
   });
@@ -144,7 +159,9 @@ test("summary and transcript match the selected video after changing channel", a
   ).trim();
 
   await selectChannelAndFirstVideo(1);
-  await page.getByRole("button", { name: "Transcript", exact: true }).click();
+  await workspaceDesktopTabs(page)
+    .getByRole("button", { name: "Transcript", exact: true })
+    .click();
   await expect(page.locator("#content-view article")).toBeVisible({
     timeout: READY_MS,
   });
@@ -154,7 +171,9 @@ test("summary and transcript match the selected video after changing channel", a
   expect(transcriptB.length).toBeGreaterThan(0);
   expect(transcriptB).not.toBe(transcriptA);
 
-  await page.getByRole("button", { name: "Summary", exact: true }).click();
+  await workspaceDesktopTabs(page)
+    .getByRole("button", { name: "Summary", exact: true })
+    .click();
   await expect(page.locator("#content-view article")).toBeVisible({
     timeout: READY_MS,
   });
@@ -186,13 +205,12 @@ test("Cmd/Ctrl+1 navigates from queue to workspace without full reload hang", as
     .toContain("download-queue");
   await page.waitForTimeout(1500);
   await page.keyboard.press(`${PRIMARY_MODIFIER}+1`);
-  await page.keyboard.press("w");
 
   await expect.poll(() => new URL(page.url()).pathname).toBe("/");
   await expect(workspaceSidebar(page)).toBeVisible({ timeout: READY_MS });
 });
 
-test("mark read toggle flips aria-pressed on desktop", async ({ page }) => {
+test("guest mark read toggle opens the sign-in prompt", async ({ page }) => {
   const hasData = await workspaceHasSeedData(page);
   if (!hasData) {
     test.skip(true, "Workspace has no channels; run against a seeded backend");
@@ -216,13 +234,13 @@ test("mark read toggle flips aria-pressed on desktop", async ({ page }) => {
   await expect(toggle).toBeVisible({ timeout: READY_MS });
   const before = await toggle.getAttribute("aria-pressed");
   await toggle.click();
-  await expect(toggle).toHaveAttribute(
-    "aria-pressed",
-    before === "true" ? "false" : "true",
-  );
+  await expect(
+    page.getByRole("dialog", { name: "Sign in required" }),
+  ).toBeVisible();
+  await expect(toggle).toHaveAttribute("aria-pressed", before ?? "false");
 });
 
-test("unread filter keeps unread videos and removes them after marking read", async ({
+test("guest unread filter keeps videos visible when mark read requires sign-in", async ({
   page,
 }) => {
   const hasData = await workspaceHasSeedData(page);
@@ -263,8 +281,10 @@ test("unread filter keeps unread videos and removes them after marking read", as
   ).toBeVisible();
 
   await toggle.click();
-  await expect(toggle).toHaveAttribute("aria-label", "Mark as unread");
+  await expect(
+    page.getByRole("dialog", { name: "Sign in required" }),
+  ).toBeVisible();
   await expect(
     sidebar.locator("#videos").getByText(targetTitle, { exact: true }),
-  ).toHaveCount(0);
+  ).toBeVisible();
 });

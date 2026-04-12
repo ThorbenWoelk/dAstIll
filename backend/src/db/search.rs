@@ -68,6 +68,21 @@ pub async fn mark_search_source_pending(
     store.put_json(&key, &record).await
 }
 
+pub fn should_refresh_search_source(
+    current: Option<&SearchSourceState>,
+    content_hash: &str,
+    semantic_enabled: bool,
+    runtime_embedding_model: Option<&str>,
+) -> bool {
+    let Some(current) = current else {
+        return true;
+    };
+
+    current.content_hash != content_hash
+        || current.index_status == "failed"
+        || (semantic_enabled && current.embedding_model.as_deref() != runtime_embedding_model)
+}
+
 pub async fn clear_search_source(
     store: &Store,
     video_id: &str,
@@ -393,8 +408,7 @@ pub async fn load_search_material(
     let Some(video) = super::videos::get_video(store, video_id, false).await? else {
         return Ok(None);
     };
-    let channel_name = store
-        .get_json::<crate::models::Channel>(&format!("channels/{}.json", video.channel_id))
+    let channel_name = super::channels::get_canonical_channel(store, &video.channel_id)
         .await?
         .map(|c| c.name)
         .unwrap_or_default();
@@ -623,17 +637,14 @@ pub async fn search_vector_candidates(
 
     let video_map =
         super::videos::get_videos(store, &video_ids.into_iter().collect::<Vec<_>>(), false).await?;
-    let mut channel_map: std::collections::HashMap<String, crate::models::Channel> =
+    let mut channel_map: std::collections::HashMap<String, crate::models::CanonicalChannelRecord> =
         std::collections::HashMap::new();
 
     let channel_ids: std::collections::HashSet<String> =
         video_map.values().map(|v| v.channel_id.clone()).collect();
     for cid in channel_ids {
         if !channel_map.contains_key(&cid) {
-            if let Some(ch) = store
-                .get_json::<crate::models::Channel>(&format!("channels/{cid}.json"))
-                .await?
-            {
+            if let Some(ch) = super::channels::get_canonical_channel(store, &cid).await? {
                 channel_map.insert(ch.id.clone(), ch);
             }
         }
@@ -759,4 +770,92 @@ pub async fn reset_search_projection(store: &Store) -> Result<(), StoreError> {
         req.send().await.ok();
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{CanonicalChannelRecord, Channel};
+
+    fn state(
+        content_hash: &str,
+        index_status: &str,
+        embedding_model: Option<&str>,
+    ) -> SearchSourceState {
+        SearchSourceState {
+            id: 1,
+            source_generation: 1,
+            video_id: "video-1".to_string(),
+            source_kind: SearchSourceKind::Transcript,
+            content_hash: content_hash.to_string(),
+            embedding_model: embedding_model.map(ToOwned::to_owned),
+            index_status: index_status.to_string(),
+            last_indexed_at: None,
+            last_error: None,
+        }
+    }
+
+    #[test]
+    fn refresh_required_when_source_missing() {
+        assert!(should_refresh_search_source(
+            None,
+            "hash-a",
+            true,
+            Some("embed-a")
+        ));
+    }
+
+    #[test]
+    fn ready_source_with_same_hash_and_model_does_not_refresh() {
+        let current = state("hash-a", "ready", Some("embed-a"));
+
+        assert!(!should_refresh_search_source(
+            Some(&current),
+            "hash-a",
+            true,
+            Some("embed-a")
+        ));
+    }
+
+    #[test]
+    fn failed_source_refreshes_even_when_hash_matches() {
+        let current = state("hash-a", "failed", Some("embed-a"));
+
+        assert!(should_refresh_search_source(
+            Some(&current),
+            "hash-a",
+            true,
+            Some("embed-a")
+        ));
+    }
+
+    #[test]
+    fn embedding_model_drift_refreshes_only_when_semantic_is_enabled() {
+        let current = state("hash-a", "ready", Some("embed-a"));
+
+        assert!(should_refresh_search_source(
+            Some(&current),
+            "hash-a",
+            true,
+            Some("embed-b")
+        ));
+        assert!(!should_refresh_search_source(
+            Some(&current),
+            "hash-a",
+            false,
+            Some("embed-b")
+        ));
+    }
+
+    #[test]
+    fn canonical_channel_json_omits_added_at_but_still_deserializes() {
+        let json = r#"{"id":"channel-1","handle":"demo","name":"Demo","thumbnail_url":null}"#;
+
+        let record: CanonicalChannelRecord =
+            serde_json::from_str(json).expect("canonical channel record should deserialize");
+        assert_eq!(record.name, "Demo");
+
+        let err = serde_json::from_str::<Channel>(json).expect_err("full channel should fail");
+        assert!(err.to_string().contains("missing field `added_at`"));
+    }
 }

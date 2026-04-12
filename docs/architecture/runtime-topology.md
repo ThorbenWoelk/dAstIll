@@ -1,73 +1,58 @@
+---
+aside: false
+---
+
 # Runtime Topology
 
 <script setup>
 const processModelDiagram = String.raw`
-flowchart LR
+flowchart TB
   browser[Browser]
   frontend[frontend/<br/>SvelteKit dev server]
   docs[docs/<br/>VitePress dev server]
   backend[backend/<br/>Axum API + worker host]
-  appstate[AppState shared services]
-
-  subgraph workers["Long-lived backend tasks"]
-    queue[Queue worker]
-    refresh[Refresh worker]
-    gap[Gap scan worker]
-    eval[Summary evaluation worker]
-    search[Search index worker]
-    fts[FTS hydration task]
-  end
+  appstate[AppState]
+  workers[Worker loops]
 
   browser --> frontend
   browser --> docs
   frontend --> backend
   backend --> appstate
-  appstate --> queue
-  appstate --> refresh
-  appstate --> gap
-  appstate --> eval
-  appstate --> search
-  appstate --> fts
+  appstate --> workers
 `;
 
 const startupSequenceDiagram = String.raw`
 sequenceDiagram
-  participant boot as backend main
-  participant store as S3 + S3 Vectors + Firestore
+  participant boot as Boot
+  participant store as Storage
   participant state as AppState
-  participant bg as background tasks
-  participant http as Axum router
+  participant workers as Workers
+  participant http as HTTP
 
-  boot->>store: Initialize storage clients
-  boot->>state: Build runtime services and shared state
-  boot->>bg: Hydrate search progress
-  boot->>bg: Hydrate keyword index if libSQL/Turso is empty
-  boot->>bg: Spawn queue, refresh, gap, eval, and search workers
-  boot->>http: Register routes and bind listener
-  http-->>boot: Ready for frontend requests
+  boot->>store: init storage clients
+  boot->>state: build shared runtime
+  boot->>workers: hydrate search + FTS
+  boot->>workers: start worker loops
+  boot->>http: bind routes + listener
+  http-->>boot: ready
 `;
 
 const concurrencyDiagram = String.raw`
 flowchart TD
   appstate[AppState]
-  lock[search_projection_lock]
-  cooldowns[Cooldowns + semaphores]
-  queue[Queue worker]
-  search[Search index worker]
-  eval[Summary evaluation worker]
-  chat[Chat service]
   http[HTTP handlers]
+  workers[Queue, eval,<br/>and search workers]
+  chat[Chat service]
+  lock[Projection lock]
+  limits[Cooldowns + semaphores]
 
-  appstate --> queue
-  appstate --> search
-  appstate --> eval
-  appstate --> chat
   appstate --> http
-  search --> lock
+  appstate --> workers
+  appstate --> chat
   http --> lock
-  queue --> cooldowns
-  eval --> cooldowns
-  chat --> cooldowns
+  workers --> lock
+  workers --> limits
+  chat --> limits
 `;
 </script>
 
@@ -79,6 +64,12 @@ In active development, dAstIll typically runs as three separate processes:
 1. frontend/ SvelteKit dev server
 2. backend/ Rust API + worker host
 3. docs/ VitePress dev server
+```
+
+When you use `./start_app.sh` with an Android device or emulator connected, an optional fourth process can also appear:
+
+```text
+4. Tauri Android shell (auto-launched after the local services are healthy)
 ```
 
 Only the backend process owns durable state changes and worker execution.
@@ -116,14 +107,21 @@ At startup the backend:
 
 - S3 store (data + vectors clients)
 - read cache
+- security/runtime auth config
 - search projection lock
 - search progress tracker
 - **FTS index** (libSQL/Turso BM25 index; shared `Arc<RwLock<_>>`)
 - chat service
 - active chats tracker (in-progress conversations)
 - chat store lock
+- anonymous chat quota lock
+- mobile auth handoff sessions
 - YouTube service
+- OpenAlex planner and OpenAlex service
+- podcast feed service
+- website ingestion service
 - transcript service
+- optional Polly TTS service
 - summarizer service
 - summary evaluator service
 - search service (embedding, reranker, HyDE)
@@ -220,10 +218,14 @@ The summarizer/evaluator side and the search embedding side each use a separate 
 Serves interactive workspace features:
 
 - channel management
+- per-channel overview and sync controls
 - video browsing
 - transcript and summary editing
+- summary-audio playback when TTS is enabled
 - highlights
 - search
+- library chat
+- a browser-only service worker / PWA shell for cached static assets, API GET responses, and thumbnails
 
 ### Docs UI
 

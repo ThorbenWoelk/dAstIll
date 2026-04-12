@@ -5,6 +5,7 @@
     Highlight,
     HighlightSource,
   } from "$lib/types";
+  import CheckIcon from "$lib/components/icons/CheckIcon.svelte";
   import HighlighterIcon from "$lib/components/icons/HighlighterIcon.svelte";
   import TrashIcon from "$lib/components/icons/TrashIcon.svelte";
   import {
@@ -610,7 +611,7 @@
   {#if mode === "markdown"}
     <article
       bind:this={articleElement}
-      class={`prose max-w-none break-words leading-relaxed transition-opacity duration-500 prose-headings:font-serif prose-headings:font-bold prose-headings:tracking-tight prose-h1:text-xl prose-h2:text-lg prose-h3:text-base prose-p:text-[17px] prose-p:leading-[1.75] prose-p:tracking-[-0.01em] prose-strong:font-bold prose-a:text-[var(--accent)] prose-a:underline-offset-4 prose-blockquote:border-l-[var(--accent)] prose-blockquote:bg-[var(--accent-soft)]/30 prose-blockquote:py-1 prose-blockquote:px-6 prose-blockquote:rounded-r-lg ${
+      class={`workspace-article prose max-w-none break-words leading-relaxed transition-opacity duration-500 prose-headings:font-serif prose-headings:font-bold prose-headings:tracking-tight prose-h1:text-[clamp(2rem,4vw,3rem)] prose-h2:text-[clamp(1.4rem,2.2vw,1.8rem)] prose-h3:text-[1.1rem] prose-p:text-[18px] prose-p:leading-[1.82] prose-p:tracking-[-0.01em] prose-strong:font-bold prose-a:text-[var(--accent)] prose-a:underline-offset-4 prose-blockquote:border-l-[var(--accent)] prose-blockquote:bg-[var(--accent-soft)]/30 prose-blockquote:py-1 prose-blockquote:px-6 prose-blockquote:rounded-r-lg ${
         formatting ? "opacity-40 grayscale blur-[1px]" : "opacity-100"
       }`}
     >
@@ -619,7 +620,7 @@
   {:else}
     <article
       bind:this={articleElement}
-      class={`max-w-none whitespace-pre-wrap break-words text-[17px] leading-[1.75] tracking-[-0.01em] text-[var(--foreground)] transition-opacity duration-500 ${
+      class={`workspace-plain-text max-w-none whitespace-pre-wrap break-words text-[18px] leading-[1.85] tracking-[-0.01em] text-[var(--foreground)] transition-opacity duration-500 ${
         formatting ? "opacity-40 grayscale blur-[1px]" : "opacity-100"
       }`}
     >
@@ -654,13 +655,20 @@
             </button>
             <button
               type="button"
-              class="text-action-btn inline-flex items-center justify-center rounded-full px-4 py-2 text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--accent-strong)] hover:bg-[var(--accent-soft)] disabled:cursor-not-allowed disabled:opacity-50"
-              style="background: var(--accent-wash);"
+              class="text-action-btn inline-flex h-9 w-9 items-center justify-center rounded-full text-[var(--soft-foreground)] hover:bg-[var(--accent-wash)] hover:text-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
               onclick={handleCreateVocabularyReplacement}
               disabled={!onCreateVocabularyReplacement ||
                 creatingVocabularyReplacement}
+              aria-label="Correct spelling"
+              title={creatingVocabularyReplacement
+                ? "Saving correction"
+                : "Correct spelling"}
             >
-              {creatingVocabularyReplacement ? "Saving" : "Correct"}
+              <CheckIcon
+                size={16}
+                strokeWidth={2.5}
+                className={creatingVocabularyReplacement ? "animate-pulse" : ""}
+              />
             </button>
           {:else}
             <button
@@ -705,13 +713,20 @@
           </button>
           <button
             type="button"
-            class="text-action-btn inline-flex items-center justify-center rounded-full px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--accent-strong)] hover:bg-[var(--accent-soft)] disabled:cursor-not-allowed disabled:opacity-50"
-            style="background: var(--accent-wash);"
+            class="text-action-btn inline-flex h-8 w-8 items-center justify-center rounded-full text-[var(--soft-foreground)] hover:bg-[var(--accent-wash)] hover:text-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
             onclick={handleCreateVocabularyReplacement}
             disabled={!onCreateVocabularyReplacement ||
               creatingVocabularyReplacement}
+            aria-label="Correct spelling"
+            title={creatingVocabularyReplacement
+              ? "Saving correction"
+              : "Correct spelling"}
           >
-            {creatingVocabularyReplacement ? "Saving" : "Correct"}
+            <CheckIcon
+              size={14}
+              strokeWidth={2.5}
+              className={creatingVocabularyReplacement ? "animate-pulse" : ""}
+            />
           </button>
         {:else}
           <button
@@ -749,6 +764,13 @@
     transition: all 200ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
+  .workspace-article,
+  .workspace-plain-text {
+    width: 100%;
+    max-width: 54rem;
+    margin: 0 auto;
+  }
+
   :global(.prose h1, .prose h2, .prose h3) {
     font-variation-settings:
       "opsz" 72,
@@ -773,5 +795,12 @@
 
   :global(mark.reader-highlight:hover) {
     background: var(--reader-highlight-bg-hover);
+  }
+
+  @media (max-width: 1023px) {
+    .workspace-article,
+    .workspace-plain-text {
+      max-width: 100%;
+    }
   }
 </style>

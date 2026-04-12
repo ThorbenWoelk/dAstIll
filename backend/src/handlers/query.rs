@@ -1,8 +1,9 @@
 use serde::Deserialize;
+use utoipa::{IntoParams, ToSchema};
 
 use crate::db;
 
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum VideoTypeFilter {
     All,
@@ -20,7 +21,7 @@ impl VideoTypeFilter {
     }
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueueTab {
     Transcripts,
@@ -28,7 +29,7 @@ pub enum QueueTab {
     Evaluations,
 }
 
-#[derive(Debug, Default, Deserialize, Clone)]
+#[derive(Debug, Default, Deserialize, Clone, IntoParams)]
 pub struct VideoListParams {
     pub limit: Option<usize>,
     pub offset: Option<usize>,
@@ -76,7 +77,7 @@ impl VideoListParams {
     }
 }
 
-#[derive(Debug, Default, Deserialize, Clone)]
+#[derive(Debug, Default, Deserialize, Clone, IntoParams)]
 pub struct WorkspaceBootstrapParams {
     pub selected_source_id: Option<String>,
     pub selected_channel_id: Option<String>,

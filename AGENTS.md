@@ -14,6 +14,7 @@ Deeper domain-specific guidance belongs in dedicated docs and should be linked f
 - Do not duplicate large guidance blocks across multiple markdown files.
 - When frontend rules change, update `design.md` and keep only the pointer here.
 - Keep repo guidance legible for agents: short entry points here, detailed source-of-truth docs elsewhere.
+- Never put required environment values into [`start_app.sh`](./start_app.sh); adjust the shared/local `.env` files and their setup flow instead.
 
 ## Documentation Split
 
@@ -35,11 +36,16 @@ Deeper domain-specific guidance belongs in dedicated docs and should be linked f
 
 Terraform creates the secrets, writes secret versions from tfvars, and grants **Cloud Run** service accounts plus the **GitHub Actions deploy** service account `roles/secretmanager.secretAccessor` on the relevant secrets. See `terraform/secrets.tf` and `terraform/iam.tf`.
 
-The **Release** workflow (`.github/workflows/deploy.yml`) deploys to Cloud Run and **mounts** Secret Manager secrets onto the service as named environment variables (for example `BACKEND_PROXY_TOKEN=dastill-backend-proxy-token:latest`). Non-secret runtime config uses GitHub **vars** or plain `env` in the workflow where documented.
+The **Release** workflow (`.github/workflows/deploy.yml`) deploys to Cloud Run. All production environment variables must come from one of two sources:
+1. **Secret Manager** — for sensitive values (API keys, tokens). Mounted as Cloud Run secret env vars.
+2. **Cloud Run service configuration** — for non-secret runtime config. Set via the deploy workflow's env-vars file or `gcloud run deploy` flags.
+
+GitHub repository **variables** (`vars.*`) are only used as an intermediate transport inside the deploy workflow to populate the Cloud Run env-vars file. They are not a runtime config store themselves.
 
 **Anti-patterns to avoid**
 
 - Application API keys or tokens in GitHub repository variables (use Terraform and Secret Manager instead).
+- Treating GitHub vars as the source of truth for runtime config. The source of truth is the Cloud Run service definition.
 
 **CI**
 
@@ -80,7 +86,7 @@ Navigate to the respective frontend and backend folders and run the following be
 
 1. `cargo check`
 2. `cargo test`
-3. `cargo audit` (use `cargo update` when you intend to refresh `Cargo.lock`; otherwise `cargo audit` alone is the usual local check).
+3. `./scripts/cargo_audit.sh` (use `cargo update` when you intend to refresh `Cargo.lock`; keep the script allowlist short and remove entries as upstream crates publish fixes).
 
 **Frontend** (`frontend/`):
 

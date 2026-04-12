@@ -5,11 +5,11 @@
 //!   cargo run --bin purge_bad_transcripts -- --video-id nDU7Mn-XRWI --video-id nsqGI1VAYbU
 
 use anyhow::{Context, Result, bail};
+use dastill::config::TursoRuntimeConfig;
 use dastill::db::{self, init_store};
-use dastill::local_env::{
-    clear_missing_google_application_credentials, load_dotenv_preserving_existing,
-};
+use dastill::local_env::load_dotenv_preserving_existing;
 use dastill::models::ContentStatus;
+use dastill::services::{FtsIndex, SearchSourceKind};
 
 const BAD_SNIPPET: &str = "Sup nerds we got things to discuss.";
 
@@ -20,11 +20,6 @@ async fn main() -> Result<()> {
         .expect("failed to install rustls crypto provider");
 
     load_dotenv_preserving_existing();
-    if clear_missing_google_application_credentials() {
-        eprintln!(
-            "GOOGLE_APPLICATION_CREDENTIALS points to a missing file - falling back to application-default credentials"
-        );
-    }
 
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.is_empty() {
@@ -38,7 +33,7 @@ async fn main() -> Result<()> {
         bail!("no video IDs supplied");
     }
 
-    let store = connect_store().await?;
+    let (store, fts) = connect_store().await?;
 
     for video_id in video_ids {
         let transcript = db::get_transcript(&store, &video_id)
@@ -58,9 +53,15 @@ async fn main() -> Result<()> {
             continue;
         }
 
+        fts.delete_source(&video_id, SearchSourceKind::Transcript)
+            .await
+            .map_err(|err| anyhow::anyhow!("delete transcript FTS rows for {video_id}: {err}"))?;
         db::delete_transcript(&store, &video_id)
             .await
             .with_context(|| format!("delete transcript for {video_id}"))?;
+        fts.delete_source(&video_id, SearchSourceKind::Summary)
+            .await
+            .map_err(|err| anyhow::anyhow!("delete summary FTS rows for {video_id}: {err}"))?;
         db::delete_summary(&store, &video_id)
             .await
             .with_context(|| format!("delete summary for {video_id}"))?;
@@ -97,14 +98,16 @@ fn parse_video_ids(args: &[String]) -> Result<Vec<String>> {
     Ok(video_ids)
 }
 
-async fn connect_store() -> Result<db::Store> {
+async fn connect_store() -> Result<(db::Store, FtsIndex)> {
     let data_bucket = std::env::var("S3_DATA_BUCKET").context("S3_DATA_BUCKET must be set")?;
     let vector_bucket =
         std::env::var("S3_VECTOR_BUCKET").context("S3_VECTOR_BUCKET must be set")?;
     let vector_index =
         std::env::var("S3_VECTOR_INDEX").unwrap_or_else(|_| "search-chunks".to_string());
     let aws_region = std::env::var("AWS_REGION").unwrap_or_else(|_| "eu-central-1".to_string());
-    let gcp_project_id = std::env::var("GCP_PROJECT_ID").context("GCP_PROJECT_ID must be set")?;
+    let turso = TursoRuntimeConfig::from_env()
+        .map_err(|e| anyhow::anyhow!(e))?
+        .context("TURSO_DB_URL and TURSO_AUTH_TOKEN must be set")?;
 
     let aws_config = dastill::aws_auth::load_aws_sdk_config(aws_region)
         .await
@@ -124,19 +127,39 @@ async fn connect_store() -> Result<db::Store> {
     }
     let s3v_client = aws_sdk_s3vectors::Client::from_conf(s3v_config_builder.build());
 
-    let firestore_db = firestore::FirestoreDb::new(&gcp_project_id).await?;
+    let turso_db_path = std::env::temp_dir().join("dastill-bin.db");
+    let turso_db =
+        libsql::Builder::new_remote_replica(turso_db_path.clone(), turso.db_url, turso.auth_token)
+            .build()
+            .await
+            .map_err(|e| anyhow::anyhow!("Turso: {e}"))?;
+    turso_db
+        .sync()
+        .await
+        .map_err(|e| anyhow::anyhow!("Turso sync: {e}"))?;
+    let turso_conn = turso_db
+        .connect()
+        .map_err(|e| anyhow::anyhow!("Turso connect: {e}"))?;
+    dastill::db::turso_schema::initialize_turso_schema(&turso_conn)
+        .await
+        .map_err(|e| anyhow::anyhow!(e))?;
+    let fts = FtsIndex::new_with_db(turso_db, turso_db_path)
+        .await
+        .map_err(|err| anyhow::anyhow!(err))?;
 
-    init_store(
+    let store = init_store(
         s3_client,
         s3v_client,
-        firestore_db,
+        turso_conn,
         data_bucket,
         vector_bucket,
         vector_index,
         dastill::read_cache::ReadCache::default(),
     )
     .await
-    .map_err(|err| anyhow::anyhow!(err))
+    .map_err(|err| anyhow::anyhow!(err))?;
+
+    Ok((store, fts))
 }
 fn transcript_contains_bad_snippet(transcript: &dastill::models::Transcript) -> bool {
     transcript

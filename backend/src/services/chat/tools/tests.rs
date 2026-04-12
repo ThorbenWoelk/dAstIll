@@ -3,15 +3,17 @@ use super::*;
 #[cfg(test)]
 mod tests {
     use super::{
-        DbGroupBy, DbInspectOperation, DbInspectQuery, DbInspectTarget, DbInspectToolInput,
-        HighlightLookupQuery, HighlightLookupToolInput, RecentLibraryActivityScope,
-        RecentLibraryActivityToolInput, SearchLibraryToolInput, build_db_inspect_query,
-        build_highlight_lookup_query, build_recent_library_activity_query,
-        build_search_library_query, describe_db_inspect_query, describe_highlight_lookup_query,
+        DbGroupBy, DbInspectOperation, DbInspectQuery, DbInspectScope, DbInspectTarget,
+        DbInspectToolInput, HighlightLookupQuery, HighlightLookupToolInput,
+        RecentLibraryActivityScope, RecentLibraryActivityToolInput, SearchLibraryToolInput,
+        breakdown_scope_by_channel, build_db_inspect_query, build_highlight_lookup_query,
+        build_recent_library_activity_query, build_search_library_query, count_db_inspect_scope,
+        describe_db_inspect_query, describe_highlight_lookup_query, format_db_inspect_list_output,
         resolve_mention_scope_from_catalog,
     };
-    use crate::models::{Channel, ContentStatus, Video};
+    use crate::models::{Channel, ContentStatus, Summary, Transcript, Video};
     use crate::services::search::SearchSourceKind;
+    use std::collections::{HashMap, HashSet};
 
     #[test]
     fn builds_count_query_from_valid_tool_request() {
@@ -351,6 +353,85 @@ mod tests {
         assert!(query.include_transcripts);
     }
 
+    #[test]
+    fn anonymous_db_inspect_uses_access_scoped_results() {
+        let scope = DbInspectScope {
+            channels: vec![sample_channel("seeded-channel", "Seeded", Some("@seeded"))],
+            videos: vec![sample_video(
+                "video-seeded",
+                "seeded-channel",
+                "Seeded video",
+            )],
+            summaries: vec![sample_summary("video-seeded")],
+            transcripts: vec![sample_transcript("video-seeded")],
+            visible_channel_names: HashMap::from([(
+                "seeded-channel".to_string(),
+                "Seeded".to_string(),
+            )]),
+            allowed_other_video_ids: HashSet::new(),
+        };
+
+        assert_eq!(count_db_inspect_scope(&scope, DbInspectTarget::Videos), 1);
+
+        let list = format_db_inspect_list_output(
+            &scope,
+            DbInspectQuery {
+                operation: DbInspectOperation::List,
+                target: DbInspectTarget::Videos,
+                limit: 5,
+                group_by: None,
+            },
+        );
+        assert!(list.contains("video-seeded"));
+        assert!(!list.contains("video-hidden"));
+
+        let breakdown = breakdown_scope_by_channel(&scope, DbInspectTarget::Summaries);
+        assert_eq!(breakdown, vec![("Seeded".to_string(), 1)]);
+    }
+
+    #[test]
+    fn db_inspect_folds_other_video_scope_into_virtual_others_channel() {
+        let scope = DbInspectScope {
+            channels: vec![
+                sample_channel("channel-a", "Visible", Some("@visible")),
+                sample_channel("__others__", "Others", None),
+            ],
+            videos: vec![
+                sample_video("video-visible", "channel-a", "Visible video"),
+                sample_video("video-other", "hidden-channel", "Other video"),
+            ],
+            summaries: vec![
+                sample_summary("video-visible"),
+                sample_summary("video-other"),
+            ],
+            transcripts: Vec::new(),
+            visible_channel_names: HashMap::from([(
+                "channel-a".to_string(),
+                "Visible".to_string(),
+            )]),
+            allowed_other_video_ids: HashSet::from(["video-other".to_string()]),
+        };
+
+        let channels = format_db_inspect_list_output(
+            &scope,
+            DbInspectQuery {
+                operation: DbInspectOperation::List,
+                target: DbInspectTarget::Channels,
+                limit: 10,
+                group_by: None,
+            },
+        );
+        assert!(channels.contains("channel-a - Visible"));
+        assert!(channels.contains("__others__ - Others"));
+        assert!(!channels.contains("hidden-channel"));
+
+        let breakdown = breakdown_scope_by_channel(&scope, DbInspectTarget::Summaries);
+        assert_eq!(
+            breakdown,
+            vec![("Others".to_string(), 1), ("Visible".to_string(), 1),]
+        );
+    }
+
     fn sample_channel(id: &str, name: &str, handle: Option<&str>) -> Channel {
         Channel {
             id: id.to_string(),
@@ -376,6 +457,29 @@ mod tests {
             acknowledged: false,
             retry_count: 0,
             quality_score: None,
+        }
+    }
+
+    fn sample_summary(video_id: &str) -> Summary {
+        Summary {
+            video_id: video_id.to_string(),
+            content: format!("summary for {video_id}"),
+            model_used: None,
+            quality_score: None,
+            quality_note: None,
+            quality_model_used: None,
+            summary_tags: Vec::new(),
+            summary_tags_evaluated: false,
+        }
+    }
+
+    fn sample_transcript(video_id: &str) -> Transcript {
+        Transcript {
+            video_id: video_id.to_string(),
+            raw_text: Some(format!("transcript for {video_id}")),
+            formatted_markdown: None,
+            render_mode: crate::models::TranscriptRenderMode::PlainText,
+            timed_text: None,
         }
     }
 }
