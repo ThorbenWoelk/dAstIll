@@ -408,8 +408,7 @@ pub async fn load_search_material(
     let Some(video) = super::videos::get_video(store, video_id, false).await? else {
         return Ok(None);
     };
-    let channel_name = store
-        .get_json::<crate::models::Channel>(&format!("channels/{}.json", video.channel_id))
+    let channel_name = super::channels::get_canonical_channel(store, &video.channel_id)
         .await?
         .map(|c| c.name)
         .unwrap_or_default();
@@ -638,17 +637,14 @@ pub async fn search_vector_candidates(
 
     let video_map =
         super::videos::get_videos(store, &video_ids.into_iter().collect::<Vec<_>>(), false).await?;
-    let mut channel_map: std::collections::HashMap<String, crate::models::Channel> =
+    let mut channel_map: std::collections::HashMap<String, crate::models::CanonicalChannelRecord> =
         std::collections::HashMap::new();
 
     let channel_ids: std::collections::HashSet<String> =
         video_map.values().map(|v| v.channel_id.clone()).collect();
     for cid in channel_ids {
         if !channel_map.contains_key(&cid) {
-            if let Some(ch) = store
-                .get_json::<crate::models::Channel>(&format!("channels/{cid}.json"))
-                .await?
-            {
+            if let Some(ch) = super::channels::get_canonical_channel(store, &cid).await? {
                 channel_map.insert(ch.id.clone(), ch);
             }
         }
@@ -779,6 +775,7 @@ pub async fn reset_search_projection(store: &Store) -> Result<(), StoreError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::{CanonicalChannelRecord, Channel};
 
     fn state(
         content_hash: &str,
@@ -848,5 +845,17 @@ mod tests {
             false,
             Some("embed-b")
         ));
+    }
+
+    #[test]
+    fn canonical_channel_json_omits_added_at_but_still_deserializes() {
+        let json = r#"{"id":"channel-1","handle":"demo","name":"Demo","thumbnail_url":null}"#;
+
+        let record: CanonicalChannelRecord =
+            serde_json::from_str(json).expect("canonical channel record should deserialize");
+        assert_eq!(record.name, "Demo");
+
+        let err = serde_json::from_str::<Channel>(json).expect_err("full channel should fail");
+        assert!(err.to_string().contains("missing field `added_at`"));
     }
 }
