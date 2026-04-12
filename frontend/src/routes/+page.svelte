@@ -2,13 +2,13 @@
   import { onMount } from "svelte";
   import AddSourceFeedbackToast from "$lib/components/AddSourceFeedbackToast.svelte";
   import VocabularyReplacementModal from "$lib/components/VocabularyReplacementModal.svelte";
+  import MobileTopBarVideoFilters from "$lib/components/mobile/MobileTopBarVideoFilters.svelte";
   import WorkspaceContentPanel from "$lib/components/workspace/WorkspaceContentPanel.svelte";
   import MobileYouTubeTopNav from "$lib/components/mobile/MobileYouTubeTopNav.svelte";
   import MobileHomeBrowseOverlay from "$lib/components/mobile/MobileHomeBrowseOverlay.svelte";
   import WorkspaceDesktopTopBar from "$lib/components/workspace/WorkspaceDesktopTopBar.svelte";
   import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
   import WorkspaceSidebar from "$lib/components/workspace/WorkspaceSidebar.svelte";
-  import WorkspaceSidebarVideoFilterControl from "$lib/components/workspace/WorkspaceSidebarVideoFilterControl.svelte";
   import FeatureGuide from "$lib/components/FeatureGuide.svelte";
   import { setFeatureGuideSuppressesAuthRequiredNotice } from "$lib/auth-required-notice";
   import { createHomeWorkspacePage } from "$lib/workspace/home-workspace.svelte";
@@ -100,24 +100,15 @@
       onBack={hw.openMobileBrowse}
     >
       {#snippet trailing()}
-        {#if hw.mobileBrowseOpen}
-          <div
-            class="flex min-w-0 shrink-0 items-center justify-end"
-            aria-label="Video filters"
-          >
-            <WorkspaceSidebarVideoFilterControl
-              size="md"
-              videoTypeFilter={hw.sidebarState.videoState.videoTypeFilter}
-              acknowledgedFilter={hw.sidebarState.videoState.acknowledgedFilter}
-              disabled={hw.browseFilterDisabled}
-              onSelectVideoType={hw.onBrowseVideoTypeFilterChange}
-              onSelectAcknowledged={hw.onBrowseAcknowledgedFilterChange}
-              onClearAllFilters={hw.clearBrowseVideoFilters}
-            />
-          </div>
-        {:else}
-          <div class="w-10 shrink-0" aria-hidden="true"></div>
-        {/if}
+        <MobileTopBarVideoFilters
+          visible={hw.mobileBrowseOpen}
+          videoTypeFilter={hw.sidebarState.videoState.videoTypeFilter}
+          acknowledgedFilter={hw.sidebarState.videoState.acknowledgedFilter}
+          disabled={hw.browseFilterDisabled}
+          onSelectVideoType={hw.onBrowseVideoTypeFilterChange}
+          onSelectAcknowledged={hw.onBrowseAcknowledgedFilterChange}
+          onClearAllFilters={hw.clearBrowseVideoFilters}
+        />
       {/snippet}
     </MobileYouTubeTopNav>
   {/snippet}

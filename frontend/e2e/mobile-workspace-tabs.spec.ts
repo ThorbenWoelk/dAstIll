@@ -389,6 +389,51 @@ test("mobile filter button opens the filter menu above the browse overlay", asyn
   ).toBeVisible();
 });
 
+test("mobile queue filter button keeps full tap target and opens its menu", async ({
+  page,
+}) => {
+  const selectedChannelId = "queue-filter";
+  const selectedPath = `/download-queue?source=${selectedChannelId}`;
+  const bootstrap = buildMockWorkspaceBootstrap({
+    channelId: selectedChannelId,
+    channelName: "Queue filter channel",
+    channelHandle: "@queue-filter",
+    containerId: "container-queue-filter",
+    videoId: "video-queue-filter",
+    videoTitle: "Queue filter fixture video",
+    qualityScore: 6,
+  });
+
+  await installMockWorkspaceApi(page, { bootstrap });
+
+  await page.goto(selectedPath);
+  await expect(page.getByRole("banner")).toBeVisible();
+
+  const filterButton = page
+    .getByRole("banner")
+    .getByRole("button", { name: "Video filters" })
+    .first();
+
+  await expect
+    .poll(() => new URL(page.url()).search)
+    .toContain(`source=${selectedChannelId}`);
+  await expect(filterButton).toBeVisible();
+  await expect(filterButton).toBeEnabled();
+
+  const filterButtonBounds = await filterButton.boundingBox();
+  expect(filterButtonBounds?.width ?? 0).toBeGreaterThanOrEqual(36);
+  expect(filterButtonBounds?.height ?? 0).toBeGreaterThanOrEqual(36);
+
+  await filterButton.click();
+
+  const filterMenu = page.getByRole("menu", { name: "Video filters" });
+  await expect(filterButton).toHaveAttribute("aria-expanded", "true");
+  await expect(filterMenu).toBeVisible();
+  await expect(
+    filterMenu.getByRole("menuitemradio", { name: "All" }).first(),
+  ).toBeVisible();
+});
+
 test("mobile tabs stay scrollable and shortcut hints stay hidden", async ({
   page,
 }) => {
