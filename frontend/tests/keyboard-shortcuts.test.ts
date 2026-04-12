@@ -1,6 +1,14 @@
 import { Window as HappyWindow } from "happy-dom";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import {
+  SECTION_NAVIGATION_ITEMS,
+  goHintKeyForSection,
+} from "../src/lib/section-navigation";
+import {
+  WORKSPACE_CONTENT_MODE_ORDER,
+  goHintKeyForWorkspaceContentMode,
+} from "../src/lib/workspace/navigation";
+import {
   buildShortcutManual,
   computeGoHintBadgeStyles,
   GO_SEQUENCE_HINTS,
@@ -115,6 +123,26 @@ describe("GO_SEQUENCE_HINTS", () => {
       "↵",
       ".",
     ]);
+  });
+
+  it("reuses section and content-mode hint contracts", () => {
+    expect(GO_SEQUENCE_HINTS.slice(0, SECTION_NAVIGATION_ITEMS.length)).toEqual(
+      SECTION_NAVIGATION_ITEMS.map((item) => ({
+        key: goHintKeyForSection(item.section),
+        label: item.label,
+      })),
+    );
+
+    expect(
+      GO_SEQUENCE_HINTS.slice(
+        SECTION_NAVIGATION_ITEMS.length,
+        SECTION_NAVIGATION_ITEMS.length + WORKSPACE_CONTENT_MODE_ORDER.length,
+      ).map((hint) => hint.key),
+    ).toEqual(
+      WORKSPACE_CONTENT_MODE_ORDER.map((mode) =>
+        goHintKeyForWorkspaceContentMode(mode),
+      ),
+    );
   });
 });
 
