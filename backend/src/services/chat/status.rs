@@ -254,6 +254,41 @@ impl ChatRetrievalPlan {
             return;
         }
 
+        if matches!(self.intent, ChatQueryIntent::Comparison) && !scope.video_focus_ids.is_empty() {
+            self.channel_focus_ids.clear();
+            self.video_focus_ids.clear();
+
+            if let Some(first_query) = self.queries.first_mut() {
+                *first_query = scope.scoped_query(first_query);
+            } else {
+                let scoped = scope.prompt_for_retrieval(&scope.cleaned_prompt);
+                if !scoped.trim().is_empty() {
+                    self.queries.push(scoped);
+                }
+            }
+
+            for query in self.queries.iter_mut().skip(1) {
+                *query = remove_scoped_video_titles(query, &scope.video_titles);
+            }
+            for query in &mut self.expansion_queries {
+                *query = remove_scoped_video_titles(query, &scope.video_titles);
+            }
+            self.queries.retain(|query| !query.trim().is_empty());
+            self.expansion_queries
+                .retain(|query| !query.trim().is_empty());
+
+            if let Some(scope_detail) = scope.scope_detail() {
+                let scope_note = format!(
+                    "Start from {scope_detail}, but allow comparison searches to widen beyond the scoped video."
+                );
+                self.rationale = Some(match self.rationale.take() {
+                    Some(existing) if !existing.is_empty() => format!("{scope_note} {existing}"),
+                    _ => scope_note,
+                });
+            }
+            return;
+        }
+
         self.channel_focus_ids = scope.channel_focus_ids.clone();
         self.video_focus_ids = scope.video_focus_ids.clone();
 
@@ -391,6 +426,15 @@ impl ChatRetrievalPlan {
         let scaled = (self.budget / 3).max(CHAT_SYNTHESIS_VIDEO_LIMIT);
         scaled.min(24)
     }
+}
+
+fn remove_scoped_video_titles(query: &str, video_titles: &[String]) -> String {
+    let mut cleaned = query.to_string();
+    for title in video_titles {
+        cleaned = cleaned.replace(&format!("\"{title}\""), "");
+        cleaned = cleaned.replace(title, "");
+    }
+    cleaned.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 #[derive(Debug, Deserialize)]

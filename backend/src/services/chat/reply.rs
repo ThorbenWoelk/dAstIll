@@ -229,7 +229,8 @@ impl ChatService {
                     .await;
             }
 
-            let grounding = build_tool_grounding_context(&tool_outputs, &tool_outcome.sources);
+            let grounding =
+                build_tool_grounding_context(prompt, &tool_outputs, &tool_outcome.sources);
             let mut cancel_rx = active_chat.subscribe_cancel();
             let (content, terminal_stats) = self
                 .stream_ollama_reply(
