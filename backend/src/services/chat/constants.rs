@@ -21,6 +21,7 @@ pub(crate) const CHAT_TITLE_MAX_CHARS: usize = 80;
 // Planner calls go through the same cloud-backed prompt path as generation, so
 // a 3s budget is too aggressive for non-trivial classification queries.
 pub(crate) const CHAT_CLASSIFY_TIMEOUT: Duration = Duration::from_secs(15);
+pub(crate) const CHAT_MENTION_SCOPE_TIMEOUT: Duration = Duration::from_secs(5);
 pub(crate) const CHAT_MAX_RETRIEVAL_PASSES: usize = 3;
 pub(crate) const CHAT_DIVERSITY_PENALTY: f32 = 0.3;
 pub(crate) const CHAT_SOURCE_KIND_DIVERSITY_BONUS: f32 = 1.08;

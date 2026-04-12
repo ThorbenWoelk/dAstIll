@@ -513,11 +513,17 @@ pub(crate) async fn execute_db_inspect_query(
     access_context: &crate::security::AccessContext,
     query: DbInspectQuery,
 ) -> Result<DbInspectResult, db::StoreError> {
-    let scope = load_db_inspect_scope(store, access_context).await?;
-
     match query.operation {
         DbInspectOperation::Count => {
-            let count = count_db_inspect_scope(&scope, query.target);
+            let count = match query.target {
+                DbInspectTarget::Channels => {
+                    load_db_inspect_channels(store, access_context).await?.len()
+                }
+                _ => {
+                    let scope = load_db_inspect_scope(store, access_context).await?;
+                    count_db_inspect_scope(&scope, query.target)
+                }
+            };
             let output = format_db_count_answer(query.target, count);
             Ok(DbInspectResult {
                 summary: describe_db_inspect_query(query),
@@ -526,6 +532,7 @@ pub(crate) async fn execute_db_inspect_query(
         }
         DbInspectOperation::List => execute_list_query(store, access_context, query).await,
         DbInspectOperation::Breakdown => {
+            let scope = load_db_inspect_scope(store, access_context).await?;
             let counts = match query.target {
                 DbInspectTarget::Summaries => {
                     breakdown_scope_by_channel(&scope, DbInspectTarget::Summaries)
@@ -623,12 +630,11 @@ pub(super) async fn load_db_inspect_scope(
     store: &db::Store,
     access_context: &crate::security::AccessContext,
 ) -> Result<DbInspectScope, db::StoreError> {
-    let mut channels = Vec::new();
     let mut visible_channel_names = HashMap::new();
-    for channel_id in &access_context.allowed_channel_ids {
-        if let Some(channel) = db::get_channel(store, channel_id).await? {
+    let channels = load_db_inspect_channels(store, access_context).await?;
+    for channel in &channels {
+        if channel.id != crate::models::OTHERS_CHANNEL_ID {
             visible_channel_names.insert(channel.id.clone(), channel.name.clone());
-            channels.push(channel);
         }
     }
 
@@ -665,15 +671,6 @@ pub(super) async fn load_db_inspect_scope(
         .iter()
         .cloned()
         .collect::<HashSet<_>>();
-    if !allowed_other_video_ids.is_empty() {
-        channels.push(db::build_virtual_others_channel(chrono::Utc::now()));
-    }
-    channels.sort_by(|left, right| {
-        left.name
-            .cmp(&right.name)
-            .then_with(|| left.id.cmp(&right.id))
-    });
-    channels.dedup_by(|left, right| left.id == right.id);
 
     let mut summaries = Vec::new();
     let mut transcripts = Vec::new();
@@ -696,6 +693,30 @@ pub(super) async fn load_db_inspect_scope(
         visible_channel_names,
         allowed_other_video_ids,
     })
+}
+
+pub(super) async fn load_db_inspect_channels(
+    store: &db::Store,
+    access_context: &crate::security::AccessContext,
+) -> Result<Vec<Channel>, db::StoreError> {
+    let mut channels = Vec::new();
+    for channel_id in &access_context.allowed_channel_ids {
+        if let Some(channel) = db::get_channel(store, channel_id).await? {
+            channels.push(channel);
+        }
+    }
+
+    if !access_context.allowed_other_video_ids.is_empty() {
+        channels.push(db::build_virtual_others_channel(chrono::Utc::now()));
+    }
+
+    channels.sort_by(|left, right| {
+        left.name
+            .cmp(&right.name)
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    channels.dedup_by(|left, right| left.id == right.id);
+    Ok(channels)
 }
 
 pub(super) fn count_db_inspect_scope(scope: &DbInspectScope, target: DbInspectTarget) -> usize {

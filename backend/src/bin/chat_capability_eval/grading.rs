@@ -139,7 +139,7 @@ fn answerability_pass(spec: &PromptSpec, content: &str, notes: &mut Vec<String>)
     let normalized = trimmed.to_ascii_lowercase();
     if unsupported_library_phrases()
         .iter()
-        .any(|phrase| normalized.contains(phrase))
+        .any(|phrase| looks_like_leading_refusal(&normalized, phrase))
     {
         notes.push("assistant claimed missing library access".to_string());
         return false;
@@ -147,7 +147,7 @@ fn answerability_pass(spec: &PromptSpec, content: &str, notes: &mut Vec<String>)
 
     if generic_failure_phrases()
         .iter()
-        .any(|phrase| normalized.contains(phrase))
+        .any(|phrase| looks_like_leading_refusal(&normalized, phrase))
     {
         notes.push("assistant returned a generic failure or refusal".to_string());
         return false;
@@ -344,12 +344,21 @@ fn classify_answerability_failure(content: &str) -> String {
     let normalized = content.to_ascii_lowercase();
     if unsupported_library_phrases()
         .iter()
-        .any(|phrase| normalized.contains(phrase))
+        .any(|phrase| looks_like_leading_refusal(&normalized, phrase))
     {
         FAILURE_UNSUPPORTED.to_string()
     } else {
         FAILURE_GENERIC.to_string()
     }
+}
+
+fn looks_like_leading_refusal(normalized: &str, phrase: &str) -> bool {
+    let trimmed = normalized.trim_start();
+    trimmed.starts_with(phrase)
+        || trimmed
+            .lines()
+            .take(2)
+            .any(|line| line.trim_start().starts_with(phrase))
 }
 
 fn classify_grounding_failure(spec: &PromptSpec, sources: &[ChatSource]) -> String {
@@ -494,6 +503,12 @@ fn caveat_markers() -> &'static [&'static str] {
         "likely",
         "probably",
         "inference",
+        "without knowing",
+        "if you are asking",
+        "if you're referring",
+        "there is no direct statement",
+        "none explicitly",
+        "cannot determine",
         "based on the excerpts",
         "from the available evidence",
     ]
@@ -507,6 +522,11 @@ fn contrast_markers() -> &'static [&'static str] {
         "whereas",
         "on the other hand",
         "compared with",
+        "different",
+        "disagree",
+        "unrelated",
+        "counterargument",
+        "opposing",
         "difference",
         "similarity",
     ]

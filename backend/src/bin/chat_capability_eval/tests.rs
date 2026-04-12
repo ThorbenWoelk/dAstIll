@@ -2,7 +2,12 @@ use crate::model::{
     CapabilityClass, ExpectedAnswerability, FAILURE_NO_SOURCES, PromptRunResult, PromptRunStatus,
 };
 use crate::report::build_summary;
+use crate::runner::{
+    apply_eval_identity_headers, has_explicit_scope, persistent_chat_requires_ephemeral,
+    prompt_refers_to_current_channel, prompt_refers_to_current_video,
+};
 use crate::sse::{SseAccumulator, parse_sse_block};
+use reqwest::header::HeaderMap;
 
 #[test]
 fn parse_sse_block_extracts_event_and_data() {
@@ -93,4 +98,62 @@ fn summary_groups_failures_by_class() {
     );
     assert_eq!(summary.by_capability_class.len(), 1);
     assert_eq!(summary.by_capability_class[0].total, 2);
+}
+
+#[test]
+fn detects_signed_out_persistent_chat_guardrail() {
+    assert!(persistent_chat_requires_ephemeral(
+        403,
+        "Sign-in required for persistent chat. Signed-out chat stays ephemeral."
+    ));
+    assert!(!persistent_chat_requires_ephemeral(
+        401,
+        "Sign-in required for persistent chat. Signed-out chat stays ephemeral."
+    ));
+    assert!(!persistent_chat_requires_ephemeral(
+        403,
+        "Operator access required"
+    ));
+}
+
+#[test]
+fn injects_authenticated_eval_identity_headers_when_user_is_set() {
+    let mut headers = HeaderMap::new();
+    apply_eval_identity_headers(&mut headers, Some("firebase-user-123"), Some("user"))
+        .expect("headers should be applied");
+
+    assert_eq!(
+        headers
+            .get("x-dastill-auth-state")
+            .and_then(|value| value.to_str().ok()),
+        Some("authenticated")
+    );
+    assert_eq!(
+        headers
+            .get("x-dastill-user-id")
+            .and_then(|value| value.to_str().ok()),
+        Some("firebase-user-123")
+    );
+    assert_eq!(
+        headers
+            .get("x-dastill-role")
+            .and_then(|value| value.to_str().ok()),
+        Some("user")
+    );
+}
+
+#[test]
+fn detects_deictic_prompt_scope_needs() {
+    assert!(prompt_refers_to_current_video(
+        "Give me a quick summary of this video in three bullets."
+    ));
+    assert!(prompt_refers_to_current_channel(
+        "What does this creator think about OpenAI?"
+    ));
+    assert!(has_explicit_scope(
+        "+{OpenAI just dropped their Cursor killer} summarize this video"
+    ));
+    assert!(!prompt_refers_to_current_video(
+        "Find every video that mentions RAG."
+    ));
 }

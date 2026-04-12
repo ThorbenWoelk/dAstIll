@@ -387,10 +387,14 @@ pub(super) fn apply_recent_activity_scope(
     mut query: tools::RecentLibraryActivityQuery,
     scope: &tools::MentionScope,
 ) -> tools::RecentLibraryActivityQuery {
-    if query.channel_id.is_none()
-        && matches!(query.scope, tools::RecentLibraryActivityScope::Channel)
+    if matches!(query.scope, tools::RecentLibraryActivityScope::Channel)
+        && let Some(scoped_channel_id) = scope.channel_focus_ids.first().cloned()
+        && query
+            .channel_id
+            .as_ref()
+            .is_none_or(|current| current != &scoped_channel_id)
     {
-        query.channel_id = scope.channel_focus_ids.first().cloned();
+        query.channel_id = Some(scoped_channel_id);
     }
     if query.video_id.is_none() {
         query.video_id = scope.video_focus_ids.first().cloned();

@@ -1,4 +1,5 @@
 use super::*;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone)]
 pub(super) struct HighlightCandidate<'a> {
@@ -420,7 +421,17 @@ pub(super) async fn execute_list_query(
     access_context: &crate::security::AccessContext,
     query: DbInspectQuery,
 ) -> Result<DbInspectResult, db::StoreError> {
-    let scope = load_db_inspect_scope(store, access_context).await?;
+    let scope = match query.target {
+        DbInspectTarget::Channels => DbInspectScope {
+            channels: load_db_inspect_channels(store, access_context).await?,
+            videos: Vec::new(),
+            summaries: Vec::new(),
+            transcripts: Vec::new(),
+            visible_channel_names: HashMap::new(),
+            allowed_other_video_ids: HashSet::new(),
+        },
+        _ => load_db_inspect_scope(store, access_context).await?,
+    };
     let output = format_db_inspect_list_output(&scope, query);
 
     Ok(DbInspectResult {

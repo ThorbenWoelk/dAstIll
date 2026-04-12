@@ -525,10 +525,11 @@ impl ChatService {
                     ..tools::MentionScope::default()
                 }
             });
+        let inherited_scope = inherited_search_scope(prompt_scope, &query, &query_scope);
         let scope = filter_mention_scope_for_access(
             &state.db,
             access_context,
-            merge_mention_scope(prompt_scope, &query_scope),
+            merge_mention_scope(inherited_scope.as_ref(), &query_scope),
         )
         .await;
         let query_text = scope.scoped_query(&query.query);
@@ -583,4 +584,44 @@ impl ChatService {
             sources,
         })
     }
+}
+
+fn inherited_search_scope(
+    prompt_scope: Option<&tools::MentionScope>,
+    query: &tools::SearchLibraryQuery,
+    query_scope: &tools::MentionScope,
+) -> Option<tools::MentionScope> {
+    let Some(prompt_scope) = prompt_scope else {
+        return None;
+    };
+
+    if !prompt_scope.video_focus_ids.is_empty()
+        && query_scope.video_focus_ids.is_empty()
+        && !is_direct_video_lookup_request(&prompt_scope.cleaned_prompt, &query.query)
+        && related_video_search_query(&query.query)
+    {
+        let mut relaxed = prompt_scope.clone();
+        relaxed.video_focus_ids.clear();
+        relaxed.video_titles.clear();
+        relaxed.channel_focus_ids.clear();
+        relaxed.channel_names.clear();
+        return Some(relaxed);
+    }
+
+    Some(prompt_scope.clone())
+}
+
+fn related_video_search_query(query: &str) -> bool {
+    let normalized = query.to_ascii_lowercase();
+    [
+        "related video",
+        "same topic",
+        "different angle",
+        "different angles",
+        "compare",
+        "comparison",
+        "closest in theme",
+    ]
+    .iter()
+    .any(|needle| normalized.contains(needle))
 }
