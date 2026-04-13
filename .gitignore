@@ -22,6 +22,7 @@ terraform.tfvars
 
 # Backend
 backend/target/
+backend/bindings/
 **/*.db
 **/.env
 **/__pycache__/
