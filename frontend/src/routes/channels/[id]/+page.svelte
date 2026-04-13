@@ -750,8 +750,14 @@
     {missingChannelMessage}
     bind:earliestSyncDateInput
     {savingSyncDate}
+    canDeleteChannel={Boolean(selectedChannel)}
     onSaveSyncDate={() => {
       void saveSyncDate();
+    }}
+    onDeleteChannel={() => {
+      if (selectedChannelId) {
+        void handleDeleteChannel(selectedChannelId);
+      }
     }}
     onBack={() => {
       void goto("/");
