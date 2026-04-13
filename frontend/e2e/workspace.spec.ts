@@ -1,5 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 import { openFreshGuestPage } from "./test-helpers";
+import {
+  buildMockWorkspaceBootstrap,
+  installMockWorkspaceApi,
+  navigateViaInjectedLink,
+} from "./workspace-mock-api";
 
 const READY_MS = 120_000;
 // Chromium on macOS reserves Cmd+<number> for browser tab switching, so Playwright
@@ -287,4 +292,86 @@ test("guest unread filter keeps videos visible when mark read requires sign-in",
   await expect(
     sidebar.locator("#videos").getByText(targetTitle, { exact: true }),
   ).toBeVisible();
+});
+
+test("desktop summary eval score opens the quality drawer", async ({
+  page,
+}) => {
+  const selectedChannelId = "channel-eval";
+  const selectedVideoId = "video-eval";
+  const selectedPath = `/?source=${selectedChannelId}&item=${selectedVideoId}&content=summary`;
+  const bootstrap = buildMockWorkspaceBootstrap({
+    channelId: selectedChannelId,
+    channelName: "Quality test channel",
+    channelHandle: "@quality-test",
+    containerId: "container-eval",
+    videoId: selectedVideoId,
+    videoTitle: "Desktop eval regression fixture",
+    qualityScore: 8,
+    selectedItemId: selectedVideoId,
+    totalChunkCount: 8,
+  });
+
+  const summary = {
+    video_id: selectedVideoId,
+    content:
+      "This mocked summary exists only to verify that the desktop evaluation drawer opens.",
+    model_used: "glm-5.1:cloud",
+    quality_score: 8,
+    quality_note:
+      "Strong structure.\n\n- Keeps central claim intact.\n- Leaves clear next question for reader.",
+    quality_model_used: "gemma4:31b-cloud",
+    summary_tags: ["clear", "structured"],
+    summary_tags_evaluated: true,
+  };
+
+  const videoInfo = {
+    video_id: selectedVideoId,
+    watch_url: "https://www.youtube.com/watch?v=video-eval",
+    title: "Desktop eval regression fixture",
+    description: "Fixture video info for desktop eval drawer regression.",
+    thumbnail_url: null,
+    channel_name: "Quality test channel",
+    channel_id: selectedChannelId,
+    published_at: "2026-04-11T18:30:00.000Z",
+    duration_iso8601: "PT8M12S",
+    duration_seconds: 492,
+    view_count: 1280,
+  };
+
+  await installMockWorkspaceApi(page, { bootstrap, summary, videoInfo });
+
+  await page.goto("/");
+  await expect(workspaceSidebar(page)).toBeVisible();
+  await navigateViaInjectedLink(page, selectedPath);
+  await expect
+    .poll(() => new URL(page.url()).search)
+    .toContain(`source=${selectedChannelId}`);
+
+  const sidebar = workspaceSidebar(page);
+  await expect(
+    sidebar.locator("#videos").getByRole("button").first(),
+  ).toBeVisible({
+    timeout: READY_MS,
+  });
+  await sidebar.locator("#videos").getByRole("button").first().click();
+
+  await workspaceDesktopTabs(page)
+    .getByRole("button", { name: "Summary", exact: true })
+    .click();
+  await expect(page.locator("#content-view article")).toContainText(
+    "desktop evaluation drawer opens",
+  );
+
+  const evalTrigger = page.locator(
+    ".summary-embed-strip-eval button[aria-controls='summary-quality-note']",
+  );
+  const evalDrawer = page.locator("#summary-quality-note");
+
+  await expect(evalTrigger).toBeVisible();
+  await evalTrigger.click();
+
+  await expect(evalDrawer).toBeVisible();
+  await expect(evalTrigger).toHaveAttribute("aria-expanded", "true");
+  await expect(evalDrawer.locator(".eval-note-markdown")).toContainText(/\S+/);
 });
