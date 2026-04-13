@@ -57,9 +57,10 @@
 
 <div
   class={channelVideoCollection.loadedMode === "paged"
-    ? "mt-1 max-h-[21rem] overflow-y-auto pb-1 pr-1"
+    ? "mt-1 max-h-[21rem] overflow-y-auto pb-1 pr-1 [overscroll-behavior-y:contain]"
     : "mt-1 pb-1"}
   id={selectedVideoId ? "videos" : undefined}
+  data-channel-video-list={channel.id}
   onscroll={onCollectionScroll}
 >
   {#if channelVideoCollection.loadingInitial && channelVideoCollection.videos.length === 0}
@@ -94,7 +95,7 @@
         <WorkspaceSidebarVideoRow
           {video}
           selected={selectedVideoId === video.id}
-          className="min-h-[56px]"
+          className="min-h-[72px]"
           onclick={() => void onChannelVideoClick(channel.id, video.id, video)}
           onmouseenter={() => onVideoMouseEnter(video.id)}
           onmouseleave={onVideoMouseLeave}
