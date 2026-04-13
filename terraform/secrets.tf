@@ -24,6 +24,20 @@ resource "google_secret_manager_secret_version" "youtube_api_key" {
   secret_data = var.youtube_api_key
 }
 
+resource "google_secret_manager_secret" "openalex_api_key" {
+  project   = var.project_id
+  secret_id = "${var.app_name}-openalex-api-key"
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "openalex_api_key" {
+  count       = var.openalex_api_key != "" ? 1 : 0
+  secret      = google_secret_manager_secret.openalex_api_key.id
+  secret_data = var.openalex_api_key
+}
+
 resource "google_secret_manager_secret" "logfire_token" {
   project   = var.project_id
   secret_id = "${var.app_name}-logfire-token"

@@ -41,6 +41,13 @@ variable "youtube_api_key" {
   description = "YouTube API key"
 }
 
+variable "openalex_api_key" {
+  type        = string
+  sensitive   = true
+  default     = ""
+  description = "OpenAlex API key for authenticated keyword and semantic search. If non-empty, Terraform writes it to Secret Manager as <app_name>-openalex-api-key."
+}
+
 variable "ollama_api_key" {
   type        = string
   sensitive   = true

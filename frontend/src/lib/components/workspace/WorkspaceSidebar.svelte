@@ -412,6 +412,16 @@
     }
   }
 
+  function openChannelInput() {
+    channelInputOpen = true;
+    channelSearchOpen = false;
+    channelSearchQuery = "";
+  }
+
+  function closeChannelInput() {
+    channelInputOpen = false;
+  }
+
   function handleChannelDragStart(channelId: string, event: DragEvent) {
     const dragState = beginChannelDrag(channelId, event.dataTransfer);
     draggedChannelId = dragState.draggedChannelId;
@@ -579,6 +589,8 @@
       {addingChannel}
       {addSourceErrorMessage}
       {activeFilterLabel}
+      onOpenChannelInput={() => void openChannelInput()}
+      onCloseChannelInput={() => void closeChannelInput()}
       onToggleChannelInput={() => void toggleChannelInput()}
       onToggleSearch={() => {
         channelSearchOpen = !channelSearchOpen;

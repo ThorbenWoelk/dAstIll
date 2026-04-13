@@ -36,6 +36,7 @@ Local development uses standard AWS credentials (`~/.aws/credentials` or environ
 
 Secrets are stored in GCP Secret Manager for:
 
+- `OPEN_ALEX_API_KEY`
 - `OLLAMA_API_KEY`
 - `YOUTUBE_API_KEY`
 - `LOGFIRE_TOKEN` (when Logfire observability is enabled for the backend)
@@ -45,6 +46,8 @@ Secrets are stored in GCP Secret Manager for:
 - `firebase_web_api_key` and `firebase_auth_domain` (product frontend; Terraform derives both from the Firebase web app config and writes them to Secret Manager)
 
 `YOUTUBE_API_KEY` is project-scoped. When the target GCP project changes, create a fresh key in that project, update `youtube_api_key` in `terraform.tfvars`, run `terraform apply`, and redeploy the backend so Cloud Run mounts the new Secret Manager version.
+
+`OPEN_ALEX_API_KEY` should be managed the same way for production. Put it in `terraform.tfvars` as `openalex_api_key`, run `terraform apply`, and redeploy the backend so Cloud Run mounts the latest Secret Manager version.
 
 Non-secret backend runtime config is passed as plain env values for:
 

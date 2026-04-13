@@ -9,6 +9,7 @@ aws_region          = "eu-central-1"
 # project migrations; a key from the previous project can still exist but fail
 # if YouTube Data API v3 is disabled there.
 youtube_api_key     = "your-youtube-api-key"
+openalex_api_key    = "your-openalex-api-key"
 ollama_api_key      = "your-ollama-api-key"
 logfire_token       = "your-logfire-token"
 backend_proxy_token = "replace-with-a-long-random-proxy-token"

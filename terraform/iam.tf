@@ -15,6 +15,7 @@ resource "google_service_account" "github_actions_sa" {
 locals {
   databricks_secret_resource_id = try(google_secret_manager_secret.databricks_token[0].id, null)
   backend_secret_ids = {
+    openalex_api_key    = google_secret_manager_secret.openalex_api_key.id
     ollama_api_key      = google_secret_manager_secret.ollama_api_key.id
     youtube_api_key     = google_secret_manager_secret.youtube_api_key.id
     logfire_token       = google_secret_manager_secret.logfire_token.id

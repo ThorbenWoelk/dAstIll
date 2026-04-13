@@ -199,6 +199,7 @@ Important variables:
 | `BACKEND_CORS_ALLOWED_ORIGINS`      | Comma-separated list of browser origins allowed to call the backend directly                 |
 | `AWS_ROLE_ARN` / `AWS_WIF_AUDIENCE` | Production only: GCP Workload Identity Federation for AWS                                    |
 | `YOUTUBE_API_KEY`                   | Optional YouTube Data API access; project-scoped, so rotate it when `GCP_PROJECT_ID` changes |
+| `OPEN_ALEX_API_KEY`                 | Optional OpenAlex API key for authenticated keyword and semantic works search                 |
 | `OLLAMA_URL`                        | Ollama endpoint                                                                              |
 | `OLLAMA_API_KEY`                    | API key for Ollama cloud (required when using cloud Ollama URL)                              |
 | `OLLAMA_SUMMARY_MODEL`              | Primary summarizer model                                                                     |

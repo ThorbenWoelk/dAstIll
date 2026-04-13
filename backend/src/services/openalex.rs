@@ -36,7 +36,8 @@ impl OpenAlexService {
     }
 
     pub fn with_client(client: Client) -> Self {
-        let api_key = std::env::var("OPENALEX_API_KEY")
+        let api_key = std::env::var("OPEN_ALEX_API_KEY")
+            .or_else(|_| std::env::var("OPENALEX_API_KEY"))
             .ok()
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
