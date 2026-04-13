@@ -4,7 +4,7 @@ title: UI Tour
 
 # UI Tour
 
-*Updated April 10, 2026.*
+_Updated April 10, 2026._
 
 dAstIll works best as a short loop: browse followed sources, open a recent item, read the summary or transcript, then switch to queue or chat when you need more detail.
 
@@ -32,7 +32,7 @@ The workspace opens in browse mode first. The compact rail keeps the main routes
 
 ![Mobile workspace browse view showing the navigation rail, followed channels, recent items, and sync date context.](../images/ui-tour-mobile-browse.png)
 
-*Browse view. Scan followed sources, recent items, and sync context before opening a specific item.*
+_Browse view. Scan followed sources, recent items, and sync context before opening a specific item._
 
 - The navigation rail stays visible even on a phone-sized viewport.
 - Browse stays focused on source selection and recent items instead of splitting attention with reading tools.
@@ -44,7 +44,7 @@ Once you open an item, the layout shifts from browsing to reading. The tab strip
 
 ![Mobile workspace reading view showing the summary tab, item actions, and the selected video's content.](../images/ui-tour-mobile-workspace.png)
 
-*Reading view on the summary tab. Content is primary; navigation stays lightweight around it.*
+_Reading view on the summary tab. Content is primary; navigation stays lightweight around it._
 
 - Summary is the fastest way to triage an item on mobile.
 - Info, transcript, and highlights stay one tap away in the same content strip.
@@ -56,7 +56,7 @@ Queue shows which items are still waiting on transcript or summary work and keep
 
 ![Mobile queue view showing actionable items, waiting items, failed work, and the processing status panel.](../images/ui-tour-mobile-queue.png)
 
-*Queue view. The main pane switches to processing status, waiting work, and failure context.*
+_Queue view. The main pane switches to processing status, waiting work, and failure context._
 
 - Queue is scoped to the selected source.
 - Processing counts are visible without leaving the page.
@@ -67,7 +67,7 @@ Chat uses the same library, but the workflow changes from reading one item to as
 
 ![Mobile chat view showing the route rail, starter prompts, and the message composer.](../images/ui-tour-mobile-chat.png)
 
-*Chat view. Starter prompts, draft area, and deep-research controls stay visible without a separate settings step.*
+_Chat view. Starter prompts, draft area, and deep-research controls stay visible without a separate settings step._
 
 - Anonymous chat stays available, but with limited quota and temporary history.
 - Deep research and model choice stay in the conversation flow.

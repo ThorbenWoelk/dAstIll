@@ -52,6 +52,7 @@ Non-secret backend runtime config is passed as plain env values for:
 - `S3_DATA_BUCKET`
 - `S3_VECTOR_BUCKET`
 - `S3_VECTOR_INDEX`
+- `START_APP_USE_TURSO` (production should set this to enable the shared Turso replica instead of per-instance local libSQL)
 - `TURSO_DB_URL` (when Turso-backed keyword search is enabled in production)
 - `AWS_ROLE_ARN` (production only)
 - `AWS_WIF_AUDIENCE` (production only)
@@ -123,7 +124,7 @@ The GitHub Actions workflow:
 4. On `main`, builds and deploys only the surfaces with deploy-relevant changes
 5. Skips deploys for trivial-only service changes such as `.gitignore`, README, and test-only frontend/backend changes
 6. Resolves the backend Cloud Run URL and a stable docs Hosting URL when the frontend itself is being deployed
-7. Deploys the backend with runtime env including S3/AWS config, `TURSO_DB_URL`, and Secret Manager mounts such as `TURSO_AUTH_TOKEN` when enabled
+7. Deploys the backend with runtime env including S3/AWS config, `START_APP_USE_TURSO=1`, `TURSO_DB_URL`, and Secret Manager mounts such as `TURSO_AUTH_TOKEN` when enabled
 8. Builds the static frontend and docs bundles with Bun, then deploys them with Firebase CLI using Workload Identity Federation credentials
 9. Builds Android APK artifacts through `.github/workflows/android.yml` when mobile changes are pushed or manually requested
 ```
@@ -158,6 +159,7 @@ Production defaults to plain FTS mode unless `SEARCH_SEMANTIC_ENABLED=true` is i
 
 Keyword search can also use Turso/libSQL for durable FTS storage. In that setup:
 
+- production Cloud Run should set `START_APP_USE_TURSO=1`
 - set `turso_auth_token` in `terraform.tfvars` and run `terraform apply`
 - set GitHub repository variable `TURSO_DB_URL=libsql://...`
 - rerun the Release workflow so Cloud Run mounts `TURSO_AUTH_TOKEN` and passes `TURSO_DB_URL`
