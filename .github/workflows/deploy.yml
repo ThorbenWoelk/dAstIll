@@ -162,6 +162,7 @@ jobs:
         run: |
           set -euo pipefail
           {
+            echo "OPEN_ALEX_API_KEY=${APP_NAME}-openalex-api-key:latest"
             echo "YOUTUBE_API_KEY=${APP_NAME}-youtube-api-key:latest"
             echo "OLLAMA_API_KEY=${APP_NAME}-ollama-api-key:latest"
             echo "LOGFIRE_TOKEN=${APP_NAME}-logfire-token:latest"

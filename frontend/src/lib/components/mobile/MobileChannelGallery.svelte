@@ -224,6 +224,9 @@
       open={addDrawerOpen}
       busy={addingChannel}
       errorMessage={addSourceErrorMessage}
+      onOpen={() => {
+        addDrawerOpen = true;
+      }}
       onClose={() => {
         addDrawerOpen = false;
       }}

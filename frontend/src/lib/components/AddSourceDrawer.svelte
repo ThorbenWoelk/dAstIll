@@ -1,6 +1,13 @@
 <script lang="ts">
   import { clickOutside } from "$lib/actions/click-outside";
   import { planOpenAlexQuery } from "$lib/api";
+  import {
+    buildOpenAlexInterpretationStatus,
+    buildEmptyOpenAlexPlan,
+    prepareOpenAlexPlanForSubmit,
+    syncOpenAlexPlanFromDraft,
+    type OpenAlexInterpretationStatus,
+  } from "$lib/openalex-plan-state";
   import type {
     OpenAlexSavedSearchQuery,
     OpenAlexSearchScope,
@@ -15,12 +22,14 @@
     open = false,
     busy = false,
     errorMessage = null as string | null,
+    onOpen = () => {},
     onClose,
     onSubmit,
   }: {
     open?: boolean;
     busy?: boolean;
     errorMessage?: string | null;
+    onOpen?: () => void;
     onClose: () => void;
     onSubmit: (input: AddSourceSubmission) => Promise<boolean> | boolean;
   } = $props();
@@ -97,6 +106,16 @@
   let openAlexPlan = $state<OpenAlexSavedSearchQuery | null>(null);
   let planningOpenAlex = $state(false);
   let openAlexPlanError = $state<string | null>(null);
+  let openAlexInterpretation = $state<OpenAlexInterpretationStatus | null>(
+    null,
+  );
+  let openAlexInterpretationRequestId = 0;
+  const canSubmitOpenAlex = $derived(
+    prepareOpenAlexPlanForSubmit(
+      openAlexPlan,
+      draftByMode.openalex,
+    ).query_text.trim().length > 0,
+  );
 
   $effect(() => {
     if (!open) return;
@@ -106,12 +125,20 @@
 
   function setMode(mode: SourceMode) {
     activeMode = mode;
-    if (mode !== "openalex") {
-      openAlexPlanError = null;
+    openAlexPlanError = null;
+    if (mode === "openalex" && !openAlexPlan) {
+      openAlexPlan = buildEmptyOpenAlexPlan(draftByMode.openalex);
     }
   }
 
   function setDraft(value: string) {
+    if (activeMode === "openalex") {
+      openAlexPlan = syncOpenAlexPlanFromDraft(
+        openAlexPlan,
+        draftByMode.openalex,
+        value,
+      );
+    }
     draftByMode = {
       ...draftByMode,
       [activeMode]: value,
@@ -132,21 +159,28 @@
   function handleOpenAlexFromDateInput(event: Event) {
     updateOpenAlexPlan(
       "from_publication_date",
-      (event.currentTarget as HTMLInputElement).value || undefined,
+      (event.currentTarget as HTMLInputElement).value || null,
+    );
+  }
+
+  function handleOpenAlexToDateInput(event: Event) {
+    updateOpenAlexPlan(
+      "to_publication_date",
+      (event.currentTarget as HTMLInputElement).value || null,
     );
   }
 
   function handleOpenAlexWorkTypeInput(event: Event) {
     updateOpenAlexPlan(
       "work_type",
-      (event.currentTarget as HTMLInputElement).value || undefined,
+      (event.currentTarget as HTMLInputElement).value || null,
     );
   }
 
   function handleOpenAlexOpenAccessInput(event: Event) {
     updateOpenAlexPlan(
       "open_access_only",
-      (event.currentTarget as HTMLInputElement).checked ? true : undefined,
+      (event.currentTarget as HTMLInputElement).checked ? true : null,
     );
   }
 
@@ -162,16 +196,34 @@
     onClose();
   }
 
+  function openDrawer() {
+    onOpen();
+  }
+
   async function submit() {
     const rawValue = draftByMode[activeMode].trim();
-    if (!rawValue || busy) return;
-    const payload =
-      activeMode === "openalex" && openAlexPlan
-        ? {
-            input: modeMeta[activeMode].buildInput(rawValue),
-            openalex_query: openAlexPlan,
-          }
-        : modeMeta[activeMode].buildInput(rawValue);
+    if (busy) return;
+    let payload: AddSourceSubmission;
+
+    if (activeMode === "openalex") {
+      const preparedPlan = prepareOpenAlexPlanForSubmit(
+        openAlexPlan,
+        draftByMode.openalex,
+      );
+      if (!preparedPlan.query_text.trim()) {
+        return;
+      }
+      payload = {
+        input: modeMeta[activeMode].buildInput(
+          preparedPlan.natural_language_query,
+        ),
+        openalex_query: preparedPlan,
+      };
+    } else {
+      if (!rawValue) return;
+      payload = modeMeta[activeMode].buildInput(rawValue);
+    }
+
     const success = await onSubmit(payload);
     if (!success) return;
     draftByMode = {
@@ -180,25 +232,50 @@
       podcast: "",
       website: "",
     };
+    openAlexPlan = null;
+    openAlexPlanError = null;
     close();
   }
 
   async function interpretOpenAlexQuery() {
     const rawValue = draftByMode.openalex.trim();
     if (!rawValue || planningOpenAlex || busy) return;
+    const requestId = ++openAlexInterpretationRequestId;
     planningOpenAlex = true;
     openAlexPlanError = null;
+    openAlexInterpretation = buildOpenAlexInterpretationStatus("preparing");
+    close();
+
     try {
+      await Promise.resolve();
+      if (requestId !== openAlexInterpretationRequestId) {
+        return;
+      }
+      openAlexInterpretation = buildOpenAlexInterpretationStatus("planning");
       const response = await planOpenAlexQuery(rawValue);
+      if (requestId !== openAlexInterpretationRequestId) {
+        return;
+      }
       openAlexPlan = response.query;
+      activeMode = "openalex";
       draftByMode = {
         ...draftByMode,
         openalex: response.query.natural_language_query,
       };
+      openAlexInterpretation = null;
+      openDrawer();
     } catch (error) {
+      if (requestId !== openAlexInterpretationRequestId) {
+        return;
+      }
       openAlexPlanError = (error as Error).message;
+      openAlexInterpretation = buildOpenAlexInterpretationStatus("failed");
+      activeMode = "openalex";
+      openDrawer();
     } finally {
-      planningOpenAlex = false;
+      if (requestId === openAlexInterpretationRequestId) {
+        planningOpenAlex = false;
+      }
     }
   }
 
@@ -224,6 +301,13 @@
       close();
     }
   }
+
+  $effect(() => {
+    if (!open || openAlexInterpretation?.phase !== "failed") {
+      return;
+    }
+    openAlexInterpretation = null;
+  });
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -264,8 +348,8 @@
             <p
               class="mt-1 text-sm leading-relaxed text-[var(--soft-foreground)]"
             >
-              Choose the kind of source you want to subscribe to, then fill the
-              one field that matters.
+              Choose the kind of source you want to subscribe to, then review
+              the source details that apply.
             </p>
           </div>
           <button
@@ -348,7 +432,9 @@
           <p
             class="max-w-[34rem] text-sm leading-relaxed text-[var(--soft-foreground)]"
           >
-            {modeMeta[activeMode].description}
+            {activeMode === "openalex"
+              ? "Create a durable publication feed from natural language or by setting the filters directly. AI prefill is optional."
+              : modeMeta[activeMode].description}
           </p>
 
           <div class="mt-4">
@@ -356,7 +442,9 @@
               for="drawer-source-input"
               class="text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)]"
             >
-              {modeMeta[activeMode].label}
+              {activeMode === "openalex"
+                ? "Topic or plain-language request"
+                : modeMeta[activeMode].label}
             </label>
             <input
               id="drawer-source-input"
@@ -372,8 +460,8 @@
             {#if activeMode === "openalex"}
               <div class="mt-3 flex items-center justify-between gap-3">
                 <p class="text-xs text-[var(--soft-foreground)]">
-                  Start with natural language, then review the translated
-                  filters before subscribing.
+                  Optional: use AI to prefill the structured filters below, or
+                  edit them directly yourself.
                 </p>
                 <button
                   type="button"
@@ -423,6 +511,24 @@
                     oninput={handleOpenAlexFromDateInput}
                   />
                 </div>
+                <div>
+                  <label
+                    for="openalex-to-date"
+                    class="text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)]"
+                  >
+                    To date
+                  </label>
+                  <input
+                    id="openalex-to-date"
+                    type="date"
+                    class="mt-2 w-full rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30"
+                    value={openAlexPlan.to_publication_date ?? ""}
+                    oninput={handleOpenAlexToDateInput}
+                  />
+                </div>
+              </div>
+
+              <div class="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label
                     for="openalex-work-type"
@@ -567,12 +673,50 @@
           <button
             type="submit"
             class="inline-flex items-center justify-center rounded-[var(--radius-md)] bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--accent-strong)] disabled:opacity-50"
-            disabled={!draftByMode[activeMode].trim() || busy}
+            disabled={activeMode === "openalex"
+              ? !canSubmitOpenAlex || busy
+              : !draftByMode[activeMode].trim() || busy}
           >
             {busy ? "Adding..." : modeMeta[activeMode].submitLabel}
           </button>
         </div>
       </form>
     </section>
+  </div>
+{/if}
+
+{#if openAlexInterpretation && !open}
+  <div
+    class="mobile-bottom-stack-offset fixed bottom-6 left-1/2 z-[111] flex w-[min(92vw,28rem)] -translate-x-1/2 items-start gap-3 rounded-[var(--radius-md)] border border-[var(--accent-border-soft)] bg-[var(--surface-strong)] px-4 py-3 shadow-lg"
+    role="status"
+    aria-live="polite"
+  >
+    <div class="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center">
+      {#if openAlexInterpretation.phase === "failed"}
+        <span
+          class="h-2.5 w-2.5 rounded-full bg-[var(--danger)]"
+          aria-hidden="true"
+        ></span>
+      {:else}
+        <span
+          class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[var(--accent-border-soft)] border-t-[var(--accent)]"
+          aria-hidden="true"
+        ></span>
+      {/if}
+    </div>
+
+    <div class="min-w-0 flex-1">
+      <p
+        class="text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--soft-foreground)]"
+      >
+        OpenAlex AI
+      </p>
+      <p class="mt-1 text-[13px] font-semibold text-[var(--foreground)]">
+        {openAlexInterpretation.stateLabel}
+      </p>
+      <p class="mt-1 text-[13px] leading-5 text-[var(--soft-foreground)]">
+        {openAlexInterpretation.message}
+      </p>
+    </div>
   </div>
 {/if}

@@ -23,6 +23,8 @@
     addingChannel,
     addSourceErrorMessage,
     activeFilterLabel,
+    onOpenChannelInput,
+    onCloseChannelInput,
     onToggleChannelInput,
     onToggleSearch,
     onCycleSortMode,
@@ -48,6 +50,8 @@
     addingChannel: boolean;
     addSourceErrorMessage: string | null;
     activeFilterLabel: string;
+    onOpenChannelInput: () => void | Promise<void>;
+    onCloseChannelInput: () => void | Promise<void>;
     onToggleChannelInput: () => void | Promise<void>;
     onToggleSearch: () => void;
     onCycleSortMode: () => void;
@@ -177,7 +181,8 @@
   open={channelInputOpen}
   busy={addingChannel}
   errorMessage={addSourceErrorMessage}
-  onClose={() => void onToggleChannelInput()}
+  onOpen={() => void onOpenChannelInput()}
+  onClose={() => void onCloseChannelInput()}
   onSubmit={onAddSourceSubmit}
 />
 
