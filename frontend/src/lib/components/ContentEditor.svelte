@@ -338,7 +338,6 @@
           disabled={busy}
           label="Edit distillation"
           tooltip="Edit distillation"
-          tooltipAnchor="end"
           onClick={onEdit}
         />
       {/if}
