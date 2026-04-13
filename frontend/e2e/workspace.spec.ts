@@ -319,7 +319,7 @@ test("desktop summary eval score opens the quality drawer", async ({
     model_used: "glm-5.1:cloud",
     quality_score: 8,
     quality_note:
-      "Strong structure.\n\n- Keeps central claim intact.\n- Leaves clear next question for reader.",
+      "Strong structure.\n\n- Keeps the central claim intact.\n- Leaves a clear next question for the reader.",
     quality_model_used: "gemma4:31b-cloud",
     summary_tags: ["clear", "structured"],
     summary_tags_evaluated: true,
@@ -329,7 +329,7 @@ test("desktop summary eval score opens the quality drawer", async ({
     video_id: selectedVideoId,
     watch_url: "https://www.youtube.com/watch?v=video-eval",
     title: "Desktop eval regression fixture",
-    description: "Fixture video info for desktop eval drawer regression.",
+    description: "Fixture video info for the desktop eval drawer regression.",
     thumbnail_url: null,
     channel_name: "Quality test channel",
     channel_id: selectedChannelId,
@@ -347,7 +347,6 @@ test("desktop summary eval score opens the quality drawer", async ({
   await expect
     .poll(() => new URL(page.url()).search)
     .toContain(`source=${selectedChannelId}`);
-
   const sidebar = workspaceSidebar(page);
   await expect(
     sidebar.locator("#videos").getByRole("button").first(),
@@ -355,7 +354,6 @@ test("desktop summary eval score opens the quality drawer", async ({
     timeout: READY_MS,
   });
   await sidebar.locator("#videos").getByRole("button").first().click();
-
   await workspaceDesktopTabs(page)
     .getByRole("button", { name: "Summary", exact: true })
     .click();
