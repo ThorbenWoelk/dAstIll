@@ -113,17 +113,6 @@
       {/if}
       <h1 class="content-hero-title">{selectedVideo.title}</h1>
     </div>
-
-    {#if contentMode === "summary"}
-      <div class="content-hero-meta hidden lg:block">
-        <WorkspaceSummaryMeta
-          score={summaryQualityScore}
-          note={summaryQualityNote}
-          modelUsed={summaryModelUsed}
-          qualityModelUsed={summaryQualityModelUsed}
-        />
-      </div>
-    {/if}
   </div>
 {/if}
 
@@ -170,7 +159,13 @@
 
 {#if contentMode === "summary" && selectedVideoId && !loadingContent}
   <div class="summary-embed-strip">
-    <div class="summary-embed-strip-mobile-eval lg:hidden">
+    <div class="summary-embed-strip-audio">
+      <WorkspaceSummaryAudioPlayer
+        videoId={selectedVideoId}
+        summaryReady={selectedVideo?.summary_status === "ready"}
+      />
+    </div>
+    <div class="summary-embed-strip-eval">
       <WorkspaceSummaryMeta
         score={summaryQualityScore}
         note={summaryQualityNote}
@@ -178,10 +173,6 @@
         qualityModelUsed={summaryQualityModelUsed}
       />
     </div>
-    <WorkspaceSummaryAudioPlayer
-      videoId={selectedVideoId}
-      summaryReady={selectedVideo?.summary_status === "ready"}
-    />
   </div>
 {/if}
 
@@ -242,14 +233,23 @@
       "wght" 650;
   }
 
-  .content-hero-meta {
-    padding-top: 0.4rem;
+  .summary-embed-strip {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 1.25rem;
+    max-width: 52rem;
+    margin-bottom: 0.5rem;
   }
 
-  .summary-embed-strip {
-    display: block;
-    max-width: 42rem;
-    margin-bottom: 0.5rem;
+  .summary-embed-strip-audio {
+    min-width: 0;
+  }
+
+  .summary-embed-strip-eval {
+    display: flex;
+    justify-content: flex-end;
+    min-width: 0;
   }
 
   .summary-embed-strip :global(.waveform-player) {
@@ -270,10 +270,6 @@
       line-height: 1.02;
     }
 
-    .content-hero-meta {
-      padding-top: 0;
-    }
-
     .summary-embed-strip {
       display: grid;
       grid-template-columns: auto minmax(0, 1fr);
@@ -283,7 +279,14 @@
       margin-bottom: 0.25rem;
     }
 
-    .summary-embed-strip-mobile-eval {
+    .summary-embed-strip-audio {
+      order: 2;
+      min-width: 0;
+    }
+
+    .summary-embed-strip-eval {
+      order: 1;
+      justify-content: flex-start;
       min-width: 0;
       align-self: start;
     }
