@@ -1,5 +1,6 @@
 <script lang="ts">
   import defaultChannelIcon from "$lib/assets/channel-default.svg";
+  import TrashIcon from "$lib/components/icons/TrashIcon.svelte";
   import { formatShortDate } from "$lib/utils/date";
   import type { Channel } from "$lib/types";
 
@@ -9,7 +10,9 @@
     missingChannelMessage = null,
     earliestSyncDateInput = $bindable(""),
     savingSyncDate = false,
+    canDeleteChannel = false,
     onSaveSyncDate = () => {},
+    onDeleteChannel = () => {},
     onBack = () => {},
     onOpenChannels = () => {},
   }: {
@@ -18,7 +21,9 @@
     missingChannelMessage?: string | null;
     earliestSyncDateInput?: string;
     savingSyncDate?: boolean;
+    canDeleteChannel?: boolean;
     onSaveSyncDate?: () => void;
+    onDeleteChannel?: () => void;
     onBack?: () => void;
     onOpenChannels?: () => void;
   } = $props();
@@ -109,6 +114,17 @@
         </p>
       </div>
     </div>
+    {#if selectedChannel && canDeleteChannel}
+      <button
+        type="button"
+        class="inline-flex items-center justify-center gap-2 rounded-full border border-[var(--danger)]/20 px-4 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--danger)] transition hover:bg-[var(--danger)]/8"
+        onclick={onDeleteChannel}
+        aria-label="Delete channel"
+      >
+        <TrashIcon size={13} strokeWidth={2.4} />
+        Delete channel
+      </button>
+    {/if}
   </div>
 
   <div

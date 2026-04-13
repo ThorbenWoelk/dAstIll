@@ -215,6 +215,46 @@ test("Cmd/Ctrl+1 navigates from queue to workspace without full reload hang", as
   await expect(workspaceSidebar(page)).toBeVisible({ timeout: READY_MS });
 });
 
+test("channel row click opens the overview page and overview exposes delete", async ({
+  page,
+}) => {
+  const selectedChannelId = "channel-overview";
+  const bootstrap = buildMockWorkspaceBootstrap({
+    channelId: selectedChannelId,
+    channelName: "Overview test channel",
+    channelHandle: "@overview-test",
+    containerId: "container-overview",
+    videoId: "video-overview",
+    videoTitle: "Overview fixture video",
+    qualityScore: 7,
+  });
+
+  await installMockWorkspaceApi(page, { bootstrap });
+  await page.goto("/");
+
+  const sidebar = workspaceSidebar(page);
+  await expect(sidebar.locator("[data-channel-id]").first()).toBeVisible({
+    timeout: READY_MS,
+  });
+
+  await sidebar
+    .locator("[data-channel-id]")
+    .first()
+    .getByRole("button", { name: "Overview test channel" })
+    .click();
+
+  await expect
+    .poll(() => new URL(page.url()).pathname)
+    .toBe(`/channels/${selectedChannelId}`);
+  await expect(
+    page.getByRole("button", { name: "Delete channel" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Delete channel" }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Sign in required" }),
+  ).toBeVisible();
+});
+
 test("guest mark read toggle opens the sign-in prompt", async ({ page }) => {
   const hasData = await workspaceHasSeedData(page);
   if (!hasData) {

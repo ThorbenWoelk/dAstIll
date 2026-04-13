@@ -7,7 +7,6 @@
     isExpanded,
     isPreviewMode,
     isVirtualChannel,
-    canDeleteChannels,
     mobileVisible,
     manualReorderEnabled,
     draggedChannelId,
@@ -18,17 +17,16 @@
     refreshingChannel,
     videoCount,
     onSelect,
+    onToggleExpanded = () => {},
     onDragStart,
     onDragOver,
     onDrop,
     onDragEnd,
-    onDelete,
   }: {
     channel: Channel;
     isExpanded: boolean;
     isPreviewMode: boolean;
     isVirtualChannel: boolean;
-    canDeleteChannels: boolean;
     mobileVisible: boolean;
     manualReorderEnabled: boolean;
     draggedChannelId: string | null;
@@ -39,11 +37,11 @@
     refreshingChannel: boolean;
     videoCount: number;
     onSelect: () => void | Promise<void>;
+    onToggleExpanded?: () => void | Promise<void>;
     onDragStart: (event: DragEvent) => void;
     onDragOver: (event: DragEvent) => void;
     onDrop: (event: DragEvent) => void;
     onDragEnd: () => void;
-    onDelete: () => void | Promise<void>;
   } = $props();
 </script>
 
@@ -92,7 +90,6 @@
             ? undefined
             : isExpanded
           : undefined}
-        showDelete={canDeleteChannels && !isVirtualChannel}
         draggableEnabled={!mobileVisible &&
           manualReorderEnabled &&
           !isVirtualChannel}
@@ -101,11 +98,11 @@
         dragOver={dragOverChannelId === channel.id &&
           draggedChannelId !== channel.id}
         onSelect={() => void onSelect()}
+        onToggleExpanded={() => void onToggleExpanded()}
         {onDragStart}
         {onDragOver}
         {onDrop}
         {onDragEnd}
-        onDelete={() => void onDelete()}
       />
     </div>
   {/if}
