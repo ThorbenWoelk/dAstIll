@@ -17,6 +17,7 @@
     refreshingChannel,
     videoCount,
     onSelect,
+    onToggleExpanded = () => {},
     onDragStart,
     onDragOver,
     onDrop,
@@ -36,6 +37,7 @@
     refreshingChannel: boolean;
     videoCount: number;
     onSelect: () => void | Promise<void>;
+    onToggleExpanded?: () => void | Promise<void>;
     onDragStart: (event: DragEvent) => void;
     onDragOver: (event: DragEvent) => void;
     onDrop: (event: DragEvent) => void;
@@ -96,6 +98,7 @@
         dragOver={dragOverChannelId === channel.id &&
           draggedChannelId !== channel.id}
         onSelect={() => void onSelect()}
+        onToggleExpanded={() => void onToggleExpanded()}
         {onDragStart}
         {onDragOver}
         {onDrop}

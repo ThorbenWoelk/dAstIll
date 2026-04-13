@@ -16,6 +16,7 @@
     onDragOver = () => {},
     onDrop = () => {},
     onDragEnd = () => {},
+    onToggleExpanded = undefined,
     expanded = undefined,
   }: {
     channel: Channel;
@@ -30,6 +31,7 @@
     onDragOver?: (event: DragEvent) => void;
     onDrop?: (event: DragEvent) => void;
     onDragEnd?: (event: DragEvent) => void;
+    onToggleExpanded?: (() => void) | undefined;
     expanded?: boolean;
   } = $props();
 
@@ -61,8 +63,8 @@
   }
 </script>
 
-<button
-  type="button"
+<div
+  role="group"
   draggable={draggableEnabled}
   ondragstart={onDragStart}
   ondragover={onDragOver}
@@ -73,47 +75,54 @@
       ? "bg-[var(--panel-surface)] shadow-[0_10px_30px_color-mix(in_srgb,var(--foreground)_8%,transparent)]"
       : "hover:bg-[var(--accent-wash)]"
   } ${dragging || loading ? "opacity-40" : ""} ${dragOver ? "shadow-[0_0_0_1px_var(--border-soft),0_16px_34px_color-mix(in_srgb,var(--foreground)_10%,transparent)]" : ""} ${loading ? "animate-pulse" : ""} ${draggableEnabled ? (dragging ? "cursor-grabbing" : "cursor-grab") : ""}`}
-  onclick={onSelect}
-  disabled={loading}
 >
-  <div
-    class="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-[var(--muted)]"
+  <button
+    type="button"
+    class="flex min-w-0 flex-1 items-center gap-3 text-left focus-visible:outline-none"
+    onclick={onSelect}
+    disabled={loading}
   >
-    <img
-      src={avatarUrl}
-      alt={channel.name}
-      width="32"
-      height="32"
-      loading="lazy"
-      referrerpolicy="no-referrer"
-      class="h-full w-full object-cover"
-      onerror={handleAvatarError}
-    />
-  </div>
-  <div class="min-w-0 flex-1">
-    <p
-      class="truncate text-[13px] font-semibold leading-tight tracking-tight text-[var(--foreground)]"
+    <div
+      class="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-[var(--muted)]"
     >
-      {channel.name}
-    </p>
-    <p
-      class="mt-1 truncate text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--soft-foreground)] opacity-45"
-    >
-      {channel.handle ?? channel.id}
-    </p>
-  </div>
+      <img
+        src={avatarUrl}
+        alt={channel.name}
+        width="32"
+        height="32"
+        loading="lazy"
+        referrerpolicy="no-referrer"
+        class="h-full w-full object-cover"
+        onerror={handleAvatarError}
+      />
+    </div>
+    <div class="min-w-0 flex-1">
+      <p
+        class="truncate text-[13px] font-semibold leading-tight tracking-tight text-[var(--foreground)]"
+      >
+        {channel.name}
+      </p>
+      <p
+        class="mt-1 truncate text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--soft-foreground)] opacity-45"
+      >
+        {channel.handle ?? channel.id}
+      </p>
+    </div>
+  </button>
   {#if !loading}
     {#if expanded !== undefined}
-      <span
-        class={`flex h-7 w-7 shrink-0 items-center justify-center text-[var(--soft-foreground)] transition-all duration-200 ${expanded ? "opacity-50" : "opacity-20"}`}
-        aria-hidden="true"
+      <button
+        type="button"
+        class={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-all duration-200 hover:bg-[var(--accent-wash)] ${expanded ? "opacity-50" : "opacity-20"}`}
+        onclick={() => onToggleExpanded?.()}
+        aria-label={expanded ? "Collapse channel" : "Expand channel"}
       >
         <ChevronIcon
           direction={expanded ? "down" : "right"}
           size={9}
           strokeWidth={2.5}
         />
-      </span>
+      </button>
     {/if}
   {/if}
-</button>
+</div>

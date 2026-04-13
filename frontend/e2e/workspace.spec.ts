@@ -237,7 +237,11 @@ test("channel row click opens the overview page and overview exposes delete", as
     timeout: READY_MS,
   });
 
-  await sidebar.locator("[data-channel-id]").first().locator("button").click();
+  await sidebar
+    .locator("[data-channel-id]")
+    .first()
+    .getByRole("button", { name: "Overview test channel" })
+    .click();
 
   await expect
     .poll(() => new URL(page.url()).pathname)

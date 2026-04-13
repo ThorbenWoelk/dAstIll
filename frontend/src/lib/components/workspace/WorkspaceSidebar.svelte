@@ -330,14 +330,22 @@
     return channel.id === OTHERS_CHANNEL_ID;
   }
 
-  async function handlePerChannelPreviewSelect(channel: Channel) {
+  function handlePerChannelPreviewSelect(channel: Channel) {
+    if (isVirtualChannel(channel)) {
+      return;
+    }
+    if (onOpenChannelOverview) {
+      void onOpenChannelOverview(channel.id);
+      return;
+    }
+    void onSelectChannel(channel.id);
+  }
+
+  async function handlePerChannelPreviewToggle(channel: Channel) {
     if (isVirtualChannel(channel)) {
       return;
     }
     await previewController.toggleChannelVideoCollection(channel);
-    if (onOpenChannelOverview) {
-      void onOpenChannelOverview(channel.id);
-    }
   }
 
   async function handleChannelVideoClick(
@@ -683,6 +691,10 @@
               videoListMode === "per_channel_preview"
                 ? void handlePerChannelPreviewSelect(channel)
                 : void onSelectChannel(channel.id)}
+            onToggleExpanded={() =>
+              videoListMode === "per_channel_preview"
+                ? void handlePerChannelPreviewToggle(channel)
+                : undefined}
             onDragStart={(event) => handleChannelDragStart(channel.id, event)}
             onDragOver={(event) => handleChannelDragOver(channel.id, event)}
             onDrop={(event) => handleChannelDrop(channel.id, event)}
