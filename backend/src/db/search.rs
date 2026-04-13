@@ -848,14 +848,20 @@ mod tests {
     }
 
     #[test]
-    fn canonical_channel_json_omits_added_at_but_still_deserializes() {
+    fn canonical_channel_json_uses_legacy_channel_defaults_when_read_as_full_channel() {
         let json = r#"{"id":"channel-1","handle":"demo","name":"Demo","thumbnail_url":null}"#;
 
         let record: CanonicalChannelRecord =
             serde_json::from_str(json).expect("canonical channel record should deserialize");
         assert_eq!(record.name, "Demo");
 
-        let err = serde_json::from_str::<Channel>(json).expect_err("full channel should fail");
-        assert!(err.to_string().contains("missing field `added_at`"));
+        let channel: Channel =
+            serde_json::from_str(json).expect("full channel should deserialize with legacy defaults");
+        assert_eq!(channel.id, "channel-1");
+        assert_eq!(channel.name, "Demo");
+        assert_eq!(
+            channel.added_at,
+            chrono::DateTime::<chrono::Utc>::UNIX_EPOCH
+        );
     }
 }

@@ -188,11 +188,11 @@ Important variables:
 | `S3_DATA_BUCKET`                    | S3 bucket for data storage                                                                   |
 | `S3_VECTOR_BUCKET`                  | S3 Vectors bucket for semantic search                                                        |
 | `S3_VECTOR_INDEX`                   | S3 Vectors index name for embeddings                                                         |
-| `AWS_SHARED_CREDENTIALS_FILE`       | Optional override for the shared AWS credentials file used by the local SDK default chain     |
-| `AWS_CONFIG_FILE`                   | Optional override for the shared AWS config file (region/profile metadata)                    |
-| `AWS_ACCESS_KEY_ID`                 | Fallback inline AWS access key used for S3 / S3 Vectors; avoid for routine local development  |
-| `AWS_SECRET_ACCESS_KEY`             | Fallback inline AWS secret key paired with `AWS_ACCESS_KEY_ID`                                |
-| `AWS_SESSION_TOKEN`                 | Temporary session token only; do not keep this set for permanent local development            |
+| `AWS_SHARED_CREDENTIALS_FILE`       | Optional override for the shared AWS credentials file used by the local SDK default chain    |
+| `AWS_CONFIG_FILE`                   | Optional override for the shared AWS config file (region/profile metadata)                   |
+| `AWS_ACCESS_KEY_ID`                 | Fallback inline AWS access key used for S3 / S3 Vectors; avoid for routine local development |
+| `AWS_SECRET_ACCESS_KEY`             | Fallback inline AWS secret key paired with `AWS_ACCESS_KEY_ID`                               |
+| `AWS_SESSION_TOKEN`                 | Temporary session token only; do not keep this set for permanent local development           |
 | `TURSO_DB_URL`                      | Optional Turso/libSQL database URL for durable keyword search                                |
 | `TURSO_AUTH_TOKEN`                  | Turso auth token paired with `TURSO_DB_URL`                                                  |
 | `BACKEND_PROXY_TOKEN`               | Shared secret for trusted first-party callers that use the backend's proxy-auth header path  |
