@@ -38,32 +38,14 @@ use dastill::workers::{
     spawn_summary_evaluation_worker,
 };
 
-async fn build_turso_replica(
-    db_path: &std::path::Path,
-    config: &TursoRuntimeConfig,
-) -> anyhow::Result<libsql::Database> {
-    let db = tokio::time::timeout(
+async fn build_turso_database(config: &TursoRuntimeConfig) -> anyhow::Result<libsql::Database> {
+    tokio::time::timeout(
         std::time::Duration::from_secs(30),
-        libsql::Builder::new_remote_replica(
-            db_path,
-            config.db_url.clone(),
-            config.auth_token.clone(),
-        )
-        .sync_protocol(libsql::SyncProtocol::V2)
-        .sync_interval(std::time::Duration::from_secs(30))
-        .build(),
+        libsql::Builder::new_remote(config.db_url.clone(), config.auth_token.clone()).build(),
     )
     .await
     .map_err(|_| anyhow::anyhow!("Turso builder timed out after 30s"))?
-    .map_err(|err| anyhow::anyhow!("failed to build Turso embedded replica: {err}"))?;
-
-    tracing::info!("Starting Turso embedded replica sync...");
-    tokio::time::timeout(std::time::Duration::from_secs(120), db.sync())
-        .await
-        .map_err(|_| anyhow::anyhow!("Turso initial sync timed out after 120s"))?
-        .map_err(|err| anyhow::anyhow!("failed to initial-sync Turso replica: {err}"))?;
-    tracing::info!("Turso embedded replica ready");
-    Ok(db)
+    .map_err(|err| anyhow::anyhow!("failed to build remote Turso database: {err}"))
 }
 
 #[tokio::main]
@@ -208,33 +190,25 @@ async fn main() -> anyhow::Result<()> {
     }
     let s3v_client = aws_sdk_s3vectors::Client::from_conf(s3v_config_builder.build());
 
-    // Build a single Turso embedded replica shared by Store and FtsIndex.
+    // Build a single libSQL database shared by Store and FtsIndex.
     let fts_dir = local_libsql_dir(&std::env::temp_dir(), port);
     std::fs::create_dir_all(&fts_dir)?;
     let turso_db_path = fts_dir.join("search-fts.db");
-    tracing::info!(path = %turso_db_path.display(), "using embedded libSQL path");
-
-    let turso_db = if let Some(config) = turso_runtime {
-        tracing::info!("Initializing Turso embedded replica...");
-        match build_turso_replica(&turso_db_path, &config).await {
-            Ok(db) => db,
-            Err(first_err) => {
-                tracing::warn!(
-                    "Turso replica failed ({first_err}), wiping stale local replica and retrying..."
-                );
-                let _ = std::fs::remove_dir_all(&fts_dir);
-                std::fs::create_dir_all(&fts_dir)?;
-                build_turso_replica(&turso_db_path, &config)
-                    .await
-                    .map_err(|err| anyhow::anyhow!("Turso replica retry also failed: {err}"))?
-            }
-        }
+    let (turso_db, shared_db_path) = if let Some(config) = turso_runtime {
+        tracing::info!("Initializing direct remote Turso database...");
+        (
+            build_turso_database(&config).await?,
+            None::<std::path::PathBuf>,
+        )
     } else {
         tracing::info!(path = %turso_db_path.display(), "Initializing local libSQL database (no Turso config)...");
-        libsql::Builder::new_local(&turso_db_path)
-            .build()
-            .await
-            .map_err(|err| anyhow::anyhow!("failed to build local libSQL database: {err}"))?
+        (
+            libsql::Builder::new_local(&turso_db_path)
+                .build()
+                .await
+                .map_err(|err| anyhow::anyhow!("failed to build local libSQL database: {err}"))?,
+            Some(turso_db_path.clone()),
+        )
     };
 
     let turso_conn = turso_db
@@ -379,9 +353,9 @@ async fn main() -> anyhow::Result<()> {
     ));
 
     let fts = Arc::new(
-        FtsIndex::new_with_db(turso_db, turso_db_path)
+        FtsIndex::new_with_db(turso_db, shared_db_path)
             .await
-            .expect("failed to create Turso-backed FTS index"),
+            .expect("failed to create shared libSQL FTS index"),
     );
     let polly_tts = polly_tts_runtime.map(|cfg| {
         Arc::new(PollyTtsService::new(
