@@ -1,9 +1,9 @@
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::atomic::{AtomicU64, Ordering},
     sync::Arc,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    sync::atomic::{AtomicU64, Ordering},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use libsql::{Builder, Connection, Database, TransactionBehavior, Value, params};
@@ -15,7 +15,6 @@ use crate::{
 };
 
 const LOCAL_DB_FILENAME: &str = "search-fts.db";
-const REPLICA_SYNC_INTERVAL: Duration = Duration::from_secs(30);
 static FTS_TEMP_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Local libSQL-backed BM25 index over all indexed search chunks.
@@ -26,7 +25,7 @@ pub struct FtsIndex(Arc<RwLock<FtsIndexInner>>);
 struct FtsIndexInner {
     _db: Database,
     conn: Connection,
-    db_path: PathBuf,
+    db_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -59,12 +58,6 @@ impl FtsIndex {
         let db_path = index_dir.join(LOCAL_DB_FILENAME);
 
         let db = build_database(&db_path, remote.as_ref()).await?;
-        if remote.is_some() {
-            db.sync()
-                .await
-                .map_err(|err| format!("failed to sync Turso embedded replica: {err}"))?;
-        }
-
         let conn = db
             .connect()
             .map_err(|err| format!("failed to connect to FTS database: {err}"))?;
@@ -73,15 +66,15 @@ impl FtsIndex {
         Ok(Self(Arc::new(RwLock::new(FtsIndexInner {
             _db: db,
             conn,
-            db_path,
+            db_path: remote.is_none().then_some(db_path),
         }))))
     }
 
-    /// Build from an already-opened `Database` (shares the same Turso replica).
-    pub async fn new_with_db(db: Database, db_path: PathBuf) -> Result<Self, String> {
+    /// Build from an already-opened `Database` shared by the backend store and FTS index.
+    pub async fn new_with_db(db: Database, db_path: Option<PathBuf>) -> Result<Self, String> {
         let conn = db
             .connect()
-            .map_err(|err| format!("failed to connect to shared Turso database for FTS: {err}"))?;
+            .map_err(|err| format!("failed to connect to shared libSQL database for FTS: {err}"))?;
         initialize_schema(&conn).await?;
 
         Ok(Self(Arc::new(RwLock::new(FtsIndexInner {
@@ -371,7 +364,7 @@ impl FtsIndex {
         query_doc_count(&inner.conn).await.unwrap_or(0)
     }
 
-    pub async fn local_db_path(&self) -> PathBuf {
+    pub async fn local_db_path(&self) -> Option<PathBuf> {
         let inner = self.0.read().await;
         inner.db_path.clone()
     }
@@ -382,11 +375,10 @@ async fn build_database(
     remote: Option<&FtsRemoteConfig>,
 ) -> Result<Database, String> {
     if let Some(remote) = remote {
-        Builder::new_remote_replica(db_path, remote.url.clone(), remote.auth_token.clone())
-            .sync_interval(REPLICA_SYNC_INTERVAL)
+        Builder::new_remote(remote.url.clone(), remote.auth_token.clone())
             .build()
             .await
-            .map_err(|err| format!("failed to build Turso embedded replica: {err}"))
+            .map_err(|err| format!("failed to build remote Turso database: {err}"))
     } else {
         Builder::new_local(db_path)
             .build()

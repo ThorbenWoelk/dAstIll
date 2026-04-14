@@ -127,23 +127,17 @@ async fn connect_store() -> Result<(db::Store, FtsIndex)> {
     }
     let s3v_client = aws_sdk_s3vectors::Client::from_conf(s3v_config_builder.build());
 
-    let turso_db_path = std::env::temp_dir().join("dastill-bin.db");
-    let turso_db =
-        libsql::Builder::new_remote_replica(turso_db_path.clone(), turso.db_url, turso.auth_token)
-            .build()
-            .await
-            .map_err(|e| anyhow::anyhow!("Turso: {e}"))?;
-    turso_db
-        .sync()
+    let turso_db = libsql::Builder::new_remote(turso.db_url, turso.auth_token)
+        .build()
         .await
-        .map_err(|e| anyhow::anyhow!("Turso sync: {e}"))?;
+        .map_err(|e| anyhow::anyhow!("Turso: {e}"))?;
     let turso_conn = turso_db
         .connect()
         .map_err(|e| anyhow::anyhow!("Turso connect: {e}"))?;
     dastill::db::turso_schema::initialize_turso_schema(&turso_conn)
         .await
         .map_err(|e| anyhow::anyhow!(e))?;
-    let fts = FtsIndex::new_with_db(turso_db, turso_db_path)
+    let fts = FtsIndex::new_with_db(turso_db, None)
         .await
         .map_err(|err| anyhow::anyhow!(err))?;
 

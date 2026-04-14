@@ -160,7 +160,7 @@ The GitHub Actions workflow:
 
 Production defaults to plain FTS mode unless `SEARCH_SEMANTIC_ENABLED=true` is intentionally set.
 
-Keyword search can also use Turso/libSQL for durable FTS storage. In that setup:
+Keyword search can also use Turso/libSQL for durable FTS storage via direct remote queries. In that setup:
 
 - production Cloud Run should set `START_APP_USE_TURSO=1`
 - set `turso_auth_token` in `terraform.tfvars` and run `terraform apply`

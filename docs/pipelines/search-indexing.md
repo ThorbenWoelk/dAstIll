@@ -68,7 +68,7 @@ Each layer degrades independently without breaking the others.
 | Store          | Role                                                                             |
 | -------------- | -------------------------------------------------------------------------------- |
 | S3 data bucket | Canonical chunk JSON objects under `search-chunks/`                              |
-| Turso / libSQL | Durable keyword index primary plus local embedded replica file for runtime reads |
+| Turso / libSQL | Durable keyword index primary queried directly by the backend at runtime          |
 | S3 Vectors     | Dense embeddings for ANN retrieval, keyed by chunk ID                            |
 
 S3 remains the rebuild source of truth for canonical chunk content. The keyword index lives in
@@ -114,8 +114,8 @@ is empty:
 4. Loads video and channel metadata for each group
 5. Calls `fts.upsert_source` for each group
 
-When a Turso-backed embedded replica already has indexed rows, startup skips this replay
-and uses the existing local replica immediately.
+When the Turso-backed keyword index already has indexed rows, startup skips this replay
+and uses the existing remote index immediately.
 
 ### Live Sync
 

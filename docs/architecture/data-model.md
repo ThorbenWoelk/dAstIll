@@ -116,9 +116,9 @@ Search is intentionally modeled as a derived projection stored in S3:
 
 S3 Vectors provides managed ANN vector storage and retrieval for semantic search.
 
-The backend also maintains a **libSQL/Turso BM25 keyword index**. In production it runs
-through a Turso primary plus a local embedded replica file; locally it can fall back to a
-plain libSQL file. All keyword search queries go through this index - there is no
+The backend also maintains a **libSQL/Turso BM25 keyword index**. In production it queries
+the Turso primary directly; locally it can fall back to a plain libSQL file. All keyword
+search queries go through this index - there is no
 per-query S3 scan. The keyword index is kept in sync by the search index worker after
 every write and can be rebuilt from the stored `search-chunks/` projection when empty.
 

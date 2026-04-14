@@ -48,18 +48,10 @@ async fn main() -> Result<()> {
     }
     let s3v_client = aws_sdk_s3vectors::Client::from_conf(s3v_config_builder.build());
 
-    let turso_db = libsql::Builder::new_remote_replica(
-        std::env::temp_dir().join("dastill-bin.db"),
-        turso.db_url,
-        turso.auth_token,
-    )
-    .build()
-    .await
-    .map_err(|e| anyhow::anyhow!("Turso: {e}"))?;
-    turso_db
-        .sync()
+    let turso_db = libsql::Builder::new_remote(turso.db_url, turso.auth_token)
+        .build()
         .await
-        .map_err(|e| anyhow::anyhow!("Turso sync: {e}"))?;
+        .map_err(|e| anyhow::anyhow!("Turso: {e}"))?;
     let turso_conn = turso_db
         .connect()
         .map_err(|e| anyhow::anyhow!("Turso connect: {e}"))?;
