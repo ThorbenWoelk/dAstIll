@@ -373,3 +373,83 @@ test("desktop summary eval score opens the quality drawer", async ({
   await expect(evalTrigger).toHaveAttribute("aria-expanded", "true");
   await expect(evalDrawer.locator(".eval-note-markdown")).toContainText(/\S+/);
 });
+
+test("desktop summary eval drawer still opens when only score and tags are present", async ({
+  page,
+}) => {
+  const selectedChannelId = "channel-eval-tags";
+  const selectedVideoId = "video-eval-tags";
+  const selectedPath = `/?source=${selectedChannelId}&item=${selectedVideoId}&content=summary`;
+  const bootstrap = buildMockWorkspaceBootstrap({
+    channelId: selectedChannelId,
+    channelName: "Tag-only eval channel",
+    channelHandle: "@tag-only-eval",
+    containerId: "container-eval-tags",
+    videoId: selectedVideoId,
+    videoTitle: "Desktop score-only eval fixture",
+    qualityScore: 7,
+    selectedItemId: selectedVideoId,
+    totalChunkCount: 8,
+  });
+
+  const summary = {
+    video_id: selectedVideoId,
+    content:
+      "This mocked summary exists only to verify that the eval drawer still opens without a note.",
+    model_used: "glm-5.1:cloud",
+    quality_score: 7,
+    quality_note: null,
+    quality_model_used: "gemma4:31b-cloud",
+    summary_tags: ["AI Security", "Tech Knowledge"],
+    summary_tags_evaluated: true,
+  };
+
+  const videoInfo = {
+    video_id: selectedVideoId,
+    watch_url: "https://www.youtube.com/watch?v=video-eval-tags",
+    title: "Desktop score-only eval fixture",
+    description:
+      "Fixture video info for the score-only eval drawer regression.",
+    thumbnail_url: null,
+    channel_name: "Tag-only eval channel",
+    channel_id: selectedChannelId,
+    published_at: "2026-04-11T18:30:00.000Z",
+    duration_iso8601: "PT8M12S",
+    duration_seconds: 492,
+    view_count: 1280,
+  };
+
+  await installMockWorkspaceApi(page, { bootstrap, summary, videoInfo });
+
+  await page.goto("/");
+  await expect(workspaceSidebar(page)).toBeVisible();
+  await navigateViaInjectedLink(page, selectedPath);
+  await expect
+    .poll(() => new URL(page.url()).search)
+    .toContain(`source=${selectedChannelId}`);
+  const sidebar = workspaceSidebar(page);
+  await expect(
+    sidebar.locator("#videos").getByRole("button").first(),
+  ).toBeVisible({
+    timeout: READY_MS,
+  });
+  await sidebar.locator("#videos").getByRole("button").first().click();
+  await workspaceDesktopTabs(page)
+    .getByRole("button", { name: "Summary", exact: true })
+    .click();
+  await expect(page.locator("#content-view article")).toContainText(
+    "eval drawer still opens without a note",
+  );
+
+  const evalTrigger = page.locator(
+    ".summary-embed-strip-eval button[aria-controls='summary-quality-note']",
+  );
+  const evalDrawer = page.locator("#summary-quality-note");
+
+  await expect(evalTrigger).toBeVisible();
+  await evalTrigger.click();
+
+  await expect(evalDrawer).toBeVisible();
+  await expect(evalDrawer.getByText("AI Security")).toBeVisible();
+  await expect(evalDrawer.getByText("Tech Knowledge")).toBeVisible();
+});

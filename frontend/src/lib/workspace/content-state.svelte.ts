@@ -75,6 +75,7 @@ export function createContentState(options: {
   let summaryModelUsed = $state<string | null>(null);
   let summaryQualityModelUsed = $state<string | null>(null);
   let summaryTags = $state<string[]>([]);
+  let summaryTagsEvaluated = $state(false);
 
   let formattingContent = $state(false);
   let formattingVideoId = $state<string | null>(null);
@@ -106,6 +107,7 @@ export function createContentState(options: {
     summaryModelUsed = nextState.modelUsed;
     summaryQualityModelUsed = nextState.qualityModelUsed;
     summaryTags = nextState.tags;
+    summaryTagsEvaluated = nextState.tagsEvaluated;
   }
 
   function applySummaryQuality(summary: SummaryPayload) {
@@ -114,6 +116,8 @@ export function createContentState(options: {
     summaryQualityNote = presentation.note;
     summaryModelUsed = presentation.modelUsed;
     summaryQualityModelUsed = presentation.qualityModelUsed;
+    summaryTags = presentation.tags;
+    summaryTagsEvaluated = presentation.tagsEvaluated;
   }
 
   function syncSummaryTrackingSession(
@@ -403,6 +407,7 @@ export function createContentState(options: {
     summaryModelUsed = next.quality.modelUsed;
     summaryQualityModelUsed = next.quality.qualityModelUsed;
     summaryTags = next.quality.tags;
+    summaryTagsEvaluated = next.quality.tagsEvaluated;
   }
 
   return {
@@ -444,6 +449,9 @@ export function createContentState(options: {
     },
     get summaryTags() {
       return summaryTags;
+    },
+    get summaryTagsEvaluated() {
+      return summaryTagsEvaluated;
     },
 
     get formattingContent() {
@@ -500,6 +508,7 @@ export function createContentState(options: {
       videoInfo = null;
       resetSummaryQuality();
       summaryTags = [];
+      summaryTagsEvaluated = false;
     },
 
     clearDisplayedContent() {

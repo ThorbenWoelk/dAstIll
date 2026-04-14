@@ -20,6 +20,7 @@
     summaryModelUsed = null as string | null,
     summaryQualityModelUsed = null as string | null,
     summaryTags = [] as string[],
+    summaryTagsEvaluated = false,
     onShowChannels,
     onShowVideos,
   }: {
@@ -38,6 +39,7 @@
     summaryModelUsed?: string | null;
     summaryQualityModelUsed?: string | null;
     summaryTags?: string[];
+    summaryTagsEvaluated?: boolean;
     onShowChannels: () => void;
     onShowVideos: () => void;
   } = $props();
@@ -171,6 +173,8 @@
         note={summaryQualityNote}
         modelUsed={summaryModelUsed}
         qualityModelUsed={summaryQualityModelUsed}
+        tags={summaryTags}
+        tagsEvaluated={summaryTagsEvaluated}
       />
     </div>
   </div>

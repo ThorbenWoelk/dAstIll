@@ -3,6 +3,7 @@ import {
   formatDuration,
   formatPublishedAt,
   formatSyncDate,
+  hasCompleteSummaryEvaluation,
   hasKnownDuration,
   resolveBackgroundSummaryRefresh,
   resolveSummaryQualityPresentation,
@@ -113,6 +114,7 @@ describe("resolveSummaryQualityPresentation", () => {
       modelUsed: "summary-model",
       qualityModelUsed: "eval-model",
       tags: [],
+      tagsEvaluated: false,
     });
   });
 
@@ -123,6 +125,7 @@ describe("resolveSummaryQualityPresentation", () => {
       modelUsed: null,
       qualityModelUsed: null,
       tags: [],
+      tagsEvaluated: false,
     });
   });
 
@@ -134,6 +137,38 @@ describe("resolveSummaryQualityPresentation", () => {
         }),
       ).tags,
     ).toEqual(["AI Security", "Tech Knowledge", "Blackpilled"]);
+  });
+});
+
+describe("hasCompleteSummaryEvaluation", () => {
+  it("treats a note as complete even without tag metadata", () => {
+    expect(
+      hasCompleteSummaryEvaluation({
+        score: 8,
+        note: "Detailed note",
+        tagsEvaluated: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("waits for tag evaluation when only a score is present", () => {
+    expect(
+      hasCompleteSummaryEvaluation({
+        score: 8,
+        note: null,
+        tagsEvaluated: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("accepts score-only evaluations once tag evaluation is complete", () => {
+    expect(
+      hasCompleteSummaryEvaluation({
+        score: 8,
+        note: null,
+        tagsEvaluated: true,
+      }),
+    ).toBe(true);
   });
 });
 
@@ -160,6 +195,7 @@ describe("resolveBackgroundSummaryRefresh", () => {
         modelUsed: "summary-model",
         qualityModelUsed: "eval-model",
         tags: [],
+        tagsEvaluated: false,
       },
     });
   });
