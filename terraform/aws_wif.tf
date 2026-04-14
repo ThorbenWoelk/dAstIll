@@ -155,6 +155,7 @@ resource "aws_iam_role_policy" "github_terraform" {
           "iam:GetOpenIDConnectProvider",
           "iam:GetRole",
           "iam:GetRolePolicy",
+          "iam:ListAttachedRolePolicies",
           "iam:ListOpenIDConnectProviders",
           "iam:ListRolePolicies",
           "iam:ListRoles",
