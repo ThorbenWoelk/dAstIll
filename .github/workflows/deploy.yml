@@ -24,6 +24,7 @@ env:
   DEPLOY_SHA: ${{ github.sha }}
   DOCS_URL_OVERRIDE: ${{ vars.DOCS_URL }}
   FRONTEND_URL_OVERRIDE: ${{ vars.FRONTEND_URL }}
+  PRODUCTION_APP_MAINTENANCE_MODE: "1"
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 permissions:
@@ -125,7 +126,7 @@ jobs:
     needs:
       - detect-changes
       - checks
-    if: needs.detect-changes.outputs.backend == 'true'
+    if: needs.detect-changes.outputs.backend == 'true' && env.PRODUCTION_APP_MAINTENANCE_MODE != '1'
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -310,7 +311,11 @@ jobs:
         run: |
           set -euo pipefail
 
-          backend_url="$(gcloud run services describe "${APP_NAME}-backend" --project "$PROJECT_ID" --region "$REGION" --format='value(status.url)')"
+          if [ "${PRODUCTION_APP_MAINTENANCE_MODE}" = "1" ]; then
+            backend_url=""
+          else
+            backend_url="$(gcloud run services describe "${APP_NAME}-backend" --project "$PROJECT_ID" --region "$REGION" --format='value(status.url)')"
+          fi
           docs_url="${DOCS_URL_OVERRIDE:-https://${PROJECT_ID}-docs.web.app}"
 
           echo "backend_url=$backend_url" >> "$GITHUB_OUTPUT"
@@ -342,6 +347,7 @@ jobs:
           VITE_API_BASE: ${{ steps.service_urls.outputs.backend_url }}
           PUBLIC_DOCS_URL: ${{ steps.service_urls.outputs.docs_url }}
           PUBLIC_CONTACT_EMAIL: ${{ vars.CONTACT_EMAIL }}
+          PUBLIC_APP_MAINTENANCE_MODE: ${{ env.PRODUCTION_APP_MAINTENANCE_MODE }}
           PUBLIC_FIREBASE_API_KEY: ${{ steps.frontend_build_env.outputs.public_firebase_api_key }}
           PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ steps.frontend_build_env.outputs.public_firebase_auth_domain }}
           PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
@@ -351,3 +357,33 @@ jobs:
 
       - name: Deploy Frontend to Firebase Hosting
         run: bunx firebase-tools@15.12.0 deploy --only hosting:app --project "$PROJECT_ID" --non-interactive
+
+  disable-backend-for-maintenance:
+    name: Disable Backend For Maintenance
+    needs:
+      - checks
+      - deploy-docs
+      - deploy-frontend
+    if: env.PRODUCTION_APP_MAINTENANCE_MODE == '1' && needs.deploy-docs.result != 'failure' && needs.deploy-frontend.result != 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Google Auth
+        uses: google-github-actions/auth@v3.0.0
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_WIF_SA_EMAIL }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v3.0.0
+
+      - name: Delete backend Cloud Run service
+        run: |
+          set -euo pipefail
+
+          if gcloud run services describe "${APP_NAME}-backend" --project "$PROJECT_ID" --region "$REGION" >/dev/null 2>&1; then
+            gcloud run services delete "${APP_NAME}-backend" --project "$PROJECT_ID" --region "$REGION" --quiet
+          else
+            echo "Backend service already absent."
+          fi

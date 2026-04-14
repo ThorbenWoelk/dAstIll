@@ -51,6 +51,10 @@ By default `./start_app.sh` forces the backend onto the local embedded libSQL se
 `~/.config/dastill/backend.env` contains Turso credentials. Set `START_APP_USE_TURSO=1` when you explicitly want
 local startup to use the configured Turso replica path.
 
+`./start_app.sh` also forces the product frontend into live mode by default. If you need to preview the
+maintenance page locally, run `LOCAL_APP_MAINTENANCE_MODE=1 ./start_app.sh`. In that mode the script skips
+backend startup and only serves the maintenance frontend plus docs.
+
 Default docs URL:
 
 ```text

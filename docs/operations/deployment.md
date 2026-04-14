@@ -79,6 +79,7 @@ Non-secret product frontend runtime config is passed as plain env values for:
 - build-time `PUBLIC_FIREBASE_PROJECT_ID`
 - optional build-time `PUBLIC_BROWSER_AUTH_BASE_URL`
 - build-time `PUBLIC_CONTACT_EMAIL`
+- build-time `PUBLIC_APP_MAINTENANCE_MODE`
 
 ### Firebase Auth (product frontend)
 
@@ -88,7 +89,9 @@ The frontend uses the Firebase JS SDK in the browser and in the Tauri WebView. S
 
 **Google sign-in:** anonymous auth stays enabled through Identity Platform. Google sign-in itself is managed through the repo-root [`firebase.json`](../../firebase.json) and should be deployed separately with `bunx firebase-tools@15.12.0 deploy --only auth --project "$PROJECT_ID" --non-interactive` when provisioning a new project or when that file changes. That lets Firebase provision the correct project-local Google OAuth client for the web app instead of reusing a copied client ID/secret from another project.
 
-**Release workflow:** resolves the Terraform-managed frontend Firebase secrets `dastill-firebase-web-api-key` and `dastill-firebase-auth-domain` before building the static frontend bundle. It passes those values into the build together with `VITE_API_BASE`, `PUBLIC_DOCS_URL`, `PUBLIC_CONTACT_EMAIL`, and `PUBLIC_FIREBASE_PROJECT_ID`. Routine releases do not redeploy Firebase Auth config.
+**Release workflow:** resolves the Terraform-managed frontend Firebase secrets `dastill-firebase-web-api-key` and `dastill-firebase-auth-domain` before building the static frontend bundle. It passes those values into the build together with `VITE_API_BASE`, `PUBLIC_DOCS_URL`, `PUBLIC_CONTACT_EMAIL`, `PUBLIC_APP_MAINTENANCE_MODE`, and `PUBLIC_FIREBASE_PROJECT_ID`. Routine releases do not redeploy Firebase Auth config.
+
+When `PRODUCTION_APP_MAINTENANCE_MODE=1` is set in the release workflow, the app frontend is built with `PUBLIC_APP_MAINTENANCE_MODE=1`, the homepage becomes a minimal budget-cap notice with a docs link, and the workflow deletes the Cloud Run backend service after the maintenance frontend/docs deploy succeeds.
 
 **Android browser-auth handoff:** if the Tauri Android shell should open a browser-hosted login page on a different origin than the product frontend itself, set `PUBLIC_BROWSER_AUTH_BASE_URL` for the frontend build. That value controls the origin used for the system-browser `/login` handoff flow.
 
