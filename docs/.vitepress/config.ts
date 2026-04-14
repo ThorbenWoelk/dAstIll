@@ -17,14 +17,12 @@ export default defineConfig({
       { text: "Architecture", link: "/architecture/overview" },
       { text: "AI & Search", link: "/pipelines/ai-models" },
       { text: "Operations", link: "/operations/deployment" },
-      { text: "UI Tour", link: "/guides/ui-tour" },
     ],
     sidebar: [
       {
         text: "Introduction",
         items: [
           { text: "Overview", link: "/" },
-          { text: "UI Tour", link: "/guides/ui-tour" },
         ],
       },
       {
