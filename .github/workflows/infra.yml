@@ -20,6 +20,7 @@ env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   APP_NAME: dastill
   TERRAFORM_STATE_BUCKET: ${{ vars.TERRAFORM_STATE_BUCKET }}
+  TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 permissions:
@@ -51,6 +52,7 @@ jobs:
           terraform_wrapper: false
 
       - name: Check Terraform backend config
+        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
 
@@ -59,7 +61,13 @@ jobs:
             exit 1
           fi
 
+      - name: Terraform Init (PR)
+        if: github.event_name == 'pull_request'
+        working-directory: terraform
+        run: terraform init -backend=false -input=false
+
       - name: Terraform Init
+        if: github.event_name != 'pull_request'
         working-directory: terraform
         run: terraform init -input=false -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
 
