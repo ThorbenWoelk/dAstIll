@@ -8,11 +8,15 @@
     note = null,
     modelUsed = null,
     qualityModelUsed = null,
+    tags = [],
+    tagsEvaluated = false,
   }: {
     score?: number | null;
     note?: string | null;
     modelUsed?: string | null;
     qualityModelUsed?: string | null;
+    tags?: string[];
+    tagsEvaluated?: boolean;
   } = $props();
 
   let drawerOpen = $state(false);
@@ -25,9 +29,23 @@
         : score.toFixed(1)
       : null,
   );
+  const trimmedNote = $derived(note?.trim() || null);
+  const displayTags = $derived(tags.filter((tag) => tag.trim().length > 0));
+  const showLoadingState = $derived(
+    displayScore !== null &&
+      !trimmedNote &&
+      displayTags.length === 0 &&
+      !tagsEvaluated,
+  );
+  const showEmptyState = $derived(
+    displayScore !== null &&
+      !trimmedNote &&
+      displayTags.length === 0 &&
+      tagsEvaluated,
+  );
 
   function toggleDrawer() {
-    if (note) drawerOpen = !drawerOpen;
+    if (displayScore !== null) drawerOpen = !drawerOpen;
   }
 
   function closeDrawer() {
@@ -64,11 +82,7 @@
       onclick={toggleDrawer}
       aria-expanded={drawerOpen}
       aria-controls="summary-quality-note"
-      title={note
-        ? drawerOpen
-          ? "Hide evaluation"
-          : "Show evaluation"
-        : undefined}
+      title={drawerOpen ? "Hide evaluation" : "Show evaluation"}
     >
       <span class="meta-score-value">{displayScore}</span>
       <span class="meta-score-label">Quality</span>
@@ -83,7 +97,7 @@
   {/if}
 </div>
 
-{#if drawerOpen && note}
+{#if drawerOpen && displayScore !== null}
   <div
     class="eval-drawer"
     id="summary-quality-note"
@@ -125,9 +139,31 @@
     </header>
 
     <div class="eval-drawer-body">
-      <div class="eval-note-markdown">
-        {@html renderMarkdown(note)}
-      </div>
+      {#if trimmedNote}
+        <div class="eval-note-markdown">
+          {@html renderMarkdown(trimmedNote)}
+        </div>
+      {/if}
+
+      {#if displayTags.length > 0}
+        <div class="eval-tag-list" aria-label="Evaluation tags">
+          {#each displayTags as tag (tag)}
+            <span class="eval-tag-chip">{tag}</span>
+          {/each}
+        </div>
+      {/if}
+
+      {#if showLoadingState}
+        <p class="eval-drawer-status">
+          Detailed evaluation is still loading. The score is available, but the
+          note has not landed yet.
+        </p>
+      {:else if showEmptyState}
+        <p class="eval-drawer-status">
+          This evaluation only returned a score and metadata. No detailed note
+          was generated for this summary.
+        </p>
+      {/if}
     </div>
 
     <footer class="eval-drawer-footer">
@@ -303,11 +339,39 @@
     padding: 0 1.25rem 1.25rem;
   }
 
+  .eval-tag-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    margin-top: 1rem;
+  }
+
+  .eval-tag-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 1.85rem;
+    padding: 0.28rem 0.75rem;
+    border-radius: 9999px;
+    background: color-mix(in srgb, var(--surface) 88%, var(--accent-soft));
+    border: 1px solid var(--accent-border-soft);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--foreground);
+  }
+
   .eval-note-markdown {
     font-size: 13px;
     line-height: 1.65;
     color: var(--foreground);
     opacity: 0.8;
+  }
+
+  .eval-drawer-status {
+    margin: 1rem 0 0;
+    font-size: 13px;
+    line-height: 1.65;
+    color: var(--soft-foreground);
   }
 
   .eval-note-markdown :global(ul) {

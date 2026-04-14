@@ -213,7 +213,6 @@
   let loadingChannels = $derived(channelState.loadingChannels);
   let addingChannel = $derived(channelState.addingChannel);
   let channelSortMode = $derived(channelState.channelSortMode);
-  let canDeleteChannels = $derived(channelState.canDeleteChannels ?? false);
 
   let onChannelSortModeChange = $derived(
     channelActions.onChannelSortModeChange,
@@ -221,10 +220,6 @@
   let onAddChannel = $derived(channelActions.onAddChannel);
   let onSelectChannel = $derived(channelActions.onSelectChannel);
   let onOpenChannelOverview = $derived(channelActions.onOpenChannelOverview);
-  let onDeleteChannel = $derived(channelActions.onDeleteChannel);
-  let onDeleteAccessRequired = $derived(
-    channelActions.onDeleteAccessRequired ?? (() => {}),
-  );
   let onReorderChannels = $derived(channelActions.onReorderChannels);
   let onChannelUpdated = $derived(
     channelActions.onChannelUpdated ?? (() => {}),
@@ -335,14 +330,22 @@
     return channel.id === OTHERS_CHANNEL_ID;
   }
 
-  async function handlePerChannelPreviewSelect(channel: Channel) {
+  function handlePerChannelPreviewSelect(channel: Channel) {
+    if (isVirtualChannel(channel)) {
+      return;
+    }
+    if (onOpenChannelOverview) {
+      void onOpenChannelOverview(channel.id);
+      return;
+    }
+    void onSelectChannel(channel.id);
+  }
+
+  async function handlePerChannelPreviewToggle(channel: Channel) {
     if (isVirtualChannel(channel)) {
       return;
     }
     await previewController.toggleChannelVideoCollection(channel);
-    if (onOpenChannelOverview) {
-      void onOpenChannelOverview(channel.id);
-    }
   }
 
   async function handleChannelVideoClick(
@@ -687,7 +690,6 @@
             {isExpanded}
             isPreviewMode={videoListMode === "per_channel_preview"}
             isVirtualChannel={isVirtualChannel(channel)}
-            {canDeleteChannels}
             {mobileVisible}
             {manualReorderEnabled}
             {draggedChannelId}
@@ -701,11 +703,14 @@
               videoListMode === "per_channel_preview"
                 ? void handlePerChannelPreviewSelect(channel)
                 : void onSelectChannel(channel.id)}
+            onToggleExpanded={() =>
+              videoListMode === "per_channel_preview"
+                ? void handlePerChannelPreviewToggle(channel)
+                : undefined}
             onDragStart={(event) => handleChannelDragStart(channel.id, event)}
             onDragOver={(event) => handleChannelDragOver(channel.id, event)}
             onDrop={(event) => handleChannelDrop(channel.id, event)}
             onDragEnd={handleChannelDragEnd}
-            onDelete={() => void onDeleteChannel(channel.id)}
           />
 
           {#if videoListMode === "per_channel_preview" && isExpanded}

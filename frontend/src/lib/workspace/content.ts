@@ -19,6 +19,7 @@ export interface SummaryQualityPresentation {
   modelUsed: string | null;
   qualityModelUsed: string | null;
   tags: string[];
+  tagsEvaluated: boolean;
 }
 
 export interface BackgroundSummaryRefreshPresentation {
@@ -68,7 +69,19 @@ export function resolveSummaryQualityPresentation(
     tags: (summary.summary_tags ?? [])
       .map((tag: string) => tag.trim())
       .filter(Boolean),
+    tagsEvaluated: summary.summary_tags_evaluated ?? false,
   };
+}
+
+export function hasCompleteSummaryEvaluation(params: {
+  score: number | null;
+  note: string | null;
+  tagsEvaluated: boolean;
+}): boolean {
+  return (
+    Boolean(params.note?.trim()) ||
+    (params.score !== null && params.tagsEvaluated)
+  );
 }
 
 export function resolveBackgroundSummaryRefresh(

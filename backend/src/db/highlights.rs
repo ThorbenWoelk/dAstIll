@@ -6,14 +6,6 @@ use crate::models::{
 
 use super::{Store, StoreError};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct HighlightMigrationStats {
-    pub scanned: usize,
-    pub copied: usize,
-    pub skipped_duplicates: usize,
-    pub remapped_ids: usize,
-}
-
 fn highlight_prefix(user_id: &str) -> String {
     format!("user-highlights/{user_id}/")
 }
@@ -49,6 +41,7 @@ async fn list_user_highlights(store: &Store, user_id: &str) -> Result<Vec<Highli
     store.load_all(&highlight_prefix(user_id)).await
 }
 
+#[cfg(test)]
 fn highlights_are_equivalent(left: &Highlight, right: &Highlight) -> bool {
     left.video_id == right.video_id
         && left.source == right.source
@@ -57,6 +50,7 @@ fn highlights_are_equivalent(left: &Highlight, right: &Highlight) -> bool {
         && left.suffix_context == right.suffix_context
 }
 
+#[cfg(test)]
 fn next_available_highlight_id(occupied_ids: &std::collections::HashSet<i64>) -> i64 {
     loop {
         let candidate = generate_highlight_id();
@@ -137,51 +131,6 @@ pub async fn delete_highlight(
         store.delete_key(&key).await?;
     }
     Ok(exists)
-}
-
-pub async fn migrate_user_highlights(
-    store: &Store,
-    from_user_id: &str,
-    to_user_id: &str,
-    dry_run: bool,
-) -> Result<HighlightMigrationStats, StoreError> {
-    let source_highlights = list_user_highlights(store, from_user_id).await?;
-    let mut target_highlights = list_user_highlights(store, to_user_id).await?;
-    let mut occupied_ids = target_highlights
-        .iter()
-        .map(|highlight| highlight.id)
-        .collect::<std::collections::HashSet<_>>();
-    let mut stats = HighlightMigrationStats::default();
-
-    for highlight in source_highlights {
-        stats.scanned += 1;
-
-        if target_highlights
-            .iter()
-            .any(|existing| highlights_are_equivalent(existing, &highlight))
-        {
-            stats.skipped_duplicates += 1;
-            continue;
-        }
-
-        let mut migrated = highlight.clone();
-        if occupied_ids.contains(&migrated.id) {
-            migrated.id = next_available_highlight_id(&occupied_ids);
-            stats.remapped_ids += 1;
-        }
-
-        if !dry_run {
-            store
-                .put_json(&highlight_key(to_user_id, migrated.id), &migrated)
-                .await?;
-        }
-
-        occupied_ids.insert(migrated.id);
-        target_highlights.push(migrated);
-        stats.copied += 1;
-    }
-
-    Ok(stats)
 }
 
 pub(crate) async fn delete_highlights_for_video(
