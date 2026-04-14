@@ -123,6 +123,7 @@ export interface WorkspaceContentState {
   summaryModelUsed: string | null;
   summaryQualityModelUsed: string | null;
   summaryTags: string[];
+  summaryTagsEvaluated: boolean;
   videoInfo: VideoInfo | null;
   contentHtml: string;
   contentText: string;

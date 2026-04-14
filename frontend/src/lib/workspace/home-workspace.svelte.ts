@@ -24,7 +24,10 @@ import {
 } from "$lib/channel-view-cache";
 import { loadWorkspaceState } from "$lib/channel-workspace";
 import { resolveNextChannelSelection } from "$lib/workspace/route-helpers";
-import { shouldRetryReadySummaryLoad } from "$lib/workspace/content";
+import {
+  hasCompleteSummaryEvaluation,
+  shouldRetryReadySummaryLoad,
+} from "$lib/workspace/content";
 import { createSidebarState } from "$lib/workspace/sidebar-state.svelte";
 import {
   type AcknowledgedFilter,
@@ -492,8 +495,11 @@ export function createHomeWorkspacePage() {
       !selectedVideoId ||
       editing ||
       loadingContent ||
-      content.summaryQualityScore !== null ||
-      content.summaryQualityNote !== null
+      hasCompleteSummaryEvaluation({
+        score: content.summaryQualityScore,
+        note: content.summaryQualityNote,
+        tagsEvaluated: content.summaryTagsEvaluated,
+      })
     ) {
       return;
     }

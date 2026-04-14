@@ -6,6 +6,7 @@ export type SummaryQualityState = {
   modelUsed: string | null;
   qualityModelUsed: string | null;
   tags: string[];
+  tagsEvaluated: boolean;
 };
 
 export type FormattingFeedbackState = {
@@ -25,6 +26,7 @@ export function buildSummaryQualityState(
     modelUsed: presentation.modelUsed,
     qualityModelUsed: presentation.qualityModelUsed,
     tags: presentation.tags,
+    tagsEvaluated: presentation.tagsEvaluated,
   };
 }
 
@@ -35,6 +37,7 @@ export function resetSummaryQualityState(): SummaryQualityState {
     modelUsed: null,
     qualityModelUsed: null,
     tags: [],
+    tagsEvaluated: false,
   };
 }
 
