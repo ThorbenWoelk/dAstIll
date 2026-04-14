@@ -117,7 +117,9 @@ jobs:
     name: Checks
     uses: ./.github/workflows/validation.yml
     with:
-      run_backend: ${{ env.PRODUCTION_APP_MAINTENANCE_MODE != '1' }}
+      # Maintenance mode is the only supported production posture right now, so
+      # the release workflow should skip backend validation entirely.
+      run_backend: false
       run_frontend: true
       run_docs: true
 
@@ -126,7 +128,7 @@ jobs:
     needs:
       - detect-changes
       - checks
-    if: needs.detect-changes.outputs.backend == 'true' && env.PRODUCTION_APP_MAINTENANCE_MODE != '1'
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -364,7 +366,7 @@ jobs:
       - checks
       - deploy-docs
       - deploy-frontend
-    if: env.PRODUCTION_APP_MAINTENANCE_MODE == '1' && needs.deploy-docs.result != 'failure' && needs.deploy-frontend.result != 'failure'
+    if: needs.deploy-docs.result != 'failure' && needs.deploy-frontend.result != 'failure'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
