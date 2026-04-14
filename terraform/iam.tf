@@ -13,7 +13,6 @@ resource "google_service_account" "github_actions_sa" {
 
 # Grant access to secrets for runtime services and GitHub Actions (deploy-time binding)
 locals {
-  databricks_secret_resource_id = try(google_secret_manager_secret.databricks_token[0].id, null)
   backend_secret_ids = {
     openalex_api_key    = google_secret_manager_secret.openalex_api_key.id
     ollama_api_key      = google_secret_manager_secret.ollama_api_key.id
@@ -21,31 +20,13 @@ locals {
     logfire_token       = google_secret_manager_secret.logfire_token.id
     backend_proxy_token = google_secret_manager_secret.backend_proxy_token.id
     turso_auth_token    = google_secret_manager_secret.turso_auth_token.id
+    databricks_token    = google_secret_manager_secret.databricks_token.id
   }
-  frontend_build_secret_ids = merge(
-    {
-    },
-    local.firebase_secrets_enabled ? {
-      firebase_web_api_key = google_secret_manager_secret.firebase_web_api_key[0].id
-      firebase_auth_domain = google_secret_manager_secret.firebase_auth_domain[0].id
-    } : {},
-  )
+  frontend_build_secret_ids = {
+    firebase_web_api_key = google_secret_manager_secret.firebase_web_api_key.id
+    firebase_auth_domain = google_secret_manager_secret.firebase_auth_domain.id
+  }
   cicd_secret_ids = merge(local.backend_secret_ids, local.frontend_build_secret_ids)
-}
-
-# Explicit bindings so Cloud Run (backend SA) and deploy (GitHub SA) can read DATABRICKS_TOKEN.
-resource "google_secret_manager_secret_iam_member" "backend_databricks_token" {
-  count     = local.databricks_secret_resource_id != null ? 1 : 0
-  secret_id = local.databricks_secret_resource_id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.backend_sa.email}"
-}
-
-resource "google_secret_manager_secret_iam_member" "cicd_databricks_token" {
-  count     = local.databricks_secret_resource_id != null ? 1 : 0
-  secret_id = local.databricks_secret_resource_id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.github_actions_sa.email}"
 }
 
 resource "google_secret_manager_secret_iam_member" "backend_secrets" {
@@ -80,6 +61,30 @@ resource "google_project_iam_member" "cloud_run_admin" {
 resource "google_project_iam_member" "firebase_hosting_admin" {
   project = var.project_id
   role    = "roles/firebasehosting.admin"
+  member  = "serviceAccount:${google_service_account.github_actions_sa.email}"
+}
+
+resource "google_project_iam_member" "github_editor" {
+  project = var.project_id
+  role    = "roles/editor"
+  member  = "serviceAccount:${google_service_account.github_actions_sa.email}"
+}
+
+resource "google_project_iam_member" "github_project_iam_admin" {
+  project = var.project_id
+  role    = "roles/resourcemanager.projectIamAdmin"
+  member  = "serviceAccount:${google_service_account.github_actions_sa.email}"
+}
+
+resource "google_project_iam_member" "github_service_account_admin" {
+  project = var.project_id
+  role    = "roles/iam.serviceAccountAdmin"
+  member  = "serviceAccount:${google_service_account.github_actions_sa.email}"
+}
+
+resource "google_project_iam_member" "github_workload_identity_pool_admin" {
+  project = var.project_id
+  role    = "roles/iam.workloadIdentityPoolAdmin"
   member  = "serviceAccount:${google_service_account.github_actions_sa.email}"
 }
 

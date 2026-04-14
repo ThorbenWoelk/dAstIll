@@ -4,23 +4,7 @@ app_name            = "dastill"
 firestore_location_id = "eur3"
 firebase_web_app_display_name = "dAstIll Web"
 aws_region          = "eu-central-1"
-
-# Project-scoped Google API key from the target GCP project. Rotate this during
-# project migrations; a key from the previous project can still exist but fail
-# if YouTube Data API v3 is disabled there.
-youtube_api_key     = "your-youtube-api-key"
-openalex_api_key    = "your-openalex-api-key"
-ollama_api_key      = "your-ollama-api-key"
-logfire_token       = "your-logfire-token"
-backend_proxy_token = "replace-with-a-long-random-proxy-token"
-# Optional: set to let Terraform create a Secret Manager version for the backend Turso token.
-# The TURSO_DB_URL env var is set inline in .github/workflows/deploy.yml.
-# turso_auth_token = "your-turso-auth-token"
-
 # Google sign-in is configured in the repo-root firebase.json and deployed with Firebase Auth.
-
-# Optional: set to let Terraform store the PAT; omit or "" if the secret already exists in GCP.
-# databricks_token = "your-databricks-personal-access-token"
 
 # Optional: enable Terraform-managed prerequisites for Cloud Billing export to BigQuery.
 # This creates the dataset and grants the Google-managed billing export writers access.

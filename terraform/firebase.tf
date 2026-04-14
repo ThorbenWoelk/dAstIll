@@ -27,14 +27,6 @@ resource "google_firebase_web_app" "frontend" {
   depends_on = [google_firebase_project.default]
 }
 
-data "google_firebase_web_app_config" "frontend" {
-  provider   = google-beta
-  project    = var.project_id
-  web_app_id = google_firebase_web_app.frontend.app_id
-
-  depends_on = [google_firebase_web_app.frontend]
-}
-
 resource "google_firebase_hosting_site" "docs" {
   provider = google-beta
   project  = var.project_id
@@ -60,10 +52,6 @@ resource "google_identity_platform_config" "default" {
 
 output "firebase_web_app_id" {
   value = google_firebase_web_app.frontend.app_id
-}
-
-output "firebase_auth_domain" {
-  value = data.google_firebase_web_app_config.frontend.auth_domain
 }
 
 output "firebase_docs_url" {
