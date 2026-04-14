@@ -24,10 +24,43 @@ on:
   workflow_dispatch:
 
 jobs:
+  runtime-mode:
+    name: Runtime Mode
+    runs-on: ubuntu-latest
+    outputs:
+      app_runtime_mode: ${{ steps.mode.outputs.app_runtime_mode }}
+      maintenance_mode: ${{ steps.mode.outputs.maintenance_mode }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+
+      - name: Resolve runtime mode
+        id: mode
+        run: |
+          set -euo pipefail
+
+          mode="$(sed -n 's/^APP_RUNTIME_MODE=//p' .github/runtime-mode.env | tail -n 1 | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+          if [ -z "$mode" ]; then
+            mode="live"
+          fi
+
+          maintenance_mode=false
+          if [ "$mode" = "maintenance" ]; then
+            maintenance_mode=true
+          fi
+
+          {
+            echo "app_runtime_mode=$mode"
+            echo "maintenance_mode=$maintenance_mode"
+          } >> "$GITHUB_OUTPUT"
+
   repo-hygiene:
     name: Repo Hygiene
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    needs:
+      - runtime-mode
 
     steps:
       - name: Checkout
@@ -38,7 +71,7 @@ jobs:
 
   backend:
     name: Backend
-    if: github.event_name != 'workflow_call' || inputs.run_backend
+    if: (github.event_name != 'workflow_call' || inputs.run_backend) && needs.runtime-mode.outputs.maintenance_mode != 'true'
     runs-on: ubuntu-latest
     env:
       CARGO_INCREMENTAL: "0"
@@ -46,6 +79,7 @@ jobs:
     timeout-minutes: 30
     needs:
       - repo-hygiene
+      - runtime-mode
 
     steps:
       - name: Checkout
@@ -148,6 +182,7 @@ jobs:
     timeout-minutes: 30
     needs:
       - repo-hygiene
+      - runtime-mode
 
     steps:
       - name: Checkout
@@ -187,6 +222,7 @@ jobs:
     timeout-minutes: 15
     needs:
       - repo-hygiene
+      - runtime-mode
 
     steps:
       - name: Checkout

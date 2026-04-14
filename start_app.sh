@@ -41,6 +41,13 @@ shared_frontend_env_file="${shared_env_dir}/frontend.env"
 shared_aws_dir="${shared_env_dir}/aws"
 shared_aws_credentials_file="${shared_aws_dir}/credentials"
 shared_aws_config_file="${shared_aws_dir}/config"
+local_maintenance_mode=0
+
+case "${LOCAL_APP_MAINTENANCE_MODE:-0}" in
+	1|true|TRUE|yes|YES|on|ON)
+		local_maintenance_mode=1
+		;;
+esac
 
 resolve_adb_command() {
 	if command -v adb >/dev/null 2>&1; then
@@ -417,14 +424,15 @@ ensure_local_env_files() {
 
 start_backend() {
 	pushd backend >/dev/null
-	PORT=$backend_port cargo run --bin dastill > >(tee ../backend.log) 2>&1 &
+	PORT=$backend_port START_APP_USE_TURSO="${START_APP_USE_TURSO:-0}" cargo run --bin dastill > >(tee ../backend.log) 2>&1 &
 	backend_pid=$!
 	popd >/dev/null
 }
 
 start_frontend() {
 	pushd frontend >/dev/null
-	VITE_API_BASE="http://localhost:$backend_port" \
+	PUBLIC_APP_MAINTENANCE_MODE="$local_maintenance_mode" \
+		VITE_API_BASE="http://localhost:$backend_port" \
 		bun --no-env-file run dev -- --host 0.0.0.0 --port $frontend_port > >(tee ../frontend.log) 2>&1 &
 	frontend_pid=$!
 	popd >/dev/null
@@ -617,7 +625,9 @@ check_ollama_models() {
 }
 
 ensure_local_env_files
-check_ollama_models
+if (( local_maintenance_mode == 0 )); then
+	check_ollama_models
+fi
 
 if [[ "$mode" == "detach" ]]; then
 	echo "Starting app supervisor in detached mode (log: start_app.log)"
@@ -652,21 +662,25 @@ echo "Stopping any running dAstIll services before restart..."
 cleanup
 trap cleanup EXIT INT TERM
 
-if [[ "$mode" == "detached_child" ]]; then
-	echo "Detached supervisor running for ports $frontend_port/$backend_port/$docs_port"
-	echo "Starting backend on http://localhost:$backend_port (log: backend.log)"
-else
-	echo "Starting backend on http://localhost:$backend_port (log: backend.log, streaming enabled)"
-fi
-start_backend
-
-if ! wait_for_http "Backend" "http://localhost:$backend_port/api/health" "$backend_pid"; then
-	echo "Backend failed to start. Last backend log lines:"
-	if aws_startup_access_issue_detected; then
-		diagnose_aws_startup_access
+if (( local_maintenance_mode == 0 )); then
+	if [[ "$mode" == "detached_child" ]]; then
+		echo "Detached supervisor running for ports $frontend_port/$backend_port/$docs_port"
+		echo "Starting backend on http://localhost:$backend_port (log: backend.log)"
+	else
+		echo "Starting backend on http://localhost:$backend_port (log: backend.log, streaming enabled)"
 	fi
-	tail -n 80 backend.log || true
-	exit 1
+	start_backend
+
+	if ! wait_for_http "Backend" "http://localhost:$backend_port/api/health" "$backend_pid"; then
+		echo "Backend failed to start. Last backend log lines:"
+		if aws_startup_access_issue_detected; then
+			diagnose_aws_startup_access
+		fi
+		tail -n 80 backend.log || true
+		exit 1
+	fi
+else
+	echo "Local maintenance mode enabled; skipping backend startup."
 fi
 
 if [[ "$mode" == "detached_child" ]]; then
@@ -689,21 +703,23 @@ if ! wait_for_http "Frontend" "http://localhost:$frontend_port" "$frontend_pid";
 	exit 1
 fi
 
-if ! require_http_status \
-	"Backend workspace bootstrap" \
-	"http://localhost:$backend_port/api/workspace/bootstrap?limit=20" \
-	"200"; then
-	echo "Backend is up, but the workspace bootstrap request failed."
-	if aws_startup_access_issue_detected; then
-		diagnose_aws_startup_access
-		echo "Startup failed because backend AWS access is unavailable."
-		echo "Last backend log lines:"
-		tail -n 80 backend.log || true
-		exit 1
-	else
-		echo "Last backend log lines:"
-		tail -n 80 backend.log || true
-		exit 1
+if (( local_maintenance_mode == 0 )); then
+	if ! require_http_status \
+		"Backend workspace bootstrap" \
+		"http://localhost:$backend_port/api/workspace/bootstrap?limit=20" \
+		"200"; then
+		echo "Backend is up, but the workspace bootstrap request failed."
+		if aws_startup_access_issue_detected; then
+			diagnose_aws_startup_access
+			echo "Startup failed because backend AWS access is unavailable."
+			echo "Last backend log lines:"
+			tail -n 80 backend.log || true
+			exit 1
+		else
+			echo "Last backend log lines:"
+			tail -n 80 backend.log || true
+			exit 1
+		fi
 	fi
 fi
 
@@ -715,13 +731,26 @@ fi
 
 echo "App is ready:"
 echo "- Frontend: http://localhost:$frontend_port"
-echo "- Backend:  http://localhost:$backend_port"
 echo "- Docs:     http://localhost:$docs_port"
+
+if (( local_maintenance_mode == 0 )); then
+	echo "- Backend:  http://localhost:$backend_port"
+else
+	echo "- Backend:  skipped (LOCAL_APP_MAINTENANCE_MODE=1)"
+fi
 
 start_mobile_shell
 
 if [[ -n "${mobile_pid:-}" ]]; then
-	wait $backend_pid $frontend_pid $docs_pid $mobile_pid
+	if (( local_maintenance_mode == 0 )); then
+		wait $backend_pid $frontend_pid $docs_pid $mobile_pid
+	else
+		wait $frontend_pid $docs_pid $mobile_pid
+	fi
 else
-	wait $backend_pid $frontend_pid $docs_pid
+	if (( local_maintenance_mode == 0 )); then
+		wait $backend_pid $frontend_pid $docs_pid
+	else
+		wait $frontend_pid $docs_pid
+	fi
 fi

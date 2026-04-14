@@ -31,9 +31,44 @@ permissions:
   id-token: write
 
 jobs:
+  runtime-mode:
+    name: Runtime Mode
+    runs-on: ubuntu-latest
+    outputs:
+      app_runtime_mode: ${{ steps.mode.outputs.app_runtime_mode }}
+      maintenance_mode: ${{ steps.mode.outputs.maintenance_mode }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
+      - name: Resolve runtime mode
+        id: mode
+        run: |
+          set -euo pipefail
+
+          mode="$(sed -n 's/^APP_RUNTIME_MODE=//p' .github/runtime-mode.env | tail -n 1 | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+          if [ -z "$mode" ]; then
+            mode="live"
+          fi
+
+          maintenance_mode=false
+          if [ "$mode" = "maintenance" ]; then
+            maintenance_mode=true
+          fi
+
+          {
+            echo "app_runtime_mode=$mode"
+            echo "maintenance_mode=$maintenance_mode"
+          } >> "$GITHUB_OUTPUT"
+
   detect-changes:
     name: Detect Deploy Changes
     runs-on: ubuntu-latest
+    needs:
+      - runtime-mode
     outputs:
       backend: ${{ steps.changes.outputs.backend }}
       docs: ${{ steps.changes.outputs.docs }}
@@ -114,18 +149,21 @@ jobs:
 
   checks:
     name: Checks
+    needs:
+      - runtime-mode
     uses: ./.github/workflows/validation.yml
     with:
-      run_backend: true
+      run_backend: ${{ needs.runtime-mode.outputs.maintenance_mode != 'true' }}
       run_frontend: true
       run_docs: true
 
   deploy-backend:
     name: Deploy Backend
     needs:
+      - runtime-mode
       - detect-changes
       - checks
-    if: needs.detect-changes.outputs.backend == 'true'
+    if: needs.detect-changes.outputs.backend == 'true' && needs.runtime-mode.outputs.maintenance_mode != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -241,6 +279,7 @@ jobs:
   deploy-docs:
     name: Deploy Docs
     needs:
+      - runtime-mode
       - detect-changes
       - checks
     if: needs.detect-changes.outputs.docs == 'true'
@@ -278,6 +317,7 @@ jobs:
   deploy-frontend:
     name: Deploy Frontend
     needs:
+      - runtime-mode
       - detect-changes
       - checks
       - deploy-backend
@@ -310,7 +350,11 @@ jobs:
         run: |
           set -euo pipefail
 
-          backend_url="$(gcloud run services describe "${APP_NAME}-backend" --project "$PROJECT_ID" --region "$REGION" --format='value(status.url)')"
+          if [ "${{ needs.runtime-mode.outputs.maintenance_mode }}" = "true" ]; then
+            backend_url=""
+          else
+            backend_url="$(gcloud run services describe "${APP_NAME}-backend" --project "$PROJECT_ID" --region "$REGION" --format='value(status.url)')"
+          fi
           docs_url="${DOCS_URL_OVERRIDE:-https://${PROJECT_ID}-docs.web.app}"
 
           echo "backend_url=$backend_url" >> "$GITHUB_OUTPUT"
@@ -342,6 +386,7 @@ jobs:
           VITE_API_BASE: ${{ steps.service_urls.outputs.backend_url }}
           PUBLIC_DOCS_URL: ${{ steps.service_urls.outputs.docs_url }}
           PUBLIC_CONTACT_EMAIL: ${{ vars.CONTACT_EMAIL }}
+          PUBLIC_APP_MAINTENANCE_MODE: ${{ needs.runtime-mode.outputs.maintenance_mode == 'true' && '1' || '0' }}
           PUBLIC_FIREBASE_API_KEY: ${{ steps.frontend_build_env.outputs.public_firebase_api_key }}
           PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ steps.frontend_build_env.outputs.public_firebase_auth_domain }}
           PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
@@ -351,3 +396,34 @@ jobs:
 
       - name: Deploy Frontend to Firebase Hosting
         run: bunx firebase-tools@15.12.0 deploy --only hosting:app --project "$PROJECT_ID" --non-interactive
+
+  disable-backend-for-maintenance:
+    name: Disable Backend For Maintenance
+    needs:
+      - runtime-mode
+      - checks
+      - deploy-docs
+      - deploy-frontend
+    if: needs.runtime-mode.outputs.maintenance_mode == 'true' && needs.deploy-docs.result != 'failure' && needs.deploy-frontend.result != 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Google Auth
+        uses: google-github-actions/auth@v3.0.0
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_WIF_SA_EMAIL }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v3.0.0
+
+      - name: Delete backend Cloud Run service
+        run: |
+          set -euo pipefail
+
+          if gcloud run services describe "${APP_NAME}-backend" --project "$PROJECT_ID" --region "$REGION" >/dev/null 2>&1; then
+            gcloud run services delete "${APP_NAME}-backend" --project "$PROJECT_ID" --region "$REGION" --quiet
+          else
+            echo "Backend service already absent."
+          fi

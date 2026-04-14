@@ -29,29 +29,24 @@ Deeper domain-specific guidance belongs in dedicated docs and should be linked f
 - Avoid unnecessary jargon, layered metaphors, and inflated product language.
 - If a sentence can be shorter or more concrete without losing meaning, rewrite it.
 
-## Secrets and production config
+## Env and secrets strategy
 
 **Follow these rules**
+- Local app config lives in the shared machine-local env files:
+  - `~/.config/dastill/backend.env`
+  - `~/.config/dastill/frontend.env`
+- Use [`./scripts/link_shared_env.sh`](./scripts/link_shared_env.sh) to link repo-local `.env` files to that shared location.
+- Do not hardcode required env values in [`start_app.sh`](./start_app.sh) or commit secrets into repo files.
 - Sensitive values for production belong in **GCP Secret Manager**, managed by **Terraform** from your local **`terraform.tfvars`** (same pattern as `youtube_api_key`, `backend_proxy_token`, `firebase_web_api_key`, etc.).
+- Production runtime config has only two sources:
+  1. **Secret Manager** for sensitive values.
+  2. **Cloud Run service configuration** for non-secret values.
+- CI credentials are only for CI authentication to GCP, not for storing app secrets.
+- If a workflow passes a value through CI, treat that as transport, not as the source of truth.
 
-Terraform creates the secrets, writes secret versions from tfvars, and grants **Cloud Run** service accounts plus the **GitHub Actions deploy** service account `roles/secretmanager.secretAccessor` on the relevant secrets. See `terraform/secrets.tf` and `terraform/iam.tf`.
-
-The **Release** workflow (`.github/workflows/deploy.yml`) deploys to Cloud Run. All production environment variables must come from one of two sources:
-1. **Secret Manager** — for sensitive values (API keys, tokens). Mounted as Cloud Run secret env vars.
-2. **Cloud Run service configuration** — for non-secret runtime config. Set via the deploy workflow's env-vars file or `gcloud run deploy` flags.
-
-GitHub repository **variables** (`vars.*`) are only used as an intermediate transport inside the deploy workflow to populate the Cloud Run env-vars file. They are not a runtime config store themselves.
-
-**Anti-patterns to avoid**
-
-- Application API keys or tokens in GitHub repository variables (use Terraform and Secret Manager instead).
-- Treating GitHub vars as the source of truth for runtime config. The source of truth is the Cloud Run service definition.
-
-**CI**
-
-GitHub **encrypted secrets** in the repo are only for **CI authentication to GCP** (e.g. WIF and project id), not for storing app credentials.
-
-Full list of boundaries, Firebase, and CI steps: [docs/operations/deployment.md](./docs/operations/deployment.md).
+Source-of-truth details:
+- local dev env flow: [docs/operations/local-development.md](./docs/operations/local-development.md)
+- production boundaries, Terraform, Secret Manager, and deploy behavior: [docs/operations/deployment.md](./docs/operations/deployment.md)
 
 # Developer Guide
 
