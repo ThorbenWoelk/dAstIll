@@ -47,7 +47,7 @@ jobs:
         uses: google-github-actions/setup-gcloud@v3.0.0
 
       - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_wrapper: false
 
@@ -79,7 +79,18 @@ jobs:
         working-directory: terraform
         run: terraform validate -no-color
 
+      - name: Skip Terraform Plan
+        if: github.event_name == 'pull_request' && env.TERRAFORM_STATE_BUCKET == ''
+        run: |
+          {
+            echo "### Terraform plan"
+            echo
+            echo "Skipped on pull requests because \`TERRAFORM_STATE_BUCKET\` is not configured."
+            echo "Fmt and validate still ran. Full plan/apply remains required on non-PR infra runs."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Terraform Plan
+        if: github.event_name != 'pull_request' || env.TERRAFORM_STATE_BUCKET != ''
         id: plan
         working-directory: terraform
         run: |
