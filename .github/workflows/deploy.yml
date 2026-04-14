@@ -117,7 +117,7 @@ jobs:
     name: Checks
     uses: ./.github/workflows/validation.yml
     with:
-      run_backend: true
+      run_backend: ${{ env.PRODUCTION_APP_MAINTENANCE_MODE != '1' }}
       run_frontend: true
       run_docs: true
 

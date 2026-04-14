@@ -328,6 +328,11 @@ still see `frontend/.env`.
 
 The Tauri Android dev shell uses the same shared/local frontend env files. When `VITE_API_BASE` is unset and the app is running from `http://tauri.localhost`, the frontend falls back to `http://127.0.0.1:3544`, which matches the `adb reverse` mapping created by `./start_app.sh`.
 
+If you want local frontend commands to mirror the maintenance site without relying on hardcoded values, put
+the support link in `~/.config/dastill/frontend.env` as `PUBLIC_SUPPORT_URL=...`. For direct frontend-only runs
+you can also set `PUBLIC_APP_MAINTENANCE_MODE=1`, but `./start_app.sh` still uses `LOCAL_APP_MAINTENANCE_MODE=1`
+as the primary switch and injects the frontend maintenance flag for that launch.
+
 ## Shared Env Directory
 
 The recommended local env layout is:

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { CONTACT_EMAIL, DOCS_URL } from "$lib/app-config";
+  import { CONTACT_EMAIL, DOCS_URL, SUPPORT_URL } from "$lib/app-config";
 </script>
 
 <svelte:head>
@@ -27,18 +27,29 @@
     <p
       class="mt-6 max-w-xl text-base leading-7 text-[var(--soft-foreground)] sm:text-lg"
     >
-      The app is paused for the rest of this billing cycle. We’ll bring
-      dAstIll back soon.
+      The app is paused for the rest of this billing cycle. We’ll bring dAstIll
+      back soon.
     </p>
 
     <div
       class="mt-10 flex flex-col gap-4 text-sm text-[var(--soft-foreground)] sm:flex-row sm:items-center sm:gap-6"
     >
+      {#if SUPPORT_URL}
+        <a
+          class="w-fit text-[var(--foreground)] underline decoration-[var(--accent)] underline-offset-4 transition-colors hover:text-[var(--accent)]"
+          href={SUPPORT_URL}
+          rel="noopener noreferrer"
+          target="_blank"
+        >
+          Support dAstIll via Stripe
+        </a>
+      {/if}
+
       <a
         class="w-fit text-[var(--foreground)] underline decoration-[var(--accent)] underline-offset-4 transition-colors hover:text-[var(--accent)]"
         href={DOCS_URL}
       >
-        Browse the docs if you'd like to learn more.
+        Browse the docs to find out more
       </a>
 
       {#if CONTACT_EMAIL}
