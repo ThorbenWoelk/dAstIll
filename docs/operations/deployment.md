@@ -43,11 +43,62 @@ Secrets are stored in GCP Secret Manager for:
 - `BACKEND_PROXY_TOKEN`
 - `TURSO_AUTH_TOKEN` (when Turso-backed keyword search is enabled in production)
 - `DATABRICKS_TOKEN` (only when Databricks ingestion is configured)
-- `firebase_web_api_key` and `firebase_auth_domain` (product frontend; Terraform derives both from the Firebase web app config and writes them to Secret Manager)
+- `firebase_web_api_key` and `firebase_auth_domain` (product frontend; the infra workflow derives both from the Firebase web app config and syncs them to Secret Manager after apply)
 
-`YOUTUBE_API_KEY` is project-scoped. When the target GCP project changes, create a fresh key in that project, update `youtube_api_key` in `terraform.tfvars`, run `terraform apply`, and redeploy the backend so Cloud Run mounts the new Secret Manager version.
+Terraform owns the secret containers and IAM bindings only. Add or rotate secret payloads directly in Secret Manager with `gcloud secrets versions add ...` or the Cloud Console; do not put app credentials in `terraform.tfvars`.
 
-`OPEN_ALEX_API_KEY` should be managed the same way for production. Put it in `terraform.tfvars` as `openalex_api_key`, run `terraform apply`, and redeploy the backend so Cloud Run mounts the latest Secret Manager version.
+`YOUTUBE_API_KEY` is project-scoped. When the target GCP project changes, create a fresh key in that project, add a new Secret Manager version for `dastill-youtube-api-key`, and redeploy the backend so Cloud Run mounts the new version.
+
+`OPEN_ALEX_API_KEY` should be managed the same way for production. Add a new Secret Manager version for `dastill-openalex-api-key` and redeploy the backend so Cloud Run mounts the latest version.
+
+### Secret bootstrap and rotation
+
+Use this flow when provisioning a new project, filling a newly created secret container, or rotating an existing value.
+
+1. Apply Terraform first so the secret containers and IAM bindings exist.
+2. Add the secret payload as a new Secret Manager version.
+3. Redeploy the surfaces that consume that secret.
+
+Example shape:
+
+```bash
+printf '%s' "$YOUTUBE_API_KEY" | \
+  gcloud secrets versions add dastill-youtube-api-key \
+    --project "$PROJECT_ID" \
+    --data-file=-
+```
+
+Backend/runtime secrets currently expected by infra and release workflows:
+
+- `dastill-youtube-api-key`
+- `dastill-openalex-api-key`
+- `dastill-ollama-api-key`
+- `dastill-logfire-token`
+- `dastill-backend-proxy-token`
+- `dastill-turso-auth-token`
+- `dastill-databricks-token`
+
+Frontend build secrets:
+
+- `dastill-firebase-web-api-key`
+- `dastill-firebase-auth-domain`
+
+The Firebase frontend secrets are refreshed automatically by `infra.yml` after Terraform apply. Do not hand-maintain them unless infra automation is unavailable.
+
+### Secret deprecation
+
+Secret lifecycle stays in IaC. Do not delete or rename production secrets only in the Cloud Console.
+
+When retiring a secret:
+
+1. Remove app/runtime usage first.
+2. Remove deploy-time references from workflows such as `.github/workflows/deploy.yml` and `.github/workflows/infra.yml`.
+3. Remove IAM references from `terraform/iam.tf`.
+4. Remove the secret resource from `terraform/secrets.tf`.
+5. Update this document and any runbooks that still mention the secret.
+6. Apply Terraform so the managed secret container is destroyed or the IaC state matches the new desired posture.
+
+If you need a safer staged retirement, first remove all consumers but keep the Terraform resource with a short `deprecated` comment for one release cycle, then delete the resource in a follow-up Terraform change. Still IaC. No console-only cleanup.
 
 Non-secret backend runtime config is passed as plain env values for:
 
@@ -85,13 +136,13 @@ Non-secret product frontend runtime config is passed as plain env values for:
 
 The frontend uses the Firebase JS SDK in the browser and in the Tauri WebView. Signed-in requests send the Firebase ID token directly to the backend as `Authorization: Bearer <token>`. The web client reads **`PUBLIC_FIREBASE_API_KEY`**, **`PUBLIC_FIREBASE_AUTH_DOMAIN`**, and **`PUBLIC_FIREBASE_PROJECT_ID`** at build time.
 
-**Terraform (`terraform.tfvars`, not GitHub Variables):** Terraform creates the Firebase project resources and web app, then reads the effective Web API key and auth domain from the Firebase web app config data source before writing them to Secret Manager. Run `terraform apply` so secrets `dastill-firebase-web-api-key` and `dastill-firebase-auth-domain` exist and the GitHub Actions deploy identity can read them during Hosting builds.
+**Terraform + infra CI:** Terraform creates the Firebase project resources, secret containers, and IAM. The infra workflow then reads the effective Web API key and auth domain from the Firebase Management API and syncs them to Secret Manager without storing them in Terraform state.
 
 **Google sign-in:** anonymous auth stays enabled through Identity Platform. Google sign-in itself is managed through the repo-root [`firebase.json`](../../firebase.json) and should be deployed separately with `bunx firebase-tools@15.12.0 deploy --only auth --project "$PROJECT_ID" --non-interactive` when provisioning a new project or when that file changes. That lets Firebase provision the correct project-local Google OAuth client for the web app instead of reusing a copied client ID/secret from another project.
 
 **Runtime mode source of truth:** the checked-in file `.github/runtime-mode.env` controls whether the repo is in normal or maintenance posture. CI and release workflows read that file before deciding whether backend validation/deploy should run and whether the frontend should build in maintenance mode.
 
-**Release workflow:** resolves the Terraform-managed frontend Firebase secrets `dastill-firebase-web-api-key` and `dastill-firebase-auth-domain` before building the static frontend bundle. It passes those values into the build together with `VITE_API_BASE`, `PUBLIC_DOCS_URL`, `PUBLIC_CONTACT_EMAIL`, `PUBLIC_APP_MAINTENANCE_MODE`, and `PUBLIC_FIREBASE_PROJECT_ID`. Routine releases do not redeploy Firebase Auth config.
+**Release workflow:** resolves the frontend Firebase secrets `dastill-firebase-web-api-key` and `dastill-firebase-auth-domain` before building the static frontend bundle. It passes those values into the build together with `VITE_API_BASE`, `PUBLIC_DOCS_URL`, `PUBLIC_CONTACT_EMAIL`, `PUBLIC_APP_MAINTENANCE_MODE`, and `PUBLIC_FIREBASE_PROJECT_ID`. Routine releases do not redeploy Firebase Auth config.
 
 When `APP_RUNTIME_MODE=maintenance` is set in `.github/runtime-mode.env`, the app frontend is built with `PUBLIC_APP_MAINTENANCE_MODE=1`, backend validation is skipped in CI/release, and the workflow deletes the Cloud Run backend service after the maintenance frontend/docs deploy succeeds.
 
@@ -106,8 +157,8 @@ To cut over from a previous GCP project to the current `dastill` project:
 1. Create or gain access to the `dastill` GCP project, attach billing, and decide the Firestore location before the first apply. The repo now exposes `firestore_location_id` explicitly; the example uses `eur3`.
 2. Update your local `terraform.tfvars` for the new target project. Set `project_id = "dastill"` and keep `app_name = "dastill"` unless you intentionally want new GCP/AWS resource names. If the GitHub Workload Identity Pool lives outside the target project, also set `github_wif_pool_project_number`; otherwise it defaults to the active project number.
 3. Decide how Terraform state will handle the shared AWS resources. Buckets, vector buckets, and the `dastill-gcp-backend` AWS role are keyed by `app_name`, not `project_id`. Reusing the existing state is the simplest cutover. If you start from a fresh state backend, import the existing AWS resources before apply or intentionally rename `app_name` and migrate that data separately.
-4. Apply Terraform against the new project and record the outputs you need for GitHub. At minimum, update repository secrets `GCP_PROJECT_ID`, `GCP_WIF_PROVIDER`, and `GCP_WIF_SA_EMAIL` (the latter is available from `terraform output github_actions_sa_email`). Update repository vars that are outside Terraform ownership in this repo, especially `AWS_ROLE_ARN`, `AWS_WIF_AUDIENCE`, bucket/index names, `TURSO_DB_URL` when Turso is enabled, CORS origins, contact email, and any Databricks settings.
-5. Rotate project-local API keys and tokens before cutover. In particular, create a fresh `YOUTUBE_API_KEY` in the new GCP project, update both local `~/.config/dastill/backend.env` and Terraform-managed `youtube_api_key` in `terraform.tfvars`, then `terraform apply` so Secret Manager and Cloud Run stop using the previous project's key.
+4. Apply Terraform against the new project and record the outputs you need for GitHub. At minimum, update repository secrets `GCP_PROJECT_ID`, `GCP_WIF_PROVIDER`, and `GCP_WIF_SA_EMAIL` (the latter is available from `terraform output github_actions_sa_email`) and set repository variable `TERRAFORM_STATE_BUCKET` to the shared GCS state bucket name used by infra CI. Update repository vars that are outside Terraform ownership in this repo, especially `AWS_ROLE_ARN`, `AWS_WIF_AUDIENCE`, bucket/index names, `TURSO_DB_URL` when Turso is enabled, CORS origins, contact email, and any Databricks settings.
+5. Rotate project-local API keys and tokens before cutover. In particular, create a fresh `YOUTUBE_API_KEY` in the new GCP project, update both local `~/.config/dastill/backend.env` and the `dastill-youtube-api-key` secret in Secret Manager, then redeploy the backend so Cloud Run stops using the previous project's key.
 6. Migrate Firestore data explicitly. The app switches to the new database as soon as `GCP_PROJECT_ID` changes, so export from the source project and import into `dastill` before frontend/backend cutover. Example shape:
 
 ```bash
@@ -118,23 +169,25 @@ gcloud firestore import gs://<shared-migration-bucket>/<export-prefix> \
   --project=dastill
 ```
 
-7. Enable Firebase on the new project, set any optional Firebase Terraform inputs you need such as `firebase_authorized_domains_extra`, then re-apply Terraform so it creates the web app, the docs Hosting site, refreshes Secret Manager with the effective frontend Firebase values, and updates authorized domains through Identity Platform. Keep Google sign-in configuration in the repo-root `firebase.json` and deploy it separately with `bunx firebase-tools@15.12.0 deploy --only auth --project "$PROJECT_ID" --non-interactive`.
+7. Enable Firebase on the new project, set any optional Firebase Terraform inputs you need such as `firebase_authorized_domains_extra`, then re-apply Terraform so it creates the web app, the docs Hosting site, and updates authorized domains through Identity Platform. The infra workflow will refresh the frontend Firebase secrets in Secret Manager after apply. Keep Google sign-in configuration in the repo-root `firebase.json` and deploy it separately with `bunx firebase-tools@15.12.0 deploy --only auth --project "$PROJECT_ID" --non-interactive`.
 8. Re-run the release workflow after the GitHub secret/var cutover so the backend Cloud Run service and the frontend/docs Hosting targets pick up the new project ID, Firebase config, backend URL, docs URL, and the latest Secret Manager versions.
 
 ## CI/CD Flow
 
-The GitHub Actions workflow:
+The GitHub Actions workflows:
 
 ```text
 1. Runs repo hygiene on every validation run
-2. Detects which of `backend/`, `frontend/`, `docs/`, and the root Firebase Hosting config changed
-3. Runs only the matching backend/frontend/docs validation jobs on push and pull request events
-4. On `main`, builds and deploys only the surfaces with deploy-relevant changes
-5. Skips deploys for trivial-only service changes such as `.gitignore`, README, and test-only frontend/backend changes
-6. Resolves the backend Cloud Run URL and a stable docs Hosting URL when the frontend itself is being deployed
-7. Deploys the backend with runtime env including S3/AWS config, `START_APP_USE_TURSO=1`, `TURSO_DB_URL`, and Secret Manager mounts such as `TURSO_AUTH_TOKEN` when enabled
-8. Builds the static frontend and docs bundles with Bun, then deploys them with Firebase CLI using Workload Identity Federation credentials
-9. Builds Android APK artifacts through `.github/workflows/android.yml` when mobile changes are pushed or manually requested
+2. Runs `infra.yml` for `terraform/**` changes: fmt, validate, plan on PRs; apply on `main`; then syncs the Firebase frontend config into Secret Manager
+3. Detects which of `backend/`, `frontend/`, `docs/`, and the root Firebase Hosting config changed
+4. Runs only the matching backend/frontend/docs validation jobs on push and pull request events
+5. On `main`, waits for infra apply to finish before app deployment when the same push touched `terraform/**`
+6. Builds and deploys only the surfaces with deploy-relevant changes
+7. Skips deploys for trivial-only service changes such as `.gitignore`, README, and test-only frontend/backend changes
+8. Resolves the backend Cloud Run URL and a stable docs Hosting URL when the frontend itself is being deployed
+9. Deploys the backend with runtime env including S3/AWS config, `START_APP_USE_TURSO=1`, `TURSO_DB_URL`, and Secret Manager mounts such as `TURSO_AUTH_TOKEN` when enabled
+10. Builds the static frontend and docs bundles with Bun, then deploys them with Firebase CLI using Workload Identity Federation credentials
+11. Builds Android APK artifacts through `.github/workflows/android.yml` when mobile changes are pushed or manually requested
 ```
 
 ## Docker Layout
@@ -168,7 +221,7 @@ Production defaults to plain FTS mode unless `SEARCH_SEMANTIC_ENABLED=true` is i
 Keyword search can also use Turso/libSQL for durable FTS storage via direct remote queries. In that setup:
 
 - production Cloud Run should set `START_APP_USE_TURSO=1`
-- set `turso_auth_token` in `terraform.tfvars` and run `terraform apply`
+- add a fresh secret version to `dastill-turso-auth-token`
 - set GitHub repository variable `TURSO_DB_URL=libsql://...`
 - rerun the Release workflow so Cloud Run mounts `TURSO_AUTH_TOKEN` and passes `TURSO_DB_URL`
 

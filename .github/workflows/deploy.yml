@@ -27,6 +27,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 permissions:
+  actions: read
   contents: read
   id-token: write
 
@@ -70,6 +71,7 @@ jobs:
     needs:
       - runtime-mode
     outputs:
+      infra: ${{ steps.changes.outputs.infra }}
       backend: ${{ steps.changes.outputs.backend }}
       docs: ${{ steps.changes.outputs.docs }}
       frontend: ${{ steps.changes.outputs.frontend }}
@@ -87,6 +89,7 @@ jobs:
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             {
+              echo "infra=false"
               echo "backend=true"
               echo "docs=true"
               echo "frontend=true"
@@ -101,6 +104,7 @@ jobs:
 
           if [ -z "$before_sha" ]; then
             {
+              echo "infra=false"
               echo "backend=true"
               echo "docs=true"
               echo "frontend=true"
@@ -110,12 +114,16 @@ jobs:
 
           changed_files="$(git diff --name-only "$before_sha" "$GITHUB_SHA")"
 
+          infra=false
           backend=false
           docs=false
           frontend=false
 
           while IFS= read -r path; do
             case "$path" in
+              terraform/*|.github/workflows/infra.yml)
+                infra=true
+                ;;
               backend/*)
                 backend=true
                 ;;
@@ -142,6 +150,7 @@ jobs:
           EOF
 
           {
+            echo "infra=$infra"
             echo "backend=$backend"
             echo "docs=$docs"
             echo "frontend=$frontend"
@@ -157,13 +166,61 @@ jobs:
       run_frontend: true
       run_docs: true
 
+  wait-for-infra:
+    name: Wait For Infra
+    needs:
+      - detect-changes
+      - checks
+    if: github.event_name == 'push' && needs.detect-changes.outputs.infra == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Wait for infra workflow completion
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TARGET_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          for _ in $(seq 1 180); do
+            run_json="$(gh api "/repos/${REPOSITORY}/actions/workflows/infra.yml/runs?event=push&head_sha=${TARGET_SHA}&per_page=1")"
+            run_count="$(jq '.workflow_runs | length' <<<"$run_json")"
+
+            if [ "$run_count" -eq 0 ]; then
+              sleep 10
+              continue
+            fi
+
+            run_status="$(jq -r '.workflow_runs[0].status' <<<"$run_json")"
+            run_conclusion="$(jq -r '.workflow_runs[0].conclusion // empty' <<<"$run_json")"
+
+            if [ "$run_status" != "completed" ]; then
+              sleep 10
+              continue
+            fi
+
+            if [ "$run_conclusion" = "success" ]; then
+              echo "Infra workflow completed successfully for ${TARGET_SHA}."
+              exit 0
+            fi
+
+            echo "::error::Infra workflow concluded with ${run_conclusion:-unknown} for ${TARGET_SHA}."
+            exit 1
+          done
+
+          echo "::error::Timed out waiting for infra workflow on ${TARGET_SHA}."
+          exit 1
+
   deploy-backend:
     name: Deploy Backend
     needs:
       - runtime-mode
       - detect-changes
       - checks
-    if: needs.detect-changes.outputs.backend == 'true' && needs.runtime-mode.outputs.maintenance_mode != 'true'
+      - wait-for-infra
+    if: needs.detect-changes.outputs.backend == 'true' && needs.runtime-mode.outputs.maintenance_mode != 'true' && needs.wait-for-infra.result != 'failure' && needs.wait-for-infra.result != 'cancelled'
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -282,7 +339,8 @@ jobs:
       - runtime-mode
       - detect-changes
       - checks
-    if: needs.detect-changes.outputs.docs == 'true'
+      - wait-for-infra
+    if: needs.detect-changes.outputs.docs == 'true' && needs.wait-for-infra.result != 'failure' && needs.wait-for-infra.result != 'cancelled'
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -320,8 +378,9 @@ jobs:
       - runtime-mode
       - detect-changes
       - checks
+      - wait-for-infra
       - deploy-backend
-    if: always() && needs.detect-changes.outputs.frontend == 'true' && needs.deploy-backend.result != 'failure'
+    if: always() && needs.detect-changes.outputs.frontend == 'true' && needs.wait-for-infra.result != 'failure' && needs.wait-for-infra.result != 'cancelled' && needs.deploy-backend.result != 'failure'
     runs-on: ubuntu-latest
     timeout-minutes: 60
 

@@ -37,7 +37,19 @@ Deeper domain-specific guidance belongs in dedicated docs and should be linked f
   - `~/.config/dastill/frontend.env`
 - Use [`./scripts/link_shared_env.sh`](./scripts/link_shared_env.sh) to link repo-local `.env` files to that shared location.
 - Do not hardcode required env values in [`start_app.sh`](./start_app.sh) or commit secrets into repo files.
-- Sensitive values for production belong in **GCP Secret Manager**, managed by **Terraform** from your local **`terraform.tfvars`** (same pattern as `youtube_api_key`, `backend_proxy_token`, `firebase_web_api_key`, etc.).
+- Sensitive values for production belong in **GCP Secret Manager**. Terraform creates the secret containers and IAM bindings; secret payloads are written directly in Secret Manager and must not be stored in Terraform state.
+- Secret bootstrap/rotation flow:
+  1. Apply Terraform first so secret container and IAM exist.
+  2. Add secret payload with `gcloud secrets versions add <secret-name> --project "$PROJECT_ID" --data-file=-`.
+  3. Redeploy consumer so latest secret version is picked up.
+- `infra.yml` auto-syncs only Firebase frontend build secrets (`dastill-firebase-web-api-key`, `dastill-firebase-auth-domain`) after Terraform apply. All other app secrets are still manual Secret Manager version adds.
+- Current non-Firebase secrets expected in production: `dastill-youtube-api-key`, `dastill-openalex-api-key`, `dastill-ollama-api-key`, `dastill-logfire-token`, `dastill-backend-proxy-token`, `dastill-turso-auth-token`, `dastill-databricks-token`.
+- Secret deprecation stays IaC:
+  1. Remove consumers.
+  2. Remove workflow refs.
+  3. Remove IAM refs in `terraform/iam.tf`.
+  4. Remove secret resource in `terraform/secrets.tf`.
+  5. Apply Terraform. No console-only cleanup as source of truth.
 - Production runtime config has only two sources:
   1. **Secret Manager** for sensitive values.
   2. **Cloud Run service configuration** for non-secret values.

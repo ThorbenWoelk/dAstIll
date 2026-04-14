@@ -1,0 +1,193 @@
+name: Infra
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/infra.yml"
+      - "terraform/**"
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/infra.yml"
+      - "terraform/**"
+  workflow_dispatch:
+
+concurrency:
+  group: infra-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  APP_NAME: dastill
+  TERRAFORM_STATE_BUCKET: ${{ vars.TERRAFORM_STATE_BUCKET }}
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  terraform:
+    name: Terraform
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+
+      - name: Google Auth
+        uses: google-github-actions/auth@v3.0.0
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_WIF_SA_EMAIL }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v3.0.0
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Check Terraform backend config
+        run: |
+          set -euo pipefail
+
+          if [ -z "${TERRAFORM_STATE_BUCKET:-}" ]; then
+            echo "::error::Set the TERRAFORM_STATE_BUCKET repository variable before running infra CI."
+            exit 1
+          fi
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init -input=false -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
+
+      - name: Terraform Fmt
+        working-directory: terraform
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Validate
+        working-directory: terraform
+        run: terraform validate -no-color
+
+      - name: Terraform Plan
+        id: plan
+        working-directory: terraform
+        run: |
+          set +e
+          terraform plan -input=false -no-color -detailed-exitcode -out=tfplan > /tmp/terraform-plan.txt
+          status=$?
+          set -e
+
+          case "$status" in
+            0)
+              echo "changes=false" >> "$GITHUB_OUTPUT"
+              ;;
+            2)
+              echo "changes=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              cat /tmp/terraform-plan.txt
+              exit "$status"
+              ;;
+          esac
+
+          {
+            echo "### Terraform plan"
+            echo
+            echo '```text'
+            sed -n '1,200p' /tmp/terraform-plan.txt
+            if [ "$(wc -l < /tmp/terraform-plan.txt)" -gt 200 ]; then
+              echo
+              echo "... (truncated)"
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Terraform Apply
+        if: github.event_name != 'pull_request' && steps.plan.outputs.changes == 'true'
+        working-directory: terraform
+        run: terraform apply -input=false -auto-approve tfplan
+
+      - name: Sync Firebase frontend config
+        if: github.event_name != 'pull_request'
+        env:
+          FIREBASE_CONFIG_ENDPOINT: https://firebase.googleapis.com/v1beta1/projects/-/webApps
+        working-directory: terraform
+        run: |
+          set -euo pipefail
+
+          sync_secret_version() {
+            local secret_name="$1"
+            local desired_value="$2"
+            local current_value=""
+
+            if gcloud secrets describe "$secret_name" --project "$PROJECT_ID" >/dev/null 2>&1; then
+              current_value="$(gcloud secrets versions access latest --secret="$secret_name" --project "$PROJECT_ID" 2>/dev/null || true)"
+            fi
+
+            if [ "$current_value" = "$desired_value" ]; then
+              echo "Secret $secret_name already matches the current Firebase config."
+              return
+            fi
+
+            printf '%s' "$desired_value" | gcloud secrets versions add "$secret_name" --project "$PROJECT_ID" --data-file=- >/dev/null
+            echo "Updated secret $secret_name."
+          }
+
+          web_app_id="$(terraform output -raw firebase_web_app_id)"
+          access_token="$(gcloud auth print-access-token)"
+          firebase_config="$(curl --fail --silent --show-error \
+            --header "Authorization: Bearer ${access_token}" \
+            "${FIREBASE_CONFIG_ENDPOINT}/${web_app_id}/config")"
+          firebase_api_key="$(jq -r '.apiKey' <<<"$firebase_config")"
+          firebase_auth_domain="$(jq -r '.authDomain' <<<"$firebase_config")"
+
+          if [ -z "$firebase_api_key" ] || [ "$firebase_api_key" = "null" ]; then
+            echo "::error::Firebase Management API did not return apiKey for ${web_app_id}."
+            exit 1
+          fi
+
+          if [ -z "$firebase_auth_domain" ] || [ "$firebase_auth_domain" = "null" ]; then
+            echo "::error::Firebase Management API did not return authDomain for ${web_app_id}."
+            exit 1
+          fi
+
+          sync_secret_version "${APP_NAME}-firebase-web-api-key" "$firebase_api_key"
+          sync_secret_version "${APP_NAME}-firebase-auth-domain" "$firebase_auth_domain"
+
+      - name: Verify runtime secret versions
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+
+          missing=()
+          required_secrets=(
+            "${APP_NAME}-openalex-api-key"
+            "${APP_NAME}-youtube-api-key"
+            "${APP_NAME}-ollama-api-key"
+            "${APP_NAME}-logfire-token"
+            "${APP_NAME}-backend-proxy-token"
+            "${APP_NAME}-turso-auth-token"
+            "${APP_NAME}-databricks-token"
+            "${APP_NAME}-firebase-web-api-key"
+            "${APP_NAME}-firebase-auth-domain"
+          )
+
+          for secret_name in "${required_secrets[@]}"; do
+            if ! gcloud secrets versions access latest --secret="$secret_name" --project "$PROJECT_ID" >/dev/null 2>&1; then
+              missing+=("$secret_name")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf '::error::Missing Secret Manager versions for: %s\n' "$(IFS=', '; echo "${missing[*]}")"
+            exit 1
+          fi
+
+          {
+            echo "### Secret Manager check"
+            echo
+            echo "Verified latest versions for ${#required_secrets[@]} required secrets."
+          } >> "$GITHUB_STEP_SUMMARY"

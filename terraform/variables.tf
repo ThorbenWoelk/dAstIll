@@ -32,67 +32,6 @@ variable "aws_region" {
   default     = "eu-central-1"
   description = "AWS region for S3 and S3 Vectors"
 }
-
-
-
-variable "youtube_api_key" {
-  type        = string
-  sensitive   = true
-  description = "YouTube API key"
-}
-
-variable "openalex_api_key" {
-  type        = string
-  sensitive   = true
-  default     = ""
-  description = "OpenAlex API key for authenticated keyword and semantic search. If non-empty, Terraform writes it to Secret Manager as <app_name>-openalex-api-key."
-}
-
-variable "ollama_api_key" {
-  type        = string
-  sensitive   = true
-  description = "Ollama API key for authenticated cloud endpoints"
-}
-
-variable "logfire_token" {
-  type        = string
-  sensitive   = true
-  description = "Logfire token for production telemetry"
-}
-
-variable "backend_proxy_token" {
-  type        = string
-  sensitive   = true
-  description = "Shared proxy secret for frontend-to-backend requests"
-}
-
-variable "turso_auth_token" {
-  type        = string
-  sensitive   = true
-  default     = ""
-  description = "Turso auth token for the backend database (videos, preferences, TTS stats, keyword search). When set, Terraform writes it to Secret Manager as <app_name>-turso-auth-token."
-}
-
-variable "databricks_token" {
-  type        = string
-  sensitive   = true
-  default     = ""
-  description = "Databricks PAT. If non-empty, Terraform manages the secret version in Secret Manager. If empty, only IAM is managed and the databricks-token secret must already exist."
-}
-
-variable "firebase_web_api_key" {
-  type        = string
-  sensitive   = true
-  default     = ""
-  description = "Firebase Web API key (Project settings > General). If non-empty, Terraform creates Secret Manager secrets for the web client. If empty, omit firebase_* from terraform.tfvars until ready."
-}
-
-variable "firebase_auth_domain" {
-  type        = string
-  default     = ""
-  description = "Firebase authDomain (e.g. project.firebaseapp.com). Leave empty to use {project_id}.firebaseapp.com."
-}
-
 variable "firebase_google_client_id" {
   type        = string
   sensitive   = true
