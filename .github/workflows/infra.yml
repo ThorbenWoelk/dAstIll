@@ -19,6 +19,8 @@ concurrency:
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   APP_NAME: dastill
+  AWS_REGION: eu-central-1
+  AWS_TERRAFORM_ROLE_ARN: arn:aws:iam::877173393100:role/dastill-github-terraform
   TERRAFORM_STATE_BUCKET: ${{ vars.TERRAFORM_STATE_BUCKET }}
   TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -46,13 +48,20 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v3.0.0
 
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.1.0
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ env.AWS_TERRAFORM_ROLE_ARN }}
+          role-session-name: github-actions-terraform
+          allowed-account-ids: "877173393100"
+
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v4
         with:
           terraform_wrapper: false
 
       - name: Check Terraform backend config
-        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
 
@@ -61,15 +70,9 @@ jobs:
             exit 1
           fi
 
-      - name: Terraform Init (PR)
-        if: github.event_name == 'pull_request'
-        working-directory: terraform
-        run: terraform init -backend=false -input=false
-
       - name: Terraform Init
-        if: github.event_name != 'pull_request'
         working-directory: terraform
-        run: terraform init -input=false -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
+        run: terraform init -reconfigure -input=false -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
 
       - name: Terraform Fmt
         working-directory: terraform
@@ -79,18 +82,7 @@ jobs:
         working-directory: terraform
         run: terraform validate -no-color
 
-      - name: Skip Terraform Plan
-        if: github.event_name == 'pull_request' && env.TERRAFORM_STATE_BUCKET == ''
-        run: |
-          {
-            echo "### Terraform plan"
-            echo
-            echo "Skipped on pull requests because \`TERRAFORM_STATE_BUCKET\` is not configured."
-            echo "Fmt and validate still ran. Full plan/apply remains required on non-PR infra runs."
-          } >> "$GITHUB_STEP_SUMMARY"
-
       - name: Terraform Plan
-        if: github.event_name != 'pull_request' || env.TERRAFORM_STATE_BUCKET != ''
         id: plan
         working-directory: terraform
         run: |

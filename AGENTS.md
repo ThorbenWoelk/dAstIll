@@ -38,6 +38,11 @@ Deeper domain-specific guidance belongs in dedicated docs and should be linked f
 - Use [`./scripts/link_shared_env.sh`](./scripts/link_shared_env.sh) to link repo-local `.env` files to that shared location.
 - Do not hardcode required env values in [`start_app.sh`](./start_app.sh) or commit secrets into repo files.
 - Sensitive values for production belong in **GCP Secret Manager**. Terraform creates the secret containers and IAM bindings; secret payloads are written directly in Secret Manager and must not be stored in Terraform state.
+- Infra CI auth model:
+  - GCP: GitHub OIDC -> GCP Workload Identity Federation -> `dastill-github-sa`
+  - AWS: GitHub OIDC -> AWS role `dastill-github-terraform`
+  - Cloud Run runtime still uses separate GCP -> AWS federation via `dastill-gcp-backend`
+- One bootstrap edge remains for AWS CI auth: the first creation of the AWS GitHub OIDC provider and `dastill-github-terraform` role must be applied from an already authenticated AWS context. After that, recurring Terraform runs can stay in CI.
 - Secret bootstrap/rotation flow:
   1. Apply Terraform first so secret container and IAM exist.
   2. Add secret payload with `gcloud secrets versions add <secret-name> --project "$PROJECT_ID" --data-file=-`.

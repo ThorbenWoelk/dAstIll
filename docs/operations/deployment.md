@@ -32,6 +32,15 @@ The backend runs on Cloud Run but accesses AWS S3 and S3 Vectors. Authentication
 
 Local development uses standard AWS credentials (`~/.aws/credentials` or environment).
 
+Terraform in GitHub Actions uses a separate AWS trust path:
+
+1. GitHub Actions requests an OIDC token from `token.actions.githubusercontent.com`
+2. AWS IAM trusts that OIDC provider for this repository
+3. `infra.yml` assumes the Terraform role `dastill-github-terraform`
+4. Terraform AWS resources then run with short-lived AWS credentials in CI
+
+This is separate from the Cloud Run backend runtime role. Do not reuse the backend runtime role for GitHub CI.
+
 ## Secret and Config Boundaries
 
 Secrets are stored in GCP Secret Manager for:
@@ -58,6 +67,8 @@ Use this flow when provisioning a new project, filling a newly created secret co
 1. Apply Terraform first so the secret containers and IAM bindings exist.
 2. Add the secret payload as a new Secret Manager version.
 3. Redeploy the surfaces that consume that secret.
+
+One bootstrap edge still exists: the first creation of the AWS GitHub OIDC provider and Terraform role must happen from an already authenticated AWS context, because GitHub Actions cannot assume a role that does not exist yet. After that first apply, CI owns the recurring Terraform path.
 
 Example shape:
 
@@ -178,7 +189,8 @@ The GitHub Actions workflows:
 
 ```text
 1. Runs repo hygiene on every validation run
-2. Runs `infra.yml` for `terraform/**` changes: fmt, validate, plan on PRs; apply on `main`; then syncs the Firebase frontend config into Secret Manager
+2. Runs `infra.yml` for `terraform/**` changes: fmt, validate, plan on PRs, apply on `main`; then syncs the Firebase frontend config into Secret Manager
+   `infra.yml` authenticates to GCP through GitHub -> GCP Workload Identity Federation and to AWS through GitHub OIDC -> `dastill-github-terraform`
 3. Detects which of `backend/`, `frontend/`, `docs/`, and the root Firebase Hosting config changed
 4. Runs only the matching backend/frontend/docs validation jobs on push and pull request events
 5. On `main`, waits for infra apply to finish before app deployment when the same push touched `terraform/**`
