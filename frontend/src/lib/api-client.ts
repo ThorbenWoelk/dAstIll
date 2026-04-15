@@ -48,6 +48,45 @@ export function resolveImplicitApiBase(
   return "";
 }
 
+export function requiresExplicitApiBase(options?: {
+  currentOrigin?: string;
+}): boolean {
+  const currentOrigin =
+    options?.currentOrigin ??
+    (typeof window !== "undefined" ? window.location.origin : undefined);
+
+  if (!currentOrigin) {
+    return false;
+  }
+
+  if (
+    currentOrigin.startsWith("http://localhost") ||
+    currentOrigin.startsWith("http://127.0.0.1") ||
+    currentOrigin === "http://tauri.localhost"
+  ) {
+    return false;
+  }
+
+  return currentOrigin.startsWith("https://");
+}
+
+export function assertHostedApiBaseConfigured(
+  apiBase = API_BASE,
+  options?: { currentOrigin?: string; userAgent?: string },
+) {
+  if (!requiresExplicitApiBase(options)) {
+    return;
+  }
+
+  if (resolveImplicitApiBase(apiBase, options)) {
+    return;
+  }
+
+  throw new Error(
+    "PUBLIC_API_BASE must be set for hosted dAstIll frontend builds.",
+  );
+}
+
 export class BackendUnavailableError extends Error {
   constructor(
     message = "Sorry, we could not connect right now. Please try again.",

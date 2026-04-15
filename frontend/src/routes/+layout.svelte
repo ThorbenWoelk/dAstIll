@@ -4,6 +4,7 @@
   import { page } from "$app/state";
   import { onMount } from "svelte";
   import type { AuthContext } from "$lib/auth";
+  import { assertHostedApiBaseConfigured } from "$lib/api-client";
   import {
     cleanupLegacyClientStorage,
     getAuthStorageScopeKey,
@@ -73,6 +74,7 @@
   });
 
   onMount(() => {
+    assertHostedApiBaseConfigured();
     void cleanupLegacyClientStorage();
     void authState.start();
     themeMediaQuery = window.matchMedia("(prefers-color-scheme: dark)");

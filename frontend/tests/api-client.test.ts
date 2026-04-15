@@ -1,7 +1,9 @@
 import { describe, expect, it } from "bun:test";
 
 import {
+  assertHostedApiBaseConfigured,
   normalizeApiBase,
+  requiresExplicitApiBase,
   resolveApiUrl,
   resolveImplicitApiBase,
 } from "../src/lib/api-client";
@@ -62,5 +64,49 @@ describe("resolveImplicitApiBase", () => {
         userAgent: "Mozilla/5.0",
       }),
     ).toBe("");
+  });
+});
+
+describe("requiresExplicitApiBase", () => {
+  it("requires an explicit api base for hosted https origins", () => {
+    expect(
+      requiresExplicitApiBase({
+        currentOrigin: "https://dastill.web.app",
+      }),
+    ).toBe(true);
+  });
+
+  it("does not require an explicit api base for local development origins", () => {
+    expect(
+      requiresExplicitApiBase({
+        currentOrigin: "http://localhost:3543",
+      }),
+    ).toBe(false);
+  });
+
+  it("does not require an explicit api base for the tauri localhost shell", () => {
+    expect(
+      requiresExplicitApiBase({
+        currentOrigin: "http://tauri.localhost",
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("assertHostedApiBaseConfigured", () => {
+  it("throws when a hosted https origin has no configured api base", () => {
+    expect(() =>
+      assertHostedApiBaseConfigured("", {
+        currentOrigin: "https://dastill.web.app",
+      }),
+    ).toThrow("PUBLIC_API_BASE must be set");
+  });
+
+  it("accepts hosted https origins when an api base is configured", () => {
+    expect(() =>
+      assertHostedApiBaseConfigured("https://backend.example.com", {
+        currentOrigin: "https://dastill.web.app",
+      }),
+    ).not.toThrow();
   });
 });
