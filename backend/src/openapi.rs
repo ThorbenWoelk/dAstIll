@@ -86,6 +86,8 @@ impl Modify for SecurityAddon {
         crate::handlers::auth::create_mobile_auth_handoff,
         crate::handlers::auth::complete_mobile_auth_handoff,
         crate::handlers::auth::redeem_mobile_auth_handoff,
+        crate::handlers::mini::get_mini_reader,
+        crate::handlers::mini::update_mini_read_status,
         crate::handlers::channels::list_channels,
         crate::handlers::channels::add_channel,
         crate::handlers::channels::plan_openalex_query,
@@ -132,6 +134,7 @@ impl Modify for SecurityAddon {
         (name = "Chat"),
         (name = "Highlights"),
         (name = "Auth"),
+        (name = "Mini"),
         (name = "Preferences"),
         (name = "Analytics"),
         (name = "Debug")

@@ -9,6 +9,8 @@ import type {
   CreateHighlightRequest,
   Highlight,
   HighlightChannelGroup,
+  MiniReadStatusUpdate,
+  MiniReader,
   OpenAlexPlanResponse,
   OpenAlexSavedSearchQuery,
   SearchResponse,
@@ -356,6 +358,32 @@ export function getWorkspaceBootstrap(
       bypassCache: options?.bypassCache,
     },
   );
+}
+
+export function getMiniReader(
+  channelId?: string | null,
+  options?: { bypassCache?: boolean },
+) {
+  const params = new URLSearchParams();
+  if (channelId) {
+    params.set("channel_id", channelId);
+  }
+  return cachedGetRequest<MiniReader>(
+    `/api/mini${params.size ? `?${params.toString()}` : ""}`,
+    {
+      bypassCache: options?.bypassCache,
+    },
+  );
+}
+
+export function updateMiniReadStatus(videoId: string, read: boolean) {
+  return request<MiniReadStatusUpdate>(`/api/mini/videos/${videoId}/read`, {
+    method: "PUT",
+    body: JSON.stringify({ read }),
+  }).then((result) => {
+    invalidateGetRequestCache((path) => path.startsWith("/api/mini"));
+    return result;
+  });
 }
 
 export function getChannelSnapshot(
