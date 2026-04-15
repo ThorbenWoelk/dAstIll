@@ -162,7 +162,7 @@ jobs:
       - runtime-mode
     uses: ./.github/workflows/validation.yml
     with:
-      run_backend: ${{ needs.runtime-mode.outputs.maintenance_mode != 'true' }}
+      run_backend: true
       run_frontend: true
       run_docs: true
 
@@ -220,7 +220,7 @@ jobs:
       - detect-changes
       - checks
       - wait-for-infra
-    if: needs.detect-changes.outputs.backend == 'true' && needs.runtime-mode.outputs.maintenance_mode != 'true' && needs.wait-for-infra.result != 'failure' && needs.wait-for-infra.result != 'cancelled'
+    if: needs.detect-changes.outputs.backend == 'true' && needs.wait-for-infra.result != 'failure' && needs.wait-for-infra.result != 'cancelled'
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -455,34 +455,3 @@ jobs:
 
       - name: Deploy Frontend to Firebase Hosting
         run: bunx firebase-tools@15.12.0 deploy --only hosting:app --project "$PROJECT_ID" --non-interactive
-
-  disable-backend-for-maintenance:
-    name: Disable Backend For Maintenance
-    needs:
-      - runtime-mode
-      - checks
-      - deploy-docs
-      - deploy-frontend
-    if: needs.runtime-mode.outputs.maintenance_mode == 'true' && needs.deploy-docs.result != 'failure' && needs.deploy-frontend.result != 'failure'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    steps:
-      - name: Google Auth
-        uses: google-github-actions/auth@v3.0.0
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-          service_account: ${{ secrets.GCP_WIF_SA_EMAIL }}
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v3.0.0
-
-      - name: Delete backend Cloud Run service
-        run: |
-          set -euo pipefail
-
-          if gcloud run services describe "${APP_NAME}-backend" --project "$PROJECT_ID" --region "$REGION" >/dev/null 2>&1; then
-            gcloud run services delete "${APP_NAME}-backend" --project "$PROJECT_ID" --region "$REGION" --quiet
-          else
-            echo "Backend service already absent."
-          fi

@@ -155,7 +155,7 @@ The frontend uses the Firebase JS SDK in the browser and in the Tauri WebView. S
 
 **Release workflow:** resolves the frontend Firebase secrets `dastill-firebase-web-api-key` and `dastill-firebase-auth-domain` before building the static frontend bundle. It passes those values into the build together with `VITE_API_BASE`, `PUBLIC_DOCS_URL`, `PUBLIC_CONTACT_EMAIL`, `PUBLIC_APP_MAINTENANCE_MODE`, and `PUBLIC_FIREBASE_PROJECT_ID`. Routine releases do not redeploy Firebase Auth config.
 
-When `APP_RUNTIME_MODE=maintenance` is set in `.github/runtime-mode.env`, the app frontend is built with `PUBLIC_APP_MAINTENANCE_MODE=1`, backend validation is skipped in CI/release, and the workflow deletes the Cloud Run backend service after the maintenance frontend/docs deploy succeeds.
+When `APP_RUNTIME_MODE=maintenance` is set in `.github/runtime-mode.env`, the app frontend is built with `PUBLIC_APP_MAINTENANCE_MODE=1`, but the backend still validates and deploys. This keeps `dastill-mini` available while the main product UI stays in maintenance posture.
 
 **Android browser-auth handoff:** if the Tauri Android shell should open a browser-hosted login page on a different origin than the product frontend itself, set `PUBLIC_BROWSER_AUTH_BASE_URL` for the frontend build. That value controls the origin used for the system-browser `/login` handoff flow.
 

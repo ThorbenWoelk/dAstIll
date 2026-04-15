@@ -71,7 +71,7 @@ jobs:
 
   backend:
     name: Backend
-    if: (github.event_name != 'workflow_call' || inputs.run_backend) && needs.runtime-mode.outputs.maintenance_mode != 'true'
+    if: github.event_name != 'workflow_call' || inputs.run_backend
     runs-on: ubuntu-latest
     env:
       CARGO_INCREMENTAL: "0"
