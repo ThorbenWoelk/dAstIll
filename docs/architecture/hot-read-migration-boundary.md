@@ -4,8 +4,8 @@ This note defines which remaining `load_all_videos()` callers are acceptable to 
 
 ## First-wave request paths already moved off full scans
 
-- Channel browse and paging use bounded per-channel Firestore windows.
-- Recent library activity uses bounded per-channel Firestore windows.
+- Channel browse and paging use bounded per-channel `libSQL` / Turso windows.
+- Recent library activity uses bounded per-channel `libSQL` / Turso windows.
 - Chat video suggestions use a scoped cached catalog built from bounded per-channel windows plus direct `get_videos(...)` lookups for `Others`.
 - Chat mention resolution now reuses that same scoped cached catalog instead of loading the full library on each request.
 - Authenticated `Others` channel detection now looks up only the caller's saved membership IDs instead of scanning every video record.

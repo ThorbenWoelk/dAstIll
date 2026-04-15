@@ -396,7 +396,8 @@ dAstIll integrates with Amazon Polly to synthesize audio from summaries.
 
 ### Statistics Tracking
 
-Completed synthesis samples are recorded in Firestore (`dastill_tts_stats`) to estimate future synthesis duration based on word count and historical throughput.
+Completed synthesis samples are recorded in the `tts_stats` `libSQL` / Turso table to estimate
+future synthesis duration based on word count and historical throughput.
 
 | Field                 | Description                              |
 | --------------------- | ---------------------------------------- |

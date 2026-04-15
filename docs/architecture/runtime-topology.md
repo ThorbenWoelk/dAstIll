@@ -87,7 +87,7 @@ At startup the backend:
 1. Loads shell env first, then `~/.config/dastill/backend.env`, then `backend/.env` if present
 2. Configures AWS SDK with local credentials or GCP Workload Identity Federation
 3. Connects to S3 data bucket and S3 Vectors bucket
-4. Initializes the mixed S3 / S3 Vectors / Firestore store layer
+4. Initializes the mixed S3 / S3 Vectors / libSQL-Turso store layer
 5. Hydrates search progress from existing data
 6. Builds shared runtime services (including the libSQL/Turso keyword index)
 7. Spawns background workers
