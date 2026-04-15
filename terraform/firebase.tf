@@ -41,9 +41,23 @@ resource "google_identity_platform_config" "default" {
   project            = var.project_id
   authorized_domains = local.firebase_authorized_domains
 
+  multi_tenant {
+    allow_tenants = false
+  }
+
   sign_in {
     anonymous {
       enabled = true
+    }
+
+    email {
+      enabled           = false
+      password_required = false
+    }
+
+    phone_number {
+      enabled            = false
+      test_phone_numbers = {}
     }
   }
 
