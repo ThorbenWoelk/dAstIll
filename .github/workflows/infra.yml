@@ -181,7 +181,6 @@ jobs:
             "${APP_NAME}-ollama-api-key"
             "${APP_NAME}-logfire-token"
             "${APP_NAME}-backend-proxy-token"
-            "${APP_NAME}-turso-auth-token"
             "${APP_NAME}-databricks-token"
             "${APP_NAME}-firebase-web-api-key"
             "${APP_NAME}-firebase-auth-domain"

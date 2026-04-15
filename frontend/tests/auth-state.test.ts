@@ -8,8 +8,10 @@ type MockUser = {
 };
 
 let authStateListener: ((user: MockUser | null) => void) | null = null;
+let authStateReadyPromise: Promise<void> = Promise.resolve();
 const firebaseAuthInstance = {
   currentUser: null as MockUser | null,
+  authStateReady: mock(() => authStateReadyPromise),
 };
 
 class MockGoogleAuthProvider {}
@@ -80,6 +82,7 @@ async function loadAuthStateModule() {
 beforeEach(() => {
   authStateListener = null;
   firebaseAuthInstance.currentUser = null;
+  authStateReadyPromise = Promise.resolve();
   Object.defineProperty(globalThis, "window", {
     value: {},
     configurable: true,
@@ -94,6 +97,7 @@ afterEach(() => {
   mockSignInWithPopup.mockClear();
   mockSignOut.mockClear();
   mockResetApiCacheForAuthChange.mockClear();
+  firebaseAuthInstance.authStateReady.mockClear();
 
   if (originalWindow === undefined) {
     delete (globalThis as typeof globalThis & { window?: unknown }).window;
@@ -137,6 +141,40 @@ describe("auth state controller", () => {
 
     const { authState } = await loadAuthStateModule();
     await authState.start();
+
+    expect(mockSignInAnonymously).not.toHaveBeenCalled();
+    expect(authState.current).toEqual({
+      userId: "google-123",
+      authState: "authenticated",
+      accessRole: "user",
+      email: "person@example.com",
+    });
+  });
+
+  it("waits for Firebase auth restoration before creating an anonymous session", async () => {
+    let resolveAuthStateReady: (() => void) | null = null;
+    authStateReadyPromise = new Promise<void>((resolve) => {
+      resolveAuthStateReady = resolve;
+    });
+
+    const persistedUser: MockUser = {
+      uid: "google-123",
+      email: "person@example.com",
+      isAnonymous: false,
+      getIdToken: async () => "google-token",
+    };
+
+    const { authState } = await loadAuthStateModule();
+    const startPromise = authState.start();
+
+    await Promise.resolve();
+    expect(mockSignInAnonymously).not.toHaveBeenCalled();
+
+    firebaseAuthInstance.currentUser = persistedUser;
+    authStateListener?.(persistedUser);
+    resolveAuthStateReady?.();
+
+    await startPromise;
 
     expect(mockSignInAnonymously).not.toHaveBeenCalled();
     expect(authState.current).toEqual({

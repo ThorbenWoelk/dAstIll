@@ -1,5 +1,8 @@
 <script lang="ts">
+  import { goto } from "$app/navigation";
+  import { page } from "$app/state";
   import { onMount } from "svelte";
+  import { authState } from "$lib/auth-state.svelte";
   import AddSourceFeedbackToast from "$lib/components/AddSourceFeedbackToast.svelte";
   import VocabularyReplacementModal from "$lib/components/VocabularyReplacementModal.svelte";
   import MobileTopBarVideoFilters from "$lib/components/mobile/MobileTopBarVideoFilters.svelte";
@@ -14,6 +17,17 @@
   import { createHomeWorkspacePage } from "$lib/workspace/home-workspace.svelte";
 
   const hw = createHomeWorkspacePage();
+  let authResolved = $state(false);
+
+  $effect(() => {
+    if (!authState.ready || authResolved) return;
+    authResolved = true;
+
+    if (authState.current.authState !== "authenticated") {
+      const redirectTo = `${page.url.pathname}${page.url.search}`;
+      void goto(`/login?redirectTo=${encodeURIComponent(redirectTo)}`);
+    }
+  });
 
   $effect(() => {
     setFeatureGuideSuppressesAuthRequiredNotice(hw.guideOpen);

@@ -68,11 +68,19 @@ From the repo root:
 ./start_app.sh
 ```
 
-When an Android device or emulator is available, `./start_app.sh` also attempts to launch the Tauri Android shell automatically after the local services are healthy. If you want to run it yourself, use:
+The Tauri Android shell is opt-in. To have `./start_app.sh` launch it after the local services are healthy:
+
+```bash
+START_APP_MOBILE=1 ./start_app.sh
+```
+
+If you want to run it yourself instead, use:
 
 ```bash
 cargo tauri android dev
 ```
+
+When `.github/runtime-mode.env` is set to `APP_RUNTIME_MODE=maintenance`, `./start_app.sh` still starts the backend and serves the maintenance/minimal frontend mode so `dastill-mini` remains usable locally.
 
 This assumes the backend is reachable locally and the Android app can call it through the configured `VITE_API_BASE`.
 

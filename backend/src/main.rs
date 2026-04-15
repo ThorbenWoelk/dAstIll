@@ -11,11 +11,11 @@ use tracing_subscriber::{Layer, filter, layer::SubscriberExt, util::SubscriberIn
 use dastill::cache_headers::add_cache_control;
 use dastill::config::{
     ChatRuntimeConfig, DatabricksRuntimeConfig, OllamaRuntimeConfig, PollyTtsRuntimeConfig,
-    SearchRuntimeConfig, SecurityRuntimeConfig, TursoRuntimeConfig,
+    SearchRuntimeConfig, SecurityRuntimeConfig,
 };
 use dastill::db::init_store;
 use dastill::handlers::{
-    analytics, auth, channels, chat, content, highlights, preferences, search, videos,
+    analytics, auth, channels, chat, content, highlights, mini, preferences, search, videos,
 };
 use dastill::local_env::load_dotenv_preserving_existing;
 use dastill::logging::{HumanReadableEventFormatter, should_send_to_logfire};
@@ -38,14 +38,27 @@ use dastill::workers::{
     spawn_summary_evaluation_worker,
 };
 
-async fn build_turso_database(config: &TursoRuntimeConfig) -> anyhow::Result<libsql::Database> {
-    tokio::time::timeout(
-        std::time::Duration::from_secs(30),
-        libsql::Builder::new_remote(config.db_url.clone(), config.auth_token.clone()).build(),
-    )
-    .await
-    .map_err(|_| anyhow::anyhow!("Turso builder timed out after 30s"))?
-    .map_err(|err| anyhow::anyhow!("failed to build remote Turso database: {err}"))
+async fn initialize_local_libsql(
+    db_path: &std::path::Path,
+) -> anyhow::Result<(
+    libsql::Database,
+    libsql::Connection,
+    Option<std::path::PathBuf>,
+)> {
+    tracing::info!(path = %db_path.display(), "Initializing local libSQL database...");
+    let db = libsql::Builder::new_local(db_path)
+        .build()
+        .await
+        .map_err(|err| anyhow::anyhow!("failed to build local libSQL database: {err}"))?;
+    let conn = db
+        .connect()
+        .map_err(|err| anyhow::anyhow!("failed to connect to local libSQL: {err}"))?;
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .map_err(|err| anyhow::anyhow!("failed to set local libSQL busy timeout: {err}"))?;
+    dastill::db::turso_schema::initialize_turso_schema(&conn)
+        .await
+        .map_err(|err| anyhow::anyhow!(err))?;
+    Ok((db, conn, Some(db_path.to_path_buf())))
 }
 
 #[tokio::main]
@@ -142,7 +155,6 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("port {} bound — waiting for initialization", port);
 
     let search_runtime = SearchRuntimeConfig::from_env();
-    let turso_runtime = TursoRuntimeConfig::from_env().map_err(|err| anyhow::anyhow!(err))?;
     let chat_runtime = ChatRuntimeConfig::from_env();
     let databricks_runtime =
         DatabricksRuntimeConfig::from_env().map_err(|err| anyhow::anyhow!(err))?;
@@ -194,32 +206,7 @@ async fn main() -> anyhow::Result<()> {
     let fts_dir = local_libsql_dir(&std::env::temp_dir(), port);
     std::fs::create_dir_all(&fts_dir)?;
     let turso_db_path = fts_dir.join("search-fts.db");
-    let (turso_db, shared_db_path) = if let Some(config) = turso_runtime {
-        tracing::info!("Initializing direct remote Turso database...");
-        (
-            build_turso_database(&config).await?,
-            None::<std::path::PathBuf>,
-        )
-    } else {
-        tracing::info!(path = %turso_db_path.display(), "Initializing local libSQL database (no Turso config)...");
-        (
-            libsql::Builder::new_local(&turso_db_path)
-                .build()
-                .await
-                .map_err(|err| anyhow::anyhow!("failed to build local libSQL database: {err}"))?,
-            Some(turso_db_path.clone()),
-        )
-    };
-
-    let turso_conn = turso_db
-        .connect()
-        .map_err(|err| anyhow::anyhow!("failed to connect to Turso: {err}"))?;
-    turso_conn
-        .busy_timeout(std::time::Duration::from_secs(5))
-        .map_err(|err| anyhow::anyhow!("failed to set Turso busy timeout: {err}"))?;
-    dastill::db::turso_schema::initialize_turso_schema(&turso_conn)
-        .await
-        .map_err(|err| anyhow::anyhow!(err))?;
+    let (turso_db, turso_conn, shared_db_path) = initialize_local_libsql(&turso_db_path).await?;
 
     let read_cache = ReadCache::default();
     let pool = init_store(
@@ -233,6 +220,19 @@ async fn main() -> anyhow::Result<()> {
     )
     .await
     .map_err(|e| anyhow::anyhow!(e))?;
+
+    let cache_reconcile = dastill::db::reconcile_sql_cache_with_store(&pool)
+        .await
+        .map_err(|err| anyhow::anyhow!("failed to reconcile SQL cache from S3: {err}"))?;
+    tracing::info!(
+        bootstrapped_videos = cache_reconcile.bootstrapped_videos,
+        exported_videos = cache_reconcile.exported_videos,
+        bootstrapped_preferences = cache_reconcile.bootstrapped_preferences,
+        exported_preferences = cache_reconcile.exported_preferences,
+        bootstrapped_tts_stats = cache_reconcile.bootstrapped_tts_stats,
+        exported_tts_stats = cache_reconcile.exported_tts_stats,
+        "SQL cache reconciliation complete"
+    );
 
     let client = build_http_client();
     let analytics = databricks_runtime
@@ -458,7 +458,7 @@ async fn main() -> anyhow::Result<()> {
     } else {
         tracing::info!(
             path = %fts_dir.display(),
-            "FTS startup hydration skipped - existing Turso/libSQL index already has data"
+            "FTS startup hydration skipped - existing local libSQL index already has data"
         );
     }
 
@@ -560,6 +560,11 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/auth/mobile-handoff/{id}/redeem",
             post(auth::redeem_mobile_auth_handoff),
+        )
+        .route("/api/mini", get(mini::get_mini_reader))
+        .route(
+            "/api/mini/videos/{id}/read",
+            axum::routing::put(mini::update_mini_read_status),
         )
         .route(
             "/api/channels",

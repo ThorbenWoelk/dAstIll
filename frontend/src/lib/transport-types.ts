@@ -234,6 +234,30 @@ export type Summary = Compat<
   }
 >;
 
+export interface MiniSummaryItem {
+  video_id: string;
+  channel_id: string;
+  channel_name: string;
+  title: string;
+  thumbnail_url?: string | null;
+  published_at?: string | null;
+  watch_url: string;
+  summary_content: string;
+  read: boolean;
+}
+
+export interface MiniReader {
+  channels: Channel[];
+  selected_channel_id?: string | null;
+  summaries: MiniSummaryItem[];
+}
+
+export interface MiniReadStatusUpdate {
+  video_id: string;
+  read: boolean;
+  updated_at: string;
+}
+
 export type VideoInfo = Compat<
   BindingVideoInfo,
   {

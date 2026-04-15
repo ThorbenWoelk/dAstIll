@@ -7,6 +7,7 @@ import {
 import { resetApiCacheForAuthChange } from "$lib/api-cache-reset";
 import { getAuthStorageScopeKey } from "$lib/auth-storage";
 import { configureAuthTokenResolver } from "$lib/auth-token";
+import type { Auth } from "firebase/auth";
 import { createSubscriber } from "svelte/reactivity";
 
 type FirebaseUserLike = {
@@ -14,6 +15,11 @@ type FirebaseUserLike = {
   email: string | null;
   isAnonymous: boolean;
   getIdToken: (forceRefresh?: boolean) => Promise<string>;
+};
+
+type FirebaseAuthLike = Auth & {
+  currentUser: FirebaseUserLike | null;
+  authStateReady?: () => Promise<void>;
 };
 
 type AuthController = {
@@ -61,7 +67,7 @@ async function importFirebaseAuthModule() {
   });
 
   return {
-    auth,
+    auth: auth as FirebaseAuthLike,
     GoogleAuthProvider: firebaseAuth.GoogleAuthProvider,
     onAuthStateChanged: firebaseAuth.onAuthStateChanged,
     signInAnonymously: firebaseAuth.signInAnonymously,
@@ -269,6 +275,9 @@ class AuthStateController implements AuthController {
         void this.#bootstrapAnonymousSession().catch(() => undefined);
       }
     });
+
+    // Firebase restores persisted browser auth state asynchronously.
+    await auth.authStateReady?.();
 
     if (auth.currentUser) {
       this.#setState({

@@ -190,6 +190,17 @@
       void sidebar.selectChannel(channelId, null, true);
     },
   });
+  let authResolved = $state(false);
+
+  $effect(() => {
+    if (!authState.ready || authResolved) return;
+    authResolved = true;
+
+    if (authState.current.authState !== "authenticated") {
+      const redirectTo = `${page.url.pathname}${page.url.search}`;
+      void goto(`/login?redirectTo=${encodeURIComponent(redirectTo)}`);
+    }
+  });
 
   function buildQueueSnapshotCacheKey(channelId: string) {
     const acknowledged = resolveAcknowledgedParam(sidebar.acknowledgedFilter);

@@ -1,5 +1,17 @@
 <script lang="ts">
   import { CONTACT_EMAIL, DOCS_URL, SUPPORT_URL } from "$lib/app-config";
+  import { authState } from "$lib/auth-state.svelte";
+
+  let readerHref = $derived(
+    authState.current.authState === "authenticated"
+      ? "/mini"
+      : "/login?redirectTo=%2Fmini",
+  );
+  let readerLabel = $derived(
+    authState.current.authState === "authenticated"
+      ? "Continue to dastill-mini"
+      : "Sign in and continue to dastill-mini",
+  );
 </script>
 
 <svelte:head>
@@ -31,6 +43,15 @@
       back soon.
     </p>
 
+    <div class="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
+      <a
+        class="inline-flex h-12 items-center justify-center rounded-full bg-[var(--foreground)] px-6 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--background)] transition hover:bg-[var(--accent-strong)]"
+        href={readerHref}
+      >
+        {readerLabel}
+      </a>
+    </div>
+
     <div
       class="mt-10 flex flex-col gap-4 text-sm text-[var(--soft-foreground)] sm:flex-row sm:items-center sm:gap-6"
     >
@@ -41,7 +62,7 @@
           rel="noopener noreferrer"
           target="_blank"
         >
-          Support dAstIll via Stripe
+          Support dAstIll <span>💖</span>
         </a>
       {/if}
 

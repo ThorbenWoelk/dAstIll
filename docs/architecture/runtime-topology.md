@@ -69,7 +69,7 @@ In active development, dAstIll typically runs as three separate processes:
 When you use `./start_app.sh` with an Android device or emulator connected, an optional fourth process can also appear:
 
 ```text
-4. Tauri Android shell (auto-launched after the local services are healthy)
+4. Tauri Android shell (opt-in launch after the local services are healthy)
 ```
 
 Only the backend process owns durable state changes and worker execution.
@@ -87,12 +87,12 @@ At startup the backend:
 1. Loads shell env first, then `~/.config/dastill/backend.env`, then `backend/.env` if present
 2. Configures AWS SDK with local credentials or GCP Workload Identity Federation
 3. Connects to S3 data bucket and S3 Vectors bucket
-4. Initializes the mixed S3 / S3 Vectors / libSQL-Turso store layer
+4. Initializes the mixed S3 / S3 Vectors / local libSQL store layer
 5. Hydrates search progress from existing data
-6. Builds shared runtime services (including the libSQL/Turso keyword index)
+6. Builds shared runtime services (including the local libSQL keyword index)
 7. Spawns background workers
 8. If the keyword index is empty, spawns FTS hydration task: concurrently loads
-   all search bundles/chunks into the libSQL/Turso index so keyword search is available
+   all search bundles/chunks into the local libSQL index so keyword search is available
 9. Binds the Axum HTTP listener
 ```
 
@@ -110,7 +110,7 @@ At startup the backend:
 - security/runtime auth config
 - search projection lock
 - search progress tracker
-- **FTS index** (libSQL/Turso BM25 index; shared `Arc<RwLock<_>>`)
+- **FTS index** (local libSQL BM25 index; shared `Arc<RwLock<_>>`)
 - chat service
 - active chats tracker (in-progress conversations)
 - chat store lock

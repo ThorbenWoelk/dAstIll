@@ -50,7 +50,6 @@ Secrets are stored in GCP Secret Manager for:
 - `YOUTUBE_API_KEY`
 - `LOGFIRE_TOKEN` (when Logfire observability is enabled for the backend)
 - `BACKEND_PROXY_TOKEN`
-- `TURSO_AUTH_TOKEN` (when Turso-backed keyword search is enabled in production)
 - `DATABRICKS_TOKEN` (only when Databricks ingestion is configured)
 - `firebase_web_api_key` and `firebase_auth_domain` (product frontend; the infra workflow derives both from the Firebase web app config and syncs them to Secret Manager after apply)
 
@@ -86,7 +85,6 @@ Backend/runtime secrets currently expected by infra and release workflows:
 - `dastill-ollama-api-key`
 - `dastill-logfire-token`
 - `dastill-backend-proxy-token`
-- `dastill-turso-auth-token`
 - `dastill-databricks-token`
 
 Frontend build secrets:
@@ -117,8 +115,6 @@ Non-secret backend runtime config is passed as plain env values for:
 - `S3_DATA_BUCKET`
 - `S3_VECTOR_BUCKET`
 - `S3_VECTOR_INDEX`
-- `START_APP_USE_TURSO` (production should set this to enable the shared Turso replica instead of per-instance local libSQL)
-- `TURSO_DB_URL` (when Turso-backed keyword search is enabled in production)
 - `AWS_ROLE_ARN` (production only)
 - `AWS_WIF_AUDIENCE` (production only)
 - `OLLAMA_URL`
@@ -155,7 +151,9 @@ The frontend uses the Firebase JS SDK in the browser and in the Tauri WebView. S
 
 **Release workflow:** resolves the frontend Firebase secrets `dastill-firebase-web-api-key` and `dastill-firebase-auth-domain` before building the static frontend bundle. It passes those values into the build together with `VITE_API_BASE`, `PUBLIC_DOCS_URL`, `PUBLIC_CONTACT_EMAIL`, `PUBLIC_APP_MAINTENANCE_MODE`, and `PUBLIC_FIREBASE_PROJECT_ID`. Routine releases do not redeploy Firebase Auth config.
 
-When `APP_RUNTIME_MODE=maintenance` is set in `.github/runtime-mode.env`, the app frontend is built with `PUBLIC_APP_MAINTENANCE_MODE=1`, backend validation is skipped in CI/release, and the workflow deletes the Cloud Run backend service after the maintenance frontend/docs deploy succeeds.
+When `APP_RUNTIME_MODE=maintenance` is set in `.github/runtime-mode.env`, the app frontend is built with `PUBLIC_APP_MAINTENANCE_MODE=1`, but the backend still validates and deploys. This keeps `dastill-mini` available while the main product UI stays in maintenance posture.
+
+The backend Cloud Run service is intentionally capped at one serving instance. The current runtime keeps a local libSQL cache/index plus in-process background workers, so multi-replica scale-out would duplicate worker execution and create per-replica cache divergence. Treat horizontal backend scaling as blocked until the serving path and worker path are split or otherwise coordinated.
 
 **Android browser-auth handoff:** if the Tauri Android shell should open a browser-hosted login page on a different origin than the product frontend itself, set `PUBLIC_BROWSER_AUTH_BASE_URL` for the frontend build. That value controls the origin used for the system-browser `/login` handoff flow.
 
@@ -168,9 +166,9 @@ To cut over from a previous GCP project to the current `dastill` project:
 1. Create or gain access to the `dastill` GCP project and attach billing before the first apply.
 2. Update your local `terraform.tfvars` for the new target project. Set `project_id = "dastill"` and keep `app_name = "dastill"` unless you intentionally want new GCP/AWS resource names. If the GitHub Workload Identity Pool lives outside the target project, also set `github_wif_pool_project_number`; otherwise it defaults to the active project number.
 3. Decide how Terraform state will handle the shared AWS resources. Buckets, vector buckets, and the `dastill-gcp-backend` AWS role are keyed by `app_name`, not `project_id`. Reusing the existing state is the simplest cutover. If you start from a fresh state backend, import the existing AWS resources before apply or intentionally rename `app_name` and migrate that data separately.
-4. Apply Terraform against the new project and record the outputs you need for GitHub. At minimum, update repository secrets `GCP_PROJECT_ID`, `GCP_WIF_PROVIDER`, and `GCP_WIF_SA_EMAIL` (the latter is available from `terraform output github_actions_sa_email`) and set repository variable `TERRAFORM_STATE_BUCKET` to the shared GCS state bucket name used by infra CI. Update repository vars that are outside Terraform ownership in this repo, especially `AWS_ROLE_ARN`, `AWS_WIF_AUDIENCE`, bucket/index names, `TURSO_DB_URL` when Turso is enabled, CORS origins, contact email, and any Databricks settings.
+4. Apply Terraform against the new project and record the outputs you need for GitHub. At minimum, update repository secrets `GCP_PROJECT_ID`, `GCP_WIF_PROVIDER`, and `GCP_WIF_SA_EMAIL` (the latter is available from `terraform output github_actions_sa_email`) and set repository variable `TERRAFORM_STATE_BUCKET` to the shared GCS state bucket name used by infra CI. Update repository vars that are outside Terraform ownership in this repo, especially `AWS_ROLE_ARN`, `AWS_WIF_AUDIENCE`, bucket/index names, CORS origins, contact email, and any Databricks settings.
 5. Rotate project-local API keys and tokens before cutover. In particular, create a fresh `YOUTUBE_API_KEY` in the new GCP project, update both local `~/.config/dastill/backend.env` and the `dastill-youtube-api-key` secret in Secret Manager, then redeploy the backend so Cloud Run stops using the previous project's key.
-6. The current data cutover boundary is storage-specific: SQL-backed data follows Turso configuration, S3-backed data follows bucket configuration, and Firebase project changes mostly affect auth, Hosting, and project-local secrets/config.
+6. The current data cutover boundary is storage-specific: local libSQL cache state is rebuilt from the S3-backed app data, and Firebase project changes mostly affect auth, Hosting, and project-local secrets/config.
 7. Enable Firebase on the new project, set any optional Firebase Terraform inputs you need such as `firebase_authorized_domains_extra`, then re-apply Terraform so it creates the web app, the docs Hosting site, and updates authorized domains through Identity Platform. The infra workflow will refresh the frontend Firebase secrets in Secret Manager after apply. Keep Google sign-in configuration in the repo-root `firebase.json` and deploy it separately with `bunx firebase-tools@15.12.0 deploy --only auth --project "$PROJECT_ID" --non-interactive`.
 8. Re-run the release workflow after the GitHub secret/var cutover so the backend Cloud Run service and the frontend/docs Hosting targets pick up the new project ID, Firebase config, backend URL, docs URL, and the latest Secret Manager versions.
 
@@ -188,7 +186,7 @@ The GitHub Actions workflows:
 6. Builds and deploys only the surfaces with deploy-relevant changes
 7. Skips deploys for trivial-only service changes such as `.gitignore`, README, and test-only frontend/backend changes
 8. Resolves the backend Cloud Run URL and a stable docs Hosting URL when the frontend itself is being deployed
-9. Deploys the backend with runtime env including S3/AWS config, `START_APP_USE_TURSO=1`, `TURSO_DB_URL`, and Secret Manager mounts such as `TURSO_AUTH_TOKEN` when enabled
+9. Deploys the backend with runtime env including S3/AWS config and the remaining app/runtime secrets
 10. Builds the static frontend and docs bundles with Bun, then deploys them with Firebase CLI using Workload Identity Federation credentials
 11. Builds Android APK artifacts through `.github/workflows/android.yml` when mobile changes are pushed or manually requested
 ```
@@ -221,12 +219,7 @@ The GitHub Actions workflows:
 
 Production defaults to plain FTS mode unless `SEARCH_SEMANTIC_ENABLED=true` is intentionally set.
 
-Keyword search can also use Turso/libSQL for durable FTS storage via direct remote queries. In that setup:
-
-- production Cloud Run should set `START_APP_USE_TURSO=1`
-- add a fresh secret version to `dastill-turso-auth-token`
-- set GitHub repository variable `TURSO_DB_URL=libsql://...`
-- rerun the Release workflow so Cloud Run mounts `TURSO_AUTH_TOKEN` and passes `TURSO_DB_URL`
+Keyword search uses the local libSQL FTS cache on each backend instance and rebuilds from `search-chunks/` when empty.
 
 ### Search vector index
 

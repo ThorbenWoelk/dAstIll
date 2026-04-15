@@ -85,19 +85,21 @@ impl Store {
 
     #[cfg(test)]
     pub async fn for_test() -> Store {
-        let config = aws_config::load_from_env().await;
+        let config = crate::aws_auth::load_aws_sdk_config("us-east-1".to_string())
+            .await
+            .expect("failed to build AWS SDK config for tests");
         let s3 = aws_sdk_s3::Client::new(&config);
         let s3v = aws_sdk_s3vectors::Client::new(&config);
         let turso_db = libsql::Builder::new_local(":memory:")
             .build()
             .await
-            .expect("failed to create in-memory Turso database for tests");
+            .expect("failed to create in-memory libSQL database for tests");
         let turso_conn = turso_db
             .connect()
-            .expect("failed to connect to test Turso database");
+            .expect("failed to connect to test libSQL database");
         turso_schema::initialize_turso_schema(&turso_conn)
             .await
-            .expect("failed to initialize Turso schema for tests");
+            .expect("failed to initialize libSQL schema for tests");
         Store {
             s3,
             s3v,
@@ -111,6 +113,45 @@ impl Store {
             read_cache: ReadCache::default(),
         }
     }
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct SqlCacheReconcileReport {
+    pub bootstrapped_videos: usize,
+    pub exported_videos: usize,
+    pub bootstrapped_preferences: usize,
+    pub exported_preferences: usize,
+    pub bootstrapped_tts_stats: bool,
+    pub exported_tts_stats: bool,
+}
+
+pub async fn reconcile_sql_cache_with_store(
+    store: &Store,
+) -> Result<SqlCacheReconcileReport, StoreError> {
+    let mut report = SqlCacheReconcileReport::default();
+
+    let sql_videos = sql_video_count(store).await?;
+    if sql_videos == 0 {
+        report.bootstrapped_videos = bootstrap_sql_videos_from_store(store).await?;
+    } else if snapshot_video_count(store).await? == 0 {
+        report.exported_videos = export_sql_videos_to_store(store).await?;
+    }
+
+    let sql_preferences = sql_preferences_count(store).await?;
+    if sql_preferences == 0 {
+        report.bootstrapped_preferences = bootstrap_sql_preferences_from_store(store).await?;
+    } else if snapshot_preferences_count(store).await? == 0 {
+        report.exported_preferences = export_sql_preferences_to_store(store).await?;
+    }
+
+    let sql_tts_stats = has_sql_tts_stats(store).await?;
+    if !sql_tts_stats {
+        report.bootstrapped_tts_stats = bootstrap_sql_tts_stats_from_store(store).await?;
+    } else if !has_snapshot_tts_stats(store).await? {
+        report.exported_tts_stats = export_sql_tts_stats_to_store(store).await?;
+    }
+
+    Ok(report)
 }
 
 #[derive(Debug, Clone)]

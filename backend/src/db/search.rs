@@ -855,8 +855,8 @@ mod tests {
             serde_json::from_str(json).expect("canonical channel record should deserialize");
         assert_eq!(record.name, "Demo");
 
-        let channel: Channel =
-            serde_json::from_str(json).expect("full channel should deserialize with legacy defaults");
+        let channel: Channel = serde_json::from_str(json)
+            .expect("full channel should deserialize with legacy defaults");
         assert_eq!(channel.id, "channel-1");
         assert_eq!(channel.name, "Demo");
         assert_eq!(

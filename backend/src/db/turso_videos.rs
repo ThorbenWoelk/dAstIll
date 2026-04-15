@@ -6,7 +6,7 @@ use super::{Store, StoreError};
 
 impl From<libsql::Error> for StoreError {
     fn from(err: libsql::Error) -> Self {
-        StoreError::Other(format!("Turso error: {err}"))
+        StoreError::Other(format!("libSQL error: {err}"))
     }
 }
 
@@ -47,9 +47,8 @@ fn row_to_video(row: &libsql::Row) -> Result<Video, StoreError> {
     let is_short: i64 = row.get(5)?;
     let transcript_status_str: String = row.get(6)?;
     let summary_status_str: String = row.get(7)?;
-    let acknowledged: i64 = row.get(8)?;
-    let retry_count: i64 = row.get(9)?;
-    let quality_score: Option<u8> = match row.get_value(10)? {
+    let retry_count: i64 = row.get(8)?;
+    let quality_score: Option<u8> = match row.get_value(9)? {
         Value::Null => None,
         Value::Integer(v) => Some(v.clamp(0, 255) as u8),
         _ => None,
@@ -64,7 +63,7 @@ fn row_to_video(row: &libsql::Row) -> Result<Video, StoreError> {
         is_short: is_short != 0,
         transcript_status: content_status_from_str(&transcript_status_str),
         summary_status: content_status_from_str(&summary_status_str),
-        acknowledged: acknowledged != 0,
+        acknowledged: false,
         retry_count: retry_count.clamp(0, 255) as u8,
         quality_score,
     })
@@ -106,7 +105,7 @@ async fn hydrate_inserted_video_from_storage(
     ))
 }
 
-const SELECT_ALL_COLUMNS: &str = "id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, acknowledged, retry_count, quality_score";
+const SELECT_ALL_COLUMNS: &str = "id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, retry_count, quality_score";
 
 /// Upsert a video, preserving processing state fields when the row already exists.
 pub async fn ts_insert_video(
@@ -138,7 +137,7 @@ pub async fn ts_insert_video(
             is_short: video.is_short,
             transcript_status: existing.transcript_status,
             summary_status: existing.summary_status,
-            acknowledged: existing.acknowledged,
+            acknowledged: false,
             retry_count: existing.retry_count,
             quality_score: existing.quality_score,
         };
@@ -153,8 +152,8 @@ pub async fn ts_insert_video(
     store
         .turso
         .execute(
-            r#"INSERT INTO videos (id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, acknowledged, retry_count, quality_score)
-               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+            r#"INSERT INTO videos (id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, retry_count, quality_score)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
                ON CONFLICT(id) DO UPDATE SET
                  channel_id = excluded.channel_id,
                  title = excluded.title,
@@ -163,7 +162,6 @@ pub async fn ts_insert_video(
                  is_short = excluded.is_short,
                  transcript_status = excluded.transcript_status,
                  summary_status = excluded.summary_status,
-                 acknowledged = excluded.acknowledged,
                  retry_count = excluded.retry_count,
                  quality_score = excluded.quality_score"#,
             params![
@@ -175,7 +173,6 @@ pub async fn ts_insert_video(
                 merged.is_short as i64,
                 content_status_to_str(merged.transcript_status),
                 content_status_to_str(merged.summary_status),
-                merged.acknowledged as i64,
                 merged.retry_count as i64,
                 merged.quality_score.map(|v| v as i64),
             ],
@@ -184,10 +181,10 @@ pub async fn ts_insert_video(
 
     match outcome {
         super::VideoInsertOutcome::Inserted => {
-            tracing::info!(video_id = %video.id, title = %video.title, "inserted new video (turso)");
+            tracing::info!(video_id = %video.id, title = %video.title, "inserted new video (libsql)");
         }
         super::VideoInsertOutcome::Existing => {
-            tracing::debug!(video_id = %video.id, title = %video.title, "found existing video (turso)");
+            tracing::debug!(video_id = %video.id, title = %video.title, "found existing video (libsql)");
         }
     }
 
@@ -234,7 +231,7 @@ pub async fn ts_bulk_insert_videos(store: &Store, videos: Vec<Video>) -> Result<
                 is_short: video.is_short,
                 transcript_status: existing.transcript_status,
                 summary_status: existing.summary_status,
-                acknowledged: existing.acknowledged,
+                acknowledged: false,
                 retry_count: existing.retry_count,
                 quality_score: existing.quality_score,
             };
@@ -249,8 +246,8 @@ pub async fn ts_bulk_insert_videos(store: &Store, videos: Vec<Video>) -> Result<
         store
             .turso
             .execute(
-                r#"INSERT INTO videos (id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, acknowledged, retry_count, quality_score)
-                   VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+                r#"INSERT INTO videos (id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, retry_count, quality_score)
+                   VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
                    ON CONFLICT(id) DO UPDATE SET
                      channel_id = excluded.channel_id,
                      title = excluded.title,
@@ -259,7 +256,6 @@ pub async fn ts_bulk_insert_videos(store: &Store, videos: Vec<Video>) -> Result<
                      is_short = excluded.is_short,
                      transcript_status = excluded.transcript_status,
                      summary_status = excluded.summary_status,
-                     acknowledged = excluded.acknowledged,
                      retry_count = excluded.retry_count,
                      quality_score = excluded.quality_score"#,
                 params![
@@ -271,7 +267,6 @@ pub async fn ts_bulk_insert_videos(store: &Store, videos: Vec<Video>) -> Result<
                     merged.is_short as i64,
                     content_status_to_str(merged.transcript_status),
                     content_status_to_str(merged.summary_status),
-                    merged.acknowledged as i64,
                     merged.retry_count as i64,
                     merged.quality_score.map(|v| v as i64),
                 ],
@@ -279,7 +274,7 @@ pub async fn ts_bulk_insert_videos(store: &Store, videos: Vec<Video>) -> Result<
             .await?;
 
         if outcome == super::VideoInsertOutcome::Inserted {
-            tracing::info!(video_id = %video.id, title = %video.title, "inserted new video (turso bulk)");
+            tracing::info!(video_id = %video.id, title = %video.title, "inserted new video (libsql bulk)");
             inserted += 1;
         }
     }
@@ -380,6 +375,15 @@ pub async fn ts_load_all_videos(store: &Store) -> Result<Vec<Video>, StoreError>
     Ok(videos)
 }
 
+pub async fn ts_count_videos(store: &Store) -> Result<usize, StoreError> {
+    let mut rows = store.turso.query("SELECT COUNT(*) FROM videos", ()).await?;
+    let Some(row) = rows.next().await? else {
+        return Ok(0);
+    };
+    let count: i64 = row.get(0)?;
+    Ok(count.max(0) as usize)
+}
+
 pub async fn ts_list_channel_videos_window(
     store: &Store,
     channel_id: &str,
@@ -406,21 +410,6 @@ pub async fn ts_list_channel_videos_window(
         }
     }
     Ok(videos)
-}
-
-pub async fn ts_update_video_acknowledged(
-    store: &Store,
-    video_id: &str,
-    acknowledged: bool,
-) -> Result<(), StoreError> {
-    store
-        .turso
-        .execute(
-            "UPDATE videos SET acknowledged = ?1 WHERE id = ?2",
-            params![acknowledged as i64, video_id],
-        )
-        .await?;
-    Ok(())
 }
 
 pub async fn ts_update_video_transcript_status(
@@ -479,7 +468,10 @@ pub async fn ts_reset_video_retry_count(store: &Store, video_id: &str) -> Result
     Ok(())
 }
 
-pub async fn ts_heal_queue_videos(store: &Store, max_retries: u8) -> Result<usize, StoreError> {
+pub async fn ts_heal_queue_videos(
+    store: &Store,
+    max_retries: u8,
+) -> Result<Vec<String>, StoreError> {
     // Fetch all non-ready videos in a single query.
     let mut rows = store
         .turso
@@ -498,7 +490,7 @@ pub async fn ts_heal_queue_videos(store: &Store, max_retries: u8) -> Result<usiz
         }
     }
 
-    let mut healed = 0usize;
+    let mut healed_video_ids = Vec::new();
     for mut video in candidates {
         let reconciled = hydrate_inserted_video_from_storage(store, &video).await?;
         let mut changed = reconciled.transcript_status != video.transcript_status
@@ -525,9 +517,35 @@ pub async fn ts_heal_queue_videos(store: &Store, max_retries: u8) -> Result<usiz
                 ],
             )
             .await?;
-        healed += 1;
+        healed_video_ids.push(video.id.clone());
     }
-    Ok(healed)
+    Ok(healed_video_ids)
+}
+
+pub async fn ts_delete_videos(store: &Store, video_ids: &[String]) -> Result<(), StoreError> {
+    if video_ids.is_empty() {
+        return Ok(());
+    }
+
+    for chunk in video_ids.chunks(30) {
+        let placeholders = chunk
+            .iter()
+            .enumerate()
+            .map(|(index, _)| format!("?{}", index + 1))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let sql = format!("DELETE FROM videos WHERE id IN ({placeholders})");
+        let values: Vec<Value> = chunk
+            .iter()
+            .map(|video_id| Value::Text(video_id.clone()))
+            .collect();
+        store
+            .turso
+            .execute(&sql, libsql::params_from_iter(values))
+            .await?;
+    }
+
+    Ok(())
 }
 
 pub async fn ts_update_video_quality_score(

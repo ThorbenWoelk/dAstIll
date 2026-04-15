@@ -47,10 +47,9 @@ The workspace add-source input currently accepts:
 - `podcast: <feed-url>`
 - `site: <page-url>` or a plain non-YouTube page URL
 
-By default `./start_app.sh` forces the backend onto the local embedded `libSQL` path even if
-`~/.config/dastill/backend.env` contains Turso credentials. Set `START_APP_USE_TURSO=1` when you explicitly want
-local startup to use the configured remote Turso path. This toggle only affects the SQL-backed runtime
-surfaces and BM25 keyword index. S3-backed user data such as highlights and conversations is unaffected.
+`./start_app.sh` runs the backend against the local embedded `libSQL` cache/index path. The backend
+reconciles that local state from S3-backed snapshots and search artifacts at startup. S3-backed user
+data such as highlights and conversations is unaffected.
 
 `./start_app.sh` also forces the product frontend into live mode by default. If you need to preview the
 maintenance page locally, run `LOCAL_APP_MAINTENANCE_MODE=1 ./start_app.sh`. In that mode the script skips
@@ -133,12 +132,24 @@ Recommended run loop:
 ./start_app.sh
 ```
 
-When an Android emulator or device is connected, `./start_app.sh` starts the Tauri Android shell automatically after the local services are healthy.
+`./start_app.sh` reads `.github/runtime-mode.env`, the same source of truth used by the deploy workflows. When that file says `APP_RUNTIME_MODE=maintenance`, local startup automatically serves the maintenance/minimal frontend mode and still starts the backend so `dastill-mini` works.
 
-To skip the mobile shell:
+The Tauri Android shell is opt-in. To launch it with the local stack:
+
+```bash
+START_APP_MOBILE=1 ./start_app.sh
+```
+
+If you need an explicit skip flag for scripts or older local habits:
 
 ```bash
 START_APP_SKIP_MOBILE=1 ./start_app.sh
+```
+
+If you want a frontend-only maintenance preview that skips backend startup entirely, use:
+
+```bash
+LOCAL_APP_MAINTENANCE_MODE=1 ./start_app.sh
 ```
 
 To run the shell manually:
@@ -197,8 +208,6 @@ Important variables:
 | `AWS_ACCESS_KEY_ID`                 | Fallback inline AWS access key used for S3 / S3 Vectors; avoid for routine local development |
 | `AWS_SECRET_ACCESS_KEY`             | Fallback inline AWS secret key paired with `AWS_ACCESS_KEY_ID`                               |
 | `AWS_SESSION_TOKEN`                 | Temporary session token only; do not keep this set for permanent local development           |
-| `TURSO_DB_URL`                      | Optional Turso/libSQL database URL for durable keyword search                                |
-| `TURSO_AUTH_TOKEN`                  | Turso auth token paired with `TURSO_DB_URL`                                                  |
 | `BACKEND_PROXY_TOKEN`               | Shared secret for trusted first-party callers that use the backend's proxy-auth header path  |
 | `BACKEND_CORS_ALLOWED_ORIGINS`      | Comma-separated list of browser origins allowed to call the backend directly                 |
 | `AWS_ROLE_ARN` / `AWS_WIF_AUDIENCE` | Production only: GCP Workload Identity Federation for AWS                                    |

@@ -3,11 +3,4 @@ import type { ContentItem } from "./ContentItem";
 import type { ContentPart } from "./ContentPart";
 import type { Video } from "./Video";
 
-export type ChannelVideoPagePayload = {
-  source_id: string;
-  videos: Array<Video>;
-  items: Array<ContentItem>;
-  parts: Array<ContentPart>;
-  has_more: boolean;
-  next_offset: number | null;
-};
+export type ChannelVideoPagePayload = { source_id: string, videos: Array<Video>, items: Array<ContentItem>, parts: Array<ContentPart>, has_more: boolean, next_offset: number | null, };

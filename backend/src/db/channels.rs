@@ -190,7 +190,7 @@ pub async fn delete_channel(store: &Store, id: &str) -> Result<bool, StoreError>
     }
 
     let video_ids = super::videos::list_video_ids_by_channel(store, id).await?;
-    for video_id in video_ids {
+    for video_id in &video_ids {
         super::highlights::delete_highlights_for_video(store, &video_id).await?;
         store
             .delete_key(&format!("summaries/{}.json", video_id))
@@ -209,6 +209,8 @@ pub async fn delete_channel(store: &Store, id: &str) -> Result<bool, StoreError>
             .delete_key(&format!("videos/{}.json", video_id))
             .await?;
     }
+
+    super::delete_videos(store, &video_ids).await?;
 
     store.delete_key(&canonical_channel_key(id)).await?;
     let _ = super::delete_source_profile(store, id).await?;

@@ -63,7 +63,7 @@ fi
 
 if [[ -n "$BACKEND_STAGED" || -n "$BACKEND_PKGS" ]]; then
     echo "🔒 Running backend cargo audit..."
-    if ! (cd backend && cargo audit); then
+    if ! (cd backend && ./scripts/cargo_audit.sh); then
         echo "❌ Backend audit failed"
         exit 1
     fi

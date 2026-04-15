@@ -12,7 +12,6 @@ pub async fn initialize_turso_schema(conn: &Connection) -> Result<(), String> {
             is_short INTEGER NOT NULL DEFAULT 0,
             transcript_status TEXT NOT NULL DEFAULT 'pending',
             summary_status TEXT NOT NULL DEFAULT 'pending',
-            acknowledged INTEGER NOT NULL DEFAULT 0,
             retry_count INTEGER NOT NULL DEFAULT 0,
             quality_score INTEGER
         );

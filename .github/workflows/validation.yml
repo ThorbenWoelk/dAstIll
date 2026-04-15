@@ -71,7 +71,7 @@ jobs:
 
   backend:
     name: Backend
-    if: (github.event_name != 'workflow_call' || inputs.run_backend) && needs.runtime-mode.outputs.maintenance_mode != 'true'
+    if: github.event_name != 'workflow_call' || inputs.run_backend
     runs-on: ubuntu-latest
     env:
       CARGO_INCREMENTAL: "0"
@@ -121,8 +121,6 @@ jobs:
         working-directory: backend
         timeout-minutes: 2
         run: |
-          export TURSO_DB_URL="libsql://test.local"
-          export TURSO_AUTH_TOKEN="test-token"
           export BACKEND_PROXY_TOKEN="test"
           export GCP_PROJECT_ID="test"
           export YOUTUBE_API_KEY="test"

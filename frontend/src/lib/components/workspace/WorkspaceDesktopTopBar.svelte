@@ -132,6 +132,14 @@
   {/if}
 </div>
 <div class="flex min-w-0 flex-1 items-center justify-end gap-3">
+  <a
+    href="/mini"
+    class="inline-flex h-8 items-center rounded-full border border-[var(--border-soft)] px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] transition-all hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]"
+    data-sveltekit-preload-data="tap"
+    data-sveltekit-preload-code="viewport"
+  >
+    Mini
+  </a>
   {#if searchBar}
     {@render searchBar()}
   {/if}

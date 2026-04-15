@@ -70,10 +70,17 @@
   </div>
 
   <div class="flex min-w-0 justify-end">
+    <a
+      href="/mini"
+      class="inline-flex h-8 items-center justify-center rounded-full border border-[var(--border-soft)] px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] transition hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+      data-sveltekit-preload-data="tap"
+      data-sveltekit-preload-code="viewport"
+      aria-label="Open dastill-mini"
+    >
+      Mini
+    </a>
     {#if trailing}
       {@render trailing()}
-    {:else}
-      <div class="w-10" aria-hidden="true"></div>
     {/if}
   </div>
 </div>

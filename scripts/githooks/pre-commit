@@ -111,9 +111,7 @@ fi
 BACKEND_STAGED=$(git diff --cached --name-only | grep -E '^backend/Cargo\.(toml|lock)$')
 if [[ -n "$BACKEND_STAGED" ]]; then
     echo "🔒 Running backend cargo audit..."
-    # 'cargo audit' is usually installed via 'cargo install cargo-audit'
-    # We do not strictly check for its presence but will attempt to run it.
-    if ! (cd backend && cargo audit); then
+    if ! (cd backend && ./scripts/cargo_audit.sh); then
         echo "❌ Backend audit failed. Please fix vulnerabilities before committing."
         exit 1
     fi
