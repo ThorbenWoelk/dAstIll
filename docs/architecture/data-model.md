@@ -11,7 +11,7 @@ flowchart TB
   audio[Generated audio cache]
   userstate[User-scoped state]
   search[Derived search]
-  appstate[Firestore app state]
+  appstate[libSQL / Turso app state]
 
   canonical --> audio
   canonical --> search
@@ -86,7 +86,7 @@ Some API payloads intentionally merge canonical and user-scoped records:
 
 - `Channel` responses combine canonical channel metadata with the caller's
   `user-channel-subscriptions/{user_id}/{channel_id}.json` record.
-- `Video` responses combine the canonical Firestore-backed `videos` record with the caller's
+- `Video` responses combine the canonical `libSQL` / Turso-backed `videos` row with the caller's
   `user-video-states/{user_id}/{video_id}.json` overlay, which currently carries
   `acknowledged`.
 - Anonymous requests do not persist these user-scoped records. They operate against the
@@ -236,14 +236,17 @@ Chat is intentionally separate from canonical content:
 
 ---
 
-## Firestore Collections
+## libSQL / Turso Tables
 
-The application uses Google Firestore for video records plus selected user-facing state and statistics.
+The application uses a shared SQL-backed storage layer for canonical video records plus selected
+user-facing state and statistics. In production this is typically a remote Turso database. In
+local development the same tables can live in a plain local `libSQL` file when
+`START_APP_USE_TURSO=0`.
 
-### Video Records (`dastill_videos`)
+### Video Records (`videos`)
 
-Canonical video records, queue state, retry counts, and summary quality mirrors are stored in
-Firestore rather than S3.
+Canonical video records, queue state, retry counts, and summary quality mirrors are stored in the
+`videos` table rather than S3.
 
 | Field group                       | Description                                           |
 | --------------------------------- | ----------------------------------------------------- |
@@ -252,9 +255,9 @@ Firestore rather than S3.
 | quality mirror                    | `quality_score` copied from summary evaluation output |
 | user-facing flags in API overlays | `acknowledged` merged at read time from user state    |
 
-### User Preferences (`dastill_preferences`)
+### User Preferences (`preferences`)
 
-Per-authenticated-user preferences stored in Firestore:
+Per-authenticated-user preferences stored in the `preferences` table:
 
 | Field                     | Description                            |
 | ------------------------- | -------------------------------------- |
@@ -262,13 +265,14 @@ Per-authenticated-user preferences stored in Firestore:
 | `channel_sort_mode`       | Sort mode: `custom`, `alpha`, `newest` |
 | `vocabulary_replacements` | Custom word replacements for summaries |
 
-Document IDs use the authenticated Firebase user id. On first authenticated access, the
-backend can copy a legacy `dastill_preferences/user` document forward for compatibility.
+Rows use the authenticated Firebase user id as `user_id`. On first authenticated access, the
+backend can copy a legacy single-user row with `preferences.user_id = "user"` forward for
+compatibility.
 
-### TTS Statistics (`dastill_tts_stats`)
+### TTS Statistics (`tts_stats`)
 
-Aggregated text-to-speech generation metrics stored in the global Firestore document
-`dastill_tts_stats/global`:
+Aggregated text-to-speech generation metrics stored in the global `tts_stats` row with
+`id = "global"`:
 
 | Field                 | Description                              |
 | --------------------- | ---------------------------------------- |
@@ -285,7 +289,7 @@ Used to estimate synthesis time for new TTS requests.
 | Data                                  | Storage    | Notes                                                     |
 | ------------------------------------- | ---------- | --------------------------------------------------------- |
 | Channels                              | S3         | `channels/{id}.json` canonical channel records            |
-| Videos                                | Firestore  | `dastill_videos` canonical video records and queue status |
+| Videos                                | libSQL / Turso | `videos` table for canonical video records and queue status |
 | Transcripts, summaries, video info    | S3         | Canonical content blobs                                   |
 | User channel subscriptions            | S3         | `user-channel-subscriptions/{user_id}`                    |
 | User video memberships and view state | S3         | `user-video-memberships/*` and `user-video-states/*`      |
@@ -294,8 +298,8 @@ Used to estimate synthesis time for new TTS requests.
 | Vector embeddings                     | S3 Vectors | Semantic search                                           |
 | Conversations                         | S3         | Authenticated user chat history                           |
 | Highlights                            | S3         | Authenticated user annotations                            |
-| User preferences                      | Firestore  | Per-user settings                                         |
-| TTS statistics                        | Firestore  | Global synthesis metrics                                  |
+| User preferences                      | libSQL / Turso | `preferences` table keyed by `user_id`                    |
+| TTS statistics                        | libSQL / Turso | `tts_stats` table global aggregate row                    |
 
 ---
 

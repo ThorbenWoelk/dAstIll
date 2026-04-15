@@ -165,21 +165,12 @@ When `APP_RUNTIME_MODE=maintenance` is set in `.github/runtime-mode.env`, the ap
 
 To cut over from a previous GCP project to the current `dastill` project:
 
-1. Create or gain access to the `dastill` GCP project, attach billing, and decide the Firestore location before the first apply. The repo now exposes `firestore_location_id` explicitly; the example uses `eur3`.
+1. Create or gain access to the `dastill` GCP project and attach billing before the first apply.
 2. Update your local `terraform.tfvars` for the new target project. Set `project_id = "dastill"` and keep `app_name = "dastill"` unless you intentionally want new GCP/AWS resource names. If the GitHub Workload Identity Pool lives outside the target project, also set `github_wif_pool_project_number`; otherwise it defaults to the active project number.
 3. Decide how Terraform state will handle the shared AWS resources. Buckets, vector buckets, and the `dastill-gcp-backend` AWS role are keyed by `app_name`, not `project_id`. Reusing the existing state is the simplest cutover. If you start from a fresh state backend, import the existing AWS resources before apply or intentionally rename `app_name` and migrate that data separately.
 4. Apply Terraform against the new project and record the outputs you need for GitHub. At minimum, update repository secrets `GCP_PROJECT_ID`, `GCP_WIF_PROVIDER`, and `GCP_WIF_SA_EMAIL` (the latter is available from `terraform output github_actions_sa_email`) and set repository variable `TERRAFORM_STATE_BUCKET` to the shared GCS state bucket name used by infra CI. Update repository vars that are outside Terraform ownership in this repo, especially `AWS_ROLE_ARN`, `AWS_WIF_AUDIENCE`, bucket/index names, `TURSO_DB_URL` when Turso is enabled, CORS origins, contact email, and any Databricks settings.
 5. Rotate project-local API keys and tokens before cutover. In particular, create a fresh `YOUTUBE_API_KEY` in the new GCP project, update both local `~/.config/dastill/backend.env` and the `dastill-youtube-api-key` secret in Secret Manager, then redeploy the backend so Cloud Run stops using the previous project's key.
-6. Migrate Firestore data explicitly. The app switches to the new database as soon as `GCP_PROJECT_ID` changes, so export from the source project and import into `dastill` before frontend/backend cutover. Example shape:
-
-```bash
-gcloud firestore export gs://<shared-migration-bucket>/<export-prefix> \
-  --project=<source-project-id>
-
-gcloud firestore import gs://<shared-migration-bucket>/<export-prefix> \
-  --project=dastill
-```
-
+6. The current data cutover boundary is storage-specific: SQL-backed data follows Turso configuration, S3-backed data follows bucket configuration, and Firebase project changes mostly affect auth, Hosting, and project-local secrets/config.
 7. Enable Firebase on the new project, set any optional Firebase Terraform inputs you need such as `firebase_authorized_domains_extra`, then re-apply Terraform so it creates the web app, the docs Hosting site, and updates authorized domains through Identity Platform. The infra workflow will refresh the frontend Firebase secrets in Secret Manager after apply. Keep Google sign-in configuration in the repo-root `firebase.json` and deploy it separately with `bunx firebase-tools@15.12.0 deploy --only auth --project "$PROJECT_ID" --non-interactive`.
 8. Re-run the release workflow after the GitHub secret/var cutover so the backend Cloud Run service and the frontend/docs Hosting targets pick up the new project ID, Firebase config, backend URL, docs URL, and the latest Secret Manager versions.
 
