@@ -37,6 +37,21 @@ pub struct CanonicalChannelRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CanonicalVideoRecord {
+    pub id: String,
+    pub channel_id: String,
+    pub title: String,
+    pub thumbnail_url: Option<String>,
+    pub published_at: DateTime<Utc>,
+    pub is_short: bool,
+    pub transcript_status: ContentStatus,
+    pub summary_status: ContentStatus,
+    #[serde(default)]
+    pub retry_count: u8,
+    pub quality_score: Option<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserChannelSubscription {
     pub channel_id: String,
     pub added_at: DateTime<Utc>,

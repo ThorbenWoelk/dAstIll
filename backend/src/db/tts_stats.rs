@@ -5,6 +5,10 @@ use super::{Store, StoreError};
 
 const GLOBAL_DOC_ID: &str = "global";
 
+fn tts_stats_storage_key() -> &'static str {
+    "tts-stats/global.json"
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TtsGenerationStats {
     pub sample_count: u32,
@@ -56,6 +60,14 @@ pub async fn get_tts_stats(store: &Store) -> Result<Option<TtsGenerationStats>, 
     }
 }
 
+pub async fn has_sql_tts_stats(store: &Store) -> Result<bool, StoreError> {
+    Ok(get_tts_stats(store).await?.is_some())
+}
+
+pub async fn has_snapshot_tts_stats(store: &Store) -> Result<bool, StoreError> {
+    store.key_exists(tts_stats_storage_key()).await
+}
+
 /// Append a completed generation sample to the running aggregate.
 /// Atomic upsert — no read-then-write needed with SQL.
 pub async fn record_tts_generation(
@@ -75,5 +87,44 @@ pub async fn record_tts_generation(
             params![GLOBAL_DOC_ID, word_count as i64, duration_secs],
         )
         .await?;
+    if let Some(stats) = get_tts_stats(store).await? {
+        store.put_json(tts_stats_storage_key(), &stats).await?;
+    }
     Ok(())
+}
+
+pub async fn bootstrap_sql_tts_stats_from_store(store: &Store) -> Result<bool, StoreError> {
+    let Some(stats) = store
+        .get_json::<TtsGenerationStats>(tts_stats_storage_key())
+        .await?
+    else {
+        return Ok(false);
+    };
+
+    store
+        .turso
+        .execute(
+            r#"INSERT INTO tts_stats (id, sample_count, total_words, total_duration_secs)
+               VALUES (?1, ?2, ?3, ?4)
+               ON CONFLICT(id) DO UPDATE SET
+                 sample_count = excluded.sample_count,
+                 total_words = excluded.total_words,
+                 total_duration_secs = excluded.total_duration_secs"#,
+            params![
+                GLOBAL_DOC_ID,
+                stats.sample_count as i64,
+                stats.total_words as i64,
+                stats.total_duration_secs
+            ],
+        )
+        .await?;
+    Ok(true)
+}
+
+pub async fn export_sql_tts_stats_to_store(store: &Store) -> Result<bool, StoreError> {
+    let Some(stats) = get_tts_stats(store).await? else {
+        return Ok(false);
+    };
+    store.put_json(tts_stats_storage_key(), &stats).await?;
+    Ok(true)
 }

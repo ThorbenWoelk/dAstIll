@@ -258,11 +258,11 @@ mod tests {
     use std::collections::HashSet;
 
     use super::{
-        oldest_ready_video_published_at_from_slice, video_matches_channel_scope,
-        video_visible_in_list,
+        oldest_ready_video_published_at_from_slice, overlay_user_video_state,
+        video_matches_channel_scope, video_visible_in_list,
     };
     use crate::db::{MAX_CONCURRENT_S3_OPS, QueueFilter};
-    use crate::models::{ContentStatus, Video};
+    use crate::models::{ContentStatus, UserVideoState, Video};
 
     fn build_video(transcript_status: ContentStatus, summary_status: ContentStatus) -> Video {
         Video {
@@ -360,6 +360,33 @@ mod tests {
             &video,
             Some(QueueFilter::AnyIncomplete)
         ));
+    }
+
+    #[test]
+    fn overlay_user_video_state_applies_user_specific_acknowledged_flag() {
+        let video = build_video(ContentStatus::Ready, ContentStatus::Ready);
+        let user_video_states = std::collections::HashMap::from([(
+            video.id.clone(),
+            UserVideoState {
+                video_id: video.id.clone(),
+                acknowledged: true,
+                updated_at: Utc::now(),
+            },
+        )]);
+
+        let overlaid = overlay_user_video_state(video, &user_video_states);
+        assert!(overlaid.acknowledged);
+    }
+
+    #[test]
+    fn overlay_user_video_state_defaults_to_unacknowledged_without_user_state() {
+        let video = Video {
+            acknowledged: true,
+            ..build_video(ContentStatus::Ready, ContentStatus::Ready)
+        };
+
+        let overlaid = overlay_user_video_state(video, &std::collections::HashMap::new());
+        assert!(!overlaid.acknowledged);
     }
 
     #[test]

@@ -113,6 +113,45 @@ impl Store {
     }
 }
 
+#[derive(Debug, Default, Clone, Copy)]
+pub struct SqlCacheReconcileReport {
+    pub bootstrapped_videos: usize,
+    pub exported_videos: usize,
+    pub bootstrapped_preferences: usize,
+    pub exported_preferences: usize,
+    pub bootstrapped_tts_stats: bool,
+    pub exported_tts_stats: bool,
+}
+
+pub async fn reconcile_sql_cache_with_store(
+    store: &Store,
+) -> Result<SqlCacheReconcileReport, StoreError> {
+    let mut report = SqlCacheReconcileReport::default();
+
+    let sql_videos = sql_video_count(store).await?;
+    if sql_videos == 0 {
+        report.bootstrapped_videos = bootstrap_sql_videos_from_store(store).await?;
+    } else if snapshot_video_count(store).await? == 0 {
+        report.exported_videos = export_sql_videos_to_store(store).await?;
+    }
+
+    let sql_preferences = sql_preferences_count(store).await?;
+    if sql_preferences == 0 {
+        report.bootstrapped_preferences = bootstrap_sql_preferences_from_store(store).await?;
+    } else if snapshot_preferences_count(store).await? == 0 {
+        report.exported_preferences = export_sql_preferences_to_store(store).await?;
+    }
+
+    let sql_tts_stats = has_sql_tts_stats(store).await?;
+    if !sql_tts_stats {
+        report.bootstrapped_tts_stats = bootstrap_sql_tts_stats_from_store(store).await?;
+    } else if !has_snapshot_tts_stats(store).await? {
+        report.exported_tts_stats = export_sql_tts_stats_to_store(store).await?;
+    }
+
+    Ok(report)
+}
+
 #[derive(Debug, Clone)]
 pub struct ChannelSnapshotData {
     pub channel: Channel,

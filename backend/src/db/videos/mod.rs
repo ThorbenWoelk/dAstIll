@@ -2,7 +2,9 @@ mod scoped_views;
 
 use std::collections::HashSet;
 
-use crate::models::{Channel, ContentStatus, OTHERS_CHANNEL_ID, OTHERS_CHANNEL_NAME, Video};
+use crate::models::{
+    CanonicalVideoRecord, Channel, ContentStatus, OTHERS_CHANNEL_ID, OTHERS_CHANNEL_NAME, Video,
+};
 use crate::read_cache::SuggestedVideo;
 
 use super::{
@@ -16,8 +18,111 @@ pub use scoped_views::{
 
 const VIDEO_SUGGESTION_WINDOW_BATCH_SIZE: usize = 200;
 
+fn canonical_video_key(video_id: &str) -> String {
+    format!("videos/{video_id}.json")
+}
+
+fn canonical_video_from_video(video: &Video) -> CanonicalVideoRecord {
+    CanonicalVideoRecord {
+        id: video.id.clone(),
+        channel_id: video.channel_id.clone(),
+        title: video.title.clone(),
+        thumbnail_url: video.thumbnail_url.clone(),
+        published_at: video.published_at,
+        is_short: video.is_short,
+        transcript_status: video.transcript_status,
+        summary_status: video.summary_status,
+        retry_count: video.retry_count,
+        quality_score: video.quality_score,
+    }
+}
+
+fn video_from_canonical(record: CanonicalVideoRecord) -> Video {
+    Video {
+        id: record.id,
+        channel_id: record.channel_id,
+        title: record.title,
+        thumbnail_url: record.thumbnail_url,
+        published_at: record.published_at,
+        is_short: record.is_short,
+        transcript_status: record.transcript_status,
+        summary_status: record.summary_status,
+        acknowledged: false,
+        retry_count: record.retry_count,
+        quality_score: record.quality_score,
+    }
+}
+
+async fn mirror_video_snapshot(store: &Store, video_id: &str) -> Result<(), StoreError> {
+    let Some(video) = super::turso_videos::ts_get_video(store, video_id, false).await? else {
+        return Ok(());
+    };
+    store
+        .put_json(
+            &canonical_video_key(video_id),
+            &canonical_video_from_video(&video),
+        )
+        .await
+}
+
+async fn mirror_video_snapshots(store: &Store, video_ids: &[String]) -> Result<(), StoreError> {
+    if video_ids.is_empty() {
+        return Ok(());
+    }
+
+    let videos = super::turso_videos::ts_get_videos(store, video_ids, false).await?;
+    for video_id in video_ids {
+        let Some(video) = videos.get(video_id) else {
+            continue;
+        };
+        store
+            .put_json(
+                &canonical_video_key(video_id),
+                &canonical_video_from_video(video),
+            )
+            .await?;
+    }
+
+    Ok(())
+}
+
+pub async fn sql_video_count(store: &Store) -> Result<usize, StoreError> {
+    super::turso_videos::ts_count_videos(store).await
+}
+
+pub async fn snapshot_video_count(store: &Store) -> Result<usize, StoreError> {
+    Ok(store.list_keys("videos/").await?.len())
+}
+
+pub async fn bootstrap_sql_videos_from_store(store: &Store) -> Result<usize, StoreError> {
+    let records: Vec<CanonicalVideoRecord> = store.load_all("videos/").await?;
+    if records.is_empty() {
+        return Ok(0);
+    }
+
+    let videos = records
+        .into_iter()
+        .map(video_from_canonical)
+        .collect::<Vec<_>>();
+    super::turso_videos::ts_bulk_insert_videos(store, videos).await
+}
+
+pub async fn export_sql_videos_to_store(store: &Store) -> Result<usize, StoreError> {
+    let videos = super::turso_videos::ts_load_all_videos(store).await?;
+    for video in &videos {
+        store
+            .put_json(
+                &canonical_video_key(&video.id),
+                &canonical_video_from_video(video),
+            )
+            .await?;
+    }
+    Ok(videos.len())
+}
+
 pub async fn insert_video(store: &Store, video: &Video) -> Result<VideoInsertOutcome, StoreError> {
     let outcome = super::turso_videos::ts_insert_video(store, video).await?;
+    mirror_video_snapshot(store, &video.id).await?;
     if outcome == VideoInsertOutcome::Inserted {
         store.read_cache.evict_channel(&video.channel_id).await;
     }
@@ -26,7 +131,12 @@ pub async fn insert_video(store: &Store, video: &Video) -> Result<VideoInsertOut
 }
 
 pub async fn bulk_insert_videos(store: &Store, videos: Vec<Video>) -> Result<usize, StoreError> {
+    let video_ids = videos
+        .iter()
+        .map(|video| video.id.clone())
+        .collect::<Vec<_>>();
     let count = super::turso_videos::ts_bulk_insert_videos(store, videos).await?;
+    mirror_video_snapshots(store, &video_ids).await?;
     if count > 0 {
         store.read_cache.evict_channel_list().await;
     }
@@ -465,6 +575,7 @@ pub async fn update_video_transcript_status(
     status: ContentStatus,
 ) -> Result<(), StoreError> {
     super::turso_videos::ts_update_video_transcript_status(store, video_id, status).await?;
+    mirror_video_snapshot(store, video_id).await?;
     store.read_cache.evict_videos().await;
     Ok(())
 }
@@ -475,26 +586,21 @@ pub async fn update_video_summary_status(
     status: ContentStatus,
 ) -> Result<(), StoreError> {
     super::turso_videos::ts_update_video_summary_status(store, video_id, status).await?;
-    store.read_cache.evict_videos().await;
-    Ok(())
-}
-
-pub async fn update_video_acknowledged(
-    store: &Store,
-    video_id: &str,
-    acknowledged: bool,
-) -> Result<(), StoreError> {
-    super::turso_videos::ts_update_video_acknowledged(store, video_id, acknowledged).await?;
+    mirror_video_snapshot(store, video_id).await?;
     store.read_cache.evict_videos().await;
     Ok(())
 }
 
 pub async fn increment_video_retry_count(store: &Store, video_id: &str) -> Result<(), StoreError> {
-    super::turso_videos::ts_increment_video_retry_count(store, video_id).await
+    super::turso_videos::ts_increment_video_retry_count(store, video_id).await?;
+    mirror_video_snapshot(store, video_id).await?;
+    Ok(())
 }
 
 pub async fn reset_video_retry_count(store: &Store, video_id: &str) -> Result<(), StoreError> {
-    super::turso_videos::ts_reset_video_retry_count(store, video_id).await
+    super::turso_videos::ts_reset_video_retry_count(store, video_id).await?;
+    mirror_video_snapshot(store, video_id).await?;
+    Ok(())
 }
 
 /// Repair stale `loading` rows and re-queue videos that hit `max_retries` (excluded from
@@ -522,7 +628,15 @@ pub(crate) fn apply_heal_queue_video_fields(video: &mut Video, max_retries: u8) 
 }
 
 pub async fn heal_queue_videos(store: &Store, max_retries: u8) -> Result<usize, StoreError> {
-    super::turso_videos::ts_heal_queue_videos(store, max_retries).await
+    let updated_video_ids = super::turso_videos::ts_heal_queue_videos(store, max_retries).await?;
+    mirror_video_snapshots(store, &updated_video_ids).await?;
+    Ok(updated_video_ids.len())
+}
+
+pub async fn delete_videos(store: &Store, video_ids: &[String]) -> Result<(), StoreError> {
+    super::turso_videos::ts_delete_videos(store, video_ids).await?;
+    store.read_cache.evict_videos().await;
+    Ok(())
 }
 
 /// Build a channel snapshot. Loads the full video list once and derives both

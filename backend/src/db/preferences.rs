@@ -1,10 +1,21 @@
 use libsql::params;
+use serde::{Deserialize, Serialize};
 
 use crate::models::UserPreferences;
 
 use super::{Store, StoreError};
 
 const LEGACY_DOCUMENT_ID: &str = "user";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct StoredUserPreferences {
+    user_id: String,
+    data: UserPreferences,
+}
+
+fn preferences_storage_key(user_id: &str) -> String {
+    format!("user-preferences/{}.json", preferences_document_id(user_id))
+}
 
 fn preferences_document_id(user_id: &str) -> String {
     let trimmed = user_id.trim();
@@ -37,6 +48,22 @@ fn normalize_preferences(mut preferences: UserPreferences) -> UserPreferences {
 
 pub async fn get_preferences(store: &Store) -> Result<UserPreferences, StoreError> {
     get_user_preferences(store, LEGACY_DOCUMENT_ID).await
+}
+
+pub async fn sql_preferences_count(store: &Store) -> Result<usize, StoreError> {
+    let mut rows = store
+        .turso
+        .query("SELECT COUNT(*) FROM preferences", ())
+        .await?;
+    let Some(row) = rows.next().await? else {
+        return Ok(0);
+    };
+    let count: i64 = row.get(0)?;
+    Ok(count.max(0) as usize)
+}
+
+pub async fn snapshot_preferences_count(store: &Store) -> Result<usize, StoreError> {
+    Ok(store.list_keys("user-preferences/").await?.len())
 }
 
 pub async fn get_user_preferences(
@@ -80,10 +107,65 @@ pub async fn save_user_preferences(
         .turso
         .execute(
             "INSERT INTO preferences (user_id, data) VALUES (?1, ?2) ON CONFLICT(user_id) DO UPDATE SET data = excluded.data",
-            params![doc_id, json],
+            params![doc_id.clone(), json],
+        )
+        .await?;
+    store
+        .put_json(
+            &preferences_storage_key(user_id),
+            &StoredUserPreferences {
+                user_id: doc_id,
+                data: normalized,
+            },
         )
         .await?;
     Ok(())
+}
+
+pub async fn bootstrap_sql_preferences_from_store(store: &Store) -> Result<usize, StoreError> {
+    let records: Vec<StoredUserPreferences> = store.load_all("user-preferences/").await?;
+    if records.is_empty() {
+        return Ok(0);
+    }
+
+    for record in &records {
+        let normalized = normalize_preferences(record.data.clone());
+        let json = serde_json::to_string(&normalized)?;
+        store
+            .turso
+            .execute(
+                "INSERT INTO preferences (user_id, data) VALUES (?1, ?2) ON CONFLICT(user_id) DO UPDATE SET data = excluded.data",
+                params![record.user_id.clone(), json],
+            )
+            .await?;
+    }
+
+    Ok(records.len())
+}
+
+pub async fn export_sql_preferences_to_store(store: &Store) -> Result<usize, StoreError> {
+    let mut rows = store
+        .turso
+        .query("SELECT user_id, data FROM preferences", ())
+        .await?;
+    let mut exported = 0usize;
+
+    while let Some(row) = rows.next().await? {
+        let user_id: String = row.get(0)?;
+        let json: String = row.get(1)?;
+        let Ok(data) = serde_json::from_str::<UserPreferences>(&json) else {
+            continue;
+        };
+        store
+            .put_json(
+                &preferences_storage_key(&user_id),
+                &StoredUserPreferences { user_id, data },
+            )
+            .await?;
+        exported += 1;
+    }
+
+    Ok(exported)
 }
 
 pub async fn migrate_legacy_preferences(store: &Store, user_id: &str) -> Result<(), StoreError> {
