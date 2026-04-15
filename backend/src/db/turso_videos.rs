@@ -6,7 +6,7 @@ use super::{Store, StoreError};
 
 impl From<libsql::Error> for StoreError {
     fn from(err: libsql::Error) -> Self {
-        StoreError::Other(format!("Turso error: {err}"))
+        StoreError::Other(format!("libSQL error: {err}"))
     }
 }
 
@@ -181,10 +181,10 @@ pub async fn ts_insert_video(
 
     match outcome {
         super::VideoInsertOutcome::Inserted => {
-            tracing::info!(video_id = %video.id, title = %video.title, "inserted new video (turso)");
+            tracing::info!(video_id = %video.id, title = %video.title, "inserted new video (libsql)");
         }
         super::VideoInsertOutcome::Existing => {
-            tracing::debug!(video_id = %video.id, title = %video.title, "found existing video (turso)");
+            tracing::debug!(video_id = %video.id, title = %video.title, "found existing video (libsql)");
         }
     }
 
@@ -274,7 +274,7 @@ pub async fn ts_bulk_insert_videos(store: &Store, videos: Vec<Video>) -> Result<
             .await?;
 
         if outcome == super::VideoInsertOutcome::Inserted {
-            tracing::info!(video_id = %video.id, title = %video.title, "inserted new video (turso bulk)");
+            tracing::info!(video_id = %video.id, title = %video.title, "inserted new video (libsql bulk)");
             inserted += 1;
         }
     }

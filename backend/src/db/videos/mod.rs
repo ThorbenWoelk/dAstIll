@@ -242,7 +242,7 @@ pub async fn load_scoped_video_suggestions(
     Ok(videos)
 }
 
-/// Fetch every video row from Turso.
+/// Fetch every video row from local libSQL.
 /// Filtering and sorting happen in-memory after this call.
 pub async fn load_all_videos(store: &Store) -> Result<Vec<Video>, StoreError> {
     // 1. Try cache first (TTL-based)
@@ -250,7 +250,7 @@ pub async fn load_all_videos(store: &Store) -> Result<Vec<Video>, StoreError> {
         return Ok(videos);
     }
 
-    // 2. Cache miss: fetch from Turso
+    // 2. Cache miss: fetch from local libSQL
     let videos = super::turso_videos::ts_load_all_videos(store).await?;
 
     // 3. Populate cache

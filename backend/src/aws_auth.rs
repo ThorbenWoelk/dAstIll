@@ -2,6 +2,16 @@ use aws_config::{BehaviorVersion, Region, SdkConfig};
 use aws_credential_types::Credentials;
 use aws_credential_types::provider::future::ProvideCredentials as ProvideCredentialsFuture;
 use aws_credential_types::provider::{self, ProvideCredentials};
+use aws_smithy_http_client::{
+    Builder as AwsHttpClientBuilder,
+    tls::{self, rustls_provider::CryptoMode},
+};
+
+fn build_aws_http_client() -> aws_smithy_runtime_api::client::http::SharedHttpClient {
+    AwsHttpClientBuilder::new()
+        .tls_provider(tls::Provider::Rustls(CryptoMode::AwsLc))
+        .build_https()
+}
 
 #[derive(Debug, Clone)]
 pub struct GcpWifCredentialProvider {
@@ -35,6 +45,7 @@ impl GcpWifCredentialProvider {
         let sts_config = aws_sdk_sts::config::Builder::new()
             .region(aws_sdk_sts::config::Region::new(self.region.clone()))
             .behavior_version_latest()
+            .http_client(build_aws_http_client())
             .credentials_provider(NoCredentials)
             .build();
         let sts_client = aws_sdk_sts::Client::from_conf(sts_config);
@@ -130,8 +141,9 @@ pub fn credential_mode_from_values(
 }
 
 pub async fn load_aws_sdk_config(region: String) -> Result<SdkConfig, String> {
-    let loader =
-        aws_config::defaults(BehaviorVersion::latest()).region(Region::new(region.clone()));
+    let loader = aws_config::defaults(BehaviorVersion::latest())
+        .region(Region::new(region.clone()))
+        .http_client(build_aws_http_client());
 
     match credential_mode_from_env()? {
         AwsCredentialMode::DefaultChain => Ok(loader.load().await),

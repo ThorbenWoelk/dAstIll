@@ -262,7 +262,6 @@ jobs:
             echo "OLLAMA_API_KEY=${APP_NAME}-ollama-api-key:latest"
             echo "LOGFIRE_TOKEN=${APP_NAME}-logfire-token:latest"
             echo "BACKEND_PROXY_TOKEN=${APP_NAME}-backend-proxy-token:latest"
-            echo "TURSO_AUTH_TOKEN=${APP_NAME}-turso-auth-token:latest"
             echo "DATABRICKS_TOKEN=${APP_NAME}-databricks-token:latest"
           } > /tmp/backend_cr_secrets.txt
           {
@@ -302,8 +301,6 @@ jobs:
           add_env_var S3_DATA_BUCKET "dastill-data-eu-central-1"
           add_env_var S3_VECTOR_BUCKET "dastill-vectors"
           add_env_var S3_VECTOR_INDEX "search-chunks"
-          add_env_var START_APP_USE_TURSO "1"
-          add_env_var TURSO_DB_URL "libsql://dastill-totos-dbs.aws-eu-west-1.turso.io"
           add_env_var DEFAULT_SEEDED_CHANNEL_ID "UCbRP3c757lWg9M-U7TyEkXA"
           add_env_var SEARCH_SEMANTIC_ENABLED "true"
           add_env_var OLLAMA_URL "https://ollama.com"

@@ -438,7 +438,7 @@ ensure_local_env_files() {
 
 start_backend() {
 	pushd backend >/dev/null
-	PORT=$backend_port START_APP_USE_TURSO="${START_APP_USE_TURSO:-0}" cargo run --bin dastill > >(tee ../backend.log) 2>&1 &
+	PORT=$backend_port cargo run --bin dastill > >(tee ../backend.log) 2>&1 &
 	backend_pid=$!
 	popd >/dev/null
 }

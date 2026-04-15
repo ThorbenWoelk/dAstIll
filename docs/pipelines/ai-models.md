@@ -263,7 +263,7 @@ all passes). The planner produces:
 
 For each query, the chat service runs:
 
-1. **FTS retrieval** against the libSQL/Turso FTS5 index (same BM25 path as workspace
+1. **FTS retrieval** against the local libSQL FTS5 index (same BM25 path as workspace
    search, with keyword snippet extraction)
 2. **Semantic retrieval** via S3 Vectors ANN (if semantic search is enabled and the
    model is available)
@@ -396,7 +396,7 @@ dAstIll integrates with Amazon Polly to synthesize audio from summaries.
 
 ### Statistics Tracking
 
-Completed synthesis samples are recorded in the `tts_stats` `libSQL` / Turso table to estimate
+Completed synthesis samples are recorded in the `tts_stats` `libSQL` table to estimate
 future synthesis duration based on word count and historical throughput.
 
 | Field                 | Description                              |

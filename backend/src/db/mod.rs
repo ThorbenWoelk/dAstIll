@@ -85,19 +85,21 @@ impl Store {
 
     #[cfg(test)]
     pub async fn for_test() -> Store {
-        let config = aws_config::load_from_env().await;
+        let config = crate::aws_auth::load_aws_sdk_config("us-east-1".to_string())
+            .await
+            .expect("failed to build AWS SDK config for tests");
         let s3 = aws_sdk_s3::Client::new(&config);
         let s3v = aws_sdk_s3vectors::Client::new(&config);
         let turso_db = libsql::Builder::new_local(":memory:")
             .build()
             .await
-            .expect("failed to create in-memory Turso database for tests");
+            .expect("failed to create in-memory libSQL database for tests");
         let turso_conn = turso_db
             .connect()
-            .expect("failed to connect to test Turso database");
+            .expect("failed to connect to test libSQL database");
         turso_schema::initialize_turso_schema(&turso_conn)
             .await
-            .expect("failed to initialize Turso schema for tests");
+            .expect("failed to initialize libSQL schema for tests");
         Store {
             s3,
             s3v,

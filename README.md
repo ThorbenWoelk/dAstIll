@@ -47,7 +47,7 @@ The app header includes a `Docs` link. In local development it falls back to `ht
 
 ### Backend
 
-Rust, AWS S3, AWS S3 Vectors, Turso (libSQL), Ollama
+Rust, AWS S3, AWS S3 Vectors, local libSQL, Ollama
 
 ### Infrastructure & Deployment
 
@@ -58,7 +58,6 @@ Terraform, Firebase Hosting, Google Cloud Run, AWS IAM (Workload Identity Federa
 - [Rust](https://rustup.rs/)
 - [Bun](https://bun.sh/)
 - [Ollama](https://ollama.com/) (required for local AI models)
-- Turso database URL and auth token (`TURSO_DB_URL`, `TURSO_AUTH_TOKEN`)
 - AWS credentials with access to S3 and S3 Vectors (prefer the shared machine-local file at `~/.config/dastill/aws/credentials`)
 - An AWS S3 bucket for data storage and an S3 Vectors bucket for semantic search
 - YouTube Data API Key (optional)
@@ -93,8 +92,6 @@ Terraform, Firebase Hosting, Google Cloud Run, AWS IAM (Workload Identity Federa
 
    ```env
    GCP_PROJECT_ID=your-gcp-project-id
-   TURSO_DB_URL=libsql://your-turso-database.turso.io
-   TURSO_AUTH_TOKEN=your-turso-auth-token
    AWS_REGION=eu-central-1
    S3_DATA_BUCKET=your-data-bucket
    S3_VECTOR_BUCKET=your-vectors-bucket

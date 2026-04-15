@@ -11,7 +11,7 @@ use tracing_subscriber::{Layer, filter, layer::SubscriberExt, util::SubscriberIn
 use dastill::cache_headers::add_cache_control;
 use dastill::config::{
     ChatRuntimeConfig, DatabricksRuntimeConfig, OllamaRuntimeConfig, PollyTtsRuntimeConfig,
-    SearchRuntimeConfig, SecurityRuntimeConfig, TursoRuntimeConfig,
+    SearchRuntimeConfig, SecurityRuntimeConfig,
 };
 use dastill::db::init_store;
 use dastill::handlers::{
@@ -38,16 +38,6 @@ use dastill::workers::{
     spawn_summary_evaluation_worker,
 };
 
-async fn build_turso_database(config: &TursoRuntimeConfig) -> anyhow::Result<libsql::Database> {
-    tokio::time::timeout(
-        std::time::Duration::from_secs(30),
-        libsql::Builder::new_remote(config.db_url.clone(), config.auth_token.clone()).build(),
-    )
-    .await
-    .map_err(|_| anyhow::anyhow!("Turso builder timed out after 30s"))?
-    .map_err(|err| anyhow::anyhow!("failed to build remote Turso database: {err}"))
-}
-
 async fn initialize_local_libsql(
     db_path: &std::path::Path,
 ) -> anyhow::Result<(
@@ -69,22 +59,6 @@ async fn initialize_local_libsql(
         .await
         .map_err(|err| anyhow::anyhow!(err))?;
     Ok((db, conn, Some(db_path.to_path_buf())))
-}
-
-async fn initialize_remote_turso(
-    config: &TursoRuntimeConfig,
-) -> anyhow::Result<(libsql::Database, libsql::Connection)> {
-    tracing::info!("Initializing direct remote Turso database...");
-    let db = build_turso_database(config).await?;
-    let conn = db
-        .connect()
-        .map_err(|err| anyhow::anyhow!("failed to connect to Turso: {err}"))?;
-    conn.busy_timeout(std::time::Duration::from_secs(5))
-        .map_err(|err| anyhow::anyhow!("failed to set Turso busy timeout: {err}"))?;
-    dastill::db::turso_schema::initialize_turso_schema(&conn)
-        .await
-        .map_err(|err| anyhow::anyhow!(err))?;
-    Ok((db, conn))
 }
 
 #[tokio::main]
@@ -181,7 +155,6 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("port {} bound — waiting for initialization", port);
 
     let search_runtime = SearchRuntimeConfig::from_env();
-    let turso_runtime = TursoRuntimeConfig::from_env().map_err(|err| anyhow::anyhow!(err))?;
     let chat_runtime = ChatRuntimeConfig::from_env();
     let databricks_runtime =
         DatabricksRuntimeConfig::from_env().map_err(|err| anyhow::anyhow!(err))?;
@@ -233,21 +206,7 @@ async fn main() -> anyhow::Result<()> {
     let fts_dir = local_libsql_dir(&std::env::temp_dir(), port);
     std::fs::create_dir_all(&fts_dir)?;
     let turso_db_path = fts_dir.join("search-fts.db");
-    let (turso_db, turso_conn, shared_db_path) = if let Some(config) = turso_runtime.as_ref() {
-        match initialize_remote_turso(config).await {
-            Ok((db, conn)) => (db, conn, None::<std::path::PathBuf>),
-            Err(err) => {
-                tracing::warn!(
-                    error = %err,
-                    path = %turso_db_path.display(),
-                    "Remote Turso unavailable; falling back to local libSQL bootstrap"
-                );
-                initialize_local_libsql(&turso_db_path).await?
-            }
-        }
-    } else {
-        initialize_local_libsql(&turso_db_path).await?
-    };
+    let (turso_db, turso_conn, shared_db_path) = initialize_local_libsql(&turso_db_path).await?;
 
     let read_cache = ReadCache::default();
     let pool = init_store(
@@ -499,7 +458,7 @@ async fn main() -> anyhow::Result<()> {
     } else {
         tracing::info!(
             path = %fts_dir.display(),
-            "FTS startup hydration skipped - existing Turso/libSQL index already has data"
+            "FTS startup hydration skipped - existing local libSQL index already has data"
         );
     }
 

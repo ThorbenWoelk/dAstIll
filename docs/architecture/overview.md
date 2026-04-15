@@ -13,7 +13,7 @@ flowchart TB
   docs[Docs UI<br/>VitePress]
   sources[Content sources<br/>YouTube + subtitles]
   ai[AI services<br/>Ollama + Polly]
-  storage[Data stores<br/>S3, S3 Vectors, libSQL / Turso]
+  storage[Data stores<br/>S3, S3 Vectors, local libSQL]
 
   browser --> app
   browser --> docs
@@ -29,7 +29,7 @@ flowchart TB
   canonical[Canonical content]
   workers[Background workers]
   projection[Search projection]
-  keyword[Keyword index<br/>libSQL / Turso]
+  keyword[Keyword index<br/>local libSQL]
   vectors[Semantic index<br/>S3 Vectors]
   retrieval[Workspace search + chat]
 
@@ -83,7 +83,7 @@ dAstIll is a source monitoring tool that is still migrating off an original YouT
   - HTTP API
   - AWS S3 persistence for canonical channel records, transcript/summary blobs, most user-scoped library records, and the search projection
   - AWS S3 Vectors for semantic search embeddings
-  - libSQL / Turso storage for canonical video rows, user preferences, TTS statistics, and BM25 keyword search
+  - local libSQL storage for canonical video rows, user preferences, TTS statistics, and BM25 keyword search
   - Firebase/GCP identity and runtime config for auth, hosting, and project-aligned services
   - runtime config
   - AI service adapters
@@ -101,7 +101,7 @@ dAstIll is a source monitoring tool that is still migrating off an original YouT
 - **Cloud Run** services for backend, product frontend, and docs frontend
 - **AWS S3** for data storage
 - **AWS S3 Vectors** for semantic search
-- **libSQL / Turso** for canonical video rows, user preferences, TTS statistics, and keyword search
+- **local libSQL** for canonical video rows, user preferences, TTS statistics, and keyword search
 - **Firebase** for auth and Hosting
 - **AWS IAM** with GCP Workload Identity Federation for cross-cloud auth
 - **Secret Manager** for API keys and sensitive runtime config (YouTube API key, Logfire token, Firebase client secrets)

@@ -68,11 +68,11 @@ Each layer degrades independently without breaking the others.
 | Store          | Role                                                                             |
 | -------------- | -------------------------------------------------------------------------------- |
 | S3 data bucket | Canonical chunk JSON objects under `search-chunks/`                              |
-| Turso / libSQL | Durable keyword index primary queried directly by the backend at runtime          |
+| local libSQL   | Durable keyword index queried directly by the backend at runtime                  |
 | S3 Vectors     | Dense embeddings for ANN retrieval, keyed by chunk ID                            |
 
 S3 remains the rebuild source of truth for canonical chunk content. The keyword index lives in
-libSQL/Turso and is bootstrapped from the stored projection when the runtime index is empty.
+local libSQL and is bootstrapped from the stored projection when the runtime index is empty.
 
 <MermaidDiagram
   caption="Index maintenance flow: canonical content becomes pending search sources, then the search worker chunks, embeds, stores, and syncs the libSQL FTS5 keyword index."
@@ -114,12 +114,12 @@ is empty:
 4. Loads video and channel metadata for each group
 5. Calls `fts.upsert_source` for each group
 
-When the Turso-backed keyword index already has indexed rows, startup skips this replay
-and uses the existing remote index immediately.
+When the local keyword index already has indexed rows, startup skips this replay and uses the
+existing local index immediately.
 
 ### Live Sync
 
-The search index worker keeps the libSQL/Turso keyword index in sync after every write:
+The search index worker keeps the libSQL keyword index in sync after every write:
 
 - After writing chunks to S3, `fts.upsert_source` replaces keyword-search rows for that
   `(video_id, source_kind)` pair

@@ -38,14 +38,6 @@ resource "google_secret_manager_secret" "backend_proxy_token" {
   }
 }
 
-resource "google_secret_manager_secret" "turso_auth_token" {
-  project   = var.project_id
-  secret_id = "${var.app_name}-turso-auth-token"
-  replication {
-    auto {}
-  }
-}
-
 resource "google_secret_manager_secret" "databricks_token" {
   project   = var.project_id
   secret_id = "${var.app_name}-databricks-token"
@@ -104,14 +96,6 @@ removed {
 
 removed {
   from = google_secret_manager_secret_version.backend_proxy_token
-
-  lifecycle {
-    destroy = false
-  }
-}
-
-removed {
-  from = google_secret_manager_secret_version.turso_auth_token
 
   lifecycle {
     destroy = false

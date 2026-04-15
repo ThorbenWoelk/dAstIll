@@ -11,7 +11,7 @@ flowchart TB
   audio[Generated audio cache]
   userstate[User-scoped state]
   search[Derived search]
-  appstate[libSQL / Turso app state]
+  appstate[local libSQL app state]
 
   canonical --> audio
   canonical --> search
@@ -25,7 +25,7 @@ flowchart TB
   pending[Mark search_sources pending]
   worker[Search index worker]
   chunks[search_chunks]
-  keyword[Keyword index<br/>libSQL / Turso]
+  keyword[Keyword index<br/>local libSQL]
   vectors[Semantic index<br/>S3 Vectors]
   results[Search + chat]
 
@@ -86,7 +86,7 @@ Some API payloads intentionally merge canonical and user-scoped records:
 
 - `Channel` responses combine canonical channel metadata with the caller's
   `user-channel-subscriptions/{user_id}/{channel_id}.json` record.
-- `Video` responses combine the canonical `libSQL` / Turso-backed `videos` row with the caller's
+- `Video` responses combine the canonical `libSQL`-backed `videos` row with the caller's
   `user-video-states/{user_id}/{video_id}.json` overlay, which currently carries
   `acknowledged`.
 - Anonymous requests do not persist these user-scoped records. They operate against the
@@ -116,8 +116,8 @@ Search is intentionally modeled as a derived projection stored in S3:
 
 S3 Vectors provides managed ANN vector storage and retrieval for semantic search.
 
-The backend also maintains a **libSQL/Turso BM25 keyword index**. In production it queries
-the Turso primary directly; locally it can fall back to a plain libSQL file. All keyword
+The backend also maintains a **libSQL BM25 keyword index**. Each backend instance keeps a
+local libSQL file and rebuilds the keyword index from stored search artifacts when needed. All keyword
 search queries go through this index - there is no
 per-query S3 scan. The keyword index is kept in sync by the search index worker after
 every write and can be rebuilt from the stored `search-chunks/` projection when empty.
@@ -236,12 +236,11 @@ Chat is intentionally separate from canonical content:
 
 ---
 
-## libSQL / Turso Tables
+## libSQL Tables
 
 The application uses a shared SQL-backed storage layer for canonical video records plus selected
-user-facing state and statistics. In production this is typically a remote Turso database. In
-local development the same tables can live in a plain local `libSQL` file when
-`START_APP_USE_TURSO=0`.
+user-facing state and statistics. The runtime stores those tables in a local `libSQL` file and
+reconciles from S3-backed snapshots when the local cache is empty.
 
 ### Video Records (`videos`)
 
@@ -289,7 +288,7 @@ Used to estimate synthesis time for new TTS requests.
 | Data                                  | Storage    | Notes                                                     |
 | ------------------------------------- | ---------- | --------------------------------------------------------- |
 | Channels                              | S3         | `channels/{id}.json` canonical channel records            |
-| Videos                                | libSQL / Turso | `videos` table for canonical video records and queue status |
+| Videos                                | libSQL         | `videos` table for canonical video records and queue status |
 | Transcripts, summaries, video info    | S3         | Canonical content blobs                                   |
 | User channel subscriptions            | S3         | `user-channel-subscriptions/{user_id}`                    |
 | User video memberships and view state | S3         | `user-video-memberships/*` and `user-video-states/*`      |
@@ -298,8 +297,8 @@ Used to estimate synthesis time for new TTS requests.
 | Vector embeddings                     | S3 Vectors | Semantic search                                           |
 | Conversations                         | S3         | Authenticated user chat history                           |
 | Highlights                            | S3         | Authenticated user annotations                            |
-| User preferences                      | libSQL / Turso | `preferences` table keyed by `user_id`                    |
-| TTS statistics                        | libSQL / Turso | `tts_stats` table global aggregate row                    |
+| User preferences                      | libSQL         | `preferences` table keyed by `user_id`                    |
+| TTS statistics                        | libSQL         | `tts_stats` table global aggregate row                    |
 
 ---
 

@@ -28,12 +28,6 @@ struct FtsIndexInner {
     db_path: Option<PathBuf>,
 }
 
-#[derive(Debug, Clone)]
-pub struct FtsRemoteConfig {
-    pub url: String,
-    pub auth_token: String,
-}
-
 impl FtsIndex {
     pub async fn new() -> Result<Self, String> {
         let counter = FTS_TEMP_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
@@ -45,19 +39,16 @@ impl FtsIndex {
             "dastill-fts-{}-{unique_suffix}-{counter}",
             std::process::id(),
         ));
-        Self::new_in_dir(temp_dir, None).await
+        Self::new_in_dir(temp_dir).await
     }
 
-    pub async fn new_in_dir(
-        index_dir: impl Into<PathBuf>,
-        remote: Option<FtsRemoteConfig>,
-    ) -> Result<Self, String> {
+    pub async fn new_in_dir(index_dir: impl Into<PathBuf>) -> Result<Self, String> {
         let index_dir = index_dir.into();
         fs::create_dir_all(&index_dir)
             .map_err(|err| format!("failed to create FTS directory: {err}"))?;
         let db_path = index_dir.join(LOCAL_DB_FILENAME);
 
-        let db = build_database(&db_path, remote.as_ref()).await?;
+        let db = build_database(&db_path).await?;
         let conn = db
             .connect()
             .map_err(|err| format!("failed to connect to FTS database: {err}"))?;
@@ -66,7 +57,7 @@ impl FtsIndex {
         Ok(Self(Arc::new(RwLock::new(FtsIndexInner {
             _db: db,
             conn,
-            db_path: remote.is_none().then_some(db_path),
+            db_path: Some(db_path),
         }))))
     }
 
@@ -370,21 +361,11 @@ impl FtsIndex {
     }
 }
 
-async fn build_database(
-    db_path: &Path,
-    remote: Option<&FtsRemoteConfig>,
-) -> Result<Database, String> {
-    if let Some(remote) = remote {
-        Builder::new_remote(remote.url.clone(), remote.auth_token.clone())
-            .build()
-            .await
-            .map_err(|err| format!("failed to build remote Turso database: {err}"))
-    } else {
-        Builder::new_local(db_path)
-            .build()
-            .await
-            .map_err(|err| format!("failed to build local libSQL database: {err}"))
-    }
+async fn build_database(db_path: &Path) -> Result<Database, String> {
+    Builder::new_local(db_path)
+        .build()
+        .await
+        .map_err(|err| format!("failed to build local libSQL database: {err}"))
 }
 
 async fn initialize_schema(conn: &Connection) -> Result<(), String> {
@@ -623,7 +604,7 @@ mod tests {
     #[tokio::test]
     async fn fts_index_uses_persistent_local_database_file() {
         let temp_dir = tempdir().expect("tempdir should be created");
-        let index = FtsIndex::new_in_dir(temp_dir.path(), None)
+        let index = FtsIndex::new_in_dir(temp_dir.path())
             .await
             .expect("index should be created");
 
@@ -647,7 +628,7 @@ mod tests {
             .await
             .expect("source should be indexed");
 
-        let reopened = FtsIndex::new_in_dir(temp_dir.path(), None)
+        let reopened = FtsIndex::new_in_dir(temp_dir.path())
             .await
             .expect("index should reopen");
         let results = reopened.search("persisted reopen", None, None, 10).await;
