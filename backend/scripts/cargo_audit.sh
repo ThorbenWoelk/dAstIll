@@ -11,6 +11,8 @@ IGNORED_ADVISORIES=(
   "RUSTSEC-2025-0141|2026-07-01|bincode via libsql replication/sync stack"
   "RUSTSEC-2025-0134|2026-07-01|rustls-pemfile via libsql -> hyper-rustls 0.25"
   "RUSTSEC-2026-0097|2026-07-01|rand via libsql/aws-config/logfire/reqwest transitive trees"
+  "RUSTSEC-2026-0098|2026-07-01|rustls-webpki name-constraints advisory via aws-smithy legacy rustls path and libsql hyper-rustls 0.25"
+  "RUSTSEC-2026-0099|2026-07-01|rustls-webpki wildcard name-constraints advisory via aws-smithy legacy rustls path and libsql hyper-rustls 0.25"
 )
 
 echo "cargo audit allowlist:"
