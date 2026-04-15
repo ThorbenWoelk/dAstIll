@@ -406,11 +406,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ "${{ needs.runtime-mode.outputs.maintenance_mode }}" = "true" ]; then
-            backend_url=""
-          else
-            backend_url="$(gcloud run services describe "${APP_NAME}-backend" --project "$PROJECT_ID" --region "$REGION" --format='value(status.url)')"
-          fi
+          backend_url="$(gcloud run services describe "${APP_NAME}-backend" --project "$PROJECT_ID" --region "$REGION" --format='value(status.url)')"
           docs_url="${DOCS_URL_OVERRIDE:-https://${PROJECT_ID}-docs.web.app}"
 
           echo "backend_url=$backend_url" >> "$GITHUB_OUTPUT"
