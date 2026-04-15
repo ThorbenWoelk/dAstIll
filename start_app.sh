@@ -41,13 +41,27 @@ shared_frontend_env_file="${shared_env_dir}/frontend.env"
 shared_aws_dir="${shared_env_dir}/aws"
 shared_aws_credentials_file="${shared_aws_dir}/credentials"
 shared_aws_config_file="${shared_aws_dir}/config"
-local_maintenance_mode=0
+runtime_mode_file="${repo_root}/.github/runtime-mode.env"
+local_maintenance_preview_mode=0
+workflow_maintenance_mode=0
+effective_maintenance_mode=0
 
 case "${LOCAL_APP_MAINTENANCE_MODE:-0}" in
 	1|true|TRUE|yes|YES|on|ON)
-		local_maintenance_mode=1
+		local_maintenance_preview_mode=1
 		;;
 esac
+
+if [[ -f "$runtime_mode_file" ]]; then
+	runtime_mode=$(sed -n 's/^APP_RUNTIME_MODE=//p' "$runtime_mode_file" | tail -n 1 | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+	if [[ "$runtime_mode" == "maintenance" ]]; then
+		workflow_maintenance_mode=1
+	fi
+fi
+
+if (( local_maintenance_preview_mode == 1 || workflow_maintenance_mode == 1 )); then
+	effective_maintenance_mode=1
+fi
 
 resolve_adb_command() {
 	if command -v adb >/dev/null 2>&1; then
@@ -431,7 +445,7 @@ start_backend() {
 
 start_frontend() {
 	pushd frontend >/dev/null
-	PUBLIC_APP_MAINTENANCE_MODE="$local_maintenance_mode" \
+	PUBLIC_APP_MAINTENANCE_MODE="$effective_maintenance_mode" \
 		VITE_API_BASE="http://localhost:$backend_port" \
 		bun --no-env-file run dev -- --host 0.0.0.0 --port $frontend_port > >(tee ../frontend.log) 2>&1 &
 	frontend_pid=$!
@@ -518,6 +532,11 @@ resolve_tauri_android_command() {
 start_mobile_shell() {
 	if [[ "${START_APP_SKIP_MOBILE:-}" == "1" || "${START_APP_SKIP_MOBILE:-}" == "true" || "${START_APP_SKIP_MOBILE:-}" == "TRUE" ]]; then
 		echo "Mobile shell: skipped via START_APP_SKIP_MOBILE"
+		return 0
+	fi
+
+	if [[ "${START_APP_MOBILE:-}" != "1" && "${START_APP_MOBILE:-}" != "true" && "${START_APP_MOBILE:-}" != "TRUE" ]]; then
+		echo "Mobile shell: opt-in only; set START_APP_MOBILE=1 to launch the Tauri Android shell"
 		return 0
 	fi
 
@@ -625,7 +644,7 @@ check_ollama_models() {
 }
 
 ensure_local_env_files
-if (( local_maintenance_mode == 0 )); then
+if (( local_maintenance_preview_mode == 0 && workflow_maintenance_mode == 0 )); then
 	check_ollama_models
 fi
 
@@ -662,7 +681,14 @@ echo "Stopping any running dAstIll services before restart..."
 cleanup
 trap cleanup EXIT INT TERM
 
-if (( local_maintenance_mode == 0 )); then
+if (( workflow_maintenance_mode == 1 )); then
+	echo "Runtime mode: maintenance (from .github/runtime-mode.env) — starting dastill-mini-compatible local stack"
+fi
+if (( local_maintenance_preview_mode == 1 )); then
+	echo "Runtime mode: local maintenance preview (LOCAL_APP_MAINTENANCE_MODE=1)"
+fi
+
+if (( local_maintenance_preview_mode == 0 )); then
 	if [[ "$mode" == "detached_child" ]]; then
 		echo "Detached supervisor running for ports $frontend_port/$backend_port/$docs_port"
 		echo "Starting backend on http://localhost:$backend_port (log: backend.log)"
@@ -680,7 +706,7 @@ if (( local_maintenance_mode == 0 )); then
 		exit 1
 	fi
 else
-	echo "Local maintenance mode enabled; skipping backend startup."
+	echo "Local maintenance preview enabled; skipping backend startup."
 fi
 
 if [[ "$mode" == "detached_child" ]]; then
@@ -703,7 +729,7 @@ if ! wait_for_http "Frontend" "http://localhost:$frontend_port" "$frontend_pid";
 	exit 1
 fi
 
-if (( local_maintenance_mode == 0 )); then
+if (( local_maintenance_preview_mode == 0 && workflow_maintenance_mode == 0 )); then
 	if ! require_http_status \
 		"Backend workspace bootstrap" \
 		"http://localhost:$backend_port/api/workspace/bootstrap?limit=20" \
@@ -733,22 +759,26 @@ echo "App is ready:"
 echo "- Frontend: http://localhost:$frontend_port"
 echo "- Docs:     http://localhost:$docs_port"
 
-if (( local_maintenance_mode == 0 )); then
+if (( local_maintenance_preview_mode == 0 )); then
 	echo "- Backend:  http://localhost:$backend_port"
 else
 	echo "- Backend:  skipped (LOCAL_APP_MAINTENANCE_MODE=1)"
 fi
 
+if (( effective_maintenance_mode == 1 )); then
+	echo "- Mini:     http://localhost:$frontend_port/mini"
+fi
+
 start_mobile_shell
 
 if [[ -n "${mobile_pid:-}" ]]; then
-	if (( local_maintenance_mode == 0 )); then
+	if (( local_maintenance_preview_mode == 0 )); then
 		wait $backend_pid $frontend_pid $docs_pid $mobile_pid
 	else
 		wait $frontend_pid $docs_pid $mobile_pid
 	fi
 else
-	if (( local_maintenance_mode == 0 )); then
+	if (( local_maintenance_preview_mode == 0 )); then
 		wait $backend_pid $frontend_pid $docs_pid
 	else
 		wait $frontend_pid $docs_pid

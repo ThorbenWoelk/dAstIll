@@ -133,12 +133,24 @@ Recommended run loop:
 ./start_app.sh
 ```
 
-When an Android emulator or device is connected, `./start_app.sh` starts the Tauri Android shell automatically after the local services are healthy.
+`./start_app.sh` reads `.github/runtime-mode.env`, the same source of truth used by the deploy workflows. When that file says `APP_RUNTIME_MODE=maintenance`, local startup automatically serves the maintenance/minimal frontend mode and still starts the backend so `dastill-mini` works.
 
-To skip the mobile shell:
+The Tauri Android shell is opt-in. To launch it with the local stack:
+
+```bash
+START_APP_MOBILE=1 ./start_app.sh
+```
+
+If you need an explicit skip flag for scripts or older local habits:
 
 ```bash
 START_APP_SKIP_MOBILE=1 ./start_app.sh
+```
+
+If you want a frontend-only maintenance preview that skips backend startup entirely, use:
+
+```bash
+LOCAL_APP_MAINTENANCE_MODE=1 ./start_app.sh
 ```
 
 To run the shell manually:

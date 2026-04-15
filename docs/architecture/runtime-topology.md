@@ -69,7 +69,7 @@ In active development, dAstIll typically runs as three separate processes:
 When you use `./start_app.sh` with an Android device or emulator connected, an optional fourth process can also appear:
 
 ```text
-4. Tauri Android shell (auto-launched after the local services are healthy)
+4. Tauri Android shell (opt-in launch after the local services are healthy)
 ```
 
 Only the backend process owns durable state changes and worker execution.

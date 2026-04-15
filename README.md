@@ -210,17 +210,19 @@ export NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
 
 ### Run On Android
 
-If an Android emulator or device is connected, `./start_app.sh` launches the mobile shell automatically after the backend, frontend, and docs are ready.
+The Android mobile shell is opt-in. To launch it alongside the backend, frontend, and docs:
+
+```bash
+START_APP_MOBILE=1 ./start_app.sh
+```
+
+To keep the stack web-only, use the default:
 
 ```bash
 ./start_app.sh
 ```
 
-To skip that auto-launch:
-
-```bash
-START_APP_SKIP_MOBILE=1 ./start_app.sh
-```
+`./start_app.sh` now also reads `.github/runtime-mode.env`, the same file used by the deploy workflows. If that file says `APP_RUNTIME_MODE=maintenance`, local startup automatically serves the maintenance/minimal frontend shape and keeps the backend available for `dastill-mini`.
 
 If you want to run the shell manually instead:
 
