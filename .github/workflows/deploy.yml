@@ -440,6 +440,7 @@ jobs:
       - name: Build Frontend
         env:
           VITE_API_BASE: ${{ steps.service_urls.outputs.backend_url }}
+          PUBLIC_API_BASE: ${{ steps.service_urls.outputs.backend_url }}
           PUBLIC_DOCS_URL: ${{ steps.service_urls.outputs.docs_url }}
           PUBLIC_CONTACT_EMAIL: ${{ vars.CONTACT_EMAIL }}
           PUBLIC_APP_MAINTENANCE_MODE: ${{ needs.runtime-mode.outputs.maintenance_mode == 'true' && '1' || '0' }}

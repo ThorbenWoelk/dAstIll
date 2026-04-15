@@ -12,8 +12,14 @@ export function normalizeApiBase(value?: string) {
   return normalized.endsWith("/") ? normalized.slice(0, -1) : normalized;
 }
 
+const BUILD_ENV = (
+  import.meta as {
+    env?: { PUBLIC_API_BASE?: string; VITE_API_BASE?: string };
+  }
+).env;
+
 export const API_BASE = normalizeApiBase(
-  (import.meta as { env?: { VITE_API_BASE?: string } }).env?.VITE_API_BASE,
+  BUILD_ENV?.PUBLIC_API_BASE || BUILD_ENV?.VITE_API_BASE,
 );
 
 export function resolveImplicitApiBase(
