@@ -1,8 +1,11 @@
 import { getMiniReader, updateMiniReadStatus } from "$lib/api";
+import { authState } from "$lib/auth-state.svelte";
+import type { CreateHighlightRequest, Highlight } from "$lib/types";
 import type { MiniReader, MiniSummaryItem } from "$lib/transport-types";
 import { renderMarkdown } from "$lib/utils/markdown";
+import { createHomeWorkspaceHighlightController } from "$lib/workspace/home-workspace-highlight-controller.svelte";
 
-function chooseActiveVideoId(
+export function chooseActiveVideoId(
   summaries: MiniSummaryItem[],
   preferredVideoId?: string | null,
 ): string | null {
@@ -12,6 +15,37 @@ function chooseActiveVideoId(
   }
   const firstUnread = summaries.find((s) => !s.read);
   return firstUnread?.video_id ?? summaries[0]?.video_id ?? null;
+}
+
+export function findNextUnreadVideoId(
+  summaries: MiniSummaryItem[],
+  currentVideoId: string,
+): string | null {
+  if (summaries.length === 0) return null;
+
+  const currentIndex = summaries.findIndex(
+    (s) => s.video_id === currentVideoId,
+  );
+  const startIndex = currentIndex >= 0 ? currentIndex : -1;
+
+  for (let offset = 1; offset <= summaries.length; offset += 1) {
+    const summary = summaries[(startIndex + offset) % summaries.length];
+    if (summary && !summary.read) {
+      return summary.video_id;
+    }
+  }
+
+  return null;
+}
+
+export function selectMiniSummaryHighlights(
+  videoId: string | null | undefined,
+  highlightsByVideoId: Record<string, Highlight[]>,
+): Highlight[] {
+  if (!videoId) return [];
+  return (highlightsByVideoId[videoId] ?? []).filter(
+    (highlight) => highlight.source === "summary",
+  );
 }
 
 export class MiniReaderState {
@@ -24,6 +58,16 @@ export class MiniReaderState {
   markingRead = $state(false);
   contentKey = $state(0);
   readProgress = $state(0);
+  highlightController = createHomeWorkspaceHighlightController({
+    getSelectedVideoId: () => this.activeSummary?.video_id ?? null,
+    getSelectedChannelId: () =>
+      this.activeSummary?.channel_id ?? this.selectedChannelId,
+    getContentMode: () => "summary",
+    getCanManageLibrary: () => authState.current.authState === "authenticated",
+    onError: (message) => {
+      this.error = message;
+    },
+  });
 
   visibleSummaries = $derived(
     this.reader
@@ -48,6 +92,17 @@ export class MiniReaderState {
       ? renderMarkdown(this.activeSummary.summary_content)
       : "",
   );
+  activeSummaryHighlights = $derived(
+    selectMiniSummaryHighlights(
+      this.activeSummary?.video_id ?? null,
+      this.highlightController.videoHighlightsByVideoId,
+    ),
+  );
+  creatingHighlight = $derived(this.highlightController.creatingHighlight);
+  creatingHighlightVideoId = $derived(
+    this.highlightController.creatingHighlightVideoId,
+  );
+  deletingHighlightId = $derived(this.highlightController.deletingHighlightId);
 
   canGoPrev = $derived(this.activeIndex > 0);
   canGoNext = $derived(
@@ -73,6 +128,7 @@ export class MiniReaderState {
         next.summaries,
         preferredVideoId,
       );
+      this.readProgress = 0;
     } catch (cause) {
       this.reader = null;
       this.selectedChannelId = null;
@@ -134,10 +190,59 @@ export class MiniReaderState {
     }
   }
 
+  async markActiveSummaryReadAndAdvance() {
+    if (!this.activeSummary || this.markingRead) return;
+    this.markingRead = true;
+    this.error = null;
+    try {
+      const markedId = this.activeSummary.video_id;
+      await updateMiniReadStatus(markedId, true);
+      if (!this.reader) return;
+
+      const summaries = this.reader.summaries.map((s) =>
+        s.video_id === markedId ? { ...s, read: true } : s,
+      );
+      this.reader = {
+        ...this.reader,
+        summaries,
+      };
+
+      const nextUnreadVideoId = findNextUnreadVideoId(summaries, markedId);
+      this.activeVideoId =
+        nextUnreadVideoId ?? (this.showUnreadOnly ? null : markedId);
+      this.contentKey += 1;
+      this.readProgress = 0;
+    } catch (cause) {
+      this.error =
+        cause instanceof Error
+          ? cause.message
+          : "Could not update read status.";
+    } finally {
+      this.markingRead = false;
+    }
+  }
+
   async selectChannel(channelId: string) {
     if (!channelId || channelId === this.selectedChannelId) return;
     this.selectedChannelId = channelId;
     await this.loadReader(channelId);
+  }
+
+  hydrateActiveSummaryHighlights() {
+    const videoId = this.activeSummary?.video_id;
+    if (!videoId || this.highlightController.hasHighlightsForVideo(videoId))
+      return;
+    void this.highlightController.hydrateVideoHighlights(videoId, {
+      showError: true,
+    });
+  }
+
+  saveSelectionHighlight(payload: CreateHighlightRequest) {
+    return this.highlightController.saveSelectionHighlight(payload);
+  }
+
+  deleteExistingHighlight(highlightId: number) {
+    return this.highlightController.deleteExistingHighlight(highlightId);
   }
 
   toggleUnreadFilter() {

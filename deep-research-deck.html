@@ -1,0 +1,1331 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>dAstIll Deep Research Deck</title>
+    <style>
+      :root {
+        --background: #faf9f6;
+        --foreground: #1a1a1a;
+        --surface: #ffffff;
+        --surface-strong: #f1eee8;
+        --soft-foreground: #5a5a5a;
+        --muted: #ece7df;
+        --border: #d8d1c7;
+        --border-soft: #e9e3da;
+        --accent: #d33c2a;
+        --accent-soft: #f3d8d1;
+        --accent-strong: #9f281c;
+        --accent-wash: #f8ebe7;
+        --danger: #d25a5a;
+        --radius-sm: 8px;
+        --space-xs: 4px;
+        --space-sm: 8px;
+        --space-md: 16px;
+        --space-lg: 24px;
+        --space-xl: 32px;
+        --shadow-soft: 0 18px 42px rgba(26, 26, 26, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        min-height: 100%;
+      }
+
+      body {
+        margin: 0;
+        background: var(--background);
+        color: var(--foreground);
+        font-family:
+          Manrope,
+          Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      button {
+        font: inherit;
+      }
+
+      .deck-shell {
+        min-height: 100vh;
+        padding: var(--space-md);
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        gap: var(--space-md);
+      }
+
+      .topbar,
+      .controls {
+        max-width: 1180px;
+        width: 100%;
+        margin: 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--space-md);
+      }
+
+      .brand {
+        display: flex;
+        align-items: baseline;
+        gap: var(--space-sm);
+        min-width: 0;
+      }
+
+      .brand strong {
+        font-family:
+          Fraunces,
+          Georgia,
+          "Times New Roman",
+          serif;
+        font-size: 1.2rem;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+      }
+
+      .brand span,
+      .meta,
+      .kbd-hint,
+      .slide-count {
+        color: var(--soft-foreground);
+        font-size: 0.78rem;
+      }
+
+      .progress {
+        width: min(36vw, 360px);
+        height: 8px;
+        background: var(--muted);
+        border-radius: 9999px;
+        overflow: hidden;
+      }
+
+      .progress span {
+        display: block;
+        height: 100%;
+        width: 0%;
+        background: var(--accent);
+        border-radius: inherit;
+        transition: width 180ms ease;
+      }
+
+      .slide-frame {
+        max-width: 1180px;
+        width: 100%;
+        min-height: calc(100vh - 156px);
+        margin: 0 auto;
+        display: grid;
+      }
+
+      .slide {
+        display: none;
+        min-height: 100%;
+        background: var(--surface);
+        border-radius: var(--radius-sm);
+        box-shadow: var(--shadow-soft);
+        padding: var(--space-xl);
+        overflow: hidden;
+        align-content: start;
+      }
+
+      .slide.is-active {
+        display: grid;
+        animation: fade-in 260ms ease both;
+      }
+
+      @keyframes fade-in {
+        from {
+          opacity: 0;
+          transform: translateY(8px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .slide.is-active,
+        .progress span {
+          animation: none;
+          transition: none;
+        }
+      }
+
+      .eyebrow {
+        color: var(--accent-strong);
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        line-height: 1.4;
+        margin: 0 0 var(--space-md);
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2 {
+        font-family:
+          Fraunces,
+          Georgia,
+          "Times New Roman",
+          serif;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        line-height: 1;
+        margin: 0;
+      }
+
+      h1 {
+        max-width: 880px;
+        font-size: 3.4rem;
+      }
+
+      h2 {
+        max-width: 860px;
+        font-size: 2.7rem;
+      }
+
+      h3 {
+        margin: 0 0 var(--space-sm);
+        font-size: 0.78rem;
+        font-weight: 800;
+        letter-spacing: 0.07em;
+        line-height: 1.3;
+        text-transform: uppercase;
+      }
+
+      p {
+        margin: 0;
+        color: var(--soft-foreground);
+        font-size: 1.05rem;
+        line-height: 1.58;
+      }
+
+      .lead {
+        max-width: 760px;
+        margin-top: var(--space-lg);
+        color: var(--foreground);
+        font-size: 1.24rem;
+        line-height: 1.5;
+      }
+
+      .muted {
+        color: var(--soft-foreground);
+      }
+
+      .tight {
+        line-height: 1.35;
+      }
+
+      .grid {
+        display: grid;
+        gap: var(--space-md);
+      }
+
+      .grid.two {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .grid.three {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .grid.four {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .stack {
+        display: grid;
+        gap: var(--space-md);
+      }
+
+      .after-title {
+        margin-top: var(--space-xl);
+      }
+
+      .panel {
+        background: var(--surface-strong);
+        border-radius: var(--radius-sm);
+        padding: var(--space-lg);
+      }
+
+      .panel.light {
+        background: var(--background);
+      }
+
+      .panel.accent {
+        background: var(--accent-wash);
+      }
+
+      .panel strong,
+      .lane strong,
+      .metric strong {
+        display: block;
+        margin-bottom: var(--space-sm);
+        color: var(--foreground);
+        font-size: 1rem;
+      }
+
+      .panel p,
+      .lane p,
+      .metric p {
+        font-size: 0.95rem;
+      }
+
+      ul,
+      ol {
+        margin: 0;
+        padding-left: 1.2rem;
+        color: var(--soft-foreground);
+        font-size: 1rem;
+        line-height: 1.55;
+      }
+
+      li + li {
+        margin-top: var(--space-sm);
+      }
+
+      .diagram {
+        display: grid;
+        gap: var(--space-sm);
+      }
+
+      .flow {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: var(--space-sm);
+        align-items: stretch;
+      }
+
+      .flow.long {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .node,
+      .lane,
+      .metric {
+        background: var(--background);
+        border-radius: var(--radius-sm);
+        padding: var(--space-md);
+        min-height: 92px;
+      }
+
+      .node {
+        display: grid;
+        align-content: center;
+        gap: var(--space-xs);
+        text-align: center;
+      }
+
+      .node b {
+        color: var(--foreground);
+        font-size: 0.96rem;
+      }
+
+      .node span {
+        color: var(--soft-foreground);
+        font-size: 0.78rem;
+        line-height: 1.35;
+      }
+
+      .arrow-row {
+        display: none;
+      }
+
+      .table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.92rem;
+      }
+
+      .table th,
+      .table td {
+        padding: 12px 10px;
+        text-align: left;
+        vertical-align: top;
+        border-bottom: 1px solid var(--border-soft);
+      }
+
+      .table th {
+        color: var(--foreground);
+        font-size: 0.68rem;
+        font-weight: 800;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+      }
+
+      .table td {
+        color: var(--soft-foreground);
+        line-height: 1.45;
+      }
+
+      code {
+        color: var(--accent-strong);
+        font-family:
+          ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          Monaco,
+          Consolas,
+          "Liberation Mono",
+          monospace;
+        font-size: 0.92em;
+      }
+
+      .source {
+        align-self: end;
+        margin-top: var(--space-xl);
+        color: var(--soft-foreground);
+        font-size: 0.74rem;
+        line-height: 1.45;
+      }
+
+      .source strong {
+        color: var(--foreground);
+      }
+
+      .tag-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-sm);
+      }
+
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        min-height: 32px;
+        padding: 0 12px;
+        background: var(--accent-soft);
+        color: var(--accent-strong);
+        border-radius: 9999px;
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .metric {
+        min-height: 132px;
+      }
+
+      .metric b {
+        display: block;
+        margin-bottom: var(--space-xs);
+        color: var(--accent-strong);
+        font-family:
+          Fraunces,
+          Georgia,
+          "Times New Roman",
+          serif;
+        font-size: 2rem;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+      }
+
+      .controls button {
+        min-height: 44px;
+        padding: 0 16px;
+        background: var(--surface);
+        color: var(--foreground);
+        border: 0;
+        border-radius: 9999px;
+        box-shadow: 0 0 0 1px var(--border-soft) inset;
+        cursor: pointer;
+      }
+
+      .controls button:hover,
+      .controls button:focus-visible {
+        background: var(--accent-wash);
+        outline: none;
+      }
+
+      .controls button:disabled {
+        color: var(--soft-foreground);
+        cursor: not-allowed;
+        opacity: 0.55;
+      }
+
+      .control-group {
+        display: flex;
+        align-items: center;
+        gap: var(--space-sm);
+      }
+
+      .topbar {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .controls {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .control-group {
+        justify-content: space-between;
+      }
+
+      .controls button {
+        flex: 1;
+      }
+
+      .progress {
+        width: 100%;
+      }
+
+      .slide-frame {
+        min-height: calc(100vh - 190px);
+      }
+
+      .slide {
+        overflow: auto;
+        padding: var(--space-lg);
+      }
+
+      h1 {
+        font-size: 2.35rem;
+      }
+
+      h2 {
+        font-size: 2rem;
+      }
+
+      .lead {
+        font-size: 1.08rem;
+      }
+
+      .grid.two,
+      .grid.three,
+      .grid.four,
+      .flow,
+      .flow.long {
+        grid-template-columns: 1fr;
+      }
+
+      .node {
+        min-height: auto;
+        text-align: left;
+      }
+
+      .kbd-hint {
+        display: none;
+      }
+
+      .table {
+        table-layout: fixed;
+      }
+
+      .table th,
+      .table td,
+      code {
+        overflow-wrap: anywhere;
+      }
+
+      @media (min-width: 640px) {
+        .deck-shell {
+          padding: var(--space-lg);
+        }
+      }
+
+      @media (min-width: 861px) {
+        .topbar,
+        .controls {
+          align-items: center;
+          flex-direction: row;
+        }
+
+        .progress {
+          width: min(36vw, 360px);
+        }
+
+        .slide-frame {
+          min-height: calc(100vh - 156px);
+        }
+
+        .slide {
+          padding: var(--space-xl);
+        }
+
+        h1 {
+          font-size: 3.4rem;
+        }
+
+        h2 {
+          font-size: 2.7rem;
+        }
+
+        .lead {
+          font-size: 1.24rem;
+        }
+
+        .grid.two {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .grid.three {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .grid.four {
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+
+        .flow {
+          grid-template-columns: repeat(5, minmax(0, 1fr));
+        }
+
+        .flow.long {
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+
+        .node {
+          min-height: 92px;
+          text-align: center;
+        }
+
+        .kbd-hint {
+          display: block;
+        }
+
+        .controls button {
+          flex: none;
+        }
+      }
+
+      @media print {
+        body {
+          background: var(--surface);
+        }
+
+        .deck-shell {
+          display: block;
+          padding: 0;
+        }
+
+        .topbar,
+        .controls {
+          display: none;
+        }
+
+        .slide-frame {
+          display: block;
+          min-height: 0;
+          max-width: none;
+        }
+
+        .slide,
+        .slide.is-active {
+          display: block;
+          min-height: 100vh;
+          page-break-after: always;
+          box-shadow: none;
+          border-radius: 0;
+          padding: 36px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="deck-shell" aria-live="polite">
+      <header class="topbar">
+        <div class="brand">
+          <strong>dAstIll</strong>
+          <span>Deep research deck</span>
+        </div>
+        <div class="progress" aria-hidden="true"><span id="progressBar"></span></div>
+        <div class="slide-count" id="slideCount">1 / 22</div>
+      </header>
+
+      <div class="slide-frame">
+        <section class="slide is-active" data-title="Title">
+          <p class="eyebrow">Repo briefing</p>
+          <h1>dAstIll is a reading system with an AI pipeline behind it.</h1>
+          <p class="lead">
+            It starts from subscribed sources, turns source material into readable
+            summaries, evaluates those summaries, and keeps search and chat grounded in
+            rebuildable evidence.
+          </p>
+          <div class="tag-row after-title">
+            <span class="tag">Rust backend</span>
+            <span class="tag">SvelteKit UI</span>
+            <span class="tag">Ollama models</span>
+            <span class="tag">S3 plus libSQL</span>
+            <span class="tag">Firebase hosting</span>
+          </div>
+          <p class="source">
+            <strong>Scope:</strong> local repo research on 2026-04-16, Europe/Berlin.
+            No web research. Sources: <code>README.md:3-15</code>,
+            <code>docs/architecture/overview.md:46-57</code>.
+          </p>
+        </section>
+
+        <section class="slide" data-title="Research Boundary">
+          <p class="eyebrow">Research boundary</p>
+          <h2>Read the canonical docs first. Check the code where docs make operational claims.</h2>
+          <div class="grid two after-title">
+            <div class="panel">
+              <strong>Included</strong>
+              <ul>
+                <li>README, AGENTS, design system, architecture docs, pipeline docs, operations docs, security docs.</li>
+                <li>Backend entrypoint, worker registry, AppState, route table, key frontend route and API files.</li>
+                <li>Package manifests, Cargo manifest, Tauri config, current git status, recent commit subjects.</li>
+              </ul>
+            </div>
+            <div class="panel light">
+              <strong>Excluded</strong>
+              <ul>
+                <li>Vendored dependencies such as <code>node_modules</code>, build output, Rust target output, logs, and screenshots.</li>
+                <li>Full line-by-line review of every handler and component. The deck is a learning map, not a code audit.</li>
+                <li>External freshness claims. This is grounded in the repo as it exists locally.</li>
+              </ul>
+            </div>
+          </div>
+          <p class="source">
+            <strong>Design applied:</strong> <code>design.md</code> was found. This deck follows
+            its muted, content-first direction, tokenized colors, compact radius, and no decorative chrome.
+            Sources: <code>design.md:1-12</code>, <code>design.md:39-56</code>.
+          </p>
+        </section>
+
+        <section class="slide" data-title="Product Thesis">
+          <p class="eyebrow">Central thesis</p>
+          <h2>The product is not a video app. It is a trustable distillation loop.</h2>
+          <div class="grid three after-title">
+            <div class="panel">
+              <strong>Input</strong>
+              <p>Subscriptions and source definitions from YouTube, OpenAlex, podcasts, and websites.</p>
+            </div>
+            <div class="panel">
+              <strong>Transformation</strong>
+              <p>Transcripts, abstracts, notes, or page text become summaries, evaluations, chunks, embeddings, and FTS records.</p>
+            </div>
+            <div class="panel">
+              <strong>Output</strong>
+              <p>Workspace reading, highlights, search, grounded chat, mini reading, and optional summary audio.</p>
+            </div>
+          </div>
+          <p class="lead">
+            The quiet invariant: canonical content must survive even when AI, indexing,
+            search, or cloud services are tired.
+          </p>
+          <p class="source">
+            Sources: <code>docs/architecture/overview.md:48-57</code>,
+            <code>docs/pipelines/content-pipeline.md</code>,
+            <code>docs/pipelines/ai-models.md:341-352</code>.
+          </p>
+        </section>
+
+        <section class="slide" data-title="System Map">
+          <p class="eyebrow">System map</p>
+          <h2>Five surfaces share one backend-owned state machine.</h2>
+          <div class="flow after-title">
+            <div class="node"><b>Product UI</b><span>SvelteKit workspace, queue, highlights, chat</span></div>
+            <div class="node"><b>Docs UI</b><span>VitePress documentation site</span></div>
+            <div class="node"><b>Backend</b><span>Axum API plus worker host</span></div>
+            <div class="node"><b>Storage</b><span>S3, S3 Vectors, local libSQL</span></div>
+            <div class="node"><b>AI</b><span>Ollama, evaluator, embeddings, Polly TTS</span></div>
+          </div>
+          <div class="grid two after-title">
+            <div class="panel accent">
+              <strong>Architectural posture</strong>
+              <p>Frontend and docs are separate static/front-end surfaces. The backend owns durable writes, workers, search projection, model calls, and auth scoping.</p>
+            </div>
+            <div class="panel">
+              <strong>Operational posture</strong>
+              <p>The current production shape is one Cloud Run backend plus two Firebase Hosting targets. The backend is intentionally single-instance today.</p>
+            </div>
+          </div>
+          <p class="source">
+            Sources: <code>docs/architecture/overview.md:66-107</code>,
+            <code>docs/architecture/runtime-topology.md:59-75</code>,
+            <code>docs/operations/deployment.md:3-9</code>,
+            <code>docs/operations/deployment.md:156</code>.
+          </p>
+        </section>
+
+        <section class="slide" data-title="Repo Layout">
+          <p class="eyebrow">Repo layout</p>
+          <h2>The directory shape mirrors the runtime shape.</h2>
+          <table class="table after-title">
+            <thead>
+              <tr><th>Path</th><th>Role</th><th>What to read first</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>backend/</code></td>
+                <td>Rust + Axum API, workers, storage, AI adapters.</td>
+                <td><code>backend/src/main.rs</code>, <code>backend/src/state.rs</code>, <code>backend/src/workers/</code>.</td>
+              </tr>
+              <tr>
+                <td><code>frontend/</code></td>
+                <td>SvelteKit product UI and browser/Tauri client behavior.</td>
+                <td><code>frontend/src/routes/</code>, <code>frontend/src/lib/api.ts</code>, workspace components.</td>
+              </tr>
+              <tr>
+                <td><code>docs/</code></td>
+                <td>VitePress architecture, pipeline, security, and operations documentation.</td>
+                <td><code>docs/architecture/overview.md</code>, <code>docs/pipelines/search-indexing.md</code>.</td>
+              </tr>
+              <tr>
+                <td><code>terraform/</code></td>
+                <td>Cloud Run, Firebase, AWS S3, IAM, Secret Manager.</td>
+                <td>Use with deployment docs. It was not line-reviewed for this deck.</td>
+              </tr>
+              <tr>
+                <td><code>.specs/</code> and <code>.adr/</code></td>
+                <td>Planning records and decisions, including maintenance and mini reader work.</td>
+                <td><code>.specs/dastill-mini/prd.md</code>, <code>.adr/adr-dastill-mini-uses-s3-read-state.md</code>.</td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="source">
+            Sources: <code>docs/architecture/overview.md:109-118</code>,
+            local file inventory via <code>find</code> and <code>rg --files</code>.
+          </p>
+        </section>
+
+        <section class="slide" data-title="Content Pipeline">
+          <p class="eyebrow">Pipeline</p>
+          <h2>Canonical content is written first. Expensive work follows behind it.</h2>
+          <div class="flow long after-title">
+            <div class="node"><b>Discover</b><span>source input, channel resolution, video discovery</span></div>
+            <div class="node"><b>Extract</b><span>transcript text, timed captions when available</span></div>
+            <div class="node"><b>Distill</b><span>summary generation, manual edits, evaluator score</span></div>
+            <div class="node"><b>Project</b><span>search_sources, chunks, FTS, vectors</span></div>
+          </div>
+          <div class="grid two after-title">
+            <div class="panel">
+              <strong>Why this matters</strong>
+              <p>Search, embeddings, evaluation, and external model calls are failure-prone. The code keeps them out of normal CRUD writes.</p>
+            </div>
+            <div class="panel light">
+              <strong>What can degrade</strong>
+              <p>Canonical content can succeed while search is offline. Evaluation can pause without blocking search. Transcript failures do not corrupt videos.</p>
+            </div>
+          </div>
+          <p class="source">
+            Sources: <code>docs/architecture/overview.md:120-143</code>,
+            <code>docs/pipelines/content-pipeline.md:33-47</code>,
+            <code>docs/pipelines/content-pipeline.md:162-190</code>.
+          </p>
+        </section>
+
+        <section class="slide" data-title="Data Model">
+          <p class="eyebrow">Data model</p>
+          <h2>There are three kinds of state. Mixing them is where bugs begin.</h2>
+          <div class="grid three after-title">
+            <div class="panel">
+              <strong>Canonical records</strong>
+              <p><code>channels</code>, <code>videos</code>, <code>transcripts</code>, <code>summaries</code>, and <code>video_info</code> describe source truth.</p>
+            </div>
+            <div class="panel">
+              <strong>User overlays</strong>
+              <p>Subscriptions, read/acknowledged state, highlights, and chat live under user-scoped records or tables.</p>
+            </div>
+            <div class="panel">
+              <strong>Derived projections</strong>
+              <p>Search chunks, vector embeddings, keyword rows, and audio cache can be rebuilt from canonical content.</p>
+            </div>
+          </div>
+          <p class="lead">
+            The API intentionally merges canonical and user-scoped records into view models,
+            but the storage model keeps their ownership separate.
+          </p>
+          <p class="source">
+            Sources: <code>docs/architecture/data-model.md:43-82</code>,
+            <code>docs/architecture/data-model.md:83-105</code>,
+            <code>docs/architecture/data-model.md:107-164</code>,
+            <code>docs/architecture/data-model.md:166-235</code>.
+          </p>
+        </section>
+
+        <section class="slide" data-title="Runtime">
+          <p class="eyebrow">Runtime topology</p>
+          <h2>The backend is both API server and worker host.</h2>
+          <div class="grid four after-title">
+            <div class="metric"><b>5s</b><strong>Queue worker</strong><p>Advances transcript and summary work.</p></div>
+            <div class="metric"><b>30m</b><strong>Refresh worker</strong><p>Fetches latest subscribed content.</p></div>
+            <div class="metric"><b>7s</b><strong>Evaluator worker</strong><p>Scores summaries and requeues low-quality ones.</p></div>
+            <div class="metric"><b>3s</b><strong>Search worker</strong><p>Backfills, indexes, reconciles, and prunes projection rows.</p></div>
+          </div>
+          <p class="lead">
+            <code>AppState</code> is the boundary. It holds storage, auth, rate limiters,
+            workers, services, cooldowns, search locks, active chats, and model adapters.
+          </p>
+          <p class="source">
+            Sources: <code>docs/architecture/runtime-topology.md:82-130</code>,
+            <code>docs/architecture/runtime-topology.md:132-212</code>,
+            <code>backend/src/workers/mod.rs:7-28</code>,
+            <code>backend/src/state.rs</code>.
+          </p>
+        </section>
+
+        <section class="slide" data-title="Startup">
+          <p class="eyebrow">Startup path</p>
+          <h2>Startup binds early, then builds the world.</h2>
+          <div class="flow long after-title">
+            <div class="node"><b>Bind port</b><span>Cloud Run TCP probe can connect early</span></div>
+            <div class="node"><b>Load config</b><span>search, chat, Polly, security, Ollama, AWS</span></div>
+            <div class="node"><b>Init stores</b><span>S3, S3 Vectors, shared local libSQL</span></div>
+            <div class="node"><b>Spawn loops</b><span>search hydration, FTS hydration, five workers, routes</span></div>
+          </div>
+          <div class="panel accent after-title">
+            <strong>Read this as a constraint</strong>
+            <p>The backend keeps local libSQL caches and in-process workers. That is why production scale-out is explicitly blocked until serving and worker paths are separated or coordinated.</p>
+          </div>
+          <p class="source">
+            Sources: <code>backend/src/main.rs:146-210</code>,
+            <code>backend/src/main.rs:373-470</code>,
+            <code>backend/src/main.rs:724-740</code>,
+            <code>docs/operations/deployment.md:156</code>.
+          </p>
+        </section>
+
+        <section class="slide" data-title="API Trust">
+          <p class="eyebrow">API and trust</p>
+          <h2>Normal clients call Rust directly. Identity is resolved before scope decisions.</h2>
+          <div class="grid two after-title">
+            <div class="panel">
+              <strong>Direct mode</strong>
+              <p>Browser and Tauri clients send Firebase bearer tokens to the Rust backend using <code>VITE_API_BASE</code>.</p>
+            </div>
+            <div class="panel">
+              <strong>Trusted proxy mode</strong>
+              <p>First-party callers can still use <code>x-dastill-proxy-auth</code> plus identity headers when proxy-style forwarding is needed.</p>
+            </div>
+          </div>
+          <table class="table after-title">
+            <thead>
+              <tr><th>Route family</th><th>Purpose</th><th>Representative endpoints</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Workspace</td><td>Bootstrap and content selection.</td><td><code>/api/workspace/bootstrap</code>, <code>/api/channels/{id}/snapshot</code></td></tr>
+              <tr><td>Search</td><td>Query, status, status stream, rebuild.</td><td><code>/api/search</code>, <code>/api/search/status/stream</code></td></tr>
+              <tr><td>Chat</td><td>Persistent and ephemeral SSE conversations.</td><td><code>/api/chat/conversations/{id}/stream</code></td></tr>
+              <tr><td>Library</td><td>Channels, videos, highlights, website folders, mini.</td><td><code>/api/channels</code>, <code>/api/mini</code>, <code>/api/highlights</code></td></tr>
+            </tbody>
+          </table>
+          <p class="source">
+            Sources: <code>docs/architecture/frontend-and-api.md:124-152</code>,
+            <code>docs/architecture/frontend-and-api.md:154-240</code>,
+            <code>backend/src/main.rs:472-722</code>.
+          </p>
+        </section>
+
+        <section class="slide" data-title="Search">
+          <p class="eyebrow">Search architecture</p>
+          <h2>Search is a hybrid retrieval system with graceful partial failure.</h2>
+          <div class="flow long after-title">
+            <div class="node"><b>Keyword</b><span>local libSQL FTS5, BM25, title and section signal</span></div>
+            <div class="node"><b>Semantic</b><span>S3 Vectors with Ollama embeddings when enabled</span></div>
+            <div class="node"><b>Fusion</b><span>Reciprocal Rank Fusion combines candidate lists</span></div>
+            <div class="node"><b>Rerank</b><span>optional cross-encoder through Ollama</span></div>
+          </div>
+          <div class="grid two after-title">
+            <div class="panel">
+              <strong>Index lifecycle</strong>
+              <p>Ready transcript and summary content becomes pending search sources. The worker chunks, embeds when available, writes S3 chunks, and syncs FTS rows.</p>
+            </div>
+            <div class="panel light">
+              <strong>Retrieval metadata</strong>
+              <p>Chunks retain source kind, video/channel metadata, section titles, and optional <code>start_sec</code> for timed transcript navigation.</p>
+            </div>
+          </div>
+          <p class="source">
+            Sources: <code>docs/pipelines/search-indexing.md:47-80</code>,
+            <code>docs/pipelines/search-indexing.md:84-130</code>,
+            <code>docs/pipelines/search-indexing.md:134-190</code>,
+            <code>backend/src/services/search/mod.rs:15-18</code>.
+          </p>
+        </section>
+
+        <section class="slide" data-title="Chunking">
+          <p class="eyebrow">Chunking</p>
+          <h2>The chunker protects recall without letting one transcript dominate the index.</h2>
+          <div class="grid three after-title">
+            <div class="metric"><b>300</b><strong>Target words</strong><p>Transcript and summary chunks target 300 words.</p></div>
+            <div class="metric"><b>40</b><strong>Overlap words</strong><p>Transcript chunks carry overlap across boundaries.</p></div>
+            <div class="metric"><b>80</b><strong>Hard cap</strong><p>Transcript and summary sources cap chunk counts at 80.</p></div>
+          </div>
+          <div class="panel after-title">
+            <strong>Design choice</strong>
+            <p>Summaries always keep a full-document chunk, then add section chunks. Timed transcript chunks carry <code>start_sec</code>; paragraph transcript chunks leave it null.</p>
+          </div>
+          <p class="source">
+            Sources: <code>docs/pipelines/search-indexing.md:178-242</code>,
+            <code>backend/src/workers/mod.rs:69-105</code>.
+          </p>
+        </section>
+
+        <section class="slide" data-title="Chat">
+          <p class="eyebrow">Chat and RAG</p>
+          <h2>Chat plans retrieval before it speaks.</h2>
+          <div class="grid two after-title">
+            <div class="panel">
+              <strong>Planner</strong>
+              <p>Classifies the user message into fact, synthesis, pattern, comparison, recommendation, or recent-activity style work, then chooses query fan-out and budgets.</p>
+            </div>
+            <div class="panel">
+              <strong>Retriever</strong>
+              <p>Runs FTS and semantic retrieval, assembles scored context, truncates source snippets, and stores attribution with assistant messages.</p>
+            </div>
+          </div>
+          <div class="flow long after-title">
+            <div class="node"><b>Intent</b><span>planner or heuristics</span></div>
+            <div class="node"><b>Queries</b><span>primary and expansion passes</span></div>
+            <div class="node"><b>Sources</b><span>ranked chunks per video</span></div>
+            <div class="node"><b>SSE</b><span>pending to streaming to complete</span></div>
+          </div>
+          <p class="source">
+            Sources: <code>docs/pipelines/ai-models.md:208-253</code>,
+            <code>docs/pipelines/ai-models.md:255-306</code>,
+            <code>docs/pipelines/ai-models.md:314-337</code>,
+            <code>backend/src/handlers/chat.rs</code>.
+          </p>
+        </section>
+
+        <section class="slide" data-title="Models">
+          <p class="eyebrow">Model contract</p>
+          <h2>Model roles are separate on purpose.</h2>
+          <table class="table after-title">
+            <thead>
+              <tr><th>Role</th><th>Config</th><th>Why separate</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Summarizer</td><td><code>OLLAMA_SUMMARY_MODEL</code></td><td>Generates summaries and cleans transcripts through Ollama generate.</td></tr>
+              <tr><td>Fallback</td><td><code>OLLAMA_FALLBACK_MODEL</code></td><td>Can run local fallback when cloud-backed summarizer is rate-limited.</td></tr>
+              <tr><td>Evaluator</td><td><code>SUMMARY_EVALUATOR_MODEL</code></td><td>Must be a separate cloud model so generation and judgment stay independent.</td></tr>
+              <tr><td>Embedding</td><td><code>OLLAMA_EMBEDDING_MODEL</code></td><td>Powers semantic search and disables quietly when unavailable.</td></tr>
+              <tr><td>Rerank and HyDE</td><td><code>SEARCH_RERANK_MODEL</code>, <code>SEARCH_HYDE_MODEL</code></td><td>Optional precision and recall upgrades for hybrid search.</td></tr>
+            </tbody>
+          </table>
+          <p class="lead">
+            Startup rejects identical summarizer and evaluator model strings. That small
+            guard enforces the larger trust idea.
+          </p>
+          <p class="source">
+            Sources: <code>docs/pipelines/ai-models.md:3-18</code>,
+            <code>docs/pipelines/ai-models.md:22-81</code>,
+            <code>docs/pipelines/ai-models.md:85-117</code>,
+            <code>README.md:127-128</code>.
+          </p>
+        </section>
+
+        <section class="slide" data-title="Frontend">
+          <p class="eyebrow">Frontend posture</p>
+          <h2>The UI is a dense reading workspace, not a marketing shell.</h2>
+          <div class="grid three after-title">
+            <div class="panel">
+              <strong>Routes</strong>
+              <p>Main workspace, channel view, queue, highlights, chat, vocabulary, login/logout, and mini reader.</p>
+            </div>
+            <div class="panel">
+              <strong>Contract</strong>
+              <p>Typed JSON and SSE calls flow through the shared API client rather than GraphQL or server actions.</p>
+            </div>
+            <div class="panel">
+              <strong>Design system</strong>
+              <p>Muted, minimal, content-first, tokenized colors, compact controls, and strong mobile shell constraints.</p>
+            </div>
+          </div>
+          <div class="panel light after-title">
+            <strong>Notable code smell to remember</strong>
+            <p><code>frontend/src/lib/api.ts</code> is 879 lines. It centralizes the API contract, cache invalidation, and request behavior. That makes it important, but also a natural future split point.</p>
+          </div>
+          <p class="source">
+            Sources: <code>docs/architecture/frontend-and-api.md:76-117</code>,
+            <code>docs/architecture/frontend-and-api.md:236-240</code>,
+            <code>design.md:92-139</code>,
+            local <code>wc -l frontend/src/lib/api.ts</code>.
+          </p>
+        </section>
+
+        <section class="slide" data-title="Mini">
+          <p class="eyebrow">Maintenance and mini</p>
+          <h2>The repo has a maintenance path, and the mini reader is built to keep reading alive.</h2>
+          <div class="grid two after-title">
+            <div class="panel accent">
+              <strong>Current working tree flag</strong>
+              <p><code>.github/runtime-mode.env</code> currently reads <code>APP_RUNTIME_MODE=normal</code>. CI and release workflows use that same file as the runtime-mode source.</p>
+            </div>
+            <div class="panel">
+              <strong>Mini boundary</strong>
+              <p><code>dastill-mini</code> is a signed-in summary reader that uses S3-backed per-user state instead of depending on the full workspace bootstrap path.</p>
+            </div>
+          </div>
+          <p class="lead">
+            Inference from current modified files and specs: active local work still appears focused on the mini reader.
+            The dirty files include mini route, mini reader state, mini article, and mini state tests.
+          </p>
+          <p class="source">
+            Sources: <code>.github/runtime-mode.env:1</code>,
+            <code>docs/operations/deployment.md:150-156</code>,
+            <code>.specs/dastill-mini/prd.md</code>,
+            <code>.adr/adr-dastill-mini-uses-s3-read-state.md</code>,
+            local <code>git status --short</code>.
+          </p>
+        </section>
+
+        <section class="slide" data-title="Deployment">
+          <p class="eyebrow">Deployment</p>
+          <h2>Production spans GCP runtime, Firebase static hosting, and AWS data services.</h2>
+          <div class="grid three after-title">
+            <div class="panel">
+              <strong>GCP</strong>
+              <p>Cloud Run backend, Secret Manager, Artifact Registry, Firebase project resources, and GitHub WIF.</p>
+            </div>
+            <div class="panel">
+              <strong>AWS</strong>
+              <p>S3 data bucket, S3 Vectors bucket/index, IAM role trusted by GCP backend identity.</p>
+            </div>
+            <div class="panel">
+              <strong>CI/CD</strong>
+              <p>GitHub Actions validates changed surfaces, applies infra when needed, and deploys backend/frontend/docs targets.</p>
+            </div>
+          </div>
+          <div class="panel light after-title">
+            <strong>Secret boundary</strong>
+            <p>Terraform owns secret containers and IAM. Secret payloads are added directly in Secret Manager and kept out of Terraform state.</p>
+          </div>
+          <p class="source">
+            Sources: <code>docs/operations/deployment.md:11-23</code>,
+            <code>docs/operations/deployment.md:24-42</code>,
+            <code>docs/operations/deployment.md:44-110</code>,
+            <code>docs/operations/deployment.md:175-214</code>.
+          </p>
+        </section>
+
+        <section class="slide" data-title="Security">
+          <p class="eyebrow">Security posture</p>
+          <h2>The agentic surface is bounded retrieval, not tool-executing autonomy.</h2>
+          <div class="grid two after-title">
+            <div class="panel">
+              <strong>Controls in place</strong>
+              <ul>
+                <li>Chat treats retrieved excerpts and tool outputs as untrusted data.</li>
+                <li>Chat tools are schema-bounded, read-only, and step-limited.</li>
+                <li>Retrieval is scoped to the caller's accessible library.</li>
+                <li>Expensive routes and anonymous chat have rate-limit and quota hooks.</li>
+              </ul>
+            </div>
+            <div class="panel light">
+              <strong>Known gaps</strong>
+              <ul>
+                <li>Rate limiting is still process-local.</li>
+                <li>ASI red-team testing is not automated in CI.</li>
+                <li>Tool-call audit logging and supply-chain review still need work.</li>
+              </ul>
+            </div>
+          </div>
+          <p class="source">
+            Sources: <code>docs/security/index.md</code>,
+            <code>backend/src/main.rs:493-521</code>,
+            <code>backend/src/main.rs:540-547</code>,
+            <code>backend/src/main.rs:715-722</code>.
+          </p>
+        </section>
+
+        <section class="slide" data-title="Invariants">
+          <p class="eyebrow">Invariants</p>
+          <h2>These are the rails a maintainer should not bend casually.</h2>
+          <div class="grid two after-title">
+            <div class="panel">
+              <strong>Content and search</strong>
+              <ul>
+                <li>Canonical content before derived projections.</li>
+                <li>Async workers over inline embedding, chunking, and model-heavy work.</li>
+                <li>FTS should continue when semantic search is disabled or unavailable.</li>
+                <li>Search rebuilds coordinate through the projection lock.</li>
+              </ul>
+            </div>
+            <div class="panel">
+              <strong>Auth and operations</strong>
+              <ul>
+                <li>Resolve <code>AccessContext</code> before library access decisions.</li>
+                <li>Do not put app secrets in Terraform state or startup scripts.</li>
+                <li>Production backend scale-out is blocked by current in-process worker/cache design.</li>
+                <li>Frontend design changes belong in <code>design.md</code> first.</li>
+              </ul>
+            </div>
+          </div>
+          <p class="source">
+            Sources: <code>AGENTS.md</code>,
+            <code>design.md:1-12</code>,
+            <code>docs/architecture/overview.md:135-151</code>,
+            <code>docs/architecture/frontend-and-api.md:124-131</code>,
+            <code>docs/operations/deployment.md:56-70</code>,
+            <code>docs/operations/deployment.md:156</code>.
+          </p>
+        </section>
+
+        <section class="slide" data-title="Reading Path">
+          <p class="eyebrow">Recommended reading path</p>
+          <h2>Walk from concept to runtime, then into code.</h2>
+          <ol class="after-title">
+            <li><code>README.md</code>: product purpose, local setup, stack, and model defaults.</li>
+            <li><code>docs/architecture/overview.md</code>: system shape and canonical-versus-derived mental model.</li>
+            <li><code>docs/pipelines/content-pipeline.md</code>: end-to-end content lifecycle.</li>
+            <li><code>docs/pipelines/search-indexing.md</code>: retrieval mechanics, chunking, and indexing maintenance.</li>
+            <li><code>docs/pipelines/ai-models.md</code>: model roles, evaluator policy, chat/RAG, cooldowns.</li>
+            <li><code>backend/src/main.rs</code> and <code>backend/src/state.rs</code>: real startup, AppState, routes, and workers.</li>
+            <li><code>frontend/src/lib/api.ts</code> and <code>frontend/src/lib/components/workspace/</code>: browser contract and workspace UI.</li>
+            <li><code>docs/operations/deployment.md</code> and <code>docs/security/index.md</code>: production and risk boundaries.</li>
+          </ol>
+          <p class="source">
+            Sources: corpus synthesis from repo docs and source files listed above.
+          </p>
+        </section>
+
+        <section class="slide" data-title="Open Questions">
+          <p class="eyebrow">Open questions</p>
+          <h2>Good next questions cut across runtime, product, and trust.</h2>
+          <div class="grid two after-title">
+            <div class="panel">
+              <strong>Architecture</strong>
+              <ul>
+                <li>When should worker execution split from request serving so Cloud Run can scale horizontally?</li>
+                <li>What is the intended long-term boundary between S3-backed state, local libSQL, and Turso-backed paths?</li>
+                <li>Which search features are product-critical enough to justify production semantic search by default?</li>
+              </ul>
+            </div>
+            <div class="panel light">
+              <strong>Product and safety</strong>
+              <ul>
+                <li>Is <code>dastill-mini</code> a maintenance escape hatch only, or a durable reading mode?</li>
+                <li>What evidence should users see before trusting summary evaluation scores?</li>
+                <li>Which ASI red-team checks should become CI fixtures?</li>
+              </ul>
+            </div>
+          </div>
+          <p class="source">
+            <strong>Inference:</strong> these are synthesized from docs and current modified files, not explicit roadmap commitments.
+            Sources: <code>docs/operations/deployment.md:156</code>,
+            <code>.specs/dastill-mini/prd.md</code>,
+            <code>docs/security/index.md</code>.
+          </p>
+        </section>
+
+        <section class="slide" data-title="Source Map">
+          <p class="eyebrow">Source map</p>
+          <h2>Evidence used by this deck.</h2>
+          <div class="grid two after-title">
+            <div class="panel">
+              <strong>Primary docs</strong>
+              <ul>
+                <li><code>README.md:3-15</code>, <code>README.md:42-54</code>, <code>README.md:141-164</code></li>
+                <li><code>design.md:1-12</code>, <code>design.md:18-56</code>, <code>design.md:92-139</code></li>
+                <li><code>docs/architecture/overview.md:46-151</code></li>
+                <li><code>docs/architecture/runtime-topology.md:59-212</code></li>
+                <li><code>docs/architecture/data-model.md:43-255</code></li>
+                <li><code>docs/architecture/frontend-and-api.md:76-240</code></li>
+              </ul>
+            </div>
+            <div class="panel light">
+              <strong>Pipeline, ops, and code</strong>
+              <ul>
+                <li><code>docs/pipelines/content-pipeline.md</code>, <code>docs/pipelines/search-indexing.md:47-260</code></li>
+                <li><code>docs/pipelines/ai-models.md:3-337</code>, <code>docs/operations/deployment.md:3-236</code></li>
+                <li><code>docs/security/index.md</code>, <code>.specs/dastill-mini/prd.md</code>, <code>.adr/adr-dastill-mini-uses-s3-read-state.md</code></li>
+                <li><code>backend/src/main.rs:146-740</code>, <code>backend/src/workers/mod.rs:7-120</code>, <code>backend/src/state.rs</code></li>
+                <li><code>frontend/src/routes/</code>, <code>frontend/src/lib/api.ts</code>, <code>src-tauri/tauri.conf.json</code></li>
+              </ul>
+            </div>
+          </div>
+          <p class="source">
+            <strong>Confidence:</strong> high for documented architecture and route/runtime facts;
+            medium for roadmap implications and mini-reader direction because those are inferred from specs, ADRs, and dirty working tree files.
+          </p>
+        </section>
+      </div>
+
+      <footer class="controls">
+        <div class="control-group">
+          <button type="button" id="prevBtn" aria-label="Previous slide">Prev</button>
+          <button type="button" id="nextBtn" aria-label="Next slide">Next</button>
+        </div>
+        <div class="kbd-hint">Arrow keys, space, Home, End</div>
+        <div class="meta" id="slideTitle">Title</div>
+      </footer>
+    </main>
+
+    <script>
+      (() => {
+        const slides = Array.from(document.querySelectorAll(".slide"));
+        const progressBar = document.getElementById("progressBar");
+        const slideCount = document.getElementById("slideCount");
+        const slideTitle = document.getElementById("slideTitle");
+        const prevBtn = document.getElementById("prevBtn");
+        const nextBtn = document.getElementById("nextBtn");
+        let current = 0;
+
+        const fromHash = () => {
+          const match = window.location.hash.match(/^#slide-(\d+)$/);
+          if (!match) return 0;
+          const parsed = Number.parseInt(match[1], 10) - 1;
+          if (Number.isNaN(parsed)) return 0;
+          return Math.max(0, Math.min(slides.length - 1, parsed));
+        };
+
+        const render = (next, updateHash = true) => {
+          current = Math.max(0, Math.min(slides.length - 1, next));
+          slides.forEach((slide, index) => {
+            slide.classList.toggle("is-active", index === current);
+            slide.setAttribute("aria-hidden", index === current ? "false" : "true");
+          });
+
+          const humanIndex = current + 1;
+          progressBar.style.width = `${(humanIndex / slides.length) * 100}%`;
+          slideCount.textContent = `${humanIndex} / ${slides.length}`;
+          slideTitle.textContent = slides[current].dataset.title || "";
+          prevBtn.disabled = current === 0;
+          nextBtn.disabled = current === slides.length - 1;
+          document.title = `${humanIndex}/${slides.length} dAstIll Deep Research Deck`;
+
+          if (updateHash) {
+            window.history.replaceState(null, "", `#slide-${humanIndex}`);
+          }
+        };
+
+        prevBtn.addEventListener("click", () => render(current - 1));
+        nextBtn.addEventListener("click", () => render(current + 1));
+
+        window.addEventListener("keydown", (event) => {
+          const target = event.target;
+          const editing =
+            target instanceof HTMLInputElement ||
+            target instanceof HTMLTextAreaElement ||
+            target instanceof HTMLSelectElement ||
+            target?.isContentEditable;
+          if (editing) return;
+
+          if (["ArrowRight", "PageDown", " "].includes(event.key)) {
+            event.preventDefault();
+            render(current + 1);
+          } else if (["ArrowLeft", "PageUp"].includes(event.key)) {
+            event.preventDefault();
+            render(current - 1);
+          } else if (event.key === "Home") {
+            event.preventDefault();
+            render(0);
+          } else if (event.key === "End") {
+            event.preventDefault();
+            render(slides.length - 1);
+          }
+        });
+
+        window.addEventListener("hashchange", () => render(fromHash(), false));
+        render(fromHash(), false);
+      })();
+    </script>
+  </body>
+</html>
