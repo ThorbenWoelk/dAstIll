@@ -59,6 +59,8 @@ All colors are CSS custom properties (`var(--token)`). Never use hardcoded hex v
 
 Icons are **minimal stroke glyphs** only. No emoji, no filled decorative pictograms, and no one-off SVGs inlined in feature components when an existing icon fits.
 
+Prefer minimal monochrome icon controls over text labels for compact app chrome. Text remains appropriate inside forms, menus, empty states, and destructive/confirmation actions, but repeated toolbar commands should lead with the shared icon system and expose meaning through `aria-label` plus `[data-tooltip]` when needed.
+
 **Location**: `frontend/src/lib/components/icons/` (Svelte components, one file per icon).
 
 **Shape rules**
@@ -77,7 +79,9 @@ Icons are **minimal stroke glyphs** only. No emoji, no filled decorative pictogr
 | `CloseIcon` | Dismiss, clear input. |
 | `CopyIcon` | Copy to clipboard. |
 | `ExternalLinkIcon` | Opens elsewhere / external URL. |
+| `FilterIcon` | Filter or narrow list results; use for read/unread filters too. |
 | `HighlighterIcon` | Highlights mode / annotation affordance. |
+| `MenuIcon` | Navigation/options menu trigger; never use as the filter trigger. |
 | `SearchIcon` | Search fields and search affordances. |
 | `TrashIcon` | Delete / destructive remove. |
 
@@ -133,6 +137,57 @@ All pages (Workspace, Queue, Highlights) must share the same `AppShell` structur
 - Treat `position: fixed` UI as **overlay-bearing**. It must not live under a transformed ancestor unless that anchoring is explicitly intended.
 - If a mobile header, shell, drawer, or panel uses animation, prefer opacity-only entry animation when a descendant popup/popover/drawer must stay viewport-anchored.
 - Any new mobile top-bar popup or drawer needs one Playwright assertion that tap/click makes the overlay visible above the browse/content shell.
+
+### Filter Controls
+
+Use `FilterIcon` for every filter trigger across the app, including compact read/unread controls such as "hide read". Do not use search icons for filters, and do not use a menu/burger icon as the direct filter trigger.
+
+Filter triggers must behave as status indicators:
+
+- **Idle**: minimal monochrome stroke icon with a 44x44px touch target on mobile.
+- **Active**: add visible weight with a numeric badge or equivalent dot when only one filter can be active. Prefer a count badge when multiple filter dimensions can be active.
+- **Focus/Press**: use the standard hover/focus background treatment without changing layout size.
+
+Selection surfaces:
+
+- Use a dropdown/popover for simple desktop filters with one to three groups.
+- Use a drawer or sheet for complex mobile filters with many categories. Simple mobile filters may use a compact popover when it remains easy to dismiss.
+- Use radio buttons or mutually exclusive menu items for one-of-many choices; use checkboxes only when multiple values can be selected at once.
+- Prefer live filtering for small local lists and desktop flows. Use batch apply/reset controls only when mobile space or expensive queries make live updates costly.
+
+Active feedback and reset:
+
+- Never hide the fact that filters are on. Use a badge on the trigger and visible chips or concise status text near the filtered list when space allows.
+- Always provide a clear/reset action for active filters.
+- Empty states caused by filters must say that the current filters produced no results and provide a clear filters action.
+
+---
+
+## Mobile-First Patterns
+
+### CSS Breakpoint Rule
+
+Write base styles for mobile. Use `@media (min-width: 640px)` to add desktop enhancements. Never use `max-width` media queries for responsive layout.
+
+### Bottom Bar
+
+Primary mobile actions go in a fixed bottom bar (`position: fixed; bottom: 0`). Use `z-index: var(--z-mobile-tab-bar)` and respect `env(safe-area-inset-bottom)`. Hide on desktop with `@media (min-width: 640px) { display: none }`. All touch targets must be 44px minimum.
+
+### Bottom Sheet
+
+Secondary selections (channel pickers, filter groups) use an opaque bottom sheet that slides up from the bottom. The sheet has a drag handle, opaque `--surface` background, and `--surface-overlay-strong` backdrop. Max height `60dvh`. Dismiss via backdrop tap, Escape key, or explicit close button. Do not use native `<select>` dropdowns or hamburger menus for these surfaces on mobile.
+
+### Swipe Navigation
+
+Use the `swipeNavigation` action (`frontend/src/lib/mini/use-swipe-navigation.ts`) for horizontal swipe between content items. Default threshold: 60px. Ignores swipes starting within 40px of the left edge (iOS back gesture). Rejects diagonal swipes. Does not interfere with vertical scrolling.
+
+### Skeleton Loading
+
+Use content-shaped skeleton screens (matching the layout of the content being loaded) over spinner or pulse animations. Skeleton elements use `background: var(--muted)` with `animation: pulse-subtle`.
+
+### Safe Area
+
+All fixed-position UI (top bars, bottom bars, sheets) must respect device safe areas using `env(safe-area-inset-top)` and `env(safe-area-inset-bottom)`. Use `max()` to combine with standard padding: `padding-bottom: max(var(--space-sm), env(safe-area-inset-bottom))`.
 
 ---
 

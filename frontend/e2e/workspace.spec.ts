@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { openFreshGuestPage } from "./test-helpers";
 import {
   buildMockWorkspaceBootstrap,
@@ -23,33 +23,123 @@ function workspaceDesktopTabs(page: Page) {
   return page.locator("#workspace-tabs-desktop").first();
 }
 
-async function workspaceHasSeedData(page: Page): Promise<boolean> {
-  await page.goto("/");
+async function installSeededWorkspaceApi(page: Page) {
+  const primary = buildMockWorkspaceBootstrap({
+    channelId: "channel-alpha",
+    channelName: "Alpha workspace channel",
+    channelHandle: "@alpha-workspace",
+    containerId: "container-alpha",
+    videoId: "video-alpha",
+    videoTitle: "Alpha workspace fixture video",
+    qualityScore: 8,
+  });
+  const secondary = buildMockWorkspaceBootstrap({
+    channelId: "channel-beta",
+    channelName: "Beta workspace channel",
+    channelHandle: "@beta-workspace",
+    containerId: "container-beta",
+    videoId: "video-beta",
+    videoTitle: "Beta workspace fixture video",
+    qualityScore: 6,
+  });
+  const bootstrap = {
+    ...primary,
+    containers: [...primary.containers, ...secondary.containers],
+    sources: [...primary.sources, ...secondary.sources],
+    channels: [...primary.channels, ...secondary.channels],
+  };
+
+  await installMockWorkspaceApi(page, {
+    bootstrap,
+    snapshots: {
+      [primary.selected_channel_id]: primary.snapshot,
+      [secondary.selected_channel_id]: secondary.snapshot,
+    },
+    transcripts: {
+      "video-alpha": {
+        video_id: "video-alpha",
+        raw_text:
+          "Alpha transcript fixture. The first channel keeps its own transcript.",
+        formatted_markdown: null,
+        render_mode: "plain_text",
+      },
+      "video-beta": {
+        video_id: "video-beta",
+        raw_text:
+          "Beta transcript fixture. The second channel proves content changes.",
+        formatted_markdown: null,
+        render_mode: "plain_text",
+      },
+    },
+    summaries: {
+      "video-alpha": {
+        video_id: "video-alpha",
+        content:
+          "Alpha summary fixture. The first channel keeps its own summary.",
+        model_used: "glm-5.1:cloud",
+        quality_score: 8,
+        quality_note: "Clear alpha fixture.",
+        quality_model_used: "gemma4:31b-cloud",
+        summary_tags: ["alpha"],
+        summary_tags_evaluated: true,
+      },
+      "video-beta": {
+        video_id: "video-beta",
+        content:
+          "Beta summary fixture. The second channel proves summary content changes.",
+        model_used: "glm-5.1:cloud",
+        quality_score: 6,
+        quality_note: "Clear beta fixture.",
+        quality_model_used: "gemma4:31b-cloud",
+        summary_tags: ["beta"],
+        summary_tags_evaluated: true,
+      },
+    },
+    videoInfos: {
+      "video-alpha": {
+        video_id: "video-alpha",
+        watch_url: "https://www.youtube.com/watch?v=video-alpha",
+        title: "Alpha workspace fixture video",
+        description: "Fixture info for the alpha workspace video.",
+        thumbnail_url: null,
+        channel_name: "Alpha workspace channel",
+        channel_id: "channel-alpha",
+        published_at: "2026-04-11T18:30:00.000Z",
+        duration_iso8601: "PT8M12S",
+        duration_seconds: 492,
+        view_count: 1280,
+      },
+      "video-beta": {
+        video_id: "video-beta",
+        watch_url: "https://www.youtube.com/watch?v=video-beta",
+        title: "Beta workspace fixture video",
+        description: "Fixture info for the beta workspace video.",
+        thumbnail_url: null,
+        channel_name: "Beta workspace channel",
+        channel_id: "channel-beta",
+        published_at: "2026-04-12T18:30:00.000Z",
+        duration_iso8601: "PT9M24S",
+        duration_seconds: 564,
+        view_count: 980,
+      },
+    },
+  });
+}
+
+async function openSeededWorkspace(page: Page, path = "/") {
+  await installSeededWorkspaceApi(page);
+  await page.goto(path);
   const sidebar = workspaceSidebar(page);
   await expect(sidebar).toBeVisible();
+  await expect(sidebar.locator("[data-channel-id]").first()).toBeVisible({
+    timeout: READY_MS,
+  });
+  return sidebar;
+}
 
-  // SSR can render before the client bootstrap finishes; poll until we either
-  // have channel rows or a confirmed empty workspace (not the loading skeleton).
-  await expect
-    .poll(
-      async () => {
-        const count = await sidebar.locator("[data-channel-id]").count();
-        if (count > 0) return "channels";
-        const empty = sidebar
-          .getByText("Start by following a channel.")
-          .first();
-        if (await empty.isVisible()) return "empty";
-        return "loading";
-      },
-      {
-        timeout: READY_MS,
-        message:
-          "Timed out waiting for channels or empty workspace (still loading?)",
-      },
-    )
-    .not.toBe("loading");
-
-  return (await sidebar.locator("[data-channel-id]").count()) > 0;
+async function dispatchVisibleClick(locator: Locator): Promise<void> {
+  await expect(locator).toBeVisible({ timeout: READY_MS });
+  await locator.dispatchEvent("click");
 }
 
 test.beforeEach(async ({ page }) => {
@@ -59,65 +149,55 @@ test.beforeEach(async ({ page }) => {
 test("sidebar lists channels and each row shows video titles", async ({
   page,
 }) => {
-  const hasData = await workspaceHasSeedData(page);
-  if (!hasData) {
-    test.skip(true, "Workspace has no channels; run against a seeded backend");
-  }
-
-  const sidebar = workspaceSidebar(page);
+  const sidebar = await openSeededWorkspace(page);
   const channelRows = sidebar.locator("[data-channel-id]");
   await expect(channelRows.first()).toBeVisible();
-  const n = await channelRows.count();
-  expect(n).toBeGreaterThan(0);
+  await expect(channelRows).toHaveCount(2);
 
-  for (let i = 0; i < n; i++) {
-    const titles = channelRows
-      .nth(i)
-      .locator("xpath=following-sibling::div[1]")
-      .locator("p.line-clamp-2");
-    await expect(titles.first()).toBeVisible({ timeout: READY_MS });
-  }
+  await expect(
+    sidebar.locator("#videos").getByText("Alpha workspace fixture video"),
+  ).toBeVisible({ timeout: READY_MS });
+
+  await page.goto("/?source=channel-beta");
+  await expect(
+    sidebar.locator("#videos").getByText("Beta workspace fixture video"),
+  ).toBeVisible({ timeout: READY_MS });
 });
 
 test("switching content tabs shows different views", async ({ page }) => {
-  const hasData = await workspaceHasSeedData(page);
-  if (!hasData) {
-    test.skip(true, "Workspace has no channels; run against a seeded backend");
-  }
+  await openSeededWorkspace(
+    page,
+    "/?source=channel-alpha&item=video-alpha&content=summary",
+  );
 
-  const sidebar = workspaceSidebar(page);
-  await sidebar
-    .locator("[data-channel-id]")
-    .first()
-    .locator("button")
-    .first()
-    .click();
-  await expect(
-    sidebar.locator("#videos").getByRole("button").first(),
-  ).toBeVisible({
-    timeout: READY_MS,
-  });
-  await sidebar.locator("#videos").getByRole("button").first().click();
-
-  await workspaceDesktopTabs(page)
-    .getByRole("button", { name: "Transcript", exact: true })
-    .click();
+  await dispatchVisibleClick(
+    workspaceDesktopTabs(page).getByRole("button", {
+      name: "Transcript",
+      exact: true,
+    }),
+  );
   await expect(page.locator("#content-view article")).toBeVisible({
     timeout: READY_MS,
   });
   await expect(page.locator("#content-view article")).not.toBeEmpty();
 
-  await workspaceDesktopTabs(page)
-    .getByRole("button", { name: "Info", exact: true })
-    .click();
+  await dispatchVisibleClick(
+    workspaceDesktopTabs(page).getByRole("button", {
+      name: "Info",
+      exact: true,
+    }),
+  );
   await expect(page.getByText("Published").first()).toBeVisible({
     timeout: READY_MS,
   });
   await expect(page.locator("#content-view article")).toHaveCount(0);
 
-  await workspaceDesktopTabs(page)
-    .getByRole("button", { name: "Summary", exact: true })
-    .click();
+  await dispatchVisibleClick(
+    workspaceDesktopTabs(page).getByRole("button", {
+      name: "Summary",
+      exact: true,
+    }),
+  );
   await expect(page.locator("#content-view article")).toBeVisible({
     timeout: READY_MS,
   });
@@ -128,34 +208,10 @@ test("switching content tabs shows different views", async ({ page }) => {
 test("summary and transcript match the selected video after changing channel", async ({
   page,
 }) => {
-  const hasData = await workspaceHasSeedData(page);
-  if (!hasData) {
-    test.skip(true, "Workspace has no channels; run against a seeded backend");
-  }
-
-  const sidebar = workspaceSidebar(page);
-  const channelRows = sidebar.locator("[data-channel-id]");
-  if ((await channelRows.count()) < 2) {
-    test.skip(
-      true,
-      "Need at least two channels to verify per-channel content switching",
-    );
-  }
-
-  async function selectChannelAndFirstVideo(index: number) {
-    await channelRows.nth(index).locator("button").first().click();
-    await expect(
-      sidebar.locator("#videos").getByRole("button").first(),
-    ).toBeVisible({
-      timeout: READY_MS,
-    });
-    await sidebar.locator("#videos").getByRole("button").first().click();
-  }
-
-  await selectChannelAndFirstVideo(0);
-  await workspaceDesktopTabs(page)
-    .getByRole("button", { name: "Transcript", exact: true })
-    .click();
+  await openSeededWorkspace(
+    page,
+    "/?source=channel-alpha&item=video-alpha&content=transcript",
+  );
   await expect(page.locator("#content-view article")).toBeVisible({
     timeout: READY_MS,
   });
@@ -163,10 +219,7 @@ test("summary and transcript match the selected video after changing channel", a
     await page.locator("#content-view article").innerText()
   ).trim();
 
-  await selectChannelAndFirstVideo(1);
-  await workspaceDesktopTabs(page)
-    .getByRole("button", { name: "Transcript", exact: true })
-    .click();
+  await page.goto("/?source=channel-beta&item=video-beta&content=transcript");
   await expect(page.locator("#content-view article")).toBeVisible({
     timeout: READY_MS,
   });
@@ -176,9 +229,12 @@ test("summary and transcript match the selected video after changing channel", a
   expect(transcriptB.length).toBeGreaterThan(0);
   expect(transcriptB).not.toBe(transcriptA);
 
-  await workspaceDesktopTabs(page)
-    .getByRole("button", { name: "Summary", exact: true })
-    .click();
+  await dispatchVisibleClick(
+    workspaceDesktopTabs(page).getByRole("button", {
+      name: "Summary",
+      exact: true,
+    }),
+  );
   await expect(page.locator("#content-view article")).toBeVisible({
     timeout: READY_MS,
   });
@@ -204,6 +260,7 @@ test("workspace feature guide opens from guide URL param (same state as Guide co
 test("Cmd/Ctrl+1 navigates from queue to workspace without full reload hang", async ({
   page,
 }) => {
+  await installSeededWorkspaceApi(page);
   await page.goto("/download-queue");
   await expect
     .poll(() => new URL(page.url()).pathname)
@@ -256,24 +313,10 @@ test("channel row click opens the overview page and overview exposes delete", as
 });
 
 test("guest mark read toggle opens the sign-in prompt", async ({ page }) => {
-  const hasData = await workspaceHasSeedData(page);
-  if (!hasData) {
-    test.skip(true, "Workspace has no channels; run against a seeded backend");
-  }
-
-  const sidebar = workspaceSidebar(page);
-  await sidebar
-    .locator("[data-channel-id]")
-    .first()
-    .locator("button")
-    .first()
-    .click();
-  await expect(
-    sidebar.locator("#videos").getByRole("button").first(),
-  ).toBeVisible({
-    timeout: READY_MS,
-  });
-  await sidebar.locator("#videos").getByRole("button").first().click();
+  await openSeededWorkspace(
+    page,
+    "/?source=channel-alpha&item=video-alpha&content=summary",
+  );
 
   const toggle = page.locator("#mark-read-toggle");
   await expect(toggle).toBeVisible({ timeout: READY_MS });
@@ -288,25 +331,16 @@ test("guest mark read toggle opens the sign-in prompt", async ({ page }) => {
 test("guest unread filter keeps videos visible when mark read requires sign-in", async ({
   page,
 }) => {
-  const hasData = await workspaceHasSeedData(page);
-  if (!hasData) {
-    test.skip(true, "Workspace has no channels; run against a seeded backend");
-  }
-
-  const sidebar = workspaceSidebar(page);
-  await sidebar
-    .locator("[data-channel-id]")
-    .first()
-    .locator("button")
-    .first()
-    .click();
+  const sidebar = await openSeededWorkspace(
+    page,
+    "/?source=channel-alpha&item=video-alpha&content=summary",
+  );
   const videoButtons = sidebar.locator("#videos").getByRole("button");
   await expect(videoButtons.first()).toBeVisible({ timeout: READY_MS });
   const targetButton = videoButtons.first();
   const targetTitle = (
     await targetButton.locator("p.line-clamp-2").innerText()
   ).trim();
-  await targetButton.click();
 
   const toggle = page.locator("#mark-read-toggle");
   await expect(toggle).toBeVisible({ timeout: READY_MS });

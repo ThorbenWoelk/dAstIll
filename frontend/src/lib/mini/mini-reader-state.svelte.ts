@@ -1,0 +1,175 @@
+import { getMiniReader, updateMiniReadStatus } from "$lib/api";
+import type { MiniReader, MiniSummaryItem } from "$lib/transport-types";
+import { renderMarkdown } from "$lib/utils/markdown";
+
+function chooseActiveVideoId(
+  summaries: MiniSummaryItem[],
+  preferredVideoId?: string | null,
+): string | null {
+  if (preferredVideoId) {
+    const match = summaries.find((s) => s.video_id === preferredVideoId);
+    if (match) return match.video_id;
+  }
+  const firstUnread = summaries.find((s) => !s.read);
+  return firstUnread?.video_id ?? summaries[0]?.video_id ?? null;
+}
+
+export class MiniReaderState {
+  reader = $state<MiniReader | null>(null);
+  loading = $state(false);
+  error = $state<string | null>(null);
+  selectedChannelId = $state<string | null>(null);
+  activeVideoId = $state<string | null>(null);
+  showUnreadOnly = $state(false);
+  markingRead = $state(false);
+  contentKey = $state(0);
+  readProgress = $state(0);
+
+  visibleSummaries = $derived(
+    this.reader
+      ? this.showUnreadOnly
+        ? this.reader.summaries.filter((s) => !s.read)
+        : this.reader.summaries
+      : [],
+  );
+
+  activeIndex = $derived(
+    this.visibleSummaries.findIndex((s) => s.video_id === this.activeVideoId),
+  );
+
+  activeSummary = $derived(
+    this.activeIndex >= 0
+      ? this.visibleSummaries[this.activeIndex]
+      : (this.visibleSummaries[0] ?? null),
+  );
+
+  activeSummaryHtml = $derived(
+    this.activeSummary
+      ? renderMarkdown(this.activeSummary.summary_content)
+      : "",
+  );
+
+  canGoPrev = $derived(this.activeIndex > 0);
+  canGoNext = $derived(
+    this.activeIndex >= 0 &&
+      this.activeIndex < this.visibleSummaries.length - 1,
+  );
+  unreadCount = $derived(
+    this.reader?.summaries.filter((s) => !s.read).length ?? 0,
+  );
+  activeFilterCount = $derived(this.showUnreadOnly ? 1 : 0);
+
+  async loadReader(
+    channelId?: string | null,
+    preferredVideoId?: string | null,
+  ) {
+    this.loading = true;
+    this.error = null;
+    try {
+      const next = await getMiniReader(channelId);
+      this.reader = next;
+      this.selectedChannelId = next.selected_channel_id ?? null;
+      this.activeVideoId = chooseActiveVideoId(
+        next.summaries,
+        preferredVideoId,
+      );
+    } catch (cause) {
+      this.reader = null;
+      this.selectedChannelId = null;
+      this.activeVideoId = null;
+      this.error =
+        cause instanceof Error ? cause.message : "Could not load dastill-mini.";
+    } finally {
+      this.loading = false;
+    }
+  }
+
+  stepSummary(delta: -1 | 1) {
+    if (!this.activeSummary) return;
+    const nextIndex = this.activeIndex + delta;
+    const nextSummary = this.visibleSummaries[nextIndex];
+    if (!nextSummary) return;
+    this.activeVideoId = nextSummary.video_id;
+    this.contentKey += 1;
+    this.readProgress = 0;
+  }
+
+  jumpToSummary(videoId: string) {
+    this.activeVideoId = videoId;
+    this.contentKey += 1;
+    this.readProgress = 0;
+  }
+
+  async markActiveSummaryRead() {
+    if (!this.activeSummary || this.markingRead) return;
+    this.markingRead = true;
+    this.error = null;
+    try {
+      await updateMiniReadStatus(this.activeSummary.video_id, true);
+      if (!this.reader) return;
+      const markedId = this.activeSummary.video_id;
+      this.reader = {
+        ...this.reader,
+        summaries: this.reader.summaries.map((s) =>
+          s.video_id === markedId ? { ...s, read: true } : s,
+        ),
+      };
+      const nextVisible = this.showUnreadOnly
+        ? this.reader.summaries.filter(
+            (s) => s.video_id !== markedId && !s.read,
+          )
+        : this.reader.summaries.map((s) =>
+            s.video_id === markedId ? { ...s, read: true } : s,
+          );
+      this.activeVideoId = chooseActiveVideoId(nextVisible, markedId);
+      this.contentKey += 1;
+      this.readProgress = 0;
+    } catch (cause) {
+      this.error =
+        cause instanceof Error
+          ? cause.message
+          : "Could not update read status.";
+    } finally {
+      this.markingRead = false;
+    }
+  }
+
+  async selectChannel(channelId: string) {
+    if (!channelId || channelId === this.selectedChannelId) return;
+    this.selectedChannelId = channelId;
+    await this.loadReader(channelId);
+  }
+
+  toggleUnreadFilter() {
+    this.showUnreadOnly = !this.showUnreadOnly;
+  }
+
+  clearUnreadFilter() {
+    this.showUnreadOnly = false;
+  }
+
+  updateReadProgress(
+    scrollTop: number,
+    scrollHeight: number,
+    clientHeight: number,
+  ) {
+    const maxScroll = scrollHeight - clientHeight;
+    this.readProgress = maxScroll > 0 ? Math.min(1, scrollTop / maxScroll) : 0;
+  }
+
+  reconcileActiveVideo() {
+    const nextId = chooseActiveVideoId(
+      this.visibleSummaries,
+      this.activeVideoId,
+    );
+    if (nextId !== this.activeVideoId) {
+      this.activeVideoId = nextId;
+      this.contentKey += 1;
+      this.readProgress = 0;
+    }
+  }
+}
+
+export function createMiniReaderState(): MiniReaderState {
+  return new MiniReaderState();
+}

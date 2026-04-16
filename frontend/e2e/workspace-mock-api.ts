@@ -12,6 +12,38 @@ export type MockWorkspaceBootstrapOptions = {
   totalChunkCount?: number;
 };
 
+type MockWorkspaceBootstrap = ReturnType<typeof buildMockWorkspaceBootstrap>;
+type MockWorkspaceSnapshot = MockWorkspaceBootstrap["snapshot"];
+type MockWorkspaceSummary = {
+  video_id: string;
+  content: string;
+  model_used: string | null;
+  quality_score: number | null;
+  quality_note: string | null;
+  quality_model_used: string | null;
+  summary_tags: string[];
+  summary_tags_evaluated: boolean;
+};
+type MockWorkspaceTranscript = {
+  video_id: string;
+  raw_text: string | null;
+  formatted_markdown: string | null;
+  render_mode: "plain_text" | "markdown";
+};
+type MockWorkspaceVideoInfo = {
+  video_id: string;
+  watch_url: string;
+  title: string;
+  description: string | null;
+  thumbnail_url: null;
+  channel_name: string | null;
+  channel_id: string | null;
+  published_at: string | null;
+  duration_iso8601: string | null;
+  duration_seconds: number | null;
+  view_count: number | null;
+};
+
 export function buildMockWorkspaceBootstrap(
   options: MockWorkspaceBootstrapOptions,
 ) {
@@ -134,34 +166,30 @@ export function buildMockWorkspaceBootstrap(
 export async function installMockWorkspaceApi(
   page: Page,
   options: {
-    bootstrap: ReturnType<typeof buildMockWorkspaceBootstrap>;
-    summary?: {
-      video_id: string;
-      content: string;
-      model_used: string;
-      quality_score: number;
-      quality_note: string;
-      quality_model_used: string;
-      summary_tags: string[];
-      summary_tags_evaluated: boolean;
-    };
-    videoInfo?: {
-      video_id: string;
-      watch_url: string;
-      title: string;
-      description: string;
-      thumbnail_url: null;
-      channel_name: string;
-      channel_id: string;
-      published_at: string;
-      duration_iso8601: string;
-      duration_seconds: number;
-      view_count: number;
-    };
+    bootstrap: MockWorkspaceBootstrap;
+    snapshots?: Record<string, MockWorkspaceSnapshot>;
+    summaries?: Record<string, MockWorkspaceSummary>;
+    transcripts?: Record<string, MockWorkspaceTranscript>;
+    videoInfos?: Record<string, MockWorkspaceVideoInfo>;
+    summary?: MockWorkspaceSummary;
+    videoInfo?: MockWorkspaceVideoInfo;
   },
 ) {
   const { bootstrap, summary, videoInfo } = options;
   const channelId = bootstrap.selected_channel_id;
+  const snapshots = {
+    [channelId]: bootstrap.snapshot,
+    ...(options.snapshots ?? {}),
+  };
+  const summaries = {
+    ...(summary ? { [summary.video_id]: summary } : {}),
+    ...(options.summaries ?? {}),
+  };
+  const transcripts = options.transcripts ?? {};
+  const videoInfos = {
+    ...(videoInfo ? { [videoInfo.video_id]: videoInfo } : {}),
+    ...(options.videoInfos ?? {}),
+  };
 
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
@@ -175,24 +203,41 @@ export async function installMockWorkspaceApi(
       return;
     }
 
-    if (url.pathname === `/api/channels/${channelId}/snapshot`) {
+    const snapshotMatch = url.pathname.match(
+      /^\/api\/channels\/([^/]+)\/snapshot$/,
+    );
+    if (snapshotMatch) {
+      const snapshot = snapshots[snapshotMatch[1]];
+      if (!snapshot) {
+        await route.fulfill({ status: 404, body: "snapshot not found" });
+        return;
+      }
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(bootstrap.snapshot),
+        body: JSON.stringify(snapshot),
       });
       return;
     }
 
-    if (url.pathname === `/api/channels/${channelId}/videos`) {
+    const videosMatch = url.pathname.match(
+      /^\/api\/channels\/([^/]+)\/videos$/,
+    );
+    if (videosMatch) {
+      const requestedChannelId = videosMatch[1];
+      const snapshot = snapshots[requestedChannelId];
+      if (!snapshot) {
+        await route.fulfill({ status: 404, body: "videos not found" });
+        return;
+      }
       await route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
-          source_id: channelId,
-          videos: [],
-          items: [],
-          parts: [],
+          source_id: requestedChannelId,
+          videos: snapshot.videos,
+          items: snapshot.items,
+          parts: snapshot.parts,
           has_more: false,
           next_offset: null,
         }),
@@ -200,16 +245,24 @@ export async function installMockWorkspaceApi(
       return;
     }
 
-    if (url.pathname === `/api/channels/${channelId}/sync-depth`) {
+    const syncDepthMatch = url.pathname.match(
+      /^\/api\/channels\/([^/]+)\/sync-depth$/,
+    );
+    if (syncDepthMatch) {
+      const snapshot = snapshots[syncDepthMatch[1]];
+      if (!snapshot) {
+        await route.fulfill({ status: 404, body: "sync depth not found" });
+        return;
+      }
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(bootstrap.snapshot.sync_depth),
+        body: JSON.stringify(snapshot.sync_depth),
       });
       return;
     }
 
-    if (url.pathname === `/api/channels/${channelId}/backfill`) {
+    if (/^\/api\/channels\/[^/]+\/backfill$/.test(url.pathname)) {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -222,19 +275,24 @@ export async function installMockWorkspaceApi(
       return;
     }
 
-    if (summary && url.pathname === `/api/videos/${summary.video_id}/summary`) {
+    const summaryMatch = url.pathname.match(
+      /^\/api\/videos\/([^/]+)\/summary$/,
+    );
+    if (summaryMatch) {
+      const requestedSummary = summaries[summaryMatch[1]];
+      if (!requestedSummary) {
+        await route.fulfill({ status: 404, body: "Summary not found" });
+        return;
+      }
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(summary),
+        body: JSON.stringify(requestedSummary),
       });
       return;
     }
 
-    if (
-      summary &&
-      url.pathname === `/api/videos/${summary.video_id}/summary/audio/debug`
-    ) {
+    if (/^\/api\/videos\/[^/]+\/summary\/audio\/debug$/.test(url.pathname)) {
       await route.fulfill({
         status: 404,
         contentType: "text/plain",
@@ -243,14 +301,45 @@ export async function installMockWorkspaceApi(
       return;
     }
 
-    if (
-      videoInfo &&
-      url.pathname === `/api/videos/${videoInfo.video_id}/info/ensure`
-    ) {
+    if (/^\/api\/videos\/[^/]+\/acknowledged$/.test(url.pathname)) {
+      await route.fulfill({
+        status: 403,
+        contentType: "text/plain",
+        body: "Sign-in required",
+      });
+      return;
+    }
+
+    const transcriptMatch = url.pathname.match(
+      /^\/api\/videos\/([^/]+)\/transcript(?:\/ensure)?$/,
+    );
+    if (transcriptMatch) {
+      const transcript = transcripts[transcriptMatch[1]];
+      if (!transcript) {
+        await route.fulfill({ status: 404, body: "Transcript not found" });
+        return;
+      }
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(videoInfo),
+        body: JSON.stringify(transcript),
+      });
+      return;
+    }
+
+    const videoInfoMatch = url.pathname.match(
+      /^\/api\/videos\/([^/]+)\/info\/ensure$/,
+    );
+    if (videoInfoMatch) {
+      const requestedVideoInfo = videoInfos[videoInfoMatch[1]];
+      if (!requestedVideoInfo) {
+        await route.fulfill({ status: 404, body: "video info not found" });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(requestedVideoInfo),
       });
       return;
     }

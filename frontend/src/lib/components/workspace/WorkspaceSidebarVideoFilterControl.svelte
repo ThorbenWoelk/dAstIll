@@ -1,6 +1,7 @@
 <script lang="ts">
   import { tick } from "svelte";
   import CheckIcon from "$lib/components/icons/CheckIcon.svelte";
+  import FilterIcon from "$lib/components/icons/FilterIcon.svelte";
   import { clickOutside } from "$lib/actions/click-outside";
   import type { VideoTypeFilter } from "$lib/types";
   import type { AcknowledgedFilter } from "$lib/workspace/types";
@@ -32,6 +33,9 @@
   let videoFilterButtonEl = $state<HTMLButtonElement | null>(null);
   let videoFilterMenuStyle = $state("");
   const VIDEO_FILTER_MENU_WIDTH_PX = 208;
+  let activeFilterCount = $derived(
+    Number(videoTypeFilter !== "all") + Number(acknowledgedFilter !== "all"),
+  );
 
   function updateVideoFilterMenuPosition() {
     if (!filterMenuOpen || !videoFilterButtonEl) return;
@@ -110,7 +114,7 @@
     type="button"
     id="video-filter-button"
     bind:this={videoFilterButtonEl}
-    class={`inline-flex items-center justify-center rounded-full transition-colors ${size === "md" ? "h-9 w-9" : "h-5 w-5"} ${videoTypeFilter !== "all" || acknowledgedFilter !== "all" || filterMenuOpen ? "bg-[var(--accent)] text-white" : "text-[var(--soft-foreground)] opacity-55 hover:bg-[var(--accent-wash)] hover:opacity-100"}`}
+    class={`relative inline-flex items-center justify-center rounded-full transition-colors ${size === "md" ? "h-9 w-9" : "h-5 w-5"} ${activeFilterCount > 0 || filterMenuOpen ? "bg-[var(--foreground)] text-[var(--background)]" : "text-[var(--soft-foreground)] opacity-55 hover:bg-[var(--accent-wash)] hover:opacity-100"}`}
     onclick={() => {
       filterMenuOpen = !filterMenuOpen;
     }}
@@ -119,42 +123,17 @@
     aria-haspopup="menu"
     aria-expanded={filterMenuOpen}
   >
-    {#if size === "md"}
-      <svg
-        width="18"
-        height="18"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2.2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
+    <FilterIcon
+      size={size === "md" ? 18 : 10}
+      strokeWidth={size === "md" ? 2.2 : 2.5}
+    />
+    {#if activeFilterCount > 0}
+      <span
+        class={`absolute grid place-items-center rounded-full bg-[var(--accent)] font-bold leading-none text-white ${size === "md" ? "-right-0.5 -top-0.5 h-4 min-w-4 px-1 text-[9px]" : "-right-1 -top-1 h-3 min-w-3 px-0.5 text-[8px]"}`}
         aria-hidden="true"
-        ><line x1="3" y1="6" x2="21" y2="6" /><line
-          x1="7"
-          y1="12"
-          x2="17"
-          y2="12"
-        /><line x1="10" y1="18" x2="14" y2="18" /></svg
       >
-    {:else}
-      <svg
-        width="10"
-        height="10"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2.5"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"
-        ><line x1="3" y1="6" x2="21" y2="6" /><line
-          x1="7"
-          y1="12"
-          x2="17"
-          y2="12"
-        /><line x1="10" y1="18" x2="14" y2="18" /></svg
-      >
+        {activeFilterCount}
+      </span>
     {/if}
   </button>
   {#if filterMenuOpen}
