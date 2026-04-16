@@ -25,6 +25,7 @@
   import MobileChannelGallery from "$lib/components/mobile/MobileChannelGallery.svelte";
   import MobileYouTubeTopNav from "$lib/components/mobile/MobileYouTubeTopNav.svelte";
   import QueueContentPanel from "$lib/components/queue/QueueContentPanel.svelte";
+  import LibrarySidebarPrelude from "$lib/components/workspace/LibrarySidebarPrelude.svelte";
   import {
     buildQueueGalleryChannelPreviews,
     deriveEarliestSyncDateInput,
@@ -670,27 +671,32 @@
     toggle: shellToggleSidebar,
     width: shellWidth,
   })}
-    <WorkspaceSidebar
-      videoListMode="per_channel_preview"
-      previewSessionKey="download-queue-sidebar-navigation"
-      addSourceErrorMessage={errorMessage}
-      initialChannelPreviews={page.data.channelPreviews ?? {}}
-      initialChannelPreviewsFilterKey={page.data.channelPreviewsFilterKey ??
-        "all:all:unified"}
-      previewScope={{ kind: "unified" }}
-      {queueVideoRefreshTick}
-      readOnly={true}
-      shell={{
-        collapsed: shellCollapsed,
-        width: shellWidth,
-        mobileVisible: false,
-        onToggleCollapse: shellToggleSidebar,
-      }}
-      channelState={queueSidebar.channelState}
-      channelActions={queueSidebar.channelActions}
-      videoState={queueSidebar.videoState}
-      videoActions={queueSidebar.videoActions}
-    />
+    <div class="flex h-full min-h-0 flex-col">
+      <LibrarySidebarPrelude library={page.data.bootstrap?.library ?? null} />
+      <div class="min-h-0 flex-1">
+        <WorkspaceSidebar
+          videoListMode="per_channel_preview"
+          previewSessionKey="download-queue-sidebar-navigation"
+          addSourceErrorMessage={errorMessage}
+          initialChannelPreviews={page.data.channelPreviews ?? {}}
+          initialChannelPreviewsFilterKey={page.data.channelPreviewsFilterKey ??
+            "all:all:unified"}
+          previewScope={{ kind: "unified" }}
+          {queueVideoRefreshTick}
+          readOnly={true}
+          shell={{
+            collapsed: shellCollapsed,
+            width: shellWidth,
+            mobileVisible: false,
+            onToggleCollapse: shellToggleSidebar,
+          }}
+          channelState={queueSidebar.channelState}
+          channelActions={queueSidebar.channelActions}
+          videoState={queueSidebar.videoState}
+          videoActions={queueSidebar.videoActions}
+        />
+      </div>
+    </div>
   {/snippet}
 
   <div

@@ -1,5 +1,5 @@
 import type { PageServerLoad } from "./$types";
-import { loadWorkspaceBootstrapPageData } from "$lib/server/load-workspace-bootstrap";
+import { loadWorkspaceBootstrapPageData } from "../../lib/server/load-workspace-bootstrap";
 
 /**
  * Client-side navigations (isDataRequest) skip the blocking API call so section

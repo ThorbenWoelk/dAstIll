@@ -13,6 +13,19 @@ const QUEUE_TAB_VALUES = new Set<string>([
   "evaluations",
 ]);
 
+const YOUTUBE_SOURCE_PREFIX = "youtube:channel:";
+const YOUTUBE_ITEM_PREFIX = "youtube:video:";
+
+function parseSelectionAlias(
+  value: string | null,
+  prefix: string,
+): string | null {
+  if (!value) {
+    return null;
+  }
+  return value.startsWith(prefix) ? value.slice(prefix.length) : value;
+}
+
 export type WorkspaceBootstrapPageData = {
   bootstrap: WorkspaceBootstrap | null;
   channelPreviews: Record<string, ChannelSnapshot>;
@@ -68,11 +81,17 @@ export async function loadWorkspaceBootstrapPageData(
   options?: LoadWorkspaceBootstrapOptions,
 ): Promise<WorkspaceBootstrapPageData> {
   const { fetch, url } = event;
+  const selectedSourceId = url.searchParams.get("source") ?? null;
+  const selectedItemId = url.searchParams.get("item") ?? null;
   const selectedChannelId =
     options?.selectedChannelIdOverride ??
     url.searchParams.get("channel") ??
+    parseSelectionAlias(selectedSourceId, YOUTUBE_SOURCE_PREFIX) ??
     null;
-  const selectedVideoId = url.searchParams.get("video") ?? null;
+  const selectedVideoId =
+    url.searchParams.get("video") ??
+    parseSelectionAlias(selectedItemId, YOUTUBE_ITEM_PREFIX) ??
+    null;
   const typeParam = url.searchParams.get("type");
   const ackParam = url.searchParams.get("ack");
   const unified = options?.ssrQueueUnified === true;
@@ -88,6 +107,12 @@ export async function loadWorkspaceBootstrapPageData(
     const params = new URLSearchParams();
     if (selectedChannelId) {
       params.set("selected_channel_id", selectedChannelId);
+    }
+    if (selectedSourceId) {
+      params.set("selected_source_id", selectedSourceId);
+    }
+    if (selectedItemId) {
+      params.set("selected_item_id", selectedItemId);
     }
     params.set("limit", "20");
 

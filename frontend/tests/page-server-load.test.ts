@@ -48,6 +48,14 @@ function makeBootstrapPayload(): WorkspaceBootstrap {
     channels: [],
     selected_channel_id: null,
     snapshot: null,
+    library: {
+      sections: [],
+      sources: [],
+      selected_source_id: null,
+      selected_source: null,
+      selected_items: [],
+      website_folders: [],
+    },
     search_status: {
       available: false,
       model: "test",
@@ -78,6 +86,14 @@ function makeBootstrapWithChannels(channelIds: string[]): WorkspaceBootstrap {
     })),
     selected_channel_id: channelIds[0] ?? null,
     snapshot: null,
+    library: {
+      sections: [],
+      sources: [],
+      selected_source_id: null,
+      selected_source: null,
+      selected_items: [],
+      website_folders: [],
+    },
     search_status: {
       available: false,
       model: "test",
@@ -303,6 +319,25 @@ describe("+page.server.ts load - URL filter forwarding", () => {
     expect(sp.get("acknowledged")).toBe("true");
   });
 
+  it("treats generic source and item params as workspace bootstrap aliases", async () => {
+    const load = await importLoad();
+    const { fetch, calls } = createMockFetch();
+    await load({
+      fetch,
+      url: createUrl({
+        source: "youtube:channel:ch-1",
+        item: "youtube:video:vid-9",
+        type: "long",
+      }),
+    });
+
+    expect(calls).toHaveLength(1);
+    const sp = calls[0].url.searchParams;
+    expect(sp.get("selected_source_id")).toBe("youtube:channel:ch-1");
+    expect(sp.get("selected_item_id")).toBe("youtube:video:vid-9");
+    expect(sp.get("selected_channel_id")).toBe("ch-1");
+  });
+
   it("returns null bootstrap when fetch fails", async () => {
     const load = await importLoad();
     const { fetch } = createMockFetch(500);
@@ -357,6 +392,30 @@ describe("+page.server.ts load - data request bootstrap policy", () => {
     );
     expect(result.bootstrap?.selected_channel_id).toBe(channelId);
     expect(result.channelPreviews[channelId]?.channel_id).toBe(channelId);
+  });
+
+  it("fetches bootstrap for scoped data requests with a selected source alias", async () => {
+    const load = await importLoad();
+    const channelId = "ch-42";
+    const { fetch, calls } = createSmartMockFetch(
+      makeBootstrapWithSelectedSnapshot(channelId),
+    );
+
+    const result = await load({
+      fetch,
+      url: createUrl({
+        source: `youtube:channel:${channelId}`,
+        item: "youtube:video:vid-1",
+      }),
+      isDataRequest: true,
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url.searchParams.get("selected_channel_id")).toBe(
+      channelId,
+    );
+    expect(result.selectedChannelId).toBe(channelId);
+    expect(result.selectedVideoId).toBe("vid-1");
   });
 });
 

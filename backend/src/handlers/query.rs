@@ -79,6 +79,8 @@ impl VideoListParams {
 #[derive(Debug, Default, Deserialize, Clone)]
 pub struct WorkspaceBootstrapParams {
     pub selected_channel_id: Option<String>,
+    pub selected_source_id: Option<String>,
+    pub selected_item_id: Option<String>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
     pub include_shorts: Option<bool>,
@@ -89,6 +91,17 @@ pub struct WorkspaceBootstrapParams {
 }
 
 impl WorkspaceBootstrapParams {
+    pub fn resolved_selected_channel_id(&self) -> Option<String> {
+        crate::library::resolve_selected_channel_id(
+            self.selected_channel_id.as_deref(),
+            self.selected_source_id.as_deref(),
+        )
+    }
+
+    pub fn resolved_selected_video_id(&self) -> Option<String> {
+        crate::library::resolve_selected_video_id(None, self.selected_item_id.as_deref())
+    }
+
     pub fn video_params(&self) -> VideoListParams {
         VideoListParams {
             limit: self.limit,
@@ -153,6 +166,8 @@ mod tests {
     fn workspace_bootstrap_params_preserve_video_filters() {
         let params = WorkspaceBootstrapParams {
             selected_channel_id: Some("channel-123".to_string()),
+            selected_source_id: Some("youtube:channel:channel-123".to_string()),
+            selected_item_id: Some("youtube:video:video-123".to_string()),
             limit: Some(30),
             offset: Some(5),
             include_shorts: Some(false),
@@ -170,5 +185,13 @@ mod tests {
         assert_eq!(video_params.acknowledged, Some(true));
         assert_eq!(video_params.queue_only, Some(true));
         assert_eq!(video_params.queue_tab, Some(QueueTab::Transcripts));
+        assert_eq!(
+            params.resolved_selected_channel_id().as_deref(),
+            Some("channel-123")
+        );
+        assert_eq!(
+            params.resolved_selected_video_id().as_deref(),
+            Some("video-123")
+        );
     }
 }

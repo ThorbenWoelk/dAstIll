@@ -4,6 +4,7 @@
   import WorkspaceContentPanel from "$lib/components/workspace/WorkspaceContentPanel.svelte";
   import MobileYouTubeTopNav from "$lib/components/mobile/MobileYouTubeTopNav.svelte";
   import MobileHomeBrowseOverlay from "$lib/components/mobile/MobileHomeBrowseOverlay.svelte";
+  import LibrarySidebarPrelude from "$lib/components/workspace/LibrarySidebarPrelude.svelte";
   import WorkspaceDesktopTopBar from "$lib/components/workspace/WorkspaceDesktopTopBar.svelte";
   import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
   import WorkspaceSidebar from "$lib/components/workspace/WorkspaceSidebar.svelte";
@@ -28,34 +29,41 @@
   onOpenGuide={hw.openGuide}
 >
   {#snippet sidebar(shell)}
-    <WorkspaceSidebar
-      videoListMode="per_channel_preview"
-      previewSessionKey="workspace-sidebar-navigation"
-      addSourceErrorMessage={hw.errorMessage}
-      initialChannelPreviews={hw.page.data.channelPreviews ?? {}}
-      initialChannelPreviewsFilterKey={hw.page.data.channelPreviewsFilterKey ??
-        "all:all:default"}
-      previewScope={{ kind: "default" }}
-      shell={{
-        collapsed: shell.collapsed,
-        width: shell.width,
-        mobileVisible: shell.mobileVisible ?? false,
-        onToggleCollapse: shell.toggle,
-      }}
-      channelState={{
-        ...hw.sidebarState.channelState,
-        canDeleteChannels: hw.canManageLibrary,
-      }}
-      channelActions={{
-        ...hw.sidebarState.channelActions,
-        onDeleteChannel: hw.handleDeleteChannel,
-        onDeleteAccessRequired: hw.openDeleteAccessPrompt,
-      }}
-      videoState={hw.sidebarState.videoState}
-      videoActions={hw.sidebarState.videoActions}
-      videoAcknowledgeSync={hw.videoAcknowledgeSync}
-      onChannelSyncDateSaved={hw.handleChannelSyncDateSaved}
-    />
+    <div class="flex h-full min-h-0 flex-col">
+      <LibrarySidebarPrelude
+        library={hw.page.data.bootstrap?.library ?? null}
+      />
+      <div class="min-h-0 flex-1">
+        <WorkspaceSidebar
+          videoListMode="per_channel_preview"
+          previewSessionKey="workspace-sidebar-navigation"
+          addSourceErrorMessage={hw.errorMessage}
+          initialChannelPreviews={hw.page.data.channelPreviews ?? {}}
+          initialChannelPreviewsFilterKey={hw.page.data
+            .channelPreviewsFilterKey ?? "all:all:default"}
+          previewScope={{ kind: "default" }}
+          shell={{
+            collapsed: shell.collapsed,
+            width: shell.width,
+            mobileVisible: shell.mobileVisible ?? false,
+            onToggleCollapse: shell.toggle,
+          }}
+          channelState={{
+            ...hw.sidebarState.channelState,
+            canDeleteChannels: hw.canManageLibrary,
+          }}
+          channelActions={{
+            ...hw.sidebarState.channelActions,
+            onDeleteChannel: hw.handleDeleteChannel,
+            onDeleteAccessRequired: hw.openDeleteAccessPrompt,
+          }}
+          videoState={hw.sidebarState.videoState}
+          videoActions={hw.sidebarState.videoActions}
+          videoAcknowledgeSync={hw.videoAcknowledgeSync}
+          onChannelSyncDateSaved={hw.handleChannelSyncDateSaved}
+        />
+      </div>
+    </div>
   {/snippet}
   {#snippet mobileTopBar()}
     <MobileYouTubeTopNav

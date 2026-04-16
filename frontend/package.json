@@ -22,7 +22,7 @@
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.58.2",
     "@sveltejs/adapter-node": "^5.5.4",
-    "@sveltejs/kit": "^2.55.0",
+    "@sveltejs/kit": "^2.57.1",
     "@sveltejs/vite-plugin-svelte": "^7.0.0",
     "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.2.2",
@@ -43,13 +43,15 @@
     "tailwindcss": "^4.2.2",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.57.2",
-    "vite": "^8.0.1"
+    "vite": "^8.0.8"
   },
   "dependencies": {
     "bits-ui": "^2.16.3",
+    "dompurify": "^3.4.0",
     "firebase": "^12",
     "firebase-admin": "^13",
-    "isomorphic-dompurify": "^3.6.0",
+    "h3": "^1.15.11",
+    "isomorphic-dompurify": "^3.9.0",
     "marked": "^17.0.5"
   },
   "overrides": {

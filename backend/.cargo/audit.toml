@@ -1,6 +1,8 @@
 [advisories]
 ignore = [
     "RUSTSEC-2026-0049", # rustls-webpki faulty matching logic (deep dependency of AWS SDK)
+    "RUSTSEC-2026-0098", # rustls-webpki name constraints - older rustls lines via AWS SDK/libsql
+    "RUSTSEC-2026-0099", # rustls-webpki wildcard constraints - older rustls lines via AWS SDK/libsql
     "RUSTSEC-2025-0012", # backoff 0.4.0 unmaintained - transitive dep of firestore 0.48.0 (latest); no fix available upstream
     "RUSTSEC-2024-0384", # instant 0.1.13 unmaintained - transitive dep of backoff via firestore; same root cause
 ]

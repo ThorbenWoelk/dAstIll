@@ -19,6 +19,7 @@ import type {
   UserPreferences,
   Video,
   VideoInfo,
+  WebsiteFolder,
   WorkspaceBootstrap,
 } from "./transport-types";
 import {
@@ -285,6 +286,14 @@ function invalidateAllChannelReads() {
   );
 }
 
+function invalidateLibraryReads() {
+  invalidateGetRequestCache(
+    (path) =>
+      path.startsWith("/api/workspace/bootstrap") ||
+      path.startsWith("/api/library/website-folders"),
+  );
+}
+
 export function listChannels() {
   return cachedGetRequest<Channel[]>("/api/channels");
 }
@@ -329,12 +338,20 @@ function appendVideoQueryParams(
 export function getWorkspaceBootstrap(
   options?: VideoQueryOptions & {
     selectedChannelId?: string | null;
+    selectedSourceId?: string | null;
+    selectedItemId?: string | null;
     bypassCache?: boolean;
   },
 ) {
   const params = new URLSearchParams();
   if (options?.selectedChannelId) {
     params.set("selected_channel_id", options.selectedChannelId);
+  }
+  if (options?.selectedSourceId) {
+    params.set("selected_source_id", options.selectedSourceId);
+  }
+  if (options?.selectedItemId) {
+    params.set("selected_item_id", options.selectedItemId);
   }
   appendVideoQueryParams(params, options);
 
@@ -403,6 +420,8 @@ export function listChannelsWhenAvailable(options?: { retryDelayMs?: number }) {
 export function getWorkspaceBootstrapWhenAvailable(
   options?: (VideoQueryOptions & {
     selectedChannelId?: string | null;
+    selectedSourceId?: string | null;
+    selectedItemId?: string | null;
   }) & {
     retryDelayMs?: number;
   },
@@ -486,6 +505,51 @@ export function backfillChannelVideos(id: string, limit = 15, until?: string) {
     { method: "POST" },
   ).then((result) => {
     invalidateChannelReadCache(id);
+    return result;
+  });
+}
+
+export function listWebsiteFolders() {
+  return cachedGetRequest<WebsiteFolder[]>("/api/library/website-folders", {
+    bypassCache: true,
+  });
+}
+
+export function createWebsiteFolder(name: string) {
+  return request<WebsiteFolder>("/api/library/website-folders", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  }).then((result) => {
+    invalidateLibraryReads();
+    return result;
+  });
+}
+
+export function updateWebsiteFolder(id: string, name: string) {
+  return request<WebsiteFolder>(`/api/library/website-folders/${id}`, {
+    method: "PUT",
+    body: JSON.stringify({ name }),
+  }).then((result) => {
+    invalidateLibraryReads();
+    return result;
+  });
+}
+
+export function reorderWebsiteFolders(folderIds: string[]) {
+  return request<WebsiteFolder[]>("/api/library/website-folders/reorder", {
+    method: "POST",
+    body: JSON.stringify({ folder_ids: folderIds }),
+  }).then((result) => {
+    invalidateLibraryReads();
+    return result;
+  });
+}
+
+export function deleteWebsiteFolder(id: string) {
+  return request<void>(`/api/library/website-folders/${id}`, {
+    method: "DELETE",
+  }).then((result) => {
+    invalidateLibraryReads();
     return result;
   });
 }

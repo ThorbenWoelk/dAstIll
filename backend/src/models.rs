@@ -40,6 +40,247 @@ pub struct UserChannelSubscription {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 #[serde(rename_all = "snake_case")]
+pub enum LibrarySectionKind {
+    VideoChannels,
+    Podcasts,
+    Publications,
+    Websites,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "frontend/src/lib/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum ContentProvider {
+    Youtube,
+    NewYorkTimes,
+    OpenAlex,
+    SemanticScholar,
+    ManualWeb,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "frontend/src/lib/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum SourceArchetype {
+    FeedBackedSeries,
+    QueryBackedSource,
+    AuthenticatedPublisher,
+    ManualWebsite,
+    VideoChannel,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "frontend/src/lib/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum SubscriptionContainerKind {
+    Series,
+    SavedSearch,
+    Folder,
+    StandaloneTrackedSource,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "frontend/src/lib/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum SourceBackingKind {
+    FeedBacked,
+    QueryBacked,
+    ManuallyCurated,
+    AuthenticatedSession,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "frontend/src/lib/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum ContentItemKind {
+    PodcastEpisode,
+    Publication,
+    Article,
+    Webpage,
+    Video,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "frontend/src/lib/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum ContentPartKind {
+    FullText,
+    Abstract,
+    Transcript,
+    ShowNotes,
+    Chapters,
+    GeneratedSummary,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "frontend/src/lib/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum MediaAssetKind {
+    SourceAudio,
+    GeneratedSummaryAudio,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "frontend/src/lib/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum ContentAvailability {
+    MetadataOnly,
+    Partial,
+    Full,
+    EntitlementRequired,
+    SessionExpired,
+    ExtractionFailed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "frontend/src/lib/bindings/")]
+pub struct ProviderMetadataEntry {
+    pub key: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "frontend/src/lib/bindings/")]
+pub struct LibrarySectionSummary {
+    pub kind: LibrarySectionKind,
+    pub title: String,
+    pub source_count: usize,
+    #[serde(default)]
+    pub item_count: usize,
+    #[serde(default)]
+    pub container_kinds: Vec<SubscriptionContainerKind>,
+    #[serde(default)]
+    pub backing_kinds: Vec<SourceBackingKind>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "frontend/src/lib/bindings/")]
+pub struct ContentSource {
+    pub id: String,
+    pub provider: ContentProvider,
+    pub section: LibrarySectionKind,
+    pub archetype: SourceArchetype,
+    pub container_kind: SubscriptionContainerKind,
+    pub backing: SourceBackingKind,
+    #[serde(default)]
+    #[ts(optional)]
+    pub container_id: Option<String>,
+    pub title: String,
+    #[serde(default)]
+    #[ts(optional)]
+    pub subtitle: Option<String>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub thumbnail_url: Option<String>,
+    pub added_at: DateTime<Utc>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub item_count: Option<usize>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub unread_count: Option<usize>,
+    #[serde(default)]
+    pub provider_metadata: Vec<ProviderMetadataEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "frontend/src/lib/bindings/")]
+pub struct ContentItem {
+    pub id: String,
+    pub source_id: String,
+    pub provider: ContentProvider,
+    pub item_kind: ContentItemKind,
+    pub title: String,
+    #[serde(default)]
+    #[ts(optional)]
+    pub thumbnail_url: Option<String>,
+    pub published_at: DateTime<Utc>,
+    pub acknowledged: bool,
+    pub availability: ContentAvailability,
+    #[serde(default)]
+    pub available_parts: Vec<ContentPartKind>,
+    #[serde(default)]
+    pub available_media_assets: Vec<MediaAssetKind>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "frontend/src/lib/bindings/")]
+pub struct ContentPart {
+    pub id: String,
+    pub item_id: String,
+    pub kind: ContentPartKind,
+    pub availability: ContentAvailability,
+    #[serde(default)]
+    #[ts(optional)]
+    pub render_mode: Option<TranscriptRenderMode>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub text_length: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "frontend/src/lib/bindings/")]
+pub struct MediaAsset {
+    pub id: String,
+    pub item_id: String,
+    pub kind: MediaAssetKind,
+    pub availability: ContentAvailability,
+    #[serde(default)]
+    #[ts(optional)]
+    pub mime_type: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "frontend/src/lib/bindings/")]
+pub struct WebsiteFolder {
+    pub id: String,
+    pub name: String,
+    pub position: usize,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    #[serde(default)]
+    pub website_count: usize,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[ts(export, export_to = "frontend/src/lib/bindings/")]
+pub struct CreateWebsiteFolderRequest {
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[ts(export, export_to = "frontend/src/lib/bindings/")]
+pub struct UpdateWebsiteFolderRequest {
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[ts(export, export_to = "frontend/src/lib/bindings/")]
+pub struct ReorderWebsiteFoldersRequest {
+    pub folder_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "frontend/src/lib/bindings/")]
+pub struct LibraryBootstrapPayload {
+    #[serde(default)]
+    pub sections: Vec<LibrarySectionSummary>,
+    #[serde(default)]
+    pub sources: Vec<ContentSource>,
+    #[serde(default)]
+    pub selected_source_id: Option<String>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub selected_source: Option<ContentSource>,
+    #[serde(default)]
+    pub selected_items: Vec<ContentItem>,
+    #[serde(default)]
+    pub website_folders: Vec<WebsiteFolder>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "frontend/src/lib/bindings/")]
+#[serde(rename_all = "snake_case")]
 pub enum ContentStatus {
     Pending,
     Loading,
@@ -340,6 +581,7 @@ pub struct WorkspaceBootstrapPayload {
     pub channels: Vec<Channel>,
     pub selected_channel_id: Option<String>,
     pub snapshot: Option<ChannelSnapshotPayload>,
+    pub library: LibraryBootstrapPayload,
     pub search_status: SearchStatusPayload,
 }
 

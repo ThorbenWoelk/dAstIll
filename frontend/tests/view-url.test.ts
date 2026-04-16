@@ -30,6 +30,20 @@ describe("parseWorkspaceViewUrlState", () => {
 
     expect(parseWorkspaceViewUrlState(url)).toEqual({});
   });
+
+  it("treats generic source and item params as aliases for channel and video", () => {
+    const url = new URL(
+      "https://example.com/?source=youtube%3Achannel%3Aabc&item=youtube%3Avideo%3Avid-1&content=summary&type=all&ack=unack",
+    );
+
+    expect(parseWorkspaceViewUrlState(url)).toEqual({
+      selectedChannelId: "abc",
+      selectedVideoId: "vid-1",
+      contentMode: "summary",
+      videoTypeFilter: "all",
+      acknowledgedFilter: "unack",
+    });
+  });
 });
 
 describe("buildWorkspaceViewHref", () => {
@@ -42,7 +56,9 @@ describe("buildWorkspaceViewHref", () => {
         videoTypeFilter: "all",
         acknowledgedFilter: "all",
       }),
-    ).toBe("/?channel=abc&video=vid-1&content=highlights&type=all&ack=all");
+    ).toBe(
+      "/?channel=abc&source=youtube%3Achannel%3Aabc&video=vid-1&item=youtube%3Avideo%3Avid-1&content=highlights&type=all&ack=all",
+    );
   });
 
   it("includes chunk and cite for chat citation deep links", () => {
@@ -57,7 +73,7 @@ describe("buildWorkspaceViewHref", () => {
         citeQuery: "hello world",
       }),
     ).toBe(
-      "/?channel=abc&video=vid-1&content=transcript&type=all&ack=all&chunk=idx-42&cite=hello+world",
+      "/?channel=abc&source=youtube%3Achannel%3Aabc&video=vid-1&item=youtube%3Avideo%3Avid-1&content=transcript&type=all&ack=all&chunk=idx-42&cite=hello+world",
     );
   });
 });
@@ -135,7 +151,9 @@ describe("buildQueueViewHref", () => {
         videoTypeFilter: "all",
         acknowledgedFilter: "all",
       }),
-    ).toBe("/download-queue?channel=abc&type=all&ack=all");
+    ).toBe(
+      "/download-queue?channel=abc&source=youtube%3Achannel%3Aabc&type=all&ack=all",
+    );
   });
 
   it("includes optional video and non-default filters", () => {
@@ -146,7 +164,9 @@ describe("buildQueueViewHref", () => {
         videoTypeFilter: "long",
         acknowledgedFilter: "unack",
       }),
-    ).toBe("/download-queue?channel=abc&video=vid-1&type=long&ack=unack");
+    ).toBe(
+      "/download-queue?channel=abc&source=youtube%3Achannel%3Aabc&video=vid-1&item=youtube%3Avideo%3Avid-1&type=long&ack=unack",
+    );
   });
 });
 

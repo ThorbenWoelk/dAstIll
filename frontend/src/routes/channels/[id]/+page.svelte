@@ -31,6 +31,7 @@
   import SignInRequiredModal from "$lib/components/SignInRequiredModal.svelte";
   import ErrorToast from "$lib/components/ErrorToast.svelte";
   import MobileYouTubeTopNav from "$lib/components/mobile/MobileYouTubeTopNav.svelte";
+  import LibrarySidebarPrelude from "$lib/components/workspace/LibrarySidebarPrelude.svelte";
   import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
   import WorkspaceSidebar from "$lib/components/workspace/WorkspaceSidebar.svelte";
   import WorkspaceMinimalTopBar from "$lib/components/workspace/WorkspaceMinimalTopBar.svelte";
@@ -712,24 +713,29 @@
     </WorkspaceMinimalTopBar>
   {/snippet}
   {#snippet sidebar({ collapsed, toggle, width })}
-    <WorkspaceSidebar
-      videoListMode="per_channel_preview"
-      previewSessionKey="workspace-sidebar-navigation"
-      initialChannelPreviews={seededChannelPreviews}
-      initialChannelPreviewsFilterKey={seededChannelPreviewsFilterKey}
-      previewScope={{ kind: "default" }}
-      addSourceErrorMessage={errorMessage}
-      shell={{
-        collapsed,
-        width,
-        mobileVisible: false,
-        onToggleCollapse: toggle,
-      }}
-      channelState={overviewSidebarChannelState}
-      channelActions={overviewSidebarChannelActions}
-      videoState={overviewSidebarVideoState}
-      videoActions={overviewSidebarVideoActions}
-    />
+    <div class="flex h-full min-h-0 flex-col">
+      <LibrarySidebarPrelude library={page.data.bootstrap?.library ?? null} />
+      <div class="min-h-0 flex-1">
+        <WorkspaceSidebar
+          videoListMode="per_channel_preview"
+          previewSessionKey="workspace-sidebar-navigation"
+          initialChannelPreviews={seededChannelPreviews}
+          initialChannelPreviewsFilterKey={seededChannelPreviewsFilterKey}
+          previewScope={{ kind: "default" }}
+          addSourceErrorMessage={errorMessage}
+          shell={{
+            collapsed,
+            width,
+            mobileVisible: false,
+            onToggleCollapse: toggle,
+          }}
+          channelState={overviewSidebarChannelState}
+          channelActions={overviewSidebarChannelActions}
+          videoState={overviewSidebarVideoState}
+          videoActions={overviewSidebarVideoActions}
+        />
+      </div>
+    </div>
   {/snippet}
 
   <ChannelOverviewMobileDrawer

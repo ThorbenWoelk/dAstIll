@@ -32,17 +32,34 @@ export type QueueViewState = {
 /** Params for building a queue URL (defaults match sidebar defaults). */
 export type QueueViewHrefParams = QueueViewState;
 
+const YOUTUBE_SOURCE_PREFIX = "youtube:channel:";
+const YOUTUBE_ITEM_PREFIX = "youtube:video:";
+
 function parseNonEmptyParam(url: URL, key: string) {
   const value = url.searchParams.get(key)?.trim();
   return value ? value : null;
+}
+
+function parseSelectionAlias(value: string | null, prefix: string) {
+  if (!value) {
+    return null;
+  }
+  return value.startsWith(prefix) ? value.slice(prefix.length) : value;
 }
 
 export function parseWorkspaceViewUrlState(
   url: URL,
 ): Partial<WorkspaceViewState> {
   const restored: Partial<WorkspaceViewState> = {};
-  const selectedChannelId = parseNonEmptyParam(url, "channel");
-  const selectedVideoId = parseNonEmptyParam(url, "video");
+  const selectedChannelId =
+    parseNonEmptyParam(url, "channel") ??
+    parseSelectionAlias(
+      parseNonEmptyParam(url, "source"),
+      YOUTUBE_SOURCE_PREFIX,
+    );
+  const selectedVideoId =
+    parseNonEmptyParam(url, "video") ??
+    parseSelectionAlias(parseNonEmptyParam(url, "item"), YOUTUBE_ITEM_PREFIX);
   const contentMode = parseNonEmptyParam(url, "content");
   const videoTypeFilter = parseNonEmptyParam(url, "type");
   const acknowledgedFilter = parseNonEmptyParam(url, "ack");
@@ -70,9 +87,11 @@ export function buildWorkspaceViewHref(state: WorkspaceViewHrefParams) {
   const params = new URLSearchParams();
   if (state.selectedChannelId) {
     params.set("channel", state.selectedChannelId);
+    params.set("source", `${YOUTUBE_SOURCE_PREFIX}${state.selectedChannelId}`);
   }
   if (state.selectedVideoId) {
     params.set("video", state.selectedVideoId);
+    params.set("item", `${YOUTUBE_ITEM_PREFIX}${state.selectedVideoId}`);
   }
   params.set("content", state.contentMode);
   params.set("type", state.videoTypeFilter);
@@ -99,8 +118,15 @@ export function mergeWorkspaceViewState(
 
 export function parseQueueViewUrlState(url: URL): Partial<QueueViewState> {
   const restored: Partial<QueueViewState> = {};
-  const selectedChannelId = parseNonEmptyParam(url, "channel");
-  const selectedVideoId = parseNonEmptyParam(url, "video");
+  const selectedChannelId =
+    parseNonEmptyParam(url, "channel") ??
+    parseSelectionAlias(
+      parseNonEmptyParam(url, "source"),
+      YOUTUBE_SOURCE_PREFIX,
+    );
+  const selectedVideoId =
+    parseNonEmptyParam(url, "video") ??
+    parseSelectionAlias(parseNonEmptyParam(url, "item"), YOUTUBE_ITEM_PREFIX);
   const videoTypeFilter = parseNonEmptyParam(url, "type");
   const acknowledgedFilter = parseNonEmptyParam(url, "ack");
 
@@ -124,9 +150,11 @@ export function buildQueueViewHref(state: QueueViewHrefParams) {
   const params = new URLSearchParams();
   if (state.selectedChannelId) {
     params.set("channel", state.selectedChannelId);
+    params.set("source", `${YOUTUBE_SOURCE_PREFIX}${state.selectedChannelId}`);
   }
   if (state.selectedVideoId) {
     params.set("video", state.selectedVideoId);
+    params.set("item", `${YOUTUBE_ITEM_PREFIX}${state.selectedVideoId}`);
   }
   params.set("type", state.videoTypeFilter ?? "all");
   params.set("ack", state.acknowledgedFilter ?? "all");

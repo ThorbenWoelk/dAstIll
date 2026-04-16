@@ -15,7 +15,7 @@ use dastill::config::{
 };
 use dastill::db::init_store;
 use dastill::handlers::{
-    analytics, channels, chat, content, highlights, preferences, search, videos,
+    analytics, channels, chat, content, highlights, library, preferences, search, videos,
 };
 use dastill::local_env::{
     clear_missing_google_application_credentials, load_dotenv_preserving_existing,
@@ -467,6 +467,19 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/workspace/bootstrap",
             get(channels::workspace_bootstrap),
+        )
+        .route(
+            "/api/library/website-folders",
+            get(library::list_website_folders).post(library::create_website_folder),
+        )
+        .route(
+            "/api/library/website-folders/reorder",
+            post(library::reorder_website_folders),
+        )
+        .route(
+            "/api/library/website-folders/{id}",
+            axum::routing::put(library::update_website_folder)
+                .delete(library::delete_website_folder),
         )
         .route(
             "/api/channels",

@@ -39,6 +39,14 @@ function makeBootstrap(channelId: string): WorkspaceBootstrap {
       next_offset: null,
       videos: [],
     },
+    library: {
+      sections: [],
+      sources: [],
+      selected_source_id: null,
+      selected_source: null,
+      selected_items: [],
+      website_folders: [],
+    },
     search_status: {
       available: false,
       model: "test",

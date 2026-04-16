@@ -12,13 +12,28 @@ import type { ChatRole as BindingChatRole } from "./bindings/ChatRole";
 import type { ChatSource as BindingChatSource } from "./bindings/ChatSource";
 import type { ChatTitleStatus as BindingChatTitleStatus } from "./bindings/ChatTitleStatus";
 import type { CleanTranscriptResponse as BindingCleanTranscriptResponse } from "./bindings/CleanTranscriptResponse";
+import type { ContentAvailability as BindingContentAvailability } from "./bindings/ContentAvailability";
+import type { ContentItem as BindingContentItem } from "./bindings/ContentItem";
+import type { ContentItemKind as BindingContentItemKind } from "./bindings/ContentItemKind";
+import type { ContentPart as BindingContentPart } from "./bindings/ContentPart";
+import type { ContentPartKind as BindingContentPartKind } from "./bindings/ContentPartKind";
 import type { ContentStatus as BindingContentStatus } from "./bindings/ContentStatus";
+import type { ContentProvider as BindingContentProvider } from "./bindings/ContentProvider";
+import type { ContentSource as BindingContentSource } from "./bindings/ContentSource";
 import type { CreateConversationRequest as BindingCreateConversationRequest } from "./bindings/CreateConversationRequest";
 import type { CreateHighlightRequest as BindingCreateHighlightRequest } from "./bindings/CreateHighlightRequest";
 import type { Highlight as BindingHighlight } from "./bindings/Highlight";
 import type { HighlightChannelGroup as BindingHighlightChannelGroup } from "./bindings/HighlightChannelGroup";
 import type { HighlightSource as BindingHighlightSource } from "./bindings/HighlightSource";
 import type { HighlightVideoGroup as BindingHighlightVideoGroup } from "./bindings/HighlightVideoGroup";
+import type { LibraryBootstrapPayload as BindingLibraryBootstrapPayload } from "./bindings/LibraryBootstrapPayload";
+import type { LibrarySectionKind as BindingLibrarySectionKind } from "./bindings/LibrarySectionKind";
+import type { LibrarySectionSummary as BindingLibrarySectionSummary } from "./bindings/LibrarySectionSummary";
+import type { MediaAsset as BindingMediaAsset } from "./bindings/MediaAsset";
+import type { MediaAssetKind as BindingMediaAssetKind } from "./bindings/MediaAssetKind";
+import type { ProviderMetadataEntry as BindingProviderMetadataEntry } from "./bindings/ProviderMetadataEntry";
+import type { SourceArchetype as BindingSourceArchetype } from "./bindings/SourceArchetype";
+import type { SourceBackingKind as BindingSourceBackingKind } from "./bindings/SourceBackingKind";
 import type { SearchMatchPayload as BindingSearchMatchPayload } from "./bindings/SearchMatchPayload";
 import type { SearchResponsePayload as BindingSearchResponsePayload } from "./bindings/SearchResponsePayload";
 import type { SearchSourceKind as BindingSearchSourceKind } from "./bindings/SearchSourceKind";
@@ -26,6 +41,7 @@ import type { SearchStatusPayload as BindingSearchStatusPayload } from "./bindin
 import type { SearchVideoResultPayload as BindingSearchVideoResultPayload } from "./bindings/SearchVideoResultPayload";
 import type { SendChatMessageRequest as BindingSendChatMessageRequest } from "./bindings/SendChatMessageRequest";
 import type { Summary as BindingSummary } from "./bindings/Summary";
+import type { SubscriptionContainerKind as BindingSubscriptionContainerKind } from "./bindings/SubscriptionContainerKind";
 import type { SyncDepthPayload as BindingSyncDepthPayload } from "./bindings/SyncDepthPayload";
 import type { Transcript as BindingTranscript } from "./bindings/Transcript";
 import type { TranscriptRenderMode as BindingTranscriptRenderMode } from "./bindings/TranscriptRenderMode";
@@ -33,12 +49,14 @@ import type { UserPreferences as BindingUserPreferences } from "./bindings/UserP
 import type { Video as BindingVideo } from "./bindings/Video";
 import type { VideoInfo as BindingVideoInfo } from "./bindings/VideoInfo";
 import type { VocabularyReplacement as BindingVocabularyReplacement } from "./bindings/VocabularyReplacement";
+import type { WebsiteFolder as BindingWebsiteFolder } from "./bindings/WebsiteFolder";
 import type { WorkspaceBootstrapPayload as BindingWorkspaceBootstrapPayload } from "./bindings/WorkspaceBootstrapPayload";
 
 /** Generated bindings own backend transport DTOs; compatibility aliases here keep current frontend ergonomics. */
 type Compat<T, R> = Omit<T, keyof R> & R;
 
 export type ContentStatus = BindingContentStatus;
+export type ContentAvailability = BindingContentAvailability;
 export type AiStatus = BindingAiStatus;
 export type TranscriptRenderMode = BindingTranscriptRenderMode;
 export type HighlightSource = BindingHighlightSource;
@@ -47,6 +65,15 @@ export type SearchSourceFilter = "all" | SearchSourceKind;
 export type ChatRole = BindingChatRole;
 export type ChatMessageStatus = BindingChatMessageStatus;
 export type ChatTitleStatus = BindingChatTitleStatus;
+export type LibrarySectionKind = BindingLibrarySectionKind;
+export type ContentProvider = BindingContentProvider;
+export type SourceArchetype = BindingSourceArchetype;
+export type SourceBackingKind = BindingSourceBackingKind;
+export type SubscriptionContainerKind = BindingSubscriptionContainerKind;
+export type ContentItemKind = BindingContentItemKind;
+export type ContentPartKind = BindingContentPartKind;
+export type MediaAssetKind = BindingMediaAssetKind;
+export type ProviderMetadataEntry = BindingProviderMetadataEntry;
 
 export type Channel = Compat<
   BindingChannel,
@@ -84,11 +111,70 @@ export type ChannelVideoPage = Compat<
   }
 >;
 
+export type LibrarySectionSummary = Compat<
+  BindingLibrarySectionSummary,
+  {
+    container_kinds: SubscriptionContainerKind[];
+    backing_kinds: SourceBackingKind[];
+  }
+>;
+
+export type ContentSource = Compat<
+  BindingContentSource,
+  {
+    container_id?: BindingContentSource["container_id"];
+    subtitle?: BindingContentSource["subtitle"];
+    thumbnail_url?: BindingContentSource["thumbnail_url"];
+    item_count?: number | null;
+    unread_count?: number | null;
+    provider_metadata: ProviderMetadataEntry[];
+  }
+>;
+
+export type ContentItem = Compat<
+  BindingContentItem,
+  {
+    thumbnail_url?: BindingContentItem["thumbnail_url"];
+    available_parts: ContentPartKind[];
+    available_media_assets: MediaAssetKind[];
+  }
+>;
+
+export type ContentPart = Compat<
+  BindingContentPart,
+  {
+    render_mode?: BindingContentPart["render_mode"];
+    text_length?: number | null;
+  }
+>;
+
+export type MediaAsset = Compat<
+  BindingMediaAsset,
+  {
+    mime_type?: BindingMediaAsset["mime_type"];
+  }
+>;
+
+export type WebsiteFolder = BindingWebsiteFolder;
+
+export type LibraryBootstrap = Compat<
+  BindingLibraryBootstrapPayload,
+  {
+    sections: LibrarySectionSummary[];
+    sources: ContentSource[];
+    selected_source_id?: BindingLibraryBootstrapPayload["selected_source_id"];
+    selected_source?: ContentSource | null;
+    selected_items: ContentItem[];
+    website_folders: WebsiteFolder[];
+  }
+>;
+
 export type WorkspaceBootstrap = Compat<
   BindingWorkspaceBootstrapPayload,
   {
     channels: Channel[];
     snapshot: ChannelSnapshot | null;
+    library: LibraryBootstrap;
     search_status: SearchStatus;
   }
 >;

@@ -2,6 +2,7 @@
 import type { AiStatus } from "./AiStatus";
 import type { Channel } from "./Channel";
 import type { ChannelSnapshotPayload } from "./ChannelSnapshotPayload";
+import type { LibraryBootstrapPayload } from "./LibraryBootstrapPayload";
 import type { SearchStatusPayload } from "./SearchStatusPayload";
 
 export type WorkspaceBootstrapPayload = {
@@ -10,5 +11,6 @@ export type WorkspaceBootstrapPayload = {
   channels: Array<Channel>;
   selected_channel_id: string | null;
   snapshot: ChannelSnapshotPayload | null;
+  library: LibraryBootstrapPayload;
   search_status: SearchStatusPayload;
 };

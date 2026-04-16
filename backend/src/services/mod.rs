@@ -8,6 +8,7 @@ pub mod fts;
 pub mod fusion;
 pub mod http;
 pub mod ollama;
+pub mod providers;
 pub mod search;
 pub mod summarizer;
 pub mod summary_evaluator;

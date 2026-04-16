@@ -1,5 +1,5 @@
 import type { PageServerLoad } from "./$types";
-import { loadWorkspaceBootstrapPageData } from "$lib/server/load-workspace-bootstrap";
+import { loadWorkspaceBootstrapPageData } from "../lib/server/load-workspace-bootstrap";
 
 /**
  * Server-side load for the workspace root route. Delegates to
@@ -13,8 +13,16 @@ import { loadWorkspaceBootstrapPageData } from "$lib/server/load-workspace-boots
 export const load: PageServerLoad = async (event) => {
   const selectedChannelId = event.url.searchParams.get("channel")?.trim();
   const selectedVideoId = event.url.searchParams.get("video")?.trim();
+  const selectedSourceId = event.url.searchParams.get("source")?.trim();
+  const selectedItemId = event.url.searchParams.get("item")?.trim();
 
-  if (event.isDataRequest && !selectedChannelId && !selectedVideoId) {
+  if (
+    event.isDataRequest &&
+    !selectedChannelId &&
+    !selectedVideoId &&
+    !selectedSourceId &&
+    !selectedItemId
+  ) {
     return {
       bootstrap: null,
       channelPreviews: {},
