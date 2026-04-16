@@ -4,7 +4,9 @@ import type { MiniSummaryItem } from "../src/lib/transport-types";
 import {
   chooseActiveVideoId,
   findNextUnreadVideoId,
+  selectMiniSummaryHighlights,
 } from "../src/lib/mini/mini-reader-state.svelte";
+import type { Highlight } from "../src/lib/types";
 
 function makeSummary(
   videoId: string,
@@ -65,5 +67,47 @@ describe("findNextUnreadVideoId", () => {
     const summaries = [makeSummary("a", true), makeSummary("b", true)];
 
     expect(findNextUnreadVideoId(summaries, "a")).toBeNull();
+  });
+});
+
+describe("selectMiniSummaryHighlights", () => {
+  it("returns only summary highlights for the active mini summary", () => {
+    const highlightsByVideoId: Record<string, Highlight[]> = {
+      "video-1": [
+        {
+          id: 1,
+          video_id: "video-1",
+          source: "transcript",
+          text: "Transcript note",
+          prefix_context: "",
+          suffix_context: "",
+          created_at: "2026-04-16T10:00:00.000Z",
+        },
+        {
+          id: 2,
+          video_id: "video-1",
+          source: "summary",
+          text: "Summary note",
+          prefix_context: "",
+          suffix_context: "",
+          created_at: "2026-04-16T10:01:00.000Z",
+        },
+      ],
+      "video-2": [
+        {
+          id: 3,
+          video_id: "video-2",
+          source: "summary",
+          text: "Other summary note",
+          prefix_context: "",
+          suffix_context: "",
+          created_at: "2026-04-16T10:02:00.000Z",
+        },
+      ],
+    };
+
+    expect(selectMiniSummaryHighlights("video-1", highlightsByVideoId)).toEqual(
+      [highlightsByVideoId["video-1"][1]],
+    );
   });
 });

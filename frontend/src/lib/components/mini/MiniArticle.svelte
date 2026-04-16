@@ -1,5 +1,7 @@
 <script lang="ts">
   import CheckIcon from "$lib/components/icons/CheckIcon.svelte";
+  import TranscriptView from "$lib/components/TranscriptView.svelte";
+  import type { CreateHighlightRequest, Highlight } from "$lib/types";
   import ExternalLinkIcon from "$lib/components/icons/ExternalLinkIcon.svelte";
   import type { MiniSummaryItem } from "$lib/transport-types";
 
@@ -8,11 +10,28 @@
     summaryHtml: string;
     markingRead: boolean;
     contentKey: number;
+    highlights: Highlight[];
+    creatingHighlight: boolean;
+    deletingHighlightId: number | null;
     onMarkRead: () => void;
+    onCreateHighlight: (
+      payload: CreateHighlightRequest,
+    ) => void | Promise<void>;
+    onDeleteHighlight: (highlightId: number) => void | Promise<void>;
   }
 
-  let { summary, summaryHtml, markingRead, contentKey, onMarkRead }: Props =
-    $props();
+  let {
+    summary,
+    summaryHtml,
+    markingRead,
+    contentKey,
+    highlights,
+    creatingHighlight,
+    deletingHighlightId,
+    onMarkRead,
+    onCreateHighlight,
+    onDeleteHighlight,
+  }: Props = $props();
 
   function formatDate(dateStr: string | null | undefined): string {
     if (!dateStr) return "";
@@ -81,7 +100,18 @@
     </div>
 
     <div class="reader-body" aria-live="polite">
-      {@html summaryHtml}
+      <TranscriptView
+        html={summaryHtml}
+        text={summary.summary_content}
+        mode="markdown"
+        {highlights}
+        highlightSource="summary"
+        highlightEnabled={true}
+        {creatingHighlight}
+        {deletingHighlightId}
+        {onCreateHighlight}
+        {onDeleteHighlight}
+      />
     </div>
   </article>
 {/key}
@@ -214,6 +244,10 @@
     color: var(--foreground);
     font-size: 1rem;
     line-height: 1.9;
+  }
+  .reader-body :global(.workspace-article) {
+    max-width: 100%;
+    margin: 0;
   }
   .reader-body :global(h1),
   .reader-body :global(h2),

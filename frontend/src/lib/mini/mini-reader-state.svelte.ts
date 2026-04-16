@@ -1,6 +1,9 @@
 import { getMiniReader, updateMiniReadStatus } from "$lib/api";
+import { authState } from "$lib/auth-state.svelte";
+import type { CreateHighlightRequest, Highlight } from "$lib/types";
 import type { MiniReader, MiniSummaryItem } from "$lib/transport-types";
 import { renderMarkdown } from "$lib/utils/markdown";
+import { createHomeWorkspaceHighlightController } from "$lib/workspace/home-workspace-highlight-controller.svelte";
 
 export function chooseActiveVideoId(
   summaries: MiniSummaryItem[],
@@ -35,6 +38,16 @@ export function findNextUnreadVideoId(
   return null;
 }
 
+export function selectMiniSummaryHighlights(
+  videoId: string | null | undefined,
+  highlightsByVideoId: Record<string, Highlight[]>,
+): Highlight[] {
+  if (!videoId) return [];
+  return (highlightsByVideoId[videoId] ?? []).filter(
+    (highlight) => highlight.source === "summary",
+  );
+}
+
 export class MiniReaderState {
   reader = $state<MiniReader | null>(null);
   loading = $state(false);
@@ -45,6 +58,16 @@ export class MiniReaderState {
   markingRead = $state(false);
   contentKey = $state(0);
   readProgress = $state(0);
+  highlightController = createHomeWorkspaceHighlightController({
+    getSelectedVideoId: () => this.activeSummary?.video_id ?? null,
+    getSelectedChannelId: () =>
+      this.activeSummary?.channel_id ?? this.selectedChannelId,
+    getContentMode: () => "summary",
+    getCanManageLibrary: () => authState.current.authState === "authenticated",
+    onError: (message) => {
+      this.error = message;
+    },
+  });
 
   visibleSummaries = $derived(
     this.reader
@@ -69,6 +92,17 @@ export class MiniReaderState {
       ? renderMarkdown(this.activeSummary.summary_content)
       : "",
   );
+  activeSummaryHighlights = $derived(
+    selectMiniSummaryHighlights(
+      this.activeSummary?.video_id ?? null,
+      this.highlightController.videoHighlightsByVideoId,
+    ),
+  );
+  creatingHighlight = $derived(this.highlightController.creatingHighlight);
+  creatingHighlightVideoId = $derived(
+    this.highlightController.creatingHighlightVideoId,
+  );
+  deletingHighlightId = $derived(this.highlightController.deletingHighlightId);
 
   canGoPrev = $derived(this.activeIndex > 0);
   canGoNext = $derived(
@@ -192,6 +226,23 @@ export class MiniReaderState {
     if (!channelId || channelId === this.selectedChannelId) return;
     this.selectedChannelId = channelId;
     await this.loadReader(channelId);
+  }
+
+  hydrateActiveSummaryHighlights() {
+    const videoId = this.activeSummary?.video_id;
+    if (!videoId || this.highlightController.hasHighlightsForVideo(videoId))
+      return;
+    void this.highlightController.hydrateVideoHighlights(videoId, {
+      showError: true,
+    });
+  }
+
+  saveSelectionHighlight(payload: CreateHighlightRequest) {
+    return this.highlightController.saveSelectionHighlight(payload);
+  }
+
+  deleteExistingHighlight(highlightId: number) {
+    return this.highlightController.deleteExistingHighlight(highlightId);
   }
 
   toggleUnreadFilter() {

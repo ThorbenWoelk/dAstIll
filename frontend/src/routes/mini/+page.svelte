@@ -70,6 +70,11 @@
   });
 
   $effect(() => {
+    mini.activeSummary?.video_id;
+    mini.hydrateActiveSummaryHighlights();
+  });
+
+  $effect(() => {
     if (!authState.ready || authResolved) return;
     authResolved = true;
     if (authState.current.authState !== "authenticated") {
@@ -158,7 +163,14 @@
         summaryHtml={mini.activeSummaryHtml}
         markingRead={mini.markingRead}
         contentKey={mini.contentKey}
+        highlights={mini.activeSummaryHighlights}
+        creatingHighlight={mini.creatingHighlight &&
+          mini.creatingHighlightVideoId === mini.activeSummary.video_id}
+        deletingHighlightId={mini.deletingHighlightId}
         onMarkRead={handleMarkRead}
+        onCreateHighlight={(payload) => mini.saveSelectionHighlight(payload)}
+        onDeleteHighlight={(highlightId) =>
+          mini.deleteExistingHighlight(highlightId)}
       />
     </div>
   {/if}
