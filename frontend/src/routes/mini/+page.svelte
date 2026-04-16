@@ -15,10 +15,11 @@
   let channelSheetOpen = $state(false);
   let scrollContainer = $state<HTMLElement | null>(null);
   let authResolved = $state(false);
+  let summaryScrolledFromTop = $state(false);
 
   const handleKeydown = createMiniKeydownHandler(() => ({
-    stepSummary: (d) => mini.stepSummary(d),
-    markActiveSummaryRead: () => mini.markActiveSummaryRead(),
+    stepSummary: stepAndScroll,
+    markActiveSummaryRead: handleMarkRead,
     activeSummary: mini.activeSummary,
     channelSheetOpen,
     closeChannelSheet: () => {
@@ -30,9 +31,11 @@
     if (!scrollContainer) return;
     const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
     mini.updateReadProgress(scrollTop, scrollHeight, clientHeight);
+    summaryScrolledFromTop = scrollTop > 12;
   }
 
   function resetScroll() {
+    summaryScrolledFromTop = false;
     scrollContainer?.scrollTo({ top: 0, behavior: "instant" });
   }
 
@@ -48,6 +51,11 @@
 
   async function handleMarkRead() {
     await mini.markActiveSummaryRead();
+    resetScroll();
+  }
+
+  async function handleMarkReadAndAdvance() {
+    await mini.markActiveSummaryReadAndAdvance();
     resetScroll();
   }
 
@@ -149,12 +157,8 @@
         summary={mini.activeSummary}
         summaryHtml={mini.activeSummaryHtml}
         markingRead={mini.markingRead}
-        canGoPrev={mini.canGoPrev}
-        canGoNext={mini.canGoNext}
         contentKey={mini.contentKey}
         onMarkRead={handleMarkRead}
-        onPrev={() => stepAndScroll(-1)}
-        onNext={() => stepAndScroll(1)}
       />
     </div>
   {/if}
@@ -169,11 +173,15 @@
       canGoNext={mini.canGoNext}
       activeIndex={mini.activeIndex}
       totalCount={mini.visibleSummaries.length}
+      showReadCheckbox={summaryScrolledFromTop && !!mini.activeSummary}
+      activeSummaryRead={mini.activeSummary?.read ?? false}
+      markingRead={mini.markingRead}
       onPrev={() => stepAndScroll(-1)}
       onNext={() => stepAndScroll(1)}
       onOpenChannelPicker={() => {
         channelSheetOpen = true;
       }}
+      onMarkReadAndAdvance={handleMarkReadAndAdvance}
     />
 
     <MiniChannelSheet

@@ -7,9 +7,13 @@
     canGoNext: boolean;
     activeIndex: number;
     totalCount: number;
+    showReadCheckbox: boolean;
+    activeSummaryRead: boolean;
+    markingRead: boolean;
     onPrev: () => void;
     onNext: () => void;
     onOpenChannelPicker: () => void;
+    onMarkReadAndAdvance: () => void | Promise<void>;
   }
 
   let {
@@ -18,10 +22,27 @@
     canGoNext,
     activeIndex,
     totalCount,
+    showReadCheckbox,
+    activeSummaryRead,
+    markingRead,
     onPrev,
     onNext,
     onOpenChannelPicker,
+    onMarkReadAndAdvance,
   }: Props = $props();
+
+  async function handleReadCheckboxChange(event: Event) {
+    const input = event.currentTarget;
+    if (!(input instanceof HTMLInputElement)) return;
+
+    if (!input.checked || activeSummaryRead) {
+      input.checked = activeSummaryRead;
+      return;
+    }
+
+    await onMarkReadAndAdvance();
+    input.checked = activeSummaryRead;
+  }
 </script>
 
 <nav class="bottom-bar" aria-label="Reader navigation">
@@ -35,10 +56,23 @@
     <ChevronIcon direction="left" size={18} strokeWidth={2.2} />
   </button>
 
-  <button type="button" class="channel-trigger" onclick={onOpenChannelPicker}>
-    <span class="channel-name">{channelName ?? "Select channel"}</span>
-    <ChevronIcon direction="down" size={10} strokeWidth={2.4} />
-  </button>
+  {#if showReadCheckbox}
+    <label class="read-check">
+      <input
+        type="checkbox"
+        checked={activeSummaryRead || markingRead}
+        disabled={markingRead || activeSummaryRead}
+        onchange={handleReadCheckboxChange}
+        aria-label="Mark summary read and jump to next unread"
+      />
+      <span>Read</span>
+    </label>
+  {:else}
+    <button type="button" class="channel-trigger" onclick={onOpenChannelPicker}>
+      <span class="channel-name">{channelName ?? "Select channel"}</span>
+      <ChevronIcon direction="down" size={10} strokeWidth={2.4} />
+    </button>
+  {/if}
 
   <button
     type="button"
@@ -81,10 +115,17 @@
     color: var(--foreground);
     cursor: pointer;
     flex-shrink: 0;
-    transition: background 120ms;
+    transition:
+      background 120ms,
+      color 120ms,
+      box-shadow 120ms;
   }
-  .nav-btn:hover:not(:disabled) {
+  .nav-btn:active:not(:disabled) {
     background: var(--accent-wash);
+  }
+  .nav-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent);
   }
   .nav-btn:disabled {
     opacity: 0.25;
@@ -107,14 +148,56 @@
     min-height: 44px;
     max-width: 280px;
   }
-  .channel-trigger:hover {
-    background: var(--accent-wash);
-  }
   .channel-name {
     font-size: 13px;
     font-weight: 600;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .read-check {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-sm);
+    min-width: 112px;
+    min-height: 44px;
+    padding: var(--space-xs) var(--space-md);
+    border-radius: var(--radius-full);
+    color: var(--foreground);
+    cursor: pointer;
+  }
+  .read-check:has(input:disabled) {
+    cursor: default;
+    color: var(--soft-foreground);
+  }
+  .read-check input {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    accent-color: var(--accent);
+    cursor: inherit;
+  }
+  .read-check span {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .nav-btn:hover:not(:disabled) {
+      color: var(--accent-strong);
+    }
+    .channel-trigger:hover {
+      background: var(--accent-wash);
+    }
+    .read-check:hover {
+      background: var(--accent-wash);
+    }
+    .read-check:has(input:disabled):hover {
+      background: transparent;
+    }
   }
 </style>

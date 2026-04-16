@@ -1,6 +1,5 @@
 <script lang="ts">
   import CheckIcon from "$lib/components/icons/CheckIcon.svelte";
-  import ChevronIcon from "$lib/components/icons/ChevronIcon.svelte";
   import ExternalLinkIcon from "$lib/components/icons/ExternalLinkIcon.svelte";
   import type { MiniSummaryItem } from "$lib/transport-types";
 
@@ -8,25 +7,12 @@
     summary: MiniSummaryItem;
     summaryHtml: string;
     markingRead: boolean;
-    canGoPrev: boolean;
-    canGoNext: boolean;
     contentKey: number;
     onMarkRead: () => void;
-    onPrev: () => void;
-    onNext: () => void;
   }
 
-  let {
-    summary,
-    summaryHtml,
-    markingRead,
-    canGoPrev,
-    canGoNext,
-    contentKey,
-    onMarkRead,
-    onPrev,
-    onNext,
-  }: Props = $props();
+  let { summary, summaryHtml, markingRead, contentKey, onMarkRead }: Props =
+    $props();
 
   function formatDate(dateStr: string | null | undefined): string {
     if (!dateStr) return "";
@@ -97,28 +83,6 @@
     <div class="reader-body" aria-live="polite">
       {@html summaryHtml}
     </div>
-
-    <footer class="reader-footer">
-      <div class="footer-nav">
-        {#if canGoPrev}
-          <button type="button" class="footer-btn" onclick={onPrev}>
-            <ChevronIcon direction="left" size={12} strokeWidth={2.4} />
-            Previous
-          </button>
-        {:else}
-          <span></span>
-        {/if}
-
-        {#if canGoNext}
-          <button type="button" class="footer-btn" onclick={onNext}>
-            Next
-            <ChevronIcon direction="right" size={12} strokeWidth={2.4} />
-          </button>
-        {:else}
-          <span></span>
-        {/if}
-      </div>
-    </footer>
   </article>
 {/key}
 
@@ -317,36 +281,6 @@
     padding: 0;
   }
 
-  /* Footer nav */
-  .reader-footer {
-    margin-top: 64px;
-    padding-top: var(--space-lg);
-    border-top: 1px solid var(--border-soft);
-    text-align: center;
-  }
-  .footer-nav {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: var(--space-md);
-  }
-  .footer-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 16px;
-    border-radius: var(--radius-full);
-    border: none;
-    background: var(--surface);
-    color: var(--foreground);
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 120ms;
-  }
-  .footer-btn:hover {
-    background: var(--accent-wash);
-  }
   @media (min-width: 640px) {
     .reader-article {
       padding: var(--space-xl) var(--space-lg) 80px;

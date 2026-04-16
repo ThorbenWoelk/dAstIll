@@ -2,7 +2,7 @@ import { getMiniReader, updateMiniReadStatus } from "$lib/api";
 import type { MiniReader, MiniSummaryItem } from "$lib/transport-types";
 import { renderMarkdown } from "$lib/utils/markdown";
 
-function chooseActiveVideoId(
+export function chooseActiveVideoId(
   summaries: MiniSummaryItem[],
   preferredVideoId?: string | null,
 ): string | null {
@@ -12,6 +12,27 @@ function chooseActiveVideoId(
   }
   const firstUnread = summaries.find((s) => !s.read);
   return firstUnread?.video_id ?? summaries[0]?.video_id ?? null;
+}
+
+export function findNextUnreadVideoId(
+  summaries: MiniSummaryItem[],
+  currentVideoId: string,
+): string | null {
+  if (summaries.length === 0) return null;
+
+  const currentIndex = summaries.findIndex(
+    (s) => s.video_id === currentVideoId,
+  );
+  const startIndex = currentIndex >= 0 ? currentIndex : -1;
+
+  for (let offset = 1; offset <= summaries.length; offset += 1) {
+    const summary = summaries[(startIndex + offset) % summaries.length];
+    if (summary && !summary.read) {
+      return summary.video_id;
+    }
+  }
+
+  return null;
 }
 
 export class MiniReaderState {
@@ -73,6 +94,7 @@ export class MiniReaderState {
         next.summaries,
         preferredVideoId,
       );
+      this.readProgress = 0;
     } catch (cause) {
       this.reader = null;
       this.selectedChannelId = null;
@@ -122,6 +144,38 @@ export class MiniReaderState {
             s.video_id === markedId ? { ...s, read: true } : s,
           );
       this.activeVideoId = chooseActiveVideoId(nextVisible, markedId);
+      this.contentKey += 1;
+      this.readProgress = 0;
+    } catch (cause) {
+      this.error =
+        cause instanceof Error
+          ? cause.message
+          : "Could not update read status.";
+    } finally {
+      this.markingRead = false;
+    }
+  }
+
+  async markActiveSummaryReadAndAdvance() {
+    if (!this.activeSummary || this.markingRead) return;
+    this.markingRead = true;
+    this.error = null;
+    try {
+      const markedId = this.activeSummary.video_id;
+      await updateMiniReadStatus(markedId, true);
+      if (!this.reader) return;
+
+      const summaries = this.reader.summaries.map((s) =>
+        s.video_id === markedId ? { ...s, read: true } : s,
+      );
+      this.reader = {
+        ...this.reader,
+        summaries,
+      };
+
+      const nextUnreadVideoId = findNextUnreadVideoId(summaries, markedId);
+      this.activeVideoId =
+        nextUnreadVideoId ?? (this.showUnreadOnly ? null : markedId);
       this.contentKey += 1;
       this.readProgress = 0;
     } catch (cause) {
