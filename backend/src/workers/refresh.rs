@@ -109,8 +109,8 @@ pub fn spawn_refresh_worker(state: AppState) {
                 "channel refresh worker started"
             );
 
-            // Run an initial refresh at startup so new videos appear immediately.
-            refresh_all_channels(&state).await;
+        // Run an initial refresh at startup so new videos appear immediately.
+        refresh_all_channels(&state).await;
 
             loop {
                 sleep(CHANNEL_REFRESH_INTERVAL).await;
