@@ -71,6 +71,14 @@ function makeBootstrap(
     channels,
     selected_channel_id: channels[0]?.id ?? null,
     snapshot: channels[0] ? makeSnapshot(channels[0].id) : null,
+    library: {
+      sections: [],
+      sources: [],
+      selected_source_id: null,
+      selected_source: null,
+      selected_items: [],
+      website_folders: [],
+    },
     search_status: makeSearchStatus(),
     ...overrides,
   };

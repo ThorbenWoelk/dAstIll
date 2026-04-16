@@ -230,8 +230,9 @@ pub async fn workspace_bootstrap(
             channels
         }
     };
-    let selected_channel = params
-        .selected_source_id()
+    let selected_channel_id = params.resolved_selected_channel_id();
+    let selected_channel = selected_channel_id
+        .as_deref()
         .and_then(|id| channels.iter().find(|channel| channel.id == id))
         .cloned()
         .or_else(|| channels.first().cloned());
@@ -280,6 +281,29 @@ pub async fn workspace_bootstrap(
         containers.push(profile.container);
         sources.push(profile.source);
     }
+    let website_folders = match access_context.user_id.as_deref() {
+        Some(user_id) if access_context.auth_state == AuthState::Authenticated => {
+            db::list_website_folders(&state.db, user_id)
+                .await
+                .map_err(map_db_err)?
+        }
+        _ => Vec::new(),
+    };
+    let snapshot_payload = match snapshot {
+        Some(snapshot) => Some(
+            build_snapshot_payload(&state.db, snapshot)
+                .await
+                .map_err(map_db_err)?,
+        ),
+        None => None,
+    };
+    let selected_source_id = selected_channel.as_ref().map(|channel| channel.id.clone());
+    let library = crate::library::build_library_bootstrap(
+        &sources,
+        snapshot_payload.as_ref(),
+        &website_folders,
+        selected_source_id.clone(),
+    );
 
     let payload = crate::models::WorkspaceBootstrapPayload {
         ai_available,
@@ -287,17 +311,11 @@ pub async fn workspace_bootstrap(
         containers,
         sources,
         channels,
-        selected_source_id: selected_channel.as_ref().map(|channel| channel.id.clone()),
+        selected_source_id,
         selected_channel_id: selected_channel.as_ref().map(|channel| channel.id.clone()),
-        selected_item_id: params.selected_item_id.clone(),
-        snapshot: match snapshot {
-            Some(snapshot) => Some(
-                build_snapshot_payload(&state.db, snapshot)
-                    .await
-                    .map_err(map_db_err)?,
-            ),
-            None => None,
-        },
+        selected_item_id: params.resolved_selected_video_id(),
+        snapshot: snapshot_payload,
+        library,
         search_status,
     };
 

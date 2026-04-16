@@ -493,6 +493,78 @@ pub fn content_parts_from_video(video: &Video, source: &ContentSource) -> Vec<Co
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 #[serde(rename_all = "snake_case")]
+pub enum LibrarySectionKind {
+    VideoChannels,
+    Podcasts,
+    Publications,
+    Websites,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
+#[ts(export, export_to = "frontend/src/lib/bindings/")]
+pub struct LibrarySectionSummary {
+    pub kind: LibrarySectionKind,
+    pub title: String,
+    pub source_count: usize,
+    #[serde(default)]
+    pub item_count: usize,
+    #[serde(default)]
+    pub container_kinds: Vec<SubscriptionContainerKind>,
+    #[serde(default)]
+    pub backing_kinds: Vec<SourceBackingKind>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
+#[ts(export, export_to = "frontend/src/lib/bindings/")]
+pub struct WebsiteFolder {
+    pub id: String,
+    pub name: String,
+    pub position: usize,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    #[serde(default)]
+    pub website_count: usize,
+}
+
+#[derive(Debug, Deserialize, TS, ToSchema)]
+#[ts(export, export_to = "frontend/src/lib/bindings/")]
+pub struct CreateWebsiteFolderRequest {
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize, TS, ToSchema)]
+#[ts(export, export_to = "frontend/src/lib/bindings/")]
+pub struct UpdateWebsiteFolderRequest {
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize, TS, ToSchema)]
+#[ts(export, export_to = "frontend/src/lib/bindings/")]
+pub struct ReorderWebsiteFoldersRequest {
+    pub folder_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
+#[ts(export, export_to = "frontend/src/lib/bindings/")]
+pub struct LibraryBootstrapPayload {
+    #[serde(default)]
+    pub sections: Vec<LibrarySectionSummary>,
+    #[serde(default)]
+    pub sources: Vec<ContentSource>,
+    #[serde(default)]
+    pub selected_source_id: Option<String>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub selected_source: Option<ContentSource>,
+    #[serde(default)]
+    pub selected_items: Vec<ContentItem>,
+    #[serde(default)]
+    pub website_folders: Vec<WebsiteFolder>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
+#[ts(export, export_to = "frontend/src/lib/bindings/")]
+#[serde(rename_all = "snake_case")]
 pub enum ContentStatus {
     Pending,
     Loading,
@@ -884,6 +956,7 @@ pub struct WorkspaceBootstrapPayload {
     #[ts(optional)]
     pub selected_item_id: Option<String>,
     pub snapshot: Option<ChannelSnapshotPayload>,
+    pub library: LibraryBootstrapPayload,
     pub search_status: SearchStatusPayload,
 }
 

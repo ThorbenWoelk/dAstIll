@@ -23,6 +23,7 @@ import type {
   SearchStatus,
   SyncDepth,
   Video,
+  WorkspaceBootstrap,
 } from "../src/lib/types";
 
 const originalFetch = globalThis.fetch;
@@ -72,6 +73,17 @@ function searchStatus(): SearchStatus {
     embedded_chunk_count: 0,
     vector_index_ready: false,
     retrieval_mode: "fts_only",
+  };
+}
+
+function emptyLibrary() {
+  return {
+    sections: [],
+    sources: [],
+    selected_source_id: null,
+    selected_source: null,
+    selected_items: [],
+    website_folders: [],
   };
 }
 
@@ -148,11 +160,12 @@ describe("addVideo", () => {
 
 describe("getWorkspaceBootstrap", () => {
   it("requests combined startup data with the active filters", async () => {
-    const payload = {
+    const payload: WorkspaceBootstrap = {
       ai_available: true,
       ai_status: "cloud",
       channels: [channel("abc")],
       selected_channel_id: "abc",
+      library: emptyLibrary(),
       search_status: searchStatus(),
       snapshot: {
         channel_id: "abc",
@@ -186,12 +199,48 @@ describe("getWorkspaceBootstrap", () => {
     expect(requestedUrl).toContain("acknowledged=true");
   });
 
-  it("reuses cached bootstrap responses for identical requests", async () => {
-    const payload = {
+  it("forwards provider-neutral source and item ids when requested", async () => {
+    const payload: WorkspaceBootstrap = {
       ai_available: true,
       ai_status: "cloud",
       channels: [channel("abc")],
       selected_channel_id: "abc",
+      library: emptyLibrary(),
+      search_status: searchStatus(),
+      snapshot: {
+        channel_id: "abc",
+        sync_depth: syncDepth(),
+        channel_video_count: 1,
+        has_more: false,
+        next_offset: null,
+        videos: [video("vid-1")],
+      },
+    };
+    let requestedUrl = "";
+
+    globalThis.fetch = (async (input) => {
+      requestedUrl = String(input);
+      return new Response(JSON.stringify(payload), { status: 200 });
+    }) as typeof fetch;
+
+    await getWorkspaceBootstrap({
+      selectedSourceId: "youtube:channel:abc",
+      selectedItemId: "youtube:video:vid-1",
+    });
+
+    expect(requestedUrl).toContain(
+      "selected_source_id=youtube%3Achannel%3Aabc",
+    );
+    expect(requestedUrl).toContain("selected_item_id=youtube%3Avideo%3Avid-1");
+  });
+
+  it("reuses cached bootstrap responses for identical requests", async () => {
+    const payload: WorkspaceBootstrap = {
+      ai_available: true,
+      ai_status: "cloud",
+      channels: [channel("abc")],
+      selected_channel_id: "abc",
+      library: emptyLibrary(),
       search_status: searchStatus(),
       snapshot: {
         channel_id: "abc",
@@ -216,11 +265,12 @@ describe("getWorkspaceBootstrap", () => {
   });
 
   it("refetches bootstrap data after an auth-scope cache reset", async () => {
-    const anonymousPayload = {
+    const anonymousPayload: WorkspaceBootstrap = {
       ai_available: true,
       ai_status: "cloud",
       channels: [channel("anon")],
       selected_channel_id: "anon",
+      library: emptyLibrary(),
       search_status: searchStatus(),
       snapshot: {
         channel_id: "anon",
@@ -229,11 +279,12 @@ describe("getWorkspaceBootstrap", () => {
         videos: [video("anon-video", "anon")],
       },
     };
-    const authenticatedPayload = {
+    const authenticatedPayload: WorkspaceBootstrap = {
       ai_available: true,
       ai_status: "cloud",
       channels: [channel("auth")],
       selected_channel_id: "auth",
+      library: emptyLibrary(),
       search_status: searchStatus(),
       snapshot: {
         channel_id: "auth",

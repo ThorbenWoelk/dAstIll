@@ -7,7 +7,9 @@ use super::{
     WorkspaceBootstrapCacheKey,
 };
 use crate::db::QueueFilter;
-use crate::models::{AiStatus, Channel, SearchStatusPayload, WorkspaceBootstrapPayload};
+use crate::models::{
+    AiStatus, Channel, LibraryBootstrapPayload, SearchStatusPayload, WorkspaceBootstrapPayload,
+};
 
 fn sample_channel(id: &str) -> Channel {
     Channel {
@@ -33,6 +35,14 @@ fn sample_bootstrap() -> WorkspaceBootstrapPayload {
         selected_channel_id: Some("abc".to_string()),
         selected_item_id: None,
         snapshot: None,
+        library: LibraryBootstrapPayload {
+            sections: Vec::new(),
+            sources: Vec::new(),
+            selected_source_id: None,
+            selected_source: None,
+            selected_items: Vec::new(),
+            website_folders: Vec::new(),
+        },
         search_status: SearchStatusPayload {
             available: true,
             model: "embeddinggemma".to_string(),

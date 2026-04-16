@@ -25,6 +25,9 @@ import type { Highlight as BindingHighlight } from "./bindings/Highlight";
 import type { HighlightChannelGroup as BindingHighlightChannelGroup } from "./bindings/HighlightChannelGroup";
 import type { HighlightSource as BindingHighlightSource } from "./bindings/HighlightSource";
 import type { HighlightVideoGroup as BindingHighlightVideoGroup } from "./bindings/HighlightVideoGroup";
+import type { LibraryBootstrapPayload as BindingLibraryBootstrapPayload } from "./bindings/LibraryBootstrapPayload";
+import type { LibrarySectionKind as BindingLibrarySectionKind } from "./bindings/LibrarySectionKind";
+import type { LibrarySectionSummary as BindingLibrarySectionSummary } from "./bindings/LibrarySectionSummary";
 import type { MediaAsset as BindingMediaAsset } from "./bindings/MediaAsset";
 import type { MediaAssetKind as BindingMediaAssetKind } from "./bindings/MediaAssetKind";
 import type { OpenAlexPlanRequest as BindingOpenAlexPlanRequest } from "./bindings/OpenAlexPlanRequest";
@@ -51,6 +54,7 @@ import type { UserPreferences as BindingUserPreferences } from "./bindings/UserP
 import type { Video as BindingVideo } from "./bindings/Video";
 import type { VideoInfo as BindingVideoInfo } from "./bindings/VideoInfo";
 import type { VocabularyReplacement as BindingVocabularyReplacement } from "./bindings/VocabularyReplacement";
+import type { WebsiteFolder as BindingWebsiteFolder } from "./bindings/WebsiteFolder";
 import type { WorkspaceBootstrapPayload as BindingWorkspaceBootstrapPayload } from "./bindings/WorkspaceBootstrapPayload";
 
 /** Generated bindings own backend transport DTOs; compatibility aliases here keep current frontend ergonomics. */
@@ -74,6 +78,7 @@ export type OpenAlexSort = BindingOpenAlexSort;
 export type ChatRole = BindingChatRole;
 export type ChatMessageStatus = BindingChatMessageStatus;
 export type ChatTitleStatus = BindingChatTitleStatus;
+export type LibrarySectionKind = BindingLibrarySectionKind;
 export type ProviderIdentity = BindingProviderIdentity;
 export type OpenAlexSavedSearchQuery = Compat<
   BindingOpenAlexSavedSearchQuery,
@@ -121,6 +126,24 @@ export type MediaAsset = Compat<
   {
     url?: BindingMediaAsset["url"];
     mime_type?: BindingMediaAsset["mime_type"];
+  }
+>;
+export type LibrarySectionSummary = Compat<
+  BindingLibrarySectionSummary,
+  {
+    container_kinds: SubscriptionContainerKind[];
+    backing_kinds: SourceBackingKind[];
+  }
+>;
+export type WebsiteFolder = BindingWebsiteFolder;
+export type LibraryBootstrap = Compat<
+  BindingLibraryBootstrapPayload,
+  {
+    sections: LibrarySectionSummary[];
+    sources: ContentSource[];
+    selected_source?: ContentSource | null;
+    selected_items: ContentItem[];
+    website_folders: WebsiteFolder[];
   }
 >;
 
@@ -173,6 +196,7 @@ export type WorkspaceBootstrap = Compat<
     sources: ContentSource[];
     channels: Channel[];
     snapshot: ChannelSnapshot | null;
+    library: LibraryBootstrap;
     search_status: SearchStatus;
   }
 >;

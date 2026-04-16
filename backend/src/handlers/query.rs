@@ -98,6 +98,17 @@ impl WorkspaceBootstrapParams {
             .or(self.selected_channel_id.as_deref())
     }
 
+    pub fn resolved_selected_channel_id(&self) -> Option<String> {
+        crate::library::resolve_selected_channel_id(
+            self.selected_channel_id.as_deref(),
+            self.selected_source_id.as_deref(),
+        )
+    }
+
+    pub fn resolved_selected_video_id(&self) -> Option<String> {
+        crate::library::resolve_selected_video_id(None, self.selected_item_id.as_deref())
+    }
+
     pub fn video_params(&self) -> VideoListParams {
         VideoListParams {
             limit: self.limit,

@@ -28,6 +28,9 @@ export type {
   HighlightChannelGroup,
   HighlightSource,
   HighlightVideoGroup,
+  LibraryBootstrap,
+  LibrarySectionKind,
+  LibrarySectionSummary,
   MediaAsset,
   MediaAssetKind,
   OpenAlexPlanRequest,
@@ -55,6 +58,7 @@ export type {
   Video,
   VideoInfo,
   VocabularyReplacement,
+  WebsiteFolder,
   WorkspaceBootstrap,
 } from "./transport-types";
 

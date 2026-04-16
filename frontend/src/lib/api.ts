@@ -23,6 +23,7 @@ import type {
   UserPreferences,
   Video,
   VideoInfo,
+  WebsiteFolder,
   WorkspaceBootstrap,
 } from "./transport-types";
 import {
@@ -291,6 +292,14 @@ function invalidateAllChannelReads() {
   );
 }
 
+function invalidateLibraryReads() {
+  invalidateGetRequestCache(
+    (path) =>
+      path.startsWith("/api/workspace/bootstrap") ||
+      path.startsWith("/api/library/website-folders"),
+  );
+}
+
 export function listChannels() {
   return cachedGetRequest<Channel[]>("/api/channels");
 }
@@ -386,6 +395,51 @@ export function updateMiniReadStatus(videoId: string, read: boolean) {
   });
 }
 
+export function listWebsiteFolders() {
+  return cachedGetRequest<WebsiteFolder[]>("/api/library/website-folders", {
+    bypassCache: true,
+  });
+}
+
+export function createWebsiteFolder(name: string) {
+  return request<WebsiteFolder>("/api/library/website-folders", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  }).then((result) => {
+    invalidateLibraryReads();
+    return result;
+  });
+}
+
+export function updateWebsiteFolder(id: string, name: string) {
+  return request<WebsiteFolder>(`/api/library/website-folders/${id}`, {
+    method: "PUT",
+    body: JSON.stringify({ name }),
+  }).then((result) => {
+    invalidateLibraryReads();
+    return result;
+  });
+}
+
+export function reorderWebsiteFolders(folderIds: string[]) {
+  return request<WebsiteFolder[]>("/api/library/website-folders/reorder", {
+    method: "POST",
+    body: JSON.stringify({ folder_ids: folderIds }),
+  }).then((result) => {
+    invalidateLibraryReads();
+    return result;
+  });
+}
+
+export function deleteWebsiteFolder(id: string) {
+  return request<void>(`/api/library/website-folders/${id}`, {
+    method: "DELETE",
+  }).then((result) => {
+    invalidateLibraryReads();
+    return result;
+  });
+}
+
 export function getChannelSnapshot(
   channelId: string,
   options?: VideoQueryOptions & { bypassCache?: boolean },
@@ -443,6 +497,8 @@ export function listChannelsWhenAvailable(options?: { retryDelayMs?: number }) {
 export function getWorkspaceBootstrapWhenAvailable(
   options?: (VideoQueryOptions & {
     selectedChannelId?: string | null;
+    selectedSourceId?: string | null;
+    selectedItemId?: string | null;
   }) & {
     retryDelayMs?: number;
   },
