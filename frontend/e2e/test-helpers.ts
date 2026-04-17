@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 
 export async function resetClientState(page: Page): Promise<void> {
-  await page.goto("/");
+  await page.goto("/robots.txt");
   await page.evaluate(async () => {
     try {
       window.localStorage.clear();

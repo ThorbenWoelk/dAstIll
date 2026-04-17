@@ -2,18 +2,16 @@
   import TranscriptView from "$lib/components/TranscriptView.svelte";
   import type { CreateHighlightRequest, Highlight } from "$lib/types";
   import type { MiniSummaryItem } from "$lib/transport-types";
+  import MiniArticleAside from "./MiniArticleAside.svelte";
   import MiniArticleHeader from "./MiniArticleHeader.svelte";
-  import MiniArticleHero from "./MiniArticleHero.svelte";
 
   interface Props {
     summary: MiniSummaryItem;
     summaryHtml: string;
-    markingRead: boolean;
     contentKey: number;
     highlights: Highlight[];
     creatingHighlight: boolean;
     deletingHighlightId: number | null;
-    onMarkRead: () => void;
     onCreateHighlight: (
       payload: CreateHighlightRequest,
     ) => void | Promise<void>;
@@ -23,12 +21,10 @@
   let {
     summary,
     summaryHtml,
-    markingRead,
     contentKey,
     highlights,
     creatingHighlight,
     deletingHighlightId,
-    onMarkRead,
     onCreateHighlight,
     onDeleteHighlight,
   }: Props = $props();
@@ -36,16 +32,14 @@
 
 {#key contentKey}
   <article class="reader-article">
-    <MiniArticleHero src={summary.thumbnail_url} alt={summary.title} />
-
     <MiniArticleHeader
       channelName={summary.channel_name}
-      publishedAt={summary.published_at}
       title={summary.title}
+    />
+
+    <MiniArticleAside
+      publishedAt={summary.published_at}
       watchUrl={summary.watch_url}
-      read={summary.read}
-      {markingRead}
-      {onMarkRead}
     />
 
     <div class="reader-body" aria-live="polite">
@@ -105,6 +99,13 @@
   }
   .reader-body :global(h2) {
     font-size: 1.45rem;
+    border-top: 1px solid var(--border-soft);
+    padding-top: 1.25rem;
+    margin-top: 2.5rem;
+  }
+  .reader-body :global(h2:first-child) {
+    border-top: none;
+    padding-top: 0;
   }
   .reader-body :global(h3) {
     font-size: 1.15rem;
@@ -169,6 +170,49 @@
     }
     .reader-body {
       font-size: 18px;
+    }
+  }
+
+  @media (min-width: 960px) {
+    .reader-article {
+      max-width: 1040px;
+      padding: var(--space-xl) var(--space-xl) var(--space-xl);
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 220px;
+      grid-template-areas:
+        "head aside"
+        "body aside";
+      column-gap: var(--space-xl);
+      align-items: start;
+    }
+    .reader-article > :global(header) {
+      grid-area: head;
+      min-width: 0;
+    }
+    .reader-article > :global(aside) {
+      grid-area: aside;
+    }
+    .reader-body {
+      grid-area: body;
+      min-width: 0;
+      font-size: 17px;
+      line-height: 1.65;
+    }
+    .reader-body :global(h1),
+    .reader-body :global(h2),
+    .reader-body :global(h3) {
+      margin-top: 1.5rem;
+      margin-bottom: 0.5rem;
+    }
+    .reader-body :global(p + p) {
+      margin-top: 0.75rem;
+    }
+    .reader-body :global(ul),
+    .reader-body :global(ol) {
+      margin: 0.75rem 0;
+    }
+    .reader-body :global(blockquote) {
+      margin: 1rem 0;
     }
   }
 </style>

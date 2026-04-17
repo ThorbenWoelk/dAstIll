@@ -1,8 +1,8 @@
 <script lang="ts">
+  import ChevronIcon from "$lib/components/icons/ChevronIcon.svelte";
   import FilterIcon from "$lib/components/icons/FilterIcon.svelte";
 
   interface Props {
-    readProgress: number;
     activeIndex: number;
     totalCount: number;
     showCounter: boolean;
@@ -10,10 +10,12 @@
     activeFilterCount: number;
     unreadCount: number;
     onToggleFilter: () => void;
+    channelName?: string | null;
+    canPickChannel?: boolean;
+    onOpenChannelPicker?: () => void;
   }
 
   let {
-    readProgress,
     activeIndex,
     totalCount,
     showCounter,
@@ -21,6 +23,9 @@
     activeFilterCount,
     unreadCount,
     onToggleFilter,
+    channelName = null,
+    canPickChannel = false,
+    onOpenChannelPicker,
   }: Props = $props();
 
   const filterBadgeCount = $derived(
@@ -37,6 +42,18 @@
     <span class="bar-logo-word">dastill</span>
     <span class="bar-logo-mini">mini</span>
   </a>
+
+  {#if canPickChannel && onOpenChannelPicker}
+    <button
+      type="button"
+      class="bar-channel"
+      onclick={onOpenChannelPicker}
+      aria-label="Change channel"
+    >
+      <span class="bar-channel-name">{channelName ?? "All channels"}</span>
+      <ChevronIcon direction="down" size={10} strokeWidth={2.4} />
+    </button>
+  {/if}
 
   <div class="bar-right">
     {#if showCounter}
@@ -61,14 +78,6 @@
       {/if}
     </button>
   </div>
-
-  <div class="progress-track" aria-hidden="true">
-    <div
-      class="progress-fill"
-      class:progress-fill--visible={showCounter}
-      style="transform: scaleX({readProgress})"
-    ></div>
-  </div>
 </header>
 
 <style>
@@ -82,6 +91,7 @@
       var(--space-sm);
     flex-shrink: 0;
     min-height: 48px;
+    border-bottom: 3px double var(--foreground);
   }
   .bar-logo {
     display: inline-flex;
@@ -106,15 +116,43 @@
     color: var(--soft-foreground);
     transition: color 120ms;
   }
-  .bar-logo:hover .bar-logo-word,
-  .bar-logo:hover .bar-logo-mini {
-    color: var(--accent);
+  .bar-logo {
+    transition: opacity 120ms;
+  }
+  .bar-logo:hover {
+    opacity: 0.7;
   }
   .bar-right {
     display: flex;
     align-items: center;
     gap: var(--space-md);
     flex-shrink: 0;
+    margin-left: auto;
+  }
+  .bar-channel {
+    display: none;
+    align-items: center;
+    gap: var(--space-xs);
+    height: 32px;
+    padding: 0 var(--space-sm) 0 var(--space-md);
+    border-radius: var(--radius-full);
+    border: none;
+    background: transparent;
+    color: var(--foreground);
+    cursor: pointer;
+    min-width: 0;
+    max-width: 360px;
+    transition: background 120ms;
+  }
+  .bar-channel:hover {
+    background: var(--accent-wash);
+  }
+  .bar-channel-name {
+    font-size: 13px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .nav-pos {
     display: inline-flex;
@@ -181,33 +219,15 @@
     line-height: 1;
     box-shadow: 0 0 0 2px var(--background);
   }
-  .progress-track {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 1px;
-    background: var(--border-soft);
-  }
-  .progress-fill {
-    height: 2px;
-    margin-top: -1px;
-    background: var(--accent);
-    transform-origin: left;
-    transform: scaleX(0);
-    opacity: 0;
-    transition:
-      transform 80ms linear,
-      opacity 200ms ease;
-  }
-  .progress-fill--visible {
-    opacity: 1;
-  }
-
   @media (min-width: 640px) {
     .mini-bar {
       padding-left: var(--space-lg);
       padding-right: var(--space-lg);
+    }
+  }
+  @media (min-width: 960px) {
+    .bar-channel {
+      display: inline-flex;
     }
   }
 </style>

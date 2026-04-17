@@ -246,4 +246,37 @@
     color: var(--accent);
     flex-shrink: 0;
   }
+
+  @media (min-width: 960px) {
+    .sheet-backdrop {
+      align-items: center;
+      justify-content: center;
+      padding: var(--space-lg);
+    }
+    .sheet {
+      width: min(440px, 100%);
+      max-height: 70dvh;
+      border-radius: var(--radius-lg);
+      animation: sheet-scale 200ms ease-out;
+    }
+    @keyframes sheet-scale {
+      from {
+        opacity: 0;
+        transform: scale(0.96) translateY(4px);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+      }
+    }
+    .sheet-handle {
+      display: none;
+    }
+    .sheet-header {
+      padding: var(--space-md) var(--space-md) var(--space-sm);
+    }
+    .sheet-list {
+      padding-bottom: var(--space-md);
+    }
+  }
 </style>

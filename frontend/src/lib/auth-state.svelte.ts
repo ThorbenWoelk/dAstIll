@@ -22,6 +22,12 @@ type FirebaseAuthLike = Auth & {
   authStateReady?: () => Promise<void>;
 };
 
+type E2eAuthOverride = {
+  userId?: string;
+  email?: string | null;
+  token?: string | null;
+};
+
 type AuthController = {
   readonly current: AuthContext;
   readonly ready: boolean;
@@ -39,6 +45,40 @@ const DEFAULT_AUTH: AuthContext = {
   accessRole: "anonymous",
   email: null,
 };
+const E2E_AUTH_STORAGE_KEY = "__dastill_e2e_auth";
+
+function e2eAuthOverrideAllowed(): boolean {
+  const viteEnv = (
+    import.meta as {
+      env?: { DEV?: boolean; MODE?: string };
+    }
+  ).env;
+  return (
+    viteEnv?.DEV === true ||
+    viteEnv?.MODE === "test" ||
+    (typeof process !== "undefined" && process.env.NODE_ENV === "test")
+  );
+}
+
+function readE2eAuthOverride(): E2eAuthOverride | null {
+  if (
+    typeof window === "undefined" ||
+    !e2eAuthOverrideAllowed() ||
+    !("localStorage" in window)
+  ) {
+    return null;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(E2E_AUTH_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as E2eAuthOverride;
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
 
 function normalizeAuthContext(value: AuthContext): AuthContext {
   return cloneAuthContext(value);
@@ -260,6 +300,21 @@ class AuthStateController implements AuthController {
     }
 
     this.#started = true;
+    const e2eAuth = readE2eAuthOverride();
+    if (e2eAuth) {
+      configureAuthTokenResolver(async () => e2eAuth.token ?? null);
+      this.#setState({
+        current: buildAuthenticatedAuthContext(
+          e2eAuth.userId?.trim() || "e2e-user",
+          e2eAuth.email ?? "e2e@example.com",
+        ),
+        ready: true,
+        syncing: false,
+        error: null,
+      });
+      return;
+    }
+
     const { auth, onAuthStateChanged } = await importFirebaseAuthModule();
     onAuthStateChanged(auth, (user) => {
       if (user) {
