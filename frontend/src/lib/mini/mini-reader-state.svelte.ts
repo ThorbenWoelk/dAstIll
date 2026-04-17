@@ -116,6 +116,14 @@ export class MiniReaderState {
   );
   activeFilterCount = $derived(this.showUnreadOnly ? 1 : 0);
 
+  emptyVariant = $derived<"no-subscriptions" | "all-read" | "no-summaries">(
+    !this.reader || this.reader.channels.length === 0
+      ? "no-subscriptions"
+      : this.showUnreadOnly && (this.reader?.summaries.length ?? 0) > 0
+        ? "all-read"
+        : "no-summaries",
+  );
+
   async loadReader(
     channelId?: string | null,
     preferredVideoId?: string | null,

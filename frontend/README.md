@@ -1,8 +1,8 @@
-# DASTILL Frontend v0.2.0
+# DASTILL Frontend
 
-DASTILL v0.2.0 is the Svelte 5 frontend for channel tracking and video distillation workflows.
+This is the Svelte 5 frontend for dAstIll.
 
-## Product Scope (v0.2.0)
+## Product Scope
 
 - Channel workspace with customizable channel order.
 - Video list with short/long and acknowledged/unacknowledged filtering.

@@ -9,13 +9,18 @@
   import MiniTopBar from "$lib/components/mini/MiniTopBar.svelte";
   import { createMiniKeydownHandler } from "$lib/mini/mini-keyboard";
   import { createMiniReaderState } from "$lib/mini/mini-reader-state.svelte";
+  import { createMiniScrollController } from "$lib/mini/mini-scroll.svelte";
   import { swipeNavigation } from "$lib/mini/use-swipe-navigation";
 
   const mini = createMiniReaderState();
+  const scroll = createMiniScrollController(mini);
   let channelSheetOpen = $state(false);
-  let scrollContainer = $state<HTMLElement | null>(null);
   let authResolved = $state(false);
-  let summaryScrolledFromTop = $state(false);
+  let scrollContainer = $state<HTMLElement | null>(null);
+
+  $effect(() => {
+    scroll.bind(scrollContainer);
+  });
 
   const handleKeydown = createMiniKeydownHandler(() => ({
     stepSummary: stepAndScroll,
@@ -27,41 +32,29 @@
     },
   }));
 
-  function handleScroll() {
-    if (!scrollContainer) return;
-    const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
-    mini.updateReadProgress(scrollTop, scrollHeight, clientHeight);
-    summaryScrolledFromTop = scrollTop > 12;
-  }
-
-  function resetScroll() {
-    summaryScrolledFromTop = false;
-    scrollContainer?.scrollTo({ top: 0, behavior: "instant" });
-  }
-
   function stepAndScroll(delta: -1 | 1) {
     mini.stepSummary(delta);
-    resetScroll();
+    scroll.reset();
   }
 
   function jumpAndScroll(videoId: string) {
     mini.jumpToSummary(videoId);
-    resetScroll();
+    scroll.reset();
   }
 
   async function handleMarkRead() {
     await mini.markActiveSummaryRead();
-    resetScroll();
+    scroll.reset();
   }
 
   async function handleMarkReadAndAdvance() {
     await mini.markActiveSummaryReadAndAdvance();
-    resetScroll();
+    scroll.reset();
   }
 
   async function handleChannelSelect(channelId: string) {
     await mini.selectChannel(channelId);
-    resetScroll();
+    scroll.reset();
   }
 
   $effect(() => {
@@ -83,17 +76,6 @@
     }
     void mini.loadReader();
   });
-
-  function emptyVariant(): "no-subscriptions" | "all-read" | "no-summaries" {
-    if (
-      mini.showUnreadOnly &&
-      mini.reader?.summaries.length &&
-      mini.reader.summaries.length > 0
-    ) {
-      return "all-read";
-    }
-    return "no-summaries";
-  }
 </script>
 
 <svelte:head>
@@ -130,14 +112,10 @@
         onRetry={() => mini.loadReader(mini.selectedChannelId)}
       />
     </div>
-  {:else if !mini.reader || mini.reader.channels.length === 0}
-    <div class="mini-content">
-      <MiniEmptyState variant="no-subscriptions" />
-    </div>
   {:else if !mini.activeSummary}
     <div class="mini-content">
       <MiniEmptyState
-        variant={emptyVariant()}
+        variant={mini.emptyVariant}
         onClearFilter={() => mini.clearUnreadFilter()}
       />
     </div>
@@ -151,7 +129,7 @@
     <div
       class="mini-content"
       bind:this={scrollContainer}
-      onscroll={handleScroll}
+      onscroll={() => scroll.onScroll()}
       use:swipeNavigation={{
         onSwipeLeft: () => stepAndScroll(1),
         onSwipeRight: () => stepAndScroll(-1),
@@ -185,7 +163,7 @@
       canGoNext={mini.canGoNext}
       activeIndex={mini.activeIndex}
       totalCount={mini.visibleSummaries.length}
-      showReadCheckbox={summaryScrolledFromTop && !!mini.activeSummary}
+      showReadCheckbox={scroll.scrolledFromTop && !!mini.activeSummary}
       activeSummaryRead={mini.activeSummary?.read ?? false}
       markingRead={mini.markingRead}
       onPrev={() => stepAndScroll(-1)}

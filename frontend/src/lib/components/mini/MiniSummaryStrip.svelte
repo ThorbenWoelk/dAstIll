@@ -24,7 +24,7 @@
 
 {#if summaries.length > 1}
   <nav class="strip" bind:this={stripRef} aria-label="Summary list">
-    {#each summaries as summary, i}
+    {#each summaries as summary (summary.video_id)}
       <button
         type="button"
         class="strip-card"
@@ -42,12 +42,14 @@
               loading="lazy"
             />
           {:else}
-            <div class="strip-thumb strip-thumb--empty">
-              <span class="strip-thumb-num">{i + 1}</span>
+            <div class="strip-thumb strip-thumb--empty" aria-hidden="true">
+              <span class="strip-thumb-dot"></span>
             </div>
           {/if}
           {#if summary.read}
-            <span class="strip-read-mark"><CheckIcon size={10} /></span>
+            <span class="strip-read-mark" aria-label="Read">
+              <CheckIcon size={10} strokeWidth={2.8} />
+            </span>
           {/if}
         </div>
         <span class="strip-title">{summary.title}</span>
@@ -59,12 +61,11 @@
 <style>
   .strip {
     display: flex;
-    gap: var(--space-sm);
+    gap: var(--space-xs);
     padding: var(--space-sm) var(--space-md);
     overflow-x: auto;
     overflow-y: hidden;
     scrollbar-width: none;
-    border-bottom: 1px solid var(--border-soft);
     flex-shrink: 0;
   }
   .strip::-webkit-scrollbar {
@@ -74,33 +75,36 @@
     display: flex;
     align-items: center;
     gap: var(--space-sm);
-    padding: var(--space-xs);
-    padding-right: var(--space-sm);
+    padding: var(--space-xs) var(--space-sm) var(--space-xs) var(--space-xs);
     border-radius: var(--radius-md);
     border: none;
-    background: var(--surface);
-    color: var(--foreground);
+    background: transparent;
+    color: var(--soft-foreground);
     cursor: pointer;
     font-size: 12px;
     font-weight: 500;
     text-align: left;
     flex-shrink: 0;
-    width: 140px;
+    width: 148px;
     min-height: 44px;
     transition:
-      background 120ms,
-      box-shadow 120ms;
+      background 160ms ease,
+      color 160ms ease;
   }
   .strip-card:hover {
     background: var(--accent-wash);
+    color: var(--foreground);
   }
   .strip-card--active {
     background: var(--accent-wash-strong);
+    color: var(--accent-strong);
     font-weight: 700;
   }
+  .strip-card--active:hover {
+    color: var(--accent-strong);
+  }
   .strip-card--read:not(.strip-card--active) {
-    color: var(--soft-foreground);
-    opacity: 0.7;
+    opacity: 0.55;
   }
   .strip-thumb-wrap {
     position: relative;
@@ -113,28 +117,33 @@
     object-fit: cover;
     display: block;
   }
+  .strip-card--read:not(.strip-card--active) .strip-thumb {
+    filter: grayscale(0.5);
+  }
   .strip-thumb--empty {
     display: flex;
     align-items: center;
     justify-content: center;
     background: var(--muted);
-    color: var(--soft-foreground);
   }
-  .strip-thumb-num {
-    font-size: 10px;
-    font-weight: 700;
+  .strip-thumb-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: var(--radius-full);
+    background: currentColor;
+    opacity: 0.5;
   }
   .strip-read-mark {
     position: absolute;
-    bottom: -2px;
-    right: -2px;
+    bottom: -3px;
+    right: -3px;
     display: grid;
     place-items: center;
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
     border-radius: var(--radius-full);
-    background: var(--surface);
-    color: var(--soft-foreground);
+    background: var(--background);
+    color: var(--accent);
   }
   .strip-title {
     overflow: hidden;
@@ -142,16 +151,15 @@
     line-clamp: 2;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
-    line-height: 1.3;
+    line-height: 1.35;
   }
 
   @media (min-width: 640px) {
     .strip {
       padding: var(--space-md) var(--space-lg);
-      gap: var(--space-sm);
     }
     .strip-card {
-      width: 180px;
+      width: 196px;
     }
   }
 </style>
