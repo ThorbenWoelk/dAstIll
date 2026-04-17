@@ -60,6 +60,7 @@
     "@tootallnate/once": "^3.0.1",
     "cookie": "^1.0.2",
     "dompurify": "^3.4.0",
-    "h3": "^1.15.11"
+    "h3": "^1.15.11",
+    "protobufjs": "7.5.5"
   }
 }

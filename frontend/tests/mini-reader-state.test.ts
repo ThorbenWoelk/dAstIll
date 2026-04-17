@@ -4,6 +4,7 @@ import type { MiniSummaryItem } from "../src/lib/transport-types";
 import {
   chooseActiveVideoId,
   findNextUnreadVideoId,
+  MINI_DEFAULT_SHOW_UNREAD_ONLY,
   selectMiniSummaryHighlights,
 } from "../src/lib/mini/mini-reader-state.svelte";
 import type { Highlight } from "../src/lib/types";
@@ -37,6 +38,12 @@ describe("chooseActiveVideoId", () => {
 
     expect(chooseActiveVideoId(summaries, "b")).toBe("b");
     expect(chooseActiveVideoId(summaries, "missing")).toBe("a");
+  });
+});
+
+describe("MINI_DEFAULT_SHOW_UNREAD_ONLY", () => {
+  it("shows only unread summaries by default", () => {
+    expect(MINI_DEFAULT_SHOW_UNREAD_ONLY).toBe(true);
   });
 });
 

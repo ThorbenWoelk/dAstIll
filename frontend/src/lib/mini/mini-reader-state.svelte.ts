@@ -5,6 +5,8 @@ import type { MiniReader, MiniSummaryItem } from "$lib/transport-types";
 import { renderMarkdown } from "$lib/utils/markdown";
 import { createHomeWorkspaceHighlightController } from "$lib/workspace/home-workspace-highlight-controller.svelte";
 
+export const MINI_DEFAULT_SHOW_UNREAD_ONLY = true;
+
 export function chooseActiveVideoId(
   summaries: MiniSummaryItem[],
   preferredVideoId?: string | null,
@@ -54,7 +56,7 @@ export class MiniReaderState {
   error = $state<string | null>(null);
   selectedChannelId = $state<string | null>(null);
   activeVideoId = $state<string | null>(null);
-  showUnreadOnly = $state(false);
+  showUnreadOnly = $state(MINI_DEFAULT_SHOW_UNREAD_ONLY);
   markingRead = $state(false);
   contentKey = $state(0);
   readProgress = $state(0);
