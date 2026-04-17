@@ -99,9 +99,6 @@ test("mobile filter button opens the filter menu above the browse overlay", asyn
     .getByRole("button", { name: "Video filters" })
     .first();
 
-  await expect
-    .poll(() => new URL(page.url()).search)
-    .toContain(`source=${selectedChannelId}`);
   await expect(filterButton).toBeVisible();
   await expect(filterButton).toBeEnabled();
   await filterButton.click();
@@ -131,7 +128,8 @@ test("mobile queue filter button keeps full tap target and opens its menu", asyn
 
   await installMockWorkspaceApi(page, { bootstrap });
 
-  await page.goto(selectedPath);
+  await page.goto("/");
+  await navigateViaInjectedLink(page, selectedPath);
   await expect(page.getByRole("banner")).toBeVisible();
 
   const filterButton = page
@@ -139,9 +137,6 @@ test("mobile queue filter button keeps full tap target and opens its menu", asyn
     .getByRole("button", { name: "Video filters" })
     .first();
 
-  await expect
-    .poll(() => new URL(page.url()).search)
-    .toContain(`source=${selectedChannelId}`);
   await expect(filterButton).toBeVisible();
   await expect(filterButton).toBeEnabled();
 

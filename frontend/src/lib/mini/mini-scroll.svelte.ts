@@ -1,6 +1,7 @@
 import type { MiniReaderState } from "./mini-reader-state.svelte";
 
-const SCROLL_FROM_TOP_THRESHOLD = 12;
+const SCROLL_COLLAPSE_THRESHOLD = 32;
+const SCROLL_EXPAND_THRESHOLD = 4;
 
 export interface MiniScrollController {
   readonly scrolledFromTop: boolean;
@@ -19,7 +20,11 @@ export function createMiniScrollController(
     if (!container) return;
     const { scrollTop, scrollHeight, clientHeight } = container;
     mini.updateReadProgress(scrollTop, scrollHeight, clientHeight);
-    scrolledFromTop = scrollTop > SCROLL_FROM_TOP_THRESHOLD;
+    if (!scrolledFromTop && scrollTop > SCROLL_COLLAPSE_THRESHOLD) {
+      scrolledFromTop = true;
+    } else if (scrolledFromTop && scrollTop < SCROLL_EXPAND_THRESHOLD) {
+      scrolledFromTop = false;
+    }
   }
 
   function reset() {

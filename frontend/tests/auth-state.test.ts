@@ -185,6 +185,39 @@ describe("auth state controller", () => {
     });
   });
 
+  it("uses the dev/test E2E auth override without bootstrapping Firebase", async () => {
+    Object.defineProperty(globalThis, "window", {
+      value: {
+        localStorage: {
+          getItem: (key: string) =>
+            key === "__dastill_e2e_auth"
+              ? JSON.stringify({
+                  userId: "mini-e2e-user",
+                  email: "mini-e2e@example.com",
+                  token: "mini-e2e-token",
+                })
+              : null,
+        },
+      },
+      configurable: true,
+    });
+
+    const { authState } = await loadAuthStateModule();
+    const { getCurrentAuthToken } = await import("../src/lib/auth-token");
+
+    await authState.start();
+
+    expect(mockOnAuthStateChanged).not.toHaveBeenCalled();
+    expect(mockSignInAnonymously).not.toHaveBeenCalled();
+    expect(await getCurrentAuthToken()).toBe("mini-e2e-token");
+    expect(authState.current).toEqual({
+      userId: "mini-e2e-user",
+      authState: "authenticated",
+      accessRole: "user",
+      email: "mini-e2e@example.com",
+    });
+  });
+
   it("preserves an established Firebase session when server auth falls back to anonymous", async () => {
     const { authState } = await loadAuthStateModule();
     await authState.signInWithGoogle();

@@ -179,7 +179,6 @@
       color 120ms;
   }
   .empty-action:hover {
-    background: var(--accent);
-    color: white;
+    opacity: 0.8;
   }
 </style>

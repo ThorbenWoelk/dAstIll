@@ -75,7 +75,6 @@
   let earliestSyncDateInput = $state("");
   let loadingChannels = $state(initialBootstrap === null);
   let loadingOverview = $state(initialBootstrap === null);
-  let authResolved = $state(false);
   let addingChannel = $state(false);
   let savingSyncDate = $state(false);
   let errorMessage = $state<string | null>(null);
@@ -91,15 +90,6 @@
   let aiStatus = $state<AiStatus | null>(null);
   let activeOverviewRequest = 0;
 
-  $effect(() => {
-    if (!authState.ready || authResolved) return;
-    authResolved = true;
-
-    if (authState.current.authState !== "authenticated") {
-      const redirectTo = `${page.url.pathname}${page.url.search}`;
-      void goto(`/login?redirectTo=${encodeURIComponent(redirectTo)}`);
-    }
-  });
   let lastOverviewLoadKey = $state<string | null>(null);
   let seededChannelPreviews = $state<Record<string, ChannelSnapshot>>(
     (page.data.channelPreviews ?? {}) as Record<string, ChannelSnapshot>,

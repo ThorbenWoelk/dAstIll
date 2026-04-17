@@ -48,6 +48,8 @@ All colors are CSS custom properties (`var(--token)`). Never use hardcoded hex v
 
 **Palettes**: `ember` (default), `sage`, `ocean`, `sand`, `plum`. Each has light/dark variants auto-computed into `data-color` on `:root`.
 
+**Monochrome subtrees**: a route may opt out of the palette entirely by re-aliasing both the accent family and the palette-mixed tokens (`--muted`, `--border`, `--border-soft`) at its shell selector. Do this at the scope boundary, never inside components, so the opt-out stays a one-file decision. `/mini` is the reference implementation.
+
 ### Spacing & Radius
 
 - **Base Spacing**: `4px` (xs), `8px` (sm), `16px` (md), `24px` (lg), `32px` (xl)
@@ -169,6 +171,17 @@ Active feedback and reset:
 
 Write base styles for mobile. Use `@media (min-width: 640px)` to add desktop enhancements. Never use `max-width` media queries for responsive layout.
 
+### One Codebase, Two Sizes
+
+Breakpoints change **layout**, never **behavior**. A feature must work identically on mobile and desktop or it should not ship.
+
+- Do not branch on viewport width in JavaScript (`isMobile`, `matchMedia` feature flags, route forks). CSS owns the size story.
+- Same components, same state, same event handlers at every breakpoint. Desktop is a CSS-only re-layout of the mobile tree (flex direction swap, grid row↔column, `display: none` for chrome that belongs to one size).
+- When a mobile affordance (bottom bar, bottom sheet) has no desktop home, hide it with a media query and let the remaining controls (keyboard, sidebar, inline header actions) cover the intent. Do not duplicate logic into a desktop-only component.
+- Axis-sensitive effects (e.g. `scrollIntoView`) read the computed CSS (flex direction, container orientation) rather than the viewport. The CSS remains the source of truth.
+
+The mini reader is the reference implementation - see [docs/architecture/mini-reader.md](./docs/architecture/mini-reader.md).
+
 ### Bottom Bar
 
 Primary mobile actions go in a fixed bottom bar (`position: fixed; bottom: 0`). Use `z-index: var(--z-mobile-tab-bar)` and respect `env(safe-area-inset-bottom)`. Hide on desktop with `@media (min-width: 640px) { display: none }`. All touch targets must be 44px minimum.
@@ -262,6 +275,19 @@ Examples:
 - Floating toolbar → assert the action container appears on text selection
 
 When fixing a rendering bug, add the E2E test first so it fails before the fix, then fix, then confirm it passes.
+
+#### Responsive regression rule
+
+Mobile-first + media queries means a base rule applies at every width until a breakpoint overrides it. Editing base CSS can silently break desktop (or vice versa). The defense is a screenshot assertion at each breakpoint.
+
+Any route or component with a desktop re-layout (a `@media (min-width: 640px)` or `@media (min-width: 960px)` block that changes structure) must have a Playwright spec that:
+
+- Renders the page at a mobile viewport (e.g. `375 × 812`) and asserts a defining element is visible.
+- Renders the page at a desktop viewport (e.g. `1280 × 900`) and asserts the desktop-only element is visible (and/or the mobile-only chrome is hidden).
+
+Example checks for the mini reader: bottom bar visible at 375px; hidden at 1280px. Summary strip flex-row at 375px; flex-column sidebar at 1280px. Desktop sidebar is scrollable (internal scroll, not page scroll).
+
+When a CSS change touches a breakpoint block, run the responsive spec before committing. If you zero a base padding, remove a width, or change a flex direction — assume you broke the other breakpoint until the spec says otherwise.
 
 #### Running tests locally
 

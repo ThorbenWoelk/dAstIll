@@ -90,7 +90,6 @@
 
 <div class="mini-shell">
   <MiniTopBar
-    readProgress={mini.readProgress}
     activeIndex={mini.activeIndex}
     totalCount={mini.visibleSummaries.length}
     showCounter={!!mini.activeSummary}
@@ -98,60 +97,69 @@
     activeFilterCount={mini.activeFilterCount}
     unreadCount={mini.unreadCount}
     onToggleFilter={() => mini.toggleUnreadFilter()}
+    channelName={mini.activeSummary?.channel_name ??
+      mini.reader?.channels.find((c) => c.id === mini.selectedChannelId)
+        ?.name ??
+      null}
+    canPickChannel={!!mini.reader && mini.reader.channels.length > 0}
+    onOpenChannelPicker={() => {
+      channelSheetOpen = true;
+    }}
   />
 
-  {#if mini.loading}
-    <div class="mini-content">
-      <MiniEmptyState variant="loading" />
-    </div>
-  {:else if mini.error}
-    <div class="mini-content">
-      <MiniEmptyState
-        variant="error"
-        errorMessage={mini.error}
-        onRetry={() => mini.loadReader(mini.selectedChannelId)}
+  <div class="mini-main">
+    {#if mini.loading}
+      <div class="mini-article-pane">
+        <MiniEmptyState variant="loading" />
+      </div>
+    {:else if mini.error}
+      <div class="mini-article-pane">
+        <MiniEmptyState
+          variant="error"
+          errorMessage={mini.error}
+          onRetry={() => mini.loadReader(mini.selectedChannelId)}
+        />
+      </div>
+    {:else if !mini.activeSummary}
+      <div class="mini-article-pane">
+        <MiniEmptyState
+          variant={mini.emptyVariant}
+          onClearFilter={() => mini.clearUnreadFilter()}
+        />
+      </div>
+    {:else}
+      <MiniSummaryStrip
+        summaries={mini.visibleSummaries}
+        activeVideoId={mini.activeVideoId}
+        collapsed={scroll.scrolledFromTop}
+        onSelect={jumpAndScroll}
       />
-    </div>
-  {:else if !mini.activeSummary}
-    <div class="mini-content">
-      <MiniEmptyState
-        variant={mini.emptyVariant}
-        onClearFilter={() => mini.clearUnreadFilter()}
-      />
-    </div>
-  {:else}
-    <MiniSummaryStrip
-      summaries={mini.visibleSummaries}
-      activeVideoId={mini.activeVideoId}
-      onSelect={jumpAndScroll}
-    />
 
-    <div
-      class="mini-content"
-      bind:this={scrollContainer}
-      onscroll={() => scroll.onScroll()}
-      use:swipeNavigation={{
-        onSwipeLeft: () => stepAndScroll(1),
-        onSwipeRight: () => stepAndScroll(-1),
-        enabled: !channelSheetOpen,
-      }}
-    >
-      <MiniArticle
-        summary={mini.activeSummary}
-        summaryHtml={mini.activeSummaryHtml}
-        markingRead={mini.markingRead}
-        contentKey={mini.contentKey}
-        highlights={mini.activeSummaryHighlights}
-        creatingHighlight={mini.creatingHighlight &&
-          mini.creatingHighlightVideoId === mini.activeSummary.video_id}
-        deletingHighlightId={mini.deletingHighlightId}
-        onMarkRead={handleMarkRead}
-        onCreateHighlight={(payload) => mini.saveSelectionHighlight(payload)}
-        onDeleteHighlight={(highlightId) =>
-          mini.deleteExistingHighlight(highlightId)}
-      />
-    </div>
-  {/if}
+      <div
+        class="mini-article-pane"
+        bind:this={scrollContainer}
+        onscroll={() => scroll.onScroll()}
+        use:swipeNavigation={{
+          onSwipeLeft: () => stepAndScroll(1),
+          onSwipeRight: () => stepAndScroll(-1),
+          enabled: !channelSheetOpen,
+        }}
+      >
+        <MiniArticle
+          summary={mini.activeSummary}
+          summaryHtml={mini.activeSummaryHtml}
+          contentKey={mini.contentKey}
+          highlights={mini.activeSummaryHighlights}
+          creatingHighlight={mini.creatingHighlight &&
+            mini.creatingHighlightVideoId === mini.activeSummary.video_id}
+          deletingHighlightId={mini.deletingHighlightId}
+          onCreateHighlight={(payload) => mini.saveSelectionHighlight(payload)}
+          onDeleteHighlight={(highlightId) =>
+            mini.deleteExistingHighlight(highlightId)}
+        />
+      </div>
+    {/if}
+  </div>
 
   {#if mini.reader && mini.reader.channels.length > 0}
     <MiniBottomBar
@@ -189,6 +197,21 @@
 
 <style>
   .mini-shell {
+    /* Mini is monochrome. Neutralize every palette-mixed token so
+       data-color / theme swaps never leak into this surface. */
+    --accent: var(--foreground);
+    --accent-strong: var(--foreground);
+    --accent-soft: color-mix(in srgb, var(--foreground) 8%, var(--surface));
+    --accent-wash: color-mix(in srgb, var(--foreground) 6%, var(--surface));
+    --accent-wash-strong: color-mix(
+      in srgb,
+      var(--foreground) 12%,
+      var(--surface)
+    );
+    --muted: color-mix(in srgb, var(--foreground) 7%, var(--background));
+    --border: color-mix(in srgb, var(--foreground) 18%, var(--background));
+    --border-soft: color-mix(in srgb, var(--foreground) 9%, var(--background));
+
     display: flex;
     flex-direction: column;
     height: 100dvh;
@@ -198,11 +221,25 @@
     position: relative;
   }
 
-  .mini-content {
+  .mini-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .mini-article-pane {
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
     overscroll-behavior-y: contain;
     scroll-behavior: smooth;
+  }
+
+  @media (min-width: 960px) {
+    .mini-main {
+      flex-direction: row;
+    }
   }
 </style>

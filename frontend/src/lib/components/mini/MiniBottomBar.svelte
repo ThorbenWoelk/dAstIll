@@ -1,4 +1,5 @@
 <script lang="ts">
+  import CheckIcon from "$lib/components/icons/CheckIcon.svelte";
   import ChevronIcon from "$lib/components/icons/ChevronIcon.svelte";
 
   interface Props {
@@ -31,17 +32,9 @@
     onMarkReadAndAdvance,
   }: Props = $props();
 
-  async function handleReadCheckboxChange(event: Event) {
-    const input = event.currentTarget;
-    if (!(input instanceof HTMLInputElement)) return;
-
-    if (!input.checked || activeSummaryRead) {
-      input.checked = activeSummaryRead;
-      return;
-    }
-
+  async function handleReadToggle() {
+    if (activeSummaryRead || markingRead) return;
     await onMarkReadAndAdvance();
-    input.checked = activeSummaryRead;
   }
 </script>
 
@@ -57,16 +50,22 @@
   </button>
 
   {#if showReadCheckbox}
-    <label class="read-check">
-      <input
-        type="checkbox"
-        checked={activeSummaryRead || markingRead}
-        disabled={markingRead || activeSummaryRead}
-        onchange={handleReadCheckboxChange}
-        aria-label="Mark summary read and jump to next unread"
-      />
-      <span>Read</span>
-    </label>
+    <button
+      type="button"
+      class="read-stamp"
+      class:read-stamp--done={activeSummaryRead}
+      class:read-stamp--loading={markingRead}
+      disabled={activeSummaryRead || markingRead}
+      onclick={handleReadToggle}
+      aria-label={activeSummaryRead ? "Already read" : "Mark read and advance"}
+      aria-pressed={activeSummaryRead}
+      data-tooltip={activeSummaryRead ? "Read" : "Mark read"}
+      data-tooltip-placement="top"
+    >
+      <span class="read-stamp-ring" aria-hidden="true">
+        <CheckIcon size={14} strokeWidth={2.4} className="read-stamp-check" />
+      </span>
+    </button>
   {:else}
     <button type="button" class="channel-trigger" onclick={onOpenChannelPicker}>
       <span class="channel-name">{channelName ?? "Select channel"}</span>
@@ -97,8 +96,7 @@
     gap: var(--space-sm);
     padding: var(--space-sm) var(--space-md);
     padding-bottom: max(var(--space-sm), env(safe-area-inset-bottom));
-    background: var(--surface);
-    border-top: 1px solid var(--border-soft);
+    background: var(--background);
     z-index: var(--z-mobile-tab-bar, 60);
     min-height: 52px;
   }
@@ -156,34 +154,68 @@
     white-space: nowrap;
   }
 
-  .read-check {
+  .read-stamp {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: var(--space-sm);
-    min-width: 112px;
-    min-height: 44px;
-    padding: var(--space-xs) var(--space-md);
-    border-radius: var(--radius-full);
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: none;
+    background: transparent;
     color: var(--foreground);
     cursor: pointer;
+    flex-shrink: 0;
   }
-  .read-check:has(input:disabled) {
+  .read-stamp-ring {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-full);
+    border: 1.5px solid var(--foreground);
+    background: transparent;
+    color: transparent;
+    transition:
+      background 180ms ease,
+      color 180ms ease,
+      transform 180ms ease,
+      border-color 180ms ease;
+  }
+  :global(.read-stamp-check) {
+    transform: scale(0.7);
+    opacity: 0;
+    transition:
+      transform 180ms cubic-bezier(0.32, 0.72, 0, 1),
+      opacity 140ms ease;
+  }
+  .read-stamp:active:not(:disabled) .read-stamp-ring {
+    transform: scale(0.92);
+  }
+  .read-stamp--done .read-stamp-ring,
+  .read-stamp--loading .read-stamp-ring {
+    background: var(--foreground);
+    color: var(--background);
+  }
+  .read-stamp--done :global(.read-stamp-check),
+  .read-stamp--loading :global(.read-stamp-check) {
+    transform: scale(1);
+    opacity: 1;
+  }
+  .read-stamp--loading .read-stamp-ring {
+    animation: stamp-pulse 1s ease-in-out infinite;
+  }
+  .read-stamp:disabled {
     cursor: default;
-    color: var(--soft-foreground);
   }
-  .read-check input {
-    width: 18px;
-    height: 18px;
-    margin: 0;
-    accent-color: var(--accent);
-    cursor: inherit;
-  }
-  .read-check span {
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
+  @keyframes stamp-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.55;
+    }
   }
 
   @media (hover: hover) and (pointer: fine) {
@@ -193,11 +225,19 @@
     .channel-trigger:hover {
       background: var(--accent-wash);
     }
-    .read-check:hover {
-      background: var(--accent-wash);
+    .read-stamp:hover:not(:disabled) .read-stamp-ring {
+      background: var(--foreground);
+      color: var(--background);
     }
-    .read-check:has(input:disabled):hover {
-      background: transparent;
+    .read-stamp:hover:not(:disabled) :global(.read-stamp-check) {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  @media (min-width: 960px) {
+    .bottom-bar {
+      display: none;
     }
   }
 </style>
