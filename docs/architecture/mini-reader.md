@@ -47,6 +47,12 @@ el.scrollIntoView({
 
 CSS remains the source of truth for orientation. The effect reads it, never replicates it.
 
+### Pull refresh belongs to the scroll pane
+
+The page shell is fixed-height so the top bar, summary strip, and bottom bar stay steady while reading. That means browser-native pull-to-refresh is not reliable on mobile: the article pane, not the document, owns vertical scroll.
+
+`use-pull-refresh.ts` handles a downward touch gesture only when `.mini-article-pane` is already at `scrollTop === 0`. It ignores interactive targets, rejects horizontal gestures, and calls `MiniReaderState.refreshReader()` with a cache bypass so the reload fetches fresh `/api/mini` data.
+
 ## Monochrome by token override
 
 The rest of the app has a palette system (`ember`, `sage`, `ocean`, `sand`, `plum`) swapped via `data-color` on `:root`. The mini reader is deliberately palette-proof: its visual identity is exactly one pencil, on every device, in every theme.

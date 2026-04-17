@@ -10,6 +10,7 @@
   import { createMiniKeydownHandler } from "$lib/mini/mini-keyboard";
   import { createMiniReaderState } from "$lib/mini/mini-reader-state.svelte";
   import { createMiniScrollController } from "$lib/mini/mini-scroll.svelte";
+  import { pullRefresh } from "$lib/mini/use-pull-refresh";
   import { swipeNavigation } from "$lib/mini/use-swipe-navigation";
 
   const mini = createMiniReaderState();
@@ -54,6 +55,11 @@
 
   async function handleChannelSelect(channelId: string) {
     await mini.selectChannel(channelId);
+    scroll.reset();
+  }
+
+  async function refreshAndReset() {
+    await mini.refreshReader();
     scroll.reset();
   }
 
@@ -113,7 +119,13 @@
         <MiniEmptyState variant="loading" />
       </div>
     {:else if mini.error}
-      <div class="mini-article-pane">
+      <div
+        class="mini-article-pane"
+        use:pullRefresh={{
+          onRefresh: refreshAndReset,
+          enabled: !channelSheetOpen,
+        }}
+      >
         <MiniEmptyState
           variant="error"
           errorMessage={mini.error}
@@ -121,7 +133,13 @@
         />
       </div>
     {:else if !mini.activeSummary}
-      <div class="mini-article-pane">
+      <div
+        class="mini-article-pane"
+        use:pullRefresh={{
+          onRefresh: refreshAndReset,
+          enabled: !channelSheetOpen,
+        }}
+      >
         <MiniEmptyState
           variant={mini.emptyVariant}
           onClearFilter={() => mini.clearUnreadFilter()}
@@ -139,6 +157,10 @@
         class="mini-article-pane"
         bind:this={scrollContainer}
         onscroll={() => scroll.onScroll()}
+        use:pullRefresh={{
+          onRefresh: refreshAndReset,
+          enabled: !channelSheetOpen,
+        }}
         use:swipeNavigation={{
           onSwipeLeft: () => stepAndScroll(1),
           onSwipeRight: () => stepAndScroll(-1),

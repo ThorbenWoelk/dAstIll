@@ -127,11 +127,14 @@ export class MiniReaderState {
   async loadReader(
     channelId?: string | null,
     preferredVideoId?: string | null,
+    options?: { bypassCache?: boolean },
   ) {
     this.loading = true;
     this.error = null;
     try {
-      const next = await getMiniReader(channelId);
+      const next = await getMiniReader(channelId, {
+        bypassCache: options?.bypassCache,
+      });
       this.reader = next;
       this.selectedChannelId = next.selected_channel_id ?? null;
       this.activeVideoId = chooseActiveVideoId(
@@ -148,6 +151,17 @@ export class MiniReaderState {
     } finally {
       this.loading = false;
     }
+  }
+
+  async refreshReader() {
+    if (this.loading) return;
+    await this.loadReader(
+      this.selectedChannelId,
+      this.activeSummary?.video_id ?? this.activeVideoId,
+      {
+        bypassCache: true,
+      },
+    );
   }
 
   stepSummary(delta: -1 | 1) {

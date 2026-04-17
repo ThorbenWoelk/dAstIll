@@ -30,11 +30,15 @@ function miniSummary(index: number) {
   };
 }
 
-async function installMiniApi(page: Page) {
+async function installMiniApi(
+  page: Page,
+  options: { onMiniRequest?: () => void } = {},
+) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
 
     if (url.pathname === "/api/mini") {
+      options.onMiniRequest?.();
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -89,6 +93,7 @@ async function installMiniApi(page: Page) {
 async function openMini(
   page: Page,
   viewport: { width: number; height: number },
+  apiOptions: { onMiniRequest?: () => void } = {},
 ) {
   await page.setViewportSize(viewport);
   await resetClientState(page);
@@ -102,7 +107,7 @@ async function openMini(
       }),
     );
   });
-  await installMiniApi(page);
+  await installMiniApi(page, apiOptions);
   await page.goto("/mini");
   await expect(
     page
@@ -148,4 +153,46 @@ test("mini reader keeps mobile and desktop layouts responsive", async ({
     sidebarMetrics.clientHeight,
   );
   expect(sidebarMetrics.overflowY).toBe("auto");
+});
+
+test("mini reader reloads when pulled from the top", async ({ page }) => {
+  let miniRequests = 0;
+  await openMini(
+    page,
+    { width: 375, height: 812 },
+    {
+      onMiniRequest: () => {
+        miniRequests += 1;
+      },
+    },
+  );
+  expect(miniRequests).toBe(1);
+
+  await page.locator(".mini-article-pane").evaluate((node) => {
+    node.scrollTop = 0;
+    const dispatchTouch = (
+      type: "touchstart" | "touchmove" | "touchend",
+      y: number,
+    ) => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      const touch = {
+        clientX: 180,
+        clientY: y,
+        target: node,
+      };
+      Object.defineProperty(event, "touches", {
+        value: type === "touchend" ? [] : [touch],
+      });
+      Object.defineProperty(event, "changedTouches", {
+        value: [touch],
+      });
+      node.dispatchEvent(event);
+    };
+
+    dispatchTouch("touchstart", 120);
+    dispatchTouch("touchmove", 210);
+    dispatchTouch("touchend", 210);
+  });
+
+  await expect.poll(() => miniRequests).toBe(2);
 });
