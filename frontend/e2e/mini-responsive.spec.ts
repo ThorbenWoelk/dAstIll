@@ -127,6 +127,14 @@ test("mini reader keeps mobile and desktop layouts responsive", async ({
 
   await expect(bottomBar).toBeVisible();
   await expect(strip).toHaveCSS("flex-direction", "row");
+  await expect
+    .poll(() =>
+      strip
+        .locator(".strip-card")
+        .nth(1)
+        .evaluate((node) => getComputedStyle(node, "::before").content),
+    )
+    .not.toBe("none");
 
   await articlePane.evaluate((node) => {
     node.scrollTop = 180;
@@ -140,6 +148,14 @@ test("mini reader keeps mobile and desktop layouts responsive", async ({
 
   await expect(bottomBar).toBeHidden();
   await expect(strip).toHaveCSS("flex-direction", "column");
+  await expect
+    .poll(() =>
+      strip
+        .locator(".strip-card")
+        .nth(1)
+        .evaluate((node) => getComputedStyle(node, "::before").content),
+    )
+    .toBe("none");
   await expect(
     page.getByRole("button", { name: "Change channel" }),
   ).toBeVisible();

@@ -268,12 +268,7 @@
       padding: var(--space-sm);
     }
     .strip-card + .strip-card::before {
-      left: 10px;
-      right: 10px;
-      top: calc(-1 * var(--space-xs) / 2);
-      bottom: auto;
-      width: auto;
-      height: 1px;
+      content: none;
     }
     .strip-thumb {
       width: 64px;
