@@ -9,6 +9,7 @@
   } from "$lib/auth-storage";
   import type { AiIndicatorPresentation } from "$lib/ai-status";
   import type { SectionNavigationSection } from "$lib/section-navigation";
+  import AiStatusIndicator from "$lib/components/AiStatusIndicator.svelte";
   import WorkspaceNavRail from "$lib/components/workspace/WorkspaceNavRail.svelte";
 
   const NAV_DEFAULT = 200;
@@ -24,6 +25,7 @@
     onOpenGuide = () => {},
     mobileTopBar,
     topBar,
+    tabNav,
     sidebar,
     children,
   }: {
@@ -32,6 +34,7 @@
     onOpenGuide?: () => void;
     mobileTopBar?: Snippet;
     topBar?: Snippet;
+    tabNav?: Snippet;
     sidebar?: Snippet<
       [
         {
@@ -179,7 +182,6 @@
 
   <WorkspaceNavRail
     {currentSection}
-    {aiIndicator}
     collapsed={navCollapsed}
     width={navWidth}
     {onOpenGuide}
@@ -223,12 +225,31 @@
         </div>
       </header>
     {/if}
-    {#if topBar}
+    {#if topBar || aiIndicator}
       <header
-        class="workspace-desktop-header hidden shrink-0 items-center justify-between gap-4 lg:flex"
+        class="workspace-desktop-header hidden shrink-0 items-center gap-4 lg:flex"
       >
-        {@render topBar()}
+        {#if aiIndicator}
+          <div class="shrink-0">
+            <AiStatusIndicator
+              detail={aiIndicator.detail}
+              dotClass={aiIndicator.dotClass}
+              title={aiIndicator.title}
+              showLabel
+            />
+          </div>
+        {/if}
+        {#if topBar}
+          <div class="flex min-w-0 flex-1 items-center justify-between gap-4">
+            {@render topBar()}
+          </div>
+        {/if}
       </header>
+    {/if}
+    {#if tabNav}
+      <div class="workspace-desktop-tabs hidden shrink-0 lg:block">
+        {@render tabNav()}
+      </div>
     {/if}
 
     <main
@@ -307,8 +328,19 @@
   }
 
   .workspace-desktop-header {
-    min-height: 4.5rem;
-    padding: 0 1.75rem;
+    min-height: 3.5rem;
+    padding: 0 1.5rem;
+  }
+
+  .workspace-desktop-tabs {
+    padding: 1rem 1.5rem 0;
+    border-bottom: 1px solid
+      color-mix(in srgb, var(--border-soft) 92%, var(--background));
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface) 96%, var(--background)) 0%,
+      color-mix(in srgb, var(--surface) 92%, var(--accent-soft)) 100%
+    );
   }
 
   .workspace-content-frame {

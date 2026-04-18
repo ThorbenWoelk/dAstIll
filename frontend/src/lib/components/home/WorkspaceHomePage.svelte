@@ -6,6 +6,7 @@
   import WorkspaceContentPanel from "$lib/components/workspace/WorkspaceContentPanel.svelte";
   import MobileYouTubeTopNav from "$lib/components/mobile/MobileYouTubeTopNav.svelte";
   import MobileHomeBrowseOverlay from "$lib/components/mobile/MobileHomeBrowseOverlay.svelte";
+  import WorkspaceDesktopTabNav from "$lib/components/workspace/WorkspaceDesktopTabNav.svelte";
   import WorkspaceDesktopTopBar from "$lib/components/workspace/WorkspaceDesktopTopBar.svelte";
   import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
   import WorkspaceSidebar from "$lib/components/workspace/WorkspaceSidebar.svelte";
@@ -112,10 +113,15 @@
       {/snippet}
     </MobileYouTubeTopNav>
   {/snippet}
+  {#snippet tabNav()}
+    <WorkspaceDesktopTabNav
+      contentMode={hw.contentMode}
+      onSetMode={hw.setMode}
+    />
+  {/snippet}
   {#snippet topBar()}
     <WorkspaceDesktopTopBar
       contentMode={hw.contentMode}
-      onSetMode={hw.setMode}
       selectedVideoId={hw.selectedVideoId}
       loadingContent={hw.loadingContent}
       editing={hw.editing}

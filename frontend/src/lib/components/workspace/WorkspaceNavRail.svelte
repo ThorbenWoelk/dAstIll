@@ -1,11 +1,9 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
 
-  import AiStatusIndicator from "$lib/components/AiStatusIndicator.svelte";
   import ChevronIcon from "$lib/components/icons/ChevronIcon.svelte";
   import ExternalLinkIcon from "$lib/components/icons/ExternalLinkIcon.svelte";
   import { DOCS_URL } from "$lib/app-config";
-  import type { AiIndicatorPresentation } from "$lib/ai-status";
   import {
     getSectionNavigationItems,
     goHintKeyForSection,
@@ -17,7 +15,6 @@
 
   let {
     currentSection = "workspace" as SectionNavigationSection,
-    aiIndicator = null,
     collapsed = false,
     width = 200,
     onOpenGuide = () => {},
@@ -27,7 +24,6 @@
     onToggleCollapse = () => {},
   }: {
     currentSection?: SectionNavigationSection;
-    aiIndicator?: AiIndicatorPresentation | null;
     collapsed?: boolean;
     width?: number;
     onOpenGuide?: () => void;
@@ -95,13 +91,6 @@
             style="color:var(--soft-foreground);">I</span
           >ll
         </a>
-        {#if aiIndicator}
-          <AiStatusIndicator
-            detail={aiIndicator.detail}
-            dotClass={aiIndicator.dotClass}
-            title={aiIndicator.title}
-          />
-        {/if}
       </div>
 
       <button

@@ -1,15 +1,9 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import ContentEditor from "$lib/components/ContentEditor.svelte";
-  import {
-    goHintKeyForWorkspaceContentMode,
-    WORKSPACE_CONTENT_MODE_ORDER,
-  } from "$lib/workspace/navigation";
   import type { WorkspaceContentMode } from "$lib/workspace/types";
 
   let {
-    contentMode,
-    onSetMode,
     selectedVideoId,
     loadingContent,
     editing,
@@ -23,6 +17,7 @@
     resettingVideoId,
     aiAvailable,
     canRevertTranscript,
+    contentMode,
     selectedVideoYoutubeUrl,
     draft,
     selectedVideoAcknowledged,
@@ -37,8 +32,6 @@
     onAcknowledgeToggle,
     searchBar,
   }: {
-    contentMode: WorkspaceContentMode;
-    onSetMode: (mode: WorkspaceContentMode) => void | Promise<void>;
     selectedVideoId: string | null;
     loadingContent: boolean;
     editing: boolean;
@@ -52,6 +45,7 @@
     resettingVideoId: string | null;
     aiAvailable: boolean;
     canRevertTranscript: boolean;
+    contentMode: WorkspaceContentMode;
     selectedVideoYoutubeUrl: string | null;
     draft: string;
     selectedVideoAcknowledged: boolean;
@@ -68,33 +62,13 @@
   } = $props();
 </script>
 
-<div class="flex min-w-0 items-center gap-2" id="workspace-tabs-desktop">
-  {#each WORKSPACE_CONTENT_MODE_ORDER as mode}
-    <button
-      type="button"
-      data-workspace-content-tab={mode}
-      data-go-hint-key={goHintKeyForWorkspaceContentMode(mode)}
-      class={`inline-flex h-8 items-center rounded-full px-3.5 text-[10px] font-bold uppercase tracking-[0.12em] transition-all ${
-        contentMode === mode
-          ? "bg-[var(--foreground)] text-[var(--background)] shadow-sm"
-          : "text-[var(--soft-foreground)] opacity-80 hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] hover:opacity-100"
-      }`}
-      aria-pressed={contentMode === mode}
-      onclick={() => void onSetMode(mode)}
-    >
-      {mode === "transcript"
-        ? "Transcript"
-        : mode === "summary"
-          ? "Summary"
-          : mode === "highlights"
-            ? "Highlights"
-            : "Info"}
-    </button>
-  {/each}
-
+<div class="flex min-w-0 flex-1 items-center justify-end gap-3">
+  {#if searchBar}
+    {@render searchBar()}
+  {/if}
   {#if selectedVideoId && !loadingContent && !editing}
     <div
-      class="ml-2 flex items-center border-l border-[var(--border-soft)] pl-4"
+      class="flex items-center border-l border-[var(--border-soft)] pl-3"
       id="content-actions"
     >
       <ContentEditor
@@ -129,18 +103,5 @@
         {onAcknowledgeToggle}
       />
     </div>
-  {/if}
-</div>
-<div class="flex min-w-0 flex-1 items-center justify-end gap-3">
-  <a
-    href="/mini"
-    class="inline-flex h-8 items-center rounded-full border border-[var(--border-soft)] px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] transition-all hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]"
-    data-sveltekit-preload-data="tap"
-    data-sveltekit-preload-code="viewport"
-  >
-    Mini
-  </a>
-  {#if searchBar}
-    {@render searchBar()}
   {/if}
 </div>
