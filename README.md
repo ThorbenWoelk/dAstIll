@@ -93,12 +93,13 @@ Terraform, Firebase Hosting, Google Cloud Run, AWS IAM (Workload Identity Federa
    ```env
    GCP_PROJECT_ID=your-gcp-project-id
    AWS_REGION=eu-central-1
+   # Preferred: shared machine-local AWS credentials/config files.
+   # Set these so local runs do not fall back to an expired AWS CLI login cache.
+   AWS_SHARED_CREDENTIALS_FILE=/Users/you/.config/dastill/aws/credentials
+   AWS_CONFIG_FILE=/Users/you/.config/dastill/aws/config
    S3_DATA_BUCKET=your-data-bucket
    S3_VECTOR_BUCKET=your-vectors-bucket
    S3_VECTOR_INDEX=search-chunks
-   # Preferred: shared machine-local AWS credentials/config files
-   # AWS_SHARED_CREDENTIALS_FILE=/Users/you/.config/dastill/aws/credentials
-   # AWS_CONFIG_FILE=/Users/you/.config/dastill/aws/config
    # Optional: custom endpoints (e.g. MinIO)
    # S3_ENDPOINT_URL=http://localhost:9000
    # S3_VECTOR_ENDPOINT_URL=http://localhost:9001
@@ -136,7 +137,9 @@ Terraform, Firebase Hosting, Google Cloud Run, AWS IAM (Workload Identity Federa
    `AWS_SECRET_ACCESS_KEY`, and especially `AWS_SESSION_TOKEN`, those inline values
    override the shared credentials file and can pin local dev to expired STS
    credentials. For permanent local credentials, move the keypair into
-   `~/.config/dastill/aws/credentials` and remove the inline AWS credential lines.
+   `~/.config/dastill/aws/credentials`, remove the inline AWS credential lines,
+   and keep `AWS_SHARED_CREDENTIALS_FILE` / `AWS_CONFIG_FILE` pointed at the
+   shared local files.
 
 3. **Understand Search Defaults**:
    `SEARCH_SEMANTIC_ENABLED` overrides the runtime default:

@@ -207,8 +207,8 @@ Important variables:
 | `S3_DATA_BUCKET`                    | S3 bucket for data storage                                                                   |
 | `S3_VECTOR_BUCKET`                  | S3 Vectors bucket for semantic search                                                        |
 | `S3_VECTOR_INDEX`                   | S3 Vectors index name for embeddings                                                         |
-| `AWS_SHARED_CREDENTIALS_FILE`       | Optional override for the shared AWS credentials file used by the local SDK default chain    |
-| `AWS_CONFIG_FILE`                   | Optional override for the shared AWS config file (region/profile metadata)                   |
+| `AWS_SHARED_CREDENTIALS_FILE`       | Preferred pointer to the shared local AWS credentials file for the SDK and CLI               |
+| `AWS_CONFIG_FILE`                   | Preferred pointer to the shared local AWS config file (region/profile metadata)              |
 | `AWS_ACCESS_KEY_ID`                 | Fallback inline AWS access key used for S3 / S3 Vectors; avoid for routine local development |
 | `AWS_SECRET_ACCESS_KEY`             | Fallback inline AWS secret key paired with `AWS_ACCESS_KEY_ID`                               |
 | `AWS_SESSION_TOKEN`                 | Temporary session token only; do not keep this set for permanent local development           |
@@ -265,9 +265,15 @@ region = eu-central-1
 EOF
 ```
 
-The backend auto-detects `~/.config/dastill/aws/credentials` and `~/.config/dastill/aws/config`
-when they exist. You only need `AWS_SHARED_CREDENTIALS_FILE` / `AWS_CONFIG_FILE` in
-`~/.config/dastill/backend.env` if you want to override those default paths.
+Point the local backend at those files from `~/.config/dastill/backend.env`:
+
+```env
+AWS_SHARED_CREDENTIALS_FILE=/Users/you/.config/dastill/aws/credentials
+AWS_CONFIG_FILE=/Users/you/.config/dastill/aws/config
+```
+
+Do this even if the AWS CLI can log in. Otherwise ad-hoc commands and backend startup may fall
+back to an expiring AWS CLI login/session cache instead of the persistent local keypair.
 
 Inline `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` in `~/.config/dastill/backend.env` are still
 supported as a fallback, but they override the shared credentials file. Remove any old
@@ -292,6 +298,14 @@ aws sso login --profile your-profile
 
 That path is useful for short-lived sessions, but the shared credentials file remains the preferred
 permanent local setup.
+
+When you need to inspect S3 or S3 Vectors manually, prefer commands that use the same files:
+
+```bash
+AWS_SHARED_CREDENTIALS_FILE=~/.config/dastill/aws/credentials \
+AWS_CONFIG_FILE=~/.config/dastill/aws/config \
+aws s3 ls s3://your-data-bucket
+```
 
 In production, Cloud Run uses `AWS_ROLE_ARN` and `AWS_WIF_AUDIENCE` for Workload Identity Federation instead of static access keys.
 

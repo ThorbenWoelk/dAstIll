@@ -57,6 +57,16 @@ impl YouTubeService {
 
                     match self.fetch_watch_metadata(&id).await {
                         Ok(metadata) => {
+                            if !metadata.live_state.is_ingestable() {
+                                tracing::debug!(
+                                    channel_id = %channel_id,
+                                    video_id = %id,
+                                    live_state = metadata.live_state.as_str(),
+                                    "backfill: skipping unfinished livestream via InnerTube"
+                                );
+                                continue;
+                            }
+
                             let Some(pub_at) = metadata.published_at else {
                                 tracing::warn!(video_id = %id, "metadata missing published_at during crawl, skipping video");
                                 continue;

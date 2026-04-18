@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use serde::Deserialize;
 
@@ -46,6 +46,13 @@ struct DataApiPlaylistItemSnippet {
     resource_id: Option<DataApiResourceId>,
 }
 
+struct DataApiPlaylistCandidate {
+    video_id: String,
+    title: String,
+    published_at: chrono::DateTime<chrono::Utc>,
+    thumbnail_url: Option<String>,
+}
+
 #[derive(Deserialize)]
 struct DataApiResourceId {
     #[serde(rename = "videoId")]
@@ -68,10 +75,13 @@ struct DataApiThumbnail {
 
 #[derive(Deserialize)]
 struct DataApiVideoItem {
+    id: Option<String>,
     snippet: Option<DataApiVideoSnippet>,
     #[serde(rename = "contentDetails")]
     content_details: Option<DataApiVideoContentDetails>,
     statistics: Option<DataApiVideoStatistics>,
+    #[serde(rename = "liveStreamingDetails")]
+    live_streaming_details: Option<DataApiLiveStreamingDetails>,
 }
 
 #[derive(Deserialize)]
@@ -84,6 +94,8 @@ struct DataApiVideoSnippet {
     channel_id: Option<String>,
     #[serde(rename = "publishedAt")]
     published_at: Option<String>,
+    #[serde(rename = "liveBroadcastContent")]
+    live_broadcast_content: Option<String>,
     thumbnails: Option<DataApiThumbnails>,
 }
 
@@ -98,19 +110,104 @@ struct DataApiVideoStatistics {
     view_count: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct DataApiLiveStreamingDetails {
+    #[serde(rename = "actualStartTime")]
+    actual_start_time: Option<String>,
+    #[serde(rename = "actualEndTime")]
+    actual_end_time: Option<String>,
+    #[serde(rename = "scheduledStartTime")]
+    scheduled_start_time: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LiveBroadcastState {
+    Vod,
+    Upcoming,
+    Live,
+    CompletedLive,
+}
+
+impl LiveBroadcastState {
+    pub(crate) fn is_ingestable(self) -> bool {
+        matches!(self, Self::Vod | Self::CompletedLive)
+    }
+
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Vod => "vod",
+            Self::Upcoming => "upcoming",
+            Self::Live => "live",
+            Self::CompletedLive => "completed_live",
+        }
+    }
+}
+
+impl DataApiVideoItem {
+    fn live_broadcast_state(&self) -> LiveBroadcastState {
+        if self
+            .live_streaming_details
+            .as_ref()
+            .and_then(|details| details.actual_end_time.as_deref())
+            .is_some_and(|value| !value.trim().is_empty())
+        {
+            return LiveBroadcastState::CompletedLive;
+        }
+
+        match self
+            .snippet
+            .as_ref()
+            .and_then(|snippet| snippet.live_broadcast_content.as_deref())
+            .map(str::trim)
+        {
+            Some("live") => return LiveBroadcastState::Live,
+            Some("upcoming") => return LiveBroadcastState::Upcoming,
+            _ => {}
+        }
+
+        let Some(details) = self.live_streaming_details.as_ref() else {
+            return LiveBroadcastState::Vod;
+        };
+
+        if details
+            .actual_start_time
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+        {
+            LiveBroadcastState::Live
+        } else if details
+            .scheduled_start_time
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+        {
+            LiveBroadcastState::Upcoming
+        } else {
+            LiveBroadcastState::Upcoming
+        }
+    }
+}
+
 impl YouTubeService {
-    pub(crate) async fn fetch_video_info_from_data_api(
+    async fn fetch_data_api_video_items(
         &self,
-        video_id: &str,
+        video_ids: &[String],
         api_key: &str,
-    ) -> Result<VideoInfo, YouTubeError> {
+    ) -> Result<Vec<DataApiVideoItem>, YouTubeError> {
+        if video_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let ids = video_ids.join(",");
         let response = self
             .client
             .get("https://www.googleapis.com/youtube/v3/videos")
             .query(&[
-                ("part", "snippet,contentDetails,statistics"),
-                ("id", video_id),
-                ("maxResults", "1"),
+                (
+                    "part",
+                    "snippet,contentDetails,statistics,liveStreamingDetails",
+                ),
+                ("id", ids.as_str()),
+                ("maxResults", "50"),
                 ("key", api_key),
             ])
             .send()
@@ -120,10 +217,10 @@ impl YouTubeService {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
             tracing::warn!(
-                video_id = %video_id,
+                video_ids = %ids,
                 status = %status,
                 body = %body,
-                "Data API video info request failed"
+                "Data API videos request failed"
             );
             if Self::is_quota_exceeded(&body) {
                 if let Some(cd) = &self.quota_cooldown {
@@ -135,12 +232,26 @@ impl YouTubeService {
 
         let payload: DataApiListResponse<DataApiVideoItem> =
             response.json().await.map_err(YouTubeError::FetchError)?;
-        let item = payload
-            .items
-            .unwrap_or_default()
+        Ok(payload.items.unwrap_or_default())
+    }
+
+    pub(crate) async fn fetch_video_info_from_data_api(
+        &self,
+        video_id: &str,
+        api_key: &str,
+    ) -> Result<VideoInfo, YouTubeError> {
+        let item = self
+            .fetch_data_api_video_items(&[video_id.to_string()], api_key)
+            .await?
             .into_iter()
             .next()
             .ok_or(YouTubeError::ChannelNotFound)?;
+        let live_state = item.live_broadcast_state();
+        if !live_state.is_ingestable() {
+            return Err(YouTubeError::NonCompletedLiveStream {
+                state: live_state.as_str(),
+            });
+        }
 
         let snippet = item.snippet.ok_or(YouTubeError::ChannelNotFound)?;
         let content_details = item.content_details;
@@ -234,6 +345,7 @@ impl YouTubeService {
             page_token = payload.next_page_token;
             pages_fetched += 1;
 
+            let mut page_candidates = Vec::new();
             for item in payload.items.unwrap_or_default() {
                 let Some(video_id) = item
                     .snippet
@@ -283,17 +395,61 @@ impl YouTubeService {
                     "data_api: found video"
                 );
 
-                let thumbnail_url =
-                    Self::pick_data_api_thumbnail_url(item.snippet.thumbnails.as_ref());
-                let is_short = self.fetch_is_short_flag(&video_id).await;
-                videos.push(build_pending_video(
-                    channel_id,
+                page_candidates.push(DataApiPlaylistCandidate {
                     video_id,
-                    item.snippet.title,
-                    thumbnail_url,
-                    effective_published_at,
-                    is_short,
-                ));
+                    title: item.snippet.title,
+                    published_at: effective_published_at,
+                    thumbnail_url: Self::pick_data_api_thumbnail_url(
+                        item.snippet.thumbnails.as_ref(),
+                    ),
+                });
+            }
+
+            if !page_candidates.is_empty() {
+                let candidate_ids = page_candidates
+                    .iter()
+                    .map(|candidate| candidate.video_id.clone())
+                    .collect::<Vec<_>>();
+                let live_states = self
+                    .fetch_data_api_video_items(&candidate_ids, api_key)
+                    .await?
+                    .into_iter()
+                    .filter_map(|item| {
+                        item.id
+                            .as_ref()
+                            .map(|id| (id.clone(), item.live_broadcast_state()))
+                    })
+                    .collect::<HashMap<_, _>>();
+
+                for candidate in page_candidates {
+                    let live_state = live_states
+                        .get(&candidate.video_id)
+                        .copied()
+                        .unwrap_or(LiveBroadcastState::Vod);
+                    if !live_state.is_ingestable() {
+                        tracing::debug!(
+                            channel_id = %channel_id,
+                            video_id = %candidate.video_id,
+                            live_state = live_state.as_str(),
+                            "data_api: skipping unfinished livestream"
+                        );
+                        continue;
+                    }
+
+                    let is_short = self.fetch_is_short_flag(&candidate.video_id).await;
+                    videos.push(build_pending_video(
+                        channel_id,
+                        candidate.video_id,
+                        candidate.title,
+                        candidate.thumbnail_url,
+                        candidate.published_at,
+                        is_short,
+                    ));
+
+                    if videos.len() >= limit && until.is_none() {
+                        return Ok((videos, page_token.is_none()));
+                    }
+                }
 
                 if videos.len() >= limit && until.is_none() {
                     return Ok((videos, page_token.is_none()));
@@ -423,4 +579,90 @@ fn parse_u64(value: &str) -> Option<u64> {
         return None;
     }
     digits.parse::<u64>().ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DataApiVideoItem, LiveBroadcastState};
+
+    fn item_from_json(json: &str) -> DataApiVideoItem {
+        serde_json::from_str(json).expect("valid Data API video item")
+    }
+
+    #[test]
+    fn live_state_treats_regular_video_as_vod() {
+        let item = item_from_json(
+            r#"{
+                "id": "vod12345678",
+                "snippet": {
+                    "title": "Regular VOD",
+                    "liveBroadcastContent": "none"
+                }
+            }"#,
+        );
+
+        assert_eq!(item.live_broadcast_state(), LiveBroadcastState::Vod);
+        assert!(item.live_broadcast_state().is_ingestable());
+    }
+
+    #[test]
+    fn live_state_rejects_upcoming_livestream() {
+        let item = item_from_json(
+            r#"{
+                "id": "live1234567",
+                "snippet": {
+                    "title": "Upcoming stream",
+                    "liveBroadcastContent": "upcoming"
+                },
+                "liveStreamingDetails": {
+                    "scheduledStartTime": "2026-04-19T18:00:00Z"
+                }
+            }"#,
+        );
+
+        assert_eq!(item.live_broadcast_state(), LiveBroadcastState::Upcoming);
+        assert!(!item.live_broadcast_state().is_ingestable());
+    }
+
+    #[test]
+    fn live_state_rejects_active_livestream() {
+        let item = item_from_json(
+            r#"{
+                "id": "live1234567",
+                "snippet": {
+                    "title": "Live now",
+                    "liveBroadcastContent": "live"
+                },
+                "liveStreamingDetails": {
+                    "actualStartTime": "2026-04-19T18:00:00Z"
+                }
+            }"#,
+        );
+
+        assert_eq!(item.live_broadcast_state(), LiveBroadcastState::Live);
+        assert!(!item.live_broadcast_state().is_ingestable());
+    }
+
+    #[test]
+    fn live_state_allows_completed_livestream() {
+        let item = item_from_json(
+            r#"{
+                "id": "done1234567",
+                "snippet": {
+                    "title": "Completed stream",
+                    "liveBroadcastContent": "none"
+                },
+                "liveStreamingDetails": {
+                    "actualStartTime": "2026-04-19T18:00:00Z",
+                    "actualEndTime": "2026-04-19T19:30:00Z"
+                }
+            }"#,
+        );
+
+        assert_eq!(
+            item.live_broadcast_state(),
+            LiveBroadcastState::CompletedLive
+        );
+        assert!(item.live_broadcast_state().is_ingestable());
+    }
 }

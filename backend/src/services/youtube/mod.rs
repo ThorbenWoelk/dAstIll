@@ -30,6 +30,8 @@ pub enum YouTubeError {
     RateLimited(String),
     #[error("Invalid input format")]
     InvalidInput,
+    #[error("YouTube live stream is not finished yet ({state}); add it after the stream ends")]
+    NonCompletedLiveStream { state: &'static str },
 }
 
 pub struct YouTubeService {
@@ -59,6 +61,7 @@ pub(crate) struct WatchMetadata {
     title: String,
     thumbnail_url: Option<String>,
     published_at: Option<chrono::DateTime<chrono::Utc>>,
+    live_state: data_api::LiveBroadcastState,
 }
 
 #[derive(Default)]
@@ -72,6 +75,7 @@ struct WatchVideoDetails {
     duration_iso8601: Option<String>,
     duration_seconds: Option<u64>,
     view_count: Option<u64>,
+    live_state: Option<data_api::LiveBroadcastState>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -303,10 +307,43 @@ impl YouTubeService {
 
         let content = response.bytes().await?;
         let mut videos = Self::parse_videos_from_feed(&content, channel_id)?;
-        for video in &mut videos {
+        let mut ingestable_videos = Vec::with_capacity(videos.len());
+        for mut video in videos.drain(..) {
+            match self.fetch_watch_metadata(&video.id).await {
+                Ok(metadata) => {
+                    if !metadata.live_state.is_ingestable() {
+                        tracing::debug!(
+                            channel_id = %channel_id,
+                            video_id = %video.id,
+                            live_state = metadata.live_state.as_str(),
+                            "feed: skipping unfinished livestream"
+                        );
+                        continue;
+                    }
+                }
+                Err(YouTubeError::NonCompletedLiveStream { state }) => {
+                    tracing::debug!(
+                        channel_id = %channel_id,
+                        video_id = %video.id,
+                        live_state = state,
+                        "feed: skipping unfinished livestream"
+                    );
+                    continue;
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        channel_id = %channel_id,
+                        video_id = %video.id,
+                        error = %err,
+                        "feed: skipping video because live state could not be verified"
+                    );
+                    continue;
+                }
+            }
             video.is_short = self.fetch_is_short_flag(&video.id).await;
+            ingestable_videos.push(video);
         }
-        Ok(videos)
+        Ok(ingestable_videos)
     }
 
     /// Reconcile missing videos from the channel videos list APIs.

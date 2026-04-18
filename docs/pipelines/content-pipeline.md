@@ -105,6 +105,11 @@ Videos enter the system from multiple paths:
 - periodic refresh worker
 - historical gap scan worker
 - explicit channel backfill
+- manual single-video adds
+
+YouTube live streams are queued only after YouTube reports the broadcast as completed.
+Upcoming or active streams are skipped because captions/transcripts are not stable until
+the broadcast ends.
 
 Inserted videos begin with transcript and summary lifecycle states that the queue worker consumes.
 User visibility to those videos is derived later from channel subscriptions and explicit

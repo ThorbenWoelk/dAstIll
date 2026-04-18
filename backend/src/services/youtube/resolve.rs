@@ -3,6 +3,7 @@ use serde_json::Value;
 
 use crate::models::VideoInfo;
 
+use super::data_api::LiveBroadcastState;
 use super::{WatchMetadata, WatchVideoDetails, YouTubeError, YouTubeService};
 
 fn video_info_missing_channel_identity(info: &VideoInfo) -> bool {
@@ -254,8 +255,10 @@ impl YouTubeService {
                         title: info.title,
                         thumbnail_url: info.thumbnail_url,
                         published_at: info.published_at,
+                        live_state: LiveBroadcastState::Vod,
                     });
                 }
+                Err(err @ YouTubeError::NonCompletedLiveStream { .. }) => return Err(err),
                 Err(err) => {
                     tracing::warn!(
                         video_id = %video_id,
@@ -289,6 +292,7 @@ impl YouTubeService {
 
         let html = response.text().await?;
         let details = Self::extract_video_details_from_watch_html(&html);
+        let live_state = Self::ensure_ingestable_live_state(details.live_state)?;
 
         Ok(WatchMetadata {
             title: details
@@ -296,6 +300,7 @@ impl YouTubeService {
                 .unwrap_or_else(|| format!("YouTube video {video_id}")),
             thumbnail_url: details.thumbnail_url,
             published_at: details.published_at,
+            live_state,
         })
     }
 
@@ -303,6 +308,7 @@ impl YouTubeService {
         if let Some(api_key) = self.data_api_key_if_available() {
             match self.fetch_video_info_from_data_api(video_id, api_key).await {
                 Ok(info) => return Ok(info),
+                Err(err @ YouTubeError::NonCompletedLiveStream { .. }) => return Err(err),
                 Err(err) => {
                     tracing::warn!(
                         video_id = %video_id,
@@ -324,6 +330,7 @@ impl YouTubeService {
         let mut info = if response.status().is_success() {
             let html = response.text().await?;
             let details = Self::extract_video_details_from_watch_html(&html);
+            Self::ensure_ingestable_live_state(details.live_state)?;
 
             VideoInfo {
                 video_id: video_id.to_string(),
@@ -421,6 +428,19 @@ impl YouTubeService {
         details
     }
 
+    fn ensure_ingestable_live_state(
+        state: Option<LiveBroadcastState>,
+    ) -> Result<LiveBroadcastState, YouTubeError> {
+        let live_state = state.unwrap_or(LiveBroadcastState::Vod);
+        if live_state.is_ingestable() {
+            Ok(live_state)
+        } else {
+            Err(YouTubeError::NonCompletedLiveStream {
+                state: live_state.as_str(),
+            })
+        }
+    }
+
     fn merge_player_response_video_details(html: &str, details: &mut WatchVideoDetails) {
         let Some(player_response) = Self::extract_json_assignment(html, "ytInitialPlayerResponse")
             .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
@@ -477,6 +497,9 @@ impl YouTubeService {
                 Self::value_at_path(&player_response, &["videoDetails", "viewCount"])
                     .and_then(Self::extract_u64_from_value);
         }
+        if details.live_state.is_none() {
+            details.live_state = Self::live_state_from_player_response(&player_response);
+        }
 
         let short_desc =
             Self::value_at_path(&player_response, &["videoDetails", "shortDescription"])
@@ -500,6 +523,57 @@ impl YouTubeService {
             } else if desc_is_placeholder {
                 details.description = None;
             }
+        }
+    }
+
+    fn live_state_from_player_response(player_response: &Value) -> Option<LiveBroadcastState> {
+        let live_details = Self::value_at_path(
+            player_response,
+            &[
+                "microformat",
+                "playerMicroformatRenderer",
+                "liveBroadcastDetails",
+            ],
+        );
+
+        if live_details
+            .and_then(|details| details.get("endTimestamp"))
+            .or_else(|| live_details.and_then(|details| details.get("actualEndTime")))
+            .and_then(Self::extract_string_or_first_string)
+            .is_some()
+        {
+            return Some(LiveBroadcastState::CompletedLive);
+        }
+
+        let is_live_now = live_details
+            .and_then(|details| details.get("isLiveNow"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+            || Self::value_at_path(player_response, &["videoDetails", "isLive"])
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+        if is_live_now {
+            return Some(LiveBroadcastState::Live);
+        }
+
+        let has_live_timing = live_details
+            .and_then(|details| {
+                details
+                    .get("startTimestamp")
+                    .or_else(|| details.get("scheduledStartTime"))
+                    .or_else(|| details.get("scheduledStartTimestamp"))
+            })
+            .and_then(Self::extract_string_or_first_string)
+            .is_some();
+        let is_live_content =
+            Self::value_at_path(player_response, &["videoDetails", "isLiveContent"])
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+
+        if has_live_timing || is_live_content {
+            Some(LiveBroadcastState::Upcoming)
+        } else {
+            None
         }
     }
 
