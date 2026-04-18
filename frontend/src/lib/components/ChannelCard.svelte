@@ -70,11 +70,11 @@
   ondragover={onDragOver}
   ondrop={onDrop}
   ondragend={onDragEnd}
-  class={`group relative flex w-full min-w-0 items-center gap-3 rounded-[18px] px-3 py-2.5 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${trailingSpaceClass} ${
+  class={`group relative flex w-full min-w-0 items-center gap-3 rounded-md px-3 py-2 text-left transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${trailingSpaceClass} ${
     active
-      ? "bg-[var(--panel-surface)] shadow-[0_10px_30px_color-mix(in_srgb,var(--foreground)_8%,transparent)]"
-      : "hover:bg-[var(--accent-wash)]"
-  } ${dragging || loading ? "opacity-40" : ""} ${dragOver ? "shadow-[0_0_0_1px_var(--border-soft),0_16px_34px_color-mix(in_srgb,var(--foreground)_10%,transparent)]" : ""} ${loading ? "animate-pulse" : ""} ${draggableEnabled ? (dragging ? "cursor-grabbing" : "cursor-grab") : ""}`}
+      ? "bg-[var(--surface-strong)] text-[var(--foreground)]"
+      : "hover:bg-[var(--surface)] text-[var(--soft-foreground)] hover:text-[var(--foreground)]"
+  } ${dragging || loading ? "opacity-40" : ""} ${dragOver ? "shadow-[0_0_0_1px_var(--border-soft)]" : ""} ${loading ? "animate-pulse" : ""} ${draggableEnabled ? (dragging ? "cursor-grabbing" : "cursor-grab") : ""}`}
 >
   <button
     type="button"
@@ -83,7 +83,7 @@
     disabled={loading}
   >
     <div
-      class="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-[var(--muted)]"
+      class="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-[var(--muted)]"
     >
       <img
         src={avatarUrl}
@@ -98,12 +98,12 @@
     </div>
     <div class="min-w-0 flex-1">
       <p
-        class="truncate text-[13px] font-semibold leading-tight tracking-tight text-[var(--foreground)]"
+        class={`truncate text-sm leading-tight tracking-tight ${active ? "font-semibold text-[var(--foreground)]" : "font-medium"}`}
       >
         {channel.name}
       </p>
       <p
-        class="mt-1 truncate text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--soft-foreground)] opacity-45"
+        class="mt-0.5 truncate text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--soft-foreground)] opacity-45"
       >
         {channel.handle ?? channel.id}
       </p>
@@ -113,14 +113,14 @@
     {#if expanded !== undefined}
       <button
         type="button"
-        class={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-all duration-200 hover:bg-[var(--accent-wash)] ${expanded ? "opacity-50" : "opacity-20"}`}
+        class={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[var(--soft-foreground)] transition-colors duration-150 hover:bg-[var(--surface)] hover:text-[var(--foreground)] ${expanded ? "opacity-60" : "opacity-25"}`}
         onclick={() => onToggleExpanded?.()}
         aria-label={expanded ? "Collapse channel" : "Expand channel"}
       >
         <ChevronIcon
           direction={expanded ? "down" : "right"}
           size={9}
-          strokeWidth={2.5}
+          strokeWidth={2}
         />
       </button>
     {/if}
