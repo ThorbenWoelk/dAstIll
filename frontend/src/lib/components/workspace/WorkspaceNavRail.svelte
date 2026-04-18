@@ -62,10 +62,19 @@
   style="width: {width}px;"
 >
   {#if collapsed}
-    <div class="hidden items-center justify-center px-1.5 pt-3 pb-1 lg:flex">
+    <div class="hidden flex-col items-center gap-2 px-1.5 pt-4 pb-2 lg:flex">
+      <a
+        href="/"
+        data-sveltekit-preload-code="viewport"
+        data-sveltekit-preload-data="tap"
+        class="font-serif text-xl font-bold tracking-[-0.03em] text-[var(--color-swatch)] transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
+        aria-label="Go to dAstIll home"
+      >
+        d<span style="color:var(--soft-foreground);">A</span>
+      </a>
       <button
         type="button"
-        class="inline-flex h-7 w-7 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-60 transition-all hover:bg-[var(--accent-wash)] hover:opacity-100"
+        class="mt-1 inline-flex h-6 w-6 items-center justify-center rounded-md text-[var(--soft-foreground)] opacity-55 transition-all hover:bg-[var(--surface)] hover:text-[var(--foreground)] hover:opacity-100"
         onclick={onToggleCollapse}
         aria-label="Expand sidebar"
       >
@@ -128,11 +137,11 @@
             : item.section === "workspace"
               ? "nav-workspace-link"
               : undefined}
-        class={`flex items-center gap-2 rounded-full transition-colors ${
-          collapsed ? "justify-center px-0 py-2.5" : "px-3.5 py-2.5"
+        class={`flex items-center gap-2.5 rounded-md transition-colors ${
+          collapsed ? "mx-auto h-9 w-9 justify-center p-0" : "px-3 py-2"
         } ${
           item.active
-            ? "bg-[var(--surface)] text-[var(--foreground)] font-semibold shadow-sm"
+            ? "bg-[var(--surface-strong)] font-semibold text-[var(--foreground)]"
             : "text-[var(--soft-foreground)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
         }`}
         aria-current={item.active ? "page" : undefined}
@@ -140,12 +149,12 @@
         data-tooltip-placement={collapsed ? "right" : undefined}
       >
         <svg
-          width="16"
-          height="16"
+          width={collapsed ? 18 : 16}
+          height={collapsed ? 18 : 16}
           viewBox={icon.viewBox}
           fill="none"
           stroke="currentColor"
-          stroke-width="1.7"
+          stroke-width="1.5"
           stroke-linecap="round"
           stroke-linejoin="round"
           class="shrink-0"
@@ -176,15 +185,15 @@
     <WorkspaceUserMenu {collapsed} {onOpenGuide} {onOpenShortcuts} />
   </div>
 
-  <div class="min-w-0 px-3 pb-2">
-    <span
-      class="inline-block shrink-0 whitespace-nowrap text-[10px] font-medium leading-snug text-[var(--soft-foreground)] opacity-40 {collapsed
-        ? 'sr-only'
-        : ''}"
-    >
-      &copy; {new Date().getFullYear()} Thorben Woelk.
-    </span>
-  </div>
+  {#if !collapsed}
+    <div class="min-w-0 px-3 pb-3">
+      <span
+        class="inline-block shrink-0 whitespace-nowrap text-[10px] font-medium uppercase tracking-widest leading-snug text-[var(--soft-foreground)] opacity-35"
+      >
+        &copy; {new Date().getFullYear()} Thorben Woelk
+      </span>
+    </div>
+  {/if}
 </aside>
 
 <style>
