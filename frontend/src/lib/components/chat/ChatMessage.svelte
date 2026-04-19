@@ -143,9 +143,7 @@
     >
   {/if}
 
-  <div
-    class={`space-y-4 ${isAssistant ? "mr-auto w-full max-w-4xl" : "ml-auto w-full max-w-2xl"}`}
-  >
+  <div class={`space-y-4 ${isAssistant ? "mr-auto w-full" : "ml-auto w-full"}`}>
     <div
       class={`relative group/copy ${isAssistant ? "text-[var(--foreground)]" : "rounded-2xl rounded-tr-sm bg-[var(--muted)] px-5 py-3 text-[var(--foreground)] shadow-sm"}`}
     >
