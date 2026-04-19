@@ -128,8 +128,6 @@ export function createHomeWorkspaceViewModel(options: {
     onCreateHighlight: options.highlightController.saveSelectionHighlight,
     onCreateVocabularyReplacement: options.vocabulary.open,
     onDeleteHighlight: options.highlightController.deleteExistingHighlight,
-    onShowChannels: options.pageState.openMobileBrowse,
-    onShowVideos: options.pageState.openMobileBrowse,
     onCitationScrollConsumed,
   }));
 

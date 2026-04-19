@@ -108,8 +108,6 @@
       onToggleAcknowledge: async () => {},
       onCreateHighlight: undefined,
       onDeleteHighlight: undefined,
-      onShowChannels: () => {},
-      onShowVideos: () => {},
       onCitationScrollConsumed: undefined,
     },
   }: {
@@ -204,8 +202,6 @@
     actions.onCreateVocabularyReplacement,
   );
   let onDeleteHighlight = $derived(actions.onDeleteHighlight);
-  let onShowChannels = $derived(actions.onShowChannels);
-  let onShowVideos = $derived(actions.onShowVideos);
   let onCitationScrollConsumed = $derived(actions.onCitationScrollConsumed);
 
   let showMobileContentTabs = $derived(
@@ -439,8 +435,6 @@
         {summaryQualityModelUsed}
         {summaryTags}
         {summaryTagsEvaluated}
-        {onShowChannels}
-        {onShowVideos}
       />
 
       <WorkspaceContentSurface

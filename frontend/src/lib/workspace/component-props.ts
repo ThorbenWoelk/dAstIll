@@ -172,8 +172,6 @@ export interface WorkspaceContentActions {
     selectedText: string,
   ) => Promise<void> | void;
   onDeleteHighlight?: (highlightId: number) => Promise<void> | void;
-  onShowChannels: () => void;
-  onShowVideos: () => void;
   /** Called after citation deep-link scroll succeeds; should strip `cite` / `chunk` from the URL. */
   onCitationScrollConsumed?: () => void;
 }

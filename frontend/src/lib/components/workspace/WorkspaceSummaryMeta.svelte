@@ -10,6 +10,7 @@
     qualityModelUsed = null,
     tags = [],
     tagsEvaluated = false,
+    compact = false,
   }: {
     score?: number | null;
     note?: string | null;
@@ -17,6 +18,7 @@
     qualityModelUsed?: string | null;
     tags?: string[];
     tagsEvaluated?: boolean;
+    compact?: boolean;
   } = $props();
 
   let drawerOpen = $state(false);
@@ -73,29 +75,55 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<div class="summary-meta-gutter" role="status" aria-live="polite">
+{#if compact}
   {#if displayScore !== null}
     <button
       bind:this={triggerEl}
       type="button"
-      class="meta-score-block"
+      class="meta-score-pill"
       onclick={toggleDrawer}
       aria-expanded={drawerOpen}
       aria-controls="summary-quality-note"
       title={drawerOpen ? "Hide evaluation" : "Show evaluation"}
     >
-      <span class="meta-score-value">{displayScore}</span>
-      <span class="meta-score-label">Quality</span>
+      <span class="meta-score-pill-value">{displayScore}</span>
+      <span class="meta-score-pill-label">Quality</span>
     </button>
   {:else}
-    <div class="meta-score-block">
-      <span class="meta-score-value meta-score-pending">
-        <span class="meta-score-dot"></span>
-      </span>
-      <span class="meta-score-label">Evaluating</span>
-    </div>
+    <span
+      class="meta-score-pill meta-score-pill--pending"
+      role="status"
+      aria-live="polite"
+    >
+      <span class="meta-score-dot"></span>
+      <span class="meta-score-pill-label">Evaluating</span>
+    </span>
   {/if}
-</div>
+{:else}
+  <div class="summary-meta-gutter" role="status" aria-live="polite">
+    {#if displayScore !== null}
+      <button
+        bind:this={triggerEl}
+        type="button"
+        class="meta-score-block"
+        onclick={toggleDrawer}
+        aria-expanded={drawerOpen}
+        aria-controls="summary-quality-note"
+        title={drawerOpen ? "Hide evaluation" : "Show evaluation"}
+      >
+        <span class="meta-score-value">{displayScore}</span>
+        <span class="meta-score-label">Quality</span>
+      </button>
+    {:else}
+      <div class="meta-score-block">
+        <span class="meta-score-value meta-score-pending">
+          <span class="meta-score-dot"></span>
+        </span>
+        <span class="meta-score-label">Evaluating</span>
+      </div>
+    {/if}
+  </div>
+{/if}
 
 {#if drawerOpen && displayScore !== null}
   <div
@@ -178,6 +206,44 @@
 {/if}
 
 <style>
+  .meta-score-pill {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.35rem;
+    border: none;
+    background: none;
+    padding: 0;
+    margin: 0;
+    color: inherit;
+    font-family: inherit;
+    cursor: pointer;
+    line-height: 1;
+    transition: opacity 0.15s ease;
+  }
+
+  .meta-score-pill:hover {
+    opacity: 0.7;
+  }
+
+  .meta-score-pill--pending {
+    cursor: default;
+  }
+
+  .meta-score-pill--pending:hover {
+    opacity: 1;
+  }
+
+  .meta-score-pill-value {
+    font-weight: 600;
+    color: var(--foreground);
+    font-size: 0.78rem;
+    letter-spacing: -0.01em;
+  }
+
+  .meta-score-pill-label {
+    color: inherit;
+  }
+
   .summary-meta-gutter {
     display: flex;
     flex-direction: column;

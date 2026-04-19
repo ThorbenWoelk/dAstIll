@@ -3,6 +3,7 @@
   import WorkspaceSummaryMeta from "$lib/components/workspace/WorkspaceSummaryMeta.svelte";
   import type { Channel, Video } from "$lib/types";
   import type { WorkspaceContentMode } from "$lib/workspace/types";
+  import { formatShortDate } from "$lib/utils/date";
 
   let {
     selectedChannel = null as Channel | null,
@@ -21,8 +22,6 @@
     summaryQualityModelUsed = null as string | null,
     summaryTags = [] as string[],
     summaryTagsEvaluated = false,
-    onShowChannels,
-    onShowVideos,
   }: {
     selectedChannel?: Channel | null;
     selectedVideo?: Video | null;
@@ -40,90 +39,75 @@
     summaryQualityModelUsed?: string | null;
     summaryTags?: string[];
     summaryTagsEvaluated?: boolean;
-    onShowChannels: () => void;
-    onShowVideos: () => void;
   } = $props();
 
-  const CONTENT_MODE_EYEBROW: Record<
-    Exclude<WorkspaceContentMode, "summary">,
-    string
-  > = {
-    transcript: "Source transcript",
-    highlights: "Saved highlights",
-    info: "Video context",
-  };
-
-  function contentModeEyebrow(mode: WorkspaceContentMode): string | null {
-    if (mode === "summary") {
-      return null;
-    }
-
-    return CONTENT_MODE_EYEBROW[mode];
-  }
+  let publishedLabel = $derived(
+    selectedVideo ? formatShortDate(selectedVideo.published_at) : null,
+  );
 </script>
 
 {#if selectedVideoId && !loadingContent && selectedVideo}
-  <nav
-    class="mb-3 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--soft-foreground)] opacity-60 sm:mb-4"
-    aria-label="Breadcrumb"
+  <div
+    class="mb-6 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-medium tracking-wide text-[var(--soft-foreground)]"
   >
     {#if selectedChannel}
-      <button
-        type="button"
-        class="shrink-0 transition-colors hover:text-[var(--foreground)]"
-        onclick={onShowChannels}
+      <a
+        href={`/channels/${encodeURIComponent(selectedChannel.id)}`}
+        class="transition-colors hover:text-[var(--foreground)]"
       >
         {selectedChannel.name}
-      </button>
-      <svg
-        class="shrink-0"
-        width="10"
-        height="10"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2.5"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <polyline points="9 18 15 12 9 6" />
-      </svg>
+      </a>
     {/if}
-    <button
-      type="button"
-      class="text-left font-medium tracking-normal text-[var(--foreground)] opacity-80 transition-opacity hover:opacity-100"
-      onclick={onShowVideos}
-    >
-      {selectedVideo.title}
-    </button>
-  </nav>
-
-  <div class="content-hero">
-    <div class="content-hero-copy">
-      {#if contentMode === "summary"}
-        {#if summaryTags.length > 0}
-          <div class="content-hero-tags" aria-label="Summary tags">
-            {#each summaryTags as tag (tag)}
-              <span class="content-hero-tag">{tag}</span>
-            {/each}
-          </div>
-        {/if}
-      {:else}
-        <p class="content-hero-eyebrow">
-          {contentModeEyebrow(contentMode)}
-        </p>
-      {/if}
-      <h1 class="content-hero-title">{selectedVideo.title}</h1>
-    </div>
+    {#if selectedChannel && publishedLabel}
+      <span class="h-1 w-1 rounded-full bg-[var(--border)]" aria-hidden="true"
+      ></span>
+    {/if}
+    {#if publishedLabel}
+      <time datetime={selectedVideo.published_at}>{publishedLabel}</time>
+    {/if}
+    {#if selectedVideo.is_short}
+      <span class="h-1 w-1 rounded-full bg-[var(--border)]" aria-hidden="true"
+      ></span>
+      <span>Short</span>
+    {/if}
+    {#if contentMode === "summary"}
+      <span class="h-1 w-1 rounded-full bg-[var(--border)]" aria-hidden="true"
+      ></span>
+      <WorkspaceSummaryMeta
+        compact
+        score={summaryQualityScore}
+        note={summaryQualityNote}
+        modelUsed={summaryModelUsed}
+        qualityModelUsed={summaryQualityModelUsed}
+        tags={summaryTags}
+        tagsEvaluated={summaryTagsEvaluated}
+      />
+    {/if}
   </div>
+
+  {#if contentMode === "summary" && summaryTags.length > 0}
+    <div class="mb-4 flex flex-wrap gap-1.5" aria-label="Summary tags">
+      {#each summaryTags as tag (tag)}
+        <span
+          class="inline-flex items-center rounded-md border border-[var(--border-soft)] bg-[var(--surface)] px-2 py-0.5 text-[11px] font-medium text-[var(--soft-foreground)]"
+        >
+          {tag}
+        </span>
+      {/each}
+    </div>
+  {/if}
+
+  <h1 class="content-hero-title mb-6 text-[var(--foreground)] sm:mb-8">
+    {selectedVideo.title}
+  </h1>
 {/if}
 
 {#if contentMode === "transcript" && selectedVideoId && ((formattingContent && formattingVideoId === selectedVideoId) || (formattingNotice && formattingNoticeVideoId === selectedVideoId))}
   <div
-    class={`mb-5 flex flex-wrap items-center gap-3 rounded-[var(--radius-full)] border px-4 py-3 transition-all duration-500 sm:mb-8 sm:px-5 ${
+    class={`mb-5 flex flex-wrap items-center gap-3 rounded-md border px-4 py-2.5 transition-all duration-500 sm:mb-6 ${
       formattingNoticeTone === "warning"
         ? "border-[var(--accent)]/20 bg-[var(--accent-soft)] text-[var(--accent-strong)]"
-        : "border-[var(--accent-border-soft)] bg-[var(--surface)] text-[var(--soft-foreground)]"
+        : "border-[var(--border-soft)] bg-[var(--surface)] text-[var(--soft-foreground)]"
     }`}
     role="status"
     aria-live="polite"
@@ -143,7 +127,7 @@
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
-        stroke-width="3"
+        stroke-width="1.75"
         stroke-linecap="round"
         stroke-linejoin="round"
       >
@@ -151,7 +135,7 @@
         <polyline points="12 6 12 12 16 14" />
       </svg>
     {/if}
-    <p class="text-[11px] font-bold uppercase tracking-[0.12em]">
+    <p class="text-[12px] font-medium">
       {formattingContent && formattingVideoId === selectedVideoId
         ? formattingNotice || "Refining transcript with Ollama..."
         : formattingNotice}
@@ -161,70 +145,14 @@
 
 {#if contentMode === "summary" && selectedVideoId && !loadingContent}
   <div class="summary-embed-strip">
-    <div class="summary-embed-strip-audio">
-      <WorkspaceSummaryAudioPlayer
-        videoId={selectedVideoId}
-        summaryReady={selectedVideo?.summary_status === "ready"}
-      />
-    </div>
-    <div class="summary-embed-strip-eval">
-      <WorkspaceSummaryMeta
-        score={summaryQualityScore}
-        note={summaryQualityNote}
-        modelUsed={summaryModelUsed}
-        qualityModelUsed={summaryQualityModelUsed}
-        tags={summaryTags}
-        tagsEvaluated={summaryTagsEvaluated}
-      />
-    </div>
+    <WorkspaceSummaryAudioPlayer
+      videoId={selectedVideoId}
+      summaryReady={selectedVideo?.summary_status === "ready"}
+    />
   </div>
 {/if}
 
 <style>
-  .content-hero {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 1.5rem;
-    align-items: start;
-    margin-bottom: 1.5rem;
-  }
-
-  .content-hero-copy {
-    min-width: 0;
-    max-width: 58rem;
-  }
-
-  .content-hero-eyebrow {
-    margin: 0 0 0.55rem;
-    font-size: 0.68rem;
-    font-weight: 800;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--soft-foreground);
-    opacity: 0.7;
-  }
-
-  .content-hero-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.45rem;
-    margin: 0 0 0.8rem;
-  }
-
-  .content-hero-tag {
-    display: inline-flex;
-    align-items: center;
-    min-height: 1.85rem;
-    padding: 0.28rem 0.75rem;
-    border-radius: 9999px;
-    background: color-mix(in srgb, var(--surface) 88%, var(--accent-soft));
-    border: 1px solid var(--accent-border-soft);
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    color: var(--foreground);
-  }
-
   .content-hero-title {
     margin: 0;
     font-family: "Fraunces", serif;
@@ -238,21 +166,8 @@
   }
 
   .summary-embed-strip {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: start;
-    gap: 1.25rem;
     max-width: 52rem;
     margin-bottom: 0.5rem;
-  }
-
-  .summary-embed-strip-audio {
-    min-width: 0;
-  }
-
-  .summary-embed-strip-eval {
-    display: flex;
-    justify-content: flex-end;
     min-width: 0;
   }
 
@@ -263,36 +178,14 @@
   }
 
   @media (max-width: 1023px) {
-    .content-hero {
-      grid-template-columns: 1fr;
-      gap: 0.85rem;
-      margin-bottom: 1.1rem;
-    }
-
     .content-hero-title {
       font-size: clamp(1.8rem, 8.5vw, 3rem);
       line-height: 1.02;
     }
 
     .summary-embed-strip {
-      display: grid;
-      grid-template-columns: auto minmax(0, 1fr);
-      align-items: center;
-      gap: 0.85rem;
       max-width: none;
       margin-bottom: 0.25rem;
-    }
-
-    .summary-embed-strip-audio {
-      order: 2;
-      min-width: 0;
-    }
-
-    .summary-embed-strip-eval {
-      order: 1;
-      justify-content: flex-start;
-      min-width: 0;
-      align-self: start;
     }
   }
 </style>
