@@ -3,6 +3,8 @@
   import { clickOutside } from "$lib/actions/click-outside";
   import ThemePanel from "$lib/components/ThemePanel.svelte";
   import ChevronIcon from "$lib/components/icons/ChevronIcon.svelte";
+  import SettingsPanel from "$lib/components/SettingsPanel.svelte";
+  import { fade } from "svelte/transition";
 
   let {
     collapsed = false,
@@ -195,19 +197,21 @@
 {/snippet}
 
 {#snippet appearanceView()}
-  <div class="flex flex-col gap-3 p-3">
-    <div class="mb-1 flex items-center gap-2">
-      <button
-        type="button"
-        class="inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--accent-wash)]"
-        onclick={() => (view = "main")}
-        aria-label="Back to settings"
-      >
-        <ChevronIcon direction="left" size={16} strokeWidth={2.5} />
-      </button>
-      <p class="text-[14px] font-bold">Appearance</p>
+  <div class="lg:hidden">
+    <div class="flex flex-col gap-3 p-3">
+      <div class="mb-1 flex items-center gap-2">
+        <button
+          type="button"
+          class="inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--accent-wash)]"
+          onclick={() => (view = "main")}
+          aria-label="Back to settings"
+        >
+          <ChevronIcon direction="left" size={16} strokeWidth={2.5} />
+        </button>
+        <p class="text-[14px] font-bold">Appearance</p>
+      </div>
+      <ThemePanel variant="inline" className="w-full" />
     </div>
-    <ThemePanel variant="inline" className="w-full" />
   </div>
 {/snippet}
 
@@ -407,6 +411,23 @@
     {/if}
   </div>
 </div>
+
+{#if view === "appearance" && menuOpen}
+  <div
+    class="fixed inset-0 z-[200] hidden items-center justify-center p-4 lg:flex"
+    transition:fade={{ duration: 150 }}
+  >
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <div
+      class="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+      onclick={closeAll}
+    ></div>
+    <div class="relative z-10 w-full max-w-4xl">
+      <SettingsPanel onClose={closeAll} />
+    </div>
+  </div>
+{/if}
 
 <style>
   .workspace-user-menu-panel,

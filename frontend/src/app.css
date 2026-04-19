@@ -207,6 +207,13 @@
   --reader-highlight-bg-hover: color-mix(in srgb, rgb(244 221 136) 88%, white);
 }
 
+:root[data-dyslexic="true"] {
+  --font-serif:
+    "Comic Sans MS", "Chalkboard SE", "Comic Neue", sans-serif !important;
+  --font-sans:
+    "Comic Sans MS", "Chalkboard SE", "Comic Neue", sans-serif !important;
+}
+
 .dark {
   color-scheme: dark;
   --background: #111315;
