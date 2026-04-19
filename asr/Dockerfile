@@ -13,6 +13,8 @@ WORKDIR /src
 RUN git clone --depth 1 --branch "${WHISPER_CPP_REF}" https://github.com/ggml-org/whisper.cpp.git .
 RUN cmake -B build -DCMAKE_BUILD_TYPE=Release -DWHISPER_BUILD_TESTS=OFF && \
     cmake --build build --config Release --target whisper-cli -j"$(nproc)"
+RUN mkdir -p /tmp/whisper-libs && \
+    find build -name "*.so*" -exec cp -a {} /tmp/whisper-libs/ \;
 
 FROM debian:bookworm-slim
 
@@ -28,7 +30,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=whisper-builder /src/build/bin/whisper-cli /usr/local/bin/whisper-cli
+COPY --from=whisper-builder /tmp/whisper-libs/ /usr/local/lib/
 COPY server.py /app/server.py
+
+RUN ldconfig && whisper-cli --help >/dev/null
 
 RUN mkdir -p /models && \
     curl -L --fail --retry 3 -o /models/ggml-base.en.bin "${WHISPER_MODEL_URL}"
