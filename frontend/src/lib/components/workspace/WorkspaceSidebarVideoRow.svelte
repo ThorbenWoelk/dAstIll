@@ -21,48 +21,39 @@
 
 <button
   type="button"
-  class={`group flex w-full items-center gap-2 rounded-[18px] px-3 py-2.5 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${selected ? "bg-[var(--panel-surface)] shadow-[0_10px_28px_color-mix(in_srgb,var(--foreground)_8%,transparent)]" : "hover:bg-[var(--accent-wash)]"} ${className}`}
+  class={`group flex w-full items-start gap-2 rounded-md px-3 py-2 text-left transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 ${selected ? "bg-[var(--surface-strong)] text-[var(--foreground)]" : "text-[var(--soft-foreground)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]"} ${className}`}
   {onclick}
   {onmouseenter}
   {onmouseleave}
 >
   <div class="min-w-0 flex-1">
     <p
-      class="line-clamp-2 text-[13px] font-medium leading-[1.35] tracking-tight text-[var(--foreground)]"
+      class={`line-clamp-2 text-[13px] leading-[1.35] tracking-tight ${selected ? "font-semibold" : "font-medium"}`}
     >
       {video.title}
     </p>
-    <div class="mt-1 flex items-center gap-2">
-      <span
-        class="text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--soft-foreground)] opacity-45"
-        >{formatShortDate(video.published_at)}</span
-      >
+    <div
+      class="mt-1 flex items-center gap-1.5 text-[11px] text-[var(--soft-foreground)]"
+    >
+      <span>{formatShortDate(video.published_at)}</span>
       {#if video.transcript_status === "loading" || video.summary_status === "loading"}
-        <span class="relative flex h-2 w-2"
-          ><span
-            class="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--accent)] opacity-75"
-          ></span><span
-            class="relative inline-flex h-2 w-2 rounded-full bg-[var(--accent)]"
-          ></span></span
-        >
+        <span class="h-1 w-1 rounded-full bg-[var(--border)]" aria-hidden="true"
+        ></span>
+        <span class="flex items-center gap-1">
+          <span class="relative flex h-1.5 w-1.5">
+            <span
+              class="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--accent)] opacity-75"
+            ></span>
+            <span
+              class="relative inline-flex h-1.5 w-1.5 rounded-full bg-[var(--accent)]"
+            ></span>
+          </span>
+          <span>Processing</span>
+        </span>
       {:else if video.transcript_status === "failed" || video.summary_status === "failed"}
-        <svg
-          class="text-[var(--danger)]"
-          width="8"
-          height="8"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="3"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          ><circle cx="12" cy="12" r="10" /><line
-            x1="12"
-            y1="8"
-            x2="12"
-            y2="12"
-          /><line x1="12" y1="16" x2="12.01" y2="16" /></svg
-        >
+        <span class="h-1 w-1 rounded-full bg-[var(--border)]" aria-hidden="true"
+        ></span>
+        <span class="text-[var(--danger)]">Failed</span>
       {/if}
     </div>
   </div>

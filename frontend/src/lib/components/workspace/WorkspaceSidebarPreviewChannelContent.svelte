@@ -66,12 +66,10 @@
   {#if channelVideoCollection.loadingInitial && channelVideoCollection.videos.length === 0}
     <div class="space-y-1 px-1" role="status" aria-live="polite">
       {#each Array.from({ length: 4 }) as _, i (i)}
-        <div class="animate-pulse px-2 py-1.5">
+        <div class="animate-pulse px-3 py-2">
+          <div class="h-3 w-11/12 rounded bg-[var(--border)] opacity-50"></div>
           <div
-            class="h-3 w-11/12 rounded-full bg-[var(--border)] opacity-60"
-          ></div>
-          <div
-            class="mt-1 h-2 w-1/3 rounded-full bg-[var(--border)] opacity-40"
+            class="mt-1.5 h-2 w-1/3 rounded bg-[var(--border)] opacity-30"
           ></div>
         </div>
       {/each}
@@ -95,7 +93,6 @@
         <WorkspaceSidebarVideoRow
           {video}
           selected={selectedVideoId === video.id}
-          className="min-h-[72px]"
           onclick={() => void onChannelVideoClick(channel.id, video.id, video)}
           onmouseenter={() => onVideoMouseEnter(video.id)}
           onmouseleave={onVideoMouseLeave}
@@ -113,12 +110,12 @@
     {#if channelVideoCollection.loadingMore}
       <div class="space-y-1 px-1 pt-1" role="status" aria-live="polite">
         {#each Array.from({ length: 2 }) as _, i (i)}
-          <div class="animate-pulse px-2 py-1.5">
+          <div class="animate-pulse px-3 py-2">
             <div
-              class="h-3 w-11/12 rounded-full bg-[var(--border)] opacity-60"
+              class="h-3 w-11/12 rounded bg-[var(--border)] opacity-50"
             ></div>
             <div
-              class="mt-1 h-2 w-1/3 rounded-full bg-[var(--border)] opacity-40"
+              class="mt-1.5 h-2 w-1/3 rounded bg-[var(--border)] opacity-30"
             ></div>
           </div>
         {/each}
@@ -128,7 +125,7 @@
     {#if channelVideoCollection.loadedMode === "paged" && channelVideoCollection.hasMore && !channelVideoCollection.loadingMore}
       <button
         type="button"
-        class="mt-1 w-full rounded-[var(--radius-sm)] py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] transition-all hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]"
+        class="mt-1 w-full rounded-md py-1.5 text-[11px] font-medium text-[var(--soft-foreground)] transition-colors hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
         onclick={() => void onLoadMore()}
       >
         Load more
