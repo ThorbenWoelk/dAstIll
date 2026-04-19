@@ -230,6 +230,12 @@ Important variables:
 | `EXPENSIVE_RATE_LIMIT_PER_MINUTE`   | Rate limit for AI/chat/search mutations (default: `120`)                                     |
 | `ANONYMOUS_CHAT_QUOTA`              | Message quota for anonymous chat users (default: `30`)                                       |
 | `SUMMARIZE_PATH`                    | Path to the transcript extraction CLI                                                        |
+| `LOCAL_ASR_ENABLED`                 | Enable local/free podcast ASR for RSS audio enclosures                                       |
+| `LOCAL_ASR_BASE_URL`                | OpenAI-compatible local ASR base URL for an operator-owned local/prod service                  |
+| `LOCAL_ASR_API_KEY`                 | API key for the local ASR endpoint; local-only servers commonly use `sk-no-key-required`     |
+| `LOCAL_ASR_MODEL`                   | Local ASR model name; recommended default is `parakeet-tdt-0.6b-v3`                          |
+| `LOCAL_ASR_MAX_AUDIO_BYTES`         | Maximum podcast audio size accepted for local ASR                                            |
+| `LOCAL_ASR_TIMEOUT_SECS`            | Local ASR request timeout for long podcast episodes                                          |
 | `LOGFIRE_TOKEN`                     | Optional Logfire token for backend tracing / AI pipeline observability                       |
 | `DATABRICKS_HOST`                   | Databricks workspace URL for analytics ingestion                                             |
 | `DATABRICKS_TOKEN`                  | Databricks personal access token                                                             |
@@ -239,6 +245,13 @@ Important variables:
 | `POLLY_TTS_ENGINE`                  | Polly engine: `standard` or `neural` (default: `neural`)                                     |
 | `POLLY_TTS_OUTPUT_FORMAT`           | Polly output format (default: `wav`)                                                         |
 | `POLLY_TTS_SAMPLE_RATE`             | Polly sample rate in Hz (default: `16000`)                                                   |
+
+For local podcast transcription, run an operator-owned OpenAI-compatible ASR server beside the
+backend and point `LOCAL_ASR_BASE_URL` at it. The recommended free model for April 2026 is NVIDIA
+Parakeet TDT 0.6B v3 from NVIDIA's official model ecosystem. Treat third-party wrapper repositories
+as local experiments only unless they have enough maintenance signal for production. Keep the ASR
+server separate from the Rust backend so CPU/GPU load, model files, and failures do not take down
+the main app process.
 
 Local startup needs valid AWS credentials for S3 and S3 Vectors access. It does not require
 additional GCP service-account credentials for backend storage. `GCP_PROJECT_ID` may still be needed for Firebase Auth, Hosting-aligned

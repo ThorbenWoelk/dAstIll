@@ -64,6 +64,15 @@ pub struct PollyTtsRuntimeConfig {
     pub sample_rate: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocalAsrRuntimeConfig {
+    pub base_url: String,
+    pub api_key: String,
+    pub model: String,
+    pub max_audio_bytes: u64,
+    pub timeout_secs: u64,
+}
+
 impl OllamaRuntimeConfig {
     pub fn from_env(search_semantic_enabled: bool) -> Result<Self, String> {
         let url = env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
@@ -213,6 +222,34 @@ impl PollyTtsRuntimeConfig {
     }
 }
 
+impl LocalAsrRuntimeConfig {
+    pub fn from_env() -> Option<Self> {
+        let enabled = optional_bool_env("LOCAL_ASR_ENABLED").unwrap_or(false);
+        let base_url = optional_env("LOCAL_ASR_BASE_URL");
+        if !enabled && base_url.is_none() {
+            return None;
+        }
+
+        Some(Self {
+            base_url: base_url.unwrap_or_else(|| "http://127.0.0.1:5092/v1".to_string()),
+            api_key: optional_env("LOCAL_ASR_API_KEY")
+                .unwrap_or_else(|| "sk-no-key-required".to_string()),
+            model: optional_env("LOCAL_ASR_MODEL")
+                .unwrap_or_else(|| "parakeet-tdt-0.6b-v3".to_string()),
+            max_audio_bytes: optional_u64_env("LOCAL_ASR_MAX_AUDIO_BYTES")
+                .unwrap_or(250 * 1024 * 1024),
+            timeout_secs: optional_u64_env("LOCAL_ASR_TIMEOUT_SECS").unwrap_or(30 * 60),
+        })
+    }
+
+    pub fn transcription_url(&self) -> String {
+        format!(
+            "{}/audio/transcriptions",
+            self.base_url.trim_end_matches('/')
+        )
+    }
+}
+
 fn is_local_url(url: &str) -> bool {
     let host = url
         .strip_prefix("http://")
@@ -291,6 +328,10 @@ fn optional_u32_env(key: &str) -> Option<u32> {
     optional_env(key).and_then(|value| value.parse::<u32>().ok())
 }
 
+fn optional_u64_env(key: &str) -> Option<u64> {
+    optional_env(key).and_then(|value| value.parse::<u64>().ok())
+}
+
 fn default_backend_allowed_origins() -> Vec<String> {
     vec![
         "http://localhost:3000".to_string(),
@@ -309,8 +350,8 @@ mod tests {
     use std::sync::{Mutex, OnceLock};
 
     use super::{
-        ChatRuntimeConfig, DatabricksRuntimeConfig, OllamaRuntimeConfig, SearchRuntimeConfig,
-        SecurityRuntimeConfig,
+        ChatRuntimeConfig, DatabricksRuntimeConfig, LocalAsrRuntimeConfig, OllamaRuntimeConfig,
+        SearchRuntimeConfig, SecurityRuntimeConfig,
     };
 
     static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -345,6 +386,52 @@ mod tests {
         "DATABRICKS_SCHEMA",
         "DATABRICKS_BRONZE_TABLE",
     ];
+    const LOCAL_ASR_ENV_KEYS: &[&str] = &[
+        "LOCAL_ASR_ENABLED",
+        "LOCAL_ASR_BASE_URL",
+        "LOCAL_ASR_API_KEY",
+        "LOCAL_ASR_MODEL",
+        "LOCAL_ASR_MAX_AUDIO_BYTES",
+        "LOCAL_ASR_TIMEOUT_SECS",
+    ];
+
+    #[test]
+    fn local_asr_from_env_is_disabled_by_default() {
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+
+        let _reset = EnvReset::capture(LOCAL_ASR_ENV_KEYS);
+        for key in LOCAL_ASR_ENV_KEYS {
+            remove_env(key);
+        }
+
+        assert_eq!(LocalAsrRuntimeConfig::from_env(), None);
+    }
+
+    #[test]
+    fn local_asr_from_env_defaults_to_parakeet_endpoint_when_enabled() {
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+
+        let _reset = EnvReset::capture(LOCAL_ASR_ENV_KEYS);
+        for key in LOCAL_ASR_ENV_KEYS {
+            remove_env(key);
+        }
+        set_env("LOCAL_ASR_ENABLED", "true");
+
+        let config = LocalAsrRuntimeConfig::from_env().expect("local ASR should be enabled");
+
+        assert_eq!(config.base_url, "http://127.0.0.1:5092/v1");
+        assert_eq!(config.model, "parakeet-tdt-0.6b-v3");
+        assert_eq!(
+            config.transcription_url(),
+            "http://127.0.0.1:5092/v1/audio/transcriptions"
+        );
+    }
     #[test]
     fn from_env_requires_summary_model() {
         let _guard = ENV_LOCK

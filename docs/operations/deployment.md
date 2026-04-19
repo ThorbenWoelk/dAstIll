@@ -128,6 +128,12 @@ Non-secret backend runtime config is passed as plain env values for:
 - `DATABRICKS_CATALOG` (when Databricks ingestion is enabled)
 - `DATABRICKS_SCHEMA` (when Databricks ingestion is enabled)
 - `SUMMARIZE_PATH`
+- `LOCAL_ASR_ENABLED`
+- `LOCAL_ASR_BASE_URL`
+- `LOCAL_ASR_API_KEY`
+- `LOCAL_ASR_MODEL`
+- `LOCAL_ASR_MAX_AUDIO_BYTES`
+- `LOCAL_ASR_TIMEOUT_SECS`
 - log level
 
 Non-secret product frontend runtime config is passed as plain env values for:

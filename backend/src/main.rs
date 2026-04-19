@@ -10,8 +10,8 @@ use tracing_subscriber::{Layer, filter, layer::SubscriberExt, util::SubscriberIn
 
 use dastill::cache_headers::add_cache_control;
 use dastill::config::{
-    ChatRuntimeConfig, DatabricksRuntimeConfig, OllamaRuntimeConfig, PollyTtsRuntimeConfig,
-    SearchRuntimeConfig, SecurityRuntimeConfig,
+    ChatRuntimeConfig, DatabricksRuntimeConfig, LocalAsrRuntimeConfig, OllamaRuntimeConfig,
+    PollyTtsRuntimeConfig, SearchRuntimeConfig, SecurityRuntimeConfig,
 };
 use dastill::db::init_store;
 use dastill::handlers::{
@@ -161,6 +161,7 @@ async fn main() -> anyhow::Result<()> {
         DatabricksRuntimeConfig::from_env().map_err(|err| anyhow::anyhow!(err))?;
     let polly_tts_runtime =
         PollyTtsRuntimeConfig::from_env().map_err(|err| anyhow::anyhow!(err))?;
+    let local_asr_runtime = LocalAsrRuntimeConfig::from_env();
     let security_runtime =
         Arc::new(SecurityRuntimeConfig::from_env().map_err(|err| anyhow::anyhow!(err))?);
     let summarize_path = std::env::var("SUMMARIZE_PATH")
@@ -281,6 +282,7 @@ async fn main() -> anyhow::Result<()> {
     let transcript_semaphore = Arc::new(tokio::sync::Semaphore::new(1));
     let transcript = Arc::new(
         TranscriptService::with_paths(&summarize_path, &ytdlp_path)
+            .with_local_asr(local_asr_runtime)
             .with_concurrency_semaphore(transcript_semaphore),
     );
     let ollama_semaphore = Arc::new(tokio::sync::Semaphore::new(1));
