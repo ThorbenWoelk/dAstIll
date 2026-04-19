@@ -83,6 +83,7 @@ The SvelteKit app currently exposes the following top-level product routes:
 | `/channels/[id]`  | Dedicated per-channel overview and management view                      |
 | `/download-queue` | Queue-oriented operational view                                         |
 | `/highlights`     | Cross-video highlight browser                                           |
+| `/mini`           | Text-first reader for summaries and source content                      |
 | `/chat`           | RAG conversations with video content                                    |
 | `/vocabulary`     | Manage custom word replacements for summaries                           |
 | `/login`          | Firebase sign-in and guest continuation                                 |
@@ -103,6 +104,8 @@ The main route is responsible for most user-facing behavior:
 - summary-audio playback when TTS is configured
 - search UI
 - workspace bootstrap, selection restore, and refresh logic
+
+The `/mini` route is a separate reading surface for the same saved content. Its responsive architecture is documented in [Mini Reader](/architecture/mini-reader).
 
 ## Startup Pattern
 

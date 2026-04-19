@@ -55,10 +55,6 @@ data such as highlights and conversations is unaffected.
 maintenance page locally, run `LOCAL_APP_MAINTENANCE_MODE=1 ./start_app.sh`. In that mode the script skips
 backend startup and only serves the maintenance frontend plus docs.
 
-`./start_app.sh` also forces the product frontend into live mode by default. If you need to preview the
-maintenance page locally, run `LOCAL_APP_MAINTENANCE_MODE=1 ./start_app.sh`. In that mode the script skips
-backend startup and only serves the maintenance frontend plus docs.
-
 Default docs URL:
 
 ```text
@@ -216,7 +212,7 @@ Important variables:
 | `BACKEND_CORS_ALLOWED_ORIGINS`      | Comma-separated list of browser origins allowed to call the backend directly                 |
 | `AWS_ROLE_ARN` / `AWS_WIF_AUDIENCE` | Production only: GCP Workload Identity Federation for AWS                                    |
 | `YOUTUBE_API_KEY`                   | Optional YouTube Data API access; project-scoped, so rotate it when `GCP_PROJECT_ID` changes |
-| `OPEN_ALEX_API_KEY`                 | Optional OpenAlex API key for authenticated keyword and semantic works search                 |
+| `OPEN_ALEX_API_KEY`                 | Optional OpenAlex API key for authenticated keyword and semantic works search                |
 | `OLLAMA_URL`                        | Ollama endpoint                                                                              |
 | `OLLAMA_API_KEY`                    | API key for Ollama cloud (required when using cloud Ollama URL)                              |
 | `OLLAMA_SUMMARY_MODEL`              | Primary summarizer model                                                                     |

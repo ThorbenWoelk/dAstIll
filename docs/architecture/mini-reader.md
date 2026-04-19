@@ -65,7 +65,11 @@ This is done with a single CSS block on the shell, not with component edits:
   --accent-strong: var(--foreground);
   --accent-soft: color-mix(in srgb, var(--foreground) 8%, var(--surface));
   --accent-wash: color-mix(in srgb, var(--foreground) 6%, var(--surface));
-  --accent-wash-strong: color-mix(in srgb, var(--foreground) 12%, var(--surface));
+  --accent-wash-strong: color-mix(
+    in srgb,
+    var(--foreground) 12%,
+    var(--surface)
+  );
   --muted: color-mix(in srgb, var(--foreground) 7%, var(--background));
   --border: color-mix(in srgb, var(--foreground) 18%, var(--background));
   --border-soft: color-mix(in srgb, var(--foreground) 9%, var(--background));

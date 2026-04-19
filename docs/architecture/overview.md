@@ -11,7 +11,7 @@ flowchart TB
   backend[Backend<br/>Rust + Axum]
   app[Product UI<br/>SvelteKit]
   docs[Docs UI<br/>VitePress]
-  sources[Content sources<br/>YouTube + subtitles]
+  sources[Content sources<br/>YouTube + OpenAlex + RSS + web]
   ai[AI services<br/>Ollama + Polly]
   storage[Data stores<br/>S3, S3 Vectors, local libSQL]
 
@@ -25,7 +25,7 @@ flowchart TB
 
 const canonicalFlowDiagram = String.raw`
 flowchart TB
-  source[Video source]
+  source[Content source]
   canonical[Canonical content]
   workers[Background workers]
   projection[Search projection]
@@ -71,6 +71,7 @@ dAstIll is a source monitoring tool that is still migrating off an original YouT
   - `/channels/[id]`
   - `/download-queue`
   - `/highlights`
+  - `/mini`
   - `/vocabulary`
   - `/chat`
   - `/login` and `/logout`
@@ -104,7 +105,7 @@ dAstIll is a source monitoring tool that is still migrating off an original YouT
 - **local libSQL** for canonical video rows, user preferences, TTS statistics, and keyword search
 - **Firebase** for auth and Hosting
 - **AWS IAM** with GCP Workload Identity Federation for cross-cloud auth
-- **Secret Manager** for API keys and sensitive runtime config (YouTube API key, Logfire token, Firebase client secrets)
+- **Secret Manager** for API keys and sensitive runtime config (YouTube API key, OpenAlex API key, Logfire token, Firebase client secrets)
 
 ## Repo Layout
 

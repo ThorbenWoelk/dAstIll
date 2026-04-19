@@ -285,20 +285,20 @@ Used to estimate synthesis time for new TTS requests.
 
 ## Storage Ownership Summary
 
-| Data                                  | Storage    | Notes                                                     |
-| ------------------------------------- | ---------- | --------------------------------------------------------- |
-| Channels                              | S3         | `channels/{id}.json` canonical channel records            |
-| Videos                                | libSQL         | `videos` table for canonical video records and queue status |
-| Transcripts, summaries, video info    | S3         | Canonical content blobs                                   |
-| User channel subscriptions            | S3         | `user-channel-subscriptions/{user_id}`                    |
-| User video memberships and view state | S3         | `user-video-memberships/*` and `user-video-states/*`      |
-| Search chunks                         | S3         | Derived projection                                        |
-| Search sources                        | S3         | Derived projection metadata                               |
-| Vector embeddings                     | S3 Vectors | Semantic search                                           |
-| Conversations                         | S3         | Authenticated user chat history                           |
-| Highlights                            | S3         | Authenticated user annotations                            |
-| User preferences                      | libSQL         | `preferences` table keyed by `user_id`                    |
-| TTS statistics                        | libSQL         | `tts_stats` table global aggregate row                    |
+| Data                                  | Storage    | Notes                                                       |
+| ------------------------------------- | ---------- | ----------------------------------------------------------- |
+| Channels                              | S3         | `channels/{id}.json` canonical channel records              |
+| Videos                                | libSQL     | `videos` table for canonical video records and queue status |
+| Transcripts, summaries, video info    | S3         | Canonical content blobs                                     |
+| User channel subscriptions            | S3         | `user-channel-subscriptions/{user_id}`                      |
+| User video memberships and view state | S3         | `user-video-memberships/*` and `user-video-states/*`        |
+| Search chunks                         | S3         | Derived projection                                          |
+| Search sources                        | S3         | Derived projection metadata                                 |
+| Vector embeddings                     | S3 Vectors | Semantic search                                             |
+| Conversations                         | S3         | Authenticated user chat history                             |
+| Highlights                            | S3         | Authenticated user annotations                              |
+| User preferences                      | libSQL     | `preferences` table keyed by `user_id`                      |
+| TTS statistics                        | libSQL     | `tts_stats` table global aggregate row                      |
 
 ---
 

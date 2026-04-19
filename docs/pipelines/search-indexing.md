@@ -65,11 +65,11 @@ Each layer degrades independently without breaking the others.
 
 ## Storage Backend
 
-| Store          | Role                                                                             |
-| -------------- | -------------------------------------------------------------------------------- |
-| S3 data bucket | Canonical chunk JSON objects under `search-chunks/`                              |
-| local libSQL   | Durable keyword index queried directly by the backend at runtime                  |
-| S3 Vectors     | Dense embeddings for ANN retrieval, keyed by chunk ID                            |
+| Store          | Role                                                             |
+| -------------- | ---------------------------------------------------------------- |
+| S3 data bucket | Canonical chunk JSON objects under `search-chunks/`              |
+| local libSQL   | Durable keyword index queried directly by the backend at runtime |
+| S3 Vectors     | Dense embeddings for ANN retrieval, keyed by chunk ID            |
 
 S3 remains the rebuild source of truth for canonical chunk content. The keyword index lives in
 local libSQL and is bootstrapped from the stored projection when the runtime index is empty.

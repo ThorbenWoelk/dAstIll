@@ -28,8 +28,13 @@
         --radius-sm: 8px;
         --shadow-soft: 0 16px 60px rgb(26 26 26 / 0.08);
         font-family:
-          Manrope, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-          "Segoe UI", sans-serif;
+          Manrope,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
       }
       @media (prefers-color-scheme: dark) {
         :root {
@@ -392,7 +397,9 @@
     <div class="deck">
       <header class="topbar" aria-label="Deck status">
         <div class="brand">dastill-mini Frontend Technical Deck</div>
-        <div class="progress" aria-hidden="true"><span id="progress"></span></div>
+        <div class="progress" aria-hidden="true">
+          <span id="progress"></span>
+        </div>
         <div class="counter" id="counter">1 / 25</div>
       </header>
 
@@ -412,7 +419,10 @@
               <span class="tag">Mobile-first reader</span>
               <span class="tag">Unread-first workflow</span>
             </div>
-            <span class="cite">Sources: .specs/dastill-mini/prd.md; frontend/src/routes/mini/+page.svelte</span>
+            <span class="cite"
+              >Sources: .specs/dastill-mini/prd.md;
+              frontend/src/routes/mini/+page.svelte</span
+            >
           </div>
         </section>
 
@@ -426,7 +436,10 @@
               and the S3-backed read-state decision. The main workspace, queue,
               search, chat, and full backend pipeline stay out of scope.
             </p>
-            <span class="cite">Sources: .specs/dastill-mini/prd.md; .adr/adr-dastill-mini-uses-s3-read-state.md</span>
+            <span class="cite"
+              >Sources: .specs/dastill-mini/prd.md;
+              .adr/adr-dastill-mini-uses-s3-read-state.md</span
+            >
           </div>
         </section>
 
@@ -446,7 +459,10 @@
               <span class="tag">No chat surface</span>
               <span class="tag">No new visual system</span>
             </div>
-            <span class="cite">Sources: .specs/dastill-mini/prd.md; frontend/src/lib/components/home/MaintenancePage.svelte</span>
+            <span class="cite"
+              >Sources: .specs/dastill-mini/prd.md;
+              frontend/src/lib/components/home/MaintenancePage.svelte</span
+            >
           </div>
         </section>
 
@@ -464,23 +480,42 @@
               <tbody>
                 <tr>
                   <td><code>frontend/src/routes/mini/+page.svelte</code></td>
-                  <td>Route shell, auth gate, scroll coordination, keyboard binding, gesture binding, component composition.</td>
+                  <td>
+                    Route shell, auth gate, scroll coordination, keyboard
+                    binding, gesture binding, component composition.
+                  </td>
                 </tr>
                 <tr>
-                  <td><code>frontend/src/lib/mini/mini-reader-state.svelte.ts</code></td>
-                  <td>Svelte 5 controller for reader payload, active item, unread filter, read mutation, highlights, progress.</td>
+                  <td>
+                    <code
+                      >frontend/src/lib/mini/mini-reader-state.svelte.ts</code
+                    >
+                  </td>
+                  <td>
+                    Svelte 5 controller for reader payload, active item, unread
+                    filter, read mutation, highlights, progress.
+                  </td>
                 </tr>
                 <tr>
-                  <td><code>frontend/src/lib/components/mini/*.svelte</code></td>
-                  <td>Render-only chrome: article, top bar, bottom bar, channel sheet, summary strip, empty states.</td>
+                  <td>
+                    <code>frontend/src/lib/components/mini/*.svelte</code>
+                  </td>
+                  <td>
+                    Render-only chrome: article, top bar, bottom bar, channel
+                    sheet, summary strip, empty states.
+                  </td>
                 </tr>
                 <tr>
                   <td><code>frontend/src/lib/mini/*.ts</code></td>
-                  <td>Keyboard and swipe helpers kept outside the route component.</td>
+                  <td>
+                    Keyboard and swipe helpers kept outside the route component.
+                  </td>
                 </tr>
               </tbody>
             </table>
-            <span class="cite">Sources: local file inventory; wc -l mini files</span>
+            <span class="cite"
+              >Sources: local file inventory; wc -l mini files</span
+            >
           </div>
         </section>
 
@@ -491,26 +526,44 @@
             <div class="flow">
               <div class="flow-step">
                 <span class="label"><code>+page.svelte</code></span>
-                <span>Creates <code>mini</code>, gates auth, wires scroll, keyboard, swipe, and callbacks.</span>
+                <span
+                  >Creates <code>mini</code>, gates auth, wires scroll,
+                  keyboard, swipe, and callbacks.</span
+                >
               </div>
               <div class="flow-step">
                 <span class="label"><code>MiniReaderState</code></span>
-                <span>Owns data and derived state. Render components receive values and callbacks.</span>
+                <span
+                  >Owns data and derived state. Render components receive values
+                  and callbacks.</span
+                >
               </div>
               <div class="flow-step">
                 <span class="label">Top and strip</span>
-                <span>Show progress, counter, unread filter, unread count, and horizontal summary selection.</span>
+                <span
+                  >Show progress, counter, unread filter, unread count, and
+                  horizontal summary selection.</span
+                >
               </div>
               <div class="flow-step">
                 <span class="label">Article and bottom</span>
-                <span>Render the active summary and expose previous, next, channel picker, and mark-read actions.</span>
+                <span
+                  >Render the active summary and expose previous, next, channel
+                  picker, and mark-read actions.</span
+                >
               </div>
               <div class="flow-step">
                 <span class="label">Channel sheet</span>
-                <span>Provides the mobile channel selector with unread counts per channel.</span>
+                <span
+                  >Provides the mobile channel selector with unread counts per
+                  channel.</span
+                >
               </div>
             </div>
-            <span class="cite">Sources: frontend/src/routes/mini/+page.svelte; frontend/src/lib/components/mini/*.svelte</span>
+            <span class="cite"
+              >Sources: frontend/src/routes/mini/+page.svelte;
+              frontend/src/lib/components/mini/*.svelte</span
+            >
           </div>
         </section>
 
@@ -520,12 +573,24 @@
             <h2>The route waits for auth before touching reader data.</h2>
             <ol>
               <li><code>authState.ready</code> gates the initial decision.</li>
-              <li>Unauthenticated users are sent to <code>/login?redirectTo=%2Fmini</code>.</li>
+              <li>
+                Unauthenticated users are sent to
+                <code>/login?redirectTo=%2Fmini</code>.
+              </li>
               <li>Authenticated users call <code>mini.loadReader()</code>.</li>
-              <li>Loading, error, empty, and active-summary branches render from controller state.</li>
-              <li>Retry calls <code>loadReader(mini.selectedChannelId)</code> to preserve channel intent.</li>
+              <li>
+                Loading, error, empty, and active-summary branches render from
+                controller state.
+              </li>
+              <li>
+                Retry calls <code>loadReader(mini.selectedChannelId)</code> to
+                preserve channel intent.
+              </li>
             </ol>
-            <span class="cite">Sources: frontend/src/routes/mini/+page.svelte; frontend/src/lib/auth-state.svelte.ts</span>
+            <span class="cite"
+              >Sources: frontend/src/routes/mini/+page.svelte;
+              frontend/src/lib/auth-state.svelte.ts</span
+            >
           </div>
         </section>
 
@@ -545,16 +610,26 @@
                 <tr>
                   <td><code>getMiniReader(channelId)</code></td>
                   <td><code>GET /api/mini?channel_id=...</code></td>
-                  <td>Cached GET returning channels, selected channel, and summary items.</td>
+                  <td>
+                    Cached GET returning channels, selected channel, and summary
+                    items.
+                  </td>
                 </tr>
                 <tr>
                   <td><code>updateMiniReadStatus(videoId, read)</code></td>
                   <td><code>PUT /api/mini/videos/{id}/read</code></td>
-                  <td>Mutates read state, then invalidates cached <code>/api/mini</code> reads.</td>
+                  <td>
+                    Mutates read state, then invalidates cached
+                    <code>/api/mini</code> reads.
+                  </td>
                 </tr>
               </tbody>
             </table>
-            <span class="cite">Sources: frontend/src/lib/api.ts; frontend/src/lib/transport-types.ts; backend/src/handlers/mini.rs</span>
+            <span class="cite"
+              >Sources: frontend/src/lib/api.ts;
+              frontend/src/lib/transport-types.ts;
+              backend/src/handlers/mini.rs</span
+            >
           </div>
         </section>
 
@@ -581,7 +656,10 @@
                 </ul>
               </div>
             </div>
-            <span class="cite">Sources: frontend/src/lib/transport-types.ts; backend/src/handlers/mini.rs</span>
+            <span class="cite"
+              >Sources: frontend/src/lib/transport-types.ts;
+              backend/src/handlers/mini.rs</span
+            >
           </div>
         </section>
 
@@ -593,10 +671,12 @@
               The controller stores the payload, selected channel, active video,
               loading and error state, unread filter, mutation flags, read
               progress, content key, and highlight controller. It also derives
-              visible summaries, active index, active summary, rendered markdown,
-              navigation affordances, unread count, and filter count.
+              visible summaries, active index, active summary, rendered
+              markdown, navigation affordances, unread count, and filter count.
             </p>
-            <span class="cite">Sources: frontend/src/lib/mini/mini-reader-state.svelte.ts</span>
+            <span class="cite"
+              >Sources: frontend/src/lib/mini/mini-reader-state.svelte.ts</span
+            >
           </div>
         </section>
 
@@ -607,37 +687,72 @@
             <div class="flow">
               <div class="flow-step">
                 <span class="label">Initial pick</span>
-                <span><code>chooseActiveVideoId</code> keeps a preferred id, else first unread, else first summary.</span>
+                <span
+                  ><code>chooseActiveVideoId</code> keeps a preferred id, else
+                  first unread, else first summary.</span
+                >
               </div>
               <div class="flow-step">
                 <span class="label">Filter</span>
-                <span><code>showUnreadOnly</code> defaults true, so <code>visibleSummaries</code> can be smaller than the payload.</span>
+                <span
+                  ><code>showUnreadOnly</code> defaults true, so
+                  <code>visibleSummaries</code> can be smaller than the
+                  payload.</span
+                >
               </div>
               <div class="flow-step">
                 <span class="label">Reconcile</span>
-                <span>The route calls <code>reconcileActiveVideo()</code> after reader changes so active id stays visible.</span>
+                <span
+                  >The route calls <code>reconcileActiveVideo()</code> after
+                  reader changes so active id stays visible.</span
+                >
               </div>
               <div class="flow-step">
                 <span class="label">Advance</span>
-                <span>Mark-read-and-advance looks for the next unread summary with wraparound.</span>
+                <span
+                  >Mark-read-and-advance looks for the next unread summary with
+                  wraparound.</span
+                >
               </div>
             </div>
-            <span class="cite">Sources: frontend/src/lib/mini/mini-reader-state.svelte.ts; frontend/tests/mini-reader-state.test.ts</span>
+            <span class="cite"
+              >Sources: frontend/src/lib/mini/mini-reader-state.svelte.ts;
+              frontend/tests/mini-reader-state.test.ts</span
+            >
           </div>
         </section>
 
         <section class="slide" aria-hidden="true">
           <div class="slide-inner">
             <div class="kicker label">Read mutation</div>
-            <h2>Read status is optimistically reflected after the server writes.</h2>
+            <h2>
+              Read status is optimistically reflected after the server writes.
+            </h2>
             <ol>
-              <li>User clicks <code>Mark as read</code>, the bottom checkbox, or presses <code>r</code>.</li>
-              <li>Controller guards against duplicate mutation with <code>markingRead</code>.</li>
-              <li>Frontend sends <code>PUT /api/mini/videos/{id}/read</code>.</li>
-              <li>On success, the local reader payload is replaced with that summary marked read.</li>
-              <li>Active video is recalculated and <code>contentKey</code> increments to restart article rendering.</li>
+              <li>
+                User clicks <code>Mark as read</code>, the bottom checkbox, or
+                presses <code>r</code>.
+              </li>
+              <li>
+                Controller guards against duplicate mutation with
+                <code>markingRead</code>.
+              </li>
+              <li>
+                Frontend sends <code>PUT /api/mini/videos/{id}/read</code>.
+              </li>
+              <li>
+                On success, the local reader payload is replaced with that
+                summary marked read.
+              </li>
+              <li>
+                Active video is recalculated and
+                <code>contentKey</code> increments to restart article rendering.
+              </li>
             </ol>
-            <span class="cite">Sources: frontend/src/lib/mini/mini-reader-state.svelte.ts; frontend/src/lib/api.ts</span>
+            <span class="cite"
+              >Sources: frontend/src/lib/mini/mini-reader-state.svelte.ts;
+              frontend/src/lib/api.ts</span
+            >
           </div>
         </section>
 
@@ -649,33 +764,53 @@
               The mini controller creates a home-workspace highlight controller,
               pins its content mode to <code>summary</code>, hydrates highlights
               for the active video on demand, filters out transcript highlights,
-              and passes summary-only highlights into <code>TranscriptView</code>.
+              and passes summary-only highlights into
+              <code>TranscriptView</code>.
             </p>
-            <span class="cite">Sources: frontend/src/lib/mini/mini-reader-state.svelte.ts; frontend/src/lib/components/mini/MiniArticle.svelte; frontend/tests/mini-reader-state.test.ts</span>
+            <span class="cite"
+              >Sources: frontend/src/lib/mini/mini-reader-state.svelte.ts;
+              frontend/src/lib/components/mini/MiniArticle.svelte;
+              frontend/tests/mini-reader-state.test.ts</span
+            >
           </div>
         </section>
 
         <section class="slide" aria-hidden="true">
           <div class="slide-inner">
             <div class="kicker label">Article rendering</div>
-            <h2>The article is a markdown reader wrapped around shared transcript UI.</h2>
+            <h2>
+              The article is a markdown reader wrapped around shared transcript
+              UI.
+            </h2>
             <div class="two-col">
               <div>
                 <ul>
-                  <li><code>renderMarkdown</code> produces HTML from summary content.</li>
-                  <li><code>MiniArticle</code> displays thumbnail, channel, date, title, read state, source link, and body.</li>
-                  <li><code>TranscriptView</code> renders markdown and handles highlight selection.</li>
+                  <li>
+                    <code>renderMarkdown</code> produces HTML from summary
+                    content.
+                  </li>
+                  <li>
+                    <code>MiniArticle</code> displays thumbnail, channel, date,
+                    title, read state, source link, and body.
+                  </li>
+                  <li>
+                    <code>TranscriptView</code> renders markdown and handles
+                    highlight selection.
+                  </li>
                 </ul>
               </div>
               <div class="panel">
                 <h3>Why <code>contentKey</code> matters</h3>
                 <p>
-                  The article is wrapped in a keyed block so summary changes reset
-                  local DOM state and replay the entrance animation.
+                  The article is wrapped in a keyed block so summary changes
+                  reset local DOM state and replay the entrance animation.
                 </p>
               </div>
             </div>
-            <span class="cite">Sources: frontend/src/lib/components/mini/MiniArticle.svelte; frontend/src/lib/mini/mini-reader-state.svelte.ts</span>
+            <span class="cite"
+              >Sources: frontend/src/lib/components/mini/MiniArticle.svelte;
+              frontend/src/lib/mini/mini-reader-state.svelte.ts</span
+            >
           </div>
         </section>
 
@@ -689,7 +824,11 @@
               more than 12 pixels from the top. That second flag swaps the
               bottom center control from channel picker to read checkbox.
             </p>
-            <span class="cite">Sources: frontend/src/routes/mini/+page.svelte; frontend/src/lib/components/mini/MiniTopBar.svelte; frontend/src/lib/components/mini/MiniBottomBar.svelte</span>
+            <span class="cite"
+              >Sources: frontend/src/routes/mini/+page.svelte;
+              frontend/src/lib/components/mini/MiniTopBar.svelte;
+              frontend/src/lib/components/mini/MiniBottomBar.svelte</span
+            >
           </div>
         </section>
 
@@ -724,11 +863,17 @@
                 <tr>
                   <td>Horizontal swipe</td>
                   <td>Previous or next summary.</td>
-                  <td>Ignores interactive targets, left edge, small swipes, and diagonal swipes.</td>
+                  <td>
+                    Ignores interactive targets, left edge, small swipes, and
+                    diagonal swipes.
+                  </td>
                 </tr>
               </tbody>
             </table>
-            <span class="cite">Sources: frontend/src/lib/mini/mini-keyboard.ts; frontend/src/lib/mini/use-swipe-navigation.ts</span>
+            <span class="cite"
+              >Sources: frontend/src/lib/mini/mini-keyboard.ts;
+              frontend/src/lib/mini/use-swipe-navigation.ts</span
+            >
           </div>
         </section>
 
@@ -739,18 +884,30 @@
             <div class="three-col">
               <div class="panel subtle">
                 <h3>Top bar</h3>
-                <p>Logo, mini label, counter, unread badge, filter trigger, and progress line.</p>
+                <p>
+                  Logo, mini label, counter, unread badge, filter trigger, and
+                  progress line.
+                </p>
               </div>
               <div class="panel subtle">
                 <h3>Summary strip</h3>
-                <p>Horizontal list of visible summaries, thumbnails, read marks, and active auto-scroll.</p>
+                <p>
+                  Horizontal list of visible summaries, thumbnails, read marks,
+                  and active auto-scroll.
+                </p>
               </div>
               <div class="panel subtle">
                 <h3>Bottom bar</h3>
-                <p>Fixed previous, next, channel picker, or read-and-advance checkbox.</p>
+                <p>
+                  Fixed previous, next, channel picker, or read-and-advance
+                  checkbox.
+                </p>
               </div>
             </div>
-            <span class="cite">Sources: frontend/src/lib/components/mini/MiniTopBar.svelte; MiniSummaryStrip.svelte; MiniBottomBar.svelte</span>
+            <span class="cite"
+              >Sources: frontend/src/lib/components/mini/MiniTopBar.svelte;
+              MiniSummaryStrip.svelte; MiniBottomBar.svelte</span
+            >
           </div>
         </section>
 
@@ -759,12 +916,16 @@
             <div class="kicker label">Channel sheet</div>
             <h2>The selector is a bottom sheet, not a native select.</h2>
             <p>
-              <code>MiniChannelSheet</code> renders an opaque bottom sheet with a
-              backdrop, handle, close button, channel rows, thumbnails with
+              <code>MiniChannelSheet</code> renders an opaque bottom sheet with
+              a backdrop, handle, close button, channel rows, thumbnails with
               fallback initials, selected-row styling, and unread counts derived
               from the current reader summaries.
             </p>
-            <span class="cite">Sources: frontend/src/lib/components/mini/MiniChannelSheet.svelte; design.md</span>
+            <span class="cite"
+              >Sources:
+              frontend/src/lib/components/mini/MiniChannelSheet.svelte;
+              design.md</span
+            >
           </div>
         </section>
 
@@ -794,7 +955,9 @@
                 </tr>
                 <tr>
                   <td><code>all-read</code></td>
-                  <td>Unread filter is active and everything visible is read.</td>
+                  <td>
+                    Unread filter is active and everything visible is read.
+                  </td>
                 </tr>
                 <tr>
                   <td><code>no-summaries</code></td>
@@ -802,28 +965,56 @@
                 </tr>
               </tbody>
             </table>
-            <span class="cite">Sources: frontend/src/routes/mini/+page.svelte; frontend/src/lib/components/mini/MiniEmptyState.svelte</span>
+            <span class="cite"
+              >Sources: frontend/src/routes/mini/+page.svelte;
+              frontend/src/lib/components/mini/MiniEmptyState.svelte</span
+            >
           </div>
         </section>
 
         <section class="slide" aria-hidden="true">
           <div class="slide-inner">
             <div class="kicker label">Design contract</div>
-            <h2>Mini follows the local system, with a few technical pressure points.</h2>
+            <h2>
+              Mini follows the local system, with a few technical pressure
+              points.
+            </h2>
             <ul>
-              <li><strong>Aligned:</strong> muted palette, content-first layout, mobile bottom bar, bottom sheet, shared icons, skeleton loading, safe-area padding.</li>
-              <li><strong>Worth checking:</strong> <code>MiniTopBar</code> filter button is 34px, while the design guidance asks mobile filter triggers to have a 44px touch target.</li>
-              <li><strong>Worth checking:</strong> current mini CSS uses visible borders on top, bottom, strip, and sheet rows. They are structural, but the local system asks for a low border budget.</li>
-              <li><strong>Worth checking:</strong> source code uses negative letter spacing in several mini headings, while this deck avoids it for portability.</li>
+              <li>
+                <strong>Aligned:</strong> muted palette, content-first layout,
+                mobile bottom bar, bottom sheet, shared icons, skeleton loading,
+                safe-area padding.
+              </li>
+              <li>
+                <strong>Worth checking:</strong> <code>MiniTopBar</code> filter
+                button is 34px, while the design guidance asks mobile filter
+                triggers to have a 44px touch target.
+              </li>
+              <li>
+                <strong>Worth checking:</strong> current mini CSS uses visible
+                borders on top, bottom, strip, and sheet rows. They are
+                structural, but the local system asks for a low border budget.
+              </li>
+              <li>
+                <strong>Worth checking:</strong> source code uses negative
+                letter spacing in several mini headings, while this deck avoids
+                it for portability.
+              </li>
             </ul>
-            <span class="cite">Sources: design.md; frontend/src/lib/components/mini/*.svelte</span>
+            <span class="cite"
+              >Sources: design.md;
+              frontend/src/lib/components/mini/*.svelte</span
+            >
           </div>
         </section>
 
         <section class="slide" aria-hidden="true">
           <div class="slide-inner">
             <div class="kicker label">Test coverage</div>
-            <h2>Unit tests cover selection logic; visible mini behavior needs E2E attention.</h2>
+            <h2>
+              Unit tests cover selection logic; visible mini behavior needs E2E
+              attention.
+            </h2>
             <div class="two-col">
               <div class="panel subtle">
                 <h3>Covered now</h3>
@@ -843,7 +1034,10 @@
                 </p>
               </div>
             </div>
-            <span class="cite">Sources: frontend/tests/mini-reader-state.test.ts; design.md; frontend/e2e file inventory</span>
+            <span class="cite"
+              >Sources: frontend/tests/mini-reader-state.test.ts; design.md;
+              frontend/e2e file inventory</span
+            >
           </div>
         </section>
 
@@ -852,13 +1046,35 @@
             <div class="kicker label">Failure modes</div>
             <h2>The sharp edges are mostly integration edges.</h2>
             <ul>
-              <li><strong>Auth delay:</strong> route must not fetch until auth state is ready.</li>
-              <li><strong>Cached stale reads:</strong> read mutation invalidates <code>/api/mini</code>, but local payload is also updated immediately.</li>
-              <li><strong>Filtered active id:</strong> unread filter can remove the active item, so reconciliation is required.</li>
-              <li><strong>Highlight scope:</strong> mini must only surface summary highlights, not transcript highlights.</li>
-              <li><strong>Backend dependency mismatch:</strong> the frontend contract assumes mini avoids workspace bootstrap, but the backend still defines what "readable summary" means.</li>
+              <li>
+                <strong>Auth delay:</strong> route must not fetch until auth
+                state is ready.
+              </li>
+              <li>
+                <strong>Cached stale reads:</strong> read mutation invalidates
+                <code>/api/mini</code>, but local payload is also updated
+                immediately.
+              </li>
+              <li>
+                <strong>Filtered active id:</strong> unread filter can remove
+                the active item, so reconciliation is required.
+              </li>
+              <li>
+                <strong>Highlight scope:</strong> mini must only surface summary
+                highlights, not transcript highlights.
+              </li>
+              <li>
+                <strong>Backend dependency mismatch:</strong> the frontend
+                contract assumes mini avoids workspace bootstrap, but the
+                backend still defines what "readable summary" means.
+              </li>
             </ul>
-            <span class="cite">Sources: frontend/src/routes/mini/+page.svelte; frontend/src/lib/mini/mini-reader-state.svelte.ts; .specs/dastill-mini/test-spec.md; backend/src/handlers/mini.rs</span>
+            <span class="cite"
+              >Sources: frontend/src/routes/mini/+page.svelte;
+              frontend/src/lib/mini/mini-reader-state.svelte.ts;
+              .specs/dastill-mini/test-spec.md;
+              backend/src/handlers/mini.rs</span
+            >
           </div>
         </section>
 
@@ -873,7 +1089,11 @@
               transitions centralized, and matches the repo rule that reactive
               controller methods are the valid write path.
             </p>
-            <span class="cite">Sources: design.md; frontend/src/lib/mini/mini-reader-state.svelte.ts; frontend/src/routes/mini/+page.svelte</span>
+            <span class="cite"
+              >Sources: design.md;
+              frontend/src/lib/mini/mini-reader-state.svelte.ts;
+              frontend/src/routes/mini/+page.svelte</span
+            >
           </div>
         </section>
 
@@ -882,15 +1102,37 @@
             <div class="kicker label">Reading path</div>
             <h2>Read mini in this order.</h2>
             <ol>
-              <li><code>.specs/dastill-mini/prd.md</code> for the product boundary.</li>
-              <li><code>.adr/adr-dastill-mini-uses-s3-read-state.md</code> for the read-state decision.</li>
-              <li><code>frontend/src/routes/mini/+page.svelte</code> for route orchestration.</li>
-              <li><code>frontend/src/lib/mini/mini-reader-state.svelte.ts</code> for the data model.</li>
-              <li><code>frontend/src/lib/components/mini/</code> for UI chrome.</li>
-              <li><code>frontend/src/lib/api.ts</code> and <code>frontend/src/lib/transport-types.ts</code> for API shape.</li>
-              <li><code>frontend/tests/mini-reader-state.test.ts</code> for current logic coverage.</li>
+              <li>
+                <code>.specs/dastill-mini/prd.md</code> for the product
+                boundary.
+              </li>
+              <li>
+                <code>.adr/adr-dastill-mini-uses-s3-read-state.md</code> for the
+                read-state decision.
+              </li>
+              <li>
+                <code>frontend/src/routes/mini/+page.svelte</code> for route
+                orchestration.
+              </li>
+              <li>
+                <code>frontend/src/lib/mini/mini-reader-state.svelte.ts</code>
+                for the data model.
+              </li>
+              <li>
+                <code>frontend/src/lib/components/mini/</code> for UI chrome.
+              </li>
+              <li>
+                <code>frontend/src/lib/api.ts</code> and
+                <code>frontend/src/lib/transport-types.ts</code> for API shape.
+              </li>
+              <li>
+                <code>frontend/tests/mini-reader-state.test.ts</code> for
+                current logic coverage.
+              </li>
             </ol>
-            <span class="cite">Sources: synthesized reading order from mini corpus</span>
+            <span class="cite"
+              >Sources: synthesized reading order from mini corpus</span
+            >
           </div>
         </section>
 
@@ -899,20 +1141,58 @@
             <div class="kicker label">Source map</div>
             <h2>Corpus covered.</h2>
             <ul class="source-list">
-              <li><code>design.md</code>, local frontend design and testing contract.</li>
-              <li><code>.specs/dastill-mini/prd.md</code>, mini product requirements.</li>
-              <li><code>.specs/dastill-mini/test-spec.md</code>, acceptance and manual checks.</li>
-              <li><code>.adr/adr-dastill-mini-uses-s3-read-state.md</code>, read-state decision.</li>
-              <li><code>frontend/src/routes/mini/+page.svelte</code>, route orchestration.</li>
-              <li><code>frontend/src/lib/mini/mini-reader-state.svelte.ts</code>, controller.</li>
-              <li><code>frontend/src/lib/mini/mini-keyboard.ts</code>, keyboard shortcuts.</li>
-              <li><code>frontend/src/lib/mini/use-swipe-navigation.ts</code>, touch navigation.</li>
-              <li><code>frontend/src/lib/components/mini/*.svelte</code>, mini UI components.</li>
+              <li>
+                <code>design.md</code>, local frontend design and testing
+                contract.
+              </li>
+              <li>
+                <code>.specs/dastill-mini/prd.md</code>, mini product
+                requirements.
+              </li>
+              <li>
+                <code>.specs/dastill-mini/test-spec.md</code>, acceptance and
+                manual checks.
+              </li>
+              <li>
+                <code>.adr/adr-dastill-mini-uses-s3-read-state.md</code>,
+                read-state decision.
+              </li>
+              <li>
+                <code>frontend/src/routes/mini/+page.svelte</code>, route
+                orchestration.
+              </li>
+              <li>
+                <code>frontend/src/lib/mini/mini-reader-state.svelte.ts</code>,
+                controller.
+              </li>
+              <li>
+                <code>frontend/src/lib/mini/mini-keyboard.ts</code>, keyboard
+                shortcuts.
+              </li>
+              <li>
+                <code>frontend/src/lib/mini/use-swipe-navigation.ts</code>,
+                touch navigation.
+              </li>
+              <li>
+                <code>frontend/src/lib/components/mini/*.svelte</code>, mini UI
+                components.
+              </li>
               <li><code>frontend/src/lib/api.ts</code>, mini client calls.</li>
-              <li><code>frontend/src/lib/transport-types.ts</code>, mini transport interfaces.</li>
-              <li><code>frontend/tests/mini-reader-state.test.ts</code>, unit coverage.</li>
-              <li><code>backend/src/handlers/mini.rs</code>, API contract only.</li>
-              <li>Recent mini git history from <code>git log -- frontend/src/routes/mini ...</code>.</li>
+              <li>
+                <code>frontend/src/lib/transport-types.ts</code>, mini transport
+                interfaces.
+              </li>
+              <li>
+                <code>frontend/tests/mini-reader-state.test.ts</code>, unit
+                coverage.
+              </li>
+              <li>
+                <code>backend/src/handlers/mini.rs</code>, API contract only.
+              </li>
+              <li>
+                Recent mini git history from
+                <code>git log -- frontend/src/routes/mini ...</code>.
+              </li>
             </ul>
           </div>
         </section>
@@ -920,23 +1200,58 @@
         <section class="slide" aria-hidden="true">
           <div class="slide-inner">
             <div class="kicker label">Open questions</div>
-            <h2>The next technical pass should verify behavior in a browser.</h2>
+            <h2>
+              The next technical pass should verify behavior in a browser.
+            </h2>
             <ul>
-              <li>Should mini get a dedicated Playwright spec for auth redirect, unread filter, channel sheet, and mark-read persistence?</li>
-              <li>Should <code>MiniTopBar</code> filter touch target be raised to 44px without making the bar feel heavy?</li>
-              <li>Should the active-summary selection survive route reloads or channel changes through URL state?</li>
-              <li>Should read progress ever auto-mark read, or stay explicit only as the PRD requires?</li>
-              <li>Should mini eventually stop depending on backend video lookup for read writes, to fully match the ADR direction?</li>
+              <li>
+                Should mini get a dedicated Playwright spec for auth redirect,
+                unread filter, channel sheet, and mark-read persistence?
+              </li>
+              <li>
+                Should <code>MiniTopBar</code> filter touch target be raised to
+                44px without making the bar feel heavy?
+              </li>
+              <li>
+                Should the active-summary selection survive route reloads or
+                channel changes through URL state?
+              </li>
+              <li>
+                Should read progress ever auto-mark read, or stay explicit only
+                as the PRD requires?
+              </li>
+              <li>
+                Should mini eventually stop depending on backend video lookup
+                for read writes, to fully match the ADR direction?
+              </li>
             </ul>
-            <span class="cite">Sources: design.md; .specs/dastill-mini/prd.md; .adr/adr-dastill-mini-uses-s3-read-state.md; backend/src/handlers/mini.rs</span>
+            <span class="cite"
+              >Sources: design.md; .specs/dastill-mini/prd.md;
+              .adr/adr-dastill-mini-uses-s3-read-state.md;
+              backend/src/handlers/mini.rs</span
+            >
           </div>
         </section>
       </main>
 
       <footer class="controls" aria-label="Slide controls">
-        <button class="nav-button" type="button" id="prev" aria-label="Previous slide">&#8592;</button>
+        <button
+          class="nav-button"
+          type="button"
+          id="prev"
+          aria-label="Previous slide"
+        >
+          &#8592;
+        </button>
         <div class="shortcut">Use arrow keys, Space, Home, or End</div>
-        <button class="nav-button" type="button" id="next" aria-label="Next slide">&#8594;</button>
+        <button
+          class="nav-button"
+          type="button"
+          id="next"
+          aria-label="Next slide"
+        >
+          &#8594;
+        </button>
       </footer>
     </div>
 

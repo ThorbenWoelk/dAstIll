@@ -28,8 +28,13 @@
         --shadow-soft: 0 16px 60px rgb(26 26 26 / 0.08);
         color-scheme: light;
         font-family:
-          Manrope, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-          "Segoe UI", sans-serif;
+          Manrope,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
         background: var(--background);
         color: var(--foreground);
       }
@@ -480,7 +485,9 @@
     <div class="deck">
       <header class="topbar" aria-label="Deck status">
         <div class="brand">dAstIll Deep Research Deck</div>
-        <div class="progress" aria-hidden="true"><span id="progress"></span></div>
+        <div class="progress" aria-hidden="true">
+          <span id="progress"></span>
+        </div>
         <div class="counter" id="counter">1 / 22</div>
       </header>
 
@@ -507,13 +514,17 @@
         <section class="slide compact" aria-hidden="true">
           <div class="slide-inner">
             <div class="kicker label">Central thesis</div>
-            <h2>The app turns feed anxiety into a searchable, evaluated library.</h2>
+            <h2>
+              The app turns feed anxiety into a searchable, evaluated library.
+            </h2>
             <p>
               The product watches sources, turns raw media or web text into
               readable artifacts, scores the AI output, and lets the user return
               through summaries, highlights, search, audio, or chat.
             </p>
-            <span class="cite">Sources: README.md; docs/architecture/overview.md</span>
+            <span class="cite"
+              >Sources: README.md; docs/architecture/overview.md</span
+            >
           </div>
         </section>
 
@@ -533,18 +544,21 @@
                 <h3>Memory</h3>
                 <p>
                   Highlights, acknowledgements, vocabulary replacements, and
-                  conversations keep user intent separate from canonical content.
+                  conversations keep user intent separate from canonical
+                  content.
                 </p>
               </div>
               <div class="panel subtle">
                 <h3>Retrieval</h3>
                 <p>
-                  Keyword and semantic search feed both direct search results and
-                  grounded chat answers.
+                  Keyword and semantic search feed both direct search results
+                  and grounded chat answers.
                 </p>
               </div>
             </div>
-            <span class="cite">Sources: docs/index.md; docs/architecture/data-model.md</span>
+            <span class="cite"
+              >Sources: docs/index.md; docs/architecture/data-model.md</span
+            >
           </div>
         </section>
 
@@ -564,12 +578,18 @@
                 <tr>
                   <td><code>backend/</code></td>
                   <td>Rust Axum API, workers, stores, AI adapters.</td>
-                  <td><code>backend/src/main.rs</code>, <code>backend/src/state.rs</code></td>
+                  <td>
+                    <code>backend/src/main.rs</code>,
+                    <code>backend/src/state.rs</code>
+                  </td>
                 </tr>
                 <tr>
                   <td><code>frontend/</code></td>
                   <td>SvelteKit product UI, static build, browser auth.</td>
-                  <td><code>frontend/src/routes/+page.svelte</code>, <code>frontend/src/lib/api.ts</code></td>
+                  <td>
+                    <code>frontend/src/routes/+page.svelte</code>,
+                    <code>frontend/src/lib/api.ts</code>
+                  </td>
                 </tr>
                 <tr>
                   <td><code>docs/</code></td>
@@ -588,7 +608,10 @@
                 </tr>
               </tbody>
             </table>
-            <span class="cite">Sources: AGENTS.md; docs/architecture/overview.md; local file inventory</span>
+            <span class="cite"
+              >Sources: AGENTS.md; docs/architecture/overview.md; local file
+              inventory</span
+            >
           </div>
         </section>
 
@@ -603,31 +626,48 @@
               </div>
               <div class="flow-step">
                 <span class="label">Frontend</span>
-                <span>Calls the Rust backend directly with Firebase bearer tokens or trusted proxy headers.</span>
+                <span
+                  >Calls the Rust backend directly with Firebase bearer tokens
+                  or trusted proxy headers.</span
+                >
               </div>
               <div class="flow-step">
                 <span class="label">Backend</span>
-                <span>Owns storage clients, local libSQL, API handlers, AI services, and long-running workers.</span>
+                <span
+                  >Owns storage clients, local libSQL, API handlers, AI
+                  services, and long-running workers.</span
+                >
               </div>
               <div class="flow-step">
                 <span class="label">Workers</span>
-                <span>Advance queues, refresh feeds, evaluate summaries, and maintain search projections.</span>
+                <span
+                  >Advance queues, refresh feeds, evaluate summaries, and
+                  maintain search projections.</span
+                >
               </div>
             </div>
-            <span class="cite">Sources: docs/architecture/runtime-topology.md; docs/architecture/frontend-and-api.md</span>
+            <span class="cite"
+              >Sources: docs/architecture/runtime-topology.md;
+              docs/architecture/frontend-and-api.md</span
+            >
           </div>
         </section>
 
         <section class="slide" aria-hidden="true">
           <div class="slide-inner">
             <div class="kicker label">Startup model</div>
-            <h2>Startup binds early, then assembles a single shared state object.</h2>
+            <h2>
+              Startup binds early, then assembles a single shared state object.
+            </h2>
             <div class="two-col">
               <div>
                 <ol>
                   <li>Load environment and runtime configs.</li>
                   <li>Initialize AWS, S3, S3 Vectors, and local libSQL.</li>
-                  <li>Build service adapters for sources, AI, TTS, chat, and search.</li>
+                  <li>
+                    Build service adapters for sources, AI, TTS, chat, and
+                    search.
+                  </li>
                   <li>Hydrate search progress and FTS when needed.</li>
                   <li>Spawn worker loops and bind API routes.</li>
                 </ol>
@@ -635,13 +675,16 @@
               <div class="panel">
                 <h3><code>AppState</code> is the pressure point.</h3>
                 <p>
-                  It carries the store, read cache, rate limiter, projection lock,
-                  FTS index, source services, AI services, chat service, mobile
-                  handoff sessions, cooldowns, and analytics client.
+                  It carries the store, read cache, rate limiter, projection
+                  lock, FTS index, source services, AI services, chat service,
+                  mobile handoff sessions, cooldowns, and analytics client.
                 </p>
               </div>
             </div>
-            <span class="cite">Sources: backend/src/main.rs; backend/src/state.rs; docs/architecture/runtime-topology.md</span>
+            <span class="cite"
+              >Sources: backend/src/main.rs; backend/src/state.rs;
+              docs/architecture/runtime-topology.md</span
+            >
           </div>
         </section>
 
@@ -665,12 +708,20 @@
               <tbody>
                 <tr>
                   <td>Channels, videos, transcripts, summaries, video info.</td>
-                  <td>Subscriptions, acknowledgements, preferences, highlights, conversations.</td>
-                  <td>Search sources, chunks, BM25 rows, embeddings, summary audio cache.</td>
+                  <td>
+                    Subscriptions, acknowledgements, preferences, highlights,
+                    conversations.
+                  </td>
+                  <td>
+                    Search sources, chunks, BM25 rows, embeddings, summary audio
+                    cache.
+                  </td>
                 </tr>
               </tbody>
             </table>
-            <span class="cite">Sources: docs/architecture/data-model.md; backend/src/db/*</span>
+            <span class="cite"
+              >Sources: docs/architecture/data-model.md; backend/src/db/*</span
+            >
           </div>
         </section>
 
@@ -685,22 +736,38 @@
               </div>
               <div class="flow-step">
                 <span class="label">Canonicalize</span>
-                <span>Resolve source, create metadata, and queue content states.</span>
+                <span
+                  >Resolve source, create metadata, and queue content
+                  states.</span
+                >
               </div>
               <div class="flow-step">
                 <span class="label">Extract</span>
-                <span>Transcript or text extraction uses <code>summarize</code>, with <code>yt-dlp json3</code> fallback for timed captions.</span>
+                <span
+                  >Transcript or text extraction uses <code>summarize</code>,
+                  with <code>yt-dlp json3</code> fallback for timed
+                  captions.</span
+                >
               </div>
               <div class="flow-step">
                 <span class="label">Distill</span>
-                <span>Summaries are generated only after transcripts are ready, then evaluated by a separate model.</span>
+                <span
+                  >Summaries are generated only after transcripts are ready,
+                  then evaluated by a separate model.</span
+                >
               </div>
               <div class="flow-step">
                 <span class="label">Index</span>
-                <span>Writes mark search work pending; the search worker chunks, embeds, and updates FTS later.</span>
+                <span
+                  >Writes mark search work pending; the search worker chunks,
+                  embeds, and updates FTS later.</span
+                >
               </div>
             </div>
-            <span class="cite">Sources: docs/pipelines/content-pipeline.md; backend/src/workers/mod.rs</span>
+            <span class="cite"
+              >Sources: docs/pipelines/content-pipeline.md;
+              backend/src/workers/mod.rs</span
+            >
           </div>
         </section>
 
@@ -720,26 +787,41 @@
                 <tr>
                   <td>Summarizer</td>
                   <td><code>OLLAMA_SUMMARY_MODEL</code></td>
-                  <td>Creates and cleans content through Ollama <code>/api/generate</code>.</td>
+                  <td>
+                    Creates and cleans content through Ollama
+                    <code>/api/generate</code>.
+                  </td>
                 </tr>
                 <tr>
                   <td>Evaluator</td>
                   <td><code>SUMMARY_EVALUATOR_MODEL</code></td>
-                  <td>Must differ from the summarizer, and startup fails if they match.</td>
+                  <td>
+                    Must differ from the summarizer, and startup fails if they
+                    match.
+                  </td>
                 </tr>
                 <tr>
                   <td>Embedding</td>
                   <td><code>OLLAMA_EMBEDDING_MODEL</code></td>
-                  <td>Powers semantic search when enabled; FTS continues without it.</td>
+                  <td>
+                    Powers semantic search when enabled; FTS continues without
+                    it.
+                  </td>
                 </tr>
                 <tr>
                   <td>Chat</td>
                   <td><code>OLLAMA_DEFAULT_CHAT_MODEL</code></td>
-                  <td>Runs grounded conversations with retrieval budgets by intent.</td>
+                  <td>
+                    Runs grounded conversations with retrieval budgets by
+                    intent.
+                  </td>
                 </tr>
               </tbody>
             </table>
-            <span class="cite">Sources: docs/pipelines/ai-models.md; README.md; backend/src/main.rs</span>
+            <span class="cite"
+              >Sources: docs/pipelines/ai-models.md; README.md;
+              backend/src/main.rs</span
+            >
           </div>
         </section>
 
@@ -750,22 +832,37 @@
             <div class="flow">
               <div class="flow-step">
                 <span class="label">Keyword</span>
-                <span>libSQL FTS5 BM25 with title, section, source, channel, and timestamp metadata.</span>
+                <span
+                  >libSQL FTS5 BM25 with title, section, source, channel, and
+                  timestamp metadata.</span
+                >
               </div>
               <div class="flow-step">
                 <span class="label">Semantic</span>
-                <span>Optional S3 Vectors ANN or exact vector scan, backed by Ollama embeddings.</span>
+                <span
+                  >Optional S3 Vectors ANN or exact vector scan, backed by
+                  Ollama embeddings.</span
+                >
               </div>
               <div class="flow-step">
                 <span class="label">Fusion</span>
-                <span>Reciprocal Rank Fusion merges the legs; optional reranking can rescore top candidates.</span>
+                <span
+                  >Reciprocal Rank Fusion merges the legs; optional reranking
+                  can rescore top candidates.</span
+                >
               </div>
               <div class="flow-step">
                 <span class="label">Surface</span>
-                <span>Results group by video and keep one best match per source kind where possible.</span>
+                <span
+                  >Results group by video and keep one best match per source
+                  kind where possible.</span
+                >
               </div>
             </div>
-            <span class="cite">Sources: docs/pipelines/search-indexing.md; backend/src/services/search/*</span>
+            <span class="cite"
+              >Sources: docs/pipelines/search-indexing.md;
+              backend/src/services/search/*</span
+            >
           </div>
         </section>
 
@@ -780,7 +877,10 @@
                   passes, retrieves keyword and semantic candidates, assembles
                   context, then streams a response with sources.
                 </p>
-                <span class="cite">Sources: docs/pipelines/ai-models.md; backend/src/services/chat/*</span>
+                <span class="cite"
+                  >Sources: docs/pipelines/ai-models.md;
+                  backend/src/services/chat/*</span
+                >
               </div>
               <div class="panel subtle">
                 <h3>Intent budgets</h3>
@@ -788,7 +888,10 @@
                   <li><strong>Fact:</strong> small source budget.</li>
                   <li><strong>Comparison:</strong> wider source budget.</li>
                   <li><strong>Pattern:</strong> widest standard budget.</li>
-                  <li><strong>Deep research:</strong> raises the budget and pass count.</li>
+                  <li>
+                    <strong>Deep research:</strong> raises the budget and pass
+                    count.
+                  </li>
                 </ul>
               </div>
             </div>
@@ -802,22 +905,39 @@
             <div class="two-col">
               <div>
                 <ul>
-                  <li>Routes expose workspace, channel, queue, highlights, chat, vocabulary, login, logout, and mini reader.</li>
-                  <li><code>frontend/src/lib/api.ts</code> owns product request helpers and cache invalidation.</li>
-                  <li>Generated bindings under <code>frontend/src/lib/bindings/</code> mirror backend payloads.</li>
-                  <li>Mobile shell pieces use shared components and safe-area aware UI.</li>
+                  <li>
+                    Routes expose workspace, channel, queue, highlights, chat,
+                    vocabulary, login, logout, and mini reader.
+                  </li>
+                  <li>
+                    <code>frontend/src/lib/api.ts</code> owns product request
+                    helpers and cache invalidation.
+                  </li>
+                  <li>
+                    Generated bindings under
+                    <code>frontend/src/lib/bindings/</code> mirror backend
+                    payloads.
+                  </li>
+                  <li>
+                    Mobile shell pieces use shared components and safe-area
+                    aware UI.
+                  </li>
                 </ul>
               </div>
               <div class="panel">
                 <h3>Bootstrap pattern</h3>
                 <p>
-                  The main workspace starts with <code>/api/workspace/bootstrap</code>
-                  so channel list, selected channel, AI status, search status, and
-                  initial snapshot arrive coherently.
+                  The main workspace starts with
+                  <code>/api/workspace/bootstrap</code>
+                  so channel list, selected channel, AI status, search status,
+                  and initial snapshot arrive coherently.
                 </p>
               </div>
             </div>
-            <span class="cite">Sources: docs/architecture/frontend-and-api.md; frontend/src/routes/*; frontend/src/lib/api.ts</span>
+            <span class="cite"
+              >Sources: docs/architecture/frontend-and-api.md;
+              frontend/src/routes/*; frontend/src/lib/api.ts</span
+            >
           </div>
         </section>
 
@@ -837,7 +957,10 @@
               <span class="tag">Anonymous scoped access</span>
               <span class="tag">Rate limits</span>
             </div>
-            <span class="cite">Sources: docs/architecture/frontend-and-api.md; backend/src/security.rs; backend/src/firebase_auth.rs</span>
+            <span class="cite"
+              >Sources: docs/architecture/frontend-and-api.md;
+              backend/src/security.rs; backend/src/firebase_auth.rs</span
+            >
           </div>
         </section>
 
@@ -847,8 +970,8 @@
             <h2>The mobile direction is not a wrapper only.</h2>
             <p>
               The repo includes a Tauri v2 Android shell, browser-auth handoff,
-              native selection flows, mobile browse overlays, a mini reader route,
-              and tests aimed at mobile navigation and viewport behavior.
+              native selection flows, mobile browse overlays, a mini reader
+              route, and tests aimed at mobile navigation and viewport behavior.
             </p>
             <div class="three-col">
               <div class="panel subtle">
@@ -857,14 +980,23 @@
               </div>
               <div class="panel subtle">
                 <h3><code>/mini</code></h3>
-                <p>Focused reading route with summary strips and swipe navigation.</p>
+                <p>
+                  Focused reading route with summary strips and swipe
+                  navigation.
+                </p>
               </div>
               <div class="panel subtle">
                 <h3>E2E coverage</h3>
-                <p>Mobile selection, shell viewport, workspace tabs, and navigation tests.</p>
+                <p>
+                  Mobile selection, shell viewport, workspace tabs, and
+                  navigation tests.
+                </p>
               </div>
             </div>
-            <span class="cite">Sources: docs/operations/mobile-tauri.md; src-tauri/Cargo.toml; frontend/src/lib/components/mini/*; frontend/e2e/*</span>
+            <span class="cite"
+              >Sources: docs/operations/mobile-tauri.md; src-tauri/Cargo.toml;
+              frontend/src/lib/components/mini/*; frontend/e2e/*</span
+            >
           </div>
         </section>
 
@@ -881,20 +1013,40 @@
               </thead>
               <tbody>
                 <tr>
-                  <td><code>./start_app.sh</code> runs frontend on 3543, backend on 3544, docs on 4173, and optional Android.</td>
-                  <td>Cloud Run serves backend; Firebase Hosting serves product frontend and docs.</td>
+                  <td>
+                    <code>./start_app.sh</code> runs frontend on 3543, backend
+                    on 3544, docs on 4173, and optional Android.
+                  </td>
+                  <td>
+                    Cloud Run serves backend; Firebase Hosting serves product
+                    frontend and docs.
+                  </td>
                 </tr>
                 <tr>
-                  <td>Shared env lives under <code>~/.config/dastill/</code>; AWS credentials should live outside repo env files.</td>
-                  <td>Secret Manager holds sensitive payloads; Cloud Run env holds non-secret runtime config.</td>
+                  <td>
+                    Shared env lives under <code>~/.config/dastill/</code>; AWS
+                    credentials should live outside repo env files.
+                  </td>
+                  <td>
+                    Secret Manager holds sensitive payloads; Cloud Run env holds
+                    non-secret runtime config.
+                  </td>
                 </tr>
                 <tr>
-                  <td>Debug builds default semantic search on unless overridden.</td>
-                  <td>Release defaults semantic search off unless explicitly enabled.</td>
+                  <td>
+                    Debug builds default semantic search on unless overridden.
+                  </td>
+                  <td>
+                    Release defaults semantic search off unless explicitly
+                    enabled.
+                  </td>
                 </tr>
               </tbody>
             </table>
-            <span class="cite">Sources: docs/operations/local-development.md; docs/operations/deployment.md; AGENTS.md</span>
+            <span class="cite"
+              >Sources: docs/operations/local-development.md;
+              docs/operations/deployment.md; AGENTS.md</span
+            >
           </div>
         </section>
 
@@ -908,7 +1060,10 @@
               builds the main product frontend in maintenance posture while
               keeping the backend path available for the mini experience.
             </p>
-            <span class="cite">Sources: .github/runtime-mode.env; docs/operations/deployment.md; docs/operations/local-development.md</span>
+            <span class="cite"
+              >Sources: .github/runtime-mode.env; docs/operations/deployment.md;
+              docs/operations/local-development.md</span
+            >
           </div>
         </section>
 
@@ -931,11 +1086,17 @@
                   <li><code>bun run format:check</code></li>
                   <li><code>bun run lint</code></li>
                   <li><code>bun run check</code></li>
-                  <li><code>bun run test</code>, <code>test:e2e</code>, <code>build</code>, <code>bun audit</code></li>
+                  <li>
+                    <code>bun run test</code>, <code>test:e2e</code>,
+                    <code>build</code>, <code>bun audit</code>
+                  </li>
                 </ul>
               </div>
             </div>
-            <span class="cite">Sources: AGENTS.md; .github/workflows/validation.yml; design.md</span>
+            <span class="cite"
+              >Sources: AGENTS.md; .github/workflows/validation.yml;
+              design.md</span
+            >
           </div>
         </section>
 
@@ -956,14 +1117,23 @@
               </div>
               <div class="flow-step">
                 <span class="label">Silver</span>
-                <span>Typed, deduplicated app events in a private materialized view.</span>
+                <span
+                  >Typed, deduplicated app events in a private materialized
+                  view.</span
+                >
               </div>
               <div class="flow-step">
                 <span class="label">Gold</span>
-                <span>Dashboard-facing processing, engagement, and consumption views.</span>
+                <span
+                  >Dashboard-facing processing, engagement, and consumption
+                  views.</span
+                >
               </div>
             </div>
-            <span class="cite">Sources: databricks/AGENTS.md; databricks/databricks.yml; databricks/pipelines/*.sql</span>
+            <span class="cite"
+              >Sources: databricks/AGENTS.md; databricks/databricks.yml;
+              databricks/pipelines/*.sql</span
+            >
           </div>
         </section>
 
@@ -972,13 +1142,35 @@
             <div class="kicker label">Dangerous edges</div>
             <h2>The system has clear invariants. Break them slowly.</h2>
             <ul>
-              <li><strong>Do not inline expensive work into writes.</strong> Queue it, mark pending, let workers advance it.</li>
-              <li><strong>Do not treat browser storage as canonical.</strong> Scope every local cache by auth context.</li>
-              <li><strong>Do not store secret payloads in Terraform state or repo files.</strong> Terraform owns containers and IAM, not payloads.</li>
-              <li><strong>Do not scale backend replicas casually.</strong> In-process workers and local libSQL cache make one serving instance the current production assumption.</li>
-              <li><strong>Do not make the evaluator the summarizer.</strong> The startup guard exists to keep judgment independent.</li>
+              <li>
+                <strong>Do not inline expensive work into writes.</strong> Queue
+                it, mark pending, let workers advance it.
+              </li>
+              <li>
+                <strong>Do not treat browser storage as canonical.</strong>
+                Scope every local cache by auth context.
+              </li>
+              <li>
+                <strong
+                  >Do not store secret payloads in Terraform state or repo
+                  files.</strong
+                >
+                Terraform owns containers and IAM, not payloads.
+              </li>
+              <li>
+                <strong>Do not scale backend replicas casually.</strong>
+                In-process workers and local libSQL cache make one serving
+                instance the current production assumption.
+              </li>
+              <li>
+                <strong>Do not make the evaluator the summarizer.</strong> The
+                startup guard exists to keep judgment independent.
+              </li>
             </ul>
-            <span class="cite">Sources: AGENTS.md; docs/architecture/data-model.md; docs/operations/deployment.md; docs/pipelines/ai-models.md</span>
+            <span class="cite"
+              >Sources: AGENTS.md; docs/architecture/data-model.md;
+              docs/operations/deployment.md; docs/pipelines/ai-models.md</span
+            >
           </div>
         </section>
 
@@ -988,14 +1180,36 @@
             <h2>Read the system from outside in, then from data inward.</h2>
             <ol>
               <li><code>README.md</code> for the promise and setup shape.</li>
-              <li><code>docs/architecture/overview.md</code> for components and repo layout.</li>
-              <li><code>docs/architecture/runtime-topology.md</code> and <code>backend/src/main.rs</code> for process startup.</li>
-              <li><code>docs/architecture/data-model.md</code> for canonical, user, and derived state.</li>
-              <li><code>docs/pipelines/content-pipeline.md</code> and <code>backend/src/workers/</code> for asynchronous work.</li>
-              <li><code>docs/pipelines/search-indexing.md</code> and <code>backend/src/services/search/</code> for retrieval.</li>
-              <li><code>frontend/src/lib/api.ts</code> and <code>frontend/src/lib/components/workspace/</code> for product behavior.</li>
+              <li>
+                <code>docs/architecture/overview.md</code> for components and
+                repo layout.
+              </li>
+              <li>
+                <code>docs/architecture/runtime-topology.md</code> and
+                <code>backend/src/main.rs</code> for process startup.
+              </li>
+              <li>
+                <code>docs/architecture/data-model.md</code> for canonical,
+                user, and derived state.
+              </li>
+              <li>
+                <code>docs/pipelines/content-pipeline.md</code> and
+                <code>backend/src/workers/</code> for asynchronous work.
+              </li>
+              <li>
+                <code>docs/pipelines/search-indexing.md</code> and
+                <code>backend/src/services/search/</code> for retrieval.
+              </li>
+              <li>
+                <code>frontend/src/lib/api.ts</code> and
+                <code>frontend/src/lib/components/workspace/</code> for product
+                behavior.
+              </li>
             </ol>
-            <span class="cite">Sources: synthesized reading order from repo docs and source layout</span>
+            <span class="cite"
+              >Sources: synthesized reading order from repo docs and source
+              layout</span
+            >
           </div>
         </section>
 
@@ -1004,24 +1218,63 @@
             <div class="kicker label">Source map</div>
             <h2>Corpus covered in this deck.</h2>
             <ul class="source-list">
-              <li><code>AGENTS.md</code>, repo instructions, env strategy, verification rules.</li>
-              <li><code>design.md</code>, local visual system and frontend standards.</li>
-              <li><code>README.md</code>, product promise, setup, stack, model defaults.</li>
-              <li><code>docs/index.md</code>, docs navigation and capability overview.</li>
-              <li><code>docs/architecture/*.md</code>, system, runtime, API, data model.</li>
-              <li><code>docs/pipelines/*.md</code>, content, search, and AI behavior.</li>
-              <li><code>docs/operations/*.md</code>, local development and deployment.</li>
-              <li><code>backend/src/main.rs</code>, <code>state.rs</code>, workers, services, handlers.</li>
-              <li><code>frontend/src/routes/*</code>, <code>frontend/src/lib/api.ts</code>, components, tests.</li>
-              <li><code>src-tauri/</code>, Android shell manifests and source.</li>
-              <li><code>.github/workflows/*.yml</code>, validation and release behavior.</li>
-              <li><code>databricks/</code>, Asset Bundle, SQL pipeline, dashboard metadata.</li>
-              <li>Recent git history from <code>git log -n 12</code> for direction signals.</li>
+              <li>
+                <code>AGENTS.md</code>, repo instructions, env strategy,
+                verification rules.
+              </li>
+              <li>
+                <code>design.md</code>, local visual system and frontend
+                standards.
+              </li>
+              <li>
+                <code>README.md</code>, product promise, setup, stack, model
+                defaults.
+              </li>
+              <li>
+                <code>docs/index.md</code>, docs navigation and capability
+                overview.
+              </li>
+              <li>
+                <code>docs/architecture/*.md</code>, system, runtime, API, data
+                model.
+              </li>
+              <li>
+                <code>docs/pipelines/*.md</code>, content, search, and AI
+                behavior.
+              </li>
+              <li>
+                <code>docs/operations/*.md</code>, local development and
+                deployment.
+              </li>
+              <li>
+                <code>backend/src/main.rs</code>, <code>state.rs</code>,
+                workers, services, handlers.
+              </li>
+              <li>
+                <code>frontend/src/routes/*</code>,
+                <code>frontend/src/lib/api.ts</code>, components, tests.
+              </li>
+              <li>
+                <code>src-tauri/</code>, Android shell manifests and source.
+              </li>
+              <li>
+                <code>.github/workflows/*.yml</code>, validation and release
+                behavior.
+              </li>
+              <li>
+                <code>databricks/</code>, Asset Bundle, SQL pipeline, dashboard
+                metadata.
+              </li>
+              <li>
+                Recent git history from <code>git log -n 12</code> for direction
+                signals.
+              </li>
             </ul>
             <p class="footnote">
-              External research was not used. Confidence is high for repo shape and
-              documented behavior, medium for code paths not exhaustively traversed,
-              and low for production runtime state outside this checkout.
+              External research was not used. Confidence is high for repo shape
+              and documented behavior, medium for code paths not exhaustively
+              traversed, and low for production runtime state outside this
+              checkout.
             </p>
           </div>
         </section>
@@ -1031,23 +1284,51 @@
             <div class="kicker label">Open questions</div>
             <h2>The next pass should follow live data and failure paths.</h2>
             <ul>
-              <li>Which storage records dominate latency in a representative local startup?</li>
-              <li>Which chat intents currently miss useful context in real conversations?</li>
-              <li>Where does maintenance mode end for the main product UI, and what gates the return to live mode?</li>
-              <li>Which Databricks dashboard metrics are actively used for product decisions?</li>
-              <li>What source families beyond YouTube need the strongest ingestion hardening next?</li>
+              <li>
+                Which storage records dominate latency in a representative local
+                startup?
+              </li>
+              <li>
+                Which chat intents currently miss useful context in real
+                conversations?
+              </li>
+              <li>
+                Where does maintenance mode end for the main product UI, and
+                what gates the return to live mode?
+              </li>
+              <li>
+                Which Databricks dashboard metrics are actively used for product
+                decisions?
+              </li>
+              <li>
+                What source families beyond YouTube need the strongest ingestion
+                hardening next?
+              </li>
             </ul>
-            <span class="cite">Sources: inferences from docs/operations, docs/pipelines, backend/src/services, databricks/</span>
+            <span class="cite"
+              >Sources: inferences from docs/operations, docs/pipelines,
+              backend/src/services, databricks/</span
+            >
           </div>
         </section>
       </main>
 
       <footer class="controls" aria-label="Slide controls">
-        <button class="nav-button" type="button" id="prev" aria-label="Previous slide">
+        <button
+          class="nav-button"
+          type="button"
+          id="prev"
+          aria-label="Previous slide"
+        >
           &#8592;
         </button>
         <div class="shortcut">Use arrow keys, Space, Home, or End</div>
-        <button class="nav-button" type="button" id="next" aria-label="Next slide">
+        <button
+          class="nav-button"
+          type="button"
+          id="next"
+          aria-label="Next slide"
+        >
           &#8594;
         </button>
       </footer>

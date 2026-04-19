@@ -6,7 +6,7 @@ pageClass: overview-page
 # Documentation
 
 Keep up with your content without the bad habits.
-dAstIll tracks any source for you and provides distraction-free AI summaries so you can consciously decide on what's worth your time.
+dAstIll tracks supported sources for you and provides distraction-free AI summaries so you can decide what is worth your time.
 
 **Core capabilities:**
 
@@ -30,6 +30,7 @@ This site explains how the app works: the UI, the Rust backend, the AI and searc
 - [Runtime Topology](/architecture/runtime-topology) - active processes, startup sequence, and shared runtime state.
 - [Frontend and API](/architecture/frontend-and-api) - Svelte routes, startup flow, and handler boundaries.
 - [Data Model](/architecture/data-model) - canonical tables, derived search projection, and status fields.
+- [Mini Reader](/architecture/mini-reader) - the text-first `/mini` surface and its responsive architecture rules.
 - [Search Indexing](/pipelines/search-indexing) - indexing worker phases and retrieval modes.
 - [AI Models](/pipelines/ai-models) - model roles, fallback rules, and local versus production defaults.
 
@@ -38,7 +39,8 @@ This site explains how the app works: the UI, the Rust backend, the AI and searc
 - [Local Development](/operations/local-development) - run the frontend, backend, and docs locally with the expected ports and startup flow.
 - [Tauri Android](/operations/mobile-tauri) - local Android setup, `cargo tauri` commands, smoke tests, and APK output.
 - [Deployment and Operations](/operations/deployment) - Cloud Run services, Terraform ownership, and CI/CD flow.
-- [Content Flow](/pipelines/content-pipeline) - video ingestion, transcript extraction, summarization, evaluation, and indexing.
+- [Content Flow](/pipelines/content-pipeline) - content ingestion, extraction, summarization, evaluation, and indexing.
+- [Benchmarks](/benchmarks/) - format for dated indexing or retrieval benchmark notes.
 
 ## Security
 

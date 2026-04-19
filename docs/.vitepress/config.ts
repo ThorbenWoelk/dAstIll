@@ -17,13 +17,12 @@ export default defineConfig({
       { text: "Architecture", link: "/architecture/overview" },
       { text: "AI & Search", link: "/pipelines/ai-models" },
       { text: "Operations", link: "/operations/deployment" },
+      { text: "Security", link: "/security/" },
     ],
     sidebar: [
       {
         text: "Introduction",
-        items: [
-          { text: "Overview", link: "/" },
-        ],
+        items: [{ text: "Overview", link: "/" }],
       },
       {
         text: "Architecture",
@@ -32,6 +31,7 @@ export default defineConfig({
           { text: "Runtime Topology", link: "/architecture/runtime-topology" },
           { text: "Frontend and API", link: "/architecture/frontend-and-api" },
           { text: "Data Model", link: "/architecture/data-model" },
+          { text: "Mini Reader", link: "/architecture/mini-reader" },
         ],
       },
       {
@@ -48,6 +48,14 @@ export default defineConfig({
           { text: "Deployment", link: "/operations/deployment" },
           { text: "Local Development", link: "/operations/local-development" },
           { text: "Tauri Android", link: "/operations/mobile-tauri" },
+          { text: "Benchmarks", link: "/benchmarks/" },
+        ],
+      },
+      {
+        text: "Security",
+        items: [
+          { text: "Security Overview", link: "/security/" },
+          { text: "OWASP ASI Status", link: "/security/owasp-asi-status" },
         ],
       },
     ],
