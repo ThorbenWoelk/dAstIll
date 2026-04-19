@@ -37,8 +37,8 @@ POST {LOCAL_ASR_BASE_URL}/audio/transcriptions
 ```
 
 The Rust backend is only the ASR client. The STT model runs in a separate
-operator-owned ASR service. The recommended free model is NVIDIA Parakeet TDT
-0.6B v3 from NVIDIA's official model ecosystem, but the backend depends only on
+operator-owned ASR service. The recommended free local runtime is the maintained
+`whisper.cpp` server with the `base.en` GGML model, but the backend depends only on
 the OpenAI-compatible endpoint contract.
 
 Pending podcast episodes are visible in normal channel lists. Non-podcast rows
@@ -80,9 +80,9 @@ Tradeoffs:
 
 - Keep `VideoInfo` as watch/page metadata. Do not add source audio fields there.
 - Store podcast audio as a media asset keyed by episode/video id.
-- Keep `LOCAL_ASR_ENABLED=false` as the safe default.
-- Mount `LOCAL_ASR_API_KEY` only when ASR is enabled or protected by an
-  intentional secret setup.
+- Keep `LOCAL_ASR_ENABLED=false` as the backend code default. The release workflow may enable the
+  repo-owned Cloud Run ASR service explicitly for production.
+- Use Cloud Run IAM for the repo-owned production ASR service. Use `LOCAL_ASR_API_KEY` only for local or external bearer-token ASR services.
 - Keep podcast pending rows visible in regular channel views so users can see
   that subscription and sync worked.
 - Do not introduce low-maintenance ASR wrapper repositories as production

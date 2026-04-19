@@ -51,7 +51,9 @@ pub fn resolve_selected_video_id(
 
 fn source_matches_section(source: &ContentSource, section: LibrarySectionKind) -> bool {
     match section {
-        LibrarySectionKind::VideoChannels => source.source_kind == ContentSourceKind::YouTubeChannel,
+        LibrarySectionKind::VideoChannels => {
+            source.source_kind == ContentSourceKind::YouTubeChannel
+        }
         LibrarySectionKind::Podcasts => source.source_kind == ContentSourceKind::PodcastSeries,
         LibrarySectionKind::Publications => matches!(
             source.source_kind,

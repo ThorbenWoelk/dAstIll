@@ -147,19 +147,24 @@ Terraform, Firebase Hosting, Google Cloud Run, AWS IAM (Workload Identity Federa
    # a separate operator-owned service that implements /v1/audio/transcriptions.
    LOCAL_ASR_ENABLED=true
    LOCAL_ASR_BASE_URL=http://127.0.0.1:5092/v1
-   LOCAL_ASR_MODEL=parakeet-tdt-0.6b-v3
+   LOCAL_ASR_AUTH_MODE=api_key
+   LOCAL_ASR_MODEL=whisper-base.en
    LOCAL_ASR_API_KEY=sk-no-key-required
+   LOCAL_ASR_TIMEOUT_SECS=3600
    ```
 
    `OLLAMA_SUMMARY_MODEL` and `SUMMARY_EVALUATOR_MODEL` must be different. If they match, backend startup exits before serving requests so summary evaluation stays independent from summary generation.
    If `OLLAMA_URL` points to a remote Ollama endpoint instead of localhost, also set `OLLAMA_API_KEY`.
 
    Podcast transcription uses `LOCAL_ASR_*` only when enabled. dAstIll does not
-   bundle an STT model in the Rust backend. The recommended free model is NVIDIA
-   Parakeet TDT 0.6B v3, run through a trusted local or private
+   bundle an STT model in the Rust backend. The recommended free local runtime is the maintained
+   `whisper.cpp` server with the `base.en` GGML model, run as a trusted local or private
    OpenAI-compatible ASR server. Avoid production dependencies on random
    low-adoption wrapper repositories; treat wrappers as replaceable service
    implementations behind the `/v1/audio/transcriptions` contract.
+   With these local values, `./start_app.sh` starts `./scripts/start_local_asr.sh`
+   automatically. That script requires Homebrew `whisper-cpp` and `ffmpeg`, then
+   downloads the `ggml-base.en.bin` model into `~/.cache/dastill/asr/`.
 
    If you run the frontend separately from `start_app.sh`, keep its local values in
    `~/.config/dastill/frontend.env` and run `./scripts/link_shared_env.sh` in each

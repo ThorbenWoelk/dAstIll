@@ -9,7 +9,7 @@ use reqwest::redirect::Policy;
 use thiserror::Error;
 use tokio::sync::Semaphore;
 
-use crate::config::LocalAsrRuntimeConfig;
+use crate::config::{LocalAsrAuthMode, LocalAsrRuntimeConfig};
 use crate::services::http::build_http_client;
 use crate::services::youtube::placeholder::is_site_wide_placeholder_description;
 
@@ -327,11 +327,12 @@ impl TranscriptService {
             .part("file", part);
 
         let client = build_http_client();
-        let response = client
+        let request = client
             .post(config.transcription_url())
-            .bearer_auth(&config.api_key)
             .timeout(std::time::Duration::from_secs(config.timeout_secs))
-            .multipart(form)
+            .multipart(form);
+        let request = authorize_local_asr_request(request, config).await?;
+        let response = request
             .send()
             .await
             .map_err(|error| TranscriptError::AsrTemporarilyUnavailable(error.to_string()))?;
@@ -355,11 +356,12 @@ impl TranscriptService {
             )));
         }
 
-        let raw = response
+        let body = response
             .text()
             .await
             .map_err(|error| TranscriptError::AsrTemporarilyUnavailable(error.to_string()))?;
-        let raw = raw.trim().to_string();
+        let raw =
+            parse_asr_transcription_response(&body).unwrap_or_else(|| body.trim().to_string());
         if raw.is_empty() {
             return Err(TranscriptError::NoTranscript);
         }
@@ -752,6 +754,68 @@ fn is_retryable_asr_status(status: reqwest::StatusCode) -> bool {
         )
 }
 
+async fn authorize_local_asr_request(
+    request: reqwest::RequestBuilder,
+    config: &LocalAsrRuntimeConfig,
+) -> Result<reqwest::RequestBuilder, TranscriptError> {
+    match config.auth_mode {
+        LocalAsrAuthMode::ApiKey => Ok(request.bearer_auth(&config.api_key)),
+        LocalAsrAuthMode::GoogleIdToken => {
+            let token = fetch_google_identity_token(&config.audience_url()).await?;
+            Ok(request.bearer_auth(token))
+        }
+    }
+}
+
+async fn fetch_google_identity_token(audience: &str) -> Result<String, TranscriptError> {
+    let mut url = reqwest::Url::parse(
+        "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity",
+    )
+    .map_err(|error| {
+        TranscriptError::AsrTemporarilyUnavailable(format!("invalid metadata URL: {error}"))
+    })?;
+    url.query_pairs_mut()
+        .append_pair("audience", audience)
+        .append_pair("format", "full");
+
+    let response = build_http_client()
+        .get(url)
+        .header("Metadata-Flavor", "Google")
+        .timeout(std::time::Duration::from_secs(5))
+        .send()
+        .await
+        .map_err(|error| TranscriptError::AsrTemporarilyUnavailable(error.to_string()))?;
+
+    if !response.status().is_success() {
+        return Err(TranscriptError::AsrTemporarilyUnavailable(format!(
+            "metadata identity token returned HTTP {}",
+            response.status()
+        )));
+    }
+
+    let token = response
+        .text()
+        .await
+        .map(|token| token.trim().to_string())
+        .map_err(|error| TranscriptError::AsrTemporarilyUnavailable(error.to_string()))?;
+    if token.is_empty() {
+        return Err(TranscriptError::AsrTemporarilyUnavailable(
+            "metadata identity token response was empty".to_string(),
+        ));
+    }
+    Ok(token)
+}
+
+fn parse_asr_transcription_response(body: &str) -> Option<String> {
+    let value = serde_json::from_str::<serde_json::Value>(body).ok()?;
+    value
+        .get("text")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(ToOwned::to_owned)
+}
+
 pub(crate) fn is_public_ip(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(ip) => is_public_ipv4(ip),
@@ -987,6 +1051,17 @@ mod tests {
             reqwest::StatusCode::INTERNAL_SERVER_ERROR
         ));
         assert!(!is_retryable_asr_status(reqwest::StatusCode::BAD_REQUEST));
+    }
+
+    #[test]
+    fn local_asr_response_parser_accepts_openai_json_shape() {
+        assert_eq!(
+            super::parse_asr_transcription_response(
+                r#"{"text":" This is a local whisper test.\n"}"#
+            )
+            .as_deref(),
+            Some("This is a local whisper test.")
+        );
     }
 
     #[tokio::test]

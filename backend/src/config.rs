@@ -38,6 +38,7 @@ pub struct SecurityRuntimeConfig {
     pub allowed_origins: Vec<String>,
     pub operator_email_allowlist: Vec<String>,
     pub default_seeded_channel_id: String,
+    pub default_seeded_channel_ids: Vec<String>,
     pub baseline_rate_limit_per_minute: u32,
     pub expensive_rate_limit_per_minute: u32,
     pub anonymous_chat_quota: u32,
@@ -45,6 +46,26 @@ pub struct SecurityRuntimeConfig {
 
 const LOCAL_DEV_FIREBASE_PROJECT_ID: &str = "demo-dastill";
 const LOCAL_DEV_DEFAULT_SEEDED_CHANNEL_ID: &str = "UCbRP3c757lWg9M-U7TyEkXA";
+pub const DEFAULT_HARD_FORK_FEED_URL: &str = "https://feeds.simplecast.com/6HKOhNgS";
+
+fn default_seeded_channel_ids() -> Vec<String> {
+    vec![
+        LOCAL_DEV_DEFAULT_SEEDED_CHANNEL_ID.to_string(),
+        crate::services::podcast_feed::podcast_source_id_for_feed_url(DEFAULT_HARD_FORK_FEED_URL),
+    ]
+}
+
+fn configured_seeded_channel_ids() -> Vec<String> {
+    if let Some(ids) = optional_csv_env("DEFAULT_SEEDED_CHANNEL_IDS").filter(|ids| !ids.is_empty())
+    {
+        return ids;
+    }
+
+    optional_env("DEFAULT_SEEDED_CHANNEL_ID")
+        .filter(|id| !id.trim().is_empty())
+        .map(|id| vec![id])
+        .unwrap_or_else(default_seeded_channel_ids)
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DatabricksRuntimeConfig {
@@ -68,9 +89,16 @@ pub struct PollyTtsRuntimeConfig {
 pub struct LocalAsrRuntimeConfig {
     pub base_url: String,
     pub api_key: String,
+    pub auth_mode: LocalAsrAuthMode,
     pub model: String,
     pub max_audio_bytes: u64,
     pub timeout_secs: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LocalAsrAuthMode {
+    ApiKey,
+    GoogleIdToken,
 }
 
 impl OllamaRuntimeConfig {
@@ -142,6 +170,11 @@ impl ChatRuntimeConfig {
 
 impl SecurityRuntimeConfig {
     pub fn from_env() -> Result<Self, String> {
+        let default_seeded_channel_ids = configured_seeded_channel_ids();
+        let default_seeded_channel_id = default_seeded_channel_ids
+            .first()
+            .cloned()
+            .unwrap_or_else(|| LOCAL_DEV_DEFAULT_SEEDED_CHANNEL_ID.to_string());
         Ok(Self {
             proxy_token: required_env_with_local_default(
                 "BACKEND_PROXY_TOKEN",
@@ -162,8 +195,8 @@ impl SecurityRuntimeConfig {
                 .collect(),
             // Release builds do not use `cfg!(debug_assertions)`; use the same default as local dev
             // when unset so Cloud Run and Docker do not require a duplicate env var.
-            default_seeded_channel_id: optional_env("DEFAULT_SEEDED_CHANNEL_ID")
-                .unwrap_or_else(|| LOCAL_DEV_DEFAULT_SEEDED_CHANNEL_ID.to_string()),
+            default_seeded_channel_id,
+            default_seeded_channel_ids,
             // Baseline applies to almost all API routes; SPAs with polling and parallel loads
             // need a generous default (120/min was routinely exceeded by a single user).
             baseline_rate_limit_per_minute: optional_u32_env("BASELINE_RATE_LIMIT_PER_MINUTE")
@@ -234,11 +267,11 @@ impl LocalAsrRuntimeConfig {
             base_url: base_url.unwrap_or_else(|| "http://127.0.0.1:5092/v1".to_string()),
             api_key: optional_env("LOCAL_ASR_API_KEY")
                 .unwrap_or_else(|| "sk-no-key-required".to_string()),
-            model: optional_env("LOCAL_ASR_MODEL")
-                .unwrap_or_else(|| "parakeet-tdt-0.6b-v3".to_string()),
+            auth_mode: LocalAsrAuthMode::from_env_value(optional_env("LOCAL_ASR_AUTH_MODE")),
+            model: optional_env("LOCAL_ASR_MODEL").unwrap_or_else(|| "whisper-base.en".to_string()),
             max_audio_bytes: optional_u64_env("LOCAL_ASR_MAX_AUDIO_BYTES")
                 .unwrap_or(250 * 1024 * 1024),
-            timeout_secs: optional_u64_env("LOCAL_ASR_TIMEOUT_SECS").unwrap_or(30 * 60),
+            timeout_secs: optional_u64_env("LOCAL_ASR_TIMEOUT_SECS").unwrap_or(60 * 60),
         })
     }
 
@@ -247,6 +280,23 @@ impl LocalAsrRuntimeConfig {
             "{}/audio/transcriptions",
             self.base_url.trim_end_matches('/')
         )
+    }
+
+    pub fn audience_url(&self) -> String {
+        self.base_url
+            .trim_end_matches('/')
+            .strip_suffix("/v1")
+            .unwrap_or_else(|| self.base_url.trim_end_matches('/'))
+            .to_string()
+    }
+}
+
+impl LocalAsrAuthMode {
+    fn from_env_value(value: Option<String>) -> Self {
+        match value.as_deref().map(str::trim) {
+            Some("google_id_token") => Self::GoogleIdToken,
+            _ => Self::ApiKey,
+        }
     }
 }
 
@@ -350,8 +400,8 @@ mod tests {
     use std::sync::{Mutex, OnceLock};
 
     use super::{
-        ChatRuntimeConfig, DatabricksRuntimeConfig, LocalAsrRuntimeConfig, OllamaRuntimeConfig,
-        SearchRuntimeConfig, SecurityRuntimeConfig,
+        ChatRuntimeConfig, DatabricksRuntimeConfig, LocalAsrAuthMode, LocalAsrRuntimeConfig,
+        OllamaRuntimeConfig, SearchRuntimeConfig, SecurityRuntimeConfig,
     };
 
     static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -374,6 +424,7 @@ mod tests {
         "GOOGLE_CLOUD_PROJECT",
         "OPERATOR_EMAIL_ALLOWLIST",
         "DEFAULT_SEEDED_CHANNEL_ID",
+        "DEFAULT_SEEDED_CHANNEL_IDS",
         "BASELINE_RATE_LIMIT_PER_MINUTE",
         "EXPENSIVE_RATE_LIMIT_PER_MINUTE",
         "ANONYMOUS_CHAT_QUOTA",
@@ -390,6 +441,7 @@ mod tests {
         "LOCAL_ASR_ENABLED",
         "LOCAL_ASR_BASE_URL",
         "LOCAL_ASR_API_KEY",
+        "LOCAL_ASR_AUTH_MODE",
         "LOCAL_ASR_MODEL",
         "LOCAL_ASR_MAX_AUDIO_BYTES",
         "LOCAL_ASR_TIMEOUT_SECS",
@@ -411,7 +463,7 @@ mod tests {
     }
 
     #[test]
-    fn local_asr_from_env_defaults_to_parakeet_endpoint_when_enabled() {
+    fn local_asr_from_env_defaults_to_whisper_endpoint_when_enabled() {
         let _guard = ENV_LOCK
             .get_or_init(|| Mutex::new(()))
             .lock()
@@ -426,11 +478,34 @@ mod tests {
         let config = LocalAsrRuntimeConfig::from_env().expect("local ASR should be enabled");
 
         assert_eq!(config.base_url, "http://127.0.0.1:5092/v1");
-        assert_eq!(config.model, "parakeet-tdt-0.6b-v3");
+        assert_eq!(config.auth_mode, LocalAsrAuthMode::ApiKey);
+        assert_eq!(config.model, "whisper-base.en");
         assert_eq!(
             config.transcription_url(),
             "http://127.0.0.1:5092/v1/audio/transcriptions"
         );
+        assert_eq!(config.audience_url(), "http://127.0.0.1:5092");
+    }
+
+    #[test]
+    fn local_asr_from_env_supports_google_identity_auth() {
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+
+        let _reset = EnvReset::capture(LOCAL_ASR_ENV_KEYS);
+        for key in LOCAL_ASR_ENV_KEYS {
+            remove_env(key);
+        }
+        set_env("LOCAL_ASR_ENABLED", "true");
+        set_env("LOCAL_ASR_AUTH_MODE", "google_id_token");
+        set_env("LOCAL_ASR_BASE_URL", "https://asr.example.run.app/v1");
+
+        let config = LocalAsrRuntimeConfig::from_env().expect("local ASR should be enabled");
+
+        assert_eq!(config.auth_mode, LocalAsrAuthMode::GoogleIdToken);
+        assert_eq!(config.audience_url(), "https://asr.example.run.app");
     }
     #[test]
     fn from_env_requires_summary_model() {
@@ -561,6 +636,7 @@ mod tests {
         remove_env("GOOGLE_CLOUD_PROJECT");
         remove_env("OPERATOR_EMAIL_ALLOWLIST");
         remove_env("DEFAULT_SEEDED_CHANNEL_ID");
+        remove_env("DEFAULT_SEEDED_CHANNEL_IDS");
         remove_env("BASELINE_RATE_LIMIT_PER_MINUTE");
         remove_env("EXPENSIVE_RATE_LIMIT_PER_MINUTE");
 
@@ -568,6 +644,13 @@ mod tests {
         assert_eq!(config.proxy_token, "local-dev-backend-proxy-token");
         assert_eq!(config.firebase_project_id, "demo-dastill");
         assert_eq!(config.default_seeded_channel_id, "UCbRP3c757lWg9M-U7TyEkXA");
+        assert_eq!(
+            config.default_seeded_channel_ids,
+            vec![
+                "UCbRP3c757lWg9M-U7TyEkXA".to_string(),
+                "podcast:rss:https-feeds-simplecast-com-6hkohngs".to_string()
+            ]
+        );
         assert_eq!(config.baseline_rate_limit_per_minute, 600);
         assert_eq!(config.expensive_rate_limit_per_minute, 120);
         assert_eq!(config.anonymous_chat_quota, 30);
@@ -606,6 +689,10 @@ mod tests {
         assert_eq!(config.firebase_project_id, "prod-project");
         assert_eq!(config.default_seeded_channel_id, "seeded-channel-123");
         assert_eq!(
+            config.default_seeded_channel_ids,
+            vec!["seeded-channel-123".to_string()]
+        );
+        assert_eq!(
             config.allowed_origins,
             vec![
                 "https://app.example.com".to_string(),
@@ -622,6 +709,33 @@ mod tests {
         assert_eq!(config.baseline_rate_limit_per_minute, 90);
         assert_eq!(config.expensive_rate_limit_per_minute, 7);
         assert_eq!(config.anonymous_chat_quota, 12);
+    }
+
+    #[test]
+    fn security_from_env_supports_multiple_seeded_channels() {
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+
+        let _reset = EnvReset::capture(SECURITY_ENV_KEYS);
+        set_env("BACKEND_PROXY_TOKEN", "proxy-secret");
+        set_env(
+            "DEFAULT_SEEDED_CHANNEL_IDS",
+            "youtube-seed,podcast:rss:podcast-seed",
+        );
+        remove_env("DEFAULT_SEEDED_CHANNEL_ID");
+
+        let config = SecurityRuntimeConfig::from_env().expect("security config");
+
+        assert_eq!(config.default_seeded_channel_id, "youtube-seed");
+        assert_eq!(
+            config.default_seeded_channel_ids,
+            vec![
+                "youtube-seed".to_string(),
+                "podcast:rss:podcast-seed".to_string()
+            ]
+        );
     }
 
     #[test]

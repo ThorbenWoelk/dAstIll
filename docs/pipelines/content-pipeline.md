@@ -143,9 +143,9 @@ Podcast RSS show notes are not transcripts. During podcast feed sync, dAstIll st
 
 If a publisher transcript reference exists, the backend fetches it through the same public-media URL policy used for audio. Supported publisher formats are plain text, VTT, SRT, Podcasting 2.0 JSON segments, and HTML.
 
-When no publisher transcript exists, podcast transcription uses a separate operator-owned ASR service. The Rust backend is only the client. It downloads the public audio enclosure through a pinned, public-address-only media fetcher, sends the audio to `LOCAL_ASR_BASE_URL/v1/audio/transcriptions` as multipart form data, and stores the returned text as the canonical transcript.
+When no publisher transcript exists, podcast transcription uses a separate operator-owned ASR service. The Rust backend is only the client. It downloads the public audio enclosure through a pinned, public-address-only media fetcher, sends the audio to `LOCAL_ASR_BASE_URL/v1/audio/transcriptions` as multipart form data, and stores the returned `text` field or plain response body as the canonical transcript.
 
-The STT model runs outside the backend process. The recommended free local/prod model is NVIDIA Parakeet TDT 0.6B v3, served by a trusted OpenAI-compatible ASR implementation. Third-party wrapper repositories are implementation details and should not be treated as product dependencies unless they have enough maintenance signal for production.
+The STT model runs outside the backend process. The recommended free local/prod runtime is the maintained `whisper.cpp` server with the `base.en` GGML model, served through a trusted OpenAI-compatible ASR implementation. Third-party wrapper repositories are implementation details and should not be treated as product dependencies unless they have enough maintenance signal for production.
 
 On success:
 

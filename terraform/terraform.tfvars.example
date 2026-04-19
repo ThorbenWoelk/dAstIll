@@ -14,6 +14,22 @@ aws_region          = "eu-central-1"
 # billing_export_dataset_id = "billing_export"
 # billing_export_dataset_location = "EU"
 
+# Optional: monthly Cloud Billing alert budgets.
+# Budgets are alerts only; they do not cap or stop spend.
+# The primary project_id is always included. Add other dAstIll projects with
+# Cloud Run deployments here so each project gets both all-spend and Cloud Run
+# service-scoped budgets.
+# billing_budgets_enabled = true
+# billing_budget_project_ids = [
+#   "dastill-staging",
+# ]
+# billing_budget_billing_account_id = "000000-000000-000000"
+# billing_budget_project_billing_account_ids = {
+#   "dastill-staging" = "111111-111111-111111"
+# }
+# billing_budget_app_monthly_amount_units = "50"
+# billing_budget_cloud_run_monthly_amount_units = "10"
+
 # github_wif_pool_id = "github-pool-v1"
 # github_wif_provider_id = "github-provider-v1"
 # github_repository = "ThorbenWoelk/dAstIll"

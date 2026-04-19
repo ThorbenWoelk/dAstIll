@@ -54,6 +54,51 @@ resource "google_cloud_run_v2_service" "backend" {
   }
 }
 
+resource "google_cloud_run_v2_service" "asr" {
+  provider            = google-beta
+  name                = "${var.app_name}-asr"
+  project             = var.project_id
+  location            = var.region
+  ingress             = "INGRESS_TRAFFIC_ALL"
+  deletion_protection = false
+
+  scaling {
+    min_instance_count    = local.cloud_run_default_scaling.min_instance_count
+    manual_instance_count = local.cloud_run_default_scaling.manual_instance_count
+  }
+
+  depends_on = [time_sleep.after_backend_secret_accessor_bindings]
+
+  template {
+    service_account = google_service_account.backend_sa.email
+
+    scaling {
+      max_instance_count = 1
+    }
+
+    containers {
+      image = "us-docker.pkg.dev/cloudrun/container/hello"
+
+      ports {
+        container_port = 5092
+      }
+
+      resources {
+        cpu_idle          = true
+        startup_cpu_boost = true
+        limits = {
+          cpu    = "2000m"
+          memory = "2048Mi"
+        }
+      }
+    }
+  }
+
+  lifecycle {
+    ignore_changes = [template, client, client_version]
+  }
+}
+
 resource "google_cloud_run_v2_service_iam_member" "backend_public" {
   project  = var.project_id
   location = google_cloud_run_v2_service.backend.location
@@ -62,6 +107,18 @@ resource "google_cloud_run_v2_service_iam_member" "backend_public" {
   member   = "allUsers"
 }
 
+resource "google_cloud_run_v2_service_iam_member" "asr_backend_invoker" {
+  project  = var.project_id
+  location = google_cloud_run_v2_service.asr.location
+  name     = google_cloud_run_v2_service.asr.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.backend_sa.email}"
+}
+
 output "backend_url" {
   value = google_cloud_run_v2_service.backend.uri
+}
+
+output "asr_url" {
+  value = google_cloud_run_v2_service.asr.uri
 }

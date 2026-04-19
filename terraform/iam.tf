@@ -20,7 +20,6 @@ locals {
     logfire_token       = google_secret_manager_secret.logfire_token.id
     backend_proxy_token = google_secret_manager_secret.backend_proxy_token.id
     databricks_token    = google_secret_manager_secret.databricks_token.id
-    local_asr_api_key   = google_secret_manager_secret.local_asr_api_key.id
   }
   frontend_build_secret_ids = {
     firebase_web_api_key = google_secret_manager_secret.firebase_web_api_key.id

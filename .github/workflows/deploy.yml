@@ -24,7 +24,7 @@ env:
   DEPLOY_SHA: ${{ github.sha }}
   DOCS_URL_OVERRIDE: ${{ vars.DOCS_URL }}
   FRONTEND_URL_OVERRIDE: ${{ vars.FRONTEND_URL }}
-  LOCAL_ASR_ENABLED: ${{ vars.LOCAL_ASR_ENABLED }}
+  LOCAL_ASR_ENABLED: ${{ vars.LOCAL_ASR_ENABLED || 'true' }}
   LOCAL_ASR_BASE_URL: ${{ vars.LOCAL_ASR_BASE_URL }}
   LOCAL_ASR_MODEL: ${{ vars.LOCAL_ASR_MODEL }}
   LOCAL_ASR_MAX_AUDIO_BYTES: ${{ vars.LOCAL_ASR_MAX_AUDIO_BYTES }}
@@ -250,6 +250,14 @@ jobs:
       - name: Configure Docker
         run: gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
 
+      - name: Build and Push ASR Image
+        if: env.LOCAL_ASR_ENABLED == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./asr
+          push: true
+          tags: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_ID }}/asr:${{ env.IMAGE_TAG }}
+
       - name: Build and Push Backend Image
         uses: docker/build-push-action@v6
         with:
@@ -268,15 +276,22 @@ jobs:
             echo "LOGFIRE_TOKEN=${APP_NAME}-logfire-token:latest"
             echo "BACKEND_PROXY_TOKEN=${APP_NAME}-backend-proxy-token:latest"
             echo "DATABRICKS_TOKEN=${APP_NAME}-databricks-token:latest"
-            if [ "${LOCAL_ASR_ENABLED:-false}" = "true" ]; then
-              echo "LOCAL_ASR_API_KEY=${APP_NAME}-local-asr-api-key:latest"
-            fi
           } > /tmp/backend_cr_secrets.txt
           {
             echo 'secrets<<CR_SECRETS_EOF'
             cat /tmp/backend_cr_secrets.txt
             echo 'CR_SECRETS_EOF'
           } >> "$GITHUB_OUTPUT"
+
+      - name: Deploy ASR to Cloud Run
+        if: env.LOCAL_ASR_ENABLED == 'true'
+        id: deploy_asr
+        uses: google-github-actions/deploy-cloudrun@v3.0.0
+        with:
+          service: ${{ format('{0}-asr', env.APP_NAME) }}
+          region: ${{ env.REGION }}
+          image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_ID }}/asr:${{ env.IMAGE_TAG }}
+          flags: "--service-account=${{ env.APP_NAME }}-backend-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com --memory=2Gi --cpu=2 --concurrency=1 --max-instances=1 --timeout=3600 --port=5092 --startup-probe=tcpSocket.port=5092,failureThreshold=18,periodSeconds=10"
 
       - name: Prepare backend Cloud Run env vars
         run: |
@@ -309,7 +324,7 @@ jobs:
           add_env_var S3_DATA_BUCKET "dastill-data-eu-central-1"
           add_env_var S3_VECTOR_BUCKET "dastill-vectors"
           add_env_var S3_VECTOR_INDEX "search-chunks"
-          add_env_var DEFAULT_SEEDED_CHANNEL_ID "UCbRP3c757lWg9M-U7TyEkXA"
+          add_env_var DEFAULT_SEEDED_CHANNEL_IDS "UCbRP3c757lWg9M-U7TyEkXA,podcast:rss:https-feeds-simplecast-com-6hkohngs"
           add_env_var SEARCH_SEMANTIC_ENABLED "true"
           add_env_var OLLAMA_URL "https://ollama.com"
           add_env_var OLLAMA_SUMMARY_MODEL "glm-5.1:cloud"
@@ -321,10 +336,15 @@ jobs:
           add_env_var DATABRICKS_CATALOG "workspace"
           add_env_var DATABRICKS_SCHEMA "analytics"
           add_env_var LOCAL_ASR_ENABLED "${LOCAL_ASR_ENABLED:-false}"
-          add_env_var LOCAL_ASR_BASE_URL "${LOCAL_ASR_BASE_URL:-}"
-          add_env_var LOCAL_ASR_MODEL "${LOCAL_ASR_MODEL:-parakeet-tdt-0.6b-v3}"
+          if [ "${LOCAL_ASR_ENABLED:-false}" = "true" ]; then
+            add_env_var LOCAL_ASR_BASE_URL "${{ steps.deploy_asr.outputs.url }}/v1"
+            add_env_var LOCAL_ASR_AUTH_MODE "google_id_token"
+          else
+            add_env_var LOCAL_ASR_BASE_URL "${LOCAL_ASR_BASE_URL:-}"
+          fi
+          add_env_var LOCAL_ASR_MODEL "${LOCAL_ASR_MODEL:-whisper-base.en}"
           add_env_var LOCAL_ASR_MAX_AUDIO_BYTES "${LOCAL_ASR_MAX_AUDIO_BYTES:-262144000}"
-          add_env_var LOCAL_ASR_TIMEOUT_SECS "${LOCAL_ASR_TIMEOUT_SECS:-1800}"
+          add_env_var LOCAL_ASR_TIMEOUT_SECS "${LOCAL_ASR_TIMEOUT_SECS:-3600}"
           add_env_var BACKEND_CORS_ALLOWED_ORIGINS "$allowed_origins"
           add_env_var GCP_PROJECT_ID "$PROJECT_ID"
           printf '%s\n' 'SUMMARIZE_PATH: "/usr/local/bin/summarize"' >> "$env_file"
@@ -339,7 +359,7 @@ jobs:
           service: ${{ format('{0}-backend', env.APP_NAME) }}
           region: ${{ env.REGION }}
           image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_ID }}/backend:${{ env.IMAGE_TAG }}
-          flags: "--service-account=${{ env.APP_NAME }}-backend-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com --memory=1Gi --env-vars-file=/tmp/backend_cr_env.txt --startup-probe=tcpSocket.port=3001,failureThreshold=15,periodSeconds=10"
+          flags: "--service-account=${{ env.APP_NAME }}-backend-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com --memory=1Gi --timeout=3600 --env-vars-file=/tmp/backend_cr_env.txt --startup-probe=tcpSocket.port=3001,failureThreshold=15,periodSeconds=10"
           secrets: "${{ steps.backend_secrets.outputs.secrets }}"
           secrets_update_strategy: overwrite
 

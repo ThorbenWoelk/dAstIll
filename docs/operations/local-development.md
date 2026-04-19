@@ -225,17 +225,18 @@ Important variables:
 | `SEARCH_RERANK_MODEL`               | Optional cross-encoder reranker model name (Ollama `/api/rerank`)                            |
 | `SEARCH_HYDE_MODEL`                 | Optional HyDE generation model name (Ollama `/api/generate`, short queries only)             |
 | `CHAT_MULTI_PASS_ENABLED`           | Enable multi-pass retrieval for chat (default: `true`)                                       |
-| `DEFAULT_SEEDED_CHANNEL_ID`         | Fallback channel ID for empty workspace (default: set in config)                             |
+| `DEFAULT_SEEDED_CHANNEL_IDS`        | Comma-separated fallback channel IDs for empty/anonymous workspaces                          |
 | `BASELINE_RATE_LIMIT_PER_MINUTE`    | Baseline API rate limit per client (default: `600`)                                          |
 | `EXPENSIVE_RATE_LIMIT_PER_MINUTE`   | Rate limit for AI/chat/search mutations (default: `120`)                                     |
 | `ANONYMOUS_CHAT_QUOTA`              | Message quota for anonymous chat users (default: `30`)                                       |
 | `SUMMARIZE_PATH`                    | Path to the transcript extraction CLI                                                        |
 | `LOCAL_ASR_ENABLED`                 | Enable local/free podcast ASR for RSS audio enclosures                                       |
-| `LOCAL_ASR_BASE_URL`                | OpenAI-compatible local ASR base URL for an operator-owned local/prod service                  |
+| `LOCAL_ASR_BASE_URL`                | OpenAI-compatible local ASR base URL for an operator-owned local/prod service                 |
+| `LOCAL_ASR_AUTH_MODE`               | ASR auth mode: `api_key` locally, `google_id_token` for the repo-owned Cloud Run service     |
 | `LOCAL_ASR_API_KEY`                 | API key for the local ASR endpoint; local-only servers commonly use `sk-no-key-required`     |
-| `LOCAL_ASR_MODEL`                   | Local ASR model name; recommended default is `parakeet-tdt-0.6b-v3`                          |
+| `LOCAL_ASR_MODEL`                   | Local ASR model name; recommended default is `whisper-base.en`                               |
 | `LOCAL_ASR_MAX_AUDIO_BYTES`         | Maximum podcast audio size accepted for local ASR                                            |
-| `LOCAL_ASR_TIMEOUT_SECS`            | Local ASR request timeout for long podcast episodes                                          |
+| `LOCAL_ASR_TIMEOUT_SECS`            | Local ASR request timeout for long podcast episodes; default is `3600`                       |
 | `LOGFIRE_TOKEN`                     | Optional Logfire token for backend tracing / AI pipeline observability                       |
 | `DATABRICKS_HOST`                   | Databricks workspace URL for analytics ingestion                                             |
 | `DATABRICKS_TOKEN`                  | Databricks personal access token                                                             |
@@ -247,17 +248,21 @@ Important variables:
 | `POLLY_TTS_SAMPLE_RATE`             | Polly sample rate in Hz (default: `16000`)                                                   |
 
 For local podcast transcription, run an operator-owned OpenAI-compatible ASR server beside the
-backend and point `LOCAL_ASR_BASE_URL` at it. The recommended free model for April 2026 is NVIDIA
-Parakeet TDT 0.6B v3 from NVIDIA's official model ecosystem. Treat third-party wrapper repositories
+backend and point `LOCAL_ASR_BASE_URL` at it. The recommended free local runtime is the maintained
+`whisper.cpp` server with the `base.en` GGML model. Treat third-party wrapper repositories
 as local experiments only unless they have enough maintenance signal for production. Keep the ASR
 server separate from the Rust backend so CPU/GPU load, model files, and failures do not take down
 the main app process.
 
-The ASR process is where the STT model runs. The Rust backend does not load Parakeet, Whisper, or
+The ASR process is where the STT model runs. The Rust backend does not load `whisper.cpp`, Whisper, or
 any other speech model. It calls `POST {LOCAL_ASR_BASE_URL}/audio/transcriptions` with multipart
-audio and expects plain transcript text back. A local-only ASR server can use
-`LOCAL_ASR_API_KEY=sk-no-key-required`; production or network-reachable services should use a real
-token or a private network boundary.
+audio and accepts OpenAI-style JSON such as `{"text":"..."}` or a plain text body. A local-only ASR server can ignore bearer auth or use `LOCAL_ASR_API_KEY=sk-no-key-required`; the repo-owned production service uses Cloud Run IAM instead of a shared static token.
+
+When `LOCAL_ASR_ENABLED=true` and `LOCAL_ASR_BASE_URL` points at `localhost` or `127.0.0.1`,
+`./start_app.sh` starts `./scripts/start_local_asr.sh --detach` before the backend. The helper
+expects Homebrew `whisper-cpp` and `ffmpeg`, downloads `ggml-base.en.bin` into
+`~/.cache/dastill/asr/`, and serves `http://127.0.0.1:5092/v1/audio/transcriptions`.
+Stop it with `./end_app.sh` together with the rest of the local stack.
 
 Local startup needs valid AWS credentials for S3 and S3 Vectors access. It does not require
 additional GCP service-account credentials for backend storage. `GCP_PROJECT_ID` may still be needed for Firebase Auth, Hosting-aligned

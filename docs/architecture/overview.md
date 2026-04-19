@@ -98,8 +98,8 @@ dAstIll is a source monitoring tool that is still migrating off an original YouT
 - Runs outside the Rust backend process
 - Implements an OpenAI-compatible `POST /v1/audio/transcriptions` endpoint
 - Receives podcast audio from the backend when `LOCAL_ASR_ENABLED=true`
-- Should run in a private local/prod network or require `LOCAL_ASR_API_KEY`
-- Recommended free model: NVIDIA Parakeet TDT 0.6B v3 from NVIDIA's official model ecosystem
+- Production repo-owned service is protected by Cloud Run IAM; local or external services may use `LOCAL_ASR_API_KEY`
+- Recommended free runtime: maintained `whisper.cpp` server with the `base.en` GGML model
 
 The backend does not bundle or load the STT model. It validates and downloads public podcast enclosures, enforces byte and redirect limits, then posts multipart audio to the configured ASR service. This keeps model files, CPU/GPU pressure, and ASR failures out of the main API container.
 

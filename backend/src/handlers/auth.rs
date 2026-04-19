@@ -361,6 +361,7 @@ mod tests {
             allowed_origins: vec![],
             operator_email_allowlist: vec![],
             default_seeded_channel_id: "seeded-channel".to_string(),
+            default_seeded_channel_ids: vec!["seeded-channel".to_string()],
             baseline_rate_limit_per_minute: 600,
             expensive_rate_limit_per_minute: 120,
             anonymous_chat_quota: 30,
