@@ -24,6 +24,7 @@ env:
   TERRAFORM_STATE_BUCKET: ${{ vars.TERRAFORM_STATE_BUCKET }}
   LOCAL_ASR_ENABLED: ${{ vars.LOCAL_ASR_ENABLED }}
   TF_VAR_billing_export_enabled: ${{ vars.TF_VAR_billing_export_enabled }}
+  TF_VAR_billing_budgets_enabled: ${{ vars.TF_VAR_billing_budgets_enabled }}
   TF_VAR_billing_budget_billing_account_id: ${{ vars.GCP_BILLING_ACCOUNT_ID }}
   TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
