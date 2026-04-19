@@ -22,7 +22,7 @@
     videoTypeFilter: VideoTypeFilter;
     acknowledgedFilter: AcknowledgedFilter;
     disabled?: boolean;
-    /** "sm" = desktop sidebar (h-5 w-5), "md" = mobile top-nav (h-9 w-9) */
+    /** "sm" = desktop sidebar (h-8 w-8), "md" = mobile top-nav (h-9 w-9) */
     size?: "sm" | "md";
     onSelectVideoType: (value: VideoTypeFilter) => void | Promise<void>;
     onSelectAcknowledged: (value: AcknowledgedFilter) => void | Promise<void>;
@@ -114,7 +114,15 @@
     type="button"
     id="video-filter-button"
     bind:this={videoFilterButtonEl}
-    class={`relative inline-flex items-center justify-center rounded-full transition-colors ${size === "md" ? "h-9 w-9" : "h-5 w-5"} ${activeFilterCount > 0 || filterMenuOpen ? "bg-[var(--foreground)] text-[var(--background)]" : "text-[var(--soft-foreground)] opacity-55 hover:bg-[var(--accent-wash)] hover:opacity-100"}`}
+    class={`relative inline-flex items-center justify-center transition-colors ${size === "md" ? "h-9 w-9 rounded-full" : "h-8 w-8 rounded-md"} ${
+      activeFilterCount > 0 || filterMenuOpen
+        ? size === "md"
+          ? "bg-[var(--foreground)] text-[var(--background)]"
+          : "bg-[var(--surface-strong)] text-[var(--foreground)]"
+        : size === "md"
+          ? "text-[var(--soft-foreground)] opacity-55 hover:bg-[var(--accent-wash)] hover:opacity-100"
+          : "text-[var(--soft-foreground)] opacity-70 hover:bg-[var(--surface-strong)] hover:text-[var(--foreground)] hover:opacity-100"
+    }`}
     onclick={() => {
       filterMenuOpen = !filterMenuOpen;
     }}
@@ -124,7 +132,7 @@
     aria-expanded={filterMenuOpen}
   >
     <FilterIcon
-      size={size === "md" ? 18 : 10}
+      size={size === "md" ? 18 : 14}
       strokeWidth={size === "md" ? 2.2 : 2.5}
     />
     {#if activeFilterCount > 0}

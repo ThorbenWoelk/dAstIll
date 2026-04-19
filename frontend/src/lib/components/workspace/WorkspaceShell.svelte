@@ -352,7 +352,8 @@
   }
 
   .resize-handle {
-    width: 4px;
+    width: 12px;
+    margin-inline: -6px;
     flex-shrink: 0;
     cursor: col-resize;
     position: relative;
@@ -362,9 +363,11 @@
   .resize-handle::after {
     content: "";
     position: absolute;
-    inset: 0;
+    top: 0;
+    bottom: 0;
+    left: 50%;
     width: 2px;
-    margin: 0 auto;
+    transform: translateX(-50%);
     border-radius: 1px;
     background: transparent;
     transition: background 150ms ease;

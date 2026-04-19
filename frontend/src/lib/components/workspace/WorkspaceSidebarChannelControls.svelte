@@ -76,25 +76,25 @@
 
 <div
   id="tour-library-tools"
-  class="flex h-14 items-center justify-between gap-2 px-4 pt-2"
+  class="flex h-14 items-center justify-between gap-3 border-b border-[var(--border-soft)] px-4"
 >
   <span
-    class="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--soft-foreground)] opacity-55"
+    class="min-w-0 truncate text-[14px] font-semibold tracking-tight text-[var(--foreground)]"
   >
     Sources
   </span>
-  <div class="flex items-center gap-1">
+  <div class="flex shrink-0 items-center gap-0.5">
     {#if !readOnly}
       <button
         type="button"
         id="tour-add-channel"
-        class={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${channelInputOpen ? "bg-[var(--accent-wash)] text-[var(--accent)]" : "text-[var(--soft-foreground)] opacity-55 hover:bg-[var(--accent-wash)] hover:opacity-100"}`}
+        class={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors ${channelInputOpen ? "bg-[var(--surface-strong)] text-[var(--foreground)]" : "text-[var(--soft-foreground)] opacity-70 hover:bg-[var(--surface-strong)] hover:text-[var(--foreground)] hover:opacity-100"}`}
         onclick={() => void onToggleChannelInput()}
         aria-label={channelInputOpen ? "Close add source" : "Add source"}
       >
         <svg
-          width="12"
-          height="12"
+          width="14"
+          height="14"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -110,13 +110,13 @@
     {/if}
     <button
       type="button"
-      class={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${channelSearchOpen ? "bg-[var(--accent-wash)] text-[var(--accent)]" : "text-[var(--soft-foreground)] opacity-55 hover:bg-[var(--accent-wash)] hover:opacity-100"}`}
+      class={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors ${channelSearchOpen ? "bg-[var(--surface-strong)] text-[var(--foreground)]" : "text-[var(--soft-foreground)] opacity-70 hover:bg-[var(--surface-strong)] hover:text-[var(--foreground)] hover:opacity-100"}`}
       onclick={onToggleSearch}
       aria-label={channelSearchOpen ? "Close search" : "Search sources"}
     >
       <svg
-        width="12"
-        height="12"
+        width="14"
+        height="14"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
@@ -130,7 +130,7 @@
     </button>
     <button
       type="button"
-      class={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${channelSortMode !== "custom" ? "bg-[var(--accent-wash)] text-[var(--accent)]" : "text-[var(--soft-foreground)] opacity-55 hover:bg-[var(--accent-wash)] hover:opacity-100"}`}
+      class={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors ${channelSortMode !== "custom" ? "bg-[var(--surface-strong)] text-[var(--foreground)]" : "text-[var(--soft-foreground)] opacity-70 hover:bg-[var(--surface-strong)] hover:text-[var(--foreground)] hover:opacity-100"}`}
       onclick={onCycleSortMode}
       aria-label={channelSortMode === "custom"
         ? "Sort alphabetically"
@@ -145,8 +145,8 @@
       data-tooltip-placement="bottom"
     >
       <svg
-        width="12"
-        height="12"
+        width="14"
+        height="14"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
@@ -168,7 +168,7 @@
     />
     <button
       type="button"
-      class="inline-flex h-6 w-6 items-center justify-center rounded-full text-[var(--soft-foreground)] opacity-55 transition-all hover:bg-[var(--accent-wash)] hover:opacity-100"
+      class="inline-flex h-8 w-8 items-center justify-center rounded-md text-[var(--soft-foreground)] opacity-70 transition-all hover:bg-[var(--surface-strong)] hover:text-[var(--foreground)] hover:opacity-100"
       onclick={onToggleCollapse}
       aria-label="Collapse sidebar"
     >

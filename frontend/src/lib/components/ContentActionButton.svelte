@@ -1,4 +1,6 @@
 <script lang="ts">
+  import RefreshIcon from "$lib/components/icons/RefreshIcon.svelte";
+
   type ContentActionIcon =
     | "edit"
     | "format"
@@ -9,6 +11,7 @@
   let {
     icon,
     compact = false,
+    minimal = false,
     disabled = false,
     loading = false,
     className = "",
@@ -22,6 +25,7 @@
   }: {
     icon: ContentActionIcon;
     compact?: boolean;
+    minimal?: boolean;
     disabled?: boolean;
     loading?: boolean;
     className?: string;
@@ -38,10 +42,18 @@
     "inline-flex h-10 w-10 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--border-soft)] bg-[var(--background)] transition-all hover:border-[var(--accent)]/40 hover:text-[var(--accent)] hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40";
   const ghostButtonClass =
     "inline-flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] border border-transparent text-[var(--soft-foreground)] transition-all hover:border-[var(--border-soft)] hover:bg-[var(--muted)]/30 hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40";
+  const minimalButtonClass =
+    "inline-flex h-8 w-8 items-center justify-center rounded-md text-[var(--soft-foreground)] opacity-70 transition-colors hover:text-[var(--foreground)] hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40";
 
-  let buttonClass = $derived(compact ? ghostButtonClass : outlinedButtonClass);
+  let buttonClass = $derived(
+    minimal
+      ? minimalButtonClass
+      : compact
+        ? ghostButtonClass
+        : outlinedButtonClass,
+  );
   let buttonStateClass = $derived(loading && !disabled ? "cursor-wait" : "");
-  let strokeWidth = $derived(compact ? "2.2" : "2.5");
+  let strokeWidth = $derived(minimal ? "1.8" : compact ? "2.2" : "2.5");
 </script>
 
 {#if href}
@@ -124,18 +136,7 @@
         />
       </svg>
     {:else if icon === "regenerate"}
-      <svg
-        viewBox="0 0 24 24"
-        class="h-4 w-4"
-        fill="none"
-        stroke="currentColor"
-        stroke-width={strokeWidth}
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
-        <path d="M21 3v5h-5" />
-      </svg>
+      <RefreshIcon size={minimal ? 20 : 16} strokeWidth={Number(strokeWidth)} />
     {:else}
       <svg
         width="15"

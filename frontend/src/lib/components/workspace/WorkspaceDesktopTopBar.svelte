@@ -92,6 +92,7 @@
         value={draft}
         acknowledged={selectedVideoAcknowledged}
         acknowledgeToggleId="mark-read-toggle"
+        minimalActionChrome
         {onEdit}
         {onCancel}
         {onSave}

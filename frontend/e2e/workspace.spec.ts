@@ -164,6 +164,53 @@ test("sidebar lists channels and each row shows video titles", async ({
   ).toBeVisible({ timeout: READY_MS });
 });
 
+test("desktop sidebar sits flush against the main content", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await openSeededWorkspace(page);
+  const main = page.locator("#main-content");
+  await expect(main).toBeVisible();
+
+  const layout = await page.evaluate(() => {
+    const sidebarNode = Array.from(
+      document.querySelectorAll("aside#workspace"),
+    ).find((node) => !node.closest('[role="dialog"]'));
+    const mainNode = document.querySelector("#main-content");
+    if (!(sidebarNode instanceof HTMLElement) || !mainNode) {
+      return null;
+    }
+
+    const sidebarRect = sidebarNode.getBoundingClientRect();
+    const mainRect = mainNode.getBoundingClientRect();
+    return {
+      gap: mainRect.left - sidebarRect.right,
+    };
+  });
+
+  if (!layout) throw new Error("Workspace layout was not rendered");
+  expect(Math.abs(layout.gap)).toBeLessThanOrEqual(1);
+});
+
+test("mobile workspace still uses mobile chrome", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await installSeededWorkspaceApi(page);
+  await page.goto("/");
+
+  await expect(page.getByRole("button", { name: "Open menu" })).toBeVisible({
+    timeout: READY_MS,
+  });
+  await expect(workspaceDesktopTabs(page)).toBeHidden();
+});
+
+test("desktop workspace keeps desktop chrome", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await openSeededWorkspace(page);
+
+  await expect(workspaceSidebar(page)).toBeVisible();
+  await expect(workspaceDesktopTabs(page)).toBeVisible();
+});
+
 test("switching content tabs shows different views", async ({ page }) => {
   await openSeededWorkspace(
     page,
@@ -435,9 +482,9 @@ test("desktop summary eval score opens the quality drawer", async ({
     "desktop evaluation drawer opens",
   );
 
-  const evalTrigger = page.locator(
-    ".summary-embed-strip-eval button[aria-controls='summary-quality-note']",
-  );
+  const evalTrigger = page
+    .locator("button[aria-controls='summary-quality-note']")
+    .filter({ hasText: "Quality" });
   const evalDrawer = page.locator("#summary-quality-note");
 
   await expect(evalTrigger).toBeVisible();
@@ -515,9 +562,9 @@ test("desktop summary eval drawer still opens when only score and tags are prese
     "eval drawer still opens without a note",
   );
 
-  const evalTrigger = page.locator(
-    ".summary-embed-strip-eval button[aria-controls='summary-quality-note']",
-  );
+  const evalTrigger = page
+    .locator("button[aria-controls='summary-quality-note']")
+    .filter({ hasText: "Quality" });
   const evalDrawer = page.locator("#summary-quality-note");
 
   await expect(evalTrigger).toBeVisible();

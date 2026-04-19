@@ -300,9 +300,9 @@ test("mobile summary eval pill opens the quality drawer", async ({ page }) => {
     "mobile evaluation drawer stays tappable",
   );
 
-  const evalTrigger = page.locator(
-    ".summary-embed-strip-eval button[aria-controls='summary-quality-note']",
-  );
+  const evalTrigger = page
+    .locator("button[aria-controls='summary-quality-note']")
+    .filter({ hasText: "Quality" });
 
   await expect(evalTrigger.first()).toBeVisible();
   await evalTrigger.first().click();

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import CheckCircleIcon from "$lib/components/icons/CheckCircleIcon.svelte";
   import ContentActionButton from "./ContentActionButton.svelte";
 
   let {
@@ -27,6 +28,7 @@
     acknowledged = false,
     acknowledgeToggleId = undefined,
     aiAvailable = true,
+    minimalActionChrome = false,
   }: {
     value?: string;
     editing?: boolean;
@@ -53,6 +55,7 @@
     acknowledged?: boolean;
     acknowledgeToggleId?: string | undefined;
     aiAvailable?: boolean;
+    minimalActionChrome?: boolean;
   } = $props();
 
   let formatActionLabel = $derived(
@@ -231,6 +234,7 @@
       {#if showRegenerateAction}
         <ContentActionButton
           compact
+          minimal={minimalActionChrome}
           icon="regenerate"
           goHintKey="*"
           loading={regenerating}
@@ -302,32 +306,38 @@
           type="button"
           id={acknowledgeToggleId}
           data-go-hint-key="."
-          class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-all hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 disabled:cursor-not-allowed disabled:opacity-30"
+          class={minimalActionChrome
+            ? `inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 disabled:cursor-not-allowed disabled:opacity-30 ${acknowledged ? "text-[var(--foreground)] opacity-100" : "text-[var(--soft-foreground)] opacity-70 hover:opacity-100"}`
+            : "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-all hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 disabled:cursor-not-allowed disabled:opacity-30"}
           aria-label={acknowledged ? "Mark as unread" : "Mark as read"}
           aria-pressed={acknowledged}
           onclick={onAcknowledgeToggle}
           disabled={busy}
         >
-          <span
-            class={`flex h-5 w-5 items-center justify-center rounded-full border transition-all ${
-              acknowledged
-                ? "border-[var(--accent)] bg-[var(--accent)] text-white"
-                : "border-[var(--border)] bg-transparent text-transparent"
-            }`}
-            aria-hidden="true"
-          >
-            <svg
-              class={`h-3 w-3 transition-opacity ${acknowledged ? "opacity-100" : "opacity-0"}`}
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="3.4"
-              stroke-linecap="round"
-              stroke-linejoin="round"
+          {#if minimalActionChrome}
+            <CheckCircleIcon />
+          {:else}
+            <span
+              class={`flex h-5 w-5 items-center justify-center rounded-full border transition-all ${
+                acknowledged
+                  ? "border-[var(--accent)] bg-[var(--accent)] text-white"
+                  : "border-[var(--border)] bg-transparent text-transparent"
+              }`}
+              aria-hidden="true"
             >
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-          </span>
+              <svg
+                class={`h-3 w-3 transition-opacity ${acknowledged ? "opacity-100" : "opacity-0"}`}
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="3.4"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            </span>
+          {/if}
         </button>
       {/if}
       {#if showEditAction}
