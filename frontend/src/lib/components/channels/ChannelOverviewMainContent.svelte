@@ -163,7 +163,7 @@
       </div>
     {:else if selectedChannel}
       <div class="max-w-3xl space-y-10">
-        <section>
+        <section id="sync-boundary">
           <h4 class="text-sm font-semibold text-[var(--foreground)]">
             Sync boundary
           </h4>

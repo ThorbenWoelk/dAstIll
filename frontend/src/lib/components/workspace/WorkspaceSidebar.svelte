@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
   import { slide } from "svelte/transition";
-  import { getTranscript, getVideo, updateChannel } from "$lib/api";
+  import { getTranscript, getVideo } from "$lib/api";
   import { authState } from "$lib/auth-state.svelte";
   import {
     beginChannelDrag,
@@ -41,16 +41,12 @@
     resolveChannelDropIndicatorEdge,
   } from "$lib/workspace/channels";
   import {
-    resolveSyncDateInputValue,
-    toIsoDateStart,
-  } from "$lib/workspace/sidebar-sync-date";
-  import {
     createSidebarPreviewController,
     createEmptyChannelVideoCollection,
   } from "$lib/workspace/sidebar-preview-controller.svelte";
   import { shouldRunSidebarPreviewSlideTransition } from "$lib/workspace/sidebar-layout";
   import { resolveSidebarPreviewSessionKey } from "$lib/workspace/sidebar-preview-session";
-  import type { ChannelSnapshot, SyncDepth } from "$lib/types";
+  import type { ChannelSnapshot } from "$lib/types";
 
   let {
     shell = {
@@ -172,9 +168,6 @@
       desktopViewport,
     }),
   );
-  /** Always above trigger: dialog appears above the button so it's visible without scrolling. */
-  let syncDatePopupStackClass = "flex flex-col-reverse gap-2";
-
   onMount(() => {
     const mediaQuery = window.matchMedia("(min-width: 1024px)");
     const syncDesktopViewport = () => {
@@ -257,11 +250,6 @@
   let channelInputOpen = $state(false);
   let reorderAnnouncement = $state("");
 
-  let syncDatePickerChannelId = $state<string | null>(null);
-  /** Input when editing sync date without a per-channel collection row. */
-  let earliestSyncDateInputSelected = $state("");
-  let savingStandaloneSyncDate = $state(false);
-
   let filteredChannels = $derived(
     filterChannels(channels, channelSearchQuery, channelSortMode),
   );
@@ -322,10 +310,6 @@
   let channelVideoCollections = $derived(
     previewController.channelVideoCollections,
   );
-  let previewSyncDatePickerChannelId = $derived(
-    previewController.syncDatePickerChannelId,
-  );
-
   function isVirtualChannel(channel: Channel) {
     return channel.id === OTHERS_CHANNEL_ID;
   }
@@ -360,37 +344,6 @@
     }
 
     await onSelectVideo(videoId);
-  }
-
-  async function saveStandaloneChannelSyncDate(channel: Channel) {
-    if (!earliestSyncDateInputSelected.trim() || savingStandaloneSyncDate) {
-      return;
-    }
-
-    savingStandaloneSyncDate = true;
-    try {
-      const updatedChannel = await updateChannel(channel.id, {
-        earliest_sync_date: toIsoDateStart(earliestSyncDateInputSelected),
-        earliest_sync_date_user_set: true,
-      });
-      onChannelUpdated(updatedChannel);
-      syncDatePickerChannelId = null;
-      await onChannelSyncDateSaved?.(channel.id);
-    } finally {
-      savingStandaloneSyncDate = false;
-    }
-  }
-
-  function toggleStandaloneSyncDatePicker(
-    channel: Channel,
-    depth: SyncDepth | null,
-  ) {
-    if (syncDatePickerChannelId === channel.id) {
-      syncDatePickerChannelId = null;
-      return;
-    }
-    syncDatePickerChannelId = channel.id;
-    earliestSyncDateInputSelected = resolveSyncDateInputValue(channel, depth);
   }
 
   $effect(() => {
@@ -539,35 +492,15 @@
       {historyExhausted}
       {backfillingHistory}
       {suppressLoadMoreButton}
-      {readOnly}
       isVirtualChannel={selectedChannel
         ? isVirtualChannel(selectedChannel)
         : false}
       {syncDepth}
       {allowLoadedVideoSyncDepthOverride}
-      syncDateOpen={selectedChannel
-        ? syncDatePickerChannelId === selectedChannel.id
-        : false}
-      syncDateInputValue={earliestSyncDateInputSelected}
-      savingSyncDate={savingStandaloneSyncDate}
-      {syncDatePopupStackClass}
       onSelectVideo={(videoId) => void onSelectVideo(videoId)}
       onLoadMoreVideos={() => void onLoadMoreVideos()}
       onVideoMouseEnter={handleVideoMouseEnter}
       onVideoMouseLeave={handleVideoMouseLeave}
-      onToggleSyncDate={() => {
-        if (selectedChannel) {
-          toggleStandaloneSyncDatePicker(selectedChannel, syncDepth);
-        }
-      }}
-      onSyncDateInputValueChange={(value) => {
-        earliestSyncDateInputSelected = value;
-      }}
-      onSaveSyncDate={() => {
-        if (selectedChannel) {
-          return saveStandaloneChannelSyncDate(selectedChannel);
-        }
-      }}
     />
   {:else if collapsed}
     <WorkspaceSidebarCollapsedChannelRail
@@ -724,9 +657,6 @@
                 {channelVideoCollection}
                 {renderedCollection}
                 {selectedVideoId}
-                {previewSyncDatePickerChannelId}
-                readOnly={readOnly || isVirtualChannel(channel)}
-                {syncDatePopupStackClass}
                 {scrollIntoViewWhenSelected}
                 emptyCaption={previewController.channelListEmptyCaption(
                   channelVideoCollection.channelVideoCount,
@@ -741,17 +671,6 @@
                   )}
                 onLoadMore={() =>
                   void previewController.loadNextChannelVideoPage(channel)}
-                onToggleSyncDatePicker={() =>
-                  previewController.toggleSyncDatePicker(
-                    channel,
-                    channelVideoCollection.syncDepth,
-                    channelVideoCollection,
-                  )}
-                onEarliestSyncDateInputChange={(value) => {
-                  channelVideoCollection.earliestSyncDateInput = value;
-                }}
-                onSaveSyncDate={() =>
-                  void previewController.saveChannelSyncDate(channel)}
               />
             {/snippet}
             {#if shouldAnimatePreviewExpansion}
@@ -775,30 +694,15 @@
               {historyExhausted}
               {backfillingHistory}
               selectedChannel={channel}
-              {readOnly}
               {syncDepth}
               {allowLoadedVideoSyncDepthOverride}
-              syncDateOpen={syncDatePickerChannelId === channel.id}
-              syncDateInputValue={earliestSyncDateInputSelected}
-              savingSyncDate={savingStandaloneSyncDate}
-              {syncDatePopupStackClass}
               syncDateWrapperClass="relative z-10 mt-1 px-2"
-              syncDateButtonClass="touch-manipulation relative z-10 inline-flex w-full max-w-full flex-wrap items-baseline gap-x-1 rounded-[var(--radius-sm)] px-2 py-1 text-left text-[10px] text-[var(--soft-foreground)] opacity-50 transition hover:bg-[var(--accent-wash)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
-              syncDateReadonlyClass="mt-1 px-2 text-[10px] text-[var(--soft-foreground)] opacity-50"
-              syncDateDialogClass="flex flex-wrap items-center gap-2 rounded-[var(--radius-md)] bg-[var(--surface-strong)] p-2 shadow-[var(--shadow-soft)]"
-              syncDateInputClass="min-w-0 flex-1 rounded-[var(--radius-sm)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] px-3 py-2 text-[12px] font-medium transition-colors focus:border-[var(--accent)]/40 focus:outline-none"
-              syncDateSubmitClass="rounded-[var(--radius-sm)] bg-[var(--foreground)] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--background)] transition-all hover:bg-[var(--accent-strong)] disabled:opacity-30"
+              syncDateLinkClass="touch-manipulation relative z-10 inline-flex w-full max-w-full flex-wrap items-baseline gap-x-1 gap-y-0.5 rounded-[var(--radius-sm)] px-2 py-1 text-left text-[10px] text-[var(--soft-foreground)] opacity-50 transition hover:bg-[var(--accent-wash)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
               listId="videos"
               onSelectVideo={(videoId) => void onSelectVideo(videoId)}
               onLoadMoreVideos={() => void onLoadMoreVideos()}
               onVideoMouseEnter={handleVideoMouseEnter}
               onVideoMouseLeave={handleVideoMouseLeave}
-              onToggleSyncDate={() =>
-                toggleStandaloneSyncDatePicker(channel, syncDepth)}
-              onSyncDateInputValueChange={(value) => {
-                earliestSyncDateInputSelected = value;
-              }}
-              onSaveSyncDate={() => saveStandaloneChannelSyncDate(channel)}
               isVirtualChannel={isVirtualChannel(channel)}
             />
           {/if}

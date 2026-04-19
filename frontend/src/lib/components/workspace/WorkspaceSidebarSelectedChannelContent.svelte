@@ -4,6 +4,7 @@
   import { resolveDisplayedSyncDepthIso } from "$lib/sync-depth";
   import type { Channel, Video } from "$lib/types";
   import { formatSyncDate } from "$lib/workspace/content";
+  import { shouldShowSelectedChannelSyncSettingsLink } from "$lib/workspace/sidebar-sync-boundary-link";
   import type { SyncDepth } from "$lib/types";
 
   let {
@@ -22,27 +23,15 @@
     listId = undefined,
     rowClassName = "",
     selectedChannel,
-    readOnly,
     isVirtualChannel,
     syncDepth,
     allowLoadedVideoSyncDepthOverride,
-    syncDateOpen,
-    syncDateInputValue,
-    savingSyncDate,
-    syncDatePopupStackClass,
     syncDateWrapperClass,
-    syncDateButtonClass,
-    syncDateReadonlyClass,
-    syncDateDialogClass,
-    syncDateInputClass,
-    syncDateSubmitClass,
+    syncDateLinkClass,
     onSelectVideo,
     onLoadMoreVideos,
     onVideoMouseEnter,
     onVideoMouseLeave,
-    onToggleSyncDate,
-    onSyncDateInputValueChange,
-    onSaveSyncDate,
   }: {
     videos: Video[];
     selectedVideoId: string | null;
@@ -59,28 +48,27 @@
     listId?: string | undefined;
     rowClassName?: string;
     selectedChannel: Channel | null;
-    readOnly: boolean;
     isVirtualChannel: boolean;
     syncDepth: SyncDepth | null;
     allowLoadedVideoSyncDepthOverride: boolean;
-    syncDateOpen: boolean;
-    syncDateInputValue: string;
-    savingSyncDate: boolean;
-    syncDatePopupStackClass: string;
     syncDateWrapperClass: string;
-    syncDateButtonClass: string;
-    syncDateReadonlyClass: string;
-    syncDateDialogClass: string;
-    syncDateInputClass: string;
-    syncDateSubmitClass: string;
+    syncDateLinkClass: string;
     onSelectVideo: (videoId: string) => void | Promise<void>;
     onLoadMoreVideos: () => void | Promise<void>;
     onVideoMouseEnter: (videoId: string) => void;
     onVideoMouseLeave: () => void;
-    onToggleSyncDate: () => void;
-    onSyncDateInputValueChange: (value: string) => void;
-    onSaveSyncDate: () => void | Promise<void>;
   } = $props();
+
+  const showSyncSettingsLink = $derived(
+    shouldShowSelectedChannelSyncSettingsLink({
+      videosCount: videos.length,
+      hasMore,
+      historyExhausted,
+      loadingVideos,
+      backfillingHistory,
+      isVirtualChannel,
+    }),
+  );
 </script>
 
 <WorkspaceSidebarSelectedVideoList
@@ -104,10 +92,9 @@
   {onVideoMouseLeave}
 >
   {#snippet footer()}
-    {#if selectedChannel}
+    {#if selectedChannel && showSyncSettingsLink}
       <WorkspaceSidebarSyncDateControl
-        readOnly={readOnly || isVirtualChannel}
-        open={syncDateOpen}
+        channelId={selectedChannel.id}
         label={formatSyncDate(
           resolveDisplayedSyncDepthIso({
             videos,
@@ -116,18 +103,8 @@
             allowLoadedVideoOverride: allowLoadedVideoSyncDepthOverride,
           }),
         )}
-        inputValue={syncDateInputValue}
-        saving={savingSyncDate}
-        popupStackClass={syncDatePopupStackClass}
         wrapperClass={syncDateWrapperClass}
-        buttonClass={syncDateButtonClass}
-        readonlyClass={syncDateReadonlyClass}
-        dialogClass={syncDateDialogClass}
-        inputClass={syncDateInputClass}
-        submitClass={syncDateSubmitClass}
-        onToggle={onToggleSyncDate}
-        onInputValueChange={onSyncDateInputValueChange}
-        onSubmit={() => void onSaveSyncDate()}
+        linkClass={syncDateLinkClass}
       />
     {/if}
   {/snippet}

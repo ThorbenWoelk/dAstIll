@@ -16,21 +16,13 @@
     historyExhausted,
     backfillingHistory,
     suppressLoadMoreButton = false,
-    readOnly,
     isVirtualChannel,
     syncDepth,
     allowLoadedVideoSyncDepthOverride,
-    syncDateOpen,
-    syncDateInputValue,
-    savingSyncDate,
-    syncDatePopupStackClass,
     onSelectVideo,
     onLoadMoreVideos,
     onVideoMouseEnter,
     onVideoMouseLeave,
-    onToggleSyncDate,
-    onSyncDateInputValueChange,
-    onSaveSyncDate,
   }: {
     selectedChannelId: string | null;
     selectedChannel: Channel | null;
@@ -44,21 +36,13 @@
     historyExhausted: boolean;
     backfillingHistory: boolean;
     suppressLoadMoreButton?: boolean;
-    readOnly: boolean;
     isVirtualChannel: boolean;
     syncDepth: SyncDepth | null;
     allowLoadedVideoSyncDepthOverride: boolean;
-    syncDateOpen: boolean;
-    syncDateInputValue: string;
-    savingSyncDate: boolean;
-    syncDatePopupStackClass: string;
     onSelectVideo: (videoId: string) => void | Promise<void>;
     onLoadMoreVideos: () => void | Promise<void>;
     onVideoMouseEnter: (videoId: string) => void;
     onVideoMouseLeave: () => void;
-    onToggleSyncDate: () => void;
-    onSyncDateInputValueChange: (value: string) => void;
-    onSaveSyncDate: () => void | Promise<void>;
   } = $props();
 </script>
 
@@ -105,20 +89,11 @@
         {backfillingHistory}
         {suppressLoadMoreButton}
         {selectedChannel}
-        {readOnly}
         {isVirtualChannel}
         {syncDepth}
         {allowLoadedVideoSyncDepthOverride}
-        {syncDateOpen}
-        {syncDateInputValue}
-        {savingSyncDate}
-        {syncDatePopupStackClass}
         syncDateWrapperClass="relative z-10 mt-2 px-2"
-        syncDateButtonClass="touch-manipulation relative z-10 inline-flex w-full max-w-full flex-wrap items-baseline gap-x-1 rounded-[var(--radius-sm)] px-2 py-1 text-left text-[10px] text-[var(--soft-foreground)] opacity-55 transition hover:bg-[var(--accent-wash)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
-        syncDateReadonlyClass="mt-2 px-2 text-[10px] text-[var(--soft-foreground)] opacity-55"
-        syncDateDialogClass="flex flex-wrap items-center gap-2 rounded-[var(--radius-md)] bg-[var(--surface-strong)] p-2 shadow-[var(--shadow-soft)]"
-        syncDateInputClass="min-w-0 flex-1 rounded-[var(--radius-sm)] border border-[var(--accent-border-soft)] bg-[var(--panel-surface)] px-3 py-2 text-[12px] font-medium transition-colors focus:border-[var(--accent)]/40 focus:outline-none"
-        syncDateSubmitClass="rounded-[var(--radius-sm)] bg-[var(--foreground)] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--background)] transition-all hover:bg-[var(--accent-strong)] disabled:opacity-30"
+        syncDateLinkClass="touch-manipulation relative z-10 inline-flex w-full max-w-full flex-wrap items-baseline gap-x-1 gap-y-0.5 rounded-[var(--radius-sm)] px-2 py-1 text-left text-[10px] text-[var(--soft-foreground)] opacity-55 transition hover:bg-[var(--accent-wash)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
         emptyLabel="No videos yet."
         wrapperClass=""
         rowClassName="min-h-[56px]"
@@ -126,9 +101,6 @@
         onLoadMoreVideos={() => void onLoadMoreVideos()}
         {onVideoMouseEnter}
         {onVideoMouseLeave}
-        {onToggleSyncDate}
-        {onSyncDateInputValueChange}
-        onSaveSyncDate={() => void onSaveSyncDate()}
       />
     {/if}
   </div>
