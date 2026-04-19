@@ -672,14 +672,14 @@
 </script>
 
 <form
-  class="rounded-[var(--radius-lg)] bg-[var(--panel-surface)] px-3 py-3 shadow-sm"
+  class="flex flex-col overflow-hidden rounded-xl border border-[var(--border-soft)] bg-[var(--surface-strong)] shadow-sm transition-colors focus-within:border-[var(--accent)]/40"
   aria-busy={busy}
   onsubmit={(event) => {
     event.preventDefault();
     submit();
   }}
 >
-  <div class="relative mb-3">
+  <div class="relative px-3 pt-3">
     <div
       aria-hidden="true"
       class="pointer-events-none absolute inset-0 overflow-hidden px-1 py-2"
@@ -778,28 +778,32 @@
     ></textarea>
   </div>
 
-  <ChatInputSuggestions
-    trigger={activeTrigger?.trigger ?? null}
-    {suggestionItems}
-    {suggestionIndex}
-    {suggestionsLoading}
-    {suggestionError}
-    bind:suggestionListScrollEl
-    onAcceptSuggestion={acceptSuggestion}
-  />
+  <div class="px-3">
+    <ChatInputSuggestions
+      trigger={activeTrigger?.trigger ?? null}
+      {suggestionItems}
+      {suggestionIndex}
+      {suggestionsLoading}
+      {suggestionError}
+      bind:suggestionListScrollEl
+      onAcceptSuggestion={acceptSuggestion}
+    />
+  </div>
 
-  <ChatInputControls
-    {deepResearch}
-    {selectedModelId}
-    {modelOptions}
-    {modelSelectDisabled}
-    {disabled}
-    {busy}
-    {canCancel}
-    {actionDisabled}
-    {ariaLabel}
-    {onCancel}
-    onDeepResearchChange={setDeepResearch}
-    onSelectedModelIdChange={setSelectedModelId}
-  />
+  <div class="border-t border-[var(--border-soft)] px-3 py-2">
+    <ChatInputControls
+      {deepResearch}
+      {selectedModelId}
+      {modelOptions}
+      {modelSelectDisabled}
+      {disabled}
+      {busy}
+      {canCancel}
+      {actionDisabled}
+      {ariaLabel}
+      {onCancel}
+      onDeepResearchChange={setDeepResearch}
+      onSelectedModelIdChange={setSelectedModelId}
+    />
+  </div>
 </form>

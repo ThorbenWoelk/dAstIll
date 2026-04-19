@@ -49,7 +49,7 @@
         />
       </ChatMobileConversationsOverlay>
 
-      <div class="hidden lg:flex lg:h-full">
+      <div class="hidden w-64 shrink-0 lg:flex lg:h-full">
         <ChatSidebar
           conversations={chat.conversations}
           activeConversationId={chat.requestedConversationId}
@@ -68,22 +68,24 @@
 
     <section
       id="content-view"
-      class="fade-in stagger-3 relative z-10 flex min-h-0 min-w-0 flex-col overflow-visible lg:h-full lg:gap-4 lg:px-8 lg:pt-4 lg:pb-6"
+      class="fade-in stagger-3 relative z-10 flex min-h-0 min-w-0 flex-col overflow-visible bg-[var(--surface-strong)] lg:h-full"
     >
-      <ChatContentSectionHeader
-        onOpenConversationsMobile={chat.openMobileConversations}
-        streamingConversationId={chat.stream.streamingConversationId}
-        conversationTitle={chat.headerConversationTitle}
-        titleStatus={chat.activeConversation?.id ===
-        chat.requestedConversationId
-          ? chat.activeConversation.title_status
-          : undefined}
-      />
+      <div class="lg:hidden">
+        <ChatContentSectionHeader
+          onOpenConversationsMobile={chat.openMobileConversations}
+          streamingConversationId={chat.stream.streamingConversationId}
+          conversationTitle={chat.headerConversationTitle}
+          titleStatus={chat.activeConversation?.id ===
+          chat.requestedConversationId
+            ? chat.activeConversation.title_status
+            : undefined}
+        />
+      </div>
 
       <div class="relative flex min-h-0 w-full flex-1 flex-col">
         <div
           use:bindMessagesViewport
-          class="custom-scrollbar mobile-bottom-stack-padding min-h-0 flex-1 overflow-y-auto px-4 max-lg:pt-4 sm:px-6 lg:px-0 lg:pr-4 lg:pb-0"
+          class="custom-scrollbar mobile-bottom-stack-padding min-h-0 flex-1 overflow-y-auto px-4 max-lg:pt-4 sm:px-6 lg:px-8 lg:py-8 [&>*]:mx-auto [&>*]:w-full [&>*]:max-w-3xl"
           role="region"
           aria-label="Chat conversation"
           onscroll={chat.handleMessagesViewportScroll}
@@ -176,37 +178,42 @@
       </div>
 
       <div
-        class="border-t border-[var(--accent-border-soft)] px-4 py-4 sm:px-6 lg:px-0 lg:pr-4"
+        class="border-t border-[var(--border-soft)] px-4 py-4 sm:px-6 lg:px-8 lg:py-6"
       >
-        {#if chat.showStarterSuggestions}
-          <ChatSuggestions
-            suggestions={CHAT_STARTER_PROMPTS}
-            disabled={Boolean(chat.stream.streamingConversationId) ||
-              chat.loadingConversation}
-            onPick={chat.pickStarterPrompt}
+        <div class="mx-auto w-full max-w-3xl">
+          {#if chat.showStarterSuggestions}
+            <ChatSuggestions
+              suggestions={CHAT_STARTER_PROMPTS}
+              disabled={Boolean(chat.stream.streamingConversationId) ||
+                chat.loadingConversation}
+              onPick={chat.pickStarterPrompt}
+            />
+          {/if}
+          <ChatInput
+            value={chat.draft}
+            deepResearch={chat.deepResearch}
+            selectedModelId={chat.selectedChatModelId}
+            modelOptions={chat.chatClientConfig?.models ?? []}
+            focusSignal={chat.chatInputFocusSignal}
+            disabled={chat.loadingConversation ||
+              chat.creatingConversation ||
+              (!chat.isAuthenticated && Boolean(chat.anonymousQuotaMessage))}
+            busy={Boolean(chat.stream.streamingConversationId) ||
+              chat.creatingConversation}
+            canCancel={Boolean(chat.stream.streamingConversationId)}
+            onValueChange={chat.setDraft}
+            onDeepResearchChange={chat.setDeepResearch}
+            onSelectedModelIdChange={chat.setSelectedChatModelId}
+            onSubmit={(value) => void chat.handleSend(value)}
+            onCancel={() => void chat.handleCancel()}
           />
-        {/if}
-        <ChatInput
-          value={chat.draft}
-          deepResearch={chat.deepResearch}
-          selectedModelId={chat.selectedChatModelId}
-          modelOptions={chat.chatClientConfig?.models ?? []}
-          focusSignal={chat.chatInputFocusSignal}
-          disabled={chat.loadingConversation ||
-            chat.creatingConversation ||
-            (!chat.isAuthenticated && Boolean(chat.anonymousQuotaMessage))}
-          busy={Boolean(chat.stream.streamingConversationId) ||
-            chat.creatingConversation}
-          canCancel={Boolean(chat.stream.streamingConversationId)}
-          onValueChange={chat.setDraft}
-          onDeepResearchChange={chat.setDeepResearch}
-          onSelectedModelIdChange={chat.setSelectedChatModelId}
-          onSubmit={(value) => void chat.handleSend(value)}
-          onCancel={() => void chat.handleCancel()}
-        />
-        {#if chat.anonymousQuotaMessage && !chat.isAuthenticated}
-          <ChatAnonymousQuotaNotice />
-        {/if}
+          {#if chat.anonymousQuotaMessage && !chat.isAuthenticated}
+            <ChatAnonymousQuotaNotice />
+          {/if}
+          <p class="mt-3 text-center text-[10px] text-[var(--soft-foreground)]">
+            Synthesizing information across your indexed library.
+          </p>
+        </div>
       </div>
     </section>
   </div>

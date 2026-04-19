@@ -1,7 +1,6 @@
 <script lang="ts">
   import TrashIcon from "$lib/components/icons/TrashIcon.svelte";
   import type { ChatConversationSummary } from "$lib/types";
-  import { formatRelativeTime } from "$lib/utils/date";
 
   let {
     conversations,
@@ -53,42 +52,53 @@
 </script>
 
 <aside
-  class={`fade-in stagger-1 flex min-h-0 min-w-0 flex-col border-0 lg:h-full lg:gap-3 lg:border-r lg:border-[var(--accent-border-soft)] lg:px-5 ${mobileVisible ? "h-full gap-4 p-3" : "hidden lg:flex"}`}
+  class={`fade-in stagger-1 flex min-h-0 min-w-0 flex-col border-0 lg:h-full lg:border-r lg:border-[var(--border-soft)] lg:bg-[var(--muted)] ${mobileVisible ? "h-full gap-3 p-3" : "hidden lg:flex"}`}
 >
-  <div
-    class="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-[var(--border-soft)]/50 px-1"
-  >
-    <span
-      class="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-55"
+  <div class="shrink-0 border-b border-[var(--border-soft)] p-4">
+    <button
+      type="button"
+      class="flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] bg-[var(--foreground)] px-4 py-2 text-[13px] font-semibold text-[var(--background)] transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-55"
+      aria-label="New"
+      disabled={creating}
+      onclick={() => void onCreate()}
     >
-      Conversations
-    </span>
-    <div class="flex items-center gap-2">
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M12 5v14" />
+        <path d="M5 12h14" />
+      </svg>
+      {creating ? "Creating…" : "New Research"}
+    </button>
+  </div>
+
+  <div
+    class="custom-scrollbar flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-3"
+  >
+    <div
+      class="flex items-center justify-between px-2 pb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)]"
+    >
+      <span>Recent Sessions</span>
       {#if canDelete && conversations.length > 0}
         <button
           type="button"
-          class="inline-flex h-7 items-center justify-center rounded-full px-3 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--danger)] disabled:cursor-not-allowed disabled:opacity-55"
+          class="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--soft-foreground)] transition-colors hover:text-[var(--danger)] disabled:cursor-not-allowed disabled:opacity-55"
           aria-label="Delete all conversations"
           disabled={deletingAll}
           onclick={() => void onDeleteAll()}
         >
-          {deletingAll ? "Deleting…" : "Delete all"}
+          {deletingAll ? "Deleting…" : "Clear"}
         </button>
       {/if}
-      <button
-        type="button"
-        class="inline-flex h-7 items-center justify-center rounded-full border border-[var(--accent)]/15 bg-[var(--accent-wash-strong)] px-3 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--accent-strong)] transition-colors hover:bg-[var(--accent)]/15 disabled:cursor-not-allowed disabled:opacity-55"
-        disabled={creating}
-        onclick={() => void onCreate()}
-      >
-        {creating ? "Creating…" : "New"}
-      </button>
     </div>
-  </div>
-
-  <div
-    class="custom-scrollbar min-h-0 flex-1 overflow-y-auto px-1 pb-4 pt-3 lg:pr-4"
-  >
     {#if loading}
       <div
         class="flex h-full min-h-[14rem] items-center justify-center text-[12px] text-[var(--soft-foreground)]"
@@ -102,12 +112,12 @@
         Start a new conversation to ask grounded questions about your library.
       </div>
     {:else}
-      <div class="space-y-2">
+      <div class="flex flex-col gap-0.5">
         {#each conversations as conversation (conversation.id)}
           <div
-            class={`rounded-[var(--radius-md)] border p-3 transition-colors ${activeConversationId === conversation.id ? "border-[var(--accent)]/35 bg-[var(--accent-wash)]" : "border-transparent bg-transparent hover:border-[var(--accent-border-soft)] hover:bg-[var(--surface-frost)]"}`}
+            class={`group/row rounded-[var(--radius-md)] px-2 py-1.5 transition-colors ${activeConversationId === conversation.id ? "bg-[var(--accent-wash-strong)]" : "bg-transparent hover:bg-[var(--accent-wash)]"}`}
           >
-            <div class="flex items-start gap-2">
+            <div class="flex items-center gap-1">
               <button
                 type="button"
                 class="min-w-0 flex-1 text-left"
@@ -130,33 +140,30 @@
                   />
                 {:else}
                   <p
-                    class="truncate text-[12px] font-semibold text-[var(--foreground)]"
+                    class={`truncate text-[13px] ${activeConversationId === conversation.id ? "font-semibold text-[var(--foreground)]" : "font-medium text-[var(--soft-foreground)] group-hover/row:text-[var(--foreground)]"}`}
                   >
                     {conversation.title ?? "New conversation"}
                   </p>
                 {/if}
-                <div
-                  class="mt-1 flex items-center gap-2 text-[10px] uppercase tracking-[0.1em] text-[var(--soft-foreground)]"
-                >
-                  <span>{formatRelativeTime(conversation.updated_at)}</span>
-                  {#if conversation.title_status === "generating"}
+                {#if conversation.title_status === "generating"}
+                  <div
+                    class="mt-0.5 flex items-center gap-1 text-[10px] uppercase tracking-[0.1em] text-[var(--accent-strong)]"
+                  >
                     <span
-                      class="inline-flex items-center gap-1 text-[var(--accent-strong)]"
-                    >
-                      <span
-                        class="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent)]"
-                      ></span>
-                      naming
-                    </span>
-                  {/if}
-                </div>
+                      class="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent)]"
+                    ></span>
+                    naming
+                  </div>
+                {/if}
               </button>
 
               {#if editingConversationId !== conversation.id}
-                <div class="flex shrink-0 items-center gap-1">
+                <div
+                  class="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover/row:opacity-100 focus-within:opacity-100"
+                >
                   <button
                     type="button"
-                    class="inline-flex h-7 w-7 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)]"
+                    class="inline-flex h-6 w-6 items-center justify-center rounded text-[var(--soft-foreground)] transition-colors hover:bg-[var(--surface-strong)] hover:text-[var(--foreground)]"
                     aria-label="Rename conversation"
                     onclick={() => beginRename(conversation)}
                   >
@@ -177,7 +184,7 @@
                   {#if canDelete}
                     <button
                       type="button"
-                      class="inline-flex h-8 w-8 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--danger)]"
+                      class="inline-flex h-6 w-6 items-center justify-center rounded text-[var(--soft-foreground)] transition-colors hover:bg-[var(--surface-strong)] hover:text-[var(--danger)]"
                       aria-label="Delete conversation"
                       onclick={() => void onDelete(conversation.id)}
                     >

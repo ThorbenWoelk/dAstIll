@@ -14,62 +14,53 @@
   } = $props();
 </script>
 
-<div class="flex flex-col gap-3 px-4 max-lg:pb-1 max-lg:pt-3 sm:px-6 lg:px-0">
-  <div class="flex items-center justify-between gap-3">
-    <div class="flex items-center gap-2">
-      <button
-        type="button"
-        class="inline-flex h-8 items-center justify-center gap-2 rounded-full px-3 text-[12px] font-semibold text-[var(--soft-foreground)] transition-all hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 lg:hidden"
-        onclick={onOpenConversationsMobile}
-        aria-label="Open conversations"
+<div
+  class="flex items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-0 lg:py-2"
+>
+  <div class="flex min-w-0 items-center gap-2">
+    <button
+      type="button"
+      class="inline-flex h-8 items-center justify-center gap-2 rounded-md px-2 text-[12px] font-semibold text-[var(--soft-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 lg:hidden"
+      onclick={onOpenConversationsMobile}
+      aria-label="Open conversations"
+    >
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
       >
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <path
-            d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
-          />
-          <path d="M8 9h8" />
-          <path d="M8 13h5" />
-        </svg>
-        <span>History</span>
-      </button>
-      <h2 class="text-base font-bold tracking-tight text-[var(--foreground)]">
-        Chat
-      </h2>
-    </div>
-    {#if streamingConversationId}
+        <path
+          d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
+        />
+        <path d="M8 9h8" />
+        <path d="M8 13h5" />
+      </svg>
+    </button>
+    <p
+      class="truncate text-[13px] font-semibold tracking-tight text-[var(--foreground)] lg:text-[14px]"
+    >
+      {conversationTitle}
+    </p>
+    {#if titleStatus === "generating"}
       <span
-        class="h-3 w-3 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--accent)]"
-        role="status"
-        aria-label="Generating response"
-      ></span>
+        class="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--accent-strong)]"
+      >
+        <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent)]"
+        ></span>
+        naming
+      </span>
     {/if}
   </div>
-
-  <p class="sr-only lg:hidden">{conversationTitle}</p>
-  <div class="hidden border-b border-[var(--accent-border-soft)] pb-3 lg:block">
-    <div class="min-w-0">
-      <p
-        class="truncate text-[20px] font-semibold tracking-tight text-[var(--foreground)]"
-      >
-        {conversationTitle}
-      </p>
-      {#if titleStatus === "generating"}
-        <p
-          class="mt-2 max-w-[34rem] text-[14px] leading-6 text-[var(--soft-foreground)]"
-        >
-          AI is naming this chat while the conversation stays available in the
-          background.
-        </p>
-      {/if}
-    </div>
-  </div>
+  {#if streamingConversationId}
+    <span
+      class="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--accent)]"
+      role="status"
+      aria-label="Generating response"
+    ></span>
+  {/if}
 </div>

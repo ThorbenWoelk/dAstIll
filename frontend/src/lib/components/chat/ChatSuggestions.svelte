@@ -12,11 +12,6 @@
 
 {#if suggestions.length > 0}
   <div class="mb-3 min-w-0">
-    <p
-      class="mb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--soft-foreground)] opacity-70"
-    >
-      Try asking
-    </p>
     <div
       class="custom-scrollbar flex max-w-full flex-nowrap items-center gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >

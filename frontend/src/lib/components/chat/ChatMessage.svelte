@@ -121,13 +121,27 @@
 </script>
 
 <article
-  class={`flex w-full max-w-[95%] ${isAssistant ? "justify-start" : "ml-auto justify-end"}`}
+  class={`flex w-full max-w-[95%] flex-col gap-1.5 ${isAssistant ? "items-start" : "ml-auto items-end"}`}
 >
+  {#if isAssistant}
+    <div class="flex items-center gap-2 px-1">
+      <span class="h-2 w-2 rounded-full bg-[var(--foreground)]"></span>
+      <span
+        class="text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--foreground)]"
+        >dAstIll</span
+      >
+    </div>
+  {:else}
+    <span
+      class="px-1 text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--soft-foreground)]"
+      >You</span
+    >
+  {/if}
   <div
     class={`max-w-[min(100%,48rem)] space-y-3 ${isAssistant ? "w-full min-w-0" : "max-w-[36rem]"}`}
   >
     <div
-      class={`relative rounded-[var(--radius-lg)] px-4 py-3 shadow-sm group/copy ${isAssistant ? "bg-[var(--panel-surface)] text-[var(--foreground)]" : "bg-[var(--accent-wash-strong)] text-[var(--foreground)]"}`}
+      class={`relative group/copy ${isAssistant ? "text-[var(--foreground)]" : "rounded-2xl rounded-tr-md bg-[var(--muted)] px-5 py-3 text-[var(--foreground)]"}`}
     >
       {#if isAssistant && canCopy}
         <div
@@ -135,7 +149,7 @@
         >
           <button
             type="button"
-            class="pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--panel-surface)]"
+            class="pointer-events-auto inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--soft-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
             data-tooltip={copyState === "copied"
               ? "Copied"
               : copyState === "error"
@@ -228,23 +242,22 @@
     {/if}
 
     {#if showCompactSources}
-      <div
-        class="flex flex-wrap items-start gap-x-3 gap-y-1 pl-0 text-[11px] leading-relaxed text-[var(--soft-foreground)]"
-      >
-        <span
-          class="text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--soft-foreground)]"
-          >Sources</span
-        >
+      <div class="mt-2 flex flex-wrap gap-2">
         {#each message.sources as source, index (`${source.video_id}-${source.source_kind}-${source.section_title ?? ""}-${index}`)}
           <a
             href={sourceWorkspaceHref(source)}
             data-tooltip={sourceTooltipTitle(source)}
             target="_blank"
             rel="noopener noreferrer"
-            class="inline-flex max-w-[14rem] items-baseline gap-1 truncate text-[var(--accent)] font-medium no-underline hover:underline"
+            class="inline-flex max-w-xs items-center gap-2 rounded-md border border-[var(--border-soft)] p-2 text-[var(--soft-foreground)] no-underline transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
           >
-            <sup class="chat-cite-sup shrink-0">[{index + 1}]</sup>
-            <span class="truncate">{source.video_title}</span>
+            <span
+              class="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-[var(--muted)] text-[10px] font-bold text-[var(--soft-foreground)]"
+              >{index + 1}</span
+            >
+            <span class="truncate text-[12px] font-medium"
+              >{source.video_title}</span
+            >
           </a>
         {/each}
       </div>
