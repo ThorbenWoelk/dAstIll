@@ -120,11 +120,11 @@
   }
 </script>
 
-<article
-  class={`flex w-full flex-col gap-2 ${isAssistant ? "items-start" : "ml-auto items-end"}`}
->
-  {#if isAssistant}
-    <div class="flex items-center gap-2 px-1">
+<article class="flex w-full flex-col gap-2">
+  <div
+    class={`flex w-full items-center gap-2 px-1 ${!isAssistant ? "justify-end" : ""}`}
+  >
+    {#if isAssistant}
       <span class="h-2 w-2 rounded-full bg-[var(--foreground)]"></span>
       <span class="text-[12px] font-semibold text-[var(--foreground)]"
         >dAstIll</span
@@ -136,16 +136,16 @@
           {responseStatsLine}
         </span>
       {/if}
-    </div>
-  {:else}
-    <span class="px-1 text-[12px] font-medium text-[var(--soft-foreground)]"
-      >You</span
-    >
-  {/if}
+    {:else}
+      <span class="text-[12px] font-medium text-[var(--soft-foreground)]"
+        >You</span
+      >
+    {/if}
+  </div>
 
-  <div class={`space-y-4 ${isAssistant ? "mr-auto w-full" : "ml-auto w-full"}`}>
+  <div class="w-full space-y-4">
     <div
-      class={`relative group/copy ${isAssistant ? "text-[var(--foreground)]" : "rounded-2xl rounded-tr-sm bg-[var(--muted)] px-5 py-3 text-[var(--foreground)] shadow-sm"}`}
+      class={`relative group/copy w-full ${isAssistant ? "text-[var(--foreground)]" : "ml-auto rounded-2xl rounded-tr-sm bg-[var(--muted)] px-5 py-3 text-[var(--foreground)] shadow-sm"}`}
     >
       {#if isAssistant && canCopy}
         <div
@@ -208,7 +208,7 @@
       {#if isAssistant}
         {#if message.content}
           <div
-            class="prose prose-sm max-w-none text-sm leading-relaxed text-[var(--foreground)] prose-headings:text-[var(--foreground)] prose-p:text-[var(--foreground)] prose-strong:text-[var(--foreground)] prose-li:text-[var(--foreground)]"
+            class="prose prose-sm !max-w-none text-sm leading-relaxed text-[var(--foreground)] prose-headings:text-[var(--foreground)] prose-p:text-[var(--foreground)] prose-strong:text-[var(--foreground)] prose-li:text-[var(--foreground)]"
           >
             {@html contentHtml}
           </div>

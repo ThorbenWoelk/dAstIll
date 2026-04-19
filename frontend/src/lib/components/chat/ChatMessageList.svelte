@@ -36,7 +36,7 @@
     </div>
   </div>
 {:else}
-  <div class="flex flex-col gap-8">
+  <div class="flex w-full flex-col gap-8">
     {#each messages as message (message.id)}
       <ChatMessage {message} loading={loadingMessageId === message.id} />
     {/each}

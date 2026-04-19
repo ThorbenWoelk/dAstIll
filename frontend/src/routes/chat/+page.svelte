@@ -85,7 +85,7 @@
       <div class="relative flex min-h-0 w-full flex-1 flex-col">
         <div
           use:bindMessagesViewport
-          class="custom-scrollbar mobile-bottom-stack-padding min-h-0 flex-1 overflow-y-auto px-4 max-lg:pt-4 sm:px-6 lg:px-8 lg:py-8"
+          class="custom-scrollbar mobile-bottom-stack-padding min-h-0 flex-1 overflow-y-auto px-4 max-lg:pt-4 lg:py-8"
           role="region"
           aria-label="Chat conversation"
           onscroll={chat.handleMessagesViewportScroll}
@@ -177,9 +177,7 @@
         {/if}
       </div>
 
-      <div
-        class="border-t border-[var(--border-soft)] px-4 py-4 sm:px-6 lg:px-8 lg:py-6"
-      >
+      <div class="border-t border-[var(--border-soft)] px-4 py-4 lg:py-6">
         <div class="w-full">
           {#if chat.showStarterSuggestions}
             <ChatSuggestions
