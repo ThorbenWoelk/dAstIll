@@ -64,6 +64,13 @@ pub(crate) struct WatchMetadata {
     live_state: data_api::LiveBroadcastState,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct CompletedLiveTranscriptMetadata {
+    pub description: Option<String>,
+    pub actual_end: chrono::DateTime<chrono::Utc>,
+    pub duration_seconds: Option<u64>,
+}
+
 #[derive(Default)]
 struct WatchVideoDetails {
     title: Option<String>,

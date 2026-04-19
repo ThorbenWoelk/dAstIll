@@ -5,6 +5,8 @@ The cleanup rules are intentionally conservative:
 - YouTube must report liveStreamingDetails.actualEndTime.
 - A transcript object must exist.
 - A transcript is stale when its LastModified is before actualEndTime.
+- A transcript is description-like when a long completed stream's transcript is
+  short, untimed, and mostly overlaps the YouTube description.
 - A transcript is a tiny duplicate when another video from the same channel has
   the same actual start/end/duration and a much larger transcript.
 
@@ -19,6 +21,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sqlite3
 import subprocess
 import sys
@@ -35,11 +38,83 @@ MIN_DUPLICATE_GOOD_WORDS = 1_000
 DUPLICATE_TINY_RATIO = 0.10
 STREAM_TIME_MATCH_TOLERANCE_SECONDS = 5
 MAX_DISTILLATION_RETRIES = 3
+LONG_LIVE_MIN_DURATION_SECONDS = 30 * 60
+DESCRIPTION_LIKE_MAX_TRANSCRIPT_WORDS = 1_000
+DESCRIPTION_LIKE_MIN_WORDS = 40
+DESCRIPTION_LIKE_OVERLAP_RATIO = 0.75
 
 
 def transcript_word_count(payload: dict) -> int:
     text = payload.get("raw_text") or payload.get("formatted_markdown") or ""
     return len(text.split())
+
+
+def normalized_word_tokens(text: str) -> list[str]:
+    return [token.lower() for token in re.split(r"[^0-9A-Za-z]+", text) if token]
+
+
+def token_overlap_ratio(needle_tokens: list[str], haystack_tokens: list[str]) -> float:
+    if not needle_tokens:
+        return 0.0
+    counts: dict[str, int] = {}
+    for token in haystack_tokens:
+        counts[token] = counts.get(token, 0) + 1
+
+    matches = 0
+    for token in needle_tokens:
+        count = counts.get(token, 0)
+        if count:
+            counts[token] = count - 1
+            matches += 1
+    return matches / len(needle_tokens)
+
+
+def parse_iso8601_duration_seconds(value: str | None) -> int | None:
+    if not value or not value.startswith("P"):
+        return None
+    match = re.fullmatch(
+        r"P(?:(?P<days>\d+)D)?(?:T(?:(?P<hours>\d+)H)?(?:(?P<minutes>\d+)M)?(?:(?P<seconds>\d+)S)?)?",
+        value,
+    )
+    if not match:
+        return None
+    total = (
+        int(match.group("days") or 0) * 86_400
+        + int(match.group("hours") or 0) * 3_600
+        + int(match.group("minutes") or 0) * 60
+        + int(match.group("seconds") or 0)
+    )
+    return total or None
+
+
+def transcript_looks_like_description(
+    payload: dict,
+    description: str,
+    duration_iso8601: str | None,
+) -> bool:
+    if payload.get("timed_text"):
+        return False
+
+    duration_seconds = parse_iso8601_duration_seconds(duration_iso8601)
+    if duration_seconds is None or duration_seconds < LONG_LIVE_MIN_DURATION_SECONDS:
+        return False
+
+    text = payload.get("raw_text") or payload.get("formatted_markdown") or ""
+    transcript_tokens = normalized_word_tokens(text)
+    if (
+        len(transcript_tokens) < DESCRIPTION_LIKE_MIN_WORDS
+        or len(transcript_tokens) > DESCRIPTION_LIKE_MAX_TRANSCRIPT_WORDS
+    ):
+        return False
+
+    description_tokens = normalized_word_tokens(description)
+    if len(description_tokens) < DESCRIPTION_LIKE_MIN_WORDS:
+        return False
+
+    return (
+        token_overlap_ratio(transcript_tokens, description_tokens)
+        >= DESCRIPTION_LIKE_OVERLAP_RATIO
+    )
 
 
 def load_env_file(path: Path) -> None:
@@ -393,22 +468,38 @@ def main() -> int:
 
             stream_end = parse_dt(end_time)
             transcript_modified = parse_dt(modified_raw)
+            duration = item.get("contentDetails", {}).get("duration")
+            description = item.get("snippet", {}).get("description") or ""
             entry = {
                 "id": video_id,
                 "title": by_id.get(video_id, item.get("snippet", {}).get("title", "")),
                 "actual_end": stream_end.isoformat(),
                 "transcript_modified": transcript_modified.isoformat(),
-                "duration": item.get("contentDetails", {}).get("duration"),
+                "duration": duration,
                 "word_count": transcript_word_count(transcript_payload),
                 "duplicate_key": duplicate_key,
+                "description_like": transcript_looks_like_description(
+                    transcript_payload,
+                    description,
+                    duration,
+                ),
             }
             completed_entries.append(entry)
 
             if transcript_modified < stream_end:
                 stale_transcripts.append({**entry, "reason": "stale_before_stream_end"})
 
+    description_like_transcripts = [
+        {**entry, "reason": "description_like"}
+        for entry in completed_entries
+        if entry.get("description_like")
+    ]
     corrupted = dedupe_corruption_entries(
-        [*stale_transcripts, *find_duplicate_tiny_transcripts(completed_entries)]
+        [
+            *stale_transcripts,
+            *description_like_transcripts,
+            *find_duplicate_tiny_transcripts(completed_entries),
+        ]
     )
     if not corrupted:
         print(f"No corrupted completed livestream transcripts found in {db_path}")
@@ -435,10 +526,14 @@ def main() -> int:
         return 0
 
     reset_ids = [
-        entry["id"] for entry in corrupted if entry.get("reason") != "tiny_duplicate"
+        entry["id"]
+        for entry in corrupted
+        if "tiny_duplicate" not in str(entry.get("reason", "")).split("+")
     ]
     quarantine_ids = [
-        entry["id"] for entry in corrupted if entry.get("reason") == "tiny_duplicate"
+        entry["id"]
+        for entry in corrupted
+        if "tiny_duplicate" in str(entry.get("reason", "")).split("+")
     ]
 
     for video_id in [*reset_ids, *quarantine_ids]:

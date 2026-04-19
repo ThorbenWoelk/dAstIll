@@ -5,7 +5,7 @@ use serde::Deserialize;
 use crate::models::{Video, VideoInfo};
 
 use super::video_builder::build_pending_video;
-use super::{YouTubeError, YouTubeService};
+use super::{CompletedLiveTranscriptMetadata, YouTubeError, YouTubeService};
 
 #[derive(Deserialize)]
 struct DataApiListResponse<T> {
@@ -284,6 +284,54 @@ impl YouTubeService {
                 .as_deref()
                 .and_then(parse_u64),
         })
+    }
+
+    pub(crate) async fn fetch_completed_live_transcript_metadata(
+        &self,
+        video_id: &str,
+    ) -> Result<Option<CompletedLiveTranscriptMetadata>, YouTubeError> {
+        let Some(api_key) = self.data_api_key_if_available() else {
+            return Ok(None);
+        };
+
+        let item = self
+            .fetch_data_api_video_items(&[video_id.to_string()], api_key)
+            .await?
+            .into_iter()
+            .next()
+            .ok_or(YouTubeError::ChannelNotFound)?;
+        let live_state = item.live_broadcast_state();
+        if !live_state.is_ingestable() {
+            return Err(YouTubeError::NonCompletedLiveStream {
+                state: live_state.as_str(),
+            });
+        }
+        if live_state != LiveBroadcastState::CompletedLive {
+            return Ok(None);
+        }
+
+        let actual_end = item
+            .live_streaming_details
+            .as_ref()
+            .and_then(|details| details.actual_end_time.as_deref())
+            .and_then(Self::parse_any_datetime)
+            .ok_or(YouTubeError::ChannelNotFound)?;
+        let duration_iso8601 = item
+            .content_details
+            .as_ref()
+            .and_then(|details| details.duration.as_deref());
+        let duration_seconds = duration_iso8601.and_then(parse_iso8601_duration_seconds);
+        let description = item.snippet.and_then(|snippet| {
+            crate::services::youtube::placeholder::sanitize_optional_description(
+                snippet.description,
+            )
+        });
+
+        Ok(Some(CompletedLiveTranscriptMetadata {
+            description,
+            actual_end,
+            duration_seconds,
+        }))
     }
 
     pub(crate) async fn fetch_videos_from_data_api(

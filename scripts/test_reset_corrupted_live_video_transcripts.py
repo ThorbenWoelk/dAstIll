@@ -104,6 +104,35 @@ class DuplicateLivestreamDetectionTest(unittest.TestCase):
 
         self.assertEqual(corrupted, [])
 
+    def test_detects_description_like_transcript_for_long_stream(self) -> None:
+        description = (
+            "Yesterday I tested Claude Design against v0, Grok, Google Stitch, "
+            "Cursor, Droid, and ChatGPT Pro on the same blog redesign. Claude "
+            "Design produced the visual system. Droid turned it into a working "
+            "prototype with Opus on max thinking. It looked great locally. "
+            "Today I am closing the loop and getting my blog live on the internet."
+        )
+
+        self.assertTrue(
+            live_cleanup.transcript_looks_like_description(
+                {"raw_text": description, "timed_text": None},
+                description,
+                "PT3H28M39S",
+            )
+        )
+
+    def test_description_like_detector_accepts_real_long_transcript(self) -> None:
+        description = "Today I am getting my blog live on the internet."
+        transcript = " ".join(f"caption{index}" for index in range(1_500))
+
+        self.assertFalse(
+            live_cleanup.transcript_looks_like_description(
+                {"raw_text": transcript, "timed_text": None},
+                description,
+                "PT3H28M39S",
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

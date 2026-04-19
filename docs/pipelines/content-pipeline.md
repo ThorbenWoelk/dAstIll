@@ -109,7 +109,10 @@ Videos enter the system from multiple paths:
 
 YouTube live streams are queued only after YouTube reports the broadcast as completed.
 Upcoming or active streams are skipped because captions/transcripts are not stable until
-the broadcast ends.
+the broadcast ends. Completed livestream transcripts are also treated as not ready for
+a short grace period after `actualEndTime`. If extraction still returns short text that
+mostly matches the YouTube description, the backend defers the transcript instead of
+saving it and generating a summary from description copy.
 
 Inserted videos begin with transcript and summary lifecycle states that the queue worker consumes.
 User visibility to those videos is derived later from channel subscriptions and explicit

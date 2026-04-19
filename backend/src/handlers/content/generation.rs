@@ -1,5 +1,11 @@
 use super::*;
 
+const COMPLETED_LIVE_TRANSCRIPT_GRACE_SECONDS: i64 = 30 * 60;
+const LONG_LIVE_MIN_DURATION_SECONDS: u64 = 30 * 60;
+const DESCRIPTION_LIKE_MAX_TRANSCRIPT_WORDS: usize = 1_000;
+const DESCRIPTION_LIKE_MIN_WORDS: usize = 40;
+const DESCRIPTION_LIKE_OVERLAP_RATIO: f64 = 0.75;
+
 #[utoipa::path(
     put,
     path = "/api/videos/{id}/summary",
@@ -32,11 +38,143 @@ fn is_valid_cached_transcript(transcript: &Transcript) -> bool {
     !text.trim().is_empty() && !is_site_wide_placeholder_description(text)
 }
 
+fn completed_live_transcript_grace_elapsed(
+    actual_end: chrono::DateTime<chrono::Utc>,
+    now: chrono::DateTime<chrono::Utc>,
+) -> bool {
+    now >= actual_end + chrono::Duration::seconds(COMPLETED_LIVE_TRANSCRIPT_GRACE_SECONDS)
+}
+
+fn normalized_word_tokens(text: &str) -> Vec<String> {
+    text.split(|ch: char| !ch.is_alphanumeric())
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+        .map(str::to_lowercase)
+        .collect()
+}
+
+fn token_overlap_ratio(needle_tokens: &[String], haystack_tokens: &[String]) -> f64 {
+    if needle_tokens.is_empty() {
+        return 0.0;
+    }
+
+    let mut counts = std::collections::HashMap::<&str, usize>::new();
+    for token in haystack_tokens {
+        *counts.entry(token.as_str()).or_default() += 1;
+    }
+
+    let mut matches = 0usize;
+    for token in needle_tokens {
+        let Some(count) = counts.get_mut(token.as_str()) else {
+            continue;
+        };
+        if *count > 0 {
+            *count -= 1;
+            matches += 1;
+        }
+    }
+
+    matches as f64 / needle_tokens.len() as f64
+}
+
+fn completed_live_transcript_looks_like_description(
+    transcript_text: &str,
+    description: &str,
+    duration_seconds: Option<u64>,
+    timed_segment_count: usize,
+) -> bool {
+    if timed_segment_count > 0 {
+        return false;
+    }
+
+    if duration_seconds
+        .map(|duration| duration < LONG_LIVE_MIN_DURATION_SECONDS)
+        .unwrap_or(true)
+    {
+        return false;
+    }
+
+    let transcript_tokens = normalized_word_tokens(transcript_text);
+    if transcript_tokens.len() < DESCRIPTION_LIKE_MIN_WORDS
+        || transcript_tokens.len() > DESCRIPTION_LIKE_MAX_TRANSCRIPT_WORDS
+    {
+        return false;
+    }
+
+    let description_tokens = normalized_word_tokens(description);
+    if description_tokens.len() < DESCRIPTION_LIKE_MIN_WORDS {
+        return false;
+    }
+
+    token_overlap_ratio(&transcript_tokens, &description_tokens) >= DESCRIPTION_LIKE_OVERLAP_RATIO
+}
+
+async fn defer_transcript_processing(
+    state: &AppState,
+    video_id: &str,
+    message: &str,
+) -> (StatusCode, String) {
+    if let Err(err) =
+        db::update_video_transcript_status(&state.db, video_id, ContentStatus::Pending).await
+    {
+        tracing::error!(
+            video_id = %video_id,
+            error = %err,
+            "failed to persist deferred transcript status"
+        );
+    } else {
+        evict_video_scope_cache_by_video_id(state, video_id).await;
+    }
+    state.transcript_cooldown.activate();
+    (StatusCode::TOO_MANY_REQUESTS, message.to_string())
+}
+
 pub(crate) async fn ensure_transcript(
     state: &AppState,
     video_id: &str,
 ) -> Result<Transcript, (StatusCode, String)> {
     let video = require_video(state, video_id).await?;
+    let completed_live = match state
+        .youtube
+        .fetch_completed_live_transcript_metadata(video_id)
+        .await
+    {
+        Ok(metadata) => metadata,
+        Err(crate::services::youtube::YouTubeError::NonCompletedLiveStream {
+            state: live_state,
+        }) => {
+            return Err(
+                defer_transcript_processing(
+                    state,
+                    video_id,
+                    &format!(
+                        "YouTube live stream is not finished yet ({live_state}); transcript will be retried later"
+                    ),
+                )
+                .await,
+            );
+        }
+        Err(err) => {
+            tracing::warn!(
+                video_id = %video_id,
+                error = %err,
+                "failed to fetch completed livestream transcript metadata; continuing without live transcript guard"
+            );
+            None
+        }
+    };
+
+    if let Some(metadata) = completed_live.as_ref() {
+        if !completed_live_transcript_grace_elapsed(metadata.actual_end, chrono::Utc::now()) {
+            return Err(defer_transcript_processing(
+                state,
+                video_id,
+                "Completed livestream transcript is not ready yet; retry later",
+            )
+            .await);
+        }
+    }
+
     {
         if let Some(transcript) = db::get_transcript(&state.db, video_id)
             .await
@@ -76,6 +214,35 @@ pub(crate) async fn ensure_transcript(
         timed_segments = timed.len(),
         "transcript download completed"
     );
+
+    if let Some(metadata) = completed_live.as_ref() {
+        let candidate_text = if raw.trim().is_empty() {
+            &formatted
+        } else {
+            &raw
+        };
+        if let Some(description) = metadata.description.as_deref() {
+            if completed_live_transcript_looks_like_description(
+                candidate_text,
+                description,
+                metadata.duration_seconds,
+                timed.len(),
+            ) {
+                tracing::warn!(
+                    video_id = %video_id,
+                    transcript_words = candidate_text.split_whitespace().count(),
+                    duration_seconds = metadata.duration_seconds.unwrap_or_default(),
+                    "completed livestream transcript looks like the YouTube description; deferring retry"
+                );
+                return Err(defer_transcript_processing(
+                    state,
+                    video_id,
+                    "Completed livestream transcript looks like the video description; retry later",
+                )
+                .await);
+            }
+        }
+    }
 
     let transcript = Transcript {
         video_id: video_id.to_string(),
@@ -437,7 +604,8 @@ async fn evict_video_scope_cache_by_video_id(state: &AppState, video_id: &str) {
 #[cfg(test)]
 mod tests {
     use super::{
-        MAX_SUMMARY_AUTO_REGEN_ATTEMPTS, is_valid_cached_transcript,
+        MAX_SUMMARY_AUTO_REGEN_ATTEMPTS, completed_live_transcript_grace_elapsed,
+        completed_live_transcript_looks_like_description, is_valid_cached_transcript,
         should_auto_regenerate_summary, transcript_text,
     };
     use crate::models::{ContentStatus, Transcript, TranscriptRenderMode};
@@ -496,6 +664,64 @@ mod tests {
     fn valid_cached_transcript_falls_back_to_formatted_when_raw_is_none() {
         let t = make_transcript(None, Some("Actual transcript content here."));
         assert!(is_valid_cached_transcript(&t));
+    }
+
+    #[test]
+    fn completed_live_transcript_grace_waits_after_actual_end() {
+        let ended = chrono::DateTime::parse_from_rfc3339("2026-04-18T22:27:42Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+
+        assert!(!completed_live_transcript_grace_elapsed(
+            ended,
+            ended + chrono::Duration::minutes(2)
+        ));
+        assert!(completed_live_transcript_grace_elapsed(
+            ended,
+            ended + chrono::Duration::minutes(31)
+        ));
+    }
+
+    #[test]
+    fn completed_live_transcript_rejects_description_like_text_for_long_stream() {
+        let description = "Yesterday I tested Claude Design against v0, Grok, Google Stitch, Cursor, Droid, and ChatGPT Pro on the same blog redesign. Claude Design produced the visual system. Droid turned it into a working prototype with Opus on max thinking. It looked great locally. But a prototype that runs on your laptop is not a shipped product. Today I am closing the loop and getting my blog live on the internet.";
+        let transcript = "Yesterday I tested Claude Design against v0, Grok, Google Stitch, Cursor, Droid, and ChatGPT Pro on the same blog redesign. Claude Design produced the visual system. Droid turned it into a working prototype with Opus on max thinking. It looked great locally. But a prototype that runs on your laptop is not a shipped product. Today I am closing the loop and getting my blog live on the internet.";
+
+        assert!(completed_live_transcript_looks_like_description(
+            transcript,
+            description,
+            Some(3 * 60 * 60),
+            0
+        ));
+    }
+
+    #[test]
+    fn completed_live_transcript_accepts_real_long_caption_text() {
+        let description =
+            "Today I am shipping a blog live on the internet after yesterday's prototype.";
+        let transcript = (0..1_500)
+            .map(|index| format!("caption{index}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        assert!(!completed_live_transcript_looks_like_description(
+            &transcript,
+            description,
+            Some(3 * 60 * 60),
+            0
+        ));
+    }
+
+    #[test]
+    fn completed_live_transcript_accepts_timed_segments_even_when_short() {
+        let description = "Yesterday I tested Claude Design against v0, Grok, Google Stitch, Cursor, Droid, and ChatGPT Pro on the same blog redesign. Claude Design produced the visual system. Droid turned it into a working prototype with Opus on max thinking. It looked great locally. But a prototype that runs on your laptop is not a shipped product. Today I am closing the loop and getting my blog live on the internet.";
+
+        assert!(!completed_live_transcript_looks_like_description(
+            description,
+            description,
+            Some(3 * 60 * 60),
+            12
+        ));
     }
 
     #[test]
