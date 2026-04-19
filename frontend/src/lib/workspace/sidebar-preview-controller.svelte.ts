@@ -1,3 +1,4 @@
+import { untrack } from "svelte";
 import { browser } from "$app/environment";
 import {
   getChannelSnapshot,
@@ -138,6 +139,7 @@ export function createSidebarPreviewController(
   let hydratedPreviewSessionKey = $state<string | null>(null);
   let lastAppliedVideoAcknowledgeSeq = $state(0);
   let lastAutoExpandedChannelId = $state<string | null>(null);
+  let userCollapsedSelectionKey = $state<string | null>(null);
   let syncDatePickerChannelId = $state<string | null>(null);
 
   function channelListEmptyCaption(channelVideoCount: number | null): string {
@@ -442,10 +444,16 @@ export function createSidebarPreviewController(
   async function toggleChannelVideoCollection(channel: Channel) {
     const state = ensureChannelVideoCollection(channel.id);
     if (state.expanded) {
+      const selectedChannelId = options.getSelectedChannelId();
+      const selectedVideoId = options.getSelectedVideoId();
+      if (selectedChannelId === channel.id && selectedVideoId) {
+        userCollapsedSelectionKey = `${channel.id}:${selectedVideoId}`;
+      }
       setExpandedPreviewChannel(null);
       return;
     }
 
+    userCollapsedSelectionKey = null;
     setExpandedPreviewChannel(channel.id);
     const nextState = ensureChannelVideoCollection(channel.id);
     nextState.scrollTop = 0;
@@ -709,9 +717,18 @@ export function createSidebarPreviewController(
     if (!selectedChannel || !selectedVideoId) return;
     if (selectedChannel.id === OTHERS_CHANNEL_ID) return;
 
+    const selectionKey = `${selectedChannel.id}:${selectedVideoId}`;
+    if (userCollapsedSelectionKey !== selectionKey) {
+      userCollapsedSelectionKey = null;
+    }
+
     const state = ensureChannelVideoCollection(selectedChannel.id);
-    if (!state.expanded) {
-      setExpandedPreviewChannel(selectedChannel.id);
+    if (!state.expanded && userCollapsedSelectionKey !== selectionKey) {
+      untrack(() => setExpandedPreviewChannel(selectedChannel.id));
+    }
+
+    if (userCollapsedSelectionKey === selectionKey) {
+      return;
     }
 
     const nextState = ensureChannelVideoCollection(selectedChannel.id);
