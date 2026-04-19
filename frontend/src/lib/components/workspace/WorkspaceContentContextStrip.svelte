@@ -156,13 +156,13 @@
   .content-hero-title {
     margin: 0;
     font-family: "Fraunces", serif;
-    font-size: clamp(2.2rem, 5vw, 4.3rem);
-    line-height: 0.98;
-    letter-spacing: -0.04em;
+    font-size: clamp(1.75rem, 3vw, 2.5rem);
+    line-height: 1.15;
+    letter-spacing: -0.02em;
     text-wrap: balance;
     font-variation-settings:
-      "opsz" 72,
-      "wght" 650;
+      "opsz" 36,
+      "wght" 580;
   }
 
   .summary-embed-strip {
@@ -179,8 +179,8 @@
 
   @media (max-width: 1023px) {
     .content-hero-title {
-      font-size: clamp(1.8rem, 8.5vw, 3rem);
-      line-height: 1.02;
+      font-size: clamp(1.5rem, 6vw, 2rem);
+      line-height: 1.2;
     }
 
     .summary-embed-strip {
