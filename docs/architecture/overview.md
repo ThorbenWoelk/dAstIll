@@ -13,6 +13,7 @@ flowchart TB
   docs[Docs UI<br/>VitePress]
   sources[Content sources<br/>YouTube + OpenAlex + RSS + web]
   ai[AI services<br/>Ollama + Polly]
+  asr[Local ASR service<br/>OpenAI-compatible STT]
   storage[Data stores<br/>S3, S3 Vectors, local libSQL]
 
   browser --> app
@@ -20,6 +21,7 @@ flowchart TB
   app --> backend
   backend --> sources
   backend --> ai
+  backend --> asr
   backend --> storage
 `;
 
@@ -53,6 +55,7 @@ dAstIll is a source monitoring tool that is still migrating off an original YouT
 - **Evaluates summary quality**: Uses a separate LLM-as-a-judge to score summaries against source text
 - **Supports library chat**: Lets users ask grounded questions across their saved content, with optional deep-research mode for wider synthesis
 - **Synthesizes summary audio**: Can generate spoken playback for summaries through Amazon Polly when TTS is enabled
+- **Transcribes podcasts locally**: Can send podcast audio enclosures to an operator-owned OpenAI-compatible ASR service when feeds do not publish transcripts
 - **Enables search**: Full-text and optional semantic search across synced text content
 - **Preserves highlights**: Save and organize important snippets from synced content
 
@@ -89,6 +92,16 @@ dAstIll is a source monitoring tool that is still migrating off an original YouT
   - runtime config
   - AI service adapters
   - all long-running worker loops
+
+### Local ASR Service
+
+- Runs outside the Rust backend process
+- Implements an OpenAI-compatible `POST /v1/audio/transcriptions` endpoint
+- Receives podcast audio from the backend when `LOCAL_ASR_ENABLED=true`
+- Should run in a private local/prod network or require `LOCAL_ASR_API_KEY`
+- Recommended free model: NVIDIA Parakeet TDT 0.6B v3 from NVIDIA's official model ecosystem
+
+The backend does not bundle or load the STT model. It validates and downloads public podcast enclosures, enforces byte and redirect limits, then posts multipart audio to the configured ASR service. This keeps model files, CPU/GPU pressure, and ASR failures out of the main API container.
 
 ### Documentation Frontend
 
@@ -146,6 +159,8 @@ Transcript extraction, summary generation, summary evaluation, channel refreshes
 ### Local-first AI, cloud-backed evaluator support
 
 The runtime supports local Ollama endpoints, cloud-backed model names, and explicit fallback rules. The app treats availability and rate limits as normal runtime conditions that must be handled.
+
+Podcast STT follows the same local-first rule: use an operator-owned ASR endpoint for audio transcription instead of scraping Apple/Spotify app transcripts. Publisher transcripts are preferred when RSS exposes them; otherwise the audio enclosure is transcribed locally when enabled.
 
 ### Semantic search defaults depend on the environment
 

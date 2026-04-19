@@ -11,6 +11,7 @@ flowchart TB
   discover[Video discovery]
   queue[Queue worker]
   transcript[Transcript ready]
+  podcast_asr[Local podcast ASR<br/>OpenAI-compatible STT service]
   summary[Summary ready]
   eval[Summary evaluation]
   searchpending[Mark search pending]
@@ -21,6 +22,7 @@ flowchart TB
   channel --> discover
   discover --> queue
   queue --> transcript
+  queue --> podcast_asr --> transcript
   transcript --> summary
   summary --> eval
   transcript --> searchpending
@@ -122,11 +124,28 @@ video memberships rather than from separate per-user video copies.
 
 The queue worker processes transcripts before summaries whenever a video is missing a ready transcript.
 
-Transcript extraction starts with the external `summarize` CLI to extract plain transcript text (and a formatted transcript representation).
+### YouTube videos
+
+YouTube transcript extraction starts with the external `summarize` CLI to extract plain transcript text (and a formatted transcript representation).
 
 When `summarize` returns empty output (or a placeholder blurb), the backend falls back to `yt-dlp` using the `json3` subtitle format to extract timed caption events.
 
 Those timed events are parsed into `TimedSegment[]` and later stored as optional `start_sec` on transcript chunks for timestamp-aware search metadata.
+
+### Podcast episodes
+
+Podcast RSS show notes are not transcripts. During podcast feed sync, dAstIll stores:
+
+- the episode metadata
+- show notes as description/display content only
+- publisher `podcast:transcript` references when present
+- the RSS audio enclosure as `MediaAssetKind::SourceAudio`
+
+If a publisher transcript reference exists, the backend fetches it through the same public-media URL policy used for audio. Supported publisher formats are plain text, VTT, SRT, Podcasting 2.0 JSON segments, and HTML.
+
+When no publisher transcript exists, podcast transcription uses a separate operator-owned ASR service. The Rust backend is only the client. It downloads the public audio enclosure through a pinned, public-address-only media fetcher, sends the audio to `LOCAL_ASR_BASE_URL/v1/audio/transcriptions` as multipart form data, and stores the returned text as the canonical transcript.
+
+The STT model runs outside the backend process. The recommended free local/prod model is NVIDIA Parakeet TDT 0.6B v3, served by a trusted OpenAI-compatible ASR implementation. Third-party wrapper repositories are implementation details and should not be treated as product dependencies unless they have enough maintenance signal for production.
 
 On success:
 

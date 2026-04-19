@@ -253,6 +253,12 @@ as local experiments only unless they have enough maintenance signal for product
 server separate from the Rust backend so CPU/GPU load, model files, and failures do not take down
 the main app process.
 
+The ASR process is where the STT model runs. The Rust backend does not load Parakeet, Whisper, or
+any other speech model. It calls `POST {LOCAL_ASR_BASE_URL}/audio/transcriptions` with multipart
+audio and expects plain transcript text back. A local-only ASR server can use
+`LOCAL_ASR_API_KEY=sk-no-key-required`; production or network-reachable services should use a real
+token or a private network boundary.
+
 Local startup needs valid AWS credentials for S3 and S3 Vectors access. It does not require
 additional GCP service-account credentials for backend storage. `GCP_PROJECT_ID` may still be needed for Firebase Auth, Hosting-aligned
 frontend config, and other project-scoped services.
