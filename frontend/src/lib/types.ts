@@ -68,7 +68,6 @@ export type ChatRetrievalIntent =
   | "synthesis"
   | "pattern"
   | "comparison";
-export type QueueTab = "transcripts" | "summaries" | "evaluations";
 
 export const OTHERS_CHANNEL_ID = "__others__";
 

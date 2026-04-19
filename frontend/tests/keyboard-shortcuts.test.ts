@@ -112,7 +112,6 @@ describe("GO_SEQUENCE_HINTS", () => {
       "3",
       "4",
       "5",
-      "6",
       "I",
       "S",
       "H",
@@ -149,12 +148,11 @@ describe("GO_SEQUENCE_HINTS", () => {
 describe("resolveGlobalSectionShortcut", () => {
   it("maps the global number shortcuts to sections and docs", () => {
     expect(resolveGlobalSectionShortcut("1")).toBe("/");
-    expect(resolveGlobalSectionShortcut("2")).toBe("/download-queue");
-    expect(resolveGlobalSectionShortcut("3")).toBe("/highlights");
-    expect(resolveGlobalSectionShortcut("4")).toBe("/vocabulary");
-    expect(resolveGlobalSectionShortcut("5")).toBe("/chat");
-    expect(resolveGlobalSectionShortcut("6")).toBe("docs");
-    expect(resolveGlobalSectionShortcut("7")).toBeNull();
+    expect(resolveGlobalSectionShortcut("2")).toBe("/highlights");
+    expect(resolveGlobalSectionShortcut("3")).toBe("/vocabulary");
+    expect(resolveGlobalSectionShortcut("4")).toBe("/chat");
+    expect(resolveGlobalSectionShortcut("5")).toBe("docs");
+    expect(resolveGlobalSectionShortcut("6")).toBeNull();
   });
 });
 

@@ -1,6 +1,5 @@
 export type SectionNavigationSection =
   | "workspace"
-  | "queue"
   | "highlights"
   | "vocabulary"
   | "chat";
@@ -28,12 +27,6 @@ export const SECTION_NAVIGATION_ITEMS: readonly SectionNavigationDescriptor[] =
       section: "workspace",
       label: "Workspace",
       href: "/",
-      external: false,
-    },
-    {
-      section: "queue",
-      label: "Queue",
-      href: "/download-queue",
       external: false,
     },
     {

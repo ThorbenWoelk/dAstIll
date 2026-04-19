@@ -1,33 +1,48 @@
 # dAstIll
 
-Stop doom-scrolling, start deep-diving. dAstIll monitors your favorite YouTube channels, pulls transcripts, and delivers AI-generated summaries - so you can quickly spot what matters to you and spend your time on the videos worth watching.
+## Disclaimer
 
-dAstIll is a full-stack Rust + SvelteKit application that uses Ollama LLMs to generate and quality-score summaries from transcripts.
+This is a showcase repo. Its first purpose is to experiment and push vibe coding to its limits. Frequent refactorings, redesigns, and a lack of stability are part of the point.
+
+Over time, the codebase should keep turning into something cleaner, more structured, secure, extendable, and maintainable while new features keep landing. There is a learning strategy behind the mess.
+
+That said, feel free to reach out, criticize, open issues, or contribute directly.
+
+dAstIll watches the sources you care about, extracts readable content, and turns the feed into a library you can search, read, and question. It supports YouTube channels, OpenAlex saved searches, podcast RSS feeds, and tracked web pages.
+
+dAstIll is a full-stack Rust + SvelteKit application. The Rust backend uses Ollama-compatible models to summarize content, score summary quality, power RAG chat, and maintain full-text plus semantic search indexes.
 
 ## Features
 
-- **Never miss a beat**: Track your favorite YouTube channels and filter what's worth watching without missing out.
-- **Evaluated AI Summaries**: Dive deep without being overwhelmed. If an LLM screwed up, we will notice.
-- **Highlights**: Mark and save important snippets from transcripts and summaries for quick reference.
-- **Agentic RAG Search**: Ranked keyword and semantic search across transcripts and summaries, with timestamp metadata on supported transcript matches.
-- **Chat with Content**: Ask questions across your video library with source attribution and multi-pass retrieval.
-- **Vocabulary Customization**: Define word replacements applied during summary generation for consistent terminology.
-- **Audio Playback**: Optional text-to-speech synthesis via Amazon Polly for listening to summaries.
+- **Source library**: Track YouTube channels, OpenAlex saved searches, podcast feeds, and websites from one workspace.
+- **Evaluated AI summaries**: Generate summaries and score them with a separate evaluator model so low-quality output can be detected.
+- **Hybrid search**: Search transcripts, summaries, abstracts, notes, and page text with keyword and semantic retrieval.
+- **Chat with content**: Ask grounded questions across the saved library with source attribution and optional multi-pass retrieval.
+- **Highlights**: Save important snippets from transcripts and summaries for later review.
+- **Vocabulary customization**: Define word replacements applied during summary generation for consistent terminology.
+- **Summary audio**: Generate optional Amazon Polly audio playback for ready summaries.
+- **Mini reader**: Use `/mini` for a text-first reading surface that shares the same backend and content library.
 
 ## Documentation
 
-Detailed project documentation lives in the separate docs frontend under [`docs/index.md`](./docs/index.md).
+Detailed project documentation lives in the separate VitePress docs frontend under [`docs/index.md`](./docs/index.md).
 
 - Docs landing page source: [`docs/index.md`](./docs/index.md)
 - Architecture overview: [`docs/architecture/overview.md`](./docs/architecture/overview.md)
+- Frontend and API boundaries: [`docs/architecture/frontend-and-api.md`](./docs/architecture/frontend-and-api.md)
+- Content pipeline: [`docs/pipelines/content-pipeline.md`](./docs/pipelines/content-pipeline.md)
 - Search indexing and retrieval: [`docs/pipelines/search-indexing.md`](./docs/pipelines/search-indexing.md)
 - AI model behavior: [`docs/pipelines/ai-models.md`](./docs/pipelines/ai-models.md)
+- Local development: [`docs/operations/local-development.md`](./docs/operations/local-development.md)
+- Deployment and operations: [`docs/operations/deployment.md`](./docs/operations/deployment.md)
+- Security status: [`docs/security/index.md`](./docs/security/index.md)
+- Mini reader architecture: [`docs/architecture/mini-reader.md`](./docs/architecture/mini-reader.md)
 
 Run the docs frontend locally:
 
 ```bash
 cd docs
-bun install
+bun install --frozen-lockfile
 bun run dev
 ```
 
@@ -47,7 +62,7 @@ The app header includes a `Docs` link. In local development it falls back to `ht
 
 ### Backend
 
-Rust, AWS S3, AWS S3 Vectors, local libSQL, Ollama
+Rust, Axum, AWS S3, AWS S3 Vectors, local libSQL, Ollama-compatible model endpoints, Amazon Polly
 
 ### Infrastructure & Deployment
 
@@ -58,9 +73,10 @@ Terraform, Firebase Hosting, Google Cloud Run, AWS IAM (Workload Identity Federa
 - [Rust](https://rustup.rs/)
 - [Bun](https://bun.sh/)
 - [Ollama](https://ollama.com/) (required for local AI models)
-- AWS credentials with access to S3 and S3 Vectors (prefer the shared machine-local file at `~/.config/dastill/aws/credentials`)
+- AWS credentials with access to S3, S3 Vectors, and optionally Polly (prefer the shared machine-local file at `~/.config/dastill/aws/credentials`)
 - An AWS S3 bucket for data storage and an S3 Vectors bucket for semantic search
 - YouTube Data API Key (optional)
+- OpenAlex API key (optional)
 
 ## Getting Started (Local Development)
 
@@ -114,6 +130,7 @@ Terraform, Firebase Hosting, Google Cloud Run, AWS IAM (Workload Identity Federa
    BACKEND_PROXY_TOKEN=local-dev-backend-proxy-token
    BACKEND_CORS_ALLOWED_ORIGINS=http://localhost:3543
    YOUTUBE_API_KEY=optional-api-key
+   OPEN_ALEX_API_KEY=optional-api-key
    OLLAMA_URL=http://localhost:11434
    OLLAMA_SUMMARY_MODEL=glm-5.1:cloud
    OLLAMA_DEFAULT_CHAT_MODEL=glm-5.1:cloud
@@ -141,7 +158,13 @@ Terraform, Firebase Hosting, Google Cloud Run, AWS IAM (Workload Identity Federa
    and keep `AWS_SHARED_CREDENTIALS_FILE` / `AWS_CONFIG_FILE` pointed at the
    shared local files.
 
-3. **Understand Search Defaults**:
+3. **Understand Source Inputs And Search Defaults**:
+   The workspace add-source input accepts:
+   - YouTube handles and channel URLs
+   - `openalex: <query>`
+   - `podcast: <feed-url>`
+   - `site: <page-url>` or a plain non-YouTube page URL
+
    `SEARCH_SEMANTIC_ENABLED` overrides the runtime default:
    - Local debug builds default to semantic search on.
    - Release/production builds default to FTS-only unless `SEARCH_SEMANTIC_ENABLED=true` is explicitly set.

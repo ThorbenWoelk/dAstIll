@@ -6,10 +6,6 @@ import { shouldCloseDrawerForKey } from "../src/lib/mobile-navigation/drawerKeyb
 describe("resolveCurrentSectionFromPathname", () => {
   it("maps internal routes to the expected section", () => {
     expect(resolveCurrentSectionFromPathname("/")).toBe("workspace");
-    expect(resolveCurrentSectionFromPathname("/download-queue")).toBe("queue");
-    expect(resolveCurrentSectionFromPathname("/download-queue/abc")).toBe(
-      "queue",
-    );
     expect(resolveCurrentSectionFromPathname("/highlights")).toBe("highlights");
     expect(resolveCurrentSectionFromPathname("/vocabulary")).toBe("vocabulary");
     expect(resolveCurrentSectionFromPathname("/chat")).toBe("chat");

@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
+  import QueueStatusPopover from "$lib/components/workspace/QueueStatusPopover.svelte";
 
   let {
     title,
@@ -22,3 +23,4 @@
 {#if trailing}
   {@render trailing()}
 {/if}
+<QueueStatusPopover />

@@ -1,0 +1,1203 @@
+<html lang="en" class="antialiased">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>dAstIll - Content Intelligence</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Lora:ital,wght@0,400;0,500;0,600;1,400&amp;display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+
+    <style>
+      /* Base styles mapped to Tailwind utilities in HTML, specific overrides here */
+      iconify-icon {
+        stroke-width: 1.5;
+      }
+      /* Custom scrollbar for webkit to keep it clean */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #e7e5e4;
+        border-radius: 3px;
+      }
+      .dark ::-webkit-scrollbar-thumb {
+        background: #3f3f46;
+      }
+    </style>
+  </head>
+  <body
+    class="bg-stone-100 text-stone-900 font-sans selection:bg-stone-200 selection:text-stone-900 pb-24"
+  >
+    <!-- Presentation Header -->
+    <div class="max-w-7xl mx-auto px-8 py-12">
+      <h1 class="text-3xl font-semibold tracking-tight text-stone-900 mb-2">
+        dAstIll Interface Archive
+      </h1>
+      <p class="text-sm text-stone-500">Design System &amp; Core Workspaces</p>
+    </div>
+
+    <!-- 1. Desktop Workspace -->
+    <section class="max-w-[1440px] mx-auto px-8 mb-24">
+      <div class="mb-4 flex items-center justify-between">
+        <h2 class="text-lg font-semibold tracking-tight">
+          1. Desktop Workspace
+        </h2>
+        <span
+          class="text-xs text-stone-400 font-medium tracking-widest uppercase"
+          >Light Theme</span
+        >
+      </div>
+
+      <div
+        class="flex h-[800px] bg-stone-50 border border-stone-200 rounded-xl overflow-hidden shadow-sm"
+      >
+        <!-- Nav Rail -->
+        <nav
+          class="w-16 border-r border-stone-200 bg-stone-50 flex flex-col items-center py-6 gap-8 z-10"
+        >
+          <div class="text-lg font-semibold tracking-tighter text-stone-900">
+            dI
+          </div>
+          <div class="flex flex-col gap-6 w-full items-center">
+            <button
+              class="text-stone-900 bg-stone-200 p-2 rounded-md transition-colors"
+              aria-label="Workspace"
+            >
+              <iconify-icon
+                icon="solar:folder-linear"
+                class="text-xl"
+              ></iconify-icon>
+            </button>
+            <button
+              class="text-stone-400 hover:text-stone-900 hover:bg-stone-100 p-2 rounded-md transition-colors"
+              aria-label="Queue"
+            >
+              <iconify-icon
+                icon="solar:cloud-download-linear"
+                class="text-xl"
+              ></iconify-icon>
+            </button>
+            <button
+              class="text-stone-400 hover:text-stone-900 hover:bg-stone-100 p-2 rounded-md transition-colors"
+              aria-label="Highlights"
+            >
+              <iconify-icon
+                icon="solar:bookmark-linear"
+                class="text-xl"
+              ></iconify-icon>
+            </button>
+            <button
+              class="text-stone-400 hover:text-stone-900 hover:bg-stone-100 p-2 rounded-md transition-colors"
+              aria-label="Chat"
+            >
+              <iconify-icon
+                icon="solar:chat-round-line-linear"
+                class="text-xl"
+              ></iconify-icon>
+            </button>
+          </div>
+          <div class="mt-auto flex flex-col gap-6 items-center">
+            <button
+              class="text-stone-400 hover:text-stone-900 p-2 transition-colors"
+              aria-label="Settings"
+            >
+              <iconify-icon
+                icon="solar:settings-linear"
+                class="text-xl"
+              ></iconify-icon>
+            </button>
+            <div
+              class="w-8 h-8 rounded-full bg-stone-200 flex items-center justify-center text-xs font-medium text-stone-600"
+            >
+              OP
+            </div>
+          </div>
+        </nav>
+
+        <!-- Source Sidebar -->
+        <aside class="w-72 border-r border-stone-200 bg-stone-50 flex flex-col">
+          <div
+            class="p-4 border-b border-stone-200 flex items-center justify-between"
+          >
+            <h3 class="text-sm font-semibold tracking-tight">Sources</h3>
+            <button class="text-stone-400 hover:text-stone-900">
+              <iconify-icon
+                icon="solar:filter-linear"
+                class="text-lg"
+              ></iconify-icon>
+            </button>
+          </div>
+          <div class="p-2 overflow-y-auto flex-1 flex flex-col gap-1">
+            <div
+              class="px-3 py-2 text-xs font-semibold text-stone-400 tracking-wider uppercase mt-2 mb-1"
+            >
+              Feeds
+            </div>
+
+            <button
+              class="w-full flex items-center gap-3 px-3 py-2 rounded-md bg-stone-200/50 text-stone-900"
+            >
+              <iconify-icon
+                icon="solar:inbox-linear"
+                class="text-lg text-stone-500"
+              ></iconify-icon>
+              <span class="text-sm font-medium">All Unread</span>
+              <span class="ml-auto text-xs font-medium text-stone-500">24</span>
+            </button>
+
+            <button
+              class="w-full flex items-center gap-3 px-3 py-2 rounded-md hover:bg-stone-100 text-stone-600 transition-colors"
+            >
+              <iconify-icon
+                icon="solar:videocamera-linear"
+                class="text-lg text-stone-400"
+              ></iconify-icon>
+              <span class="text-sm">Lex Fridman Podcast</span>
+              <span class="ml-auto w-2 h-2 rounded-full bg-emerald-500"></span>
+            </button>
+
+            <button
+              class="w-full flex items-center gap-3 px-3 py-2 rounded-md hover:bg-stone-100 text-stone-600 transition-colors"
+            >
+              <iconify-icon
+                icon="solar:document-text-linear"
+                class="text-lg text-stone-400"
+              ></iconify-icon>
+              <span class="text-sm truncate">OpenAlex: LLM Reasoning</span>
+              <span class="ml-auto text-xs text-stone-400">12</span>
+            </button>
+
+            <div
+              class="px-3 py-2 text-xs font-semibold text-stone-400 tracking-wider uppercase mt-4 mb-1"
+            >
+              Tracked Sites
+            </div>
+
+            <button
+              class="w-full flex items-center gap-3 px-3 py-2 rounded-md hover:bg-stone-100 text-stone-600 transition-colors"
+            >
+              <iconify-icon
+                icon="solar:global-linear"
+                class="text-lg text-stone-400"
+              ></iconify-icon>
+              <span class="text-sm">Stratechery</span>
+            </button>
+          </div>
+          <div class="p-4 border-t border-stone-200">
+            <button
+              class="w-full flex items-center justify-center gap-2 px-4 py-2 border border-stone-300 rounded-md text-sm font-medium text-stone-600 hover:bg-stone-100 hover:text-stone-900 transition-colors"
+            >
+              <iconify-icon
+                icon="solar:add-circle-linear"
+                class="text-lg"
+              ></iconify-icon>
+              Add Source
+            </button>
+          </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="flex-1 flex flex-col bg-white">
+          <!-- Top Actions -->
+          <header
+            class="h-14 border-b border-stone-200 px-6 flex items-center justify-between shrink-0"
+          >
+            <div class="flex items-center gap-4">
+              <div
+                class="flex items-center gap-2 text-xs font-medium text-stone-500"
+              >
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                AI Optimal
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <div class="relative">
+                <iconify-icon
+                  icon="solar:magnifer-linear"
+                  class="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"
+                ></iconify-icon>
+                <input
+                  type="text"
+                  placeholder="Search library..."
+                  class="pl-9 pr-4 py-1.5 bg-stone-50 border border-stone-200 rounded-md text-sm focus:outline-none focus:border-stone-400 focus:bg-white transition-colors w-64"
+                />
+              </div>
+              <div class="w-px h-4 bg-stone-200 mx-1"></div>
+              <button
+                class="text-stone-400 hover:text-stone-900 transition-colors"
+                title="Regenerate Summary"
+              >
+                <iconify-icon
+                  icon="solar:refresh-linear"
+                  class="text-xl"
+                ></iconify-icon>
+              </button>
+              <button
+                class="text-stone-400 hover:text-stone-900 transition-colors"
+                title="Mark Handled"
+              >
+                <iconify-icon
+                  icon="solar:check-circle-linear"
+                  class="text-xl"
+                ></iconify-icon>
+              </button>
+            </div>
+          </header>
+
+          <!-- Detail Tabs -->
+          <div class="px-8 pt-6 border-b border-stone-100 flex gap-6 shrink-0">
+            <button
+              class="pb-3 text-sm font-semibold text-stone-900 border-b-2 border-stone-900"
+            >
+              Summary
+            </button>
+            <button
+              class="pb-3 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors"
+            >
+              Transcript
+            </button>
+            <button
+              class="pb-3 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors"
+            >
+              Highlights <span class="ml-1 text-xs text-stone-400">3</span>
+            </button>
+            <button
+              class="pb-3 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors"
+            >
+              Metadata
+            </button>
+          </div>
+
+          <!-- Reading Surface -->
+          <article class="flex-1 overflow-y-auto px-8 py-10">
+            <div class="max-w-2xl mx-auto">
+              <div
+                class="flex items-center gap-3 text-xs text-stone-500 mb-6 font-medium tracking-wide"
+              >
+                <span>Lex Fridman Podcast</span>
+                <span class="w-1 h-1 rounded-full bg-stone-300"></span>
+                <span>Oct 12, 2023</span>
+                <span class="w-1 h-1 rounded-full bg-stone-300"></span>
+                <span>2h 45m</span>
+              </div>
+
+              <h1
+                class="font-serif text-3xl font-semibold tracking-tight text-stone-900 leading-snug mb-8"
+              >
+                #400 – The Future of Synthetic Intelligence and Human Alignment
+              </h1>
+
+              <div
+                class="prose prose-stone prose-p:font-serif prose-p:text-lg prose-p:leading-relaxed prose-p:text-stone-700 prose-headings:font-sans prose-headings:font-semibold prose-headings:tracking-tight prose-li:font-serif prose-li:text-lg prose-li:text-stone-700 max-w-none"
+              >
+                <h3
+                  class="text-base font-semibold tracking-tight text-stone-900 uppercase mt-8 mb-4"
+                >
+                  Executive Abstract
+                </h3>
+                <p>
+                  The conversation centers around the architectural shifts
+                  required to move from pure next-token prediction to systems
+                  capable of long-horizon planning and reliable reasoning. The
+                  guest argues that current alignment techniques (RLHF)
+                  represent a superficial patch rather than a structural
+                  solution, proposing instead a framework based on "verifiable
+                  search spaces."
+                </p>
+
+                <div
+                  class="my-8 p-6 bg-stone-50 border-l-2 border-emerald-600 rounded-r-lg"
+                >
+                  <h4
+                    class="text-sm font-semibold text-stone-900 mb-2 flex items-center gap-2"
+                  >
+                    <iconify-icon
+                      icon="solar:star-linear"
+                      class="text-emerald-600"
+                    ></iconify-icon>
+                    Key Insight
+                  </h4>
+                  <p class="text-base text-stone-800 m-0">
+                    "We are currently confusing a model's ability to imitate
+                    reasoning with the actual capacity to construct a novel
+                    proof. Imitation scales with data; proof construction scales
+                    with search compute."
+                  </p>
+                </div>
+
+                <h3
+                  class="text-base font-semibold tracking-tight text-stone-900 uppercase mt-10 mb-4"
+                >
+                  Core Arguments
+                </h3>
+                <ul class="space-y-3 list-disc pl-5">
+                  <li>
+                    <strong>The Data Wall:</strong> High-quality human text is
+                    finite. Future gains must come from synthetic data
+                    generation filtered by objective verifiers (e.g., code
+                    execution, math proofs).
+                  </li>
+                  <li>
+                    <strong>System 2 Thinking in LLMs:</strong> To achieve
+                    deliberate reasoning, models need an internal scratchpad
+                    that is hidden from the final output, allowing them to make
+                    mistakes, backtrack, and correct without polluting the
+                    user-facing context window.
+                  </li>
+                  <li>
+                    <strong>Alignment Tax:</strong> Current safety training
+                    degrades base capabilities by forcing the model to collapse
+                    its probability distributions too early in the generation
+                    process.
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </article>
+        </main>
+      </div>
+    </section>
+
+    <!-- 2. Mobile Workspace & 3. Mini Reader -->
+    <section
+      class="max-w-7xl mx-auto px-8 mb-24 grid grid-cols-1 md:grid-cols-2 gap-16"
+    >
+      <!-- Mobile Workspace -->
+      <div>
+        <div class="mb-4 flex items-center justify-between">
+          <h2 class="text-lg font-semibold tracking-tight">
+            2. Mobile Workspace
+          </h2>
+        </div>
+
+        <div
+          class="w-[390px] h-[844px] bg-white border-8 border-stone-900 rounded-[3rem] shadow-2xl overflow-hidden flex flex-col relative mx-auto"
+        >
+          <!-- Mobile Header -->
+          <header
+            class="pt-14 pb-3 px-5 border-b border-stone-100 flex items-center justify-between bg-white z-10 shrink-0"
+          >
+            <button class="text-stone-500 hover:text-stone-900">
+              <iconify-icon
+                icon="solar:hamburger-menu-linear"
+                class="text-2xl"
+              ></iconify-icon>
+            </button>
+            <div
+              class="text-sm font-semibold tracking-tight text-stone-900 truncate px-4"
+            >
+              Stratechery
+            </div>
+            <button class="text-stone-500 hover:text-stone-900">
+              <iconify-icon
+                icon="solar:menu-dots-circle-linear"
+                class="text-2xl"
+              ></iconify-icon>
+            </button>
+          </header>
+
+          <!-- Mobile Content -->
+          <main class="flex-1 overflow-y-auto px-6 py-8 pb-32">
+            <div
+              class="flex items-center gap-2 text-xs text-stone-400 mb-4 font-medium"
+            >
+              <span>Analysis</span>
+              <span>•</span>
+              <span>Yesterday</span>
+            </div>
+
+            <h1
+              class="font-serif text-2xl font-semibold tracking-tight text-stone-900 leading-snug mb-6"
+            >
+              The End of the Zero Interest Rate Era in Tech
+            </h1>
+
+            <div
+              class="font-serif text-base leading-relaxed text-stone-700 space-y-6"
+            >
+              <p>
+                For the last decade, the fundamental equation of silicon valley
+                was growth over profitability, subsidized by cheap capital. That
+                era is definitively over.
+              </p>
+              <p>
+                We are now seeing a shift toward operational efficiency.
+                Companies that previously operated as sprawling research labs
+                are being forced to organize as disciplined businesses.
+              </p>
+
+              <!-- Mobile Audio Synthesis Component -->
+              <div
+                class="mt-8 p-4 border border-stone-200 rounded-xl bg-stone-50 flex items-center gap-4"
+              >
+                <button
+                  class="w-10 h-10 rounded-full bg-stone-900 text-white flex items-center justify-center shrink-0"
+                >
+                  <iconify-icon
+                    icon="solar:play-linear"
+                    class="text-lg"
+                  ></iconify-icon>
+                </button>
+                <div class="flex-1">
+                  <div class="text-xs font-semibold text-stone-900">
+                    Listen to Summary
+                  </div>
+                  <div class="text-xs text-stone-500">
+                    4 min read • Neural Voice
+                  </div>
+                </div>
+              </div>
+            </div>
+          </main>
+
+          <!-- Mobile Bottom Nav -->
+          <nav
+            class="absolute bottom-0 w-full bg-white border-t border-stone-200 pb-8 pt-3 px-6 flex justify-between items-center z-20"
+          >
+            <button class="flex flex-col items-center gap-1 text-stone-900">
+              <iconify-icon
+                icon="solar:document-text-linear"
+                class="text-2xl"
+              ></iconify-icon>
+              <span class="text-[10px] font-medium">Read</span>
+            </button>
+            <button
+              class="flex flex-col items-center gap-1 text-stone-400 hover:text-stone-900 transition-colors relative"
+            >
+              <iconify-icon
+                icon="solar:folder-linear"
+                class="text-2xl"
+              ></iconify-icon>
+              <span
+                class="absolute top-0 right-0 w-2 h-2 bg-rose-500 rounded-full border border-white"
+              ></span>
+              <span class="text-[10px] font-medium">Queue</span>
+            </button>
+            <button
+              class="flex flex-col items-center gap-1 text-stone-400 hover:text-stone-900 transition-colors"
+            >
+              <iconify-icon
+                icon="solar:bookmark-linear"
+                class="text-2xl"
+              ></iconify-icon>
+              <span class="text-[10px] font-medium">Saved</span>
+            </button>
+            <button
+              class="flex flex-col items-center gap-1 text-stone-400 hover:text-stone-900 transition-colors"
+            >
+              <iconify-icon
+                icon="solar:chat-round-line-linear"
+                class="text-2xl"
+              ></iconify-icon>
+              <span class="text-[10px] font-medium">Chat</span>
+            </button>
+          </nav>
+        </div>
+      </div>
+
+      <!-- Mini Reader -->
+      <div>
+        <div class="mb-4 flex items-center justify-between">
+          <h2 class="text-lg font-semibold tracking-tight">3. Mini Reader</h2>
+          <span
+            class="text-xs text-stone-400 font-medium tracking-widest uppercase"
+            >Focus Mode</span
+          >
+        </div>
+
+        <div
+          class="w-full max-w-md h-[600px] bg-stone-50 border border-stone-200 rounded-xl shadow-sm flex flex-col mx-auto"
+        >
+          <!-- Top Bar -->
+          <div
+            class="px-6 py-4 border-b border-stone-200 flex items-center justify-between shrink-0"
+          >
+            <div
+              class="text-xs font-semibold text-stone-500 tracking-wider uppercase"
+            >
+              Unread Queue
+            </div>
+            <div
+              class="text-xs font-medium text-stone-900 bg-stone-200 px-2 py-1 rounded-md"
+            >
+              3 of 12
+            </div>
+          </div>
+
+          <!-- Progress Rail -->
+          <div class="w-full h-1 bg-stone-200 shrink-0">
+            <div class="w-1/4 h-full bg-stone-900"></div>
+          </div>
+
+          <!-- Content -->
+          <div class="flex-1 overflow-y-auto px-8 py-10">
+            <div class="text-xs text-stone-400 font-medium mb-3">
+              OpenAlex Abstract
+            </div>
+            <h2
+              class="font-serif text-xl font-semibold tracking-tight text-stone-900 mb-4 leading-tight"
+            >
+              Scaling Laws for Reward Model Overoptimization
+            </h2>
+            <div
+              class="font-serif text-sm leading-relaxed text-stone-700 space-y-4"
+            >
+              <p>
+                We study the problem of reward overoptimization in reinforcement
+                learning from human feedback (RLHF).
+              </p>
+              <p>
+                As the proxy reward model is optimized, the true objective
+                initially improves but eventually degrades. We empirically
+                characterize this phenomenon and show that the degree of
+                overoptimization scales predictably with the size of the policy
+                network and the KL penalty coefficient.
+              </p>
+              <p>
+                Our findings suggest that current RLHF alignment techniques face
+                a fundamental scaling limit unless verifiable ground-truth
+                signals are introduced.
+              </p>
+            </div>
+          </div>
+
+          <!-- Bottom Controls -->
+          <div
+            class="p-4 border-t border-stone-200 bg-white flex items-center justify-between shrink-0 rounded-b-xl"
+          >
+            <button
+              class="w-12 h-12 rounded-full border border-stone-200 flex items-center justify-center text-stone-400 hover:text-stone-900 hover:bg-stone-50 transition-colors"
+            >
+              <iconify-icon
+                icon="solar:alt-arrow-left-linear"
+                class="text-xl"
+              ></iconify-icon>
+            </button>
+            <button
+              class="px-6 py-3 bg-stone-900 text-white text-sm font-medium rounded-full hover:bg-stone-800 transition-colors"
+            >
+              Mark Read &amp; Next
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. Chat With Library -->
+    <section class="max-w-[1440px] mx-auto px-8 mb-24">
+      <div class="mb-4 flex items-center justify-between">
+        <h2 class="text-lg font-semibold tracking-tight">
+          4. Chat With Library
+        </h2>
+      </div>
+
+      <div
+        class="flex h-[700px] bg-white border border-stone-200 rounded-xl shadow-sm overflow-hidden"
+      >
+        <!-- Chat Sidebar -->
+        <aside class="w-64 border-r border-stone-200 bg-stone-50 flex flex-col">
+          <div class="p-4 border-b border-stone-200">
+            <button
+              class="w-full flex items-center justify-center gap-2 px-4 py-2 bg-stone-900 text-white rounded-md text-sm font-medium hover:bg-stone-800 transition-colors"
+            >
+              <iconify-icon
+                icon="solar:pen-new-square-linear"
+                class="text-lg"
+              ></iconify-icon>
+              New Research
+            </button>
+          </div>
+          <div class="p-3 overflow-y-auto flex-1 flex flex-col gap-1">
+            <div
+              class="px-3 py-2 text-xs font-semibold text-stone-400 tracking-wider uppercase mt-2 mb-1"
+            >
+              Recent Sessions
+            </div>
+            <button
+              class="w-full text-left px-3 py-2 rounded-md bg-stone-200/50 text-stone-900 text-sm font-medium truncate"
+            >
+              RLHF Scaling limits
+            </button>
+            <button
+              class="w-full text-left px-3 py-2 rounded-md hover:bg-stone-100 text-stone-600 text-sm truncate transition-colors"
+            >
+              ZIRP impact on tech hiring
+            </button>
+            <button
+              class="w-full text-left px-3 py-2 rounded-md hover:bg-stone-100 text-stone-600 text-sm truncate transition-colors"
+            >
+              Podcast summaries on longevity
+            </button>
+          </div>
+        </aside>
+
+        <!-- Chat Area -->
+        <main class="flex-1 flex flex-col relative bg-white">
+          <!-- Thread -->
+          <div class="flex-1 overflow-y-auto p-8 flex flex-col gap-8">
+            <!-- User Message -->
+            <div class="flex flex-col items-end gap-2 max-w-3xl ml-auto w-full">
+              <div class="text-xs font-medium text-stone-400 px-1">You</div>
+              <div
+                class="bg-stone-100 text-stone-900 px-5 py-3 rounded-2xl rounded-tr-sm text-sm leading-relaxed max-w-[80%]"
+              >
+                What did Lex Fridman's guest say about the difference between
+                imitating reasoning and actual reasoning? Pull from my recent
+                podcast summaries.
+              </div>
+            </div>
+
+            <!-- Assistant Message -->
+            <div
+              class="flex flex-col items-start gap-2 max-w-3xl mr-auto w-full"
+            >
+              <div class="flex items-center gap-2 px-1">
+                <span class="w-2 h-2 rounded-full bg-stone-900"></span>
+                <span class="text-xs font-semibold text-stone-900"
+                  >dAstIll</span
+                >
+                <span
+                  class="text-xs text-stone-400 border border-stone-200 px-1.5 py-0.5 rounded ml-2 flex items-center gap-1"
+                >
+                  <iconify-icon icon="solar:check-read-linear"></iconify-icon>
+                  Deep Search Completed
+                </span>
+              </div>
+              <div class="text-stone-800 text-sm leading-relaxed space-y-4">
+                <p>
+                  Based on your recent summaries, the guest in episode #400 made
+                  a strict distinction between imitation and proof construction.
+                </p>
+                <p>
+                  They argued that current LLMs are trained on vast amounts of
+                  human text to
+                  <span class="font-medium bg-stone-100 px-1 rounded"
+                    >imitate reasoning patterns</span
+                  >, but this should not be confused with the capacity to
+                  construct novel, verifiable proofs. Imitation scales linearly
+                  with the amount of data fed into the model, whereas true proof
+                  construction scales with "search compute" (allowing the model
+                  to explore a verifiable search space before answering)
+                  <button
+                    class="inline-flex items-center justify-center border border-stone-300 bg-stone-50 hover:bg-stone-100 text-[10px] font-medium text-stone-500 px-1.5 py-0.5 rounded cursor-pointer transition-colors translate-y-[-2px]"
+                  >
+                    1</button
+                  >.
+                </p>
+                <p>
+                  They also noted that to achieve deliberate reasoning, models
+                  need an internal "scratchpad" to make mistakes and correct
+                  them, rather than outputting everything directly to the user
+                  <button
+                    class="inline-flex items-center justify-center border border-stone-300 bg-stone-50 hover:bg-stone-100 text-[10px] font-medium text-stone-500 px-1.5 py-0.5 rounded cursor-pointer transition-colors translate-y-[-2px]"
+                  >
+                    2</button
+                  >.
+                </p>
+              </div>
+
+              <!-- Citations Area -->
+              <div class="mt-4 flex flex-wrap gap-2">
+                <div
+                  class="flex items-center gap-2 border border-stone-200 rounded-md p-2 hover:bg-stone-50 cursor-pointer transition-colors max-w-xs"
+                >
+                  <div
+                    class="w-5 h-5 rounded bg-stone-100 text-[10px] font-bold text-stone-500 flex items-center justify-center shrink-0"
+                  >
+                    1
+                  </div>
+                  <div class="text-xs text-stone-600 truncate font-medium">
+                    Lex Fridman #400: Future of...
+                  </div>
+                </div>
+                <div
+                  class="flex items-center gap-2 border border-stone-200 rounded-md p-2 hover:bg-stone-50 cursor-pointer transition-colors max-w-xs"
+                >
+                  <div
+                    class="w-5 h-5 rounded bg-stone-100 text-[10px] font-bold text-stone-500 flex items-center justify-center shrink-0"
+                  >
+                    2
+                  </div>
+                  <div class="text-xs text-stone-600 truncate font-medium">
+                    Transcript excerpt 45:12
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Composer -->
+          <div class="p-6 bg-white border-t border-stone-100 shrink-0">
+            <div
+              class="max-w-3xl mx-auto border border-stone-300 rounded-xl bg-white shadow-sm focus-within:border-stone-500 focus-within:ring-1 focus-within:ring-stone-500 transition-all flex flex-col"
+            >
+              <textarea
+                placeholder="Ask about your library..."
+                class="w-full bg-transparent border-none focus:outline-none focus:ring-0 p-4 text-sm resize-none h-20 text-stone-900 placeholder:text-stone-400"
+              ></textarea>
+
+              <div
+                class="px-4 pb-3 flex items-center justify-between border-t border-stone-100 pt-3"
+              >
+                <div class="flex items-center gap-3">
+                  <button
+                    class="text-stone-400 hover:text-stone-900 transition-colors"
+                    title="Add Filter / Source"
+                  >
+                    <iconify-icon
+                      icon="solar:paperclip-linear"
+                      class="text-lg"
+                    ></iconify-icon>
+                  </button>
+
+                  <!-- Custom Toggle for Deep Research -->
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <div class="relative">
+                      <input type="checkbox" class="sr-only peer" checked="" />
+                      <div
+                        class="w-8 h-4 bg-stone-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-stone-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-stone-900"
+                      ></div>
+                    </div>
+                    <span class="text-xs font-medium text-stone-600"
+                      >Deep Search</span
+                    >
+                  </label>
+                </div>
+
+                <div class="flex items-center gap-2">
+                  <select
+                    class="text-xs font-medium text-stone-500 bg-transparent border-none focus:ring-0 cursor-pointer outline-none"
+                  >
+                    <option>dAstIll Judge Model</option>
+                    <option>GPT-4o</option>
+                    <option>Claude 3.5</option>
+                  </select>
+                  <button
+                    class="w-8 h-8 rounded-full bg-stone-900 text-white flex items-center justify-center hover:bg-stone-800 transition-colors"
+                  >
+                    <iconify-icon
+                      icon="solar:arrow-up-linear"
+                      class="text-sm"
+                    ></iconify-icon>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="text-center mt-3 text-[10px] text-stone-400">
+              Synthesizing information across 422 indexed documents.
+            </div>
+          </div>
+        </main>
+      </div>
+    </section>
+
+    <!-- 5. Highlights Library & 6. Queue -->
+    <section
+      class="max-w-[1440px] mx-auto px-8 mb-24 grid grid-cols-1 lg:grid-cols-2 gap-12"
+    >
+      <!-- Highlights -->
+      <div>
+        <div class="mb-4 flex items-center justify-between">
+          <h2 class="text-lg font-semibold tracking-tight">
+            5. Highlights Archive
+          </h2>
+          <button
+            class="text-sm font-medium text-stone-500 hover:text-stone-900"
+          >
+            View All
+          </button>
+        </div>
+
+        <div class="flex flex-col gap-6">
+          <!-- Highlight Group -->
+          <div>
+            <h3
+              class="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-3"
+            >
+              Lex Fridman Podcast #400
+            </h3>
+            <div class="grid gap-4">
+              <div
+                class="p-5 border border-stone-200 bg-white rounded-lg hover:border-stone-300 transition-colors group relative"
+              >
+                <p
+                  class="font-serif text-sm leading-relaxed text-stone-800 italic mb-4"
+                >
+                  "Imitation scales with data; proof construction scales with
+                  search compute."
+                </p>
+                <div class="flex items-center justify-between mt-auto">
+                  <div
+                    class="text-[10px] font-medium text-stone-400 uppercase tracking-wide flex items-center gap-1"
+                  >
+                    <iconify-icon
+                      icon="solar:text-square-linear"
+                    ></iconify-icon>
+                    Transcript
+                  </div>
+                  <div
+                    class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <button
+                      class="text-stone-400 hover:text-stone-900"
+                      title="Copy"
+                    >
+                      <iconify-icon icon="solar:copy-linear"></iconify-icon>
+                    </button>
+                    <button
+                      class="text-stone-400 hover:text-rose-600"
+                      title="Delete"
+                    >
+                      <iconify-icon
+                        icon="solar:trash-bin-trash-linear"
+                      ></iconify-icon>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h3
+              class="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-3"
+            >
+              Stratechery
+            </h3>
+            <div class="grid gap-4">
+              <div
+                class="p-5 border border-stone-200 bg-white rounded-lg hover:border-stone-300 transition-colors group relative"
+              >
+                <p
+                  class="font-serif text-sm leading-relaxed text-stone-800 italic mb-4"
+                >
+                  "Companies that previously operated as sprawling research labs
+                  are being forced to organize as disciplined businesses."
+                </p>
+                <div class="flex items-center justify-between mt-auto">
+                  <div
+                    class="text-[10px] font-medium text-stone-400 uppercase tracking-wide flex items-center gap-1"
+                  >
+                    <iconify-icon icon="solar:pen-linear"></iconify-icon> AI
+                    Summary
+                  </div>
+                  <div
+                    class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <button
+                      class="text-stone-400 hover:text-stone-900"
+                      title="Copy"
+                    >
+                      <iconify-icon icon="solar:copy-linear"></iconify-icon>
+                    </button>
+                    <button
+                      class="text-stone-400 hover:text-rose-600"
+                      title="Delete"
+                    >
+                      <iconify-icon
+                        icon="solar:trash-bin-trash-linear"
+                      ></iconify-icon>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Operations Queue -->
+      <div>
+        <div class="mb-4 flex items-center justify-between">
+          <h2 class="text-lg font-semibold tracking-tight">
+            6. Operations Queue
+          </h2>
+          <div
+            class="flex items-center gap-2 text-xs font-medium text-stone-500"
+          >
+            <span
+              class="w-1.5 h-1.5 rounded-full bg-stone-300 animate-pulse"
+            ></span>
+            Processing 1
+          </div>
+        </div>
+
+        <div
+          class="bg-white border border-stone-200 rounded-xl shadow-sm overflow-hidden"
+        >
+          <div class="w-full">
+            <!-- Queue Header -->
+            <div
+              class="grid grid-cols-12 gap-4 px-6 py-3 border-b border-stone-100 bg-stone-50 text-xs font-semibold text-stone-500 uppercase tracking-wider"
+            >
+              <div class="col-span-6">Source Item</div>
+              <div class="col-span-3">Status</div>
+              <div class="col-span-3 text-right">Action</div>
+            </div>
+
+            <!-- Queue Items -->
+            <div class="divide-y divide-stone-100">
+              <!-- Processing State -->
+              <div class="grid grid-cols-12 gap-4 px-6 py-4 items-center">
+                <div class="col-span-6 flex items-center gap-3">
+                  <iconify-icon
+                    icon="solar:videocamera-linear"
+                    class="text-lg text-stone-400"
+                  ></iconify-icon>
+                  <span class="text-sm font-medium text-stone-900 truncate"
+                    >Huberman Lab: Sleep Protocols</span
+                  >
+                </div>
+                <div class="col-span-3 flex items-center gap-2">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                  <span class="text-xs font-medium text-emerald-700"
+                    >Extracting Audio...</span
+                  >
+                </div>
+                <div class="col-span-3 text-right">
+                  <button
+                    class="text-xs font-medium text-stone-400 hover:text-stone-900 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+
+              <!-- Pending Skeleton -->
+              <div
+                class="grid grid-cols-12 gap-4 px-6 py-4 items-center opacity-60"
+              >
+                <div class="col-span-6 flex items-center gap-3">
+                  <div class="w-4 h-4 bg-stone-200 rounded"></div>
+                  <div class="h-4 bg-stone-200 rounded w-48"></div>
+                </div>
+                <div class="col-span-3 flex items-center gap-2">
+                  <span class="w-1.5 h-1.5 rounded-full bg-stone-300"></span>
+                  <span class="text-xs font-medium text-stone-500">Queued</span>
+                </div>
+                <div class="col-span-3 text-right"></div>
+              </div>
+
+              <!-- Error State -->
+              <div
+                class="grid grid-cols-12 gap-4 px-6 py-4 items-center bg-rose-50/30"
+              >
+                <div class="col-span-6 flex items-center gap-3">
+                  <iconify-icon
+                    icon="solar:global-linear"
+                    class="text-lg text-stone-400"
+                  ></iconify-icon>
+                  <span class="text-sm font-medium text-stone-900 truncate"
+                    >Arxiv: 2310.01234v1</span
+                  >
+                </div>
+                <div class="col-span-3 flex items-center gap-2">
+                  <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                  <span class="text-xs font-medium text-rose-700"
+                    >Parse Error</span
+                  >
+                </div>
+                <div
+                  class="col-span-3 text-right flex items-center justify-end gap-3"
+                >
+                  <button
+                    class="text-xs font-medium text-stone-500 hover:text-stone-900 transition-colors"
+                    title="View Error Log"
+                  >
+                    Details
+                  </button>
+                  <button
+                    class="text-xs font-medium text-stone-900 bg-stone-200 px-2 py-1 rounded hover:bg-stone-300 transition-colors"
+                  >
+                    Retry
+                  </button>
+                </div>
+              </div>
+
+              <!-- Completed -->
+              <div
+                class="grid grid-cols-12 gap-4 px-6 py-4 items-center opacity-50"
+              >
+                <div class="col-span-6 flex items-center gap-3">
+                  <iconify-icon
+                    icon="solar:document-text-linear"
+                    class="text-lg text-stone-400"
+                  ></iconify-icon>
+                  <span
+                    class="text-sm font-medium text-stone-900 truncate line-through"
+                    >Stratechery Daily</span
+                  >
+                </div>
+                <div class="col-span-3 flex items-center gap-2">
+                  <span class="text-xs font-medium text-stone-500">Done</span>
+                </div>
+                <div class="col-span-3 text-right">
+                  <span class="text-xs text-stone-400">2m ago</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 7. Dark Theme & Settings Panel -->
+    <div class="dark">
+      <section class="bg-zinc-950 text-zinc-100 py-16 border-t border-zinc-900">
+        <div class="max-w-[1440px] mx-auto px-8">
+          <div class="mb-8 flex items-center justify-between">
+            <h2 class="text-lg font-semibold tracking-tight text-zinc-100">
+              7. Theme &amp; Settings Panel
+            </h2>
+            <span
+              class="text-xs text-zinc-500 font-medium tracking-widest uppercase"
+              >Dark Mode Prototype</span
+            >
+          </div>
+
+          <div
+            class="flex h-[500px] bg-zinc-900 border border-zinc-800 rounded-xl shadow-lg overflow-hidden max-w-4xl mx-auto"
+          >
+            <!-- Settings Nav -->
+            <div
+              class="w-64 border-r border-zinc-800 bg-zinc-950/50 p-6 flex flex-col gap-2"
+            >
+              <h3
+                class="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2"
+              >
+                Preferences
+              </h3>
+              <button
+                class="text-left px-3 py-2 rounded-md bg-zinc-800 text-zinc-100 text-sm font-medium"
+              >
+                Appearance
+              </button>
+              <button
+                class="text-left px-3 py-2 rounded-md hover:bg-zinc-800/50 text-zinc-400 text-sm font-medium transition-colors"
+              >
+                AI Models &amp; Health
+              </button>
+              <button
+                class="text-left px-3 py-2 rounded-md hover:bg-zinc-800/50 text-zinc-400 text-sm font-medium transition-colors"
+              >
+                Vocabulary Rules
+              </button>
+              <button
+                class="text-left px-3 py-2 rounded-md hover:bg-zinc-800/50 text-zinc-400 text-sm font-medium transition-colors"
+              >
+                Account
+              </button>
+            </div>
+
+            <!-- Settings Content -->
+            <div class="flex-1 p-10 overflow-y-auto">
+              <h1 class="text-2xl font-semibold tracking-tight mb-8">
+                Appearance
+              </h1>
+
+              <div class="space-y-10">
+                <!-- Theme Selection (Segmented Control) -->
+                <div>
+                  <h4 class="text-sm font-medium text-zinc-300 mb-3">
+                    Interface Theme
+                  </h4>
+                  <div
+                    class="inline-flex bg-zinc-950 border border-zinc-800 rounded-lg p-1"
+                  >
+                    <button
+                      class="px-6 py-2 rounded-md text-sm font-medium text-zinc-400 hover:text-zinc-100 transition-colors"
+                    >
+                      Light
+                    </button>
+                    <button
+                      class="px-6 py-2 rounded-md bg-zinc-800 text-sm font-medium text-zinc-100 shadow-sm"
+                    >
+                      Dark
+                    </button>
+                    <button
+                      class="px-6 py-2 rounded-md text-sm font-medium text-zinc-400 hover:text-zinc-100 transition-colors"
+                    >
+                      System
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Accent Palette -->
+                <div>
+                  <h4 class="text-sm font-medium text-zinc-300 mb-3">
+                    Accent Palette
+                  </h4>
+                  <p
+                    class="text-xs text-zinc-500 mb-4 max-w-md leading-relaxed"
+                  >
+                    Select the primary color used for focus states, highlights,
+                    and active indicators. The interface remains muted
+                    regardless of choice.
+                  </p>
+
+                  <div class="flex items-center gap-4">
+                    <!-- Ember -->
+                    <button
+                      class="w-8 h-8 rounded-full bg-rose-500 ring-2 ring-offset-2 ring-offset-zinc-900 ring-transparent hover:ring-rose-500/50 transition-all"
+                    ></button>
+                    <!-- Sage (Selected) -->
+                    <button
+                      class="w-8 h-8 rounded-full bg-emerald-500 ring-2 ring-offset-2 ring-offset-zinc-900 ring-emerald-500 transition-all flex items-center justify-center"
+                    >
+                      <div class="w-2 h-2 bg-zinc-900 rounded-full"></div>
+                    </button>
+                    <!-- Ocean -->
+                    <button
+                      class="w-8 h-8 rounded-full bg-teal-500 ring-2 ring-offset-2 ring-offset-zinc-900 ring-transparent hover:ring-teal-500/50 transition-all"
+                    ></button>
+                    <!-- Sand -->
+                    <button
+                      class="w-8 h-8 rounded-full bg-amber-500 ring-2 ring-offset-2 ring-offset-zinc-900 ring-transparent hover:ring-amber-500/50 transition-all"
+                    ></button>
+                    <!-- Plum -->
+                    <button
+                      class="w-8 h-8 rounded-full bg-fuchsia-500 ring-2 ring-offset-2 ring-offset-zinc-900 ring-transparent hover:ring-fuchsia-500/50 transition-all"
+                    ></button>
+                  </div>
+                </div>
+
+                <hr class="border-zinc-800" />
+
+                <!-- Typography Toggles -->
+                <div>
+                  <div class="flex items-center justify-between max-w-md">
+                    <div>
+                      <h4 class="text-sm font-medium text-zinc-300 mb-1">
+                        Dyslexia-friendly Font
+                      </h4>
+                      <p class="text-xs text-zinc-500">
+                        Overrides editorial serif fonts.
+                      </p>
+                    </div>
+                    <label class="flex items-center cursor-pointer">
+                      <div class="relative">
+                        <input type="checkbox" class="sr-only peer" />
+                        <div
+                          class="w-9 h-5 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-zinc-400 after:border-zinc-800 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500 peer-checked:after:bg-white"
+                        ></div>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </body>
+</html>

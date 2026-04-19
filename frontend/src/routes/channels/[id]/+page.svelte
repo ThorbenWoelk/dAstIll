@@ -107,7 +107,6 @@
           "all",
           undefined,
           false,
-          undefined,
           true,
         );
         return page.videos;

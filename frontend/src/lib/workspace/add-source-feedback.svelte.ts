@@ -85,7 +85,6 @@ export function createAddSourceFeedbackController() {
           "all",
           undefined,
           false,
-          undefined,
           true,
         );
         const status = resolveAddedChannelStatus(videos.videos);

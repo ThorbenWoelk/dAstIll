@@ -211,6 +211,8 @@
   --z-mobile-sheet: 80;
   --z-mobile-popover-anchor: 95;
   --z-mobile-popover: 110;
+  --z-drawer: 110;
+  --z-modal: 120;
 
   /* Saved text highlights (transcript / summary) */
   --reader-highlight-bg: color-mix(in srgb, rgb(248 231 162) 84%, white);
