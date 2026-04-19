@@ -314,17 +314,30 @@ impl TranscriptService {
 
         validate_public_media_url(audio_url).await?;
         let started_at = Instant::now();
-        let (audio, content_type) =
-            download_audio_bytes(audio_url, config.max_audio_bytes, config.timeout_secs).await?;
-        let _content_type = mime_type
-            .filter(|value| !value.trim().is_empty())
-            .unwrap_or(content_type.as_deref().unwrap_or("audio/mpeg"));
-
-        let part = Part::bytes(audio).file_name("podcast-audio");
-        let form = Form::new()
-            .text("model", config.model.clone())
-            .text("response_format", "text")
-            .part("file", part);
+        let form = match config.auth_mode {
+            LocalAsrAuthMode::GoogleIdToken => {
+                let mut form = Form::new()
+                    .text("model", config.model.clone())
+                    .text("response_format", "json")
+                    .text("audio_url", audio_url.to_string());
+                if let Some(mime_type) = mime_type.filter(|value| !value.trim().is_empty()) {
+                    form = form.text("mime_type", mime_type.to_string());
+                }
+                form
+            }
+            LocalAsrAuthMode::ApiKey => {
+                let (audio, content_type) =
+                    download_audio_bytes(audio_url, config.max_audio_bytes, config.timeout_secs)
+                        .await?;
+                let _content_type = mime_type
+                    .filter(|value| !value.trim().is_empty())
+                    .unwrap_or(content_type.as_deref().unwrap_or("audio/mpeg"));
+                Form::new()
+                    .text("model", config.model.clone())
+                    .text("response_format", "text")
+                    .part("file", Part::bytes(audio).file_name("podcast-audio"))
+            }
+        };
 
         let client = build_http_client();
         let request = client

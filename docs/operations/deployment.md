@@ -222,11 +222,15 @@ Keep the ASR service separate from the backend Cloud Run service so model files,
 transcription failures do not affect the main API container. The repo-owned production service is invoked through Cloud Run IAM. Use `LOCAL_ASR_API_KEY` only for non-Cloud-Run or externally hosted ASR endpoints that need bearer-token auth.
 
 The release workflow builds `asr/Dockerfile` and deploys a `${APP_NAME}-asr` Cloud Run service when
-`LOCAL_ASR_ENABLED=true`. The service runs with 2 vCPU, 2 GiB memory, concurrency 1, max instances 1,
-and a 3600 second timeout. Min instances stay at 0, so normal idle cost is zero; transcribing long
-episodes incurs Cloud Run CPU, memory, request, and image storage cost while the ASR instance is
-active. The backend container does not load the model, but long podcast transcription requests can
-hold one backend request open until durable ASR job state is added.
+`LOCAL_ASR_ENABLED=true`. For this repo-owned Cloud Run path, the backend sends the validated public
+audio URL to ASR instead of uploading the MP3 bytes through Cloud Run's request body limit. The ASR
+service fetches the audio, converts it with `ffmpeg`, and transcribes it with `whisper.cpp`.
+
+The service runs with 2 vCPU, 2 GiB memory, concurrency 1, max instances 1, and a 3600 second
+timeout. Min instances stay at 0, so normal idle cost is zero; transcribing long episodes incurs
+Cloud Run CPU, memory, request, egress, and image storage cost while the ASR instance is active. The
+backend container does not load the model, but long podcast transcription requests can hold one
+backend request open until durable ASR job state is added.
 
 ### Frontend and docs bundles
 

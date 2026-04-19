@@ -24,6 +24,28 @@ class MultipartParserTest(unittest.TestCase):
         self.assertEqual(parsed, audio)
         self.assertEqual(filename, "episode.mp3")
 
+    def test_parses_audio_url_field(self):
+        boundary = b"dastill-boundary"
+        body = (
+            b"--"
+            + boundary
+            + b"\r\n"
+            + b'Content-Disposition: form-data; name="audio_url"\r\n\r\n'
+            + b"https://example.com/audio.mp3"
+            + b"\r\n--"
+            + boundary
+            + b"--\r\n"
+        )
+
+        fields, files = server.parse_multipart(body, boundary)
+
+        self.assertEqual(fields["audio_url"], "https://example.com/audio.mp3")
+        self.assertEqual(files, {})
+
+    def test_rejects_private_audio_url_hosts(self):
+        with self.assertRaises(server.AudioFetchError):
+            server.validate_public_url("http://127.0.0.1/audio.mp3")
+
 
 if __name__ == "__main__":
     unittest.main()
