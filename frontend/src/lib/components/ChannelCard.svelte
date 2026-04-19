@@ -113,7 +113,7 @@
     {#if expanded !== undefined}
       <button
         type="button"
-        class={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[var(--soft-foreground)] transition-colors duration-150 hover:bg-[var(--surface)] hover:text-[var(--foreground)] ${expanded ? "opacity-60" : "opacity-25"}`}
+        class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[var(--soft-foreground)] opacity-100 transition-colors duration-150 hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
         onclick={() => onToggleExpanded?.()}
         aria-label={expanded ? "Collapse channel" : "Expand channel"}
       >
