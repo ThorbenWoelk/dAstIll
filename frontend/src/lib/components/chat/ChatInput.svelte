@@ -679,10 +679,10 @@
     submit();
   }}
 >
-  <div class="relative px-3 pt-3">
+  <div class="relative">
     <div
       aria-hidden="true"
-      class="pointer-events-none absolute inset-0 overflow-hidden px-1 py-2"
+      class="pointer-events-none absolute inset-0 overflow-hidden px-4 py-4"
     >
       <div
         class="min-h-10 break-words text-[14px] leading-5 text-[var(--foreground)]"
@@ -713,7 +713,7 @@
       value={composerValue}
       bind:this={textareaElement}
       rows="1"
-      class="min-h-10 max-h-40 w-full resize-none overflow-y-hidden break-words bg-transparent px-1 py-2 text-[14px] leading-5 text-transparent caret-[var(--foreground)] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+      class="min-h-10 max-h-40 w-full resize-none overflow-y-hidden break-words bg-transparent px-4 py-4 text-[14px] leading-5 text-transparent caret-[var(--foreground)] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
       style="-webkit-text-fill-color: transparent;"
       placeholder=""
       wrap="soft"

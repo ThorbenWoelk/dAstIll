@@ -68,7 +68,7 @@
 
     <section
       id="content-view"
-      class="fade-in stagger-3 relative z-10 flex min-h-0 min-w-0 flex-col overflow-visible bg-[var(--surface-strong)] lg:h-full"
+      class="fade-in stagger-3 relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-visible bg-[var(--surface-strong)] lg:h-full"
     >
       <div class="lg:hidden">
         <ChatContentSectionHeader
@@ -85,7 +85,7 @@
       <div class="relative flex min-h-0 w-full flex-1 flex-col">
         <div
           use:bindMessagesViewport
-          class="custom-scrollbar mobile-bottom-stack-padding min-h-0 flex-1 overflow-y-auto px-4 max-lg:pt-4 sm:px-6 lg:px-8 lg:py-8 [&>*]:mx-auto [&>*]:w-full [&>*]:max-w-3xl"
+          class="custom-scrollbar mobile-bottom-stack-padding min-h-0 flex-1 overflow-y-auto px-4 max-lg:pt-4 sm:px-6 lg:px-8 lg:py-8"
           role="region"
           aria-label="Chat conversation"
           onscroll={chat.handleMessagesViewportScroll}
@@ -180,7 +180,7 @@
       <div
         class="border-t border-[var(--border-soft)] px-4 py-4 sm:px-6 lg:px-8 lg:py-6"
       >
-        <div class="mx-auto w-full max-w-3xl">
+        <div class="w-full">
           {#if chat.showStarterSuggestions}
             <ChatSuggestions
               suggestions={CHAT_STARTER_PROMPTS}

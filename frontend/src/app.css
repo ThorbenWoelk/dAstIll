@@ -129,21 +129,21 @@
 
 :root {
   color-scheme: light;
-  --background: #faf9f6;
-  --foreground: #1a1a1a;
-  --surface: #ffffff;
+  --background: #f5f5f4;
+  --foreground: #1c1917;
+  --surface: #fafaf9;
   --surface-strong: #ffffff;
-  --surface-frost: #ffffff;
+  --surface-frost: #fafaf9;
   --surface-frost-strong: #ffffff;
-  --surface-overlay: #faf9f6;
+  --surface-overlay: #f5f5f4;
   --surface-overlay-strong: #ffffff;
   --accent: #b5851f;
   --accent-soft: #fbf5e5;
   --accent-strong: #7a5a12;
-  --muted: color-mix(in srgb, #f2eee8 86%, var(--accent-soft));
+  --muted: #fafaf9;
   --border: #e7e5e4;
   --border-soft: #f1efed;
-  --soft-foreground: #5a5a5a;
+  --soft-foreground: #78716c;
   --danger: #d25a5a;
   --danger-soft: #fff1f1;
   --danger-border: #f3d1d1;
@@ -166,22 +166,10 @@
     var(--accent) 28%,
     var(--border-soft)
   );
-  --panel-surface: color-mix(in srgb, var(--surface) 78%, var(--accent-soft));
-  --panel-surface-strong: color-mix(
-    in srgb,
-    var(--surface-strong) 72%,
-    var(--accent-soft)
-  );
-  --shell-gradient-start: color-mix(
-    in srgb,
-    var(--background) 92%,
-    var(--accent-soft)
-  );
-  --shell-gradient-end: color-mix(
-    in srgb,
-    var(--background) 97%,
-    var(--accent)
-  );
+  --panel-surface: var(--surface);
+  --panel-surface-strong: var(--surface-strong);
+  --shell-gradient-start: var(--background);
+  --shell-gradient-end: var(--background);
 
   /* Layout */
   --radius-sm: 8px;
@@ -794,21 +782,33 @@ a[href],
   }
 }
 
-/* Chat assistant: citation markers as superscript links */
-.chat-cite-sup {
-  font-size: 0.68em;
-  font-weight: 600;
-  line-height: 0;
-  vertical-align: super;
-}
-
-.chat-cite-sup .chat-cite-ref {
-  color: var(--accent);
+/* Chat assistant: inline citation markers as boxed chips */
+.chat-cite-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  margin: 0 2px;
+  border: 1px solid var(--border);
+  background: var(--surface-strong);
+  color: var(--soft-foreground);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
+  border-radius: 4px;
   text-decoration: none;
+  transform: translateY(-2px);
+  cursor: pointer;
+  transition:
+    background-color 150ms,
+    color 150ms,
+    border-color 150ms;
 }
 
-.chat-cite-sup .chat-cite-ref:hover {
-  text-decoration: underline;
+.chat-cite-chip:hover {
+  background: var(--muted);
+  color: var(--foreground);
+  border-color: var(--soft-foreground);
 }
 
 @media (prefers-reduced-motion: reduce) {

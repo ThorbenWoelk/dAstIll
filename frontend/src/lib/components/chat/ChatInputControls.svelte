@@ -32,24 +32,6 @@
 
 <div class="flex items-center justify-between gap-3">
   <div class="flex min-w-0 items-center gap-3">
-    <span
-      class="inline-flex h-7 w-7 items-center justify-center text-[var(--soft-foreground)]"
-      aria-hidden="true"
-    >
-      <svg
-        viewBox="0 0 24 24"
-        class="h-4 w-4"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <path
-          d="M21.44 11.05 12.25 20.24a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"
-        />
-      </svg>
-    </span>
     <button
       type="button"
       class="group/ds inline-flex items-center gap-2 py-1 text-[12px] font-medium text-[var(--soft-foreground)] transition-colors hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)] disabled:pointer-events-none disabled:opacity-50"

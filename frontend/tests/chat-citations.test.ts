@@ -32,8 +32,7 @@ describe("chat-citations", () => {
     ];
     const html = "<p>Ref [1] ok</p>";
     const out = linkifyCitationMarkers(html, sources);
-    expect(out).toContain('class="chat-cite-sup"');
-    expect(out).toContain('class="chat-cite-ref"');
+    expect(out).toContain('class="chat-cite-chip"');
     expect(out).toContain('target="_blank"');
     expect(out).toContain('rel="noopener noreferrer"');
     expect(out).toContain("data-tooltip=");

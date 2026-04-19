@@ -47,7 +47,7 @@ export function linkifyCitationMarkers(
     const s = sources[index];
     const href = buildChatSourceWorkspaceHref(s);
     const tip = [s.video_title, s.section_title].filter(Boolean).join(" · ");
-    return `<sup class="chat-cite-sup"><a href="${escapeAttr(href)}" class="chat-cite-ref" data-tooltip="${escapeAttr(tip)}" target="_blank" rel="noopener noreferrer">${match}</a></sup>`;
+    return `<a href="${escapeAttr(href)}" class="chat-cite-chip" data-tooltip="${escapeAttr(tip)}" target="_blank" rel="noopener noreferrer">${n}</a>`;
   });
 }
 

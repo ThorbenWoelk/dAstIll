@@ -264,35 +264,20 @@
 
 <style>
   .workspace-shell {
-    background:
-      radial-gradient(
-        140% 110% at 50% -8%,
-        color-mix(in srgb, var(--background) 88%, var(--accent-soft)) 0%,
-        var(--background) 60%
-      ),
-      var(--background);
+    background: var(--background);
   }
 
   .workspace-main {
     position: relative;
-    background: linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--surface) 94%, var(--accent-soft)) 0%,
-      var(--background) 100%
-    );
+    background: var(--surface-strong);
   }
 
   .workspace-mobile-header,
   .workspace-desktop-header {
     position: relative;
     z-index: var(--z-shell-header);
-    border-bottom: 1px solid
-      color-mix(in srgb, var(--border-soft) 92%, var(--background));
-    background: linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--surface) 96%, var(--background)) 0%,
-      color-mix(in srgb, var(--surface) 92%, var(--accent-soft)) 100%
-    );
+    border-bottom: 1px solid var(--border-soft);
+    background: var(--surface-strong);
   }
 
   .workspace-mobile-header {
@@ -334,21 +319,12 @@
 
   .workspace-desktop-tabs {
     padding: 1rem 1.5rem 0;
-    border-bottom: 1px solid
-      color-mix(in srgb, var(--border-soft) 92%, var(--background));
-    background: linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--surface) 96%, var(--background)) 0%,
-      color-mix(in srgb, var(--surface) 92%, var(--accent-soft)) 100%
-    );
+    border-bottom: 1px solid var(--border-soft);
+    background: var(--surface-strong);
   }
 
   .workspace-content-frame {
-    background: linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--surface) 96%, var(--background)) 0%,
-      color-mix(in srgb, var(--background) 92%, var(--surface)) 100%
-    );
+    background: var(--surface-strong);
   }
 
   .resize-handle {
@@ -386,11 +362,7 @@
   @media (max-width: 1023px) {
     .workspace-mobile-header {
       min-height: calc(3rem + var(--safe-area-inset-top));
-      background: linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--surface) 96%, var(--background)) 0%,
-        color-mix(in srgb, var(--surface) 90%, var(--panel-surface)) 100%
-      );
+      background: var(--surface-strong);
       /* Remove the stacking context so position:fixed children (filter popup at
          z-[110]) participate in the root stacking context instead of being capped
          at this element's z-index. Without a stacking context the popup clears

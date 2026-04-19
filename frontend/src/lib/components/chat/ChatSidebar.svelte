@@ -73,10 +73,10 @@
         stroke-linejoin="round"
         aria-hidden="true"
       >
-        <path d="M12 5v14" />
-        <path d="M5 12h14" />
+        <path d="M21 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h6" />
+        <path d="m18 2 4 4-10 10H8v-4l10-10Z" />
       </svg>
-      {creating ? "Creating…" : "New Research"}
+      {creating ? "Creating…" : "New Chat"}
     </button>
   </div>
 
@@ -115,12 +115,12 @@
       <div class="flex flex-col gap-0.5">
         {#each conversations as conversation (conversation.id)}
           <div
-            class={`group/row rounded-[var(--radius-md)] px-2 py-1.5 transition-colors ${activeConversationId === conversation.id ? "bg-[var(--accent-wash-strong)]" : "bg-transparent hover:bg-[var(--accent-wash)]"}`}
+            class={`group/row relative rounded-[var(--radius-md)] px-2 py-1.5 transition-colors ${activeConversationId === conversation.id ? "bg-[var(--accent-wash-strong)]" : "bg-transparent hover:bg-[var(--accent-wash)]"}`}
           >
-            <div class="flex items-center gap-1">
+            <div class="flex min-w-0 items-center">
               <button
                 type="button"
-                class="min-w-0 flex-1 text-left"
+                class="block w-full min-w-0 text-left"
                 onclick={() => onSelect(conversation.id)}
               >
                 {#if editingConversationId === conversation.id}
@@ -159,7 +159,7 @@
 
               {#if editingConversationId !== conversation.id}
                 <div
-                  class="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover/row:opacity-100 focus-within:opacity-100"
+                  class={`absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-[var(--radius-sm)] pl-3 pr-1 opacity-0 transition-opacity group-hover/row:opacity-100 focus-within:opacity-100 ${activeConversationId === conversation.id ? "bg-[var(--accent-wash-strong)]" : "bg-[var(--muted)] group-hover/row:bg-[var(--accent-wash)]"}`}
                 >
                   <button
                     type="button"

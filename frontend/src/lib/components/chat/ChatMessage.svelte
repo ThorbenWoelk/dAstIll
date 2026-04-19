@@ -121,31 +121,37 @@
 </script>
 
 <article
-  class={`flex w-full max-w-[95%] flex-col gap-1.5 ${isAssistant ? "items-start" : "ml-auto items-end"}`}
+  class={`flex w-full flex-col gap-2 ${isAssistant ? "items-start" : "ml-auto items-end"}`}
 >
   {#if isAssistant}
     <div class="flex items-center gap-2 px-1">
       <span class="h-2 w-2 rounded-full bg-[var(--foreground)]"></span>
-      <span
-        class="text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--foreground)]"
+      <span class="text-[12px] font-semibold text-[var(--foreground)]"
         >dAstIll</span
       >
+      {#if responseStatsLine}
+        <span
+          class="ml-2 flex items-center gap-1 rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--soft-foreground)]"
+        >
+          {responseStatsLine}
+        </span>
+      {/if}
     </div>
   {:else}
-    <span
-      class="px-1 text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--soft-foreground)]"
+    <span class="px-1 text-[12px] font-medium text-[var(--soft-foreground)]"
       >You</span
     >
   {/if}
+
   <div
-    class={`max-w-[min(100%,48rem)] space-y-3 ${isAssistant ? "w-full min-w-0" : "max-w-[36rem]"}`}
+    class={`space-y-4 ${isAssistant ? "mr-auto w-full max-w-4xl" : "ml-auto w-full max-w-2xl"}`}
   >
     <div
-      class={`relative group/copy ${isAssistant ? "text-[var(--foreground)]" : "rounded-2xl rounded-tr-md bg-[var(--muted)] px-5 py-3 text-[var(--foreground)]"}`}
+      class={`relative group/copy ${isAssistant ? "text-[var(--foreground)]" : "rounded-2xl rounded-tr-sm bg-[var(--muted)] px-5 py-3 text-[var(--foreground)] shadow-sm"}`}
     >
       {#if isAssistant && canCopy}
         <div
-          class="pointer-events-none absolute right-2 top-2 z-10 opacity-0 transition-opacity duration-200 group-hover/copy:pointer-events-auto group-hover/copy:opacity-100 group-focus-within/copy:pointer-events-auto group-focus-within/copy:opacity-100 motion-reduce:pointer-events-auto motion-reduce:opacity-100"
+          class="pointer-events-none absolute -right-8 top-0 z-10 opacity-0 transition-opacity duration-200 group-hover/copy:pointer-events-auto group-hover/copy:opacity-100 group-focus-within/copy:pointer-events-auto group-focus-within/copy:opacity-100 max-lg:right-0 max-lg:top-0"
         >
           <button
             type="button"
@@ -204,7 +210,7 @@
       {#if isAssistant}
         {#if message.content}
           <div
-            class={`prose prose-sm max-w-none text-[var(--foreground)] prose-headings:text-[var(--foreground)] prose-p:text-[var(--foreground)] prose-strong:text-[var(--foreground)] prose-li:text-[var(--foreground)] ${canCopy ? "pr-8" : ""}`}
+            class="prose prose-sm max-w-none text-sm leading-relaxed text-[var(--foreground)] prose-headings:text-[var(--foreground)] prose-p:text-[var(--foreground)] prose-strong:text-[var(--foreground)] prose-li:text-[var(--foreground)]"
           >
             {@html contentHtml}
           </div>
@@ -218,7 +224,7 @@
           </div>
         {/if}
       {:else}
-        <div class="whitespace-pre-wrap text-[14px] leading-relaxed">
+        <div class="whitespace-pre-wrap text-sm leading-relaxed">
           {#each userMessageSegments as segment, index (`${segment.type}:${index}`)}
             {#if segment.type === "text"}
               <span>{segment.value}</span>
@@ -233,31 +239,26 @@
       {/if}
     </div>
 
-    {#if responseStatsLine}
-      <p
-        class="pl-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--soft-foreground)]"
-      >
-        {responseStatsLine}
-      </p>
-    {/if}
-
     {#if showCompactSources}
-      <div class="mt-2 flex flex-wrap gap-2">
+      <div class="mt-4 flex flex-wrap gap-2">
         {#each message.sources as source, index (`${source.video_id}-${source.source_kind}-${source.section_title ?? ""}-${index}`)}
           <a
             href={sourceWorkspaceHref(source)}
             data-tooltip={sourceTooltipTitle(source)}
             target="_blank"
             rel="noopener noreferrer"
-            class="inline-flex max-w-xs items-center gap-2 rounded-md border border-[var(--border-soft)] p-2 text-[var(--soft-foreground)] no-underline transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+            class="flex max-w-xs items-center gap-2 rounded-md border border-[var(--border)] p-2 transition-colors hover:bg-[var(--surface-strong)]"
           >
-            <span
+            <div
               class="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-[var(--muted)] text-[10px] font-bold text-[var(--soft-foreground)]"
-              >{index + 1}</span
             >
-            <span class="truncate text-[12px] font-medium"
-              >{source.video_title}</span
+              {index + 1}
+            </div>
+            <div
+              class="truncate text-[12px] font-medium text-[var(--foreground)]"
             >
+              {source.video_title}
+            </div>
           </a>
         {/each}
       </div>
