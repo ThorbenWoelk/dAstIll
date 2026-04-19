@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import ContentEditor from "$lib/components/ContentEditor.svelte";
+  import QueueStatusPopover from "$lib/components/workspace/QueueStatusPopover.svelte";
   import type { WorkspaceContentMode } from "$lib/workspace/types";
 
   let {
@@ -66,6 +67,7 @@
   {#if searchBar}
     {@render searchBar()}
   {/if}
+  <QueueStatusPopover />
   {#if selectedVideoId && !loadingContent && !editing}
     <div
       class="flex items-center border-l border-[var(--border-soft)] pl-3"

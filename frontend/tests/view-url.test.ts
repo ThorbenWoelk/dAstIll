@@ -1,9 +1,7 @@
 import { describe, expect, it } from "bun:test";
 
 import {
-  buildQueueViewHref,
   buildWorkspaceViewHref,
-  parseQueueViewUrlState,
   parseWorkspaceViewUrlState,
 } from "../src/lib/view-url";
 
@@ -47,34 +45,6 @@ describe("workspace view URLs", () => {
       selectedItemId: "video-2",
       selectedVideoId: "video-2",
       contentMode: "summary",
-      videoTypeFilter: "all",
-      acknowledgedFilter: "all",
-    });
-  });
-});
-
-describe("queue view URLs", () => {
-  it("builds generic source and item params for queue links", () => {
-    expect(
-      buildQueueViewHref({
-        selectedChannelId: "channel-1",
-        selectedVideoId: "video-2",
-        videoTypeFilter: "short",
-        acknowledgedFilter: "ack",
-      }),
-    ).toBe("/download-queue?source=channel-1&item=video-2&type=short&ack=ack");
-  });
-
-  it("parses generic queue params back into legacy queue state", () => {
-    const url = new URL(
-      "https://example.com/download-queue?source=source-1&item=item-2&type=all&ack=all",
-    );
-
-    expect(parseQueueViewUrlState(url)).toEqual({
-      selectedSourceId: "source-1",
-      selectedChannelId: "source-1",
-      selectedItemId: "item-2",
-      selectedVideoId: "item-2",
       videoTypeFilter: "all",
       acknowledgedFilter: "all",
     });

@@ -9,11 +9,6 @@ export function sectionIcon(section: string): {
         viewBox: "0 0 24 24",
         paths: ["M3 4h6v16H3z", "M10 4h5v16h-5z", "M16 4h5v16h-5z"],
       };
-    case "queue":
-      return {
-        viewBox: "0 0 24 24",
-        paths: ["M4 7h16", "M4 12h12", "M4 17h9"],
-      };
     case "highlights":
       return {
         viewBox: "0 0 24 24",

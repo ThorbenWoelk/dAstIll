@@ -58,17 +58,3 @@ export function resolveAcknowledgedParam(
   if (filter === "unack") return false;
   return undefined;
 }
-
-export interface QueueStats {
-  total: number;
-  loading: number;
-  pending: number;
-  failed: number;
-  skipped: number;
-}
-
-export interface DistillationStatusCopy {
-  kind: "processing" | "queued" | "failed";
-  label: string;
-  detail: string;
-}

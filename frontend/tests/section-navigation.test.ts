@@ -10,8 +10,6 @@ import {
 describe("resolveCurrentSectionFromPathname", () => {
   it("maps primary routes for section highlighting and keyboard hints", () => {
     expect(resolveCurrentSectionFromPathname("/")).toBe("workspace");
-    expect(resolveCurrentSectionFromPathname("/download-queue")).toBe("queue");
-    expect(resolveCurrentSectionFromPathname("/download-queue/")).toBe("queue");
     expect(resolveCurrentSectionFromPathname("/highlights")).toBe("highlights");
     expect(resolveCurrentSectionFromPathname("/vocabulary")).toBe("vocabulary");
     expect(resolveCurrentSectionFromPathname("/chat")).toBe("chat");
@@ -22,31 +20,31 @@ describe("resolveCurrentSectionFromPathname", () => {
 describe("goHintKeyForSection", () => {
   it("maps each section to its go chord number", () => {
     expect(goHintKeyForSection("workspace")).toBe("1");
-    expect(goHintKeyForSection("queue")).toBe("2");
-    expect(goHintKeyForSection("highlights")).toBe("3");
-    expect(goHintKeyForSection("vocabulary")).toBe("4");
-    expect(goHintKeyForSection("chat")).toBe("5");
-    expect(goHintKeyForSection("docs")).toBe("6");
+    expect(goHintKeyForSection("highlights")).toBe("2");
+    expect(goHintKeyForSection("vocabulary")).toBe("3");
+    expect(goHintKeyForSection("chat")).toBe("4");
+    expect(goHintKeyForSection("docs")).toBe("5");
   });
 });
 
 describe("getSectionNavigationItems", () => {
   it("marks the active internal section and preserves the docs link", () => {
     const items = getSectionNavigationItems(
-      "queue",
+      "highlights",
       "https://docs.example.com",
     );
 
-    expect(items).toHaveLength(6);
+    expect(items).toHaveLength(5);
     expect(items.map((item) => item.label)).toEqual([
       "Workspace",
-      "Queue",
       "Highlights",
       "Vocabulary",
       "Chat",
       "Docs",
     ]);
-    expect(items.find((item) => item.section === "queue")?.active).toBe(true);
+    expect(items.find((item) => item.section === "highlights")?.active).toBe(
+      true,
+    );
     expect(items.find((item) => item.section === "workspace")?.active).toBe(
       false,
     );
@@ -62,7 +60,6 @@ describe("getSectionNavigationItems", () => {
   it("returns exactly one active section for each internal route", () => {
     const sections: SectionNavigationSection[] = [
       "workspace",
-      "queue",
       "highlights",
       "vocabulary",
       "chat",

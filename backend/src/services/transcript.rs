@@ -1,11 +1,15 @@
+use std::net::{IpAddr, SocketAddr};
 use std::process::Command;
 use std::sync::Arc;
 use std::time::Instant;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use reqwest::multipart::{Form, Part};
+use reqwest::redirect::Policy;
 use thiserror::Error;
 use tokio::sync::Semaphore;
 
+use crate::config::LocalAsrRuntimeConfig;
 use crate::services::http::build_http_client;
 use crate::services::youtube::placeholder::is_site_wide_placeholder_description;
 
@@ -15,6 +19,10 @@ pub enum TranscriptError {
     CommandFailed(String),
     #[error("Video has no transcript available")]
     NoTranscript,
+    #[error("Local ASR provider is not configured")]
+    AsrUnavailable,
+    #[error("Local ASR provider is temporarily unavailable: {0}")]
+    AsrTemporarilyUnavailable(String),
     #[error("Rate limited, try again later")]
     RateLimited,
     #[error("IO error: {0}")]
@@ -26,6 +34,7 @@ pub enum TranscriptError {
 pub struct TranscriptService {
     summarize_path: String,
     ytdlp_path: String,
+    local_asr: Option<LocalAsrRuntimeConfig>,
     concurrency_semaphore: Option<Arc<Semaphore>>,
 }
 
@@ -34,6 +43,7 @@ impl TranscriptService {
         Self {
             summarize_path: "/opt/homebrew/bin/summarize".to_string(),
             ytdlp_path: "/usr/local/bin/yt-dlp".to_string(),
+            local_asr: None,
             concurrency_semaphore: None,
         }
     }
@@ -42,6 +52,7 @@ impl TranscriptService {
         Self {
             summarize_path: summarize_path.to_string(),
             ytdlp_path: "/usr/local/bin/yt-dlp".to_string(),
+            local_asr: None,
             concurrency_semaphore: None,
         }
     }
@@ -50,8 +61,14 @@ impl TranscriptService {
         Self {
             summarize_path: summarize_path.to_string(),
             ytdlp_path: ytdlp_path.to_string(),
+            local_asr: None,
             concurrency_semaphore: None,
         }
+    }
+
+    pub fn with_local_asr(mut self, config: Option<LocalAsrRuntimeConfig>) -> Self {
+        self.local_asr = config;
+        self
     }
 
     pub fn with_concurrency_semaphore(mut self, semaphore: Arc<Semaphore>) -> Self {
@@ -268,6 +285,94 @@ impl TranscriptService {
 
         // Summarize CLI path produces no timed segments.
         Ok((raw_auto, formatted, Vec::new()))
+    }
+
+    pub async fn extract_podcast_audio(
+        &self,
+        video_id: &str,
+        audio_url: &str,
+        mime_type: Option<&str>,
+    ) -> Result<(String, String, Vec<crate::models::TimedSegment>), TranscriptError> {
+        let Some(config) = self.local_asr.as_ref() else {
+            tracing::warn!(
+                video_id = %video_id,
+                "local podcast ASR requested but LOCAL_ASR is not configured"
+            );
+            return Err(TranscriptError::AsrUnavailable);
+        };
+
+        let _permit = if let Some(sem) = &self.concurrency_semaphore {
+            Some(
+                sem.clone()
+                    .acquire_owned()
+                    .await
+                    .map_err(|e| TranscriptError::CommandFailed(e.to_string()))?,
+            )
+        } else {
+            None
+        };
+
+        validate_public_media_url(audio_url).await?;
+        let started_at = Instant::now();
+        let (audio, content_type) =
+            download_audio_bytes(audio_url, config.max_audio_bytes, config.timeout_secs).await?;
+        let _content_type = mime_type
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or(content_type.as_deref().unwrap_or("audio/mpeg"));
+
+        let part = Part::bytes(audio).file_name("podcast-audio");
+        let form = Form::new()
+            .text("model", config.model.clone())
+            .text("response_format", "text")
+            .part("file", part);
+
+        let client = build_http_client();
+        let response = client
+            .post(config.transcription_url())
+            .bearer_auth(&config.api_key)
+            .timeout(std::time::Duration::from_secs(config.timeout_secs))
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|error| TranscriptError::AsrTemporarilyUnavailable(error.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            tracing::warn!(
+                video_id = %video_id,
+                status = %status,
+                body = %body.trim(),
+                "local ASR transcription request failed"
+            );
+            if is_retryable_asr_status(status) {
+                return Err(TranscriptError::AsrTemporarilyUnavailable(format!(
+                    "local ASR returned HTTP {status}"
+                )));
+            }
+            return Err(TranscriptError::CommandFailed(format!(
+                "local ASR returned HTTP {status}"
+            )));
+        }
+
+        let raw = response
+            .text()
+            .await
+            .map_err(|error| TranscriptError::AsrTemporarilyUnavailable(error.to_string()))?;
+        let raw = raw.trim().to_string();
+        if raw.is_empty() {
+            return Err(TranscriptError::NoTranscript);
+        }
+
+        tracing::info!(
+            video_id = %video_id,
+            provider = "local-openai-compatible",
+            model = %config.model,
+            elapsed_ms = started_at.elapsed().as_millis(),
+            transcript_bytes = raw.len(),
+            "podcast audio transcription completed"
+        );
+        Ok((raw.clone(), raw, Vec::new()))
     }
 
     /// Fallback transcript extraction using yt-dlp with the iOS YouTube client.
@@ -594,6 +699,234 @@ fn looks_like_summarize_auto_output_truncation(raw: &str) -> bool {
     char_count < 120 && word_count < 25
 }
 
+pub(crate) async fn validate_public_media_url(url: &str) -> Result<(), TranscriptError> {
+    let parsed = reqwest::Url::parse(url)
+        .map_err(|error| TranscriptError::CommandFailed(format!("invalid audio URL: {error}")))?;
+    match parsed.scheme() {
+        "http" | "https" => {}
+        scheme => {
+            return Err(TranscriptError::CommandFailed(format!(
+                "unsupported audio URL scheme: {scheme}"
+            )));
+        }
+    }
+
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| TranscriptError::CommandFailed("audio URL missing host".to_string()))?;
+    if host.eq_ignore_ascii_case("localhost") {
+        return Err(TranscriptError::CommandFailed(
+            "audio URL host is not allowed".to_string(),
+        ));
+    }
+
+    let port = parsed.port_or_known_default().unwrap_or(443);
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        if !is_public_ip(ip) {
+            return Err(TranscriptError::CommandFailed(
+                "audio URL IP is not allowed".to_string(),
+            ));
+        }
+        return Ok(());
+    }
+
+    let addrs = tokio::net::lookup_host((host, port))
+        .await
+        .map_err(|error| TranscriptError::CommandFailed(format!("audio DNS failed: {error}")))?;
+    for addr in addrs {
+        if !is_public_ip(addr.ip()) {
+            return Err(TranscriptError::CommandFailed(
+                "audio URL resolves to a private or local address".to_string(),
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn is_retryable_asr_status(status: reqwest::StatusCode) -> bool {
+    status.is_server_error()
+        || matches!(
+            status,
+            reqwest::StatusCode::REQUEST_TIMEOUT | reqwest::StatusCode::TOO_MANY_REQUESTS
+        )
+}
+
+pub(crate) fn is_public_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(ip) => is_public_ipv4(ip),
+        IpAddr::V6(ip) => ip
+            .to_ipv4_mapped()
+            .map(is_public_ipv4)
+            .unwrap_or_else(|| is_public_ipv6(ip)),
+    }
+}
+
+fn is_public_ipv4(ip: std::net::Ipv4Addr) -> bool {
+    let octets = ip.octets();
+    !(ip.is_loopback()
+        || ip.is_private()
+        || ip.is_link_local()
+        || ip.is_multicast()
+        || ip.is_broadcast()
+        || ip.is_documentation()
+        || octets[0] == 0
+        || octets[0] >= 240
+        || (octets[0] == 100 && (64..=127).contains(&octets[1]))
+        || (octets[0] == 169 && octets[1] == 254)
+        || (octets[0] == 192 && octets[1] == 0 && octets[2] == 0)
+        || (octets[0] == 192 && octets[1] == 88 && octets[2] == 99)
+        || (octets[0] == 198 && (18..=19).contains(&octets[1]))
+        || octets == [169, 254, 169, 254])
+}
+
+fn is_public_ipv6(ip: std::net::Ipv6Addr) -> bool {
+    let segments = ip.segments();
+    let is_global_unicast = (segments[0] & 0xe000) == 0x2000;
+    is_global_unicast
+        && !(
+            // NAT64 well-known and local-use prefixes can tunnel private IPv4 targets.
+            (segments[0] == 0x0064 && segments[1] == 0xff9b)
+                || (segments[0] == 0x0064 && segments[1] == 0xff9b && segments[2] == 0x0001)
+                // Discard-only prefix.
+                || (segments[0] == 0x0100 && segments[1] == 0)
+                // IETF protocol assignments, including Teredo, benchmarking, and documentation.
+                || (segments[0] == 0x2001 && segments[1] <= 0x01ff)
+                || (segments[0] == 0x2001 && segments[1] == 0x0db8)
+                // 6to4.
+                || segments[0] == 0x2002
+                // Documentation range from the IANA special-purpose registry.
+                || (segments[0] == 0x3fff && (segments[1] & 0xf000) == 0)
+        )
+}
+
+async fn download_audio_bytes(
+    url: &str,
+    max_audio_bytes: u64,
+    timeout_secs: u64,
+) -> Result<(Vec<u8>, Option<String>), TranscriptError> {
+    let response = fetch_public_response(url, timeout_secs).await?;
+
+    if !response.status().is_success() {
+        return Err(TranscriptError::CommandFailed(format!(
+            "audio fetch returned HTTP {}",
+            response.status()
+        )));
+    }
+
+    if let Some(length) = response.content_length() {
+        if length > max_audio_bytes {
+            return Err(TranscriptError::CommandFailed(format!(
+                "audio file is too large: {length} bytes"
+            )));
+        }
+    }
+
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(ToOwned::to_owned);
+    let mut body = Vec::new();
+    let mut response = response;
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|error| TranscriptError::AsrTemporarilyUnavailable(error.to_string()))?
+    {
+        let next_len = body.len().saturating_add(chunk.len());
+        if next_len as u64 > max_audio_bytes {
+            return Err(TranscriptError::CommandFailed(format!(
+                "audio file is too large: more than {max_audio_bytes} bytes"
+            )));
+        }
+        body.extend_from_slice(&chunk);
+    }
+
+    Ok((body, content_type))
+}
+
+pub(crate) async fn fetch_public_response(
+    initial_url: &str,
+    timeout_secs: u64,
+) -> Result<reqwest::Response, TranscriptError> {
+    let mut url = reqwest::Url::parse(initial_url)
+        .map_err(|error| TranscriptError::CommandFailed(format!("invalid media URL: {error}")))?;
+    for _ in 0..15 {
+        let client = build_pinned_public_media_client(&url, timeout_secs).await?;
+        let response = client
+            .get(url.clone())
+            .send()
+            .await
+            .map_err(|error| TranscriptError::AsrTemporarilyUnavailable(error.to_string()))?;
+        if !response.status().is_redirection() {
+            return Ok(response);
+        }
+        let location = response
+            .headers()
+            .get(reqwest::header::LOCATION)
+            .and_then(|value| value.to_str().ok())
+            .ok_or_else(|| {
+                TranscriptError::CommandFailed("redirect missing Location header".to_string())
+            })?;
+        url = url.join(location).map_err(|error| {
+            TranscriptError::CommandFailed(format!("invalid redirect URL: {error}"))
+        })?;
+    }
+
+    Err(TranscriptError::CommandFailed(
+        "too many redirects while fetching media".to_string(),
+    ))
+}
+
+async fn build_pinned_public_media_client(
+    url: &reqwest::Url,
+    timeout_secs: u64,
+) -> Result<reqwest::Client, TranscriptError> {
+    let host = url
+        .host_str()
+        .ok_or_else(|| TranscriptError::CommandFailed("media URL missing host".to_string()))?;
+    let port = url.port_or_known_default().unwrap_or(443);
+    let addrs = resolve_public_socket_addrs(host, port).await?;
+    reqwest::ClientBuilder::new()
+        .user_agent("dastill/0.1")
+        .timeout(std::time::Duration::from_secs(timeout_secs))
+        .redirect(Policy::none())
+        .resolve_to_addrs(host, &addrs)
+        .build()
+        .map_err(|error| {
+            TranscriptError::CommandFailed(format!("http client build failed: {error}"))
+        })
+}
+
+async fn resolve_public_socket_addrs(
+    host: &str,
+    port: u16,
+) -> Result<Vec<SocketAddr>, TranscriptError> {
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        if is_public_ip(ip) {
+            return Ok(vec![SocketAddr::new(ip, port)]);
+        }
+        return Err(TranscriptError::CommandFailed(
+            "media URL IP is not allowed".to_string(),
+        ));
+    }
+
+    let addrs = tokio::net::lookup_host((host, port))
+        .await
+        .map_err(|error| TranscriptError::CommandFailed(format!("media DNS failed: {error}")))?
+        .filter(|addr| is_public_ip(addr.ip()))
+        .collect::<Vec<_>>();
+
+    if addrs.is_empty() {
+        return Err(TranscriptError::CommandFailed(
+            "media URL does not resolve to a public address".to_string(),
+        ));
+    }
+
+    Ok(addrs)
+}
+
 impl Default for TranscriptService {
     fn default() -> Self {
         Self::new()
@@ -608,8 +941,53 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
     use std::thread;
 
-    use super::{TranscriptService, extract_json3_caption_url_from_ytdlp_metadata};
+    use super::{
+        TranscriptService, extract_json3_caption_url_from_ytdlp_metadata, is_public_ip,
+        is_retryable_asr_status,
+    };
     use tempfile::tempdir;
+
+    #[test]
+    fn local_asr_url_policy_rejects_private_and_metadata_ips() {
+        assert!(!is_public_ip("127.0.0.1".parse().unwrap()));
+        assert!(!is_public_ip("10.0.0.1".parse().unwrap()));
+        assert!(!is_public_ip("172.16.0.1".parse().unwrap()));
+        assert!(!is_public_ip("192.168.0.1".parse().unwrap()));
+        assert!(!is_public_ip("192.88.99.1".parse().unwrap()));
+        assert!(!is_public_ip("100.64.0.1".parse().unwrap()));
+        assert!(!is_public_ip("169.254.169.254".parse().unwrap()));
+        assert!(!is_public_ip("::ffff:127.0.0.1".parse().unwrap()));
+        assert!(!is_public_ip("64:ff9b::192.0.2.33".parse().unwrap()));
+        assert!(!is_public_ip("100::1".parse().unwrap()));
+        assert!(!is_public_ip("2001::1".parse().unwrap()));
+        assert!(!is_public_ip("2001:2::1".parse().unwrap()));
+        assert!(!is_public_ip("2001:db8::1".parse().unwrap()));
+        assert!(!is_public_ip("2002::1".parse().unwrap()));
+        assert!(!is_public_ip("3fff::1".parse().unwrap()));
+        assert!(!is_public_ip("5f00::1".parse().unwrap()));
+        assert!(!is_public_ip("fc00::1".parse().unwrap()));
+        assert!(!is_public_ip("fe80::1".parse().unwrap()));
+        assert!(!is_public_ip("ff02::1".parse().unwrap()));
+        assert!(is_public_ip("93.184.216.34".parse().unwrap()));
+        assert!(is_public_ip(
+            "2606:2800:220:1:248:1893:25c8:1946".parse().unwrap()
+        ));
+        assert!(is_public_ip("2001:4860:4860::8888".parse().unwrap()));
+    }
+
+    #[test]
+    fn local_asr_status_policy_retries_temporary_failures() {
+        assert!(is_retryable_asr_status(
+            reqwest::StatusCode::REQUEST_TIMEOUT
+        ));
+        assert!(is_retryable_asr_status(
+            reqwest::StatusCode::TOO_MANY_REQUESTS
+        ));
+        assert!(is_retryable_asr_status(
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR
+        ));
+        assert!(!is_retryable_asr_status(reqwest::StatusCode::BAD_REQUEST));
+    }
 
     #[tokio::test]
     async fn extract_returns_command_failed_on_non_zero_exit() {

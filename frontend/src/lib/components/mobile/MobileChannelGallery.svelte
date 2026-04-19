@@ -2,9 +2,8 @@
   import AddSourceDrawer from "$lib/components/AddSourceDrawer.svelte";
   import defaultChannelIcon from "$lib/assets/channel-default.svg";
   import ChevronIcon from "$lib/components/icons/ChevronIcon.svelte";
-  import type { Channel, ChannelSnapshot } from "$lib/types";
+  import type { Channel } from "$lib/types";
   import type { AddSourceSubmission } from "$lib/workspace/component-props";
-  import { queueStageCardSummary } from "$lib/workspace/queue-stage-card-summary";
 
   let {
     channels,
@@ -14,9 +13,6 @@
     addingChannel = false,
     loadingChannels = false,
     addSourceErrorMessage = null as string | null,
-    /** When set with `queueUnifiedSummary`, cards show pipeline queue counts from each snapshot. */
-    channelPreviews = undefined as Record<string, ChannelSnapshot> | undefined,
-    queueUnifiedSummary = false,
   }: {
     channels: Channel[];
     selectedChannelId: string | null;
@@ -26,8 +22,6 @@
     addingChannel?: boolean;
     loadingChannels?: boolean;
     addSourceErrorMessage?: string | null;
-    channelPreviews?: Record<string, ChannelSnapshot>;
-    queueUnifiedSummary?: boolean;
   } = $props();
 
   let addDrawerOpen = $state(false);
@@ -95,11 +89,6 @@
     </div>
   {:else if displayChannel}
     {@const thumb = normalizeThumbnail(displayChannel.thumbnail_url)}
-    {@const preview = channelPreviews?.[displayChannel.id]}
-    {@const queueLine =
-      queueUnifiedSummary && preview
-        ? queueStageCardSummary(preview.videos, "unified")
-        : null}
 
     <!-- Channel banner -->
     <div class="relative h-[88px] w-full overflow-hidden bg-[var(--muted)]">
@@ -122,11 +111,7 @@
         <p class="truncate text-[14px] font-semibold leading-snug text-white">
           {displayChannel.name}
         </p>
-        {#if queueLine}
-          <p class="mt-0.5 truncate text-[11px] leading-tight text-white/70">
-            {queueLine}
-          </p>
-        {:else if displayChannel.handle}
+        {#if displayChannel.handle}
           <p class="mt-0.5 truncate text-[11px] leading-tight text-white/60">
             {displayChannel.handle}
           </p>

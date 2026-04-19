@@ -314,7 +314,8 @@
 
 {#if open}
   <div
-    class="fixed inset-0 z-[110] flex justify-end"
+    class="fixed inset-0 flex justify-end"
+    style="z-index: var(--z-drawer);"
     role="dialog"
     aria-modal="true"
     aria-labelledby="add-source-title"

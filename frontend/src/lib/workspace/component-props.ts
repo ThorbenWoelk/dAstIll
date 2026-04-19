@@ -12,11 +12,9 @@ import type { ChannelSyncDepthState } from "$lib/channel-view-cache";
 import type {
   AcknowledgedFilter,
   ChannelSortMode,
-  DistillationStatusCopy,
-  QueueStats,
   WorkspaceContentMode,
 } from "$lib/workspace/types";
-import type { ChannelSnapshot, QueueTab } from "$lib/types";
+import type { ChannelSnapshot } from "$lib/types";
 
 export type AddSourceSubmission =
   | string
@@ -93,8 +91,7 @@ export interface WorkspaceSidebarVideoActions {
 }
 
 export interface WorkspaceSidebarPreviewScope {
-  kind: "default" | "unified" | "queue_tab";
-  queueTab?: QueueTab;
+  kind: "default";
 }
 
 export interface WorkspaceSidebarPreviewProps {
@@ -192,34 +189,4 @@ export interface WorkspaceOverlaysActions {
   onCancelAccessPrompt: () => void;
   onConfirmResetVideo: () => Promise<void> | void;
   onCancelResetVideo: () => void;
-}
-
-export interface QueueListItem {
-  video: Video;
-  distillationStatus: DistillationStatusCopy;
-}
-
-export interface QueueContentPanelState {
-  mobileVisible: boolean;
-  selectedChannel: Channel | null;
-  selectedChannelId: string | null;
-  /** Sidebar selection; drives detail panel when set. */
-  selectedVideoId?: string | null;
-  /** Resolved from the current queue list; null if not loaded or not in list. */
-  selectedQueueVideo?: Video | null;
-  queueStats: QueueStats;
-  failedTranscriptVideos?: Video[];
-  retryingTranscriptVideoId?: string | null;
-  effectiveEarliestSyncDate?: string | null;
-  earliestSyncDateInput: string;
-  savingSyncDate: boolean;
-  refreshingChannel: boolean;
-}
-
-export interface QueueContentPanelActions {
-  onBack: () => void;
-  onSaveSyncDate: (value: string) => Promise<void> | void;
-  onRetryTranscript?: (videoId: string) => Promise<void> | void;
-  onClearSelectedVideo?: () => void;
-  onOpenVideoInWorkspace?: (video: Video) => void | Promise<void>;
 }

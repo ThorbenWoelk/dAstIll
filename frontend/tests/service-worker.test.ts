@@ -40,7 +40,6 @@ describe("isStaticAssetPath", () => {
     expect(isStaticAssetPath("/")).toBe(false);
     expect(isStaticAssetPath("/highlights")).toBe(false);
     expect(isStaticAssetPath("/chat")).toBe(false);
-    expect(isStaticAssetPath("/download-queue")).toBe(false);
   });
 
   it("does not match arbitrary static files at root", () => {

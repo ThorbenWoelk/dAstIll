@@ -1,11 +1,6 @@
 /**
  * Shared channel + video list state for WorkspaceSidebar usage across routes.
  *
- * Encapsulates all reactive state and operations that are common to the main
- * workspace route and the download-queue route: channel listing, selection,
- * add/delete/reorder, video listing, paginating, and filtering. Each route
- * supplies route-specific hooks for video selection and channel lifecycle events.
- *
  * Returns fully-typed `channelState`, `channelActions`, `videoState`, and
  * `videoActions` objects that can be passed directly to `WorkspaceSidebar`.
  */

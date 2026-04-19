@@ -7,10 +7,6 @@ import {
 } from "./workspace-mock-api";
 
 const READY_MS = 120_000;
-// Chromium on macOS reserves Cmd+<number> for browser tab switching, so Playwright
-// never delivers that chord to the page. Use Ctrl there to keep the app-level
-// shortcut path covered in automation; the app still supports Cmd for humans.
-const PRIMARY_MODIFIER = "Control";
 
 function workspaceSidebar(page: Page) {
   // Two aside#workspace nodes can exist (desktop rail + mobile browse dialog). Exclude the dialog copy.
@@ -192,6 +188,71 @@ test("desktop sidebar sits flush against the main content", async ({
   expect(Math.abs(layout.gap)).toBeLessThanOrEqual(1);
 });
 
+test("podcast subscribe protected action shows sign-in modal above drawer", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem(
+      "__dastill_e2e_auth",
+      JSON.stringify({
+        userId: "e2e-user",
+        email: "e2e@example.com",
+        token: "e2e-token",
+      }),
+    );
+  });
+  await installSeededWorkspaceApi(page);
+
+  let submittedInput: string | null = null;
+  await page.route("**/api/channels", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+
+    const payload = route.request().postDataJSON() as { input?: string };
+    submittedInput = payload.input ?? null;
+    await route.fulfill({
+      status: 403,
+      contentType: "text/plain",
+      body: "Sign-in required",
+    });
+  });
+
+  await page.goto("/");
+  const sidebar = workspaceSidebar(page);
+  await expect(sidebar.locator("[data-channel-id]").first()).toBeVisible({
+    timeout: READY_MS,
+  });
+
+  await sidebar.getByLabel("Add source").click();
+  await page.getByRole("button", { name: /Podcast RSS/ }).click();
+  await page
+    .getByLabel("Podcast RSS")
+    .fill("https://feeds.simplecast.com/54nAGcIl");
+  await page.getByRole("button", { name: "Subscribe to podcast feed" }).click();
+
+  await expect
+    .poll(() => submittedInput)
+    .toBe("podcast: https://feeds.simplecast.com/54nAGcIl");
+
+  const modal = page.getByRole("dialog", { name: "Sign in required" });
+  await expect(modal).toBeVisible();
+  await expect(
+    page.getByRole("dialog", { name: "Pick a source type" }),
+  ).toBeVisible();
+
+  const modalOwnsTopElement = await modal.evaluate((node) => {
+    const rect = node.getBoundingClientRect();
+    const topElement = document.elementFromPoint(
+      rect.left + rect.width / 2,
+      rect.top + rect.height / 2,
+    );
+    return topElement !== null && node.contains(topElement);
+  });
+  expect(modalOwnsTopElement).toBe(true);
+});
+
 test("mobile workspace still uses mobile chrome", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await installSeededWorkspaceApi(page);
@@ -302,21 +363,6 @@ test("workspace feature guide opens from guide URL param (same state as Guide co
   const dialog = page.getByRole("dialog", { name: "Feature guide" });
   await expect(dialog).toBeVisible({ timeout: READY_MS });
   await expect(dialog.getByText("Welcome to dAstIll")).toBeVisible();
-});
-
-test("Cmd/Ctrl+1 navigates from queue to workspace without full reload hang", async ({
-  page,
-}) => {
-  await installSeededWorkspaceApi(page);
-  await page.goto("/download-queue");
-  await expect
-    .poll(() => new URL(page.url()).pathname)
-    .toContain("download-queue");
-  await page.waitForTimeout(1500);
-  await page.keyboard.press(`${PRIMARY_MODIFIER}+1`);
-
-  await expect.poll(() => new URL(page.url()).pathname).toBe("/");
-  await expect(workspaceSidebar(page)).toBeVisible({ timeout: READY_MS });
 });
 
 test("channel row click opens the overview page and overview exposes delete", async ({

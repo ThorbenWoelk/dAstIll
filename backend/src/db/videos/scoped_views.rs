@@ -342,6 +342,21 @@ mod tests {
     }
 
     #[test]
+    fn regular_lists_show_podcast_episodes_while_transcripts_are_pending() {
+        let video = Video {
+            id: "podcast:episode:episode-1".to_string(),
+            channel_id: "podcast:rss:show".to_string(),
+            ..build_video(ContentStatus::Pending, ContentStatus::Pending)
+        };
+
+        assert!(video_visible_in_list(&video, None));
+        assert!(video_visible_in_list(
+            &video,
+            Some(QueueFilter::AnyIncomplete)
+        ));
+    }
+
+    #[test]
     fn transcript_queue_still_includes_videos_missing_transcripts() {
         let video = build_video(ContentStatus::Pending, ContentStatus::Pending);
 

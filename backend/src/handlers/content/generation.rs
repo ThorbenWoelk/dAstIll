@@ -134,6 +134,16 @@ pub(crate) async fn ensure_transcript(
     video_id: &str,
 ) -> Result<Transcript, (StatusCode, String)> {
     let video = require_video(state, video_id).await?;
+    if let Some(transcript) = valid_cached_transcript(state, video_id).await? {
+        let _ = db::update_video_transcript_status(&state.db, video_id, ContentStatus::Ready).await;
+        tracing::debug!(video_id = %video_id, "transcript cache hit");
+        return Ok(transcript);
+    }
+
+    if is_podcast_video(state, &video).await? {
+        return ensure_podcast_audio_transcript(state, &video).await;
+    }
+
     let completed_live = match state
         .youtube
         .fetch_completed_live_transcript_metadata(video_id)
@@ -176,23 +186,6 @@ pub(crate) async fn ensure_transcript(
     }
 
     {
-        if let Some(transcript) = db::get_transcript(&state.db, video_id)
-            .await
-            .map_err(map_db_err)?
-        {
-            if is_valid_cached_transcript(&transcript) {
-                let _ =
-                    db::update_video_transcript_status(&state.db, video_id, ContentStatus::Ready)
-                        .await;
-                tracing::debug!(video_id = %video_id, "transcript cache hit");
-                return Ok(transcript);
-            }
-            tracing::warn!(
-                video_id = %video_id,
-                "cached transcript is invalid (site-wide blurb or empty) - discarding and re-fetching"
-            );
-        }
-
         db::update_video_transcript_status(&state.db, video_id, ContentStatus::Loading)
             .await
             .map_err(map_db_err)?;
@@ -268,6 +261,111 @@ pub(crate) async fn ensure_transcript(
     .map_err(map_db_err)?;
     evict_video_scope_cache(state, &video.channel_id).await?;
     tracing::info!(video_id = %video_id, "transcript stored - status set to ready");
+
+    Ok(transcript)
+}
+
+async fn valid_cached_transcript(
+    state: &AppState,
+    video_id: &str,
+) -> Result<Option<Transcript>, (StatusCode, String)> {
+    if let Some(transcript) = db::get_transcript(&state.db, video_id)
+        .await
+        .map_err(map_db_err)?
+    {
+        if is_valid_cached_transcript(&transcript) {
+            return Ok(Some(transcript));
+        }
+        tracing::warn!(
+            video_id = %video_id,
+            "cached transcript is invalid (site-wide blurb or empty) - discarding and re-fetching"
+        );
+    }
+    Ok(None)
+}
+
+async fn is_podcast_video(
+    state: &AppState,
+    video: &crate::models::Video,
+) -> Result<bool, (StatusCode, String)> {
+    let source_profile = db::get_source_profile(&state.db, &video.channel_id)
+        .await
+        .map_err(map_db_err)?;
+    Ok(source_profile
+        .map(|profile| profile.source.provider == crate::models::ProviderKind::PodcastRss)
+        .unwrap_or(false))
+}
+
+async fn ensure_podcast_audio_transcript(
+    state: &AppState,
+    video: &crate::models::Video,
+) -> Result<Transcript, (StatusCode, String)> {
+    db::update_video_transcript_status(&state.db, &video.id, ContentStatus::Loading)
+        .await
+        .map_err(map_db_err)?;
+    evict_video_scope_cache_by_video_id(state, &video.id).await;
+    tracing::info!(video_id = %video.id, "podcast transcript queued - status set to loading");
+
+    let audio_asset = match db::get_source_audio_asset(&state.db, &video.id)
+        .await
+        .map_err(map_db_err)?
+    {
+        Some(asset) => asset,
+        None => {
+            db::update_video_transcript_status(&state.db, &video.id, ContentStatus::Failed)
+                .await
+                .map_err(map_db_err)?;
+            return Err((
+                StatusCode::NOT_FOUND,
+                "Podcast episode has no source audio enclosure".to_string(),
+            ));
+        }
+    };
+    let Some(audio_url) = audio_asset.url.as_deref() else {
+        db::update_video_transcript_status(&state.db, &video.id, ContentStatus::Failed)
+            .await
+            .map_err(map_db_err)?;
+        return Err((
+            StatusCode::NOT_FOUND,
+            "Podcast episode source audio URL missing".to_string(),
+        ));
+    };
+
+    let (raw, formatted, timed) = match state
+        .transcript
+        .extract_podcast_audio(&video.id, audio_url, audio_asset.mime_type.as_deref())
+        .await
+    {
+        Ok(result) => result,
+        Err(err) => {
+            return Err(apply_transcript_error(state, &video.id, err).await);
+        }
+    };
+
+    let transcript = Transcript {
+        video_id: video.id.clone(),
+        raw_text: Some(raw),
+        formatted_markdown: Some(formatted),
+        render_mode: TranscriptRenderMode::PlainText,
+        timed_text: if timed.is_empty() { None } else { Some(timed) },
+    };
+
+    db::upsert_transcript(&state.db, &transcript)
+        .await
+        .map_err(map_db_err)?;
+    db::update_video_transcript_status(&state.db, &video.id, ContentStatus::Ready)
+        .await
+        .map_err(map_db_err)?;
+    sync_search_source(
+        state,
+        &video.id,
+        SearchSourceKind::Transcript,
+        transcript_text(&transcript),
+    )
+    .await
+    .map_err(map_db_err)?;
+    evict_video_scope_cache(state, &video.channel_id).await?;
+    tracing::info!(video_id = %video.id, "podcast transcript stored - status set to ready");
 
     Ok(transcript)
 }
@@ -348,7 +446,10 @@ async fn ensure_summary_internal(
     let transcript = match ensure_transcript(state, video_id).await {
         Ok(t) => t,
         Err((status, message)) => {
-            let content_status = if status == StatusCode::TOO_MANY_REQUESTS {
+            let content_status = if matches!(
+                status,
+                StatusCode::TOO_MANY_REQUESTS | StatusCode::SERVICE_UNAVAILABLE
+            ) {
                 ContentStatus::Pending
             } else {
                 ContentStatus::Failed
@@ -543,6 +644,20 @@ async fn apply_transcript_error(
                 "transcript unavailable for video"
             );
         }
+        crate::services::transcript::TranscriptError::AsrUnavailable => {
+            tracing::warn!(
+                video_id = %video_id,
+                error = %err,
+                "podcast transcript deferred because local ASR is unavailable"
+            );
+        }
+        crate::services::transcript::TranscriptError::AsrTemporarilyUnavailable(_) => {
+            tracing::warn!(
+                video_id = %video_id,
+                error = %err,
+                "podcast transcript deferred because local ASR is temporarily unavailable"
+            );
+        }
         _ => {
             tracing::error!(video_id = %video_id, error = %err, "transcript download failed");
         }
@@ -551,11 +666,21 @@ async fn apply_transcript_error(
     let status = match err {
         crate::services::transcript::TranscriptError::RateLimited => StatusCode::TOO_MANY_REQUESTS,
         crate::services::transcript::TranscriptError::NoTranscript => StatusCode::NOT_FOUND,
+        crate::services::transcript::TranscriptError::AsrUnavailable => {
+            StatusCode::SERVICE_UNAVAILABLE
+        }
+        crate::services::transcript::TranscriptError::AsrTemporarilyUnavailable(_) => {
+            StatusCode::SERVICE_UNAVAILABLE
+        }
         _ => StatusCode::INTERNAL_SERVER_ERROR,
     };
 
     let next_status = match err {
-        crate::services::transcript::TranscriptError::RateLimited => ContentStatus::Pending,
+        crate::services::transcript::TranscriptError::RateLimited
+        | crate::services::transcript::TranscriptError::AsrUnavailable
+        | crate::services::transcript::TranscriptError::AsrTemporarilyUnavailable(_) => {
+            ContentStatus::Pending
+        }
         _ => ContentStatus::Failed,
     };
 

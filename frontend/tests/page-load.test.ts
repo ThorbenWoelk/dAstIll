@@ -32,17 +32,6 @@ async function importChannelLoad() {
   }>;
 }
 
-async function importQueueLoad() {
-  const mod = await import(
-    `../src/routes/download-queue/+page.ts?test=${Date.now()}-${Math.random()}`
-  );
-  return mod.load as (event: { fetch: typeof fetch; url: URL }) => Promise<{
-    bootstrap: WorkspaceBootstrap | null;
-    channelPreviews: Record<string, ChannelSnapshot>;
-    channelPreviewsFilterKey: string;
-  }>;
-}
-
 type CapturedCall = { url: URL };
 
 function makeBootstrap(channelId: string | null = null): WorkspaceBootstrap {
@@ -179,18 +168,5 @@ describe("static route loads", () => {
     expect(result.channelPreviews["channel-abc"]?.channel_id).toBe(
       "channel-abc",
     );
-  });
-
-  it("marks the download queue route as queue_only", async () => {
-    const load = await importQueueLoad();
-    const { fetch, calls } = createMockFetch(makeBootstrap("queue-channel"));
-
-    await load({
-      fetch,
-      url: new URL("http://localhost/download-queue"),
-    });
-
-    expect(calls).toHaveLength(1);
-    expect(calls[0].url.searchParams.get("queue_only")).toBe("true");
   });
 });

@@ -1,4 +1,4 @@
-import type { QueueTab, VideoTypeFilter } from "./types";
+import type { VideoTypeFilter } from "./types";
 import type {
   AddVideoResult,
   AiHealthResponse,
@@ -310,7 +310,6 @@ interface VideoQueryOptions {
   videoType?: VideoTypeFilter;
   acknowledged?: boolean;
   queueOnly?: boolean;
-  queueTab?: QueueTab;
 }
 
 function appendVideoQueryParams(
@@ -335,9 +334,6 @@ function appendVideoQueryParams(
   }
   if (options.queueOnly) {
     params.set("queue_only", "true");
-  }
-  if (options.queueTab) {
-    params.set("queue_tab", options.queueTab);
   }
 }
 
@@ -614,7 +610,6 @@ export function listVideos(
   videoType: VideoTypeFilter = "all",
   acknowledged?: boolean,
   queueOnly = false,
-  queueTab?: QueueTab,
   bypassCache?: boolean,
 ) {
   const params = new URLSearchParams({
@@ -625,7 +620,6 @@ export function listVideos(
     videoType,
     acknowledged,
     queueOnly,
-    queueTab,
   });
   return cachedGetRequest<ChannelVideoPage>(
     `/api/channels/${channelId}/videos?${params.toString()}`,

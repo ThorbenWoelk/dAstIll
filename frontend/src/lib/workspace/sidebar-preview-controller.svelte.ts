@@ -1,5 +1,4 @@
 import { untrack } from "svelte";
-import { browser } from "$app/environment";
 import {
   getChannelSnapshot,
   listVideos,
@@ -37,10 +36,6 @@ import {
   type AcknowledgedFilter,
 } from "$lib/workspace/types";
 import type { WorkspaceSidebarPreviewScope } from "$lib/workspace/component-props";
-import {
-  resolveSidebarPreviewFilterKey,
-  resolveSidebarPreviewQueueRequest,
-} from "$lib/workspace/sidebar-preview-scope";
 import {
   resolveSyncDateInputValue,
   toIsoDateStart,
@@ -156,11 +151,7 @@ export function createSidebarPreviewController(
   }
 
   function getChannelVideoCollectionFilterKey() {
-    return resolveSidebarPreviewFilterKey(
-      options.getVideoTypeFilter(),
-      options.getAcknowledgedFilter(),
-      options.getPreviewScope(),
-    );
+    return `${options.getVideoTypeFilter()}:${options.getAcknowledgedFilter()}:default`;
   }
 
   function supportsMode(
@@ -358,9 +349,6 @@ export function createSidebarPreviewController(
     );
     const pageLimit =
       mode === "paged" ? EXPANDED_PAGE_SIZE : PREVIEW_FETCH_LIMIT;
-    const queueRequest = resolveSidebarPreviewQueueRequest(
-      options.getPreviewScope(),
-    );
 
     try {
       const current = channelVideoCollections[channel.id];
@@ -374,8 +362,6 @@ export function createSidebarPreviewController(
           offset: 0,
           videoType: options.getVideoTypeFilter(),
           acknowledged,
-          queueOnly: queueRequest.queueOnly ? true : undefined,
-          queueTab: queueRequest.queueTab,
           bypassCache: force,
         });
 
@@ -409,8 +395,7 @@ export function createSidebarPreviewController(
         requestOffset,
         options.getVideoTypeFilter(),
         acknowledged,
-        queueRequest.queueOnly,
-        queueRequest.queueTab,
+        false,
         force,
       );
 
@@ -575,20 +560,6 @@ export function createSidebarPreviewController(
       ),
     );
     hydratedPreviewSessionKey = previewSessionKey;
-  });
-
-  $effect(() => {
-    if (!browser || options.getPreviewScope().kind !== "unified") return;
-    const refreshTick = options.getQueueVideoRefreshTick();
-    if (refreshTick === 0) return;
-    if (!options.getEnabled()) return;
-
-    for (const channel of options.getChannels()) {
-      const state = channelVideoCollections[channel.id];
-      if (!state?.expanded) continue;
-      const mode = state.loadedMode === "preview" ? "preview" : "paged";
-      void loadChannelVideoCollection(channel, mode, { force: true });
-    }
   });
 
   $effect(() => {

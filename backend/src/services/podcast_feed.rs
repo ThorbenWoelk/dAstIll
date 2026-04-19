@@ -1,6 +1,9 @@
 use chrono::{DateTime, Utc};
 use reqwest::Client;
+use rss::extension::Extension;
 use rss::{Channel as RssChannel, Item};
+use scraper::Html;
+use serde_json::Value;
 use std::future::Future;
 use std::pin::Pin;
 
@@ -14,6 +17,7 @@ use super::build_http_client;
 use super::providers::{
     FeedSourceAdapter, ProviderAdapterError, ResolvedSourceDraft, SyncedSourceBatch,
 };
+use super::transcript::{fetch_public_response, validate_public_media_url};
 
 #[derive(Clone)]
 pub struct PodcastFeedService {
@@ -24,9 +28,17 @@ pub struct PodcastFeedService {
 pub struct PodcastEpisodeMaterial {
     pub item: ContentItem,
     pub show_notes: Option<String>,
+    pub transcript_text: Option<String>,
     pub watch_url: String,
+    pub audio_asset: Option<MediaAsset>,
     pub description: Option<String>,
     pub audio_mime_type: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PodcastTranscriptReference {
+    url: String,
+    mime_type: String,
 }
 
 impl PodcastFeedService {
@@ -65,6 +77,61 @@ impl PodcastFeedService {
             .map_err(|error| ProviderAdapterError::Upstream(error.to_string()))?;
 
         Self::parse_feed(&bytes)
+    }
+
+    async fn fetch_episode_transcript(
+        &self,
+        feed_url: &str,
+        feed: &RssChannel,
+        item: &Item,
+    ) -> Option<String> {
+        for reference in item_transcript_references(feed, item) {
+            match self.fetch_transcript_reference(feed_url, &reference).await {
+                Ok(Some(transcript)) => return Some(transcript),
+                Ok(None) => {}
+                Err(err) => {
+                    tracing::warn!(
+                        transcript_url = %reference.url,
+                        error = %err,
+                        "podcast transcript fetch failed"
+                    );
+                }
+            }
+        }
+
+        None
+    }
+
+    async fn fetch_transcript_reference(
+        &self,
+        feed_url: &str,
+        reference: &PodcastTranscriptReference,
+    ) -> Result<Option<String>, ProviderAdapterError> {
+        let url = resolve_transcript_url(feed_url, &reference.url)?;
+        validate_public_media_url(url.as_str())
+            .await
+            .map_err(|error| ProviderAdapterError::InvalidInput(error.to_string()))?;
+        let response = fetch_public_response(url.as_str(), 20)
+            .await
+            .map_err(|error| ProviderAdapterError::Upstream(error.to_string()))?;
+
+        if !response.status().is_success() {
+            return Err(ProviderAdapterError::Upstream(format!(
+                "podcast transcript returned HTTP {}",
+                response.status()
+            )));
+        }
+
+        let body = response
+            .text()
+            .await
+            .map_err(|error| ProviderAdapterError::Upstream(error.to_string()))?;
+
+        Ok(transcript_payload_to_text(
+            &body,
+            &reference.mime_type,
+            url.as_str(),
+        ))
     }
 }
 
@@ -199,6 +266,288 @@ fn item_summary(item: &Item) -> Option<String> {
         .or_else(|| item.description().map(ToString::to_string))
 }
 
+fn podcast_namespace_prefixes(feed: &RssChannel) -> Vec<String> {
+    const PODCAST_NAMESPACE: &str = "https://podcastindex.org/namespace/1.0";
+    const PODCAST_NAMESPACE_DOC: &str =
+        "https://github.com/Podcastindex-org/podcast-namespace/blob/main/docs/1.0.md";
+
+    let mut prefixes = feed
+        .namespaces()
+        .iter()
+        .filter_map(|(prefix, namespace)| {
+            (namespace == PODCAST_NAMESPACE || namespace == PODCAST_NAMESPACE_DOC)
+                .then(|| prefix.clone())
+        })
+        .collect::<Vec<_>>();
+
+    if !prefixes.iter().any(|prefix| prefix == "podcast") {
+        prefixes.push("podcast".to_string());
+    }
+
+    prefixes
+}
+
+fn item_transcript_references(feed: &RssChannel, item: &Item) -> Vec<PodcastTranscriptReference> {
+    let mut references = Vec::new();
+    for prefix in podcast_namespace_prefixes(feed) {
+        let Some(extensions) = item
+            .extensions()
+            .get(&prefix)
+            .and_then(|extensions| extensions.get("transcript"))
+        else {
+            continue;
+        };
+
+        references.extend(
+            extensions
+                .iter()
+                .filter_map(transcript_reference_from_extension),
+        );
+    }
+
+    references.sort_by_key(transcript_reference_rank);
+    references
+}
+
+fn transcript_reference_from_extension(
+    extension: &Extension,
+) -> Option<PodcastTranscriptReference> {
+    let url = extension.attrs.get("url")?.trim();
+    if url.is_empty() {
+        return None;
+    }
+
+    let mime_type = extension
+        .attrs
+        .get("type")
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty())
+        .or_else(|| mime_type_from_url(url).map(ToString::to_string))
+        .unwrap_or_else(|| "text/plain".to_string());
+
+    transcript_format(&mime_type, url).map(|_| PodcastTranscriptReference {
+        url: url.to_string(),
+        mime_type,
+    })
+}
+
+fn transcript_reference_rank(reference: &PodcastTranscriptReference) -> u8 {
+    match transcript_format(&reference.mime_type, &reference.url) {
+        Some(TranscriptPayloadFormat::PlainText) => 0,
+        Some(TranscriptPayloadFormat::WebVtt) => 1,
+        Some(TranscriptPayloadFormat::SubRip) => 2,
+        Some(TranscriptPayloadFormat::Json) => 3,
+        Some(TranscriptPayloadFormat::Html) => 4,
+        None => u8::MAX,
+    }
+}
+
+fn resolve_transcript_url(
+    feed_url: &str,
+    transcript_url: &str,
+) -> Result<reqwest::Url, ProviderAdapterError> {
+    if let Ok(parsed) = reqwest::Url::parse(transcript_url) {
+        return Ok(parsed);
+    }
+
+    let base = reqwest::Url::parse(feed_url)
+        .map_err(|error| ProviderAdapterError::InvalidInput(error.to_string()))?;
+    base.join(transcript_url)
+        .map_err(|error| ProviderAdapterError::InvalidInput(error.to_string()))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TranscriptPayloadFormat {
+    PlainText,
+    WebVtt,
+    SubRip,
+    Json,
+    Html,
+}
+
+fn canonical_mime_type(mime_type: &str) -> &str {
+    mime_type.split(';').next().unwrap_or("").trim()
+}
+
+fn mime_type_from_url(url: &str) -> Option<&'static str> {
+    let path = reqwest::Url::parse(url)
+        .ok()
+        .map(|url| url.path().to_ascii_lowercase())
+        .unwrap_or_else(|| url.to_ascii_lowercase());
+
+    if path.ends_with(".vtt") {
+        Some("text/vtt")
+    } else if path.ends_with(".srt") {
+        Some("application/x-subrip")
+    } else if path.ends_with(".json") {
+        Some("application/json")
+    } else if path.ends_with(".html") || path.ends_with(".htm") {
+        Some("text/html")
+    } else {
+        None
+    }
+}
+
+fn transcript_format(mime_type: &str, url: &str) -> Option<TranscriptPayloadFormat> {
+    match canonical_mime_type(mime_type) {
+        "text/plain" => Some(TranscriptPayloadFormat::PlainText),
+        "text/vtt" => Some(TranscriptPayloadFormat::WebVtt),
+        "application/x-subrip" | "application/srt" | "text/srt" => {
+            Some(TranscriptPayloadFormat::SubRip)
+        }
+        "application/json" => Some(TranscriptPayloadFormat::Json),
+        "text/html" | "application/xhtml+xml" => Some(TranscriptPayloadFormat::Html),
+        _ => match mime_type_from_url(url)? {
+            "text/vtt" => Some(TranscriptPayloadFormat::WebVtt),
+            "application/x-subrip" => Some(TranscriptPayloadFormat::SubRip),
+            "application/json" => Some(TranscriptPayloadFormat::Json),
+            "text/html" => Some(TranscriptPayloadFormat::Html),
+            _ => None,
+        },
+    }
+}
+
+fn transcript_payload_to_text(body: &str, mime_type: &str, url: &str) -> Option<String> {
+    let text = match transcript_format(mime_type, url)? {
+        TranscriptPayloadFormat::PlainText => body.to_string(),
+        TranscriptPayloadFormat::WebVtt | TranscriptPayloadFormat::SubRip => {
+            caption_payload_to_text(body)
+        }
+        TranscriptPayloadFormat::Json => json_transcript_to_text(body)?,
+        TranscriptPayloadFormat::Html => html_transcript_to_text(body),
+    };
+
+    normalize_transcript_text(&text)
+}
+
+fn normalize_transcript_text(text: &str) -> Option<String> {
+    let normalized = text
+        .lines()
+        .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    (!normalized.trim().is_empty()).then_some(normalized)
+}
+
+fn caption_payload_to_text(body: &str) -> String {
+    let mut output = Vec::new();
+    let mut block = Vec::new();
+
+    for line in body.lines().chain(std::iter::once("")) {
+        if line.trim().is_empty() {
+            if let Some(text) = caption_block_to_text(&block) {
+                output.push(text);
+            }
+            block.clear();
+        } else {
+            block.push(line.trim().to_string());
+        }
+    }
+
+    output.join("\n")
+}
+
+fn caption_block_to_text(block: &[String]) -> Option<String> {
+    let first = block.first()?.trim_start_matches('\u{feff}').trim();
+    if first.starts_with("WEBVTT")
+        || first.starts_with("NOTE")
+        || first == "STYLE"
+        || first == "REGION"
+    {
+        return None;
+    }
+
+    let timing_index = block.iter().position(|line| line.contains("-->"))?;
+    let text = block
+        .iter()
+        .skip(timing_index + 1)
+        .map(|line| strip_inline_markup(line))
+        .map(|line| line.trim().to_string())
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    (!text.is_empty()).then_some(text)
+}
+
+fn strip_inline_markup(value: &str) -> String {
+    let mut output = String::new();
+    let mut in_tag = false;
+
+    for ch in value.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => output.push(ch),
+            _ => {}
+        }
+    }
+
+    output
+}
+
+fn json_transcript_to_text(body: &str) -> Option<String> {
+    let value = serde_json::from_str::<Value>(body).ok()?;
+    let segments = value.get("segments")?.as_array()?;
+    let mut lines = Vec::new();
+    let mut current_speaker: Option<String> = None;
+    let mut current_words = Vec::new();
+
+    for segment in segments {
+        let text = segment
+            .get("body")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|text| !text.is_empty());
+        let Some(text) = text else {
+            continue;
+        };
+
+        let speaker = segment
+            .get("speaker")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|speaker| !speaker.is_empty())
+            .map(ToOwned::to_owned);
+
+        if current_speaker != speaker && !current_words.is_empty() {
+            push_json_transcript_line(&mut lines, current_speaker.as_deref(), &current_words);
+            current_words.clear();
+        }
+
+        current_speaker = speaker;
+        current_words.push(text.to_string());
+    }
+
+    if !current_words.is_empty() {
+        push_json_transcript_line(&mut lines, current_speaker.as_deref(), &current_words);
+    }
+
+    Some(lines.join("\n"))
+}
+
+fn push_json_transcript_line(lines: &mut Vec<String>, speaker: Option<&str>, words: &[String]) {
+    let body = words.join(" ");
+    if let Some(speaker) = speaker {
+        lines.push(format!("{speaker}: {body}"));
+    } else {
+        lines.push(body);
+    }
+}
+
+fn html_transcript_to_text(body: &str) -> String {
+    let document = Html::parse_document(body);
+    document
+        .root_element()
+        .text()
+        .map(str::trim)
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn build_podcast_sync_batch(source: &ContentSource, feed: &RssChannel) -> SyncedSourceBatch {
     let mut items = Vec::new();
     let mut parts = Vec::new();
@@ -234,6 +583,18 @@ fn build_podcast_sync_batch(source: &ContentSource, feed: &RssChannel) -> Synced
                 item_id: item_id.clone(),
                 provider: ProviderKind::PodcastRss,
                 part_kind: ContentPartKind::ShowNotes,
+                status: ContentStatus::Ready,
+                text_available: true,
+            });
+        }
+
+        if !item_transcript_references(feed, item).is_empty() {
+            parts.push(ContentPart {
+                id: format!("podcast:transcript:{compact_id}"),
+                source_id: source.id.clone(),
+                item_id: item_id.clone(),
+                provider: ProviderKind::PodcastRss,
+                part_kind: ContentPartKind::Transcript,
                 status: ContentStatus::Ready,
                 text_available: true,
             });
@@ -286,46 +647,58 @@ impl PodcastFeedService {
                 )
             })?;
             let feed = self.fetch_feed(feed_url).await?;
-            let materials = feed
-                .items()
-                .iter()
-                .filter_map(|item| {
-                    let external_id = item_guid(item)?;
-                    let compact_id = normalize_feed_id(&external_id);
-                    let item_id = format!("podcast:episode:{compact_id}");
-                    let title = item.title().unwrap_or("Untitled episode").to_string();
-                    let watch_url = item
-                        .link()
-                        .map(ToString::to_string)
-                        .or_else(|| {
-                            item.enclosure()
-                                .map(|enclosure| enclosure.url().to_string())
-                        })
-                        .unwrap_or_else(|| external_id.clone());
-                    let show_notes = item_summary(item);
-                    Some(PodcastEpisodeMaterial {
-                        item: ContentItem {
-                            id: item_id,
-                            source_id: source.id.clone(),
-                            provider: ProviderKind::PodcastRss,
-                            item_kind: ContentItemKind::PodcastEpisode,
-                            title,
-                            thumbnail_url: source.thumbnail_url.clone(),
-                            published_at: parse_rss_date(item.pub_date()),
-                            external_ids: vec![ProviderIdentity {
-                                provider: ProviderKind::PodcastRss,
-                                external_id,
-                            }],
-                        },
-                        description: show_notes.clone(),
-                        show_notes,
-                        watch_url,
-                        audio_mime_type: item
-                            .enclosure()
-                            .map(|enclosure| enclosure.mime_type().to_string()),
+            let mut materials = Vec::new();
+            for item in feed.items() {
+                let Some(external_id) = item_guid(item) else {
+                    continue;
+                };
+                let compact_id = normalize_feed_id(&external_id);
+                let item_id = format!("podcast:episode:{compact_id}");
+                let title = item.title().unwrap_or("Untitled episode").to_string();
+                let watch_url = item
+                    .link()
+                    .map(ToString::to_string)
+                    .or_else(|| {
+                        item.enclosure()
+                            .map(|enclosure| enclosure.url().to_string())
                     })
-                })
-                .collect();
+                    .unwrap_or_else(|| external_id.clone());
+                let audio_asset = item.enclosure().map(|enclosure| MediaAsset {
+                    id: format!("podcast:audio:{compact_id}"),
+                    source_id: source.id.clone(),
+                    item_id: item_id.clone(),
+                    provider: ProviderKind::PodcastRss,
+                    asset_kind: MediaAssetKind::SourceAudio,
+                    title: "Source audio".to_string(),
+                    url: Some(enclosure.url().to_string()),
+                    mime_type: Some(enclosure.mime_type().to_string()),
+                });
+                let show_notes = item_summary(item);
+                let transcript_text = self.fetch_episode_transcript(feed_url, &feed, item).await;
+                materials.push(PodcastEpisodeMaterial {
+                    item: ContentItem {
+                        id: item_id,
+                        source_id: source.id.clone(),
+                        provider: ProviderKind::PodcastRss,
+                        item_kind: ContentItemKind::PodcastEpisode,
+                        title,
+                        thumbnail_url: source.thumbnail_url.clone(),
+                        published_at: parse_rss_date(item.pub_date()),
+                        external_ids: vec![ProviderIdentity {
+                            provider: ProviderKind::PodcastRss,
+                            external_id,
+                        }],
+                    },
+                    description: show_notes.clone(),
+                    show_notes,
+                    transcript_text,
+                    watch_url,
+                    audio_asset,
+                    audio_mime_type: item
+                        .enclosure()
+                        .map(|enclosure| enclosure.mime_type().to_string()),
+                });
+            }
 
             Ok(materials)
         })
@@ -334,13 +707,17 @@ impl PodcastFeedService {
 
 #[cfg(test)]
 mod tests {
-    use super::{PodcastFeedService, build_podcast_resolved_source, build_podcast_sync_batch};
+    use super::{
+        PodcastFeedService, build_podcast_resolved_source, build_podcast_sync_batch,
+        caption_payload_to_text, item_transcript_references, json_transcript_to_text,
+        transcript_payload_to_text,
+    };
     use crate::models::{ContentItemKind, ContentSourceKind, MediaAssetKind, ProviderKind};
 
     fn sample_feed() -> rss::Channel {
         rss::Channel::read_from(
             r#"<?xml version="1.0" encoding="UTF-8"?>
-            <rss version="2.0">
+            <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
               <channel>
                 <title>Example Podcast</title>
                 <link>https://example.com/podcast</link>
@@ -355,6 +732,7 @@ mod tests {
                   <guid>episode-1</guid>
                   <pubDate>Tue, 07 Jan 2025 10:00:00 GMT</pubDate>
                   <description>Episode 1 show notes</description>
+                  <podcast:transcript url="https://example.com/transcript.vtt" type="text/vtt" />
                   <enclosure url="https://example.com/audio.mp3" length="42" type="audio/mpeg" />
                 </item>
               </channel>
@@ -389,16 +767,74 @@ mod tests {
 
         assert_eq!(batch.items.len(), 1);
         assert_eq!(batch.items[0].item_kind, ContentItemKind::PodcastEpisode);
-        assert_eq!(batch.parts.len(), 1);
+        assert_eq!(batch.parts.len(), 2);
         assert_eq!(
             batch.parts[0].part_kind,
             crate::models::ContentPartKind::ShowNotes
+        );
+        assert_eq!(
+            batch.parts[1].part_kind,
+            crate::models::ContentPartKind::Transcript
         );
         assert_eq!(batch.media_assets.len(), 1);
         assert_eq!(
             batch.media_assets[0].asset_kind,
             MediaAssetKind::SourceAudio
         );
+        assert_eq!(
+            batch.media_assets[0].url.as_deref(),
+            Some("https://example.com/audio.mp3")
+        );
+        assert_eq!(
+            batch.media_assets[0].mime_type.as_deref(),
+            Some("audio/mpeg")
+        );
+    }
+
+    #[test]
+    fn transcript_references_are_read_from_podcast_namespace() {
+        let feed = sample_feed();
+        let references = item_transcript_references(&feed, &feed.items()[0]);
+
+        assert_eq!(references.len(), 1);
+        assert_eq!(references[0].url, "https://example.com/transcript.vtt");
+        assert_eq!(references[0].mime_type, "text/vtt");
+    }
+
+    #[test]
+    fn caption_payload_strips_timestamps_and_cue_metadata() {
+        let text = caption_payload_to_text(
+            "WEBVTT\n\ncue-1\n00:00:00.000 --> 00:00:02.000\n<v Alex>Hello there</v>\n\n2\n00:00:02,000 --> 00:00:04,000\nSecond line\n",
+        );
+
+        assert_eq!(text, "Hello there\nSecond line");
+    }
+
+    #[test]
+    fn json_payload_groups_segments_by_speaker() {
+        let text = json_transcript_to_text(
+            r#"{
+                "version": "1.0.0",
+                "segments": [
+                    { "speaker": "Alex", "startTime": 0.0, "body": "Hello" },
+                    { "speaker": "Alex", "startTime": 0.5, "body": "world." },
+                    { "speaker": "Sam", "startTime": 1.0, "body": "Reply." }
+                ]
+            }"#,
+        );
+
+        assert_eq!(text.as_deref(), Some("Alex: Hello world.\nSam: Reply."));
+    }
+
+    #[test]
+    fn transcript_payload_uses_actual_transcript_formats_not_description() {
+        let text = transcript_payload_to_text(
+            "<html><body><p>Speaker: Real transcript line.</p></body></html>",
+            "text/html",
+            "https://example.com/transcript.html",
+        );
+
+        assert_eq!(text.as_deref(), Some("Speaker: Real transcript line."));
     }
 
     #[test]

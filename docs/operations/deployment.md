@@ -51,6 +51,7 @@ Secrets are stored in GCP Secret Manager for:
 - `LOGFIRE_TOKEN` (when Logfire observability is enabled for the backend)
 - `BACKEND_PROXY_TOKEN`
 - `DATABRICKS_TOKEN` (only when Databricks ingestion is configured)
+- `LOCAL_ASR_API_KEY` (when the ASR service is not protected only by private networking)
 - `firebase_web_api_key` and `firebase_auth_domain` (product frontend; the infra workflow derives both from the Firebase web app config and syncs them to Secret Manager after apply)
 
 Terraform owns the secret containers and IAM bindings only. Add or rotate secret payloads directly in Secret Manager with `gcloud secrets versions add ...` or the Cloud Console; do not put app credentials in `terraform.tfvars`.
@@ -86,6 +87,7 @@ Backend/runtime secrets currently expected by infra and release workflows:
 - `dastill-logfire-token`
 - `dastill-backend-proxy-token`
 - `dastill-databricks-token`
+- `dastill-local-asr-api-key`
 
 Frontend build secrets:
 
@@ -128,7 +130,16 @@ Non-secret backend runtime config is passed as plain env values for:
 - `DATABRICKS_CATALOG` (when Databricks ingestion is enabled)
 - `DATABRICKS_SCHEMA` (when Databricks ingestion is enabled)
 - `SUMMARIZE_PATH`
+- `LOCAL_ASR_ENABLED`
+- `LOCAL_ASR_BASE_URL`
+- `LOCAL_ASR_MODEL`
+- `LOCAL_ASR_MAX_AUDIO_BYTES`
+- `LOCAL_ASR_TIMEOUT_SECS`
 - log level
+
+`LOCAL_ASR_API_KEY` is mounted from Secret Manager in production as `dastill-local-asr-api-key`.
+When local development binds ASR to localhost, a dummy value such as `sk-no-key-required` is fine.
+For any network-reachable production ASR endpoint, rotate and store a real token in Secret Manager.
 
 Non-secret product frontend runtime config is passed as plain env values for:
 
@@ -199,6 +210,19 @@ The GitHub Actions workflows:
 - compiles Rust in a builder stage
 - runs the `dastill` binary in a slim Debian runtime image
 - bundles a `summarize` script path for transcript extraction
+- does not bundle the podcast STT model; podcast ASR runs in a separate operator-owned service
+
+### Podcast ASR service
+
+Podcast ASR is a separate service that implements the OpenAI-compatible
+`POST /v1/audio/transcriptions` endpoint. The backend downloads validated public podcast audio and
+posts it to this service. The recommended free model is NVIDIA Parakeet TDT 0.6B v3, but production
+should choose a trusted service implementation rather than depending on a low-maintenance wrapper
+repository.
+
+Keep the ASR service separate from the backend Cloud Run service so model files, CPU/GPU load, and
+transcription failures do not affect the main API container. Use private networking or a real
+`LOCAL_ASR_API_KEY` when deploying beyond localhost.
 
 ### Frontend and docs bundles
 

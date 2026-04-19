@@ -58,7 +58,7 @@ fn podcast_video(source: &ContentSource, material: &PodcastEpisodeMaterial) -> V
         thumbnail_url: material.item.thumbnail_url.clone(),
         published_at: material.item.published_at.unwrap_or_else(Utc::now),
         is_short: false,
-        transcript_status: if material.show_notes.is_some() {
+        transcript_status: if material.transcript_text.is_some() {
             ContentStatus::Ready
         } else {
             ContentStatus::Pending
@@ -88,6 +88,56 @@ fn website_video(material: &crate::services::website::WebsitePageMaterial) -> Vi
 
 async fn upsert_video_info(store: &db::Store, info: &VideoInfo) -> Result<(), StoreError> {
     db::upsert_video_info(store, info).await
+}
+
+fn normalized_text_for_match(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn transcript_matches_show_notes(transcript: &crate::models::Transcript, show_notes: &str) -> bool {
+    let expected = normalized_text_for_match(show_notes);
+    if expected.is_empty() {
+        return false;
+    }
+
+    [
+        transcript.raw_text.as_deref(),
+        transcript.formatted_markdown.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    .any(|content| normalized_text_for_match(content) == expected)
+}
+
+async fn remove_stale_podcast_show_notes_transcript(
+    state: &AppState,
+    channel_id: &str,
+    video_id: &str,
+    show_notes: Option<&str>,
+) -> Result<(), StoreError> {
+    let Some(show_notes) = show_notes else {
+        return Ok(());
+    };
+
+    let Some(transcript) = db::get_transcript(&state.db, video_id).await? else {
+        return Ok(());
+    };
+
+    if !transcript_matches_show_notes(&transcript, show_notes) {
+        return Ok(());
+    }
+
+    tracing::warn!(
+        video_id = %video_id,
+        "removing podcast show notes cached as transcript"
+    );
+    db::delete_transcript(&state.db, video_id).await?;
+    db::delete_summary(&state.db, video_id).await?;
+    db::reset_summary_auto_regen_attempts(&state.db, video_id).await?;
+    db::update_video_transcript_status(&state.db, video_id, ContentStatus::Pending).await?;
+    db::update_video_summary_status(&state.db, video_id, ContentStatus::Pending).await?;
+    state.read_cache.evict_channel(channel_id).await;
+    Ok(())
 }
 
 pub async fn persist_source_profile_and_channel(
@@ -162,11 +212,24 @@ pub async fn sync_source_profile(
                 upsert_compat_video(&state.db, &video)
                     .await
                     .map_err(|err| err.to_string())?;
-                if let Some(show_notes) = material.show_notes.as_deref() {
+                if let Some(audio_asset) = material.audio_asset.as_ref() {
+                    db::upsert_media_asset(&state.db, audio_asset)
+                        .await
+                        .map_err(|err| err.to_string())?;
+                }
+                remove_stale_podcast_show_notes_transcript(
+                    state,
+                    &video.channel_id,
+                    &video.id,
+                    material.show_notes.as_deref(),
+                )
+                .await
+                .map_err(|err| err.to_string())?;
+                if let Some(transcript_text) = material.transcript_text.as_deref() {
                     db::save_manual_transcript(
                         &state.db,
                         &video.id,
-                        show_notes,
+                        transcript_text,
                         TranscriptRenderMode::PlainText,
                     )
                     .await
@@ -238,5 +301,46 @@ pub async fn sync_source_profile(
         }
         crate::models::ProviderKind::YouTube => Ok(0),
         other => Err(format!("provider {other:?} sync not implemented")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{normalized_text_for_match, transcript_matches_show_notes};
+    use crate::models::{Transcript, TranscriptRenderMode};
+
+    fn transcript(raw_text: Option<&str>, formatted_markdown: Option<&str>) -> Transcript {
+        Transcript {
+            video_id: "episode-1".to_string(),
+            raw_text: raw_text.map(ToOwned::to_owned),
+            formatted_markdown: formatted_markdown.map(ToOwned::to_owned),
+            render_mode: TranscriptRenderMode::PlainText,
+            timed_text: None,
+        }
+    }
+
+    #[test]
+    fn show_notes_match_ignores_whitespace_only() {
+        let transcript = transcript(Some("Episode 1\n\nshow notes"), None);
+
+        assert!(transcript_matches_show_notes(
+            &transcript,
+            "Episode 1 show notes"
+        ));
+    }
+
+    #[test]
+    fn real_transcript_does_not_match_show_notes() {
+        let transcript = transcript(Some("Host: Welcome to the show. Guest: Thanks."), None);
+
+        assert!(!transcript_matches_show_notes(
+            &transcript,
+            "Episode description with links."
+        ));
+    }
+
+    #[test]
+    fn normalized_text_collapses_whitespace() {
+        assert_eq!(normalized_text_for_match("a\n b\t c"), "a b c");
     }
 }

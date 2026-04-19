@@ -19,7 +19,6 @@ export const DASTILL_SET_WORKSPACE_CONTENT_MODE_EVENT =
 
 export type GlobalSectionShortcut =
   | "/"
-  | "/download-queue"
   | "/highlights"
   | "/vocabulary"
   | "/chat"
@@ -87,7 +86,6 @@ const GLOBAL_SECTION_SHORTCUT_DESCRIPTIONS: Record<
   string
 > = {
   workspace: "Go to Workspace",
-  queue: "Go to Queue",
   highlights: "Go to Highlights",
   vocabulary: "Go to Vocabulary",
   chat: "Go to Chat",

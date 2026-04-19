@@ -1,6 +1,4 @@
 import type { WorkspaceStateSnapshot } from "./channel-workspace";
-import type { VideoTypeFilter } from "./types";
-import type { AcknowledgedFilter } from "./workspace/types";
 import {
   isAcknowledgedFilter,
   isWorkspaceContentMode,
@@ -24,18 +22,6 @@ export type WorkspaceViewHrefParams = WorkspaceViewState & {
   citeQuery?: string | null;
   chunkId?: string | null;
 };
-
-export type QueueViewState = {
-  selectedChannelId: string | null;
-  selectedVideoId?: string | null;
-  selectedSourceId?: string | null;
-  selectedItemId?: string | null;
-  videoTypeFilter?: VideoTypeFilter;
-  acknowledgedFilter?: AcknowledgedFilter;
-};
-
-/** Params for building a queue URL (defaults match sidebar defaults). */
-export type QueueViewHrefParams = QueueViewState;
 
 function parseNonEmptyParam(url: URL, key: string) {
   const value = url.searchParams.get(key)?.trim();
@@ -101,61 +87,6 @@ export function buildWorkspaceViewHref(state: WorkspaceViewHrefParams) {
 export function mergeWorkspaceViewState(
   restoredState: Partial<WorkspaceStateSnapshot>,
   urlState: Partial<WorkspaceViewState>,
-) {
-  return {
-    ...restoredState,
-    ...urlState,
-  };
-}
-
-export function parseQueueViewUrlState(url: URL): Partial<QueueViewState> {
-  const restored: Partial<QueueViewState> = {};
-  const selectedSourceId =
-    parseNonEmptyParam(url, "source") ?? parseNonEmptyParam(url, "channel");
-  const selectedItemId =
-    parseNonEmptyParam(url, "item") ?? parseNonEmptyParam(url, "video");
-  const videoTypeFilter = parseNonEmptyParam(url, "type");
-  const acknowledgedFilter = parseNonEmptyParam(url, "ack");
-
-  if (selectedSourceId) {
-    restored.selectedSourceId = selectedSourceId;
-    restored.selectedChannelId = selectedSourceId;
-  }
-  if (selectedItemId) {
-    restored.selectedItemId = selectedItemId;
-    restored.selectedVideoId = selectedItemId;
-  }
-  if (isWorkspaceVideoTypeFilter(videoTypeFilter)) {
-    restored.videoTypeFilter = videoTypeFilter;
-  }
-  if (isAcknowledgedFilter(acknowledgedFilter)) {
-    restored.acknowledgedFilter = acknowledgedFilter;
-  }
-
-  return restored;
-}
-
-export function buildQueueViewHref(state: QueueViewHrefParams) {
-  const params = new URLSearchParams();
-  const selectedSourceId = state.selectedSourceId ?? state.selectedChannelId;
-  const selectedItemId = state.selectedItemId ?? state.selectedVideoId;
-  if (selectedSourceId) {
-    params.set("source", selectedSourceId);
-  }
-  if (selectedItemId) {
-    params.set("item", selectedItemId);
-  }
-  params.set("type", state.videoTypeFilter ?? "all");
-  params.set("ack", state.acknowledgedFilter ?? "all");
-  return `/download-queue?${params.toString()}`;
-}
-
-export function mergeQueueViewState(
-  restoredState: Pick<
-    Partial<WorkspaceStateSnapshot>,
-    "selectedChannelId" | "channelOrder" | "channelSortMode"
-  >,
-  urlState: Partial<QueueViewState>,
 ) {
   return {
     ...restoredState,

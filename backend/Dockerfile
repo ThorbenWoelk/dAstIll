@@ -37,7 +37,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install summarize CLI and media helpers used for transcript extraction
-RUN npm install -g @steipete/summarize@0.12.0 && \
+RUN npm install -g @steipete/summarize@0.13.0 && \
+    summarize --version && \
     npm cache clean --force
 
 # Install yt-dlp as a dependency for transcript extraction fallbacks

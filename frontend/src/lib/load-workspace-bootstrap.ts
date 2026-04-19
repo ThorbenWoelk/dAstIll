@@ -1,4 +1,4 @@
-import type { QueueTab, VideoTypeFilter } from "$lib/types";
+import type { VideoTypeFilter } from "$lib/types";
 import type { ChannelSnapshot, WorkspaceBootstrap } from "$lib/transport-types";
 import { createApiRequestInit, resolveApiUrl } from "$lib/api-client";
 import type {
@@ -7,12 +7,6 @@ import type {
 } from "$lib/workspace/types";
 
 const VALID_VIDEO_TYPES = new Set(["long", "short"]);
-
-const QUEUE_TAB_VALUES = new Set<string>([
-  "transcripts",
-  "summaries",
-  "evaluations",
-]);
 
 export type WorkspaceBootstrapPageData = {
   bootstrap: WorkspaceBootstrap | null;
@@ -33,38 +27,11 @@ export type LoadWorkspaceBootstrapOptions = {
    * `/channels/[id]`) to reuse the shared workspace bootstrap loader.
    */
   selectedChannelIdOverride?: string | null;
-  /**
-   * For `/download-queue`: send `queue_tab` on bootstrap and snapshot requests
-   * so sidebar lists match the queue API (videos still processing transcripts).
-   * Used as the tab when the URL has no `queue` query (aligns with client default).
-   */
-  ssrQueueTabDefault?: QueueTab;
-  /**
-   * Unified download-queue view: `queue_only` without `queue_tab` (any incomplete
-   * transcript or summary). Mutually exclusive with `ssrQueueTabDefault` for SSR.
-   */
-  ssrQueueUnified?: boolean;
 };
 
-function parseQueueTabFromUrl(
-  url: URL,
-  fallback: QueueTab | undefined,
-): QueueTab | undefined {
-  const raw = url.searchParams.get("queue")?.trim();
-  if (raw && QUEUE_TAB_VALUES.has(raw)) {
-    return raw as QueueTab;
-  }
-  return fallback;
-}
-
-function queueSegmentForFilterKey(tab: QueueTab | undefined): string {
-  return tab ?? "default";
-}
-
 /**
- * Shared server load for workspace shell routes that use WorkspaceSidebar
- * (main workspace and download queue). See +page.server.ts on the home route
- * for full documentation (VAL-DATA-001, VAL-DATA-002).
+ * Shared server load for workspace shell routes that use WorkspaceSidebar.
+ * See +page.server.ts on the home route for full documentation.
  */
 export async function loadWorkspaceBootstrapPageData(
   event: { fetch: typeof fetch; url: URL },
@@ -82,14 +49,7 @@ export async function loadWorkspaceBootstrapPageData(
   const selectedVideoId = selectedItemId;
   const typeParam = url.searchParams.get("type");
   const ackParam = url.searchParams.get("ack");
-  const unified = options?.ssrQueueUnified === true;
-  const effectiveQueueTab = unified
-    ? undefined
-    : parseQueueTabFromUrl(url, options?.ssrQueueTabDefault);
-  const queueSegment = unified
-    ? "unified"
-    : queueSegmentForFilterKey(effectiveQueueTab);
-  const fallbackFilterKey = `all:all:${queueSegment}`;
+  const fallbackFilterKey = `all:all:default`;
 
   try {
     const params = new URLSearchParams();
@@ -112,12 +72,6 @@ export async function loadWorkspaceBootstrapPageData(
       params.set("acknowledged", "false");
     }
 
-    if (unified) {
-      params.set("queue_only", "true");
-    } else if (effectiveQueueTab) {
-      params.set("queue_tab", effectiveQueueTab);
-    }
-
     const response = await fetch(
       resolveApiUrl(`/api/workspace/bootstrap?${params.toString()}`),
       await createApiRequestInit(undefined, {
@@ -129,7 +83,7 @@ export async function loadWorkspaceBootstrapPageData(
       typeParam && VALID_VIDEO_TYPES.has(typeParam) ? typeParam : "all";
     const previewAcknowledged =
       ackParam === "ack" ? "ack" : ackParam === "unack" ? "unack" : "all";
-    const channelPreviewsFilterKey = `${previewVideoType}:${previewAcknowledged}:${queueSegment}`;
+    const channelPreviewsFilterKey = `${previewVideoType}:${previewAcknowledged}:default`;
 
     if (!response.ok) {
       return {

@@ -135,10 +135,12 @@ pub fn spawn_queue_worker(state: AppState) {
 
                         if let Err((status, message)) = result {
                             // Only log as warning/increment retry if it's not a quota/rate limit error we know about
-                            if status == axum::http::StatusCode::TOO_MANY_REQUESTS {
+                            if status == axum::http::StatusCode::TOO_MANY_REQUESTS
+                                || status == axum::http::StatusCode::SERVICE_UNAVAILABLE
+                            {
                                 tracing::debug!(
                                     video_id = %video.id,
-                                    "queue worker paused for video due to rate limits"
+                                    "queue worker paused for video due to temporary dependency unavailability"
                                 );
                             } else {
                                 tracing::warn!(
