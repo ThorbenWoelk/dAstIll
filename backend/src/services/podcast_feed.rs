@@ -202,6 +202,10 @@ fn normalize_feed_id(url: &str) -> String {
     }
 }
 
+pub fn podcast_source_id_for_feed_url(feed_url: &str) -> String {
+    format!("podcast:rss:{}", normalize_feed_id(feed_url))
+}
+
 fn parse_rss_date(value: Option<&str>) -> Option<DateTime<Utc>> {
     let raw = value?;
     DateTime::parse_from_rfc2822(raw)
@@ -215,7 +219,7 @@ fn series_thumbnail(feed: &RssChannel) -> Option<String> {
 }
 
 fn build_podcast_resolved_source(feed_url: &str, feed: &RssChannel) -> ResolvedSourceDraft {
-    let source_id = format!("podcast:rss:{}", normalize_feed_id(feed_url));
+    let source_id = podcast_source_id_for_feed_url(feed_url);
     let title = feed.title().trim();
     let container = SubscriptionContainer {
         id: format!("podcast:series:{}", normalize_feed_id(feed_url)),

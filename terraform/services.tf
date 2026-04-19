@@ -16,6 +16,9 @@ locals {
       "bigquery.googleapis.com",
       "bigquerydatatransfer.googleapis.com",
     ] : [],
+    var.billing_budgets_enabled ? [
+      "billingbudgets.googleapis.com",
+    ] : [],
   )
 }
 

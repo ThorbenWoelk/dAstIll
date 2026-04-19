@@ -118,6 +118,8 @@ match_patterns=(
 	"target/debug/dastill"
 	"vite dev --host 0.0.0.0 --port ${frontend_port}"
 	"vitepress dev . --host 0.0.0.0 --port ${docs_port}"
+	"$repo_root/scripts/start_local_asr.sh"
+	"whisper-server --host 127.0.0.1 --port 5092"
 )
 
 for pattern in "${match_patterns[@]}"; do

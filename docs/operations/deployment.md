@@ -15,6 +15,7 @@ Terraform manages:
 - Cloud Run backend (GCP)
 - Firebase project resources, the web app, and the docs Hosting site (GCP)
 - service accounts and IAM (GCP and AWS)
+- optional Cloud Billing alert budgets for dAstIll project spend and Cloud Run spend
 - AWS S3 bucket for data storage
 - AWS S3 Vectors bucket and index for semantic search
 - optional BigQuery billing export dataset prerequisites
@@ -51,7 +52,6 @@ Secrets are stored in GCP Secret Manager for:
 - `LOGFIRE_TOKEN` (when Logfire observability is enabled for the backend)
 - `BACKEND_PROXY_TOKEN`
 - `DATABRICKS_TOKEN` (only when Databricks ingestion is configured)
-- `LOCAL_ASR_API_KEY` (when the ASR service is not protected only by private networking)
 - `firebase_web_api_key` and `firebase_auth_domain` (product frontend; the infra workflow derives both from the Firebase web app config and syncs them to Secret Manager after apply)
 
 Terraform owns the secret containers and IAM bindings only. Add or rotate secret payloads directly in Secret Manager with `gcloud secrets versions add ...` or the Cloud Console; do not put app credentials in `terraform.tfvars`.
@@ -87,7 +87,6 @@ Backend/runtime secrets currently expected by infra and release workflows:
 - `dastill-logfire-token`
 - `dastill-backend-proxy-token`
 - `dastill-databricks-token`
-- `dastill-local-asr-api-key`
 
 Frontend build secrets:
 
@@ -117,6 +116,7 @@ Non-secret backend runtime config is passed as plain env values for:
 - `S3_DATA_BUCKET`
 - `S3_VECTOR_BUCKET`
 - `S3_VECTOR_INDEX`
+- `DEFAULT_SEEDED_CHANNEL_IDS`
 - `AWS_ROLE_ARN` (production only)
 - `AWS_WIF_AUDIENCE` (production only)
 - `OLLAMA_URL`
@@ -132,14 +132,13 @@ Non-secret backend runtime config is passed as plain env values for:
 - `SUMMARIZE_PATH`
 - `LOCAL_ASR_ENABLED`
 - `LOCAL_ASR_BASE_URL`
+- `LOCAL_ASR_AUTH_MODE`
 - `LOCAL_ASR_MODEL`
 - `LOCAL_ASR_MAX_AUDIO_BYTES`
 - `LOCAL_ASR_TIMEOUT_SECS`
 - log level
 
-`LOCAL_ASR_API_KEY` is mounted from Secret Manager in production as `dastill-local-asr-api-key`.
-When local development binds ASR to localhost, a dummy value such as `sk-no-key-required` is fine.
-For any network-reachable production ASR endpoint, rotate and store a real token in Secret Manager.
+Production uses Cloud Run IAM between the backend and the repo-owned ASR service, so `LOCAL_ASR_API_KEY` is not required in the default production path. Use `LOCAL_ASR_API_KEY` only for local or externally hosted ASR endpoints that rely on bearer-token authentication.
 
 Non-secret product frontend runtime config is passed as plain env values for:
 
@@ -216,13 +215,18 @@ The GitHub Actions workflows:
 
 Podcast ASR is a separate service that implements the OpenAI-compatible
 `POST /v1/audio/transcriptions` endpoint. The backend downloads validated public podcast audio and
-posts it to this service. The recommended free model is NVIDIA Parakeet TDT 0.6B v3, but production
-should choose a trusted service implementation rather than depending on a low-maintenance wrapper
-repository.
+posts it to this service. The repo-owned production service uses the maintained `whisper.cpp`
+runtime with the `base.en` GGML model.
 
 Keep the ASR service separate from the backend Cloud Run service so model files, CPU/GPU load, and
-transcription failures do not affect the main API container. Use private networking or a real
-`LOCAL_ASR_API_KEY` when deploying beyond localhost.
+transcription failures do not affect the main API container. The repo-owned production service is invoked through Cloud Run IAM. Use `LOCAL_ASR_API_KEY` only for non-Cloud-Run or externally hosted ASR endpoints that need bearer-token auth.
+
+The release workflow builds `asr/Dockerfile` and deploys a `${APP_NAME}-asr` Cloud Run service when
+`LOCAL_ASR_ENABLED=true`. The service runs with 2 vCPU, 2 GiB memory, concurrency 1, max instances 1,
+and a 3600 second timeout. Min instances stay at 0, so normal idle cost is zero; transcribing long
+episodes incurs Cloud Run CPU, memory, request, and image storage cost while the ASR instance is
+active. The backend container does not load the model, but long podcast transcription requests can
+hold one backend request open until durable ASR job state is added.
 
 ### Frontend and docs bundles
 
@@ -271,3 +275,16 @@ Terraform can optionally create the BigQuery prerequisites for Cloud Billing exp
 Enable this by setting `billing_export_enabled = true` in `terraform.tfvars` and optionally overriding `billing_export_project_id`, `billing_export_dataset_id`, or `billing_export_dataset_location`.
 
 After `terraform apply`, finish the setup in Cloud Billing by opening the billing account linked to the project, navigating to **Billing export**, and pointing the detailed usage export at the Terraform-managed dataset. Terraform does not manage that final toggle because Cloud Billing does not expose it as a supported first-class Terraform resource.
+
+## Billing Budgets
+
+Terraform can create monthly alert budgets when `billing_budgets_enabled = true`:
+
+- one all-service budget for each configured dAstIll project
+- one Cloud Run service-scoped budget for each configured dAstIll project
+
+The primary `project_id` is always included. Add any other GCP projects that run dAstIll Cloud Run services to `billing_budget_project_ids`. Terraform looks up each project number, and the infra workflow resolves the primary project's billing account into `billing_budget_billing_account_id` before planning. Set `billing_budget_project_billing_account_ids` for any additional project that uses a different billing account.
+
+Default alert levels are 50%, 80%, 100% actual spend, and 100% forecasted spend. The defaults are alert-only budgets of 50 billing-currency units for total project spend and 10 billing-currency units for Cloud Run spend. Adjust `billing_budget_app_monthly_amount_units`, `billing_budget_cloud_run_monthly_amount_units`, and `billing_budget_thresholds` for production thresholds.
+
+Budget creation needs the Cloud Billing Budget API and budget write permissions. For CI, make sure the Terraform identity can manage budgets for the target billing account or single-project budgets for each configured project.

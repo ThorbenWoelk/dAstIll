@@ -13,8 +13,10 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
-use crate::config::SecurityRuntimeConfig;
+use crate::config::{DEFAULT_HARD_FORK_FEED_URL, SecurityRuntimeConfig};
+use crate::db::SourceProfileRecord;
 use crate::firebase_auth::{FirebaseAuthState, VerifiedClientIdentity, verify_bearer_identity};
+use crate::services::{FeedSourceAdapter, persist_source_profile_and_channel, sync_source_profile};
 use crate::state::AppState;
 
 pub const CLIENT_IP_HEADER: &str = "x-dastill-client-ip";
@@ -274,14 +276,14 @@ fn resolve_authenticated_access_role(
 
 fn resolve_allowed_channel_ids(
     auth_state: AuthState,
-    default_seeded_channel_id: &str,
+    default_seeded_channel_ids: &[String],
     authenticated_channel_ids: Vec<String>,
 ) -> Vec<String> {
     if auth_state.is_authenticated() {
         return authenticated_channel_ids;
     }
 
-    vec![default_seeded_channel_id.to_string()]
+    default_seeded_channel_ids.to_vec()
 }
 
 fn resolve_allowed_other_video_ids(
@@ -297,7 +299,7 @@ fn resolve_allowed_other_video_ids(
 
 fn build_access_context(
     headers: &axum::http::HeaderMap,
-    default_seeded_channel_id: &str,
+    default_seeded_channel_ids: &[String],
     authenticated_channel_ids: Vec<String>,
     authenticated_other_video_ids: Vec<String>,
 ) -> AccessContext {
@@ -305,7 +307,7 @@ fn build_access_context(
     let access_role = resolve_access_role(headers, auth_state);
     let allowed_channel_ids = resolve_allowed_channel_ids(
         auth_state,
-        default_seeded_channel_id,
+        default_seeded_channel_ids,
         authenticated_channel_ids,
     );
     let allowed_other_video_ids =
@@ -324,15 +326,13 @@ async fn load_authenticated_allowed_channel_ids(
     state: &AppState,
     user_id: &str,
 ) -> Result<Vec<String>, String> {
-    ensure_canonical_seeded_channel(state).await?;
+    ensure_canonical_seeded_channels(state).await;
 
-    crate::db::ensure_user_seeded_channel_subscription(
-        &state.db,
-        user_id,
-        &state.security.default_seeded_channel_id,
-    )
-    .await
-    .map_err(|error| error.to_string())?;
+    for channel_id in &state.security.default_seeded_channel_ids {
+        crate::db::ensure_user_seeded_channel_subscription(&state.db, user_id, channel_id)
+            .await
+            .map_err(|error| error.to_string())?;
+    }
 
     crate::db::migrate_legacy_preferences(&state.db, user_id)
         .await
@@ -371,9 +371,10 @@ async fn resolve_access_context(
     let Some(user_id) =
         extract_user_id(headers).filter(|_| resolve_auth_state(headers).is_authenticated())
     else {
+        ensure_canonical_seeded_channels(state).await;
         return Ok(build_access_context(
             headers,
-            &state.security.default_seeded_channel_id,
+            &state.security.default_seeded_channel_ids,
             Vec::new(),
             Vec::new(),
         ));
@@ -385,20 +386,35 @@ async fn resolve_access_context(
 
     Ok(build_access_context(
         headers,
-        &state.security.default_seeded_channel_id,
+        &state.security.default_seeded_channel_ids,
         authenticated_channel_ids,
         authenticated_other_video_ids,
     ))
 }
 
-async fn ensure_canonical_seeded_channel(state: &AppState) -> Result<(), String> {
-    let channel_id = state.security.default_seeded_channel_id.as_str();
+async fn ensure_canonical_seeded_channels(state: &AppState) {
+    for channel_id in &state.security.default_seeded_channel_ids {
+        if let Err(error) = ensure_canonical_seeded_channel(state, channel_id).await {
+            tracing::warn!(
+                channel_id = %channel_id,
+                error = %error,
+                "failed to ensure seeded channel"
+            );
+        }
+    }
+}
+
+async fn ensure_canonical_seeded_channel(state: &AppState, channel_id: &str) -> Result<(), String> {
     if crate::db::get_channel(&state.db, channel_id)
         .await
         .map_err(|error| error.to_string())?
         .is_some()
     {
         return Ok(());
+    }
+
+    if channel_id.starts_with("podcast:rss:") {
+        return ensure_seeded_podcast_channel(state, channel_id).await;
     }
 
     let (resolved_channel_id, name, thumbnail_url) = state
@@ -423,6 +439,41 @@ async fn ensure_canonical_seeded_channel(state: &AppState) -> Result<(), String>
     crate::db::insert_channel(&state.db, &channel)
         .await
         .map_err(|error| error.to_string())
+}
+
+async fn ensure_seeded_podcast_channel(state: &AppState, channel_id: &str) -> Result<(), String> {
+    let feed_url = match channel_id {
+        "podcast:rss:https-feeds-simplecast-com-6hkohngs" => DEFAULT_HARD_FORK_FEED_URL,
+        _ => {
+            return Err(format!(
+                "seeded podcast `{channel_id}` is missing a known feed URL"
+            ));
+        }
+    };
+
+    let resolved = state
+        .podcast_feed
+        .resolve_feed_source(feed_url)
+        .await
+        .map_err(|error| error.to_string())?;
+    let profile = SourceProfileRecord {
+        source: resolved.source,
+        container: resolved.container,
+        openalex_query: None,
+    };
+    let channel = persist_source_profile_and_channel(&state.db, &profile)
+        .await
+        .map_err(|error| error.to_string())?;
+
+    if let Err(error) = sync_source_profile(state, &profile).await {
+        tracing::warn!(
+            channel_id = %channel.id,
+            error = %error,
+            "failed to sync seeded podcast channel"
+        );
+    }
+
+    Ok(())
 }
 
 fn build_access_context_from_identity(
@@ -457,7 +508,7 @@ fn build_access_context_from_identity(
         access_role,
         allowed_channel_ids: resolve_allowed_channel_ids(
             auth_state,
-            &state.security.default_seeded_channel_id,
+            &state.security.default_seeded_channel_ids,
             authenticated_channel_ids,
         ),
         allowed_other_video_ids: resolve_allowed_other_video_ids(
@@ -472,7 +523,7 @@ async fn resolve_access_context_from_identity(
     identity: Option<VerifiedClientIdentity>,
 ) -> Result<AccessContext, String> {
     let Some(identity) = identity else {
-        ensure_canonical_seeded_channel(state).await?;
+        ensure_canonical_seeded_channels(state).await;
         return Ok(build_access_context_from_identity(
             state,
             None,
@@ -486,7 +537,7 @@ async fn resolve_access_context_from_identity(
         .as_deref()
         .filter(|_| matches!(identity.auth_state, FirebaseAuthState::Authenticated))
     else {
-        ensure_canonical_seeded_channel(state).await?;
+        ensure_canonical_seeded_channels(state).await;
         return Ok(build_access_context_from_identity(
             state,
             Some(&identity),
@@ -669,7 +720,7 @@ pub async fn enforce_anonymous_chat_quota(
         .extensions()
         .get::<AccessContext>()
         .cloned()
-        .unwrap_or_else(|| build_access_context(request.headers(), "", Vec::new(), Vec::new()));
+        .unwrap_or_else(|| build_access_context(request.headers(), &[], Vec::new(), Vec::new()));
 
     if authorized.auth_state.is_authenticated() {
         return next.run(request).await;
@@ -773,6 +824,7 @@ mod tests {
             allowed_origins: vec![],
             operator_email_allowlist: vec![],
             default_seeded_channel_id: "seeded-channel".to_string(),
+            default_seeded_channel_ids: vec!["seeded-channel".to_string()],
             baseline_rate_limit_per_minute: 2,
             expensive_rate_limit_per_minute: 1,
             anonymous_chat_quota: 10,
@@ -805,6 +857,7 @@ mod tests {
             allowed_origins: vec![],
             operator_email_allowlist: vec![],
             default_seeded_channel_id: "seeded-channel".to_string(),
+            default_seeded_channel_ids: vec!["seeded-channel".to_string()],
             baseline_rate_limit_per_minute: 1,
             expensive_rate_limit_per_minute: 1,
             anonymous_chat_quota: 10,
@@ -832,8 +885,9 @@ mod tests {
     fn build_access_context_uses_seeded_channel_for_anonymous_requests() {
         let headers = test_headers();
 
+        let seeded_channel_ids = vec!["seeded-channel".to_string(), "podcast-seed".to_string()];
         let access_context =
-            build_access_context(&headers, "seeded-channel", Vec::new(), Vec::new());
+            build_access_context(&headers, &seeded_channel_ids, Vec::new(), Vec::new());
 
         assert_eq!(
             access_context,
@@ -841,7 +895,7 @@ mod tests {
                 user_id: None,
                 auth_state: AuthState::Anonymous,
                 access_role: AccessRole::Anonymous,
-                allowed_channel_ids: vec!["seeded-channel".to_string()],
+                allowed_channel_ids: seeded_channel_ids,
                 allowed_other_video_ids: Vec::new(),
             }
         );
@@ -856,7 +910,7 @@ mod tests {
 
         let access_context = build_access_context(
             &headers,
-            "seeded-channel",
+            &["seeded-channel".to_string()],
             vec!["channel-a".to_string(), "channel-b".to_string()],
             vec!["video-z".to_string()],
         );

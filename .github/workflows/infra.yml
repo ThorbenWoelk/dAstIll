@@ -24,6 +24,7 @@ env:
   TERRAFORM_STATE_BUCKET: ${{ vars.TERRAFORM_STATE_BUCKET }}
   LOCAL_ASR_ENABLED: ${{ vars.LOCAL_ASR_ENABLED }}
   TF_VAR_billing_export_enabled: ${{ vars.TF_VAR_billing_export_enabled }}
+  TF_VAR_billing_budget_billing_account_id: ${{ vars.GCP_BILLING_ACCOUNT_ID }}
   TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -83,6 +84,21 @@ jobs:
       - name: Terraform Validate
         working-directory: terraform
         run: terraform validate -no-color
+
+      - name: Resolve Billing Budget Account
+        if: env.TF_VAR_billing_budget_billing_account_id == '' && vars.TF_VAR_billing_budgets_enabled == 'true'
+        run: |
+          set -euo pipefail
+
+          billing_account_name="$(gcloud billing projects describe "$PROJECT_ID" --format='value(billingAccountName)')"
+          billing_account_id="${billing_account_name#billingAccounts/}"
+
+          if [ -z "$billing_account_id" ] || [ "$billing_account_id" = "$billing_account_name" ]; then
+            echo "::error::Could not resolve billing account for project ${PROJECT_ID}. Set repository variable GCP_BILLING_ACCOUNT_ID."
+            exit 1
+          fi
+
+          echo "TF_VAR_billing_budget_billing_account_id=${billing_account_id}" >> "$GITHUB_ENV"
 
       - name: Terraform Plan
         id: plan
@@ -186,10 +202,6 @@ jobs:
             "${APP_NAME}-firebase-web-api-key"
             "${APP_NAME}-firebase-auth-domain"
           )
-          if [ "${LOCAL_ASR_ENABLED:-false}" = "true" ]; then
-            required_secrets+=("${APP_NAME}-local-asr-api-key")
-          fi
-
           for secret_name in "${required_secrets[@]}"; do
             if ! gcloud secrets versions access latest --secret="$secret_name" --project "$PROJECT_ID" >/dev/null 2>&1; then
               missing+=("$secret_name")

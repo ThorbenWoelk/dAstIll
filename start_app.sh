@@ -643,6 +643,39 @@ check_ollama_models() {
 	echo "Ollama: ok ($verified model(s) present locally)"
 }
 
+start_local_asr_if_configured() {
+	local enabled
+	enabled=$(resolve_env_value "LOCAL_ASR_ENABLED" "backend/.env" "$shared_backend_env_file")
+	case "$enabled" in
+		1|true|TRUE|yes|YES|on|ON)
+			;;
+		*)
+			return 0
+			;;
+	esac
+
+	local base_url
+	base_url=$(resolve_env_value "LOCAL_ASR_BASE_URL" "backend/.env" "$shared_backend_env_file")
+	if [[ -z "$base_url" ]]; then
+		base_url="http://127.0.0.1:5092/v1"
+	fi
+
+	if [[ "$base_url" != http://127.0.0.1:* && "$base_url" != http://localhost:* ]]; then
+		echo "LOCAL_ASR_ENABLED is true, using external ASR endpoint: $base_url"
+		return 0
+	fi
+
+	echo "LOCAL_ASR_ENABLED is true; ensuring local whisper.cpp ASR is running"
+	LOCAL_ASR_PORT="${base_url#http://127.0.0.1:}"
+	LOCAL_ASR_PORT="${LOCAL_ASR_PORT#http://localhost:}"
+	LOCAL_ASR_PORT="${LOCAL_ASR_PORT%%/*}"
+	if [[ -z "$LOCAL_ASR_PORT" || "$LOCAL_ASR_PORT" == "$base_url" ]]; then
+		LOCAL_ASR_PORT=5092
+	fi
+	export LOCAL_ASR_PORT
+	"${repo_root}/scripts/start_local_asr.sh" --detach
+}
+
 ensure_local_env_files
 if (( local_maintenance_preview_mode == 0 && workflow_maintenance_mode == 0 )); then
 	check_ollama_models
@@ -689,6 +722,7 @@ if (( local_maintenance_preview_mode == 1 )); then
 fi
 
 if (( local_maintenance_preview_mode == 0 )); then
+	start_local_asr_if_configured
 	if [[ "$mode" == "detached_child" ]]; then
 		echo "Detached supervisor running for ports $frontend_port/$backend_port/$docs_port"
 		echo "Starting backend on http://localhost:$backend_port (log: backend.log)"

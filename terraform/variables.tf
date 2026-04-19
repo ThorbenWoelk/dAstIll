@@ -70,6 +70,81 @@ variable "billing_export_dataset_location" {
   description = "BigQuery dataset location for Cloud Billing export tables."
 }
 
+variable "billing_budgets_enabled" {
+  type        = bool
+  default     = false
+  description = "When true, Terraform creates monthly Cloud Billing budgets for the app project and Cloud Run spend."
+}
+
+variable "billing_budget_project_ids" {
+  type        = set(string)
+  default     = []
+  description = "Additional GCP project IDs with dAstIll Cloud Run deployments. The primary project_id is always included."
+
+  validation {
+    condition     = alltrue([for project_id in var.billing_budget_project_ids : trimspace(project_id) != ""])
+    error_message = "billing_budget_project_ids cannot contain empty project IDs."
+  }
+}
+
+variable "billing_budget_billing_account_id" {
+  type        = string
+  default     = ""
+  description = "Billing account ID for all budgets. infra.yml resolves this from the primary project when unset in CI."
+}
+
+variable "billing_budget_project_billing_account_ids" {
+  type        = map(string)
+  default     = {}
+  description = "Optional per-project billing account IDs for budget projects that use a different billing account than billing_budget_billing_account_id."
+}
+
+variable "billing_budget_app_monthly_amount_units" {
+  type        = string
+  default     = "50"
+  description = "Whole-unit monthly budget amount for all dAstIll project spend, in the billing account currency."
+}
+
+variable "billing_budget_cloud_run_monthly_amount_units" {
+  type        = string
+  default     = "10"
+  description = "Whole-unit monthly budget amount for Cloud Run spend per configured project, in the billing account currency."
+}
+
+variable "billing_budget_thresholds" {
+  type = list(object({
+    threshold_percent = number
+    spend_basis       = optional(string, "CURRENT_SPEND")
+  }))
+  default = [
+    {
+      threshold_percent = 0.5
+      spend_basis       = "CURRENT_SPEND"
+    },
+    {
+      threshold_percent = 0.8
+      spend_basis       = "CURRENT_SPEND"
+    },
+    {
+      threshold_percent = 1.0
+      spend_basis       = "CURRENT_SPEND"
+    },
+    {
+      threshold_percent = 1.0
+      spend_basis       = "FORECASTED_SPEND"
+    },
+  ]
+  description = "Alert thresholds for all billing budgets. Percent values are 1.0-based, so 0.5 means 50%."
+
+  validation {
+    condition = alltrue([
+      for threshold in var.billing_budget_thresholds :
+      threshold.threshold_percent > 0 && contains(["CURRENT_SPEND", "FORECASTED_SPEND"], threshold.spend_basis)
+    ])
+    error_message = "Each billing budget threshold must have a positive threshold_percent and spend_basis CURRENT_SPEND or FORECASTED_SPEND."
+  }
+}
+
 variable "github_repository" {
   type        = string
   default     = "ThorbenWoelk/dAstIll"
