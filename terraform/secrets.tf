@@ -46,6 +46,14 @@ resource "google_secret_manager_secret" "databricks_token" {
   }
 }
 
+resource "google_secret_manager_secret" "local_asr_api_key" {
+  project   = var.project_id
+  secret_id = "${var.app_name}-local-asr-api-key"
+  replication {
+    auto {}
+  }
+}
+
 resource "google_secret_manager_secret" "firebase_web_api_key" {
   project   = var.project_id
   secret_id = "${var.app_name}-firebase-web-api-key"

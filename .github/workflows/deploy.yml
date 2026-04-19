@@ -24,6 +24,11 @@ env:
   DEPLOY_SHA: ${{ github.sha }}
   DOCS_URL_OVERRIDE: ${{ vars.DOCS_URL }}
   FRONTEND_URL_OVERRIDE: ${{ vars.FRONTEND_URL }}
+  LOCAL_ASR_ENABLED: ${{ vars.LOCAL_ASR_ENABLED }}
+  LOCAL_ASR_BASE_URL: ${{ vars.LOCAL_ASR_BASE_URL }}
+  LOCAL_ASR_MODEL: ${{ vars.LOCAL_ASR_MODEL }}
+  LOCAL_ASR_MAX_AUDIO_BYTES: ${{ vars.LOCAL_ASR_MAX_AUDIO_BYTES }}
+  LOCAL_ASR_TIMEOUT_SECS: ${{ vars.LOCAL_ASR_TIMEOUT_SECS }}
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 permissions:
@@ -263,6 +268,9 @@ jobs:
             echo "LOGFIRE_TOKEN=${APP_NAME}-logfire-token:latest"
             echo "BACKEND_PROXY_TOKEN=${APP_NAME}-backend-proxy-token:latest"
             echo "DATABRICKS_TOKEN=${APP_NAME}-databricks-token:latest"
+            if [ "${LOCAL_ASR_ENABLED:-false}" = "true" ]; then
+              echo "LOCAL_ASR_API_KEY=${APP_NAME}-local-asr-api-key:latest"
+            fi
           } > /tmp/backend_cr_secrets.txt
           {
             echo 'secrets<<CR_SECRETS_EOF'
@@ -312,6 +320,11 @@ jobs:
           add_env_var DATABRICKS_WAREHOUSE_ID "769c25a6f2a3bf22"
           add_env_var DATABRICKS_CATALOG "workspace"
           add_env_var DATABRICKS_SCHEMA "analytics"
+          add_env_var LOCAL_ASR_ENABLED "${LOCAL_ASR_ENABLED:-false}"
+          add_env_var LOCAL_ASR_BASE_URL "${LOCAL_ASR_BASE_URL:-}"
+          add_env_var LOCAL_ASR_MODEL "${LOCAL_ASR_MODEL:-parakeet-tdt-0.6b-v3}"
+          add_env_var LOCAL_ASR_MAX_AUDIO_BYTES "${LOCAL_ASR_MAX_AUDIO_BYTES:-262144000}"
+          add_env_var LOCAL_ASR_TIMEOUT_SECS "${LOCAL_ASR_TIMEOUT_SECS:-1800}"
           add_env_var BACKEND_CORS_ALLOWED_ORIGINS "$allowed_origins"
           add_env_var GCP_PROJECT_ID "$PROJECT_ID"
           printf '%s\n' 'SUMMARIZE_PATH: "/usr/local/bin/summarize"' >> "$env_file"

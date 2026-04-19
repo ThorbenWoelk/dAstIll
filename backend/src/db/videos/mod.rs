@@ -261,7 +261,12 @@ pub async fn load_all_videos(store: &Store) -> Result<Vec<Video>, StoreError> {
 
 fn video_visible_in_list(video: &Video, queue_filter: Option<QueueFilter>) -> bool {
     video.transcript_status == ContentStatus::Ready
+        || is_podcast_episode_video(video)
         || matches!(queue_filter, Some(QueueFilter::TranscriptsOnly))
+}
+
+fn is_podcast_episode_video(video: &Video) -> bool {
+    video.id.starts_with("podcast:episode:") || video.channel_id.starts_with("podcast:rss:")
 }
 
 fn video_matches_channel_scope(

@@ -87,6 +87,7 @@ Backend/runtime secrets currently expected by infra and release workflows:
 - `dastill-logfire-token`
 - `dastill-backend-proxy-token`
 - `dastill-databricks-token`
+- `dastill-local-asr-api-key`
 
 Frontend build secrets:
 
@@ -136,9 +137,9 @@ Non-secret backend runtime config is passed as plain env values for:
 - `LOCAL_ASR_TIMEOUT_SECS`
 - log level
 
-`LOCAL_ASR_API_KEY` is a local-only non-secret only when the ASR service is bound to localhost or a
-private network and uses a dummy token such as `sk-no-key-required`. If the endpoint is reachable
-outside that boundary, store the key in Secret Manager and mount it as a backend secret.
+`LOCAL_ASR_API_KEY` is mounted from Secret Manager in production as `dastill-local-asr-api-key`.
+When local development binds ASR to localhost, a dummy value such as `sk-no-key-required` is fine.
+For any network-reachable production ASR endpoint, rotate and store a real token in Secret Manager.
 
 Non-secret product frontend runtime config is passed as plain env values for:
 

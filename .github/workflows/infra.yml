@@ -22,6 +22,7 @@ env:
   AWS_REGION: eu-central-1
   AWS_TERRAFORM_ROLE_ARN: arn:aws:iam::877173393100:role/dastill-github-terraform
   TERRAFORM_STATE_BUCKET: ${{ vars.TERRAFORM_STATE_BUCKET }}
+  LOCAL_ASR_ENABLED: ${{ vars.LOCAL_ASR_ENABLED }}
   TF_VAR_billing_export_enabled: ${{ vars.TF_VAR_billing_export_enabled }}
   TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -185,6 +186,9 @@ jobs:
             "${APP_NAME}-firebase-web-api-key"
             "${APP_NAME}-firebase-auth-domain"
           )
+          if [ "${LOCAL_ASR_ENABLED:-false}" = "true" ]; then
+            required_secrets+=("${APP_NAME}-local-asr-api-key")
+          fi
 
           for secret_name in "${required_secrets[@]}"; do
             if ! gcloud secrets versions access latest --secret="$secret_name" --project "$PROJECT_ID" >/dev/null 2>&1; then
