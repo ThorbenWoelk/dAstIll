@@ -54,6 +54,7 @@
   );
   let buttonStateClass = $derived(loading && !disabled ? "cursor-wait" : "");
   let strokeWidth = $derived(minimal ? "1.8" : compact ? "2.2" : "2.5");
+  let iconClass = $derived(minimal ? "h-5 w-5" : "h-4 w-4");
 </script>
 
 {#if href}
@@ -68,7 +69,7 @@
     data-tooltip-anchor={tooltipAnchor}
     data-tooltip-placement={tooltipPlacement}
   >
-    <svg viewBox="0 0 24 24" class="h-4 w-4" aria-hidden="true">
+    <svg viewBox="0 0 24 24" class={iconClass} aria-hidden="true">
       <rect
         x="3"
         y="6"
@@ -96,7 +97,11 @@
     data-tooltip-placement={tooltipPlacement}
   >
     {#if loading}
-      <svg viewBox="0 0 24 24" class="h-4 w-4 animate-spin" aria-hidden="true">
+      <svg
+        viewBox="0 0 24 24"
+        class={`${iconClass} animate-spin`}
+        aria-hidden="true"
+      >
         <circle
           cx="12"
           cy="12"
@@ -115,7 +120,7 @@
         />
       </svg>
     {:else if icon === "format"}
-      <svg viewBox="0 0 16 16" class="h-4 w-4" aria-hidden="true">
+      <svg viewBox="0 0 16 16" class={iconClass} aria-hidden="true">
         <path
           d="M3 4h10M3 8h6M3 12h8"
           fill="none"
@@ -125,7 +130,7 @@
         />
       </svg>
     {:else if icon === "revert"}
-      <svg viewBox="0 0 24 24" class="h-4 w-4" aria-hidden="true">
+      <svg viewBox="0 0 24 24" class={iconClass} aria-hidden="true">
         <path
           d="M9 15 3 9m0 0 6-6M3 9h10.5a5.5 5.5 0 0 1 0 11H9"
           fill="none"
@@ -139,8 +144,8 @@
       <RefreshIcon size={minimal ? 20 : 16} strokeWidth={Number(strokeWidth)} />
     {:else}
       <svg
-        width="15"
-        height="15"
+        width={minimal ? 20 : 15}
+        height={minimal ? 20 : 15}
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"

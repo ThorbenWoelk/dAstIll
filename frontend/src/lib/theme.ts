@@ -5,13 +5,14 @@ export const DARK_THEME_COLOR = "#111315";
 
 export type ThemeMode = "light" | "dark" | "system";
 export type ThemePreference = "light" | "dark";
-export type ColorScheme = "ember" | "sage" | "ocean" | "sand" | "plum";
+export type ColorScheme = "gold" | "ember" | "sage" | "ocean" | "sand" | "plum";
 
 export const COLOR_SCHEMES: {
   id: ColorScheme;
   label: string;
   swatch: string;
 }[] = [
+  { id: "gold", label: "Gold", swatch: "#b5851f" },
   { id: "ember", label: "Ember", swatch: "#d33c2a" },
   { id: "sage", label: "Sage", swatch: "#4a8a5c" },
   { id: "ocean", label: "Ocean", swatch: "#2a7ab5" },
@@ -19,7 +20,7 @@ export const COLOR_SCHEMES: {
   { id: "plum", label: "Plum", swatch: "#8b5cb4" },
 ];
 
-export const DEFAULT_COLOR: ColorScheme = "ember";
+export const DEFAULT_COLOR: ColorScheme = "gold";
 
 export type ThemeState = {
   preference: ThemePreference | null;
@@ -65,6 +66,7 @@ export function parseColorScheme(
   value: string | null | undefined,
 ): ColorScheme {
   if (
+    value === "gold" ||
     value === "ember" ||
     value === "sage" ||
     value === "ocean" ||

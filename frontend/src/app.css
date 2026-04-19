@@ -137,9 +137,9 @@
   --surface-frost-strong: #ffffff;
   --surface-overlay: #faf9f6;
   --surface-overlay-strong: #ffffff;
-  --accent: #d33c2a;
-  --accent-soft: #fdf2f0;
-  --accent-strong: #9e2a1d;
+  --accent: #b5851f;
+  --accent-soft: #fbf5e5;
+  --accent-strong: #7a5a12;
   --muted: color-mix(in srgb, #f2eee8 86%, var(--accent-soft));
   --border: color-mix(in srgb, #e8e2d9 88%, var(--accent-soft));
   --border-soft: color-mix(in srgb, #f0ebe4 80%, var(--accent-soft));
@@ -158,7 +158,7 @@
   --shadow-soft: rgba(0, 0, 0, 0.12);
   --shadow-strong: rgba(0, 0, 0, 0.18);
   --noise-opacity: 0.012;
-  --color-swatch: #d33c2a;
+  --color-swatch: #b5851f;
   --accent-wash: color-mix(in srgb, var(--accent) 8%, var(--surface));
   --accent-wash-strong: color-mix(in srgb, var(--accent) 15%, var(--surface));
   --accent-border-soft: color-mix(
@@ -227,9 +227,9 @@
   --surface-frost-strong: #1d2126;
   --surface-overlay: #111315;
   --surface-overlay-strong: #181b1f;
-  --accent: #ff8e79;
-  --accent-soft: rgba(255, 142, 121, 0.14);
-  --accent-strong: #ffb8aa;
+  --accent: #f0c36a;
+  --accent-soft: rgba(240, 195, 106, 0.14);
+  --accent-strong: #f6d995;
   --muted: color-mix(in srgb, #24292f 88%, var(--accent));
   --border: color-mix(in srgb, #414952 86%, var(--accent));
   --border-soft: color-mix(in srgb, #363d45 78%, var(--accent));
@@ -287,6 +287,12 @@
 }
 
 /* ── Color schemes: light (unlayered to beat Tailwind layers) ── */
+:root[data-color="gold"] {
+  --accent: #b5851f;
+  --accent-soft: #fbf5e5;
+  --accent-strong: #7a5a12;
+  --color-swatch: #b5851f;
+}
 :root[data-color="ember"] {
   --accent: #d33c2a;
   --accent-soft: #fdf2f0;
@@ -319,6 +325,11 @@
 }
 
 /* ── Color schemes: dark ── */
+:root.dark[data-color="gold"] {
+  --accent: #f0c36a;
+  --accent-soft: rgba(240, 195, 106, 0.14);
+  --accent-strong: #f6d995;
+}
 :root.dark[data-color="ember"] {
   --accent: #ff8e79;
   --accent-soft: rgba(255, 142, 121, 0.14);

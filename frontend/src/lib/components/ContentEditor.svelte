@@ -211,6 +211,7 @@
       {#if showFormatAction}
         <ContentActionButton
           compact
+          minimal={minimalActionChrome}
           icon="format"
           goHintKey="*"
           loading={formatting}
@@ -222,6 +223,7 @@
         {#if showRevertAction}
           <ContentActionButton
             compact
+            minimal={minimalActionChrome}
             icon="revert"
             loading={reverting}
             disabled={busy || formatting || reverting || !canRevert}
@@ -254,6 +256,7 @@
       {#if youtubeUrl}
         <ContentActionButton
           compact
+          minimal={minimalActionChrome}
           icon="youtube"
           goHintKey="]"
           href={youtubeUrl}
@@ -265,15 +268,17 @@
         <button
           type="button"
           data-go-hint-key="↵"
-          class="inline-flex h-8 w-8 items-center justify-center rounded-full text-[var(--danger)] opacity-40 transition-all hover:bg-[var(--danger)]/10 hover:opacity-100 disabled:pointer-events-none disabled:opacity-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--danger)]/30"
+          class={minimalActionChrome
+            ? "inline-flex h-8 w-8 items-center justify-center rounded-md text-[var(--danger)] opacity-55 transition-colors hover:opacity-100 disabled:pointer-events-none disabled:opacity-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--danger)]/30"
+            : "inline-flex h-8 w-8 items-center justify-center rounded-full text-[var(--danger)] opacity-40 transition-all hover:bg-[var(--danger)]/10 hover:opacity-100 disabled:pointer-events-none disabled:opacity-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--danger)]/30"}
           aria-label="Reset video - wipe transcript and summary"
           disabled={busy || resetting}
           onclick={onReset}
         >
           {#if resetting}
             <svg
-              width="13"
-              height="13"
+              width={minimalActionChrome ? 20 : 13}
+              height={minimalActionChrome ? 20 : 13}
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -284,8 +289,8 @@
             >
           {:else}
             <svg
-              width="13"
-              height="13"
+              width={minimalActionChrome ? 20 : 13}
+              height={minimalActionChrome ? 20 : 13}
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -343,6 +348,7 @@
       {#if showEditAction}
         <ContentActionButton
           compact
+          minimal={minimalActionChrome}
           icon="edit"
           goHintKey="["
           disabled={busy}

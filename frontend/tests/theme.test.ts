@@ -79,6 +79,7 @@ describe("parseThemeMode", () => {
 
 describe("parseColorScheme", () => {
   it("accepts valid color schemes", () => {
+    expect(parseColorScheme("gold")).toBe("gold");
     expect(parseColorScheme("ember")).toBe("ember");
     expect(parseColorScheme("sage")).toBe("sage");
     expect(parseColorScheme("ocean")).toBe("ocean");
@@ -86,7 +87,7 @@ describe("parseColorScheme", () => {
     expect(parseColorScheme("plum")).toBe("plum");
   });
 
-  it("defaults to ember for unknown values", () => {
+  it("defaults to gold for unknown values", () => {
     expect(parseColorScheme("red")).toBe(DEFAULT_COLOR);
     expect(parseColorScheme(null)).toBe(DEFAULT_COLOR);
     expect(parseColorScheme(undefined)).toBe(DEFAULT_COLOR);
