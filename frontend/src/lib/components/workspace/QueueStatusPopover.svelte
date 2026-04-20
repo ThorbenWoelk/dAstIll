@@ -133,9 +133,21 @@
 
   function statusLabel(item: QueueItem): string {
     const stage = item.stage === "transcript" ? "Transcript" : "Summary";
-    if (item.status === "loading") return `${stage} · running`;
-    if (item.status === "pending") return `${stage} · queued`;
-    return `${stage} · failed`;
+    if (item.status === "loading") return `${stage} running`;
+    if (item.status === "pending") return `${stage} queued`;
+    return `${stage} failed`;
+  }
+
+  function statusDotClass(status: QueueItem["status"]): string {
+    if (status === "failed") return "bg-[var(--danger)]";
+    if (status === "loading") return "bg-emerald-500 animate-pulse";
+    return "bg-[var(--border)]";
+  }
+
+  function statusTextClass(status: QueueItem["status"]): string {
+    if (status === "failed") return "text-[var(--danger)]";
+    if (status === "loading") return "text-emerald-700";
+    return "text-[var(--soft-foreground)]";
   }
 </script>
 
@@ -154,13 +166,16 @@
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      stroke-width="1.75"
+      stroke-width="1.5"
       stroke-linecap="round"
       stroke-linejoin="round"
       aria-hidden="true"
     >
-      <circle cx="12" cy="12" r="10" />
-      <polyline points="12 6 12 12 16 14" />
+      <path
+        d="M7 18a4 4 0 0 1-.88-7.903A5 5 0 1 1 15.9 7.5 4.5 4.5 0 0 1 18 16"
+      />
+      <path d="M12 13v8" />
+      <path d="m8 17 4 4 4-4" />
     </svg>
     <span>Queue</span>
     {#if counts.total > 0}
@@ -174,17 +189,33 @@
 
   {#if open}
     <div
-      class="absolute right-0 top-full z-40 mt-2 w-80 origin-top-right rounded-md border border-[var(--border-soft)] bg-[var(--background)] shadow-lg"
+      class="absolute right-0 top-full z-40 mt-2 w-[22rem] origin-top-right overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-strong)] shadow-sm"
       role="dialog"
-      aria-label="Queue status"
+      aria-label="Operations queue"
     >
       <div
-        class="flex items-center justify-between border-b border-[var(--border-soft)] px-3 py-2"
+        class="flex items-center justify-between border-b border-[var(--border)] bg-[var(--muted)] px-4 py-3"
       >
-        <p class="text-[12px] font-semibold text-[var(--foreground)]">Queue</p>
+        <div class="flex items-center gap-2">
+          <h3
+            class="text-xs font-semibold uppercase tracking-wider text-[var(--soft-foreground)]"
+          >
+            Operations Queue
+          </h3>
+          {#if counts.active > 0}
+            <span
+              class="flex items-center gap-1.5 text-xs font-medium text-[var(--soft-foreground)]"
+            >
+              <span
+                class="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500"
+              ></span>
+              Processing {counts.active}
+            </span>
+          {/if}
+        </div>
         <button
           type="button"
-          class="inline-flex h-6 w-6 items-center justify-center rounded-md text-[var(--soft-foreground)] transition-colors hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
+          class="inline-flex h-6 w-6 items-center justify-center rounded-md text-[var(--soft-foreground)] transition-colors hover:bg-[var(--surface-strong)] hover:text-[var(--foreground)] disabled:opacity-50"
           onclick={() => void loadQueue()}
           aria-label="Refresh queue"
           disabled={loading}
@@ -193,58 +224,79 @@
         </button>
       </div>
 
-      <div class="max-h-[22rem] overflow-y-auto py-1">
+      <div class="max-h-[24rem] overflow-y-auto">
         {#if loading && items.length === 0}
-          <p class="px-3 py-4 text-[12px] text-[var(--soft-foreground)]">
+          <p class="px-4 py-6 text-sm text-[var(--soft-foreground)]">
             Loading…
           </p>
         {:else if error}
-          <p class="px-3 py-4 text-[12px] text-[var(--danger)]">{error}</p>
+          <p class="px-4 py-6 text-sm text-[var(--danger)]">{error}</p>
         {:else if items.length === 0}
-          <p class="px-3 py-4 text-[12px] text-[var(--soft-foreground)]">
+          <p class="px-4 py-6 text-sm text-[var(--soft-foreground)]">
             Nothing in the queue.
           </p>
         {:else}
-          {#each items as item (item.video.id + item.stage)}
-            <div class="flex items-start gap-2 px-3 py-2">
-              <div class="min-w-0 flex-1">
-                <p
-                  class="truncate text-[12px] font-medium text-[var(--foreground)]"
-                  title={item.video.title}
-                >
-                  {item.video.title}
-                </p>
-                <p
-                  class="mt-0.5 flex items-center gap-1.5 text-[11px] text-[var(--soft-foreground)]"
-                >
-                  {#if item.channel}
-                    <span class="truncate">{item.channel.name}</span>
-                    <span
-                      class="h-1 w-1 shrink-0 rounded-full bg-[var(--border)]"
-                      aria-hidden="true"
-                    ></span>
-                  {/if}
+          <div class="divide-y divide-[var(--border)]">
+            {#each items as item (item.video.id + item.stage)}
+              <div
+                class="grid grid-cols-12 items-center gap-3 px-4 py-3 {item.status ===
+                'failed'
+                  ? 'bg-[var(--danger)]/5'
+                  : ''}"
+              >
+                <div class="col-span-6 flex items-center gap-2.5 min-w-0">
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    class="shrink-0 text-[var(--soft-foreground)]"
+                    aria-hidden="true"
+                  >
+                    <rect x="2" y="6" width="14" height="12" rx="2" />
+                    <path d="m22 8-6 4 6 4z" />
+                  </svg>
                   <span
-                    class={item.status === "failed"
-                      ? "text-[var(--danger)]"
-                      : ""}
+                    class="truncate text-sm font-medium text-[var(--foreground)]"
+                    title={item.video.title}
+                  >
+                    {item.video.title}
+                  </span>
+                </div>
+                <div class="col-span-4 flex items-center gap-2 min-w-0">
+                  <span
+                    class="h-1.5 w-1.5 shrink-0 rounded-full {statusDotClass(
+                      item.status,
+                    )}"
+                    aria-hidden="true"
+                  ></span>
+                  <span
+                    class="truncate text-xs font-medium {statusTextClass(
+                      item.status,
+                    )}"
                   >
                     {statusLabel(item)}
                   </span>
-                </p>
+                </div>
+                <div class="col-span-2 text-right">
+                  {#if item.status === "failed"}
+                    <button
+                      type="button"
+                      class="rounded bg-[var(--muted)] px-2 py-1 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--border)] disabled:opacity-50"
+                      disabled={retryingVideoIds.has(item.video.id)}
+                      onclick={() => void retryItem(item)}
+                    >
+                      {retryingVideoIds.has(item.video.id) ? "…" : "Retry"}
+                    </button>
+                  {/if}
+                </div>
               </div>
-              {#if item.status === "failed"}
-                <button
-                  type="button"
-                  class="shrink-0 rounded-md border border-[var(--border-soft)] px-2 py-0.5 text-[11px] font-medium text-[var(--soft-foreground)] transition-colors hover:bg-[var(--surface)] hover:text-[var(--foreground)] disabled:opacity-50"
-                  disabled={retryingVideoIds.has(item.video.id)}
-                  onclick={() => void retryItem(item)}
-                >
-                  {retryingVideoIds.has(item.video.id) ? "Retrying…" : "Retry"}
-                </button>
-              {/if}
-            </div>
-          {/each}
+            {/each}
+          </div>
         {/if}
       </div>
     </div>
