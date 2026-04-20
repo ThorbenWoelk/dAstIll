@@ -12,6 +12,7 @@
     buildHighlightDraft,
     resolveRangeTextOffsets,
     resolveHighlightRanges,
+    resolveTooltipAnchorRect,
     resolveTooltipPosition,
   } from "$lib/utils/highlights";
   import { registerNativeSelectionHandlers } from "$lib/native-selection";
@@ -265,15 +266,16 @@
     const rects = range.getClientRects();
     if (rects.length === 0) return null;
 
-    // Use the last rect for positioning to stay close to the end of selection
-    const lastRect = rects[rects.length - 1];
+    const anchorRect = resolveTooltipAnchorRect(rects);
+    if (!anchorRect) return null;
+
     const containerRect = containerElement?.getBoundingClientRect();
     if (!containerRect) {
       return null;
     }
 
     return {
-      ...resolveTooltipPosition(lastRect, containerRect),
+      ...resolveTooltipPosition(anchorRect, containerRect),
       draft,
     };
   }

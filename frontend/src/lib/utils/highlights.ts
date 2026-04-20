@@ -11,10 +11,11 @@ export interface HighlightRange {
   end: number;
 }
 
-interface TooltipRect {
+export interface TooltipRect {
   left: number;
   top: number;
   width: number;
+  height?: number;
 }
 
 const TEXT_NODE = 3;
@@ -342,25 +343,68 @@ export function removeHighlightFromGroups(
     .filter((group) => group.videos.length > 0);
 }
 
+export function resolveTooltipAnchorRect(
+  rects: ArrayLike<TooltipRect>,
+): TooltipRect | null {
+  let left = Number.POSITIVE_INFINITY;
+  let top = Number.POSITIVE_INFINITY;
+  let right = Number.NEGATIVE_INFINITY;
+  let bottom = Number.NEGATIVE_INFINITY;
+
+  for (let index = 0; index < rects.length; index += 1) {
+    const rect = rects[index];
+    const height = rect.height ?? 0;
+    if (rect.width <= 0 && height <= 0) {
+      continue;
+    }
+
+    left = Math.min(left, rect.left);
+    top = Math.min(top, rect.top);
+    right = Math.max(right, rect.left + rect.width);
+    bottom = Math.max(bottom, rect.top + height);
+  }
+
+  if (!Number.isFinite(left) || !Number.isFinite(top)) {
+    return null;
+  }
+
+  return {
+    left,
+    top,
+    width: right - left,
+    height: bottom - top,
+  };
+}
+
 export function resolveTooltipPosition(
   anchorRect: TooltipRect,
   containerRect: TooltipRect,
   options: {
+    bottomOffset?: number;
     horizontalInset?: number;
     topOffset?: number;
     topInset?: number;
   } = {},
 ) {
+  const bottomOffset = options.bottomOffset ?? 8;
   const horizontalInset = options.horizontalInset ?? 80;
   const topOffset = options.topOffset ?? 46;
-  const topInset = options.topInset ?? 16;
+  const topInset = options.topInset ?? 8;
   const relativeCenter =
     anchorRect.left + anchorRect.width / 2 - containerRect.left;
+  const relativeTop = anchorRect.top - containerRect.top;
+  const topAboveAnchor = relativeTop - topOffset;
   const minLeft = Math.min(horizontalInset, containerRect.width / 2);
   const maxLeft = Math.max(containerRect.width - horizontalInset, minLeft);
 
   return {
     left: Math.min(Math.max(relativeCenter, minLeft), maxLeft),
-    top: Math.max(anchorRect.top - containerRect.top - topOffset, topInset),
+    top:
+      topAboveAnchor >= topInset
+        ? topAboveAnchor
+        : Math.max(
+            relativeTop + (anchorRect.height ?? 0) + bottomOffset,
+            topInset,
+          ),
   };
 }

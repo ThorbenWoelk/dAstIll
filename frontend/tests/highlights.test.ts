@@ -13,6 +13,7 @@ import {
   reconcileOptimisticHighlight,
   resolveRangeTextOffsets,
   resolveHighlightRanges,
+  resolveTooltipAnchorRect,
   resolveTooltipPosition,
 } from "../src/lib/utils/highlights";
 
@@ -203,6 +204,22 @@ describe("resolveHighlightRanges", () => {
 });
 
 describe("resolveTooltipPosition", () => {
+  it("builds one anchor from all selected text rectangles", () => {
+    expect(
+      resolveTooltipAnchorRect({
+        0: { left: 240, top: 160, width: 320, height: 24 },
+        1: { left: 180, top: 188, width: 500, height: 24 },
+        2: { left: 180, top: 216, width: 280, height: 24 },
+        length: 3,
+      }),
+    ).toEqual({
+      left: 180,
+      top: 160,
+      width: 500,
+      height: 80,
+    });
+  });
+
   it("converts viewport selection coordinates into container-relative tooltip coordinates", () => {
     expect(
       resolveTooltipPosition(
@@ -220,6 +237,27 @@ describe("resolveTooltipPosition", () => {
     ).toEqual({
       left: 220,
       top: 94,
+    });
+  });
+
+  it("opens below the highlighted area when there is not room above", () => {
+    expect(
+      resolveTooltipPosition(
+        {
+          left: 720,
+          top: 190,
+          width: 120,
+          height: 72,
+        },
+        {
+          left: 560,
+          top: 180,
+          width: 980,
+        },
+      ),
+    ).toEqual({
+      left: 220,
+      top: 90,
     });
   });
 });
