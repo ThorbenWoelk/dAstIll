@@ -21,13 +21,14 @@ fn canonical_channel_key(id: &str) -> String {
 }
 
 fn canonical_to_channel(record: CanonicalChannelRecord) -> Channel {
+    let now = chrono::Utc::now();
     Channel {
         id: record.id,
         handle: record.handle,
         name: record.name,
         thumbnail_url: record.thumbnail_url,
-        added_at: chrono::Utc::now(),
-        earliest_sync_date: None,
+        added_at: now,
+        earliest_sync_date: Some(default_earliest_sync_date_floor(now)),
         earliest_sync_date_user_set: false,
     }
 }
@@ -219,7 +220,8 @@ pub async fn delete_channel(store: &Store, id: &str) -> Result<bool, StoreError>
 
 #[cfg(test)]
 mod tests {
-    use super::default_earliest_sync_date_floor;
+    use super::{canonical_to_channel, default_earliest_sync_date_floor};
+    use crate::models::CanonicalChannelRecord;
     use chrono::TimeZone;
     use chrono::Utc;
 
@@ -228,5 +230,18 @@ mod tests {
         let t = Utc.with_ymd_and_hms(2026, 3, 28, 15, 30, 0).unwrap();
         let floor = default_earliest_sync_date_floor(t);
         assert_eq!(floor, Utc.with_ymd_and_hms(2026, 3, 1, 0, 0, 0).unwrap());
+    }
+
+    #[test]
+    fn canonical_channel_gets_default_sync_floor_when_read_without_subscription() {
+        let channel = canonical_to_channel(CanonicalChannelRecord {
+            id: "podcast:series:show".to_string(),
+            handle: None,
+            name: "Show".to_string(),
+            thumbnail_url: None,
+        });
+
+        assert!(channel.earliest_sync_date.is_some());
+        assert!(!channel.earliest_sync_date_user_set);
     }
 }

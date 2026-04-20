@@ -9,13 +9,14 @@ use crate::state::AppState;
 use super::{OpenAlexPublicationMaterial, PodcastEpisodeMaterial};
 
 fn compatibility_channel_from_source(source: &ContentSource) -> Channel {
+    let now = Utc::now();
     Channel {
         id: source.id.clone(),
         handle: source.handle.clone().or(source.subtitle.clone()),
         name: source.title.clone(),
         thumbnail_url: source.thumbnail_url.clone(),
-        added_at: Utc::now(),
-        earliest_sync_date: None,
+        added_at: now,
+        earliest_sync_date: Some(db::default_earliest_sync_date_floor(now)),
         earliest_sync_date_user_set: false,
     }
 }
@@ -306,8 +307,13 @@ pub async fn sync_source_profile(
 
 #[cfg(test)]
 mod tests {
-    use super::{normalized_text_for_match, transcript_matches_show_notes};
-    use crate::models::{Transcript, TranscriptRenderMode};
+    use super::{
+        compatibility_channel_from_source, normalized_text_for_match, transcript_matches_show_notes,
+    };
+    use crate::models::{
+        ContentSource, ContentSourceKind, ProviderKind, SourceBackingKind,
+        SubscriptionContainerKind, Transcript, TranscriptRenderMode,
+    };
 
     fn transcript(raw_text: Option<&str>, formatted_markdown: Option<&str>) -> Transcript {
         Transcript {
@@ -342,5 +348,30 @@ mod tests {
     #[test]
     fn normalized_text_collapses_whitespace() {
         assert_eq!(normalized_text_for_match("a\n b\t c"), "a b c");
+    }
+
+    #[test]
+    fn compatibility_channel_gets_default_sync_floor() {
+        let source = ContentSource {
+            id: "podcast:series:show".to_string(),
+            provider: ProviderKind::PodcastRss,
+            source_kind: ContentSourceKind::PodcastSeries,
+            container_id: "podcast:series:show".to_string(),
+            container_kind: SubscriptionContainerKind::Series,
+            backing_kind: SourceBackingKind::Feed,
+            title: "Show".to_string(),
+            subtitle: None,
+            handle: None,
+            thumbnail_url: None,
+            requires_auth: false,
+            public_content_available: true,
+            entitled_content_available: false,
+            external_ids: Vec::new(),
+        };
+
+        let channel = compatibility_channel_from_source(&source);
+
+        assert!(channel.earliest_sync_date.is_some());
+        assert!(!channel.earliest_sync_date_user_set);
     }
 }
