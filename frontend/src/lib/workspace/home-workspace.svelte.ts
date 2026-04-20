@@ -25,7 +25,10 @@ import {
   cloneVideos,
   createChannelViewCache,
 } from "$lib/channel-view-cache";
-import { loadWorkspaceState } from "$lib/channel-workspace";
+import {
+  loadWorkspaceState,
+  restoreWorkspaceSnapshot,
+} from "$lib/channel-workspace";
 import { resolveNextChannelSelection } from "$lib/workspace/route-helpers";
 import {
   hasCompleteSummaryEvaluation,
@@ -49,7 +52,10 @@ import {
   createHomeWorkspaceDataController,
   type CachedChannelVideoState,
 } from "$lib/workspace/home-workspace-data-controller.svelte";
-import { clearWorkspaceForScopeChange } from "$lib/workspace/home-workspace-auth-scope";
+import {
+  applyWorkspaceStateForScopeChange,
+  clearWorkspaceForScopeChange,
+} from "$lib/workspace/home-workspace-auth-scope";
 import { createHomeWorkspaceAcknowledgeController } from "$lib/workspace/home-workspace-acknowledge-controller.svelte";
 import { createHomeWorkspacePageState } from "$lib/workspace/home-workspace-page-state.svelte";
 import { createHomeWorkspacePersistenceController } from "$lib/workspace/home-workspace-persistence-controller.svelte";
@@ -530,22 +536,20 @@ export function createHomeWorkspacePage() {
 
     pageState.setHydratedWorkspaceScopeKey(workspaceCacheScopeKey);
     clearWorkspaceForScopeChange(sidebarState);
-    // Restore filter preferences saved under the incoming auth scope so that
-    // the subsequent loadBootstrapRefresh uses the correct filter values.
+    // Restore saved view state under the incoming auth scope so that auth
+    // bootstrap races do not leave the workspace in the anonymous selection.
     if (typeof localStorage !== "undefined") {
-      const saved = loadWorkspaceState(localStorage, workspaceStorageKey);
-      if (
-        saved?.acknowledgedFilter &&
-        isAcknowledgedFilter(saved.acknowledgedFilter)
-      ) {
-        sidebarState.setAcknowledgedFilter(saved.acknowledgedFilter);
-      }
-      if (
-        saved?.videoTypeFilter &&
-        isWorkspaceVideoTypeFilter(saved.videoTypeFilter)
-      ) {
-        sidebarState.setVideoTypeFilter(saved.videoTypeFilter);
-      }
+      const restored = restoreWorkspaceSnapshot(
+        loadWorkspaceState(localStorage, workspaceStorageKey),
+        {
+          includeSelectedVideoId: true,
+          includeContentMode: true,
+          includeVideoTypeFilter: true,
+          includeAcknowledgedFilter: true,
+          includeChannelSortMode: true,
+        },
+      );
+      applyWorkspaceStateForScopeChange(sidebarState, content, restored);
     }
     void dataController.loadBootstrapRefresh();
   });

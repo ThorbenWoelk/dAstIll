@@ -240,6 +240,11 @@ export function createHomeWorkspacePersistenceController(options: {
     mq.addEventListener("change", onViewportChange);
 
     restoreWorkspaceState();
+    if (sidebarState.selectedVideoId) {
+      void content.loadContent().catch(() => {
+        // Bootstrap hydration retries with the normal page error handling.
+      });
+    }
     options.restoreGuideFromUrl();
     const unsubscribeBrowseIntent = mobileWorkspaceBrowseIntent.subscribe(
       (wantsBrowse) => {

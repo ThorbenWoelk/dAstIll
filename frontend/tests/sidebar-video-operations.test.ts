@@ -19,9 +19,12 @@ function makeVideo(id: string, channelId = "channel-1"): Video {
   } as Video;
 }
 
-function makeSnapshot(videos: Video[]): ChannelSnapshot {
+function makeSnapshot(
+  videos: Video[],
+  channelId = "channel-1",
+): ChannelSnapshot {
   return {
-    channel_id: "channel-1",
+    channel_id: channelId,
     channel_video_count: videos.length,
     has_more: false,
     next_offset: videos.length,
@@ -31,6 +34,7 @@ function makeSnapshot(videos: Video[]): ChannelSnapshot {
 }
 
 function createHarness(options?: {
+  selectedChannelId?: string | null;
   selectedVideoId?: string | null;
   videos?: Video[];
   onListVideos?: (selectedChannelId: string) => Promise<{
@@ -45,7 +49,8 @@ function createHarness(options?: {
     selectedChannelId: string,
   ) => Promise<{ videos_added: number }>;
 }) {
-  let selectedChannelId: string | null = "channel-1";
+  let selectedChannelId: string | null =
+    options?.selectedChannelId ?? "channel-1";
   let selectedVideoId = options?.selectedVideoId ?? "video-2";
   let videos = options?.videos ?? [makeVideo("video-1"), makeVideo("video-2")];
   let offset = videos.length;
@@ -101,11 +106,14 @@ function createHarness(options?: {
       videos = [];
       offset = 0;
     },
-    resetVideoListState: () => {
+    resetVideoListState: (state) => {
       resetCalls += 1;
-      videos = [];
-      offset = 0;
-      hasMore = true;
+      if (state && "selectedVideoId" in state) {
+        selectedVideoId = state?.selectedVideoId ?? null;
+      }
+      videos = state?.videos ?? [];
+      offset = state?.offset ?? 0;
+      hasMore = state?.hasMore ?? true;
     },
     applyChannelSnapshotState: (snapshot) => {
       videos = snapshot.videos;
@@ -124,6 +132,7 @@ function createHarness(options?: {
     setRefreshingChannelState: (value) => {
       refreshing = value;
     },
+    setSyncDepthState: () => {},
     setVideos: (next) => {
       videos = next;
     },
@@ -137,13 +146,142 @@ function createHarness(options?: {
 
   return {
     operations,
+    getSelectedChannelId: () => selectedChannelId,
     getSelectedVideoId: () => selectedVideoId,
     getVideos: () => videos,
     getResetCalls: () => resetCalls,
     getRefreshing: () => refreshing,
+    getVideoLoading: () => videoLoading,
     getHasMore: () => hasMore,
   };
 }
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
+describe("createSidebarVideoOperations.selectChannelVideoOptimistically", () => {
+  it("selects and seeds the clicked cross-channel video before snapshot hydration finishes", async () => {
+    const deferredSnapshot = createDeferred<ChannelSnapshot>();
+    let snapshotRequests = 0;
+    const clickedVideo = makeVideo("video-99", "channel-2");
+    const harness = createHarness({
+      selectedChannelId: "channel-1",
+      selectedVideoId: "video-1",
+      videos: [makeVideo("video-1", "channel-1")],
+      onLoadChannelSnapshot: async () => {
+        snapshotRequests += 1;
+        return deferredSnapshot.promise;
+      },
+    });
+
+    const hydration = harness.operations.selectChannelVideoOptimistically(
+      "channel-2",
+      clickedVideo.id,
+      clickedVideo,
+    );
+
+    expect(harness.getSelectedChannelId()).toBe("channel-2");
+    expect(harness.getSelectedVideoId()).toBe("video-99");
+    expect(harness.getVideos().map((video) => video.id)).toEqual(["video-99"]);
+    expect(harness.getVideoLoading()).toBe(true);
+    expect(snapshotRequests).toBe(1);
+
+    deferredSnapshot.resolve(
+      makeSnapshot([makeVideo("video-2", "channel-2")], "channel-2"),
+    );
+    await hydration;
+
+    expect(harness.getVideos().map((video) => video.id)).toEqual(["video-2"]);
+    expect(harness.getVideoLoading()).toBe(false);
+  });
+
+  it("merges the clicked video hint into cached channel state without waiting for hydration", async () => {
+    const cachedVideo = makeVideo("video-2", "channel-2");
+    const clickedVideo = makeVideo("video-99", "channel-2");
+    const deferredSnapshot = createDeferred<ChannelSnapshot>();
+    let selectedChannelId: string | null = "channel-1";
+    let selectedVideoId: string | null = "video-1";
+    let videos = [makeVideo("video-1", "channel-1")];
+    let videoLoading = false;
+
+    const operations = createSidebarVideoOperations({
+      options: {
+        onSelectVideo: () => {},
+        onLoadChannelSnapshot: async () => deferredSnapshot.promise,
+        onRefreshChannel: async () => ({ videos_added: 0 }),
+      },
+      limit: 20,
+      channelLastRefreshedAt: new Map() as unknown as SvelteMap<string, number>,
+      videoStateCache: {
+        get: () => ({
+          videos: [cachedVideo],
+          offset: 1,
+          hasMore: true,
+          lastSyncedAt: null,
+          syncDepth: null,
+        }),
+        delete: () => {},
+      },
+      getVideoStateKey: () => "workspace:channel-2",
+      getChannelOrder: () => [],
+      getSelectedChannelId: () => selectedChannelId,
+      getSelectedVideoId: () => selectedVideoId,
+      getVideos: () => videos,
+      getOffset: () => videos.length,
+      getVideoTypeFilter: () => "all",
+      getAcknowledgedFilter: () => "all",
+      getLoadingVideos: () => videoLoading,
+      getVideoListMutationEpoch: () => 0,
+      applyLoadedChannelsState: () => {},
+      applySelectionState: (selection) => {
+        if ("selectedChannelId" in selection) {
+          selectedChannelId = selection.selectedChannelId ?? null;
+        }
+        if ("selectedVideoId" in selection) {
+          selectedVideoId = selection.selectedVideoId ?? null;
+        }
+      },
+      clearChannelSelectionState: () => {},
+      resetVideoListState: (state) => {
+        videos = state?.videos ?? [];
+      },
+      applyChannelSnapshotState: (snapshot) => {
+        videos = snapshot.videos;
+      },
+      applyVideoPageState: () => {},
+      setChannelLoadingState: () => {},
+      setVideoLoadingState: (value) => {
+        videoLoading = value;
+      },
+      setRefreshingChannelState: () => {},
+      setSyncDepthState: () => {},
+      setVideos: (next) => {
+        videos = next;
+      },
+      setVideoTypeFilter: () => {},
+      setAcknowledgedFilter: () => {},
+    });
+
+    const hydration = operations.selectChannelVideoOptimistically(
+      "channel-2",
+      clickedVideo.id,
+      clickedVideo,
+    );
+
+    expect(selectedChannelId).toBe("channel-2");
+    expect(selectedVideoId).toBe("video-99");
+    expect(videos.map((video) => video.id)).toEqual(["video-99", "video-2"]);
+    expect(videoLoading).toBe(false);
+
+    deferredSnapshot.resolve(makeSnapshot([cachedVideo], "channel-2"));
+    await hydration;
+  });
+});
 
 describe("createSidebarVideoOperations.reloadSelectedChannelVideos", () => {
   it("clears a stale selected video after a reset reload removes it from scope", async () => {

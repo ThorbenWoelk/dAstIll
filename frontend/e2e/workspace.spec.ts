@@ -160,6 +160,40 @@ test("sidebar lists channels and each row shows video titles", async ({
   ).toBeVisible({ timeout: READY_MS });
 });
 
+test("channel row chevron collapses the selected channel without reopening", async ({
+  page,
+}) => {
+  const sidebar = await openSeededWorkspace(
+    page,
+    "/?source=channel-alpha&item=video-alpha&content=info",
+  );
+  const selectedChannelRow = sidebar.locator(
+    '[data-channel-id="channel-alpha"]',
+  );
+  const selectedVideoList = sidebar.locator(
+    '[data-channel-video-list="channel-alpha"]',
+  );
+  const selectedVideo = selectedVideoList.getByText(
+    "Alpha workspace fixture video",
+  );
+
+  await expect(selectedVideo).toBeVisible({ timeout: READY_MS });
+  await selectedChannelRow
+    .getByRole("button", { name: "Collapse channel" })
+    .click();
+
+  await expect(
+    selectedChannelRow.getByRole("button", { name: "Expand channel" }),
+  ).toBeVisible();
+  await expect(selectedVideo).toBeHidden();
+
+  await page.waitForTimeout(250);
+  await expect(
+    selectedChannelRow.getByRole("button", { name: "Expand channel" }),
+  ).toBeVisible();
+  await expect(selectedVideo).toBeHidden();
+});
+
 test("desktop sidebar sits flush against the main content", async ({
   page,
 }) => {
@@ -421,11 +455,12 @@ test("channel row click opens the overview page and overview exposes delete", as
     timeout: READY_MS,
   });
 
-  await sidebar
-    .locator("[data-channel-id]")
-    .first()
-    .getByRole("button", { name: "Overview test channel" })
-    .click();
+  await dispatchVisibleClick(
+    sidebar
+      .locator("[data-channel-id]")
+      .first()
+      .getByRole("button", { name: "Overview test channel" }),
+  );
 
   await expect
     .poll(() => new URL(page.url()).pathname)

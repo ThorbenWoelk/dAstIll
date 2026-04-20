@@ -48,6 +48,7 @@ const VIRTUALIZATION_THRESHOLD = 24;
 const VIRTUALIZED_ROW_HEIGHT = 72;
 const VIRTUALIZED_OVERSCAN = 8;
 const VIRTUALIZED_VIEWPORT_HEIGHT = 336;
+const PREVIEW_WARMUP_CONCURRENCY = 2;
 
 type ChannelVideoCollectionLoadMode = "preview" | "paged";
 
@@ -103,6 +104,25 @@ type SidebarPreviewControllerOptions = {
   onChannelSyncDateSaved?: (channelId: string) => void | Promise<void>;
 };
 
+export function shouldSkipAutoExpandForCollapsedSelection(params: {
+  targetChannelId: string;
+  selectedChannelId: string | null;
+  selectedVideoId: string | null;
+  userCollapsedSelectionKey: string | null;
+}) {
+  if (
+    !params.selectedVideoId ||
+    params.selectedChannelId !== params.targetChannelId
+  ) {
+    return false;
+  }
+
+  return (
+    params.userCollapsedSelectionKey ===
+    `${params.targetChannelId}:${params.selectedVideoId}`
+  );
+}
+
 export function createEmptyChannelVideoCollection(): ChannelVideoCollectionState {
   return {
     videos: [],
@@ -136,6 +156,7 @@ export function createSidebarPreviewController(
   let lastAutoExpandedChannelId = $state<string | null>(null);
   let userCollapsedSelectionKey = $state<string | null>(null);
   let syncDatePickerChannelId = $state<string | null>(null);
+  let previewWarmupSeq = 0;
 
   function channelListEmptyCaption(channelVideoCount: number | null): string {
     if (channelVideoCount === null) {
@@ -469,6 +490,39 @@ export function createSidebarPreviewController(
     await loadChannelVideoCollection(channel, "paged", { append: true });
   }
 
+  async function warmChannelVideoPreviews(
+    channels: Channel[],
+    filterKey: string,
+    seq: number,
+  ) {
+    const candidates = channels.filter((channel) => {
+      if (channel.id === OTHERS_CHANNEL_ID) {
+        return false;
+      }
+      const state = untrack(() => channelVideoCollections[channel.id]);
+      return !state || !supportsMode(state, filterKey, "preview");
+    });
+    let nextIndex = 0;
+
+    async function worker() {
+      for (;;) {
+        if (seq !== previewWarmupSeq) {
+          return;
+        }
+        const channel = candidates[nextIndex++];
+        if (!channel) {
+          return;
+        }
+        await loadChannelVideoCollection(channel, "preview");
+      }
+    }
+
+    const workers = Array.from({
+      length: Math.min(PREVIEW_WARMUP_CONCURRENCY, candidates.length),
+    }).map(() => worker());
+    await Promise.all(workers);
+  }
+
   function handleChannelCollectionScroll(channel: Channel, event: Event) {
     const currentTarget = event.currentTarget;
     if (!(currentTarget instanceof HTMLDivElement)) {
@@ -620,6 +674,23 @@ export function createSidebarPreviewController(
       return;
     }
 
+    const seq = ++previewWarmupSeq;
+    const filterKey = getChannelVideoCollectionFilterKey();
+    const channels = options.getFilteredChannels();
+    void warmChannelVideoPreviews(channels, filterKey, seq);
+
+    return () => {
+      if (previewWarmupSeq === seq) {
+        previewWarmupSeq += 1;
+      }
+    };
+  });
+
+  $effect(() => {
+    if (!options.getEnabled()) {
+      return;
+    }
+
     const filterKey = getChannelVideoCollectionFilterKey();
     const visibleChannelIds = options
       .getFilteredChannels()
@@ -660,13 +731,24 @@ export function createSidebarPreviewController(
       return;
     }
 
+    const selectedVideoId = options.getSelectedVideoId();
+    if (
+      shouldSkipAutoExpandForCollapsedSelection({
+        targetChannelId: targetChannel.id,
+        selectedChannelId: options.getSelectedChannelId(),
+        selectedVideoId,
+        userCollapsedSelectionKey,
+      })
+    ) {
+      return;
+    }
+
     setExpandedPreviewChannel(targetChannel.id);
     const nextState = ensureChannelVideoCollection(targetChannel.id);
     lastAutoExpandedChannelId = targetChannel.id;
 
     const preferredMode =
-      options.getSelectedVideoId() &&
-      options.getSelectedChannelId() === targetChannel.id
+      selectedVideoId && options.getSelectedChannelId() === targetChannel.id
         ? "paged"
         : "preview";
     if (

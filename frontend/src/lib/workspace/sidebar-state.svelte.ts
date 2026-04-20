@@ -297,6 +297,16 @@ export type SidebarStateResult = {
     fromUserInteraction?: boolean,
   ) => Promise<void>;
   selectVideo: (videoId: string | null) => void;
+  mergeSelectedVideoHint: (
+    channelId: string,
+    videoId: string,
+    selectedVideoHint: Video | null,
+  ) => void;
+  selectChannelVideoOptimistically: (
+    channelId: string,
+    videoId: string,
+    selectedVideoHint?: Video | null,
+  ) => Promise<void>;
   replaceVideos: (videos: Video[]) => void;
   refreshAndLoadVideos: (channelId: string, silent?: boolean) => Promise<void>;
   loadVideos: (reset?: boolean, silent?: boolean) => Promise<void>;
@@ -728,6 +738,8 @@ export function createSidebarState(
     loadVideos,
     selectChannel,
     selectVideo,
+    mergeSelectedVideoHint,
+    selectChannelVideoOptimistically,
     reloadSelectedChannelVideos,
     setVideoTypeFilterAndReload,
     setAcknowledgedFilterAndReload,
@@ -850,7 +862,18 @@ export function createSidebarState(
       videoId: string,
       video?: Video,
     ) => {
-      await selectChannel(channelId, videoId, true, video ?? null);
+      if (channelId !== selectedChannelId) {
+        void selectChannelVideoOptimistically(
+          channelId,
+          videoId,
+          video ?? null,
+        );
+        await options_root.onSelectVideo(videoId, { forceReload: true });
+        return;
+      }
+
+      selectVideo(videoId);
+      mergeSelectedVideoHint(channelId, videoId, video ?? null);
       await options_root.onSelectVideo(videoId, { forceReload: true });
     },
   };
@@ -1018,6 +1041,8 @@ export function createSidebarState(
     setSelectedChannel,
     selectChannel,
     selectVideo,
+    mergeSelectedVideoHint,
+    selectChannelVideoOptimistically,
     replaceVideos,
     refreshAndLoadVideos,
     loadVideos,

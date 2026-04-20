@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { goto, preloadData } from "$app/navigation";
+  import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { onMount } from "svelte";
   import type { Component } from "svelte";
@@ -58,6 +58,10 @@
   import { buildWorkspaceViewHref } from "$lib/view-url";
   import { type AddSourceFeedback } from "$lib/workspace/add-source-feedback";
   import { channelOrderFromList } from "$lib/workspace/channels";
+  import {
+    resolveChannelOverviewMissingMessage,
+    shouldReloadChannelOverviewForAuthScope,
+  } from "$lib/workspace/channel-overview-state";
   import { createChannelOverviewAddSourceFeedbackController } from "$lib/workspace/channel-overview-add-source-feedback.svelte";
   import { resolveSyncDateInputValue } from "$lib/workspace/sidebar-sync-date";
   import type {
@@ -88,6 +92,10 @@
   let acknowledgedFilter = $state<AcknowledgedFilter>("all");
   let aiStatus = $state<AiStatus | null>(null);
   let activeOverviewRequest = 0;
+  let loadedAuthScopeKey = $state<string | null>(
+    initialBootstrap ? getAuthStorageScopeKey(authState.current) : null,
+  );
+  let loadingAuthScopeKey = $state<string | null>(null);
 
   let lastOverviewLoadKey = $state<string | null>(null);
   let seededChannelPreviews = $state<Record<string, ChannelSnapshot>>(
@@ -140,22 +148,20 @@
   let canManageLibrary = $derived(
     authState.current.authState === "authenticated",
   );
+  let authScopeKey = $derived(getAuthStorageScopeKey(authState.current));
+  let overviewBusy = $derived(
+    loadingOverview || !authState.ready || loadingAuthScopeKey !== null,
+  );
   let workspaceStorageKey = $derived(
-    getScopedStorageKey(
-      "dastill.workspace.state.v1",
-      getAuthStorageScopeKey(authState.current),
-    ),
+    getScopedStorageKey("dastill.workspace.state.v1", authScopeKey),
   );
   let missingChannelMessage = $derived.by(() => {
-    if (loadingOverview) {
-      return null;
-    }
-
-    if (channels.length === 0) {
-      return "Follow a channel to start shaping your workspace.";
-    }
-
-    return selectedChannel ? null : "Channel not found.";
+    return resolveChannelOverviewMissingMessage({
+      overviewBusy,
+      loadingChannels,
+      channelsLength: channels.length,
+      hasSelectedChannel: Boolean(selectedChannel),
+    });
   });
 
   function syncInputValue(
@@ -253,7 +259,11 @@
 
   async function loadChannelOverviewState(
     channelId: string | null,
-    options?: { shouldReloadChannels?: boolean },
+    options?: {
+      shouldReloadChannels?: boolean;
+      bypassCache?: boolean;
+      authScopeKey?: string;
+    },
   ) {
     const requestId = ++activeOverviewRequest;
     loadingOverview = true;
@@ -272,6 +282,7 @@
             acknowledgedFilter === "all"
               ? undefined
               : acknowledgedFilter === "ack",
+          bypassCache: options?.bypassCache,
         });
         if (requestId !== activeOverviewRequest) {
           return;
@@ -281,6 +292,9 @@
           bootstrap,
           resolvePreviewFilterKey(videoTypeFilter, acknowledgedFilter),
         );
+        if (options?.authScopeKey) {
+          loadedAuthScopeKey = options.authScopeKey;
+        }
         nextChannels = channels;
       }
 
@@ -306,6 +320,9 @@
 
       syncDepth = nextSyncDepth;
       syncInputValue(currentChannel, nextSyncDepth);
+      if (options?.authScopeKey) {
+        loadedAuthScopeKey = options.authScopeKey;
+      }
     } catch (error) {
       if (requestId !== activeOverviewRequest) {
         return;
@@ -324,6 +341,24 @@
         loadingOverview = false;
       }
     }
+  }
+
+  function reloadOverviewForAuthScope(nextAuthScopeKey: string) {
+    loadingAuthScopeKey = nextAuthScopeKey;
+    lastOverviewLoadKey = buildOverviewLoadKey(
+      selectedChannelId,
+      videoTypeFilter,
+      acknowledgedFilter,
+    );
+    void loadChannelOverviewState(selectedChannelId, {
+      shouldReloadChannels: true,
+      bypassCache: true,
+      authScopeKey: nextAuthScopeKey,
+    }).finally(() => {
+      if (loadingAuthScopeKey === nextAuthScopeKey) {
+        loadingAuthScopeKey = null;
+      }
+    });
   }
 
   async function saveSyncDate() {
@@ -417,14 +452,6 @@
   }
 
   async function openVideoInWorkspace(channelId: string, videoId: string) {
-    const href = buildWorkspaceViewHref({
-      selectedChannelId: channelId,
-      selectedVideoId: videoId,
-      contentMode: "info",
-      videoTypeFilter,
-      acknowledgedFilter,
-    });
-
     if (typeof localStorage !== "undefined") {
       saveWorkspaceState(
         localStorage,
@@ -441,8 +468,7 @@
       );
     }
 
-    await preloadData(href);
-    await goto(href, { keepFocus: true, noScroll: true });
+    await goto("/", { keepFocus: true, noScroll: true });
   }
 
   function reorderChannels(nextOrder: string[]) {
@@ -604,6 +630,22 @@
   });
 
   $effect(() => {
+    if (
+      !shouldReloadChannelOverviewForAuthScope({
+        workspaceStateHydrated,
+        authReady: authState.ready,
+        loadedAuthScopeKey,
+        loadingAuthScopeKey,
+        authScopeKey,
+      })
+    ) {
+      return;
+    }
+
+    reloadOverviewForAuthScope(authScopeKey);
+  });
+
+  $effect(() => {
     if (!workspaceStateHydrated || typeof localStorage === "undefined") {
       return;
     }
@@ -746,7 +788,7 @@
 
   <ChannelOverviewMainContent
     {selectedChannel}
-    {loadingOverview}
+    loadingOverview={overviewBusy}
     {missingChannelMessage}
     bind:earliestSyncDateInput
     {savingSyncDate}

@@ -18,6 +18,7 @@ import {
   applyAcknowledgedFilterChange,
   applyVideoTypeFilterChange,
   clearSidebarVideoFilters,
+  dedupeVideosById,
   loadChannelSnapshotWithRefresh,
   resolveSnapshotPageState,
 } from "$lib/workspace/route-helpers";
@@ -232,6 +233,99 @@ export function createSidebarVideoOperations(
     });
   }
 
+  function mergeSelectedVideoHint(
+    channelId: string,
+    videoId: string,
+    selectedVideoHint: Video | null,
+  ) {
+    if (!selectedVideoHint || selectedVideoHint.channel_id !== channelId) {
+      return;
+    }
+    const currentVideos = context.getVideos();
+    if (currentVideos.some((video) => video.id === videoId)) {
+      return;
+    }
+    if (!videosBelongToChannel(channelId, currentVideos)) {
+      return;
+    }
+
+    context.setVideos(dedupeVideosById([selectedVideoHint, ...currentVideos]));
+  }
+
+  function restoreCachedVideoState(
+    cached: CachedVideoState,
+    channelId: string,
+    videoId: string | null = null,
+    selectedVideoHint: Video | null = null,
+  ) {
+    const cachedVideos =
+      videoId && selectedVideoHint && selectedVideoHint.channel_id === channelId
+        ? dedupeVideosById([selectedVideoHint, ...cloneVideos(cached.videos)])
+        : cloneVideos(cached.videos);
+
+    context.resetVideoListState({
+      videos: cachedVideos,
+      offset: cached.offset,
+      hasMore: cached.hasMore,
+      syncDepth: cloneSyncDepthState(cached.syncDepth),
+      ...(videoId ? { selectedVideoId: videoId } : {}),
+    });
+  }
+
+  async function hydrateChannelSelectionInBackground(channelId: string) {
+    try {
+      await refreshAndLoadVideos(channelId, true);
+    } catch (error) {
+      if (!presentAuthRequiredNoticeIfNeeded(error)) {
+        context.options.onError?.((error as Error).message);
+      }
+    } finally {
+      if (context.getSelectedChannelId() === channelId) {
+        context.setVideoLoadingState(false);
+      }
+    }
+  }
+
+  function selectChannelVideoOptimistically(
+    channelId: string,
+    videoId: string,
+    selectedVideoHint: Video | null = null,
+  ) {
+    const cacheKey = context.getVideoStateKey(channelId);
+    const cached = context.videoStateCache.get(cacheKey);
+    const hasCached =
+      !!cached &&
+      cached.videos.length > 0 &&
+      videosBelongToChannel(channelId, cached.videos);
+
+    if (cached && !hasCached) {
+      context.videoStateCache.delete(cacheKey);
+    }
+
+    context.applySelectionState({
+      selectedChannelId: channelId,
+      selectedVideoId: videoId,
+    });
+    context.options.onChannelSelected?.(channelId);
+
+    if (hasCached && cached) {
+      restoreCachedVideoState(cached, channelId, videoId, selectedVideoHint);
+      context.setVideoLoadingState(false);
+      return hydrateChannelSelectionInBackground(channelId);
+    }
+
+    context.resetVideoListState({
+      videos:
+        selectedVideoHint && selectedVideoHint.channel_id === channelId
+          ? [selectedVideoHint]
+          : [],
+      selectedVideoId: videoId,
+    });
+    context.options.onVideoListReset?.();
+    context.setVideoLoadingState(true);
+    return hydrateChannelSelectionInBackground(channelId);
+  }
+
   async function loadVideos(reset = false, silent = false) {
     const selectedChannelId = context.getSelectedChannelId();
     if (!selectedChannelId) return;
@@ -312,12 +406,7 @@ export function createSidebarVideoOperations(
     context.options.onChannelSelected?.(channelId);
 
     if (hasCached && cached) {
-      context.resetVideoListState({
-        videos: cloneVideos(cached.videos),
-        offset: cached.offset,
-        hasMore: cached.hasMore,
-        syncDepth: cloneSyncDepthState(cached.syncDepth),
-      });
+      restoreCachedVideoState(cached, channelId);
       context.setVideoLoadingState(false);
       void refreshAndLoadVideos(channelId, true);
       return;
@@ -423,6 +512,8 @@ export function createSidebarVideoOperations(
     loadVideos,
     selectChannel,
     selectVideo,
+    mergeSelectedVideoHint,
+    selectChannelVideoOptimistically,
     reloadSelectedChannelVideos,
     setVideoTypeFilterAndReload,
     setAcknowledgedFilterAndReload,
