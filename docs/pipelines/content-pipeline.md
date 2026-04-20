@@ -179,8 +179,11 @@ The summary evaluation worker scans summaries with missing quality state.
 It:
 
 - compares transcript and summary content
-- assigns a `quality_score`
-- writes `quality_note` and `quality_model_used`
+- asks the evaluator for separate faithfulness and completeness scores
+- requires defect evidence for non-perfect scored summaries
+- assigns a `quality_score` when the source is scorable
+- writes `quality_note`, `quality_model_used`, and summary tags
+- can mark a source as unscorable by writing a note without a numeric score
 
 Low-scoring summaries can be requeued by setting the video summary state back to `pending`, subject to the configured regeneration attempt cap.
 

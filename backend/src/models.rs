@@ -670,7 +670,7 @@ pub struct SummaryEvaluationJob {
 #[derive(Debug, Clone, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct SummaryEvaluationResult {
-    pub quality_score: u8,
+    pub quality_score: Option<u8>,
     pub quality_note: Option<String>,
     pub quality_model_used: Option<String>,
     pub summary_tags: Vec<String>,

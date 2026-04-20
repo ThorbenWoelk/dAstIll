@@ -78,7 +78,8 @@ Additional video fields:
 
 - `acknowledged` - user-scoped read state overlaid onto API responses
 - `retry_count` - caps regeneration attempts for summaries
-- `quality_score` - 0-10 rating from the evaluator model
+- `quality_score` - nullable 0-10 rating from the evaluator model; unscorable
+  evaluations can store a note without a numeric score
 
 ## API View Models vs Stored Records
 

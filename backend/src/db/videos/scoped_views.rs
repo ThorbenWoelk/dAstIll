@@ -103,6 +103,40 @@ fn overlay_user_video_state(
     video
 }
 
+fn user_scoped_evaluation_filter_allows(
+    video: &Video,
+    summary: Option<&crate::models::Summary>,
+    queue_filter: Option<QueueFilter>,
+) -> bool {
+    if queue_filter != Some(QueueFilter::EvaluationsOnly) {
+        return true;
+    }
+    if video.transcript_status != ContentStatus::Ready
+        || video.summary_status != ContentStatus::Ready
+    {
+        return false;
+    }
+    summary.is_some_and(summary_needs_evaluation_filter)
+}
+
+async fn video_matches_user_scoped_evaluation_filter(
+    store: &Store,
+    video: &Video,
+    queue_filter: Option<QueueFilter>,
+) -> Result<bool, StoreError> {
+    if queue_filter != Some(QueueFilter::EvaluationsOnly) {
+        return Ok(true);
+    }
+    let summary = store
+        .get_json::<crate::models::Summary>(&format!("summaries/{}.json", video.id))
+        .await?;
+    Ok(user_scoped_evaluation_filter_allows(
+        video,
+        summary.as_ref(),
+        queue_filter,
+    ))
+}
+
 pub async fn get_user_scoped_video(
     store: &Store,
     user_id: Option<&str>,
@@ -179,20 +213,25 @@ pub async fn list_user_scoped_videos_by_channel(
             .cloned()
             .collect::<HashSet<_>>();
         let subscribed_channel_ids = allowed_channel_ids.iter().cloned().collect::<HashSet<_>>();
-        let mut filtered = get_videos(
+        let mut filtered = Vec::new();
+        for video in get_videos(
             store,
             &allowed_other_video_ids.iter().collect::<Vec<_>>(),
             false,
         )
         .await?
         .into_values()
-        .map(|video| overlay_user_video_state(video, &user_states))
-        .filter(|video| {
-            allowed_other_video_ids.contains(&video.id)
-                && !subscribed_channel_ids.contains(&video.channel_id)
-        })
-        .filter(matches_filters)
-        .collect::<Vec<_>>();
+        {
+            let video = overlay_user_video_state(video, &user_states);
+            if !allowed_other_video_ids.contains(&video.id)
+                || subscribed_channel_ids.contains(&video.channel_id)
+                || !matches_filters(&video)
+                || !video_matches_user_scoped_evaluation_filter(store, &video, queue_filter).await?
+            {
+                continue;
+            }
+            filtered.push(video);
+        }
 
         filtered.sort_by(|left, right| right.published_at.cmp(&left.published_at));
         let total_len = filtered.len();
@@ -224,12 +263,18 @@ pub async fn list_user_scoped_videos_by_channel(
         let batch_len = batch.len();
         scanned = scanned.saturating_add(batch_len);
 
-        matched.extend(
-            batch
-                .into_iter()
-                .map(|video| overlay_user_video_state(video, &user_states))
-                .filter(matches_filters),
-        );
+        for video in batch {
+            let video = overlay_user_video_state(video, &user_states);
+            if !matches_filters(&video)
+                || !video_matches_user_scoped_evaluation_filter(store, &video, queue_filter).await?
+            {
+                continue;
+            }
+            matched.push(video);
+            if matched.len() >= target_len {
+                break;
+            }
+        }
 
         if matched.len() >= target_len || batch_len < CHANNEL_WINDOW_BATCH_SIZE {
             break;
@@ -259,10 +304,11 @@ mod tests {
 
     use super::{
         oldest_ready_video_published_at_from_slice, overlay_user_video_state,
+        summary_needs_evaluation_filter, user_scoped_evaluation_filter_allows,
         video_matches_channel_scope, video_visible_in_list,
     };
     use crate::db::{MAX_CONCURRENT_S3_OPS, QueueFilter};
-    use crate::models::{ContentStatus, UserVideoState, Video};
+    use crate::models::{ContentStatus, Summary, UserVideoState, Video};
 
     fn build_video(transcript_status: ContentStatus, summary_status: ContentStatus) -> Video {
         Video {
@@ -364,6 +410,75 @@ mod tests {
             &video,
             Some(QueueFilter::TranscriptsOnly)
         ));
+    }
+
+    fn summary_with_quality(
+        quality_score: Option<u8>,
+        quality_note: Option<&str>,
+        summary_tags_evaluated: bool,
+    ) -> Summary {
+        Summary {
+            video_id: "video-123".to_string(),
+            content: "summary".to_string(),
+            model_used: Some("summary-model".to_string()),
+            quality_score,
+            quality_note: quality_note.map(ToOwned::to_owned),
+            quality_model_used: Some("eval-model".to_string()),
+            summary_tags: Vec::new(),
+            summary_tags_evaluated,
+        }
+    }
+
+    #[test]
+    fn evaluation_filter_skips_unscorable_completed_summary() {
+        let summary = summary_with_quality(None, Some("**Unscorable**:\n- Show notes"), true);
+
+        assert!(!summary_needs_evaluation_filter(&summary));
+    }
+
+    #[test]
+    fn evaluation_filter_keeps_missing_quality_pending() {
+        let summary = summary_with_quality(None, None, false);
+
+        assert!(summary_needs_evaluation_filter(&summary));
+    }
+
+    #[test]
+    fn evaluation_filter_keeps_legacy_tagless_summary_pending() {
+        let summary = summary_with_quality(Some(9), Some("Legacy evaluation"), false);
+
+        assert!(summary_needs_evaluation_filter(&summary));
+    }
+
+    #[test]
+    fn user_scoped_evaluation_filter_skips_unscorable_completed_summary() {
+        let video = build_video(ContentStatus::Ready, ContentStatus::Ready);
+        let summary = summary_with_quality(None, Some("**Unscorable**:\n- Show notes"), true);
+
+        assert!(!user_scoped_evaluation_filter_allows(
+            &video,
+            Some(&summary),
+            Some(QueueFilter::EvaluationsOnly)
+        ));
+    }
+
+    #[test]
+    fn user_scoped_evaluation_filter_keeps_missing_quality_pending() {
+        let video = build_video(ContentStatus::Ready, ContentStatus::Ready);
+        let summary = summary_with_quality(None, None, false);
+
+        assert!(user_scoped_evaluation_filter_allows(
+            &video,
+            Some(&summary),
+            Some(QueueFilter::EvaluationsOnly)
+        ));
+    }
+
+    #[test]
+    fn user_scoped_evaluation_filter_does_not_affect_non_evaluation_queues() {
+        let video = build_video(ContentStatus::Ready, ContentStatus::Ready);
+
+        assert!(user_scoped_evaluation_filter_allows(&video, None, None));
     }
 
     #[test]
