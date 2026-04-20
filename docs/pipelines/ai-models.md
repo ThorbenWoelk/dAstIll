@@ -71,9 +71,27 @@ This guard exists to keep generation and judgment independent.
 
 ### Judgment Criteria
 
-The evaluator compares the generated summary against the canonical transcript and scores
-on a 0-10 scale, writing a `quality_score` and `quality_note` to the summary record.
-Summaries below the threshold can be automatically requeued for regeneration.
+The evaluator compares the generated summary against the canonical transcript on two axes:
+
+- faithfulness - whether summary claims are supported by the transcript
+- completeness - whether the summary covers the transcript's substantive editorial content
+
+The model returns structured JSON with:
+
+- `status` - `scored` or `unscorable`
+- `faithfulness_score`, `completeness_score`, and `final_score` for scored summaries
+- `defects[]` with defect type, severity, affected summary claim, and transcript anchor
+- `unscorable_reason` when the transcript or summary cannot be judged reliably
+- `tags[]` as transcript-supported metadata, not quality defects
+
+The backend still stores the result in the current summary fields: `quality_score`,
+`quality_note`, `quality_model_used`, and `summary_tags`. `quality_note` preserves the
+axis scores and defect evidence for auditability. Unscorable inputs store a note without
+a numeric score.
+
+Scores are calibrated around the regeneration cutoff: `7` is acceptable, while `6` or
+below means the summary should be regenerated when retry limits allow. Summaries below
+the threshold can be automatically requeued for regeneration.
 
 ### Regeneration Cap
 

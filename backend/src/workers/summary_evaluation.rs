@@ -137,7 +137,7 @@ pub fn spawn_summary_evaluation_worker(state: AppState) {
                                 let _ = db::update_summary_quality(
                                     &conn,
                                     &job.video_id,
-                                    Some(result.quality_score),
+                                    result.quality_score,
                                     result.quality_note.as_deref(),
                                     result.quality_model_used.as_deref(),
                                     Some(&result.summary_tags),
@@ -147,16 +147,18 @@ pub fn spawn_summary_evaluation_worker(state: AppState) {
 
                                 tracing::info!(
                                     video_id = %job.video_id,
-                                    score = result.quality_score,
+                                    score = ?result.quality_score,
                                     model = result.quality_model_used.as_deref().unwrap_or("-"),
                                     "summary evaluation completed"
                                 );
 
-                                if let Ok(auto_regen_attempts) =
-                                    db::get_summary_auto_regen_attempts(&conn, &job.video_id).await
+                                if let Some(score) = result.quality_score
+                                    && let Ok(auto_regen_attempts) =
+                                        db::get_summary_auto_regen_attempts(&conn, &job.video_id)
+                                            .await
                                 {
                                     if should_queue_summary_auto_regeneration(
-                                        result.quality_score,
+                                        score,
                                         auto_regen_attempts,
                                     ) {
                                         if let Err(err) = db::update_video_summary_status(
@@ -175,7 +177,7 @@ pub fn spawn_summary_evaluation_worker(state: AppState) {
                                             evict_video_scope_cache(&state, &job.video_id).await;
                                             tracing::info!(
                                                 video_id = %job.video_id,
-                                                score = result.quality_score,
+                                                score = score,
                                                 attempts = auto_regen_attempts,
                                                 threshold = content::MIN_SUMMARY_QUALITY_SCORE_FOR_ACCEPTANCE,
                                                 max_attempts = content::MAX_SUMMARY_AUTO_REGEN_ATTEMPTS,

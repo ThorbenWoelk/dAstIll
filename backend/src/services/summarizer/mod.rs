@@ -741,10 +741,13 @@ and use canary for lower-risk feature rollouts.";
         .expect("summary evaluation timed out")
         .expect("summary evaluation failed");
 
+        let quality_score = evaluation
+            .quality_score
+            .expect("expected evaluator to return a numeric score");
         assert!(
-            evaluation.quality_score >= 7,
+            quality_score >= 7,
             "expected quality score >= 7, got {} ({:?})",
-            evaluation.quality_score,
+            quality_score,
             evaluation.quality_note
         );
     }

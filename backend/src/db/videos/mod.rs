@@ -3,7 +3,8 @@ mod scoped_views;
 use std::collections::HashSet;
 
 use crate::models::{
-    CanonicalVideoRecord, Channel, ContentStatus, OTHERS_CHANNEL_ID, OTHERS_CHANNEL_NAME, Video,
+    CanonicalVideoRecord, Channel, ContentStatus, OTHERS_CHANNEL_ID, OTHERS_CHANNEL_NAME, Summary,
+    Video,
 };
 use crate::read_cache::SuggestedVideo;
 
@@ -51,6 +52,10 @@ fn video_from_canonical(record: CanonicalVideoRecord) -> Video {
         retry_count: record.retry_count,
         quality_score: record.quality_score,
     }
+}
+
+fn summary_needs_evaluation_filter(summary: &Summary) -> bool {
+    super::content::summary_needs_quality_eval(summary)
 }
 
 async fn mirror_video_snapshot(store: &Store, video_id: &str) -> Result<(), StoreError> {
@@ -420,7 +425,7 @@ async fn apply_channel_video_filters(
             let summary = store
                 .get_json::<crate::models::Summary>(&format!("summaries/{}.json", v.id))
                 .await?;
-            if summary.is_some_and(|s| s.quality_score.is_none()) {
+            if summary.is_some_and(|s| summary_needs_evaluation_filter(&s)) {
                 result.push(v.clone());
             }
         }

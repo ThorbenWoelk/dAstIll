@@ -128,7 +128,7 @@ fn apply_summary_quality_update(
     }
 }
 
-fn summary_needs_quality_eval(summary: &Summary) -> bool {
+pub(crate) fn summary_needs_quality_eval(summary: &Summary) -> bool {
     let has_quality = summary.quality_score.is_some() || summary.quality_note.is_some();
     !has_quality || !summary.summary_tags_evaluated
 }
