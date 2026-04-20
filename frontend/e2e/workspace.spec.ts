@@ -547,6 +547,35 @@ test("channel row click opens the overview page and overview exposes delete", as
   ).toBeVisible();
 });
 
+test("channel overview video row opens the workspace with that video selected", async ({
+  page,
+}) => {
+  await installSeededWorkspaceApi(page);
+  await page.goto("/channels/channel-alpha");
+
+  const sidebar = workspaceSidebar(page);
+  const channelVideos = sidebar.locator(
+    '[data-channel-video-list="channel-alpha"]',
+  );
+  const videoRow = channelVideos.getByRole("button", {
+    name: /Alpha workspace fixture video/,
+  });
+  await expect(videoRow).toBeVisible({ timeout: READY_MS });
+
+  await dispatchVisibleClick(videoRow);
+
+  await expect.poll(() => new URL(page.url()).pathname).toBe("/");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+    "Alpha workspace fixture video",
+    { timeout: READY_MS },
+  );
+  await expect(
+    page.getByText("Fixture info for the alpha workspace video."),
+  ).toBeVisible({
+    timeout: READY_MS,
+  });
+});
+
 test("guest mark read toggle opens the sign-in prompt", async ({ page }) => {
   await openSeededWorkspace(
     page,
