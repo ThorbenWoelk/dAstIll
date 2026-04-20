@@ -353,6 +353,40 @@ test("summary and transcript match the selected video after changing channel", a
   expect(summaryB).not.toBe(transcriptA);
 });
 
+test("browser back restores workspace content from the URL", async ({
+  page,
+}) => {
+  await openSeededWorkspace(
+    page,
+    "/?source=channel-alpha&item=video-alpha&content=transcript",
+  );
+  await expect(page.locator("#content-view article")).toContainText(
+    "Alpha transcript fixture",
+    { timeout: READY_MS },
+  );
+
+  await navigateViaInjectedLink(
+    page,
+    "/?source=channel-beta&item=video-beta&content=transcript",
+  );
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get("source"))
+    .toBe("channel-beta");
+  await expect(page.locator("#content-view article")).toContainText(
+    "Beta transcript fixture",
+    { timeout: READY_MS },
+  );
+
+  await page.goBack();
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get("source"))
+    .toBe("channel-alpha");
+  await expect(page.locator("#content-view article")).toContainText(
+    "Alpha transcript fixture",
+    { timeout: READY_MS },
+  );
+});
+
 test("workspace feature guide opens from guide URL param (same state as Guide control)", async ({
   page,
 }) => {

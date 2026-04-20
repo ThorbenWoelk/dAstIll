@@ -16,7 +16,10 @@ import type {
 import { renderMarkdown } from "$lib/utils/markdown";
 import { createAddSourceFeedbackController } from "$lib/workspace/add-source-feedback.svelte";
 import { createAiStatusPoller } from "$lib/utils/ai-poller";
-import { buildWorkspaceViewHref } from "$lib/view-url";
+import {
+  buildWorkspaceViewHref,
+  parseWorkspaceViewUrlState,
+} from "$lib/view-url";
 import {
   cloneSyncDepthState,
   cloneVideos,
@@ -73,6 +76,9 @@ export function createHomeWorkspacePage() {
   const workspaceCacheScopeKey = $derived(
     getAuthStorageScopeKey(authState.current),
   );
+  let applyingWorkspaceUrlState = false;
+  let lastWorkspaceRouteHref = page.url.href;
+  let workspaceRouteSyncSeq = 0;
 
   const sidebarState = createSidebarState({
     initialChannelId: page.data.selectedChannelId,
@@ -85,6 +91,9 @@ export function createHomeWorkspacePage() {
     onChannelSelected: (channelId: string) => {
       if (!sidebarState.selectedVideoId) {
         content.clearSelectionMetadata();
+      }
+      if (applyingWorkspaceUrlState) {
+        return;
       }
       const href = buildWorkspaceViewHref({
         selectedChannelId: channelId,
@@ -111,6 +120,9 @@ export function createHomeWorkspacePage() {
       }
     },
     onVideoTypeFilterChange: (value: VideoTypeFilter) => {
+      if (applyingWorkspaceUrlState) {
+        return;
+      }
       const href = buildWorkspaceViewHref({
         selectedChannelId: sidebarState.selectedChannelId,
         selectedVideoId,
@@ -121,6 +133,9 @@ export function createHomeWorkspacePage() {
       persistenceController.replaceWorkspaceUrl(href);
     },
     onAcknowledgedFilterChange: (value: AcknowledgedFilter) => {
+      if (applyingWorkspaceUrlState) {
+        return;
+      }
       const href = buildWorkspaceViewHref({
         selectedChannelId: sidebarState.selectedChannelId,
         selectedVideoId,
@@ -348,6 +363,97 @@ export function createHomeWorkspacePage() {
     tour.setStep(step);
   }
 
+  async function syncWorkspaceViewFromUrl(href: string, seq: number) {
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- transient URL for route-sync parsing
+    const restored = parseWorkspaceViewUrlState(new URL(href));
+    const hasChannelParam = "selectedChannelId" in restored;
+    const hasVideoParam = "selectedVideoId" in restored;
+    const nextChannelId = hasChannelParam
+      ? (restored.selectedChannelId ?? null)
+      : undefined;
+    const nextVideoId = hasVideoParam
+      ? (restored.selectedVideoId ?? null)
+      : undefined;
+    const nextMode =
+      restored.contentMode && isWorkspaceContentMode(restored.contentMode)
+        ? restored.contentMode
+        : undefined;
+    const nextVideoTypeFilter =
+      restored.videoTypeFilter &&
+      isWorkspaceVideoTypeFilter(restored.videoTypeFilter)
+        ? restored.videoTypeFilter
+        : undefined;
+    const nextAcknowledgedFilter =
+      restored.acknowledgedFilter &&
+      isAcknowledgedFilter(restored.acknowledgedFilter)
+        ? restored.acknowledgedFilter
+        : undefined;
+
+    const channelChanged =
+      nextChannelId !== undefined &&
+      nextChannelId !== sidebarState.selectedChannelId;
+    const videoChanged =
+      nextVideoId !== undefined && nextVideoId !== sidebarState.selectedVideoId;
+    const modeChanged =
+      nextMode !== undefined && nextMode !== content.contentMode;
+    const videoTypeFilterChanged =
+      nextVideoTypeFilter !== undefined &&
+      nextVideoTypeFilter !== sidebarState.videoTypeFilter;
+    const acknowledgedFilterChanged =
+      nextAcknowledgedFilter !== undefined &&
+      nextAcknowledgedFilter !== sidebarState.acknowledgedFilter;
+    const filterChanged = videoTypeFilterChanged || acknowledgedFilterChanged;
+
+    if (!channelChanged && !videoChanged && !modeChanged && !filterChanged) {
+      return;
+    }
+
+    applyingWorkspaceUrlState = true;
+    try {
+      if (nextVideoTypeFilter) {
+        sidebarState.setVideoTypeFilter(nextVideoTypeFilter);
+      }
+      if (nextAcknowledgedFilter) {
+        sidebarState.setAcknowledgedFilter(nextAcknowledgedFilter);
+      }
+
+      if (nextMode && (channelChanged || videoChanged)) {
+        content.setMode(nextMode);
+      }
+
+      if (channelChanged && nextChannelId) {
+        await dataController.selectChannel(
+          nextChannelId,
+          nextVideoId !== undefined
+            ? nextVideoId
+            : sidebarState.selectedVideoId,
+          false,
+        );
+      } else if (filterChanged && sidebarState.selectedChannelId) {
+        await sidebarState.reloadSelectedChannelVideos({
+          reset: true,
+          silent: true,
+          refresh: true,
+          clearMissingSelectedVideo: false,
+        });
+      }
+      if (seq !== workspaceRouteSyncSeq) return;
+
+      if (!channelChanged && videoChanged) {
+        await dataController.selectVideo(nextVideoId ?? null, false, true);
+      }
+      if (seq !== workspaceRouteSyncSeq) return;
+
+      if (nextMode && content.contentMode !== nextMode) {
+        await dataController.setMode(nextMode);
+      }
+    } finally {
+      if (seq === workspaceRouteSyncSeq) {
+        applyingWorkspaceUrlState = false;
+      }
+    }
+  }
+
   async function handleDeleteChannel(channelId: string) {
     const result = await dataController.handleDeleteChannel(channelId);
     if (result === "auth_required") {
@@ -369,6 +475,24 @@ export function createHomeWorkspacePage() {
         DASTILL_SET_WORKSPACE_CONTENT_MODE_EVENT,
         handler,
       );
+  });
+
+  $effect(() => {
+    const href = page.url.href;
+    const pathname = page.url.pathname;
+    if (href === lastWorkspaceRouteHref) {
+      return;
+    }
+
+    lastWorkspaceRouteHref = href;
+    if (pathname !== "/") {
+      return;
+    }
+
+    const seq = ++workspaceRouteSyncSeq;
+    queueMicrotask(() => {
+      void syncWorkspaceViewFromUrl(href, seq);
+    });
   });
 
   async function openAddSourceFeedbackTarget() {
