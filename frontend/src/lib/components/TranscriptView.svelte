@@ -613,7 +613,7 @@
   {#if mode === "markdown"}
     <article
       bind:this={articleElement}
-      class={`workspace-article prose max-w-none break-words leading-relaxed transition-opacity duration-500 prose-headings:font-serif prose-headings:font-bold prose-headings:tracking-tight prose-h1:text-[clamp(2rem,4vw,3rem)] prose-h2:text-[clamp(1.4rem,2.2vw,1.8rem)] prose-h3:text-[1.1rem] prose-p:text-[18px] prose-p:leading-[1.82] prose-p:tracking-[-0.01em] prose-strong:font-bold prose-a:text-[var(--accent)] prose-a:underline-offset-4 prose-blockquote:border-l-[var(--accent)] prose-blockquote:bg-[var(--accent-soft)]/30 prose-blockquote:py-1 prose-blockquote:px-6 prose-blockquote:rounded-r-lg ${
+      class={`workspace-article prose max-w-none break-words leading-relaxed transition-opacity duration-500 prose-headings:font-sans prose-headings:font-semibold prose-headings:tracking-tight prose-h1:text-[clamp(2rem,4vw,3rem)] prose-h2:text-[clamp(1.4rem,2.2vw,1.8rem)] prose-h3:text-base prose-h3:uppercase prose-h3:tracking-wide prose-p:font-serif prose-p:text-[18px] prose-p:leading-[1.7] prose-li:font-serif prose-li:text-[18px] prose-li:leading-[1.7] prose-strong:font-semibold prose-a:text-[var(--accent)] prose-a:underline-offset-4 prose-blockquote:border-l-2 prose-blockquote:border-[var(--accent)] prose-blockquote:bg-[var(--muted)] prose-blockquote:py-3 prose-blockquote:px-6 prose-blockquote:rounded-r-lg ${
         formatting ? "opacity-40 grayscale blur-[1px]" : "opacity-100"
       }`}
     >
