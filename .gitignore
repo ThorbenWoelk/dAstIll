@@ -2,6 +2,7 @@
 **/*.log
 .logfire/
 .omx/
+.local-asr.pid
 
 # Terraform
 **/.terraform/
