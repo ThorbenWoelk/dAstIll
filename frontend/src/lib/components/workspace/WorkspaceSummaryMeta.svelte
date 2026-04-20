@@ -22,7 +22,7 @@
   } = $props();
 
   let drawerOpen = $state(false);
-  let triggerEl = $state<HTMLButtonElement | null>(null);
+  let triggerEl = $state<HTMLElement | null>(null);
 
   const displayScore = $derived(
     score !== null
@@ -33,6 +33,9 @@
   );
   const trimmedNote = $derived(note?.trim() || null);
   const displayTags = $derived(tags.filter((tag) => tag.trim().length > 0));
+  const tagCountLabel = $derived(
+    `${displayTags.length} ${displayTags.length === 1 ? "tag" : "tags"}`,
+  );
   const showLoadingState = $derived(
     displayScore !== null &&
       !trimmedNote &&
@@ -77,18 +80,33 @@
 
 {#if compact}
   {#if displayScore !== null}
-    <button
-      bind:this={triggerEl}
-      type="button"
-      class="meta-score-pill"
-      onclick={toggleDrawer}
-      aria-expanded={drawerOpen}
-      aria-controls="summary-quality-note"
-      title={drawerOpen ? "Hide evaluation" : "Show evaluation"}
-    >
-      <span class="meta-score-pill-value">{displayScore}</span>
-      <span class="meta-score-pill-label">Quality</span>
-    </button>
+    <span bind:this={triggerEl} class="meta-compact-cluster">
+      <button
+        type="button"
+        class="meta-score-pill"
+        onclick={toggleDrawer}
+        aria-expanded={drawerOpen}
+        aria-controls="summary-quality-note"
+        title={drawerOpen ? "Hide evaluation" : "Show evaluation"}
+      >
+        <span class="meta-score-pill-value">{displayScore}</span>
+        <span class="meta-score-pill-label">Quality</span>
+      </button>
+      {#if displayTags.length > 0}
+        <span class="meta-compact-dot" aria-hidden="true"></span>
+        <button
+          type="button"
+          class="meta-tag-count"
+          onclick={toggleDrawer}
+          aria-expanded={drawerOpen}
+          aria-controls="summary-quality-note"
+          aria-label={`Show evaluation tags, ${tagCountLabel}`}
+          title={drawerOpen ? "Hide evaluation" : "Show evaluation tags"}
+        >
+          {tagCountLabel}
+        </button>
+      {/if}
+    </span>
   {:else}
     <span
       class="meta-score-pill meta-score-pill--pending"
@@ -167,17 +185,17 @@
     </header>
 
     <div class="eval-drawer-body">
-      {#if trimmedNote}
-        <div class="eval-note-markdown">
-          {@html renderMarkdown(trimmedNote)}
-        </div>
-      {/if}
-
       {#if displayTags.length > 0}
         <div class="eval-tag-list" aria-label="Evaluation tags">
           {#each displayTags as tag (tag)}
             <span class="eval-tag-chip">{tag}</span>
           {/each}
+        </div>
+      {/if}
+
+      {#if trimmedNote}
+        <div class="eval-note-markdown">
+          {@html renderMarkdown(trimmedNote)}
         </div>
       {/if}
 
@@ -206,6 +224,19 @@
 {/if}
 
 <style>
+  .meta-compact-cluster {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.65rem;
+  }
+
+  .meta-compact-dot {
+    width: 0.25rem;
+    height: 0.25rem;
+    border-radius: 9999px;
+    background: var(--border);
+  }
+
   .meta-score-pill {
     display: inline-flex;
     align-items: baseline;
@@ -242,6 +273,22 @@
 
   .meta-score-pill-label {
     color: inherit;
+  }
+
+  .meta-tag-count {
+    border: none;
+    background: none;
+    padding: 0;
+    margin: 0;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    line-height: 1;
+    transition: opacity 0.15s ease;
+  }
+
+  .meta-tag-count:hover {
+    opacity: 0.7;
   }
 
   .summary-meta-gutter {
@@ -409,7 +456,7 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0.45rem;
-    margin-top: 1rem;
+    margin-bottom: 1rem;
   }
 
   .eval-tag-chip {

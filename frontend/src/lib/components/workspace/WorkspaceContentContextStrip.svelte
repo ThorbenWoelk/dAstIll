@@ -85,18 +85,6 @@
     {/if}
   </div>
 
-  {#if contentMode === "summary" && summaryTags.length > 0}
-    <div class="mb-4 flex flex-wrap gap-1.5" aria-label="Summary tags">
-      {#each summaryTags as tag (tag)}
-        <span
-          class="inline-flex items-center rounded-md border border-[var(--border-soft)] bg-[var(--surface)] px-2 py-0.5 text-[11px] font-medium text-[var(--soft-foreground)]"
-        >
-          {tag}
-        </span>
-      {/each}
-    </div>
-  {/if}
-
   <h1 class="content-hero-title mb-6 text-[var(--foreground)] sm:mb-8">
     {selectedVideo.title}
   </h1>

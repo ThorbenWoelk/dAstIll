@@ -532,13 +532,23 @@ test("desktop summary eval score opens the quality drawer", async ({
     .locator("button[aria-controls='summary-quality-note']")
     .filter({ hasText: "Quality" });
   const evalDrawer = page.locator("#summary-quality-note");
+  const tagList = evalDrawer.locator("[aria-label='Evaluation tags']");
+  const note = evalDrawer.locator(".eval-note-markdown");
 
   await expect(evalTrigger).toBeVisible();
   await evalTrigger.click();
 
   await expect(evalDrawer).toBeVisible();
   await expect(evalTrigger).toHaveAttribute("aria-expanded", "true");
-  await expect(evalDrawer.locator(".eval-note-markdown")).toContainText(/\S+/);
+  await expect(note).toContainText(/\S+/);
+  await expect(tagList).toBeVisible();
+  const tagListTop = await tagList.evaluate(
+    (node) => node.getBoundingClientRect().top,
+  );
+  const noteTop = await note.evaluate(
+    (node) => node.getBoundingClientRect().top,
+  );
+  expect(tagListTop).toBeLessThan(noteTop);
 });
 
 test("desktop summary eval drawer still opens when only score and tags are present", async ({
@@ -608,15 +618,17 @@ test("desktop summary eval drawer still opens when only score and tags are prese
     "eval drawer still opens without a note",
   );
 
-  const evalTrigger = page
+  const tagTrigger = page
     .locator("button[aria-controls='summary-quality-note']")
-    .filter({ hasText: "Quality" });
+    .filter({ hasText: "2 tags" });
   const evalDrawer = page.locator("#summary-quality-note");
 
-  await expect(evalTrigger).toBeVisible();
-  await evalTrigger.click();
+  await expect(page.locator("[aria-label='Summary tags']")).toHaveCount(0);
+  await expect(tagTrigger).toBeVisible();
+  await tagTrigger.click();
 
   await expect(evalDrawer).toBeVisible();
+  await expect(tagTrigger).toHaveAttribute("aria-expanded", "true");
   await expect(evalDrawer.getByText("AI Security")).toBeVisible();
   await expect(evalDrawer.getByText("Tech Knowledge")).toBeVisible();
 });

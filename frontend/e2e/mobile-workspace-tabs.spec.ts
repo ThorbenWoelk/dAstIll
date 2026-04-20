@@ -260,8 +260,13 @@ test("mobile summary eval pill opens the quality drawer", async ({ page }) => {
   const evalTrigger = page
     .locator("button[aria-controls='summary-quality-note']")
     .filter({ hasText: "Quality" });
+  const tagTrigger = page
+    .locator("button[aria-controls='summary-quality-note']")
+    .filter({ hasText: "2 tags" });
 
   await expect(evalTrigger.first()).toBeVisible();
+  await expect(tagTrigger.first()).toBeVisible();
+  await expect(page.locator("[aria-label='Summary tags']")).toHaveCount(0);
   await evalTrigger.first().click();
 
   const evalDrawer = page.locator("#summary-quality-note");
