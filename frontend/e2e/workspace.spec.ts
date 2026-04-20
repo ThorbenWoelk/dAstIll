@@ -194,6 +194,79 @@ test("channel row chevron collapses the selected channel without reopening", asy
   await expect(selectedVideo).toBeHidden();
 });
 
+test("channel overview stays loading instead of showing not found during auth handoff", async ({
+  page,
+}) => {
+  const stale = buildMockWorkspaceBootstrap({
+    channelId: "channel-stale",
+    channelName: "Stale anonymous channel",
+    channelHandle: "@stale-anon",
+    containerId: "container-stale",
+    videoId: "video-stale",
+    videoTitle: "Stale anonymous fixture video",
+    qualityScore: 4,
+  });
+  const authenticated = buildMockWorkspaceBootstrap({
+    channelId: "channel-auth",
+    channelName: "Authenticated channel",
+    channelHandle: "@authenticated-channel",
+    containerId: "container-auth",
+    videoId: "video-auth",
+    videoTitle: "Authenticated fixture video",
+    qualityScore: 9,
+  });
+  let bootstrapCalls = 0;
+  let secondBootstrapStarted = false;
+
+  await page.addInitScript(() => {
+    window.localStorage.setItem(
+      "__dastill_e2e_auth",
+      JSON.stringify({
+        userId: "e2e-user",
+        email: "e2e@example.com",
+        token: "e2e-token",
+      }),
+    );
+  });
+
+  await installMockWorkspaceApi(page, {
+    bootstrap: authenticated,
+    snapshots: {
+      "channel-stale": stale.snapshot,
+      "channel-auth": authenticated.snapshot,
+    },
+  });
+  await page.route("**/api/workspace/bootstrap**", async (route) => {
+    bootstrapCalls += 1;
+    if (bootstrapCalls === 1) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(stale),
+      });
+      return;
+    }
+
+    secondBootstrapStarted = true;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(authenticated),
+    });
+  });
+
+  await page.goto("/channels/channel-auth");
+  await expect
+    .poll(() => secondBootstrapStarted, { timeout: READY_MS })
+    .toBe(true);
+  await expect(page.getByText("Channel not found.")).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Authenticated channel" }),
+  ).toBeVisible({ timeout: READY_MS });
+  await expect(page.getByText("Channel not found.")).toHaveCount(0);
+});
+
 test("desktop sidebar sits flush against the main content", async ({
   page,
 }) => {
