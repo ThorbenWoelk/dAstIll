@@ -231,7 +231,7 @@ Important variables:
 | `ANONYMOUS_CHAT_QUOTA`              | Message quota for anonymous chat users (default: `30`)                                       |
 | `SUMMARIZE_PATH`                    | Path to the transcript extraction CLI                                                        |
 | `LOCAL_ASR_ENABLED`                 | Enable local/free podcast ASR for RSS audio enclosures                                       |
-| `LOCAL_ASR_BASE_URL`                | OpenAI-compatible local ASR base URL for an operator-owned local/prod service                 |
+| `LOCAL_ASR_BASE_URL`                | OpenAI-compatible local ASR base URL for an operator-owned local/prod service                |
 | `LOCAL_ASR_AUTH_MODE`               | ASR auth mode: `api_key` locally, `google_id_token` for the repo-owned Cloud Run service     |
 | `LOCAL_ASR_API_KEY`                 | API key for the local ASR endpoint; local-only servers commonly use `sk-no-key-required`     |
 | `LOCAL_ASR_MODEL`                   | Local ASR model name; recommended default is `whisper-base.en`                               |
