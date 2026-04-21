@@ -157,6 +157,7 @@ export function createSidebarPreviewController(
   let userCollapsedSelectionKey = $state<string | null>(null);
   let syncDatePickerChannelId = $state<string | null>(null);
   let previewWarmupSeq = 0;
+  let userChangedExpandedState = false;
 
   function channelListEmptyCaption(channelVideoCount: number | null): string {
     if (channelVideoCount === null) {
@@ -451,6 +452,7 @@ export function createSidebarPreviewController(
 
   async function toggleChannelVideoCollection(channel: Channel) {
     const state = ensureChannelVideoCollection(channel.id);
+    userChangedExpandedState = true;
     if (state.expanded) {
       const selectedChannelId = options.getSelectedChannelId();
       const selectedVideoId = options.getSelectedVideoId();
@@ -603,6 +605,14 @@ export function createSidebarPreviewController(
     }
 
     if (hydratedPreviewSessionKey === previewSessionKey) {
+      return;
+    }
+
+    if (
+      userChangedExpandedState &&
+      Object.keys(channelVideoCollections).length > 0
+    ) {
+      hydratedPreviewSessionKey = previewSessionKey;
       return;
     }
 
