@@ -410,24 +410,24 @@
       </div>
     {/if}
   </div>
-</div>
 
-{#if view === "appearance" && menuOpen}
-  <div
-    class="fixed inset-0 z-[200] hidden items-center justify-center p-4 lg:flex"
-    transition:fade={{ duration: 150 }}
-  >
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
+  {#if view === "appearance" && menuOpen}
     <div
-      class="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
-      onclick={closeAll}
-    ></div>
-    <div class="relative z-10 w-full max-w-4xl">
-      <SettingsPanel onClose={closeAll} />
+      class="fixed inset-0 z-[200] hidden items-center justify-center p-4 lg:flex"
+      transition:fade={{ duration: 150 }}
+    >
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <div
+        class="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+        onclick={closeAll}
+      ></div>
+      <div class="relative z-10 w-full max-w-4xl">
+        <SettingsPanel onClose={closeAll} />
+      </div>
     </div>
-  </div>
-{/if}
+  {/if}
+</div>
 
 <style>
   .workspace-user-menu-panel,
