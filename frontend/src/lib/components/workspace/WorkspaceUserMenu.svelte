@@ -1,8 +1,8 @@
 <script lang="ts">
   import { authState } from "$lib/auth-state.svelte";
   import { clickOutside } from "$lib/actions/click-outside";
-  import ThemePanel from "$lib/components/ThemePanel.svelte";
   import ChevronIcon from "$lib/components/icons/ChevronIcon.svelte";
+  import CloseIcon from "$lib/components/icons/CloseIcon.svelte";
   import SettingsPanel from "$lib/components/SettingsPanel.svelte";
   import { fade } from "svelte/transition";
 
@@ -17,7 +17,8 @@
   }>();
 
   let menuOpen = $state(false);
-  let view = $state<"main" | "appearance" | "help">("main");
+  let view = $state<"main" | "help">("main");
+  let settingsOpen = $state(false);
 
   function handleSignOut() {
     menuOpen = false;
@@ -36,10 +37,27 @@
     view = "main";
   }
 
+  function openSettings() {
+    menuOpen = false;
+    view = "main";
+    settingsOpen = true;
+  }
+
+  function closeSettings() {
+    settingsOpen = false;
+  }
+
   function handleWindowKeydown(event: KeyboardEvent) {
-    if (!menuOpen || event.key !== "Escape") return;
-    event.preventDefault();
-    closeAll();
+    if (event.key !== "Escape") return;
+    if (settingsOpen) {
+      event.preventDefault();
+      closeSettings();
+      return;
+    }
+    if (menuOpen) {
+      event.preventDefault();
+      closeAll();
+    }
   }
 </script>
 
@@ -49,7 +67,7 @@
   <div class="flex flex-col gap-0.5">
     <button
       class="group flex w-full items-center justify-between rounded-[var(--radius-md)] px-3 py-2 text-[14px] font-medium transition-colors hover:bg-[var(--accent-wash)]"
-      onclick={() => (view = "appearance")}
+      onclick={openSettings}
       role="menuitem"
     >
       <div class="flex items-center gap-3">
@@ -64,13 +82,12 @@
           stroke-linejoin="round"
           class="opacity-70"
         >
-          <circle cx="12" cy="12" r="10" /><path d="M12 2v20" /><path
-            d="M12 2a10 10 0 0 1 0 20z"
-            fill="currentColor"
-            fill-opacity="0.15"
+          <circle cx="12" cy="12" r="3" />
+          <path
+            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
           />
         </svg>
-        <span>Appearance</span>
+        <span>Settings</span>
       </div>
       <ChevronIcon
         direction="right"
@@ -182,36 +199,18 @@
       <p
         class="font-serif text-[18px] font-semibold tracking-[-0.02em] text-[var(--foreground)]"
       >
-        Settings
+        Account
       </p>
       <button
         type="button"
-        class="inline-flex h-8 min-w-[4.5rem] items-center justify-center rounded-full px-3 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
+        class="inline-flex h-8 w-8 items-center justify-center rounded-full text-[var(--soft-foreground)] transition-colors hover:bg-[var(--accent-wash)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface-strong)]"
+        aria-label="Close menu"
         onclick={closeAll}
       >
-        Close
+        <CloseIcon size={16} strokeWidth={2.2} />
       </button>
     </div>
     {@render mainView()}
-  </div>
-{/snippet}
-
-{#snippet appearanceView()}
-  <div class="lg:hidden">
-    <div class="flex flex-col gap-3 p-3">
-      <div class="mb-1 flex items-center gap-2">
-        <button
-          type="button"
-          class="inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--accent-wash)]"
-          onclick={() => (view = "main")}
-          aria-label="Back to settings"
-        >
-          <ChevronIcon direction="left" size={16} strokeWidth={2.5} />
-        </button>
-        <p class="text-[14px] font-bold">Appearance</p>
-      </div>
-      <ThemePanel variant="inline" className="w-full" />
-    </div>
   </div>
 {/snippet}
 
@@ -300,8 +299,6 @@
 {#snippet menuContent()}
   {#if view === "main"}
     {@render mainView()}
-  {:else if view === "appearance"}
-    {@render appearanceView()}
   {:else if view === "help"}
     {@render helpView()}
   {/if}
@@ -310,8 +307,6 @@
 {#snippet mobileMenuContent()}
   {#if view === "main"}
     {@render mainViewMobile()}
-  {:else if view === "appearance"}
-    {@render appearanceView()}
   {:else if view === "help"}
     {@render helpView()}
   {/if}
@@ -389,7 +384,7 @@
           onclick={closeAll}
         ></button>
         <div
-          class="workspace-user-menu-sheet relative z-10 flex max-h-[min(36rem,85vh)] w-full flex-col overflow-hidden rounded-t-[calc(var(--radius-lg)+0.25rem)] border-t border-[var(--border-soft)] bg-[var(--surface-strong)] px-2 pt-2 shadow-2xl"
+          class="relative z-10 flex max-h-[min(36rem,85vh)] w-full flex-col overflow-hidden rounded-t-[calc(var(--radius-lg)+0.25rem)] border-t border-[var(--border-soft)] bg-[var(--surface-strong)] px-2 pt-2 shadow-2xl"
           role="dialog"
           aria-modal="true"
           aria-label="Settings"
@@ -403,7 +398,7 @@
       </div>
 
       <div
-        class="workspace-user-menu-panel absolute bottom-full left-0 z-[55] hidden w-72 flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--surface-strong)] p-1.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] lg:flex mb-2"
+        class="absolute bottom-full left-0 z-[55] mb-2 hidden w-72 flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--surface-strong)] p-1.5 shadow-[var(--shadow-soft)] lg:flex"
         role="menu"
       >
         {@render menuContent()}
@@ -412,44 +407,20 @@
   </div>
 </div>
 
-{#if view === "appearance" && menuOpen}
+{#if settingsOpen}
   <div
-    class="fixed inset-0 z-[200] hidden items-center justify-center p-4 lg:flex"
+    class="fixed inset-0 z-[200] flex items-center justify-center p-0 sm:p-4"
     transition:fade={{ duration: 150 }}
+    role="presentation"
   >
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <div
-      class="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
-      onclick={closeAll}
+      class="absolute inset-0 bg-[var(--overlay)]"
+      onclick={closeSettings}
     ></div>
-    <div class="relative z-10 w-full max-w-4xl">
-      <SettingsPanel onClose={closeAll} />
+    <div class="relative z-10 flex w-full max-w-4xl items-stretch">
+      <SettingsPanel onClose={closeSettings} />
     </div>
   </div>
 {/if}
-
-<style>
-  .workspace-user-menu-panel,
-  .workspace-user-menu-sheet {
-    --background: #faf9f6;
-    --foreground: #1a1a1a;
-    --soft-foreground: #5a5a5a;
-    --surface: #ffffff;
-    --surface-strong: #fffdf9;
-    --border-soft: color-mix(in srgb, #e8e2d9 88%, white);
-    --accent-wash: color-mix(in srgb, var(--accent) 8%, var(--surface));
-    color: var(--foreground);
-  }
-
-  :global(.dark) .workspace-user-menu-panel,
-  :global(.dark) .workspace-user-menu-sheet {
-    --background: #111315;
-    --foreground: #f4efe9;
-    --soft-foreground: #b8b1aa;
-    --surface: #181b1f;
-    --surface-strong: #1d2126;
-    --border-soft: color-mix(in srgb, #363d45 78%, white);
-    --accent-wash: color-mix(in srgb, var(--accent) 12%, var(--surface));
-  }
-</style>
