@@ -31,6 +31,22 @@ try {
 
 const queue: AnalyticsEvent[] = [];
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
+let analyticsEnabled = false;
+
+export function setAnalyticsEnabled(enabled: boolean): void {
+  analyticsEnabled = enabled;
+  if (enabled) return;
+
+  queue.length = 0;
+  if (flushTimer !== null) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  }
+}
+
+export function isAnalyticsEnabled(): boolean {
+  return analyticsEnabled;
+}
 
 function createId(): string {
   try {
@@ -50,9 +66,9 @@ function stamp(partial: EventInput): AnalyticsEvent {
 }
 
 async function sendBatch(batch: AnalyticsEvent[]): Promise<void> {
-  if (batch.length === 0) return;
+  if (!analyticsEnabled || batch.length === 0) return;
   try {
-    await fetch(resolveApiUrl("/api/analytics/events"), {
+    const response = await fetch(resolveApiUrl("/api/analytics/events"), {
       ...(await createApiRequestInit(
         {
           method: "POST",
@@ -65,6 +81,9 @@ async function sendBatch(batch: AnalyticsEvent[]): Promise<void> {
         },
       )),
     });
+    if (response.status === 204 || response.status === 404) {
+      setAnalyticsEnabled(false);
+    }
   } catch {
     // intentionally silent
   }
@@ -74,6 +93,7 @@ function sendBeaconBatch(batch: AnalyticsEvent[]): boolean {
   if (
     typeof navigator === "undefined" ||
     typeof navigator.sendBeacon !== "function" ||
+    !analyticsEnabled ||
     batch.length === 0
   ) {
     return false;
@@ -99,6 +119,10 @@ function scheduleFlush() {
 }
 
 function flushWithTransport(preferBeacon = false): void {
+  if (!analyticsEnabled) {
+    queue.length = 0;
+    return;
+  }
   if (queue.length === 0) return;
   const batch = queue.splice(0, MAX_BATCH_SIZE);
   if (!(preferBeacon && sendBeaconBatch(batch))) {
@@ -116,6 +140,7 @@ export function flush(): void {
 /** Enqueue an analytics event. */
 export function track(partial: EventInput): void {
   if (typeof window === "undefined") return; // SSR guard
+  if (!analyticsEnabled) return;
   const event = stamp(partial);
   queue.push(event as AnalyticsEvent);
   if (queue.length >= MAX_BATCH_SIZE) {

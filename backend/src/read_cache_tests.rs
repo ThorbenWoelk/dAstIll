@@ -28,6 +28,7 @@ fn sample_bootstrap() -> WorkspaceBootstrapPayload {
     WorkspaceBootstrapPayload {
         ai_available: true,
         ai_status: AiStatus::Cloud,
+        analytics_enabled: true,
         containers: vec![crate::models::youtube_series_container(&channel)],
         sources: vec![crate::models::youtube_content_source(&channel)],
         channels: vec![channel],

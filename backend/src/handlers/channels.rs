@@ -308,6 +308,7 @@ pub async fn workspace_bootstrap(
     let payload = crate::models::WorkspaceBootstrapPayload {
         ai_available,
         ai_status,
+        analytics_enabled: state.analytics.is_some(),
         containers,
         sources,
         channels,

@@ -38,6 +38,7 @@ import {
   request,
   resolveApiUrl,
 } from "./api-client";
+import { setAnalyticsEnabled } from "./analytics/tracker";
 import { normalizeUserErrorMessage } from "./user-error";
 
 export {
@@ -362,7 +363,10 @@ export function getWorkspaceBootstrap(
     {
       bypassCache: options?.bypassCache,
     },
-  );
+  ).then((bootstrap) => {
+    setAnalyticsEnabled(bootstrap.analytics_enabled === true);
+    return bootstrap;
+  });
 }
 
 export function getMiniReader(

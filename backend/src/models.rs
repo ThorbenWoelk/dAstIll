@@ -947,6 +947,8 @@ pub struct ChannelVideoPagePayload {
 pub struct WorkspaceBootstrapPayload {
     pub ai_available: bool,
     pub ai_status: AiStatus,
+    #[serde(default)]
+    pub analytics_enabled: bool,
     pub containers: Vec<SubscriptionContainer>,
     pub sources: Vec<ContentSource>,
     pub channels: Vec<Channel>,

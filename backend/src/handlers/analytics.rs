@@ -15,7 +15,7 @@ const MAX_BATCH_SIZE: usize = 200;
     ),
     responses(
         (status = 202, description = "Accepted analytics batch"),
-        (status = 204, description = "Ignored empty batch"),
+        (status = 204, description = "Ignored empty batch or disabled analytics sink"),
         (status = 413, description = "Batch exceeded the maximum size", body = String)
     )
 )]
@@ -35,7 +35,6 @@ pub async fn ingest_events(
     }
 
     let Some(analytics) = state.analytics.as_ref() else {
-        tracing::warn!("analytics sink is not configured; dropping batch");
         return Ok(StatusCode::NO_CONTENT);
     };
 
