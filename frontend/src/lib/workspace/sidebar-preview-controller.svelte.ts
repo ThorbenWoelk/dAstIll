@@ -27,8 +27,8 @@ import {
   getSidebarPreviewSession,
   pruneSidebarPreviewCollections,
   resolvePreferredExpandedSidebarPreviewCollectionId,
+  setSidebarPreviewCollectionExpanded,
   setSidebarPreviewSession,
-  setSingleExpandedSidebarPreviewCollection,
   type SidebarPreviewCollectionSnapshot,
 } from "$lib/workspace/sidebar-preview-session";
 import {
@@ -228,10 +228,12 @@ export function createSidebarPreviewController(
     return restored;
   }
 
-  function setExpandedPreviewChannel(channelId: string | null) {
-    setSingleExpandedSidebarPreviewCollection(
+  function setPreviewChannelExpanded(channelId: string, expanded: boolean) {
+    ensureChannelVideoCollection(channelId);
+    setSidebarPreviewCollectionExpanded(
       channelVideoCollections,
       channelId,
+      expanded,
     );
   }
 
@@ -455,12 +457,12 @@ export function createSidebarPreviewController(
       if (selectedChannelId === channel.id && selectedVideoId) {
         userCollapsedSelectionKey = `${channel.id}:${selectedVideoId}`;
       }
-      setExpandedPreviewChannel(null);
+      setPreviewChannelExpanded(channel.id, false);
       return;
     }
 
     userCollapsedSelectionKey = null;
-    setExpandedPreviewChannel(channel.id);
+    setPreviewChannelExpanded(channel.id, true);
     const nextState = ensureChannelVideoCollection(channel.id);
     nextState.scrollTop = 0;
 
@@ -604,15 +606,25 @@ export function createSidebarPreviewController(
       return;
     }
 
+    const expandedChannelIds = Object.entries(channelVideoCollections)
+      .filter(([, collection]) => collection.expanded)
+      .map(([channelId]) => channelId);
     channelVideoCollections = restoreChannelVideoCollections(
       getSidebarPreviewSession(previewSessionKey) ?? {},
     );
-    setExpandedPreviewChannel(
+    for (const channelId of expandedChannelIds) {
+      if (options.getChannels().some((channel) => channel.id === channelId)) {
+        setPreviewChannelExpanded(channelId, true);
+      }
+    }
+    const preferredExpandedChannelId =
       resolvePreferredExpandedSidebarPreviewCollectionId(
         channelVideoCollections,
         options.getSelectedChannelId(),
-      ),
-    );
+      );
+    if (preferredExpandedChannelId) {
+      setPreviewChannelExpanded(preferredExpandedChannelId, true);
+    }
     hydratedPreviewSessionKey = previewSessionKey;
   });
 
@@ -743,7 +755,7 @@ export function createSidebarPreviewController(
       return;
     }
 
-    setExpandedPreviewChannel(targetChannel.id);
+    setPreviewChannelExpanded(targetChannel.id, true);
     const nextState = ensureChannelVideoCollection(targetChannel.id);
     lastAutoExpandedChannelId = targetChannel.id;
 
@@ -777,7 +789,7 @@ export function createSidebarPreviewController(
 
     const state = ensureChannelVideoCollection(selectedChannel.id);
     if (!state.expanded && userCollapsedSelectionKey !== selectionKey) {
-      untrack(() => setExpandedPreviewChannel(selectedChannel.id));
+      untrack(() => setPreviewChannelExpanded(selectedChannel.id, true));
     }
 
     if (userCollapsedSelectionKey === selectionKey) {

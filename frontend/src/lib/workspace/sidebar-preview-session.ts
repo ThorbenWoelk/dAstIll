@@ -67,15 +67,6 @@ function sanitizePreviewCollection(
   };
 }
 
-export function setSingleExpandedSidebarPreviewCollection<
-  T extends ExpandableSidebarPreviewCollection,
->(collections: Record<string, T>, expandedChannelId: string | null) {
-  for (const [channelId, collection] of Object.entries(collections)) {
-    collection.expanded =
-      expandedChannelId !== null && channelId === expandedChannelId;
-  }
-}
-
 export function resolvePreferredExpandedSidebarPreviewCollectionId<
   T extends ExpandableSidebarPreviewCollection,
 >(
@@ -93,6 +84,17 @@ export function resolvePreferredExpandedSidebarPreviewCollectionId<
   }
 
   return null;
+}
+
+export function setSidebarPreviewCollectionExpanded<
+  T extends ExpandableSidebarPreviewCollection,
+>(collections: Record<string, T>, channelId: string, expanded: boolean) {
+  const collection = collections[channelId];
+  if (!collection) {
+    return;
+  }
+
+  collection.expanded = expanded;
 }
 
 export function cloneSidebarPreviewCollections(

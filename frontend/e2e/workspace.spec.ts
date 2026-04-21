@@ -194,6 +194,73 @@ test("channel row chevron collapses the selected channel without reopening", asy
   await expect(selectedVideo).toBeHidden();
 });
 
+test("channel row chevron expands a different channel without collapsing the selected channel", async ({
+  page,
+}) => {
+  const sidebar = await openSeededWorkspace(
+    page,
+    "/?source=channel-alpha&item=video-alpha&content=info",
+  );
+  const alphaVideo = sidebar
+    .locator('[data-channel-video-list="channel-alpha"]')
+    .getByText("Alpha workspace fixture video");
+  const betaChannelRow = sidebar.locator('[data-channel-id="channel-beta"]');
+  const betaVideo = sidebar
+    .locator('[data-channel-video-list="channel-beta"]')
+    .getByText("Beta workspace fixture video");
+
+  await expect(alphaVideo).toBeVisible({ timeout: READY_MS });
+  await dispatchVisibleClick(
+    betaChannelRow.getByRole("button", { name: "Expand channel" }),
+  );
+
+  await expect(betaVideo).toBeVisible({ timeout: READY_MS });
+  await expect(alphaVideo).toBeVisible();
+
+  await page.waitForTimeout(250);
+  await expect(betaVideo).toBeVisible();
+  await expect(alphaVideo).toBeVisible();
+});
+
+test("channel row chevron collapses one channel without touching another expanded channel", async ({
+  page,
+}) => {
+  const sidebar = await openSeededWorkspace(
+    page,
+    "/?source=channel-alpha&item=video-alpha&content=info",
+  );
+  const alphaChannelRow = sidebar.locator('[data-channel-id="channel-alpha"]');
+  const betaChannelRow = sidebar.locator('[data-channel-id="channel-beta"]');
+  const alphaVideo = sidebar
+    .locator('[data-channel-video-list="channel-alpha"]')
+    .getByText("Alpha workspace fixture video");
+  const betaVideo = sidebar
+    .locator('[data-channel-video-list="channel-beta"]')
+    .getByText("Beta workspace fixture video");
+
+  await expect(alphaVideo).toBeVisible({ timeout: READY_MS });
+  await dispatchVisibleClick(
+    betaChannelRow.getByRole("button", { name: "Expand channel" }),
+  );
+  await expect(betaVideo).toBeVisible({ timeout: READY_MS });
+
+  await dispatchVisibleClick(
+    betaChannelRow.getByRole("button", { name: "Collapse channel" }),
+  );
+
+  await expect(
+    betaChannelRow.getByRole("button", { name: "Expand channel" }),
+  ).toBeVisible();
+  await expect(betaVideo).toBeHidden();
+  await expect(alphaVideo).toBeVisible();
+
+  await dispatchVisibleClick(
+    alphaChannelRow.getByRole("button", { name: "Collapse channel" }),
+  );
+  await expect(alphaVideo).toBeHidden();
+  await expect(betaVideo).toBeHidden();
+});
+
 test("channel overview stays loading instead of showing not found during auth handoff", async ({
   page,
 }) => {
