@@ -59,6 +59,25 @@ export function selectionDroppedAfterAcknowledgeOptimistic(
   return !matchesAcknowledgedFilterVideo(optimisticVideo, filter);
 }
 
+export function resolveNextVisibleVideoAfterAcknowledgeDrop(
+  previousVideos: Video[],
+  targetVideoId: string,
+  optimisticList: Video[],
+): Video | null {
+  if (optimisticList.length === 0) {
+    return null;
+  }
+
+  const previousIndex = previousVideos.findIndex((v) => v.id === targetVideoId);
+  if (previousIndex < 0) {
+    return optimisticList[0] ?? null;
+  }
+
+  return (
+    optimisticList[Math.min(previousIndex, optimisticList.length - 1)] ?? null
+  );
+}
+
 export function isStillSelectedAfterAcknowledgeSuccess(
   selectedVideoId: string | null,
   videos: Video[],

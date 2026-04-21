@@ -14,6 +14,7 @@ export type MockWorkspaceBootstrapOptions = {
 
 type MockWorkspaceBootstrap = ReturnType<typeof buildMockWorkspaceBootstrap>;
 type MockWorkspaceSnapshot = MockWorkspaceBootstrap["snapshot"];
+type MockWorkspaceVideo = MockWorkspaceSnapshot["videos"][number];
 type MockWorkspaceSummary = {
   video_id: string;
   content: string;
@@ -171,6 +172,7 @@ export async function installMockWorkspaceApi(
     summaries?: Record<string, MockWorkspaceSummary>;
     transcripts?: Record<string, MockWorkspaceTranscript>;
     videoInfos?: Record<string, MockWorkspaceVideoInfo>;
+    acknowledgedVideos?: Record<string, MockWorkspaceVideo>;
     summary?: MockWorkspaceSummary;
     videoInfo?: MockWorkspaceVideoInfo;
   },
@@ -190,6 +192,7 @@ export async function installMockWorkspaceApi(
     ...(videoInfo ? { [videoInfo.video_id]: videoInfo } : {}),
     ...(options.videoInfos ?? {}),
   };
+  const acknowledgedVideos = options.acknowledgedVideos ?? {};
 
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
@@ -301,7 +304,26 @@ export async function installMockWorkspaceApi(
       return;
     }
 
-    if (/^\/api\/videos\/[^/]+\/acknowledged$/.test(url.pathname)) {
+    const acknowledgedMatch = url.pathname.match(
+      /^\/api\/videos\/([^/]+)\/acknowledged$/,
+    );
+    if (acknowledgedMatch) {
+      const video = acknowledgedVideos[acknowledgedMatch[1]];
+      if (video) {
+        const payload = route.request().postDataJSON() as {
+          acknowledged?: boolean;
+        };
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ...video,
+            acknowledged: payload.acknowledged ?? video.acknowledged,
+          }),
+        });
+        return;
+      }
+
       await route.fulfill({
         status: 403,
         contentType: "text/plain",

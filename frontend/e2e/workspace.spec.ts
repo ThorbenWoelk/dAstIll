@@ -520,6 +520,9 @@ test("summary and transcript match the selected video after changing channel", a
   await expect(page.locator("#content-view article")).toBeVisible({
     timeout: READY_MS,
   });
+  await expect(page.locator("#content-view article")).not.toBeEmpty({
+    timeout: READY_MS,
+  });
   const summaryB = (
     await page.locator("#content-view article").innerText()
   ).trim();
@@ -697,6 +700,95 @@ test("guest unread filter keeps videos visible when mark read requires sign-in",
   await expect(
     sidebar.locator("#videos").getByText(targetTitle, { exact: true }),
   ).toBeVisible();
+});
+
+test("marking read under unread filter advances to the next visible video", async ({
+  page,
+}) => {
+  const channelId = "channel-alpha";
+  const bootstrap = buildMockWorkspaceBootstrap({
+    channelId,
+    channelName: "Alpha workspace channel",
+    channelHandle: "@alpha-workspace",
+    containerId: "container-alpha",
+    videoId: "video-alpha-1",
+    videoTitle: "Alpha first unread fixture video",
+    qualityScore: 8,
+    selectedItemId: "video-alpha-2",
+  });
+  const baseVideo = bootstrap.snapshot.videos[0];
+  const videos = [
+    {
+      ...baseVideo,
+      id: "video-alpha-1",
+      title: "Alpha first unread fixture video",
+      acknowledged: false,
+    },
+    {
+      ...baseVideo,
+      id: "video-alpha-2",
+      title: "Alpha second unread fixture video",
+      acknowledged: false,
+    },
+    {
+      ...baseVideo,
+      id: "video-alpha-3",
+      title: "Alpha third unread fixture video",
+      acknowledged: false,
+    },
+  ];
+  bootstrap.snapshot.videos = videos;
+  bootstrap.snapshot.channel_video_count = videos.length;
+  const videoInfos = Object.fromEntries(
+    videos.map((video, index) => [
+      video.id,
+      {
+        video_id: video.id,
+        watch_url: `https://www.youtube.com/watch?v=${video.id}`,
+        title: video.title,
+        description: `Fixture info for unread video ${index + 1}.`,
+        thumbnail_url: null,
+        channel_name: "Alpha workspace channel",
+        channel_id: channelId,
+        published_at: "2026-04-11T18:30:00.000Z",
+        duration_iso8601: "PT8M12S",
+        duration_seconds: 492,
+        view_count: 1280 + index,
+      },
+    ]),
+  );
+
+  await installMockWorkspaceApi(page, {
+    bootstrap,
+    videoInfos,
+    acknowledgedVideos: Object.fromEntries(
+      videos.map((video) => [video.id, video]),
+    ),
+  });
+  await page.goto(
+    "/?source=channel-alpha&item=video-alpha-2&content=info&ack=unack",
+  );
+
+  await expect(
+    page.getByRole("heading", {
+      level: 1,
+      name: "Alpha second unread fixture video",
+    }),
+  ).toBeVisible({ timeout: READY_MS });
+
+  await page.locator("#mark-read-toggle").click();
+
+  await expect(
+    page.getByRole("heading", {
+      level: 1,
+      name: "Alpha third unread fixture video",
+    }),
+  ).toBeVisible({ timeout: READY_MS });
+  await expect(
+    workspaceSidebar(page)
+      .locator("#videos")
+      .getByText("Alpha second unread fixture video", { exact: true }),
+  ).toHaveCount(0);
 });
 
 test("desktop summary eval score opens the quality drawer", async ({

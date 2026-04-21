@@ -3,6 +3,7 @@ import {
   buildOptimisticAcknowledgeSidebarList,
   isStillSelectedAfterAcknowledgeSuccess,
   matchesAcknowledgedFilterVideo,
+  resolveNextVisibleVideoAfterAcknowledgeDrop,
   resolveRevertedVideoForAcknowledge,
   resolveVideoForAcknowledgeToggle,
   selectionDroppedAfterAcknowledgeOptimistic,
@@ -23,6 +24,7 @@ export function createHomeWorkspaceAcknowledgeController(options: {
   getSelectedChannelId: () => string | null;
   selectVideo: (videoId: string) => Promise<void>;
   setVideoAcknowledgeSync: (value: VideoAcknowledgeSync) => void;
+  updateAcknowledged?: typeof updateAcknowledged;
 }) {
   let videoAcknowledgeSeq = 0;
 
@@ -88,8 +90,15 @@ export function createHomeWorkspaceAcknowledgeController(options: {
           });
           options.sidebarState.selectVideo(null);
         } else {
+          const nextVideo = resolveNextVisibleVideoAfterAcknowledgeDrop(
+            previousVideos,
+            targetVideoId,
+            optimisticList,
+          );
           options.content.resetInteractionState();
-          await options.selectVideo(optimisticList[0].id);
+          if (nextVideo) {
+            await options.selectVideo(nextVideo.id);
+          }
         }
       } else {
         options.content.resetInteractionState({ clearDisplayedContent: true });
@@ -99,7 +108,10 @@ export function createHomeWorkspaceAcknowledgeController(options: {
     }
 
     try {
-      const updated = await updateAcknowledged(targetVideoId, newAcknowledged);
+      const updated = await (options.updateAcknowledged ?? updateAcknowledged)(
+        targetVideoId,
+        newAcknowledged,
+      );
       if (videoFromList) {
         options.sidebarState.replaceVideos(
           options.sidebarState.videos

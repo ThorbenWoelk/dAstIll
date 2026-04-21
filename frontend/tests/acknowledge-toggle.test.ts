@@ -5,6 +5,7 @@ import {
   buildOptimisticAcknowledgeSidebarList,
   isStillSelectedAfterAcknowledgeSuccess,
   matchesAcknowledgedFilterVideo,
+  resolveNextVisibleVideoAfterAcknowledgeDrop,
   resolveRevertedVideoForAcknowledge,
   resolveVideoForAcknowledgeToggle,
   selectionDroppedAfterAcknowledgeOptimistic,
@@ -144,6 +145,52 @@ describe("isStillSelectedAfterAcknowledgeSuccess", () => {
   it("is false when nothing matches selected id", () => {
     const v = makeVideo({ id: "v1", acknowledged: true });
     expect(isStillSelectedAfterAcknowledgeSuccess("v2", [v], null)).toBe(false);
+  });
+});
+
+describe("resolveNextVisibleVideoAfterAcknowledgeDrop", () => {
+  it("selects the next row at the dropped video's position", () => {
+    const previous = [
+      makeVideo({ id: "v1", acknowledged: false }),
+      makeVideo({ id: "v2", acknowledged: false }),
+      makeVideo({ id: "v3", acknowledged: false }),
+    ];
+    const visibleAfterDrop = [previous[0], previous[2]];
+
+    expect(
+      resolveNextVisibleVideoAfterAcknowledgeDrop(
+        previous,
+        "v2",
+        visibleAfterDrop,
+      )?.id,
+    ).toBe("v3");
+  });
+
+  it("falls back to the previous row when the dropped video was last", () => {
+    const previous = [
+      makeVideo({ id: "v1", acknowledged: false }),
+      makeVideo({ id: "v2", acknowledged: false }),
+      makeVideo({ id: "v3", acknowledged: false }),
+    ];
+    const visibleAfterDrop = [previous[0], previous[1]];
+
+    expect(
+      resolveNextVisibleVideoAfterAcknowledgeDrop(
+        previous,
+        "v3",
+        visibleAfterDrop,
+      )?.id,
+    ).toBe("v2");
+  });
+
+  it("returns null when no videos remain after the filter drop", () => {
+    expect(
+      resolveNextVisibleVideoAfterAcknowledgeDrop(
+        [makeVideo({ id: "v1", acknowledged: false })],
+        "v1",
+        [],
+      ),
+    ).toBeNull();
   });
 });
 
