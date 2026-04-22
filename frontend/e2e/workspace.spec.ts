@@ -530,6 +530,71 @@ test("summary and transcript match the selected video after changing channel", a
   expect(summaryB).not.toBe(transcriptA);
 });
 
+test("summary and transcript supertitles copy the visible title and text", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    let clipboardText = "";
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          clipboardText = text;
+        },
+        readText: async () => clipboardText,
+      },
+    });
+  });
+
+  await openSeededWorkspace(
+    page,
+    "/?source=channel-alpha&item=video-alpha&content=transcript",
+  );
+  await expect(page.locator("#content-view article")).toContainText(
+    "Alpha transcript fixture",
+    { timeout: READY_MS },
+  );
+
+  await page.getByRole("button", { name: "Copy transcript text" }).click();
+  await expect(
+    page.getByRole("button", { name: "Copied transcript" }),
+  ).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe(
+      [
+        "Alpha workspace fixture video",
+        "",
+        "Alpha transcript fixture. The first channel keeps its own transcript.",
+      ].join("\n"),
+    );
+
+  await dispatchVisibleClick(
+    workspaceDesktopTabs(page).getByRole("button", {
+      name: "Summary",
+      exact: true,
+    }),
+  );
+  await expect(page.locator("#content-view article")).toContainText(
+    "Alpha summary fixture",
+    { timeout: READY_MS },
+  );
+
+  await page.getByRole("button", { name: "Copy summary text" }).click();
+  await expect(
+    page.getByRole("button", { name: "Copied summary" }),
+  ).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe(
+      [
+        "Alpha workspace fixture video",
+        "",
+        "Alpha summary fixture. The first channel keeps its own summary.",
+      ].join("\n"),
+    );
+});
+
 test("browser back restores workspace content from the URL", async ({
   page,
 }) => {

@@ -423,6 +423,7 @@
         {selectedVideo}
         {selectedVideoId}
         {contentMode}
+        {contentText}
         {loadingContent}
         {formattingContent}
         {formattingVideoId}
