@@ -64,9 +64,9 @@
 <svelte:window onkeydown={handleWindowKeydown} />
 
 {#snippet mainView()}
-  <div class="flex flex-col gap-0.5">
+  <div class="flex flex-col gap-0.5 text-[var(--foreground)]">
     <button
-      class="group flex w-full items-center justify-between rounded-[var(--radius-md)] px-3 py-2 text-[14px] font-medium transition-colors hover:bg-[var(--accent-wash)]"
+      class="group flex w-full items-center justify-between rounded-[var(--radius-md)] px-3 py-2 text-[14px] font-medium transition-colors hover:bg-[var(--accent-wash)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
       onclick={openSettings}
       role="menuitem"
     >
@@ -98,7 +98,7 @@
     </button>
 
     <button
-      class="group flex w-full items-center justify-between rounded-[var(--radius-md)] px-3 py-2 text-[14px] font-medium transition-colors hover:bg-[var(--accent-wash)]"
+      class="group flex w-full items-center justify-between rounded-[var(--radius-md)] px-3 py-2 text-[14px] font-medium transition-colors hover:bg-[var(--accent-wash)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
       onclick={() => (view = "help")}
       role="menuitem"
     >
@@ -130,7 +130,7 @@
 
     <a
       href="/mini"
-      class="flex w-full items-center gap-3 rounded-[var(--radius-md)] px-3 py-2 text-[14px] font-medium transition-colors hover:bg-[var(--accent-wash)]"
+      class="flex w-full items-center gap-3 rounded-[var(--radius-md)] px-3 py-2 text-[14px] font-medium transition-colors hover:bg-[var(--accent-wash)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
       data-sveltekit-preload-data="tap"
       data-sveltekit-preload-code="viewport"
       role="menuitem"
@@ -157,7 +157,7 @@
     <div class="my-1 mx-2 h-px bg-[var(--border-soft)] opacity-40"></div>
 
     <button
-      class="flex w-full items-center gap-3 rounded-[var(--radius-md)] px-3 py-2 text-[14px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--accent-wash)]"
+      class="flex w-full items-center gap-3 rounded-[var(--radius-md)] px-3 py-2 text-[14px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--accent-wash)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
       onclick={authState.current.authState === "authenticated"
         ? handleSignOut
         : handleSignIn}
@@ -215,11 +215,11 @@
 {/snippet}
 
 {#snippet helpView()}
-  <div class="flex flex-col gap-1 p-1">
+  <div class="flex flex-col gap-1 p-1 text-[var(--foreground)]">
     <div class="mb-1 flex items-center gap-2 px-2 py-1.5">
       <button
         type="button"
-        class="inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--accent-wash)]"
+        class="inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--accent-wash)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
         onclick={() => (view = "main")}
         aria-label="Back to settings"
       >
@@ -228,7 +228,7 @@
       <p class="text-[14px] font-bold">Help</p>
     </div>
     <button
-      class="flex w-full items-center gap-3 rounded-[var(--radius-md)] px-3 py-1.5 text-[14px] font-medium transition-colors hover:bg-[var(--accent-wash)]"
+      class="flex w-full items-center gap-3 rounded-[var(--radius-md)] px-3 py-1.5 text-[14px] font-medium transition-colors hover:bg-[var(--accent-wash)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
       onclick={() => {
         menuOpen = false;
         onOpenShortcuts?.();
@@ -251,7 +251,7 @@
       Keyboard shortcuts
     </button>
     <button
-      class="flex w-full items-center gap-3 rounded-[var(--radius-md)] px-3 py-1.5 text-[14px] font-medium transition-colors hover:bg-[var(--accent-wash)]"
+      class="flex w-full items-center gap-3 rounded-[var(--radius-md)] px-3 py-1.5 text-[14px] font-medium transition-colors hover:bg-[var(--accent-wash)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
       id="guide-trigger"
       onclick={() => {
         menuOpen = false;
@@ -278,7 +278,7 @@
       href="https://github.com/ThorbenWoelk/dAstIll"
       target="_blank"
       rel="noopener noreferrer"
-      class="flex w-full items-center gap-3 rounded-[var(--radius-md)] px-3 py-1.5 text-[14px] font-medium transition-colors hover:bg-[var(--accent-wash)]"
+      class="flex w-full items-center gap-3 rounded-[var(--radius-md)] px-3 py-1.5 text-[14px] font-medium transition-colors hover:bg-[var(--accent-wash)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
       onclick={() => (menuOpen = false)}
     >
       <svg
@@ -384,7 +384,7 @@
           onclick={closeAll}
         ></button>
         <div
-          class="relative z-10 flex max-h-[min(36rem,85vh)] w-full flex-col overflow-hidden rounded-t-[calc(var(--radius-lg)+0.25rem)] border-t border-[var(--border-soft)] bg-[var(--surface-strong)] px-2 pt-2 shadow-2xl"
+          class="relative z-10 flex max-h-[min(36rem,85vh)] w-full flex-col overflow-hidden rounded-t-[calc(var(--radius-lg)+0.25rem)] border-t border-[var(--border-soft)] bg-[var(--surface-strong)] px-2 pt-2 text-[var(--foreground)] shadow-2xl"
           role="dialog"
           aria-modal="true"
           aria-label="Settings"
@@ -398,7 +398,7 @@
       </div>
 
       <div
-        class="absolute bottom-full left-0 z-[55] mb-2 hidden w-72 flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--surface-strong)] p-1.5 shadow-[var(--shadow-soft)] lg:flex"
+        class="absolute bottom-full left-0 z-[55] mb-2 hidden w-72 flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--surface-strong)] p-1.5 text-[var(--foreground)] shadow-[var(--shadow-soft)] lg:flex"
         role="menu"
       >
         {@render menuContent()}
