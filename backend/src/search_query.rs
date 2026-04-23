@@ -17,9 +17,9 @@ const SEARCH_LEADING_WRAPPER_TOKENS: &[&str] = &[
     "about", "episode", "episodes", "find", "me", "on", "show", "video", "videos",
 ];
 const SEARCH_STOPWORDS: &[&str] = &[
-    "a", "about", "an", "and", "best", "episode", "episodes", "find", "for", "how", "in", "is",
-    "me", "of", "on", "or", "show", "that", "the", "this", "to", "video", "videos", "what",
-    "which", "with",
+    "a", "about", "an", "and", "best", "episode", "episodes", "find", "for", "he", "how", "in",
+    "is", "me", "of", "on", "or", "say", "says", "she", "show", "talk", "talked", "talks", "that",
+    "the", "this", "to", "video", "videos", "what", "which", "where", "with",
 ];
 const SHORT_TECHNICAL_SEARCH_TERMS: &[&str] = &["ai", "db", "go", "js", "ml", "ui", "ux"];
 
@@ -215,6 +215,14 @@ mod tests {
         assert_eq!(
             normalize_search_text("that hard fork episode with one good thing"),
             "hard fork one good thing"
+        );
+    }
+
+    #[test]
+    fn normalize_search_text_drops_creator_attribution_wrappers() {
+        assert_eq!(
+            normalize_search_text("the video where theo says anthropic is lying"),
+            "theo anthropic lying"
         );
     }
 
