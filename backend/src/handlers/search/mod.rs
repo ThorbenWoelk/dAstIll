@@ -542,6 +542,18 @@ fn count_title_term_matches(title: &str, terms: &[String]) -> usize {
         .count()
 }
 
+fn candidate_combined_terms(candidate: &SearchCandidate) -> HashSet<String> {
+    let mut terms = tokenize_search_terms(&candidate.video_title)
+        .into_iter()
+        .collect::<HashSet<_>>();
+
+    if let Some(section_title) = candidate.section_title.as_deref() {
+        terms.extend(tokenize_search_terms(section_title));
+    }
+    terms.extend(tokenize_search_terms(&candidate.chunk_text));
+    terms
+}
+
 fn candidate_has_exact_query_signal(candidate: &SearchCandidate, query: &str) -> bool {
     let meaningful_terms = meaningful_search_terms(query);
     if meaningful_terms.len() < 2 {
@@ -562,7 +574,13 @@ fn candidate_has_exact_query_signal(candidate: &SearchCandidate, query: &str) ->
             .as_deref()
             .is_some_and(|title| contains_token_phrase(title, &meaningful_terms));
 
+    let combined_terms = candidate_combined_terms(candidate);
+    let combined_contains_all_terms = meaningful_terms
+        .iter()
+        .all(|term| combined_terms.contains(term));
+
     exact_phrase_match
+        || combined_contains_all_terms
         || count_title_term_matches(&candidate.video_title, &meaningful_terms)
             == meaningful_terms.len()
 }
@@ -660,6 +678,19 @@ mod tests {
     }
 
     #[test]
+    fn candidate_exact_query_signal_can_combine_title_and_snippet_terms() {
+        let candidate = search_candidate(
+            "A.I. Backlash Turns Violent + Kara Swisher on Healthmaxxing + The Zuck Bot Is Coming",
+            "Meta is developing an AI clone of Mark Zuckerberg for internal use.",
+        );
+
+        assert!(candidate_has_exact_query_signal(
+            &candidate,
+            "mark zuckerberg bot"
+        ));
+    }
+
+    #[test]
     fn semantic_results_rescue_when_exact_keyword_hit_exists_but_dense_results_do_not() {
         let exact_keyword_hit = search_candidate(
             "Anthropic’s Cybersecurity Shock Wave + Ronan Farrow and Andrew Marantz on Their Sam Altman Investigation + One Good Thing",
@@ -677,6 +708,33 @@ mod tests {
 
         assert!(should_rescue_semantic_results(
             "video where they talk about one good thing",
+            &keyword_rescue_candidates,
+            &semantic_candidates,
+        ));
+    }
+
+    #[test]
+    fn semantic_results_rescue_when_combined_keyword_fields_cover_alias_like_queries() {
+        let exact_keyword_hit = search_candidate(
+            "A.I. Backlash Turns Violent + Kara Swisher on Healthmaxxing + The Zuck Bot Is Coming",
+            "Meta is developing an AI clone of Mark Zuckerberg for internal use.",
+        );
+        let semantic_candidates = vec![
+            search_candidate(
+                "Clawdbot has gone rogue (I can't believe this is real)",
+                "An OpenClaw bot experiment.",
+            ),
+            search_candidate(
+                "Meta's weird plan to win the AI war",
+                "Meta is chasing superintelligence under Zuckerberg.",
+            ),
+        ];
+
+        let keyword_rescue_candidates =
+            exact_keyword_rescue_candidates("mark zuckerberg bot", &[exact_keyword_hit]);
+
+        assert!(should_rescue_semantic_results(
+            "mark zuckerberg bot",
             &keyword_rescue_candidates,
             &semantic_candidates,
         ));
