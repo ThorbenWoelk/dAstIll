@@ -19,7 +19,7 @@ use crate::db;
 use crate::models::{
     SearchMatchPayload, SearchResponsePayload, SearchStatusPayload, SearchVideoResultPayload,
 };
-use crate::search_query::{meaningful_search_terms, tokenize_search_terms};
+use crate::search_query::{meaningful_search_terms, normalize_search_text, tokenize_search_terms};
 use crate::security::{AccessContext, can_access_channel, can_access_video};
 use crate::services::search::{
     SEARCH_RRF_K, SearchCandidate, SearchSourceKind, extract_keyword_snippet, fuse_ranked_matches,
@@ -185,6 +185,7 @@ pub async fn search(
     let source = params.source.unwrap_or(SearchSourceFilter::All);
     let limit = params.limit.unwrap_or(8).clamp(1, 25);
     let execution_mode = params.mode.unwrap_or(SearchExecutionMode::Hybrid);
+    let retrieval_query = normalize_search_text(query);
     if let Some(channel_id) = params.channel_id.as_deref() {
         if !can_access_channel(&access_context, channel_id) {
             return Err((StatusCode::FORBIDDEN, "Channel access denied".to_string()));
@@ -271,18 +272,18 @@ pub async fn search(
             // instead of the raw query to improve recall for dense retrieval.
             let hyde_started = Instant::now();
             let embedding_input = if hyde_configured {
-                match state.search.generate_hyde_passage(query).await {
+                match state.search.generate_hyde_passage(&retrieval_query).await {
                     Ok(passage) => {
                         hyde_triggered = true;
                         passage
                     }
                     Err(err) => {
                         tracing::warn!(error = %err, "HyDE generation failed, falling back to query");
-                        query.to_string()
+                        retrieval_query.clone()
                     }
                 }
             } else {
-                query.to_string()
+                retrieval_query.clone()
             };
             hyde_elapsed_ms = hyde_started.elapsed().as_millis() as u64;
 
@@ -376,7 +377,11 @@ pub async fn search(
             // then let the cross-encoder reranker produce the final ordering.
             let merged = collect_rrf_candidates(&hybrid_candidates, &fts_candidates);
             let rerank_started = Instant::now();
-            let reranked = match state.search.rerank_candidates(query, merged).await {
+            let reranked = match state
+                .search
+                .rerank_candidates(&retrieval_query, merged)
+                .await
+            {
                 Ok(reranked) => reranked,
                 Err(err) => {
                     tracing::warn!(error = %err, "reranking failed, falling back to RRF");

@@ -10,7 +10,7 @@ use libsql::{Builder, Connection, Database, TransactionBehavior, Value, params};
 use tokio::sync::RwLock;
 
 use crate::{
-    search_query::build_fts_query,
+    search_query::{build_fts_phrase_query, build_fts_query},
     services::search::{SearchCandidate, SearchSourceKind},
 };
 
@@ -228,14 +228,56 @@ impl FtsIndex {
         channel_id: Option<&str>,
         limit: usize,
     ) -> Vec<FtsSearchResult> {
+        let phrase_query = build_fts_phrase_query(query);
         let match_query = build_fts_query(query);
-        if match_query.is_empty() {
+        if phrase_query.is_none() && match_query.is_empty() {
             return Vec::new();
         }
 
         let inner = self.0.read().await;
-        let mut sql = String::from(
-            r#"
+        let mut combined_results = Vec::new();
+        let mut seen_chunk_ids = std::collections::HashSet::new();
+
+        for query_text in phrase_query
+            .into_iter()
+            .chain((!match_query.is_empty()).then_some(match_query))
+        {
+            for result in
+                execute_search_query(&inner.conn, query_text, source_kind, channel_id, limit).await
+            {
+                if seen_chunk_ids.insert(result.chunk_id.clone()) {
+                    combined_results.push(result);
+                    if combined_results.len() >= limit {
+                        return combined_results;
+                    }
+                }
+            }
+        }
+
+        combined_results
+    }
+
+    /// Total number of documents in the index.
+    pub async fn doc_count(&self) -> u64 {
+        let inner = self.0.read().await;
+        query_doc_count(&inner.conn).await.unwrap_or(0)
+    }
+
+    pub async fn local_db_path(&self) -> Option<PathBuf> {
+        let inner = self.0.read().await;
+        inner.db_path.clone()
+    }
+}
+
+async fn execute_search_query(
+    conn: &Connection,
+    match_query: String,
+    source_kind: Option<SearchSourceKind>,
+    channel_id: Option<&str>,
+    limit: usize,
+) -> Vec<FtsSearchResult> {
+    let mut sql = String::from(
+        r#"
             SELECT
                 chunk_id,
                 video_id,
@@ -251,114 +293,101 @@ impl FtsIndex {
             FROM fts_search
             WHERE fts_search MATCH ?1
             "#,
-        );
+    );
 
-        let mut bind_values = vec![Value::Text(match_query)];
-        let mut bind_index = 2usize;
+    let mut bind_values = vec![Value::Text(match_query)];
+    let mut bind_index = 2usize;
 
-        if let Some(source_kind) = source_kind {
-            sql.push_str(&format!(" AND source_kind = ?{bind_index}"));
-            bind_values.push(Value::Text(source_kind.as_str().to_string()));
-            bind_index += 1;
+    if let Some(source_kind) = source_kind {
+        sql.push_str(&format!(" AND source_kind = ?{bind_index}"));
+        bind_values.push(Value::Text(source_kind.as_str().to_string()));
+        bind_index += 1;
+    }
+
+    if let Some(channel_id) = channel_id {
+        sql.push_str(&format!(" AND channel_id = ?{bind_index}"));
+        bind_values.push(Value::Text(channel_id.to_string()));
+        bind_index += 1;
+    }
+
+    sql.push_str(" ORDER BY rank_score ASC, published_at DESC");
+    sql.push_str(&format!(" LIMIT ?{bind_index}"));
+    bind_values.push(Value::Integer(limit.min(200) as i64));
+
+    let mut rows = match conn
+        .query(&sql, libsql::params_from_iter(bind_values))
+        .await
+    {
+        Ok(rows) => rows,
+        Err(err) => {
+            tracing::error!(error = %err, "FTS query failed");
+            return Vec::new();
         }
+    };
 
-        if let Some(channel_id) = channel_id {
-            sql.push_str(&format!(" AND channel_id = ?{bind_index}"));
-            bind_values.push(Value::Text(channel_id.to_string()));
-            bind_index += 1;
-        }
-
-        sql.push_str(" ORDER BY rank_score ASC, published_at DESC");
-        sql.push_str(&format!(" LIMIT ?{bind_index}"));
-        bind_values.push(Value::Integer(limit.min(200) as i64));
-
-        let mut rows = match inner
-            .conn
-            .query(&sql, libsql::params_from_iter(bind_values))
-            .await
-        {
-            Ok(rows) => rows,
-            Err(err) => {
-                tracing::error!(error = %err, "FTS query failed");
-                return Vec::new();
-            }
+    let mut results = Vec::new();
+    while let Ok(Some(row)) = rows.next().await {
+        let start_sec = match row.get_value(9) {
+            Ok(Value::Null) => None,
+            Ok(Value::Real(value)) => Some(value as f32),
+            Ok(Value::Integer(value)) => Some(value as f32),
+            _ => None,
+        };
+        let score = match row.get_value(10) {
+            Ok(Value::Real(value)) => -(value as f32),
+            Ok(Value::Integer(value)) => -(value as f32),
+            _ => 0.0,
         };
 
-        let mut results = Vec::new();
-        while let Ok(Some(row)) = rows.next().await {
-            let start_sec = match row.get_value(9) {
-                Ok(Value::Null) => None,
-                Ok(Value::Real(value)) => Some(value as f32),
-                Ok(Value::Integer(value)) => Some(value as f32),
-                _ => None,
-            };
-            let score = match row.get_value(10) {
-                Ok(Value::Real(value)) => -(value as f32),
-                Ok(Value::Integer(value)) => -(value as f32),
-                _ => 0.0,
-            };
+        let section_title = match row.get_value(6) {
+            Ok(Value::Null) => None,
+            Ok(Value::Text(value)) => Some(value),
+            _ => None,
+        };
 
-            let section_title = match row.get_value(6) {
-                Ok(Value::Null) => None,
-                Ok(Value::Text(value)) => Some(value),
-                _ => None,
-            };
+        let (
+            Ok(chunk_id),
+            Ok(video_id),
+            Ok(channel_id),
+            Ok(channel_name),
+            Ok(video_title),
+            Ok(source_kind),
+            Ok(chunk_text),
+            Ok(published_at),
+        ) = (
+            row.get::<String>(0),
+            row.get::<String>(1),
+            row.get::<String>(2),
+            row.get::<String>(3),
+            row.get::<String>(4),
+            row.get::<String>(5),
+            row.get::<String>(7),
+            row.get::<String>(8),
+        )
+        else {
+            continue;
+        };
 
-            let (
-                Ok(chunk_id),
-                Ok(video_id),
-                Ok(channel_id),
-                Ok(channel_name),
-                Ok(video_title),
-                Ok(source_kind),
-                Ok(chunk_text),
-                Ok(published_at),
-            ) = (
-                row.get::<String>(0),
-                row.get::<String>(1),
-                row.get::<String>(2),
-                row.get::<String>(3),
-                row.get::<String>(4),
-                row.get::<String>(5),
-                row.get::<String>(7),
-                row.get::<String>(8),
-            )
-            else {
-                continue;
-            };
+        results.push(FtsSearchResult {
+            chunk_id,
+            video_id,
+            channel_id,
+            channel_name,
+            video_title,
+            source_kind: SearchSourceKind::from_db_value(&source_kind),
+            section_title,
+            chunk_text,
+            published_at,
+            start_sec,
+            score,
+        });
 
-            results.push(FtsSearchResult {
-                chunk_id,
-                video_id,
-                channel_id,
-                channel_name,
-                video_title,
-                source_kind: SearchSourceKind::from_db_value(&source_kind),
-                section_title,
-                chunk_text,
-                published_at,
-                start_sec,
-                score,
-            });
-
-            if results.len() >= limit {
-                break;
-            }
+        if results.len() >= limit {
+            break;
         }
-
-        results
     }
 
-    /// Total number of documents in the index.
-    pub async fn doc_count(&self) -> u64 {
-        let inner = self.0.read().await;
-        query_doc_count(&inner.conn).await.unwrap_or(0)
-    }
-
-    pub async fn local_db_path(&self) -> Option<PathBuf> {
-        let inner = self.0.read().await;
-        inner.db_path.clone()
-    }
+    results
 }
 
 async fn build_database(db_path: &Path) -> Result<Database, String> {
@@ -560,6 +589,142 @@ mod tests {
             .await;
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].video_id, "v1");
+    }
+
+    #[tokio::test]
+    async fn fts_index_preserves_exact_phrase_hits_for_common_title_searches() {
+        let index = FtsIndex::new().await.expect("index should be created");
+
+        index
+            .upsert_source(
+                FtsSourceMeta {
+                    video_id: "target",
+                    source_kind: SearchSourceKind::Summary,
+                    channel_id: "channel-a",
+                    channel_name: "Channel A",
+                    video_title: "Anthropic shock wave + One Good Thing",
+                    published_at: "2026-01-10T00:00:00Z",
+                },
+                &[FtsChunk {
+                    chunk_id: "target_summary_1_0".to_string(),
+                    section_title: Some("One Good Thing".to_string()),
+                    chunk_text: "One Good Thing closes the episode after the Sam Altman interview."
+                        .to_string(),
+                    start_sec: None,
+                }],
+            )
+            .await
+            .expect("target source should be indexed");
+
+        for index_id in 0..6 {
+            let video_id = format!("distractor-{index_id}");
+            let video_title = format!("Distractor {index_id}");
+            let chunk_id = format!("distractor-{index_id}_transcript_1_0");
+            let chunk_text =
+                format!("A good thing about this demo {index_id} is that the thing works.");
+            index
+                .upsert_source(
+                    FtsSourceMeta {
+                        video_id: &video_id,
+                        source_kind: SearchSourceKind::Transcript,
+                        channel_id: "channel-b",
+                        channel_name: "Channel B",
+                        video_title: &video_title,
+                        published_at: "2026-01-01T00:00:00Z",
+                    },
+                    &[FtsChunk {
+                        chunk_id,
+                        section_title: None,
+                        chunk_text,
+                        start_sec: None,
+                    }],
+                )
+                .await
+                .expect("distractor source should be indexed");
+        }
+
+        let results = index.search("one good thing", None, None, 5).await;
+        assert!(
+            !results.is_empty(),
+            "exact phrase search should return results"
+        );
+        assert_eq!(results[0].video_id, "target");
+    }
+
+    #[tokio::test]
+    async fn fts_index_handles_natural_language_video_queries() {
+        let index = FtsIndex::new().await.expect("index should be created");
+
+        index
+            .upsert_source(
+                FtsSourceMeta {
+                    video_id: "target",
+                    source_kind: SearchSourceKind::Summary,
+                    channel_id: "channel-a",
+                    channel_name: "Channel A",
+                    video_title:
+                        "A.I. Backlash Turns Violent + Kara Swisher on Healthmaxxing + The Zuck Bot Is Coming",
+                    published_at: "2026-01-10T00:00:00Z",
+                },
+                &[FtsChunk {
+                    chunk_id: "target_summary_1_0".to_string(),
+                    section_title: Some("AI Backlash".to_string()),
+                    chunk_text: "This episode covers the public AI backlash and an attempted attack on Sam Altman."
+                        .to_string(),
+                    start_sec: None,
+                }],
+            )
+            .await
+            .expect("target source should be indexed");
+
+        for (index_id, title, chunk_text) in [
+            (
+                0,
+                "I was wrong about GPT-5",
+                "This video debates new AI benchmarks and model releases.",
+            ),
+            (
+                1,
+                "Can AI Games Be Good?",
+                "A discussion about whether AI-generated games can be fun to play.",
+            ),
+            (
+                2,
+                "We need to talk about the Claude Code rate limits",
+                "A breakdown of the current Claude Code rate limit problems.",
+            ),
+        ] {
+            let video_id = format!("distractor-{index_id}");
+            let chunk_id = format!("distractor-{index_id}_summary_1_0");
+            index
+                .upsert_source(
+                    FtsSourceMeta {
+                        video_id: &video_id,
+                        source_kind: SearchSourceKind::Summary,
+                        channel_id: "channel-b",
+                        channel_name: "Channel B",
+                        video_title: title,
+                        published_at: "2026-01-01T00:00:00Z",
+                    },
+                    &[FtsChunk {
+                        chunk_id,
+                        section_title: None,
+                        chunk_text: chunk_text.to_string(),
+                        start_sec: None,
+                    }],
+                )
+                .await
+                .expect("distractor source should be indexed");
+        }
+
+        let results = index
+            .search("find videos about AI backlash", None, None, 5)
+            .await;
+        assert!(
+            !results.is_empty(),
+            "natural language search should return results"
+        );
+        assert_eq!(results[0].video_id, "target");
     }
 
     #[tokio::test]
