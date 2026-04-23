@@ -54,6 +54,30 @@ pub(super) fn is_attributed_preference_query(prompt: &str) -> bool {
     has_attribution && has_preference
 }
 
+pub(super) fn is_comparison_query(prompt: &str) -> bool {
+    let normalized = normalize_for_matching(prompt);
+    [
+        "compare",
+        "comparison",
+        "different angle",
+        "different angles",
+        "same topic",
+        "same subject",
+        "same subjects",
+        "disagree",
+        "disagreement",
+        "aligned",
+        "alignment",
+        "similar",
+        "closest in theme",
+        "counterargument",
+        "challenges",
+        "challenge this topic",
+    ]
+    .iter()
+    .any(|needle| normalized.contains(needle))
+}
+
 pub(super) fn recommendation_query_variants(prompt: &str) -> Vec<String> {
     let subject = extract_subject_phrase(prompt);
     let focus = collect_focus_terms(prompt).join(" ");
@@ -98,6 +122,9 @@ pub(super) fn sanitize_queries(queries: Vec<String>) -> Vec<String> {
 
 pub(super) fn heuristic_query_variants(prompt: &str, intent: ChatQueryIntent) -> Vec<String> {
     let prompt = prompt.trim();
+    if let Some(queries) = counterargument_query_variants(prompt) {
+        return queries;
+    }
     if let Some(queries) = procedural_query_variants(prompt) {
         return queries;
     }
@@ -127,6 +154,25 @@ pub(super) fn heuristic_query_variants(prompt: &str, intent: ChatQueryIntent) ->
             }
         }
     }
+}
+
+fn counterargument_query_variants(prompt: &str) -> Option<Vec<String>> {
+    let normalized = normalize_for_matching(prompt);
+    let is_counterargument = normalized.contains("counterargument")
+        || normalized.contains("challenge")
+        || normalized.contains("challenges")
+        || normalized.contains("disagree")
+        || normalized.contains("disagreement")
+        || normalized.contains("skeptical");
+    if !is_counterargument {
+        return None;
+    }
+
+    Some(vec![
+        "counterargument skeptical disagreement".to_string(),
+        "opposing argument criticism limitation".to_string(),
+        "concern downside tradeoff challenge".to_string(),
+    ])
 }
 
 fn procedural_query_variants(prompt: &str) -> Option<Vec<String>> {

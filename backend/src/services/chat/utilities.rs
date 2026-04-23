@@ -152,6 +152,21 @@ mod tests {
     }
 
     #[test]
+    fn fallback_plan_recognizes_counterargument_comparison_queries() {
+        let plan = ChatRetrievalPlan::fallback(
+            "Which videos offer the strongest counterargument?",
+            Some("planner unavailable".to_string()),
+        );
+
+        assert_eq!(plan.intent, ChatQueryIntent::Comparison);
+        assert!(
+            plan.expansion_queries
+                .iter()
+                .any(|query| query.contains("counterargument"))
+        );
+    }
+
+    #[test]
     fn recommendation_query_variants_keep_subject_and_topic() {
         let queries = recommendation_query_variants("what is the best database according to theo?");
         assert!(

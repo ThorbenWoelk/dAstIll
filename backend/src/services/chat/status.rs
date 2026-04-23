@@ -128,8 +128,11 @@ impl ChatRetrievalPlan {
         let attributed_preference = is_attributed_preference_query(prompt);
         let recent_activity =
             is_recent_activity_query(prompt) && !is_explicit_realtime_status_query(prompt);
+        let comparison = is_comparison_query(prompt);
         let intent = if recent_activity {
             ChatQueryIntent::RecentActivity
+        } else if comparison {
+            ChatQueryIntent::Comparison
         } else {
             ChatQueryIntent::Synthesis
         };

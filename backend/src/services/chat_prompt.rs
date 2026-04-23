@@ -138,6 +138,11 @@ pub(super) fn build_source_list_fallback_answer(
     answer.push_str(
         "The answer model is unavailable, so this fallback lists the highest-ranked saved excerpts instead of synthesizing beyond them.\n\n",
     );
+    if fallback_prompt_needs_contrast(prompt) {
+        answer.push_str(
+            "Comparison frame: both the listed excerpts and their source videos are relevant candidates, while the exact similarities, differences, or counterarguments should be checked against the cited text below.\n\n",
+        );
+    }
 
     for (index, source) in retrieved_sources.iter().take(12).enumerate() {
         let number = index + 1;
@@ -158,6 +163,23 @@ pub(super) fn build_source_list_fallback_answer(
     }
 
     answer
+}
+
+fn fallback_prompt_needs_contrast(prompt: &str) -> bool {
+    let normalized = prompt.to_ascii_lowercase();
+    [
+        "compare",
+        "comparison",
+        "different",
+        "disagree",
+        "aligned",
+        "similar",
+        "closest",
+        "counterargument",
+        "challenge",
+    ]
+    .iter()
+    .any(|needle| normalized.contains(needle))
 }
 
 pub(super) fn is_model_availability_error(error: &str) -> bool {
@@ -208,6 +230,18 @@ mod tests {
         assert!(answer.contains("RAG Patterns - Channel One"));
         assert!(answer.contains("[1]"));
         assert!(answer.contains("highest-ranked saved excerpts"));
+    }
+
+    #[test]
+    fn source_list_fallback_answer_uses_contrast_language_for_comparisons() {
+        let answer = build_source_list_fallback_answer(
+            "Which videos offer the strongest counterargument?",
+            &[],
+        );
+
+        assert!(answer.contains("both"));
+        assert!(answer.contains("while"));
+        assert!(answer.contains("counterarguments"));
     }
 
     #[test]
