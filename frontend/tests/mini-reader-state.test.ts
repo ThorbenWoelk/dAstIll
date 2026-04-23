@@ -3,8 +3,10 @@ import { describe, expect, it } from "bun:test";
 import type { MiniSummaryItem } from "../src/lib/transport-types";
 import {
   chooseActiveVideoId,
+  findNextMiniChannelId,
   findNextUnreadVideoId,
   MINI_DEFAULT_SHOW_UNREAD_ONLY,
+  miniChannelIsCaughtUp,
   selectMiniSummaryHighlights,
 } from "../src/lib/mini/mini-reader-state.svelte";
 import type { Highlight } from "../src/lib/types";
@@ -74,6 +76,35 @@ describe("findNextUnreadVideoId", () => {
     const summaries = [makeSummary("a", true), makeSummary("b", true)];
 
     expect(findNextUnreadVideoId(summaries, "a")).toBeNull();
+  });
+});
+
+describe("miniChannelIsCaughtUp", () => {
+  it("returns true only when a channel has summaries and all are read", () => {
+    expect(
+      miniChannelIsCaughtUp([makeSummary("a", true), makeSummary("b", true)]),
+    ).toBe(true);
+    expect(
+      miniChannelIsCaughtUp([makeSummary("a", true), makeSummary("b", false)]),
+    ).toBe(false);
+    expect(miniChannelIsCaughtUp([])).toBe(false);
+  });
+});
+
+describe("findNextMiniChannelId", () => {
+  const channels = [{ id: "a" }, { id: "b" }, { id: "c" }];
+
+  it("chooses the next channel after the selected channel", () => {
+    expect(findNextMiniChannelId(channels, "a")).toBe("b");
+    expect(findNextMiniChannelId(channels, "b")).toBe("c");
+  });
+
+  it("wraps to the first channel after the last channel", () => {
+    expect(findNextMiniChannelId(channels, "c")).toBe("a");
+  });
+
+  it("returns null when no other channel exists", () => {
+    expect(findNextMiniChannelId([{ id: "a" }], "a")).toBeNull();
   });
 });
 

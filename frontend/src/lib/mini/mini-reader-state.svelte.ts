@@ -1,6 +1,6 @@
 import { getMiniReader, updateMiniReadStatus } from "$lib/api";
 import { authState } from "$lib/auth-state.svelte";
-import type { CreateHighlightRequest, Highlight } from "$lib/types";
+import type { Channel, CreateHighlightRequest, Highlight } from "$lib/types";
 import type { MiniReader, MiniSummaryItem } from "$lib/transport-types";
 import { renderMarkdown } from "$lib/utils/markdown";
 import { createHomeWorkspaceHighlightController } from "$lib/workspace/home-workspace-highlight-controller.svelte";
@@ -34,6 +34,31 @@ export function findNextUnreadVideoId(
     const summary = summaries[(startIndex + offset) % summaries.length];
     if (summary && !summary.read) {
       return summary.video_id;
+    }
+  }
+
+  return null;
+}
+
+export function miniChannelIsCaughtUp(summaries: MiniSummaryItem[]): boolean {
+  return summaries.length > 0 && summaries.every((summary) => summary.read);
+}
+
+export function findNextMiniChannelId(
+  channels: Pick<Channel, "id">[],
+  selectedChannelId?: string | null,
+): string | null {
+  if (channels.length <= 1) return null;
+
+  const selectedIndex = channels.findIndex(
+    (channel) => channel.id === selectedChannelId,
+  );
+  const startIndex = selectedIndex >= 0 ? selectedIndex : -1;
+
+  for (let offset = 1; offset <= channels.length; offset += 1) {
+    const nextChannel = channels[(startIndex + offset) % channels.length];
+    if (nextChannel && nextChannel.id !== selectedChannelId) {
+      return nextChannel.id;
     }
   }
 
@@ -135,10 +160,14 @@ export class MiniReaderState {
       const next = await getMiniReader(channelId, {
         bypassCache: options?.bypassCache,
       });
-      this.reader = next;
-      this.selectedChannelId = next.selected_channel_id ?? null;
+      const reader = await this.advancePastCaughtUpChannel(
+        next,
+        options?.bypassCache,
+      );
+      this.reader = reader;
+      this.selectedChannelId = reader.selected_channel_id ?? null;
       this.activeVideoId = chooseActiveVideoId(
-        next.summaries,
+        reader.summaries,
         preferredVideoId,
       );
       this.readProgress = 0;
@@ -162,6 +191,60 @@ export class MiniReaderState {
         bypassCache: true,
       },
     );
+  }
+
+  private async advancePastCaughtUpChannel(
+    initialReader: MiniReader,
+    bypassCache?: boolean,
+  ): Promise<MiniReader> {
+    if (
+      !this.showUnreadOnly ||
+      !miniChannelIsCaughtUp(initialReader.summaries)
+    ) {
+      return initialReader;
+    }
+
+    let reader = initialReader;
+    const visitedChannelIds: string[] = [];
+    while (reader.selected_channel_id) {
+      visitedChannelIds.push(reader.selected_channel_id);
+      const nextChannelId = findNextMiniChannelId(
+        reader.channels,
+        reader.selected_channel_id,
+      );
+      if (!nextChannelId || visitedChannelIds.includes(nextChannelId)) {
+        return initialReader;
+      }
+
+      const nextReader = await getMiniReader(nextChannelId, { bypassCache });
+      if (!miniChannelIsCaughtUp(nextReader.summaries)) {
+        return nextReader;
+      }
+      reader = nextReader;
+    }
+
+    return initialReader;
+  }
+
+  private async loadNextChannelAfterCaughtUp(
+    summaries: MiniSummaryItem[],
+  ): Promise<boolean> {
+    if (
+      !this.reader ||
+      !this.showUnreadOnly ||
+      !miniChannelIsCaughtUp(summaries)
+    ) {
+      return false;
+    }
+
+    const nextChannelId = findNextMiniChannelId(
+      this.reader.channels,
+      this.selectedChannelId,
+    );
+    if (!nextChannelId) return false;
+
+    await this.loadReader(nextChannelId, null, { bypassCache: true });
+    return true;
   }
 
   stepSummary(delta: -1 | 1) {
@@ -194,6 +277,9 @@ export class MiniReaderState {
           s.video_id === markedId ? { ...s, read: true } : s,
         ),
       };
+      if (await this.loadNextChannelAfterCaughtUp(this.reader.summaries)) {
+        return;
+      }
       const nextVisible = this.showUnreadOnly
         ? this.reader.summaries.filter(
             (s) => s.video_id !== markedId && !s.read,
@@ -231,6 +317,9 @@ export class MiniReaderState {
         summaries,
       };
 
+      if (await this.loadNextChannelAfterCaughtUp(summaries)) {
+        return;
+      }
       const nextUnreadVideoId = findNextUnreadVideoId(summaries, markedId);
       this.activeVideoId =
         nextUnreadVideoId ?? (this.showUnreadOnly ? null : markedId);

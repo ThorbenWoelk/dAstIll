@@ -82,6 +82,11 @@ Components inside the shell keep using `--accent*` and `--muted` normally. They 
 
 ## Rules of thumb
 
+- Keep `/mini` as small as possible. It is a reading surface, not a second
+  workspace.
+- Add a feature only when it does not increase maintenance effort, or when it can
+  fail without disturbing the core loop: pick channel, read summary, mark read,
+  move on.
 - If a feature would only be usable on mobile or only on desktop, it is not a feature for `/mini`. Either generalize it, or move it elsewhere.
 - If a CSS-only re-layout is not enough to make a screen feel right on desktop, the information architecture is probably wrong - revisit it before reaching for JS branching.
 - Keep state in `$lib/mini/*.svelte.ts` controllers, not in the page. The page orchestrates; it does not own state.
