@@ -67,7 +67,8 @@ impl OpenAlexPlannerService {
             Err(OllamaPromptError::NotAvailable)
             | Err(OllamaPromptError::RequestFailed(_))
             | Err(OllamaPromptError::GenerationFailed(_))
-            | Err(OllamaPromptError::EmptyResponse) => {
+            | Err(OllamaPromptError::EmptyResponse)
+            | Err(OllamaPromptError::InvalidStructuredResponse(_)) => {
                 fallback_query_from_natural_language(normalized)
             }
         };

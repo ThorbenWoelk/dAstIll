@@ -29,6 +29,7 @@ impl From<OllamaPromptError> for InputGuardrailError {
             OllamaPromptError::EmptyResponse => {
                 Self::EvaluationFailed("empty response from guardrail model".to_string())
             }
+            OllamaPromptError::InvalidStructuredResponse(err) => Self::ParseFailed(err),
         }
     }
 }

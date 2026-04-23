@@ -69,22 +69,6 @@ pub(super) async fn persist_assistant_message(
         .map_err(|error| error.to_string())
 }
 
-pub(super) fn parse_json_response<T: for<'de> Deserialize<'de>>(
-    response: &str,
-) -> Result<T, String> {
-    serde_json::from_str(response)
-        .or_else(|_| {
-            let start = response
-                .find('{')
-                .ok_or_else(|| "missing JSON object".to_string())?;
-            let end = response
-                .rfind('}')
-                .ok_or_else(|| "missing JSON object end".to_string())?;
-            serde_json::from_str(&response[start..=end]).map_err(|error| error.to_string())
-        })
-        .map_err(|error| error.to_string())
-}
-
 pub(super) fn sanitize_generated_title(input: &str) -> String {
     limit_text(
         input

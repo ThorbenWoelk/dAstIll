@@ -1,6 +1,6 @@
 [package]
 name = "dastill-mobile-shell"
-version = "0.3.0"
+version = "0.3.1"
 description = "Android shell for the dAstIll frontend"
 authors = ["Thorben Woelk"]
 license = "MIT"

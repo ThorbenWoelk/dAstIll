@@ -979,6 +979,7 @@ mod tests {
             prompt_tokens: None,
             completion_tokens: None,
             total_duration_ns: None,
+            turn_trace: None,
         }
     }
 

@@ -84,6 +84,10 @@ The model returns structured JSON with:
 - `unscorable_reason` when the transcript or summary cannot be judged reliably
 - `tags[]` as transcript-supported metadata, not quality defects
 
+The evaluator uses Ollama structured output with a backend-owned JSON schema. The prompt
+describes the judgment task, while the runtime schema enforces the response shape before
+the result is stored.
+
 The backend still stores the result in the current summary fields: `quality_score`,
 `quality_note`, `quality_model_used`, and `summary_tags`. `quality_note` preserves the
 axis scores and defect evidence for auditability. Unscorable inputs store a note without
@@ -258,6 +262,10 @@ Before retrieval, the chat service classifies each user message into an intent c
 Intent drives the source budget (how many chunks the context window targets) and the
 query fan-out strategy.
 
+The chat query planner and tool-loop planner use Ollama structured output with
+backend-owned JSON schemas. Planner prompts describe the decision, but tool/action fields
+are validated by Rust DTOs before any retrieval or tool execution runs.
+
 ### Source Budgets by Intent
 
 | Intent           | Source budget |
@@ -353,6 +361,16 @@ covering:
 - streaming lifecycle events (start, complete, error)
 
 Raw prompt payloads and full response bodies are not logged by default.
+
+Completed assistant messages also store a redacted `ChatTurnTrace` with plan labels,
+tool names, retrieval counts, selected-source counts, and the per-turn budget snapshot.
+It intentionally excludes prompts, retrieved excerpt text, tool outputs, and generated
+answer text.
+
+Each chat turn has a small internal budget for model calls, tool calls, and retrieval
+passes. When a turn reaches a budget, the SSE stream emits a `budget_exhausted` status
+with the redacted budget snapshot; the service then falls back to the best available
+evidence or returns a rejected assistant message when no final answer can be generated.
 
 ---
 

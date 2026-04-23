@@ -53,8 +53,9 @@ mod tests {
     use super::{
         ActiveChatHandle, CHAT_CLASSIFY_TIMEOUT, CHAT_RECENT_ACTIVITY_SOURCE_LIMIT,
         ChatQueryIntent, ChatQueryPlanResponse, ChatRetrievalPlan, ChatService,
-        ChatToolLoopResponse, PlannedChatToolCall, RetrievedChatSource, ToolLoopAction,
-        is_direct_video_lookup_request, maybe_direct_recent_activity_tool_call, tools,
+        ChatToolLoopResponse, ChatTurnState, PlannedChatToolCall, RetrievedChatSource,
+        ToolLoopAction, is_direct_video_lookup_request, maybe_direct_recent_activity_tool_call,
+        tools,
     };
     use crate::models::ChatSource;
     use crate::services::chat::tools::{
@@ -397,6 +398,7 @@ mod tests {
 
         let mut plan = ChatRetrievalPlan::fallback("compare the channels", None);
         plan.intent = ChatQueryIntent::Pattern;
+        let mut turn = ChatTurnState::new(false);
 
         let result = service
             .build_answer_grounding_context(
@@ -425,6 +427,7 @@ mod tests {
                     context_text: "Important supporting excerpt with extra context.".to_string(),
                 }],
                 &active_chat,
+                &mut turn,
             )
             .await;
 

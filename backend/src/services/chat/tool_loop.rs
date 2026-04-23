@@ -9,6 +9,7 @@ impl ChatService {
         prompt: &str,
         deep_research: bool,
         active_chat: &ActiveChatHandle,
+        turn: &mut ChatTurnState,
     ) -> Result<Option<ToolLoopOutcome>, String> {
         active_chat
             .emit(ChatStreamEvent::Status {
@@ -65,6 +66,7 @@ impl ChatService {
                 tool_outputs: &mut tool_outputs,
                 gathered_sources: &mut gathered_sources,
                 active_chat,
+                turn,
             })
             .await?;
         }
@@ -85,6 +87,7 @@ impl ChatService {
                 tool_outputs: &mut tool_outputs,
                 gathered_sources: &mut gathered_sources,
                 active_chat,
+                turn,
             })
             .await?;
 
@@ -111,6 +114,7 @@ impl ChatService {
                     tool_outputs: &mut tool_outputs,
                     gathered_sources: &mut gathered_sources,
                     active_chat,
+                    turn,
                 })
                 .await?;
             }
@@ -145,6 +149,7 @@ impl ChatService {
                     tool_outputs: &mut tool_outputs,
                     gathered_sources: &mut gathered_sources,
                     active_chat,
+                    turn,
                 })
                 .await?;
             }
@@ -166,14 +171,23 @@ impl ChatService {
                 &tool_outputs,
                 &gathered_sources,
             );
+            if let Err(reason) = turn.consume_model_call("tool planning") {
+                emit_budget_exhausted(active_chat, turn, reason.clone()).await;
+                return Ok(fallback_tool_loop_outcome(
+                    &tool_outputs,
+                    &gathered_sources,
+                    &reason,
+                ));
+            }
             let planned = await_or_cancel(
                 active_chat,
                 timeout(
                     CHAT_CLASSIFY_TIMEOUT,
-                    self.core.prompt_with_fallback(
+                    self.core.prompt_json_schema::<ChatToolLoopResponse>(
                         "chat_tool_loop",
                         CHAT_TOOL_LOOP_PROMPT,
                         &planner_input,
+                        &ChatToolLoopResponse::json_schema(),
                         crate::services::ollama::CooldownStatusPolicy::UseLocalFallback,
                     ),
                 ),
@@ -181,21 +195,10 @@ impl ChatService {
             .await?;
 
             let step_outcome = match planned {
-                Ok(Ok((response, _))) => match parse_json_response::<ChatToolLoopResponse>(&response)
-                {
-                    Ok(payload) => payload.into_step_outcome().map_err(|error| {
-                        tracing::warn!(error = %error, "chat tool loop returned invalid tool request");
-                        error
-                    })?,
-                    Err(error) => {
-                        tracing::warn!(error = %error, "chat tool loop returned unreadable JSON");
-                        return Ok(fallback_tool_loop_outcome(
-                            &tool_outputs,
-                            &gathered_sources,
-                            "Tool planner returned unreadable JSON after gathering evidence.",
-                        ));
-                    }
-                },
+                Ok(Ok((payload, _))) => payload.into_step_outcome().map_err(|error| {
+                    tracing::warn!(error = %error, "chat tool loop returned invalid tool request");
+                    error
+                })?,
                 Ok(Err(error)) => {
                     tracing::warn!(error = ?error, "chat tool loop unavailable");
                     return Ok(fallback_tool_loop_outcome(
@@ -247,12 +250,16 @@ impl ChatService {
                         tool_outputs: &mut tool_outputs,
                         gathered_sources: &mut gathered_sources,
                         active_chat,
+                        turn,
                     })
                     .await?;
                 }
             }
         }
 
+        let reason = "Reached the tool-step limit for this turn.";
+        turn.mark_budget_exhausted(reason);
+        emit_budget_exhausted(active_chat, turn, reason).await;
         Ok(Some(ToolLoopOutcome {
             conversation_only: tool_outputs.is_empty() && gathered_sources.is_empty(),
             rationale: Some("Reached the tool-step limit for this turn.".to_string()),
@@ -274,8 +281,14 @@ impl ChatService {
             tool_outputs,
             gathered_sources,
             active_chat,
+            turn,
         } = request;
         active_chat.ensure_not_cancelled()?;
+        if let Err(reason) = turn.consume_tool_call(call.tool_name()) {
+            emit_budget_exhausted(active_chat, turn, reason.clone()).await;
+            return Err(reason);
+        }
+        turn.record_tool_call(call.tool_name(), "running");
         active_chat
             .emit(ChatStreamEvent::Status {
                 status: ChatStatusPayload::new(
@@ -339,6 +352,7 @@ impl ChatService {
                             ),
                     })
                     .await;
+                turn.update_last_tool_state("completed");
             }
             PlannedChatToolCall::SearchLibrary(query) => {
                 let result = self
@@ -370,6 +384,7 @@ impl ChatService {
                             ),
                     })
                     .await;
+                turn.update_last_tool_state("completed");
             }
             PlannedChatToolCall::HighlightLookup(query) => {
                 let result = tools::execute_highlight_lookup_query(
@@ -402,6 +417,7 @@ impl ChatService {
                         ),
                     })
                     .await;
+                turn.update_last_tool_state("completed");
             }
             PlannedChatToolCall::RecentLibraryActivity(query) => {
                 let query = apply_recent_activity_scope(query.clone(), prompt_scope);
@@ -438,6 +454,7 @@ impl ChatService {
                         ),
                     })
                     .await;
+                turn.update_last_tool_state("completed");
             }
         }
 

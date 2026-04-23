@@ -137,6 +137,7 @@ impl ChatService {
         active_chat: &ActiveChatHandle,
     ) -> Result<ChatMessage, String> {
         active_chat.ensure_not_cancelled()?;
+        let mut turn = ChatTurnState::new(deep_research);
         if let Some(tool_outcome) = self
             .run_tool_loop(
                 state,
@@ -145,11 +146,13 @@ impl ChatService {
                 prompt,
                 deep_research,
                 active_chat,
+                &mut turn,
             )
             .await?
         {
             active_chat.ensure_not_cancelled()?;
             if tool_outcome.conversation_only {
+                turn.set_strategy("tool_loop_conversation_only");
                 active_chat
                     .emit(ChatStreamEvent::Status {
                         status: ChatStatusPayload::new(
@@ -165,6 +168,17 @@ impl ChatService {
                         ),
                     })
                     .await;
+                if let Err(reason) = turn.consume_model_call("final answer generation") {
+                    emit_budget_exhausted(active_chat, &turn, reason).await;
+                    return Ok(self.build_assistant_message_with_trace(
+                        "I reached this turn's AI budget before generating a final answer."
+                            .to_string(),
+                        Vec::new(),
+                        ChatMessageStatus::Rejected,
+                        None,
+                        Some(turn.finish()),
+                    ));
+                }
                 let grounding = build_conversation_only_grounding();
                 let mut cancel_rx = active_chat.subscribe_cancel();
                 let (content, terminal_stats) = self
@@ -177,14 +191,16 @@ impl ChatService {
                         reply_model,
                     )
                     .await?;
-                return Ok(self.build_assistant_message(
+                return Ok(self.build_assistant_message_with_trace(
                     content,
                     Vec::new(),
                     ChatMessageStatus::Completed,
                     Some(self.assistant_generation_meta(reply_model, terminal_stats)),
+                    Some(turn.finish()),
                 ));
             }
 
+            turn.set_strategy("tool_loop");
             let sources = tool_outcome
                 .sources
                 .iter()
@@ -229,6 +245,16 @@ impl ChatService {
                     .await;
             }
 
+            if let Err(reason) = turn.consume_model_call("final answer generation") {
+                emit_budget_exhausted(active_chat, &turn, reason).await;
+                return Ok(self.build_assistant_message_with_trace(
+                    "I reached this turn's AI budget before generating a final answer.".to_string(),
+                    sources,
+                    ChatMessageStatus::Rejected,
+                    None,
+                    Some(turn.finish()),
+                ));
+            }
             let grounding =
                 build_tool_grounding_context(prompt, &tool_outputs, &tool_outcome.sources);
             let mut cancel_rx = active_chat.subscribe_cancel();
@@ -242,11 +268,12 @@ impl ChatService {
                     reply_model,
                 )
                 .await?;
-            return Ok(self.build_assistant_message(
+            return Ok(self.build_assistant_message_with_trace(
                 content,
                 sources,
                 ChatMessageStatus::Completed,
                 Some(self.assistant_generation_meta(reply_model, terminal_stats)),
+                Some(turn.finish()),
             ));
         }
 
@@ -259,16 +286,29 @@ impl ChatService {
                 prompt,
                 deep_research,
                 active_chat,
+                &mut turn,
             )
             .await?;
+        turn.set_plan(&plan);
 
         if plan.skip_retrieval {
+            turn.set_strategy("conversation_only");
             active_chat
                 .emit(ChatStreamEvent::Status {
                     status: ChatStatusPayload::new("generating", "Answering from the conversation")
                         .with_detail("No new library search for this turn."),
                 })
                 .await;
+            if let Err(reason) = turn.consume_model_call("final answer generation") {
+                emit_budget_exhausted(active_chat, &turn, reason).await;
+                return Ok(self.build_assistant_message_with_trace(
+                    "I reached this turn's AI budget before generating a final answer.".to_string(),
+                    Vec::new(),
+                    ChatMessageStatus::Rejected,
+                    None,
+                    Some(turn.finish()),
+                ));
+            }
             let grounding = build_conversation_only_grounding();
             let mut cancel_rx = active_chat.subscribe_cancel();
             let (content, terminal_stats) = self
@@ -281,14 +321,16 @@ impl ChatService {
                     reply_model,
                 )
                 .await?;
-            return Ok(self.build_assistant_message(
+            return Ok(self.build_assistant_message_with_trace(
                 content,
                 Vec::new(),
                 ChatMessageStatus::Completed,
                 Some(self.assistant_generation_meta(reply_model, terminal_stats)),
+                Some(turn.finish()),
             ));
         }
 
+        turn.set_strategy("retrieval");
         let retrieval_started = Instant::now();
         let retrieval = self
             .retrieve_sources_with_plan(
@@ -298,10 +340,23 @@ impl ChatService {
                 prompt,
                 plan,
                 active_chat,
+                &mut turn,
             )
             .await?;
         active_chat.ensure_not_cancelled()?;
-        let retrieved_sources = retrieval.sources;
+        let ChatRetrievalOutcome {
+            plan,
+            sources: retrieved_sources,
+            pass_count,
+            query_count,
+        } = retrieval;
+        turn.record_retrieval(
+            &plan,
+            pass_count,
+            query_count,
+            retrieved_sources.len(),
+            count_unique_videos(&retrieved_sources),
+        );
         tracing::info!(
             conversation_id = %conversation.id,
             query_chars = prompt.chars().count(),
@@ -311,12 +366,13 @@ impl ChatService {
         );
 
         if retrieved_sources.is_empty() {
-            return Ok(self.build_assistant_message(
+            return Ok(self.build_assistant_message_with_trace(
                 "I can’t answer that from the currently indexed transcripts and summaries."
                     .to_string(),
                 Vec::new(),
                 ChatMessageStatus::Rejected,
                 None,
+                Some(turn.finish()),
             ));
         }
 
@@ -324,13 +380,14 @@ impl ChatService {
             .build_answer_grounding_context(
                 &conversation.id,
                 prompt,
-                &retrieval.plan,
+                &plan,
                 &retrieved_sources,
                 active_chat,
+                &mut turn,
             )
             .await?;
         active_chat.ensure_not_cancelled()?;
-        if retrieval.plan.deep_research {
+        if plan.deep_research {
             grounding_context = format!(
                 "The user enabled deep research: synthesize across as much of the grounded evidence below as is relevant. If the library still lacks coverage, say so clearly.\n\n{grounding_context}"
             );
@@ -354,6 +411,16 @@ impl ChatService {
             })
             .await;
 
+        if let Err(reason) = turn.consume_model_call("final answer generation") {
+            emit_budget_exhausted(active_chat, &turn, reason).await;
+            return Ok(self.build_assistant_message_with_trace(
+                "I reached this turn's AI budget before generating a final answer.".to_string(),
+                sources,
+                ChatMessageStatus::Rejected,
+                None,
+                Some(turn.finish()),
+            ));
+        }
         let mut cancel_rx = active_chat.subscribe_cancel();
         let reply_started = Instant::now();
         let (content, terminal_stats) = self
@@ -373,11 +440,12 @@ impl ChatService {
             "chat response generated"
         );
 
-        Ok(self.build_assistant_message(
+        Ok(self.build_assistant_message_with_trace(
             content,
             sources,
             ChatMessageStatus::Completed,
             Some(self.assistant_generation_meta(reply_model, terminal_stats)),
+            Some(turn.finish()),
         ))
     }
 }

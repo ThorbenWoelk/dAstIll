@@ -1074,6 +1074,56 @@ pub struct ChatSource {
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
+pub struct ChatTurnToolTrace {
+    pub name: String,
+    pub state: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
+#[ts(export, export_to = "frontend/src/lib/bindings/")]
+pub struct ChatTurnRetrievalTrace {
+    pub pass_count: usize,
+    pub query_count: usize,
+    pub selected_source_count: usize,
+    pub unique_video_count: usize,
+    pub deep_research: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
+#[ts(export, export_to = "frontend/src/lib/bindings/")]
+pub struct ChatTurnBudgetSnapshot {
+    pub max_model_calls: usize,
+    pub model_calls: usize,
+    pub max_tool_calls: usize,
+    pub tool_calls: usize,
+    pub max_retrieval_passes: usize,
+    pub retrieval_passes: usize,
+    pub exhausted: bool,
+    #[serde(default)]
+    #[ts(optional)]
+    pub exhaustion_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
+#[ts(export, export_to = "frontend/src/lib/bindings/")]
+pub struct ChatTurnTrace {
+    pub strategy: String,
+    #[serde(default)]
+    #[ts(optional)]
+    pub plan_intent: Option<String>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub plan_label: Option<String>,
+    #[serde(default)]
+    pub tool_calls: Vec<ChatTurnToolTrace>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub retrieval: Option<ChatTurnRetrievalTrace>,
+    pub budget: ChatTurnBudgetSnapshot,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
+#[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct ChatMessage {
     pub id: String,
     pub role: ChatRole,
@@ -1098,6 +1148,11 @@ pub struct ChatMessage {
     #[serde(default)]
     #[ts(optional)]
     pub total_duration_ns: Option<u64>,
+    /// Redacted execution trace for this assistant turn. Does not include prompts,
+    /// retrieved excerpts, tool outputs, or generated answer text.
+    #[serde(default)]
+    #[ts(optional)]
+    pub turn_trace: Option<ChatTurnTrace>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]

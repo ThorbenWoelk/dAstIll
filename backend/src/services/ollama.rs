@@ -3,6 +3,9 @@ use rig::client::Nothing;
 use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::ollama;
+use serde::Serialize;
+use serde::de::DeserializeOwned;
+use serde_json::Value;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
@@ -29,6 +32,35 @@ pub enum OllamaPromptError {
     GenerationFailed(String),
     /// Model returned an empty response.
     EmptyResponse,
+    /// Model returned content that could not be decoded into the requested structured type.
+    InvalidStructuredResponse(String),
+}
+
+#[derive(Debug)]
+enum OllamaGenerateCallError {
+    RateLimited(String),
+    Failed(String),
+}
+
+#[derive(Debug, Serialize)]
+struct OllamaGenerateRequest<'a> {
+    model: &'a str,
+    system: &'a str,
+    prompt: &'a str,
+    stream: bool,
+    format: &'a Value,
+    options: OllamaGenerateOptions,
+}
+
+#[derive(Debug, Serialize)]
+struct OllamaGenerateOptions {
+    temperature: f32,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct OllamaGenerateResponse {
+    response: Option<String>,
+    error: Option<String>,
 }
 
 /// Shared configuration and low-level helpers for Ollama-backed services.
@@ -388,6 +420,232 @@ impl OllamaCore {
         .instrument(span)
         .await
     }
+
+    /// Prompt the configured model with an Ollama structured-output schema and decode the reply.
+    ///
+    /// The raw prompt should describe the task, not the JSON contract; `schema` is sent to
+    /// Ollama's native `format` field and the returned content is validated by serde.
+    pub async fn prompt_json_schema<T>(
+        &self,
+        operation: &str,
+        preamble: &str,
+        prompt: &str,
+        schema: &Value,
+        policy: CooldownStatusPolicy,
+    ) -> Result<(T, String), OllamaPromptError>
+    where
+        T: DeserializeOwned,
+    {
+        let (response, model_used) = self
+            .prompt_generate_with_schema(operation, preamble, prompt, schema, policy)
+            .await?;
+        let parsed = parse_structured_response(&response)?;
+        Ok((parsed, model_used))
+    }
+
+    async fn prompt_generate_with_schema(
+        &self,
+        operation: &str,
+        preamble: &str,
+        prompt: &str,
+        schema: &Value,
+        policy: CooldownStatusPolicy,
+    ) -> Result<(String, String), OllamaPromptError> {
+        let span = logfire::span!(
+            "ollama.prompt.schema",
+            operation = operation,
+            model = self.model().to_string(),
+            base_url = self.base_url().to_string(),
+            prompt_chars = prompt.chars().count(),
+            cooldown_policy = format!("{policy:?}"),
+            fallback_configured = self.fallback_model().is_some(),
+        );
+
+        async move {
+            let started = Instant::now();
+            let result: Result<(String, String), OllamaPromptError> = async {
+                let is_cloud = self.uses_cloud_model();
+                let cooldown_active = self.is_cloud_cooldown_active();
+
+                let (response, model_used) = if cooldown_active {
+                    match policy {
+                        CooldownStatusPolicy::UseLocalFallback => {
+                            let fallback = self.fallback_model().ok_or_else(|| {
+                                OllamaPromptError::GenerationFailed(
+                                    "cloud cooldown active and no fallback model configured"
+                                        .to_string(),
+                                )
+                            })?;
+                            tracing::info!(
+                                operation = operation,
+                                skipped_model = %self.model(),
+                                fallback_model = %fallback,
+                                "skipping cloud model due to active cooldown"
+                            );
+                            let resp = self
+                                .prompt_generate_once(fallback, preamble, prompt, schema)
+                                .await
+                                .map_err(|error| match error {
+                                    OllamaGenerateCallError::RateLimited(message)
+                                    | OllamaGenerateCallError::Failed(message) => {
+                                        OllamaPromptError::GenerationFailed(message)
+                                    }
+                                })?;
+                            (resp, fallback.to_string())
+                        }
+                        CooldownStatusPolicy::Offline => return Err(OllamaPromptError::NotAvailable),
+                    }
+                } else {
+                    match self
+                        .prompt_generate_once(self.model(), preamble, prompt, schema)
+                        .await
+                    {
+                        Ok(resp) => (resp, self.model().to_string()),
+                        Err(OllamaGenerateCallError::RateLimited(message)) => {
+                            if is_cloud {
+                                self.activate_cloud_cooldown();
+                            }
+                            match policy {
+                                CooldownStatusPolicy::UseLocalFallback => {
+                                    let fallback = self.fallback_model().ok_or_else(|| {
+                                        OllamaPromptError::GenerationFailed(format!(
+                                            "rate limited by provider and no fallback model configured: {message}"
+                                        ))
+                                    })?;
+                                    tracing::warn!(
+                                        operation = operation,
+                                        primary_model = %self.model(),
+                                        fallback_model = %fallback,
+                                        error = %message,
+                                        "rate limited - falling back to local model"
+                                    );
+                                    let resp = self
+                                        .prompt_generate_once(fallback, preamble, prompt, schema)
+                                        .await
+                                        .map_err(|error| match error {
+                                            OllamaGenerateCallError::RateLimited(message)
+                                            | OllamaGenerateCallError::Failed(message) => {
+                                                OllamaPromptError::GenerationFailed(message)
+                                            }
+                                        })?;
+                                    (resp, fallback.to_string())
+                                }
+                                CooldownStatusPolicy::Offline => {
+                                    if is_cloud {
+                                        tracing::warn!(
+                                            operation = operation,
+                                            primary_model = %self.model(),
+                                            error = %message,
+                                            "rate limited - deferring to preserve local capacity"
+                                        );
+                                    }
+                                    return Err(OllamaPromptError::NotAvailable);
+                                }
+                            }
+                        }
+                        Err(OllamaGenerateCallError::Failed(message)) => {
+                            return Err(OllamaPromptError::GenerationFailed(message));
+                        }
+                    }
+                };
+
+                if response.trim().is_empty() {
+                    return Err(OllamaPromptError::EmptyResponse);
+                }
+
+                Ok((response, model_used))
+            }
+            .await;
+
+            match result {
+                Ok((response, model_used)) => {
+                    tracing::info!(
+                        operation = operation,
+                        model = %model_used,
+                        response_chars = response.len(),
+                        elapsed_ms = started.elapsed().as_millis() as u64,
+                        "completed structured ollama prompt"
+                    );
+                    Ok((response, model_used))
+                }
+                Err(error) => {
+                    tracing::error!(
+                        operation = operation,
+                        primary_model = %self.model(),
+                        elapsed_ms = started.elapsed().as_millis() as u64,
+                        error = ?error,
+                        "structured ollama prompt failed"
+                    );
+                    Err(error)
+                }
+            }
+        }
+        .instrument(span)
+        .await
+    }
+
+    async fn prompt_generate_once(
+        &self,
+        model: &str,
+        preamble: &str,
+        prompt: &str,
+        schema: &Value,
+    ) -> Result<String, OllamaGenerateCallError> {
+        let _permit = self
+            .acquire_local_permit(model)
+            .await
+            .map_err(OllamaGenerateCallError::Failed)?;
+
+        let request = OllamaGenerateRequest {
+            model,
+            system: preamble,
+            prompt,
+            stream: false,
+            format: schema,
+            options: OllamaGenerateOptions { temperature: 0.0 },
+        };
+
+        let response = self
+            .auth(
+                self.client
+                    .post(format!("{}/api/generate", self.base_url))
+                    .timeout(std::time::Duration::from_secs(CLOUD_PROMPT_TIMEOUT_SECS))
+                    .json(&request),
+            )
+            .send()
+            .await
+            .map_err(|error| OllamaGenerateCallError::Failed(error.to_string()))?;
+
+        let status = response.status();
+        let body = response
+            .text()
+            .await
+            .map_err(|error| OllamaGenerateCallError::Failed(error.to_string()))?;
+        if !status.is_success() {
+            let message = format!("Ollama generate request failed ({status}): {body}");
+            if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                return Err(OllamaGenerateCallError::RateLimited(message));
+            }
+            return Err(OllamaGenerateCallError::Failed(message));
+        }
+
+        let payload = serde_json::from_str::<OllamaGenerateResponse>(&body)
+            .map_err(|error| OllamaGenerateCallError::Failed(error.to_string()))?;
+        if let Some(error) = payload.error.filter(|value| !value.trim().is_empty()) {
+            return Err(OllamaGenerateCallError::Failed(error));
+        }
+        payload
+            .response
+            .ok_or_else(|| OllamaGenerateCallError::Failed("missing response".to_string()))
+    }
+}
+
+fn parse_structured_response<T: DeserializeOwned>(response: &str) -> Result<T, OllamaPromptError> {
+    serde_json::from_str(response).map_err(|error| {
+        OllamaPromptError::InvalidStructuredResponse(format!(
+            "failed to decode structured response: {error}"
+        ))
+    })
 }
 
 #[cfg(test)]
@@ -480,6 +738,36 @@ mod tests {
                 .headers()
                 .get(reqwest::header::AUTHORIZATION)
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn structured_response_parser_rejects_wrapped_json() {
+        #[derive(Debug, serde::Deserialize)]
+        struct Payload {
+            #[serde(rename = "value")]
+            _value: String,
+        }
+
+        let err = super::parse_structured_response::<Payload>("```json\n{\"value\":\"ok\"}\n```")
+            .expect_err("schema-backed structured responses should be strict JSON");
+        assert!(format!("{err:?}").contains("failed to decode structured response"));
+    }
+
+    #[test]
+    fn structured_response_parser_decodes_plain_json() {
+        #[derive(Debug, PartialEq, Eq, serde::Deserialize)]
+        struct Payload {
+            value: String,
+        }
+
+        let parsed =
+            super::parse_structured_response::<Payload>("{\"value\":\"ok\"}").expect("valid json");
+        assert_eq!(
+            parsed,
+            Payload {
+                value: "ok".to_string()
+            }
         );
     }
 }

@@ -78,6 +78,7 @@ impl From<OllamaPromptError> for SummarizerError {
             OllamaPromptError::EmptyResponse => {
                 Self::GenerationFailed("Empty response from Ollama".to_string())
             }
+            OllamaPromptError::InvalidStructuredResponse(s) => Self::GenerationFailed(s),
         }
     }
 }

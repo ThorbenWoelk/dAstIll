@@ -9,6 +9,7 @@ impl ChatService {
         prompt: &str,
         plan: ChatRetrievalPlan,
         active_chat: &ActiveChatHandle,
+        turn: &mut ChatTurnState,
     ) -> Result<ChatRetrievalOutcome, String> {
         let span = logfire::span!(
             "chat.retrieve",
@@ -23,6 +24,10 @@ impl ChatService {
             let pass_one_queries = plan.queries_for_pass(1);
             let pass_one_channel_focus = plan.channel_focus_ids.clone();
             let pass_one_video_focus = plan.video_focus_ids.clone();
+            if let Err(reason) = turn.consume_retrieval_pass(1) {
+                emit_budget_exhausted(active_chat, turn, reason.clone()).await;
+                return Err(reason);
+            }
             let pass_one = self
                 .run_retrieval_pass(
                     state,
@@ -48,41 +53,47 @@ impl ChatService {
                 && assessment.needs_more
                 && plan.supports_second_pass()
             {
-                let mut status =
-                    ChatStatusPayload::new("retrieving_pass_2", "Broadening the search")
-                        .with_detail(format!(
-                            "Pass 1 produced {} excerpts across {} videos.",
-                            sources.len(),
-                            count_unique_videos(&sources)
-                        ));
-                if let Some(reason) = &assessment.reason {
-                    status = status.with_decision(reason.clone());
+                if let Err(reason) = turn.consume_retrieval_pass(2) {
+                    emit_budget_exhausted(active_chat, turn, reason).await;
+                } else {
+                    let mut status =
+                        ChatStatusPayload::new("retrieving_pass_2", "Broadening the search")
+                            .with_detail(format!(
+                                "Pass 1 produced {} excerpts across {} videos.",
+                                sources.len(),
+                                count_unique_videos(&sources)
+                            ));
+                    if let Some(reason) = &assessment.reason {
+                        status = status.with_decision(reason.clone());
+                    }
+                    active_chat.emit(ChatStreamEvent::Status { status }).await;
+                    let pass_two_queries = plan.queries_for_pass(2);
+                    let pass_two_channel_focus = merge_channel_focus_ids(
+                        &plan.channel_focus_ids,
+                        &assessment.channel_focus_ids,
+                    );
+                    let pass_two_video_focus = plan.video_focus_ids.clone();
+                    let pass_two = self
+                        .run_retrieval_pass(
+                            state,
+                            &mut pool,
+                            RetrievalPassRequest {
+                                conversation_id,
+                                plan: &plan,
+                                access_context,
+                                pass: 2,
+                                queries: &pass_two_queries,
+                                channel_focus_ids: &pass_two_channel_focus,
+                                video_focus_ids: &pass_two_video_focus,
+                                active_chat,
+                            },
+                        )
+                        .await?;
+                    active_chat.ensure_not_cancelled()?;
+                    sources = pass_two.sources;
+                    assessment = pass_two.assessment;
+                    pass_count = 2;
                 }
-                active_chat.emit(ChatStreamEvent::Status { status }).await;
-                let pass_two_queries = plan.queries_for_pass(2);
-                let pass_two_channel_focus =
-                    merge_channel_focus_ids(&plan.channel_focus_ids, &assessment.channel_focus_ids);
-                let pass_two_video_focus = plan.video_focus_ids.clone();
-                let pass_two = self
-                    .run_retrieval_pass(
-                        state,
-                        &mut pool,
-                        RetrievalPassRequest {
-                            conversation_id,
-                            plan: &plan,
-                            access_context,
-                            pass: 2,
-                            queries: &pass_two_queries,
-                            channel_focus_ids: &pass_two_channel_focus,
-                            video_focus_ids: &pass_two_video_focus,
-                            active_chat,
-                        },
-                    )
-                    .await?;
-                active_chat.ensure_not_cancelled()?;
-                sources = pass_two.sources;
-                assessment = pass_two.assessment;
-                pass_count = 2;
             }
 
             if CHAT_MAX_RETRIEVAL_PASSES > 2
@@ -90,40 +101,53 @@ impl ChatService {
                 && assessment.needs_more
                 && plan.supports_third_pass()
             {
-                let mut status = ChatStatusPayload::new("retrieving_pass_3", "Deepening evidence")
-                    .with_detail(format!(
-                        "After pass 2: {} excerpts across {} videos.",
-                        sources.len(),
-                        count_unique_videos(&sources)
-                    ));
-                if let Some(reason) = &assessment.reason {
-                    status = status.with_decision(reason.clone());
+                if let Err(reason) = turn.consume_retrieval_pass(3) {
+                    emit_budget_exhausted(active_chat, turn, reason).await;
+                } else {
+                    let mut status =
+                        ChatStatusPayload::new("retrieving_pass_3", "Deepening evidence")
+                            .with_detail(format!(
+                                "After pass 2: {} excerpts across {} videos.",
+                                sources.len(),
+                                count_unique_videos(&sources)
+                            ));
+                    if let Some(reason) = &assessment.reason {
+                        status = status.with_decision(reason.clone());
+                    }
+                    active_chat.emit(ChatStreamEvent::Status { status }).await;
+                    let pass_three_queries = plan.queries_for_pass(3);
+                    let pass_three_channel_focus = merge_channel_focus_ids(
+                        &plan.channel_focus_ids,
+                        &assessment.channel_focus_ids,
+                    );
+                    let pass_three_video_focus = plan.video_focus_ids.clone();
+                    let pass_three = self
+                        .run_retrieval_pass(
+                            state,
+                            &mut pool,
+                            RetrievalPassRequest {
+                                conversation_id,
+                                plan: &plan,
+                                access_context,
+                                pass: 3,
+                                queries: &pass_three_queries,
+                                channel_focus_ids: &pass_three_channel_focus,
+                                video_focus_ids: &pass_three_video_focus,
+                                active_chat,
+                            },
+                        )
+                        .await?;
+                    active_chat.ensure_not_cancelled()?;
+                    sources = pass_three.sources;
+                    assessment = pass_three.assessment;
+                    pass_count = 3;
                 }
-                active_chat.emit(ChatStreamEvent::Status { status }).await;
-                let pass_three_queries = plan.queries_for_pass(3);
-                let pass_three_channel_focus =
-                    merge_channel_focus_ids(&plan.channel_focus_ids, &assessment.channel_focus_ids);
-                let pass_three_video_focus = plan.video_focus_ids.clone();
-                let pass_three = self
-                    .run_retrieval_pass(
-                        state,
-                        &mut pool,
-                        RetrievalPassRequest {
-                            conversation_id,
-                            plan: &plan,
-                            access_context,
-                            pass: 3,
-                            queries: &pass_three_queries,
-                            channel_focus_ids: &pass_three_channel_focus,
-                            video_focus_ids: &pass_three_video_focus,
-                            active_chat,
-                        },
-                    )
-                    .await?;
-                active_chat.ensure_not_cancelled()?;
-                sources = pass_three.sources;
-                assessment = pass_three.assessment;
-                pass_count = 3;
+            }
+
+            if assessment.needs_more && pass_count >= CHAT_MAX_RETRIEVAL_PASSES {
+                let reason = "Reached the retrieval-pass budget for this turn.";
+                turn.mark_budget_exhausted(reason);
+                emit_budget_exhausted(active_chat, turn, reason).await;
             }
 
             if let Some(reason) = assessment.reason {
@@ -149,7 +173,15 @@ impl ChatService {
                 "chat adaptive retrieval complete"
             );
 
-            Ok(ChatRetrievalOutcome { plan, sources })
+            let query_count = (1..=pass_count)
+                .map(|pass| plan.queries_for_pass(pass).len())
+                .sum();
+            Ok(ChatRetrievalOutcome {
+                plan,
+                sources,
+                pass_count,
+                query_count,
+            })
         }
         .instrument(span)
         .await
@@ -164,6 +196,7 @@ impl ChatService {
         prompt: &str,
         deep_research: bool,
         active_chat: &ActiveChatHandle,
+        turn: &mut ChatTurnState,
     ) -> Result<ChatRetrievalPlan, String> {
         let span = logfire::span!(
             "chat.plan",
@@ -200,14 +233,19 @@ impl ChatService {
                 })
                 .await;
 
+            if let Err(reason) = turn.consume_model_call("retrieval planning") {
+                emit_budget_exhausted(active_chat, turn, reason.clone()).await;
+                return Ok(ChatRetrievalPlan::fallback(&retrieval_prompt, Some(reason)));
+            }
             let planned = await_or_cancel(
                 active_chat,
                 timeout(
                     CHAT_CLASSIFY_TIMEOUT,
-                    self.core.prompt_with_fallback(
+                    self.core.prompt_json_schema::<ChatQueryPlanResponse>(
                         "chat_query_plan",
                         CHAT_QUERY_PLAN_PROMPT,
                         &planner_input,
+                        &ChatQueryPlanResponse::json_schema(),
                         crate::services::ollama::CooldownStatusPolicy::UseLocalFallback,
                     ),
                 ),
@@ -215,17 +253,7 @@ impl ChatService {
             .await?;
 
             let mut plan = match planned {
-                Ok(Ok((response, _))) => {
-                    match parse_json_response::<ChatQueryPlanResponse>(&response) {
-                        Ok(payload) => ChatRetrievalPlan::from_response(&retrieval_prompt, payload),
-                        Err(error) => ChatRetrievalPlan::fallback(
-                            &retrieval_prompt,
-                            Some(format!(
-                                "Planner returned unreadable JSON; falling back to synthesis ({error})."
-                            )),
-                        ),
-                    }
-                }
+                Ok(Ok((response, _))) => ChatRetrievalPlan::from_response(&retrieval_prompt, response),
                 Ok(Err(error)) => ChatRetrievalPlan::fallback(
                     &retrieval_prompt,
                     Some(format!(

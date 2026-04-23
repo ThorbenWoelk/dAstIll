@@ -61,6 +61,8 @@ pub struct ChatStatusPayload {
     plan: Option<ChatRetrievalPlanVisibility>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tool: Option<ChatToolStatusPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    budget: Option<crate::models::ChatTurnBudgetSnapshot>,
 }
 
 impl ChatStatusPayload {
@@ -72,6 +74,7 @@ impl ChatStatusPayload {
             decision: None,
             plan: None,
             tool: None,
+            budget: None,
         }
     }
 
@@ -92,6 +95,11 @@ impl ChatStatusPayload {
 
     pub(super) fn with_tool(mut self, tool: ChatToolStatusPayload) -> Self {
         self.tool = Some(tool);
+        self
+    }
+
+    pub(super) fn with_budget(mut self, budget: crate::models::ChatTurnBudgetSnapshot) -> Self {
+        self.budget = Some(budget);
         self
     }
 }
@@ -446,6 +454,38 @@ pub(super) struct ChatQueryPlanResponse {
     pub(super) expansion_queries: Option<Vec<String>>,
 }
 
+impl ChatQueryPlanResponse {
+    pub(super) fn json_schema() -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "needs_retrieval": { "type": "boolean" },
+                "intent": {
+                    "type": "string",
+                    "enum": ["fact", "synthesis", "pattern", "comparison", "recent_activity"]
+                },
+                "rationale": { "type": "string" },
+                "sub_queries": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                },
+                "expansion_queries": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                }
+            },
+            "required": [
+                "needs_retrieval",
+                "intent",
+                "rationale",
+                "sub_queries",
+                "expansion_queries"
+            ]
+        })
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub(super) struct ChatToolLoopResponse {
     pub(super) action: Option<String>,
@@ -455,6 +495,172 @@ pub(super) struct ChatToolLoopResponse {
     pub(super) db_inspect_input: Option<tools::DbInspectToolInput>,
     pub(super) highlight_lookup_input: Option<tools::HighlightLookupToolInput>,
     pub(super) recent_library_activity_input: Option<tools::RecentLibraryActivityToolInput>,
+}
+
+impl ChatToolLoopResponse {
+    pub(super) fn json_schema() -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": [
+                        "respond",
+                        "tool_call",
+                        "search_library",
+                        "db_inspect",
+                        "highlight_lookup",
+                        "recent_library_activity"
+                    ]
+                },
+                "rationale": { "type": "string" },
+                "tool_name": {
+                    "anyOf": [
+                        {
+                            "type": "string",
+                            "enum": [
+                                "search_library",
+                                "db_inspect",
+                                "highlight_lookup",
+                                "recent_library_activity"
+                            ]
+                        },
+                        { "type": "null" }
+                    ]
+                },
+                "search_library_input": nullable_object_schema(object_schema(
+                    serde_json::json!({
+                        "query": { "type": "string" },
+                        "source": {
+                            "type": "string",
+                            "enum": ["all", "summary", "transcript"]
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 24
+                        }
+                    }),
+                    &["query", "source", "limit"],
+                )),
+                "db_inspect_input": nullable_object_schema(object_schema(
+                    serde_json::json!({
+                        "operation": {
+                            "type": "string",
+                            "enum": ["count", "list", "breakdown"]
+                        },
+                        "resource": {
+                            "type": "string",
+                            "enum": ["summaries", "transcripts", "videos", "channels"]
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 10
+                        },
+                        "group_by": {
+                            "anyOf": [
+                                {
+                                    "type": "string",
+                                    "enum": ["channel"]
+                                },
+                                { "type": "null" }
+                            ]
+                        }
+                    }),
+                    &["operation", "resource", "limit", "group_by"],
+                )),
+                "highlight_lookup_input": nullable_object_schema(object_schema(
+                    serde_json::json!({
+                        "query": {
+                            "anyOf": [
+                                { "type": "string" },
+                                { "type": "null" }
+                            ]
+                        },
+                        "video_title": {
+                            "anyOf": [
+                                { "type": "string" },
+                                { "type": "null" }
+                            ]
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 20
+                        }
+                    }),
+                    &["query", "video_title", "limit"],
+                )),
+                "recent_library_activity_input": nullable_object_schema(object_schema(
+                    serde_json::json!({
+                        "scope": {
+                            "type": "string",
+                            "enum": ["channel", "video", "library"]
+                        },
+                        "channel_id": {
+                            "anyOf": [
+                                { "type": "string" },
+                                { "type": "null" }
+                            ]
+                        },
+                        "video_id": {
+                            "anyOf": [
+                                { "type": "string" },
+                                { "type": "null" }
+                            ]
+                        },
+                        "limit_videos": {
+                            "type": "integer",
+                            "minimum": 3,
+                            "maximum": 12
+                        },
+                        "include_summaries": { "type": "boolean" },
+                        "include_transcripts": { "type": "boolean" }
+                    }),
+                    &[
+                        "scope",
+                        "channel_id",
+                        "video_id",
+                        "limit_videos",
+                        "include_summaries",
+                        "include_transcripts",
+                    ],
+                ))
+            },
+            "required": [
+                "action",
+                "rationale",
+                "tool_name",
+                "search_library_input",
+                "db_inspect_input",
+                "highlight_lookup_input",
+                "recent_library_activity_input"
+            ]
+        })
+    }
+}
+
+fn nullable_object_schema(properties_and_required: serde_json::Value) -> serde_json::Value {
+    serde_json::json!({
+        "anyOf": [
+            {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": properties_and_required["properties"].clone(),
+                "required": properties_and_required["required"].clone()
+            },
+            { "type": "null" }
+        ]
+    })
+}
+
+fn object_schema(properties: serde_json::Value, required: &[&str]) -> serde_json::Value {
+    serde_json::json!({
+        "properties": properties,
+        "required": required
+    })
 }
 
 #[derive(Debug)]

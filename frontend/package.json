@@ -1,7 +1,7 @@
 {
   "name": "frontend",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.3.1",
   "type": "module",
   "scripts": {
     "dev": "vite dev",
@@ -60,7 +60,9 @@
     "@tootallnate/once": "^3.0.1",
     "cookie": "^1.0.2",
     "dompurify": "^3.4.0",
+    "fast-xml-parser": "^5.7.1",
     "h3": "^1.15.11",
-    "protobufjs": "7.5.5"
+    "protobufjs": "7.5.5",
+    "uuid": "^14.0.0"
   }
 }

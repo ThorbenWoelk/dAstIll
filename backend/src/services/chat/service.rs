@@ -60,6 +60,7 @@ impl ChatService {
             prompt_tokens: None,
             completion_tokens: None,
             total_duration_ns: None,
+            turn_trace: None,
         }
     }
 
@@ -69,6 +70,17 @@ impl ChatService {
         sources: Vec<ChatSource>,
         status: ChatMessageStatus,
         generation: Option<GenerationMeta>,
+    ) -> ChatMessage {
+        self.build_assistant_message_with_trace(content, sources, status, generation, None)
+    }
+
+    pub(crate) fn build_assistant_message_with_trace(
+        &self,
+        content: String,
+        sources: Vec<ChatSource>,
+        status: ChatMessageStatus,
+        generation: Option<GenerationMeta>,
+        turn_trace: Option<crate::models::ChatTurnTrace>,
     ) -> ChatMessage {
         ChatMessage {
             id: generate_chat_id("msg"),
@@ -81,6 +93,7 @@ impl ChatService {
             prompt_tokens: generation.as_ref().and_then(|meta| meta.prompt_tokens),
             completion_tokens: generation.as_ref().and_then(|meta| meta.completion_tokens),
             total_duration_ns: generation.as_ref().and_then(|meta| meta.total_duration_ns),
+            turn_trace,
         }
     }
 

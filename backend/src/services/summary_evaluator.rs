@@ -30,6 +30,7 @@ impl From<OllamaPromptError> for SummaryEvaluatorError {
             OllamaPromptError::EmptyResponse => {
                 Self::EvaluationFailed("Empty response from evaluator model".to_string())
             }
+            OllamaPromptError::InvalidStructuredResponse(s) => Self::ParseFailed(s),
         }
     }
 }
@@ -95,11 +96,11 @@ impl SummaryEvaluatorService {
 
         let prompt = evaluation_prompt(video_title, transcript, summary);
 
-        let (raw, model_used) = self
+        let (parsed, model_used) = self
             .prompt_model("summary_quality_evaluation", evaluation_preamble(), &prompt)
             .await?;
 
-        let mut evaluation = parse_evaluation_response(&raw)?;
+        let mut evaluation = evaluation_result_from_response(parsed)?;
         evaluation.quality_model_used = Some(model_used);
         Ok(evaluation)
     }
@@ -113,9 +114,15 @@ impl SummaryEvaluatorService {
         operation: &str,
         preamble: &str,
         prompt: &str,
-    ) -> Result<(String, String), SummaryEvaluatorError> {
+    ) -> Result<(EvaluatorResponse, String), SummaryEvaluatorError> {
         self.core
-            .prompt_with_fallback(operation, preamble, prompt, CooldownStatusPolicy::Offline)
+            .prompt_json_schema(
+                operation,
+                preamble,
+                prompt,
+                &evaluator_response_schema(),
+                CooldownStatusPolicy::Offline,
+            )
             .await
             .map_err(Into::into)
     }
@@ -163,24 +170,7 @@ Use status "unscorable" instead of a numeric score when the source cannot be jud
 - transcript or summary appears corrupted, mismatched, language-incompatible, or mostly unreadable
 - the summary is too malformed to compare
 
-Return strict JSON only with this schema:
-{{
-  "status": "scored",
-  "unscorable_reason": "<required when status is unscorable; otherwise null>",
-  "faithfulness_score": <integer 0-10 or null>,
-  "completeness_score": <integer 0-10 or null>,
-  "final_score": <integer 0-10 or null>,
-  "defects": [
-    {{
-      "type": "hallucination" | "omission" | "factual_error" | "transcript_quality",
-      "severity": "minor" | "major",
-      "summary_claim": "<affected summary claim or section>",
-      "transcript_anchor": "<short transcript quote, section anchor, or explicit 'not found in transcript'>"
-    }}
-  ],
-  "evaluation_note": "<concise human-readable note>",
-  "tags": ["<topic>", "<frame>", "<stance>"]
-}}
+Return one JSON object matching the runtime schema.
 
 Rules:
 - Write a critical but realistic review of the content.
@@ -193,6 +183,92 @@ Rules:
 - Tags are metadata only. Return 0-4 short Title Case tags supported by the transcript; do not use tags to explain defects.
 - Do not include extra keys, comments, or explain your reasoning outside the JSON."#
     )
+}
+
+fn evaluator_response_schema() -> serde_json::Value {
+    serde_json::json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "status": {
+                "type": "string",
+                "enum": ["scored", "unscorable"]
+            },
+            "unscorable_reason": {
+                "anyOf": [
+                    { "type": "string" },
+                    { "type": "null" }
+                ]
+            },
+            "faithfulness_score": nullable_score_schema(),
+            "completeness_score": nullable_score_schema(),
+            "final_score": nullable_score_schema(),
+            "defects": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "type": {
+                            "type": "string",
+                            "enum": [
+                                "hallucination",
+                                "omission",
+                                "factual_error",
+                                "transcript_quality"
+                            ]
+                        },
+                        "severity": {
+                            "type": "string",
+                            "enum": ["minor", "major"]
+                        },
+                        "summary_claim": { "type": "string" },
+                        "transcript_anchor": { "type": "string" }
+                    },
+                    "required": [
+                        "type",
+                        "severity",
+                        "summary_claim",
+                        "transcript_anchor"
+                    ]
+                }
+            },
+            "evaluation_note": {
+                "anyOf": [
+                    { "type": "string" },
+                    { "type": "null" }
+                ]
+            },
+            "tags": {
+                "type": "array",
+                "items": { "type": "string" },
+                "maxItems": 4
+            }
+        },
+        "required": [
+            "status",
+            "unscorable_reason",
+            "faithfulness_score",
+            "completeness_score",
+            "final_score",
+            "defects",
+            "evaluation_note",
+            "tags"
+        ]
+    })
+}
+
+fn nullable_score_schema() -> serde_json::Value {
+    serde_json::json!({
+        "anyOf": [
+            {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10
+            },
+            { "type": "null" }
+        ]
+    })
 }
 
 fn parse_model_params_billions(model: &str) -> Option<u16> {
@@ -275,6 +351,7 @@ fn normalize_tags(tags: Option<Vec<String>>) -> Vec<String> {
     normalized
 }
 
+#[cfg(test)]
 fn parse_evaluation_response(raw: &str) -> Result<SummaryEvaluationResult, SummaryEvaluatorError> {
     let start = raw
         .find('{')
@@ -287,6 +364,12 @@ fn parse_evaluation_response(raw: &str) -> Result<SummaryEvaluationResult, Summa
     let parsed: EvaluatorResponse = serde_json::from_str(json)
         .map_err(|err| SummaryEvaluatorError::ParseFailed(err.to_string()))?;
 
+    evaluation_result_from_response(parsed)
+}
+
+fn evaluation_result_from_response(
+    parsed: EvaluatorResponse,
+) -> Result<SummaryEvaluationResult, SummaryEvaluatorError> {
     let tags = normalize_tags(parsed.tags);
     let status = parsed.status.as_deref().unwrap_or("scored");
     if status == "unscorable" {
@@ -429,7 +512,8 @@ fn title_case(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        SummaryEvaluatorService, evaluation_preamble, evaluation_prompt, parse_evaluation_response,
+        SummaryEvaluatorService, evaluation_preamble, evaluation_prompt, evaluator_response_schema,
+        parse_evaluation_response,
     };
     use crate::models::AiStatus;
     use crate::services::ollama::OllamaCore;
@@ -661,10 +745,13 @@ mod tests {
         assert!(prompt.contains("Write a critical but realistic review of the content."));
         assert!(prompt.contains("Do not sugar-coat obvious misses, but do not destroy the summary over minor phrasing issues."));
         assert!(prompt.contains("Focus on substantive problems; do not pad the note with praise and do not invent flaws."));
-        assert!(prompt.contains("\"faithfulness_score\""));
-        assert!(prompt.contains("\"completeness_score\""));
-        assert!(prompt.contains("\"final_score\""));
-        assert!(prompt.contains("\"defects\""));
+        assert!(prompt.contains("Return one JSON object matching the runtime schema."));
+        assert!(!prompt.contains("\"faithfulness_score\""));
+        let schema = evaluator_response_schema();
+        assert!(schema["properties"]["faithfulness_score"].is_object());
+        assert!(schema["properties"]["completeness_score"].is_object());
+        assert!(schema["properties"]["final_score"].is_object());
+        assert!(schema["properties"]["defects"].is_object());
         assert!(prompt.contains("\"unscorable\""));
         assert!(prompt.contains("scores below 10 require at least one defect"));
         assert!(prompt.contains("7 is acceptable"));

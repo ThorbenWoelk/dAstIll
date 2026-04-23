@@ -2,6 +2,7 @@
 import type { ChatMessageStatus } from "./ChatMessageStatus";
 import type { ChatRole } from "./ChatRole";
 import type { ChatSource } from "./ChatSource";
+import type { ChatTurnTrace } from "./ChatTurnTrace";
 
 export type ChatMessage = { id: string, role: ChatRole, content: string, sources: Array<ChatSource>, status: ChatMessageStatus, created_at: string, 
 /**
@@ -19,4 +20,9 @@ completion_tokens?: bigint,
 /**
  * Wall time reported by Ollama for the generate call (nanoseconds), when provided.
  */
-total_duration_ns?: bigint, };
+total_duration_ns?: bigint,
+/**
+ * Redacted execution trace for this assistant turn. Does not include prompts,
+ * retrieved excerpts, tool outputs, or generated answer text.
+ */
+turn_trace?: ChatTurnTrace, };

@@ -436,6 +436,7 @@ pub(super) struct ToolCallExecutionRequest<'a> {
     pub(super) tool_outputs: &'a mut Vec<ToolEvidenceRecord>,
     pub(super) gathered_sources: &'a mut Vec<RetrievedChatSource>,
     pub(super) active_chat: &'a ActiveChatHandle,
+    pub(super) turn: &'a mut ChatTurnState,
 }
 
 pub(super) struct RetrievalCandidateRequest<'a> {
@@ -460,6 +461,8 @@ pub(crate) struct CoverageAssessment {
 pub(super) struct ChatRetrievalOutcome {
     pub(super) plan: ChatRetrievalPlan,
     pub(super) sources: Vec<RetrievedChatSource>,
+    pub(super) pass_count: usize,
+    pub(super) query_count: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -503,6 +506,185 @@ pub(crate) struct GenerationMeta {
     pub(crate) prompt_tokens: Option<u64>,
     pub(crate) completion_tokens: Option<u64>,
     pub(crate) total_duration_ns: Option<u64>,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct ChatTurnState {
+    strategy: String,
+    plan_intent: Option<String>,
+    plan_label: Option<String>,
+    tool_calls: Vec<crate::models::ChatTurnToolTrace>,
+    retrieval: Option<crate::models::ChatTurnRetrievalTrace>,
+    budget: ChatTurnBudget,
+}
+
+impl ChatTurnState {
+    pub(super) fn new(deep_research: bool) -> Self {
+        let max_model_calls = if deep_research {
+            CHAT_TURN_MODEL_CALL_LIMIT_DEEP_RESEARCH
+        } else {
+            CHAT_TURN_MODEL_CALL_LIMIT
+        };
+        let max_tool_calls = if deep_research {
+            CHAT_TOOL_LOOP_MAX_STEPS_DEEP_RESEARCH
+        } else {
+            CHAT_TOOL_LOOP_MAX_STEPS
+        };
+        Self {
+            strategy: "unresolved".to_string(),
+            plan_intent: None,
+            plan_label: None,
+            tool_calls: Vec::new(),
+            retrieval: None,
+            budget: ChatTurnBudget {
+                max_model_calls,
+                model_calls: 0,
+                max_tool_calls,
+                tool_calls: 0,
+                max_retrieval_passes: CHAT_MAX_RETRIEVAL_PASSES,
+                retrieval_passes: 0,
+                exhaustion_reason: None,
+            },
+        }
+    }
+
+    pub(super) fn set_strategy(&mut self, strategy: impl Into<String>) {
+        self.strategy = strategy.into();
+    }
+
+    pub(super) fn set_plan(&mut self, plan: &ChatRetrievalPlan) {
+        self.plan_intent = Some(plan.intent.label().to_string());
+        self.plan_label = Some(plan.label.clone());
+    }
+
+    pub(super) fn record_retrieval(
+        &mut self,
+        plan: &ChatRetrievalPlan,
+        pass_count: usize,
+        query_count: usize,
+        selected_source_count: usize,
+        unique_video_count: usize,
+    ) {
+        self.set_plan(plan);
+        self.retrieval = Some(crate::models::ChatTurnRetrievalTrace {
+            pass_count,
+            query_count,
+            selected_source_count,
+            unique_video_count,
+            deep_research: plan.deep_research,
+        });
+    }
+
+    pub(super) fn record_tool_call(&mut self, name: impl Into<String>, state: impl Into<String>) {
+        self.tool_calls.push(crate::models::ChatTurnToolTrace {
+            name: name.into(),
+            state: state.into(),
+        });
+    }
+
+    pub(super) fn update_last_tool_state(&mut self, state: impl Into<String>) {
+        if let Some(last) = self.tool_calls.last_mut() {
+            last.state = state.into();
+        }
+    }
+
+    pub(super) fn consume_model_call(&mut self, label: &str) -> Result<(), String> {
+        if self.budget.model_calls >= self.budget.max_model_calls {
+            let reason = format!("Reached the model-call budget before {label}.");
+            self.mark_budget_exhausted(reason.clone());
+            return Err(reason);
+        }
+        self.budget.model_calls += 1;
+        Ok(())
+    }
+
+    pub(super) fn consume_tool_call(&mut self, label: &str) -> Result<(), String> {
+        if self.budget.tool_calls >= self.budget.max_tool_calls {
+            let reason = format!("Reached the tool-call budget before {label}.");
+            self.mark_budget_exhausted(reason.clone());
+            return Err(reason);
+        }
+        self.budget.tool_calls += 1;
+        Ok(())
+    }
+
+    pub(super) fn consume_retrieval_pass(&mut self, pass: usize) -> Result<(), String> {
+        if self.budget.retrieval_passes >= self.budget.max_retrieval_passes {
+            let reason = format!("Reached the retrieval-pass budget before pass {pass}.");
+            self.mark_budget_exhausted(reason.clone());
+            return Err(reason);
+        }
+        self.budget.retrieval_passes += 1;
+        Ok(())
+    }
+
+    pub(super) fn mark_budget_exhausted(&mut self, reason: impl Into<String>) {
+        if self.budget.exhaustion_reason.is_none() {
+            self.budget.exhaustion_reason = Some(reason.into());
+        }
+    }
+
+    pub(super) fn budget_exhausted(&self) -> bool {
+        self.budget.exhaustion_reason.is_some()
+    }
+
+    pub(super) fn budget_snapshot(&self) -> crate::models::ChatTurnBudgetSnapshot {
+        self.budget.snapshot()
+    }
+
+    pub(super) fn finish(self) -> crate::models::ChatTurnTrace {
+        let budget = self.budget.snapshot();
+        crate::models::ChatTurnTrace {
+            strategy: self.strategy,
+            plan_intent: self.plan_intent,
+            plan_label: self.plan_label,
+            tool_calls: self.tool_calls,
+            retrieval: self.retrieval,
+            budget,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ChatTurnBudget {
+    max_model_calls: usize,
+    model_calls: usize,
+    max_tool_calls: usize,
+    tool_calls: usize,
+    max_retrieval_passes: usize,
+    retrieval_passes: usize,
+    exhaustion_reason: Option<String>,
+}
+
+impl ChatTurnBudget {
+    fn snapshot(&self) -> crate::models::ChatTurnBudgetSnapshot {
+        crate::models::ChatTurnBudgetSnapshot {
+            max_model_calls: self.max_model_calls,
+            model_calls: self.model_calls,
+            max_tool_calls: self.max_tool_calls,
+            tool_calls: self.tool_calls,
+            max_retrieval_passes: self.max_retrieval_passes,
+            retrieval_passes: self.retrieval_passes,
+            exhausted: self.exhaustion_reason.is_some(),
+            exhaustion_reason: self.exhaustion_reason.clone(),
+        }
+    }
+}
+
+pub(super) async fn emit_budget_exhausted(
+    active_chat: &ActiveChatHandle,
+    turn: &ChatTurnState,
+    reason: impl Into<String>,
+) {
+    let reason = reason.into();
+    active_chat
+        .emit(ChatStreamEvent::Status {
+            status: ChatStatusPayload::new("budget_exhausted", "Turn budget reached")
+                .with_detail(reason.clone())
+                .with_decision(reason)
+                .with_budget(turn.budget_snapshot()),
+        })
+        .await;
 }
 
 #[derive(Debug, Deserialize)]

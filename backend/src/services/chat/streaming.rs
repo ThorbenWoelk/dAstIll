@@ -8,6 +8,7 @@ impl ChatService {
         plan: &ChatRetrievalPlan,
         sources: &[RetrievedChatSource],
         active_chat: &ActiveChatHandle,
+        turn: &mut ChatTurnState,
     ) -> Result<String, String> {
         let span = logfire::span!(
             "chat.synthesize",
@@ -44,8 +45,11 @@ impl ChatService {
             let mut observations = Vec::new();
             for input in observation_inputs {
                 active_chat.ensure_not_cancelled()?;
+                if turn.budget_exhausted() {
+                    break;
+                }
                 match self
-                    .generate_video_observation(conversation_id, prompt, &input, active_chat)
+                    .generate_video_observation(conversation_id, prompt, &input, active_chat, turn)
                     .await
                 {
                     Ok(summary) if !summary.trim().is_empty() => {
@@ -100,6 +104,7 @@ impl ChatService {
         prompt: &str,
         input: &VideoObservationInput,
         active_chat: &ActiveChatHandle,
+        turn: &mut ChatTurnState,
     ) -> Result<String, String> {
         let span = logfire::span!(
             "chat.synthesize.observation",
@@ -130,6 +135,10 @@ impl ChatService {
                 channel = input.channel_name,
                 evidence = evidence.trim()
             );
+            if let Err(reason) = turn.consume_model_call("video observation synthesis") {
+                emit_budget_exhausted(active_chat, turn, reason.clone()).await;
+                return Err(reason);
+            }
             let (response, model_used) = await_or_cancel(
                 active_chat,
                 self.core.prompt_with_fallback(
