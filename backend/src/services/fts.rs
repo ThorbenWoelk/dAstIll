@@ -10,7 +10,7 @@ use libsql::{Builder, Connection, Database, TransactionBehavior, Value, params};
 use tokio::sync::RwLock;
 
 use crate::{
-    search_query::{build_fts_phrase_query, build_fts_query},
+    search_query::{build_fts_phrase_queries, build_fts_query, build_fts_relaxed_query},
     services::search::{SearchCandidate, SearchSourceKind},
 };
 
@@ -228,26 +228,38 @@ impl FtsIndex {
         channel_id: Option<&str>,
         limit: usize,
     ) -> Vec<FtsSearchResult> {
-        let phrase_query = build_fts_phrase_query(query);
+        let phrase_queries = build_fts_phrase_queries(query);
         let match_query = build_fts_query(query);
-        if phrase_query.is_none() && match_query.is_empty() {
+        let relaxed_query = build_fts_relaxed_query(query);
+        if phrase_queries.is_empty() && match_query.is_empty() && relaxed_query.is_empty() {
             return Vec::new();
         }
 
         let inner = self.0.read().await;
         let mut combined_results = Vec::new();
         let mut seen_chunk_ids = std::collections::HashSet::new();
+        let max_combined_results = limit.saturating_mul(3).clamp(limit, 200);
 
-        for query_text in phrase_query
+        for query_text in phrase_queries
             .into_iter()
             .chain((!match_query.is_empty()).then_some(match_query))
+            .chain(
+                (!relaxed_query.is_empty() && relaxed_query != build_fts_query(query))
+                    .then_some(relaxed_query),
+            )
         {
-            for result in
-                execute_search_query(&inner.conn, query_text, source_kind, channel_id, limit).await
+            for result in execute_search_query(
+                &inner.conn,
+                query_text,
+                source_kind,
+                channel_id,
+                max_combined_results,
+            )
+            .await
             {
                 if seen_chunk_ids.insert(result.chunk_id.clone()) {
                     combined_results.push(result);
-                    if combined_results.len() >= limit {
+                    if combined_results.len() >= max_combined_results {
                         return combined_results;
                     }
                 }
@@ -723,6 +735,77 @@ mod tests {
         assert!(
             !results.is_empty(),
             "natural language search should return results"
+        );
+        assert_eq!(results[0].video_id, "target");
+    }
+
+    #[tokio::test]
+    async fn fts_index_handles_conversational_phrase_queries() {
+        let index = FtsIndex::new().await.expect("index should be created");
+
+        index
+            .upsert_source(
+                FtsSourceMeta {
+                    video_id: "target",
+                    source_kind: SearchSourceKind::Summary,
+                    channel_id: "channel-a",
+                    channel_name: "Channel A",
+                    video_title:
+                        "Anthropic’s Cybersecurity Shock Wave + Ronan Farrow and Andrew Marantz on Their Sam Altman Investigation + One Good Thing",
+                    published_at: "2026-01-10T00:00:00Z",
+                },
+                &[FtsChunk {
+                    chunk_id: "target_summary_1_0".to_string(),
+                    section_title: Some("One Good Thing".to_string()),
+                    chunk_text: "One Good Thing closes the episode after the Sam Altman interview."
+                        .to_string(),
+                    start_sec: None,
+                }],
+            )
+            .await
+            .expect("target source should be indexed");
+
+        for (index_id, title, chunk_text) in [
+            (
+                0,
+                "The talk that changed the web",
+                "A broad discussion about web standards and browser politics.",
+            ),
+            (
+                1,
+                "We need to talk about founder mode",
+                "A creator commentary video about management culture and startups.",
+            ),
+        ] {
+            let video_id = format!("distractor-{index_id}");
+            let chunk_id = format!("distractor-{index_id}_summary_1_0");
+            index
+                .upsert_source(
+                    FtsSourceMeta {
+                        video_id: &video_id,
+                        source_kind: SearchSourceKind::Summary,
+                        channel_id: "channel-b",
+                        channel_name: "Channel B",
+                        video_title: title,
+                        published_at: "2026-01-01T00:00:00Z",
+                    },
+                    &[FtsChunk {
+                        chunk_id,
+                        section_title: None,
+                        chunk_text: chunk_text.to_string(),
+                        start_sec: None,
+                    }],
+                )
+                .await
+                .expect("distractor source should be indexed");
+        }
+
+        let results = index
+            .search("video where they talk about one good thing", None, None, 5)
+            .await;
+        assert!(
+            !results.is_empty(),
+            "conversational phrase search should return results"
         );
         assert_eq!(results[0].video_id, "target");
     }

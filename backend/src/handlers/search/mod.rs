@@ -191,9 +191,10 @@ pub async fn search(
             return Err((StatusCode::FORBIDDEN, "Channel access denied".to_string()));
         }
     }
-    let run_keyword_search = execution_mode.runs_keyword();
+    let run_keyword_search =
+        execution_mode.runs_keyword() || execution_mode == SearchExecutionMode::Semantic;
     let run_semantic_search = execution_mode.runs_semantic();
-    let fts_terms = meaningful_search_terms(query);
+    let fts_terms = meaningful_search_terms(&retrieval_query);
     let semantic_enabled = state.search.semantic_enabled();
     let search_model = state.search.model();
     let search_status = state.search_progress.snapshot();
@@ -247,12 +248,14 @@ pub async fn search(
             })
             .collect()
     };
-    let fts_candidates = rerank_fts_candidates(&fts_candidates, query)
+    let fts_candidates = rerank_fts_candidates(&fts_candidates, &retrieval_query)
         .into_iter()
         .filter(|candidate| {
             can_access_video(&access_context, &candidate.video_id, &candidate.channel_id)
         })
         .collect::<Vec<_>>();
+    let semantic_keyword_rescue_candidates =
+        exact_keyword_rescue_candidates(&retrieval_query, &fts_candidates);
     let fts_db_elapsed_ms = fts_db_started.elapsed().as_millis() as u64;
 
     let mut embedding_elapsed_ms = 0;
@@ -360,8 +363,18 @@ pub async fn search(
     let rerank_configured = state.search.rerank_model().is_some();
     let mut rerank_elapsed_ms = 0u64;
 
+    let semantic_keyword_rescue_active = execution_mode == SearchExecutionMode::Semantic
+        && should_rescue_semantic_results(
+            &retrieval_query,
+            &semantic_keyword_rescue_candidates,
+            &hybrid_candidates,
+        );
+
     let results = match execution_mode {
         SearchExecutionMode::Keyword => group_fts_candidates(&fts_candidates, limit),
+        SearchExecutionMode::Semantic if semantic_keyword_rescue_active => {
+            group_fts_candidates(&semantic_keyword_rescue_candidates, limit)
+        }
         SearchExecutionMode::Semantic => group_ranked_candidates(&hybrid_candidates, limit),
         SearchExecutionMode::Hybrid if semantic_retrieval_mode.is_none() || embedding_failed => {
             group_fts_candidates(&fts_candidates, limit)
@@ -411,6 +424,8 @@ pub async fn search(
         embedding_failed,
         run_keyword_search,
         run_semantic_search,
+        semantic_keyword_rescue_candidates = semantic_keyword_rescue_candidates.len(),
+        semantic_keyword_rescue_active,
         hyde_triggered,
         hyde_elapsed_ms,
         rerank_configured,
@@ -527,6 +542,61 @@ fn count_title_term_matches(title: &str, terms: &[String]) -> usize {
         .count()
 }
 
+fn candidate_has_exact_query_signal(candidate: &SearchCandidate, query: &str) -> bool {
+    let meaningful_terms = meaningful_search_terms(query);
+    if meaningful_terms.len() < 2 {
+        return false;
+    }
+
+    let raw_phrase_tokens = tokenize_search_terms(query);
+    let exact_phrase_match = contains_token_phrase(&candidate.video_title, &raw_phrase_tokens)
+        || contains_token_phrase(&candidate.chunk_text, &raw_phrase_tokens)
+        || candidate
+            .section_title
+            .as_deref()
+            .is_some_and(|title| contains_token_phrase(title, &raw_phrase_tokens))
+        || contains_token_phrase(&candidate.video_title, &meaningful_terms)
+        || contains_token_phrase(&candidate.chunk_text, &meaningful_terms)
+        || candidate
+            .section_title
+            .as_deref()
+            .is_some_and(|title| contains_token_phrase(title, &meaningful_terms));
+
+    exact_phrase_match
+        || count_title_term_matches(&candidate.video_title, &meaningful_terms)
+            == meaningful_terms.len()
+}
+
+fn exact_keyword_rescue_candidates(
+    query: &str,
+    candidates: &[SearchCandidate],
+) -> Vec<SearchCandidate> {
+    candidates
+        .iter()
+        .filter(|candidate| candidate_has_exact_query_signal(candidate, query))
+        .cloned()
+        .collect()
+}
+
+fn should_rescue_semantic_results(
+    query: &str,
+    keyword_rescue_candidates: &[SearchCandidate],
+    semantic_candidates: &[SearchCandidate],
+) -> bool {
+    if keyword_rescue_candidates.is_empty() {
+        return false;
+    }
+
+    if semantic_candidates.is_empty() {
+        return true;
+    }
+
+    !semantic_candidates
+        .iter()
+        .take(3)
+        .any(|candidate| candidate_has_exact_query_signal(candidate, query))
+}
+
 #[cfg(test)]
 mod tests {
     use std::{collections::HashSet, sync::Arc};
@@ -540,7 +610,10 @@ mod tests {
     use reqwest::Client;
     use tokio::sync::RwLock;
 
-    use super::{SearchExecutionMode, SearchParams, search};
+    use super::{
+        SearchExecutionMode, SearchParams, candidate_has_exact_query_signal,
+        exact_keyword_rescue_candidates, search, should_rescue_semantic_results,
+    };
     use crate::{
         models::SearchResponsePayload,
         search_progress::SearchProgress,
@@ -554,6 +627,60 @@ mod tests {
         },
         state::AppState,
     };
+
+    fn search_candidate(
+        video_title: &str,
+        chunk_text: &str,
+    ) -> crate::services::search::SearchCandidate {
+        crate::services::search::SearchCandidate {
+            chunk_id: video_title.to_string(),
+            video_id: video_title.to_string(),
+            channel_id: "channel".to_string(),
+            channel_name: "Channel".to_string(),
+            video_title: video_title.to_string(),
+            source_kind: SearchSourceKind::Summary,
+            section_title: None,
+            chunk_text: chunk_text.to_string(),
+            published_at: "2026-04-09T00:00:00Z".to_string(),
+            start_sec: None,
+        }
+    }
+
+    #[test]
+    fn candidate_exact_query_signal_handles_conversational_phrase_queries() {
+        let candidate = search_candidate(
+            "Anthropic’s Cybersecurity Shock Wave + Ronan Farrow and Andrew Marantz on Their Sam Altman Investigation + One Good Thing",
+            "One Good Thing closes the episode.",
+        );
+
+        assert!(candidate_has_exact_query_signal(
+            &candidate,
+            "video where they talk about one good thing"
+        ));
+    }
+
+    #[test]
+    fn semantic_results_rescue_when_exact_keyword_hit_exists_but_dense_results_do_not() {
+        let exact_keyword_hit = search_candidate(
+            "Anthropic’s Cybersecurity Shock Wave + Ronan Farrow and Andrew Marantz on Their Sam Altman Investigation + One Good Thing",
+            "One Good Thing closes the episode.",
+        );
+        let semantic_candidates = vec![
+            search_candidate("This is good, actually", "A positive reaction video."),
+            search_candidate("React feels insane", "A video about frontend frustration."),
+        ];
+
+        let keyword_rescue_candidates = exact_keyword_rescue_candidates(
+            "video where they talk about one good thing",
+            &[exact_keyword_hit],
+        );
+
+        assert!(should_rescue_semantic_results(
+            "video where they talk about one good thing",
+            &keyword_rescue_candidates,
+            &semantic_candidates,
+        ));
+    }
 
     async fn test_app_state() -> AppState {
         let db = crate::db::Store::for_test().await;
@@ -696,5 +823,78 @@ mod tests {
             !video_ids.contains("video-forbidden"),
             "out-of-scope video should be filtered out"
         );
+    }
+
+    #[tokio::test]
+    async fn keyword_search_relaxes_multi_term_paraphrases_when_exact_title_is_close() {
+        let state = test_app_state().await;
+
+        for (video_id, title, text) in [
+            (
+                "video-target",
+                "Open source is dying",
+                "AI is damaging open source through spam and degraded maintainer trust.",
+            ),
+            (
+                "video-now",
+                "Which browser should you use right now?",
+                "A browser roundup about current recommendations right now.",
+            ),
+            (
+                "video-dead",
+                "Corepack is dead, and I'm scared",
+                "Corepack is dead after npm registry changes and the ecosystem is nervous.",
+            ),
+        ] {
+            state
+                .fts
+                .upsert_source(
+                    FtsSourceMeta {
+                        video_id,
+                        source_kind: SearchSourceKind::Summary,
+                        channel_id: "channel-a",
+                        channel_name: "Channel",
+                        video_title: title,
+                        published_at: "2026-04-09T00:00:00Z",
+                    },
+                    &[FtsChunk {
+                        chunk_id: format!("{video_id}_summary_0"),
+                        section_title: None,
+                        chunk_text: text.to_string(),
+                        start_sec: None,
+                    }],
+                )
+                .await
+                .expect("fts source should be indexed");
+        }
+
+        let response = search(
+            State(state),
+            Extension(AccessContext {
+                user_id: Some("user-1".to_string()),
+                auth_state: AuthState::Authenticated,
+                access_role: AccessRole::User,
+                allowed_channel_ids: vec!["channel-a".to_string()],
+                allowed_other_video_ids: Vec::new(),
+            }),
+            Query(SearchParams {
+                q: "open source is dead now".to_string(),
+                source: None,
+                limit: Some(5),
+                channel_id: None,
+                mode: Some(SearchExecutionMode::Keyword),
+            }),
+        )
+        .await
+        .expect("search should succeed")
+        .into_response();
+
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("response body should read");
+        let payload: SearchResponsePayload =
+            serde_json::from_slice(&body).expect("payload should deserialize");
+
+        assert_eq!(payload.results[0].video_title, "Open source is dying");
     }
 }
