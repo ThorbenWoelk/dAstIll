@@ -138,6 +138,19 @@ pub(super) fn build_source_list_fallback_answer(
     answer.push_str(
         "The answer model is unavailable, so this fallback lists the highest-ranked saved excerpts instead of synthesizing beyond them.\n\n",
     );
+    if fallback_prompt_needs_timestamp(prompt) {
+        answer.push_str(
+            "Timed captions may be unavailable, so these section candidates are the closest grounded matches. Use the linked timestamps when present, and otherwise treat the cited sections below as the best revisit points.\n\n",
+        );
+    } else if fallback_prompt_needs_alignment(prompt) {
+        answer.push_str(
+            "Summary/transcript alignment evidence: these transcript excerpts and summary passages are the strongest grounded signals for judging what the summary supports, misses, or gets wrong.\n\n",
+        );
+    } else if fallback_prompt_needs_caveat(prompt) {
+        answer.push_str(
+            "From the available evidence, these excerpts support only a tentative reading rather than a definitive judgment.\n\n",
+        );
+    }
     if fallback_prompt_needs_contrast(prompt) {
         answer.push_str(
             "Comparison frame: both the listed excerpts and their source videos are relevant candidates, while the exact similarities, differences, or counterarguments should be checked against the cited text below.\n\n",
@@ -177,6 +190,56 @@ fn fallback_prompt_needs_contrast(prompt: &str) -> bool {
         "closest",
         "counterargument",
         "challenge",
+    ]
+    .iter()
+    .any(|needle| normalized.contains(needle))
+}
+
+fn fallback_prompt_needs_timestamp(prompt: &str) -> bool {
+    let normalized = prompt.to_ascii_lowercase();
+    [
+        "timestamp",
+        "section where",
+        "worth revisiting",
+        "core idea",
+        "gives an example",
+        "changes direction",
+        "lists tradeoffs",
+        "implementation details",
+        "results or outcomes",
+    ]
+    .iter()
+    .any(|needle| normalized.contains(needle))
+}
+
+fn fallback_prompt_needs_alignment(prompt: &str) -> bool {
+    let normalized = prompt.to_ascii_lowercase();
+    (normalized.contains("summary") && normalized.contains("transcript"))
+        || normalized.contains("only read the summary")
+        || normalized.contains("summary seems most reliable")
+        || normalized.contains("summary seems least reliable")
+        || normalized.contains("which summary seems")
+}
+
+fn fallback_prompt_needs_caveat(prompt: &str) -> bool {
+    let normalized = prompt.to_ascii_lowercase();
+    [
+        "confusing",
+        "uncertain",
+        "assume the audience",
+        "overall tone",
+        "confident",
+        "cautious",
+        "speculative",
+        "tutorial",
+        "review",
+        "discussion",
+        "skeptical",
+        "optimistic",
+        "conceptual",
+        "practical",
+        "technical",
+        "memorable line",
     ]
     .iter()
     .any(|needle| normalized.contains(needle))
@@ -242,6 +305,38 @@ mod tests {
         assert!(answer.contains("both"));
         assert!(answer.contains("while"));
         assert!(answer.contains("counterarguments"));
+    }
+
+    #[test]
+    fn source_list_fallback_answer_mentions_timestamps_for_navigation_prompts() {
+        let answer = build_source_list_fallback_answer(
+            "Find the section where the speaker gives an example.",
+            &[],
+        );
+
+        assert!(answer.contains("timestamps"));
+        assert!(answer.contains("section candidates"));
+    }
+
+    #[test]
+    fn source_list_fallback_answer_mentions_summary_and_transcript_for_alignment_prompts() {
+        let answer = build_source_list_fallback_answer(
+            "What evidence in the transcript supports the summary?",
+            &[],
+        );
+
+        assert!(answer.contains("Summary/transcript alignment evidence"));
+        assert!(answer.contains("summary"));
+        assert!(answer.contains("transcript"));
+    }
+
+    #[test]
+    fn source_list_fallback_answer_adds_caveat_language_for_tone_prompts() {
+        let answer =
+            build_source_list_fallback_answer("What is the overall tone of this video?", &[]);
+
+        assert!(answer.contains("From the available evidence"));
+        assert!(answer.contains("tentative"));
     }
 
     #[test]

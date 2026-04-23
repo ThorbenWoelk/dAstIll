@@ -132,6 +132,9 @@ pub(super) fn sanitize_queries(queries: Vec<String>) -> Vec<String> {
 
 pub(super) fn heuristic_query_variants(prompt: &str, intent: ChatQueryIntent) -> Vec<String> {
     let prompt = prompt.trim();
+    if let Some(queries) = alignment_query_variants(prompt) {
+        return queries;
+    }
     if let Some(queries) = creator_stance_query_variants(prompt) {
         return queries;
     }
@@ -170,6 +173,25 @@ pub(super) fn heuristic_query_variants(prompt: &str, intent: ChatQueryIntent) ->
             }
         }
     }
+}
+
+fn alignment_query_variants(prompt: &str) -> Option<Vec<String>> {
+    let normalized = normalize_for_matching(prompt);
+    let is_alignment = normalized.contains("summary")
+        && normalized.contains("transcript")
+        && (normalized.contains("supports")
+            || normalized.contains("miss")
+            || normalized.contains("reliable")
+            || normalized.contains("evidence"));
+    if !is_alignment {
+        return None;
+    }
+
+    Some(vec![
+        "summary transcript evidence support".to_string(),
+        "summary transcript omission mismatch".to_string(),
+        "summary reliability transcript evidence".to_string(),
+    ])
 }
 
 fn creator_stance_query_variants(prompt: &str) -> Option<Vec<String>> {
