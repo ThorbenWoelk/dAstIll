@@ -122,6 +122,9 @@ pub(super) fn sanitize_queries(queries: Vec<String>) -> Vec<String> {
 
 pub(super) fn heuristic_query_variants(prompt: &str, intent: ChatQueryIntent) -> Vec<String> {
     let prompt = prompt.trim();
+    if let Some(queries) = deep_dive_query_variants(prompt) {
+        return queries;
+    }
     if let Some(queries) = counterargument_query_variants(prompt) {
         return queries;
     }
@@ -154,6 +157,24 @@ pub(super) fn heuristic_query_variants(prompt: &str, intent: ChatQueryIntent) ->
             }
         }
     }
+}
+
+fn deep_dive_query_variants(prompt: &str) -> Option<Vec<String>> {
+    let normalized = normalize_for_matching(prompt);
+    let asks_for_depth = normalized.contains("deepest dive")
+        || normalized.contains("deep dive")
+        || normalized.contains("deeply")
+        || normalized.contains("in depth")
+        || normalized.contains("comprehensive");
+    if !asks_for_depth {
+        return None;
+    }
+
+    Some(vec![
+        "deep dive comprehensive detailed explanation".to_string(),
+        "in depth technical details thorough overview".to_string(),
+        "comprehensive analysis examples details".to_string(),
+    ])
 }
 
 fn counterargument_query_variants(prompt: &str) -> Option<Vec<String>> {

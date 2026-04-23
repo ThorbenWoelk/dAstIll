@@ -167,6 +167,21 @@ mod tests {
     }
 
     #[test]
+    fn fallback_plan_expands_deep_dive_queries() {
+        let plan = ChatRetrievalPlan::fallback(
+            "What should I watch if I want the deepest dive?",
+            Some("planner unavailable".to_string()),
+        );
+
+        assert!(plan.supports_second_pass());
+        assert!(
+            plan.expansion_queries
+                .iter()
+                .any(|query| query.contains("comprehensive"))
+        );
+    }
+
+    #[test]
     fn recommendation_query_variants_keep_subject_and_topic() {
         let queries = recommendation_query_variants("what is the best database according to theo?");
         assert!(
