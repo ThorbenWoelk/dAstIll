@@ -412,6 +412,13 @@ pub async fn search(
             rank_and_group_candidates(&hybrid_candidates, &fts_candidates, limit)
         }
     };
+    let hybrid_keyword_rescue_active = execution_mode == SearchExecutionMode::Hybrid
+        && should_promote_hybrid_keyword_rescue(&semantic_keyword_rescue_candidates, &results);
+    let results = if hybrid_keyword_rescue_active {
+        promote_hybrid_keyword_rescue_results(results, &semantic_keyword_rescue_candidates)
+    } else {
+        results
+    };
     tracing::info!(
         query_chars = query.chars().count(),
         query_terms = query.split_whitespace().count(),
@@ -426,6 +433,7 @@ pub async fn search(
         run_semantic_search,
         semantic_keyword_rescue_candidates = semantic_keyword_rescue_candidates.len(),
         semantic_keyword_rescue_active,
+        hybrid_keyword_rescue_active,
         hyde_triggered,
         hyde_elapsed_ms,
         rerank_configured,
@@ -615,6 +623,68 @@ fn should_rescue_semantic_results(
         .any(|candidate| candidate_has_exact_query_signal(candidate, query))
 }
 
+fn keyword_rescue_video_ids(candidates: &[SearchCandidate]) -> Vec<String> {
+    let mut seen = HashSet::new();
+    candidates
+        .iter()
+        .filter_map(|candidate| {
+            if seen.insert(candidate.video_id.clone()) {
+                Some(candidate.video_id.clone())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn should_promote_hybrid_keyword_rescue(
+    keyword_rescue_candidates: &[SearchCandidate],
+    results: &[SearchVideoResultPayload],
+) -> bool {
+    let rescue_video_ids = keyword_rescue_video_ids(keyword_rescue_candidates);
+    if rescue_video_ids.is_empty() || results.is_empty() {
+        return false;
+    }
+
+    !rescue_video_ids
+        .iter()
+        .any(|video_id| video_id == &results[0].video_id)
+}
+
+fn promote_hybrid_keyword_rescue_results(
+    results: Vec<SearchVideoResultPayload>,
+    keyword_rescue_candidates: &[SearchCandidate],
+) -> Vec<SearchVideoResultPayload> {
+    let rescue_video_ids = keyword_rescue_video_ids(keyword_rescue_candidates);
+    if rescue_video_ids.is_empty() {
+        return results;
+    }
+
+    let rescue_order = rescue_video_ids
+        .into_iter()
+        .enumerate()
+        .map(|(index, video_id)| (video_id, index))
+        .collect::<HashMap<_, _>>();
+
+    let mut rescue_results = Vec::new();
+    let mut remaining_results = Vec::new();
+
+    for result in results {
+        if let Some(position) = rescue_order.get(&result.video_id).copied() {
+            rescue_results.push((position, result));
+        } else {
+            remaining_results.push(result);
+        }
+    }
+
+    rescue_results.sort_by_key(|(position, _)| *position);
+    rescue_results
+        .into_iter()
+        .map(|(_, result)| result)
+        .chain(remaining_results)
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use std::{collections::HashSet, sync::Arc};
@@ -630,10 +700,13 @@ mod tests {
 
     use super::{
         SearchExecutionMode, SearchParams, candidate_has_exact_query_signal,
-        exact_keyword_rescue_candidates, search, should_rescue_semantic_results,
+        exact_keyword_rescue_candidates, promote_hybrid_keyword_rescue_results, search,
+        should_promote_hybrid_keyword_rescue, should_rescue_semantic_results,
     };
     use crate::{
         models::SearchResponsePayload,
+        models::SearchVideoResultPayload,
+        models::{ContentItemKind, ContentSourceKind, ProviderKind},
         search_progress::SearchProgress,
         security::{AccessContext, AccessRole, AuthState},
         services::fts::FtsSourceMeta,
@@ -661,6 +734,22 @@ mod tests {
             chunk_text: chunk_text.to_string(),
             published_at: "2026-04-09T00:00:00Z".to_string(),
             start_sec: None,
+        }
+    }
+
+    fn search_result(video_id: &str, video_title: &str) -> SearchVideoResultPayload {
+        SearchVideoResultPayload {
+            source_id: "source".to_string(),
+            video_id: video_id.to_string(),
+            item_id: video_id.to_string(),
+            provider: ProviderKind::YouTube,
+            source_kind: ContentSourceKind::YouTubeChannel,
+            item_kind: ContentItemKind::Video,
+            channel_id: "channel".to_string(),
+            channel_name: "Channel".to_string(),
+            video_title: video_title.to_string(),
+            published_at: "2026-04-09T00:00:00Z".to_string(),
+            matches: Vec::new(),
         }
     }
 
@@ -738,6 +827,36 @@ mod tests {
             &keyword_rescue_candidates,
             &semantic_candidates,
         ));
+    }
+
+    #[test]
+    fn hybrid_results_promote_exact_keyword_rescue_candidates() {
+        let mut exact_keyword_hit = search_candidate(
+            "Anthropic’s Cybersecurity Shock Wave + Ronan Farrow and Andrew Marantz on Their Sam Altman Investigation + One Good Thing",
+            "A New Yorker story about Sam Altman.",
+        );
+        exact_keyword_hit.video_id = "hard-fork-story".to_string();
+        let keyword_rescue_candidates = vec![exact_keyword_hit];
+        let results = vec![
+            search_result("i-asked-sam", "I asked Sam Altman about the future of code"),
+            search_result(
+                "hard-fork-story",
+                "Anthropic’s Cybersecurity Shock Wave + Ronan Farrow and Andrew Marantz on Their Sam Altman Investigation + One Good Thing",
+            ),
+            search_result(
+                "openai-files",
+                "Is Sam Altman evil? The OpenAI Files are wild",
+            ),
+        ];
+
+        assert!(should_promote_hybrid_keyword_rescue(
+            &keyword_rescue_candidates,
+            &results,
+        ));
+
+        let promoted = promote_hybrid_keyword_rescue_results(results, &keyword_rescue_candidates);
+
+        assert_eq!(promoted[0].video_id, "hard-fork-story");
     }
 
     async fn test_app_state() -> AppState {
