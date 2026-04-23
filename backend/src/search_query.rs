@@ -17,8 +17,9 @@ const SEARCH_LEADING_WRAPPER_TOKENS: &[&str] = &[
     "about", "episode", "episodes", "find", "me", "on", "show", "video", "videos",
 ];
 const SEARCH_STOPWORDS: &[&str] = &[
-    "a", "about", "an", "and", "best", "find", "for", "how", "in", "is", "me", "of", "on", "or",
-    "show", "the", "to", "video", "videos", "what", "which",
+    "a", "about", "an", "and", "best", "episode", "episodes", "find", "for", "how", "in", "is",
+    "me", "of", "on", "or", "show", "that", "the", "this", "to", "video", "videos", "what",
+    "which", "with",
 ];
 const SHORT_TECHNICAL_SEARCH_TERMS: &[&str] = &["ai", "db", "go", "js", "ml", "ui", "ux"];
 
@@ -206,6 +207,14 @@ mod tests {
         assert_eq!(
             normalize_search_text("video where they talk about one good thing"),
             "one good thing"
+        );
+    }
+
+    #[test]
+    fn normalize_search_text_drops_series_wrapper_words_inside_query() {
+        assert_eq!(
+            normalize_search_text("that hard fork episode with one good thing"),
+            "hard fork one good thing"
         );
     }
 

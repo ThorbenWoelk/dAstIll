@@ -1,5 +1,21 @@
 use super::*;
 
+fn count_candidate_term_matches(candidate: &SearchCandidate, terms: &[String]) -> usize {
+    let mut candidate_terms = tokenize_search_terms(&candidate.video_title)
+        .into_iter()
+        .collect::<std::collections::HashSet<_>>();
+
+    if let Some(section_title) = candidate.section_title.as_deref() {
+        candidate_terms.extend(tokenize_search_terms(section_title));
+    }
+    candidate_terms.extend(tokenize_search_terms(&candidate.chunk_text));
+
+    terms
+        .iter()
+        .filter(|term| candidate_terms.contains(*term))
+        .count()
+}
+
 pub(super) fn rerank_fts_candidates(
     candidates: &[SearchCandidate],
     query: &str,
@@ -38,9 +54,13 @@ pub(super) fn rerank_fts_candidates(
             let title_term_matches =
                 count_title_term_matches(&candidate.video_title, &meaningful_terms);
             let title_contains_all_terms = title_term_matches == meaningful_terms.len();
+            let candidate_term_matches = count_candidate_term_matches(candidate, &meaningful_terms);
+            let candidate_contains_all_terms = candidate_term_matches == meaningful_terms.len();
             (
                 exact_phrase_match,
                 candidate.source_kind == SearchSourceKind::Summary,
+                candidate_contains_all_terms,
+                candidate_term_matches,
                 title_contains_all_terms,
                 title_term_matches,
                 index,
@@ -56,12 +76,14 @@ pub(super) fn rerank_fts_candidates(
             .then_with(|| right.1.cmp(&left.1))
             .then_with(|| right.2.cmp(&left.2))
             .then_with(|| right.3.cmp(&left.3))
-            .then_with(|| left.4.cmp(&right.4))
+            .then_with(|| right.4.cmp(&left.4))
+            .then_with(|| right.5.cmp(&left.5))
+            .then_with(|| left.6.cmp(&right.6))
     });
 
     ranked
         .into_iter()
-        .map(|(_, _, _, _, _, candidate)| candidate)
+        .map(|(_, _, _, _, _, _, _, candidate)| candidate)
         .collect()
 }
 
@@ -360,6 +382,30 @@ mod tests {
         assert_eq!(results[0].video_id, "video-1");
         assert_eq!(results[1].video_id, "video-2");
         assert_eq!(results[2].video_id, "video-3");
+    }
+
+    #[test]
+    fn rerank_fts_candidates_prefers_candidates_covering_more_terms_across_fields() {
+        let results = rerank_fts_candidates(
+            &[
+                SearchCandidate {
+                    video_title: "What's a Hard Fork?".to_string(),
+                    source_kind: SearchSourceKind::Summary,
+                    chunk_text: "A short explainer for the Hard Fork podcast.".to_string(),
+                    ..candidate("a", "video-1", SearchSourceKind::Summary)
+                },
+                SearchCandidate {
+                    video_title: "Anthropic shock wave + One Good Thing".to_string(),
+                    source_kind: SearchSourceKind::Summary,
+                    chunk_text: "This Hard Fork episode closes with One Good Thing.".to_string(),
+                    ..candidate("b", "video-2", SearchSourceKind::Summary)
+                },
+            ],
+            "that hard fork episode with one good thing",
+        );
+
+        assert_eq!(results[0].video_id, "video-2");
+        assert_eq!(results[1].video_id, "video-1");
     }
 
     #[test]
