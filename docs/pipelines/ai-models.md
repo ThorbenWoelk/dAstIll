@@ -372,6 +372,11 @@ passes. When a turn reaches a budget, the SSE stream emits a `budget_exhausted` 
 with the redacted budget snapshot; the service then falls back to the best available
 evidence or returns a rejected assistant message when no final answer can be generated.
 
+When retrieval succeeds but the answer model is rate-limited or in cloud cooldown, chat
+returns a source-list fallback instead of ending the stream with an error. The fallback
+lists the highest-ranked grounded excerpts with citations and does not synthesize beyond
+the retrieved text.
+
 ---
 
 ## Availability and Cooldowns
@@ -457,3 +462,4 @@ do not cascade to others.
 | HyDE generation fails                 | Raw query is embedded as fallback; search continues    |
 | Cloud rate limit                      | Degrades to local fallback if configured, else waits   |
 | Semantic embedding call fails         | Hybrid request falls back to FTS-only for that request |
+| Chat answer model rate-limited        | Retrieved sources are returned as a cited source list  |

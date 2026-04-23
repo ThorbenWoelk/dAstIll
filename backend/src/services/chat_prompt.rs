@@ -1,4 +1,5 @@
 use crate::models::{ChatConversation, ChatRole};
+use crate::services::text::limit_text;
 
 use super::chat::{
     CHAT_HISTORY_LIMIT, CHAT_SYSTEM_PROMPT, CHAT_SYSTEM_PROMPT_CONVERSATION_TURN,
@@ -124,6 +125,98 @@ pub(super) fn build_tool_grounding_context(
     context.push_str("If this evidence is not enough, explicitly say so.");
     context.push_str(GROUNDING_CITATION_FOOTER);
     context
+}
+
+pub(super) fn build_source_list_fallback_answer(
+    prompt: &str,
+    retrieved_sources: &[RetrievedChatSource],
+) -> String {
+    let mut answer = format!(
+        "Retrieved evidence for: {}\n\n",
+        limit_text(prompt.trim(), 180)
+    );
+    answer.push_str(
+        "The answer model is unavailable, so this fallback lists the highest-ranked saved excerpts instead of synthesizing beyond them.\n\n",
+    );
+
+    for (index, source) in retrieved_sources.iter().take(12).enumerate() {
+        let number = index + 1;
+        let section = source
+            .source
+            .section_title
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .map(|value| format!(" / {value}"))
+            .unwrap_or_default();
+        answer.push_str(&format!(
+            "{number}. {} - {}{}: {} [{number}]\n",
+            source.source.video_title.trim(),
+            source.source.channel_name.trim(),
+            section,
+            source.source.snippet.trim(),
+        ));
+    }
+
+    answer
+}
+
+pub(super) fn is_model_availability_error(error: &str) -> bool {
+    let normalized = error.to_ascii_lowercase();
+    normalized.contains("429")
+        || normalized.contains("too many requests")
+        || normalized.contains("rate limited")
+        || normalized.contains("cloud cooldown active")
+        || normalized.contains("no fallback model configured")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{build_source_list_fallback_answer, is_model_availability_error};
+    use crate::models::{
+        ChatSource, ContentItemKind, ContentPartKind, ContentSourceKind, ProviderKind,
+    };
+    use crate::services::chat::RetrievedChatSource;
+    use crate::services::search::SearchSourceKind;
+
+    #[test]
+    fn source_list_fallback_answer_keeps_citations_and_source_titles() {
+        let answer = build_source_list_fallback_answer(
+            "Find every video that mentions RAG.",
+            &[RetrievedChatSource {
+                source: ChatSource {
+                    source_id: "channel-1".to_string(),
+                    video_id: "video-1".to_string(),
+                    item_id: "video-1".to_string(),
+                    provider: ProviderKind::YouTube,
+                    content_source_kind: ContentSourceKind::YouTubeChannel,
+                    item_kind: ContentItemKind::Video,
+                    part_kind: ContentPartKind::Transcript,
+                    channel_id: "channel-1".to_string(),
+                    channel_name: "Channel One".to_string(),
+                    video_title: "RAG Patterns".to_string(),
+                    source_kind: SearchSourceKind::Transcript,
+                    section_title: None,
+                    snippet: "The speaker describes RAG retrieval and reranking.".to_string(),
+                    score: 1.0,
+                    chunk_id: "chunk-1".to_string(),
+                    retrieval_pass: Some(1),
+                },
+                context_text: "The speaker describes RAG retrieval and reranking.".to_string(),
+            }],
+        );
+
+        assert!(answer.contains("RAG Patterns - Channel One"));
+        assert!(answer.contains("[1]"));
+        assert!(answer.contains("highest-ranked saved excerpts"));
+    }
+
+    #[test]
+    fn model_availability_error_matches_quota_and_cooldown_failures() {
+        assert!(is_model_availability_error("429 Too Many Requests"));
+        assert!(is_model_availability_error("cloud cooldown active"));
+        assert!(is_model_availability_error("rate limited by provider"));
+        assert!(!is_model_availability_error("Failed to parse stream line"));
+    }
 }
 
 fn comparison_prompt(prompt: &str) -> bool {

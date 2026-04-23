@@ -62,6 +62,10 @@ For the detailed done-versus-open breakdown, see [OWASP ASI Status](/security/ow
 
 - The product UI exposes tool-call and citation metadata for chat responses.
 - The assistant is instructed to say when evidence is missing or incomplete instead of silently filling gaps.
+- When the model-backed blocking preflight is unavailable because the provider is
+  rate-limited or in cooldown, deterministic prompt-list checks still run before
+  the chat request is allowed through. Model-backed non-blocking monitoring may
+  also be unavailable during that provider outage.
 
 ### Repo and secret hygiene
 

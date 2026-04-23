@@ -141,13 +141,21 @@ impl ChatRetrievalPlan {
                 _ => (CHAT_SYNTHESIS_SOURCE_LIMIT, 4),
             }
         };
+        let mut expansion_queries = if attributed_preference {
+            recommendation_query_variants(prompt)
+        } else {
+            heuristic_query_variants(prompt, intent)
+        };
+        expansion_queries.retain(|query| query.trim() != prompt.trim());
+        expansion_queries.truncate(CHAT_QUERY_LIMIT_TOTAL.saturating_sub(1));
+
         Self {
             intent,
             label: build_plan_label(intent, attributed_preference).to_string(),
             budget,
             max_per_video,
             queries: vec![prompt.trim().to_string()],
-            expansion_queries: Vec::new(),
+            expansion_queries,
             focus_terms: collect_focus_terms(prompt),
             channel_focus_ids: Vec::new(),
             video_focus_ids: Vec::new(),

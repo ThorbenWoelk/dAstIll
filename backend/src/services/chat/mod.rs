@@ -58,7 +58,8 @@ use super::chat_heuristics::{
 };
 use super::chat_prompt::{
     build_conversation_only_grounding, build_grounding_context, build_ollama_messages,
-    build_synthesis_grounding_context, build_tool_grounding_context, synthesis_raw_limit_for_plan,
+    build_source_list_fallback_answer, build_synthesis_grounding_context,
+    build_tool_grounding_context, is_model_availability_error, synthesis_raw_limit_for_plan,
 };
 use super::chat_ranking::{
     accumulate_ranked_candidates, assess_coverage, build_video_observation_inputs,

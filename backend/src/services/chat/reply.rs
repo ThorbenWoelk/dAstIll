@@ -258,7 +258,7 @@ impl ChatService {
             let grounding =
                 build_tool_grounding_context(prompt, &tool_outputs, &tool_outcome.sources);
             let mut cancel_rx = active_chat.subscribe_cancel();
-            let (content, terminal_stats) = self
+            let generation = self
                 .stream_ollama_reply(
                     conversation,
                     grounding,
@@ -267,7 +267,33 @@ impl ChatService {
                     false,
                     reply_model,
                 )
-                .await?;
+                .await;
+            let (content, terminal_stats) = match generation {
+                Ok(value) => value,
+                Err(error)
+                    if is_model_availability_error(&error) && !tool_outcome.sources.is_empty() =>
+                {
+                    tracing::warn!(
+                        conversation_id = %conversation.id,
+                        error = %error,
+                        "chat final generation unavailable; returning source-list fallback"
+                    );
+                    active_chat
+                        .emit(ChatStreamEvent::Status {
+                            status: ChatStatusPayload::new(
+                                "generating_fallback",
+                                "Answer model unavailable",
+                            )
+                            .with_detail("Returning the highest-ranked grounded excerpts instead."),
+                        })
+                        .await;
+                    (
+                        build_source_list_fallback_answer(prompt, &tool_outcome.sources),
+                        None,
+                    )
+                }
+                Err(error) => return Err(error),
+            };
             return Ok(self.build_assistant_message_with_trace(
                 content,
                 sources,
@@ -423,7 +449,7 @@ impl ChatService {
         }
         let mut cancel_rx = active_chat.subscribe_cancel();
         let reply_started = Instant::now();
-        let (content, terminal_stats) = self
+        let generation = self
             .stream_ollama_reply(
                 conversation,
                 grounding_context,
@@ -432,7 +458,31 @@ impl ChatService {
                 false,
                 reply_model,
             )
-            .await?;
+            .await;
+        let (content, terminal_stats) = match generation {
+            Ok(value) => value,
+            Err(error) if is_model_availability_error(&error) && !retrieved_sources.is_empty() => {
+                tracing::warn!(
+                    conversation_id = %conversation.id,
+                    error = %error,
+                    "chat final generation unavailable; returning source-list fallback"
+                );
+                active_chat
+                    .emit(ChatStreamEvent::Status {
+                        status: ChatStatusPayload::new(
+                            "generating_fallback",
+                            "Answer model unavailable",
+                        )
+                        .with_detail("Returning the highest-ranked grounded excerpts instead."),
+                    })
+                    .await;
+                (
+                    build_source_list_fallback_answer(prompt, &retrieved_sources),
+                    None,
+                )
+            }
+            Err(error) => return Err(error),
+        };
         tracing::info!(
             conversation_id = %conversation.id,
             response_chars = content.chars().count(),

@@ -138,8 +138,13 @@ pub(super) fn assess_coverage(
 ) -> CoverageAssessment {
     if sources.is_empty() {
         return CoverageAssessment {
-            needs_more: false,
-            reason: Some("No grounded excerpts were found.".to_string()),
+            needs_more: plan.supports_second_pass(),
+            reason: Some(if plan.supports_second_pass() {
+                "No grounded excerpts were found, so the search should try a broader query pass."
+                    .to_string()
+            } else {
+                "No grounded excerpts were found.".to_string()
+            }),
             channel_focus_ids: Vec::new(),
         };
     }

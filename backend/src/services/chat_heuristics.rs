@@ -98,6 +98,10 @@ pub(super) fn sanitize_queries(queries: Vec<String>) -> Vec<String> {
 
 pub(super) fn heuristic_query_variants(prompt: &str, intent: ChatQueryIntent) -> Vec<String> {
     let prompt = prompt.trim();
+    if let Some(queries) = procedural_query_variants(prompt) {
+        return queries;
+    }
+
     match intent {
         ChatQueryIntent::Fact => Vec::new(),
         ChatQueryIntent::Synthesis => vec![format!("{prompt} overview")],
@@ -123,6 +127,26 @@ pub(super) fn heuristic_query_variants(prompt: &str, intent: ChatQueryIntent) ->
             }
         }
     }
+}
+
+fn procedural_query_variants(prompt: &str) -> Option<Vec<String>> {
+    let normalized = normalize_for_matching(prompt);
+    let is_procedural = normalized.contains("step by step")
+        || normalized.contains("instructions")
+        || normalized.contains("instruction")
+        || normalized.contains("procedure")
+        || normalized.contains("procedural")
+        || normalized.contains("walkthrough")
+        || normalized.contains("tutorial");
+    if !is_procedural {
+        return None;
+    }
+
+    Some(vec![
+        "step instructions tutorial setup".to_string(),
+        "walkthrough guide how to implementation".to_string(),
+        "procedure steps practical setup".to_string(),
+    ])
 }
 
 pub(super) fn heuristic_expansion_queries(plan: &ChatRetrievalPlan) -> Vec<String> {

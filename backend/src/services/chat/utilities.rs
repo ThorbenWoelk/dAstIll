@@ -137,6 +137,21 @@ mod tests {
     }
 
     #[test]
+    fn fallback_plan_expands_procedural_queries() {
+        let plan = ChatRetrievalPlan::fallback(
+            "Which videos contain step-by-step instructions?",
+            Some("planner unavailable".to_string()),
+        );
+
+        assert!(plan.supports_second_pass());
+        assert!(
+            plan.expansion_queries
+                .iter()
+                .any(|query| query.contains("walkthrough"))
+        );
+    }
+
+    #[test]
     fn recommendation_query_variants_keep_subject_and_topic() {
         let queries = recommendation_query_variants("what is the best database according to theo?");
         assert!(
