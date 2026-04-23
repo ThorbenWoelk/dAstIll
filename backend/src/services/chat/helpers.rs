@@ -377,7 +377,7 @@ pub(super) fn maybe_direct_highlight_lookup_tool_call(
     }
 
     let normalized = prompt.to_ascii_lowercase();
-    if !normalized.contains("highlight") {
+    if !is_saved_highlight_query(&normalized) {
         return None;
     }
 
@@ -423,6 +423,24 @@ pub(super) fn maybe_direct_highlight_lookup_tool_call(
             limit: 8,
         },
     ))
+}
+
+fn is_saved_highlight_query(normalized_prompt: &str) -> bool {
+    [
+        "my highlights",
+        "i've highlighted",
+        "i have highlighted",
+        "what highlights have i saved",
+        "saved highlights",
+        "show me all highlights related to",
+        "find highlights that",
+        "group my highlights",
+        "which highlight best",
+        "which highlights are most useful",
+        "what are the most interesting snippets i've highlighted",
+    ]
+    .iter()
+    .any(|needle| normalized_prompt.contains(needle))
 }
 
 pub(super) fn apply_recent_activity_scope(

@@ -511,6 +511,29 @@ mod tests {
         assert_eq!(query.query.as_deref(), Some("search."));
     }
 
+    #[test]
+    fn direct_highlight_tool_call_does_not_capture_content_search_about_highlights() {
+        let access_context = crate::security::AccessContext {
+            user_id: Some("user_1".to_string()),
+            auth_state: crate::security::AuthState::Authenticated,
+            access_role: crate::security::AccessRole::User,
+            allowed_channel_ids: vec!["chan_1".to_string()],
+            allowed_other_video_ids: vec![],
+        };
+        let scope = tools::MentionScope {
+            cleaned_prompt: "Summarize all videos that mention highlights.".to_string(),
+            ..tools::MentionScope::default()
+        };
+
+        let call = maybe_direct_highlight_lookup_tool_call(
+            "Summarize all videos that mention highlights.",
+            &scope,
+            &access_context,
+        );
+
+        assert!(call.is_none());
+    }
+
     #[tokio::test]
     async fn build_answer_grounding_context_returns_cancelled_when_cancelled_before_synthesis() {
         let service = ChatService::new(OllamaCore::new("://invalid-url", "qwen3:8b"));
