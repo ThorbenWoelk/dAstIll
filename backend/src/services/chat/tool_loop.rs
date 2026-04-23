@@ -54,6 +54,25 @@ impl ChatService {
             CHAT_TOOL_LOOP_MAX_STEPS
         };
 
+        if let Some(call) =
+            maybe_direct_highlight_lookup_tool_call(prompt, &prompt_scope, access_context)
+        {
+            self.execute_planned_tool_call(ToolCallExecutionRequest {
+                state,
+                call,
+                access_context,
+                prompt_scope: &prompt_scope,
+                rationale: Some(
+                    "This asks about saved highlights, so the saved-highlights lookup ran before broader planning.",
+                ),
+                tool_outputs: &mut tool_outputs,
+                gathered_sources: &mut gathered_sources,
+                active_chat,
+                turn,
+            })
+            .await?;
+        }
+
         if let Some(call) = maybe_direct_recent_activity_tool_call(prompt, &prompt_scope) {
             self.execute_planned_tool_call(ToolCallExecutionRequest {
                 state,

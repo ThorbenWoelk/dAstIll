@@ -178,6 +178,21 @@ pub(super) fn build_source_list_fallback_answer(
     answer
 }
 
+pub(super) fn build_tool_output_fallback_answer(prompt: &str, tool_outputs: &[String]) -> String {
+    let mut answer = format!(
+        "Retrieved tool evidence for: {}\n\n",
+        limit_text(prompt.trim(), 180)
+    );
+    answer.push_str(
+        "The answer model is unavailable, so this fallback returns the grounded tool results directly.\n\n",
+    );
+    for (index, output) in tool_outputs.iter().enumerate() {
+        let number = index + 1;
+        answer.push_str(&format!("{number}. {}\n", output.trim()));
+    }
+    answer
+}
+
 fn fallback_prompt_needs_contrast(prompt: &str) -> bool {
     let normalized = prompt.to_ascii_lowercase();
     [
@@ -256,7 +271,10 @@ pub(super) fn is_model_availability_error(error: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_source_list_fallback_answer, is_model_availability_error};
+    use super::{
+        build_source_list_fallback_answer, build_tool_output_fallback_answer,
+        is_model_availability_error,
+    };
     use crate::models::{
         ChatSource, ContentItemKind, ContentPartKind, ContentSourceKind, ProviderKind,
     };
@@ -305,6 +323,17 @@ mod tests {
         assert!(answer.contains("both"));
         assert!(answer.contains("while"));
         assert!(answer.contains("counterarguments"));
+    }
+
+    #[test]
+    fn tool_output_fallback_answer_keeps_tool_result_text() {
+        let answer = build_tool_output_fallback_answer(
+            "Show me all highlights related to search.",
+            &["No saved highlights matched query \"search\".".to_string()],
+        );
+
+        assert!(answer.contains("tool results directly"));
+        assert!(answer.contains("saved highlights"));
     }
 
     #[test]

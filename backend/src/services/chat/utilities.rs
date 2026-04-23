@@ -54,8 +54,8 @@ mod tests {
         ActiveChatHandle, CHAT_CLASSIFY_TIMEOUT, CHAT_RECENT_ACTIVITY_SOURCE_LIMIT,
         ChatQueryIntent, ChatQueryPlanResponse, ChatRetrievalPlan, ChatService,
         ChatToolLoopResponse, ChatTurnState, PlannedChatToolCall, RetrievedChatSource,
-        ToolLoopAction, is_direct_video_lookup_request, maybe_direct_recent_activity_tool_call,
-        tools,
+        ToolLoopAction, is_direct_video_lookup_request, maybe_direct_highlight_lookup_tool_call,
+        maybe_direct_recent_activity_tool_call, tools,
     };
     use crate::models::ChatSource;
     use crate::services::chat::tools::{
@@ -448,6 +448,67 @@ mod tests {
         };
 
         assert_eq!(query.channel_id.as_deref(), Some("chan_1"));
+    }
+
+    #[test]
+    fn direct_highlight_tool_call_uses_scoped_video_title() {
+        let scope = tools::MentionScope {
+            cleaned_prompt: "What highlights have I saved from this video?".to_string(),
+            channel_focus_ids: vec!["chan_1".to_string()],
+            video_focus_ids: vec!["video_1".to_string()],
+            channel_names: vec!["Theo".to_string()],
+            video_titles: vec!["Open source is dead now?".to_string()],
+        };
+        let access_context = crate::security::AccessContext {
+            user_id: Some("user_1".to_string()),
+            auth_state: crate::security::AuthState::Authenticated,
+            access_role: crate::security::AccessRole::User,
+            allowed_channel_ids: vec!["chan_1".to_string()],
+            allowed_other_video_ids: vec![],
+        };
+
+        let Some(PlannedChatToolCall::HighlightLookup(query)) =
+            maybe_direct_highlight_lookup_tool_call(
+                "What highlights have I saved from this video?",
+                &scope,
+                &access_context,
+            )
+        else {
+            panic!("expected direct highlight lookup");
+        };
+
+        assert_eq!(
+            query.video_title.as_deref(),
+            Some("Open source is dead now?")
+        );
+        assert!(query.query.is_none());
+    }
+
+    #[test]
+    fn direct_highlight_tool_call_uses_related_topic_query() {
+        let access_context = crate::security::AccessContext {
+            user_id: Some("user_1".to_string()),
+            auth_state: crate::security::AuthState::Authenticated,
+            access_role: crate::security::AccessRole::User,
+            allowed_channel_ids: vec!["chan_1".to_string()],
+            allowed_other_video_ids: vec![],
+        };
+        let scope = tools::MentionScope {
+            cleaned_prompt: "Show me all highlights related to search.".to_string(),
+            ..tools::MentionScope::default()
+        };
+
+        let Some(PlannedChatToolCall::HighlightLookup(query)) =
+            maybe_direct_highlight_lookup_tool_call(
+                "Show me all highlights related to search.",
+                &scope,
+                &access_context,
+            )
+        else {
+            panic!("expected direct highlight lookup");
+        };
+
+        assert_eq!(query.query.as_deref(), Some("search."));
     }
 
     #[tokio::test]

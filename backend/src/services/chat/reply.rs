@@ -292,6 +292,26 @@ impl ChatService {
                         None,
                     )
                 }
+                Err(error) if is_model_availability_error(&error) && !tool_outputs.is_empty() => {
+                    tracing::warn!(
+                        conversation_id = %conversation.id,
+                        error = %error,
+                        "chat final generation unavailable; returning tool-output fallback"
+                    );
+                    active_chat
+                        .emit(ChatStreamEvent::Status {
+                            status: ChatStatusPayload::new(
+                                "generating_fallback",
+                                "Answer model unavailable",
+                            )
+                            .with_detail("Returning the grounded tool output instead."),
+                        })
+                        .await;
+                    (
+                        build_tool_output_fallback_answer(prompt, &tool_outputs),
+                        None,
+                    )
+                }
                 Err(error) => return Err(error),
             };
             return Ok(self.build_assistant_message_with_trace(

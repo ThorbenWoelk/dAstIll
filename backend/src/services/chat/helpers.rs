@@ -367,6 +367,64 @@ pub(super) fn maybe_direct_recent_activity_tool_call(
     ))
 }
 
+pub(super) fn maybe_direct_highlight_lookup_tool_call(
+    prompt: &str,
+    scope: &tools::MentionScope,
+    access_context: &crate::security::AccessContext,
+) -> Option<PlannedChatToolCall> {
+    if access_context.auth_state != crate::security::AuthState::Authenticated {
+        return None;
+    }
+
+    let normalized = prompt.to_ascii_lowercase();
+    if !normalized.contains("highlight") {
+        return None;
+    }
+
+    let video_title = if normalized.contains("this video") {
+        scope.video_titles.first().cloned()
+    } else {
+        None
+    };
+
+    let query = if let Some(start) = normalized.find("related to ") {
+        trim_to_option(&prompt[start + "related to ".len()..])
+    } else if normalized.contains("support a specific claim") {
+        Some("support".to_string())
+    } else if normalized.contains("contradict a specific claim") {
+        Some("contradict".to_string())
+    } else {
+        let cleaned = &scope.cleaned_prompt;
+        let generic = cleaned
+            .replace("highlights", "")
+            .replace("highlight", "")
+            .replace("saved", "")
+            .replace("this video", "")
+            .replace("show me", "")
+            .replace("find", "")
+            .replace("related to", "")
+            .replace("from", "");
+        trim_to_option(&generic)
+    };
+    let query = if video_title.is_some() && normalized.contains("this video") {
+        None
+    } else {
+        query
+    };
+
+    if query.is_none() && video_title.is_none() {
+        return None;
+    }
+
+    Some(PlannedChatToolCall::HighlightLookup(
+        tools::HighlightLookupQuery {
+            query,
+            video_title,
+            limit: 8,
+        },
+    ))
+}
+
 pub(super) fn apply_recent_activity_scope(
     mut query: tools::RecentLibraryActivityQuery,
     scope: &tools::MentionScope,
