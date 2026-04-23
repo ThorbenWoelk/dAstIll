@@ -78,6 +78,16 @@ pub(super) fn is_comparison_query(prompt: &str) -> bool {
     .any(|needle| normalized.contains(needle))
 }
 
+pub(super) fn is_creator_stance_query(prompt: &str) -> bool {
+    let normalized = normalize_for_matching(prompt);
+    normalized.contains("what does this creator think about")
+        || normalized.contains("what does this channel think about")
+        || normalized.contains("what do they think about")
+        || normalized.contains("what changed in this creator s position")
+        || normalized.contains("how does this creator feel about")
+        || normalized.contains("how does this channel feel about")
+}
+
 pub(super) fn recommendation_query_variants(prompt: &str) -> Vec<String> {
     let subject = extract_subject_phrase(prompt);
     let focus = collect_focus_terms(prompt).join(" ");
@@ -122,6 +132,9 @@ pub(super) fn sanitize_queries(queries: Vec<String>) -> Vec<String> {
 
 pub(super) fn heuristic_query_variants(prompt: &str, intent: ChatQueryIntent) -> Vec<String> {
     let prompt = prompt.trim();
+    if let Some(queries) = creator_stance_query_variants(prompt) {
+        return queries;
+    }
     if let Some(queries) = deep_dive_query_variants(prompt) {
         return queries;
     }
@@ -157,6 +170,26 @@ pub(super) fn heuristic_query_variants(prompt: &str, intent: ChatQueryIntent) ->
             }
         }
     }
+}
+
+fn creator_stance_query_variants(prompt: &str) -> Option<Vec<String>> {
+    if !is_creator_stance_query(prompt) {
+        return None;
+    }
+
+    let focus = collect_focus_terms(prompt).join(" ");
+    if focus.is_empty() {
+        return Some(vec![
+            "opinion stance reaction".to_string(),
+            "support criticism concern".to_string(),
+        ]);
+    }
+
+    Some(vec![
+        format!("{focus} opinion"),
+        format!("{focus} stance reaction"),
+        format!("{focus} criticism support"),
+    ])
 }
 
 fn deep_dive_query_variants(prompt: &str) -> Option<Vec<String>> {

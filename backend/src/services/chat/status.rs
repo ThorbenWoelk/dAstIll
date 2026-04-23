@@ -129,10 +129,13 @@ impl ChatRetrievalPlan {
         let recent_activity =
             is_recent_activity_query(prompt) && !is_explicit_realtime_status_query(prompt);
         let comparison = is_comparison_query(prompt);
+        let creator_stance = is_creator_stance_query(prompt);
         let intent = if recent_activity {
             ChatQueryIntent::RecentActivity
         } else if comparison {
             ChatQueryIntent::Comparison
+        } else if creator_stance {
+            ChatQueryIntent::Pattern
         } else {
             ChatQueryIntent::Synthesis
         };

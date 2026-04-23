@@ -167,6 +167,21 @@ mod tests {
     }
 
     #[test]
+    fn fallback_plan_expands_creator_stance_queries() {
+        let plan = ChatRetrievalPlan::fallback(
+            "What does this creator think about Anthropic?",
+            Some("planner unavailable".to_string()),
+        );
+
+        assert_eq!(plan.intent, ChatQueryIntent::Pattern);
+        assert!(
+            plan.expansion_queries
+                .iter()
+                .any(|query| query.contains("anthropic opinion"))
+        );
+    }
+
+    #[test]
     fn fallback_plan_expands_deep_dive_queries() {
         let plan = ChatRetrievalPlan::fallback(
             "What should I watch if I want the deepest dive?",

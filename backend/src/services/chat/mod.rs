@@ -53,8 +53,8 @@ use super::chat::recent::{
 };
 use super::chat_heuristics::{
     build_plan_label, collect_focus_terms, heuristic_expansion_queries, heuristic_query_variants,
-    is_attributed_preference_query, is_comparison_query, push_unique_query,
-    recommendation_query_variants, sanitize_queries,
+    is_attributed_preference_query, is_comparison_query, is_creator_stance_query,
+    push_unique_query, recommendation_query_variants, sanitize_queries,
 };
 use super::chat_prompt::{
     build_conversation_only_grounding, build_grounding_context, build_ollama_messages,
