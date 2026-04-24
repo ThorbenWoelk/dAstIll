@@ -494,8 +494,7 @@ async fn ensure_summary_internal(
             let (http_status, content_status) = summarizer_error_statuses(&e);
             set_summary_status_and_evict(state, video_id, content_status).await?;
             let message = if content_status == ContentStatus::Pending {
-                "AI generation is temporarily unavailable. The summary will retry when capacity returns."
-                    .to_string()
+                summarizer_pending_message(&e).to_string()
             } else {
                 e.to_string()
             };
@@ -727,6 +726,14 @@ fn summarizer_error_statuses(e: &SummarizerError) -> (StatusCode, ContentStatus)
     }
 }
 
+fn summarizer_pending_message(e: &SummarizerError) -> &'static str {
+    if e.is_rate_limited() {
+        "Ollama Cloud usage limit reached. The summary will retry when capacity returns."
+    } else {
+        "AI generation is temporarily unavailable. The summary will retry when capacity returns."
+    }
+}
+
 async fn evict_video_scope_cache_by_video_id(state: &AppState, video_id: &str) {
     let Ok(Some(video)) = db::get_video(&state.db, video_id, false).await else {
         return;
@@ -739,7 +746,8 @@ mod tests {
     use super::{
         MAX_SUMMARY_AUTO_REGEN_ATTEMPTS, completed_live_transcript_grace_elapsed,
         completed_live_transcript_looks_like_description, is_valid_cached_transcript,
-        should_auto_regenerate_summary, summarizer_error_statuses, transcript_text,
+        should_auto_regenerate_summary, summarizer_error_statuses, summarizer_pending_message,
+        transcript_text,
     };
     use crate::models::{ContentStatus, Transcript, TranscriptRenderMode};
     use crate::services::summarizer::SummarizerError;
@@ -766,6 +774,20 @@ mod tests {
         assert_eq!(
             summarizer_error_statuses(&SummarizerError::NotAvailable),
             (StatusCode::SERVICE_UNAVAILABLE, ContentStatus::Pending)
+        );
+    }
+
+    #[test]
+    fn summarizer_rate_limit_message_names_cloud_limit() {
+        assert_eq!(
+            summarizer_pending_message(&SummarizerError::GenerationFailed(
+                "you have reached your weekly usage limit".to_string()
+            )),
+            "Ollama Cloud usage limit reached. The summary will retry when capacity returns."
+        );
+        assert_eq!(
+            summarizer_pending_message(&SummarizerError::NotAvailable),
+            "AI generation is temporarily unavailable. The summary will retry when capacity returns."
         );
     }
 

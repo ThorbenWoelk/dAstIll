@@ -13,9 +13,8 @@ impl ChatService {
     ) -> Result<Option<ToolLoopOutcome>, String> {
         active_chat
             .emit(ChatStreamEvent::Status {
-                status: ChatStatusPayload::new("tool_planning", "Preparing chat plan").with_detail(
-                    "Resolving scope and deciding whether to answer directly or gather evidence.",
-                ),
+                status: ChatStatusPayload::new("tool_planning", "Preparing chat plan")
+                    .with_detail("Resolving scope of search."),
             })
             .await;
 
@@ -46,6 +45,12 @@ impl ChatService {
         };
         let prompt_scope =
             filter_mention_scope_for_access(&state.db, access_context, prompt_scope).await;
+        active_chat
+            .emit(ChatStreamEvent::Status {
+                status: ChatStatusPayload::new("tool_planning", "Preparing chat plan")
+                    .with_detail(scope_resolution_detail(&prompt_scope)),
+            })
+            .await;
         let mut tool_outputs = Vec::<ToolEvidenceRecord>::new();
         let mut gathered_sources = Vec::<RetrievedChatSource>::new();
         let max_steps = if deep_research {
@@ -177,7 +182,7 @@ impl ChatService {
                 .emit(ChatStreamEvent::Status {
                     status: ChatStatusPayload::new("tool_planning", "Planning next step")
                         .with_detail(format!(
-                            "Choosing whether to answer now or call a tool (step {step}/{max_steps})."
+                            "Selecting next chat process (step {step}/{max_steps})."
                         )),
                 })
                 .await;
@@ -235,6 +240,12 @@ impl ChatService {
                     ));
                 }
             };
+            active_chat
+                .emit(ChatStreamEvent::Status {
+                    status: ChatStatusPayload::new("tool_planning", "Planning next step")
+                        .with_detail(selected_tool_process_detail(&step_outcome)),
+                })
+                .await;
 
             match step_outcome.action {
                 ToolLoopAction::Respond => {
@@ -496,6 +507,43 @@ fn fallback_tool_loop_outcome(
             sources: gathered_sources.to_vec(),
         })
     }
+}
+
+fn scope_resolution_detail(scope: &tools::MentionScope) -> String {
+    let channel_count = scope.channel_focus_ids.len();
+    let video_count = scope.video_focus_ids.len();
+    match (channel_count, video_count) {
+        (0, 0) => "Search scope resolved: full accessible library.".to_string(),
+        (channels, 0) => format!(
+            "Search scope resolved: {channels} channel{}.",
+            plural_suffix(channels)
+        ),
+        (0, videos) => {
+            format!(
+                "Search scope resolved: {videos} item{}.",
+                plural_suffix(videos)
+            )
+        }
+        (channels, videos) => format!(
+            "Search scope resolved: {channels} channel{} and {videos} item{}.",
+            plural_suffix(channels),
+            plural_suffix(videos)
+        ),
+    }
+}
+
+fn selected_tool_process_detail(outcome: &ToolLoopStepOutcome) -> String {
+    match &outcome.action {
+        ToolLoopAction::Respond => "Selected \"answer directly\" process.".to_string(),
+        ToolLoopAction::ToolCall(call) => format!(
+            "Selected \"{}\" process.",
+            call.label().to_ascii_lowercase()
+        ),
+    }
+}
+
+fn plural_suffix(count: usize) -> &'static str {
+    if count == 1 { "" } else { "s" }
 }
 
 fn rewrite_subject_overlap_db_inspect(

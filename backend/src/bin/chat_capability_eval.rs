@@ -13,9 +13,6 @@ mod report;
 mod runner;
 #[path = "chat_capability_eval/sse.rs"]
 mod sse;
-#[cfg(test)]
-#[path = "chat_capability_eval/tests.rs"]
-mod tests;
 
 use cli::{ensure_backend_ready, filter_prompts, load_prompt_specs, parse_args};
 use model::{SweepReport, SweepRunner};
@@ -79,3 +76,7 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "chat_capability_eval/tests.rs"]
+mod tests;

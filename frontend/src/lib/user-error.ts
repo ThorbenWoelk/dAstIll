@@ -63,9 +63,14 @@ export function normalizeUserErrorMessage(
   if (
     lower.includes("requires a subscription") ||
     lower.includes("subscription limit") ||
+    lower.includes("usage limit") ||
     lower.includes("quota exceeded") ||
-    lower.includes("ai generation is temporarily unavailable")
+    lower.includes("ollama cloud usage limit")
   ) {
+    return "AI model quota is used up. Please try again later.";
+  }
+
+  if (lower.includes("ai generation is temporarily unavailable")) {
     return "AI is temporarily unavailable. Please try again later.";
   }
 

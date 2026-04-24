@@ -1,7 +1,5 @@
 mod highlight_lookup;
 mod queries;
-#[cfg(test)]
-mod tests;
 
 use serde::Deserialize;
 
@@ -12,3 +10,6 @@ use crate::models::{
 use crate::services::search::SearchSourceKind;
 use highlight_lookup::*;
 pub(crate) use queries::*;
+
+#[cfg(test)]
+mod tests;

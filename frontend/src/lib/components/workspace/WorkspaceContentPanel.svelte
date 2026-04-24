@@ -370,7 +370,7 @@
 </script>
 
 <section
-  class={`fade-in-opacity stagger-3 workspace-content-shell relative z-10 flex min-h-0 min-w-0 flex-col overflow-visible border-0 lg:h-full lg:gap-4 ${mobileVisible ? "h-full" : "hidden lg:flex"}`}
+  class={`workspace-content-shell relative z-10 flex min-h-0 min-w-0 flex-col overflow-visible border-0 bg-[var(--surface-strong)] lg:h-full lg:gap-4 ${mobileVisible ? "h-full" : "hidden lg:flex"}`}
   id="content-view"
 >
   <WorkspaceContentMobileHeader

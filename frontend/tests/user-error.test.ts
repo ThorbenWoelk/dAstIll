@@ -29,6 +29,24 @@ describe("normalizeUserErrorMessage", () => {
       normalizeUserErrorMessage("this model requires a subscription", {
         status: 403,
       }),
+    ).toBe("AI model quota is used up. Please try again later.");
+  });
+
+  it("keeps Ollama Cloud limit hits clear", () => {
+    expect(
+      normalizeUserErrorMessage(
+        "Ollama Cloud usage limit reached. The summary will retry when capacity returns.",
+        { status: 429 },
+      ),
+    ).toBe("AI model quota is used up. Please try again later.");
+  });
+
+  it("keeps generic AI unavailability distinct from quota", () => {
+    expect(
+      normalizeUserErrorMessage(
+        "AI generation is temporarily unavailable. The summary will retry when capacity returns.",
+        { status: 503 },
+      ),
     ).toBe("AI is temporarily unavailable. Please try again later.");
   });
 

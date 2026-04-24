@@ -95,7 +95,7 @@
           disabled={deletingAll}
           onclick={() => void onDeleteAll()}
         >
-          {deletingAll ? "Deleting…" : "Clear"}
+          {deletingAll ? "Deleting…" : "Delete all"}
         </button>
       {/if}
     </div>

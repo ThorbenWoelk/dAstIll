@@ -29,8 +29,8 @@ export function resolveAiIndicatorPresentation(
       return {
         dotClass: "bg-[var(--status-error)]",
         detail:
-          "This showcase deployment has AI turned off. Everything else remains available.",
-        title: "Showcase mode",
+          "AI features are unavailable right now. Everything else remains available.",
+        title: "AI offline",
       };
   }
 }

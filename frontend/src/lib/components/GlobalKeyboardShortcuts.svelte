@@ -3,7 +3,6 @@
   import { page } from "$app/stores";
   import { onMount, tick, untrack } from "svelte";
   import { get } from "svelte/store";
-  import { fade } from "svelte/transition";
 
   import { DOCS_URL } from "$lib/app-config";
   import KeyboardShortcutsModal from "$lib/components/KeyboardShortcutsModal.svelte";
@@ -222,16 +221,14 @@
 {#if showGoHints}
   <div
     class="pointer-events-none fixed inset-0 z-[105]"
-    transition:fade={{ duration: 160 }}
     role="status"
     aria-live="polite"
     aria-label="Shortcut hints: hold Cmd or Ctrl"
   >
     {#each goHintPositions as hint, i (`${hint.key}-${i}`)}
       <kbd
-        class="fixed z-[106] inline-flex min-h-[1.35rem] min-w-[1.35rem] items-center justify-center rounded-[var(--radius-sm)] bg-[color-mix(in_srgb,var(--surface)_84%,transparent)] px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-[var(--foreground)] shadow-[0_10px_22px_color-mix(in_srgb,var(--foreground)_14%,transparent)] backdrop-blur-[8px]"
-        style={hint.style}
-        transition:fade={{ duration: 140 }}>{hint.key}</kbd
+        class="fixed z-[106] inline-flex min-h-[1.35rem] min-w-[1.35rem] items-center justify-center rounded-[var(--radius-sm)] border border-[var(--border-soft)] bg-[var(--surface-overlay-strong)] px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-[var(--foreground)] shadow-[0_10px_22px_var(--shadow-soft)]"
+        style={hint.style}>{hint.key}</kbd
       >
     {/each}
   </div>

@@ -208,9 +208,17 @@ impl ChatService {
         async move {
             active_chat.ensure_not_cancelled()?;
             let prompt = prompt.trim();
+            active_chat
+                .emit(ChatStreamEvent::Status {
+                    status: ChatStatusPayload::new("classifying", "Planning search")
+                        .with_detail("Resolving scope of search."),
+                })
+                .await;
             let scope = match tools::resolve_mention_scope(&state.db, access_context, prompt).await
             {
-                Ok(scope) => filter_mention_scope_for_access(&state.db, access_context, scope).await,
+                Ok(scope) => {
+                    filter_mention_scope_for_access(&state.db, access_context, scope).await
+                }
                 Err(error) => {
                     tracing::warn!(error = %error, "failed to resolve chat @mentions");
                     tools::MentionScope {
@@ -219,6 +227,12 @@ impl ChatService {
                     }
                 }
             };
+            active_chat
+                .emit(ChatStreamEvent::Status {
+                    status: ChatStatusPayload::new("classifying", "Planning search")
+                        .with_detail(scope_resolution_detail(&scope)),
+                })
+                .await;
             let retrieval_prompt = scope.prompt_for_retrieval(prompt);
             let planner_prompt = scope.prompt_for_planner(prompt);
             let planner_input =
@@ -227,9 +241,7 @@ impl ChatService {
             active_chat
                 .emit(ChatStreamEvent::Status {
                     status: ChatStatusPayload::new("classifying", "Planning search")
-                        .with_detail(
-                            "Deciding whether this needs a focused lookup, broader evidence, or only prior context.",
-                        ),
+                        .with_detail("Selecting search process."),
                 })
                 .await;
 
@@ -253,7 +265,9 @@ impl ChatService {
             .await?;
 
             let mut plan = match planned {
-                Ok(Ok((response, _))) => ChatRetrievalPlan::from_response(&retrieval_prompt, response),
+                Ok(Ok((response, _))) => {
+                    ChatRetrievalPlan::from_response(&retrieval_prompt, response)
+                }
                 Ok(Err(error)) => ChatRetrievalPlan::fallback(
                     &retrieval_prompt,
                     Some(format!(
@@ -298,7 +312,7 @@ impl ChatService {
 
             let mut status = ChatStatusPayload::new("classifying", "Search plan ready")
                 .with_detail(format!(
-                    "Using {} with up to {} excerpts and {} per video.",
+                    "Selected \"{}\" search process: up to {} excerpts and {} per item.",
                     plan.label.to_ascii_lowercase(),
                     plan.budget,
                     plan.max_per_video
@@ -414,6 +428,27 @@ impl ChatService {
                 .await;
 
             let assessment = assess_coverage(plan, &sources);
+            let mut completed_status = ChatStatusPayload::new(
+                format!("retrieving_pass_{pass}_complete"),
+                if pass == 1 {
+                    "Library search complete".to_string()
+                } else {
+                    "Broadened search complete".to_string()
+                },
+            )
+            .with_detail(format!(
+                "Pass {pass} selected {} excerpts across {} videos.",
+                sources.len(),
+                count_unique_videos(&sources)
+            ));
+            if let Some(reason) = &assessment.reason {
+                completed_status = completed_status.with_decision(reason.clone());
+            }
+            active_chat
+                .emit(ChatStreamEvent::Status {
+                    status: completed_status,
+                })
+                .await;
             tracing::info!(
                 conversation_id = conversation_id,
                 pass = pass,
@@ -637,6 +672,33 @@ fn inherited_search_scope(
     }
 
     Some(prompt_scope.clone())
+}
+
+fn scope_resolution_detail(scope: &tools::MentionScope) -> String {
+    let channel_count = scope.channel_focus_ids.len();
+    let video_count = scope.video_focus_ids.len();
+    match (channel_count, video_count) {
+        (0, 0) => "Search scope resolved: full accessible library.".to_string(),
+        (channels, 0) => format!(
+            "Search scope resolved: {channels} channel{}.",
+            plural_suffix(channels)
+        ),
+        (0, videos) => {
+            format!(
+                "Search scope resolved: {videos} item{}.",
+                plural_suffix(videos)
+            )
+        }
+        (channels, videos) => format!(
+            "Search scope resolved: {channels} channel{} and {videos} item{}.",
+            plural_suffix(channels),
+            plural_suffix(videos)
+        ),
+    }
+}
+
+fn plural_suffix(count: usize) -> &'static str {
+    if count == 1 { "" } else { "s" }
 }
 
 fn related_video_search_query(query: &str) -> bool {
