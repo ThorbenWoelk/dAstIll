@@ -57,8 +57,8 @@ use super::chat_heuristics::{
     push_unique_query, recommendation_query_variants, sanitize_queries,
 };
 use super::chat_prompt::{
-    build_conversation_only_grounding, build_grounding_context, build_ollama_messages,
-    build_source_list_fallback_answer, build_synthesis_grounding_context,
+    append_reference_links, build_conversation_only_grounding, build_grounding_context,
+    build_ollama_messages, build_source_list_fallback_answer, build_synthesis_grounding_context,
     build_tool_grounding_context, build_tool_output_fallback_answer, is_model_availability_error,
     synthesis_raw_limit_for_plan,
 };

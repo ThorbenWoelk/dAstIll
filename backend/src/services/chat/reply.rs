@@ -314,6 +314,7 @@ impl ChatService {
                 }
                 Err(error) => return Err(error),
             };
+            let content = append_reference_links(content, &sources);
             return Ok(self.build_assistant_message_with_trace(
                 content,
                 sources,
@@ -503,6 +504,7 @@ impl ChatService {
             }
             Err(error) => return Err(error),
         };
+        let content = append_reference_links(content, &sources);
         tracing::info!(
             conversation_id = %conversation.id,
             response_chars = content.chars().count(),

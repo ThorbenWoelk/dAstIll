@@ -1,4 +1,4 @@
-use crate::models::{ChatConversation, ChatRole};
+use crate::models::{ChatConversation, ChatRole, ChatSource};
 use crate::services::text::limit_text;
 
 use super::chat::{
@@ -6,7 +6,8 @@ use super::chat::{
     ChatRetrievalPlan, OllamaRequestMessage, RetrievedChatSource, VideoObservation,
 };
 
-const GROUNDING_CITATION_FOOTER: &str = "\n---\nInline citations: Use [1], [2], … in your answer for the same [Source N] as above (one chunk per index). Place brackets right after the phrase they support.";
+const GROUNDING_CITATION_FOOTER: &str = "\n---\nInline citations: Use [1], [2], … in your answer for the same [Source N] as above (one chunk per index). Place brackets right after the phrase they support. Do not write a separate References section; the system appends one from the cited sources.";
+const MAX_REFERENCE_CITE_QUERY_LEN: usize = 96;
 
 pub(super) fn synthesis_raw_limit_for_plan(plan: &ChatRetrievalPlan) -> usize {
     plan.budget.clamp(8, 48)
@@ -193,6 +194,113 @@ pub(super) fn build_tool_output_fallback_answer(prompt: &str, tool_outputs: &[St
     answer
 }
 
+pub(super) fn append_reference_links(mut answer: String, sources: &[ChatSource]) -> String {
+    if sources.is_empty() {
+        return answer;
+    }
+
+    let reference_indices = cited_source_indices(&answer, sources.len());
+    if reference_indices.is_empty() {
+        return answer;
+    }
+
+    while answer.ends_with(char::is_whitespace) {
+        answer.pop();
+    }
+    answer.push_str("\n\nReferences\n");
+    for index in reference_indices {
+        let source = &sources[index];
+        let number = index + 1;
+        answer.push_str(&format!(
+            "- [{number}] [{} - {}]({})\n",
+            markdown_link_text(&source.video_title),
+            markdown_link_text(&source.channel_name),
+            workspace_source_href(source),
+        ));
+    }
+    answer
+}
+
+fn cited_source_indices(answer: &str, source_count: usize) -> Vec<usize> {
+    let mut indices = Vec::new();
+    let mut offset = 0;
+    while let Some(start) = answer[offset..].find('[') {
+        let marker_start = offset + start;
+        let Some(end_after_start) = answer[marker_start..].find(']') else {
+            break;
+        };
+        let marker_end = marker_start + end_after_start;
+        let marker = answer[marker_start + 1..marker_end].trim();
+        let number_text = marker
+            .strip_prefix("Source")
+            .or_else(|| marker.strip_prefix("source"))
+            .map(str::trim)
+            .unwrap_or(marker);
+        if let Ok(number) = number_text.parse::<usize>() {
+            if (1..=source_count).contains(&number) {
+                let index = number - 1;
+                if !indices.contains(&index) {
+                    indices.push(index);
+                }
+            }
+        }
+        offset = marker_end + 1;
+    }
+    if indices.is_empty() {
+        return (0..source_count).collect();
+    }
+    indices
+}
+
+fn workspace_source_href(source: &ChatSource) -> String {
+    let mut params = vec![
+        ("source", source.channel_id.as_str()),
+        ("item", source.video_id.as_str()),
+        ("content", source.source_kind.as_str()),
+        ("type", "all"),
+        ("ack", "all"),
+    ];
+    if !source.chunk_id.trim().is_empty() {
+        params.push(("chunk", source.chunk_id.as_str()));
+    }
+    let cite = cite_snippet_for_url(&source.snippet);
+    if !cite.is_empty() {
+        params.push(("cite", cite.as_str()));
+    }
+    let query = params
+        .into_iter()
+        .map(|(key, value)| format!("{key}={}", percent_encode_query_value(value)))
+        .collect::<Vec<_>>()
+        .join("&");
+    format!("/?{query}")
+}
+
+fn cite_snippet_for_url(snippet: &str) -> String {
+    let normalized = snippet.split_whitespace().collect::<Vec<_>>().join(" ");
+    limit_text(&normalized, MAX_REFERENCE_CITE_QUERY_LEN)
+}
+
+fn markdown_link_text(text: &str) -> String {
+    text.trim()
+        .replace('\\', "\\\\")
+        .replace('[', "\\[")
+        .replace(']', "\\]")
+}
+
+fn percent_encode_query_value(value: &str) -> String {
+    let mut encoded = String::new();
+    for byte in value.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                encoded.push(byte as char);
+            }
+            b' ' => encoded.push('+'),
+            _ => encoded.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    encoded
+}
+
 fn fallback_prompt_needs_contrast(prompt: &str) -> bool {
     let normalized = prompt.to_ascii_lowercase();
     [
@@ -272,8 +380,8 @@ pub(super) fn is_model_availability_error(error: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_source_list_fallback_answer, build_tool_output_fallback_answer,
-        is_model_availability_error,
+        append_reference_links, build_source_list_fallback_answer,
+        build_tool_output_fallback_answer, is_model_availability_error,
     };
     use crate::models::{
         ChatSource, ContentItemKind, ContentPartKind, ContentSourceKind, ProviderKind,
@@ -374,6 +482,55 @@ mod tests {
         assert!(is_model_availability_error("cloud cooldown active"));
         assert!(is_model_availability_error("rate limited by provider"));
         assert!(!is_model_availability_error("Failed to parse stream line"));
+    }
+
+    #[test]
+    fn append_reference_links_lists_cited_sources_as_workspace_links() {
+        let sources = vec![
+            ChatSource {
+                source_id: "channel-1".to_string(),
+                video_id: "video-1".to_string(),
+                item_id: "video-1".to_string(),
+                provider: ProviderKind::YouTube,
+                content_source_kind: ContentSourceKind::YouTubeChannel,
+                item_kind: ContentItemKind::Video,
+                part_kind: ContentPartKind::Transcript,
+                channel_id: "channel-1".to_string(),
+                channel_name: "Channel One".to_string(),
+                video_title: "RAG Patterns".to_string(),
+                source_kind: SearchSourceKind::Transcript,
+                section_title: None,
+                snippet: "The speaker describes RAG retrieval and reranking.".to_string(),
+                score: 1.0,
+                chunk_id: "chunk-1".to_string(),
+                retrieval_pass: Some(1),
+            },
+            ChatSource {
+                source_id: "channel-2".to_string(),
+                video_id: "video-2".to_string(),
+                item_id: "video-2".to_string(),
+                provider: ProviderKind::YouTube,
+                content_source_kind: ContentSourceKind::YouTubeChannel,
+                item_kind: ContentItemKind::Video,
+                part_kind: ContentPartKind::GeneratedSummary,
+                channel_id: "channel-2".to_string(),
+                channel_name: "Channel Two".to_string(),
+                video_title: "Other Video".to_string(),
+                source_kind: SearchSourceKind::Summary,
+                section_title: None,
+                snippet: "Other evidence.".to_string(),
+                score: 0.5,
+                chunk_id: "chunk-2".to_string(),
+                retrieval_pass: Some(1),
+            },
+        ];
+
+        let answer = append_reference_links("Use retrieval evidence.[1]".to_string(), &sources);
+
+        assert!(answer.contains("References"));
+        assert!(answer.contains("- [1] [RAG Patterns - Channel One](/?source=channel-1"));
+        assert!(answer.contains("content=transcript"));
+        assert!(!answer.contains("Other Video"));
     }
 }
 
