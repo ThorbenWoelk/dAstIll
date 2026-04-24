@@ -1,6 +1,4 @@
 <script lang="ts">
-  import { goto } from "$app/navigation";
-
   import ChevronIcon from "$lib/components/icons/ChevronIcon.svelte";
   import ExternalLinkIcon from "$lib/components/icons/ExternalLinkIcon.svelte";
   import { DOCS_URL } from "$lib/app-config";
@@ -10,7 +8,6 @@
     type SectionNavigationSection,
   } from "$lib/section-navigation";
   import { sectionIcon } from "$lib/section-navigation-icons";
-  import { authState } from "$lib/auth-state.svelte";
   import WorkspaceUserMenu from "./WorkspaceUserMenu.svelte";
 
   let {
@@ -42,15 +39,6 @@
     return () =>
       window.removeEventListener("dastill:open-guide", onOpenGuideEvent);
   });
-
-  async function handleSignIn() {
-    await goto("/login");
-  }
-
-  async function handleSignOut() {
-    await authState.signOut();
-    window.location.href = "/";
-  }
 </script>
 
 <aside

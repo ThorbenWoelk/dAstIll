@@ -7,6 +7,7 @@
   import SettingsPanel from "$lib/components/SettingsPanel.svelte";
   import { DOCS_URL } from "$lib/app-config";
   import { authState } from "$lib/auth-state.svelte";
+  import { signOutAndReloadHome } from "$lib/logout";
   import {
     getSectionNavigationItems,
     type SectionNavigationSection,
@@ -64,7 +65,7 @@
 
   function handleSignOut() {
     close();
-    void authState.signOut();
+    void signOutAndReloadHome();
   }
 </script>
 

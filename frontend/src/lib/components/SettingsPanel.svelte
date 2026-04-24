@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
   import { authState } from "$lib/auth-state.svelte";
+  import { signOutAndReloadHome } from "$lib/logout";
   import {
     getAuthStorageScopeKey,
     getScopedStorageKey,
@@ -153,7 +154,7 @@
 
   function handleSignOut() {
     onClose();
-    void authState.signOut();
+    void signOutAndReloadHome();
   }
 
   function handleSignIn() {

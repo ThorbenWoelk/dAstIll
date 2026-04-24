@@ -1,23 +1,10 @@
 <script lang="ts">
-  import { goto } from "$app/navigation";
-  import { page } from "$app/state";
   import { onMount } from "svelte";
-  import { normalizeRedirectTarget } from "$lib/auth";
-  import { authState } from "$lib/auth-state.svelte";
-
-  const redirectTarget = $derived(
-    (() => {
-      const redirectTo = normalizeRedirectTarget(
-        page.url.searchParams.get("redirectTo"),
-      );
-      return redirectTo === "/logout" ? "/" : redirectTo;
-    })(),
-  );
+  import { signOutAndReloadHome } from "$lib/logout";
 
   onMount(() => {
     void (async () => {
-      await authState.signOut();
-      await goto(redirectTarget, { replaceState: true });
+      await signOutAndReloadHome();
     })();
   });
 </script>

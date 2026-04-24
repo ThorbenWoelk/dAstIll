@@ -4,6 +4,7 @@
   import ChevronIcon from "$lib/components/icons/ChevronIcon.svelte";
   import CloseIcon from "$lib/components/icons/CloseIcon.svelte";
   import SettingsPanel from "$lib/components/SettingsPanel.svelte";
+  import { signOutAndReloadHome } from "$lib/logout";
   import { fade } from "svelte/transition";
 
   let {
@@ -23,7 +24,7 @@
   function handleSignOut() {
     menuOpen = false;
     view = "main";
-    void authState.signOut();
+    void signOutAndReloadHome();
   }
 
   function handleSignIn() {
