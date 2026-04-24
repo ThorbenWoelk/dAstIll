@@ -1,0 +1,4364 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>dAstIll Search and RAG Workflow</title>
+    <style>
+      :root {
+        --background: #faf9f6;
+        --surface: #ffffff;
+        --surface-strong: #f1eee8;
+        --foreground: #1a1a1a;
+        --soft-foreground: #5a5a5a;
+        --accent: #b5851f;
+        --accent-soft: #efe2c3;
+        --accent-strong: #6d4a00;
+        --border: #ded8cf;
+        --shadow: 0 24px 80px rgba(26, 26, 26, 0.1);
+        color-scheme: light;
+        font-family:
+          Manrope,
+          Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100dvh;
+        background: var(--background);
+        color: var(--foreground);
+        -webkit-font-smoothing: antialiased;
+      }
+
+      button {
+        font: inherit;
+      }
+
+      .deck {
+        min-height: 100dvh;
+        display: grid;
+        grid-template-rows: 1fr auto;
+      }
+
+      .slide {
+        display: none;
+        width: 100%;
+        min-height: calc(100dvh - 76px);
+        padding: clamp(24px, 4vw, 48px);
+        overflow-x: hidden;
+      }
+
+      .slide.active {
+        display: grid;
+        align-items: center;
+      }
+
+      .slide.architecture-map.active {
+        align-items: start;
+      }
+
+      .slide-inner {
+        width: min(1120px, 100%);
+        min-width: 0;
+        margin: 0 auto;
+      }
+
+      .kicker {
+        margin: 0 0 14px;
+        color: var(--accent-strong);
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2,
+      h3 {
+        margin: 0;
+        line-height: 0.98;
+        letter-spacing: 0;
+      }
+
+      h1 {
+        max-width: 940px;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: clamp(44px, 8vw, 96px);
+        font-weight: 600;
+      }
+
+      h2 {
+        max-width: 920px;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: clamp(34px, 5.1vw, 62px);
+        font-weight: 600;
+      }
+
+      h3 {
+        font-size: clamp(18px, 2.2vw, 26px);
+        line-height: 1.15;
+      }
+
+      p,
+      li,
+      td,
+      th {
+        font-size: clamp(16px, 1.38vw, 18px);
+        line-height: 1.45;
+      }
+
+      .lede {
+        max-width: 800px;
+        margin: 22px 0 0;
+        color: var(--soft-foreground);
+        font-size: clamp(18px, 1.8vw, 23px);
+      }
+
+      .grid {
+        display: grid;
+        gap: 18px;
+        margin-top: 30px;
+      }
+
+      .grid.two {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .grid.three {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .panel {
+        padding: 20px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+      }
+
+      .panel.flat {
+        box-shadow: none;
+      }
+
+      .panel p {
+        margin: 10px 0 0;
+        color: var(--soft-foreground);
+      }
+
+      .index-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 28px;
+      }
+
+      .index-button {
+        display: block;
+        width: 100%;
+        min-height: 72px;
+        padding: 14px 16px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--foreground);
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .index-button strong {
+        display: block;
+        font-size: 18px;
+        line-height: 1.2;
+      }
+
+      .index-button span {
+        display: block;
+        margin-top: 5px;
+        color: var(--soft-foreground);
+        font-size: 12px;
+        line-height: 1.3;
+      }
+
+      .index-button:hover,
+      .index-button:focus-visible {
+        background: var(--accent-soft);
+        outline: none;
+      }
+
+      .flow {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 30px;
+      }
+
+      .node {
+        min-height: 116px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+      }
+
+      .node strong {
+        font-size: 17px;
+      }
+
+      .node span {
+        color: var(--soft-foreground);
+        font-size: 13px;
+        line-height: 1.35;
+      }
+
+      .hybrid-pipeline {
+        display: grid;
+        gap: 10px;
+        margin-top: 24px;
+      }
+
+      .hybrid-stage {
+        display: grid;
+        grid-template-columns: 132px minmax(0, 1fr);
+        gap: 12px;
+        align-items: stretch;
+      }
+
+      .hybrid-label {
+        display: grid;
+        place-items: center;
+        color: var(--accent-strong);
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-align: center;
+        text-transform: uppercase;
+      }
+
+      .hybrid-card,
+      .hybrid-branch {
+        padding: 13px 14px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+      }
+
+      .hybrid-card.accent {
+        background: var(--accent-soft);
+      }
+
+      .hybrid-branches {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .hybrid-card strong,
+      .hybrid-branch strong {
+        display: block;
+        font-size: 15px;
+        line-height: 1.2;
+      }
+
+      .hybrid-card span,
+      .hybrid-branch span {
+        display: block;
+        margin-top: 5px;
+        color: var(--soft-foreground);
+        font-size: 12.5px;
+        line-height: 1.32;
+      }
+
+      .arch-diagram {
+        display: grid;
+        grid-template-columns: 1fr 1.2fr 1.2fr 1fr;
+        gap: 10px;
+        margin-top: 22px;
+      }
+
+      .arch-lane {
+        display: grid;
+        gap: 10px;
+        align-content: start;
+      }
+
+      .arch-label {
+        color: var(--accent-strong);
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .arch-box {
+        min-height: 70px;
+        padding: 12px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+      }
+
+      .arch-box strong {
+        display: block;
+        font-size: 14px;
+        line-height: 1.2;
+      }
+
+      .arch-box span {
+        display: block;
+        margin-top: 5px;
+        color: var(--soft-foreground);
+        font-size: 12px;
+        line-height: 1.3;
+      }
+
+      .arch-box.accent {
+        background: var(--accent-soft);
+      }
+
+      .diagram {
+        margin-top: 24px;
+        padding: 18px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+      }
+
+      .diagram.compact {
+        padding: 14px;
+      }
+
+      .complete-architecture-diagram {
+        max-height: calc(100dvh - 286px);
+        overflow: auto;
+      }
+
+      .complete-architecture-diagram svg {
+        min-width: 1040px;
+        height: auto;
+      }
+
+      .architecture-svg {
+        width: 100%;
+        min-width: 1040px;
+        height: auto;
+        display: block;
+        font-family:
+          Manrope,
+          Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+      }
+
+      .architecture-svg text {
+        fill: var(--foreground);
+        letter-spacing: 0;
+      }
+
+      .architecture-svg .group-box {
+        fill: var(--surface);
+        stroke: var(--border);
+      }
+
+      .architecture-svg .band-box {
+        fill: var(--surface);
+        stroke: var(--border);
+        stroke-width: 1.2;
+      }
+
+      .architecture-svg .node-box {
+        fill: var(--background);
+        stroke: var(--border);
+      }
+
+      .architecture-svg .node-accent {
+        fill: var(--accent-soft);
+        stroke: var(--border);
+      }
+
+      .architecture-svg .node-store {
+        fill: var(--surface);
+        stroke: var(--border);
+      }
+
+      .architecture-svg .node-boundary {
+        fill: var(--surface-strong);
+        stroke: var(--accent-strong);
+      }
+
+      .architecture-svg .node-muted {
+        fill: var(--background);
+        stroke: var(--border);
+        stroke-dasharray: 5 5;
+      }
+
+      .architecture-svg .arrow {
+        fill: none;
+        stroke: var(--accent-strong);
+        stroke-width: 2.4;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .architecture-svg .arrow-soft {
+        fill: none;
+        stroke: var(--border);
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .architecture-svg .arrow-dashed {
+        fill: none;
+        stroke: var(--accent-strong);
+        stroke-width: 2;
+        stroke-dasharray: 6 6;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .architecture-svg .label {
+        fill: var(--accent-strong);
+        font-size: 11px;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+
+      .architecture-svg .map-title {
+        fill: var(--accent-strong);
+        font-size: 13px;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+
+      .architecture-svg .node-title {
+        font-size: 14px;
+        font-weight: 800;
+      }
+
+      .architecture-svg .node-small {
+        fill: var(--soft-foreground);
+        font-size: 11px;
+      }
+
+      .architecture-svg .edge-label {
+        fill: var(--accent-strong);
+        font-size: 10px;
+        font-weight: 800;
+      }
+
+      .architecture-map h2 {
+        font-size: clamp(28px, 3.7vw, 44px);
+      }
+
+      .architecture-map .diagram {
+        margin-top: 14px;
+      }
+
+      .architecture-map .source {
+        margin-top: 10px;
+        font-size: 10.5px;
+        line-height: 1.3;
+      }
+
+      .architecture-map .source code {
+        font-size: 9.5px;
+      }
+
+      .diagram-title {
+        margin: 0 0 12px;
+        color: var(--accent-strong);
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .diagram-row,
+      .diagram-grid {
+        display: grid;
+        gap: 10px;
+      }
+
+      .diagram-row {
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        align-items: stretch;
+      }
+
+      .diagram-row.four {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .diagram-grid.two {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .diagram-grid.three {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .diagram-node {
+        position: relative;
+        min-height: 92px;
+        padding: 13px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        background: var(--background);
+        border-radius: 8px;
+      }
+
+      .diagram-node.accent {
+        background: var(--accent-soft);
+      }
+
+      .diagram-node strong {
+        display: block;
+        font-size: 14px;
+        line-height: 1.18;
+      }
+
+      .diagram-node span {
+        display: block;
+        margin-top: 5px;
+        color: var(--soft-foreground);
+        font-size: 11.5px;
+        line-height: 1.25;
+      }
+
+      .diagram-node[data-edge]::after {
+        content: attr(data-edge);
+        position: absolute;
+        top: 50%;
+        right: -11px;
+        z-index: 2;
+        width: 22px;
+        height: 22px;
+        display: grid;
+        place-items: center;
+        color: var(--accent-strong);
+        font-size: 14px;
+        font-weight: 900;
+        transform: translateY(-50%);
+      }
+
+      .diagram-band {
+        margin-top: 12px;
+        padding: 11px 13px;
+        background: var(--surface-strong);
+        border-radius: 8px;
+        color: var(--soft-foreground);
+        font-size: 12px;
+        line-height: 1.35;
+      }
+
+      .diagram-lanes {
+        display: grid;
+        grid-template-columns: 0.9fr 1fr 1fr 0.9fr;
+        gap: 10px;
+      }
+
+      .diagram-lane {
+        display: grid;
+        gap: 9px;
+        align-content: start;
+      }
+
+      .diagram-label,
+      .diagram-lane .diagram-label {
+        color: var(--accent-strong);
+        font-size: 9px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .diagram-callout {
+        padding: 10px 12px;
+        background: var(--surface-strong);
+        border-radius: 8px;
+        color: var(--soft-foreground);
+        font-size: 12px;
+        line-height: 1.32;
+      }
+
+      .diagram-loop {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 10px;
+        align-items: stretch;
+      }
+
+      .diagram-loop .diagram-node {
+        min-height: 104px;
+      }
+
+      .diagram-stack {
+        display: grid;
+        gap: 8px;
+      }
+
+      .diagram-sequence {
+        display: grid;
+        grid-template-columns: 1fr 1.15fr 1.15fr 1fr;
+        gap: 10px;
+      }
+
+      .sequence-lane {
+        display: grid;
+        gap: 8px;
+        align-content: start;
+      }
+
+      .sequence-step {
+        min-height: 58px;
+        padding: 10px 12px;
+        background: var(--background);
+        border-radius: 8px;
+      }
+
+      .sequence-step.accent {
+        background: var(--accent-soft);
+      }
+
+      .sequence-step strong {
+        display: block;
+        font-size: 13px;
+        line-height: 1.18;
+      }
+
+      .sequence-step span {
+        display: block;
+        margin-top: 4px;
+        color: var(--soft-foreground);
+        font-size: 11px;
+        line-height: 1.25;
+      }
+
+      .diagram-svg {
+        width: 100%;
+        height: auto;
+        display: block;
+      }
+
+      .diagram-svg text {
+        fill: var(--foreground);
+        font-family:
+          Manrope,
+          Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        letter-spacing: 0;
+      }
+
+      .diagram-svg .soft {
+        fill: var(--soft-foreground);
+      }
+
+      .diagram-svg .accent-text {
+        fill: var(--accent-strong);
+        font-weight: 800;
+      }
+
+      .diagram-svg .box {
+        fill: var(--background);
+      }
+
+      .diagram-svg .box-strong {
+        fill: var(--surface-strong);
+      }
+
+      .diagram-svg .box-accent {
+        fill: var(--accent-soft);
+      }
+
+      .diagram-svg .line {
+        fill: none;
+        stroke: var(--accent-strong);
+        stroke-width: 2;
+      }
+
+      .diagram-svg .line-soft {
+        fill: none;
+        stroke: var(--border);
+        stroke-width: 2;
+      }
+
+      .arch-link {
+        color: var(--soft-foreground);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-align: center;
+        text-transform: uppercase;
+      }
+
+      table {
+        width: 100%;
+        table-layout: fixed;
+        border-collapse: collapse;
+        margin-top: 24px;
+      }
+
+      th,
+      td {
+        padding: 9px 8px;
+        text-align: left;
+        vertical-align: top;
+        border-bottom: 1px solid var(--border);
+      }
+
+      th {
+        color: var(--accent-strong);
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      code {
+        padding: 2px 5px;
+        background: var(--surface-strong);
+        border-radius: 5px;
+        font-family: "SFMono-Regular", Consolas, monospace;
+        font-size: 0.88em;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+      }
+
+      pre {
+        margin: 24px 0 0;
+        padding: 18px;
+        max-height: 390px;
+        overflow: auto;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+        white-space: pre-wrap;
+      }
+
+      pre code {
+        display: block;
+        padding: 0;
+        background: transparent;
+        border-radius: 0;
+        color: var(--foreground);
+        font-size: 13px;
+        line-height: 1.45;
+        overflow-wrap: anywhere;
+      }
+
+      .quote {
+        max-width: 860px;
+        margin-top: 30px;
+        padding-left: 22px;
+        border-left: 4px solid var(--accent);
+        color: var(--soft-foreground);
+        font-size: clamp(20px, 2.2vw, 28px);
+        line-height: 1.35;
+      }
+
+      .source {
+        margin-top: 22px;
+        color: var(--soft-foreground);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .source code {
+        font-size: 11px;
+      }
+
+      .doc-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px;
+        margin-top: 16px;
+        color: var(--soft-foreground);
+        font-size: 12px;
+        line-height: 1.4;
+      }
+
+      .doc-links span {
+        color: var(--accent-strong);
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      a.doc-link,
+      .doc-links a {
+        color: var(--accent-strong);
+        font-weight: 800;
+        text-decoration: none;
+      }
+
+      a.doc-link:hover,
+      a.doc-link:focus-visible,
+      .doc-links a:hover,
+      .doc-links a:focus-visible {
+        text-decoration: underline;
+        outline: none;
+      }
+
+      .controls {
+        position: sticky;
+        bottom: 0;
+        display: grid;
+        grid-template-columns: auto auto minmax(160px, 1fr) auto;
+        align-items: center;
+        gap: 16px;
+        min-height: 76px;
+        padding: 16px clamp(18px, 4vw, 48px);
+        background: var(--surface);
+        border-top: 1px solid var(--border);
+      }
+
+      .counter {
+        color: var(--soft-foreground);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .jump-control {
+        justify-self: start;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .jump-control label {
+        color: var(--soft-foreground);
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .jump-control select {
+        max-width: min(260px, 32vw);
+        min-height: 40px;
+        padding: 0 34px 0 12px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        color: var(--foreground);
+        font: inherit;
+        font-size: 13px;
+      }
+
+      .progress {
+        height: 4px;
+        width: min(320px, 36vw);
+        background: var(--surface-strong);
+        border-radius: 999px;
+        overflow: hidden;
+      }
+
+      .progress span {
+        display: block;
+        height: 100%;
+        width: 0;
+        background: var(--accent);
+      }
+
+      .nav {
+        justify-self: end;
+        display: flex;
+        gap: 8px;
+      }
+
+      .nav button {
+        min-width: 44px;
+        min-height: 44px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: var(--surface);
+        color: var(--foreground);
+        cursor: pointer;
+      }
+
+      .nav button:hover,
+      .nav button:focus-visible {
+        background: var(--accent-soft);
+        outline: none;
+      }
+
+      @media (max-width: 760px) {
+        .slide {
+          max-width: 100vw;
+          min-height: auto;
+          padding: 22px 16px 88px;
+          align-items: start;
+        }
+
+        .slide-inner {
+          width: 100%;
+          max-width: 100%;
+          min-width: 0;
+        }
+
+        .grid.two,
+        .grid.three,
+        .flow {
+          grid-template-columns: 1fr;
+          gap: 10px;
+          margin-top: 18px;
+        }
+
+        .node {
+          min-height: 70px;
+          padding: 12px;
+        }
+
+        .node strong {
+          font-size: 15px;
+        }
+
+        .node span {
+          font-size: 12px;
+        }
+
+        .index-grid {
+          grid-template-columns: 1fr;
+          gap: 8px;
+          margin-top: 16px;
+        }
+
+        .index-button {
+          min-height: auto;
+          padding: 10px 11px;
+        }
+
+        .index-button strong {
+          font-size: 14px;
+        }
+
+        .index-button span {
+          margin-top: 3px;
+          font-size: 10px;
+          line-height: 1.2;
+        }
+
+        .hybrid-pipeline {
+          gap: 7px;
+          margin-top: 16px;
+        }
+
+        .hybrid-stage {
+          grid-template-columns: 1fr;
+          gap: 4px;
+        }
+
+        .hybrid-label {
+          justify-items: start;
+          place-items: start;
+          font-size: 8px;
+        }
+
+        .hybrid-branches {
+          grid-template-columns: 1fr;
+          gap: 7px;
+        }
+
+        .hybrid-card,
+        .hybrid-branch {
+          padding: 8px 9px;
+        }
+
+        .hybrid-card strong,
+        .hybrid-branch strong {
+          font-size: 12px;
+        }
+
+        .hybrid-card span,
+        .hybrid-branch span {
+          margin-top: 3px;
+          font-size: 10px;
+          line-height: 1.22;
+        }
+
+        .panel {
+          padding: 14px;
+        }
+
+        .arch-diagram {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 8px;
+          margin-top: 16px;
+        }
+
+        .arch-lane {
+          gap: 5px;
+        }
+
+        .arch-box {
+          min-height: auto;
+          padding: 7px;
+        }
+
+        .arch-box strong {
+          font-size: 11px;
+        }
+
+        .arch-box span {
+          margin-top: 3px;
+          font-size: 9.5px;
+          line-height: 1.18;
+        }
+
+        .arch-label {
+          font-size: 8px;
+        }
+
+        .arch-link {
+          display: none;
+        }
+
+        .diagram {
+          max-width: 100%;
+          min-width: 0;
+          margin-top: 14px;
+          padding: 10px;
+          box-shadow: none;
+        }
+
+        .diagram-title {
+          margin-bottom: 8px;
+          font-size: 8px;
+        }
+
+        .diagram-row,
+        .diagram-row.four,
+        .diagram-grid.two,
+        .diagram-grid.three,
+        .diagram-loop,
+        .diagram-sequence,
+        .diagram-lanes {
+          grid-template-columns: 1fr;
+          gap: 7px;
+        }
+
+        .diagram-node {
+          min-height: auto;
+          padding: 8px;
+        }
+
+        .diagram-loop .diagram-node {
+          min-height: auto;
+        }
+
+        .diagram-node strong,
+        .sequence-step strong {
+          font-size: 11px;
+        }
+
+        .diagram-node span,
+        .sequence-step span,
+        .diagram-callout,
+        .diagram-band {
+          font-size: 9.5px;
+          line-height: 1.22;
+        }
+
+        .diagram-node[data-edge]::after {
+          content: "down";
+          top: auto;
+          right: 10px;
+          bottom: -15px;
+          transform: none;
+          font-size: 9px;
+          text-transform: uppercase;
+        }
+
+        .diagram-svg {
+          display: block;
+          width: 620px;
+          max-width: none;
+          min-width: 620px;
+        }
+
+        .diagram:has(.diagram-svg) {
+          overflow-x: auto;
+        }
+
+        h1 {
+          font-size: 40px;
+        }
+
+        h2 {
+          font-size: 28px;
+          line-height: 1.02;
+        }
+
+        h3 {
+          font-size: 17px;
+        }
+
+        p,
+        li,
+        td {
+          font-size: 14px;
+          line-height: 1.4;
+        }
+
+        th {
+          font-size: 9px;
+        }
+
+        td {
+          font-size: 12.5px;
+          line-height: 1.25;
+        }
+
+        .lede {
+          margin-top: 14px;
+          font-size: 16px;
+          line-height: 1.4;
+        }
+
+        .quote {
+          margin-top: 18px;
+          padding-left: 14px;
+          font-size: 17px;
+        }
+
+        table {
+          margin-top: 16px;
+        }
+
+        pre {
+          margin-top: 14px;
+          padding: 12px;
+          max-height: 430px;
+          box-shadow: none;
+        }
+
+        pre code {
+          font-size: 10.5px;
+          line-height: 1.32;
+        }
+
+        th,
+        td {
+          padding: 6px 5px;
+        }
+
+        .source {
+          margin-top: 14px;
+          font-size: 10px;
+          line-height: 1.35;
+        }
+
+        .doc-links {
+          gap: 5px;
+          margin-top: 10px;
+          font-size: 10px;
+          line-height: 1.25;
+        }
+
+        .doc-links span {
+          font-size: 8px;
+        }
+
+        .controls {
+          grid-template-columns: auto 1fr auto;
+          min-height: 58px;
+          padding: 10px 14px;
+        }
+
+        .jump-control {
+          display: none;
+        }
+
+        .progress {
+          width: 100%;
+        }
+      }
+
+      @media (prefers-reduced-motion: no-preference) {
+        .slide.active .slide-inner {
+          animation: rise 240ms ease-out both;
+        }
+
+        @keyframes rise {
+          from {
+            opacity: 0;
+            transform: translateY(8px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      }
+
+      @media print {
+        body {
+          background: white;
+        }
+
+        .deck {
+          display: block;
+        }
+
+        .slide,
+        .slide.active {
+          display: block;
+          min-height: auto;
+          page-break-after: always;
+          padding: 32px;
+        }
+
+        .controls {
+          display: none;
+        }
+
+        .panel,
+        .node {
+          box-shadow: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="deck" aria-label="dAstIll search and RAG workflow deck">
+      <section class="slide active" data-title="Title">
+        <div class="slide-inner">
+          <p class="kicker">dAstIll learning deck</p>
+          <h1>Search and RAG Workflow</h1>
+          <p class="lede">
+            A structured tour through keyword search, semantic search, hybrid
+            search, and the dAstIll architecture that turns library content into
+            grounded answers.
+          </p>
+          <p class="source">
+            Scope: local repo research on 2026-04-24. Core sources:
+            <code>docs/pipelines/search-indexing.md</code>,
+            <code>docs/pipelines/ai-models.md</code>,
+            <code>backend/src/handlers/search/mod.rs</code>,
+            <code>backend/src/services/chat/retrieval.rs</code>.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Deck Structure">
+        <div class="slide-inner">
+          <p class="kicker">Structure</p>
+          <h2>Four layers, each with the same lens.</h2>
+          <div class="grid two">
+            <div class="panel flat">
+              <h3>Layers</h3>
+              <p>
+                Keyword search, semantic search, hybrid search, and dAstIll
+                architecture.
+              </p>
+            </div>
+            <div class="panel flat">
+              <h3>Lens</h3>
+              <p>
+                Fundamentals, overlapping functionality, then dAstIll-specific
+                behavior.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Section Index">
+        <div class="slide-inner">
+          <p class="kicker">Index</p>
+          <h2>Jump to the section you need.</h2>
+          <div class="index-grid" aria-label="Deck section index">
+            <button
+              class="index-button"
+              type="button"
+              data-jump-title="App Surfaces"
+            >
+              <strong>App surfaces</strong>
+              <span>Where search and RAG appear in the UI.</span>
+            </button>
+            <button
+              class="index-button"
+              type="button"
+              data-jump-title="Keyword Search Section"
+            >
+              <strong>Keyword search</strong>
+              <span>FTS5, BM25, stemming, schema, API, result shape.</span>
+            </button>
+            <button
+              class="index-button"
+              type="button"
+              data-jump-title="Semantic Search Section"
+            >
+              <strong>Semantic search</strong>
+              <span>Embeddings, chunk storage, vector modes, HyDE.</span>
+            </button>
+            <button
+              class="index-button"
+              type="button"
+              data-jump-title="Hybrid Search Section"
+            >
+              <strong>Hybrid search</strong>
+              <span>Independent legs, RRF, rerank, query shaping.</span>
+            </button>
+            <button
+              class="index-button"
+              type="button"
+              data-jump-title="dAstIll Architecture Section"
+            >
+              <strong>dAstIll architecture</strong>
+              <span>Worker lifecycle, RAG budgets, tools, streaming.</span>
+            </button>
+            <button
+              class="index-button"
+              type="button"
+              data-jump-title="Glossary Data and Indexing"
+            >
+              <strong>Glossary</strong>
+              <span>Data, indexing, retrieval, and RAG vocabulary.</span>
+            </button>
+            <button
+              class="index-button"
+              type="button"
+              data-jump-title="Source Map App"
+            >
+              <strong>Source map</strong>
+              <span>Repo paths and confidence notes behind the deck.</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Prod Docs Links">
+        <div class="slide-inner">
+          <p class="kicker">Production docs</p>
+          <h2>Use these docs sections as the deeper reading path.</h2>
+          <table>
+            <tr>
+              <th>Deck area</th>
+              <th>Prod docs sections</th>
+            </tr>
+            <tr>
+              <td>Search storage</td>
+              <td>
+                <a
+                  class="doc-link"
+                  href="https://dastill-docs.web.app/pipelines/search-indexing#storage-backend"
+                  target="_blank"
+                  rel="noreferrer"
+                  >Storage Backend</a
+                >;
+                <a
+                  class="doc-link"
+                  href="https://dastill-docs.web.app/architecture/data-model#search-projection"
+                  target="_blank"
+                  rel="noreferrer"
+                  >Search Projection</a
+                >;
+                <a
+                  class="doc-link"
+                  href="https://dastill-docs.web.app/architecture/data-model#search-chunks"
+                  target="_blank"
+                  rel="noreferrer"
+                  >Search Chunks</a
+                >
+              </td>
+            </tr>
+            <tr>
+              <td>Keyword search</td>
+              <td>
+                <a
+                  class="doc-link"
+                  href="https://dastill-docs.web.app/pipelines/search-indexing#keyword-index"
+                  target="_blank"
+                  rel="noreferrer"
+                  >Keyword Index</a
+                >;
+                <a
+                  class="doc-link"
+                  href="https://dastill-docs.web.app/pipelines/search-indexing#_3-fts-leg"
+                  target="_blank"
+                  rel="noreferrer"
+                  >FTS Leg</a
+                >;
+                <a
+                  class="doc-link"
+                  href="https://dastill-docs.web.app/pipelines/search-indexing#get-api-search"
+                  target="_blank"
+                  rel="noreferrer"
+                  >Search API</a
+                >
+              </td>
+            </tr>
+            <tr>
+              <td>Semantic search</td>
+              <td>
+                <a
+                  class="doc-link"
+                  href="https://dastill-docs.web.app/pipelines/search-indexing#semantic-enablement"
+                  target="_blank"
+                  rel="noreferrer"
+                  >Semantic Enablement</a
+                >;
+                <a
+                  class="doc-link"
+                  href="https://dastill-docs.web.app/pipelines/search-indexing#_4-semantic-leg-optional"
+                  target="_blank"
+                  rel="noreferrer"
+                  >Semantic Leg</a
+                >;
+                <a
+                  class="doc-link"
+                  href="https://dastill-docs.web.app/pipelines/ai-models#search-embedding"
+                  target="_blank"
+                  rel="noreferrer"
+                  >Search Embedding</a
+                >
+              </td>
+            </tr>
+            <tr>
+              <td>HyDE and rerank</td>
+              <td>
+                <a
+                  class="doc-link"
+                  href="https://dastill-docs.web.app/pipelines/ai-models#hyde-search-hyde-model"
+                  target="_blank"
+                  rel="noreferrer"
+                  >HyDE Model</a
+                >;
+                <a
+                  class="doc-link"
+                  href="https://dastill-docs.web.app/pipelines/ai-models#neural-reranker-search-rerank-model"
+                  target="_blank"
+                  rel="noreferrer"
+                  >Neural Reranker</a
+                >;
+                <a
+                  class="doc-link"
+                  href="https://dastill-docs.web.app/pipelines/search-indexing#_6-neural-reranker-optional"
+                  target="_blank"
+                  rel="noreferrer"
+                  >Reranker Path</a
+                >
+              </td>
+            </tr>
+            <tr>
+              <td>Chat RAG</td>
+              <td>
+                <a
+                  class="doc-link"
+                  href="https://dastill-docs.web.app/pipelines/ai-models#chat-and-rag"
+                  target="_blank"
+                  rel="noreferrer"
+                  >Chat and RAG</a
+                >;
+                <a
+                  class="doc-link"
+                  href="https://dastill-docs.web.app/pipelines/ai-models#multi-pass-retrieval"
+                  target="_blank"
+                  rel="noreferrer"
+                  >Multi-Pass Retrieval</a
+                >;
+                <a
+                  class="doc-link"
+                  href="https://dastill-docs.web.app/pipelines/ai-models#streaming-responses"
+                  target="_blank"
+                  rel="noreferrer"
+                  >Streaming Responses</a
+                >
+              </td>
+            </tr>
+            <tr>
+              <td>Runtime and UI</td>
+              <td>
+                <a
+                  class="doc-link"
+                  href="https://dastill-docs.web.app/architecture/runtime-topology#search-index-worker"
+                  target="_blank"
+                  rel="noreferrer"
+                  >Search Index Worker</a
+                >;
+                <a
+                  class="doc-link"
+                  href="https://dastill-docs.web.app/architecture/frontend-and-api#search-ui-pattern"
+                  target="_blank"
+                  rel="noreferrer"
+                  >Search UI Pattern</a
+                >;
+                <a
+                  class="doc-link"
+                  href="https://dastill-docs.web.app/architecture/frontend-and-api#frontend-to-backend-contract-style"
+                  target="_blank"
+                  rel="noreferrer"
+                  >Frontend Contract</a
+                >
+              </td>
+            </tr>
+          </table>
+        </div>
+      </section>
+
+      <section class="slide" data-title="App Surfaces">
+        <div class="slide-inner">
+          <p class="kicker">App comparison</p>
+          <h2>The app has three visible retrieval surfaces.</h2>
+          <table>
+            <tr>
+              <th>Surface</th>
+              <th>User action</th>
+              <th>Retrieval behavior</th>
+            </tr>
+            <tr>
+              <td>Workspace search</td>
+              <td>
+                Type query, filter source, choose keyword/semantic sections.
+              </td>
+              <td>
+                Runs keyword and semantic requests separately; shows grouped
+                results.
+              </td>
+            </tr>
+            <tr>
+              <td>Ask mode</td>
+              <td>Toggle search bar into ask and submit.</td>
+              <td>Routes to chat with <code>?prompt=...</code>.</td>
+            </tr>
+            <tr>
+              <td>Chat Deep Search</td>
+              <td>Enable <code>Deep Search</code> per message.</td>
+              <td>Raises source budget and widens query fan-out.</td>
+            </tr>
+            <tr>
+              <td>Status chip</td>
+              <td>Read indexing coverage.</td>
+              <td>Uses <code>/api/search/status</code> and SSE updates.</td>
+            </tr>
+          </table>
+          <p class="source">
+            Sources:
+            <code
+              >frontend/src/lib/components/workspace/WorkspaceSearchBar.svelte</code
+            >,
+            <code
+              >frontend/src/lib/components/chat/ChatInputControls.svelte</code
+            >.
+          </p>
+          <p class="doc-links">
+            <span>Prod docs</span>
+            <a
+              href="https://dastill-docs.web.app/architecture/frontend-and-api#search-ui-pattern"
+              target="_blank"
+              rel="noreferrer"
+              >Search UI Pattern</a
+            >
+            <a
+              href="https://dastill-docs.web.app/architecture/frontend-and-api#search"
+              target="_blank"
+              rel="noreferrer"
+              >Search</a
+            >
+            <a
+              href="https://dastill-docs.web.app/architecture/frontend-and-api#chat"
+              target="_blank"
+              rel="noreferrer"
+              >Chat</a
+            >
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Code Frontend Search">
+        <div class="slide-inner">
+          <p class="kicker">Code - app surface</p>
+          <h2>
+            The frontend starts keyword and semantic sections independently.
+          </h2>
+          <pre><code>function runSearch(query: string) {
+    const requestId = ++searchRequestId;
+    abortSearchRequests();
+    retainedSearchQuery = query;
+    pendingSearchQuery = query;
+
+    const nextSections = createEmptySearchSections();
+    nextSections.keyword.loading = true;
+    nextSections.semantic.loading = semanticSearchEnabled;
+    searchSections = nextSections;
+
+    void runSearchSection(query, "keyword", requestId);
+    if (semanticSearchEnabled) {
+        void runSearchSection(query, "semantic", requestId);
+    }
+}</code></pre>
+          <p class="source">
+            Source:
+            <code
+              >frontend/src/lib/components/workspace/WorkspaceSearchBar.svelte:341-357</code
+            >. This is why the UI can show keyword and semantic results as
+            separate sections.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Frontend Search State">
+        <div class="slide-inner">
+          <p class="kicker">App comparison - frontend state</p>
+          <h2>Workspace search is two requests guarded by one request id.</h2>
+          <table>
+            <tr>
+              <th>State step</th>
+              <th>Code behavior</th>
+              <th>User effect</th>
+            </tr>
+            <tr>
+              <td>Submit</td>
+              <td>
+                Increment <code>searchRequestId</code>, abort old controllers,
+                retain query, open panel.
+              </td>
+              <td>Old searches stop cleanly.</td>
+            </tr>
+            <tr>
+              <td>Keyword section</td>
+              <td>Always starts <code>mode=keyword</code>.</td>
+              <td>Lexical results can arrive first.</td>
+            </tr>
+            <tr>
+              <td>Semantic section</td>
+              <td>
+                Starts <code>mode=semantic</code> only when semantic status is
+                enabled.
+              </td>
+              <td>Semantic UI appears only when configured.</td>
+            </tr>
+            <tr>
+              <td>Race guard</td>
+              <td>
+                Responses update state only if their request id is current.
+              </td>
+              <td>Slow stale responses cannot overwrite fresh results.</td>
+            </tr>
+            <tr>
+              <td>Cancel / clear</td>
+              <td>
+                Abort in-flight requests; cancel preserves retained state, clear
+                resets source and results.
+              </td>
+              <td>User can stop work without corrupting the panel.</td>
+            </tr>
+          </table>
+          <p class="source">
+            Sources:
+            <code
+              >frontend/src/lib/components/workspace/WorkspaceSearchBar.svelte:320-380</code
+            >, <code>frontend/src/lib/api.ts:818-846</code>.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Workspace Search Contract">
+        <div class="slide-inner">
+          <p class="kicker">App comparison - request contract</p>
+          <h2>
+            The workspace UI is a two-section search client, not a
+            hybrid-results client.
+          </h2>
+          <table>
+            <tr>
+              <th>Concern</th>
+              <th>Current app behavior</th>
+              <th>Why it matters</th>
+            </tr>
+            <tr>
+              <td>Requests</td>
+              <td>
+                Runs <code>/api/search?mode=keyword</code> and, when available,
+                <code>mode=semantic</code>.
+              </td>
+              <td>
+                The UI can show lexical and semantic sections independently.
+              </td>
+            </tr>
+            <tr>
+              <td>Limit</td>
+              <td>
+                Sends <code>limit=8</code>; backend clamps any request to 1-25
+                returned video groups.
+              </td>
+              <td>
+                Section size is a frontend choice inside a backend guardrail.
+              </td>
+            </tr>
+            <tr>
+              <td>Source filter</td>
+              <td>
+                Stores <code>all|summary|transcript</code> in session state and
+                filters returned matches client-side.
+              </td>
+              <td>
+                Changing the source filter does not always require a new backend
+                request.
+              </td>
+            </tr>
+            <tr>
+              <td>Mode filter</td>
+              <td>
+                <code>modeKeyword</code> and <code>modeSemantic</code> hide
+                sections in the popover.
+              </td>
+              <td>
+                The filter controls presentation after both section states
+                exist.
+              </td>
+            </tr>
+            <tr>
+              <td>Ask mode</td>
+              <td>
+                <code>Ctrl+L</code> toggles the same input from search to
+                <code>/chat?prompt=...</code>.
+              </td>
+              <td>Search bar and RAG entry share one user surface.</td>
+            </tr>
+          </table>
+          <p class="source">
+            Sources:
+            <code
+              >frontend/src/lib/components/workspace/WorkspaceSearchBar.svelte:131-171</code
+            >,
+            <code
+              >frontend/src/lib/components/workspace/WorkspaceSearchBar.svelte:448-466</code
+            >, <code>frontend/src/lib/workspace-search.ts:77-114</code>.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Keyword Search Section">
+        <div class="slide-inner">
+          <p class="kicker">1. Keyword search</p>
+          <h2>Keyword search starts with the words on the page.</h2>
+          <p class="lede">
+            It is the oldest, plainest retrieval path here. It finds chunks that
+            contain query terms, then ranks them with text-search signals.
+          </p>
+          <p class="doc-links">
+            <span>Prod docs</span>
+            <a
+              href="https://dastill-docs.web.app/pipelines/search-indexing#keyword-index"
+              target="_blank"
+              rel="noreferrer"
+              >Keyword Index</a
+            >
+            <a
+              href="https://dastill-docs.web.app/pipelines/search-indexing#_3-fts-leg"
+              target="_blank"
+              rel="noreferrer"
+              >FTS Leg</a
+            >
+            <a
+              href="https://dastill-docs.web.app/pipelines/search-indexing#get-api-search"
+              target="_blank"
+              rel="noreferrer"
+              >Search API</a
+            >
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Keyword Fundamentals">
+        <div class="slide-inner">
+          <p class="kicker">Keyword search - fundamentals</p>
+          <h2>FTS finds matches. BM25 ranks them.</h2>
+          <table>
+            <tr>
+              <th>Term</th>
+              <th>Meaning</th>
+              <th>Why it matters</th>
+            </tr>
+            <tr>
+              <td>FTS</td>
+              <td>Full-text search: an index built for text lookup.</td>
+              <td>Fast keyword retrieval over many chunks.</td>
+            </tr>
+            <tr>
+              <td>BM25</td>
+              <td>A relevance formula for keyword matches.</td>
+              <td>
+                Rewards rare, focused terms without overvaluing repetition.
+              </td>
+            </tr>
+            <tr>
+              <td>Stemming</td>
+              <td>Reducing word variants to a root-like form.</td>
+              <td>
+                <code>runs</code>, <code>running</code>, and
+                <code>run</code> can match more flexibly.
+              </td>
+            </tr>
+          </table>
+          <p class="source">
+            Sources: <code>docs/pipelines/search-indexing.md:47-80</code>,
+            <code>backend/src/services/fts.rs:282-393</code>.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Stemming and FTS">
+        <div class="slide-inner">
+          <p class="kicker">Keyword search - fundamentals</p>
+          <h2>
+            Stemming changes what the FTS index considers the same word family.
+          </h2>
+          <div class="grid three">
+            <div class="panel">
+              <h3>Tokenize</h3>
+              <p>
+                FTS splits text into searchable tokens. Punctuation, case, and
+                word boundaries are normalized.
+              </p>
+            </div>
+            <div class="panel">
+              <h3>Stem</h3>
+              <p>
+                The porter tokenizer reduces English variants toward a common
+                stem before storing and querying.
+              </p>
+            </div>
+            <div class="panel">
+              <h3>Match</h3>
+              <p>
+                BM25 ranks matching FTS rows after tokenization and stemming
+                have made the candidate set.
+              </p>
+            </div>
+          </div>
+          <p class="quote">
+            FTS is the index and query engine. Stemming is one normalization
+            step inside that engine.
+          </p>
+          <p class="source">
+            Sources: <code>backend/src/services/fts.rs:367-393</code>,
+            <code>docs/pipelines/search-indexing.md:47-80</code>.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Code FTS Schema">
+        <div class="slide-inner">
+          <p class="kicker">Code - keyword search</p>
+          <h2>The FTS table chooses the tokenizer.</h2>
+          <pre><code>CREATE VIRTUAL TABLE IF NOT EXISTS fts_search USING fts5 (
+    chunk_id UNINDEXED,
+    video_id UNINDEXED,
+    channel_id UNINDEXED,
+    source_kind UNINDEXED,
+    source_key UNINDEXED,
+    section_title,
+    chunk_text,
+    video_title,
+    channel_name UNINDEXED,
+    published_at UNINDEXED,
+    start_sec UNINDEXED,
+    tokenize = 'porter'
+);</code></pre>
+          <p class="source">
+            Source: <code>backend/src/services/fts.rs:367-393</code>. The
+            readable chunk text is inserted into FTS; FTS5 builds its own
+            searchable token index with the porter tokenizer.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="FTS UNINDEXED">
+        <div class="slide-inner">
+          <p class="kicker">Code - keyword search</p>
+          <h2>
+            <code>UNINDEXED</code> means stored, but not full-text searchable.
+          </h2>
+          <table>
+            <tr>
+              <th>Column kind</th>
+              <th>What FTS does</th>
+              <th>dAstIll use</th>
+            </tr>
+            <tr>
+              <td>Indexed text</td>
+              <td>
+                Tokenizes, stems, matches with <code>MATCH</code>, and
+                contributes to BM25.
+              </td>
+              <td>
+                <code>chunk_text</code>, <code>video_title</code>,
+                <code>section_title</code>.
+              </td>
+            </tr>
+            <tr>
+              <td><code>UNINDEXED</code></td>
+              <td>
+                Stores the value in the FTS row, but skips the full-text token
+                index.
+              </td>
+              <td>
+                IDs, source kind, channel name, publication date, timestamp.
+              </td>
+            </tr>
+            <tr>
+              <td>Why</td>
+              <td>Keeps metadata out of keyword ranking.</td>
+              <td>Text ranks. Metadata labels and links.</td>
+            </tr>
+          </table>
+          <p class="source">
+            Source: <code>backend/src/services/fts.rs:367-393</code>. dAstIll
+            still uses metadata columns for result payloads and SQL filters;
+            they are simply not part of the FTS token index.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="FTS Query Plan">
+        <div class="slide-inner">
+          <p class="kicker">Keyword search - dAstIll specifics</p>
+          <h2>
+            The FTS leg runs several lexical probes, then deduplicates by chunk.
+          </h2>
+          <table>
+            <tr>
+              <th>Step</th>
+              <th>Code path</th>
+              <th>Effect</th>
+            </tr>
+            <tr>
+              <td>Phrase probes</td>
+              <td>
+                <code>build_fts_phrase_queries</code> from normalized and raw
+                query.
+              </td>
+              <td>Exact phrase hits get first chance.</td>
+            </tr>
+            <tr>
+              <td>Strict probe</td>
+              <td>
+                <code>"term" AND "term"</code> from up to 4 meaningful terms.
+              </td>
+              <td>Keeps multi-term searches precise.</td>
+            </tr>
+            <tr>
+              <td>Relaxed probe</td>
+              <td><code>"term" OR "term"</code> when useful.</td>
+              <td>Recovers partial matches for natural-language queries.</td>
+            </tr>
+            <tr>
+              <td>SQL filters</td>
+              <td>
+                <code>source_kind</code> and <code>channel_id</code> are normal
+                filters, not FTS tokens.
+              </td>
+              <td>
+                Metadata can constrain retrieval without polluting ranking.
+              </td>
+            </tr>
+            <tr>
+              <td>Post-rank</td>
+              <td>
+                Dedup chunk ids, then promote phrase hits, summaries, term
+                coverage, and title matches.
+              </td>
+              <td>
+                BM25 remains useful, but app-specific relevance wins ties.
+              </td>
+            </tr>
+          </table>
+          <p class="source">
+            Sources: <code>backend/src/services/fts.rs:224-270</code>,
+            <code>backend/src/search_query.rs:102-141</code>,
+            <code>backend/src/handlers/search/ranking.rs:19-88</code>.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Keyword Overlap">
+        <div class="slide-inner">
+          <p class="kicker">Keyword search - overlapping functionality</p>
+          <h2>Keyword search and semantic search both retrieve chunks.</h2>
+          <div class="grid three">
+            <div class="panel">
+              <h3>Same output shape</h3>
+              <p>
+                Both return candidate chunks with video, channel, source kind,
+                and snippet metadata.
+              </p>
+            </div>
+            <div class="panel">
+              <h3>Different match logic</h3>
+              <p>
+                Keyword search matches terms. Semantic search matches meaning.
+              </p>
+            </div>
+            <div class="panel">
+              <h3>Shared consumers</h3>
+              <p>
+                Workspace search and chat retrieval can both consume keyword
+                candidates.
+              </p>
+            </div>
+          </div>
+          <p class="source">
+            Sources: <code>backend/src/services/search/mod.rs:61-79</code>,
+            <code>backend/src/services/chat/retrieval.rs:345-467</code>.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Keyword dAstIll">
+        <div class="slide-inner">
+          <p class="kicker">Keyword search - dAstIll specifics</p>
+          <h2>dAstIll keeps keyword search local and durable.</h2>
+          <div class="grid two">
+            <div class="panel">
+              <h3>libSQL FTS5</h3>
+              <p>
+                The local index stores chunk text, title, section title, source
+                kind, channel, and timestamp metadata. It uses the porter
+                tokenizer.
+              </p>
+            </div>
+            <div class="panel">
+              <h3>FTS pre-ranker</h3>
+              <p>
+                After BM25, dAstIll promotes exact phrase matches, summary
+                chunks, and title term coverage before hybrid fusion.
+              </p>
+            </div>
+          </div>
+          <p class="source">
+            Sources: <code>docs/pipelines/search-indexing.md:272-296</code>,
+            <code>backend/src/handlers/search/ranking.rs:12-69</code>.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Search API Contract">
+        <div class="slide-inner">
+          <p class="kicker">Keyword and semantic search - API</p>
+          <h2>
+            The same endpoint carries keyword, semantic, and hybrid requests.
+          </h2>
+          <table>
+            <tr>
+              <th>Parameter</th>
+              <th>Values</th>
+              <th>Effect</th>
+            </tr>
+            <tr>
+              <td><code>q</code></td>
+              <td>required string</td>
+              <td>Raw user query.</td>
+            </tr>
+            <tr>
+              <td><code>mode</code></td>
+              <td>
+                <code>keyword</code>, <code>semantic</code>, <code>hybrid</code>
+              </td>
+              <td>Selects retrieval legs.</td>
+            </tr>
+            <tr>
+              <td><code>source</code></td>
+              <td>
+                <code>all</code>, <code>summary</code>, <code>transcript</code>
+              </td>
+              <td>Filters source kind.</td>
+            </tr>
+            <tr>
+              <td><code>channel_id</code></td>
+              <td>optional</td>
+              <td>Filters to one accessible channel.</td>
+            </tr>
+            <tr>
+              <td><code>limit</code></td>
+              <td>1-25</td>
+              <td>Caps returned video groups.</td>
+            </tr>
+          </table>
+          <p class="source">
+            Sources: <code>frontend/src/lib/api.ts:818-846</code>,
+            <code>backend/src/handlers/search/mod.rs:137-168</code>.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Search Mode Matrix">
+        <div class="slide-inner">
+          <p class="kicker">Keyword and semantic search - API</p>
+          <h2>
+            The backend mode controls retrieval legs, fallback, and failure
+            behavior.
+          </h2>
+          <table>
+            <tr>
+              <th>Mode</th>
+              <th>Backend work</th>
+              <th>Final rank path</th>
+              <th>Failure behavior</th>
+            </tr>
+            <tr>
+              <td><code>keyword</code></td>
+              <td>FTS only.</td>
+              <td>FTS pre-rank, group by video.</td>
+              <td>Works when semantic search is unavailable.</td>
+            </tr>
+            <tr>
+              <td><code>semantic</code></td>
+              <td>Semantic leg plus FTS candidates for exact rescue.</td>
+              <td>Semantic order unless exact keyword rescue activates.</td>
+              <td>Returns 503 when semantic retrieval is unavailable.</td>
+            </tr>
+            <tr>
+              <td><code>hybrid</code></td>
+              <td>FTS and semantic when configured.</td>
+              <td>One leg direct, both legs RRF, optional reranker.</td>
+              <td>Falls back to FTS when semantic embedding fails.</td>
+            </tr>
+            <tr>
+              <td>Default</td>
+              <td>Backend defaults omitted mode to <code>hybrid</code>.</td>
+              <td>Workspace overrides with explicit section modes.</td>
+              <td>Chat/tool paths can use the hybrid default.</td>
+            </tr>
+          </table>
+          <p class="source">
+            Sources: <code>backend/src/handlers/search/mod.rs:70-95</code>,
+            <code>backend/src/handlers/search/mod.rs:186-228</code>,
+            <code>backend/src/handlers/search/mod.rs:354-420</code>.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Search Result Shape">
+        <div class="slide-inner">
+          <p class="kicker">App comparison - result payload</p>
+          <h2>The app renders video groups with one or more source matches.</h2>
+          <table>
+            <tr>
+              <th>Payload part</th>
+              <th>Meaning</th>
+              <th>UI behavior</th>
+            </tr>
+            <tr>
+              <td>Video group</td>
+              <td>Channel, title, date, provider/source/item identity.</td>
+              <td>One clickable result card.</td>
+            </tr>
+            <tr>
+              <td>Matches</td>
+              <td>Summary or transcript snippets attached to the video.</td>
+              <td>Displayed inside the result card.</td>
+            </tr>
+            <tr>
+              <td><code>section_title</code></td>
+              <td>Summary heading when present.</td>
+              <td>Shown as match context.</td>
+            </tr>
+            <tr>
+              <td><code>start_sec</code></td>
+              <td>Transcript timestamp when available.</td>
+              <td>Enables deep-link playback.</td>
+            </tr>
+            <tr>
+              <td>Keyword highlight</td>
+              <td>UI marks matching query terms only in keyword section.</td>
+              <td>Semantic section avoids fake lexical certainty.</td>
+            </tr>
+          </table>
+          <p class="source">
+            Sources: <code>backend/src/models.rs:967-1001</code>,
+            <code>frontend/src/lib/components/SearchResultsPopover.svelte</code
+            >.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Keyword Alternatives">
+        <div class="slide-inner">
+          <p class="kicker">Keyword search - alternative tech</p>
+          <h2>The common alternatives are heavier search engines.</h2>
+          <table>
+            <tr>
+              <th>Alternative</th>
+              <th>What it gives</th>
+              <th>Tradeoff</th>
+            </tr>
+            <tr>
+              <td>Postgres full-text search</td>
+              <td>
+                Built into Postgres with dictionaries, ranking, and SQL-native
+                filters.
+              </td>
+              <td>Needs Postgres in the runtime path.</td>
+            </tr>
+            <tr>
+              <td>Elasticsearch / OpenSearch</td>
+              <td>
+                Powerful analyzers, distributed search, facets, and operations
+                tooling.
+              </td>
+              <td>
+                More infrastructure than a local personal-library index needs.
+              </td>
+            </tr>
+            <tr>
+              <td>Tantivy</td>
+              <td>Fast Rust-native Lucene-style indexing.</td>
+              <td>Another embedded index format to operate and hydrate.</td>
+            </tr>
+          </table>
+          <p class="source">
+            dAstIll chose local libSQL FTS5 here: small runtime surface, simple
+            rebuild path, and close fit for local keyword retrieval.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Semantic Search Section">
+        <div class="slide-inner">
+          <p class="kicker">2. Semantic search</p>
+          <h2>Semantic search starts with meaning.</h2>
+          <p class="lede">
+            It can find a relevant chunk even when the chunk does not use the
+            same words as the query. It trades simplicity for model and vector
+            infrastructure.
+          </p>
+          <p class="doc-links">
+            <span>Prod docs</span>
+            <a
+              href="https://dastill-docs.web.app/pipelines/search-indexing#semantic-enablement"
+              target="_blank"
+              rel="noreferrer"
+              >Semantic Enablement</a
+            >
+            <a
+              href="https://dastill-docs.web.app/pipelines/search-indexing#_4-semantic-leg-optional"
+              target="_blank"
+              rel="noreferrer"
+              >Semantic Leg</a
+            >
+            <a
+              href="https://dastill-docs.web.app/pipelines/ai-models#search-embedding"
+              target="_blank"
+              rel="noreferrer"
+              >Search Embedding</a
+            >
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Semantic Fundamentals">
+        <div class="slide-inner">
+          <p class="kicker">Semantic search - fundamentals</p>
+          <h2>Embeddings turn language into geometry.</h2>
+          <table>
+            <tr>
+              <th>Term</th>
+              <th>Meaning</th>
+              <th>Why it matters</th>
+            </tr>
+            <tr>
+              <td>Embedding</td>
+              <td>A list of numbers representing text.</td>
+              <td>Lets the system compare meaning by distance.</td>
+            </tr>
+            <tr>
+              <td>Vector search</td>
+              <td>Finding nearby vectors.</td>
+              <td>Retrieves conceptually similar chunks.</td>
+            </tr>
+            <tr>
+              <td>ANN</td>
+              <td>Approximate nearest neighbor search.</td>
+              <td>Speeds up vector lookup at scale.</td>
+            </tr>
+          </table>
+          <p class="source">
+            Sources: <code>docs/pipelines/search-indexing.md:298-327</code>,
+            <code>docs/pipelines/ai-models.md:89-117</code>.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Semantic Overlap">
+        <div class="slide-inner">
+          <p class="kicker">Semantic search - overlapping functionality</p>
+          <h2>
+            Semantic search overlaps with keyword search at the retrieval
+            boundary.
+          </h2>
+          <div class="grid three">
+            <div class="panel">
+              <h3>Same chunks</h3>
+              <p>
+                Both retrieval modes search the derived projection built from
+                transcripts and summaries.
+              </p>
+            </div>
+            <div class="panel">
+              <h3>Same filters</h3>
+              <p>
+                Both can respect source kind and channel filters before
+                returning candidates.
+              </p>
+            </div>
+            <div class="panel">
+              <h3>Different weakness</h3>
+              <p>
+                Semantic search can miss exact names. Keyword search can miss
+                paraphrases.
+              </p>
+            </div>
+          </div>
+          <p class="source">
+            Sources: <code>backend/src/handlers/search/mod.rs:139-276</code>,
+            <code>backend/src/services/chat/retrieval.rs:422-467</code>.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Semantic dAstIll">
+        <div class="slide-inner">
+          <p class="kicker">Semantic search - dAstIll specifics</p>
+          <h2>dAstIll treats semantic search as optional power.</h2>
+          <div class="grid two">
+            <div class="panel">
+              <h3>Ollama embeddings</h3>
+              <p>
+                <code>OLLAMA_EMBEDDING_MODEL</code> powers
+                <code>/api/embed</code>. Embeddings are batched,
+                dimension-checked, and bounded by a separate semaphore.
+              </p>
+            </div>
+            <div class="panel">
+              <h3>S3 Vectors</h3>
+              <p>
+                Vectors live in S3 Vectors. The handler reports
+                <code>hybrid_exact</code> before
+                <code>vector_index_ready</code> and uses tighter semantic
+                candidate limits.
+              </p>
+            </div>
+          </div>
+          <p class="source">
+            Sources: <code>backend/src/services/search/mod.rs:232-343</code>,
+            <code>backend/src/db/search.rs:139-236</code>.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Semantic Runtime Config">
+        <div class="slide-inner">
+          <p class="kicker">Semantic search - runtime config</p>
+          <h2>Semantic search is controlled by model and runtime switches.</h2>
+          <table>
+            <tr>
+              <th>Variable</th>
+              <th>Role</th>
+              <th>Behavior</th>
+            </tr>
+            <tr>
+              <td><code>SEARCH_SEMANTIC_ENABLED</code></td>
+              <td>Semantic override.</td>
+              <td>Debug defaults on; release defaults off.</td>
+            </tr>
+            <tr>
+              <td><code>OLLAMA_EMBEDDING_MODEL</code></td>
+              <td>Embedding model.</td>
+              <td>Required when semantic search is enabled.</td>
+            </tr>
+            <tr>
+              <td><code>SEARCH_RERANK_MODEL</code></td>
+              <td>Optional cross-encoder.</td>
+              <td>Runs only in hybrid mode with both candidate lists.</td>
+            </tr>
+            <tr>
+              <td><code>SEARCH_HYDE_MODEL</code></td>
+              <td>Optional query expander.</td>
+              <td>Runs for short semantic queries.</td>
+            </tr>
+            <tr>
+              <td><code>SEARCH_AUTO_CREATE_VECTOR_INDEX</code></td>
+              <td>Vector index automation.</td>
+              <td>Controls automatic ANN index creation.</td>
+            </tr>
+          </table>
+          <p class="source">
+            Sources: <code>backend/src/config.rs:104-155</code>,
+            <code>docs/pipelines/ai-models.md:89-221</code>.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Code Chunk Normalization">
+        <div class="slide-inner">
+          <p class="kicker">Code - indexing</p>
+          <h2>Normalization removes formatting before chunking.</h2>
+          <pre><code>fn normalize_source_text(input: &str) -> String {
+    input
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(strip_markdown_prefix)
+        .collect::<span>&lt;</span>Vec<span>&lt;</span>_<span>&gt;</span><span>&gt;</span>()
+        .join(" ")
+        .split_whitespace()
+        .collect::<span>&lt;</span>Vec<span>&lt;</span>_<span>&gt;</span><span>&gt;</span>()
+        .join(" ")
+        .trim()
+        .to_string()
+}</code></pre>
+          <p class="source">
+            Source:
+            <code
+              >backend/src/services/search/content_processing.rs:221-234</code
+            >. This is before FTS tokenization and before embedding input is
+            built.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Chunk Storage Contract">
+        <div class="slide-inner">
+          <p class="kicker">Semantic search - storage</p>
+          <h2>
+            Chunks are readable stored projection, then indexes add retrieval
+            shape.
+          </h2>
+          <table>
+            <tr>
+              <th>Layer</th>
+              <th>Stored shape</th>
+              <th>Retrieval role</th>
+            </tr>
+            <tr>
+              <td>Canonical content</td>
+              <td>Ready transcript or summary owned by the library model.</td>
+              <td>Source of truth for re-indexing.</td>
+            </tr>
+            <tr>
+              <td><code>search-sources/</code></td>
+              <td>Status, content hash, generation, embedding model.</td>
+              <td>Worker queue and drift detection.</td>
+            </tr>
+            <tr>
+              <td><code>search-chunks/</code></td>
+              <td>
+                Readable JSON: video id, source kind, section title,
+                <code>chunk_text</code>, timestamp.
+              </td>
+              <td>Hydrates FTS and carries display text.</td>
+            </tr>
+            <tr>
+              <td>FTS5</td>
+              <td>Local table plus FTS token index from the readable text.</td>
+              <td>Keyword lookup, porter stemming, BM25.</td>
+            </tr>
+            <tr>
+              <td>S3 Vectors</td>
+              <td>
+                Float32 vector plus metadata; <code>chunk_text</code> metadata
+                is clamped to 30,000 chars.
+              </td>
+              <td>Semantic lookup via the S3 Vectors adapter.</td>
+            </tr>
+          </table>
+          <p class="source">
+            Source: <code>backend/src/db/search.rs:172-285</code>. The chunk
+            JSON stores normal text. Porter stems live inside the FTS5 token
+            index.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Projection Write Contract">
+        <div class="slide-inner">
+          <p class="kicker">Semantic search - storage</p>
+          <h2>One indexed source writes three derived artifacts.</h2>
+          <table>
+            <tr>
+              <th>Artifact</th>
+              <th>Write behavior</th>
+              <th>Why it exists</th>
+            </tr>
+            <tr>
+              <td><code>search-chunks/{vector_key}.json</code></td>
+              <td>
+                Stores readable chunk JSON with section title, text, and
+                optional timestamp.
+              </td>
+              <td>Result display and legacy hydration.</td>
+            </tr>
+            <tr>
+              <td><code>search-bundles/*.json.gz</code></td>
+              <td>Stores the same chunks as a compressed per-source bundle.</td>
+              <td>Faster FTS hydration on startup.</td>
+            </tr>
+            <tr>
+              <td>S3 Vectors records</td>
+              <td>
+                Stores Float32 embedding plus filterable metadata; uploads in
+                batches of 500.
+              </td>
+              <td>Semantic retrieval and metadata-filtered vector queries.</td>
+            </tr>
+            <tr>
+              <td>Replacement rule</td>
+              <td>
+                Deletes old vectors for the source before writing the new
+                generation.
+              </td>
+              <td>Content hash and generation prevent stale chunk drift.</td>
+            </tr>
+            <tr>
+              <td>FTS sync</td>
+              <td>
+                Worker upserts the same chunks into local FTS after storage
+                write succeeds.
+              </td>
+              <td>
+                Keyword search is local while content remains rebuildable.
+              </td>
+            </tr>
+          </table>
+          <p class="source">
+            Sources: <code>backend/src/db/search.rs:172-305</code>,
+            <code>backend/src/workers/search_index.rs:485-560</code>,
+            <code>backend/src/workers/mod.rs:203-327</code>.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Exact Scan vs ANN">
+        <div class="slide-inner">
+          <p class="kicker">Semantic search - fundamentals</p>
+          <h2>Exact scan means exact math, not exact equality.</h2>
+          <div class="grid three">
+            <div class="panel">
+              <h3>Exact scan</h3>
+              <p>
+                Compute similarity against every candidate vector in scope. It
+                can match near vectors, not only identical vectors.
+              </p>
+            </div>
+            <div class="panel">
+              <h3>ANN</h3>
+              <p>
+                Use an approximate nearest-neighbor index to skip most vectors.
+                Fast, approximate by design.
+              </p>
+            </div>
+            <div class="panel">
+              <h3>dAstIll</h3>
+              <p>
+                The architecture names a <code>hybrid_exact</code> pre-ANN path.
+                Current code uses it mainly as a mode label and tighter limit.
+              </p>
+            </div>
+          </div>
+          <p class="quote">
+            Exact scan is a vector-search term. In the current adapter, check
+            the implementation before assuming local dot-product scanning.
+          </p>
+          <p class="source">
+            Sources: <code>docs/pipelines/search-indexing.md:298-327</code>,
+            <code>backend/src/handlers/search/mod.rs:139-276</code>,
+            <code>backend/src/db/search.rs:694-711</code>.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="ANN Readiness">
+        <div class="slide-inner">
+          <p class="kicker">Semantic search - dAstIll specifics</p>
+          <h2>ANN is not a local FTS-style index.</h2>
+          <table>
+            <tr>
+              <th>Question</th>
+              <th>Answer</th>
+            </tr>
+            <tr>
+              <td>Where is ANN?</td>
+              <td>In S3 Vectors, beside the stored vector records.</td>
+            </tr>
+            <tr>
+              <td>When is it not ready?</td>
+              <td>
+                Semantic search is off, no embedding model is configured, or the
+                worker has not marked <code>vector_index_ready</code>.
+              </td>
+            </tr>
+            <tr>
+              <td>Who marks ready?</td>
+              <td>
+                The backend checks S3 Vectors and sets
+                <code>vector_index_ready</code> in search status.
+              </td>
+            </tr>
+            <tr>
+              <td>When can it build?</td>
+              <td>
+                Only when auto-create is enabled, semantic search is enabled,
+                ready sources exist, and pending/indexing backlog is small
+                enough.
+              </td>
+            </tr>
+            <tr>
+              <td>Current adapter note</td>
+              <td>
+                <code>has_vector_index</code> returns true and
+                <code>ensure_vector_index</code> is a no-op in the checked-in S3
+                adapter.
+              </td>
+            </tr>
+          </table>
+          <p class="source">
+            Sources: <code>backend/src/workers/search_index.rs:844-912</code>,
+            <code>backend/src/search_progress.rs:102-120</code>,
+            <code>backend/src/db/search.rs:743-752</code>.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Vector Adapter Reality">
+        <div class="slide-inner">
+          <p class="kicker">Semantic search - app reality check</p>
+          <h2>
+            The current exact fallback branch delegates to the S3 vector query
+            path.
+          </h2>
+          <pre><code>pub async fn search_exact_global_candidates(
+    store: &Store,
+    query_embedding: &str,
+    embedding_model: &str,
+    source_kind: Option&lt;SearchSourceKind&gt;,
+    channel_id: Option&lt;&str&gt;,
+    limit: usize,
+) -&gt; Result&lt;Vec&lt;SearchCandidate&gt;, StoreError&gt; {
+    search_vector_candidates(
+        store, query_embedding, embedding_model, source_kind, channel_id, limit
+    ).await
+}</code></pre>
+          <p class="source">
+            Source: <code>backend/src/db/search.rs:694-711</code>. The handler
+            still distinguishes <code>hybrid_exact</code> and
+            <code>hybrid_ann</code> for mode reporting, source-kind scope, and
+            candidate limits; the storage adapter currently uses the same S3
+            Vectors query function.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Semantic Alternatives">
+        <div class="slide-inner">
+          <p class="kicker">Semantic search - alternative tech</p>
+          <h2>
+            Semantic search can live in a vector database, a search engine, or a
+            hosted API.
+          </h2>
+          <table>
+            <tr>
+              <th>Alternative</th>
+              <th>What it gives</th>
+              <th>Tradeoff</th>
+            </tr>
+            <tr>
+              <td>pgvector</td>
+              <td>Vectors beside relational data in Postgres.</td>
+              <td>Pulls the app toward a Postgres operating model.</td>
+            </tr>
+            <tr>
+              <td>ChromaDB</td>
+              <td>
+                Local-first vector store common in RAG prototypes and Python
+                stacks.
+              </td>
+              <td>
+                Less aligned with dAstIll's Rust backend and S3-backed
+                projection.
+              </td>
+            </tr>
+            <tr>
+              <td>Qdrant / Milvus / Weaviate</td>
+              <td>Purpose-built vector search, filters, and ANN indexes.</td>
+              <td>More moving parts for a derived projection.</td>
+            </tr>
+            <tr>
+              <td>Pinecone / Voyage / OpenAI embeddings</td>
+              <td>Hosted scale and managed model quality.</td>
+              <td>External dependency, cost, and data-boundary questions.</td>
+            </tr>
+          </table>
+          <p class="source">
+            dAstIll uses Ollama-compatible embeddings and S3 Vectors, keeping
+            model transport and vector storage independently configurable.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="HyDE">
+        <div class="slide-inner">
+          <p class="kicker">Semantic search - dAstIll specifics</p>
+          <h2>HyDE makes short semantic queries less thin.</h2>
+          <p class="lede">
+            HyDE means Hypothetical Document Embeddings. When the semantic HyDE
+            gate passes, dAstIll can ask a model to write a brief imagined
+            answer, then embed that passage instead of the raw query.
+          </p>
+          <p class="quote">
+            The raw query still drives keyword search. HyDE only changes the
+            semantic embedding input.
+          </p>
+          <p class="source">
+            Sources: <code>docs/pipelines/ai-models.md:165-221</code>,
+            <code>backend/src/services/search/mod.rs:472-545</code>.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="HyDE Example">
+        <div class="slide-inner">
+          <p class="kicker">Semantic search - example</p>
+          <h2>HyDE turns a short query into a richer vector probe.</h2>
+          <table>
+            <tr>
+              <th>Step</th>
+              <th>Example</th>
+              <th>dAstIll behavior</th>
+            </tr>
+            <tr>
+              <td>Raw query</td>
+              <td><code>memory safety</code></td>
+              <td>
+                Two meaningful terms, so HyDE can trigger when configured.
+              </td>
+            </tr>
+            <tr>
+              <td>Hypothetical passage</td>
+              <td>
+                A concise 2-3 sentence answer about preventing invalid memory
+                access.
+              </td>
+              <td>Generated through Ollama <code>/api/generate</code>.</td>
+            </tr>
+            <tr>
+              <td>Embedding input</td>
+              <td>The hypothetical passage.</td>
+              <td>Semantic leg embeds this richer text.</td>
+            </tr>
+            <tr>
+              <td>Keyword input</td>
+              <td><code>memory safety</code></td>
+              <td>
+                FTS, pre-rank, and keyword snippets still use the raw query.
+              </td>
+            </tr>
+            <tr>
+              <td>Evidence</td>
+              <td>Real chunks found near the generated passage vector.</td>
+              <td>
+                The generated passage is a search probe. Evidence comes from
+                retrieved chunks.
+              </td>
+            </tr>
+          </table>
+          <p class="source">
+            Sources: <code>backend/src/services/search/mod.rs:472-545</code>,
+            <code>docs/pipelines/search-indexing.md:263-279</code>,
+            <a href="https://arxiv.org/abs/2212.10496"
+              >Gao et al., HyDE paper, arXiv:2212.10496</a
+            >.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Hybrid Search Section">
+        <div class="slide-inner">
+          <p class="kicker">3. Hybrid search</p>
+          <h2>
+            Hybrid search uses two imperfect signals and looks for agreement.
+          </h2>
+          <p class="lede">
+            It keeps keyword precision and semantic recall in play at the same
+            time.
+          </p>
+          <p class="doc-links">
+            <span>Prod docs</span>
+            <a
+              href="https://dastill-docs.web.app/pipelines/search-indexing#query-path"
+              target="_blank"
+              rel="noreferrer"
+              >Query Path</a
+            >
+            <a
+              href="https://dastill-docs.web.app/pipelines/search-indexing#_5-rrf-fusion"
+              target="_blank"
+              rel="noreferrer"
+              >RRF Fusion</a
+            >
+            <a
+              href="https://dastill-docs.web.app/pipelines/ai-models#neural-reranker-search-rerank-model"
+              target="_blank"
+              rel="noreferrer"
+              >Neural Reranker</a
+            >
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Hybrid Fundamentals">
+        <div class="slide-inner">
+          <p class="kicker">Hybrid search - fundamentals</p>
+          <h2>
+            Fusion joins ranked lists without pretending scores are the same.
+          </h2>
+          <table>
+            <tr>
+              <th>Term</th>
+              <th>Meaning</th>
+              <th>Use</th>
+            </tr>
+            <tr>
+              <td>Fusion</td>
+              <td>Combining multiple ranked result lists.</td>
+              <td>Turns keyword and semantic candidates into one order.</td>
+            </tr>
+            <tr>
+              <td>RRF</td>
+              <td>Reciprocal Rank Fusion.</td>
+              <td>
+                Default hybrid merge. Also builds the shortlist before optional
+                reranking.
+              </td>
+            </tr>
+            <tr>
+              <td>Reranking</td>
+              <td>Reordering an RRF shortlist with a stronger model.</td>
+              <td>
+                Runs only when a reranker model is configured and hybrid has
+                both legs.
+              </td>
+            </tr>
+          </table>
+          <p class="source">
+            Sources: <code>docs/pipelines/search-indexing.md:329-353</code>,
+            <code>docs/pipelines/ai-models.md:119-163</code>.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Hybrid Overlap">
+        <div class="slide-inner">
+          <p class="kicker">Hybrid search - overlapping functionality</p>
+          <h2>Hybrid search is where the overlap becomes the product.</h2>
+          <div class="grid three">
+            <div class="panel">
+              <h3>Keyword-only wins</h3>
+              <p>
+                Exact names, acronyms, quoted phrases, and rare terms often
+                belong to BM25.
+              </p>
+            </div>
+            <div class="panel">
+              <h3>Semantic-only wins</h3>
+              <p>
+                Paraphrases, broad concepts, and adjacent phrasing often belong
+                to vectors.
+              </p>
+            </div>
+            <div class="panel">
+              <h3>Agreement wins</h3>
+              <p>
+                When both find the same chunk, RRF lifts it without comparing
+                incompatible scores.
+              </p>
+            </div>
+          </div>
+          <p class="source">
+            Sources: <code>docs/pipelines/search-indexing.md:329-375</code>,
+            <code>backend/src/handlers/search/ranking.rs:137-225</code>.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Hybrid dAstIll">
+        <div class="slide-inner">
+          <p class="kicker">Hybrid search - dAstIll specifics</p>
+          <h2>
+            Hybrid has a sequential shell around two independent retrieval legs.
+          </h2>
+          <div
+            class="hybrid-pipeline"
+            aria-label="Hybrid search sequence and independent legs"
+          >
+            <div class="hybrid-stage">
+              <div class="hybrid-label">Sequential</div>
+              <div class="hybrid-card">
+                <strong>Prepare request</strong>
+                <span
+                  >Normalize query, check channel access, read search status,
+                  resolve <code>hybrid_exact</code> or <code>hybrid_ann</code>,
+                  and compute candidate limits.</span
+                >
+              </div>
+            </div>
+            <div class="hybrid-stage">
+              <div class="hybrid-label">Independent legs</div>
+              <div class="hybrid-branches">
+                <div class="hybrid-branch">
+                  <strong>Keyword leg</strong>
+                  <span
+                    >FTS5 <code>MATCH</code>, BM25, keyword pre-rank, snippet
+                    extraction, and access filter. The current handler runs this
+                    first.</span
+                  >
+                </div>
+                <div class="hybrid-branch">
+                  <strong>Semantic leg</strong>
+                  <span
+                    >Optional HyDE, query embedding, S3 vector query through
+                    <code>hybrid_exact</code> or <code>hybrid_ann</code>, and
+                    access filter. The current handler runs this second.</span
+                  >
+                </div>
+              </div>
+            </div>
+            <div class="hybrid-stage">
+              <div class="hybrid-label">Sequential</div>
+              <div class="hybrid-card accent">
+                <strong>Choose final rank</strong>
+                <span
+                  >One usable leg: group that leg. Both legs: RRF. Reranker
+                  configured: RRF shortlist, then cross-encoder rerank. Reranker
+                  failure: RRF.</span
+                >
+              </div>
+            </div>
+            <div class="hybrid-stage">
+              <div class="hybrid-label">Sequential</div>
+              <div class="hybrid-card">
+                <strong>Group and rescue</strong>
+                <span
+                  >Group chunks by video, sort source matches, promote exact
+                  keyword rescue when needed, and return the search
+                  payload.</span
+                >
+              </div>
+            </div>
+          </div>
+          <p class="source">
+            Sources: <code>backend/src/handlers/search/mod.rs:170-411</code>,
+            <code>docs/pipelines/search-indexing.md:260-421</code>.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="RRF vs Rerank">
+        <div class="slide-inner">
+          <p class="kicker">Hybrid search - dAstIll specifics</p>
+          <h2>RRF merges first. Rerank is optional.</h2>
+          <table>
+            <tr>
+              <th>Request state</th>
+              <th>Final ordering path</th>
+              <th>Reason</th>
+            </tr>
+            <tr>
+              <td>Keyword or semantic</td>
+              <td>Single-leg order, with exact rescue where needed.</td>
+              <td>RRF and rerank need a hybrid shortlist.</td>
+            </tr>
+            <tr>
+              <td>Hybrid, one leg empty or unavailable</td>
+              <td>The remaining leg is grouped directly.</td>
+              <td>There is nothing to fuse.</td>
+            </tr>
+            <tr>
+              <td>Hybrid, both legs, no <code>SEARCH_RERANK_MODEL</code></td>
+              <td>RRF is the final rank.</td>
+              <td>
+                RRF combines keyword rank and vector rank without comparing raw
+                scores.
+              </td>
+            </tr>
+            <tr>
+              <td>Hybrid, both legs, reranker configured</td>
+              <td>RRF shortlist, then cross-encoder rerank.</td>
+              <td>
+                The reranker rereads query plus candidate text and returns a
+                stronger order.
+              </td>
+            </tr>
+            <tr>
+              <td>Reranker fails or returns empty</td>
+              <td>RRF is used.</td>
+              <td>Search degrades to the deterministic hybrid rank.</td>
+            </tr>
+          </table>
+          <p class="source">
+            Sources: <code>backend/src/handlers/search/mod.rs:363-411</code>,
+            <code>backend/src/handlers/search/ranking.rs:178-250</code>,
+            <code>docs/pipelines/search-indexing.md:347-359</code>.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Code Hybrid Mode">
+        <div class="slide-inner">
+          <p class="kicker">Code - hybrid search</p>
+          <h2>The request path resolves the effective retrieval mode.</h2>
+          <pre><code>fn resolve_requested_retrieval_mode(
+    execution_mode: SearchExecutionMode,
+    hybrid_configured: bool,
+    vector_index_ready: bool,
+) -> SearchRetrievalMode {
+    if execution_mode == SearchExecutionMode::Keyword || !hybrid_configured {
+        SearchRetrievalMode::FtsOnly
+    } else if vector_index_ready {
+        SearchRetrievalMode::HybridAnn
+    } else {
+        SearchRetrievalMode::HybridExact
+    }
+}</code></pre>
+          <p class="source">
+            Source: <code>backend/src/handlers/search/mod.rs:98-110</code>.
+            Keyword mode forces FTS. Hybrid only reaches ANN when semantic
+            search is configured and the vector index is ready.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Query Rescue">
+        <div class="slide-inner">
+          <p class="kicker">Hybrid search - dAstIll specifics</p>
+          <h2>
+            Exact keyword rescue protects names and phrases from semantic drift.
+          </h2>
+          <table>
+            <tr>
+              <th>Mechanism</th>
+              <th>What it does</th>
+              <th>Why it exists</th>
+            </tr>
+            <tr>
+              <td>Query cleanup</td>
+              <td>Drops wrappers like “show me videos about”.</td>
+              <td>Keeps FTS terms sharp.</td>
+            </tr>
+            <tr>
+              <td>Term cap</td>
+              <td>Uses up to 4 meaningful terms for FTS.</td>
+              <td>Controls brittle long-query matching.</td>
+            </tr>
+            <tr>
+              <td>Phrase path</td>
+              <td>Tries phrase queries and relaxed OR queries.</td>
+              <td>Balances precision and recall.</td>
+            </tr>
+            <tr>
+              <td>Rescue path</td>
+              <td>
+                Promotes exact keyword hits when semantic order misses them.
+              </td>
+              <td>Protects entities, titles, and quoted phrases.</td>
+            </tr>
+          </table>
+          <p class="source">
+            Sources: <code>backend/src/search_query.rs</code>,
+            <code>backend/src/handlers/search/mod.rs:596-669</code>.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Query Shaping">
+        <div class="slide-inner">
+          <p class="kicker">Hybrid search - query shaping</p>
+          <h2>Conversational text becomes a bounded retrieval probe.</h2>
+          <table>
+            <tr>
+              <th>Mechanism</th>
+              <th>Details</th>
+            </tr>
+            <tr>
+              <td>Tokenize and lowercase</td>
+              <td>
+                Split on punctuation except <code>_</code>, <code>-</code>, and
+                <code>.</code>, so technical tokens such as
+                <code>GPT-4.1</code> survive.
+              </td>
+            </tr>
+            <tr>
+              <td>Strip wrappers</td>
+              <td>
+                Remove leading phrases such as
+                <code>where they talk about</code> and UI words such as
+                <code>videos</code>.
+              </td>
+            </tr>
+            <tr>
+              <td>Keep meaningful terms</td>
+              <td>
+                Drop stopwords; keep length 3+ plus short technical terms like
+                <code>ai</code>, <code>db</code>, and <code>ui</code>.
+              </td>
+            </tr>
+            <tr>
+              <td>Bound FTS</td>
+              <td>
+                Dedupe and keep the first four terms; build phrase queries,
+                strict <code>AND</code>, and relaxed <code>OR</code>.
+              </td>
+            </tr>
+            <tr>
+              <td>HyDE nuance</td>
+              <td>
+                The runtime HyDE gate checks this capped term list. The code
+                follows the cap; docs describe short-query intent.
+              </td>
+            </tr>
+          </table>
+          <p class="source">
+            Sources: <code>backend/src/search_query.rs:1-154</code>,
+            <code>backend/src/handlers/search/mod.rs:194-228</code>,
+            <code>backend/src/services/fts.rs:300-327</code>.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Hybrid Alternatives">
+        <div class="slide-inner">
+          <p class="kicker">Hybrid search - alternative tech</p>
+          <h2>Hybrid search can be bought, embedded, or assembled.</h2>
+          <table>
+            <tr>
+              <th>Alternative</th>
+              <th>What it gives</th>
+              <th>Tradeoff</th>
+            </tr>
+            <tr>
+              <td>Elasticsearch / OpenSearch hybrid</td>
+              <td>
+                BM25, vector search, filters, and reranking in one search
+                cluster.
+              </td>
+              <td>Large operational footprint.</td>
+            </tr>
+            <tr>
+              <td>Vespa</td>
+              <td>
+                Advanced ranking, hybrid retrieval, and production search
+                serving.
+              </td>
+              <td>Powerful but steep for a small app.</td>
+            </tr>
+            <tr>
+              <td>LlamaIndex / LangChain retrievers</td>
+              <td>Fast assembly of hybrid RAG pipelines.</td>
+              <td>
+                Framework abstractions can hide ranking and failure details.
+              </td>
+            </tr>
+          </table>
+          <p class="source">
+            dAstIll assembles hybrid search directly so fallback behavior,
+            status reporting, and citation shape stay explicit.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="dAstIll Architecture Section">
+        <div class="slide-inner">
+          <p class="kicker">4. dAstIll architecture</p>
+          <h2>
+            The architecture separates content truth from search projection.
+          </h2>
+          <p class="lede">
+            Search is rebuildable derived state. Chat consumes search evidence,
+            but it does not own the canonical library content.
+          </p>
+          <p class="doc-links">
+            <span>Prod docs</span>
+            <a
+              href="https://dastill-docs.web.app/architecture/data-model#search-projection"
+              target="_blank"
+              rel="noreferrer"
+              >Search Projection</a
+            >
+            <a
+              href="https://dastill-docs.web.app/architecture/runtime-topology#search-index-worker"
+              target="_blank"
+              rel="noreferrer"
+              >Search Index Worker</a
+            >
+            <a
+              href="https://dastill-docs.web.app/pipelines/ai-models#chat-and-rag"
+              target="_blank"
+              rel="noreferrer"
+              >Chat and RAG</a
+            >
+          </p>
+        </div>
+      </section>
+
+      <section
+        class="slide architecture-map"
+        data-title="Complete Architecture"
+      >
+        <div class="slide-inner">
+          <p class="kicker">dAstIll architecture - complete map</p>
+          <h2>One map shows the whole RAG system.</h2>
+          <div
+            class="diagram compact complete-architecture-diagram"
+            aria-label="Complete dAstIll search and RAG architecture"
+          >
+            <p class="diagram-title">Complete system map</p>
+            <svg
+              class="architecture-svg"
+              viewBox="0 0 1120 540"
+              role="img"
+              aria-label="Complete dAstIll architecture: sources become indexed evidence, requests pass through access and retrieval, answers stream back with traces and fallbacks"
+            >
+              <defs>
+                <marker
+                  id="architecture-arrow"
+                  viewBox="0 0 10 10"
+                  refX="8"
+                  refY="5"
+                  markerWidth="7"
+                  markerHeight="7"
+                  orient="auto"
+                >
+                  <path
+                    d="M 0 0 L 10 5 L 0 10 z"
+                    fill="var(--accent-strong)"
+                  ></path>
+                </marker>
+                <marker
+                  id="architecture-arrow-soft"
+                  viewBox="0 0 10 10"
+                  refX="8"
+                  refY="5"
+                  markerWidth="6"
+                  markerHeight="6"
+                  orient="auto"
+                >
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--border)"></path>
+                </marker>
+              </defs>
+
+              <rect
+                class="band-box"
+                x="32"
+                y="26"
+                width="1056"
+                height="82"
+                rx="8"
+              ></rect>
+              <text class="map-title" x="52" y="52">User surface</text>
+              <rect
+                class="node-box"
+                x="64"
+                y="66"
+                width="130"
+                height="32"
+                rx="7"
+              ></rect>
+              <text class="node-title" x="86" y="87">Reader</text>
+              <rect
+                class="node-accent"
+                x="270"
+                y="50"
+                width="210"
+                height="54"
+                rx="7"
+              ></rect>
+              <text class="node-title" x="302" y="74">Frontend app</text>
+              <text class="node-small" x="302" y="92">
+                search, chat, citations
+              </text>
+              <rect
+                class="node-box"
+                x="620"
+                y="50"
+                width="154"
+                height="54"
+                rx="7"
+              ></rect>
+              <text class="node-title" x="648" y="74">Live status</text>
+              <text class="node-small" x="648" y="92">
+                coverage and model state
+              </text>
+              <rect
+                class="node-box"
+                x="866"
+                y="50"
+                width="170"
+                height="54"
+                rx="7"
+              ></rect>
+              <text class="node-title" x="902" y="74">Output</text>
+              <text class="node-small" x="902" y="92">
+                results, answer, sources
+              </text>
+              <path
+                class="arrow"
+                d="M 194 82 H 270"
+                marker-end="url(#architecture-arrow)"
+              ></path>
+              <path
+                class="arrow"
+                d="M 480 77 H 620"
+                marker-end="url(#architecture-arrow)"
+              ></path>
+              <path
+                class="arrow"
+                d="M 774 77 H 866"
+                marker-end="url(#architecture-arrow)"
+              ></path>
+
+              <rect
+                class="band-box"
+                x="32"
+                y="132"
+                width="1056"
+                height="148"
+                rx="8"
+              ></rect>
+              <text class="map-title" x="52" y="160">Build evidence</text>
+              <rect
+                class="node-box"
+                x="64"
+                y="188"
+                width="136"
+                height="56"
+                rx="7"
+              ></rect>
+              <text class="node-title" x="84" y="212">External sources</text>
+              <text class="node-small" x="84" y="230">
+                YouTube, OpenAlex, sites
+              </text>
+              <rect
+                class="node-box"
+                x="236"
+                y="188"
+                width="136"
+                height="56"
+                rx="7"
+              ></rect>
+              <text class="node-title" x="258" y="212">Content workers</text>
+              <text class="node-small" x="258" y="230">metadata and text</text>
+              <rect
+                class="node-store"
+                x="408"
+                y="176"
+                width="140"
+                height="80"
+                rx="7"
+              ></rect>
+              <text class="node-title" x="434" y="204">Library store</text>
+              <text class="node-small" x="434" y="222">videos, channels</text>
+              <text class="node-small" x="434" y="240">
+                summaries, transcripts
+              </text>
+              <rect
+                class="node-accent"
+                x="586"
+                y="176"
+                width="150"
+                height="80"
+                rx="7"
+              ></rect>
+              <text class="node-title" x="612" y="204">Index worker</text>
+              <text class="node-small" x="612" y="222">chunk, embed, sync</text>
+              <text class="node-small" x="612" y="240">
+                backfill, reconcile
+              </text>
+              <rect
+                class="node-store"
+                x="786"
+                y="166"
+                width="238"
+                height="100"
+                rx="7"
+              ></rect>
+              <text class="node-title" x="826" y="194">Search projection</text>
+              <text class="node-small" x="826" y="216">S3 chunks</text>
+              <text class="node-small" x="826" y="234">libSQL FTS5</text>
+              <text class="node-small" x="826" y="252">S3 Vectors</text>
+              <path
+                class="arrow"
+                d="M 200 216 H 236"
+                marker-end="url(#architecture-arrow)"
+              ></path>
+              <path
+                class="arrow"
+                d="M 372 216 H 408"
+                marker-end="url(#architecture-arrow)"
+              ></path>
+              <path
+                class="arrow"
+                d="M 548 216 H 586"
+                marker-end="url(#architecture-arrow)"
+              ></path>
+              <path
+                class="arrow"
+                d="M 736 216 H 786"
+                marker-end="url(#architecture-arrow)"
+              ></path>
+              <path
+                class="arrow-soft"
+                d="M 661 176 V 104"
+                marker-end="url(#architecture-arrow-soft)"
+              ></path>
+              <text class="edge-label" x="674" y="130">progress</text>
+
+              <rect
+                class="band-box"
+                x="32"
+                y="314"
+                width="1056"
+                height="146"
+                rx="8"
+              ></rect>
+              <text class="map-title" x="52" y="342">Use evidence</text>
+              <rect
+                class="node-box"
+                x="64"
+                y="366"
+                width="118"
+                height="56"
+                rx="7"
+              ></rect>
+              <text class="node-title" x="92" y="390">Request</text>
+              <text class="node-small" x="86" y="408">search or chat</text>
+              <rect
+                class="node-box"
+                x="212"
+                y="354"
+                width="128"
+                height="80"
+                rx="7"
+              ></rect>
+              <text class="node-title" x="238" y="382">API layer</text>
+              <text class="node-small" x="238" y="400">Search API</text>
+              <text class="node-small" x="238" y="418">Chat service</text>
+              <rect
+                class="node-boundary"
+                x="370"
+                y="366"
+                width="142"
+                height="56"
+                rx="7"
+              ></rect>
+              <text class="node-title" x="392" y="390">Access boundary</text>
+              <text class="node-small" x="392" y="408">allowed content</text>
+              <rect
+                class="node-box"
+                x="542"
+                y="354"
+                width="142"
+                height="80"
+                rx="7"
+              ></rect>
+              <text class="node-title" x="572" y="382">Planner</text>
+              <text class="node-small" x="572" y="400">intent and budget</text>
+              <text class="node-small" x="572" y="418">tool loop queries</text>
+              <rect
+                class="node-accent"
+                x="714"
+                y="354"
+                width="150"
+                height="80"
+                rx="7"
+              ></rect>
+              <text class="node-title" x="740" y="382">Hybrid retrieval</text>
+              <text class="node-small" x="740" y="400">FTS + vectors</text>
+              <text class="node-small" x="740" y="418">
+                RRF, rerank, rescue
+              </text>
+              <rect
+                class="node-box"
+                x="894"
+                y="354"
+                width="142"
+                height="80"
+                rx="7"
+              ></rect>
+              <text class="node-title" x="920" y="382">Answer path</text>
+              <text class="node-small" x="920" y="400">grounding context</text>
+              <text class="node-small" x="920" y="418">Ollama + SSE</text>
+              <path
+                class="arrow"
+                d="M 182 394 H 212"
+                marker-end="url(#architecture-arrow)"
+              ></path>
+              <path
+                class="arrow"
+                d="M 340 394 H 370"
+                marker-end="url(#architecture-arrow)"
+              ></path>
+              <path
+                class="arrow"
+                d="M 512 394 H 542"
+                marker-end="url(#architecture-arrow)"
+              ></path>
+              <path
+                class="arrow"
+                d="M 684 394 H 714"
+                marker-end="url(#architecture-arrow)"
+              ></path>
+              <path
+                class="arrow"
+                d="M 864 394 H 894"
+                marker-end="url(#architecture-arrow)"
+              ></path>
+              <path
+                class="arrow-soft"
+                d="M 478 256 V 300 H 441 V 366"
+                marker-end="url(#architecture-arrow-soft)"
+              ></path>
+              <text class="edge-label" x="488" y="302">filters</text>
+              <path
+                class="arrow-soft"
+                d="M 905 266 V 300 H 789 V 354"
+                marker-end="url(#architecture-arrow-soft)"
+              ></path>
+              <text class="edge-label" x="820" y="302">candidates</text>
+              <path
+                class="arrow"
+                d="M 965 354 V 104"
+                marker-end="url(#architecture-arrow)"
+              ></path>
+              <text class="edge-label" x="978" y="300">stream</text>
+
+              <rect
+                class="band-box"
+                x="32"
+                y="486"
+                width="1056"
+                height="38"
+                rx="8"
+              ></rect>
+              <text class="map-title" x="52" y="511">Record and recover</text>
+              <rect
+                class="node-box"
+                x="236"
+                y="493"
+                width="144"
+                height="24"
+                rx="7"
+              ></rect>
+              <text class="node-small" x="270" y="509">trace + citations</text>
+              <rect
+                class="node-box"
+                x="434"
+                y="493"
+                width="128"
+                height="24"
+                rx="7"
+              ></rect>
+              <text class="node-small" x="476" y="509">Logfire</text>
+              <rect
+                class="node-box"
+                x="616"
+                y="493"
+                width="146"
+                height="24"
+                rx="7"
+              ></rect>
+              <text class="node-small" x="650" y="509">stored turn</text>
+              <rect
+                class="node-muted"
+                x="816"
+                y="493"
+                width="150"
+                height="24"
+                rx="7"
+              ></rect>
+              <text class="node-small" x="850" y="509">fallback modes</text>
+              <path
+                class="arrow-soft"
+                d="M 276 434 V 493"
+                marker-end="url(#architecture-arrow-soft)"
+              ></path>
+              <path
+                class="arrow-soft"
+                d="M 789 434 V 474 H 498 V 493"
+                marker-end="url(#architecture-arrow-soft)"
+              ></path>
+              <path
+                class="arrow-soft"
+                d="M 965 434 V 474 H 689 V 493"
+                marker-end="url(#architecture-arrow-soft)"
+              ></path>
+              <path
+                class="arrow-soft"
+                d="M 965 434 V 474 H 891 V 493"
+                marker-end="url(#architecture-arrow-soft)"
+              ></path>
+            </svg>
+          </div>
+          <p class="source">
+            Sources: search indexing, AI model, data model, frontend/API, search
+            worker, search handler, chat retrieval, and tool loop docs.
+          </p>
+        </div>
+      </section>
+      <section class="slide" data-title="Chat Runtime Budgets">
+        <div class="slide-inner">
+          <p class="kicker">dAstIll architecture - chat budgets</p>
+          <h2>Chat is broad, but bounded.</h2>
+          <table>
+            <tr>
+              <th>Budget</th>
+              <th>Normal</th>
+              <th>Deep Search</th>
+            </tr>
+            <tr>
+              <td>Selected source limit</td>
+              <td>6 fact, 12 synthesis, 20 comparison, 24 pattern</td>
+              <td>48</td>
+            </tr>
+            <tr>
+              <td>Retrieval passes</td>
+              <td>up to 3</td>
+              <td>up to 3</td>
+            </tr>
+            <tr>
+              <td>Queries</td>
+              <td>3 per pass, 5 total</td>
+              <td>5 per pass, 6 primary + 8 expansion candidates</td>
+            </tr>
+            <tr>
+              <td>Tool loop steps</td>
+              <td>4</td>
+              <td>6</td>
+            </tr>
+            <tr>
+              <td>Model-call limit</td>
+              <td>12</td>
+              <td>24</td>
+            </tr>
+          </table>
+          <p class="source">
+            Sources: <code>backend/src/services/chat/constants.rs:6-44</code>,
+            <code>backend/src/services/chat/status.rs:354-392</code>.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Code Chat Retrieval">
+        <div class="slide-inner">
+          <p class="kicker">Code - RAG retrieval</p>
+          <h2>The chat path accumulates evidence across retrieval passes.</h2>
+          <pre><code>for batch in &keyword_batches {
+    accumulate_ranked_candidates(pool, batch, false, pass);
+}
+for batch in &semantic_batches {
+    accumulate_ranked_candidates(pool, batch, true, pass);
+}
+
+let sources = rank_chat_sources(pool.values(), plan);
+active_chat
+    .emit(ChatStreamEvent::Sources {
+        sources: sources.iter().map(|source| source.source.clone()).collect(),
+    })
+    .await;</code></pre>
+          <p class="source">
+            Source: <code>backend/src/services/chat/retrieval.rs:392-405</code>.
+            Chat uses both keyword and semantic batches, then emits selected
+            sources before final generation.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Chat Candidate Ranking">
+        <div class="slide-inner">
+          <p class="kicker">dAstIll architecture - RAG ranking</p>
+          <h2>Chat ranking is rank fusion plus source-budget selection.</h2>
+          <table>
+            <tr>
+              <th>Mechanism</th>
+              <th>Current code</th>
+              <th>Result</th>
+            </tr>
+            <tr>
+              <td>Candidate limit</td>
+              <td>
+                <code>((budget * 2) / query_count)</code>, min 8, max 48; later
+                passes get a small boost.
+              </td>
+              <td>
+                Broad questions get more candidates without unbounded fan-out.
+              </td>
+            </tr>
+            <tr>
+              <td>Rank score</td>
+              <td>
+                Each keyword or semantic batch contributes
+                <code>1 / (60 + rank)</code>.
+              </td>
+              <td>Agreement across batches raises a chunk.</td>
+            </tr>
+            <tr>
+              <td>Combined score</td>
+              <td>Keyword and semantic scores add when both exist.</td>
+              <td>Hybrid evidence can beat one-sided evidence.</td>
+            </tr>
+            <tr>
+              <td>Diversity</td>
+              <td>
+                After <code>max_per_video</code>, same-video score is multiplied
+                by <code>0.3^n</code>; first opposite source kind gets
+                <code>1.08x</code>.
+              </td>
+              <td>
+                Selected sources spread across videos and summary/transcript
+                evidence.
+              </td>
+            </tr>
+            <tr>
+              <td>Scope and preference</td>
+              <td>
+                Video focus gets <code>1.8x</code>, channel focus
+                <code>1.2x</code>, recommendation wording can add a preference
+                boost.
+              </td>
+              <td>
+                Mentions and recommendation prompts bend ranking without
+                bypassing access checks.
+              </td>
+            </tr>
+          </table>
+          <p class="source">
+            Sources: <code>backend/src/services/chat_ranking.rs:17-133</code>,
+            <code>backend/src/services/chat_ranking.rs:315-370</code>,
+            <code>backend/src/services/fusion.rs:4-32</code>.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Stored Chat Trace">
+        <div class="slide-inner">
+          <p class="kicker">dAstIll architecture - trace</p>
+          <h2>Completed chat turns keep a redacted execution trace.</h2>
+          <table>
+            <tr>
+              <th>Trace field</th>
+              <th>Stored value</th>
+              <th>Why it matters</th>
+            </tr>
+            <tr>
+              <td>Strategy</td>
+              <td>Tool loop, retrieval planner, or conversation-only path.</td>
+              <td>Explains answer route.</td>
+            </tr>
+            <tr>
+              <td>Plan</td>
+              <td>Intent and label when retrieval was planned.</td>
+              <td>Shows why budget changed.</td>
+            </tr>
+            <tr>
+              <td>Retrieval</td>
+              <td>
+                Pass count, query count, selected sources, unique videos, deep
+                flag.
+              </td>
+              <td>Audits evidence breadth.</td>
+            </tr>
+            <tr>
+              <td>Budget</td>
+              <td>
+                Model calls, tool calls, retrieval passes, exhaustion reason.
+              </td>
+              <td>Explains bounded behavior.</td>
+            </tr>
+            <tr>
+              <td>Excluded</td>
+              <td>
+                Raw prompts, full excerpts, tool output bodies, answer text.
+              </td>
+              <td>Keeps traces compact and safer.</td>
+            </tr>
+          </table>
+          <p class="source">
+            Sources: <code>backend/src/models.rs:1080-1120</code>,
+            <code>docs/pipelines/ai-models.md:350-372</code>.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="RAG Architecture Alternatives">
+        <div class="slide-inner">
+          <p class="kicker">dAstIll architecture - alternative tech</p>
+          <h2>
+            RAG architecture can be a framework graph, a search platform, or
+            app-owned code.
+          </h2>
+          <table>
+            <tr>
+              <th>Alternative</th>
+              <th>What it gives</th>
+              <th>Tradeoff</th>
+            </tr>
+            <tr>
+              <td>LangGraph</td>
+              <td>Explicit agent and retrieval state machines.</td>
+              <td>Adds framework concepts around app-specific Rust flows.</td>
+            </tr>
+            <tr>
+              <td>LlamaIndex</td>
+              <td>
+                Document ingestion, indexes, query engines, and RAG patterns.
+              </td>
+              <td>Best fit in Python-heavy stacks.</td>
+            </tr>
+            <tr>
+              <td>Azure AI Search / Vertex AI Search</td>
+              <td>
+                Managed indexing, semantic ranking, and enterprise connectors.
+              </td>
+              <td>Cloud lock-in and less control over local-first behavior.</td>
+            </tr>
+          </table>
+          <p class="source">
+            dAstIll keeps RAG orchestration in backend code: planner, retrieval
+            passes, tool loop, streaming, budgets, and stored citations.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Failure Model">
+        <div class="slide-inner">
+          <p class="kicker">Architecture - failure model</p>
+          <h2>The architecture loses features before it loses the page.</h2>
+          <table>
+            <tr>
+              <th>Failure</th>
+              <th>Degradation</th>
+            </tr>
+            <tr>
+              <td>Embedding unavailable</td>
+              <td>
+                FTS-only search continues. Chunking and keyword indexing
+                continue.
+              </td>
+            </tr>
+            <tr>
+              <td>HyDE fails</td>
+              <td>The raw query is embedded.</td>
+            </tr>
+            <tr>
+              <td>Reranker fails</td>
+              <td>RRF ordering is used.</td>
+            </tr>
+            <tr>
+              <td>Answer model rate-limited</td>
+              <td>Chat can return a cited source-list fallback.</td>
+            </tr>
+          </table>
+          <p class="source">
+            Sources: <code>docs/pipelines/ai-models.md:384-399</code>,
+            <code>backend/src/handlers/search/mod.rs:280-337</code>.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Reading Path">
+        <div class="slide-inner">
+          <p class="kicker">Reading path</p>
+          <h2>Read in the same order as the deck.</h2>
+          <div class="grid two">
+            <div class="panel flat">
+              <h3>Search</h3>
+              <p><code>docs/pipelines/search-indexing.md</code></p>
+              <p><code>backend/src/services/fts.rs</code></p>
+              <p><code>backend/src/handlers/search/mod.rs</code></p>
+            </div>
+            <div class="panel flat">
+              <h3>RAG and architecture</h3>
+              <p><code>docs/pipelines/ai-models.md</code></p>
+              <p><code>backend/src/services/chat/retrieval.rs</code></p>
+              <p><code>backend/src/workers/search_index.rs</code></p>
+            </div>
+          </div>
+          <p class="doc-links">
+            <span>Prod docs</span>
+            <a
+              href="https://dastill-docs.web.app/pipelines/search-indexing#overview"
+              target="_blank"
+              rel="noreferrer"
+              >Search Indexing Overview</a
+            >
+            <a
+              href="https://dastill-docs.web.app/pipelines/ai-models#chat-and-rag"
+              target="_blank"
+              rel="noreferrer"
+              >Chat and RAG</a
+            >
+            <a
+              href="https://dastill-docs.web.app/architecture/runtime-topology#backend-startup-sequence"
+              target="_blank"
+              rel="noreferrer"
+              >Backend Startup</a
+            >
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Glossary Data and Indexing">
+        <div class="slide-inner">
+          <p class="kicker">Glossary - data and indexing</p>
+          <h2>Terms for how content becomes searchable.</h2>
+          <table>
+            <tr>
+              <th>Term</th>
+              <th>Meaning</th>
+            </tr>
+            <tr>
+              <td>Canonical content</td>
+              <td>
+                The source transcript or summary owned by the library model.
+              </td>
+            </tr>
+            <tr>
+              <td>Search projection</td>
+              <td>Derived search data built from canonical content.</td>
+            </tr>
+            <tr>
+              <td>Chunk</td>
+              <td>
+                A retrievable text unit with metadata such as source kind and
+                timestamp.
+              </td>
+            </tr>
+            <tr>
+              <td>Normalization</td>
+              <td>Plain-text cleanup before chunking.</td>
+            </tr>
+            <tr>
+              <td>FTS index</td>
+              <td>
+                The local full-text search table that stores searchable token
+                structures.
+              </td>
+            </tr>
+            <tr>
+              <td>Tokenizer</td>
+              <td>The FTS component that splits text into searchable terms.</td>
+            </tr>
+          </table>
+          <p class="source">
+            Sources: <code>docs/pipelines/search-indexing.md</code>,
+            <code>backend/src/services/search/content_processing.rs</code>.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Glossary Retrieval">
+        <div class="slide-inner">
+          <p class="kicker">Glossary - retrieval</p>
+          <h2>Terms for how candidates are found and ranked.</h2>
+          <table>
+            <tr>
+              <th>Term</th>
+              <th>Meaning</th>
+            </tr>
+            <tr>
+              <td>BM25</td>
+              <td>A keyword relevance formula used to rank FTS matches.</td>
+            </tr>
+            <tr>
+              <td>Porter stemming</td>
+              <td>English word-family reduction inside the FTS tokenizer.</td>
+            </tr>
+            <tr>
+              <td>Embedding</td>
+              <td>A numeric vector that represents text meaning.</td>
+            </tr>
+            <tr>
+              <td>Exact vector scan</td>
+              <td>
+                Exact similarity calculation against every candidate vector in
+                scope.
+              </td>
+            </tr>
+            <tr>
+              <td>ANN</td>
+              <td>
+                Approximate nearest-neighbor search for faster vector lookup.
+              </td>
+            </tr>
+            <tr>
+              <td>Exact rescue</td>
+              <td>
+                Keyword safety path that promotes exact hits over weak semantic
+                order.
+              </td>
+            </tr>
+            <tr>
+              <td>RRF</td>
+              <td>
+                Reciprocal Rank Fusion, a rank-based way to merge retrieval
+                lists.
+              </td>
+            </tr>
+          </table>
+          <p class="source">
+            Sources: <code>docs/pipelines/search-indexing.md:260-421</code>,
+            <code>backend/src/handlers/search/mod.rs</code>,
+            <code>backend/src/handlers/search/ranking.rs</code>.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Glossary RAG">
+        <div class="slide-inner">
+          <p class="kicker">Glossary - RAG and runtime</p>
+          <h2>Terms for how evidence becomes an answer.</h2>
+          <table>
+            <tr>
+              <th>Term</th>
+              <th>Meaning</th>
+            </tr>
+            <tr>
+              <td>RAG</td>
+              <td>
+                Retrieval-augmented generation: retrieve evidence, then generate
+                from it.
+              </td>
+            </tr>
+            <tr>
+              <td>Grounding</td>
+              <td>Selected evidence placed into the answer model context.</td>
+            </tr>
+            <tr>
+              <td>Retrieval pass</td>
+              <td>One planned round of keyword and semantic searches.</td>
+            </tr>
+            <tr>
+              <td>Source budget</td>
+              <td>
+                The maximum evidence excerpts a chat turn tries to carry
+                forward.
+              </td>
+            </tr>
+            <tr>
+              <td>Reranker</td>
+              <td>
+                A model that rereads a shortlist and produces a better final
+                order.
+              </td>
+            </tr>
+            <tr>
+              <td>SSE</td>
+              <td>
+                Server-sent events for status, sources, tokens, and completion.
+              </td>
+            </tr>
+            <tr>
+              <td>Trace</td>
+              <td>
+                Redacted record of plan, tools, retrieval counts, and budget
+                use.
+              </td>
+            </tr>
+          </table>
+          <p class="source">
+            Sources: <code>docs/pipelines/ai-models.md:234-399</code>,
+            <code>backend/src/services/chat/retrieval.rs</code>.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Source Map App">
+        <div class="slide-inner">
+          <p class="kicker">Source map</p>
+          <h2>Source notes: app and search.</h2>
+          <table>
+            <tr>
+              <th>Area</th>
+              <th>Sources</th>
+            </tr>
+            <tr>
+              <td>Frontend search and chat surfaces</td>
+              <td>
+                <code
+                  >frontend/src/lib/components/workspace/WorkspaceSearchBar.svelte</code
+                >;
+                <code
+                  >frontend/src/lib/components/chat/ChatInputControls.svelte</code
+                >; <code>frontend/src/lib/api.ts</code>
+              </td>
+            </tr>
+            <tr>
+              <td>Keyword search</td>
+              <td>
+                <code>backend/src/services/fts.rs</code>;
+                <code>backend/src/handlers/search/ranking.rs</code>
+              </td>
+            </tr>
+            <tr>
+              <td>Semantic and hybrid search</td>
+              <td>
+                <code>docs/pipelines/search-indexing.md</code>;
+                <code>backend/src/services/search/mod.rs</code>;
+                <code>backend/src/db/search.rs</code>;
+                <a href="https://arxiv.org/abs/2212.10496">HyDE paper</a>
+              </td>
+            </tr>
+            <tr>
+              <td>Query shaping and frontend filters</td>
+              <td>
+                <code>backend/src/search_query.rs</code>;
+                <code>frontend/src/lib/workspace-search.ts</code>;
+                <code
+                  >frontend/src/lib/components/SearchResultsPopover.svelte</code
+                >
+              </td>
+            </tr>
+            <tr>
+              <td>Design guidance</td>
+              <td>
+                <code>design.md</code>: muted, minimal, content first, low
+                chrome.
+              </td>
+            </tr>
+          </table>
+          <p class="doc-links">
+            <span>Prod docs</span>
+            <a
+              href="https://dastill-docs.web.app/architecture/frontend-and-api#search-ui-pattern"
+              target="_blank"
+              rel="noreferrer"
+              >Search UI Pattern</a
+            >
+            <a
+              href="https://dastill-docs.web.app/pipelines/search-indexing#query-path"
+              target="_blank"
+              rel="noreferrer"
+              >Search Query Path</a
+            >
+            <a
+              href="https://dastill-docs.web.app/pipelines/ai-models#hyde-search-hyde-model"
+              target="_blank"
+              rel="noreferrer"
+              >HyDE</a
+            >
+          </p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Source Map Backend">
+        <div class="slide-inner">
+          <p class="kicker">Source map</p>
+          <h2>Source notes: backend and confidence.</h2>
+          <table>
+            <tr>
+              <th>Area</th>
+              <th>Sources</th>
+            </tr>
+            <tr>
+              <td>Index worker, status, storage</td>
+              <td>
+                <code>backend/src/workers/search_index.rs</code>;
+                <code>backend/src/workers/mod.rs</code>;
+                <code>backend/src/search_progress.rs</code>;
+                <code>backend/src/db/search.rs</code>
+              </td>
+            </tr>
+            <tr>
+              <td>RAG and chat retrieval</td>
+              <td>
+                <code>docs/pipelines/ai-models.md</code>;
+                <code>backend/src/services/chat/retrieval.rs</code>;
+                <code>backend/src/services/chat/tool_loop.rs</code>;
+                <code>backend/src/services/chat/constants.rs</code>;
+                <code>backend/src/services/chat/status.rs</code>
+              </td>
+            </tr>
+            <tr>
+              <td>Chat ranking and fusion</td>
+              <td>
+                <code>backend/src/services/chat_ranking.rs</code>;
+                <code>backend/src/services/fusion.rs</code>;
+                <code>backend/src/services/chat/types.rs</code>
+              </td>
+            </tr>
+          </table>
+          <p class="doc-links">
+            <span>Prod docs</span>
+            <a
+              href="https://dastill-docs.web.app/architecture/runtime-topology#search-index-worker"
+              target="_blank"
+              rel="noreferrer"
+              >Search Index Worker</a
+            >
+            <a
+              href="https://dastill-docs.web.app/architecture/data-model#search-chunks-are-disposable"
+              target="_blank"
+              rel="noreferrer"
+              >Disposable Chunks</a
+            >
+            <a
+              href="https://dastill-docs.web.app/pipelines/ai-models#source-attribution"
+              target="_blank"
+              rel="noreferrer"
+              >Source Attribution</a
+            >
+          </p>
+          <p class="source">
+            Confidence: high for repo behavior described from docs and Rust
+            sources. External research is limited to the primary HyDE paper.
+            Benchmark numbers are absent because the repo says to measure them
+            in the target environment. When docs and code differ, the slides
+            describe current backend code first.
+          </p>
+        </div>
+      </section>
+
+      <footer class="controls" aria-label="Slide controls">
+        <div class="jump-control">
+          <label for="jump">Jump</label>
+          <select id="jump" aria-label="Jump to section">
+            <option value="Title">Title</option>
+            <option value="Section Index">Index</option>
+            <option value="Prod Docs Links">Prod docs</option>
+            <option value="App Surfaces">App surfaces</option>
+            <option value="Keyword Search Section">Keyword search</option>
+            <option value="Semantic Search Section">Semantic search</option>
+            <option value="Hybrid Search Section">Hybrid search</option>
+            <option value="dAstIll Architecture Section">Architecture</option>
+            <option value="Glossary Data and Indexing">Glossary</option>
+            <option value="Source Map App">Source map</option>
+          </select>
+        </div>
+        <div class="counter" id="counter">1 / 66</div>
+        <div class="progress" aria-hidden="true">
+          <span id="progress"></span>
+        </div>
+        <div class="nav">
+          <button type="button" id="prev" aria-label="Previous slide">
+            Prev
+          </button>
+          <button type="button" id="next" aria-label="Next slide">Next</button>
+        </div>
+      </footer>
+    </main>
+
+    <script>
+      const slides = Array.from(document.querySelectorAll(".slide"));
+      const counter = document.getElementById("counter");
+      const progress = document.getElementById("progress");
+      const prev = document.getElementById("prev");
+      const next = document.getElementById("next");
+      const jump = document.getElementById("jump");
+      const sectionTargets = Array.from(jump.options)
+        .map((option) => ({
+          title: option.value,
+          index: slides.findIndex(
+            (slide) => slide.dataset.title === option.value,
+          ),
+        }))
+        .filter((target) => target.index >= 0);
+      let index = 0;
+
+      function closestSectionIndex(slideIndex) {
+        return sectionTargets.reduce((best, target) => {
+          if (target.index <= slideIndex && target.index >= best.index) {
+            return target;
+          }
+          return best;
+        }, sectionTargets[0]).index;
+      }
+
+      function show(nextIndex) {
+        index = Math.max(0, Math.min(slides.length - 1, nextIndex));
+        slides.forEach((slide, slideIndex) => {
+          slide.classList.toggle("active", slideIndex === index);
+        });
+        counter.textContent = `${index + 1} / ${slides.length}`;
+        progress.style.width = `${((index + 1) / slides.length) * 100}%`;
+        prev.disabled = index === 0;
+        next.disabled = index === slides.length - 1;
+        const currentSection = sectionTargets.find(
+          (target) => target.index === closestSectionIndex(index),
+        );
+        if (currentSection) {
+          jump.value = currentSection.title;
+        }
+        document.title = `${index + 1}/${slides.length} dAstIll Search and RAG Workflow`;
+      }
+
+      function jumpToTitle(title) {
+        const targetIndex = slides.findIndex(
+          (slide) => slide.dataset.title === title,
+        );
+        if (targetIndex >= 0) {
+          show(targetIndex);
+        }
+      }
+
+      document.querySelectorAll("[data-jump-title]").forEach((button) => {
+        button.addEventListener("click", () =>
+          jumpToTitle(button.dataset.jumpTitle),
+        );
+      });
+      jump.addEventListener("change", (event) =>
+        jumpToTitle(event.target.value),
+      );
+      prev.addEventListener("click", () => show(index - 1));
+      next.addEventListener("click", () => show(index + 1));
+      window.addEventListener("keydown", (event) => {
+        if (
+          event.key === "ArrowRight" ||
+          event.key === "PageDown" ||
+          event.key === " "
+        ) {
+          event.preventDefault();
+          show(index + 1);
+        }
+        if (event.key === "ArrowLeft" || event.key === "PageUp") {
+          event.preventDefault();
+          show(index - 1);
+        }
+        if (event.key === "Home") {
+          event.preventDefault();
+          show(0);
+        }
+        if (event.key === "End") {
+          event.preventDefault();
+          show(slides.length - 1);
+        }
+      });
+      show(0);
+    </script>
+  </body>
+</html>

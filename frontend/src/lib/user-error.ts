@@ -61,6 +61,15 @@ export function normalizeUserErrorMessage(
   }
 
   if (
+    lower.includes("requires a subscription") ||
+    lower.includes("subscription limit") ||
+    lower.includes("quota exceeded") ||
+    lower.includes("ai generation is temporarily unavailable")
+  ) {
+    return "AI is temporarily unavailable. Please try again later.";
+  }
+
+  if (
     lower.includes("ollama") ||
     lower.includes("summarizer unavailable") ||
     lower.includes("summary evaluator") ||

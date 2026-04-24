@@ -40,7 +40,7 @@ When you use `./start_app.sh`, it also augments `BACKEND_CORS_ALLOWED_ORIGINS` f
 so the backend accepts both the web frontend and the Tauri Android shell (`http://tauri.localhost`)
 even if your shared env file only lists the browser origin.
 
-The workspace add-source input currently accepts:
+The workspace add-source input accepts:
 
 - YouTube handles and channel URLs
 - `openalex: <query>`
@@ -51,9 +51,10 @@ The workspace add-source input currently accepts:
 reconciles that local state from S3-backed snapshots and search artifacts at startup. S3-backed user
 data such as highlights and conversations is unaffected.
 
-`./start_app.sh` also forces the product frontend into live mode by default. If you need to preview the
-maintenance page locally, run `LOCAL_APP_MAINTENANCE_MODE=1 ./start_app.sh`. In that mode the script skips
-backend startup and only serves the maintenance frontend plus docs.
+`./start_app.sh` serves the live product frontend by default. There are two maintenance paths:
+
+- `.github/runtime-mode.env` with `APP_RUNTIME_MODE=maintenance` mirrors the release workflow. The script serves the maintenance/minimal frontend and keeps the backend running for `dastill-mini`.
+- `LOCAL_APP_MAINTENANCE_MODE=1 ./start_app.sh` is a frontend-only preview. The script skips backend startup and serves the maintenance frontend plus docs.
 
 Default docs URL:
 
@@ -63,7 +64,7 @@ http://localhost:4173
 
 ## Postman Debugging
 
-The backend now exposes a live OpenAPI document for local debugging.
+The backend exposes a live OpenAPI document for local debugging.
 
 When you run the full stack with `./start_app.sh`, import this URL into Postman:
 
@@ -94,7 +95,7 @@ The docs app is deployed from the static VitePress build through Firebase Hostin
 
 ## Tauri Android Development
 
-The repo now includes a Tauri v2 shell in `src-tauri/`.
+The repo includes a Tauri v2 shell in `src-tauri/`.
 
 Install the CLI once:
 
@@ -132,7 +133,7 @@ Recommended run loop:
 ./start_app.sh
 ```
 
-`./start_app.sh` reads `.github/runtime-mode.env`, the same source of truth used by the deploy workflows. When that file says `APP_RUNTIME_MODE=maintenance`, local startup automatically serves the maintenance/minimal frontend mode and still starts the backend so `dastill-mini` works.
+`./start_app.sh` reads `.github/runtime-mode.env`, the same source of truth used by the deploy workflows. When that file says `APP_RUNTIME_MODE=maintenance`, local startup serves the maintenance/minimal frontend mode and starts the backend so `dastill-mini` works.
 
 The Tauri Android shell is opt-in. To launch it with the local stack:
 
@@ -140,7 +141,7 @@ The Tauri Android shell is opt-in. To launch it with the local stack:
 START_APP_MOBILE=1 ./start_app.sh
 ```
 
-If you need an explicit skip flag for scripts or older local habits:
+If you need an explicit skip flag for scripts or legacy local habits:
 
 ```bash
 START_APP_SKIP_MOBILE=1 ./start_app.sh
@@ -182,7 +183,7 @@ Android-specific smoke checks:
 
 ## Backend Environment
 
-Local backend startup now reads the shared machine-local file at
+Local backend startup reads the shared machine-local file at
 `~/.config/dastill/backend.env` by default. If you want a one-off worktree override,
 `backend/.env` still works and wins over the shared file. Shell environment variables
 win over both file-based sources.
@@ -352,7 +353,7 @@ Behavior:
 
 ## Frontend Runtime
 
-The frontend now builds as a static bundle. Browser and Tauri clients call the Rust backend directly using `VITE_API_BASE`, and authenticated requests send the Firebase ID token as `Authorization: Bearer <token>`.
+The frontend builds as a static bundle. Browser and Tauri clients call the Rust backend directly using `VITE_API_BASE`, and authenticated requests send the Firebase ID token as `Authorization: Bearer <token>`.
 
 In production the static frontend and docs are served by Firebase Hosting. Local development still uses the Vite dev server for the app and VitePress for docs.
 

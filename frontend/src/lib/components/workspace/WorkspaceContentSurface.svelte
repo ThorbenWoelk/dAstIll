@@ -190,9 +190,11 @@
   {:else}
     <LoadingSkeleton
       message={contentMode === "summary"
-        ? contentStatus === "pending"
-          ? "Summary queued and being generated..."
-          : "Summary is loading..."
+        ? !aiAvailable
+          ? "AI is temporarily unavailable. Summary will retry when it returns."
+          : contentStatus === "pending"
+            ? "Summary queued and being generated..."
+            : "Summary is loading..."
         : contentStatus === "pending"
           ? `Queued for ${contentMode}...`
           : `Loading ${contentMode}...`}
@@ -239,9 +241,11 @@
 {:else if contentMode === "summary" && selectedVideo && (selectedVideo.summary_status !== "ready" || summaryBodyRetrying) && !contentText.trim()}
   {#if selectedVideo.summary_status === "pending" || selectedVideo.summary_status === "loading" || summaryBodyRetrying}
     <LoadingSkeleton
-      message={summaryBodyRetrying || selectedVideo.summary_status === "loading"
-        ? "Summary is loading..."
-        : "Summary queued and being generated..."}
+      message={!aiAvailable
+        ? "AI is temporarily unavailable. Summary will retry when it returns."
+        : summaryBodyRetrying || selectedVideo.summary_status === "loading"
+          ? "Summary is loading..."
+          : "Summary queued and being generated..."}
     />
   {:else}
     <div

@@ -47,7 +47,7 @@ flowchart TB
 
 ## What dAstIll Is
 
-dAstIll is a source monitoring tool that is still migrating off an original YouTube-only model. It:
+dAstIll is a source monitoring and reading workspace. It:
 
 - **Monitors subscribed sources**: YouTube channels, OpenAlex saved searches, podcast RSS feeds, and tracked website pages
 - **Extracts readable content**: Pulls transcripts, abstracts, show notes, or page text into the reading flow
@@ -112,7 +112,8 @@ The backend does not bundle or load the STT model. It validates and downloads pu
 ### Infrastructure
 
 - **Terraform** in `terraform/`
-- **Cloud Run** services for backend, product frontend, and docs frontend
+- **Cloud Run** for the backend and optional ASR service
+- **Firebase Hosting** for the product frontend and docs frontend
 - **AWS S3** for data storage
 - **AWS S3 Vectors** for semantic search
 - **local libSQL** for canonical video rows, user preferences, TTS statistics, and keyword search

@@ -436,7 +436,7 @@ async fn ensure_summary_internal(
     }
 
     if !state.summarizer.is_available().await {
-        set_summary_status_and_evict(state, video_id, ContentStatus::Failed).await?;
+        set_summary_status_and_evict(state, video_id, ContentStatus::Pending).await?;
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
             "Ollama not available".to_string(),
@@ -493,7 +493,13 @@ async fn ensure_summary_internal(
         Err(e) => {
             let (http_status, content_status) = summarizer_error_statuses(&e);
             set_summary_status_and_evict(state, video_id, content_status).await?;
-            return Err((http_status, e.to_string()));
+            let message = if content_status == ContentStatus::Pending {
+                "AI generation is temporarily unavailable. The summary will retry when capacity returns."
+                    .to_string()
+            } else {
+                e.to_string()
+            };
+            return Err((http_status, message));
         }
     };
     tracing::info!(video_id = %video_id, "summary generation completed");
@@ -714,6 +720,8 @@ async fn set_summary_status_and_evict(
 fn summarizer_error_statuses(e: &SummarizerError) -> (StatusCode, ContentStatus) {
     if e.is_rate_limited() {
         (StatusCode::TOO_MANY_REQUESTS, ContentStatus::Pending)
+    } else if matches!(e, SummarizerError::NotAvailable) {
+        (StatusCode::SERVICE_UNAVAILABLE, ContentStatus::Pending)
     } else {
         (StatusCode::INTERNAL_SERVER_ERROR, ContentStatus::Failed)
     }
@@ -731,9 +739,11 @@ mod tests {
     use super::{
         MAX_SUMMARY_AUTO_REGEN_ATTEMPTS, completed_live_transcript_grace_elapsed,
         completed_live_transcript_looks_like_description, is_valid_cached_transcript,
-        should_auto_regenerate_summary, transcript_text,
+        should_auto_regenerate_summary, summarizer_error_statuses, transcript_text,
     };
     use crate::models::{ContentStatus, Transcript, TranscriptRenderMode};
+    use crate::services::summarizer::SummarizerError;
+    use axum::http::StatusCode;
 
     fn make_transcript(raw: Option<&str>, formatted: Option<&str>) -> Transcript {
         Transcript {
@@ -743,6 +753,30 @@ mod tests {
             render_mode: TranscriptRenderMode::PlainText,
             timed_text: None,
         }
+    }
+
+    #[test]
+    fn summarizer_temporary_errors_keep_summary_pending() {
+        assert_eq!(
+            summarizer_error_statuses(&SummarizerError::GenerationFailed(
+                "subscription limit reached".to_string()
+            )),
+            (StatusCode::TOO_MANY_REQUESTS, ContentStatus::Pending)
+        );
+        assert_eq!(
+            summarizer_error_statuses(&SummarizerError::NotAvailable),
+            (StatusCode::SERVICE_UNAVAILABLE, ContentStatus::Pending)
+        );
+    }
+
+    #[test]
+    fn summarizer_non_temporary_errors_mark_summary_failed() {
+        assert_eq!(
+            summarizer_error_statuses(&SummarizerError::GenerationFailed(
+                "malformed model output".to_string()
+            )),
+            (StatusCode::INTERNAL_SERVER_ERROR, ContentStatus::Failed)
+        );
     }
 
     #[test]

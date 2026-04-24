@@ -9,6 +9,7 @@ pub struct OllamaRuntimeConfig {
     pub summary_model: String,
     pub default_chat_model: Option<String>,
     pub fallback_model: Option<String>,
+    pub cloud_cooldown_secs: u64,
     pub summary_evaluator_model: String,
     pub embedding_model: Option<String>,
     /// Optional cross-encoder model for re-ranking search results (env: SEARCH_RERANK_MODEL).
@@ -108,6 +109,8 @@ impl OllamaRuntimeConfig {
         let summary_model = required_env("OLLAMA_SUMMARY_MODEL")?;
         let default_chat_model = optional_env("OLLAMA_DEFAULT_CHAT_MODEL");
         let fallback_model = optional_env("OLLAMA_FALLBACK_MODEL");
+        let cloud_cooldown_secs = optional_u64_env("OLLAMA_CLOUD_COOLDOWN_SECS")
+            .unwrap_or(crate::services::http::DEFAULT_CLOUD_COOLDOWN_DURATION.as_secs());
         let summary_evaluator_model = required_env("SUMMARY_EVALUATOR_MODEL")?;
         let embedding_model = if search_semantic_enabled {
             Some(required_env("OLLAMA_EMBEDDING_MODEL")?)
@@ -125,6 +128,7 @@ impl OllamaRuntimeConfig {
             summary_model,
             default_chat_model,
             fallback_model,
+            cloud_cooldown_secs,
             summary_evaluator_model,
             embedding_model,
             rerank_model: optional_env("SEARCH_RERANK_MODEL"),
@@ -412,6 +416,7 @@ mod tests {
         "OLLAMA_SUMMARY_MODEL",
         "OLLAMA_DEFAULT_CHAT_MODEL",
         "OLLAMA_FALLBACK_MODEL",
+        "OLLAMA_CLOUD_COOLDOWN_SECS",
         "SUMMARY_EVALUATOR_MODEL",
         "OLLAMA_EMBEDDING_MODEL",
     ];
@@ -595,6 +600,10 @@ mod tests {
 
         let config = OllamaRuntimeConfig::from_env(true).expect("config");
         assert_eq!(config.fallback_model, None);
+        assert_eq!(
+            config.cloud_cooldown_secs,
+            crate::services::http::DEFAULT_CLOUD_COOLDOWN_DURATION.as_secs()
+        );
     }
 
     #[test]
@@ -609,6 +618,7 @@ mod tests {
         remove_env("OLLAMA_API_KEY");
         set_env("OLLAMA_SUMMARY_MODEL", "glm-5.1:cloud");
         set_env("OLLAMA_FALLBACK_MODEL", "qwen3-coder:30b");
+        set_env("OLLAMA_CLOUD_COOLDOWN_SECS", "12345");
         set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
         set_env("OLLAMA_EMBEDDING_MODEL", "embeddinggemma");
 
@@ -616,6 +626,7 @@ mod tests {
         assert_eq!(config.summary_model, "glm-5.1:cloud");
         assert_eq!(config.default_chat_model, None);
         assert_eq!(config.fallback_model.as_deref(), Some("qwen3-coder:30b"));
+        assert_eq!(config.cloud_cooldown_secs, 12345);
         assert_eq!(config.summary_evaluator_model, "qwen3.5:397b-cloud");
         assert_eq!(config.embedding_model.as_deref(), Some("embeddinggemma"));
     }

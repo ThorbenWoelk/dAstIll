@@ -2,9 +2,9 @@
 
 ## Disclaimer
 
-This is a showcase repo. Its first purpose is to experiment and push vibe coding to its limits. Frequent refactorings, redesigns, and a lack of stability are part of the point.
+This is a showcase repo. It is an experiment in pushing AI-assisted product development hard.
 
-Over time, the codebase should keep turning into something cleaner, more structured, secure, extendable, and maintainable while new features keep landing. There is a learning strategy behind the mess.
+The codebase moves fast. Refactors, redesigns, and rough edges are part of the work. The goal is to keep turning that motion into clearer structure, stronger security, and better operating habits.
 
 That said, feel free to reach out, criticize, open issues, or contribute directly.
 
@@ -169,7 +169,7 @@ Terraform, Firebase Hosting, Google Cloud Run, AWS IAM (Workload Identity Federa
    If you run the frontend separately from `start_app.sh`, keep its local values in
    `~/.config/dastill/frontend.env` and run `./scripts/link_shared_env.sh` in each
    worktree so direct frontend commands still see `frontend/.env`. Operator access is
-   granted through the frontend server's `OPERATOR_EMAIL_ALLOWLIST`.
+   granted through the backend `OPERATOR_EMAIL_ALLOWLIST`.
 
    If an old `~/.config/dastill/backend.env` still contains `AWS_ACCESS_KEY_ID`,
    `AWS_SECRET_ACCESS_KEY`, and especially `AWS_SESSION_TOKEN`, those inline values
@@ -217,11 +217,11 @@ Terraform, Firebase Hosting, Google Cloud Run, AWS IAM (Workload Identity Federa
    ```
 
 5. **Sign-In And Roles Locally**:
-   Anonymous browsing remains available by default. Signed-in users use the Firebase-backed `/login` flow, and operator-only actions depend on the frontend server's `OPERATOR_EMAIL_ALLOWLIST`.
+   Anonymous browsing remains available by default. Signed-in users use the Firebase-backed `/login` flow, and operator-only actions depend on the backend `OPERATOR_EMAIL_ALLOWLIST`.
 
 ## Tauri Android Development
 
-dAstIll now includes a Tauri v2 shell for Android in [`src-tauri/`](./src-tauri). The Android app uses the same frontend bundle and talks directly to the Rust backend with Firebase bearer tokens.
+dAstIll includes a Tauri v2 shell for Android in [`src-tauri/`](./src-tauri). The Android app uses the same frontend bundle and talks directly to the Rust backend with Firebase bearer tokens.
 
 Install the Tauri CLI once on your machine:
 
@@ -266,7 +266,7 @@ To keep the stack web-only, use the default:
 ./start_app.sh
 ```
 
-`./start_app.sh` now also reads `.github/runtime-mode.env`, the same file used by the deploy workflows. If that file says `APP_RUNTIME_MODE=maintenance`, local startup automatically serves the maintenance/minimal frontend shape and keeps the backend available for `dastill-mini`.
+`./start_app.sh` also reads `.github/runtime-mode.env`, the same file used by the deploy workflows. If that file says `APP_RUNTIME_MODE=maintenance`, local startup serves the maintenance/minimal frontend shape and keeps the backend available for `dastill-mini`.
 
 If you want to run the shell manually instead:
 

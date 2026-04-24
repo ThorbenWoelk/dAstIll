@@ -75,7 +75,7 @@ flowchart TD
 
 ## Product Frontend Routes
 
-The SvelteKit app currently exposes the following top-level product routes:
+The SvelteKit app exposes these top-level product routes:
 
 | Route             | Purpose                                                                 |
 | ----------------- | ----------------------------------------------------------------------- |
@@ -126,7 +126,7 @@ This keeps the initial workspace state coherent while still allowing the deeper 
 
 ## Request Trust Model
 
-The current frontend no longer depends on a SvelteKit API proxy route layer for normal product traffic.
+The frontend does not depend on a SvelteKit API proxy route layer for normal product traffic.
 
 - Browser and Tauri clients call the Rust backend directly using `VITE_API_BASE`.
 - Signed-in direct requests send `Authorization: Bearer <firebase-id-token>`.

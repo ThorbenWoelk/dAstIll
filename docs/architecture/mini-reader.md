@@ -27,7 +27,7 @@ There is no `isDesktop` flag, no `matchMedia` subscription, no branch that rende
 
 - `.mini-main` flips from `flex-direction: column` (strip on top, pane below) to `flex-direction: row` (strip on left, pane on right).
 - `MiniSummaryStrip` flips from a horizontal card rail to a vertical sidebar - `flex-direction: column`, vertical overflow, full-width cards, a right-edge hairline.
-- `MiniBottomBar` sets `display: none`. Its intents are covered by keyboard shortcuts (arrows / `j` / `k` / `r`), by clicking items in the now-visible rail, and by the channel picker that lives in the top bar on desktop.
+- `MiniBottomBar` sets `display: none`. Its intents are covered by keyboard shortcuts (arrows / `j` / `k` / `r`), by clicking items in the visible rail, and by the channel picker that lives in the top bar on desktop.
 - `MiniChannelSheet` repositions from a bottom-anchored sheet to a centered modal (same markup, same logic, different `align-items` + `border-radius` + animation).
 - `MiniTopBar` reveals a channel trigger that was always in the DOM but `display: none` on mobile.
 - `MiniArticle` widens its max-width and drops the bottom padding that previously reserved space for the fixed mobile bar.

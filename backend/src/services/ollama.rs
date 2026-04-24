@@ -13,7 +13,10 @@ use tokio::time::timeout;
 use tracing::Instrument;
 
 use crate::models::AiStatus;
-use crate::services::http::{CloudCooldown, build_http_client, is_cloud_model, is_rate_limited};
+use crate::services::http::{
+    CloudCooldown, build_http_client, is_cloud_model, is_provider_capacity_limited_message,
+    is_rate_limited,
+};
 
 pub const CLOUD_PROMPT_TIMEOUT_SECS: u64 = 300;
 
@@ -168,6 +171,10 @@ impl OllamaCore {
         self.uses_cloud_model() && self.cloud_cooldown().is_some_and(|cd| cd.is_active())
     }
 
+    pub fn defers_without_fallback_during_cloud_cooldown(&self) -> bool {
+        self.is_cloud_cooldown_active() && self.fallback_model().is_none()
+    }
+
     pub fn activate_cloud_cooldown(&self) {
         if self.uses_cloud_model() {
             if let Some(cooldown) = self.cloud_cooldown() {
@@ -279,10 +286,7 @@ impl OllamaCore {
                     match policy {
                         CooldownStatusPolicy::UseLocalFallback => {
                             let fallback = self.fallback_model().ok_or_else(|| {
-                                OllamaPromptError::GenerationFailed(
-                                    "cloud cooldown active and no fallback model configured"
-                                        .to_string(),
-                                )
+                                OllamaPromptError::NotAvailable
                             })?;
                             tracing::info!(
                                 operation = operation,
@@ -471,10 +475,7 @@ impl OllamaCore {
                     match policy {
                         CooldownStatusPolicy::UseLocalFallback => {
                             let fallback = self.fallback_model().ok_or_else(|| {
-                                OllamaPromptError::GenerationFailed(
-                                    "cloud cooldown active and no fallback model configured"
-                                        .to_string(),
-                                )
+                                OllamaPromptError::NotAvailable
                             })?;
                             tracing::info!(
                                 operation = operation,
@@ -623,7 +624,9 @@ impl OllamaCore {
             .map_err(|error| OllamaGenerateCallError::Failed(error.to_string()))?;
         if !status.is_success() {
             let message = format!("Ollama generate request failed ({status}): {body}");
-            if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            if status == reqwest::StatusCode::TOO_MANY_REQUESTS
+                || is_provider_capacity_limited_message(&message)
+            {
                 return Err(OllamaGenerateCallError::RateLimited(message));
             }
             return Err(OllamaGenerateCallError::Failed(message));
@@ -651,6 +654,7 @@ fn parse_structured_response<T: DeserializeOwned>(response: &str) -> Result<T, O
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
+    use std::time::Duration;
 
     use tokio::sync::Semaphore;
 
@@ -693,6 +697,28 @@ mod tests {
         assert!(core.ollama_semaphore().is_some());
         assert_eq!(core.base_url(), "http://localhost:11434");
         assert_eq!(core.model(), "qwen3-coder:30b");
+    }
+
+    #[test]
+    fn cloud_cooldown_defers_without_fallback_model() {
+        let cooldown = Arc::new(Cooldown::cloud_with_duration(Duration::from_secs(60)));
+        let core = OllamaCore::new("http://localhost:11434", "glm-5.1:cloud")
+            .with_cloud_cooldown(cooldown.clone());
+
+        assert!(!core.defers_without_fallback_during_cloud_cooldown());
+        cooldown.activate();
+        assert!(core.defers_without_fallback_during_cloud_cooldown());
+    }
+
+    #[test]
+    fn cloud_cooldown_does_not_defer_when_fallback_model_exists() {
+        let cooldown = Arc::new(Cooldown::cloud_with_duration(Duration::from_secs(60)));
+        cooldown.activate();
+        let core = OllamaCore::new("http://localhost:11434", "glm-5.1:cloud")
+            .with_fallback_model(Some("qwen3-coder:8b".to_string()))
+            .with_cloud_cooldown(cooldown);
+
+        assert!(!core.defers_without_fallback_during_cloud_cooldown());
     }
 
     #[test]

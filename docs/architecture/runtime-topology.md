@@ -84,7 +84,7 @@ Only the backend process owns durable state changes and worker execution.
 At startup the backend:
 
 ```text
-1. Loads shell env first, then `~/.config/dastill/backend.env`, then `backend/.env` if present
+1. Loads env with this precedence: shell, then `backend/.env`, then `~/.config/dastill/backend.env`
 2. Configures AWS SDK with local credentials or GCP Workload Identity Federation
 3. Connects to S3 data bucket and S3 Vectors bucket
 4. Initializes the mixed S3 / S3 Vectors / local libSQL store layer

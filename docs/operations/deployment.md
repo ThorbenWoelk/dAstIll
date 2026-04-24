@@ -1,10 +1,11 @@
 # Deployment and Operations
 
-## Current Production Shape
+## Production Shape
 
-The repository now runs one runtime service and two static Hosting targets:
+The repository runs one primary runtime service, one optional ASR runtime service, and two static Hosting targets:
 
 - backend on Cloud Run
+- podcast ASR on Cloud Run when `LOCAL_ASR_ENABLED=true`
 - product frontend on Firebase Hosting
 - docs frontend on Firebase Hosting
 
@@ -31,7 +32,7 @@ The backend runs on Cloud Run but accesses AWS S3 and S3 Vectors. Authentication
 3. Backend exchanges GCP identity token for AWS temporary credentials
 4. All S3/S3 Vectors requests use the AWS credentials
 
-Local development uses standard AWS credentials (`~/.aws/credentials` or environment).
+Local development uses the shared machine-local AWS credentials files documented in [Local Development](/operations/local-development), with inline environment credentials as a fallback.
 
 Terraform in GitHub Actions uses a separate AWS trust path:
 
@@ -68,7 +69,7 @@ Use this flow when provisioning a new project, filling a newly created secret co
 2. Add the secret payload as a new Secret Manager version.
 3. Redeploy the surfaces that consume that secret.
 
-One bootstrap edge still exists: the first creation of the AWS GitHub OIDC provider and Terraform role must happen from an already authenticated AWS context, because GitHub Actions cannot assume a role that does not exist yet. After that first apply, CI owns the recurring Terraform path.
+Bootstrap edge: the first creation of the AWS GitHub OIDC provider and Terraform role must happen from an already authenticated AWS context, because GitHub Actions cannot assume a role that does not exist yet. After that first apply, CI owns the recurring Terraform path.
 
 Example shape:
 
@@ -79,7 +80,7 @@ printf '%s' "$YOUTUBE_API_KEY" | \
     --data-file=-
 ```
 
-Backend/runtime secrets currently expected by infra and release workflows:
+Backend/runtime secrets expected by infra and release workflows:
 
 - `dastill-youtube-api-key`
 - `dastill-openalex-api-key`
@@ -108,7 +109,7 @@ When retiring a secret:
 5. Update this document and any runbooks that still mention the secret.
 6. Apply Terraform so the managed secret container is destroyed or the IaC state matches the new desired posture.
 
-If you need a safer staged retirement, first remove all consumers but keep the Terraform resource with a short `deprecated` comment for one release cycle, then delete the resource in a follow-up Terraform change. Still IaC. No console-only cleanup.
+If you need a safer staged retirement, first remove all consumers but keep the Terraform resource with a short `deprecated` comment for one release cycle, then delete the resource in a follow-up Terraform change. Keep the source of truth in IaC.
 
 Non-secret backend runtime config is passed as plain env values for:
 
@@ -116,6 +117,8 @@ Non-secret backend runtime config is passed as plain env values for:
 - `S3_DATA_BUCKET`
 - `S3_VECTOR_BUCKET`
 - `S3_VECTOR_INDEX`
+- `SEARCH_SEMANTIC_ENABLED`
+- `SEARCH_AUTO_CREATE_VECTOR_INDEX`
 - `DEFAULT_SEEDED_CHANNEL_IDS`
 - `AWS_ROLE_ARN` (production only)
 - `AWS_WIF_AUDIENCE` (production only)
@@ -124,11 +127,18 @@ Non-secret backend runtime config is passed as plain env values for:
 - `OLLAMA_FALLBACK_MODEL`
 - `OLLAMA_DEFAULT_CHAT_MODEL`
 - `OLLAMA_EMBEDDING_MODEL`
+- `SEARCH_HYDE_MODEL`
+- `SEARCH_RERANK_MODEL`
 - `SUMMARY_EVALUATOR_MODEL`
+- `CHAT_MULTI_PASS_ENABLED`
+- `CHAT_GUARDRAIL_MODEL`
+- `CHAT_PROMPT_BLOCKLIST`
+- `CHAT_PROMPT_ALLOWLIST`
 - `DATABRICKS_HOST` (when Databricks ingestion is enabled)
 - `DATABRICKS_WAREHOUSE_ID` (when Databricks ingestion is enabled)
 - `DATABRICKS_CATALOG` (when Databricks ingestion is enabled)
 - `DATABRICKS_SCHEMA` (when Databricks ingestion is enabled)
+- `DATABRICKS_BRONZE_TABLE` (when Databricks ingestion is enabled)
 - `SUMMARIZE_PATH`
 - `LOCAL_ASR_ENABLED`
 - `LOCAL_ASR_BASE_URL`

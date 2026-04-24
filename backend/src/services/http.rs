@@ -2,7 +2,7 @@ use reqwest::{Client, ClientBuilder};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-const CLOUD_COOLDOWN_DURATION: Duration = Duration::from_secs(3600);
+pub const DEFAULT_CLOUD_COOLDOWN_DURATION: Duration = Duration::from_secs(5 * 24 * 3600);
 const YOUTUBE_QUOTA_COOLDOWN_DURATION: Duration = Duration::from_secs(24 * 3600);
 const TRANSCRIPT_COOLDOWN_DURATION: Duration = Duration::from_secs(60 * 60);
 const DEFAULT_USER_IDLE_TIMEOUT: Duration = Duration::from_secs(15 * 60);
@@ -25,7 +25,11 @@ impl Cooldown {
     }
 
     pub fn cloud() -> Self {
-        Self::new(CLOUD_COOLDOWN_DURATION, "cloud model")
+        Self::cloud_with_duration(DEFAULT_CLOUD_COOLDOWN_DURATION)
+    }
+
+    pub fn cloud_with_duration(duration: Duration) -> Self {
+        Self::new(duration, "cloud model")
     }
 
     pub fn youtube_quota() -> Self {
@@ -127,10 +131,25 @@ pub fn build_http_client() -> Client {
         .expect("http client build")
 }
 
-/// Detect rate-limit (HTTP 429) errors from the rig completion error chain.
+/// Detect provider capacity failures from HTTP status text and provider messages.
+///
+/// Ollama Cloud can return subscription-capacity failures as 403 responses.
+/// Those should follow the same retry path as 429 provider throttling.
+pub fn is_provider_capacity_limited_message(message: &str) -> bool {
+    let msg = message.to_ascii_lowercase();
+    (msg.contains("429") && msg.contains("too many requests"))
+        || msg.contains("rate limited")
+        || msg.contains("rate limit exceeded")
+        || msg.contains("cloud cooldown active")
+        || msg.contains("requires a subscription")
+        || msg.contains("subscription limit")
+        || msg.contains("quota exceeded")
+        || msg.contains("usage limit")
+}
+
+/// Detect provider capacity errors from the rig completion error chain.
 pub fn is_rate_limited(err: &rig::completion::PromptError) -> bool {
-    let msg = err.to_string();
-    msg.contains("429") && msg.contains("Too Many Requests")
+    is_provider_capacity_limited_message(&err.to_string())
 }
 
 /// Helper to check if a model is "cloud".
@@ -141,12 +160,34 @@ pub fn is_cloud_model(model: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::is_cloud_model;
+    use super::{is_cloud_model, is_provider_capacity_limited_message};
 
     #[test]
     fn detects_cloud_models_with_colon_or_hyphen_suffixes() {
         assert!(is_cloud_model("minimax-m2.5:cloud"));
         assert!(is_cloud_model("qwen3.5:397b-cloud"));
         assert!(!is_cloud_model("qwen3:8b"));
+    }
+
+    #[test]
+    fn detects_provider_capacity_messages() {
+        assert!(is_provider_capacity_limited_message(
+            "HttpError: Invalid status code 429 Too Many Requests"
+        ));
+        assert!(is_provider_capacity_limited_message(
+            r#"HttpError: Invalid status code 403 Forbidden with message: {"error":"this model requires a subscription, upgrade for access"}"#
+        ));
+        assert!(is_provider_capacity_limited_message(
+            "subscription limit reached"
+        ));
+        assert!(is_provider_capacity_limited_message(
+            "cloud cooldown active and no fallback model configured"
+        ));
+        assert!(is_provider_capacity_limited_message(
+            "you have reached your weekly usage limit"
+        ));
+        assert!(!is_provider_capacity_limited_message(
+            "HttpError: Invalid status code 403 Forbidden with message: unauthorized"
+        ));
     }
 }

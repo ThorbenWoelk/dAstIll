@@ -1,5 +1,6 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::{
     Router, middleware,
@@ -239,7 +240,9 @@ async fn main() -> anyhow::Result<()> {
     let client = build_http_client();
     let analytics = databricks_runtime
         .map(|config| Arc::new(DatabricksSqlService::new(client.clone(), config)));
-    let cloud_cooldown = Arc::new(Cooldown::cloud());
+    let cloud_cooldown = Arc::new(Cooldown::cloud_with_duration(Duration::from_secs(
+        ollama.cloud_cooldown_secs,
+    )));
     let youtube_quota_cooldown = Arc::new(Cooldown::youtube_quota());
     let transcript_cooldown = Arc::new(Cooldown::transcript());
 

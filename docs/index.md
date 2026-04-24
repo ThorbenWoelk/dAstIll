@@ -17,7 +17,7 @@ dAstIll tracks supported sources for you and provides distraction-free AI summar
 - **Summary audio**: Generate spoken playback for ready summaries when Polly TTS is enabled
 - **Hybrid search**: Full-text and semantic search across transcripts and summaries with context-aware chunking
 
-**Current supported add-source inputs:**
+**Supported add-source inputs:**
 
 - YouTube handles and channel URLs
 - `openalex: <query>`

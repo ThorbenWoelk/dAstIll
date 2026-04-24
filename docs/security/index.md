@@ -34,7 +34,7 @@ For the detailed done-versus-open breakdown, see [OWASP ASI Status](/security/ow
 ### ASI01 / ASI06 - Goal hijack and memory/context poisoning
 
 - Chat answers are grounded in retrieved excerpts, tool outputs, and visible conversation history.
-- Prompting now explicitly treats excerpts, summaries, transcripts, highlights, and tool outputs as **untrusted data**, not instructions.
+- Prompting explicitly treats excerpts, summaries, transcripts, highlights, and tool outputs as **untrusted data**, not instructions.
 - Anonymous persistent chat is not used. Signed-out chat stays on the ephemeral path, which narrows cross-user state exposure.
 - Chat prompt size and conversation payload size are bounded, which reduces stale or hostile context accumulation in both client-supplied and persisted chat history.
 
@@ -48,7 +48,7 @@ For the detailed done-versus-open breakdown, see [OWASP ASI Status](/security/ow
 
 - The backend accepts two first-party auth modes: trusted proxy headers behind `x-dastill-proxy-auth`, or direct Firebase bearer-token validation from browser and Tauri clients.
 - Backend route handlers always derive request identity into `AccessContext` before scoping channel, video, search, and chat access.
-- Chat retrieval and chat-internal tools are now constrained to the caller's accessible library scope.
+- Chat retrieval and chat-internal tools are constrained to the caller's accessible library scope.
 - Global `db_inspect` is treated as authenticated-only.
 
 ### ASI08 - Cascading failures
@@ -56,7 +56,7 @@ For the detailed done-versus-open breakdown, see [OWASP ASI Status](/security/ow
 - Expensive routes have explicit rate-limit hooks.
 - Anonymous chat has a persisted quota.
 - Tool loops and retrieval passes have bounded step/query budgets.
-- Chat turns now enforce per-message and per-conversation size ceilings, and persistent conversations drop the oldest stored messages when they hit storage bounds.
+- Chat turns enforce per-message and per-conversation size ceilings, and persistent conversations drop the oldest stored messages when they hit storage bounds.
 
 ### ASI09 - Human-agent trust exploitation
 
@@ -70,7 +70,7 @@ For the detailed done-versus-open breakdown, see [OWASP ASI Status](/security/ow
 ### Repo and secret hygiene
 
 - Production secrets belong in GCP Secret Manager and are provisioned through Terraform.
-- The repo now fails validation when forbidden tracked artifacts such as service-account keys, WIF tokens, or Terraform plan/state files are present.
+- Repo validation fails when forbidden tracked artifacts such as service-account keys, WIF tokens, or Terraform plan/state files are present.
 
 ## Known Gaps
 

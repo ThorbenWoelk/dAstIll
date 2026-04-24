@@ -390,7 +390,7 @@ directly without fusion.
 
 ## Retrieval Modes (Status Surface)
 
-The runtime status reports which retrieval mode is currently active for hybrid search:
+The runtime status reports the active retrieval mode for hybrid search:
 
 | Status mode    | Condition                                                  |
 | -------------- | ---------------------------------------------------------- |

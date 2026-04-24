@@ -90,7 +90,7 @@ pub fn spawn_queue_worker(state: AppState) {
                         continue;
                     }
                 };
-                let had_activity = !queue.is_empty();
+                let mut had_activity = false;
 
                 for video in queue {
                     let task = next_queue_task(&video);
@@ -99,6 +99,14 @@ pub fn spawn_queue_worker(state: AppState) {
                     if task == QueueTask::Transcript && state.transcript_cooldown.is_active() {
                         continue;
                     }
+                    if task == QueueTask::Summary
+                        && state
+                            .summarizer
+                            .defers_without_fallback_during_cloud_cooldown()
+                    {
+                        continue;
+                    }
+                    had_activity = true;
 
                     let task_name = match task {
                         QueueTask::Transcript => "transcript",

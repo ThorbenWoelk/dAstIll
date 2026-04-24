@@ -7,6 +7,7 @@ use tokio::time::{Instant as TokioInstant, timeout};
 use tracing::Instrument;
 
 use crate::models::{AiStatus, VocabularyReplacement};
+use crate::services::http::is_provider_capacity_limited_message;
 use crate::services::ollama::{
     CLOUD_PROMPT_TIMEOUT_SECS, CooldownStatusPolicy, OllamaCore, OllamaPromptError,
 };
@@ -60,8 +61,7 @@ pub enum SummarizerError {
 
 impl SummarizerError {
     pub fn is_rate_limited(&self) -> bool {
-        let msg = self.to_string();
-        msg.contains("rate limited") || msg.contains("429")
+        is_provider_capacity_limited_message(&self.to_string())
     }
 }
 
@@ -103,6 +103,10 @@ impl SummarizerService {
             endpoint_available,
             CooldownStatusPolicy::UseLocalFallback,
         )
+    }
+
+    pub fn defers_without_fallback_during_cloud_cooldown(&self) -> bool {
+        self.core.defers_without_fallback_during_cloud_cooldown()
     }
 
     /// Generate a summary from transcript text.

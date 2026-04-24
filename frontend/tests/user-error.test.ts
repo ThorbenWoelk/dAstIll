@@ -24,6 +24,14 @@ describe("normalizeUserErrorMessage", () => {
     );
   });
 
+  it("rewrites AI subscription capacity errors", () => {
+    expect(
+      normalizeUserErrorMessage("this model requires a subscription", {
+        status: 403,
+      }),
+    ).toBe("AI is temporarily unavailable. Please try again later.");
+  });
+
   it("uses status-based fallback for generic request errors", () => {
     expect(
       normalizeUserErrorMessage("Request failed (500)", { status: 500 }),

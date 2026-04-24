@@ -88,7 +88,7 @@ Some API payloads intentionally merge canonical and user-scoped records:
 - `Channel` responses combine canonical channel metadata with the caller's
   `user-channel-subscriptions/{user_id}/{channel_id}.json` record.
 - `Video` responses combine the canonical `libSQL`-backed `videos` row with the caller's
-  `user-video-states/{user_id}/{video_id}.json` overlay, which currently carries
+  `user-video-states/{user_id}/{video_id}.json` overlay, which carries
   `acknowledged`.
 - Anonymous requests do not persist these user-scoped records. They operate against the
   seeded default channel scope exposed by `AccessContext`.
