@@ -44,7 +44,7 @@ use crate::models::{
 };
 use crate::services::ollama::OllamaCore;
 use crate::services::search::SearchCandidate;
-use crate::services::text::limit_text;
+use crate::services::text::{limit_text, strip_emoji};
 use crate::state::{ActiveChatKey, AppState};
 
 use super::chat::recent::{

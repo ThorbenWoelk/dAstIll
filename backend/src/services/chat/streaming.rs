@@ -290,13 +290,12 @@ impl ChatService {
                                     .map(|message| message.content.as_str())
                                     .filter(|value| !value.is_empty())
                                 {
-                                    content.push_str(token);
-                                    token_event_count += 1;
-                                    active_chat
-                                        .emit(ChatStreamEvent::Token {
-                                            token: token.to_string(),
-                                        })
-                                        .await;
+                                    let token = strip_emoji(token);
+                                    if !token.is_empty() {
+                                        content.push_str(&token);
+                                        token_event_count += 1;
+                                        active_chat.emit(ChatStreamEvent::Token { token }).await;
+                                    }
                                 }
                                 if payload.done {
                                     let content = content.trim().to_string();
@@ -331,13 +330,12 @@ impl ChatService {
                         .map(|message| message.content.as_str())
                         .filter(|value| !value.is_empty())
                     {
-                        content.push_str(token);
-                        token_event_count += 1;
-                        active_chat
-                            .emit(ChatStreamEvent::Token {
-                                token: token.to_string(),
-                            })
-                            .await;
+                        let token = strip_emoji(token);
+                        if !token.is_empty() {
+                            content.push_str(&token);
+                            token_event_count += 1;
+                            active_chat.emit(ChatStreamEvent::Token { token }).await;
+                        }
                     }
                     let tail_stats = if payload.done {
                         Some(OllamaStreamStats {

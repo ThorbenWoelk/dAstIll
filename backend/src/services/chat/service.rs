@@ -82,6 +82,7 @@ impl ChatService {
         generation: Option<GenerationMeta>,
         turn_trace: Option<crate::models::ChatTurnTrace>,
     ) -> ChatMessage {
+        let content = strip_emoji(&content);
         ChatMessage {
             id: generate_chat_id("msg"),
             role: ChatRole::Assistant,
@@ -163,5 +164,24 @@ impl ChatService {
                 )
                 .await;
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn assistant_messages_strip_emojis() {
+        let service = ChatService::new(OllamaCore::new("http://localhost:11434", "test-model"));
+
+        let message = service.build_assistant_message(
+            "Done ✅ with evidence.[1]".to_string(),
+            Vec::new(),
+            ChatMessageStatus::Completed,
+            None,
+        );
+
+        assert_eq!(message.content, "Done  with evidence.[1]");
     }
 }
