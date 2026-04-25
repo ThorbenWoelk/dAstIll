@@ -3631,6 +3631,71 @@
           </p>
         </div>
       </section>
+
+      <section class="slide" data-title="User Content Isolation">
+        <div class="slide-inner">
+          <p class="kicker">dAstIll architecture - access boundary</p>
+          <h2>
+            User-specific content isolation is enforced at storage and retrieval
+            time.
+          </h2>
+          <table>
+            <tr>
+              <th>Layer</th>
+              <th>How isolation works</th>
+              <th>Where it is used</th>
+            </tr>
+            <tr>
+              <td>User-owned records</td>
+              <td>
+                S3 keys carry the authenticated user id:
+                <code>user-channel-subscriptions/{user_id}/</code>,
+                <code>user-video-memberships/{user_id}/</code>,
+                <code>user-video-states/{user_id}/</code>, and
+                <code>user-conversations/{user_id}/</code>.
+              </td>
+              <td>Library membership, read state, highlights, chat history.</td>
+            </tr>
+            <tr>
+              <td>Request scope</td>
+              <td>
+                Middleware builds an <code>AccessContext</code> with allowed
+                channel ids and explicit "Other" video ids. Anonymous sessions
+                receive only the seeded default channel scope.
+              </td>
+              <td>Every search and chat request.</td>
+            </tr>
+            <tr>
+              <td>Search projection</td>
+              <td>
+                FTS and vector indexes hold derived chunks by video and channel.
+                Result candidates pass through <code>can_access_video</code>
+                before responses or model context are created.
+              </td>
+              <td>Workspace search, chat retrieval, direct video lookups.</td>
+            </tr>
+            <tr>
+              <td>RAG scope</td>
+              <td>
+                Chat prunes mention scopes, keyword batches, semantic batches,
+                and retrieved direct sources against the same
+                <code>AccessContext</code>.
+              </td>
+              <td>The model sees only sources the caller can open.</td>
+            </tr>
+          </table>
+          <p class="source">
+            Sources: <code>docs/architecture/data-model.md:167-226</code>,
+            <code>backend/src/security.rs:51-70</code>,
+            <code>backend/src/security.rs:218-392</code>,
+            <code>backend/src/db/user_scope.rs:9-35</code>,
+            <code>backend/src/handlers/search/mod.rs:189-256</code>,
+            <code>backend/src/services/chat/helpers.rs:188-250</code>,
+            <code>backend/src/services/chat/retrieval.rs:501-558</code>.
+          </p>
+        </div>
+      </section>
+
       <section class="slide" data-title="Chat Runtime Budgets">
         <div class="slide-inner">
           <p class="kicker">dAstIll architecture - chat budgets</p>
@@ -3692,7 +3757,7 @@ active_chat
     })
     .await;</code></pre>
           <p class="source">
-            Source: <code>backend/src/services/chat/retrieval.rs:392-405</code>.
+            Source: <code>backend/src/services/chat/retrieval.rs:416-427</code>.
             Chat uses both keyword and semantic batches, then emits selected
             sources before final generation.
           </p>
@@ -4199,9 +4264,21 @@ active_chat
               <td>
                 <code>docs/pipelines/ai-models.md</code>;
                 <code>backend/src/services/chat/retrieval.rs</code>;
+                <code>backend/src/services/chat/helpers.rs</code>;
                 <code>backend/src/services/chat/tool_loop.rs</code>;
                 <code>backend/src/services/chat/constants.rs</code>;
                 <code>backend/src/services/chat/status.rs</code>
+              </td>
+            </tr>
+            <tr>
+              <td>User-specific content isolation</td>
+              <td>
+                <code>docs/architecture/data-model.md</code>;
+                <code>backend/src/security.rs</code>;
+                <code>backend/src/db/user_scope.rs</code>;
+                <code>backend/src/handlers/search/mod.rs</code>;
+                <code>backend/src/services/chat/helpers.rs</code>;
+                <code>backend/src/services/chat/retrieval.rs</code>
               </td>
             </tr>
             <tr>
@@ -4260,7 +4337,7 @@ active_chat
             <option value="Source Map App">Source map</option>
           </select>
         </div>
-        <div class="counter" id="counter">1 / 66</div>
+        <div class="counter" id="counter">1 / 58</div>
         <div class="progress" aria-hidden="true">
           <span id="progress"></span>
         </div>
