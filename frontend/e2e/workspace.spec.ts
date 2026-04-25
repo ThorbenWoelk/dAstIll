@@ -1,10 +1,16 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { PLAYWRIGHT_MAINTENANCE_MODE } from "./runtime-mode";
 import { openFreshGuestPage } from "./test-helpers";
 import {
   buildMockWorkspaceBootstrap,
   installMockWorkspaceApi,
   navigateViaInjectedLink,
 } from "./workspace-mock-api";
+
+test.skip(
+  PLAYWRIGHT_MAINTENANCE_MODE,
+  "Workspace home E2E assertions are replaced by maintenance-page assertions when the repo runtime mode is maintenance.",
+);
 
 const READY_MS = 120_000;
 

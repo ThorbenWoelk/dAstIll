@@ -1,7 +1,13 @@
 import { expect, test, devices } from "@playwright/test";
+import { PLAYWRIGHT_MAINTENANCE_MODE } from "./runtime-mode";
 import { resetClientState } from "./test-helpers";
 
 test.use({ ...devices["iPhone 13"] });
+
+test.skip(
+  PLAYWRIGHT_MAINTENANCE_MODE,
+  "Mobile workspace text-selection assertions do not apply when the home route is in maintenance mode.",
+);
 
 test.beforeEach(async ({ page }) => {
   await resetClientState(page);

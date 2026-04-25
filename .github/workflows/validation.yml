@@ -40,7 +40,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          mode="$(sed -n 's/^APP_RUNTIME_MODE=//p' .github/runtime-mode.env | tail -n 1 | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+          mode="$(node ./scripts/resolve-runtime-mode.mjs .github/runtime-mode.env)"
           if [ -z "$mode" ]; then
             mode="live"
           fi

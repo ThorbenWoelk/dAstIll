@@ -1,4 +1,5 @@
 import { devices, expect, test } from "@playwright/test";
+import { PLAYWRIGHT_MAINTENANCE_MODE } from "./runtime-mode";
 
 import { resetClientState } from "./test-helpers";
 import {
@@ -6,6 +7,11 @@ import {
   installMockWorkspaceApi,
   navigateViaInjectedLink,
 } from "./workspace-mock-api";
+
+test.skip(
+  PLAYWRIGHT_MAINTENANCE_MODE,
+  "Mobile workspace-home assertions are replaced by maintenance-page assertions when the repo runtime mode is maintenance.",
+);
 
 test.use({ ...devices["iPhone 13"] });
 

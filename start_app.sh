@@ -53,7 +53,7 @@ case "${LOCAL_APP_MAINTENANCE_MODE:-0}" in
 esac
 
 if [[ -f "$runtime_mode_file" ]]; then
-	runtime_mode=$(sed -n 's/^APP_RUNTIME_MODE=//p' "$runtime_mode_file" | tail -n 1 | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+	runtime_mode=$(bun "${repo_root}/scripts/resolve-runtime-mode.mjs" "$runtime_mode_file")
 	if [[ "$runtime_mode" == "maintenance" ]]; then
 		workflow_maintenance_mode=1
 	fi
