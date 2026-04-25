@@ -36,6 +36,20 @@
     if (activeSummaryRead || markingRead) return;
     await onMarkReadAndAdvance();
   }
+
+  $effect(() => {
+    if (typeof document === "undefined") return;
+    document.documentElement.style.setProperty(
+      "--mobile-tab-bar-height",
+      "calc(52px + env(safe-area-inset-bottom, 0px))",
+    );
+    return () => {
+      document.documentElement.style.setProperty(
+        "--mobile-tab-bar-height",
+        "0px",
+      );
+    };
+  });
 </script>
 
 <nav class="bottom-bar" aria-label="Reader navigation">

@@ -636,7 +636,7 @@
         <div
           role="group"
           aria-label="Text selection actions"
-          class="text-action-toolbar fixed bottom-[calc(var(--mobile-bottom-stack-height)+1.5rem)] left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-2xl px-2 py-2 shadow-2xl"
+          class="text-action-toolbar fixed bottom-[calc(var(--mobile-bottom-stack-height)+1.5rem)] left-1/2 z-[70] flex -translate-x-1/2 items-center gap-2 rounded-2xl px-2 py-2 shadow-2xl"
           onpointerdown={(event) => {
             event.preventDefault();
             event.stopPropagation();
