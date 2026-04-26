@@ -1,0 +1,770 @@
+{
+  "generated_at_utc": "2026-04-23T15:28:23.268803+00:00",
+  "base_url": "http://localhost:3544",
+  "dataset_path": "/Users/thorben.woelk/repos/dAstIll/backend/tests/data/chat_capability_prompts.json",
+  "prompt_count": 6,
+  "summary": {
+    "total_prompts": 6,
+    "passed_prompts": 6,
+    "answerability_passed": 6,
+    "grounding_passed": 6,
+    "shape_passed": 6,
+    "average_score": 3.0,
+    "prompts_without_sources": [
+      "q062",
+      "q063",
+      "q064",
+      "q065",
+      "q070",
+      "q071"
+    ],
+    "single_video_prompts": [],
+    "failure_counts": {},
+    "by_capability_class": [
+      {
+        "capability_class": "highlight_lookup",
+        "total": 6,
+        "passed": 6,
+        "answerability_passed": 6,
+        "grounding_passed": 6,
+        "shape_passed": 6,
+        "average_score": 3.0,
+        "common_failure_classes": []
+      }
+    ]
+  },
+  "results": [
+    {
+      "prompt_id": "q062",
+      "prompt": "What highlights have I saved from this video?",
+      "capability_class": "highlight_lookup",
+      "answerability_expected": "yes",
+      "conversation_id": "conv_1776958078467_1",
+      "status": "completed",
+      "assistant_content": "Retrieved tool evidence for: +{Open source is dead now?} What highlights have I saved from this video?\n\nThe answer model is unavailable, so this fallback returns the grounded tool results directly.\n\n1. Look up saved highlights for videos matching \"Open source is dead now?\":\nNo saved highlights matched videos matching \"Open source is dead now?\".",
+      "source_count": 0,
+      "source_videos": [],
+      "source_channels": [],
+      "used_search_tool": false,
+      "used_db_tool": false,
+      "used_conversation_only": false,
+      "status_trace": [
+        {
+          "received_at_ms": 0,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Preparing chat plan",
+            "detail": "Resolving scope and deciding whether to answer directly or gather evidence.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 286,
+          "payload": {
+            "stage": "tool",
+            "label": "Running saved highlights lookup",
+            "detail": "Looking up saved highlights.",
+            "decision": "This asks about saved highlights, so the saved-highlights lookup ran before broader planning.",
+            "plan": null,
+            "tool": {
+              "name": "highlight_lookup",
+              "label": "Saved highlights lookup",
+              "state": "running",
+              "input": "Look up saved highlights in videos matching \"Open source is dead now?\" (limit 8)",
+              "output": null
+            }
+          }
+        },
+        {
+          "received_at_ms": 316,
+          "payload": {
+            "stage": "tool_complete",
+            "label": "Saved highlights lookup complete",
+            "detail": "No saved highlights matched videos matching \"Open source is dead now?\".",
+            "decision": null,
+            "plan": null,
+            "tool": {
+              "name": "highlight_lookup",
+              "label": "Saved highlights lookup",
+              "state": "completed",
+              "input": "Look up saved highlights for videos matching \"Open source is dead now?\"",
+              "output": "No saved highlights matched videos matching \"Open source is dead now?\"."
+            }
+          }
+        },
+        {
+          "received_at_ms": 316,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Planning next step",
+            "detail": "Choosing whether to answer now or call a tool (step 1/4).",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 316,
+          "payload": {
+            "stage": "generating",
+            "label": "Answering from gathered evidence",
+            "detail": "Composing the final answer from 1 tool result and 0 excerpts.",
+            "decision": "Tool planner unavailable after gathering evidence.",
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 2939,
+          "payload": {
+            "stage": "generating_fallback",
+            "label": "Answer model unavailable",
+            "detail": "Returning the grounded tool output instead.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        }
+      ],
+      "tool_calls": [
+        {
+          "name": "highlight_lookup",
+          "label": "Saved highlights lookup",
+          "state": "completed",
+          "input": "Look up saved highlights for videos matching \"Open source is dead now?\"",
+          "output": "No saved highlights matched videos matching \"Open source is dead now?\"."
+        },
+        {
+          "name": "highlight_lookup",
+          "label": "Saved highlights lookup",
+          "state": "running",
+          "input": "Look up saved highlights in videos matching \"Open source is dead now?\" (limit 8)",
+          "output": null
+        }
+      ],
+      "latency_ms_total": 5064,
+      "latency_ms_retrieval": 316,
+      "latency_ms_generation": 2623,
+      "rubric_answerability_pass": true,
+      "rubric_grounding_pass": true,
+      "rubric_shape_pass": true,
+      "rubric_capability_score": 3,
+      "failure_class": null,
+      "notes": [],
+      "raw_error": null,
+      "raw_sse": "event: status\ndata: {\"detail\":\"Resolving scope and deciding whether to answer directly or gather evidence.\",\"label\":\"Preparing chat plan\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"decision\":\"This asks about saved highlights, so the saved-highlights lookup ran before broader planning.\",\"detail\":\"Looking up saved highlights.\",\"label\":\"Running saved highlights lookup\",\"stage\":\"tool\",\"tool\":{\"input\":\"Look up saved highlights in videos matching \\\"Open source is dead now?\\\" (limit 8)\",\"label\":\"Saved highlights lookup\",\"name\":\"highlight_lookup\",\"state\":\"running\"}}\n\nevent: status\ndata: {\"detail\":\"No saved highlights matched videos matching \\\"Open source is dead now?\\\".\",\"label\":\"Saved highlights lookup complete\",\"stage\":\"tool_complete\",\"tool\":{\"input\":\"Look up saved highlights for videos matching \\\"Open source is dead now?\\\"\",\"label\":\"Saved highlights lookup\",\"name\":\"highlight_lookup\",\"output\":\"No saved highlights matched videos matching \\\"Open source is dead now?\\\".\",\"state\":\"completed\"}}\n\nevent: status\ndata: {\"detail\":\"Choosing whether to answer now or call a tool (step 1/4).\",\"label\":\"Planning next step\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"decision\":\"Tool planner unavailable after gathering evidence.\",\"detail\":\"Composing the final answer from 1 tool result and 0 excerpts.\",\"label\":\"Answering from gathered evidence\",\"stage\":\"generating\"}\n\nevent: status\ndata: {\"detail\":\"Returning the grounded tool output instead.\",\"label\":\"Answer model unavailable\",\"stage\":\"generating_fallback\"}\n\nevent: done\ndata: {\"message\":{\"completion_tokens\":null,\"content\":\"Retrieved tool evidence for: +{Open source is dead now?} What highlights have I saved from this video?\\n\\nThe answer model is unavailable, so this fallback returns the grounded tool results directly.\\n\\n1. Look up saved highlights for videos matching \\\"Open source is dead now?\\\":\\nNo saved highlights matched videos matching \\\"Open source is dead now?\\\".\\n\",\"created_at\":\"2026-04-23T15:28:02.283649Z\",\"id\":\"msg_1776958082283_3\",\"model\":\"glm-5.1:cloud\",\"prompt_tokens\":null,\"role\":\"assistant\",\"sources\":[],\"status\":\"completed\",\"total_duration_ns\":null,\"turn_trace\":{\"budget\":{\"exhausted\":false,\"exhaustion_reason\":null,\"max_model_calls\":12,\"max_retrieval_passes\":3,\"max_tool_calls\":4,\"model_calls\":2,\"retrieval_passes\":0,\"tool_calls\":1},\"plan_intent\":null,\"plan_label\":null,\"retrieval\":null,\"strategy\":\"tool_loop\",\"tool_calls\":[{\"name\":\"highlight_lookup\",\"state\":\"completed\"}]}}}\n\n"
+    },
+    {
+      "prompt_id": "q063",
+      "prompt": "Show me all highlights related to search.",
+      "capability_class": "highlight_lookup",
+      "answerability_expected": "yes",
+      "conversation_id": "conv_1776958082772_4",
+      "status": "completed",
+      "assistant_content": "Retrieved tool evidence for: Show me all highlights related to search.\n\nThe answer model is unavailable, so this fallback returns the grounded tool results directly.\n\n1. Look up saved highlights for query \"search.\":\nNo saved highlights matched query \"search.\".",
+      "source_count": 0,
+      "source_videos": [],
+      "source_channels": [],
+      "used_search_tool": false,
+      "used_db_tool": false,
+      "used_conversation_only": false,
+      "status_trace": [
+        {
+          "received_at_ms": 0,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Preparing chat plan",
+            "detail": "Resolving scope and deciding whether to answer directly or gather evidence.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 226,
+          "payload": {
+            "stage": "tool",
+            "label": "Running saved highlights lookup",
+            "detail": "Looking up saved highlights.",
+            "decision": "This asks about saved highlights, so the saved-highlights lookup ran before broader planning.",
+            "plan": null,
+            "tool": {
+              "name": "highlight_lookup",
+              "label": "Saved highlights lookup",
+              "state": "running",
+              "input": "Look up saved highlights for query \"search.\" (limit 8)",
+              "output": null
+            }
+          }
+        },
+        {
+          "received_at_ms": 253,
+          "payload": {
+            "stage": "tool_complete",
+            "label": "Saved highlights lookup complete",
+            "detail": "No saved highlights matched query \"search.\".",
+            "decision": null,
+            "plan": null,
+            "tool": {
+              "name": "highlight_lookup",
+              "label": "Saved highlights lookup",
+              "state": "completed",
+              "input": "Look up saved highlights for query \"search.\"",
+              "output": "No saved highlights matched query \"search.\"."
+            }
+          }
+        },
+        {
+          "received_at_ms": 253,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Planning next step",
+            "detail": "Choosing whether to answer now or call a tool (step 1/4).",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 253,
+          "payload": {
+            "stage": "generating",
+            "label": "Answering from gathered evidence",
+            "detail": "Composing the final answer from 1 tool result and 0 excerpts.",
+            "decision": "Tool planner unavailable after gathering evidence.",
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 2863,
+          "payload": {
+            "stage": "generating_fallback",
+            "label": "Answer model unavailable",
+            "detail": "Returning the grounded tool output instead.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        }
+      ],
+      "tool_calls": [
+        {
+          "name": "highlight_lookup",
+          "label": "Saved highlights lookup",
+          "state": "completed",
+          "input": "Look up saved highlights for query \"search.\"",
+          "output": "No saved highlights matched query \"search.\"."
+        },
+        {
+          "name": "highlight_lookup",
+          "label": "Saved highlights lookup",
+          "state": "running",
+          "input": "Look up saved highlights for query \"search.\" (limit 8)",
+          "output": null
+        }
+      ],
+      "latency_ms_total": 4062,
+      "latency_ms_retrieval": 253,
+      "latency_ms_generation": 2610,
+      "rubric_answerability_pass": true,
+      "rubric_grounding_pass": true,
+      "rubric_shape_pass": true,
+      "rubric_capability_score": 3,
+      "failure_class": null,
+      "notes": [],
+      "raw_error": null,
+      "raw_sse": "event: status\ndata: {\"detail\":\"Resolving scope and deciding whether to answer directly or gather evidence.\",\"label\":\"Preparing chat plan\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"decision\":\"This asks about saved highlights, so the saved-highlights lookup ran before broader planning.\",\"detail\":\"Looking up saved highlights.\",\"label\":\"Running saved highlights lookup\",\"stage\":\"tool\",\"tool\":{\"input\":\"Look up saved highlights for query \\\"search.\\\" (limit 8)\",\"label\":\"Saved highlights lookup\",\"name\":\"highlight_lookup\",\"state\":\"running\"}}\n\nevent: status\ndata: {\"detail\":\"No saved highlights matched query \\\"search.\\\".\",\"label\":\"Saved highlights lookup complete\",\"stage\":\"tool_complete\",\"tool\":{\"input\":\"Look up saved highlights for query \\\"search.\\\"\",\"label\":\"Saved highlights lookup\",\"name\":\"highlight_lookup\",\"output\":\"No saved highlights matched query \\\"search.\\\".\",\"state\":\"completed\"}}\n\nevent: status\ndata: {\"detail\":\"Choosing whether to answer now or call a tool (step 1/4).\",\"label\":\"Planning next step\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"decision\":\"Tool planner unavailable after gathering evidence.\",\"detail\":\"Composing the final answer from 1 tool result and 0 excerpts.\",\"label\":\"Answering from gathered evidence\",\"stage\":\"generating\"}\n\nevent: status\ndata: {\"detail\":\"Returning the grounded tool output instead.\",\"label\":\"Answer model unavailable\",\"stage\":\"generating_fallback\"}\n\nevent: done\ndata: {\"message\":{\"completion_tokens\":null,\"content\":\"Retrieved tool evidence for: Show me all highlights related to search.\\n\\nThe answer model is unavailable, so this fallback returns the grounded tool results directly.\\n\\n1. Look up saved highlights for query \\\"search.\\\":\\nNo saved highlights matched query \\\"search.\\\".\\n\",\"created_at\":\"2026-04-23T15:28:06.292507Z\",\"id\":\"msg_1776958086292_6\",\"model\":\"glm-5.1:cloud\",\"prompt_tokens\":null,\"role\":\"assistant\",\"sources\":[],\"status\":\"completed\",\"total_duration_ns\":null,\"turn_trace\":{\"budget\":{\"exhausted\":false,\"exhaustion_reason\":null,\"max_model_calls\":12,\"max_retrieval_passes\":3,\"max_tool_calls\":4,\"model_calls\":2,\"retrieval_passes\":0,\"tool_calls\":1},\"plan_intent\":null,\"plan_label\":null,\"retrieval\":null,\"strategy\":\"tool_loop\",\"tool_calls\":[{\"name\":\"highlight_lookup\",\"state\":\"completed\"}]}}}\n\n"
+    },
+    {
+      "prompt_id": "q064",
+      "prompt": "Show me all highlights related to summaries.",
+      "capability_class": "highlight_lookup",
+      "answerability_expected": "yes",
+      "conversation_id": "conv_1776958086838_7",
+      "status": "completed",
+      "assistant_content": "Retrieved tool evidence for: Show me all highlights related to summaries.\n\nThe answer model is unavailable, so this fallback returns the grounded tool results directly.\n\n1. Look up saved highlights for query \"summaries.\":\nNo saved highlights matched query \"summaries.\".",
+      "source_count": 0,
+      "source_videos": [],
+      "source_channels": [],
+      "used_search_tool": false,
+      "used_db_tool": false,
+      "used_conversation_only": false,
+      "status_trace": [
+        {
+          "received_at_ms": 0,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Preparing chat plan",
+            "detail": "Resolving scope and deciding whether to answer directly or gather evidence.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 244,
+          "payload": {
+            "stage": "tool",
+            "label": "Running saved highlights lookup",
+            "detail": "Looking up saved highlights.",
+            "decision": "This asks about saved highlights, so the saved-highlights lookup ran before broader planning.",
+            "plan": null,
+            "tool": {
+              "name": "highlight_lookup",
+              "label": "Saved highlights lookup",
+              "state": "running",
+              "input": "Look up saved highlights for query \"summaries.\" (limit 8)",
+              "output": null
+            }
+          }
+        },
+        {
+          "received_at_ms": 304,
+          "payload": {
+            "stage": "tool_complete",
+            "label": "Saved highlights lookup complete",
+            "detail": "No saved highlights matched query \"summaries.\".",
+            "decision": null,
+            "plan": null,
+            "tool": {
+              "name": "highlight_lookup",
+              "label": "Saved highlights lookup",
+              "state": "completed",
+              "input": "Look up saved highlights for query \"summaries.\"",
+              "output": "No saved highlights matched query \"summaries.\"."
+            }
+          }
+        },
+        {
+          "received_at_ms": 304,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Planning next step",
+            "detail": "Choosing whether to answer now or call a tool (step 1/4).",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 304,
+          "payload": {
+            "stage": "generating",
+            "label": "Answering from gathered evidence",
+            "detail": "Composing the final answer from 1 tool result and 0 excerpts.",
+            "decision": "Tool planner unavailable after gathering evidence.",
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 3213,
+          "payload": {
+            "stage": "generating_fallback",
+            "label": "Answer model unavailable",
+            "detail": "Returning the grounded tool output instead.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        }
+      ],
+      "tool_calls": [
+        {
+          "name": "highlight_lookup",
+          "label": "Saved highlights lookup",
+          "state": "completed",
+          "input": "Look up saved highlights for query \"summaries.\"",
+          "output": "No saved highlights matched query \"summaries.\"."
+        },
+        {
+          "name": "highlight_lookup",
+          "label": "Saved highlights lookup",
+          "state": "running",
+          "input": "Look up saved highlights for query \"summaries.\" (limit 8)",
+          "output": null
+        }
+      ],
+      "latency_ms_total": 4439,
+      "latency_ms_retrieval": 304,
+      "latency_ms_generation": 2909,
+      "rubric_answerability_pass": true,
+      "rubric_grounding_pass": true,
+      "rubric_shape_pass": true,
+      "rubric_capability_score": 3,
+      "failure_class": null,
+      "notes": [],
+      "raw_error": null,
+      "raw_sse": "event: status\ndata: {\"detail\":\"Resolving scope and deciding whether to answer directly or gather evidence.\",\"label\":\"Preparing chat plan\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"decision\":\"This asks about saved highlights, so the saved-highlights lookup ran before broader planning.\",\"detail\":\"Looking up saved highlights.\",\"label\":\"Running saved highlights lookup\",\"stage\":\"tool\",\"tool\":{\"input\":\"Look up saved highlights for query \\\"summaries.\\\" (limit 8)\",\"label\":\"Saved highlights lookup\",\"name\":\"highlight_lookup\",\"state\":\"running\"}}\n\nevent: status\ndata: {\"detail\":\"No saved highlights matched query \\\"summaries.\\\".\",\"label\":\"Saved highlights lookup complete\",\"stage\":\"tool_complete\",\"tool\":{\"input\":\"Look up saved highlights for query \\\"summaries.\\\"\",\"label\":\"Saved highlights lookup\",\"name\":\"highlight_lookup\",\"output\":\"No saved highlights matched query \\\"summaries.\\\".\",\"state\":\"completed\"}}\n\nevent: status\ndata: {\"detail\":\"Choosing whether to answer now or call a tool (step 1/4).\",\"label\":\"Planning next step\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"decision\":\"Tool planner unavailable after gathering evidence.\",\"detail\":\"Composing the final answer from 1 tool result and 0 excerpts.\",\"label\":\"Answering from gathered evidence\",\"stage\":\"generating\"}\n\nevent: status\ndata: {\"detail\":\"Returning the grounded tool output instead.\",\"label\":\"Answer model unavailable\",\"stage\":\"generating_fallback\"}\n\nevent: done\ndata: {\"message\":{\"completion_tokens\":null,\"content\":\"Retrieved tool evidence for: Show me all highlights related to summaries.\\n\\nThe answer model is unavailable, so this fallback returns the grounded tool results directly.\\n\\n1. Look up saved highlights for query \\\"summaries.\\\":\\nNo saved highlights matched query \\\"summaries.\\\".\\n\",\"created_at\":\"2026-04-23T15:28:10.713025Z\",\"id\":\"msg_1776958090713_9\",\"model\":\"glm-5.1:cloud\",\"prompt_tokens\":null,\"role\":\"assistant\",\"sources\":[],\"status\":\"completed\",\"total_duration_ns\":null,\"turn_trace\":{\"budget\":{\"exhausted\":false,\"exhaustion_reason\":null,\"max_model_calls\":12,\"max_retrieval_passes\":3,\"max_tool_calls\":4,\"model_calls\":2,\"retrieval_passes\":0,\"tool_calls\":1},\"plan_intent\":null,\"plan_label\":null,\"retrieval\":null,\"strategy\":\"tool_loop\",\"tool_calls\":[{\"name\":\"highlight_lookup\",\"state\":\"completed\"}]}}}\n\n"
+    },
+    {
+      "prompt_id": "q065",
+      "prompt": "Show me all highlights related to evaluation.",
+      "capability_class": "highlight_lookup",
+      "answerability_expected": "yes",
+      "conversation_id": "conv_1776958091275_10",
+      "status": "completed",
+      "assistant_content": "Retrieved tool evidence for: Show me all highlights related to evaluation.\n\nThe answer model is unavailable, so this fallback returns the grounded tool results directly.\n\n1. Look up saved highlights for query \"evaluation.\":\nNo saved highlights matched query \"evaluation.\".",
+      "source_count": 0,
+      "source_videos": [],
+      "source_channels": [],
+      "used_search_tool": false,
+      "used_db_tool": false,
+      "used_conversation_only": false,
+      "status_trace": [
+        {
+          "received_at_ms": 0,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Preparing chat plan",
+            "detail": "Resolving scope and deciding whether to answer directly or gather evidence.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 280,
+          "payload": {
+            "stage": "tool",
+            "label": "Running saved highlights lookup",
+            "detail": "Looking up saved highlights.",
+            "decision": "This asks about saved highlights, so the saved-highlights lookup ran before broader planning.",
+            "plan": null,
+            "tool": {
+              "name": "highlight_lookup",
+              "label": "Saved highlights lookup",
+              "state": "running",
+              "input": "Look up saved highlights for query \"evaluation.\" (limit 8)",
+              "output": null
+            }
+          }
+        },
+        {
+          "received_at_ms": 307,
+          "payload": {
+            "stage": "tool_complete",
+            "label": "Saved highlights lookup complete",
+            "detail": "No saved highlights matched query \"evaluation.\".",
+            "decision": null,
+            "plan": null,
+            "tool": {
+              "name": "highlight_lookup",
+              "label": "Saved highlights lookup",
+              "state": "completed",
+              "input": "Look up saved highlights for query \"evaluation.\"",
+              "output": "No saved highlights matched query \"evaluation.\"."
+            }
+          }
+        },
+        {
+          "received_at_ms": 307,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Planning next step",
+            "detail": "Choosing whether to answer now or call a tool (step 1/4).",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 307,
+          "payload": {
+            "stage": "generating",
+            "label": "Answering from gathered evidence",
+            "detail": "Composing the final answer from 1 tool result and 0 excerpts.",
+            "decision": "Tool planner unavailable after gathering evidence.",
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 2966,
+          "payload": {
+            "stage": "generating_fallback",
+            "label": "Answer model unavailable",
+            "detail": "Returning the grounded tool output instead.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        }
+      ],
+      "tool_calls": [
+        {
+          "name": "highlight_lookup",
+          "label": "Saved highlights lookup",
+          "state": "completed",
+          "input": "Look up saved highlights for query \"evaluation.\"",
+          "output": "No saved highlights matched query \"evaluation.\"."
+        },
+        {
+          "name": "highlight_lookup",
+          "label": "Saved highlights lookup",
+          "state": "running",
+          "input": "Look up saved highlights for query \"evaluation.\" (limit 8)",
+          "output": null
+        }
+      ],
+      "latency_ms_total": 4093,
+      "latency_ms_retrieval": 307,
+      "latency_ms_generation": 2659,
+      "rubric_answerability_pass": true,
+      "rubric_grounding_pass": true,
+      "rubric_shape_pass": true,
+      "rubric_capability_score": 3,
+      "failure_class": null,
+      "notes": [],
+      "raw_error": null,
+      "raw_sse": "event: status\ndata: {\"detail\":\"Resolving scope and deciding whether to answer directly or gather evidence.\",\"label\":\"Preparing chat plan\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"decision\":\"This asks about saved highlights, so the saved-highlights lookup ran before broader planning.\",\"detail\":\"Looking up saved highlights.\",\"label\":\"Running saved highlights lookup\",\"stage\":\"tool\",\"tool\":{\"input\":\"Look up saved highlights for query \\\"evaluation.\\\" (limit 8)\",\"label\":\"Saved highlights lookup\",\"name\":\"highlight_lookup\",\"state\":\"running\"}}\n\nevent: status\ndata: {\"detail\":\"No saved highlights matched query \\\"evaluation.\\\".\",\"label\":\"Saved highlights lookup complete\",\"stage\":\"tool_complete\",\"tool\":{\"input\":\"Look up saved highlights for query \\\"evaluation.\\\"\",\"label\":\"Saved highlights lookup\",\"name\":\"highlight_lookup\",\"output\":\"No saved highlights matched query \\\"evaluation.\\\".\",\"state\":\"completed\"}}\n\nevent: status\ndata: {\"detail\":\"Choosing whether to answer now or call a tool (step 1/4).\",\"label\":\"Planning next step\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"decision\":\"Tool planner unavailable after gathering evidence.\",\"detail\":\"Composing the final answer from 1 tool result and 0 excerpts.\",\"label\":\"Answering from gathered evidence\",\"stage\":\"generating\"}\n\nevent: status\ndata: {\"detail\":\"Returning the grounded tool output instead.\",\"label\":\"Answer model unavailable\",\"stage\":\"generating_fallback\"}\n\nevent: done\ndata: {\"message\":{\"completion_tokens\":null,\"content\":\"Retrieved tool evidence for: Show me all highlights related to evaluation.\\n\\nThe answer model is unavailable, so this fallback returns the grounded tool results directly.\\n\\n1. Look up saved highlights for query \\\"evaluation.\\\":\\nNo saved highlights matched query \\\"evaluation.\\\".\\n\",\"created_at\":\"2026-04-23T15:28:14.903499Z\",\"id\":\"msg_1776958094903_12\",\"model\":\"glm-5.1:cloud\",\"prompt_tokens\":null,\"role\":\"assistant\",\"sources\":[],\"status\":\"completed\",\"total_duration_ns\":null,\"turn_trace\":{\"budget\":{\"exhausted\":false,\"exhaustion_reason\":null,\"max_model_calls\":12,\"max_retrieval_passes\":3,\"max_tool_calls\":4,\"model_calls\":2,\"retrieval_passes\":0,\"tool_calls\":1},\"plan_intent\":null,\"plan_label\":null,\"retrieval\":null,\"strategy\":\"tool_loop\",\"tool_calls\":[{\"name\":\"highlight_lookup\",\"state\":\"completed\"}]}}}\n\n"
+    },
+    {
+      "prompt_id": "q070",
+      "prompt": "Find highlights that support a specific claim.",
+      "capability_class": "highlight_lookup",
+      "answerability_expected": "yes",
+      "conversation_id": "conv_1776958095370_13",
+      "status": "completed",
+      "assistant_content": "Retrieved tool evidence for: Find highlights that support a specific claim.\n\nThe answer model is unavailable, so this fallback returns the grounded tool results directly.\n\n1. Look up saved highlights for query \"support\":\nNo saved highlights matched query \"support\".",
+      "source_count": 0,
+      "source_videos": [],
+      "source_channels": [],
+      "used_search_tool": false,
+      "used_db_tool": false,
+      "used_conversation_only": false,
+      "status_trace": [
+        {
+          "received_at_ms": 0,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Preparing chat plan",
+            "detail": "Resolving scope and deciding whether to answer directly or gather evidence.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 260,
+          "payload": {
+            "stage": "tool",
+            "label": "Running saved highlights lookup",
+            "detail": "Looking up saved highlights.",
+            "decision": "This asks about saved highlights, so the saved-highlights lookup ran before broader planning.",
+            "plan": null,
+            "tool": {
+              "name": "highlight_lookup",
+              "label": "Saved highlights lookup",
+              "state": "running",
+              "input": "Look up saved highlights for query \"support\" (limit 8)",
+              "output": null
+            }
+          }
+        },
+        {
+          "received_at_ms": 293,
+          "payload": {
+            "stage": "tool_complete",
+            "label": "Saved highlights lookup complete",
+            "detail": "No saved highlights matched query \"support\".",
+            "decision": null,
+            "plan": null,
+            "tool": {
+              "name": "highlight_lookup",
+              "label": "Saved highlights lookup",
+              "state": "completed",
+              "input": "Look up saved highlights for query \"support\"",
+              "output": "No saved highlights matched query \"support\"."
+            }
+          }
+        },
+        {
+          "received_at_ms": 293,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Planning next step",
+            "detail": "Choosing whether to answer now or call a tool (step 1/4).",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 293,
+          "payload": {
+            "stage": "generating",
+            "label": "Answering from gathered evidence",
+            "detail": "Composing the final answer from 1 tool result and 0 excerpts.",
+            "decision": "Tool planner unavailable after gathering evidence.",
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 2932,
+          "payload": {
+            "stage": "generating_fallback",
+            "label": "Answer model unavailable",
+            "detail": "Returning the grounded tool output instead.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        }
+      ],
+      "tool_calls": [
+        {
+          "name": "highlight_lookup",
+          "label": "Saved highlights lookup",
+          "state": "completed",
+          "input": "Look up saved highlights for query \"support\"",
+          "output": "No saved highlights matched query \"support\"."
+        },
+        {
+          "name": "highlight_lookup",
+          "label": "Saved highlights lookup",
+          "state": "running",
+          "input": "Look up saved highlights for query \"support\" (limit 8)",
+          "output": null
+        }
+      ],
+      "latency_ms_total": 4169,
+      "latency_ms_retrieval": 293,
+      "latency_ms_generation": 2639,
+      "rubric_answerability_pass": true,
+      "rubric_grounding_pass": true,
+      "rubric_shape_pass": true,
+      "rubric_capability_score": 3,
+      "failure_class": null,
+      "notes": [],
+      "raw_error": null,
+      "raw_sse": "event: status\ndata: {\"detail\":\"Resolving scope and deciding whether to answer directly or gather evidence.\",\"label\":\"Preparing chat plan\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"decision\":\"This asks about saved highlights, so the saved-highlights lookup ran before broader planning.\",\"detail\":\"Looking up saved highlights.\",\"label\":\"Running saved highlights lookup\",\"stage\":\"tool\",\"tool\":{\"input\":\"Look up saved highlights for query \\\"support\\\" (limit 8)\",\"label\":\"Saved highlights lookup\",\"name\":\"highlight_lookup\",\"state\":\"running\"}}\n\nevent: status\ndata: {\"detail\":\"No saved highlights matched query \\\"support\\\".\",\"label\":\"Saved highlights lookup complete\",\"stage\":\"tool_complete\",\"tool\":{\"input\":\"Look up saved highlights for query \\\"support\\\"\",\"label\":\"Saved highlights lookup\",\"name\":\"highlight_lookup\",\"output\":\"No saved highlights matched query \\\"support\\\".\",\"state\":\"completed\"}}\n\nevent: status\ndata: {\"detail\":\"Choosing whether to answer now or call a tool (step 1/4).\",\"label\":\"Planning next step\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"decision\":\"Tool planner unavailable after gathering evidence.\",\"detail\":\"Composing the final answer from 1 tool result and 0 excerpts.\",\"label\":\"Answering from gathered evidence\",\"stage\":\"generating\"}\n\nevent: status\ndata: {\"detail\":\"Returning the grounded tool output instead.\",\"label\":\"Answer model unavailable\",\"stage\":\"generating_fallback\"}\n\nevent: done\ndata: {\"message\":{\"completion_tokens\":null,\"content\":\"Retrieved tool evidence for: Find highlights that support a specific claim.\\n\\nThe answer model is unavailable, so this fallback returns the grounded tool results directly.\\n\\n1. Look up saved highlights for query \\\"support\\\":\\nNo saved highlights matched query \\\"support\\\".\\n\",\"created_at\":\"2026-04-23T15:28:18.964026Z\",\"id\":\"msg_1776958098964_15\",\"model\":\"glm-5.1:cloud\",\"prompt_tokens\":null,\"role\":\"assistant\",\"sources\":[],\"status\":\"completed\",\"total_duration_ns\":null,\"turn_trace\":{\"budget\":{\"exhausted\":false,\"exhaustion_reason\":null,\"max_model_calls\":12,\"max_retrieval_passes\":3,\"max_tool_calls\":4,\"model_calls\":2,\"retrieval_passes\":0,\"tool_calls\":1},\"plan_intent\":null,\"plan_label\":null,\"retrieval\":null,\"strategy\":\"tool_loop\",\"tool_calls\":[{\"name\":\"highlight_lookup\",\"state\":\"completed\"}]}}}\n\n"
+    },
+    {
+      "prompt_id": "q071",
+      "prompt": "Find highlights that contradict a specific claim.",
+      "capability_class": "highlight_lookup",
+      "answerability_expected": "yes",
+      "conversation_id": "conv_1776958099540_16",
+      "status": "completed",
+      "assistant_content": "Retrieved tool evidence for: Find highlights that contradict a specific claim.\n\nThe answer model is unavailable, so this fallback returns the grounded tool results directly.\n\n1. Look up saved highlights for query \"contradict\":\nNo saved highlights matched query \"contradict\".",
+      "source_count": 0,
+      "source_videos": [],
+      "source_channels": [],
+      "used_search_tool": false,
+      "used_db_tool": false,
+      "used_conversation_only": false,
+      "status_trace": [
+        {
+          "received_at_ms": 0,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Preparing chat plan",
+            "detail": "Resolving scope and deciding whether to answer directly or gather evidence.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 225,
+          "payload": {
+            "stage": "tool",
+            "label": "Running saved highlights lookup",
+            "detail": "Looking up saved highlights.",
+            "decision": "This asks about saved highlights, so the saved-highlights lookup ran before broader planning.",
+            "plan": null,
+            "tool": {
+              "name": "highlight_lookup",
+              "label": "Saved highlights lookup",
+              "state": "running",
+              "input": "Look up saved highlights for query \"contradict\" (limit 8)",
+              "output": null
+            }
+          }
+        },
+        {
+          "received_at_ms": 255,
+          "payload": {
+            "stage": "tool_complete",
+            "label": "Saved highlights lookup complete",
+            "detail": "No saved highlights matched query \"contradict\".",
+            "decision": null,
+            "plan": null,
+            "tool": {
+              "name": "highlight_lookup",
+              "label": "Saved highlights lookup",
+              "state": "completed",
+              "input": "Look up saved highlights for query \"contradict\"",
+              "output": "No saved highlights matched query \"contradict\"."
+            }
+          }
+        },
+        {
+          "received_at_ms": 255,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Planning next step",
+            "detail": "Choosing whether to answer now or call a tool (step 1/4).",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 255,
+          "payload": {
+            "stage": "generating",
+            "label": "Answering from gathered evidence",
+            "detail": "Composing the final answer from 1 tool result and 0 excerpts.",
+            "decision": "Tool planner unavailable after gathering evidence.",
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 2881,
+          "payload": {
+            "stage": "generating_fallback",
+            "label": "Answer model unavailable",
+            "detail": "Returning the grounded tool output instead.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        }
+      ],
+      "tool_calls": [
+        {
+          "name": "highlight_lookup",
+          "label": "Saved highlights lookup",
+          "state": "completed",
+          "input": "Look up saved highlights for query \"contradict\"",
+          "output": "No saved highlights matched query \"contradict\"."
+        },
+        {
+          "name": "highlight_lookup",
+          "label": "Saved highlights lookup",
+          "state": "running",
+          "input": "Look up saved highlights for query \"contradict\" (limit 8)",
+          "output": null
+        }
+      ],
+      "latency_ms_total": 3993,
+      "latency_ms_retrieval": 255,
+      "latency_ms_generation": 2626,
+      "rubric_answerability_pass": true,
+      "rubric_grounding_pass": true,
+      "rubric_shape_pass": true,
+      "rubric_capability_score": 3,
+      "failure_class": null,
+      "notes": [],
+      "raw_error": null,
+      "raw_sse": "event: status\ndata: {\"detail\":\"Resolving scope and deciding whether to answer directly or gather evidence.\",\"label\":\"Preparing chat plan\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"decision\":\"This asks about saved highlights, so the saved-highlights lookup ran before broader planning.\",\"detail\":\"Looking up saved highlights.\",\"label\":\"Running saved highlights lookup\",\"stage\":\"tool\",\"tool\":{\"input\":\"Look up saved highlights for query \\\"contradict\\\" (limit 8)\",\"label\":\"Saved highlights lookup\",\"name\":\"highlight_lookup\",\"state\":\"running\"}}\n\nevent: status\ndata: {\"detail\":\"No saved highlights matched query \\\"contradict\\\".\",\"label\":\"Saved highlights lookup complete\",\"stage\":\"tool_complete\",\"tool\":{\"input\":\"Look up saved highlights for query \\\"contradict\\\"\",\"label\":\"Saved highlights lookup\",\"name\":\"highlight_lookup\",\"output\":\"No saved highlights matched query \\\"contradict\\\".\",\"state\":\"completed\"}}\n\nevent: status\ndata: {\"detail\":\"Choosing whether to answer now or call a tool (step 1/4).\",\"label\":\"Planning next step\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"decision\":\"Tool planner unavailable after gathering evidence.\",\"detail\":\"Composing the final answer from 1 tool result and 0 excerpts.\",\"label\":\"Answering from gathered evidence\",\"stage\":\"generating\"}\n\nevent: status\ndata: {\"detail\":\"Returning the grounded tool output instead.\",\"label\":\"Answer model unavailable\",\"stage\":\"generating_fallback\"}\n\nevent: done\ndata: {\"message\":{\"completion_tokens\":null,\"content\":\"Retrieved tool evidence for: Find highlights that contradict a specific claim.\\n\\nThe answer model is unavailable, so this fallback returns the grounded tool results directly.\\n\\n1. Look up saved highlights for query \\\"contradict\\\":\\nNo saved highlights matched query \\\"contradict\\\".\\n\",\"created_at\":\"2026-04-23T15:28:23.060558Z\",\"id\":\"msg_1776958103060_18\",\"model\":\"glm-5.1:cloud\",\"prompt_tokens\":null,\"role\":\"assistant\",\"sources\":[],\"status\":\"completed\",\"total_duration_ns\":null,\"turn_trace\":{\"budget\":{\"exhausted\":false,\"exhaustion_reason\":null,\"max_model_calls\":12,\"max_retrieval_passes\":3,\"max_tool_calls\":4,\"model_calls\":2,\"retrieval_passes\":0,\"tool_calls\":1},\"plan_intent\":null,\"plan_label\":null,\"retrieval\":null,\"strategy\":\"tool_loop\",\"tool_calls\":[{\"name\":\"highlight_lookup\",\"state\":\"completed\"}]}}}\n\n"
+    }
+  ]
+}

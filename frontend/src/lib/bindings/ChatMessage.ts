@@ -20,7 +20,7 @@ completion_tokens?: bigint,
 /**
  * Wall time reported by Ollama for the generate call (nanoseconds), when provided.
  */
-total_duration_ns?: bigint,
+total_duration_ns?: bigint, 
 /**
  * Redacted execution trace for this assistant turn. Does not include prompts,
  * retrieved excerpts, tool outputs, or generated answer text.

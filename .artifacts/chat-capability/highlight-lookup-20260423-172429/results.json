@@ -1,0 +1,732 @@
+{
+  "generated_at_utc": "2026-04-23T15:25:33.760196+00:00",
+  "base_url": "http://localhost:3544",
+  "dataset_path": "/Users/thorben.woelk/repos/dAstIll/backend/tests/data/chat_capability_prompts.json",
+  "prompt_count": 6,
+  "summary": {
+    "total_prompts": 6,
+    "passed_prompts": 0,
+    "answerability_passed": 0,
+    "grounding_passed": 6,
+    "shape_passed": 0,
+    "average_score": 0.0,
+    "prompts_without_sources": [
+      "q062",
+      "q063",
+      "q064",
+      "q065",
+      "q070",
+      "q071"
+    ],
+    "single_video_prompts": [],
+    "failure_counts": {
+      "stream_error": 6
+    },
+    "by_capability_class": [
+      {
+        "capability_class": "highlight_lookup",
+        "total": 6,
+        "passed": 0,
+        "answerability_passed": 0,
+        "grounding_passed": 6,
+        "shape_passed": 0,
+        "average_score": 0.0,
+        "common_failure_classes": [
+          "stream_error"
+        ]
+      }
+    ]
+  },
+  "results": [
+    {
+      "prompt_id": "q062",
+      "prompt": "What highlights have I saved from this video?",
+      "capability_class": "highlight_lookup",
+      "answerability_expected": "yes",
+      "conversation_id": "conv_1776957871805_1",
+      "status": "stream_error",
+      "assistant_content": "",
+      "source_count": 0,
+      "source_videos": [],
+      "source_channels": [],
+      "used_search_tool": false,
+      "used_db_tool": false,
+      "used_conversation_only": false,
+      "status_trace": [
+        {
+          "received_at_ms": 0,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Preparing chat plan",
+            "detail": "Resolving scope and deciding whether to answer directly or gather evidence.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 269,
+          "payload": {
+            "stage": "tool",
+            "label": "Running saved highlights lookup",
+            "detail": "Looking up saved highlights.",
+            "decision": "This asks about saved highlights, so the saved-highlights lookup ran before broader planning.",
+            "plan": null,
+            "tool": {
+              "name": "highlight_lookup",
+              "label": "Saved highlights lookup",
+              "state": "running",
+              "input": "Look up saved highlights in videos matching \"Open source is dead now?\" (limit 8)",
+              "output": null
+            }
+          }
+        },
+        {
+          "received_at_ms": 302,
+          "payload": {
+            "stage": "tool_complete",
+            "label": "Saved highlights lookup complete",
+            "detail": "No saved highlights matched videos matching \"Open source is dead now?\".",
+            "decision": null,
+            "plan": null,
+            "tool": {
+              "name": "highlight_lookup",
+              "label": "Saved highlights lookup",
+              "state": "completed",
+              "input": "Look up saved highlights for videos matching \"Open source is dead now?\"",
+              "output": "No saved highlights matched videos matching \"Open source is dead now?\"."
+            }
+          }
+        },
+        {
+          "received_at_ms": 302,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Planning next step",
+            "detail": "Choosing whether to answer now or call a tool (step 1/4).",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 303,
+          "payload": {
+            "stage": "generating",
+            "label": "Answering from gathered evidence",
+            "detail": "Composing the final answer from 1 tool result and 0 excerpts.",
+            "decision": "Tool planner unavailable after gathering evidence.",
+            "plan": null,
+            "tool": null
+          }
+        }
+      ],
+      "tool_calls": [
+        {
+          "name": "highlight_lookup",
+          "label": "Saved highlights lookup",
+          "state": "completed",
+          "input": "Look up saved highlights for videos matching \"Open source is dead now?\"",
+          "output": "No saved highlights matched videos matching \"Open source is dead now?\"."
+        },
+        {
+          "name": "highlight_lookup",
+          "label": "Saved highlights lookup",
+          "state": "running",
+          "input": "Look up saved highlights in videos matching \"Open source is dead now?\" (limit 8)",
+          "output": null
+        }
+      ],
+      "latency_ms_total": 5330,
+      "latency_ms_retrieval": 302,
+      "latency_ms_generation": 0,
+      "rubric_answerability_pass": false,
+      "rubric_grounding_pass": true,
+      "rubric_shape_pass": false,
+      "rubric_capability_score": 0,
+      "failure_class": "stream_error",
+      "notes": [
+        "stream ended with an explicit error event",
+        "assistant content was empty",
+        "highlight answer did not explicitly reference highlights or snippets"
+      ],
+      "raw_error": "Ollama chat request failed (429 Too Many Requests): {\"error\":\"you (TotoAI) have reached your weekly usage limit, upgrade for higher limits: https://ollama.com/upgrade (ref: 240ea3f4-e21e-4e02-b463-0c3835907de9)\"}\n",
+      "raw_sse": "event: status\ndata: {\"detail\":\"Resolving scope and deciding whether to answer directly or gather evidence.\",\"label\":\"Preparing chat plan\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"decision\":\"This asks about saved highlights, so the saved-highlights lookup ran before broader planning.\",\"detail\":\"Looking up saved highlights.\",\"label\":\"Running saved highlights lookup\",\"stage\":\"tool\",\"tool\":{\"input\":\"Look up saved highlights in videos matching \\\"Open source is dead now?\\\" (limit 8)\",\"label\":\"Saved highlights lookup\",\"name\":\"highlight_lookup\",\"state\":\"running\"}}\n\nevent: status\ndata: {\"detail\":\"No saved highlights matched videos matching \\\"Open source is dead now?\\\".\",\"label\":\"Saved highlights lookup complete\",\"stage\":\"tool_complete\",\"tool\":{\"input\":\"Look up saved highlights for videos matching \\\"Open source is dead now?\\\"\",\"label\":\"Saved highlights lookup\",\"name\":\"highlight_lookup\",\"output\":\"No saved highlights matched videos matching \\\"Open source is dead now?\\\".\",\"state\":\"completed\"}}\n\nevent: status\ndata: {\"detail\":\"Choosing whether to answer now or call a tool (step 1/4).\",\"label\":\"Planning next step\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"decision\":\"Tool planner unavailable after gathering evidence.\",\"detail\":\"Composing the final answer from 1 tool result and 0 excerpts.\",\"label\":\"Answering from gathered evidence\",\"stage\":\"generating\"}\n\nevent: error\ndata: {\"message\":\"Ollama chat request failed (429 Too Many Requests): {\\\"error\\\":\\\"you (TotoAI) have reached your weekly usage limit, upgrade for higher limits: https://ollama.com/upgrade (ref: 240ea3f4-e21e-4e02-b463-0c3835907de9)\\\"}\\n\"}\n\n"
+    },
+    {
+      "prompt_id": "q063",
+      "prompt": "Show me all highlights related to search.",
+      "capability_class": "highlight_lookup",
+      "answerability_expected": "yes",
+      "conversation_id": "conv_1776957876293_4",
+      "status": "stream_error",
+      "assistant_content": "",
+      "source_count": 0,
+      "source_videos": [],
+      "source_channels": [],
+      "used_search_tool": false,
+      "used_db_tool": false,
+      "used_conversation_only": false,
+      "status_trace": [
+        {
+          "received_at_ms": 0,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Preparing chat plan",
+            "detail": "Resolving scope and deciding whether to answer directly or gather evidence.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 217,
+          "payload": {
+            "stage": "tool",
+            "label": "Running saved highlights lookup",
+            "detail": "Looking up saved highlights.",
+            "decision": "This asks about saved highlights, so the saved-highlights lookup ran before broader planning.",
+            "plan": null,
+            "tool": {
+              "name": "highlight_lookup",
+              "label": "Saved highlights lookup",
+              "state": "running",
+              "input": "Look up saved highlights for query \"search.\" (limit 8)",
+              "output": null
+            }
+          }
+        },
+        {
+          "received_at_ms": 245,
+          "payload": {
+            "stage": "tool_complete",
+            "label": "Saved highlights lookup complete",
+            "detail": "No saved highlights matched query \"search.\".",
+            "decision": null,
+            "plan": null,
+            "tool": {
+              "name": "highlight_lookup",
+              "label": "Saved highlights lookup",
+              "state": "completed",
+              "input": "Look up saved highlights for query \"search.\"",
+              "output": "No saved highlights matched query \"search.\"."
+            }
+          }
+        },
+        {
+          "received_at_ms": 245,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Planning next step",
+            "detail": "Choosing whether to answer now or call a tool (step 1/4).",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 246,
+          "payload": {
+            "stage": "generating",
+            "label": "Answering from gathered evidence",
+            "detail": "Composing the final answer from 1 tool result and 0 excerpts.",
+            "decision": "Tool planner unavailable after gathering evidence.",
+            "plan": null,
+            "tool": null
+          }
+        }
+      ],
+      "tool_calls": [
+        {
+          "name": "highlight_lookup",
+          "label": "Saved highlights lookup",
+          "state": "completed",
+          "input": "Look up saved highlights for query \"search.\"",
+          "output": "No saved highlights matched query \"search.\"."
+        },
+        {
+          "name": "highlight_lookup",
+          "label": "Saved highlights lookup",
+          "state": "running",
+          "input": "Look up saved highlights for query \"search.\" (limit 8)",
+          "output": null
+        }
+      ],
+      "latency_ms_total": 3964,
+      "latency_ms_retrieval": 245,
+      "latency_ms_generation": 0,
+      "rubric_answerability_pass": false,
+      "rubric_grounding_pass": true,
+      "rubric_shape_pass": false,
+      "rubric_capability_score": 0,
+      "failure_class": "stream_error",
+      "notes": [
+        "stream ended with an explicit error event",
+        "assistant content was empty",
+        "highlight answer did not explicitly reference highlights or snippets"
+      ],
+      "raw_error": "Ollama chat request failed (429 Too Many Requests): {\"error\":\"you (TotoAI) have reached your weekly usage limit, upgrade for higher limits: https://ollama.com/upgrade (ref: b46b6ecd-0e35-4f70-b8a4-5f448ff1e577)\"}\n",
+      "raw_sse": "event: status\ndata: {\"detail\":\"Resolving scope and deciding whether to answer directly or gather evidence.\",\"label\":\"Preparing chat plan\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"decision\":\"This asks about saved highlights, so the saved-highlights lookup ran before broader planning.\",\"detail\":\"Looking up saved highlights.\",\"label\":\"Running saved highlights lookup\",\"stage\":\"tool\",\"tool\":{\"input\":\"Look up saved highlights for query \\\"search.\\\" (limit 8)\",\"label\":\"Saved highlights lookup\",\"name\":\"highlight_lookup\",\"state\":\"running\"}}\n\nevent: status\ndata: {\"detail\":\"No saved highlights matched query \\\"search.\\\".\",\"label\":\"Saved highlights lookup complete\",\"stage\":\"tool_complete\",\"tool\":{\"input\":\"Look up saved highlights for query \\\"search.\\\"\",\"label\":\"Saved highlights lookup\",\"name\":\"highlight_lookup\",\"output\":\"No saved highlights matched query \\\"search.\\\".\",\"state\":\"completed\"}}\n\nevent: status\ndata: {\"detail\":\"Choosing whether to answer now or call a tool (step 1/4).\",\"label\":\"Planning next step\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"decision\":\"Tool planner unavailable after gathering evidence.\",\"detail\":\"Composing the final answer from 1 tool result and 0 excerpts.\",\"label\":\"Answering from gathered evidence\",\"stage\":\"generating\"}\n\nevent: error\ndata: {\"message\":\"Ollama chat request failed (429 Too Many Requests): {\\\"error\\\":\\\"you (TotoAI) have reached your weekly usage limit, upgrade for higher limits: https://ollama.com/upgrade (ref: b46b6ecd-0e35-4f70-b8a4-5f448ff1e577)\\\"}\\n\"}\n\n"
+    },
+    {
+      "prompt_id": "q064",
+      "prompt": "Show me all highlights related to summaries.",
+      "capability_class": "highlight_lookup",
+      "answerability_expected": "yes",
+      "conversation_id": "conv_1776957880252_7",
+      "status": "stream_error",
+      "assistant_content": "",
+      "source_count": 0,
+      "source_videos": [],
+      "source_channels": [],
+      "used_search_tool": false,
+      "used_db_tool": false,
+      "used_conversation_only": false,
+      "status_trace": [
+        {
+          "received_at_ms": 0,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Preparing chat plan",
+            "detail": "Resolving scope and deciding whether to answer directly or gather evidence.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 228,
+          "payload": {
+            "stage": "tool",
+            "label": "Running saved highlights lookup",
+            "detail": "Looking up saved highlights.",
+            "decision": "This asks about saved highlights, so the saved-highlights lookup ran before broader planning.",
+            "plan": null,
+            "tool": {
+              "name": "highlight_lookup",
+              "label": "Saved highlights lookup",
+              "state": "running",
+              "input": "Look up saved highlights for query \"summaries.\" (limit 8)",
+              "output": null
+            }
+          }
+        },
+        {
+          "received_at_ms": 254,
+          "payload": {
+            "stage": "tool_complete",
+            "label": "Saved highlights lookup complete",
+            "detail": "No saved highlights matched query \"summaries.\".",
+            "decision": null,
+            "plan": null,
+            "tool": {
+              "name": "highlight_lookup",
+              "label": "Saved highlights lookup",
+              "state": "completed",
+              "input": "Look up saved highlights for query \"summaries.\"",
+              "output": "No saved highlights matched query \"summaries.\"."
+            }
+          }
+        },
+        {
+          "received_at_ms": 254,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Planning next step",
+            "detail": "Choosing whether to answer now or call a tool (step 1/4).",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 254,
+          "payload": {
+            "stage": "generating",
+            "label": "Answering from gathered evidence",
+            "detail": "Composing the final answer from 1 tool result and 0 excerpts.",
+            "decision": "Tool planner unavailable after gathering evidence.",
+            "plan": null,
+            "tool": null
+          }
+        }
+      ],
+      "tool_calls": [
+        {
+          "name": "highlight_lookup",
+          "label": "Saved highlights lookup",
+          "state": "completed",
+          "input": "Look up saved highlights for query \"summaries.\"",
+          "output": "No saved highlights matched query \"summaries.\"."
+        },
+        {
+          "name": "highlight_lookup",
+          "label": "Saved highlights lookup",
+          "state": "running",
+          "input": "Look up saved highlights for query \"summaries.\" (limit 8)",
+          "output": null
+        }
+      ],
+      "latency_ms_total": 3892,
+      "latency_ms_retrieval": 254,
+      "latency_ms_generation": 0,
+      "rubric_answerability_pass": false,
+      "rubric_grounding_pass": true,
+      "rubric_shape_pass": false,
+      "rubric_capability_score": 0,
+      "failure_class": "stream_error",
+      "notes": [
+        "stream ended with an explicit error event",
+        "assistant content was empty",
+        "highlight answer did not explicitly reference highlights or snippets"
+      ],
+      "raw_error": "Ollama chat request failed (429 Too Many Requests): {\"error\":\"you (TotoAI) have reached your weekly usage limit, upgrade for higher limits: https://ollama.com/upgrade (ref: 3dd79c7a-b575-457b-b4c4-0e49ca8946c5)\"}\n",
+      "raw_sse": "event: status\ndata: {\"detail\":\"Resolving scope and deciding whether to answer directly or gather evidence.\",\"label\":\"Preparing chat plan\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"decision\":\"This asks about saved highlights, so the saved-highlights lookup ran before broader planning.\",\"detail\":\"Looking up saved highlights.\",\"label\":\"Running saved highlights lookup\",\"stage\":\"tool\",\"tool\":{\"input\":\"Look up saved highlights for query \\\"summaries.\\\" (limit 8)\",\"label\":\"Saved highlights lookup\",\"name\":\"highlight_lookup\",\"state\":\"running\"}}\n\nevent: status\ndata: {\"detail\":\"No saved highlights matched query \\\"summaries.\\\".\",\"label\":\"Saved highlights lookup complete\",\"stage\":\"tool_complete\",\"tool\":{\"input\":\"Look up saved highlights for query \\\"summaries.\\\"\",\"label\":\"Saved highlights lookup\",\"name\":\"highlight_lookup\",\"output\":\"No saved highlights matched query \\\"summaries.\\\".\",\"state\":\"completed\"}}\n\nevent: status\ndata: {\"detail\":\"Choosing whether to answer now or call a tool (step 1/4).\",\"label\":\"Planning next step\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"decision\":\"Tool planner unavailable after gathering evidence.\",\"detail\":\"Composing the final answer from 1 tool result and 0 excerpts.\",\"label\":\"Answering from gathered evidence\",\"stage\":\"generating\"}\n\nevent: error\ndata: {\"message\":\"Ollama chat request failed (429 Too Many Requests): {\\\"error\\\":\\\"you (TotoAI) have reached your weekly usage limit, upgrade for higher limits: https://ollama.com/upgrade (ref: 3dd79c7a-b575-457b-b4c4-0e49ca8946c5)\\\"}\\n\"}\n\n"
+    },
+    {
+      "prompt_id": "q065",
+      "prompt": "Show me all highlights related to evaluation.",
+      "capability_class": "highlight_lookup",
+      "answerability_expected": "yes",
+      "conversation_id": "conv_1776957884144_10",
+      "status": "stream_error",
+      "assistant_content": "",
+      "source_count": 0,
+      "source_videos": [],
+      "source_channels": [],
+      "used_search_tool": false,
+      "used_db_tool": false,
+      "used_conversation_only": false,
+      "status_trace": [
+        {
+          "received_at_ms": 0,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Preparing chat plan",
+            "detail": "Resolving scope and deciding whether to answer directly or gather evidence.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 199,
+          "payload": {
+            "stage": "tool",
+            "label": "Running saved highlights lookup",
+            "detail": "Looking up saved highlights.",
+            "decision": "This asks about saved highlights, so the saved-highlights lookup ran before broader planning.",
+            "plan": null,
+            "tool": {
+              "name": "highlight_lookup",
+              "label": "Saved highlights lookup",
+              "state": "running",
+              "input": "Look up saved highlights for query \"evaluation.\" (limit 8)",
+              "output": null
+            }
+          }
+        },
+        {
+          "received_at_ms": 224,
+          "payload": {
+            "stage": "tool_complete",
+            "label": "Saved highlights lookup complete",
+            "detail": "No saved highlights matched query \"evaluation.\".",
+            "decision": null,
+            "plan": null,
+            "tool": {
+              "name": "highlight_lookup",
+              "label": "Saved highlights lookup",
+              "state": "completed",
+              "input": "Look up saved highlights for query \"evaluation.\"",
+              "output": "No saved highlights matched query \"evaluation.\"."
+            }
+          }
+        },
+        {
+          "received_at_ms": 224,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Planning next step",
+            "detail": "Choosing whether to answer now or call a tool (step 1/4).",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 224,
+          "payload": {
+            "stage": "generating",
+            "label": "Answering from gathered evidence",
+            "detail": "Composing the final answer from 1 tool result and 0 excerpts.",
+            "decision": "Tool planner unavailable after gathering evidence.",
+            "plan": null,
+            "tool": null
+          }
+        }
+      ],
+      "tool_calls": [
+        {
+          "name": "highlight_lookup",
+          "label": "Saved highlights lookup",
+          "state": "completed",
+          "input": "Look up saved highlights for query \"evaluation.\"",
+          "output": "No saved highlights matched query \"evaluation.\"."
+        },
+        {
+          "name": "highlight_lookup",
+          "label": "Saved highlights lookup",
+          "state": "running",
+          "input": "Look up saved highlights for query \"evaluation.\" (limit 8)",
+          "output": null
+        }
+      ],
+      "latency_ms_total": 41675,
+      "latency_ms_retrieval": 224,
+      "latency_ms_generation": 0,
+      "rubric_answerability_pass": false,
+      "rubric_grounding_pass": true,
+      "rubric_shape_pass": false,
+      "rubric_capability_score": 0,
+      "failure_class": "stream_error",
+      "notes": [
+        "stream ended with an explicit error event",
+        "assistant content was empty",
+        "highlight answer did not explicitly reference highlights or snippets"
+      ],
+      "raw_error": "Ollama chat request failed (429 Too Many Requests): {\"error\":\"you (TotoAI) have reached your weekly usage limit, upgrade for higher limits: https://ollama.com/upgrade (ref: fd4b9dbb-45fd-4f9a-bc5a-f83e76f05a7d)\"}\n",
+      "raw_sse": "event: status\ndata: {\"detail\":\"Resolving scope and deciding whether to answer directly or gather evidence.\",\"label\":\"Preparing chat plan\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"decision\":\"This asks about saved highlights, so the saved-highlights lookup ran before broader planning.\",\"detail\":\"Looking up saved highlights.\",\"label\":\"Running saved highlights lookup\",\"stage\":\"tool\",\"tool\":{\"input\":\"Look up saved highlights for query \\\"evaluation.\\\" (limit 8)\",\"label\":\"Saved highlights lookup\",\"name\":\"highlight_lookup\",\"state\":\"running\"}}\n\nevent: status\ndata: {\"detail\":\"No saved highlights matched query \\\"evaluation.\\\".\",\"label\":\"Saved highlights lookup complete\",\"stage\":\"tool_complete\",\"tool\":{\"input\":\"Look up saved highlights for query \\\"evaluation.\\\"\",\"label\":\"Saved highlights lookup\",\"name\":\"highlight_lookup\",\"output\":\"No saved highlights matched query \\\"evaluation.\\\".\",\"state\":\"completed\"}}\n\nevent: status\ndata: {\"detail\":\"Choosing whether to answer now or call a tool (step 1/4).\",\"label\":\"Planning next step\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"decision\":\"Tool planner unavailable after gathering evidence.\",\"detail\":\"Composing the final answer from 1 tool result and 0 excerpts.\",\"label\":\"Answering from gathered evidence\",\"stage\":\"generating\"}\n\n: ping\n\n: ping\n\nevent: error\ndata: {\"message\":\"Ollama chat request failed (429 Too Many Requests): {\\\"error\\\":\\\"you (TotoAI) have reached your weekly usage limit, upgrade for higher limits: https://ollama.com/upgrade (ref: fd4b9dbb-45fd-4f9a-bc5a-f83e76f05a7d)\\\"}\\n\"}\n\n"
+    },
+    {
+      "prompt_id": "q070",
+      "prompt": "Find highlights that support a specific claim.",
+      "capability_class": "highlight_lookup",
+      "answerability_expected": "yes",
+      "conversation_id": "conv_1776957925853_13",
+      "status": "stream_error",
+      "assistant_content": "",
+      "source_count": 0,
+      "source_videos": [],
+      "source_channels": [],
+      "used_search_tool": false,
+      "used_db_tool": false,
+      "used_conversation_only": false,
+      "status_trace": [
+        {
+          "received_at_ms": 0,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Preparing chat plan",
+            "detail": "Resolving scope and deciding whether to answer directly or gather evidence.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 230,
+          "payload": {
+            "stage": "tool",
+            "label": "Running saved highlights lookup",
+            "detail": "Looking up saved highlights.",
+            "decision": "This asks about saved highlights, so the saved-highlights lookup ran before broader planning.",
+            "plan": null,
+            "tool": {
+              "name": "highlight_lookup",
+              "label": "Saved highlights lookup",
+              "state": "running",
+              "input": "Look up saved highlights for query \"support\" (limit 8)",
+              "output": null
+            }
+          }
+        },
+        {
+          "received_at_ms": 261,
+          "payload": {
+            "stage": "tool_complete",
+            "label": "Saved highlights lookup complete",
+            "detail": "No saved highlights matched query \"support\".",
+            "decision": null,
+            "plan": null,
+            "tool": {
+              "name": "highlight_lookup",
+              "label": "Saved highlights lookup",
+              "state": "completed",
+              "input": "Look up saved highlights for query \"support\"",
+              "output": "No saved highlights matched query \"support\"."
+            }
+          }
+        },
+        {
+          "received_at_ms": 261,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Planning next step",
+            "detail": "Choosing whether to answer now or call a tool (step 1/4).",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 261,
+          "payload": {
+            "stage": "generating",
+            "label": "Answering from gathered evidence",
+            "detail": "Composing the final answer from 1 tool result and 0 excerpts.",
+            "decision": "Tool planner unavailable after gathering evidence.",
+            "plan": null,
+            "tool": null
+          }
+        }
+      ],
+      "tool_calls": [
+        {
+          "name": "highlight_lookup",
+          "label": "Saved highlights lookup",
+          "state": "completed",
+          "input": "Look up saved highlights for query \"support\"",
+          "output": "No saved highlights matched query \"support\"."
+        },
+        {
+          "name": "highlight_lookup",
+          "label": "Saved highlights lookup",
+          "state": "running",
+          "input": "Look up saved highlights for query \"support\" (limit 8)",
+          "output": null
+        }
+      ],
+      "latency_ms_total": 4072,
+      "latency_ms_retrieval": 261,
+      "latency_ms_generation": 0,
+      "rubric_answerability_pass": false,
+      "rubric_grounding_pass": true,
+      "rubric_shape_pass": false,
+      "rubric_capability_score": 0,
+      "failure_class": "stream_error",
+      "notes": [
+        "stream ended with an explicit error event",
+        "assistant content was empty",
+        "highlight answer did not explicitly reference highlights or snippets"
+      ],
+      "raw_error": "Ollama chat request failed (429 Too Many Requests): {\"error\":\"you (TotoAI) have reached your weekly usage limit, upgrade for higher limits: https://ollama.com/upgrade (ref: 774a047c-2e59-4e69-a955-d2344f4a69a7)\"}\n",
+      "raw_sse": "event: status\ndata: {\"detail\":\"Resolving scope and deciding whether to answer directly or gather evidence.\",\"label\":\"Preparing chat plan\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"decision\":\"This asks about saved highlights, so the saved-highlights lookup ran before broader planning.\",\"detail\":\"Looking up saved highlights.\",\"label\":\"Running saved highlights lookup\",\"stage\":\"tool\",\"tool\":{\"input\":\"Look up saved highlights for query \\\"support\\\" (limit 8)\",\"label\":\"Saved highlights lookup\",\"name\":\"highlight_lookup\",\"state\":\"running\"}}\n\nevent: status\ndata: {\"detail\":\"No saved highlights matched query \\\"support\\\".\",\"label\":\"Saved highlights lookup complete\",\"stage\":\"tool_complete\",\"tool\":{\"input\":\"Look up saved highlights for query \\\"support\\\"\",\"label\":\"Saved highlights lookup\",\"name\":\"highlight_lookup\",\"output\":\"No saved highlights matched query \\\"support\\\".\",\"state\":\"completed\"}}\n\nevent: status\ndata: {\"detail\":\"Choosing whether to answer now or call a tool (step 1/4).\",\"label\":\"Planning next step\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"decision\":\"Tool planner unavailable after gathering evidence.\",\"detail\":\"Composing the final answer from 1 tool result and 0 excerpts.\",\"label\":\"Answering from gathered evidence\",\"stage\":\"generating\"}\n\nevent: error\ndata: {\"message\":\"Ollama chat request failed (429 Too Many Requests): {\\\"error\\\":\\\"you (TotoAI) have reached your weekly usage limit, upgrade for higher limits: https://ollama.com/upgrade (ref: 774a047c-2e59-4e69-a955-d2344f4a69a7)\\\"}\\n\"}\n\n"
+    },
+    {
+      "prompt_id": "q071",
+      "prompt": "Find highlights that contradict a specific claim.",
+      "capability_class": "highlight_lookup",
+      "answerability_expected": "yes",
+      "conversation_id": "conv_1776957929929_16",
+      "status": "stream_error",
+      "assistant_content": "",
+      "source_count": 0,
+      "source_videos": [],
+      "source_channels": [],
+      "used_search_tool": false,
+      "used_db_tool": false,
+      "used_conversation_only": false,
+      "status_trace": [
+        {
+          "received_at_ms": 0,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Preparing chat plan",
+            "detail": "Resolving scope and deciding whether to answer directly or gather evidence.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 241,
+          "payload": {
+            "stage": "tool",
+            "label": "Running saved highlights lookup",
+            "detail": "Looking up saved highlights.",
+            "decision": "This asks about saved highlights, so the saved-highlights lookup ran before broader planning.",
+            "plan": null,
+            "tool": {
+              "name": "highlight_lookup",
+              "label": "Saved highlights lookup",
+              "state": "running",
+              "input": "Look up saved highlights for query \"contradict\" (limit 8)",
+              "output": null
+            }
+          }
+        },
+        {
+          "received_at_ms": 273,
+          "payload": {
+            "stage": "tool_complete",
+            "label": "Saved highlights lookup complete",
+            "detail": "No saved highlights matched query \"contradict\".",
+            "decision": null,
+            "plan": null,
+            "tool": {
+              "name": "highlight_lookup",
+              "label": "Saved highlights lookup",
+              "state": "completed",
+              "input": "Look up saved highlights for query \"contradict\"",
+              "output": "No saved highlights matched query \"contradict\"."
+            }
+          }
+        },
+        {
+          "received_at_ms": 273,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Planning next step",
+            "detail": "Choosing whether to answer now or call a tool (step 1/4).",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 273,
+          "payload": {
+            "stage": "generating",
+            "label": "Answering from gathered evidence",
+            "detail": "Composing the final answer from 1 tool result and 0 excerpts.",
+            "decision": "Tool planner unavailable after gathering evidence.",
+            "plan": null,
+            "tool": null
+          }
+        }
+      ],
+      "tool_calls": [
+        {
+          "name": "highlight_lookup",
+          "label": "Saved highlights lookup",
+          "state": "completed",
+          "input": "Look up saved highlights for query \"contradict\"",
+          "output": "No saved highlights matched query \"contradict\"."
+        },
+        {
+          "name": "highlight_lookup",
+          "label": "Saved highlights lookup",
+          "state": "running",
+          "input": "Look up saved highlights for query \"contradict\" (limit 8)",
+          "output": null
+        }
+      ],
+      "latency_ms_total": 4115,
+      "latency_ms_retrieval": 273,
+      "latency_ms_generation": 0,
+      "rubric_answerability_pass": false,
+      "rubric_grounding_pass": true,
+      "rubric_shape_pass": false,
+      "rubric_capability_score": 0,
+      "failure_class": "stream_error",
+      "notes": [
+        "stream ended with an explicit error event",
+        "assistant content was empty",
+        "highlight answer did not explicitly reference highlights or snippets"
+      ],
+      "raw_error": "Ollama chat request failed (429 Too Many Requests): {\"error\":\"you (TotoAI) have reached your weekly usage limit, upgrade for higher limits: https://ollama.com/upgrade (ref: 714bb28b-7a7b-4d94-b795-ea0c57c159f5)\"}\n",
+      "raw_sse": "event: status\ndata: {\"detail\":\"Resolving scope and deciding whether to answer directly or gather evidence.\",\"label\":\"Preparing chat plan\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"decision\":\"This asks about saved highlights, so the saved-highlights lookup ran before broader planning.\",\"detail\":\"Looking up saved highlights.\",\"label\":\"Running saved highlights lookup\",\"stage\":\"tool\",\"tool\":{\"input\":\"Look up saved highlights for query \\\"contradict\\\" (limit 8)\",\"label\":\"Saved highlights lookup\",\"name\":\"highlight_lookup\",\"state\":\"running\"}}\n\nevent: status\ndata: {\"detail\":\"No saved highlights matched query \\\"contradict\\\".\",\"label\":\"Saved highlights lookup complete\",\"stage\":\"tool_complete\",\"tool\":{\"input\":\"Look up saved highlights for query \\\"contradict\\\"\",\"label\":\"Saved highlights lookup\",\"name\":\"highlight_lookup\",\"output\":\"No saved highlights matched query \\\"contradict\\\".\",\"state\":\"completed\"}}\n\nevent: status\ndata: {\"detail\":\"Choosing whether to answer now or call a tool (step 1/4).\",\"label\":\"Planning next step\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"decision\":\"Tool planner unavailable after gathering evidence.\",\"detail\":\"Composing the final answer from 1 tool result and 0 excerpts.\",\"label\":\"Answering from gathered evidence\",\"stage\":\"generating\"}\n\nevent: error\ndata: {\"message\":\"Ollama chat request failed (429 Too Many Requests): {\\\"error\\\":\\\"you (TotoAI) have reached your weekly usage limit, upgrade for higher limits: https://ollama.com/upgrade (ref: 714bb28b-7a7b-4d94-b795-ea0c57c159f5)\\\"}\\n\"}\n\n"
+    }
+  ]
+}

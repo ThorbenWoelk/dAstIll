@@ -173,7 +173,9 @@ The frontend uses the Firebase JS SDK in the browser and in the Tauri WebView. S
 
 When `APP_RUNTIME_MODE=maintenance` is set in `.github/runtime-mode.env`, the app frontend is built with `PUBLIC_APP_MAINTENANCE_MODE=1`, but the backend still validates and deploys. This keeps `dastill-mini` available while the main product UI stays in maintenance posture.
 
-The backend Cloud Run service is intentionally capped at one serving instance. The current runtime keeps a local libSQL cache/index plus in-process background workers, so multi-replica scale-out would duplicate worker execution and create per-replica cache divergence. Treat horizontal backend scaling as blocked until the serving path and worker path are split or otherwise coordinated.
+The backend Cloud Run service is intentionally capped at one serving instance. The runtime keeps a local libSQL cache/index plus in-process background workers, so multi-replica scale-out would duplicate worker execution and create per-replica cache divergence. Treat horizontal backend scaling as blocked until the serving path and worker path are split or otherwise coordinated.
+
+On startup, the backend first tries to restore the local libSQL file from the derived S3 runtime cache at `runtime-cache/libsql/current.json`. The manifest points to a compressed snapshot under `runtime-cache/libsql/snapshots/` and includes source-prefix fingerprints for `videos/`, `user-preferences/`, and `tts-stats/`. If the snapshot is missing, stale, corrupt, or schema-incompatible, startup falls back to rebuilding local libSQL from the canonical S3 objects and then publishes a fresh derived snapshot. The canonical S3 prefixes remain the source of truth.
 
 **Android browser-auth handoff:** if the Tauri Android shell should open a browser-hosted login page on a different origin than the product frontend itself, set `PUBLIC_BROWSER_AUTH_BASE_URL` for the frontend build. That value controls the origin used for the system-browser `/login` handoff flow.
 

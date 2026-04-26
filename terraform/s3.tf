@@ -61,6 +61,19 @@ resource "aws_s3_bucket_lifecycle_configuration" "data" {
       storage_class = "INTELLIGENT_TIERING"
     }
   }
+
+  rule {
+    id     = "expire-runtime-libsql-snapshots"
+    status = "Enabled"
+
+    filter {
+      prefix = "runtime-cache/libsql/snapshots/"
+    }
+
+    expiration {
+      days = 30
+    }
+  }
 }
 
 resource "aws_s3_bucket_versioning" "data" {

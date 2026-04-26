@@ -1,0 +1,876 @@
+{
+  "generated_at_utc": "2026-04-23T15:11:03.167363+00:00",
+  "base_url": "http://localhost:3544",
+  "dataset_path": "/Users/thorben.woelk/repos/dAstIll/backend/tests/data/chat_capability_prompts.json",
+  "prompt_count": 5,
+  "summary": {
+    "total_prompts": 5,
+    "passed_prompts": 1,
+    "answerability_passed": 4,
+    "grounding_passed": 4,
+    "shape_passed": 1,
+    "average_score": 1.8,
+    "prompts_without_sources": [
+      "q097"
+    ],
+    "single_video_prompts": [],
+    "failure_counts": {
+      "generic_answer": 1,
+      "shape_mismatch": 3
+    },
+    "by_capability_class": [
+      {
+        "capability_class": "transcript_summary_alignment",
+        "total": 5,
+        "passed": 1,
+        "answerability_passed": 4,
+        "grounding_passed": 4,
+        "shape_passed": 1,
+        "average_score": 1.8,
+        "common_failure_classes": [
+          "generic_answer",
+          "shape_mismatch"
+        ]
+      }
+    ]
+  },
+  "results": [
+    {
+      "prompt_id": "q021",
+      "prompt": "What did I miss if I only read the summary?",
+      "capability_class": "transcript_summary_alignment",
+      "answerability_expected": "yes",
+      "conversation_id": "conv_1776957040236_91",
+      "status": "completed",
+      "assistant_content": "Retrieved evidence for: What did I miss if I only read the summary?\n\nThe answer model is unavailable, so this fallback lists the highest-ranked saved excerpts instead of synthesizing beyond them.\n\n1. Hacking Claude Code to make it 15x cheaper? 👀👀👀 - Theo - t3․gg: work and if I can watch it while it's working and yell at it when it's wrong, I will. Cool. It seems to have blasted through this much quicker overall. Here we got a type error here. Okay, it seems like it didn't get the new tool call syntax right and because of that things are different. Also, the max steps change wasn't applied correctly either. Um, there are still some type errors that indicate missing changes. Do... [1]\n2. My chaotic journey to find the right database - Theo - t3․gg: ile keeping the Dexie local model unchanged. Major explored-but-rejected options include Zero (too early, concerns about open-source status and split-brain schema management), Jazz (painful co-state model, not ready for signed-out experiences), TinyBase (required WebSockets or DIY sync), and Legend State (recommended rolling custom sync). A critical insight for local-first sync is the necessity of soft deletes: you m... [2]\n3. Never mind (OpenAI won again) - Theo - t3․gg: el where I can start a run, walk away for hours, and come back to fully working software. I have had runs stay on track for eight plus hours. Insane. A big upgrade is judgment under ambiguity. When prompts are missing details, it makes assumptions shockingly similar to what he would have personally decided on. Test and validation are a massive unlock with clear pass and fail targets. It will iterate for many hours wi... [3]\n4. Apple is paying Google to fix Siri (yes really) - Theo - t3․gg: was forced by the courts to support RCS. Kind of. There's an interesting catch with RCS. RCS stands for rich communication services. It's an open standard that anyone can choose to support. There is something missing from the standard though. It does not include encryption. The RCS standard is an unencrypted standard which means any texts you send through RCS were unencrypted. Google doesn't want its users sending u.... [4]",
+      "source_count": 4,
+      "source_videos": [
+        "Apple is paying Google to fix Siri (yes really)",
+        "Hacking Claude Code to make it 15x cheaper? 👀👀👀",
+        "My chaotic journey to find the right database",
+        "Never mind (OpenAI won again)"
+      ],
+      "source_channels": [
+        "Theo - t3․gg"
+      ],
+      "used_search_tool": false,
+      "used_db_tool": false,
+      "used_conversation_only": false,
+      "status_trace": [
+        {
+          "received_at_ms": 0,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Preparing chat plan",
+            "detail": "Resolving scope and deciding whether to answer directly or gather evidence.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 208,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Planning next step",
+            "detail": "Choosing whether to answer now or call a tool (step 1/4).",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 430,
+          "payload": {
+            "stage": "classifying",
+            "label": "Planning search",
+            "detail": "Deciding whether this needs a focused lookup, broader evidence, or only prior context.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 430,
+          "payload": {
+            "stage": "classifying",
+            "label": "Search plan ready",
+            "detail": "Using broader synthesis with up to 12 excerpts and 4 per video.",
+            "decision": "Planner unavailable; falling back to synthesis (GenerationFailed(\"cloud cooldown active and no fallback model configured\")).",
+            "plan": {
+              "intent": "synthesis",
+              "label": "Broader synthesis",
+              "budget": 12,
+              "max_per_video": 4,
+              "queries": [
+                "What did I miss if I only read the summary?"
+              ],
+              "expansion_queries": [
+                "What did I miss if I only read the summary? overview"
+              ],
+              "rationale": "Planner unavailable; falling back to synthesis (GenerationFailed(\"cloud cooldown active and no fallback model configured\")).",
+              "skip_retrieval": null,
+              "deep_research": null
+            },
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 430,
+          "payload": {
+            "stage": "retrieving_pass_1",
+            "label": "Searching the library",
+            "detail": "Running 1 keyword + semantic search query.",
+            "decision": "Queries: What did I miss if I only read the summary?",
+            "plan": {
+              "intent": "synthesis",
+              "label": "Broader synthesis",
+              "budget": 12,
+              "max_per_video": 4,
+              "queries": [
+                "What did I miss if I only read the summary?"
+              ],
+              "expansion_queries": [
+                "What did I miss if I only read the summary? overview"
+              ],
+              "rationale": "Planner unavailable; falling back to synthesis (GenerationFailed(\"cloud cooldown active and no fallback model configured\")).",
+              "skip_retrieval": null,
+              "deep_research": null
+            },
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 835,
+          "payload": {
+            "stage": "retrieving_pass_2",
+            "label": "Broadening the search",
+            "detail": "Pass 1 produced 4 excerpts across 4 videos.",
+            "decision": "Pass 1 found only 4 strong excerpts, so broader synthesis coverage is useful.",
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 835,
+          "payload": {
+            "stage": "retrieving_pass_2",
+            "label": "Broadening the search",
+            "detail": "Running 1 keyword + semantic search query.",
+            "decision": "Queries: What did I miss if I only read the summary? overview",
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 1230,
+          "payload": {
+            "stage": "retrieving_complete",
+            "label": "Search complete",
+            "detail": "Collected 4 excerpts across 4 videos.",
+            "decision": "Pass 1 found only 4 strong excerpts, so broader synthesis coverage is useful.",
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 1230,
+          "payload": {
+            "stage": "generating",
+            "label": "Answering from the evidence",
+            "detail": "Composing the final answer from 4 selected excerpts.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 3898,
+          "payload": {
+            "stage": "generating_fallback",
+            "label": "Answer model unavailable",
+            "detail": "Returning the highest-ranked grounded excerpts instead.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        }
+      ],
+      "tool_calls": [],
+      "latency_ms_total": 5084,
+      "latency_ms_retrieval": 1230,
+      "latency_ms_generation": 2668,
+      "rubric_answerability_pass": true,
+      "rubric_grounding_pass": true,
+      "rubric_shape_pass": false,
+      "rubric_capability_score": 2,
+      "failure_class": "shape_mismatch",
+      "notes": [
+        "alignment answer did not explicitly discuss both summary and transcript"
+      ],
+      "raw_error": null,
+      "raw_sse": "event: status\ndata: {\"detail\":\"Resolving scope and deciding whether to answer directly or gather evidence.\",\"label\":\"Preparing chat plan\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"detail\":\"Choosing whether to answer now or call a tool (step 1/4).\",\"label\":\"Planning next step\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"detail\":\"Deciding whether this needs a focused lookup, broader evidence, or only prior context.\",\"label\":\"Planning search\",\"stage\":\"classifying\"}\n\nevent: status\ndata: {\"decision\":\"Planner unavailable; falling back to synthesis (GenerationFailed(\\\"cloud cooldown active and no fallback model configured\\\")).\",\"detail\":\"Using broader synthesis with up to 12 excerpts and 4 per video.\",\"label\":\"Search plan ready\",\"plan\":{\"budget\":12,\"expansion_queries\":[\"What did I miss if I only read the summary? overview\"],\"intent\":\"synthesis\",\"label\":\"Broader synthesis\",\"max_per_video\":4,\"queries\":[\"What did I miss if I only read the summary?\"],\"rationale\":\"Planner unavailable; falling back to synthesis (GenerationFailed(\\\"cloud cooldown active and no fallback model configured\\\")).\"},\"stage\":\"classifying\"}\n\nevent: status\ndata: {\"decision\":\"Queries: What did I miss if I only read the summary?\",\"detail\":\"Running 1 keyword + semantic search query.\",\"label\":\"Searching the library\",\"plan\":{\"budget\":12,\"expansion_queries\":[\"What did I miss if I only read the summary? overview\"],\"intent\":\"synthesis\",\"label\":\"Broader synthesis\",\"max_per_video\":4,\"queries\":[\"What did I miss if I only read the summary?\"],\"rationale\":\"Planner unavailable; falling back to synthesis (GenerationFailed(\\\"cloud cooldown active and no fallback model configured\\\")).\"},\"stage\":\"retrieving_pass_1\"}\n\nevent: sources\ndata: {\"sources\":[{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"8IBTqbFNI5U_transcript_846828bf22c7e184c97a0e4b359ef4b244bd0280491847f2256169661eb67bb8_18\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"8IBTqbFNI5U\",\"item_kind\":\"video\",\"part_kind\":\"transcript\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.016393441706895828,\"section_title\":null,\"snippet\":\"work and if I can watch it while it's working and yell at it when it's wrong, I will. Cool. It seems to have blasted through this much quicker overall. Here we got a type error here. Okay, it seems like it didn't get the new tool call syntax right and because of that things are different. Also, the max steps change wasn't applied correctly either. Um, there are still some type errors that indicate missing changes. Do...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"transcript\",\"video_id\":\"8IBTqbFNI5U\",\"video_title\":\"Hacking Claude Code to make it 15x cheaper? 👀👀👀\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"3gVBjTMS8FE_summary_83c60ed2947b879a3172b8f62f1543b674bca3ca84dc1dbafc8b4d43942bd0ce_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"3gVBjTMS8FE\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.016875000670552254,\"section_title\":null,\"snippet\":\"ile keeping the Dexie local model unchanged. Major explored-but-rejected options include Zero (too early, concerns about open-source status and split-brain schema management), Jazz (painful co-state model, not ready for signed-out experiences), TinyBase (required WebSockets or DIY sync), and Legend State (recommended rolling custom sync). A critical insight for local-first sync is the necessity of soft deletes: you m...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"3gVBjTMS8FE\",\"video_title\":\"My chaotic journey to find the right database\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"RYWrK2hsIB8_transcript_5f5308b94eec6b900fbf36794dced976dabb6bc6121cefb338dd5871f1518927_27\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"RYWrK2hsIB8\",\"item_kind\":\"video\",\"part_kind\":\"transcript\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.016129031777381897,\"section_title\":null,\"snippet\":\"el where I can start a run, walk away for hours, and come back to fully working software. I have had runs stay on track for eight plus hours. Insane. A big upgrade is judgment under ambiguity. When prompts are missing details, it makes assumptions shockingly similar to what he would have personally decided on. Test and validation are a massive unlock with clear pass and fail targets. It will iterate for many hours wi...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"transcript\",\"video_id\":\"RYWrK2hsIB8\",\"video_title\":\"Never mind (OpenAI won again)\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"LwPNjhjf0-8_transcript_693b7e992c5a40384fcc550b1cafec75da610511e2966f6440cbc95fadf0ef6e_15\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"LwPNjhjf0-8\",\"item_kind\":\"video\",\"part_kind\":\"transcript\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.01587301678955555,\"section_title\":null,\"snippet\":\"was forced by the courts to support RCS. Kind of. There's an interesting catch with RCS. RCS stands for rich communication services. It's an open standard that anyone can choose to support. There is something missing from the standard though. It does not include encryption. The RCS standard is an unencrypted standard which means any texts you send through RCS were unencrypted. Google doesn't want its users sending u....\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"transcript\",\"video_id\":\"LwPNjhjf0-8\",\"video_title\":\"Apple is paying Google to fix Siri (yes really)\"}]}\n\nevent: status\ndata: {\"decision\":\"Pass 1 found only 4 strong excerpts, so broader synthesis coverage is useful.\",\"detail\":\"Pass 1 produced 4 excerpts across 4 videos.\",\"label\":\"Broadening the search\",\"stage\":\"retrieving_pass_2\"}\n\nevent: status\ndata: {\"decision\":\"Queries: What did I miss if I only read the summary? overview\",\"detail\":\"Running 1 keyword + semantic search query.\",\"label\":\"Broadening the search\",\"stage\":\"retrieving_pass_2\"}\n\nevent: sources\ndata: {\"sources\":[{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"8IBTqbFNI5U_transcript_846828bf22c7e184c97a0e4b359ef4b244bd0280491847f2256169661eb67bb8_18\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"8IBTqbFNI5U\",\"item_kind\":\"video\",\"part_kind\":\"transcript\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.032786883413791656,\"section_title\":null,\"snippet\":\"work and if I can watch it while it's working and yell at it when it's wrong, I will. Cool. It seems to have blasted through this much quicker overall. Here we got a type error here. Okay, it seems like it didn't get the new tool call syntax right and because of that things are different. Also, the max steps change wasn't applied correctly either. Um, there are still some type errors that indicate missing changes. Do...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"transcript\",\"video_id\":\"8IBTqbFNI5U\",\"video_title\":\"Hacking Claude Code to make it 15x cheaper? 👀👀👀\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"3gVBjTMS8FE_summary_83c60ed2947b879a3172b8f62f1543b674bca3ca84dc1dbafc8b4d43942bd0ce_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"3gVBjTMS8FE\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.03375000134110451,\"section_title\":null,\"snippet\":\"ile keeping the Dexie local model unchanged. Major explored-but-rejected options include Zero (too early, concerns about open-source status and split-brain schema management), Jazz (painful co-state model, not ready for signed-out experiences), TinyBase (required WebSockets or DIY sync), and Legend State (recommended rolling custom sync). A critical insight for local-first sync is the necessity of soft deletes: you m...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"3gVBjTMS8FE\",\"video_title\":\"My chaotic journey to find the right database\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"RYWrK2hsIB8_transcript_5f5308b94eec6b900fbf36794dced976dabb6bc6121cefb338dd5871f1518927_27\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"RYWrK2hsIB8\",\"item_kind\":\"video\",\"part_kind\":\"transcript\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.032258063554763794,\"section_title\":null,\"snippet\":\"el where I can start a run, walk away for hours, and come back to fully working software. I have had runs stay on track for eight plus hours. Insane. A big upgrade is judgment under ambiguity. When prompts are missing details, it makes assumptions shockingly similar to what he would have personally decided on. Test and validation are a massive unlock with clear pass and fail targets. It will iterate for many hours wi...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"transcript\",\"video_id\":\"RYWrK2hsIB8\",\"video_title\":\"Never mind (OpenAI won again)\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"LwPNjhjf0-8_transcript_693b7e992c5a40384fcc550b1cafec75da610511e2966f6440cbc95fadf0ef6e_15\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"LwPNjhjf0-8\",\"item_kind\":\"video\",\"part_kind\":\"transcript\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.0317460335791111,\"section_title\":null,\"snippet\":\"was forced by the courts to support RCS. Kind of. There's an interesting catch with RCS. RCS stands for rich communication services. It's an open standard that anyone can choose to support. There is something missing from the standard though. It does not include encryption. The RCS standard is an unencrypted standard which means any texts you send through RCS were unencrypted. Google doesn't want its users sending u....\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"transcript\",\"video_id\":\"LwPNjhjf0-8\",\"video_title\":\"Apple is paying Google to fix Siri (yes really)\"}]}\n\nevent: status\ndata: {\"decision\":\"Pass 1 found only 4 strong excerpts, so broader synthesis coverage is useful.\",\"detail\":\"Collected 4 excerpts across 4 videos.\",\"label\":\"Search complete\",\"stage\":\"retrieving_complete\"}\n\nevent: status\ndata: {\"detail\":\"Composing the final answer from 4 selected excerpts.\",\"label\":\"Answering from the evidence\",\"stage\":\"generating\"}\n\nevent: sources\ndata: {\"sources\":[{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"8IBTqbFNI5U_transcript_846828bf22c7e184c97a0e4b359ef4b244bd0280491847f2256169661eb67bb8_18\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"8IBTqbFNI5U\",\"item_kind\":\"video\",\"part_kind\":\"transcript\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.032786883413791656,\"section_title\":null,\"snippet\":\"work and if I can watch it while it's working and yell at it when it's wrong, I will. Cool. It seems to have blasted through this much quicker overall. Here we got a type error here. Okay, it seems like it didn't get the new tool call syntax right and because of that things are different. Also, the max steps change wasn't applied correctly either. Um, there are still some type errors that indicate missing changes. Do...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"transcript\",\"video_id\":\"8IBTqbFNI5U\",\"video_title\":\"Hacking Claude Code to make it 15x cheaper? 👀👀👀\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"3gVBjTMS8FE_summary_83c60ed2947b879a3172b8f62f1543b674bca3ca84dc1dbafc8b4d43942bd0ce_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"3gVBjTMS8FE\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.03375000134110451,\"section_title\":null,\"snippet\":\"ile keeping the Dexie local model unchanged. Major explored-but-rejected options include Zero (too early, concerns about open-source status and split-brain schema management), Jazz (painful co-state model, not ready for signed-out experiences), TinyBase (required WebSockets or DIY sync), and Legend State (recommended rolling custom sync). A critical insight for local-first sync is the necessity of soft deletes: you m...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"3gVBjTMS8FE\",\"video_title\":\"My chaotic journey to find the right database\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"RYWrK2hsIB8_transcript_5f5308b94eec6b900fbf36794dced976dabb6bc6121cefb338dd5871f1518927_27\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"RYWrK2hsIB8\",\"item_kind\":\"video\",\"part_kind\":\"transcript\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.032258063554763794,\"section_title\":null,\"snippet\":\"el where I can start a run, walk away for hours, and come back to fully working software. I have had runs stay on track for eight plus hours. Insane. A big upgrade is judgment under ambiguity. When prompts are missing details, it makes assumptions shockingly similar to what he would have personally decided on. Test and validation are a massive unlock with clear pass and fail targets. It will iterate for many hours wi...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"transcript\",\"video_id\":\"RYWrK2hsIB8\",\"video_title\":\"Never mind (OpenAI won again)\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"LwPNjhjf0-8_transcript_693b7e992c5a40384fcc550b1cafec75da610511e2966f6440cbc95fadf0ef6e_15\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"LwPNjhjf0-8\",\"item_kind\":\"video\",\"part_kind\":\"transcript\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.0317460335791111,\"section_title\":null,\"snippet\":\"was forced by the courts to support RCS. Kind of. There's an interesting catch with RCS. RCS stands for rich communication services. It's an open standard that anyone can choose to support. There is something missing from the standard though. It does not include encryption. The RCS standard is an unencrypted standard which means any texts you send through RCS were unencrypted. Google doesn't want its users sending u....\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"transcript\",\"video_id\":\"LwPNjhjf0-8\",\"video_title\":\"Apple is paying Google to fix Siri (yes really)\"}]}\n\nevent: status\ndata: {\"detail\":\"Returning the highest-ranked grounded excerpts instead.\",\"label\":\"Answer model unavailable\",\"stage\":\"generating_fallback\"}\n\nevent: done\ndata: {\"message\":{\"completion_tokens\":null,\"content\":\"Retrieved evidence for: What did I miss if I only read the summary?\\n\\nThe answer model is unavailable, so this fallback lists the highest-ranked saved excerpts instead of synthesizing beyond them.\\n\\n1. Hacking Claude Code to make it 15x cheaper? 👀👀👀 - Theo - t3․gg: work and if I can watch it while it's working and yell at it when it's wrong, I will. Cool. It seems to have blasted through this much quicker overall. Here we got a type error here. Okay, it seems like it didn't get the new tool call syntax right and because of that things are different. Also, the max steps change wasn't applied correctly either. Um, there are still some type errors that indicate missing changes. Do... [1]\\n2. My chaotic journey to find the right database - Theo - t3․gg: ile keeping the Dexie local model unchanged. Major explored-but-rejected options include Zero (too early, concerns about open-source status and split-brain schema management), Jazz (painful co-state model, not ready for signed-out experiences), TinyBase (required WebSockets or DIY sync), and Legend State (recommended rolling custom sync). A critical insight for local-first sync is the necessity of soft deletes: you m... [2]\\n3. Never mind (OpenAI won again) - Theo - t3․gg: el where I can start a run, walk away for hours, and come back to fully working software. I have had runs stay on track for eight plus hours. Insane. A big upgrade is judgment under ambiguity. When prompts are missing details, it makes assumptions shockingly similar to what he would have personally decided on. Test and validation are a massive unlock with clear pass and fail targets. It will iterate for many hours wi... [3]\\n4. Apple is paying Google to fix Siri (yes really) - Theo - t3․gg: was forced by the courts to support RCS. Kind of. There's an interesting catch with RCS. RCS stands for rich communication services. It's an open standard that anyone can choose to support. There is something missing from the standard though. It does not include encryption. The RCS standard is an unencrypted standard which means any texts you send through RCS were unencrypted. Google doesn't want its users sending u.... [4]\\n\",\"created_at\":\"2026-04-23T15:10:44.819868Z\",\"id\":\"msg_1776957044819_97\",\"model\":\"glm-5.1:cloud\",\"prompt_tokens\":null,\"role\":\"assistant\",\"sources\":[{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"8IBTqbFNI5U_transcript_846828bf22c7e184c97a0e4b359ef4b244bd0280491847f2256169661eb67bb8_18\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"8IBTqbFNI5U\",\"item_kind\":\"video\",\"part_kind\":\"transcript\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.032786883413791656,\"section_title\":null,\"snippet\":\"work and if I can watch it while it's working and yell at it when it's wrong, I will. Cool. It seems to have blasted through this much quicker overall. Here we got a type error here. Okay, it seems like it didn't get the new tool call syntax right and because of that things are different. Also, the max steps change wasn't applied correctly either. Um, there are still some type errors that indicate missing changes. Do...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"transcript\",\"video_id\":\"8IBTqbFNI5U\",\"video_title\":\"Hacking Claude Code to make it 15x cheaper? 👀👀👀\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"3gVBjTMS8FE_summary_83c60ed2947b879a3172b8f62f1543b674bca3ca84dc1dbafc8b4d43942bd0ce_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"3gVBjTMS8FE\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.03375000134110451,\"section_title\":null,\"snippet\":\"ile keeping the Dexie local model unchanged. Major explored-but-rejected options include Zero (too early, concerns about open-source status and split-brain schema management), Jazz (painful co-state model, not ready for signed-out experiences), TinyBase (required WebSockets or DIY sync), and Legend State (recommended rolling custom sync). A critical insight for local-first sync is the necessity of soft deletes: you m...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"3gVBjTMS8FE\",\"video_title\":\"My chaotic journey to find the right database\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"RYWrK2hsIB8_transcript_5f5308b94eec6b900fbf36794dced976dabb6bc6121cefb338dd5871f1518927_27\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"RYWrK2hsIB8\",\"item_kind\":\"video\",\"part_kind\":\"transcript\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.032258063554763794,\"section_title\":null,\"snippet\":\"el where I can start a run, walk away for hours, and come back to fully working software. I have had runs stay on track for eight plus hours. Insane. A big upgrade is judgment under ambiguity. When prompts are missing details, it makes assumptions shockingly similar to what he would have personally decided on. Test and validation are a massive unlock with clear pass and fail targets. It will iterate for many hours wi...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"transcript\",\"video_id\":\"RYWrK2hsIB8\",\"video_title\":\"Never mind (OpenAI won again)\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"LwPNjhjf0-8_transcript_693b7e992c5a40384fcc550b1cafec75da610511e2966f6440cbc95fadf0ef6e_15\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"LwPNjhjf0-8\",\"item_kind\":\"video\",\"part_kind\":\"transcript\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.0317460335791111,\"section_title\":null,\"snippet\":\"was forced by the courts to support RCS. Kind of. There's an interesting catch with RCS. RCS stands for rich communication services. It's an open standard that anyone can choose to support. There is something missing from the standard though. It does not include encryption. The RCS standard is an unencrypted standard which means any texts you send through RCS were unencrypted. Google doesn't want its users sending u....\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"transcript\",\"video_id\":\"LwPNjhjf0-8\",\"video_title\":\"Apple is paying Google to fix Siri (yes really)\"}],\"status\":\"completed\",\"total_duration_ns\":null,\"turn_trace\":{\"budget\":{\"exhausted\":false,\"exhaustion_reason\":null,\"max_model_calls\":12,\"max_retrieval_passes\":3,\"max_tool_calls\":4,\"model_calls\":3,\"retrieval_passes\":2,\"tool_calls\":0},\"plan_intent\":\"targeted synthesis\",\"plan_label\":\"Broader synthesis\",\"retrieval\":{\"deep_research\":false,\"pass_count\":2,\"query_count\":2,\"selected_source_count\":4,\"unique_video_count\":4},\"strategy\":\"retrieval\",\"tool_calls\":[]}}}\n\n"
+    },
+    {
+      "prompt_id": "q095",
+      "prompt": "Which summary seems most reliable?",
+      "capability_class": "transcript_summary_alignment",
+      "answerability_expected": "partial",
+      "conversation_id": "conv_1776957045286_99",
+      "status": "completed",
+      "assistant_content": "Retrieved evidence for: Which summary seems most reliable?\n\nThe answer model is unavailable, so this fallback lists the highest-ranked saved excerpts instead of synthesizing beyond them.\n\n1. Where Should You Deploy In 2026? - Theo - t3․gg: TL;DR For most applications (98%+), serverless deployment options are sufficient and recommended as a starting point; move to VPS only if you encounter specific needs. Top recommendations (S-tier): Vercel for serverless, Railway and Render for VPS — all offer excellent developer experience, reliability, and reasonable pricing. Cloudflare offers the lowest costs due to unique infrastructure (no Docker, uses V8 isolate... [1]\n2. Vercel Finally Caught Up - Theo - t3․gg / Key Points: marginal [2]\n3. Gemini 3.1 Pro is the smartest model ever made - Theo - t3․gg: Bench to measure how well models can name skateboarding tricks based on descriptions, combining niche knowledge with spatial recognition. When first created, Gro 4 had the highest score in the high 70s (75 on most recent run), while GPT5 scored 98 during testing at OpenAI's office. Modern OpenAI models have regressed, with the highest current score around 87. Gemini 3.1 Pro Preview \"consistently hits 100%\" on this b.... [3]\n4. Jira and Linear are legacy software - Theo - t3․gg: workspace, and Linear can intelligently refine, synthesize, or take action on context immediately Automations and Non-Developer Adoption The speaker initially overlooked automations in the Codex app and notes most developers have as well Example automations shown: summarize yesterday's Git activity for standup, synthesize weekly PRs/rollouts/incidents/reviews into updates, draft release notes for merged PRs The spea.... [4]\n5. Microsoft and OpenAI are breaking up? - Theo - t3․gg / Key Points: lies. [5]\n6. TOON: “JSON for AI” (is it any good?) - Theo - t3․gg: to write a plan, pasted two errors in and got a working implementation. I think I came around to tune in the end here. I'm curious what y'all think though. Is this overrated, not worthwhile, or actually a pretty useful little tool to use alongside your LLMs? Let me know what you guys think. Until next time, he starts. [6]\n7. Which browser should you use right now? - Theo - t3․gg / Overview: This extensive video is a comprehensive review of the current browser landscape, covering major browsers (Chrome, Edge, Firefox, Safari), privacy-focused alternatives (Brave, Vivaldi, Orion), AI-focused browsers (Dia, Comet), and emerging projects (Zen, Helium, Ladybird). The speaker, a notorious browser-hopper who previously championed Arc, systematically evaluates each browser's strengths, weaknesses, UX decisions,... [7]\n8. OpenAI: Trapped in 2nd place - Theo - t3․gg: TL;DR OpenAI consistently releases groundbreaking AI capabilities that briefly put them in first place, but competitors quickly catch up or surpass them, leaving OpenAI in \"perpetual second place\" across most technical categories. OpenAI's true competitive moat is ChatGPT itself—the default AI chat application for most users—which generates 70% of their revenue and keeps users from switching to technically superior a... [8]\n9. Which browser should you use right now? - Theo - t3․gg: TL;DR Chrome/Chromium has had a massively positive impact on web standards and is technically the best implementation, but Google's monopolistic tendencies show in forced AI integrations like Gemini. Manifest V3 was the right call for security (preventing malware), not an anti-ad-blocker move, though ad-blocking is now slightly worse in Chrome. Brave is strongly criticized for buggy UX, breaking websites, aggressive ... [9]\n10. Is gpt-5.1 the best code model ever? - Theo - t3․gg / Key Points: model remains the default for planning, but overall disappointment is clear. [10]\n11. Which browser should you use right now? - Theo - t3․gg / Takeaways: Chrome's dominance has been net positive for web standards, but Google's monopolistic behavior shows in forced AI integrations; the browser itself remains solid for everyday use. Privacy claims in browsers often don't match reality—Firefox quietly removed its \"never sell your data\" promise, and Brave's aggressive privacy features actively break websites. Manifest V3 was necessary for security (preventing malware from... [11]",
+      "source_count": 11,
+      "source_videos": [
+        "Gemini 3.1 Pro is the smartest model ever made",
+        "Is gpt-5.1 the best code model ever?",
+        "Jira and Linear are legacy software",
+        "Microsoft and OpenAI are breaking up?",
+        "OpenAI: Trapped in 2nd place",
+        "TOON: “JSON for AI” (is it any good?)",
+        "Vercel Finally Caught Up",
+        "Where Should You Deploy In 2026?",
+        "Which browser should you use right now?"
+      ],
+      "source_channels": [
+        "Theo - t3․gg"
+      ],
+      "used_search_tool": false,
+      "used_db_tool": false,
+      "used_conversation_only": false,
+      "status_trace": [
+        {
+          "received_at_ms": 0,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Preparing chat plan",
+            "detail": "Resolving scope and deciding whether to answer directly or gather evidence.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 210,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Planning next step",
+            "detail": "Choosing whether to answer now or call a tool (step 1/4).",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 433,
+          "payload": {
+            "stage": "classifying",
+            "label": "Planning search",
+            "detail": "Deciding whether this needs a focused lookup, broader evidence, or only prior context.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 433,
+          "payload": {
+            "stage": "classifying",
+            "label": "Search plan ready",
+            "detail": "Using broader synthesis with up to 12 excerpts and 4 per video.",
+            "decision": "Planner unavailable; falling back to synthesis (GenerationFailed(\"cloud cooldown active and no fallback model configured\")).",
+            "plan": {
+              "intent": "synthesis",
+              "label": "Broader synthesis",
+              "budget": 12,
+              "max_per_video": 4,
+              "queries": [
+                "Which summary seems most reliable?"
+              ],
+              "expansion_queries": [
+                "Which summary seems most reliable? overview"
+              ],
+              "rationale": "Planner unavailable; falling back to synthesis (GenerationFailed(\"cloud cooldown active and no fallback model configured\")).",
+              "skip_retrieval": null,
+              "deep_research": null
+            },
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 433,
+          "payload": {
+            "stage": "retrieving_pass_1",
+            "label": "Searching the library",
+            "detail": "Running 1 keyword + semantic search query.",
+            "decision": "Queries: Which summary seems most reliable?",
+            "plan": {
+              "intent": "synthesis",
+              "label": "Broader synthesis",
+              "budget": 12,
+              "max_per_video": 4,
+              "queries": [
+                "Which summary seems most reliable?"
+              ],
+              "expansion_queries": [
+                "Which summary seems most reliable? overview"
+              ],
+              "rationale": "Planner unavailable; falling back to synthesis (GenerationFailed(\"cloud cooldown active and no fallback model configured\")).",
+              "skip_retrieval": null,
+              "deep_research": null
+            },
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 972,
+          "payload": {
+            "stage": "retrieving_pass_2",
+            "label": "Broadening the search",
+            "detail": "Pass 1 produced 4 excerpts across 4 videos.",
+            "decision": "Pass 1 found only 4 strong excerpts, so broader synthesis coverage is useful.",
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 972,
+          "payload": {
+            "stage": "retrieving_pass_2",
+            "label": "Broadening the search",
+            "detail": "Running 1 keyword + semantic search query.",
+            "decision": "Queries: Which summary seems most reliable? overview",
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 1460,
+          "payload": {
+            "stage": "retrieving_complete",
+            "label": "Search complete",
+            "detail": "Collected 11 excerpts across 9 videos.",
+            "decision": "Pass 1 gathered 11 excerpts across 9 videos.",
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 1460,
+          "payload": {
+            "stage": "generating",
+            "label": "Answering from the evidence",
+            "detail": "Composing the final answer from 11 selected excerpts.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 4093,
+          "payload": {
+            "stage": "generating_fallback",
+            "label": "Answer model unavailable",
+            "detail": "Returning the highest-ranked grounded excerpts instead.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        }
+      ],
+      "tool_calls": [],
+      "latency_ms_total": 5281,
+      "latency_ms_retrieval": 1460,
+      "latency_ms_generation": 2633,
+      "rubric_answerability_pass": true,
+      "rubric_grounding_pass": true,
+      "rubric_shape_pass": false,
+      "rubric_capability_score": 2,
+      "failure_class": "shape_mismatch",
+      "notes": [
+        "alignment answer did not explicitly discuss both summary and transcript"
+      ],
+      "raw_error": null,
+      "raw_sse": "event: status\ndata: {\"detail\":\"Resolving scope and deciding whether to answer directly or gather evidence.\",\"label\":\"Preparing chat plan\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"detail\":\"Choosing whether to answer now or call a tool (step 1/4).\",\"label\":\"Planning next step\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"detail\":\"Deciding whether this needs a focused lookup, broader evidence, or only prior context.\",\"label\":\"Planning search\",\"stage\":\"classifying\"}\n\nevent: status\ndata: {\"decision\":\"Planner unavailable; falling back to synthesis (GenerationFailed(\\\"cloud cooldown active and no fallback model configured\\\")).\",\"detail\":\"Using broader synthesis with up to 12 excerpts and 4 per video.\",\"label\":\"Search plan ready\",\"plan\":{\"budget\":12,\"expansion_queries\":[\"Which summary seems most reliable? overview\"],\"intent\":\"synthesis\",\"label\":\"Broader synthesis\",\"max_per_video\":4,\"queries\":[\"Which summary seems most reliable?\"],\"rationale\":\"Planner unavailable; falling back to synthesis (GenerationFailed(\\\"cloud cooldown active and no fallback model configured\\\")).\"},\"stage\":\"classifying\"}\n\nevent: status\ndata: {\"decision\":\"Queries: Which summary seems most reliable?\",\"detail\":\"Running 1 keyword + semantic search query.\",\"label\":\"Searching the library\",\"plan\":{\"budget\":12,\"expansion_queries\":[\"Which summary seems most reliable? overview\"],\"intent\":\"synthesis\",\"label\":\"Broader synthesis\",\"max_per_video\":4,\"queries\":[\"Which summary seems most reliable?\"],\"rationale\":\"Planner unavailable; falling back to synthesis (GenerationFailed(\\\"cloud cooldown active and no fallback model configured\\\")).\"},\"stage\":\"retrieving_pass_1\"}\n\nevent: sources\ndata: {\"sources\":[{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"Vd98UhPGVfY_summary_1_7\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"Vd98UhPGVfY\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.016393441706895828,\"section_title\":\"Key Points\",\"snippet\":\"marginal\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"Vd98UhPGVfY\",\"video_title\":\"Vercel Finally Caught Up\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"yfxDdQo2cyI_summary_1f2c7d674134ea7f0429c86126bac7de126d2170d7441fd9a6b58cc67cb25bfc_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"yfxDdQo2cyI\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.016393441706895828,\"section_title\":null,\"snippet\":\"TL;DR For most applications (98%+), serverless deployment options are sufficient and recommended as a starting point; move to VPS only if you encounter specific needs. Top recommendations (S-tier): Vercel for serverless, Railway and Render for VPS — all offer excellent developer experience, reliability, and reasonable pricing. Cloudflare offers the lowest costs due to unique infrastructure (no Docker, uses V8 isolate...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"yfxDdQo2cyI\",\"video_title\":\"Where Should You Deploy In 2026?\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"rncxz2XROUg_summary_7a194665262f9ac666a13e9eeb134bd6057a0782bd7f3f65de18a55f1ee11892_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"rncxz2XROUg\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.016129031777381897,\"section_title\":null,\"snippet\":\"Bench to measure how well models can name skateboarding tricks based on descriptions, combining niche knowledge with spatial recognition. When first created, Gro 4 had the highest score in the high 70s (75 on most recent run), while GPT5 scored 98 during testing at OpenAI's office. Modern OpenAI models have regressed, with the highest current score around 87. Gemini 3.1 Pro Preview \\\"consistently hits 100%\\\" on this b....\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"rncxz2XROUg\",\"video_title\":\"Gemini 3.1 Pro is the smartest model ever made\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"pzUn9wTCgcw_summary_c67cb62e0bc786154b1a489f12c8b8cde2f5f82cd522aecc3d5f44e84e069c64_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"pzUn9wTCgcw\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.01587301678955555,\"section_title\":null,\"snippet\":\"workspace, and Linear can intelligently refine, synthesize, or take action on context immediately Automations and Non-Developer Adoption The speaker initially overlooked automations in the Codex app and notes most developers have as well Example automations shown: summarize yesterday's Git activity for standup, synthesize weekly PRs/rollouts/incidents/reviews into updates, draft release notes for merged PRs The spea....\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"pzUn9wTCgcw\",\"video_title\":\"Jira and Linear are legacy software\"}]}\n\nevent: status\ndata: {\"decision\":\"Pass 1 found only 4 strong excerpts, so broader synthesis coverage is useful.\",\"detail\":\"Pass 1 produced 4 excerpts across 4 videos.\",\"label\":\"Broadening the search\",\"stage\":\"retrieving_pass_2\"}\n\nevent: status\ndata: {\"decision\":\"Queries: Which summary seems most reliable? overview\",\"detail\":\"Running 1 keyword + semantic search query.\",\"label\":\"Broadening the search\",\"stage\":\"retrieving_pass_2\"}\n\nevent: sources\ndata: {\"sources\":[{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"yfxDdQo2cyI_summary_1f2c7d674134ea7f0429c86126bac7de126d2170d7441fd9a6b58cc67cb25bfc_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"yfxDdQo2cyI\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.032786883413791656,\"section_title\":null,\"snippet\":\"TL;DR For most applications (98%+), serverless deployment options are sufficient and recommended as a starting point; move to VPS only if you encounter specific needs. Top recommendations (S-tier): Vercel for serverless, Railway and Render for VPS — all offer excellent developer experience, reliability, and reasonable pricing. Cloudflare offers the lowest costs due to unique infrastructure (no Docker, uses V8 isolate...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"yfxDdQo2cyI\",\"video_title\":\"Where Should You Deploy In 2026?\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"Vd98UhPGVfY_summary_1_7\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"Vd98UhPGVfY\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.032786883413791656,\"section_title\":\"Key Points\",\"snippet\":\"marginal\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"Vd98UhPGVfY\",\"video_title\":\"Vercel Finally Caught Up\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"rncxz2XROUg_summary_7a194665262f9ac666a13e9eeb134bd6057a0782bd7f3f65de18a55f1ee11892_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"rncxz2XROUg\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.032258063554763794,\"section_title\":null,\"snippet\":\"Bench to measure how well models can name skateboarding tricks based on descriptions, combining niche knowledge with spatial recognition. When first created, Gro 4 had the highest score in the high 70s (75 on most recent run), while GPT5 scored 98 during testing at OpenAI's office. Modern OpenAI models have regressed, with the highest current score around 87. Gemini 3.1 Pro Preview \\\"consistently hits 100%\\\" on this b....\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"rncxz2XROUg\",\"video_title\":\"Gemini 3.1 Pro is the smartest model ever made\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"pzUn9wTCgcw_summary_c67cb62e0bc786154b1a489f12c8b8cde2f5f82cd522aecc3d5f44e84e069c64_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"pzUn9wTCgcw\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.0317460335791111,\"section_title\":null,\"snippet\":\"workspace, and Linear can intelligently refine, synthesize, or take action on context immediately Automations and Non-Developer Adoption The speaker initially overlooked automations in the Codex app and notes most developers have as well Example automations shown: summarize yesterday's Git activity for standup, synthesize weekly PRs/rollouts/incidents/reviews into updates, draft release notes for merged PRs The spea....\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"pzUn9wTCgcw\",\"video_title\":\"Jira and Linear are legacy software\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"qOFr3YfMzrc_summary_7_6\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"qOFr3YfMzrc\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":2,\"score\":0.016129031777381897,\"section_title\":\"Key Points\",\"snippet\":\"lies.\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"qOFr3YfMzrc\",\"video_title\":\"Microsoft and OpenAI are breaking up?\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"nTMP_rLZOYM_transcript_4_10\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"nTMP_rLZOYM\",\"item_kind\":\"video\",\"part_kind\":\"transcript\",\"provider\":\"you_tube\",\"retrieval_pass\":2,\"score\":0.016119403764605522,\"section_title\":null,\"snippet\":\"to write a plan, pasted two errors in and got a working implementation. I think I came around to tune in the end here. I'm curious what y'all think though. Is this overrated, not worthwhile, or actually a pretty useful little tool to use alongside your LLMs? Let me know what you guys think. Until next time, he starts.\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"transcript\",\"video_id\":\"nTMP_rLZOYM\",\"video_title\":\"TOON: “JSON for AI” (is it any good?)\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"m1QrNF9wZao_summary_7_2\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"m1QrNF9wZao\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":2,\"score\":0.01587301678955555,\"section_title\":\"Overview\",\"snippet\":\"This extensive video is a comprehensive review of the current browser landscape, covering major browsers (Chrome, Edge, Firefox, Safari), privacy-focused alternatives (Brave, Vivaldi, Orion), AI-focused browsers (Dia, Comet), and emerging projects (Zen, Helium, Ladybird). The speaker, a notorious browser-hopper who previously championed Arc, systematically evaluates each browser's strengths, weaknesses, UX decisions,...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"m1QrNF9wZao\",\"video_title\":\"Which browser should you use right now?\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"_nxbZgZysT4_summary_9_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"_nxbZgZysT4\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":2,\"score\":0.015625,\"section_title\":null,\"snippet\":\"TL;DR OpenAI consistently releases groundbreaking AI capabilities that briefly put them in first place, but competitors quickly catch up or surpass them, leaving OpenAI in \\\"perpetual second place\\\" across most technical categories. OpenAI's true competitive moat is ChatGPT itself—the default AI chat application for most users—which generates 70% of their revenue and keeps users from switching to technically superior a...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"_nxbZgZysT4\",\"video_title\":\"OpenAI: Trapped in 2nd place\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"m1QrNF9wZao_summary_7_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"m1QrNF9wZao\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":2,\"score\":0.015384615398943424,\"section_title\":null,\"snippet\":\"TL;DR Chrome/Chromium has had a massively positive impact on web standards and is technically the best implementation, but Google's monopolistic tendencies show in forced AI integrations like Gemini. Manifest V3 was the right call for security (preventing malware), not an anti-ad-blocker move, though ad-blocking is now slightly worse in Chrome. Brave is strongly criticized for buggy UX, breaking websites, aggressive ...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"m1QrNF9wZao\",\"video_title\":\"Which browser should you use right now?\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"2r8xT1ORZ5k_summary_35_8\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"2r8xT1ORZ5k\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":2,\"score\":0.01515151560306549,\"section_title\":\"Key Points\",\"snippet\":\"model remains the default for planning, but overall disappointment is clear.\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"2r8xT1ORZ5k\",\"video_title\":\"Is gpt-5.1 the best code model ever?\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"m1QrNF9wZao_summary_7_9\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"m1QrNF9wZao\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":2,\"score\":0.014705882407724857,\"section_title\":\"Takeaways\",\"snippet\":\"Chrome's dominance has been net positive for web standards, but Google's monopolistic behavior shows in forced AI integrations; the browser itself remains solid for everyday use. Privacy claims in browsers often don't match reality—Firefox quietly removed its \\\"never sell your data\\\" promise, and Brave's aggressive privacy features actively break websites. Manifest V3 was necessary for security (preventing malware from...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"m1QrNF9wZao\",\"video_title\":\"Which browser should you use right now?\"}]}\n\nevent: status\ndata: {\"decision\":\"Pass 1 gathered 11 excerpts across 9 videos.\",\"detail\":\"Collected 11 excerpts across 9 videos.\",\"label\":\"Search complete\",\"stage\":\"retrieving_complete\"}\n\nevent: status\ndata: {\"detail\":\"Composing the final answer from 11 selected excerpts.\",\"label\":\"Answering from the evidence\",\"stage\":\"generating\"}\n\nevent: sources\ndata: {\"sources\":[{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"yfxDdQo2cyI_summary_1f2c7d674134ea7f0429c86126bac7de126d2170d7441fd9a6b58cc67cb25bfc_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"yfxDdQo2cyI\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.032786883413791656,\"section_title\":null,\"snippet\":\"TL;DR For most applications (98%+), serverless deployment options are sufficient and recommended as a starting point; move to VPS only if you encounter specific needs. Top recommendations (S-tier): Vercel for serverless, Railway and Render for VPS — all offer excellent developer experience, reliability, and reasonable pricing. Cloudflare offers the lowest costs due to unique infrastructure (no Docker, uses V8 isolate...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"yfxDdQo2cyI\",\"video_title\":\"Where Should You Deploy In 2026?\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"Vd98UhPGVfY_summary_1_7\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"Vd98UhPGVfY\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.032786883413791656,\"section_title\":\"Key Points\",\"snippet\":\"marginal\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"Vd98UhPGVfY\",\"video_title\":\"Vercel Finally Caught Up\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"rncxz2XROUg_summary_7a194665262f9ac666a13e9eeb134bd6057a0782bd7f3f65de18a55f1ee11892_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"rncxz2XROUg\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.032258063554763794,\"section_title\":null,\"snippet\":\"Bench to measure how well models can name skateboarding tricks based on descriptions, combining niche knowledge with spatial recognition. When first created, Gro 4 had the highest score in the high 70s (75 on most recent run), while GPT5 scored 98 during testing at OpenAI's office. Modern OpenAI models have regressed, with the highest current score around 87. Gemini 3.1 Pro Preview \\\"consistently hits 100%\\\" on this b....\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"rncxz2XROUg\",\"video_title\":\"Gemini 3.1 Pro is the smartest model ever made\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"pzUn9wTCgcw_summary_c67cb62e0bc786154b1a489f12c8b8cde2f5f82cd522aecc3d5f44e84e069c64_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"pzUn9wTCgcw\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.0317460335791111,\"section_title\":null,\"snippet\":\"workspace, and Linear can intelligently refine, synthesize, or take action on context immediately Automations and Non-Developer Adoption The speaker initially overlooked automations in the Codex app and notes most developers have as well Example automations shown: summarize yesterday's Git activity for standup, synthesize weekly PRs/rollouts/incidents/reviews into updates, draft release notes for merged PRs The spea....\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"pzUn9wTCgcw\",\"video_title\":\"Jira and Linear are legacy software\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"qOFr3YfMzrc_summary_7_6\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"qOFr3YfMzrc\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":2,\"score\":0.016129031777381897,\"section_title\":\"Key Points\",\"snippet\":\"lies.\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"qOFr3YfMzrc\",\"video_title\":\"Microsoft and OpenAI are breaking up?\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"nTMP_rLZOYM_transcript_4_10\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"nTMP_rLZOYM\",\"item_kind\":\"video\",\"part_kind\":\"transcript\",\"provider\":\"you_tube\",\"retrieval_pass\":2,\"score\":0.016119403764605522,\"section_title\":null,\"snippet\":\"to write a plan, pasted two errors in and got a working implementation. I think I came around to tune in the end here. I'm curious what y'all think though. Is this overrated, not worthwhile, or actually a pretty useful little tool to use alongside your LLMs? Let me know what you guys think. Until next time, he starts.\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"transcript\",\"video_id\":\"nTMP_rLZOYM\",\"video_title\":\"TOON: “JSON for AI” (is it any good?)\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"m1QrNF9wZao_summary_7_2\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"m1QrNF9wZao\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":2,\"score\":0.01587301678955555,\"section_title\":\"Overview\",\"snippet\":\"This extensive video is a comprehensive review of the current browser landscape, covering major browsers (Chrome, Edge, Firefox, Safari), privacy-focused alternatives (Brave, Vivaldi, Orion), AI-focused browsers (Dia, Comet), and emerging projects (Zen, Helium, Ladybird). The speaker, a notorious browser-hopper who previously championed Arc, systematically evaluates each browser's strengths, weaknesses, UX decisions,...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"m1QrNF9wZao\",\"video_title\":\"Which browser should you use right now?\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"_nxbZgZysT4_summary_9_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"_nxbZgZysT4\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":2,\"score\":0.015625,\"section_title\":null,\"snippet\":\"TL;DR OpenAI consistently releases groundbreaking AI capabilities that briefly put them in first place, but competitors quickly catch up or surpass them, leaving OpenAI in \\\"perpetual second place\\\" across most technical categories. OpenAI's true competitive moat is ChatGPT itself—the default AI chat application for most users—which generates 70% of their revenue and keeps users from switching to technically superior a...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"_nxbZgZysT4\",\"video_title\":\"OpenAI: Trapped in 2nd place\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"m1QrNF9wZao_summary_7_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"m1QrNF9wZao\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":2,\"score\":0.015384615398943424,\"section_title\":null,\"snippet\":\"TL;DR Chrome/Chromium has had a massively positive impact on web standards and is technically the best implementation, but Google's monopolistic tendencies show in forced AI integrations like Gemini. Manifest V3 was the right call for security (preventing malware), not an anti-ad-blocker move, though ad-blocking is now slightly worse in Chrome. Brave is strongly criticized for buggy UX, breaking websites, aggressive ...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"m1QrNF9wZao\",\"video_title\":\"Which browser should you use right now?\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"2r8xT1ORZ5k_summary_35_8\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"2r8xT1ORZ5k\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":2,\"score\":0.01515151560306549,\"section_title\":\"Key Points\",\"snippet\":\"model remains the default for planning, but overall disappointment is clear.\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"2r8xT1ORZ5k\",\"video_title\":\"Is gpt-5.1 the best code model ever?\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"m1QrNF9wZao_summary_7_9\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"m1QrNF9wZao\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":2,\"score\":0.014705882407724857,\"section_title\":\"Takeaways\",\"snippet\":\"Chrome's dominance has been net positive for web standards, but Google's monopolistic behavior shows in forced AI integrations; the browser itself remains solid for everyday use. Privacy claims in browsers often don't match reality—Firefox quietly removed its \\\"never sell your data\\\" promise, and Brave's aggressive privacy features actively break websites. Manifest V3 was necessary for security (preventing malware from...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"m1QrNF9wZao\",\"video_title\":\"Which browser should you use right now?\"}]}\n\nevent: status\ndata: {\"detail\":\"Returning the highest-ranked grounded excerpts instead.\",\"label\":\"Answer model unavailable\",\"stage\":\"generating_fallback\"}\n\nevent: done\ndata: {\"message\":{\"completion_tokens\":null,\"content\":\"Retrieved evidence for: Which summary seems most reliable?\\n\\nThe answer model is unavailable, so this fallback lists the highest-ranked saved excerpts instead of synthesizing beyond them.\\n\\n1. Where Should You Deploy In 2026? - Theo - t3․gg: TL;DR For most applications (98%+), serverless deployment options are sufficient and recommended as a starting point; move to VPS only if you encounter specific needs. Top recommendations (S-tier): Vercel for serverless, Railway and Render for VPS — all offer excellent developer experience, reliability, and reasonable pricing. Cloudflare offers the lowest costs due to unique infrastructure (no Docker, uses V8 isolate... [1]\\n2. Vercel Finally Caught Up - Theo - t3․gg / Key Points: marginal [2]\\n3. Gemini 3.1 Pro is the smartest model ever made - Theo - t3․gg: Bench to measure how well models can name skateboarding tricks based on descriptions, combining niche knowledge with spatial recognition. When first created, Gro 4 had the highest score in the high 70s (75 on most recent run), while GPT5 scored 98 during testing at OpenAI's office. Modern OpenAI models have regressed, with the highest current score around 87. Gemini 3.1 Pro Preview \\\"consistently hits 100%\\\" on this b.... [3]\\n4. Jira and Linear are legacy software - Theo - t3․gg: workspace, and Linear can intelligently refine, synthesize, or take action on context immediately Automations and Non-Developer Adoption The speaker initially overlooked automations in the Codex app and notes most developers have as well Example automations shown: summarize yesterday's Git activity for standup, synthesize weekly PRs/rollouts/incidents/reviews into updates, draft release notes for merged PRs The spea.... [4]\\n5. Microsoft and OpenAI are breaking up? - Theo - t3․gg / Key Points: lies. [5]\\n6. TOON: “JSON for AI” (is it any good?) - Theo - t3․gg: to write a plan, pasted two errors in and got a working implementation. I think I came around to tune in the end here. I'm curious what y'all think though. Is this overrated, not worthwhile, or actually a pretty useful little tool to use alongside your LLMs? Let me know what you guys think. Until next time, he starts. [6]\\n7. Which browser should you use right now? - Theo - t3․gg / Overview: This extensive video is a comprehensive review of the current browser landscape, covering major browsers (Chrome, Edge, Firefox, Safari), privacy-focused alternatives (Brave, Vivaldi, Orion), AI-focused browsers (Dia, Comet), and emerging projects (Zen, Helium, Ladybird). The speaker, a notorious browser-hopper who previously championed Arc, systematically evaluates each browser's strengths, weaknesses, UX decisions,... [7]\\n8. OpenAI: Trapped in 2nd place - Theo - t3․gg: TL;DR OpenAI consistently releases groundbreaking AI capabilities that briefly put them in first place, but competitors quickly catch up or surpass them, leaving OpenAI in \\\"perpetual second place\\\" across most technical categories. OpenAI's true competitive moat is ChatGPT itself—the default AI chat application for most users—which generates 70% of their revenue and keeps users from switching to technically superior a... [8]\\n9. Which browser should you use right now? - Theo - t3․gg: TL;DR Chrome/Chromium has had a massively positive impact on web standards and is technically the best implementation, but Google's monopolistic tendencies show in forced AI integrations like Gemini. Manifest V3 was the right call for security (preventing malware), not an anti-ad-blocker move, though ad-blocking is now slightly worse in Chrome. Brave is strongly criticized for buggy UX, breaking websites, aggressive ... [9]\\n10. Is gpt-5.1 the best code model ever? - Theo - t3․gg / Key Points: model remains the default for planning, but overall disappointment is clear. [10]\\n11. Which browser should you use right now? - Theo - t3․gg / Takeaways: Chrome's dominance has been net positive for web standards, but Google's monopolistic behavior shows in forced AI integrations; the browser itself remains solid for everyday use. Privacy claims in browsers often don't match reality—Firefox quietly removed its \\\"never sell your data\\\" promise, and Brave's aggressive privacy features actively break websites. Manifest V3 was necessary for security (preventing malware from... [11]\\n\",\"created_at\":\"2026-04-23T15:10:50.012329Z\",\"id\":\"msg_1776957050012_106\",\"model\":\"glm-5.1:cloud\",\"prompt_tokens\":null,\"role\":\"assistant\",\"sources\":[{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"yfxDdQo2cyI_summary_1f2c7d674134ea7f0429c86126bac7de126d2170d7441fd9a6b58cc67cb25bfc_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"yfxDdQo2cyI\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.032786883413791656,\"section_title\":null,\"snippet\":\"TL;DR For most applications (98%+), serverless deployment options are sufficient and recommended as a starting point; move to VPS only if you encounter specific needs. Top recommendations (S-tier): Vercel for serverless, Railway and Render for VPS — all offer excellent developer experience, reliability, and reasonable pricing. Cloudflare offers the lowest costs due to unique infrastructure (no Docker, uses V8 isolate...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"yfxDdQo2cyI\",\"video_title\":\"Where Should You Deploy In 2026?\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"Vd98UhPGVfY_summary_1_7\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"Vd98UhPGVfY\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.032786883413791656,\"section_title\":\"Key Points\",\"snippet\":\"marginal\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"Vd98UhPGVfY\",\"video_title\":\"Vercel Finally Caught Up\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"rncxz2XROUg_summary_7a194665262f9ac666a13e9eeb134bd6057a0782bd7f3f65de18a55f1ee11892_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"rncxz2XROUg\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.032258063554763794,\"section_title\":null,\"snippet\":\"Bench to measure how well models can name skateboarding tricks based on descriptions, combining niche knowledge with spatial recognition. When first created, Gro 4 had the highest score in the high 70s (75 on most recent run), while GPT5 scored 98 during testing at OpenAI's office. Modern OpenAI models have regressed, with the highest current score around 87. Gemini 3.1 Pro Preview \\\"consistently hits 100%\\\" on this b....\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"rncxz2XROUg\",\"video_title\":\"Gemini 3.1 Pro is the smartest model ever made\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"pzUn9wTCgcw_summary_c67cb62e0bc786154b1a489f12c8b8cde2f5f82cd522aecc3d5f44e84e069c64_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"pzUn9wTCgcw\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.0317460335791111,\"section_title\":null,\"snippet\":\"workspace, and Linear can intelligently refine, synthesize, or take action on context immediately Automations and Non-Developer Adoption The speaker initially overlooked automations in the Codex app and notes most developers have as well Example automations shown: summarize yesterday's Git activity for standup, synthesize weekly PRs/rollouts/incidents/reviews into updates, draft release notes for merged PRs The spea....\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"pzUn9wTCgcw\",\"video_title\":\"Jira and Linear are legacy software\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"qOFr3YfMzrc_summary_7_6\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"qOFr3YfMzrc\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":2,\"score\":0.016129031777381897,\"section_title\":\"Key Points\",\"snippet\":\"lies.\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"qOFr3YfMzrc\",\"video_title\":\"Microsoft and OpenAI are breaking up?\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"nTMP_rLZOYM_transcript_4_10\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"nTMP_rLZOYM\",\"item_kind\":\"video\",\"part_kind\":\"transcript\",\"provider\":\"you_tube\",\"retrieval_pass\":2,\"score\":0.016119403764605522,\"section_title\":null,\"snippet\":\"to write a plan, pasted two errors in and got a working implementation. I think I came around to tune in the end here. I'm curious what y'all think though. Is this overrated, not worthwhile, or actually a pretty useful little tool to use alongside your LLMs? Let me know what you guys think. Until next time, he starts.\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"transcript\",\"video_id\":\"nTMP_rLZOYM\",\"video_title\":\"TOON: “JSON for AI” (is it any good?)\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"m1QrNF9wZao_summary_7_2\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"m1QrNF9wZao\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":2,\"score\":0.01587301678955555,\"section_title\":\"Overview\",\"snippet\":\"This extensive video is a comprehensive review of the current browser landscape, covering major browsers (Chrome, Edge, Firefox, Safari), privacy-focused alternatives (Brave, Vivaldi, Orion), AI-focused browsers (Dia, Comet), and emerging projects (Zen, Helium, Ladybird). The speaker, a notorious browser-hopper who previously championed Arc, systematically evaluates each browser's strengths, weaknesses, UX decisions,...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"m1QrNF9wZao\",\"video_title\":\"Which browser should you use right now?\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"_nxbZgZysT4_summary_9_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"_nxbZgZysT4\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":2,\"score\":0.015625,\"section_title\":null,\"snippet\":\"TL;DR OpenAI consistently releases groundbreaking AI capabilities that briefly put them in first place, but competitors quickly catch up or surpass them, leaving OpenAI in \\\"perpetual second place\\\" across most technical categories. OpenAI's true competitive moat is ChatGPT itself—the default AI chat application for most users—which generates 70% of their revenue and keeps users from switching to technically superior a...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"_nxbZgZysT4\",\"video_title\":\"OpenAI: Trapped in 2nd place\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"m1QrNF9wZao_summary_7_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"m1QrNF9wZao\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":2,\"score\":0.015384615398943424,\"section_title\":null,\"snippet\":\"TL;DR Chrome/Chromium has had a massively positive impact on web standards and is technically the best implementation, but Google's monopolistic tendencies show in forced AI integrations like Gemini. Manifest V3 was the right call for security (preventing malware), not an anti-ad-blocker move, though ad-blocking is now slightly worse in Chrome. Brave is strongly criticized for buggy UX, breaking websites, aggressive ...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"m1QrNF9wZao\",\"video_title\":\"Which browser should you use right now?\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"2r8xT1ORZ5k_summary_35_8\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"2r8xT1ORZ5k\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":2,\"score\":0.01515151560306549,\"section_title\":\"Key Points\",\"snippet\":\"model remains the default for planning, but overall disappointment is clear.\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"2r8xT1ORZ5k\",\"video_title\":\"Is gpt-5.1 the best code model ever?\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"m1QrNF9wZao_summary_7_9\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"m1QrNF9wZao\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":2,\"score\":0.014705882407724857,\"section_title\":\"Takeaways\",\"snippet\":\"Chrome's dominance has been net positive for web standards, but Google's monopolistic behavior shows in forced AI integrations; the browser itself remains solid for everyday use. Privacy claims in browsers often don't match reality—Firefox quietly removed its \\\"never sell your data\\\" promise, and Brave's aggressive privacy features actively break websites. Manifest V3 was necessary for security (preventing malware from...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"m1QrNF9wZao\",\"video_title\":\"Which browser should you use right now?\"}],\"status\":\"completed\",\"total_duration_ns\":null,\"turn_trace\":{\"budget\":{\"exhausted\":false,\"exhaustion_reason\":null,\"max_model_calls\":12,\"max_retrieval_passes\":3,\"max_tool_calls\":4,\"model_calls\":3,\"retrieval_passes\":2,\"tool_calls\":0},\"plan_intent\":\"targeted synthesis\",\"plan_label\":\"Broader synthesis\",\"retrieval\":{\"deep_research\":false,\"pass_count\":2,\"query_count\":2,\"selected_source_count\":11,\"unique_video_count\":9},\"strategy\":\"retrieval\",\"tool_calls\":[]}}}\n\n"
+    },
+    {
+      "prompt_id": "q096",
+      "prompt": "Which summary seems least reliable?",
+      "capability_class": "transcript_summary_alignment",
+      "answerability_expected": "partial",
+      "conversation_id": "conv_1776957050576_108",
+      "status": "completed",
+      "assistant_content": "Retrieved evidence for: Which summary seems least reliable?\n\nThe answer model is unavailable, so this fallback lists the highest-ranked saved excerpts instead of synthesizing beyond them.\n\n1. Where Should You Deploy In 2026? - Theo - t3․gg: d locations, and no serious company uses them. Fly.io has world-class DX and unique features (Elixir-native, Flame), but database reliability issues and financial instability make it risky. AWS (EC2/Lambda) is reliable but expensive, difficult to set up, and has poor DX — only choose if your employer already chose it for you. Digital Ocean has excellent documentation but feels lost strategically and may be \"circling.... [1]\n2. Vercel Finally Caught Up - Theo - t3․gg / Key Points: marginal [2]\n3. Gemini 3.1 Pro is the smartest model ever made - Theo - t3․gg: I. The CLI has a \"potential loop was detected\" hook because models loop and fail so frequently. The presenter describes the CLI as \"legitimately unusable.\" File Handling and Basic Operations Problems The model seems \"hardcoded\" to only read 100 lines at a time, requiring multiple read operations for longer files (reading lines 1-100, then 101-200, etc.). It frequently fails to edit files it just read, passing \"bad sy... [3]\n4. What is Theo's Worst Take? - Theo - t3․gg / TL;DR: A speaker is asked to identify their \"worst take\" The speaker initially claims all of their takes are good, which is suggested might itself be their worst take A past \"evil\" statement about something called \"go\" is referenced but not detailed The speaker criticizes a storybook as \"useless\" Another speaker defends the storybook's value for filling up a \"known module\" [4]\n5. This awesome CSS feature is blocked by drama (Google and Apple can't agree) - Theo - t3․gg / Key Points: item numbering appeared scattered). Keyboard navigation could be problematic. Both proposals address this with a proposed `reading-flow` property to ensure accessible navigation. Poll Results A community poll asking preference between approaches showed approximately 80% favoring Google's `display: masonry` approach. The presenter also concluded preferring Google's approach, particularly after realizing the named area... [5]\n6. Jira and Linear are legacy software - Theo - t3․gg: rst pass BE the plan Similar pattern happened with MCP: it was supposed to be the best way for models to access data, but \"it sucked\"—until models could use code to use MCP, then it became much better and more reliable The speaker predicts the same pattern: \"we're going to reinvent plans a million fucking times over the next year. And then we're going to just go back to code\" Code as Planning The speaker advocates fo... [6]\n7. Is gpt-5.1 the best code model ever? - Theo - t3․gg / Key Points: model remains the default for planning, but overall disappointment is clear. [7]",
+      "source_count": 7,
+      "source_videos": [
+        "Gemini 3.1 Pro is the smartest model ever made",
+        "Is gpt-5.1 the best code model ever?",
+        "Jira and Linear are legacy software",
+        "This awesome CSS feature is blocked by drama (Google and Apple can't agree)",
+        "Vercel Finally Caught Up",
+        "What is Theo's Worst Take?",
+        "Where Should You Deploy In 2026?"
+      ],
+      "source_channels": [
+        "Theo - t3․gg"
+      ],
+      "used_search_tool": false,
+      "used_db_tool": false,
+      "used_conversation_only": false,
+      "status_trace": [
+        {
+          "received_at_ms": 0,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Preparing chat plan",
+            "detail": "Resolving scope and deciding whether to answer directly or gather evidence.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 218,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Planning next step",
+            "detail": "Choosing whether to answer now or call a tool (step 1/4).",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 434,
+          "payload": {
+            "stage": "classifying",
+            "label": "Planning search",
+            "detail": "Deciding whether this needs a focused lookup, broader evidence, or only prior context.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 434,
+          "payload": {
+            "stage": "classifying",
+            "label": "Search plan ready",
+            "detail": "Using broader synthesis with up to 12 excerpts and 4 per video.",
+            "decision": "Planner unavailable; falling back to synthesis (GenerationFailed(\"cloud cooldown active and no fallback model configured\")).",
+            "plan": {
+              "intent": "synthesis",
+              "label": "Broader synthesis",
+              "budget": 12,
+              "max_per_video": 4,
+              "queries": [
+                "Which summary seems least reliable?"
+              ],
+              "expansion_queries": [
+                "Which summary seems least reliable? overview"
+              ],
+              "rationale": "Planner unavailable; falling back to synthesis (GenerationFailed(\"cloud cooldown active and no fallback model configured\")).",
+              "skip_retrieval": null,
+              "deep_research": null
+            },
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 434,
+          "payload": {
+            "stage": "retrieving_pass_1",
+            "label": "Searching the library",
+            "detail": "Running 1 keyword + semantic search query.",
+            "decision": "Queries: Which summary seems least reliable?",
+            "plan": {
+              "intent": "synthesis",
+              "label": "Broader synthesis",
+              "budget": 12,
+              "max_per_video": 4,
+              "queries": [
+                "Which summary seems least reliable?"
+              ],
+              "expansion_queries": [
+                "Which summary seems least reliable? overview"
+              ],
+              "rationale": "Planner unavailable; falling back to synthesis (GenerationFailed(\"cloud cooldown active and no fallback model configured\")).",
+              "skip_retrieval": null,
+              "deep_research": null
+            },
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 922,
+          "payload": {
+            "stage": "retrieving_complete",
+            "label": "Search complete",
+            "detail": "Collected 7 excerpts across 7 videos.",
+            "decision": "Pass 1 gathered 7 excerpts across 7 videos.",
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 922,
+          "payload": {
+            "stage": "generating",
+            "label": "Answering from the evidence",
+            "detail": "Composing the final answer from 7 selected excerpts.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 3866,
+          "payload": {
+            "stage": "generating_fallback",
+            "label": "Answer model unavailable",
+            "detail": "Returning the highest-ranked grounded excerpts instead.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        }
+      ],
+      "tool_calls": [],
+      "latency_ms_total": 5134,
+      "latency_ms_retrieval": 922,
+      "latency_ms_generation": 2944,
+      "rubric_answerability_pass": true,
+      "rubric_grounding_pass": true,
+      "rubric_shape_pass": false,
+      "rubric_capability_score": 2,
+      "failure_class": "shape_mismatch",
+      "notes": [
+        "alignment answer did not explicitly discuss both summary and transcript"
+      ],
+      "raw_error": null,
+      "raw_sse": "event: status\ndata: {\"detail\":\"Resolving scope and deciding whether to answer directly or gather evidence.\",\"label\":\"Preparing chat plan\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"detail\":\"Choosing whether to answer now or call a tool (step 1/4).\",\"label\":\"Planning next step\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"detail\":\"Deciding whether this needs a focused lookup, broader evidence, or only prior context.\",\"label\":\"Planning search\",\"stage\":\"classifying\"}\n\nevent: status\ndata: {\"decision\":\"Planner unavailable; falling back to synthesis (GenerationFailed(\\\"cloud cooldown active and no fallback model configured\\\")).\",\"detail\":\"Using broader synthesis with up to 12 excerpts and 4 per video.\",\"label\":\"Search plan ready\",\"plan\":{\"budget\":12,\"expansion_queries\":[\"Which summary seems least reliable? overview\"],\"intent\":\"synthesis\",\"label\":\"Broader synthesis\",\"max_per_video\":4,\"queries\":[\"Which summary seems least reliable?\"],\"rationale\":\"Planner unavailable; falling back to synthesis (GenerationFailed(\\\"cloud cooldown active and no fallback model configured\\\")).\"},\"stage\":\"classifying\"}\n\nevent: status\ndata: {\"decision\":\"Queries: Which summary seems least reliable?\",\"detail\":\"Running 1 keyword + semantic search query.\",\"label\":\"Searching the library\",\"plan\":{\"budget\":12,\"expansion_queries\":[\"Which summary seems least reliable? overview\"],\"intent\":\"synthesis\",\"label\":\"Broader synthesis\",\"max_per_video\":4,\"queries\":[\"Which summary seems least reliable?\"],\"rationale\":\"Planner unavailable; falling back to synthesis (GenerationFailed(\\\"cloud cooldown active and no fallback model configured\\\")).\"},\"stage\":\"retrieving_pass_1\"}\n\nevent: sources\ndata: {\"sources\":[{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"yfxDdQo2cyI_summary_1f2c7d674134ea7f0429c86126bac7de126d2170d7441fd9a6b58cc67cb25bfc_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"yfxDdQo2cyI\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.016393441706895828,\"section_title\":null,\"snippet\":\"d locations, and no serious company uses them. Fly.io has world-class DX and unique features (Elixir-native, Flame), but database reliability issues and financial instability make it risky. AWS (EC2/Lambda) is reliable but expensive, difficult to set up, and has poor DX — only choose if your employer already chose it for you. Digital Ocean has excellent documentation but feels lost strategically and may be \\\"circling....\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"yfxDdQo2cyI\",\"video_title\":\"Where Should You Deploy In 2026?\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"Vd98UhPGVfY_summary_1_7\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"Vd98UhPGVfY\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.016393441706895828,\"section_title\":\"Key Points\",\"snippet\":\"marginal\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"Vd98UhPGVfY\",\"video_title\":\"Vercel Finally Caught Up\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"rncxz2XROUg_summary_7a194665262f9ac666a13e9eeb134bd6057a0782bd7f3f65de18a55f1ee11892_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"rncxz2XROUg\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.016129031777381897,\"section_title\":null,\"snippet\":\"I. The CLI has a \\\"potential loop was detected\\\" hook because models loop and fail so frequently. The presenter describes the CLI as \\\"legitimately unusable.\\\" File Handling and Basic Operations Problems The model seems \\\"hardcoded\\\" to only read 100 lines at a time, requiring multiple read operations for longer files (reading lines 1-100, then 101-200, etc.). It frequently fails to edit files it just read, passing \\\"bad sy...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"rncxz2XROUg\",\"video_title\":\"Gemini 3.1 Pro is the smartest model ever made\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"yV3VBMIIk84_summary_10_1\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"yV3VBMIIk84\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.016129031777381897,\"section_title\":\"TL;DR\",\"snippet\":\"A speaker is asked to identify their \\\"worst take\\\" The speaker initially claims all of their takes are good, which is suggested might itself be their worst take A past \\\"evil\\\" statement about something called \\\"go\\\" is referenced but not detailed The speaker criticizes a storybook as \\\"useless\\\" Another speaker defends the storybook's value for filling up a \\\"known module\\\"\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"yV3VBMIIk84\",\"video_title\":\"What is Theo's Worst Take?\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"W91Wst6fMNU_summary_1_6\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"W91Wst6fMNU\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.01587301678955555,\"section_title\":\"Key Points\",\"snippet\":\"item numbering appeared scattered). Keyboard navigation could be problematic. Both proposals address this with a proposed `reading-flow` property to ensure accessible navigation. Poll Results A community poll asking preference between approaches showed approximately 80% favoring Google's `display: masonry` approach. The presenter also concluded preferring Google's approach, particularly after realizing the named area...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"W91Wst6fMNU\",\"video_title\":\"This awesome CSS feature is blocked by drama (Google and Apple can't agree)\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"pzUn9wTCgcw_summary_c67cb62e0bc786154b1a489f12c8b8cde2f5f82cd522aecc3d5f44e84e069c64_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"pzUn9wTCgcw\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.01587301678955555,\"section_title\":null,\"snippet\":\"rst pass BE the plan Similar pattern happened with MCP: it was supposed to be the best way for models to access data, but \\\"it sucked\\\"—until models could use code to use MCP, then it became much better and more reliable The speaker predicts the same pattern: \\\"we're going to reinvent plans a million fucking times over the next year. And then we're going to just go back to code\\\" Code as Planning The speaker advocates fo...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"pzUn9wTCgcw\",\"video_title\":\"Jira and Linear are legacy software\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"2r8xT1ORZ5k_summary_35_8\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"2r8xT1ORZ5k\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.015625,\"section_title\":\"Key Points\",\"snippet\":\"model remains the default for planning, but overall disappointment is clear.\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"2r8xT1ORZ5k\",\"video_title\":\"Is gpt-5.1 the best code model ever?\"}]}\n\nevent: status\ndata: {\"decision\":\"Pass 1 gathered 7 excerpts across 7 videos.\",\"detail\":\"Collected 7 excerpts across 7 videos.\",\"label\":\"Search complete\",\"stage\":\"retrieving_complete\"}\n\nevent: status\ndata: {\"detail\":\"Composing the final answer from 7 selected excerpts.\",\"label\":\"Answering from the evidence\",\"stage\":\"generating\"}\n\nevent: sources\ndata: {\"sources\":[{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"yfxDdQo2cyI_summary_1f2c7d674134ea7f0429c86126bac7de126d2170d7441fd9a6b58cc67cb25bfc_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"yfxDdQo2cyI\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.016393441706895828,\"section_title\":null,\"snippet\":\"d locations, and no serious company uses them. Fly.io has world-class DX and unique features (Elixir-native, Flame), but database reliability issues and financial instability make it risky. AWS (EC2/Lambda) is reliable but expensive, difficult to set up, and has poor DX — only choose if your employer already chose it for you. Digital Ocean has excellent documentation but feels lost strategically and may be \\\"circling....\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"yfxDdQo2cyI\",\"video_title\":\"Where Should You Deploy In 2026?\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"Vd98UhPGVfY_summary_1_7\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"Vd98UhPGVfY\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.016393441706895828,\"section_title\":\"Key Points\",\"snippet\":\"marginal\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"Vd98UhPGVfY\",\"video_title\":\"Vercel Finally Caught Up\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"rncxz2XROUg_summary_7a194665262f9ac666a13e9eeb134bd6057a0782bd7f3f65de18a55f1ee11892_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"rncxz2XROUg\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.016129031777381897,\"section_title\":null,\"snippet\":\"I. The CLI has a \\\"potential loop was detected\\\" hook because models loop and fail so frequently. The presenter describes the CLI as \\\"legitimately unusable.\\\" File Handling and Basic Operations Problems The model seems \\\"hardcoded\\\" to only read 100 lines at a time, requiring multiple read operations for longer files (reading lines 1-100, then 101-200, etc.). It frequently fails to edit files it just read, passing \\\"bad sy...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"rncxz2XROUg\",\"video_title\":\"Gemini 3.1 Pro is the smartest model ever made\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"yV3VBMIIk84_summary_10_1\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"yV3VBMIIk84\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.016129031777381897,\"section_title\":\"TL;DR\",\"snippet\":\"A speaker is asked to identify their \\\"worst take\\\" The speaker initially claims all of their takes are good, which is suggested might itself be their worst take A past \\\"evil\\\" statement about something called \\\"go\\\" is referenced but not detailed The speaker criticizes a storybook as \\\"useless\\\" Another speaker defends the storybook's value for filling up a \\\"known module\\\"\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"yV3VBMIIk84\",\"video_title\":\"What is Theo's Worst Take?\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"W91Wst6fMNU_summary_1_6\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"W91Wst6fMNU\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.01587301678955555,\"section_title\":\"Key Points\",\"snippet\":\"item numbering appeared scattered). Keyboard navigation could be problematic. Both proposals address this with a proposed `reading-flow` property to ensure accessible navigation. Poll Results A community poll asking preference between approaches showed approximately 80% favoring Google's `display: masonry` approach. The presenter also concluded preferring Google's approach, particularly after realizing the named area...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"W91Wst6fMNU\",\"video_title\":\"This awesome CSS feature is blocked by drama (Google and Apple can't agree)\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"pzUn9wTCgcw_summary_c67cb62e0bc786154b1a489f12c8b8cde2f5f82cd522aecc3d5f44e84e069c64_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"pzUn9wTCgcw\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.01587301678955555,\"section_title\":null,\"snippet\":\"rst pass BE the plan Similar pattern happened with MCP: it was supposed to be the best way for models to access data, but \\\"it sucked\\\"—until models could use code to use MCP, then it became much better and more reliable The speaker predicts the same pattern: \\\"we're going to reinvent plans a million fucking times over the next year. And then we're going to just go back to code\\\" Code as Planning The speaker advocates fo...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"pzUn9wTCgcw\",\"video_title\":\"Jira and Linear are legacy software\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"2r8xT1ORZ5k_summary_35_8\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"2r8xT1ORZ5k\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.015625,\"section_title\":\"Key Points\",\"snippet\":\"model remains the default for planning, but overall disappointment is clear.\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"2r8xT1ORZ5k\",\"video_title\":\"Is gpt-5.1 the best code model ever?\"}]}\n\nevent: status\ndata: {\"detail\":\"Returning the highest-ranked grounded excerpts instead.\",\"label\":\"Answer model unavailable\",\"stage\":\"generating_fallback\"}\n\nevent: done\ndata: {\"message\":{\"completion_tokens\":null,\"content\":\"Retrieved evidence for: Which summary seems least reliable?\\n\\nThe answer model is unavailable, so this fallback lists the highest-ranked saved excerpts instead of synthesizing beyond them.\\n\\n1. Where Should You Deploy In 2026? - Theo - t3․gg: d locations, and no serious company uses them. Fly.io has world-class DX and unique features (Elixir-native, Flame), but database reliability issues and financial instability make it risky. AWS (EC2/Lambda) is reliable but expensive, difficult to set up, and has poor DX — only choose if your employer already chose it for you. Digital Ocean has excellent documentation but feels lost strategically and may be \\\"circling.... [1]\\n2. Vercel Finally Caught Up - Theo - t3․gg / Key Points: marginal [2]\\n3. Gemini 3.1 Pro is the smartest model ever made - Theo - t3․gg: I. The CLI has a \\\"potential loop was detected\\\" hook because models loop and fail so frequently. The presenter describes the CLI as \\\"legitimately unusable.\\\" File Handling and Basic Operations Problems The model seems \\\"hardcoded\\\" to only read 100 lines at a time, requiring multiple read operations for longer files (reading lines 1-100, then 101-200, etc.). It frequently fails to edit files it just read, passing \\\"bad sy... [3]\\n4. What is Theo's Worst Take? - Theo - t3․gg / TL;DR: A speaker is asked to identify their \\\"worst take\\\" The speaker initially claims all of their takes are good, which is suggested might itself be their worst take A past \\\"evil\\\" statement about something called \\\"go\\\" is referenced but not detailed The speaker criticizes a storybook as \\\"useless\\\" Another speaker defends the storybook's value for filling up a \\\"known module\\\" [4]\\n5. This awesome CSS feature is blocked by drama (Google and Apple can't agree) - Theo - t3․gg / Key Points: item numbering appeared scattered). Keyboard navigation could be problematic. Both proposals address this with a proposed `reading-flow` property to ensure accessible navigation. Poll Results A community poll asking preference between approaches showed approximately 80% favoring Google's `display: masonry` approach. The presenter also concluded preferring Google's approach, particularly after realizing the named area... [5]\\n6. Jira and Linear are legacy software - Theo - t3․gg: rst pass BE the plan Similar pattern happened with MCP: it was supposed to be the best way for models to access data, but \\\"it sucked\\\"—until models could use code to use MCP, then it became much better and more reliable The speaker predicts the same pattern: \\\"we're going to reinvent plans a million fucking times over the next year. And then we're going to just go back to code\\\" Code as Planning The speaker advocates fo... [6]\\n7. Is gpt-5.1 the best code model ever? - Theo - t3․gg / Key Points: model remains the default for planning, but overall disappointment is clear. [7]\\n\",\"created_at\":\"2026-04-23T15:10:55.203503Z\",\"id\":\"msg_1776957055203_115\",\"model\":\"glm-5.1:cloud\",\"prompt_tokens\":null,\"role\":\"assistant\",\"sources\":[{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"yfxDdQo2cyI_summary_1f2c7d674134ea7f0429c86126bac7de126d2170d7441fd9a6b58cc67cb25bfc_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"yfxDdQo2cyI\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.016393441706895828,\"section_title\":null,\"snippet\":\"d locations, and no serious company uses them. Fly.io has world-class DX and unique features (Elixir-native, Flame), but database reliability issues and financial instability make it risky. AWS (EC2/Lambda) is reliable but expensive, difficult to set up, and has poor DX — only choose if your employer already chose it for you. Digital Ocean has excellent documentation but feels lost strategically and may be \\\"circling....\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"yfxDdQo2cyI\",\"video_title\":\"Where Should You Deploy In 2026?\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"Vd98UhPGVfY_summary_1_7\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"Vd98UhPGVfY\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.016393441706895828,\"section_title\":\"Key Points\",\"snippet\":\"marginal\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"Vd98UhPGVfY\",\"video_title\":\"Vercel Finally Caught Up\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"rncxz2XROUg_summary_7a194665262f9ac666a13e9eeb134bd6057a0782bd7f3f65de18a55f1ee11892_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"rncxz2XROUg\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.016129031777381897,\"section_title\":null,\"snippet\":\"I. The CLI has a \\\"potential loop was detected\\\" hook because models loop and fail so frequently. The presenter describes the CLI as \\\"legitimately unusable.\\\" File Handling and Basic Operations Problems The model seems \\\"hardcoded\\\" to only read 100 lines at a time, requiring multiple read operations for longer files (reading lines 1-100, then 101-200, etc.). It frequently fails to edit files it just read, passing \\\"bad sy...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"rncxz2XROUg\",\"video_title\":\"Gemini 3.1 Pro is the smartest model ever made\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"yV3VBMIIk84_summary_10_1\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"yV3VBMIIk84\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.016129031777381897,\"section_title\":\"TL;DR\",\"snippet\":\"A speaker is asked to identify their \\\"worst take\\\" The speaker initially claims all of their takes are good, which is suggested might itself be their worst take A past \\\"evil\\\" statement about something called \\\"go\\\" is referenced but not detailed The speaker criticizes a storybook as \\\"useless\\\" Another speaker defends the storybook's value for filling up a \\\"known module\\\"\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"yV3VBMIIk84\",\"video_title\":\"What is Theo's Worst Take?\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"W91Wst6fMNU_summary_1_6\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"W91Wst6fMNU\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.01587301678955555,\"section_title\":\"Key Points\",\"snippet\":\"item numbering appeared scattered). Keyboard navigation could be problematic. Both proposals address this with a proposed `reading-flow` property to ensure accessible navigation. Poll Results A community poll asking preference between approaches showed approximately 80% favoring Google's `display: masonry` approach. The presenter also concluded preferring Google's approach, particularly after realizing the named area...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"W91Wst6fMNU\",\"video_title\":\"This awesome CSS feature is blocked by drama (Google and Apple can't agree)\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"pzUn9wTCgcw_summary_c67cb62e0bc786154b1a489f12c8b8cde2f5f82cd522aecc3d5f44e84e069c64_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"pzUn9wTCgcw\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.01587301678955555,\"section_title\":null,\"snippet\":\"rst pass BE the plan Similar pattern happened with MCP: it was supposed to be the best way for models to access data, but \\\"it sucked\\\"—until models could use code to use MCP, then it became much better and more reliable The speaker predicts the same pattern: \\\"we're going to reinvent plans a million fucking times over the next year. And then we're going to just go back to code\\\" Code as Planning The speaker advocates fo...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"pzUn9wTCgcw\",\"video_title\":\"Jira and Linear are legacy software\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"2r8xT1ORZ5k_summary_35_8\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"2r8xT1ORZ5k\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.015625,\"section_title\":\"Key Points\",\"snippet\":\"model remains the default for planning, but overall disappointment is clear.\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"2r8xT1ORZ5k\",\"video_title\":\"Is gpt-5.1 the best code model ever?\"}],\"status\":\"completed\",\"total_duration_ns\":null,\"turn_trace\":{\"budget\":{\"exhausted\":false,\"exhaustion_reason\":null,\"max_model_calls\":12,\"max_retrieval_passes\":3,\"max_tool_calls\":4,\"model_calls\":3,\"retrieval_passes\":1,\"tool_calls\":0},\"plan_intent\":\"targeted synthesis\",\"plan_label\":\"Broader synthesis\",\"retrieval\":{\"deep_research\":false,\"pass_count\":1,\"query_count\":1,\"selected_source_count\":7,\"unique_video_count\":7},\"strategy\":\"retrieval\",\"tool_calls\":[]}}}\n\n"
+    },
+    {
+      "prompt_id": "q097",
+      "prompt": "What evidence in the transcript supports the summary?",
+      "capability_class": "transcript_summary_alignment",
+      "answerability_expected": "yes",
+      "conversation_id": "conv_1776957055699_118",
+      "status": "completed",
+      "assistant_content": "I can’t answer that from the currently indexed transcripts and summaries.",
+      "source_count": 0,
+      "source_videos": [],
+      "source_channels": [],
+      "used_search_tool": false,
+      "used_db_tool": false,
+      "used_conversation_only": false,
+      "status_trace": [
+        {
+          "received_at_ms": 0,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Preparing chat plan",
+            "detail": "Resolving scope and deciding whether to answer directly or gather evidence.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 276,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Planning next step",
+            "detail": "Choosing whether to answer now or call a tool (step 1/4).",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 509,
+          "payload": {
+            "stage": "classifying",
+            "label": "Planning search",
+            "detail": "Deciding whether this needs a focused lookup, broader evidence, or only prior context.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 509,
+          "payload": {
+            "stage": "classifying",
+            "label": "Search plan ready",
+            "detail": "Using broader synthesis with up to 12 excerpts and 4 per video.",
+            "decision": "Planner unavailable; falling back to synthesis (GenerationFailed(\"cloud cooldown active and no fallback model configured\")).",
+            "plan": {
+              "intent": "synthesis",
+              "label": "Broader synthesis",
+              "budget": 12,
+              "max_per_video": 4,
+              "queries": [
+                "What evidence in the transcript supports the summary?"
+              ],
+              "expansion_queries": [
+                "What evidence in the transcript supports the summary? overview"
+              ],
+              "rationale": "Planner unavailable; falling back to synthesis (GenerationFailed(\"cloud cooldown active and no fallback model configured\")).",
+              "skip_retrieval": null,
+              "deep_research": null
+            },
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 509,
+          "payload": {
+            "stage": "retrieving_pass_1",
+            "label": "Searching the library",
+            "detail": "Running 1 keyword + semantic search query.",
+            "decision": "Queries: What evidence in the transcript supports the summary?",
+            "plan": {
+              "intent": "synthesis",
+              "label": "Broader synthesis",
+              "budget": 12,
+              "max_per_video": 4,
+              "queries": [
+                "What evidence in the transcript supports the summary?"
+              ],
+              "expansion_queries": [
+                "What evidence in the transcript supports the summary? overview"
+              ],
+              "rationale": "Planner unavailable; falling back to synthesis (GenerationFailed(\"cloud cooldown active and no fallback model configured\")).",
+              "skip_retrieval": null,
+              "deep_research": null
+            },
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 967,
+          "payload": {
+            "stage": "retrieving_pass_2",
+            "label": "Broadening the search",
+            "detail": "Pass 1 produced 0 excerpts across 0 videos.",
+            "decision": "No grounded excerpts were found, so the search should try a broader query pass.",
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 967,
+          "payload": {
+            "stage": "retrieving_pass_2",
+            "label": "Broadening the search",
+            "detail": "Running 1 keyword + semantic search query.",
+            "decision": "Queries: What evidence in the transcript supports the summary? overview",
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 1330,
+          "payload": {
+            "stage": "retrieving_complete",
+            "label": "Search complete",
+            "detail": "Collected 0 excerpts across 0 videos.",
+            "decision": "No grounded excerpts were found, so the search should try a broader query pass.",
+            "plan": null,
+            "tool": null
+          }
+        }
+      ],
+      "tool_calls": [],
+      "latency_ms_total": 2570,
+      "latency_ms_retrieval": 1330,
+      "latency_ms_generation": null,
+      "rubric_answerability_pass": false,
+      "rubric_grounding_pass": false,
+      "rubric_shape_pass": false,
+      "rubric_capability_score": 0,
+      "failure_class": "generic_answer",
+      "notes": [
+        "assistant answer was too short for the expected prompt type (75 chars)",
+        "no grounding sources were attached",
+        "alignment answer did not explicitly discuss both summary and transcript"
+      ],
+      "raw_error": null,
+      "raw_sse": "event: status\ndata: {\"detail\":\"Resolving scope and deciding whether to answer directly or gather evidence.\",\"label\":\"Preparing chat plan\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"detail\":\"Choosing whether to answer now or call a tool (step 1/4).\",\"label\":\"Planning next step\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"detail\":\"Deciding whether this needs a focused lookup, broader evidence, or only prior context.\",\"label\":\"Planning search\",\"stage\":\"classifying\"}\n\nevent: status\ndata: {\"decision\":\"Planner unavailable; falling back to synthesis (GenerationFailed(\\\"cloud cooldown active and no fallback model configured\\\")).\",\"detail\":\"Using broader synthesis with up to 12 excerpts and 4 per video.\",\"label\":\"Search plan ready\",\"plan\":{\"budget\":12,\"expansion_queries\":[\"What evidence in the transcript supports the summary? overview\"],\"intent\":\"synthesis\",\"label\":\"Broader synthesis\",\"max_per_video\":4,\"queries\":[\"What evidence in the transcript supports the summary?\"],\"rationale\":\"Planner unavailable; falling back to synthesis (GenerationFailed(\\\"cloud cooldown active and no fallback model configured\\\")).\"},\"stage\":\"classifying\"}\n\nevent: status\ndata: {\"decision\":\"Queries: What evidence in the transcript supports the summary?\",\"detail\":\"Running 1 keyword + semantic search query.\",\"label\":\"Searching the library\",\"plan\":{\"budget\":12,\"expansion_queries\":[\"What evidence in the transcript supports the summary? overview\"],\"intent\":\"synthesis\",\"label\":\"Broader synthesis\",\"max_per_video\":4,\"queries\":[\"What evidence in the transcript supports the summary?\"],\"rationale\":\"Planner unavailable; falling back to synthesis (GenerationFailed(\\\"cloud cooldown active and no fallback model configured\\\")).\"},\"stage\":\"retrieving_pass_1\"}\n\nevent: sources\ndata: {\"sources\":[]}\n\nevent: status\ndata: {\"decision\":\"No grounded excerpts were found, so the search should try a broader query pass.\",\"detail\":\"Pass 1 produced 0 excerpts across 0 videos.\",\"label\":\"Broadening the search\",\"stage\":\"retrieving_pass_2\"}\n\nevent: status\ndata: {\"decision\":\"Queries: What evidence in the transcript supports the summary? overview\",\"detail\":\"Running 1 keyword + semantic search query.\",\"label\":\"Broadening the search\",\"stage\":\"retrieving_pass_2\"}\n\nevent: sources\ndata: {\"sources\":[]}\n\nevent: status\ndata: {\"decision\":\"No grounded excerpts were found, so the search should try a broader query pass.\",\"detail\":\"Collected 0 excerpts across 0 videos.\",\"label\":\"Search complete\",\"stage\":\"retrieving_complete\"}\n\nevent: done\ndata: {\"message\":{\"completion_tokens\":null,\"content\":\"I can’t answer that from the currently indexed transcripts and summaries.\",\"created_at\":\"2026-04-23T15:10:57.811780Z\",\"id\":\"msg_1776957057811_124\",\"model\":null,\"prompt_tokens\":null,\"role\":\"assistant\",\"sources\":[],\"status\":\"rejected\",\"total_duration_ns\":null,\"turn_trace\":{\"budget\":{\"exhausted\":false,\"exhaustion_reason\":null,\"max_model_calls\":12,\"max_retrieval_passes\":3,\"max_tool_calls\":4,\"model_calls\":2,\"retrieval_passes\":2,\"tool_calls\":0},\"plan_intent\":\"targeted synthesis\",\"plan_label\":\"Broader synthesis\",\"retrieval\":{\"deep_research\":false,\"pass_count\":2,\"query_count\":2,\"selected_source_count\":0,\"unique_video_count\":0},\"strategy\":\"retrieval\",\"tool_calls\":[]}}}\n\n"
+    },
+    {
+      "prompt_id": "q098",
+      "prompt": "Does the summary miss anything important from the transcript?",
+      "capability_class": "transcript_summary_alignment",
+      "answerability_expected": "yes",
+      "conversation_id": "conv_1776957058270_125",
+      "status": "completed",
+      "assistant_content": "Retrieved evidence for: Does the summary miss anything important from the transcript?\n\nThe answer model is unavailable, so this fallback lists the highest-ranked saved excerpts instead of synthesizing beyond them.\n\n1. Delete your CLAUDE.md (and your AGENT.md too) - Theo - t3․gg: ols (bash calls, grep, file reading); they're good at finding information independently. If information is in the codebase (package.json for commands, file structure for architecture), the model can find it—it doesn't need to be duplicated in a context file. The speaker's experiment: running `/init` on a project called \"Lawn\" generated a claude.md with architecture, commands, key patterns, etc. The agent read the pac... [1]\n2. What’s a Hard Fork? - Hard Fork / At a glance: The video title asks \"What’s a Hard Fork?\", but the transcript contains no substantive content on this topic. The provided transcript is solely an automated speech recognition (ASR) system metadata note. The text indicates it originated from a local OpenAI-compatible ASR endpoint, not from official RSS show notes. [2]\n3. What’s a Hard Fork? - Hard Fork / Takeaways: The intended educational content regarding what a hard fork is could not be summarized, as the transcript contains only ASR metadata and no actual discussion. [3]\n4. Trump just announced his AI plan. It’s weird. - Theo - t3․gg: worked hard on a lot of different sides to solve these problems. But it does show that this works. What a ride that one was. From woke AI to Chinese infrastructure to so much more. There's a lot of good in this but also some concerning pieces. I am hopeful that this does set the US in the right direction. And I'm thankful that this at least seems like it was written by people who understand what AI is and what risks ... [4]",
+      "source_count": 4,
+      "source_videos": [
+        "Delete your CLAUDE.md (and your AGENT.md too)",
+        "Trump just announced his AI plan. It’s weird.",
+        "What’s a Hard Fork?"
+      ],
+      "source_channels": [
+        "Hard Fork",
+        "Theo - t3․gg"
+      ],
+      "used_search_tool": false,
+      "used_db_tool": false,
+      "used_conversation_only": false,
+      "status_trace": [
+        {
+          "received_at_ms": 0,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Preparing chat plan",
+            "detail": "Resolving scope and deciding whether to answer directly or gather evidence.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 261,
+          "payload": {
+            "stage": "tool_planning",
+            "label": "Planning next step",
+            "detail": "Choosing whether to answer now or call a tool (step 1/4).",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 478,
+          "payload": {
+            "stage": "classifying",
+            "label": "Planning search",
+            "detail": "Deciding whether this needs a focused lookup, broader evidence, or only prior context.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 478,
+          "payload": {
+            "stage": "classifying",
+            "label": "Search plan ready",
+            "detail": "Using broader synthesis with up to 12 excerpts and 4 per video.",
+            "decision": "Planner unavailable; falling back to synthesis (GenerationFailed(\"cloud cooldown active and no fallback model configured\")).",
+            "plan": {
+              "intent": "synthesis",
+              "label": "Broader synthesis",
+              "budget": 12,
+              "max_per_video": 4,
+              "queries": [
+                "Does the summary miss anything important from the transcript?"
+              ],
+              "expansion_queries": [
+                "Does the summary miss anything important from the transcript? overview"
+              ],
+              "rationale": "Planner unavailable; falling back to synthesis (GenerationFailed(\"cloud cooldown active and no fallback model configured\")).",
+              "skip_retrieval": null,
+              "deep_research": null
+            },
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 478,
+          "payload": {
+            "stage": "retrieving_pass_1",
+            "label": "Searching the library",
+            "detail": "Running 1 keyword + semantic search query.",
+            "decision": "Queries: Does the summary miss anything important from the transcript?",
+            "plan": {
+              "intent": "synthesis",
+              "label": "Broader synthesis",
+              "budget": 12,
+              "max_per_video": 4,
+              "queries": [
+                "Does the summary miss anything important from the transcript?"
+              ],
+              "expansion_queries": [
+                "Does the summary miss anything important from the transcript? overview"
+              ],
+              "rationale": "Planner unavailable; falling back to synthesis (GenerationFailed(\"cloud cooldown active and no fallback model configured\")).",
+              "skip_retrieval": null,
+              "deep_research": null
+            },
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 914,
+          "payload": {
+            "stage": "retrieving_pass_2",
+            "label": "Broadening the search",
+            "detail": "Pass 1 produced 4 excerpts across 3 videos.",
+            "decision": "Pass 1 found only 4 strong excerpts, so broader synthesis coverage is useful.",
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 914,
+          "payload": {
+            "stage": "retrieving_pass_2",
+            "label": "Broadening the search",
+            "detail": "Running 1 keyword + semantic search query.",
+            "decision": "Queries: Does the summary miss anything important from the transcript? overview",
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 1340,
+          "payload": {
+            "stage": "retrieving_complete",
+            "label": "Search complete",
+            "detail": "Collected 4 excerpts across 3 videos.",
+            "decision": "Pass 1 found only 4 strong excerpts, so broader synthesis coverage is useful.",
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 1340,
+          "payload": {
+            "stage": "generating",
+            "label": "Answering from the evidence",
+            "detail": "Composing the final answer from 4 selected excerpts.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        },
+        {
+          "received_at_ms": 4003,
+          "payload": {
+            "stage": "generating_fallback",
+            "label": "Answer model unavailable",
+            "detail": "Returning the highest-ranked grounded excerpts instead.",
+            "decision": null,
+            "plan": null,
+            "tool": null
+          }
+        }
+      ],
+      "tool_calls": [],
+      "latency_ms_total": 5160,
+      "latency_ms_retrieval": 1340,
+      "latency_ms_generation": 2663,
+      "rubric_answerability_pass": true,
+      "rubric_grounding_pass": true,
+      "rubric_shape_pass": true,
+      "rubric_capability_score": 3,
+      "failure_class": null,
+      "notes": [],
+      "raw_error": null,
+      "raw_sse": "event: status\ndata: {\"detail\":\"Resolving scope and deciding whether to answer directly or gather evidence.\",\"label\":\"Preparing chat plan\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"detail\":\"Choosing whether to answer now or call a tool (step 1/4).\",\"label\":\"Planning next step\",\"stage\":\"tool_planning\"}\n\nevent: status\ndata: {\"detail\":\"Deciding whether this needs a focused lookup, broader evidence, or only prior context.\",\"label\":\"Planning search\",\"stage\":\"classifying\"}\n\nevent: status\ndata: {\"decision\":\"Planner unavailable; falling back to synthesis (GenerationFailed(\\\"cloud cooldown active and no fallback model configured\\\")).\",\"detail\":\"Using broader synthesis with up to 12 excerpts and 4 per video.\",\"label\":\"Search plan ready\",\"plan\":{\"budget\":12,\"expansion_queries\":[\"Does the summary miss anything important from the transcript? overview\"],\"intent\":\"synthesis\",\"label\":\"Broader synthesis\",\"max_per_video\":4,\"queries\":[\"Does the summary miss anything important from the transcript?\"],\"rationale\":\"Planner unavailable; falling back to synthesis (GenerationFailed(\\\"cloud cooldown active and no fallback model configured\\\")).\"},\"stage\":\"classifying\"}\n\nevent: status\ndata: {\"decision\":\"Queries: Does the summary miss anything important from the transcript?\",\"detail\":\"Running 1 keyword + semantic search query.\",\"label\":\"Searching the library\",\"plan\":{\"budget\":12,\"expansion_queries\":[\"Does the summary miss anything important from the transcript? overview\"],\"intent\":\"synthesis\",\"label\":\"Broader synthesis\",\"max_per_video\":4,\"queries\":[\"Does the summary miss anything important from the transcript?\"],\"rationale\":\"Planner unavailable; falling back to synthesis (GenerationFailed(\\\"cloud cooldown active and no fallback model configured\\\")).\"},\"stage\":\"retrieving_pass_1\"}\n\nevent: sources\ndata: {\"sources\":[{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"T2uUqs9LwTY_transcript_6_53\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"T2uUqs9LwTY\",\"item_kind\":\"video\",\"part_kind\":\"transcript\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.016393441706895828,\"section_title\":null,\"snippet\":\"worked hard on a lot of different sides to solve these problems. But it does show that this works. What a ride that one was. From woke AI to Chinese infrastructure to so much more. There's a lot of good in this but also some concerning pieces. I am hopeful that this does set the US in the right direction. And I'm thankful that this at least seems like it was written by people who understand what AI is and what risks ...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"transcript\",\"video_id\":\"T2uUqs9LwTY\",\"video_title\":\"Trump just announced his AI plan. It’s weird.\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"GcNu6wrLTJc_summary_5a91d357098359f01389c0910ef559b6486d897b2e76ec05e913b09d47c9db9d_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"GcNu6wrLTJc\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.0177049171179533,\"section_title\":null,\"snippet\":\"ols (bash calls, grep, file reading); they're good at finding information independently. If information is in the codebase (package.json for commands, file structure for architecture), the model can find it—it doesn't need to be duplicated in a context file. The speaker's experiment: running `/init` on a project called \\\"Lawn\\\" generated a claude.md with architecture, commands, key patterns, etc. The agent read the pac...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"GcNu6wrLTJc\",\"video_title\":\"Delete your CLAUDE.md (and your AGENT.md too)\"},{\"channel_id\":\"podcast:rss:https-feeds-simplecast-com-6hkohngs\",\"channel_name\":\"Hard Fork\",\"chunk_id\":\"podcast:episode:4e573fc5-f8ff-404c-af6e-a003d8835d31_summary_1_4\",\"content_source_kind\":\"podcast_series\",\"item_id\":\"podcast:episode:4e573fc5-f8ff-404c-af6e-a003d8835d31\",\"item_kind\":\"podcast_episode\",\"part_kind\":\"generated_summary\",\"provider\":\"podcast_rss\",\"retrieval_pass\":1,\"score\":0.016129031777381897,\"section_title\":\"Takeaways\",\"snippet\":\"The intended educational content regarding what a hard fork is could not be summarized, as the transcript contains only ASR metadata and no actual discussion.\",\"source_id\":\"podcast:rss:https-feeds-simplecast-com-6hkohngs\",\"source_kind\":\"summary\",\"video_id\":\"podcast:episode:4e573fc5-f8ff-404c-af6e-a003d8835d31\",\"video_title\":\"What’s a Hard Fork?\"},{\"channel_id\":\"podcast:rss:https-feeds-simplecast-com-6hkohngs\",\"channel_name\":\"Hard Fork\",\"chunk_id\":\"podcast:episode:4e573fc5-f8ff-404c-af6e-a003d8835d31_summary_1_1\",\"content_source_kind\":\"podcast_series\",\"item_id\":\"podcast:episode:4e573fc5-f8ff-404c-af6e-a003d8835d31\",\"item_kind\":\"podcast_episode\",\"part_kind\":\"generated_summary\",\"provider\":\"podcast_rss\",\"retrieval_pass\":1,\"score\":0.01587301678955555,\"section_title\":\"At a glance\",\"snippet\":\"The video title asks \\\"What’s a Hard Fork?\\\", but the transcript contains no substantive content on this topic. The provided transcript is solely an automated speech recognition (ASR) system metadata note. The text indicates it originated from a local OpenAI-compatible ASR endpoint, not from official RSS show notes.\",\"source_id\":\"podcast:rss:https-feeds-simplecast-com-6hkohngs\",\"source_kind\":\"summary\",\"video_id\":\"podcast:episode:4e573fc5-f8ff-404c-af6e-a003d8835d31\",\"video_title\":\"What’s a Hard Fork?\"}]}\n\nevent: status\ndata: {\"decision\":\"Pass 1 found only 4 strong excerpts, so broader synthesis coverage is useful.\",\"detail\":\"Pass 1 produced 4 excerpts across 3 videos.\",\"label\":\"Broadening the search\",\"stage\":\"retrieving_pass_2\"}\n\nevent: status\ndata: {\"decision\":\"Queries: Does the summary miss anything important from the transcript? overview\",\"detail\":\"Running 1 keyword + semantic search query.\",\"label\":\"Broadening the search\",\"stage\":\"retrieving_pass_2\"}\n\nevent: sources\ndata: {\"sources\":[{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"GcNu6wrLTJc_summary_5a91d357098359f01389c0910ef559b6486d897b2e76ec05e913b09d47c9db9d_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"GcNu6wrLTJc\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.032786883413791656,\"section_title\":null,\"snippet\":\"ols (bash calls, grep, file reading); they're good at finding information independently. If information is in the codebase (package.json for commands, file structure for architecture), the model can find it—it doesn't need to be duplicated in a context file. The speaker's experiment: running `/init` on a project called \\\"Lawn\\\" generated a claude.md with architecture, commands, key patterns, etc. The agent read the pac...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"GcNu6wrLTJc\",\"video_title\":\"Delete your CLAUDE.md (and your AGENT.md too)\"},{\"channel_id\":\"podcast:rss:https-feeds-simplecast-com-6hkohngs\",\"channel_name\":\"Hard Fork\",\"chunk_id\":\"podcast:episode:4e573fc5-f8ff-404c-af6e-a003d8835d31_summary_1_1\",\"content_source_kind\":\"podcast_series\",\"item_id\":\"podcast:episode:4e573fc5-f8ff-404c-af6e-a003d8835d31\",\"item_kind\":\"podcast_episode\",\"part_kind\":\"generated_summary\",\"provider\":\"podcast_rss\",\"retrieval_pass\":1,\"score\":0.03226646035909653,\"section_title\":\"At a glance\",\"snippet\":\"The video title asks \\\"What’s a Hard Fork?\\\", but the transcript contains no substantive content on this topic. The provided transcript is solely an automated speech recognition (ASR) system metadata note. The text indicates it originated from a local OpenAI-compatible ASR endpoint, not from official RSS show notes.\",\"source_id\":\"podcast:rss:https-feeds-simplecast-com-6hkohngs\",\"source_kind\":\"summary\",\"video_id\":\"podcast:episode:4e573fc5-f8ff-404c-af6e-a003d8835d31\",\"video_title\":\"What’s a Hard Fork?\"},{\"channel_id\":\"podcast:rss:https-feeds-simplecast-com-6hkohngs\",\"channel_name\":\"Hard Fork\",\"chunk_id\":\"podcast:episode:4e573fc5-f8ff-404c-af6e-a003d8835d31_summary_1_4\",\"content_source_kind\":\"podcast_series\",\"item_id\":\"podcast:episode:4e573fc5-f8ff-404c-af6e-a003d8835d31\",\"item_kind\":\"podcast_episode\",\"part_kind\":\"generated_summary\",\"provider\":\"podcast_rss\",\"retrieval_pass\":1,\"score\":0.032258063554763794,\"section_title\":\"Takeaways\",\"snippet\":\"The intended educational content regarding what a hard fork is could not be summarized, as the transcript contains only ASR metadata and no actual discussion.\",\"source_id\":\"podcast:rss:https-feeds-simplecast-com-6hkohngs\",\"source_kind\":\"summary\",\"video_id\":\"podcast:episode:4e573fc5-f8ff-404c-af6e-a003d8835d31\",\"video_title\":\"What’s a Hard Fork?\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"T2uUqs9LwTY_transcript_6_53\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"T2uUqs9LwTY\",\"item_kind\":\"video\",\"part_kind\":\"transcript\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.0177049171179533,\"section_title\":null,\"snippet\":\"worked hard on a lot of different sides to solve these problems. But it does show that this works. What a ride that one was. From woke AI to Chinese infrastructure to so much more. There's a lot of good in this but also some concerning pieces. I am hopeful that this does set the US in the right direction. And I'm thankful that this at least seems like it was written by people who understand what AI is and what risks ...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"transcript\",\"video_id\":\"T2uUqs9LwTY\",\"video_title\":\"Trump just announced his AI plan. It’s weird.\"}]}\n\nevent: status\ndata: {\"decision\":\"Pass 1 found only 4 strong excerpts, so broader synthesis coverage is useful.\",\"detail\":\"Collected 4 excerpts across 3 videos.\",\"label\":\"Search complete\",\"stage\":\"retrieving_complete\"}\n\nevent: status\ndata: {\"detail\":\"Composing the final answer from 4 selected excerpts.\",\"label\":\"Answering from the evidence\",\"stage\":\"generating\"}\n\nevent: sources\ndata: {\"sources\":[{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"GcNu6wrLTJc_summary_5a91d357098359f01389c0910ef559b6486d897b2e76ec05e913b09d47c9db9d_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"GcNu6wrLTJc\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.032786883413791656,\"section_title\":null,\"snippet\":\"ols (bash calls, grep, file reading); they're good at finding information independently. If information is in the codebase (package.json for commands, file structure for architecture), the model can find it—it doesn't need to be duplicated in a context file. The speaker's experiment: running `/init` on a project called \\\"Lawn\\\" generated a claude.md with architecture, commands, key patterns, etc. The agent read the pac...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"GcNu6wrLTJc\",\"video_title\":\"Delete your CLAUDE.md (and your AGENT.md too)\"},{\"channel_id\":\"podcast:rss:https-feeds-simplecast-com-6hkohngs\",\"channel_name\":\"Hard Fork\",\"chunk_id\":\"podcast:episode:4e573fc5-f8ff-404c-af6e-a003d8835d31_summary_1_1\",\"content_source_kind\":\"podcast_series\",\"item_id\":\"podcast:episode:4e573fc5-f8ff-404c-af6e-a003d8835d31\",\"item_kind\":\"podcast_episode\",\"part_kind\":\"generated_summary\",\"provider\":\"podcast_rss\",\"retrieval_pass\":1,\"score\":0.03226646035909653,\"section_title\":\"At a glance\",\"snippet\":\"The video title asks \\\"What’s a Hard Fork?\\\", but the transcript contains no substantive content on this topic. The provided transcript is solely an automated speech recognition (ASR) system metadata note. The text indicates it originated from a local OpenAI-compatible ASR endpoint, not from official RSS show notes.\",\"source_id\":\"podcast:rss:https-feeds-simplecast-com-6hkohngs\",\"source_kind\":\"summary\",\"video_id\":\"podcast:episode:4e573fc5-f8ff-404c-af6e-a003d8835d31\",\"video_title\":\"What’s a Hard Fork?\"},{\"channel_id\":\"podcast:rss:https-feeds-simplecast-com-6hkohngs\",\"channel_name\":\"Hard Fork\",\"chunk_id\":\"podcast:episode:4e573fc5-f8ff-404c-af6e-a003d8835d31_summary_1_4\",\"content_source_kind\":\"podcast_series\",\"item_id\":\"podcast:episode:4e573fc5-f8ff-404c-af6e-a003d8835d31\",\"item_kind\":\"podcast_episode\",\"part_kind\":\"generated_summary\",\"provider\":\"podcast_rss\",\"retrieval_pass\":1,\"score\":0.032258063554763794,\"section_title\":\"Takeaways\",\"snippet\":\"The intended educational content regarding what a hard fork is could not be summarized, as the transcript contains only ASR metadata and no actual discussion.\",\"source_id\":\"podcast:rss:https-feeds-simplecast-com-6hkohngs\",\"source_kind\":\"summary\",\"video_id\":\"podcast:episode:4e573fc5-f8ff-404c-af6e-a003d8835d31\",\"video_title\":\"What’s a Hard Fork?\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"T2uUqs9LwTY_transcript_6_53\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"T2uUqs9LwTY\",\"item_kind\":\"video\",\"part_kind\":\"transcript\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.0177049171179533,\"section_title\":null,\"snippet\":\"worked hard on a lot of different sides to solve these problems. But it does show that this works. What a ride that one was. From woke AI to Chinese infrastructure to so much more. There's a lot of good in this but also some concerning pieces. I am hopeful that this does set the US in the right direction. And I'm thankful that this at least seems like it was written by people who understand what AI is and what risks ...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"transcript\",\"video_id\":\"T2uUqs9LwTY\",\"video_title\":\"Trump just announced his AI plan. It’s weird.\"}]}\n\nevent: status\ndata: {\"detail\":\"Returning the highest-ranked grounded excerpts instead.\",\"label\":\"Answer model unavailable\",\"stage\":\"generating_fallback\"}\n\nevent: done\ndata: {\"message\":{\"completion_tokens\":null,\"content\":\"Retrieved evidence for: Does the summary miss anything important from the transcript?\\n\\nThe answer model is unavailable, so this fallback lists the highest-ranked saved excerpts instead of synthesizing beyond them.\\n\\n1. Delete your CLAUDE.md (and your AGENT.md too) - Theo - t3․gg: ols (bash calls, grep, file reading); they're good at finding information independently. If information is in the codebase (package.json for commands, file structure for architecture), the model can find it—it doesn't need to be duplicated in a context file. The speaker's experiment: running `/init` on a project called \\\"Lawn\\\" generated a claude.md with architecture, commands, key patterns, etc. The agent read the pac... [1]\\n2. What’s a Hard Fork? - Hard Fork / At a glance: The video title asks \\\"What’s a Hard Fork?\\\", but the transcript contains no substantive content on this topic. The provided transcript is solely an automated speech recognition (ASR) system metadata note. The text indicates it originated from a local OpenAI-compatible ASR endpoint, not from official RSS show notes. [2]\\n3. What’s a Hard Fork? - Hard Fork / Takeaways: The intended educational content regarding what a hard fork is could not be summarized, as the transcript contains only ASR metadata and no actual discussion. [3]\\n4. Trump just announced his AI plan. It’s weird. - Theo - t3․gg: worked hard on a lot of different sides to solve these problems. But it does show that this works. What a ride that one was. From woke AI to Chinese infrastructure to so much more. There's a lot of good in this but also some concerning pieces. I am hopeful that this does set the US in the right direction. And I'm thankful that this at least seems like it was written by people who understand what AI is and what risks ... [4]\\n\",\"created_at\":\"2026-04-23T15:11:02.914578Z\",\"id\":\"msg_1776957062914_133\",\"model\":\"glm-5.1:cloud\",\"prompt_tokens\":null,\"role\":\"assistant\",\"sources\":[{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"GcNu6wrLTJc_summary_5a91d357098359f01389c0910ef559b6486d897b2e76ec05e913b09d47c9db9d_0\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"GcNu6wrLTJc\",\"item_kind\":\"video\",\"part_kind\":\"generated_summary\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.032786883413791656,\"section_title\":null,\"snippet\":\"ols (bash calls, grep, file reading); they're good at finding information independently. If information is in the codebase (package.json for commands, file structure for architecture), the model can find it—it doesn't need to be duplicated in a context file. The speaker's experiment: running `/init` on a project called \\\"Lawn\\\" generated a claude.md with architecture, commands, key patterns, etc. The agent read the pac...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"summary\",\"video_id\":\"GcNu6wrLTJc\",\"video_title\":\"Delete your CLAUDE.md (and your AGENT.md too)\"},{\"channel_id\":\"podcast:rss:https-feeds-simplecast-com-6hkohngs\",\"channel_name\":\"Hard Fork\",\"chunk_id\":\"podcast:episode:4e573fc5-f8ff-404c-af6e-a003d8835d31_summary_1_1\",\"content_source_kind\":\"podcast_series\",\"item_id\":\"podcast:episode:4e573fc5-f8ff-404c-af6e-a003d8835d31\",\"item_kind\":\"podcast_episode\",\"part_kind\":\"generated_summary\",\"provider\":\"podcast_rss\",\"retrieval_pass\":1,\"score\":0.03226646035909653,\"section_title\":\"At a glance\",\"snippet\":\"The video title asks \\\"What’s a Hard Fork?\\\", but the transcript contains no substantive content on this topic. The provided transcript is solely an automated speech recognition (ASR) system metadata note. The text indicates it originated from a local OpenAI-compatible ASR endpoint, not from official RSS show notes.\",\"source_id\":\"podcast:rss:https-feeds-simplecast-com-6hkohngs\",\"source_kind\":\"summary\",\"video_id\":\"podcast:episode:4e573fc5-f8ff-404c-af6e-a003d8835d31\",\"video_title\":\"What’s a Hard Fork?\"},{\"channel_id\":\"podcast:rss:https-feeds-simplecast-com-6hkohngs\",\"channel_name\":\"Hard Fork\",\"chunk_id\":\"podcast:episode:4e573fc5-f8ff-404c-af6e-a003d8835d31_summary_1_4\",\"content_source_kind\":\"podcast_series\",\"item_id\":\"podcast:episode:4e573fc5-f8ff-404c-af6e-a003d8835d31\",\"item_kind\":\"podcast_episode\",\"part_kind\":\"generated_summary\",\"provider\":\"podcast_rss\",\"retrieval_pass\":1,\"score\":0.032258063554763794,\"section_title\":\"Takeaways\",\"snippet\":\"The intended educational content regarding what a hard fork is could not be summarized, as the transcript contains only ASR metadata and no actual discussion.\",\"source_id\":\"podcast:rss:https-feeds-simplecast-com-6hkohngs\",\"source_kind\":\"summary\",\"video_id\":\"podcast:episode:4e573fc5-f8ff-404c-af6e-a003d8835d31\",\"video_title\":\"What’s a Hard Fork?\"},{\"channel_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"channel_name\":\"Theo - t3․gg\",\"chunk_id\":\"T2uUqs9LwTY_transcript_6_53\",\"content_source_kind\":\"you_tube_channel\",\"item_id\":\"T2uUqs9LwTY\",\"item_kind\":\"video\",\"part_kind\":\"transcript\",\"provider\":\"you_tube\",\"retrieval_pass\":1,\"score\":0.0177049171179533,\"section_title\":null,\"snippet\":\"worked hard on a lot of different sides to solve these problems. But it does show that this works. What a ride that one was. From woke AI to Chinese infrastructure to so much more. There's a lot of good in this but also some concerning pieces. I am hopeful that this does set the US in the right direction. And I'm thankful that this at least seems like it was written by people who understand what AI is and what risks ...\",\"source_id\":\"UCbRP3c757lWg9M-U7TyEkXA\",\"source_kind\":\"transcript\",\"video_id\":\"T2uUqs9LwTY\",\"video_title\":\"Trump just announced his AI plan. It’s weird.\"}],\"status\":\"completed\",\"total_duration_ns\":null,\"turn_trace\":{\"budget\":{\"exhausted\":false,\"exhaustion_reason\":null,\"max_model_calls\":12,\"max_retrieval_passes\":3,\"max_tool_calls\":4,\"model_calls\":3,\"retrieval_passes\":2,\"tool_calls\":0},\"plan_intent\":\"targeted synthesis\",\"plan_label\":\"Broader synthesis\",\"retrieval\":{\"deep_research\":false,\"pass_count\":2,\"query_count\":2,\"selected_source_count\":4,\"unique_video_count\":3},\"strategy\":\"retrieval\",\"tool_calls\":[]}}}\n\n"
+    }
+  ]
+}

@@ -209,14 +209,17 @@ async fn main() -> anyhow::Result<()> {
     let fts_dir = local_libsql_dir(&std::env::temp_dir(), port);
     std::fs::create_dir_all(&fts_dir)?;
     let turso_db_path = fts_dir.join("search-fts.db");
+    let snapshot_restore =
+        dastill::db::restore_libsql_snapshot(&s3_client, &data_bucket, &turso_db_path).await;
     let (turso_db, turso_conn, shared_db_path) = initialize_local_libsql(&turso_db_path).await?;
+    let snapshot_conn = turso_conn.clone();
 
     let read_cache = ReadCache::default();
     let pool = init_store(
-        s3_client,
+        s3_client.clone(),
         s3v_client,
         turso_conn,
-        data_bucket,
+        data_bucket.clone(),
         vector_bucket,
         vector_index,
         read_cache.clone(),
@@ -234,8 +237,35 @@ async fn main() -> anyhow::Result<()> {
         exported_preferences = cache_reconcile.exported_preferences,
         bootstrapped_tts_stats = cache_reconcile.bootstrapped_tts_stats,
         exported_tts_stats = cache_reconcile.exported_tts_stats,
+        snapshot_restored = snapshot_restore.restored(),
         "SQL cache reconciliation complete"
     );
+    let cache_reconcile_changed = cache_reconcile.bootstrapped_videos > 0
+        || cache_reconcile.exported_videos > 0
+        || cache_reconcile.bootstrapped_preferences > 0
+        || cache_reconcile.exported_preferences > 0
+        || cache_reconcile.bootstrapped_tts_stats
+        || cache_reconcile.exported_tts_stats;
+    if !snapshot_restore.restored() || cache_reconcile_changed {
+        match dastill::db::publish_libsql_snapshot(
+            &s3_client,
+            &data_bucket,
+            &snapshot_conn,
+            &turso_db_path,
+            env!("CARGO_PKG_VERSION"),
+        )
+        .await
+        {
+            Ok(_) => {}
+            Err(err) => {
+                tracing::warn!(error = %err, "failed to publish libSQL snapshot");
+            }
+        }
+    } else {
+        tracing::info!(
+            "libSQL snapshot publish skipped - restored snapshot required no reconciliation changes"
+        );
+    }
 
     let client = build_http_client();
     let analytics = databricks_runtime
