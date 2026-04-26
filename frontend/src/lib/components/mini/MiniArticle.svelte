@@ -11,9 +11,13 @@
     contentKey: number;
     highlights: Highlight[];
     creatingHighlight: boolean;
+    creatingVocabularyReplacement: boolean;
     deletingHighlightId: number | null;
     onCreateHighlight: (
       payload: CreateHighlightRequest,
+    ) => void | Promise<void>;
+    onCreateVocabularyReplacement: (
+      selectedText: string,
     ) => void | Promise<void>;
     onDeleteHighlight: (highlightId: number) => void | Promise<void>;
   }
@@ -24,8 +28,10 @@
     contentKey,
     highlights,
     creatingHighlight,
+    creatingVocabularyReplacement,
     deletingHighlightId,
     onCreateHighlight,
+    onCreateVocabularyReplacement,
     onDeleteHighlight,
   }: Props = $props();
 </script>
@@ -51,8 +57,10 @@
         highlightSource="summary"
         highlightEnabled={true}
         {creatingHighlight}
+        {creatingVocabularyReplacement}
         {deletingHighlightId}
         {onCreateHighlight}
+        {onCreateVocabularyReplacement}
         {onDeleteHighlight}
       />
     </div>

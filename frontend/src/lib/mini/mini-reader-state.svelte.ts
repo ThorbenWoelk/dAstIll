@@ -1,11 +1,30 @@
-import { getMiniReader, updateMiniReadStatus } from "$lib/api";
+import {
+  getMiniReader,
+  getPreferences,
+  savePreferences,
+  updateMiniReadStatus,
+} from "$lib/api";
 import { authState } from "$lib/auth-state.svelte";
-import type { Channel, CreateHighlightRequest, Highlight } from "$lib/types";
+import type {
+  Channel,
+  CreateHighlightRequest,
+  Highlight,
+  UserPreferences,
+} from "$lib/types";
 import type { MiniReader, MiniSummaryItem } from "$lib/transport-types";
 import { renderMarkdown } from "$lib/utils/markdown";
 import { createHomeWorkspaceHighlightController } from "$lib/workspace/home-workspace-highlight-controller.svelte";
+import { createVocabularyController } from "$lib/workspace/vocabulary-controller.svelte";
 
 export const MINI_DEFAULT_SHOW_UNREAD_ONLY = true;
+
+function defaultUserPreferences(): UserPreferences {
+  return {
+    channel_order: [],
+    channel_sort_mode: "custom",
+    vocabulary_replacements: [],
+  };
+}
 
 export function chooseActiveVideoId(
   summaries: MiniSummaryItem[],
@@ -85,6 +104,9 @@ export class MiniReaderState {
   markingRead = $state(false);
   contentKey = $state(0);
   readProgress = $state(0);
+  preferences = $state<UserPreferences>(defaultUserPreferences());
+  preferencesLoaded = $state(false);
+  private preferencesLoadPromise: Promise<UserPreferences> | null = null;
   highlightController = createHomeWorkspaceHighlightController({
     getSelectedVideoId: () => this.activeSummary?.video_id ?? null,
     getSelectedChannelId: () =>
@@ -93,6 +115,30 @@ export class MiniReaderState {
     getCanManageLibrary: () => authState.current.authState === "authenticated",
     onError: (message) => {
       this.error = message;
+    },
+  });
+  vocabularyController = createVocabularyController({
+    getReplacements: () => this.preferences.vocabulary_replacements,
+    setReplacements: (replacements) => {
+      this.preferences = {
+        ...this.preferences,
+        vocabulary_replacements: replacements,
+      };
+    },
+    onError: (message) => {
+      this.error = message;
+    },
+    onSave: async (replacements) => {
+      const current = this.preferencesLoaded
+        ? this.preferences
+        : await this.loadPreferences();
+      const next = {
+        ...current,
+        vocabulary_replacements: replacements,
+      };
+      this.preferences = next;
+      this.preferencesLoaded = true;
+      await savePreferences(next);
     },
   });
 
@@ -130,6 +176,7 @@ export class MiniReaderState {
     this.highlightController.creatingHighlightVideoId,
   );
   deletingHighlightId = $derived(this.highlightController.deletingHighlightId);
+  creatingVocabularyReplacement = $derived(this.vocabularyController.creating);
 
   canGoPrev = $derived(this.activeIndex > 0);
   canGoNext = $derived(
@@ -180,6 +227,24 @@ export class MiniReaderState {
     } finally {
       this.loading = false;
     }
+  }
+
+  async loadPreferences(): Promise<UserPreferences> {
+    if (this.preferencesLoaded) {
+      return this.preferences;
+    }
+    if (!this.preferencesLoadPromise) {
+      this.preferencesLoadPromise = getPreferences()
+        .then((preferences) => {
+          this.preferences = preferences;
+          this.preferencesLoaded = true;
+          return preferences;
+        })
+        .finally(() => {
+          this.preferencesLoadPromise = null;
+        });
+    }
+    return this.preferencesLoadPromise;
   }
 
   async refreshReader() {
@@ -356,6 +421,30 @@ export class MiniReaderState {
 
   deleteExistingHighlight(highlightId: number) {
     return this.highlightController.deleteExistingHighlight(highlightId);
+  }
+
+  openVocabularyReplacement(selectedText: string) {
+    this.vocabularyController.open(selectedText);
+  }
+
+  setVocabularyModalValue(value: string) {
+    this.vocabularyController.setModalValue(value);
+  }
+
+  confirmVocabularyReplacement() {
+    return this.vocabularyController.confirm();
+  }
+
+  closeVocabularyModal() {
+    this.vocabularyController.close();
+  }
+
+  get vocabularyModalSource() {
+    return this.vocabularyController.modalSource;
+  }
+
+  get vocabularyModalValue() {
+    return this.vocabularyController.modalValue;
   }
 
   toggleUnreadFilter() {

@@ -7,6 +7,7 @@
   import MiniEmptyState from "$lib/components/mini/MiniEmptyState.svelte";
   import MiniSummaryStrip from "$lib/components/mini/MiniSummaryStrip.svelte";
   import MiniTopBar from "$lib/components/mini/MiniTopBar.svelte";
+  import VocabularyReplacementModal from "$lib/components/VocabularyReplacementModal.svelte";
   import { createMiniKeydownHandler } from "$lib/mini/mini-keyboard";
   import { createMiniReaderState } from "$lib/mini/mini-reader-state.svelte";
   import { createMiniScrollController } from "$lib/mini/mini-scroll.svelte";
@@ -80,6 +81,7 @@
       void goto("/login?redirectTo=%2Fmini");
       return;
     }
+    void mini.loadPreferences();
     void mini.loadReader();
   });
 </script>
@@ -174,8 +176,11 @@
           highlights={mini.activeSummaryHighlights}
           creatingHighlight={mini.creatingHighlight &&
             mini.creatingHighlightVideoId === mini.activeSummary.video_id}
+          creatingVocabularyReplacement={mini.creatingVocabularyReplacement}
           deletingHighlightId={mini.deletingHighlightId}
           onCreateHighlight={(payload) => mini.saveSelectionHighlight(payload)}
+          onCreateVocabularyReplacement={(selectedText) =>
+            mini.openVocabularyReplacement(selectedText)}
           onDeleteHighlight={(highlightId) =>
             mini.deleteExistingHighlight(highlightId)}
         />
@@ -215,6 +220,16 @@
       }}
     />
   {/if}
+
+  <VocabularyReplacementModal
+    show={Boolean(mini.vocabularyModalSource)}
+    source={mini.vocabularyModalSource ?? ""}
+    value={mini.vocabularyModalValue}
+    busy={mini.creatingVocabularyReplacement}
+    onValueChange={(value) => mini.setVocabularyModalValue(value)}
+    onConfirm={() => void mini.confirmVocabularyReplacement()}
+    onCancel={() => mini.closeVocabularyModal()}
+  />
 </div>
 
 <style>
