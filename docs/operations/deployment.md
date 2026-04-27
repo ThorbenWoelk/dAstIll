@@ -177,6 +177,8 @@ The backend Cloud Run service is intentionally capped at one serving instance. T
 
 On startup, the backend first tries to restore the local libSQL file from the derived S3 runtime cache at `runtime-cache/libsql/current.json`. The manifest points to a compressed snapshot under `runtime-cache/libsql/snapshots/` and includes source-prefix fingerprints for `videos/`, `user-preferences/`, and `tts-stats/`. If the snapshot is missing, stale, corrupt, or schema-incompatible, startup falls back to rebuilding local libSQL from the canonical S3 objects and then publishes a fresh derived snapshot. The canonical S3 prefixes remain the source of truth.
 
+dAstIll no longer uses Turso Cloud. The active storage path is the local libSQL runtime file plus S3 and S3 Vectors. Some internal code identifiers still say `turso` because they predate the move to the local libSQL path.
+
 **Android browser-auth handoff:** if the Tauri Android shell should open a browser-hosted login page on a different origin than the product frontend itself, set `PUBLIC_BROWSER_AUTH_BASE_URL` for the frontend build. That value controls the origin used for the system-browser `/login` handoff flow.
 
 **Authorized domains:** Terraform manages Identity Platform authorized domains. The default set includes `localhost`, the Firebase-hosted domains for the project, and any entries in `firebase_authorized_domains_extra`. Use Terraform rather than console-only edits for managed environments.

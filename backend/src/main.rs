@@ -145,7 +145,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     // Bind the port immediately so Cloud Run's TCP startup probe succeeds
-    // before the rest of initialization (Turso, AWS, etc.) runs.
+    // before the rest of initialization (local libSQL, AWS, etc.) runs.
     // The OS kernel queues incoming connections in the backlog until
     // axum::serve() processes them at the end of startup.
     let port: u16 = std::env::var("PORT")

@@ -18,7 +18,7 @@
   <title>dAstIll | Budget cap</title>
   <meta
     name="description"
-    content="dAstIll is temporarily paused after hitting the current Turso budget cap. The docs site remains available."
+    content="dAstIll is temporarily paused after hitting the current budget cap. The docs site remains available."
   />
 </svelte:head>
 

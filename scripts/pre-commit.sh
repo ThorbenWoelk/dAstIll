@@ -100,13 +100,13 @@ if [[ -n "$BACKEND_STAGED" ]] && git diff --cached --name-only | grep -qE 'backe
     export AWS_ACCESS_KEY_ID="test"
     export AWS_SECRET_ACCESS_KEY="test"
     
-    # Run with timeout - must exceed Turso builder inner timeout (30s) so the binary
+    # Run with timeout - must exceed the libSQL builder inner timeout (30s) so the binary
     # can fail cleanly with exit 1 rather than being killed with exit 124.
     timeout 45s ./backend/target/release/dastill 2>&1 || exit_code=$?
 
     # Exit codes:
     # 124 = timeout (process hung past 45s) - FAIL
-    # 1 = early error (config validation, Turso connection refused) - PASS (expected)
+    # 1 = early error (config validation, libSQL/open startup failure) - PASS (expected)
     # 0 = started successfully - PASS
     if [[ "$exit_code" == "124" ]]; then
         echo "❌ Backend startup hung for over 45s"

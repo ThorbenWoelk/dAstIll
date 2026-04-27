@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""One-time migration: Firestore → Turso.
+"""Legacy one-time migration: Firestore -> libSQL over the old Turso HTTP path.
 
 Reads dastill_videos, dastill_preferences, and dastill_tts_stats from
-Firestore via the REST API and inserts them into the Turso database.
+Firestore via the REST API and inserts them into the libSQL database.
+
+This script is kept for historical migration reference. dAstIll no longer uses
+Turso Cloud in the active runtime path.
 
 Requirements:
   pip install requests
@@ -22,7 +25,7 @@ GCP_PROJECT = "dastill"
 FIRESTORE_BASE = f"https://firestore.googleapis.com/v1/projects/{GCP_PROJECT}/databases/(default)/documents"
 
 
-# Read Turso config from backend/.env
+# Read legacy remote libSQL config from backend/.env
 def load_env(path: str) -> dict[str, str]:
     env = {}
     if not os.path.exists(path):
@@ -99,7 +102,7 @@ def fs_float(fields: dict, key: str, default: float = 0.0) -> float:
 
 
 def turso_execute(db_url: str, auth_token: str, statements: list[dict]) -> dict:
-    """Execute statements via Turso HTTP API (pipeline)."""
+    """Execute statements via the legacy libSQL HTTP pipeline endpoint."""
     # Convert libsql:// to https://
     http_url = db_url.replace("libsql://", "https://")
     url = f"{http_url}/v3/pipeline"
@@ -280,7 +283,7 @@ def migrate_tts_stats(docs: list[dict], db_url: str, auth_token: str):
 def main():
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-    # Load Turso config - check shared env first, then backend/.env
+    # Load legacy remote libSQL config - check shared env first, then backend/.env
     shared_env = os.path.expanduser("~/.config/dastill/backend.env")
     local_env = os.path.join(repo_root, "backend", ".env")
 
@@ -295,14 +298,14 @@ def main():
         print("Error: TURSO_DB_URL and TURSO_AUTH_TOKEN must be set in backend/.env")
         sys.exit(1)
 
-    print(f"Turso target: {db_url}")
+    print(f"libSQL target: {db_url}")
 
-    # Verify Turso is reachable
+    # Verify the remote libSQL endpoint is reachable
     try:
         result = turso_execute(db_url, auth_token, [{"sql": "SELECT 1", "args": []}])
-        print("Turso connection: ok")
+        print("libSQL connection: ok")
     except Exception as e:
-        print(f"Error connecting to Turso: {e}")
+        print(f"Error connecting to libSQL endpoint: {e}")
         sys.exit(1)
 
     # Ensure schema exists
