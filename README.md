@@ -5,7 +5,7 @@ dAstIll watches content sources, extracts their content, and turns them into a s
 ## Start Here
 
 - [Documentation site](https://dastill-docs.web.app)
-- [Project overview](docs/project.md)
+- [Disclaimer](docs/disclaimer.md)
 - [Local development](docs/operations/local-development.md)
 - [Deployment and operations](docs/operations/deployment.md)
 - [Architecture](docs/architecture/overview.md)

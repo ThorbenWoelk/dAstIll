@@ -94,19 +94,6 @@ The SvelteKit app exposes these top-level product routes:
   :chart="frontendBoundaryDiagram"
 />
 
-## Main Workspace Behavior
-
-The main route is responsible for most user-facing behavior:
-
-- channel selection
-- video list filters
-- transcript / summary / info switching
-- summary-audio playback when TTS is configured
-- search UI
-- workspace bootstrap, selection restore, and refresh logic
-
-The `/mini` route is a separate reading surface for the same saved content. Its responsive architecture is documented in [Mini Reader](/architecture/mini-reader).
-
 ## Startup Pattern
 
 The main workspace uses a combined bootstrap response:

@@ -24,7 +24,7 @@ export default defineConfig({
         text: "Introduction",
         items: [
           { text: "Overview", link: "/" },
-          { text: "Project", link: "/project" },
+          { text: "Disclaimer", link: "/disclaimer" },
         ],
       },
       {
