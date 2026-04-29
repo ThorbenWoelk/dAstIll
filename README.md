@@ -1,310 +1,33 @@
 # dAstIll
 
-## Disclaimer
+dAstIll watches content sources, extracts their content, and turns them into a searchable library you can read, question, and listen to.
 
-This is a showcase repo. It serves two purposes:
+## Start Here
 
-1. Explore technologies and architecture patterns such as Svelte, Rust, Firebase, and agentic RAG.
-2. Push AI-assisted coding and product development to its limits. Change harnesses and abstraction levels on the go.
+- [Documentation site](https://dastill-docs.web.app)
+- [Project overview](docs/project.md)
+- [Local development](docs/operations/local-development.md)
+- [Deployment and operations](docs/operations/deployment.md)
+- [Architecture](docs/architecture/overview.md)
+- [AI models](docs/pipelines/ai-models.md)
+- [Search indexing](docs/pipelines/search-indexing.md)
+- [Security](docs/security/index.md)
 
-Budget is tight.
-
-As a result:
-
-- The codebase moves fast. Refactorings, redesigns, and rough edges are part of the work. We push to main when we are not working in parallel.
-- The goal is to gradually and continuously turn that motion into clearer structure, stronger security, clean code, and better operating habits.
-
-That said, everyone should feel free to reach out, criticize, open issues, or contribute directly.
-
-## Overview
-
-dAstIll is a web app that watches the content sources you care about. It extracts content and turns it into a library you can read, search, and question.
-It currently supports YouTube channels, OpenAlex saved searches, podcast RSS feeds, and web pages.
-
-## Features
-
-- **Source library**: Track YouTube channels, OpenAlex saved searches, podcast feeds, and websites from one workspace.
-- **Evaluated AI summaries**: Generate summaries and score them with a separate evaluator model so low-quality output can be detected.
-- **Hybrid search**: Search transcripts, summaries, abstracts, notes, and page text with keyword and semantic retrieval.
-- **Chat with content**: Ask grounded questions across the saved library with source attribution and optional multi-pass retrieval.
-- **Highlights**: Save important snippets from transcripts and summaries for later review.
-- **Vocabulary customization**: Define word replacements applied during summary generation for consistent terminology.
-- **Summary audio**: Generate audio playback for summaries.
-- **Mini reader**: Use `/mini` for an intentionally minimal reading surface that provides the same content in a calm environment.
-
-## Documentation
-
-Detailed project documentation lives in the [docs](https://dastill-docs.web.app).
-
-## Tech Stack
-
-### Frontend
-
-- SvelteKit, TypeScript, bun
-
-### Backend
-
-Rust, Axum, AWS S3, AWS S3 Vectors, local libSQL, Ollama-compatible model endpoints, Amazon Polly
-
-### Infrastructure & Deployment
-
-Terraform, Firebase Hosting, Google Cloud Run, AWS IAM (Workload Identity Federation), Google Secret Manager, Artifact Registry, GitHub Actions, Docker
-
-## Developer Guide
-
-Run the docs frontend locally:
+## Local Run
 
 ```bash
-cd docs
-bun install --frozen-lockfile
-bun run dev
-```
-
-Default local docs URL:
-
-```text
-http://localhost:4173
-```
-
-The app header includes a `Docs` link. In local development it falls back to `http://localhost:4173`; in deployed environments the frontend reads `PUBLIC_DOCS_URL` at build time.
-
-### Prerequisites
-
-- [Rust](https://rustup.rs/)
-- [Bun](https://bun.sh/)
-- [Ollama](https://ollama.com/) (required for local AI models)
-- AWS credentials with access to S3, S3 Vectors, and optionally Polly (prefer the shared machine-local file at `~/.config/dastill/aws/credentials`)
-- An AWS S3 bucket for data storage and an S3 Vectors bucket for semantic search
-- YouTube Data API Key (optional)
-- OpenAlex API key (optional)
-- A local or private OpenAI-compatible ASR service for podcast transcription when
-  podcast feeds do not publish transcripts (optional but required for functional
-  podcast transcript generation)
-
-### Getting Started (Local Development)
-
-1. **Clone the repository**:
-
-   ```bash
-   git clone https://github.com/ThorbenWoelk/dAstIll.git
-   cd dAstIll
-   ```
-
-2. **Configure Environment Variables**:
-   Set up the shared local env directory once per machine:
-
-   ```bash
-   ./scripts/link_shared_env.sh
-   ```
-
-   The default local workflow uses `~/.config/dastill/backend.env` and
-   `~/.config/dastill/frontend.env`. The helper above migrates existing worktree-local
-   `.env` files into that shared directory when possible and creates fresh symlinks for the
-   current worktree.
-
-   Backend env precedence is:
-   - shell environment variables
-   - `backend/.env` in the current worktree
-   - `~/.config/dastill/backend.env`
-
-   A typical backend config looks like this:
-
-   ```env
-   GCP_PROJECT_ID=your-gcp-project-id
-   AWS_REGION=eu-central-1
-   # Preferred: shared machine-local AWS credentials/config files.
-   # Set these so local runs do not fall back to an expired AWS CLI login cache.
-   AWS_SHARED_CREDENTIALS_FILE=/Users/you/.config/dastill/aws/credentials
-   AWS_CONFIG_FILE=/Users/you/.config/dastill/aws/config
-   S3_DATA_BUCKET=your-data-bucket
-   S3_VECTOR_BUCKET=your-vectors-bucket
-   S3_VECTOR_INDEX=search-chunks
-   # Optional: custom endpoints (e.g. MinIO)
-   # S3_ENDPOINT_URL=http://localhost:9000
-   # S3_VECTOR_ENDPOINT_URL=http://localhost:9001
-   # Fallback only: inline AWS credentials. Avoid AWS_SESSION_TOKEN for routine
-   # local development because temporary session creds will expire.
-   # AWS_ACCESS_KEY_ID=your-aws-access-key-id
-   # AWS_SECRET_ACCESS_KEY=your-aws-secret-access-key
-   # AWS_SESSION_TOKEN=your-aws-session-token
-   # Optional: GCP AWS WIF path used in Cloud Run and some advanced local setups
-   # AWS_ROLE_ARN="arn:aws:iam::877173393100:role/dastill-gcp-backend"
-   # AWS_WIF_AUDIENCE="<backend-sa-unique-id>"
-   BACKEND_PROXY_TOKEN=local-dev-backend-proxy-token
-   BACKEND_CORS_ALLOWED_ORIGINS=http://localhost:3543
-   YOUTUBE_API_KEY=optional-api-key
-   OPEN_ALEX_API_KEY=optional-api-key
-   OLLAMA_URL=http://localhost:11434
-   OLLAMA_SUMMARY_MODEL=glm-5.1:cloud
-   OLLAMA_DEFAULT_CHAT_MODEL=glm-5.1:cloud
-   OLLAMA_FALLBACK_MODEL=qwen3-coder:30b
-   SUMMARY_EVALUATOR_MODEL=gemma4:31b-cloud
-   SEARCH_SEMANTIC_ENABLED=true
-   OLLAMA_EMBEDDING_MODEL=embeddinggemma:latest
-   SEARCH_AUTO_CREATE_VECTOR_INDEX=false
-   SUMMARIZE_PATH=/opt/homebrew/bin/summarize
-   # Optional podcast ASR. The backend is only a client; the STT model runs in
-   # a separate operator-owned service that implements /v1/audio/transcriptions.
-   LOCAL_ASR_ENABLED=true
-   LOCAL_ASR_BASE_URL=http://127.0.0.1:5092/v1
-   LOCAL_ASR_AUTH_MODE=api_key
-   LOCAL_ASR_MODEL=whisper-base.en
-   LOCAL_ASR_API_KEY=sk-no-key-required
-   LOCAL_ASR_TIMEOUT_SECS=3600
-   ```
-
-   `OLLAMA_SUMMARY_MODEL` and `SUMMARY_EVALUATOR_MODEL` must be different. If they match, backend startup exits before serving requests so summary evaluation stays independent from summary generation.
-   If `OLLAMA_URL` points to a remote Ollama endpoint instead of localhost, also set `OLLAMA_API_KEY`.
-
-   Podcast transcription uses `LOCAL_ASR_*` only when enabled. dAstIll does not
-   bundle an STT model in the Rust backend. The recommended free local runtime is the maintained
-   `whisper.cpp` server with the `base.en` GGML model, run as a trusted local or private
-   OpenAI-compatible ASR server. Avoid production dependencies on random
-   low-adoption wrapper repositories; treat wrappers as replaceable service
-   implementations behind the `/v1/audio/transcriptions` contract.
-   With these local values, `./start_app.sh` starts `./scripts/start_local_asr.sh`
-   automatically. That script requires Homebrew `whisper-cpp` and `ffmpeg`, then
-   downloads the `ggml-base.en.bin` model into `~/.cache/dastill/asr/`.
-
-   If you run the frontend separately from `start_app.sh`, keep its local values in
-   `~/.config/dastill/frontend.env` and run `./scripts/link_shared_env.sh` in each
-   worktree so direct frontend commands still see `frontend/.env`. Operator access is
-   granted through the backend `OPERATOR_EMAIL_ALLOWLIST`.
-
-   If an old `~/.config/dastill/backend.env` still contains `AWS_ACCESS_KEY_ID`,
-   `AWS_SECRET_ACCESS_KEY`, and especially `AWS_SESSION_TOKEN`, those inline values
-   override the shared credentials file and can pin local dev to expired STS
-   credentials. For permanent local credentials, move the keypair into
-   `~/.config/dastill/aws/credentials`, remove the inline AWS credential lines,
-   and keep `AWS_SHARED_CREDENTIALS_FILE` / `AWS_CONFIG_FILE` pointed at the
-   shared local files.
-
-3. **Understand Source Inputs And Search Defaults**:
-   The workspace add-source input accepts:
-   - YouTube handles and channel URLs
-   - `openalex: <query>`
-   - `podcast: <feed-url>`
-   - `site: <page-url>` or a plain non-YouTube page URL
-
-   `SEARCH_SEMANTIC_ENABLED` overrides the runtime default:
-   - Local debug builds default to semantic search on.
-   - Release/production builds default to FTS-only unless `SEARCH_SEMANTIC_ENABLED=true` is explicitly set.
-   - `SEARCH_SEMANTIC_ENABLED=false` disables embeddings in any environment.
-
-   For local hybrid semantic search, configure `OLLAMA_EMBEDDING_MODEL` and leave `SEARCH_SEMANTIC_ENABLED` unset or set it to `true`.
-
-4. **Start the Application**:
-   You can start the frontend, backend, docs, and, when available, the Android shell using the provided startup script:
-
-   ```bash
-   ./start_app.sh
-   ```
-
-   `./start_app.sh` first shuts down any already-running dAstIll services, then starts the full stack again.
-
-   To start the app in the background and return your shell immediately:
-
-   ```bash
-   ./start_app.sh --detach
-   ```
-
-   Detached mode starts a background supervisor, performs the usual health checks in the background, and writes its startup output to `start_app.log`. The service logs remain in `backend.log`, `frontend.log`, and `docs.log`.
-
-   To stop everything cleanly:
-
-   ```bash
-   ./end_app.sh
-   ```
-
-5. **Sign-In And Roles Locally**:
-   Anonymous browsing remains available by default. Signed-in users use the Firebase-backed `/login` flow, and operator-only actions depend on the backend `OPERATOR_EMAIL_ALLOWLIST`.
-
-### Tauri Android Development
-
-dAstIll includes a Tauri v2 shell for Android in [`src-tauri/`](./src-tauri). The Android app uses the same frontend bundle and talks directly to the Rust backend with Firebase bearer tokens.
-
-Install the Tauri CLI once on your machine:
-
-```bash
-cargo install tauri-cli --version "^2"
-```
-
-If you do not want to install it globally, use `bunx @tauri-apps/cli@latest ...` instead of `cargo tauri ...`.
-
-### Tooling
-
-You need:
-
-- Android Studio
-- Java 17+
-- Android SDK
-- Android NDK
-- Rust Android targets
-
-Typical setup:
-
-```bash
-rustup target add aarch64-linux-android armv7-linux-androideabi \
-  i686-linux-android x86_64-linux-android
-
-export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
-export ANDROID_HOME="$HOME/Library/Android/sdk"
-export NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
-```
-
-### Run On Android
-
-The Android mobile shell is opt-in. To launch it alongside the backend, frontend, and docs:
-
-```bash
-START_APP_MOBILE=1 ./start_app.sh
-```
-
-To keep the stack web-only, use the default:
-
-```bash
+./scripts/link_shared_env.sh
 ./start_app.sh
 ```
 
-`./start_app.sh` also reads `.github/runtime-mode.env`, the same file used by the deploy workflows. If that file says `APP_RUNTIME_MODE=maintenance`, local startup serves the maintenance/minimal frontend shape and keeps the backend available for `dastill-mini`.
-
-If you want to run the shell manually instead:
+Stop the stack:
 
 ```bash
-cargo tauri android dev
+./end_app.sh
 ```
 
-### Build An APK
-
-Debug APK:
-
-```bash
-cargo tauri android build -- --apk --debug
-```
-
-Release APK:
-
-```bash
-cargo tauri android build -- --apk
-```
-
-APK output:
-
-```text
-src-tauri/gen/android/app/build/outputs/apk/
-```
-
-### What To Verify
-
-- The app launches and loads data from the backend.
-- Anonymous mode works.
-- Google sign-in works in the Android shell.
-- Transcript text selection shows Android native `Highlight` and `Correct` actions.
-- Highlight creation and vocabulary correction still work.
-- Existing highlight deletion still works.
-
-Detailed mobile steps live in [docs/operations/local-development.md](./docs/operations/local-development.md) and [docs/operations/mobile-tauri.md](./docs/operations/mobile-tauri.md).
+Detailed setup lives in [docs/operations/local-development.md](docs/operations/local-development.md).
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT. See [LICENSE](LICENSE).

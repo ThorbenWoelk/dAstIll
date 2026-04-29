@@ -113,14 +113,9 @@ regenerated. Once the cap is reached, the video is not requeued further.
 | `OLLAMA_EMBEDDING_MODEL`  | Model name for dense embeddings; required when semantic search is enabled |
 | `SEARCH_SEMANTIC_ENABLED` | Override switch; local debug defaults on, release defaults off            |
 
-The embedding model is accessed via Ollama's `/api/embed` endpoint. The service:
+Semantic search uses the configured Ollama embedding model. If the embedding path is unavailable, search degrades to FTS.
 
-- batches embedding requests (up to 8 texts per request)
-- validates that returned embedding dimensions match the configured model
-- checks model availability at startup via Ollama `/api/tags`
-
-If the model is not pulled or Ollama is unreachable at startup, semantic search silently
-disables itself. FTS continues to work.
+Indexing, batching, dimension checks, and retrieval behavior are covered in [Search Indexing](/pipelines/search-indexing).
 
 ### Example Local Model
 
@@ -133,17 +128,11 @@ disables itself. FTS continues to work.
 Any Ollama-compatible embedding model can be substituted via `OLLAMA_EMBEDDING_MODEL` as
 long as it exposes `/api/embed` and returns float32 vectors.
 
-### Local Concurrency
-
-The embedding service uses its own semaphore, separate from the summarizer/evaluator
-semaphore, so search traffic and generation traffic can be bounded independently.
-
 ---
 
 ## Neural Reranker (`SEARCH_RERANK_MODEL`)
 
-The reranker applies cross-encoder scoring after Reciprocal Rank Fusion (RRF) to
-improve precision in hybrid search results.
+The reranker is an optional cross-encoder model used by hybrid search after Reciprocal Rank Fusion (RRF).
 
 ### When It Activates
 
@@ -153,24 +142,14 @@ improve precision in hybrid search results.
 
 FTS-only queries and semantic-only queries bypass the reranker entirely.
 
-### How It Works
-
-1. The FTS and semantic candidate lists are merged via RRF into a single flat ordered
-   list (`collect_rrf_candidates`)
-2. Up to 50 candidates from this list (by RRF rank) are sent to Ollama's `/api/rerank`
-   endpoint (30 s timeout) along with the original query
-3. Ollama returns a `relevance_score` for each candidate; results are sorted descending
-4. The reranked list flows into the standard video grouping step
-
-Falls back to the plain RRF ordering if the call fails or returns an empty result set.
-The search log records `rerank_configured` and `rerank_elapsed_ms` per request.
-
 ### Model Selection
 
 Any Ollama-compatible cross-encoder model that supports `/api/rerank` can be used. A
 solid open-source option is `bge-reranker-v2-m3`. Cross-encoders are more accurate than
 bi-encoders for this task because they attend jointly to the query and the document
 rather than comparing independent embeddings.
+
+Execution details live in [Search Indexing](/pipelines/search-indexing#query-path).
 
 ---
 
@@ -191,32 +170,7 @@ content vectors cluster.
 
 ### When It Activates
 
-All of the following must be true:
-
-- `SEARCH_HYDE_MODEL` is configured
-- Semantic search is enabled for the request
-- The query contains **4 or fewer meaningful tokens** after stopword removal
-
-Queries with more terms are specific enough to embed well without synthesis.
-
-### How It Works
-
-The backend posts to Ollama's `/api/generate` (30 s timeout) with:
-
-```
-Write a concise 2-3 sentence passage that directly answers: "<query>".
-Be specific. Output only the passage, nothing else.
-```
-
-The returned passage is embedded in place of the raw query. The original raw query is
-still used for:
-
-- BM25 FTS retrieval
-- FTS pre-ranking
-- keyword snippet extraction in results
-
-Falls back to embedding the raw query on any failure (timeout, empty passage, network
-error). The search log records `hyde_triggered` and `hyde_elapsed_ms` per request.
+HyDE activates for configured short semantic queries. [Search Indexing](/pipelines/search-indexing#query-path) owns the exact runtime gate.
 
 ### Model Selection
 
@@ -224,6 +178,8 @@ Any instruction-following generative model available in Ollama works. Smaller mo
 (7B-8B) are sufficient because the task is constrained 2-3 sentence passage generation,
 not open-ended reasoning. Fast generation matters more than reasoning depth here; pick
 a model that can respond within the 30 s timeout under load.
+
+Prompt and fallback details live in [Search Indexing](/pipelines/search-indexing#query-path).
 
 ---
 

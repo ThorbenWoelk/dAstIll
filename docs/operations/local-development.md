@@ -1,5 +1,32 @@
 # Local Development
 
+## Prerequisites
+
+Install:
+
+- [Rust](https://rustup.rs/)
+- [Bun](https://bun.sh/)
+- [Ollama](https://ollama.com/) for local AI models
+
+You also need local access to the backing services you plan to use:
+
+- AWS credentials with access to S3, S3 Vectors, and optionally Polly
+- an AWS S3 bucket for data storage
+- an AWS S3 Vectors bucket for semantic search
+- a YouTube Data API key when you ingest YouTube sources
+- an OpenAlex API key when you use authenticated OpenAlex search
+- a local or private OpenAI-compatible ASR service when podcast feeds do not publish transcripts
+
+The preferred AWS credential path is the shared machine-local file at
+`~/.config/dastill/aws/credentials`.
+
+Clone the repo:
+
+```bash
+git clone https://github.com/ThorbenWoelk/dAstIll.git
+cd dAstIll
+```
+
 ## Product App
 
 The product app consists of:
@@ -62,6 +89,9 @@ Default docs URL:
 http://localhost:4173
 ```
 
+The product app header includes a `Docs` link. In local development it falls back to
+`http://localhost:4173`. Deployed frontend builds read `PUBLIC_DOCS_URL` at build time.
+
 ## Postman Debugging
 
 The backend exposes a live OpenAPI document for local debugging.
@@ -84,48 +114,13 @@ treated as the authoritative contract for local debugging.
 
 ## Docs Frontend
 
-Build the static docs site:
+The full stack starts docs on `http://localhost:4173`.
 
-```bash
-cd docs
-bun run build
-```
-
-The docs app is deployed from the static VitePress build through Firebase Hosting. Main-branch pushes build the site and publish `docs/.vitepress/dist` through the repository GitHub Actions workflow.
+Folder-local docs commands live in `docs/README.md`. The docs app is deployed from the static VitePress build through Firebase Hosting. Main-branch pushes build the site and publishes `docs/.vitepress/dist` through the repository GitHub Actions workflow.
 
 ## Tauri Android Development
 
 The repo includes a Tauri v2 shell in `src-tauri/`.
-
-Install the CLI once:
-
-```bash
-cargo install tauri-cli --version "^2"
-```
-
-If `cargo tauri` is not installed, use `bunx` instead:
-
-```bash
-bunx @tauri-apps/cli@latest dev
-bunx @tauri-apps/cli@latest android dev
-```
-
-Typical local setup:
-
-```bash
-rustup target add aarch64-linux-android armv7-linux-androideabi \
-  i686-linux-android x86_64-linux-android
-
-export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
-export ANDROID_HOME="$HOME/Library/Android/sdk"
-export NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
-```
-
-Check the Android device list:
-
-```bash
-adb devices
-```
 
 Recommended run loop:
 
@@ -159,27 +154,7 @@ To run the shell manually:
 cargo tauri android dev
 ```
 
-Build APKs:
-
-```bash
-cargo tauri android build -- --apk --debug
-cargo tauri android build -- --apk
-```
-
-APK output:
-
-```text
-src-tauri/gen/android/app/build/outputs/apk/
-```
-
-Android-specific smoke checks:
-
-- app launches without a blank screen
-- anonymous mode works
-- backend data loads
-- Google sign-in works
-- transcript text selection shows native `Highlight` and `Correct` actions
-- highlight creation, correction flow, and highlight deletion still work
+CLI setup, Android tooling, auth handoff, smoke checks, APK commands, and CI details live in [Tauri Android](/operations/mobile-tauri).
 
 ## Backend Environment
 

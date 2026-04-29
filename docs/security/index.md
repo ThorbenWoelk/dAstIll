@@ -31,53 +31,15 @@ For the detailed done-versus-open breakdown, see [OWASP ASI Status](/security/ow
 
 ## Controls In Place
 
-### ASI01 / ASI06 - Goal hijack and memory/context poisoning
+dAstIll's current controls focus on scoped retrieval, read-only chat tools, bounded chat context, bounded tool loops, visible citation/tool metadata, and repo secret hygiene.
 
-- Chat answers are grounded in retrieved excerpts, tool outputs, and visible conversation history.
-- Prompting explicitly treats excerpts, summaries, transcripts, highlights, and tool outputs as **untrusted data**, not instructions.
-- Anonymous persistent chat is not used. Signed-out chat stays on the ephemeral path, which narrows cross-user state exposure.
-- Chat prompt size and conversation payload size are bounded, which reduces stale or hostile context accumulation in both client-supplied and persisted chat history.
-
-### ASI02 / ASI05 - Tool misuse and unexpected code execution
-
-- Chat tools are schema-bounded and read-only.
-- There is no shell, eval, arbitrary code execution, or raw SQL tool in the chat loop.
-- Tool execution is step-limited.
-
-### ASI03 - Identity and privilege abuse
-
-- The backend accepts two first-party auth modes: trusted proxy headers behind `x-dastill-proxy-auth`, or direct Firebase bearer-token validation from browser and Tauri clients.
-- Backend route handlers always derive request identity into `AccessContext` before scoping channel, video, search, and chat access.
-- Chat retrieval and chat-internal tools are constrained to the caller's accessible library scope.
-- Global `db_inspect` is treated as authenticated-only.
-
-### ASI08 - Cascading failures
-
-- Expensive routes have explicit rate-limit hooks.
-- Anonymous chat has a persisted quota.
-- Tool loops and retrieval passes have bounded step/query budgets.
-- Chat turns enforce per-message and per-conversation size ceilings, and persistent conversations drop the oldest stored messages when they hit storage bounds.
-
-### ASI09 - Human-agent trust exploitation
-
-- The product UI exposes tool-call and citation metadata for chat responses.
-- The assistant is instructed to say when evidence is missing or incomplete instead of silently filling gaps.
-- When the model-backed blocking preflight is unavailable because the provider is
-  rate-limited or in cooldown, deterministic prompt-list checks still run before
-  the chat request is allowed through. Model-backed non-blocking monitoring may
-  also be unavailable during that provider outage.
-
-### Repo and secret hygiene
-
-- Production secrets belong in GCP Secret Manager and are provisioned through Terraform.
-- Repo validation fails when forbidden tracked artifacts such as service-account keys, WIF tokens, or Terraform plan/state files are present.
+The detailed ASI control matrix lives in [OWASP ASI Status](/security/owasp-asi-status).
 
 ## Known Gaps
 
-- Rate limiting is still process-local in memory, so it does not fully hold across Cloud Run scale-out.
-- Red-team testing against the OWASP ASI scenarios is still manual and documentation-driven; it is not yet automated in CI.
-- Tool-call audit logging can still be improved so security-relevant chat decisions are easier to inspect after the fact.
-- Supply-chain review for models, deployment dependencies, and tool trust boundaries is still incomplete.
+The highest-priority gaps are shared rate limiting, automated ASI regression coverage, stronger tool-call audit logs, and an explicit supply-chain trust-boundary review.
+
+The tracked open work lives in [OWASP ASI Status](/security/owasp-asi-status#highest-priority-open-work).
 
 ## Verification Checklist
 
