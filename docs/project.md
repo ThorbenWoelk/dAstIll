@@ -4,10 +4,6 @@ title: Project
 
 # Project
 
-dAstIll is a web app that watches the content sources you care about. It extracts content and turns it into a library you can read, search, and question.
-
-The app currently supports YouTube channels, OpenAlex saved searches, podcast RSS feeds, and web pages.
-
 ## Repo Shape
 
 This is a showcase repo with two working goals:
