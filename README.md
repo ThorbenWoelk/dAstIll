@@ -2,15 +2,24 @@
 
 ## Disclaimer
 
-This is a showcase repo. It is an experiment in pushing AI-assisted product development hard.
+This is a showcase repo. It serves two purposes:
 
-The codebase moves fast. Refactors, redesigns, and rough edges are part of the work. The goal is to keep turning that motion into clearer structure, stronger security, and better operating habits.
+1. Explore technologies and architecture patterns such as Svelte, Rust, Firebase, and agentic RAG.
+2. Push AI-assisted coding and product development to its limits. Change harnesses and abstraction levels on the go.
 
-That said, feel free to reach out, criticize, open issues, or contribute directly.
+Budget is tight.
 
-dAstIll watches the sources you care about, extracts readable content, and turns the feed into a library you can search, read, and question. It supports YouTube channels, OpenAlex saved searches, podcast RSS feeds, and tracked web pages.
+As a result:
 
-dAstIll is a full-stack Rust + SvelteKit application. The Rust backend uses Ollama-compatible models to summarize content, score summary quality, power RAG chat, and maintain full-text plus semantic search indexes.
+- The codebase moves fast. Refactorings, redesigns, and rough edges are part of the work. We push to main when we are not working in parallel.
+- The goal is to gradually and continuously turn that motion into clearer structure, stronger security, clean code, and better operating habits.
+
+That said, everyone should feel free to reach out, criticize, open issues, or contribute directly.
+
+## Overview
+
+dAstIll is a web app that watches the content sources you care about. It extracts content and turns it into a library you can read, search, and question.
+It currently supports YouTube channels, OpenAlex saved searches, podcast RSS feeds, and web pages.
 
 ## Features
 
@@ -20,23 +29,28 @@ dAstIll is a full-stack Rust + SvelteKit application. The Rust backend uses Olla
 - **Chat with content**: Ask grounded questions across the saved library with source attribution and optional multi-pass retrieval.
 - **Highlights**: Save important snippets from transcripts and summaries for later review.
 - **Vocabulary customization**: Define word replacements applied during summary generation for consistent terminology.
-- **Summary audio**: Generate optional Amazon Polly audio playback for ready summaries.
-- **Mini reader**: Use `/mini` for a text-first reading surface that shares the same backend and content library.
+- **Summary audio**: Generate audio playback for summaries.
+- **Mini reader**: Use `/mini` for an intentionally minimal reading surface that provides the same content in a calm environment.
 
 ## Documentation
 
-Detailed project documentation lives in the separate VitePress docs frontend under [`docs/index.md`](./docs/index.md).
+Detailed project documentation lives in the [docs](https://dastill-docs.web.app).
 
-- Docs landing page source: [`docs/index.md`](./docs/index.md)
-- Architecture overview: [`docs/architecture/overview.md`](./docs/architecture/overview.md)
-- Frontend and API boundaries: [`docs/architecture/frontend-and-api.md`](./docs/architecture/frontend-and-api.md)
-- Content pipeline: [`docs/pipelines/content-pipeline.md`](./docs/pipelines/content-pipeline.md)
-- Search indexing and retrieval: [`docs/pipelines/search-indexing.md`](./docs/pipelines/search-indexing.md)
-- AI model behavior: [`docs/pipelines/ai-models.md`](./docs/pipelines/ai-models.md)
-- Local development: [`docs/operations/local-development.md`](./docs/operations/local-development.md)
-- Deployment and operations: [`docs/operations/deployment.md`](./docs/operations/deployment.md)
-- Security status: [`docs/security/index.md`](./docs/security/index.md)
-- Mini reader architecture: [`docs/architecture/mini-reader.md`](./docs/architecture/mini-reader.md)
+## Tech Stack
+
+### Frontend
+
+- SvelteKit, TypeScript, bun
+
+### Backend
+
+Rust, Axum, AWS S3, AWS S3 Vectors, local libSQL, Ollama-compatible model endpoints, Amazon Polly
+
+### Infrastructure & Deployment
+
+Terraform, Firebase Hosting, Google Cloud Run, AWS IAM (Workload Identity Federation), Google Secret Manager, Artifact Registry, GitHub Actions, Docker
+
+## Developer Guide
 
 Run the docs frontend locally:
 
@@ -54,21 +68,7 @@ http://localhost:4173
 
 The app header includes a `Docs` link. In local development it falls back to `http://localhost:4173`; in deployed environments the frontend reads `PUBLIC_DOCS_URL` at build time.
 
-## Tech Stack
-
-### Frontend
-
-- SvelteKit, TypeScript, bun
-
-### Backend
-
-Rust, Axum, AWS S3, AWS S3 Vectors, local libSQL, Ollama-compatible model endpoints, Amazon Polly
-
-### Infrastructure & Deployment
-
-Terraform, Firebase Hosting, Google Cloud Run, AWS IAM (Workload Identity Federation), Google Secret Manager, Artifact Registry, GitHub Actions, Docker
-
-## Prerequisites
+### Prerequisites
 
 - [Rust](https://rustup.rs/)
 - [Bun](https://bun.sh/)
@@ -81,7 +81,7 @@ Terraform, Firebase Hosting, Google Cloud Run, AWS IAM (Workload Identity Federa
   podcast feeds do not publish transcripts (optional but required for functional
   podcast transcript generation)
 
-## Getting Started (Local Development)
+### Getting Started (Local Development)
 
 1. **Clone the repository**:
 
@@ -219,7 +219,7 @@ Terraform, Firebase Hosting, Google Cloud Run, AWS IAM (Workload Identity Federa
 5. **Sign-In And Roles Locally**:
    Anonymous browsing remains available by default. Signed-in users use the Firebase-backed `/login` flow, and operator-only actions depend on the backend `OPERATOR_EMAIL_ALLOWLIST`.
 
-## Tauri Android Development
+### Tauri Android Development
 
 dAstIll includes a Tauri v2 shell for Android in [`src-tauri/`](./src-tauri). The Android app uses the same frontend bundle and talks directly to the Rust backend with Firebase bearer tokens.
 

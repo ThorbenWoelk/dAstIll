@@ -18,6 +18,23 @@
       "target": "app",
       "public": "frontend/build",
       "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "redirects": [
+        {
+          "source": "/docs",
+          "destination": "https://dastill-docs.web.app",
+          "type": 301
+        },
+        {
+          "source": "/docs/",
+          "destination": "https://dastill-docs.web.app",
+          "type": 301
+        },
+        {
+          "source": "/docs/:path*",
+          "destination": "https://dastill-docs.web.app/:path",
+          "type": 301
+        }
+      ],
       "rewrites": [
         {
           "source": "**",
