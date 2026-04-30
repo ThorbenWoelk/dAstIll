@@ -67,7 +67,9 @@ async fn mirror_video_snapshot(store: &Store, video_id: &str) -> Result<(), Stor
             &canonical_video_key(video_id),
             &canonical_video_from_video(&video),
         )
-        .await
+        .await?;
+    store.schedule_libsql_snapshot_publish();
+    Ok(())
 }
 
 async fn mirror_video_snapshots(store: &Store, video_ids: &[String]) -> Result<(), StoreError> {
@@ -76,6 +78,7 @@ async fn mirror_video_snapshots(store: &Store, video_ids: &[String]) -> Result<(
     }
 
     let videos = super::turso_videos::ts_get_videos(store, video_ids, false).await?;
+    let mut mirrored_any = false;
     for video_id in video_ids {
         let Some(video) = videos.get(video_id) else {
             continue;
@@ -86,6 +89,11 @@ async fn mirror_video_snapshots(store: &Store, video_ids: &[String]) -> Result<(
                 &canonical_video_from_video(video),
             )
             .await?;
+        mirrored_any = true;
+    }
+
+    if mirrored_any {
+        store.schedule_libsql_snapshot_publish();
     }
 
     Ok(())

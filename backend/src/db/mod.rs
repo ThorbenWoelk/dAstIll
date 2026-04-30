@@ -82,11 +82,18 @@ pub struct Store {
     pub(crate) vector_bucket: String,
     pub(crate) vector_index: String,
     pub(crate) read_cache: ReadCache,
+    pub(crate) snapshot_publisher: Option<LibsqlSnapshotPublisher>,
 }
 
 impl Store {
     pub fn connect(&self) -> Store {
         self.clone()
+    }
+
+    pub(crate) fn schedule_libsql_snapshot_publish(&self) {
+        if let Some(publisher) = &self.snapshot_publisher {
+            publisher.schedule();
+        }
     }
 
     #[cfg(test)]
@@ -117,6 +124,7 @@ impl Store {
             vector_index: std::env::var("S3_VECTOR_INDEX")
                 .unwrap_or_else(|_| "search-chunks".to_string()),
             read_cache: ReadCache::default(),
+            snapshot_publisher: None,
         }
     }
 }
@@ -296,6 +304,7 @@ pub async fn init_store(
     vector_bucket: String,
     vector_index: String,
     read_cache: ReadCache,
+    snapshot_publisher: Option<LibsqlSnapshotPublisher>,
 ) -> Result<Store, StoreError> {
     Ok(Store {
         s3,
@@ -305,6 +314,7 @@ pub async fn init_store(
         vector_bucket,
         vector_index,
         read_cache,
+        snapshot_publisher,
     })
 }
 

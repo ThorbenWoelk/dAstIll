@@ -213,6 +213,12 @@ async fn main() -> anyhow::Result<()> {
         dastill::db::restore_libsql_snapshot(&s3_client, &data_bucket, &turso_db_path).await;
     let (turso_db, turso_conn, shared_db_path) = initialize_local_libsql(&turso_db_path).await?;
     let snapshot_conn = turso_conn.clone();
+    let snapshot_publisher = dastill::db::LibsqlSnapshotPublisher::new(
+        s3_client.clone(),
+        data_bucket.clone(),
+        snapshot_conn.clone(),
+        turso_db_path.clone(),
+    );
 
     let read_cache = ReadCache::default();
     let pool = init_store(
@@ -223,6 +229,7 @@ async fn main() -> anyhow::Result<()> {
         vector_bucket,
         vector_index,
         read_cache.clone(),
+        Some(snapshot_publisher),
     )
     .await
     .map_err(|e| anyhow::anyhow!(e))?;

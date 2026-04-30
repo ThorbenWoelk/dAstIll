@@ -1,5 +1,9 @@
-use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::path::{Path, PathBuf};
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use aws_sdk_s3::primitives::ByteStream;
 use chrono::{SecondsFormat, Utc};
@@ -7,12 +11,14 @@ use flate2::{Compression, read::GzDecoder, write::GzEncoder};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
+use tokio::sync::Notify;
 
 use super::{StoreError, format_aws_error};
 
 const MANIFEST_KEY: &str = "runtime-cache/libsql/current.json";
 const SNAPSHOT_PREFIX: &str = "runtime-cache/libsql/snapshots";
 const SNAPSHOT_SCHEMA_VERSION: u32 = 1;
+const SNAPSHOT_PUBLISH_DEBOUNCE: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LibsqlSnapshotManifest {
@@ -51,6 +57,107 @@ pub enum LibsqlSnapshotRestore {
 impl LibsqlSnapshotRestore {
     pub fn restored(self) -> bool {
         self == Self::Restored
+    }
+}
+
+#[derive(Clone)]
+pub struct LibsqlSnapshotPublisher {
+    inner: Arc<LibsqlSnapshotPublisherInner>,
+}
+
+struct LibsqlSnapshotPublisherInner {
+    s3: aws_sdk_s3::Client,
+    bucket: String,
+    conn: libsql::Connection,
+    db_path: PathBuf,
+    debounce: Duration,
+    generation: AtomicU64,
+    notify: Notify,
+}
+
+impl LibsqlSnapshotPublisher {
+    pub fn new(
+        s3: aws_sdk_s3::Client,
+        bucket: impl Into<String>,
+        conn: libsql::Connection,
+        db_path: PathBuf,
+    ) -> Self {
+        Self::new_with_debounce(s3, bucket, conn, db_path, SNAPSHOT_PUBLISH_DEBOUNCE)
+    }
+
+    fn new_with_debounce(
+        s3: aws_sdk_s3::Client,
+        bucket: impl Into<String>,
+        conn: libsql::Connection,
+        db_path: PathBuf,
+        debounce: Duration,
+    ) -> Self {
+        let publisher = Self {
+            inner: Arc::new(LibsqlSnapshotPublisherInner {
+                s3,
+                bucket: bucket.into(),
+                conn,
+                db_path,
+                debounce,
+                generation: AtomicU64::new(0),
+                notify: Notify::new(),
+            }),
+        };
+        publisher.spawn_worker();
+        publisher
+    }
+
+    pub fn schedule(&self) {
+        self.inner.generation.fetch_add(1, Ordering::AcqRel);
+        self.inner.notify.notify_one();
+    }
+
+    fn spawn_worker(&self) {
+        let inner = self.inner.clone();
+        tokio::spawn(async move {
+            run_snapshot_publish_worker(inner).await;
+        });
+    }
+}
+
+async fn run_snapshot_publish_worker(inner: Arc<LibsqlSnapshotPublisherInner>) {
+    let mut published_generation = 0u64;
+
+    loop {
+        while inner.generation.load(Ordering::Acquire) == published_generation {
+            inner.notify.notified().await;
+        }
+
+        let mut observed_generation = inner.generation.load(Ordering::Acquire);
+        loop {
+            tokio::time::sleep(inner.debounce).await;
+            let current_generation = inner.generation.load(Ordering::Acquire);
+            if current_generation == observed_generation {
+                break;
+            }
+            observed_generation = current_generation;
+        }
+
+        match publish_libsql_snapshot(
+            &inner.s3,
+            &inner.bucket,
+            &inner.conn,
+            &inner.db_path,
+            env!("CARGO_PKG_VERSION"),
+        )
+        .await
+        {
+            Ok(_) => {
+                published_generation = observed_generation;
+            }
+            Err(err) => {
+                tracing::warn!(
+                    error = %err,
+                    path = %inner.db_path.display(),
+                    "debounced libSQL snapshot publish failed"
+                );
+            }
+        }
     }
 }
 
@@ -175,9 +282,16 @@ pub async fn publish_libsql_snapshot(
 }
 
 async fn checkpoint_libsql_file(conn: &libsql::Connection) -> Result<(), StoreError> {
-    conn.execute("PRAGMA wal_checkpoint(TRUNCATE)", ())
+    let mut rows = conn
+        .query("PRAGMA wal_checkpoint(TRUNCATE)", ())
         .await
         .map_err(|err| StoreError::Other(format!("failed to checkpoint snapshot DB: {err}")))?;
+    while rows
+        .next()
+        .await
+        .map_err(|err| StoreError::Other(format!("failed to checkpoint snapshot DB: {err}")))?
+        .is_some()
+    {}
     Ok(())
 }
 
@@ -385,7 +499,8 @@ fn decompress_gzip(bytes: &[u8]) -> Result<Vec<u8>, StoreError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{PrefixState, compress_gzip, decompress_gzip, sha256_hex};
+    use super::{PrefixState, checkpoint_libsql_file, compress_gzip, decompress_gzip, sha256_hex};
+    use tempfile::tempdir;
 
     #[test]
     fn gzip_round_trip_preserves_snapshot_bytes() {
@@ -435,5 +550,28 @@ mod tests {
                 fingerprint_sha256: "b".to_string(),
             }
         );
+    }
+
+    #[tokio::test]
+    async fn checkpoint_libsql_file_accepts_wal_checkpoint_rows() {
+        let dir = tempdir().expect("tempdir");
+        let db_path = dir.path().join("snapshot.db");
+        let db = libsql::Builder::new_local(&db_path)
+            .build()
+            .await
+            .expect("build db");
+        let conn = db.connect().expect("connect db");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE test_rows (id INTEGER PRIMARY KEY, value TEXT);
+            INSERT INTO test_rows (value) VALUES ('hello');
+            "#,
+        )
+        .await
+        .expect("seed db");
+
+        checkpoint_libsql_file(&conn)
+            .await
+            .expect("checkpoint should succeed");
     }
 }
