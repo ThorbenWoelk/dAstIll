@@ -12,4 +12,4 @@ use highlight_lookup::*;
 pub(crate) use queries::*;
 
 #[cfg(test)]
-mod tests;
+mod tools_tests;

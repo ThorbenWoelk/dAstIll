@@ -11,6 +11,12 @@ use crate::models::{
     AiStatus, Channel, LibraryBootstrapPayload, SearchStatusPayload, WorkspaceBootstrapPayload,
 };
 
+impl ReadCache {
+    async fn len(&self) -> usize {
+        self.entries.read().await.len()
+    }
+}
+
 fn sample_channel(id: &str) -> Channel {
     Channel {
         id: id.to_string(),

@@ -316,10 +316,6 @@ impl ReadCache {
     }
 
     /// Returns the current number of entries in the cache (for testing).
-    #[cfg(test)]
-    pub(crate) async fn len(&self) -> usize {
-        self.entries.read().await.len()
-    }
 
     async fn get(&self, key: &ReadCacheKey) -> Option<ReadCacheValue> {
         let now = Instant::now();
@@ -451,4 +447,4 @@ fn queue_filter_code(filter: QueueFilter) -> u8 {
 
 #[cfg(test)]
 #[path = "read_cache_tests.rs"]
-mod tests;
+mod read_cache_tests;

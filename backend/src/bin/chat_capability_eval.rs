@@ -78,5 +78,5 @@ async fn main() -> Result<()> {
 }
 
 #[cfg(test)]
-#[path = "chat_capability_eval/tests.rs"]
-mod tests;
+#[path = "chat_capability_eval/chat_capability_eval_tests.rs"]
+mod chat_capability_eval_tests;
