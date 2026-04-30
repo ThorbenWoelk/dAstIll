@@ -150,10 +150,14 @@ The search index worker also:
 Search rebuilds and index maintenance coordinate through a `RwLock`. Destructive projection resets,
 normal search reads, and indexing writes share that lock.
 
-### Local Model Semaphores
+### AI Model Request Concurrency
 
-The summarizer/evaluator side and the search embedding side each use a separate semaphore to keep
-local-model concurrency bounded.
+To keep concurrency bounded, the backend uses separate semaphores per lane:
+
+1. summary/evaluator/chat/guardrails/planner share one lane (applies only to local models, cloud-tagged models skip that check)
+2. search embedding/rerank/HyDE share another lane
+
+**Currently, all semaphores are hard restricted at size 1.**
 
 ### Runtime Throttles
 
