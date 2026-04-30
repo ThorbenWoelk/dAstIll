@@ -82,6 +82,7 @@ pub struct Store {
     pub(crate) vector_bucket: String,
     pub(crate) vector_index: String,
     pub(crate) read_cache: ReadCache,
+    pub(crate) source_generation_tracker: Option<LibsqlSourceGenerationTracker>,
     pub(crate) snapshot_publisher: Option<LibsqlSnapshotPublisher>,
 }
 
@@ -94,6 +95,20 @@ impl Store {
         if let Some(publisher) = &self.snapshot_publisher {
             publisher.schedule();
         }
+    }
+
+    pub(crate) async fn record_libsql_snapshot_delta(
+        &self,
+        operations: Vec<LibsqlSnapshotDeltaOperation>,
+    ) -> Result<(), StoreError> {
+        if operations.is_empty() {
+            return Ok(());
+        }
+        if let Some(tracker) = &self.source_generation_tracker {
+            tracker.append_delta(operations).await?;
+        }
+        self.schedule_libsql_snapshot_publish();
+        Ok(())
     }
 }
 
@@ -272,6 +287,7 @@ pub async fn init_store(
     vector_bucket: String,
     vector_index: String,
     read_cache: ReadCache,
+    source_generation_tracker: Option<LibsqlSourceGenerationTracker>,
     snapshot_publisher: Option<LibsqlSnapshotPublisher>,
 ) -> Result<Store, StoreError> {
     Ok(Store {
@@ -282,6 +298,7 @@ pub async fn init_store(
         vector_bucket,
         vector_index,
         read_cache,
+        source_generation_tracker,
         snapshot_publisher,
     })
 }

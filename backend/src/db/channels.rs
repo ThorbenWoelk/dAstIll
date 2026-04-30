@@ -213,6 +213,18 @@ pub async fn delete_channel(store: &Store, id: &str) -> Result<bool, StoreError>
 
     super::delete_videos(store, &video_ids).await?;
 
+    if !video_ids.is_empty() {
+        store
+            .record_libsql_snapshot_delta(
+                video_ids
+                    .iter()
+                    .cloned()
+                    .map(|video_id| super::LibsqlSnapshotDeltaOperation::DeleteVideo { video_id })
+                    .collect(),
+            )
+            .await?;
+    }
+
     store.delete_key(&canonical_channel_key(id)).await?;
     let _ = super::delete_source_profile(store, id).await?;
     Ok(true)

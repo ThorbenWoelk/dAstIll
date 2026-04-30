@@ -58,18 +58,21 @@ fn summary_needs_evaluation_filter(summary: &Summary) -> bool {
     super::content::summary_needs_quality_eval(summary)
 }
 
+fn upsert_video_delta(record: CanonicalVideoRecord) -> super::LibsqlSnapshotDeltaOperation {
+    super::LibsqlSnapshotDeltaOperation::UpsertVideo { record }
+}
+
 async fn mirror_video_snapshot(store: &Store, video_id: &str) -> Result<(), StoreError> {
     let Some(video) = super::turso_videos::ts_get_video(store, video_id, false).await? else {
         return Ok(());
     };
+    let record = canonical_video_from_video(&video);
     store
-        .put_json(
-            &canonical_video_key(video_id),
-            &canonical_video_from_video(&video),
-        )
+        .put_json(&canonical_video_key(video_id), &record)
         .await?;
-    store.schedule_libsql_snapshot_publish();
-    Ok(())
+    store
+        .record_libsql_snapshot_delta(vec![upsert_video_delta(record)])
+        .await
 }
 
 async fn mirror_video_snapshots(store: &Store, video_ids: &[String]) -> Result<(), StoreError> {
@@ -78,22 +81,20 @@ async fn mirror_video_snapshots(store: &Store, video_ids: &[String]) -> Result<(
     }
 
     let videos = super::turso_videos::ts_get_videos(store, video_ids, false).await?;
-    let mut mirrored_any = false;
+    let mut operations = Vec::with_capacity(video_ids.len());
     for video_id in video_ids {
         let Some(video) = videos.get(video_id) else {
             continue;
         };
+        let record = canonical_video_from_video(video);
         store
-            .put_json(
-                &canonical_video_key(video_id),
-                &canonical_video_from_video(video),
-            )
+            .put_json(&canonical_video_key(video_id), &record)
             .await?;
-        mirrored_any = true;
+        operations.push(upsert_video_delta(record));
     }
 
-    if mirrored_any {
-        store.schedule_libsql_snapshot_publish();
+    if !operations.is_empty() {
+        store.record_libsql_snapshot_delta(operations).await?;
     }
 
     Ok(())
@@ -122,13 +123,16 @@ pub async fn bootstrap_sql_videos_from_store(store: &Store) -> Result<usize, Sto
 
 pub async fn export_sql_videos_to_store(store: &Store) -> Result<usize, StoreError> {
     let videos = super::turso_videos::ts_load_all_videos(store).await?;
+    let mut operations = Vec::with_capacity(videos.len());
     for video in &videos {
+        let record = canonical_video_from_video(video);
         store
-            .put_json(
-                &canonical_video_key(&video.id),
-                &canonical_video_from_video(video),
-            )
+            .put_json(&canonical_video_key(&video.id), &record)
             .await?;
+        operations.push(upsert_video_delta(record));
+    }
+    if !operations.is_empty() {
+        store.record_libsql_snapshot_delta(operations).await?;
     }
     Ok(videos.len())
 }

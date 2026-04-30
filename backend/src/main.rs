@@ -213,6 +213,45 @@ async fn main() -> anyhow::Result<()> {
         dastill::db::restore_libsql_snapshot(&s3_client, &data_bucket, &turso_db_path).await;
     let (turso_db, turso_conn, shared_db_path) = initialize_local_libsql(&turso_db_path).await?;
     let snapshot_conn = turso_conn.clone();
+    let mut replayed_delta_generations = 0usize;
+    let mut snapshot_replay_failed = false;
+    if let Some((base_generation, target_generation)) = snapshot_restore.replay_range() {
+        match dastill::db::replay_libsql_snapshot_deltas(
+            &s3_client,
+            &data_bucket,
+            &snapshot_conn,
+            base_generation,
+            target_generation,
+        )
+        .await
+        {
+            Ok(applied) => {
+                replayed_delta_generations = applied;
+                tracing::info!(
+                    base_generation,
+                    target_generation,
+                    replayed_delta_generations,
+                    "libSQL snapshot delta replay complete"
+                );
+            }
+            Err(err) => {
+                snapshot_replay_failed = true;
+                tracing::warn!(
+                    error = %err,
+                    base_generation,
+                    target_generation,
+                    "libSQL snapshot delta replay failed - clearing local SQL cache for S3 rebuild"
+                );
+                dastill::db::reset_local_libsql_cache(&snapshot_conn)
+                    .await
+                    .map_err(|reset_err| anyhow::anyhow!(reset_err))?;
+            }
+        }
+    }
+    let source_generation_tracker =
+        dastill::db::LibsqlSourceGenerationTracker::new(s3_client.clone(), data_bucket.clone())
+            .await
+            .map_err(|err| anyhow::anyhow!(err))?;
     let snapshot_publisher = dastill::db::LibsqlSnapshotPublisher::new(
         s3_client.clone(),
         data_bucket.clone(),
@@ -229,6 +268,7 @@ async fn main() -> anyhow::Result<()> {
         vector_bucket,
         vector_index,
         read_cache.clone(),
+        Some(source_generation_tracker),
         Some(snapshot_publisher),
     )
     .await
@@ -245,6 +285,8 @@ async fn main() -> anyhow::Result<()> {
         bootstrapped_tts_stats = cache_reconcile.bootstrapped_tts_stats,
         exported_tts_stats = cache_reconcile.exported_tts_stats,
         snapshot_restored = snapshot_restore.restored(),
+        replayed_delta_generations,
+        snapshot_replay_failed,
         "SQL cache reconciliation complete"
     );
     let cache_reconcile_changed = cache_reconcile.bootstrapped_videos > 0
@@ -253,7 +295,7 @@ async fn main() -> anyhow::Result<()> {
         || cache_reconcile.exported_preferences > 0
         || cache_reconcile.bootstrapped_tts_stats
         || cache_reconcile.exported_tts_stats;
-    if !snapshot_restore.restored() || cache_reconcile_changed {
+    if !snapshot_restore.restored() || cache_reconcile_changed || replayed_delta_generations > 0 {
         match dastill::db::publish_libsql_snapshot(
             &s3_client,
             &data_bucket,

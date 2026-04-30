@@ -114,10 +114,16 @@ pub async fn save_user_preferences(
         .put_json(
             &preferences_storage_key(user_id),
             &StoredUserPreferences {
-                user_id: doc_id,
-                data: normalized,
+                user_id: doc_id.clone(),
+                data: normalized.clone(),
             },
         )
+        .await?;
+    store
+        .record_libsql_snapshot_delta(vec![super::LibsqlSnapshotDeltaOperation::PutPreferences {
+            user_id: doc_id,
+            data: normalized,
+        }])
         .await?;
     Ok(())
 }
@@ -149,6 +155,7 @@ pub async fn export_sql_preferences_to_store(store: &Store) -> Result<usize, Sto
         .query("SELECT user_id, data FROM preferences", ())
         .await?;
     let mut exported = 0usize;
+    let mut operations = Vec::new();
 
     while let Some(row) = rows.next().await? {
         let user_id: String = row.get(0)?;
@@ -159,10 +166,21 @@ pub async fn export_sql_preferences_to_store(store: &Store) -> Result<usize, Sto
         store
             .put_json(
                 &preferences_storage_key(&user_id),
-                &StoredUserPreferences { user_id, data },
+                &StoredUserPreferences {
+                    user_id: user_id.clone(),
+                    data: data.clone(),
+                },
             )
             .await?;
+        operations.push(super::LibsqlSnapshotDeltaOperation::PutPreferences {
+            user_id: user_id.clone(),
+            data,
+        });
         exported += 1;
+    }
+
+    if !operations.is_empty() {
+        store.record_libsql_snapshot_delta(operations).await?;
     }
 
     Ok(exported)

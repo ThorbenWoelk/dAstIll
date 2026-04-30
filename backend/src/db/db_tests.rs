@@ -28,6 +28,7 @@ impl Store {
             vector_index: std::env::var("S3_VECTOR_INDEX")
                 .unwrap_or_else(|_| "search-chunks".to_string()),
             read_cache: ReadCache::default(),
+            source_generation_tracker: None,
             snapshot_publisher: None,
         }
     }

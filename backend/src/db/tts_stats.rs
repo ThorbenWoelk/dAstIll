@@ -89,6 +89,11 @@ pub async fn record_tts_generation(
         .await?;
     if let Some(stats) = get_tts_stats(store).await? {
         store.put_json(tts_stats_storage_key(), &stats).await?;
+        store
+            .record_libsql_snapshot_delta(vec![super::LibsqlSnapshotDeltaOperation::PutTtsStats {
+                stats,
+            }])
+            .await?;
     }
     Ok(())
 }
@@ -126,5 +131,10 @@ pub async fn export_sql_tts_stats_to_store(store: &Store) -> Result<bool, StoreE
         return Ok(false);
     };
     store.put_json(tts_stats_storage_key(), &stats).await?;
+    store
+        .record_libsql_snapshot_delta(vec![super::LibsqlSnapshotDeltaOperation::PutTtsStats {
+            stats,
+        }])
+        .await?;
     Ok(true)
 }

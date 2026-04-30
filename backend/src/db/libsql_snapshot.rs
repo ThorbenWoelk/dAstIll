@@ -3,7 +3,7 @@ use std::sync::{
     Arc,
     atomic::{AtomicU64, Ordering},
 };
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use aws_sdk_s3::primitives::ByteStream;
 use chrono::{SecondsFormat, Utc};
@@ -11,13 +11,18 @@ use flate2::{Compression, read::GzDecoder, write::GzEncoder};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
-use tokio::sync::Notify;
+use tokio::sync::{Mutex, Notify};
+
+use crate::models::{CanonicalVideoRecord, ContentStatus, UserPreferences};
 
 use super::{StoreError, format_aws_error};
 
 const MANIFEST_KEY: &str = "runtime-cache/libsql/current.json";
+const SOURCE_GENERATION_KEY: &str = "runtime-cache/libsql/source-generation.json";
+const DELTA_PREFIX: &str = "runtime-cache/libsql/deltas";
 const SNAPSHOT_PREFIX: &str = "runtime-cache/libsql/snapshots";
-const SNAPSHOT_SCHEMA_VERSION: u32 = 1;
+const SNAPSHOT_SCHEMA_VERSION: u32 = 2;
+const DELTA_SCHEMA_VERSION: u32 = 1;
 const SNAPSHOT_PUBLISH_DEBOUNCE: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,11 +38,9 @@ pub struct LibsqlSnapshotManifest {
     pub source_state: LibsqlSnapshotSourceState,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct LibsqlSnapshotSourceState {
-    pub videos: PrefixState,
-    pub preferences: PrefixState,
-    pub tts_stats: PrefixState,
+    pub generation: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -47,16 +50,141 @@ pub struct PrefixState {
     pub fingerprint_sha256: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct SnapshotGenerationWire {
+    generation: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+enum SnapshotSourceStateWire {
+    Generation(SnapshotGenerationWire),
+    Legacy {
+        videos: PrefixState,
+        preferences: PrefixState,
+        tts_stats: PrefixState,
+    },
+}
+
+impl<'de> Deserialize<'de> for LibsqlSnapshotSourceState {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        match SnapshotSourceStateWire::deserialize(deserializer)? {
+            SnapshotSourceStateWire::Generation(state) => Ok(Self {
+                generation: state.generation,
+            }),
+            SnapshotSourceStateWire::Legacy { .. } => Ok(Self { generation: 0 }),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct LibsqlSourceGenerationMarker {
+    schema_version: u32,
+    generation: u64,
+    updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LibsqlSnapshotDeltaRecord {
+    pub schema_version: u32,
+    pub generation: u64,
+    pub created_at: String,
+    pub operations: Vec<LibsqlSnapshotDeltaOperation>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum LibsqlSnapshotDeltaOperation {
+    UpsertVideo {
+        record: CanonicalVideoRecord,
+    },
+    DeleteVideo {
+        video_id: String,
+    },
+    PutPreferences {
+        user_id: String,
+        data: UserPreferences,
+    },
+    PutTtsStats {
+        stats: super::TtsGenerationStats,
+    },
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LibsqlSnapshotRestore {
-    Restored,
+    Restored {
+        base_generation: u64,
+        target_generation: u64,
+    },
     Missing,
     Failed,
 }
 
 impl LibsqlSnapshotRestore {
     pub fn restored(self) -> bool {
-        self == Self::Restored
+        matches!(self, Self::Restored { .. })
+    }
+
+    pub fn replay_range(self) -> Option<(u64, u64)> {
+        match self {
+            Self::Restored {
+                base_generation,
+                target_generation,
+            } if target_generation > base_generation => Some((base_generation, target_generation)),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct LibsqlSourceGenerationTracker {
+    inner: Arc<LibsqlSourceGenerationTrackerInner>,
+}
+
+struct LibsqlSourceGenerationTrackerInner {
+    s3: aws_sdk_s3::Client,
+    bucket: String,
+    current_generation: AtomicU64,
+    lock: Mutex<()>,
+}
+
+impl LibsqlSourceGenerationTracker {
+    pub async fn new(
+        s3: aws_sdk_s3::Client,
+        bucket: impl Into<String>,
+    ) -> Result<Self, StoreError> {
+        let bucket = bucket.into();
+        let current_generation = current_generation_value(&s3, &bucket).await?;
+        Ok(Self {
+            inner: Arc::new(LibsqlSourceGenerationTrackerInner {
+                s3,
+                bucket,
+                current_generation: AtomicU64::new(current_generation),
+                lock: Mutex::new(()),
+            }),
+        })
+    }
+
+    pub async fn append_delta(
+        &self,
+        operations: Vec<LibsqlSnapshotDeltaOperation>,
+    ) -> Result<u64, StoreError> {
+        let _guard = self.inner.lock.lock().await;
+        let current = self.inner.current_generation.load(Ordering::Acquire);
+        let next = current.saturating_add(1);
+        let delta = LibsqlSnapshotDeltaRecord {
+            schema_version: DELTA_SCHEMA_VERSION,
+            generation: next,
+            created_at: Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
+            operations,
+        };
+        put_json(&self.inner.s3, &self.inner.bucket, &delta_key(next), &delta).await?;
+        store_source_generation_marker(&self.inner.s3, &self.inner.bucket, next).await?;
+        self.inner.current_generation.store(next, Ordering::Release);
+        Ok(next)
     }
 }
 
@@ -167,8 +295,11 @@ pub async fn restore_libsql_snapshot(
     db_path: &Path,
 ) -> LibsqlSnapshotRestore {
     match try_restore_libsql_snapshot(s3, bucket, db_path).await {
-        Ok(true) => LibsqlSnapshotRestore::Restored,
-        Ok(false) => LibsqlSnapshotRestore::Missing,
+        Ok(Some((base_generation, target_generation))) => LibsqlSnapshotRestore::Restored {
+            base_generation,
+            target_generation,
+        },
+        Ok(None) => LibsqlSnapshotRestore::Missing,
         Err(err) => {
             tracing::warn!(error = %err, "libSQL snapshot restore failed - falling back to S3 rebuild");
             LibsqlSnapshotRestore::Failed
@@ -180,10 +311,10 @@ async fn try_restore_libsql_snapshot(
     s3: &aws_sdk_s3::Client,
     bucket: &str,
     db_path: &Path,
-) -> Result<bool, StoreError> {
+) -> Result<Option<(u64, u64)>, StoreError> {
     let Some(manifest) = get_json::<LibsqlSnapshotManifest>(s3, bucket, MANIFEST_KEY).await? else {
         tracing::info!("libSQL snapshot manifest not found - using S3 rebuild path");
-        return Ok(false);
+        return Ok(None);
     };
 
     if manifest.schema_version != SNAPSHOT_SCHEMA_VERSION {
@@ -192,13 +323,17 @@ async fn try_restore_libsql_snapshot(
             expected_schema_version = SNAPSHOT_SCHEMA_VERSION,
             "libSQL snapshot schema version mismatch - using S3 rebuild path"
         );
-        return Ok(false);
+        return Ok(None);
     }
 
     let current_source_state = load_source_state(s3, bucket).await?;
-    if current_source_state != manifest.source_state {
-        tracing::info!("libSQL snapshot source state changed - using S3 rebuild path");
-        return Ok(false);
+    if current_source_state.generation < manifest.source_state.generation {
+        tracing::warn!(
+            manifest_generation = manifest.source_state.generation,
+            current_generation = current_source_state.generation,
+            "libSQL source generation regressed behind snapshot manifest - using S3 rebuild path"
+        );
+        return Ok(None);
     }
 
     let Some(compressed) = get_bytes(s3, bucket, &manifest.snapshot_key).await? else {
@@ -206,7 +341,7 @@ async fn try_restore_libsql_snapshot(
             snapshot_key = %manifest.snapshot_key,
             "libSQL snapshot object missing - using S3 rebuild path"
         );
-        return Ok(false);
+        return Ok(None);
     };
 
     let actual_sha256 = sha256_hex(&compressed);
@@ -230,11 +365,16 @@ async fn try_restore_libsql_snapshot(
     tracing::info!(
         snapshot_key = %manifest.snapshot_key,
         generation = %manifest.generation,
+        base_generation = manifest.source_state.generation,
+        target_generation = current_source_state.generation,
         byte_size = manifest.byte_size,
         compressed_byte_size = manifest.compressed_byte_size,
         "libSQL snapshot restored"
     );
-    Ok(true)
+    Ok(Some((
+        manifest.source_state.generation,
+        current_source_state.generation,
+    )))
 }
 
 pub async fn publish_libsql_snapshot(
@@ -270,15 +410,246 @@ pub async fn publish_libsql_snapshot(
 
     put_bytes(s3, bucket, &snapshot_key, compressed, "application/gzip").await?;
     put_json(s3, bucket, MANIFEST_KEY, &manifest).await?;
+    if let Err(err) =
+        prune_delta_log_up_to_generation(s3, bucket, manifest.source_state.generation).await
+    {
+        tracing::warn!(
+            error = %err,
+            up_to_generation = manifest.source_state.generation,
+            "failed to prune libSQL snapshot delta log"
+        );
+    }
 
     tracing::info!(
         snapshot_key = %manifest.snapshot_key,
+        source_generation = manifest.source_state.generation,
         byte_size = manifest.byte_size,
         compressed_byte_size = manifest.compressed_byte_size,
         "libSQL snapshot published"
     );
 
     Ok(manifest)
+}
+
+pub async fn replay_libsql_snapshot_deltas(
+    s3: &aws_sdk_s3::Client,
+    bucket: &str,
+    conn: &libsql::Connection,
+    from_generation: u64,
+    to_generation: u64,
+) -> Result<usize, StoreError> {
+    if to_generation <= from_generation {
+        return Ok(0);
+    }
+
+    let mut applied_generations = 0usize;
+    for generation in (from_generation + 1)..=to_generation {
+        let delta_key = delta_key(generation);
+        let Some(delta) = get_json::<LibsqlSnapshotDeltaRecord>(s3, bucket, &delta_key).await?
+        else {
+            return Err(StoreError::Other(format!(
+                "missing libSQL delta record for generation {generation}"
+            )));
+        };
+        if delta.schema_version != DELTA_SCHEMA_VERSION {
+            return Err(StoreError::Other(format!(
+                "unsupported libSQL delta schema version {} for generation {}",
+                delta.schema_version, generation
+            )));
+        }
+        if delta.generation != generation {
+            return Err(StoreError::Other(format!(
+                "libSQL delta generation mismatch: key expected {generation}, payload had {}",
+                delta.generation
+            )));
+        }
+        apply_delta_record(conn, &delta).await?;
+        applied_generations += 1;
+    }
+
+    Ok(applied_generations)
+}
+
+pub async fn reset_local_libsql_cache(conn: &libsql::Connection) -> Result<(), StoreError> {
+    conn.execute_batch(
+        r#"
+        DELETE FROM videos;
+        DELETE FROM preferences;
+        DELETE FROM tts_stats;
+        "#,
+    )
+    .await
+    .map_err(|err| StoreError::Other(format!("failed to reset local libSQL cache: {err}")))?;
+    Ok(())
+}
+
+fn delta_key(generation: u64) -> String {
+    format!("{DELTA_PREFIX}/{generation:020}.json")
+}
+
+async fn apply_delta_record(
+    conn: &libsql::Connection,
+    delta: &LibsqlSnapshotDeltaRecord,
+) -> Result<(), StoreError> {
+    for operation in &delta.operations {
+        match operation {
+            LibsqlSnapshotDeltaOperation::UpsertVideo { record } => {
+                apply_upsert_video_delta(conn, record).await?;
+            }
+            LibsqlSnapshotDeltaOperation::DeleteVideo { video_id } => {
+                conn.execute(
+                    "DELETE FROM videos WHERE id = ?1",
+                    libsql::params![video_id.clone()],
+                )
+                .await
+                .map_err(|err| {
+                    StoreError::Other(format!(
+                        "failed to apply delete_video delta for {}: {err}",
+                        video_id
+                    ))
+                })?;
+            }
+            LibsqlSnapshotDeltaOperation::PutPreferences { user_id, data } => {
+                let json = serde_json::to_string(data)?;
+                conn.execute(
+                    "INSERT INTO preferences (user_id, data) VALUES (?1, ?2) ON CONFLICT(user_id) DO UPDATE SET data = excluded.data",
+                    libsql::params![user_id.clone(), json],
+                )
+                .await
+                .map_err(|err| {
+                    StoreError::Other(format!(
+                        "failed to apply put_preferences delta for {}: {err}",
+                        user_id
+                    ))
+                })?;
+            }
+            LibsqlSnapshotDeltaOperation::PutTtsStats { stats } => {
+                conn.execute(
+                    r#"INSERT INTO tts_stats (id, sample_count, total_words, total_duration_secs)
+                       VALUES (?1, ?2, ?3, ?4)
+                       ON CONFLICT(id) DO UPDATE SET
+                         sample_count = excluded.sample_count,
+                         total_words = excluded.total_words,
+                         total_duration_secs = excluded.total_duration_secs"#,
+                    libsql::params![
+                        "global",
+                        stats.sample_count as i64,
+                        stats.total_words as i64,
+                        stats.total_duration_secs
+                    ],
+                )
+                .await
+                .map_err(|err| {
+                    StoreError::Other(format!("failed to apply put_tts_stats delta: {err}"))
+                })?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+async fn apply_upsert_video_delta(
+    conn: &libsql::Connection,
+    record: &CanonicalVideoRecord,
+) -> Result<(), StoreError> {
+    conn.execute(
+        r#"INSERT INTO videos (id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, retry_count, quality_score)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+           ON CONFLICT(id) DO UPDATE SET
+             channel_id = excluded.channel_id,
+             title = excluded.title,
+             thumbnail_url = excluded.thumbnail_url,
+             published_at = excluded.published_at,
+             is_short = excluded.is_short,
+             transcript_status = excluded.transcript_status,
+             summary_status = excluded.summary_status,
+             retry_count = excluded.retry_count,
+             quality_score = excluded.quality_score"#,
+        libsql::params![
+            record.id.clone(),
+            record.channel_id.clone(),
+            record.title.clone(),
+            record.thumbnail_url.clone(),
+            record.published_at.to_rfc3339(),
+            record.is_short as i64,
+            content_status_to_str(record.transcript_status),
+            content_status_to_str(record.summary_status),
+            record.retry_count as i64,
+            record.quality_score.map(|value| value as i64),
+        ],
+    )
+    .await
+    .map_err(|err| {
+        StoreError::Other(format!(
+            "failed to apply upsert_video delta for {}: {err}",
+            record.id
+        ))
+    })?;
+    Ok(())
+}
+
+fn content_status_to_str(status: ContentStatus) -> &'static str {
+    match status {
+        ContentStatus::Pending => "pending",
+        ContentStatus::Loading => "loading",
+        ContentStatus::Ready => "ready",
+        ContentStatus::Failed => "failed",
+    }
+}
+
+async fn prune_delta_log_up_to_generation(
+    s3: &aws_sdk_s3::Client,
+    bucket: &str,
+    up_to_generation: u64,
+) -> Result<(), StoreError> {
+    let mut continuation_token: Option<String> = None;
+
+    loop {
+        let mut request = s3.list_objects_v2().bucket(bucket).prefix(DELTA_PREFIX);
+        if let Some(token) = continuation_token.take() {
+            request = request.continuation_token(token);
+        }
+
+        let output = request
+            .send()
+            .await
+            .map_err(|err| StoreError::S3(format_aws_error(&err)))?;
+
+        if let Some(contents) = output.contents {
+            for object in contents {
+                let Some(key) = object.key else {
+                    continue;
+                };
+                let Some(generation) = delta_generation_from_key(&key) else {
+                    continue;
+                };
+                if generation > up_to_generation {
+                    continue;
+                }
+                s3.delete_object()
+                    .bucket(bucket)
+                    .key(key)
+                    .send()
+                    .await
+                    .map_err(|err| StoreError::S3(format_aws_error(&err)))?;
+            }
+        }
+
+        if output.is_truncated == Some(true) {
+            continuation_token = output.next_continuation_token;
+        } else {
+            break;
+        }
+    }
+
+    Ok(())
+}
+
+fn delta_generation_from_key(key: &str) -> Option<u64> {
+    let suffix = key.strip_prefix(&format!("{DELTA_PREFIX}/"))?;
+    let generation = suffix.strip_suffix(".json")?;
+    generation.parse().ok()
 }
 
 async fn checkpoint_libsql_file(conn: &libsql::Connection) -> Result<(), StoreError> {
@@ -342,71 +713,43 @@ async fn load_source_state(
     bucket: &str,
 ) -> Result<LibsqlSnapshotSourceState, StoreError> {
     Ok(LibsqlSnapshotSourceState {
-        videos: prefix_state(s3, bucket, "videos/").await?,
-        preferences: prefix_state(s3, bucket, "user-preferences/").await?,
-        tts_stats: prefix_state(s3, bucket, "tts-stats/").await?,
+        generation: current_generation_value(s3, bucket).await?,
     })
 }
 
-async fn prefix_state(
+async fn current_generation_value(
     s3: &aws_sdk_s3::Client,
     bucket: &str,
-    prefix: &str,
-) -> Result<PrefixState, StoreError> {
-    let mut continuation_token: Option<String> = None;
-    let mut key_count = 0usize;
-    let mut latest_modified_epoch_ms: Option<u64> = None;
-    let mut object_fingerprints = Vec::new();
+) -> Result<u64, StoreError> {
+    let Some(marker) =
+        get_json::<LibsqlSourceGenerationMarker>(s3, bucket, SOURCE_GENERATION_KEY).await?
+    else {
+        return Ok(0);
+    };
 
-    loop {
-        let mut req = s3.list_objects_v2().bucket(bucket).prefix(prefix);
-        if let Some(token) = continuation_token.take() {
-            req = req.continuation_token(token);
-        }
-
-        let output = req
-            .send()
-            .await
-            .map_err(|err| StoreError::S3(format_aws_error(&err)))?;
-
-        if let Some(contents) = output.contents {
-            for object in contents {
-                key_count += 1;
-                let key = object.key.unwrap_or_default();
-                let etag = object.e_tag.unwrap_or_default();
-                let size = object.size.unwrap_or_default();
-                if let Some(last_modified) = object.last_modified {
-                    if let Some(epoch_ms) = aws_datetime_epoch_ms(last_modified) {
-                        latest_modified_epoch_ms = Some(
-                            latest_modified_epoch_ms
-                                .map(|current| current.max(epoch_ms))
-                                .unwrap_or(epoch_ms),
-                        );
-                        object_fingerprints.push(format!("{key}\0{etag}\0{size}\0{epoch_ms}"));
-                    } else {
-                        object_fingerprints.push(format!("{key}\0{etag}\0{size}\0"));
-                    }
-                } else {
-                    object_fingerprints.push(format!("{key}\0{etag}\0{size}\0"));
-                }
-            }
-        }
-
-        if output.is_truncated == Some(true) {
-            continuation_token = output.next_continuation_token;
-        } else {
-            break;
-        }
+    if marker.schema_version != 1 {
+        tracing::warn!(
+            marker_schema_version = marker.schema_version,
+            expected_schema_version = 1,
+            "libSQL source generation marker schema mismatch - treating generation as 0"
+        );
+        return Ok(0);
     }
 
-    object_fingerprints.sort();
-    let fingerprint_sha256 = sha256_hex(object_fingerprints.join("\n").as_bytes());
+    Ok(marker.generation)
+}
 
-    Ok(PrefixState {
-        key_count,
-        latest_modified_epoch_ms,
-        fingerprint_sha256,
-    })
+async fn store_source_generation_marker(
+    s3: &aws_sdk_s3::Client,
+    bucket: &str,
+    generation: u64,
+) -> Result<(), StoreError> {
+    let marker = LibsqlSourceGenerationMarker {
+        schema_version: 1,
+        generation,
+        updated_at: Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
+    };
+    put_json(s3, bucket, SOURCE_GENERATION_KEY, &marker).await
 }
 
 async fn put_json<T: Serialize + ?Sized>(
@@ -470,12 +813,6 @@ fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     format!("{:x}", hasher.finalize())
-}
-
-fn aws_datetime_epoch_ms(value: aws_smithy_types::DateTime) -> Option<u64> {
-    let system_time = SystemTime::try_from(value).ok()?;
-    let duration = system_time.duration_since(UNIX_EPOCH).ok()?;
-    u64::try_from(duration.as_millis()).ok()
 }
 
 fn compress_gzip(bytes: &[u8]) -> Result<Vec<u8>, StoreError> {
