@@ -1,13 +1,9 @@
----
-aside: false
----
-
 # Frontend and API
 
 <script setup>
 const frontendBoundaryDiagram = String.raw`
 flowchart TB
-  routes[Workspace routes]
+  routes[Product routes]
   api[Shared API client]
   handlers[Axum handlers]
   services[db + services + workers]
@@ -26,16 +22,16 @@ sequenceDiagram
   participant content as transcript/summary loaders
 
   ui->>api: GET workspace bootstrap
-  api-->>ui: channels + selected_channel_id + snapshot + ai/search status
-  ui->>state: Render sidebar and restore selection
-  alt bootstrap already includes selected snapshot
-    ui->>state: Apply snapshot immediately
+  api-->>ui: channels + selected ids + snapshot + ai/search status
+  ui->>state: render sidebar and restore selection
+  alt bootstrap includes selected snapshot
+    ui->>state: apply snapshot immediately
   else snapshot missing or stale
     ui->>snapshot: GET selected channel snapshot
     snapshot-->>ui: channel snapshot payload
-    ui->>state: Apply snapshot
+    ui->>state: apply snapshot
   end
-  ui->>content: Load transcript/summary/info for selected video
+  ui->>content: load transcript/summary/info for selected video
 `;
 
 const requestTrustDiagram = String.raw`
@@ -73,59 +69,36 @@ flowchart TD
 `;
 </script>
 
-## Product Frontend Routes
-
-The SvelteKit app exposes these top-level product routes:
-
-| Route             | Purpose                                                                 |
-| ----------------- | ----------------------------------------------------------------------- |
-| `/`               | Main workspace for channels, videos, summaries, transcripts, and search |
-| `/channels/[id]`  | Dedicated per-channel overview and management view                      |
-| `/download-queue` | Queue-oriented operational view                                         |
-| `/highlights`     | Cross-video highlight browser                                           |
-| `/mini`           | Text-first reader for summaries and source content                      |
-| `/chat`           | RAG conversations with video content                                    |
-| `/vocabulary`     | Manage custom word replacements for summaries                           |
-| `/login`          | Firebase sign-in and guest continuation                                 |
-| `/logout`         | Session sign-out                                                        |
+## Boundary
 
 <MermaidDiagram
-  caption="Frontend boundary: route components call the shared API client, which fans out into handler modules that delegate durable logic to db, services, and workers."
+  caption="Route components call the shared API client, which reaches Axum handlers. Handlers delegate durable work to storage, services, and workers."
   :chart="frontendBoundaryDiagram"
 />
 
-## Startup Pattern
+The product frontend does not use a SvelteKit API route layer for normal backend traffic. Browser and
+Tauri clients call the Rust backend directly through the configured API base.
 
-The main workspace uses a combined bootstrap response:
+Frontend request code is centralized in `frontend/src/lib/api.ts`. Chat and search-status live
+updates use `EventSource`.
 
-1. request `/api/workspace/bootstrap` during the route load
-2. receive the channel list, selected channel id, AI/search status, and an initial snapshot when available
-3. render the sidebar and apply the selected snapshot immediately
-4. fall back to a snapshot fetch only if the bootstrap response does not include a usable one
-5. hydrate transcript / summary content once the selected video is known
+## Product Routes
 
-This keeps the initial workspace state coherent while still allowing the deeper snapshot fetch to be retried when needed.
+| Route             | Purpose                                                      |
+| ----------------- | ------------------------------------------------------------ |
+| `/`               | Main workspace                                               |
+| `/channels/[id]`  | Per-channel overview and management                          |
+| `/download-queue` | Queue-oriented operational view                              |
+| `/highlights`     | Cross-video highlight browser                                |
+| `/mini`           | Text-first reader for summaries and source content           |
+| `/chat`           | RAG conversations                                            |
+| `/vocabulary`     | Custom word replacements for summaries                       |
+| `/login`          | Firebase sign-in, guest continuation, mobile browser handoff |
+| `/logout`         | Session sign-out                                             |
 
-<MermaidDiagram
-  caption="Workspace bootstrap flow: the frontend asks for the channel list plus an optional selected-channel snapshot, then hydrates deeper content after the selection is known."
-  :chart="workspaceBootstrapDiagram"
-/>
+## Workspace Bootstrap
 
-## Request Trust Model
-
-The frontend does not depend on a SvelteKit API proxy route layer for normal product traffic.
-
-- Browser and Tauri clients call the Rust backend directly using `VITE_API_BASE`.
-- Signed-in direct requests send `Authorization: Bearer <firebase-id-token>`.
-- Trusted first-party callers can still use `x-dastill-proxy-auth` plus `x-dastill-*` headers when they need proxy-style identity forwarding.
-- The backend accepts either mode and always resolves an `AccessContext` before channel, video, search, or chat authorization decisions.
-
-<MermaidDiagram
-  caption="Request trust modes: normal product clients authenticate directly with Firebase bearer tokens, while trusted first-party callers can still use the proxy-auth header path."
-  :chart="requestTrustDiagram"
-/>
-
-The backend exposes a combined convenience endpoint:
+The main workspace starts from:
 
 ```text
 GET /api/workspace/bootstrap
@@ -133,109 +106,142 @@ GET /api/workspace/bootstrap
 
 The payload includes:
 
-- AI availability / indicator status
+- AI availability and AI status
+- library containers and sources
 - channel list
-- selected channel id
-- initial channel snapshot
+- selected source/channel/item ids
+- initial channel snapshot when available
 - search status
 
-This endpoint is useful for combined consumers and tests. The product frontend uses it as the primary SSR/bootstrap path and only falls back to a later selected-channel snapshot fetch when the bootstrap payload does not include one.
+<MermaidDiagram
+  caption="Workspace bootstrap loads the sidebar, selected ids, optional selected-channel snapshot, and status surfaces before deeper content hydration."
+  :chart="workspaceBootstrapDiagram"
+/>
 
-## Important API Areas
+The frontend applies a snapshot from bootstrap immediately when it is present. If the bootstrap
+payload lacks a usable selected-channel snapshot, the frontend fetches
+`/api/channels/{id}/snapshot` and then loads transcript, summary, and video info for the selected
+video.
 
-### Channels
+## View Models
 
-- list subscribed channels
-- subscribe / update / delete channels
-- fetch channel snapshots
-- refresh and backfill channels
+API responses intentionally combine storage records into UI-ready view models.
 
-### Videos
+| Response area | View-model behavior                                                             |
+| ------------- | ------------------------------------------------------------------------------- |
+| Channels      | canonical channel data plus caller-specific subscription state                  |
+| Videos        | canonical video row plus caller-specific `acknowledged` state                   |
+| Highlights    | per-user highlight records grouped for route display                            |
+| Chat          | persistent conversations for signed-in users; ephemeral path for signed-out use |
+| Search        | grouped video results with transcript/summary snippets and status metadata      |
 
-- list per-channel videos
-- fetch video info
-- update acknowledged state
+Durable ownership for these records is documented in [Data Model](/architecture/data-model).
 
-### Content
+## Request Trust
 
-- fetch transcript
-- fetch summary
-- generate and fetch cached summary audio
-- clean transcript formatting
-- manually update transcript or summary
-- regenerate summary
+<MermaidDiagram
+  caption="Product clients authenticate directly with Firebase bearer tokens. Trusted first-party callers can use the proxy-auth header path."
+  :chart="requestTrustDiagram"
+/>
 
-### Auth and Session Handoff
+The backend accepts two trust modes:
 
-- create, poll, complete, and delete Android mobile-auth handoff sessions
-- support system-browser Google sign-in for the Tauri Android shell
+| Mode          | Inputs                                                                 | Used by                        |
+| ------------- | ---------------------------------------------------------------------- | ------------------------------ |
+| Direct auth   | `Authorization: Bearer <firebase-id-token>`                            | Browser and Tauri product UI   |
+| Trusted proxy | `x-dastill-proxy-auth` plus `x-dastill-auth-state`, role, and user ids | Trusted first-party automation |
 
-### Highlights
+Every protected request resolves an `AccessContext` before channel, video, search, chat, or
+operator-only authorization decisions.
 
-- create
-- list by video
-- list grouped views
-- delete
+Signed-out browsing is allowed where routes support it. Signed-out chat uses the ephemeral path and
+does not write persistent conversation records.
+
+## API Families
+
+<MermaidDiagram
+  caption="User-facing request families stay separated by concern: library/content APIs, search APIs, chat SSE APIs, and user-state APIs terminate at distinct handler boundaries."
+  :chart="apiFamiliesDiagram"
+/>
+
+### Library And Content
+
+- channel list, subscribe, update, delete, refresh, and backfill
+- channel snapshots and per-channel videos
+- transcript, summary, video info, summary audio
+- manual transcript/summary edits
+- summary regeneration
+- acknowledged state updates
 
 ### Search
 
 - search content
 - inspect search status
+- stream search status
 - rebuild the derived search projection
 
 ### Chat
 
 - list conversations
-- create / update / delete conversations
-- stream AI responses via server-sent events
-- cancel in-progress message generation
-- reconnect to ongoing streams
-- allow a per-message deep-research flag to widen retrieval budgets
-- signed-in users use persistent conversations; signed-out visitors use the ephemeral chat path
+- create, update, and delete conversations
+- stream assistant responses through SSE
+- cancel or reconnect to in-progress generation
+- send signed-out prompts through the ephemeral path
+- allow per-message deep-research retrieval expansion
 
-### Analytics
+### Auth And Mobile Handoff
 
-- ingest frontend analytics events
-- batch submission with size limits
-- queues events for downstream processing
+- create, poll, complete, and delete Android mobile-auth handoff sessions
+- support system-browser Google sign-in for the Tauri Android shell
 
-<MermaidDiagram
-  caption="User-facing request families stay separated by concern: library and content APIs, search APIs, and chat SSE APIs all terminate at distinct handler boundaries."
-  :chart="apiFamiliesDiagram"
-/>
+### User State And Analytics
 
-## Handler Layer Boundaries
+- create and delete highlights
+- list highlights by video or grouped route view
+- get and save preferences
+- ingest frontend analytics events in bounded batches
 
-The backend handler modules are split by concern:
+## Handler Boundaries
 
-- `auth.rs` - Android mobile-auth handoff session lifecycle
-- `channels.rs` - channel CRUD, sync, refresh, backfill
-- `videos.rs` - video listing, video info retrieval and enrichment
-- `content.rs` - transcripts, summaries, summary audio, AI health status
-- `highlights.rs` - highlight CRUD
-- `search.rs` - search queries, status, rebuilds
-- `chat.rs` - conversations, message streaming, RAG context retrieval
-- `query.rs` - shared query parameter types (filters, pagination)
+Backend handler modules are split by concern:
 
-The handlers are thin orchestration points. Durable logic primarily lives in:
+| Handler         | Boundary                                         |
+| --------------- | ------------------------------------------------ |
+| `auth.rs`       | Android mobile-auth handoff session lifecycle    |
+| `channels.rs`   | channel CRUD, sync, refresh, backfill, bootstrap |
+| `videos.rs`     | video listing, video info, acknowledged state    |
+| `content.rs`    | transcripts, summaries, summary audio, AI health |
+| `highlights.rs` | highlight CRUD                                   |
+| `search.rs`     | search queries, status, status stream, rebuild   |
+| `chat.rs`       | conversations, message streaming, RAG retrieval  |
+| `query.rs`      | shared filter and pagination query parameters    |
+
+Handlers orchestrate request-level work. Durable logic primarily lives in:
 
 - `db/*`
 - `services/*`
 - `workers.rs`
 
-## Frontend-to-Backend Contract Style
+## Contract Style
 
-The UI and backend communicate with typed JSON payloads plus SSE streams rather than GraphQL or server actions. The product frontend centralizes request logic in `frontend/src/lib/api.ts`, while chat and search status streams use `EventSource`.
+The frontend and backend communicate through typed JSON payloads plus SSE streams. They do not use
+GraphQL or SvelteKit server actions for product backend calls.
 
-For manual backend debugging, the backend also exposes a live OpenAPI document at
-`/api/openapi.json`. During local development, Postman should import the running backend URL
-instead of relying on the checked-in `backend/openapi.postman.yaml` snapshot.
+The live backend OpenAPI document is the local debugging source of truth:
+
+```text
+/api/openapi.json
+```
+
+The checked-in `backend/openapi.postman.yaml` file is a snapshot artifact.
 
 ## Search UI Pattern
 
-The search UI is global to the workspace, not scoped to a single video panel. It:
+The search UI is global to the workspace.
+
+It:
 
 - uses debounced query submission
-- supports source filtering (`all`, `summary`, `transcript`)
-- opens results into the existing content views
+- supports source filtering: `all`, `summary`, `transcript`
+- opens results into existing content views
 - shows indexing coverage from `search_status`

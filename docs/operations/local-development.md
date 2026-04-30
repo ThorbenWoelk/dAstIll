@@ -27,9 +27,9 @@ git clone https://github.com/ThorbenWoelk/dAstIll.git
 cd dAstIll
 ```
 
-## Product App
+## Start And Stop
 
-The product app consists of:
+The local stack consists of:
 
 - a SvelteKit frontend on `3543` by default
 - a Rust backend on `3544` by default
@@ -41,7 +41,8 @@ From the repo root:
 ./start_app.sh
 ```
 
-`./start_app.sh` always stops any running dAstIll services first, then restarts the stack from a clean state.
+`./start_app.sh` stops any running dAstIll services first, then restarts the stack from a clean
+state.
 
 Detached mode:
 
@@ -49,7 +50,8 @@ Detached mode:
 ./start_app.sh --detach
 ```
 
-Detached startup writes supervisor output to `start_app.log` and service logs to `backend.log`, `frontend.log`, and `docs.log`.
+Detached startup writes supervisor output to `start_app.log` and service logs to `backend.log`,
+`frontend.log`, and `docs.log`.
 
 Stop everything cleanly:
 
@@ -57,31 +59,16 @@ Stop everything cleanly:
 ./end_app.sh
 ```
 
-Startup verifies both the backend health endpoint and the initial workspace bootstrap
-response before it reports success. If the bootstrap probe fails because local AWS credentials are
-missing, expired, or still pinned to a temporary session in `backend.env`, startup stops and prints
-an explicit hint about the credential source it found. Other bootstrap failures also stop startup;
-check `backend.log`.
+Startup verifies the backend health endpoint and the initial workspace bootstrap response before it
+reports success. If the bootstrap probe fails because local AWS credentials are missing, expired, or
+still pinned to a temporary session in `backend.env`, startup stops and prints a hint about the
+credential source it found. Other bootstrap failures also stop startup; check `backend.log`.
 
-When you use `./start_app.sh`, it also augments `BACKEND_CORS_ALLOWED_ORIGINS` for local runtime
-so the backend accepts both the web frontend and the Tauri Android shell (`http://tauri.localhost`)
-even if your shared env file only lists the browser origin.
+Process ownership, backend startup internals, worker loops, and shared runtime state are covered in
+[Runtime Topology](/architecture/runtime-topology).
 
-The workspace add-source input accepts:
-
-- YouTube handles and channel URLs
-- `openalex: <query>`
-- `podcast: <feed-url>`
-- `site: <page-url>` or a plain non-YouTube page URL
-
-`./start_app.sh` runs the backend against the local embedded `libSQL` cache/index path. The backend
-reconciles that local state from S3-backed snapshots and search artifacts at startup. S3-backed user
-data such as highlights and conversations is unaffected.
-
-`./start_app.sh` serves the live product frontend by default. There are two maintenance paths:
-
-- `.github/runtime-mode.env` with `APP_RUNTIME_MODE=maintenance` mirrors the release workflow. The script serves the maintenance/minimal frontend and keeps the backend running for `dastill-mini`.
-- `LOCAL_APP_MAINTENANCE_MODE=1 ./start_app.sh` is a frontend-only preview. The script skips backend startup and serves the maintenance frontend plus docs.
+When you use `./start_app.sh`, it also augments local CORS config so the backend accepts both the
+web frontend and the Tauri Android shell.
 
 Default docs URL:
 
@@ -90,7 +77,154 @@ http://localhost:4173
 ```
 
 The product app header includes a `Docs` link. In local development it falls back to
-`http://localhost:4173`. Deployed frontend builds read `PUBLIC_DOCS_URL` at build time.
+`http://localhost:4173`. Deployed frontend builds read the docs URL from frontend build config.
+
+## Smoke Test Inputs
+
+For a quick local ingest check, the workspace add-source input accepts:
+
+- YouTube handles and channel URLs
+- `openalex: <query>`
+- `podcast: <feed-url>`
+- `site: <page-url>` or a plain non-YouTube page URL
+
+## Shared Env Files
+
+The recommended local env layout is:
+
+```text
+~/.config/dastill/
+  backend.env
+  frontend.env
+```
+
+`./start_app.sh` and `./scripts/link_shared_env.sh` use this shared directory by default. Use the
+repo-root env example files for the supported override keys.
+
+Create or link the shared files from the repo root:
+
+```bash
+./scripts/link_shared_env.sh
+```
+
+What it does:
+
+- migrates an existing worktree-local `backend/.env` or `frontend/.env` into the shared directory
+  when the shared file does not exist yet
+- creates `backend/.env` and `frontend/.env` symlinks that point at the shared files
+- seeds missing shared files from `backend/.env.example` and `frontend/.env.example`
+
+Env precedence for local development is:
+
+1. shell environment variables
+2. worktree-local `backend/.env` or `frontend/.env`
+3. shared `~/.config/dastill/backend.env` or `~/.config/dastill/frontend.env`
+
+Use the repo-root `backend/.env.example` and `frontend/.env.example` as the current variable lists.
+Keep those example files as the place for exhaustive keys, defaults, and inline comments.
+
+## Runtime Modes
+
+`./start_app.sh` serves the live product frontend by default.
+
+There are two maintenance paths:
+
+- `.github/runtime-mode.env` mirrors the release workflow. The script serves the
+  maintenance/minimal frontend and keeps the backend running for `dastill-mini`.
+- The local frontend-only preview mode skips backend startup and serves the maintenance frontend plus
+  docs.
+
+When either path enables maintenance mode, startup also exposes the mini reader at:
+
+```text
+http://localhost:3543/mini
+```
+
+For direct frontend-only commands, set the maintenance and support-link values in the frontend env.
+Use `frontend/.env.example` for the current key names.
+
+## Backend Env
+
+Local backend startup reads the shared machine-local file at `~/.config/dastill/backend.env` by
+default. If you want a one-off worktree override, `backend/.env` still works and wins over the shared
+file. Shell environment variables win over both file-based sources.
+
+Local startup needs valid AWS credentials for S3 and S3 Vectors access. It does not require
+additional GCP service-account credentials for backend storage. Project-scoped values may still be
+needed for Firebase Auth, Hosting-aligned frontend config, and other services. Use
+`backend/.env.example` and `frontend/.env.example` for the current key names.
+
+The preferred local AWS setup is a shared credentials file outside the repo-owned `.env` files.
+Create these machine-local files:
+
+```bash
+mkdir -p ~/.config/dastill/aws
+cat > ~/.config/dastill/aws/credentials <<'EOF'
+[default]
+aws_access_key_id = your-access-key
+aws_secret_access_key = your-secret-key
+EOF
+
+cat > ~/.config/dastill/aws/config <<'EOF'
+[default]
+region = eu-central-1
+EOF
+```
+
+Point the local backend at those files from `~/.config/dastill/backend.env`. The supported key names
+live in `backend/.env.example`.
+
+Do this even if the AWS CLI can log in. Otherwise ad-hoc commands and backend startup may fall back
+to an expiring AWS CLI login/session cache instead of the persistent local keypair.
+
+Inline AWS key material in `~/.config/dastill/backend.env` is still supported as a fallback, but it
+overrides the shared credentials file. Remove stale temporary-session material when you want
+permanent local credentials; stale session values force the backend onto temporary STS credentials
+even when the AWS CLI can log in.
+
+To migrate an existing permanent inline keypair out of `backend.env`:
+
+```bash
+./scripts/migrate_local_aws_credentials.sh
+```
+
+That helper intentionally refuses to migrate temporary AWS session credentials.
+
+If you only have temporary SSO-backed credentials available, log in with the profile you want and
+sync the exported keypair into `~/.config/dastill/backend.env`:
+
+```bash
+aws sso login --profile your-profile
+./scripts/sync_aws_programmatic_credentials.sh your-profile
+```
+
+That path is useful for short-lived sessions, but the shared credentials file remains the preferred
+permanent local setup.
+
+When you need to inspect S3 or S3 Vectors manually, prefer commands that use the same credential
+files.
+
+Set optional tracing, operator access, and project-scoped API keys in `~/.config/dastill/backend.env`.
+Use `backend/.env.example` for the current key names.
+
+YouTube API keys are tied to the Google Cloud project that created them. If you change projects,
+create a fresh key in the target project and update `~/.config/dastill/backend.env`. Production
+secret rotation follows the production deployment flow.
+
+## Local ASR
+
+For local podcast transcription, enable local ASR in `~/.config/dastill/backend.env` and point it at
+`localhost` or `127.0.0.1`. Use `backend/.env.example` for the current key names.
+
+`./start_app.sh` then starts `./scripts/start_local_asr.sh --detach` before the backend. The helper
+expects Homebrew `whisper-cpp` and `ffmpeg`, downloads `ggml-base.en.bin` into
+`~/.cache/dastill/asr/`, and serves:
+
+```text
+http://127.0.0.1:5092/v1/audio/transcriptions
+```
+
+Stop it with `./end_app.sh` together with the rest of the local stack.
 
 ## Postman Debugging
 
@@ -112,301 +246,6 @@ Use the live OpenAPI URL as the source of truth during debugging. It reflects th
 The checked-in `backend/openapi.postman.yaml` file is only a snapshot artifact and should not be
 treated as the authoritative contract for local debugging.
 
-## Docs Frontend
+## Tauri Android
 
-The full stack starts docs on `http://localhost:4173`.
-
-Folder-local docs commands live in `docs/README.md`. The docs app is deployed from the static VitePress build through Firebase Hosting. Main-branch pushes build the site and publishes `docs/.vitepress/dist` through the repository GitHub Actions workflow.
-
-## Tauri Android Development
-
-The repo includes a Tauri v2 shell in `src-tauri/`.
-
-Recommended run loop:
-
-```bash
-./start_app.sh
-```
-
-`./start_app.sh` reads `.github/runtime-mode.env`, the same source of truth used by the deploy workflows. When that file says `APP_RUNTIME_MODE=maintenance`, local startup serves the maintenance/minimal frontend mode and starts the backend so `dastill-mini` works.
-
-The Tauri Android shell is opt-in. To launch it with the local stack:
-
-```bash
-START_APP_MOBILE=1 ./start_app.sh
-```
-
-If you need an explicit skip flag for scripts or legacy local habits:
-
-```bash
-START_APP_SKIP_MOBILE=1 ./start_app.sh
-```
-
-If you want a frontend-only maintenance preview that skips backend startup entirely, use:
-
-```bash
-LOCAL_APP_MAINTENANCE_MODE=1 ./start_app.sh
-```
-
-To run the shell manually:
-
-```bash
-cargo tauri android dev
-```
-
-CLI setup, Android tooling, auth handoff, smoke checks, APK commands, and CI details live in [Tauri Android](/operations/mobile-tauri).
-
-## Backend Environment
-
-Local backend startup reads the shared machine-local file at
-`~/.config/dastill/backend.env` by default. If you want a one-off worktree override,
-`backend/.env` still works and wins over the shared file. Shell environment variables
-win over both file-based sources.
-
-Typical flow:
-
-```bash
-./scripts/link_shared_env.sh
-# edit ~/.config/dastill/backend.env
-```
-
-Important variables:
-
-| Variable                            | Purpose                                                                                      |
-| ----------------------------------- | -------------------------------------------------------------------------------------------- |
-| `GCP_PROJECT_ID`                    | Firebase / GCP project id used for auth, Hosting-aligned config, and project-scoped services |
-| `AWS_REGION`                        | AWS region for S3 and S3 Vectors                                                             |
-| `S3_DATA_BUCKET`                    | S3 bucket for data storage                                                                   |
-| `S3_VECTOR_BUCKET`                  | S3 Vectors bucket for semantic search                                                        |
-| `S3_VECTOR_INDEX`                   | S3 Vectors index name for embeddings                                                         |
-| `AWS_SHARED_CREDENTIALS_FILE`       | Preferred pointer to the shared local AWS credentials file for the SDK and CLI               |
-| `AWS_CONFIG_FILE`                   | Preferred pointer to the shared local AWS config file (region/profile metadata)              |
-| `AWS_ACCESS_KEY_ID`                 | Fallback inline AWS access key used for S3 / S3 Vectors; avoid for routine local development |
-| `AWS_SECRET_ACCESS_KEY`             | Fallback inline AWS secret key paired with `AWS_ACCESS_KEY_ID`                               |
-| `AWS_SESSION_TOKEN`                 | Temporary session token only; do not keep this set for permanent local development           |
-| `BACKEND_PROXY_TOKEN`               | Shared secret for trusted first-party callers that use the backend's proxy-auth header path  |
-| `BACKEND_CORS_ALLOWED_ORIGINS`      | Comma-separated list of browser origins allowed to call the backend directly                 |
-| `AWS_ROLE_ARN` / `AWS_WIF_AUDIENCE` | Production only: GCP Workload Identity Federation for AWS                                    |
-| `YOUTUBE_API_KEY`                   | Optional YouTube Data API access; project-scoped, so rotate it when `GCP_PROJECT_ID` changes |
-| `OPEN_ALEX_API_KEY`                 | Optional OpenAlex API key for authenticated keyword and semantic works search                |
-| `OLLAMA_URL`                        | Ollama endpoint                                                                              |
-| `OLLAMA_API_KEY`                    | API key for Ollama cloud (required when using cloud Ollama URL)                              |
-| `OLLAMA_SUMMARY_MODEL`              | Primary summarizer model                                                                     |
-| `OLLAMA_FALLBACK_MODEL`             | Local fallback used when the primary summarizer is cloud-backed and rate-limited             |
-| `OLLAMA_DEFAULT_CHAT_MODEL`         | Default chat model for RAG conversations (falls back to `OLLAMA_SUMMARY_MODEL` if not set)   |
-| `SUMMARY_EVALUATOR_MODEL`           | Quality evaluator model - must differ from `OLLAMA_SUMMARY_MODEL`                            |
-| `OLLAMA_EMBEDDING_MODEL`            | Search embedding model (required when semantic search is enabled)                            |
-| `SEARCH_SEMANTIC_ENABLED`           | Explicit override for semantic search behavior                                               |
-| `SEARCH_AUTO_CREATE_VECTOR_INDEX`   | Optional ANN index creation after backlog clears                                             |
-| `SEARCH_RERANK_MODEL`               | Optional cross-encoder reranker model name (Ollama `/api/rerank`)                            |
-| `SEARCH_HYDE_MODEL`                 | Optional HyDE generation model name (Ollama `/api/generate`, short queries only)             |
-| `CHAT_MULTI_PASS_ENABLED`           | Enable multi-pass retrieval for chat (default: `true`)                                       |
-| `DEFAULT_SEEDED_CHANNEL_IDS`        | Comma-separated fallback channel IDs for empty/anonymous workspaces                          |
-| `BASELINE_RATE_LIMIT_PER_MINUTE`    | Baseline API rate limit per client (default: `600`)                                          |
-| `EXPENSIVE_RATE_LIMIT_PER_MINUTE`   | Rate limit for AI/chat/search mutations (default: `120`)                                     |
-| `ANONYMOUS_CHAT_QUOTA`              | Message quota for anonymous chat users (default: `30`)                                       |
-| `SUMMARIZE_PATH`                    | Path to the transcript extraction CLI                                                        |
-| `LOCAL_ASR_ENABLED`                 | Enable local/free podcast ASR for RSS audio enclosures                                       |
-| `LOCAL_ASR_BASE_URL`                | OpenAI-compatible local ASR base URL for an operator-owned local/prod service                |
-| `LOCAL_ASR_AUTH_MODE`               | ASR auth mode: `api_key` locally, `google_id_token` for the repo-owned Cloud Run service     |
-| `LOCAL_ASR_API_KEY`                 | API key for the local ASR endpoint; local-only servers commonly use `sk-no-key-required`     |
-| `LOCAL_ASR_MODEL`                   | Local ASR model name; recommended default is `whisper-base.en`                               |
-| `LOCAL_ASR_MAX_AUDIO_BYTES`         | Maximum podcast audio size accepted for local ASR                                            |
-| `LOCAL_ASR_TIMEOUT_SECS`            | Local ASR request timeout for long podcast episodes; default is `3600`                       |
-| `LOGFIRE_TOKEN`                     | Optional Logfire token for backend tracing / AI pipeline observability                       |
-| `DATABRICKS_HOST`                   | Databricks workspace URL for analytics ingestion                                             |
-| `DATABRICKS_TOKEN`                  | Databricks personal access token                                                             |
-| `DATABRICKS_WAREHOUSE_ID`           | Databricks SQL warehouse ID                                                                  |
-| `POLLY_TTS_ENABLED`                 | Enable Amazon Polly TTS for summary audio (default: `false`)                                 |
-| `POLLY_TTS_VOICE_ID`                | Polly voice ID (default: `Joanna`)                                                           |
-| `POLLY_TTS_ENGINE`                  | Polly engine: `standard` or `neural` (default: `neural`)                                     |
-| `POLLY_TTS_OUTPUT_FORMAT`           | Polly output format (default: `wav`)                                                         |
-| `POLLY_TTS_SAMPLE_RATE`             | Polly sample rate in Hz (default: `16000`)                                                   |
-
-For local podcast transcription, run an operator-owned OpenAI-compatible ASR server beside the
-backend and point `LOCAL_ASR_BASE_URL` at it. The recommended free local runtime is the maintained
-`whisper.cpp` server with the `base.en` GGML model. Treat third-party wrapper repositories
-as local experiments only unless they have enough maintenance signal for production. Keep the ASR
-server separate from the Rust backend so CPU/GPU load, model files, and failures do not take down
-the main app process.
-
-The ASR process is where the STT model runs. The Rust backend does not load `whisper.cpp`, Whisper, or
-any other speech model. It calls `POST {LOCAL_ASR_BASE_URL}/audio/transcriptions` with multipart
-audio and accepts OpenAI-style JSON such as `{"text":"..."}` or a plain text body. A local-only ASR server can ignore bearer auth or use `LOCAL_ASR_API_KEY=sk-no-key-required`; the repo-owned production service uses Cloud Run IAM instead of a shared static token.
-
-When `LOCAL_ASR_ENABLED=true` and `LOCAL_ASR_BASE_URL` points at `localhost` or `127.0.0.1`,
-`./start_app.sh` starts `./scripts/start_local_asr.sh --detach` before the backend. The helper
-expects Homebrew `whisper-cpp` and `ffmpeg`, downloads `ggml-base.en.bin` into
-`~/.cache/dastill/asr/`, and serves `http://127.0.0.1:5092/v1/audio/transcriptions`.
-Stop it with `./end_app.sh` together with the rest of the local stack.
-
-Local startup needs valid AWS credentials for S3 and S3 Vectors access. It does not require
-additional GCP service-account credentials for backend storage. `GCP_PROJECT_ID` may still be needed for Firebase Auth, Hosting-aligned
-frontend config, and other project-scoped services.
-
-The preferred local AWS setup is a shared credentials file outside the repo-owned `.env` files.
-Create these machine-local files:
-
-```bash
-mkdir -p ~/.config/dastill/aws
-cat > ~/.config/dastill/aws/credentials <<'EOF'
-[default]
-aws_access_key_id = YOUR_LONG_LIVED_ACCESS_KEY
-aws_secret_access_key = YOUR_LONG_LIVED_SECRET_KEY
-EOF
-
-cat > ~/.config/dastill/aws/config <<'EOF'
-[default]
-region = eu-central-1
-EOF
-```
-
-Point the local backend at those files from `~/.config/dastill/backend.env`:
-
-```env
-AWS_SHARED_CREDENTIALS_FILE=/Users/you/.config/dastill/aws/credentials
-AWS_CONFIG_FILE=/Users/you/.config/dastill/aws/config
-```
-
-Do this even if the AWS CLI can log in. Otherwise ad-hoc commands and backend startup may fall
-back to an expiring AWS CLI login/session cache instead of the persistent local keypair.
-
-Inline `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` in `~/.config/dastill/backend.env` are still
-supported as a fallback, but they override the shared credentials file. Remove any old
-`AWS_SESSION_TOKEN` line if you want permanent local credentials; leaving a stale session token in
-`backend.env` forces the backend onto temporary STS credentials even when the AWS CLI can log in.
-
-To migrate an existing permanent inline keypair out of `backend.env`:
-
-```bash
-./scripts/migrate_local_aws_credentials.sh
-```
-
-That helper intentionally refuses to migrate temporary `ASIA...` / `AWS_SESSION_TOKEN` credentials.
-
-If you only have temporary SSO-backed credentials available, log in with the profile you want and
-sync the exported keypair into `~/.config/dastill/backend.env`:
-
-```bash
-aws sso login --profile your-profile
-./scripts/sync_aws_programmatic_credentials.sh your-profile
-```
-
-That path is useful for short-lived sessions, but the shared credentials file remains the preferred
-permanent local setup.
-
-When you need to inspect S3 or S3 Vectors manually, prefer commands that use the same files:
-
-```bash
-AWS_SHARED_CREDENTIALS_FILE=~/.config/dastill/aws/credentials \
-AWS_CONFIG_FILE=~/.config/dastill/aws/config \
-aws s3 ls s3://your-data-bucket
-```
-
-In production, Cloud Run uses `AWS_ROLE_ARN` and `AWS_WIF_AUDIENCE` for Workload Identity Federation instead of static access keys.
-
-`YOUTUBE_API_KEY` is tied to the Google Cloud project that created it. If you migrate from one GCP project to another, create a fresh key in the target project, update `~/.config/dastill/backend.env`, and keep that value aligned with `terraform/terraform.tfvars` so local and production validation behave the same way.
-
-## Logfire Observability
-
-The backend automatically switches to Logfire when `LOGFIRE_TOKEN` is present in
-`~/.config/dastill/backend.env`.
-
-Typical setup:
-
-```bash
-./scripts/link_shared_env.sh
-# then uncomment LOGFIRE_TOKEN and paste your token
-```
-
-Behavior:
-
-- with `LOGFIRE_TOKEN` set, backend `tracing` events are sent to Logfire
-- without it, the backend keeps logging locally through `tracing_subscriber`
-- current AI-related logs cover prompt lifecycle, retrieval timings, fallback/rate-limit events, and chat pipeline milestones
-- raw prompt / generated-title preview logging is not enabled by default
-
-## Frontend Runtime
-
-The frontend builds as a static bundle. Browser and Tauri clients call the Rust backend directly using `VITE_API_BASE`, and authenticated requests send the Firebase ID token as `Authorization: Bearer <token>`.
-
-In production the static frontend and docs are served by Firebase Hosting. Local development still uses the Vite dev server for the app and VitePress for docs.
-
-Optional browser-auth override for the Android system-browser sign-in handoff:
-
-- `PUBLIC_BROWSER_AUTH_BASE_URL` or `VITE_BROWSER_AUTH_BASE_URL` forces the browser origin used when the Tauri Android shell opens the external `/login` flow.
-
-If you run the frontend by itself, keep its local values in
-`~/.config/dastill/frontend.env`. The default shared workflow is to keep those values there
-and run `./scripts/link_shared_env.sh` once per worktree so direct frontend commands
-still see `frontend/.env`.
-
-The Tauri Android dev shell uses the same shared/local frontend env files. When `VITE_API_BASE` is unset and the app is running from `http://tauri.localhost`, the frontend falls back to `http://127.0.0.1:3544`, which matches the `adb reverse` mapping created by `./start_app.sh`.
-
-If you want local frontend commands to mirror the maintenance site without relying on hardcoded values, put
-the support link in `~/.config/dastill/frontend.env` as `PUBLIC_SUPPORT_URL=...`. For direct frontend-only runs
-you can also set `PUBLIC_APP_MAINTENANCE_MODE=1`, but `./start_app.sh` still uses `LOCAL_APP_MAINTENANCE_MODE=1`
-as the primary switch and injects the frontend maintenance flag for that launch.
-
-## Shared Env Directory
-
-The recommended local env layout is:
-
-```text
-~/.config/dastill/
-  backend.env
-  frontend.env
-```
-
-Use the helper script from the repo root:
-
-```bash
-./scripts/link_shared_env.sh
-```
-
-What it does:
-
-- migrates an existing worktree-local `backend/.env` or `frontend/.env` into the shared directory when the shared file does not exist yet
-- creates `backend/.env` and `frontend/.env` symlinks that point at the shared files
-- seeds missing shared files from `backend/.env.example` and `frontend/.env.example`
-
-Env precedence for local development is:
-
-1. shell environment variables
-2. worktree-local `backend/.env` or `frontend/.env`
-3. shared `~/.config/dastill/backend.env` or `~/.config/dastill/frontend.env`
-
-Operator access is derived from `OPERATOR_EMAIL_ALLOWLIST` on the backend. Users whose Firebase email matches the allowlist receive the `operator` role when the backend validates their bearer token.
-
-### Auth Model
-
-The current auth model is Firebase-based multi-user auth:
-
-- Signed-in users keep their Firebase browser/session state client-side.
-- Backend request identity is derived either from trusted first-party proxy headers or from direct Firebase bearer-token validation.
-- Persistent chat, channels, highlights, and preferences are authenticated user-scoped surfaces.
-- Signed-out browsing remains available, but signed-out chat stays on the ephemeral path and is subject to the anonymous quota.
-- Operator-only backend behavior is keyed off the validated Firebase email allowlist.
-
-## Search Defaults
-
-`SEARCH_SEMANTIC_ENABLED` is an override, not the only switch:
-
-- local debug runs default to semantic search on
-- release builds default to plain FTS mode
-- setting `SEARCH_SEMANTIC_ENABLED=false` disables embeddings even locally
-- setting `SEARCH_SEMANTIC_ENABLED=true` enables embeddings in either environment
-
-## Model Separation Guard
-
-The backend refuses to start if `OLLAMA_SUMMARY_MODEL` and `SUMMARY_EVALUATOR_MODEL` are identical.
-
-That check exists to keep summary generation and summary evaluation independent. If you copy the env template, keep the evaluator on a different model string than the summarizer.
-
-## Recommended Working Loop
-
-```text
-1. Start frontend/backend/docs together with ./start_app.sh
-2. Edit product code and docs side by side
-3. Build the docs app before closing changes
-```
+The Android shell is covered in [Tauri Android](/operations/mobile-tauri).

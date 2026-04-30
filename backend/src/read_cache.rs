@@ -315,8 +315,6 @@ impl ReadCache {
         entries.retain(|_, entry| entry.expires_at > now);
     }
 
-    /// Returns the current number of entries in the cache (for testing).
-
     async fn get(&self, key: &ReadCacheKey) -> Option<ReadCacheValue> {
         let now = Instant::now();
         {

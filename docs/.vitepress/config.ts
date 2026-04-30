@@ -15,7 +15,7 @@ export default defineConfig({
     nav: [
       { text: "Overview", link: "/" },
       { text: "Architecture", link: "/architecture/overview" },
-      { text: "AI & Search", link: "/pipelines/ai-models" },
+      { text: "AI & Search", link: "/pipelines/search-indexing" },
       { text: "Operations", link: "/operations/deployment" },
       { text: "Security", link: "/security/" },
     ],
@@ -43,6 +43,12 @@ export default defineConfig({
           { text: "Content Pipeline", link: "/pipelines/content-pipeline" },
           { text: "Search Indexing", link: "/pipelines/search-indexing" },
           { text: "AI Models", link: "/pipelines/ai-models" },
+          {
+            text: "Summarization and Evaluation",
+            link: "/pipelines/summarization-evaluation",
+          },
+          { text: "Chat RAG", link: "/pipelines/chat-rag" },
+          { text: "Text to Speech", link: "/pipelines/text-to-speech" },
         ],
       },
       {

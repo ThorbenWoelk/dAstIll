@@ -33,13 +33,9 @@ For the detailed done-versus-open breakdown, see [OWASP ASI Status](/security/ow
 
 dAstIll's current controls focus on scoped retrieval, read-only chat tools, bounded chat context, bounded tool loops, visible citation/tool metadata, and repo secret hygiene.
 
-The detailed ASI control matrix lives in [OWASP ASI Status](/security/owasp-asi-status).
-
 ## Known Gaps
 
 The highest-priority gaps are shared rate limiting, automated ASI regression coverage, stronger tool-call audit logs, and an explicit supply-chain trust-boundary review.
-
-The tracked open work lives in [OWASP ASI Status](/security/owasp-asi-status#highest-priority-open-work).
 
 ## Verification Checklist
 
@@ -60,3 +56,4 @@ When making security-relevant changes, verify at least the following:
 - [Deployment and Operations](/operations/deployment)
 - [Local development](/operations/local-development)
 - [AI Models](/pipelines/ai-models)
+- [Chat RAG](/pipelines/chat-rag)

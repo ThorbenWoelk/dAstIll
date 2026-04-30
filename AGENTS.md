@@ -32,6 +32,7 @@ Deeper domain-specific guidance belongs in dedicated docs and should be linked f
 ## Env and secrets strategy
 
 **Follow these rules**
+
 - Local app config lives in the shared machine-local env files:
   - `~/.config/dastill/backend.env`
   - `~/.config/dastill/frontend.env`
@@ -45,7 +46,7 @@ Deeper domain-specific guidance belongs in dedicated docs and should be linked f
 - One bootstrap edge remains for AWS CI auth: the first creation of the AWS GitHub OIDC provider and `dastill-github-terraform` role must be applied from an already authenticated AWS context. After that, recurring Terraform runs can stay in CI.
 - Secret bootstrap/rotation flow:
   1. Apply Terraform first so secret container and IAM exist.
-  2. Add secret payload with `gcloud secrets versions add <secret-name> --project "$PROJECT_ID" --data-file=-`.
+  2. Add secret payload with `gcloud secrets versions add <secret-name> --project <project-id> --data-file=-`.
   3. Redeploy consumer so latest secret version is picked up.
 - `infra.yml` auto-syncs only Firebase frontend build secrets (`dastill-firebase-web-api-key`, `dastill-firebase-auth-domain`) after Terraform apply. All other app secrets are still manual Secret Manager version adds.
 - Current non-Firebase secrets expected in production: `dastill-youtube-api-key`, `dastill-openalex-api-key`, `dastill-ollama-api-key`, `dastill-logfire-token`, `dastill-backend-proxy-token`, `dastill-databricks-token`.
@@ -63,6 +64,7 @@ Deeper domain-specific guidance belongs in dedicated docs and should be linked f
 - If a workflow passes a value through CI, treat that as transport, not as the source of truth.
 
 Source-of-truth details:
+
 - local dev env flow: [docs/operations/local-development.md](./docs/operations/local-development.md)
 - production boundaries, Terraform, Secret Manager, and deploy behavior: [docs/operations/deployment.md](./docs/operations/deployment.md)
 
@@ -112,6 +114,6 @@ Navigate to the respective frontend and backend folders and run the following be
 7. `bun run build`
 8. `bun audit --production`
 
-*E2E requires a running stack (`./start_app.sh`). Not in CI — run locally before commit.*
+_E2E requires a running stack (`./start_app.sh`). Not in CI — run locally before commit._
 
 When to add unit vs E2E tests: [design.md#testing](./design.md#testing).

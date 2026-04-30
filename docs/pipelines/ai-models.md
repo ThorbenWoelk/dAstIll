@@ -2,420 +2,56 @@
 
 ## Model Roles
 
-dAstIll uses different models for different jobs. Each role is independently configured.
+dAstIll uses independently configured model roles through the configured Ollama endpoint. Use
+`backend/.env.example` for the current key names.
 
-| Variable                    | Role                                                                                       |
-| --------------------------- | ------------------------------------------------------------------------------------------ |
-| `OLLAMA_SUMMARY_MODEL`      | Primary summarizer and transcript-cleaning model                                           |
-| `OLLAMA_FALLBACK_MODEL`     | Optional local fallback when the summarizer primary is cloud-backed and rate-limited       |
-| `OLLAMA_DEFAULT_CHAT_MODEL` | Default chat model for RAG conversations (falls back to `OLLAMA_SUMMARY_MODEL` if not set) |
-| `SUMMARY_EVALUATOR_MODEL`   | Summary quality evaluator (LLM-as-judge)                                                   |
-| `OLLAMA_EMBEDDING_MODEL`    | Search embedding model for semantic search                                                 |
-| `SEARCH_RERANK_MODEL`       | Optional cross-encoder reranker for hybrid search (`/api/rerank`)                          |
-| `SEARCH_HYDE_MODEL`         | Optional generative model for HyDE passage synthesis (`/api/generate`)                     |
+| Role              | Used for                                                                        | Detail doc                                                          |
+| ----------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Summarizer        | Primary summary generation and transcript cleaning                              | [Summarization and Evaluation](/pipelines/summarization-evaluation) |
+| Fallback          | Optional local fallback when the primary summarizer is cloud-backed and limited | [Summarization and Evaluation](/pipelines/summarization-evaluation) |
+| Chat              | RAG conversations over indexed library content                                  | [Chat RAG](/pipelines/chat-rag)                                     |
+| Summary evaluator | Summary quality evaluation                                                      | [Summarization and Evaluation](/pipelines/summarization-evaluation) |
+| Embedding         | Dense embeddings for semantic search                                            | [Search Indexing](/pipelines/search-indexing)                       |
+| Reranker          | Optional cross-encoder reranking for hybrid search                              | [Search Indexing](/pipelines/search-indexing)                       |
+| HyDE              | Optional short-query passage synthesis                                          | [Search Indexing](/pipelines/search-indexing)                       |
+| TTS               | Summary audio synthesis                                                         | [Text to Speech](/pipelines/text-to-speech)                         |
 
-All models are accessed through the configured Ollama endpoint (`OLLAMA_URL`). The same
-endpoint is shared across roles; there is no per-role endpoint override.
+There is one endpoint setting for all Ollama-backed roles.
 
----
+## Search Model Hooks
 
-## Summarizer
+Search owns embedding, HyDE, reranking, retrieval modes, and semantic defaults.
 
-### Responsibilities
+| Role      | Endpoint               | Used for                               |
+| --------- | ---------------------- | -------------------------------------- |
+| Embedding | Ollama `/api/embed`    | semantic chunk and query embeddings    |
+| Reranker  | Ollama `/api/rerank`   | optional cross-encoder reranking       |
+| HyDE      | Ollama `/api/generate` | optional short-query passage synthesis |
 
-The summarizer service handles two tasks:
+## Availability And Cooldowns
 
-- **Summary generation**: produces a consistent, structured markdown summary from a
-  cleaned transcript
-- **Transcript cleaning**: normalizes formatting (whitespace, linebreaks, repetitions)
-  while preserving the speaker's wording
+The app tracks separate cooldown domains.
 
-Both are driven by `OLLAMA_SUMMARY_MODEL` calling Ollama's `/api/generate` endpoint.
-
-### Fallback
-
-If the primary summarizer is a cloud-backed model (identified by URL pattern) and
-encounters a rate limit, the service falls back to `OLLAMA_FALLBACK_MODEL` if
-configured. Local fallback runs without waiting - it does not share a rate-limit cooldown
-with the cloud path.
-
-If no fallback is configured, rate-limited work waits until the cloud cooldown expires.
-
-### AI Availability Status
-
-The summarizer service reports AI availability to the frontend:
-
-- whether the primary model is reachable
-- whether the fallback is active
-- current cooldown state
-
-This status is surfaced in the workspace header indicator so users can see if AI
-processing is stalled.
-
----
-
-## Summary Evaluator
-
-### Policy
-
-The evaluator is stricter than the summarizer by design:
-
-- it must be a **cloud model** (local models are not accepted)
-- it must represent a cloud model with at least **31B parameters** (enforced by name pattern check)
-- it must not be the same model string as `OLLAMA_SUMMARY_MODEL`
-- its cooldown policy is `offline` rather than local fallback - evaluation pauses instead
-  of consuming local capacity when the cloud is unavailable
-
-Backend startup **fails** if `OLLAMA_SUMMARY_MODEL` and `SUMMARY_EVALUATOR_MODEL` are identical.
-This guard exists to keep generation and judgment independent.
-
-### Judgment Criteria
-
-The evaluator compares the generated summary against the canonical transcript on two axes:
-
-- faithfulness - whether summary claims are supported by the transcript
-- completeness - whether the summary covers the transcript's substantive editorial content
-
-The model returns structured JSON with:
-
-- `status` - `scored` or `unscorable`
-- `faithfulness_score`, `completeness_score`, and `final_score` for scored summaries
-- `defects[]` with defect type, severity, affected summary claim, and transcript anchor
-- `unscorable_reason` when the transcript or summary cannot be judged reliably
-- `tags[]` as transcript-supported metadata, not quality defects
-
-The evaluator uses Ollama structured output with a backend-owned JSON schema. The prompt
-describes the judgment task, while the runtime schema enforces the response shape before
-the result is stored.
-
-The backend still stores the result in the current summary fields: `quality_score`,
-`quality_note`, `quality_model_used`, and `summary_tags`. `quality_note` preserves the
-axis scores and defect evidence for auditability. Unscorable inputs store a note without
-a numeric score.
-
-Scores are calibrated around the regeneration cutoff: `7` is acceptable, while `6` or
-below means the summary should be regenerated when retry limits allow. Summaries below
-the threshold can be automatically requeued for regeneration.
-
-### Regeneration Cap
-
-Each video has a `retry_count` field that caps how many times a low-quality summary is
-regenerated. Once the cap is reached, the video is not requeued further.
-
----
-
-## Search Embedding
-
-### Configuration
-
-| Variable                  | Purpose                                                                   |
-| ------------------------- | ------------------------------------------------------------------------- |
-| `OLLAMA_EMBEDDING_MODEL`  | Model name for dense embeddings; required when semantic search is enabled |
-| `SEARCH_SEMANTIC_ENABLED` | Override switch; local debug defaults on, release defaults off            |
-
-Semantic search uses the configured Ollama embedding model. If the embedding path is unavailable, search degrades to FTS.
-
-Indexing, batching, dimension checks, and retrieval behavior are covered in [Search Indexing](/pipelines/search-indexing).
-
-### Example Local Model
-
-`embeddinggemma:latest` is a common local choice for Ollama-backed semantic search:
-
-- optimized for semantic similarity tasks
-- produces 512-dimensional float32 vectors
-- runs entirely locally through the configured Ollama endpoint
-
-Any Ollama-compatible embedding model can be substituted via `OLLAMA_EMBEDDING_MODEL` as
-long as it exposes `/api/embed` and returns float32 vectors.
-
----
-
-## Neural Reranker (`SEARCH_RERANK_MODEL`)
-
-The reranker is an optional cross-encoder model used by hybrid search after Reciprocal Rank Fusion (RRF).
-
-### When It Activates
-
-- `SEARCH_RERANK_MODEL` is configured
-- The search request is in `hybrid` execution mode
-- Both FTS and semantic candidate lists are non-empty
-
-FTS-only queries and semantic-only queries bypass the reranker entirely.
-
-### Model Selection
-
-Any Ollama-compatible cross-encoder model that supports `/api/rerank` can be used. A
-solid open-source option is `bge-reranker-v2-m3`. Cross-encoders are more accurate than
-bi-encoders for this task because they attend jointly to the query and the document
-rather than comparing independent embeddings.
-
-Execution details live in [Search Indexing](/pipelines/search-indexing#query-path).
-
----
-
-## HyDE (`SEARCH_HYDE_MODEL`)
-
-HyDE (Hypothetical Document Embeddings) improves semantic recall for short, ambiguous
-queries by generating a plausible answer passage before computing the query embedding.
-
-### The Problem It Solves
-
-Short queries like "memory safety" or "async patterns" produce query vectors that may
-not align well with document vectors even when relevant content exists. The query is too
-sparse to land near documents in embedding space.
-
-HyDE shifts the embedding target from the sparse query to a dense hypothetical document
-that would plausibly answer the query, moving the query vector closer to where real
-content vectors cluster.
-
-### When It Activates
-
-HyDE activates for configured short semantic queries. [Search Indexing](/pipelines/search-indexing#query-path) owns the exact runtime gate.
-
-### Model Selection
-
-Any instruction-following generative model available in Ollama works. Smaller models
-(7B-8B) are sufficient because the task is constrained 2-3 sentence passage generation,
-not open-ended reasoning. Fast generation matters more than reasoning depth here; pick
-a model that can respond within the 30 s timeout under load.
-
-Prompt and fallback details live in [Search Indexing](/pipelines/search-indexing#query-path).
-
----
-
-## Chat and RAG
-
-The chat service powers RAG (Retrieval-Augmented Generation) conversations grounded in
-the indexed video corpus. It uses its own multi-stage pipeline that goes beyond simple
-search - it classifies intent, generates multiple queries, and uses a multi-pass
-retrieval strategy to gather the right context.
-
-### Model Configuration
-
-| Variable                    | Chat behavior                                                     |
-| --------------------------- | ----------------------------------------------------------------- |
-| `OLLAMA_DEFAULT_CHAT_MODEL` | Default chat model. Falls back to `OLLAMA_SUMMARY_MODEL` if unset |
-
-Chat model selection is done at conversation creation time. If the selected model is no
-longer available at message-send time, the service fails gracefully without corrupting
-the conversation.
-
-The model list exposed to the user comes from Ollama's `/api/tags` endpoint, filtered by
-predefined cloud model entries. Users can switch models per-conversation.
-
-### Intent Classification
-
-Before retrieval, the chat service classifies each user message into an intent category:
-
-| Intent           | Description                                           |
-| ---------------- | ----------------------------------------------------- |
-| `fact`           | Specific factual lookup from one or few sources       |
-| `synthesis`      | Cross-video synthesis of a topic across many sources  |
-| `pattern`        | Pattern detection across a large corpus               |
-| `comparison`     | Comparative analysis between two or more subjects     |
-| `recommendation` | Recommendation request (best X, worth watching, etc.) |
-
-Intent drives the source budget (how many chunks the context window targets) and the
-query fan-out strategy.
-
-The chat query planner and tool-loop planner use Ollama structured output with
-backend-owned JSON schemas. Planner prompts describe the decision, but tool/action fields
-are validated by Rust DTOs before any retrieval or tool execution runs.
-
-### Source Budgets by Intent
-
-| Intent           | Source budget |
-| ---------------- | ------------- |
-| `fact`           | 6             |
-| `synthesis`      | 12            |
-| `recommendation` | 14            |
-| `comparison`     | 20            |
-| `pattern`        | 24            |
-
-Deep research mode (a per-request flag set by the client) raises the budget to the system maximum and enables additional query passes beyond the standard limit.
-
-### Multi-Pass Retrieval
-
-Retrieval runs for up to 3 passes. Each pass generates up to 3 queries (5 total across
-all passes). The planner produces:
-
-- **Primary queries**: directly address the user message
-- **Expansion queries**: cover adjacent concepts, related terminology, or alternative
-  phrasings to widen recall
-
-For each query, the chat service runs:
-
-1. **FTS retrieval** against the local libSQL FTS5 index (same BM25 path as workspace
-   search, with keyword snippet extraction)
-2. **Semantic retrieval** via S3 Vectors ANN (if semantic search is enabled and the
-   model is available)
-
-Both retrieval legs support an optional `channel_id` filter for channel-scoped
-conversations.
-
-### Context Assembly and Scoring
-
-Retrieved candidates from all passes are scored by a composite function:
-
-```
-combined_score = keyword_score + semantic_score
-```
-
-- `keyword_score`: non-zero when the chunk appeared in an FTS result list
-- `semantic_score`: non-zero when the chunk appeared in a semantic result list
-- Chunks appearing in both lists accumulate both scores
-
-The top candidates are then organized per video using `rank_chat_sources`:
-
-- Candidates are sorted by combined score within each video
-- A synthesis limit caps chunks per video (`CHAT_SYNTHESIS_SOURCES_PER_VIDEO = 3`)
-- The video list is capped by a synthesis video limit (`CHAT_SYNTHESIS_VIDEO_LIMIT = 6`)
-  computed from the intent budget
-
-Final context passed to the model is truncated to `CHAT_SYNTHESIS_CONTEXT_MAX_CHARS`
-(1200 characters per source) to stay within the model's context window.
-
-### Streaming Responses
-
-Chat responses are streamed to the frontend via server-sent events:
-
-- The conversation state transitions from `pending` → `streaming` → `complete` (or
-  `failed`)
-- Each streaming chunk is forwarded as it arrives from Ollama
-- The client can reconnect to an in-progress stream after a transient disconnect
-
-Concurrent streams for the same conversation are prevented by the active chats tracker.
-Cancellation is supported mid-stream.
-
-### History Context
-
-The last 12 messages of the conversation (`CHAT_HISTORY_LIMIT`) are included in the
-prompt context for each new message. Earlier messages are excluded to keep the prompt
-within the model's context window.
-
-### Source Attribution
-
-Every assistant message includes the source chunks used for grounding:
-
-- `video_id` and `video_title`
-- `source_kind` (transcript or summary)
-- `section_title` (for summary chunks)
-- `snippet` (the excerpt shown in the UI)
-- `start_sec` (for timed transcript chunks - enables timestamp navigation)
-
-Attribution is stored with the message and displayed in the chat UI so users can trace
-claims back to the original content.
-
-### Observability
-
-When `LOGFIRE_TOKEN` is configured, the backend sends structured traces to Logfire
-covering:
-
-- query plan classification and generated queries
-- per-pass retrieval timings and candidate counts
-- context assembly and source selection
-- streaming lifecycle events (start, complete, error)
-
-Raw prompt payloads and full response bodies are not logged by default.
-
-Completed assistant messages also store a redacted `ChatTurnTrace` with plan labels,
-tool names, retrieval counts, selected-source counts, and the per-turn budget snapshot.
-It intentionally excludes prompts, retrieved excerpt text, tool outputs, and generated
-answer text.
-
-Each chat turn has a small internal budget for model calls, tool calls, and retrieval
-passes. When a turn reaches a budget, the SSE stream emits a `budget_exhausted` status
-with the redacted budget snapshot; the service then falls back to the best available
-evidence or returns a rejected assistant message when no final answer can be generated.
-
-When retrieval succeeds but the answer model is rate-limited or in cloud cooldown, chat
-returns a source-list fallback instead of ending the stream with an error. The fallback
-lists the highest-ranked grounded excerpts with citations and does not synthesize beyond
-the retrieved text.
-
----
-
-## Availability and Cooldowns
-
-The app tracks three cooldown domains:
-
-| Cooldown               | Purpose                                           |
+| Cooldown               | Used for                                          |
 | ---------------------- | ------------------------------------------------- |
 | Cloud cooldown         | backs off after cloud model rate limits           |
 | YouTube quota cooldown | suppresses repeated YouTube Data API quota errors |
 | Transcript cooldown    | slows transcript retries after rate limits        |
 
-Each cooldown tracks its own expiry. Services check the cooldown state before attempting
-work and skip to the next item rather than blocking.
-
----
-
-## Local vs Release Defaults
-
-### Local debug runs
-
-- semantic search **on** by default
-- embeddings generated when the embedding model is configured and the Ollama endpoint is
-  reachable
-- summary evaluation runs if `SUMMARY_EVALUATOR_MODEL` is set and meets policy
-
-### Release / production runs
-
-- semantic search **off** by default (explicit `SEARCH_SEMANTIC_ENABLED=true` required)
-- FTS-only search unless semantic is explicitly enabled
-- same model guard and evaluator policy as local
-
-`SEARCH_SEMANTIC_ENABLED` overrides either direction.
-
----
-
-## Text-to-Speech (TTS)
-
-dAstIll integrates with Amazon Polly to synthesize audio from summaries.
-
-### Configuration
-
-| Variable                  | Purpose                                    |
-| ------------------------- | ------------------------------------------ |
-| `POLLY_TTS_ENABLED`       | Enable TTS (default: `false`)              |
-| `POLLY_TTS_VOICE_ID`      | Polly voice ID (e.g., `Joanna`, `Matthew`) |
-| `POLLY_TTS_ENGINE`        | Engine type: `standard` or `neural`        |
-| `POLLY_TTS_OUTPUT_FORMAT` | Output format (e.g., `wav`, `pcm`)         |
-| `POLLY_TTS_SAMPLE_RATE`   | Sample rate in Hz (e.g., `8000`, `16000`)  |
-
-### Processing Pipeline
-
-1. **Markdown sanitization**: Summary text is stripped of HTML tags, markdown links are converted to plain text, and decorative characters are removed
-2. **SSML injection**: Pause markers (`<break time="..."/>`) are inserted after headings and list items for natural pacing
-3. **Chunking**: Long texts are split into chunks under 2500 characters, preserving SSML tag boundaries
-4. **Synthesis**: Each chunk is sent to Polly via SSML; returned PCM audio is concatenated
-5. **WAV wrapping**: Raw PCM is packaged into a WAV container for browser compatibility
-
-### Statistics Tracking
-
-Completed synthesis samples are recorded in the `tts_stats` `libSQL` table to estimate
-future synthesis duration based on word count and historical throughput.
-
-| Field                 | Description                              |
-| --------------------- | ---------------------------------------- |
-| `sample_count`        | Number of completed TTS generations      |
-| `total_words`         | Cumulative words processed               |
-| `total_duration_secs` | Cumulative synthesis duration in seconds |
-
----
+Services check cooldown state before attempting work and skip work that is inside an active
+cooldown window.
 
 ## Degradation Model
 
-The application prefers degraded functionality over total failure. Failures in one domain
-do not cascade to others.
+dAstIll keeps unaffected features available when model or retrieval dependencies fail.
 
-| Failure                               | Degradation                                            |
-| ------------------------------------- | ------------------------------------------------------ |
-| Summarizer unavailable                | Search and chat continue; generation queue pauses      |
-| Embedding model unavailable           | FTS-only search; chunking and S3 writes still happen   |
-| Evaluator unavailable or rate-limited | Evaluation pauses; generation and search unaffected    |
-| Reranker call fails                   | Falls back to plain RRF ordering; results still return |
-| HyDE generation fails                 | Raw query is embedded as fallback; search continues    |
-| Cloud rate limit                      | Degrades to local fallback if configured, else waits   |
-| Semantic embedding call fails         | Hybrid request falls back to FTS-only for that request |
-| Chat answer model rate-limited        | Retrieved sources are returned as a cited source list  |
+| Failure                               | Degradation                                        | Detail doc                                                          |
+| ------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------- |
+| Summarizer unavailable                | generation queue pauses; search and chat continue  | [Summarization and Evaluation](/pipelines/summarization-evaluation) |
+| Embedding model unavailable           | FTS-only search; chunking and S3 writes continue   | [Search Indexing](/pipelines/search-indexing)                       |
+| Evaluator unavailable or rate-limited | evaluation pauses; generation and search continue  | [Summarization and Evaluation](/pipelines/summarization-evaluation) |
+| Reranker call fails                   | plain RRF ordering                                 | [Search Indexing](/pipelines/search-indexing)                       |
+| HyDE generation fails                 | raw query embedding                                | [Search Indexing](/pipelines/search-indexing)                       |
+| Cloud rate limit                      | local fallback when configured, then cooldown wait | [Summarization and Evaluation](/pipelines/summarization-evaluation) |
+| Semantic embedding call fails         | FTS-only for that request                          | [Search Indexing](/pipelines/search-indexing)                       |
+| Chat answer model rate-limited        | cited source-list fallback                         | [Chat RAG](/pipelines/chat-rag)                                     |

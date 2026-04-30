@@ -1,17 +1,14 @@
----
-aside: false
----
 <script setup>
 const systemContextDiagram = String.raw`
 flowchart TB
   browser[Browser]
-  backend[Backend<br/>Rust + Axum]
   app[Product UI<br/>SvelteKit]
   docs[Docs UI<br/>VitePress]
+  backend[Backend<br/>Rust + Axum]
   sources[Content sources]
   ai[AI services]
-  asr[STT]
-  storage[Data stores]
+  asr[ASR service]
+  storage[Storage]
 
   browser --> app
   browser --> docs
@@ -25,99 +22,91 @@ flowchart TB
 const canonicalFlowDiagram = String.raw`
 flowchart TB
   source[Content source]
-  canonical[Canonical content]
+  canonical[Canonical records]
   workers[Background workers]
   projection[Search projection]
-  keyword[Keyword index<br/>local libSQL]
-  vectors[Semantic index<br/>S3 Vectors]
   retrieval[Workspace search + chat]
 
   source --> canonical
   canonical --> workers
   workers --> projection
-  projection --> keyword
-  projection --> vectors
-  keyword --> retrieval
-  vectors --> retrieval
+  projection --> retrieval
 `;
 </script>
 
-
 # System Overview
 
-## Primary Components
+## System Shape
 
-<MermaidDiagram
-  caption="High-level system context."
-  :chart="systemContextDiagram"
-/>
+<MermaidDiagram caption="High-level system context." :chart="systemContextDiagram" />
 
-### Product Frontend
+| Area             | Owns                                                         | Detail doc                                          |
+| ---------------- | ------------------------------------------------------------ | --------------------------------------------------- |
+| Product frontend | Workspace UI, mini reader, auth entry points, client state   | [Frontend and API](/architecture/frontend-and-api)  |
+| Backend          | HTTP API, durable writes, workers, AI/service adapters       | [Runtime Topology](/architecture/runtime-topology)  |
+| Data model       | Canonical records, user-scoped records, derived projections  | [Data Model](/architecture/data-model)              |
+| Content pipeline | Discovery, transcripts, summaries, evaluation, search sync   | [Content Pipeline](/pipelines/content-pipeline)     |
+| Search           | Keyword index, semantic vectors, chunking, retrieval modes   | [Search Indexing](/pipelines/search-indexing)       |
+| AI models        | Model roles, cooldowns, degradation                          | [AI Models](/pipelines/ai-models)                   |
+| Chat             | RAG retrieval, streaming, attribution, budgets               | [Chat RAG](/pipelines/chat-rag)                     |
+| Deployment       | Cloud Run, Firebase Hosting, Terraform, secrets, CI/CD       | [Deployment and Operations](/operations/deployment) |
+| Mobile shell     | Tauri Android tooling, auth handoff, APK workflow, smoke set | [Tauri Android](/operations/mobile-tauri)           |
 
-- Built on **Svelte, SvelteKit**
-- Serves mini UI + normal UI
-
-### Backend
-
-- Built with **Rust + Axum**
-- API + background worker loops
-
-### Custom STT
-
-- local ASR (Automatic Speech Recognition) service
-- Implements an OpenAI-compatible `POST /v1/audio/transcriptions` endpoint
-
-### Docs Frontend
-
-- Built with **VitePress** 
-
-### Infrastructure
-
-- **Firebase Hosting** for frontends
-- **Cloud Run** for the backend and STT
-- **AWS S3** for data storage
-- **AWS S3 Vectors** for semantic search
-- **local libSQL** for canonical video rows, user preferences, TTS statistics, and keyword search
-- **Firebase** for auth and hosting
-- **AWS IAM** with GCP Workload Identity Federation for cross-cloud auth
-- **Secret Manager** for API keys and sensitive runtime config
-
-### Deployment
-
-- **Terraform** for IaC
-- GitHub Actions for CI/CD
-
-## Repo Structure
+## Repository Map
 
 ```text
 dAstIll/
-├── backend/     Rust + Axum API, workers, S3 storage, AI service adapters
+├── backend/     Rust + Axum API, workers, storage, AI adapters
 ├── frontend/    SvelteKit product UI
 ├── docs/        VitePress documentation frontend
-└── terraform/   Cloud Run, secrets, and supporting infrastructure
+├── asr/         OpenAI-compatible podcast transcription service
+└── terraform/   Cloud Run, Hosting, IAM, secrets, and billing infrastructure
 ```
 
-## Data Flow
+## Core Flow
 
-dAstIll is split into:
+<MermaidDiagram
+  caption="Canonical content is written first. Background workers derive search state later."
+  :chart="canonicalFlowDiagram"
+/>
 
-- **application** runtime processes
-- **indexing** processes
-- **background worker** processes
+```text
+source input
+  -> canonical records
+  -> background workers
+  -> search projection
+  -> workspace search and chat
+```
 
-This keeps content flow, chunking and embedding out of normal CRUD operations.
+## Design Rules
 
-## Core Design Rules
+### Canonical Before Derived
 
-### Canonical before derived
+Transcripts, summaries, video metadata, and user-scoped state keep their own storage boundaries.
+Search chunks, keyword indexes, vector embeddings, and generated audio are derived state.
 
-Transcripts, summaries, and metadata live in canonical tables first. Search chunks and vector data are derived from those records and can be rebuilt.
+Use this rule when deciding whether a write path should update source records or rebuild a
+projection.
 
-### Async background processes
+### Backend Owns Durable Writes
 
-Transcript extraction, summary generation, summary evaluation, channel refreshes, and search projection maintenance are all driven by background loops.
+The backend owns durable writes and worker execution. Frontends call it as clients. The docs site has
+no product runtime dependency.
 
-### Local-first AI
+Use this rule when deciding where a feature should persist state, run background work, or enforce
+authorization.
 
-The runtime supports local Ollama endpoints. Prod uses Ollama Cloud.
-STT follows the same rule: use an operator-owned ASR endpoint for audio transcription if publisher transcripts are unavailable.
+### Workers Keep Heavy Work Off Request Paths
+
+Transcript extraction, summary generation, summary evaluation, channel refreshes, gap scans, and
+search indexing run through background workers.
+
+Use this rule when adding slow work, model calls, or external API calls.
+
+### AI Is Behind Service Boundaries
+
+The backend talks to Ollama-compatible model endpoints and an OpenAI-compatible ASR endpoint. Model
+selection and ASR hosting are runtime concerns, not frontend concerns.
+
+Use this rule when adding summarization, evaluation, chat, embedding, reranking, TTS, or
+transcription behavior.

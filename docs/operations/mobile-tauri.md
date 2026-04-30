@@ -48,11 +48,9 @@ Typical setup:
 ```bash
 rustup target add aarch64-linux-android armv7-linux-androideabi \
   i686-linux-android x86_64-linux-android
-
-export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
-export ANDROID_HOME="$HOME/Library/Android/sdk"
-export NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
 ```
+
+Set the Java, Android SDK, and NDK paths expected by Android tooling in your shell profile.
 
 Check that a device or emulator is available:
 
@@ -68,11 +66,9 @@ From the repo root:
 ./start_app.sh
 ```
 
-The Tauri Android shell is opt-in. To have `./start_app.sh` launch it after the local services are healthy:
-
-```bash
-START_APP_MOBILE=1 ./start_app.sh
-```
+The Tauri Android shell is opt-in. Enable the mobile launch flag in your shell before running the
+script when you want `./start_app.sh` to launch it after local services are healthy. Use
+`frontend/.env.example` for frontend key names and the script source for launch flags.
 
 If you want to run it yourself instead, use:
 
@@ -80,13 +76,16 @@ If you want to run it yourself instead, use:
 cargo tauri android dev
 ```
 
-When `.github/runtime-mode.env` is set to `APP_RUNTIME_MODE=maintenance`, `./start_app.sh` still starts the backend and serves the maintenance/minimal frontend mode so `dastill-mini` remains usable locally.
+When `.github/runtime-mode.env` enables maintenance mode, `./start_app.sh` still starts the backend
+and serves the maintenance/minimal frontend mode so `dastill-mini` remains usable locally.
 
-This assumes the backend is reachable locally and the Android app can call it through the configured `VITE_API_BASE`.
+This assumes the backend is reachable locally and the Android app can call it through the configured
+frontend API base.
 
 For local Android development, keep frontend build values in the shared/local frontend env files rather than in `start_app.sh`.
 
-The frontend also has a Tauri Android dev fallback for `http://tauri.localhost`: when `VITE_API_BASE` is unset there, it uses `http://127.0.0.1:3544`, which matches the `adb reverse` port forwarding set up by `./start_app.sh`.
+The frontend also has a Tauri Android dev fallback for `http://tauri.localhost`, matching the
+`adb reverse` port forwarding set up by `./start_app.sh`.
 
 ## Auth Handoff
 
@@ -100,7 +99,9 @@ Google blocks sign-in inside the Android WebView used by Tauri. The current app 
 
 The browser no longer polls or fetches reusable Google tokens over `GET`. The redeem step is one-shot and bound to the creator of the handoff.
 
-If your browser-hosted login page lives on a different origin than the Tauri-loaded frontend, set `PUBLIC_BROWSER_AUTH_BASE_URL` (or `VITE_BROWSER_AUTH_BASE_URL`) in the frontend env so the mobile shell opens the correct browser origin for the handoff.
+If your browser-hosted login page lives on a different origin than the Tauri-loaded frontend, set
+the browser-auth origin in the frontend env so the mobile shell opens the correct browser origin for
+the handoff. Use `frontend/.env.example` for the current key name.
 
 ## Smoke Checklist
 
@@ -154,8 +155,4 @@ It:
 - builds the Android app
 - uploads the release APK as a workflow artifact
 
-Required GitHub secrets:
-
-- `ANDROID_KEY_ALIAS`
-- `ANDROID_KEY_PASSWORD`
-- `ANDROID_KEYSTORE_B64`
+The workflow needs the Android signing secrets configured in GitHub.
