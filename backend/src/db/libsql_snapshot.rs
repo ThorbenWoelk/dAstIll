@@ -244,13 +244,14 @@ pub async fn publish_libsql_snapshot(
     db_path: &Path,
     app_version: &str,
 ) -> Result<LibsqlSnapshotManifest, StoreError> {
+    let source_state = load_source_state(s3, bucket).await?;
     checkpoint_libsql_file(conn).await?;
     let db_bytes = tokio::fs::read(db_path)
         .await
         .map_err(|err| StoreError::Other(format!("failed to read libSQL snapshot file: {err}")))?;
     let compressed = compress_gzip(&db_bytes)?;
     let sha256 = sha256_hex(&compressed);
-    let source_state = load_source_state(s3, bucket).await?;
+    ensure_source_state_stable(&source_state, &load_source_state(s3, bucket).await?)?;
     let generation = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
     let key_generation = generation.replace([':', '.'], "-");
     let snapshot_key = format!(
@@ -293,6 +294,19 @@ async fn checkpoint_libsql_file(conn: &libsql::Connection) -> Result<(), StoreEr
         .is_some()
     {}
     Ok(())
+}
+
+fn ensure_source_state_stable(
+    before: &LibsqlSnapshotSourceState,
+    after: &LibsqlSnapshotSourceState,
+) -> Result<(), StoreError> {
+    if before == after {
+        Ok(())
+    } else {
+        Err(StoreError::Other(
+            "libSQL snapshot source state changed while publishing".to_string(),
+        ))
+    }
 }
 
 async fn write_snapshot_db_file(db_path: &Path, db_bytes: &[u8]) -> Result<(), StoreError> {
@@ -499,7 +513,10 @@ fn decompress_gzip(bytes: &[u8]) -> Result<Vec<u8>, StoreError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{PrefixState, checkpoint_libsql_file, compress_gzip, decompress_gzip, sha256_hex};
+    use super::{
+        LibsqlSnapshotSourceState, PrefixState, checkpoint_libsql_file, compress_gzip,
+        decompress_gzip, ensure_source_state_stable, sha256_hex,
+    };
     use tempfile::tempdir;
 
     #[test]
@@ -550,6 +567,32 @@ mod tests {
                 fingerprint_sha256: "b".to_string(),
             }
         );
+    }
+
+    #[test]
+    fn source_state_guard_rejects_publish_when_sources_change() {
+        let original = LibsqlSnapshotSourceState {
+            videos: PrefixState {
+                key_count: 3,
+                latest_modified_epoch_ms: Some(100),
+                fingerprint_sha256: "videos-a".to_string(),
+            },
+            preferences: PrefixState {
+                key_count: 1,
+                latest_modified_epoch_ms: Some(100),
+                fingerprint_sha256: "prefs-a".to_string(),
+            },
+            tts_stats: PrefixState {
+                key_count: 1,
+                latest_modified_epoch_ms: Some(100),
+                fingerprint_sha256: "tts-a".to_string(),
+            },
+        };
+        let mut changed = original.clone();
+        changed.videos.fingerprint_sha256 = "videos-b".to_string();
+
+        assert!(ensure_source_state_stable(&original, &original).is_ok());
+        assert!(ensure_source_state_stable(&original, &changed).is_err());
     }
 
     #[tokio::test]
