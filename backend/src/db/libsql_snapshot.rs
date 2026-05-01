@@ -384,13 +384,15 @@ pub async fn publish_libsql_snapshot(
     db_path: &Path,
     app_version: &str,
 ) -> Result<LibsqlSnapshotManifest, StoreError> {
+    // Capture the generation before reading the DB file. Writes that race with this
+    // publish keep their delta records and are replayed on top of the snapshot.
+    let source_state = load_source_state(s3, bucket).await?;
     checkpoint_libsql_file(conn).await?;
     let db_bytes = tokio::fs::read(db_path)
         .await
         .map_err(|err| StoreError::Other(format!("failed to read libSQL snapshot file: {err}")))?;
     let compressed = compress_gzip(&db_bytes)?;
     let sha256 = sha256_hex(&compressed);
-    let source_state = load_source_state(s3, bucket).await?;
     let generation = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
     let key_generation = generation.replace([':', '.'], "-");
     let snapshot_key = format!(
