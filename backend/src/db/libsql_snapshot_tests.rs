@@ -8,6 +8,29 @@ use chrono::TimeZone;
 use tempfile::tempdir;
 
 #[test]
+fn publish_loads_source_state_before_reading_snapshot_file() {
+    let source = include_str!("libsql_snapshot.rs");
+    let publish_start = source
+        .find("pub async fn publish_libsql_snapshot")
+        .expect("publish function exists");
+    let publish_source = &source[publish_start..];
+    let source_state = publish_source
+        .find("load_source_state")
+        .expect("publish loads source state");
+    let checkpoint = publish_source
+        .find("checkpoint_libsql_file")
+        .expect("publish checkpoints snapshot file");
+    let file_read = publish_source
+        .find("tokio::fs::read")
+        .expect("publish reads snapshot file");
+
+    assert!(
+        source_state < checkpoint && source_state < file_read,
+        "source generation must be captured before reading the DB file so concurrent writes are replayed instead of pruned"
+    );
+}
+
+#[test]
 fn gzip_round_trip_preserves_snapshot_bytes() {
     let original = b"sqlite bytes";
     let compressed = compress_gzip(original).expect("compress");
