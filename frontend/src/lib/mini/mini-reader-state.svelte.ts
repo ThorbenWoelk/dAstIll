@@ -15,6 +15,7 @@ import type { MiniReader, MiniSummaryItem } from "$lib/transport-types";
 import { renderMarkdown } from "$lib/utils/markdown";
 import { createHomeWorkspaceHighlightController } from "$lib/workspace/home-workspace-highlight-controller.svelte";
 import { createVocabularyController } from "$lib/workspace/vocabulary-controller.svelte";
+import type { VocabularyReplacement } from "$lib/bindings/VocabularyReplacement";
 
 export const MINI_DEFAULT_SHOW_UNREAD_ONLY = true;
 
@@ -94,6 +95,18 @@ export function selectMiniSummaryHighlights(
   );
 }
 
+export async function saveMiniVocabularyPreferences(
+  replacements: VocabularyReplacement[],
+): Promise<UserPreferences> {
+  const current = await getPreferences();
+  const next = {
+    ...current,
+    vocabulary_replacements: replacements,
+  };
+  await savePreferences(next);
+  return next;
+}
+
 export class MiniReaderState {
   reader = $state<MiniReader | null>(null);
   loading = $state(false);
@@ -129,16 +142,9 @@ export class MiniReaderState {
       this.error = message;
     },
     onSave: async (replacements) => {
-      const current = this.preferencesLoaded
-        ? this.preferences
-        : await this.loadPreferences();
-      const next = {
-        ...current,
-        vocabulary_replacements: replacements,
-      };
+      const next = await saveMiniVocabularyPreferences(replacements);
       this.preferences = next;
       this.preferencesLoaded = true;
-      await savePreferences(next);
     },
   });
 

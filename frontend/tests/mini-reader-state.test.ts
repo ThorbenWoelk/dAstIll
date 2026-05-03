@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 
 import type { MiniSummaryItem } from "../src/lib/transport-types";
 import {
@@ -7,9 +7,18 @@ import {
   findNextUnreadVideoId,
   MINI_DEFAULT_SHOW_UNREAD_ONLY,
   miniChannelIsCaughtUp,
+  saveMiniVocabularyPreferences,
   selectMiniSummaryHighlights,
 } from "../src/lib/mini/mini-reader-state.svelte";
-import type { Highlight } from "../src/lib/types";
+import { resetApiCacheForTests } from "../src/lib/api";
+import type { Highlight, UserPreferences } from "../src/lib/types";
+
+const originalFetch = globalThis.fetch;
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+  resetApiCacheForTests();
+});
 
 function makeSummary(
   videoId: string,
@@ -147,5 +156,51 @@ describe("selectMiniSummaryHighlights", () => {
     expect(selectMiniSummaryHighlights("video-1", highlightsByVideoId)).toEqual(
       [highlightsByVideoId["video-1"][1]],
     );
+  });
+});
+
+describe("saveMiniVocabularyPreferences", () => {
+  it("merges vocabulary changes into fresh preferences before saving", async () => {
+    const serverPreferences: UserPreferences = {
+      channel_order: ["fresh-a", "fresh-b"],
+      channel_sort_mode: "newest",
+      vocabulary_replacements: [
+        {
+          from: "old",
+          to: "older",
+          added_at: "2026-04-16T10:00:00.000Z",
+        },
+      ],
+    };
+    const nextReplacements: UserPreferences["vocabulary_replacements"] = [
+      {
+        from: "LLM",
+        to: "language model",
+        added_at: "2026-04-16T10:01:00.000Z",
+      },
+    ];
+    let savedPayload: UserPreferences | null = null;
+
+    globalThis.fetch = (async (input, init) => {
+      const url = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+
+      if (url.includes("/api/preferences") && method === "GET") {
+        return new Response(JSON.stringify(serverPreferences), { status: 200 });
+      }
+      if (url.includes("/api/preferences") && method === "PUT") {
+        savedPayload = JSON.parse(String(init?.body)) as UserPreferences;
+        return new Response(null, { status: 204 });
+      }
+      throw new Error(`Unexpected request: ${method} ${url}`);
+    }) as typeof fetch;
+
+    const result = await saveMiniVocabularyPreferences(nextReplacements);
+
+    expect(result).toEqual({
+      ...serverPreferences,
+      vocabulary_replacements: nextReplacements,
+    });
+    expect(savedPayload).toEqual(result);
   });
 });
