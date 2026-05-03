@@ -25,8 +25,8 @@ fn publish_loads_source_state_before_reading_snapshot_file() {
         .expect("publish reads snapshot file");
 
     assert!(
-        source_state < checkpoint && source_state < file_read,
-        "source generation must be captured before reading the DB file so concurrent writes are replayed instead of pruned"
+        source_state < checkpoint && checkpoint < file_read,
+        "snapshot publish must capture source generation before checkpointing, then checkpoint before reading the DB file"
     );
 }
 
