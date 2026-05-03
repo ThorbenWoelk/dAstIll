@@ -1,4 +1,5 @@
 import { untrack } from "svelte";
+import { SvelteSet } from "svelte/reactivity";
 import {
   getChannelSnapshot,
   listVideos,
@@ -35,7 +36,10 @@ import {
   resolveAcknowledgedParam,
   type AcknowledgedFilter,
 } from "$lib/workspace/types";
-import type { WorkspaceSidebarPreviewScope } from "$lib/workspace/component-props";
+import type {
+  WorkspaceSidebarPreviewProps,
+  WorkspaceSidebarPreviewScope,
+} from "$lib/workspace/component-props";
 import {
   resolveSyncDateInputValue,
   toIsoDateStart,
@@ -100,6 +104,7 @@ type SidebarPreviewControllerOptions = {
   getQueueVideoRefreshTick: () => number;
   getVideoAcknowledgeSync: () => VideoAcknowledgeSync | null;
   getPreviewSessionKey: () => string | undefined;
+  onChannelPreviewSnapshotLoaded?: WorkspaceSidebarPreviewProps["onChannelPreviewSnapshotLoaded"];
   onChannelUpdated?: (channel: Channel) => void | Promise<void>;
   onChannelSyncDateSaved?: (channelId: string) => void | Promise<void>;
 };
@@ -158,6 +163,7 @@ export function createSidebarPreviewController(
   let syncDatePickerChannelId = $state<string | null>(null);
   let previewWarmupSeq = 0;
   let userChangedExpandedState = false;
+  const manuallyCollapsedChannelIds = new SvelteSet<string>();
 
   function channelListEmptyCaption(channelVideoCount: number | null): string {
     if (channelVideoCount === null) {
@@ -368,9 +374,9 @@ export function createSidebarPreviewController(
     state.filterKey = filterKey;
     state.requestKey = requestKey;
 
-    const acknowledged = resolveAcknowledgedParam(
-      options.getAcknowledgedFilter(),
-    );
+    const videoTypeFilter = options.getVideoTypeFilter();
+    const acknowledgedFilter = options.getAcknowledgedFilter();
+    const acknowledged = resolveAcknowledgedParam(acknowledgedFilter);
     const pageLimit =
       mode === "paged" ? EXPANDED_PAGE_SIZE : PREVIEW_FETCH_LIMIT;
 
@@ -384,7 +390,7 @@ export function createSidebarPreviewController(
         const snapshot = await getChannelSnapshot(channel.id, {
           limit: pageLimit,
           offset: 0,
-          videoType: options.getVideoTypeFilter(),
+          videoType: videoTypeFilter,
           acknowledged,
           bypassCache: force,
         });
@@ -407,9 +413,20 @@ export function createSidebarPreviewController(
           channel,
           snapshot.sync_depth,
         );
+        if (
+          mode === "preview" &&
+          current.videos.length > 0 &&
+          !manuallyCollapsedChannelIds.has(channel.id)
+        ) {
+          current.expanded = true;
+        }
         if (mode !== "paged") {
           current.scrollTop = 0;
         }
+        void options.onChannelPreviewSnapshotLoaded?.(channel.id, snapshot, {
+          videoTypeFilter,
+          acknowledgedFilter,
+        });
         return;
       }
 
@@ -417,7 +434,7 @@ export function createSidebarPreviewController(
         channel.id,
         pageLimit,
         requestOffset,
-        options.getVideoTypeFilter(),
+        videoTypeFilter,
         acknowledged,
         false,
         force,
@@ -454,6 +471,7 @@ export function createSidebarPreviewController(
     const state = ensureChannelVideoCollection(channel.id);
     userChangedExpandedState = true;
     if (state.expanded) {
+      manuallyCollapsedChannelIds.add(channel.id);
       const selectedChannelId = options.getSelectedChannelId();
       const selectedVideoId = options.getSelectedVideoId();
       if (selectedChannelId === channel.id && selectedVideoId) {
@@ -464,6 +482,7 @@ export function createSidebarPreviewController(
     }
 
     userCollapsedSelectionKey = null;
+    manuallyCollapsedChannelIds.delete(channel.id);
     setPreviewChannelExpanded(channel.id, true);
     const nextState = ensureChannelVideoCollection(channel.id);
     nextState.scrollTop = 0;

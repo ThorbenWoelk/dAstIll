@@ -103,6 +103,7 @@
     initialChannelPreviews = {} as Record<string, ChannelSnapshot>,
     initialChannelPreviewsFilterKey = undefined as string | undefined,
     previewScope = { kind: "default" } as WorkspaceSidebarPreviewScope,
+    onChannelPreviewSnapshotLoaded = undefined,
     /**
      * When bumped (download queue), forces reload of expanded per-channel queue lists.
      */
@@ -145,6 +146,7 @@
      */
     initialChannelPreviewsFilterKey?: string;
     previewScope?: WorkspaceSidebarPreviewProps["previewScope"];
+    onChannelPreviewSnapshotLoaded?: WorkspaceSidebarPreviewProps["onChannelPreviewSnapshotLoaded"];
     queueVideoRefreshTick?: number;
     videoAcknowledgeSync?: {
       seq: number;
@@ -304,6 +306,8 @@
     getQueueVideoRefreshTick: () => queueVideoRefreshTick,
     getVideoAcknowledgeSync: () => videoAcknowledgeSync,
     getPreviewSessionKey: () => scopedPreviewSessionKey,
+    onChannelPreviewSnapshotLoaded: (channelId, snapshot, context) =>
+      onChannelPreviewSnapshotLoaded?.(channelId, snapshot, context),
     onChannelUpdated: (channel) => onChannelUpdated(channel),
     onChannelSyncDateSaved: (channelId) => onChannelSyncDateSaved?.(channelId),
   });

@@ -200,7 +200,7 @@ test("channel row chevron collapses the selected channel without reopening", asy
   await expect(selectedVideo).toBeHidden();
 });
 
-test("channel row chevron expands a different channel without collapsing the selected channel", async ({
+test("background loading populates a different channel without collapsing the selected channel", async ({
   page,
 }) => {
   const sidebar = await openSeededWorkspace(
@@ -216,11 +216,10 @@ test("channel row chevron expands a different channel without collapsing the sel
     .getByText("Beta workspace fixture video");
 
   await expect(alphaVideo).toBeVisible({ timeout: READY_MS });
-  await dispatchVisibleClick(
-    betaChannelRow.getByRole("button", { name: "Expand channel" }),
-  );
-
   await expect(betaVideo).toBeVisible({ timeout: READY_MS });
+  await expect(
+    betaChannelRow.getByRole("button", { name: "Collapse channel" }),
+  ).toBeVisible();
   await expect(alphaVideo).toBeVisible();
 
   await page.waitForTimeout(250);
@@ -245,9 +244,6 @@ test("channel row chevron collapses one channel without touching another expande
     .getByText("Beta workspace fixture video");
 
   await expect(alphaVideo).toBeVisible({ timeout: READY_MS });
-  await dispatchVisibleClick(
-    betaChannelRow.getByRole("button", { name: "Expand channel" }),
-  );
   await expect(betaVideo).toBeVisible({ timeout: READY_MS });
 
   await dispatchVisibleClick(

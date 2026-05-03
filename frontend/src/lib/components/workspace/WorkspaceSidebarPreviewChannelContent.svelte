@@ -87,8 +87,12 @@
       ></div>
     {/if}
 
-    {#each renderedCollection.videos as video (video.id)}
-      <div use:scrollIntoViewWhenSelected={selectedVideoId === video.id}>
+    {#each renderedCollection.videos as video, index (video.id)}
+      <div
+        class="preview-video-enter"
+        style={`animation-delay: ${Math.min(index, 8) * 80}ms;`}
+        use:scrollIntoViewWhenSelected={selectedVideoId === video.id}
+      >
         <WorkspaceSidebarVideoRow
           {video}
           selected={selectedVideoId === video.id}
@@ -148,3 +152,26 @@
     {/if}
   {/if}
 </div>
+
+<style>
+  .preview-video-enter {
+    opacity: 0;
+    transform: translateY(6px);
+    animation: preview-video-enter 320ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  @keyframes preview-video-enter {
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .preview-video-enter {
+      opacity: 1;
+      transform: none;
+      animation: none;
+    }
+  }
+</style>

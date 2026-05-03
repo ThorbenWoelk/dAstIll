@@ -99,6 +99,14 @@ export interface WorkspaceSidebarPreviewProps {
   initialChannelPreviewsFilterKey?: string | undefined;
   previewScope?: WorkspaceSidebarPreviewScope;
   previewSessionKey?: string | undefined;
+  onChannelPreviewSnapshotLoaded?: (
+    channelId: string,
+    snapshot: ChannelSnapshot,
+    context: {
+      videoTypeFilter: VideoTypeFilter;
+      acknowledgedFilter: AcknowledgedFilter;
+    },
+  ) => void | Promise<void>;
 }
 
 export interface WorkspaceContentSelection {
