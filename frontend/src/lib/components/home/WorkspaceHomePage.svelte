@@ -92,6 +92,7 @@
       videoActions={hw.sidebarState.videoActions}
       videoAcknowledgeSync={hw.videoAcknowledgeSync}
       onChannelSyncDateSaved={hw.handleChannelSyncDateSaved}
+      onChannelPreviewSnapshotLoaded={hw.cacheChannelPreviewSnapshot}
     />
   {/snippet}
   {#snippet mobileTopBar()}

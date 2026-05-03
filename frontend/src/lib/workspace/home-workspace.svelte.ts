@@ -720,6 +720,7 @@ export function createHomeWorkspacePage() {
       return pageState.videoAcknowledgeSync;
     },
     handleChannelSyncDateSaved: dataController.handleChannelSyncDateSaved,
+    cacheChannelPreviewSnapshot: dataController.cacheChannelPreviewSnapshot,
     handleDeleteChannel,
     get showDeleteAccessPrompt() {
       return pageState.showDeleteAccessPrompt;

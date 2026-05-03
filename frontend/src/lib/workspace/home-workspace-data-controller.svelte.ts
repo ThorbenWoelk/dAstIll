@@ -104,6 +104,55 @@ export function createHomeWorkspaceDataController(options: {
     });
   }
 
+  function buildChannelViewKeyForFilters(
+    channelId: string,
+    videoTypeFilter: VideoTypeFilter,
+    acknowledgedFilter: AcknowledgedFilter,
+  ) {
+    return buildHomeWorkspaceChannelViewCacheKey({
+      channelId,
+      workspaceCacheScopeKey: options.getWorkspaceCacheScopeKey(),
+      videoTypeFilter,
+      acknowledgedFilter,
+    });
+  }
+
+  function cacheChannelPreviewSnapshot(
+    channelId: string,
+    snapshot: ChannelSnapshot,
+    context: {
+      videoTypeFilter: VideoTypeFilter;
+      acknowledgedFilter: AcknowledgedFilter;
+    },
+  ) {
+    const snapshotState = resolveSnapshotPageState(snapshot);
+    const acknowledged = resolveAcknowledgedParam(context.acknowledgedFilter);
+    const viewKey = buildChannelViewKeyForFilters(
+      channelId,
+      context.videoTypeFilter,
+      context.acknowledgedFilter,
+    );
+
+    options.channelVideoStateCache.set(viewKey, {
+      videos: cloneVideos(snapshotState.videos),
+      offset: snapshotState.next_offset ?? snapshotState.videos.length,
+      hasMore: snapshotState.has_more,
+      historyExhausted: false,
+      backfillingHistory: false,
+      allowLoadedVideoSyncDepthOverride: false,
+      syncDepth: cloneSyncDepthState(snapshotState.sync_depth),
+    });
+    void putCachedViewSnapshot(
+      buildWorkspaceSnapshotCacheKey(
+        channelId,
+        context.videoTypeFilter,
+        acknowledged,
+      ),
+      snapshot,
+      options.getWorkspaceCacheScopeKey(),
+    );
+  }
+
   function restoreCachedChannelVideoState(state: CachedChannelVideoState) {
     sidebarState.resetVideoListState({
       videos: cloneVideos(state.videos),
@@ -881,6 +930,7 @@ export function createHomeWorkspaceDataController(options: {
 
   return {
     buildWorkspaceSnapshotCacheKey,
+    cacheChannelPreviewSnapshot,
     handleChannelSyncDateSaved,
     clearSelectedVideoState,
     handleSearchResultSelection,
