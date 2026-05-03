@@ -37,7 +37,7 @@ bun run preview
 
 ## From The Repo Root
 
-The canonical full-stack local entrypoint starts the product frontend, backend, and docs together:
+The canonical full-stack local entrypoint starts the frontend, backend, and docs together:
 
 ```bash
 ./start_app.sh

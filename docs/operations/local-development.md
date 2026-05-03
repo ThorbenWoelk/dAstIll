@@ -76,7 +76,7 @@ Default docs URL:
 http://localhost:4173
 ```
 
-The product app header includes a `Docs` link. In local development it falls back to
+The app header includes a `Docs` link. In local development it falls back to
 `http://localhost:4173`. Deployed frontend builds read the docs URL from frontend build config.
 
 ## Smoke Test Inputs
@@ -125,7 +125,7 @@ Keep those example files as the place for exhaustive keys, defaults, and inline 
 
 ## Runtime Modes
 
-`./start_app.sh` serves the live product frontend by default.
+`./start_app.sh` serves the live frontend by default.
 
 There are two maintenance paths:
 

@@ -38,7 +38,7 @@ const requestTrustDiagram = String.raw`
 flowchart TB
   browser[Browser]
   tauri[Tauri Android]
-  ui[Product UI]
+  ui[UI]
   direct[Firebase bearer token]
   proxy[Trusted proxy headers]
   backend[Axum backend]
@@ -60,29 +60,37 @@ flowchart TD
   library[Library + content APIs]
   search[Search APIs]
   chat[Chat + SSE APIs]
-  user[Highlights + preferences]
+  auth[Auth + mobile handoff APIs]
+  user[User state APIs]
+  analytics[Analytics ingest APIs]
 
   ui --> library
   ui --> search
   ui --> chat
+  ui --> auth
   ui --> user
+  ui --> analytics
 `;
 </script>
 
-## Boundary
+## API Design
+
+Web and native mobile clients call the backend directly through the configured API base. No Backend for Frontend (BFF).
 
 <MermaidDiagram
   caption="Route components call the shared API client, which reaches Axum handlers. Handlers delegate durable work to storage, services, and workers."
   :chart="frontendBoundaryDiagram"
 />
 
-The product frontend does not use a SvelteKit API route layer for normal backend traffic. Browser and
-Tauri clients call the Rust backend directly through the configured API base.
+Most frontend HTTP requests go through `frontend/src/lib/api.ts`, which wraps the shared transport
+helpers in `frontend/src/lib/api-client.ts`.
 
-Frontend request code is centralized in `frontend/src/lib/api.ts`. Chat and search-status live
-updates use `EventSource`.
+Search-status updates use a native `EventSource` stream from `/api/search/status/stream`.
 
-## Product Routes
+Chat replies use server-sent events over `fetch` as it supports authenticated requests, 
+streaming `POST` responses, cancellation, and reconnect/resume for an active conversation.
+
+## Routing
 
 | Route             | Purpose                                                      |
 | ----------------- | ------------------------------------------------------------ |
@@ -93,7 +101,7 @@ updates use `EventSource`.
 | `/mini`           | Text-first reader for summaries and source content           |
 | `/chat`           | RAG conversations                                            |
 | `/vocabulary`     | Custom word replacements for summaries                       |
-| `/login`          | Firebase sign-in, guest continuation, mobile browser handoff |
+| `/login`          | Sign-in, guest continuation, mobile browser handoff          |
 | `/logout`         | Session sign-out                                             |
 
 ## Workspace Bootstrap
@@ -123,20 +131,6 @@ payload lacks a usable selected-channel snapshot, the frontend fetches
 `/api/channels/{id}/snapshot` and then loads transcript, summary, and video info for the selected
 video.
 
-## View Models
-
-API responses intentionally combine storage records into UI-ready view models.
-
-| Response area | View-model behavior                                                             |
-| ------------- | ------------------------------------------------------------------------------- |
-| Channels      | canonical channel data plus caller-specific subscription state                  |
-| Videos        | canonical video row plus caller-specific `acknowledged` state                   |
-| Highlights    | per-user highlight records grouped for route display                            |
-| Chat          | persistent conversations for signed-in users; ephemeral path for signed-out use |
-| Search        | grouped video results with transcript/summary snippets and status metadata      |
-
-Durable ownership for these records is documented in [Data Model](/architecture/data-model).
-
 ## Request Trust
 
 <MermaidDiagram
@@ -148,7 +142,7 @@ The backend accepts two trust modes:
 
 | Mode          | Inputs                                                                 | Used by                        |
 | ------------- | ---------------------------------------------------------------------- | ------------------------------ |
-| Direct auth   | `Authorization: Bearer <firebase-id-token>`                            | Browser and Tauri product UI   |
+| Direct auth   | `Authorization: Bearer <firebase-id-token>`                            | Browser frontend and Tauri UI  |
 | Trusted proxy | `x-dastill-proxy-auth` plus `x-dastill-auth-state`, role, and user ids | Trusted first-party automation |
 
 Every protected request resolves an `AccessContext` before channel, video, search, chat, or
@@ -160,7 +154,7 @@ does not write persistent conversation records.
 ## API Families
 
 <MermaidDiagram
-  caption="User-facing request families stay separated by concern: library/content APIs, search APIs, chat SSE APIs, and user-state APIs terminate at distinct handler boundaries."
+  caption="User-facing request families stay separated by concern: library/content APIs, search APIs, chat SSE APIs, auth/mobile-handoff APIs, user-state APIs, and analytics ingest APIs terminate at distinct handler boundaries."
   :chart="apiFamiliesDiagram"
 />
 
@@ -194,27 +188,32 @@ does not write persistent conversation records.
 - create, poll, complete, and delete Android mobile-auth handoff sessions
 - support system-browser Google sign-in for the Tauri Android shell
 
-### User State And Analytics
+### User State
 
-- create and delete highlights
-- list highlights by video or grouped route view
-- get and save preferences
-- ingest frontend analytics events in bounded batches
+- highlight listing, creation, and deletion
+- route-level highlight grouping
+- user preference loading and saving
 
-## Handler Boundaries
+### Analytics
 
-Backend handler modules are split by concern:
+- bounded frontend analytics event ingest
 
-| Handler         | Boundary                                         |
-| --------------- | ------------------------------------------------ |
-| `auth.rs`       | Android mobile-auth handoff session lifecycle    |
-| `channels.rs`   | channel CRUD, sync, refresh, backfill, bootstrap |
-| `videos.rs`     | video listing, video info, acknowledged state    |
-| `content.rs`    | transcripts, summaries, summary audio, AI health |
-| `highlights.rs` | highlight CRUD                                   |
-| `search.rs`     | search queries, status, status stream, rebuild   |
-| `chat.rs`       | conversations, message streaming, RAG retrieval  |
-| `query.rs`      | shared filter and pagination query parameters    |
+## Backend Handlers
+
+Backend handler modules group routes by concern:
+
+| Handler          | Routes                                           |
+| ---------------- | ------------------------------------------------ |
+| `auth.rs`        | Android mobile-auth handoff session lifecycle    |
+| `channels.rs`    | channel CRUD, sync, refresh, backfill, bootstrap |
+| `videos.rs`      | video listing, video info, acknowledged state    |
+| `content.rs`     | transcripts, summaries, summary audio, AI health |
+| `highlights.rs`  | highlight CRUD                                   |
+| `preferences.rs` | user preferences                                 |
+| `analytics.rs`   | analytics event ingest                           |
+| `search.rs`      | search queries, status, status stream, rebuild   |
+| `chat.rs`        | conversations, message streaming, RAG retrieval  |
+| `query.rs`       | shared filter and pagination query parameters    |
 
 Handlers orchestrate request-level work. Durable logic primarily lives in:
 
@@ -225,7 +224,7 @@ Handlers orchestrate request-level work. Durable logic primarily lives in:
 ## Contract Style
 
 The frontend and backend communicate through typed JSON payloads plus SSE streams. They do not use
-GraphQL or SvelteKit server actions for product backend calls.
+GraphQL or SvelteKit server actions for backend calls.
 
 The live backend OpenAPI document is the local debugging source of truth:
 

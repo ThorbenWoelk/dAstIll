@@ -166,4 +166,4 @@ failures, and transcript dependency failures each have their own cooldown tracke
 
 ## Client Processes
 
-The product frontend and Tauri shell call the backend through the configured API base.
+The frontend and Tauri shell call the backend through the configured API base.

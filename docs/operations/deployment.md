@@ -8,7 +8,7 @@ dAstIll deploys these surfaces:
 | ----------- | ---------------- | ------------------------------- |
 | Backend API | Cloud Run        | `backend/Dockerfile`            |
 | Podcast ASR | Cloud Run        | `asr/Dockerfile`                |
-| Product UI  | Firebase Hosting | `frontend/build`                |
+| Frontend UI | Firebase Hosting | `frontend/build`                |
 | Docs UI     | Firebase Hosting | `docs/.vitepress/dist`          |
 | Android APK | GitHub artifact  | `.github/workflows/android.yml` |
 
@@ -21,7 +21,7 @@ Terraform manages:
 
 - Cloud Run backend service
 - optional Cloud Run podcast ASR service inputs
-- Firebase project resources, web app, product Hosting, and docs Hosting
+- Firebase project resources, web app, frontend Hosting, and docs Hosting
 - GCP service accounts and IAM
 - GCP Secret Manager secret containers and IAM bindings
 - AWS S3 bucket for data storage
@@ -151,7 +151,7 @@ Use `backend/.env.example` and `frontend/.env.example` for the current key names
 
 ## Firebase Auth
 
-The product frontend uses Firebase Auth in the browser and in the Tauri WebView. Signed-in requests
+The frontend uses Firebase Auth in the browser and in the Tauri WebView. Signed-in requests
 send the Firebase ID token directly to the backend as `Authorization: Bearer <token>`.
 
 Terraform creates Firebase project resources, the web app, secret containers, and IAM. The infra
@@ -175,7 +175,7 @@ managed additions.
 
 `.github/runtime-mode.env` controls release posture.
 
-When release maintenance mode is enabled, CI builds the product frontend in maintenance mode. The
+When release maintenance mode is enabled, CI builds the frontend in maintenance mode. The
 backend still validates and deploys so `dastill-mini` remains available.
 
 ## Backend Runtime Boundary
@@ -223,7 +223,7 @@ Content-pipeline behavior is owned by [Content Pipeline](/pipelines/content-pipe
 The frontend and docs are static Firebase Hosting targets. There are no frontend or docs runtime
 containers in production.
 
-The product frontend links to the docs site through build-time frontend config.
+The frontend links to the docs site through build-time frontend config.
 
 Android release APKs are built by `.github/workflows/android.yml`. The workflow resolves deployed
 backend/docs URLs and Firebase frontend build values before running `cargo tauri android build`.
