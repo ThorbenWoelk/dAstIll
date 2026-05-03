@@ -23,9 +23,11 @@ In `per_channel_preview` mode (Workspace home and Highlights sidebar):
 
 1. The expanded preview list flows directly into the outer sidebar scroller. No inner `overflow-y-auto` and no `max-h` cap on the preview container.
 2. The expanded channel row uses `position: sticky; top: 0` against the outer sidebar scroller, so the channel header stays visible while its preview scrolls past.
-3. Expanding a channel collapses any other expanded channel in the same sidebar instance. At most one preview is expanded at any time.
+3. Expanding a channel into the full paged list collapses any other channel that was in paged mode. At most one channel has `loadedMode === "paged"` at any time. Other channels keep showing their normal 5-video preview snippets.
 4. The "Load more" button at the bottom of the paged collection remains. Infinite scroll inside a capped container is removed along with the cap.
 5. Virtualization that previously read the inner container's `scrollTop` is updated to read the outer sidebar scroller's `scrollTop`, or the virtualization threshold is adjusted so virtualization is only triggered by the outer scroll position. Performance for large paged collections (hundreds of items) must not regress.
+6. The inline "Loading channels" status row above the channel list is removed. Initial load already shows a skeleton list; the secondary status row is redundant.
+7. Collapsing a paged channel via its sticky chevron anchors the channel row back to the top of the outer sidebar scroller (smooth `scrollTo`). Without this, the row vanishes above the viewport because the document shrinks while outer `scrollTop` stays put.
 
 ## Non-Goals
 

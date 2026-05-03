@@ -246,6 +246,6 @@ Use the live OpenAPI URL as the source of truth during debugging. It reflects th
 The checked-in `backend/openapi.postman.yaml` file is only a snapshot artifact and should not be
 treated as the authoritative contract for local debugging.
 
-## Tauri Android
+## Android
 
-The Android shell is covered in [Tauri Android](/operations/mobile-tauri).
+The Android shell is covered in [Android Operations](/operations/mobile-tauri).

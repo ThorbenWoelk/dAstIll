@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 
 import {
   clearSidebarPreviewSession,
+  demoteOtherPagedSidebarPreviewCollections,
   getSidebarPreviewSession,
   pruneSidebarPreviewCollections,
   resolveSidebarPreviewSessionKey,
@@ -183,5 +184,34 @@ describe("sidebar preview session", () => {
 
     expect(collections["channel-a"]?.expanded).toBe(true);
     expect(collections["channel-b"]?.expanded).toBe(false);
+  });
+
+  it("demotes other paged collections to preview while preserving the active channel", () => {
+    const collections: Record<
+      string,
+      SidebarPreviewCollectionSnapshot & { scrollTop?: number }
+    > = {
+      "channel-a": {
+        ...makeCollection({ loadedMode: "paged", expanded: true }),
+        scrollTop: 320,
+      },
+      "channel-b": {
+        ...makeCollection({ loadedMode: "paged", expanded: true }),
+        scrollTop: 80,
+      },
+      "channel-c": makeCollection({ loadedMode: "preview", expanded: true }),
+    };
+
+    demoteOtherPagedSidebarPreviewCollections(collections, "channel-b");
+
+    expect(collections["channel-a"]?.loadedMode).toBe("preview");
+    expect(collections["channel-a"]?.scrollTop).toBe(0);
+    expect(collections["channel-a"]?.expanded).toBe(true);
+
+    expect(collections["channel-b"]?.loadedMode).toBe("paged");
+    expect(collections["channel-b"]?.scrollTop).toBe(80);
+
+    expect(collections["channel-c"]?.loadedMode).toBe("preview");
+    expect(collections["channel-c"]?.expanded).toBe(true);
   });
 });

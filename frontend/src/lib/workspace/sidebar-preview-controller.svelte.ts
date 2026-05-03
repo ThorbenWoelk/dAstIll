@@ -20,11 +20,11 @@ import {
   filterVideosByAcknowledged,
   filterVideosByType,
   resolveInitialPreviewExpandedChannelId,
-  resolveVirtualWindow,
   shouldForceReloadMissingSelectedVideo,
   shouldLoadAllChannelVideosForSelection,
 } from "$lib/workspace/route-helpers";
 import {
+  demoteOtherPagedSidebarPreviewCollections,
   getSidebarPreviewSession,
   pruneSidebarPreviewCollections,
   resolvePreferredExpandedSidebarPreviewCollectionId,
@@ -48,10 +48,6 @@ import {
 const PREVIEW_VISIBLE_VIDEO_COUNT = 5;
 const PREVIEW_FETCH_LIMIT = PREVIEW_VISIBLE_VIDEO_COUNT + 1;
 const EXPANDED_PAGE_SIZE = 30;
-const VIRTUALIZATION_THRESHOLD = 24;
-const VIRTUALIZED_ROW_HEIGHT = 72;
-const VIRTUALIZED_OVERSCAN = 8;
-const VIRTUALIZED_VIEWPORT_HEIGHT = 336;
 const PREVIEW_WARMUP_CONCURRENCY = 2;
 
 type ChannelVideoCollectionLoadMode = "preview" | "paged";
@@ -244,6 +240,13 @@ export function createSidebarPreviewController(
     );
   }
 
+  function demoteOtherPagedCollections(exceptChannelId: string) {
+    demoteOtherPagedSidebarPreviewCollections(
+      channelVideoCollections,
+      exceptChannelId,
+    );
+  }
+
   function resolveVisibleCollectionVideos(
     collection: ChannelVideoCollectionState,
   ): Video[] {
@@ -257,49 +260,11 @@ export function createSidebarPreviewController(
   function resolveRenderedCollectionVideos(
     collection: ChannelVideoCollectionState,
   ): RenderedCollectionVideos {
-    const visibleVideos = resolveVisibleCollectionVideos(collection);
-    if (
-      collection.loadedMode !== "paged" ||
-      visibleVideos.length <= VIRTUALIZATION_THRESHOLD
-    ) {
-      return {
-        videos: visibleVideos,
-        topSpacer: 0,
-        bottomSpacer: 0,
-        virtualized: false,
-      };
-    }
-
-    const selectedVideoId = options.getSelectedVideoId();
-    const selectedIndex = selectedVideoId
-      ? visibleVideos.findIndex((video) => video.id === selectedVideoId)
-      : -1;
-    const window = resolveVirtualWindow({
-      itemCount: visibleVideos.length,
-      itemHeight: VIRTUALIZED_ROW_HEIGHT,
-      viewportHeight: VIRTUALIZED_VIEWPORT_HEIGHT,
-      scrollTop: collection.scrollTop,
-      overscan: VIRTUALIZED_OVERSCAN,
-    });
-    let start = window.startIndex;
-    let end = window.endIndex;
-
-    if (selectedIndex >= 0 && (selectedIndex < start || selectedIndex >= end)) {
-      const renderCount = end - start;
-      start = Math.max(0, selectedIndex - VIRTUALIZED_OVERSCAN);
-      end = Math.min(visibleVideos.length, start + renderCount);
-    }
-
     return {
-      videos: visibleVideos.slice(start, end),
-      topSpacer: window.offsetTop,
-      bottomSpacer: Math.max(
-        0,
-        window.totalHeight -
-          window.offsetTop -
-          (end - start) * VIRTUALIZED_ROW_HEIGHT,
-      ),
-      virtualized: true,
+      videos: resolveVisibleCollectionVideos(collection),
+      topSpacer: 0,
+      bottomSpacer: 0,
+      virtualized: false,
     };
   }
 
@@ -399,6 +364,9 @@ export function createSidebarPreviewController(
           return;
         }
 
+        if (mode === "paged") {
+          demoteOtherPagedCollections(channel.id);
+        }
         current.videos = constrainVideosToChannel(channel.id, snapshot.videos);
         current.loadedMode = mode;
         current.loadingInitial = false;
@@ -470,6 +438,7 @@ export function createSidebarPreviewController(
   async function toggleChannelVideoCollection(channel: Channel) {
     const state = ensureChannelVideoCollection(channel.id);
     userChangedExpandedState = true;
+
     if (state.expanded) {
       manuallyCollapsedChannelIds.add(channel.id);
       const selectedChannelId = options.getSelectedChannelId();
@@ -477,6 +446,10 @@ export function createSidebarPreviewController(
       if (selectedChannelId === channel.id && selectedVideoId) {
         userCollapsedSelectionKey = `${channel.id}:${selectedVideoId}`;
       }
+      if (state.loadedMode === "paged") {
+        state.loadedMode = "preview";
+      }
+      state.scrollTop = 0;
       setPreviewChannelExpanded(channel.id, false);
       return;
     }
@@ -488,15 +461,25 @@ export function createSidebarPreviewController(
     nextState.scrollTop = 0;
 
     const filterKey = getChannelVideoCollectionFilterKey();
-    if (
-      nextState.filterKey === filterKey &&
-      nextState.loadedMode === "preview"
-    ) {
-      nextState.loadedMode = "paged";
-      if (nextState.videos.length < EXPANDED_PAGE_SIZE && nextState.hasMore) {
-        await loadChannelVideoCollection(channel, "paged", {
-          append: true,
-        });
+    if (!supportsMode(nextState, filterKey, "preview")) {
+      await loadChannelVideoCollection(channel, "preview");
+    }
+  }
+
+  async function promoteChannelVideoCollectionToPaged(channel: Channel) {
+    const state = ensureChannelVideoCollection(channel.id);
+    userChangedExpandedState = true;
+    userCollapsedSelectionKey = null;
+    manuallyCollapsedChannelIds.delete(channel.id);
+    demoteOtherPagedCollections(channel.id);
+    setPreviewChannelExpanded(channel.id, true);
+    state.scrollTop = 0;
+
+    const filterKey = getChannelVideoCollectionFilterKey();
+    if (state.filterKey === filterKey && state.loadedMode === "preview") {
+      state.loadedMode = "paged";
+      if (state.videos.length < EXPANDED_PAGE_SIZE && state.hasMore) {
+        await loadChannelVideoCollection(channel, "paged", { append: true });
       }
       return;
     }
@@ -544,31 +527,6 @@ export function createSidebarPreviewController(
       length: Math.min(PREVIEW_WARMUP_CONCURRENCY, candidates.length),
     }).map(() => worker());
     await Promise.all(workers);
-  }
-
-  function handleChannelCollectionScroll(channel: Channel, event: Event) {
-    const currentTarget = event.currentTarget;
-    if (!(currentTarget instanceof HTMLDivElement)) {
-      return;
-    }
-    const state = ensureChannelVideoCollection(channel.id);
-    state.scrollTop = currentTarget.scrollTop;
-
-    if (
-      state.loadedMode !== "paged" ||
-      !state.hasMore ||
-      state.loadingMore ||
-      state.loadingInitial
-    ) {
-      return;
-    }
-
-    const remaining =
-      currentTarget.scrollHeight -
-      (currentTarget.scrollTop + currentTarget.clientHeight);
-    if (remaining <= VIRTUALIZED_ROW_HEIGHT * 2) {
-      void loadNextChannelVideoPage(channel);
-    }
   }
 
   function toggleSyncDatePicker(
@@ -740,6 +698,7 @@ export function createSidebarPreviewController(
     for (const channel of options.getFilteredChannels()) {
       const state = ensureChannelVideoCollection(channel.id);
       if (!state.expanded) continue;
+      if (state.loadedMode !== "paged") continue;
       if (supportsMode(state, filterKey, "paged")) continue;
       void loadChannelVideoCollection(channel, "paged");
     }
@@ -836,6 +795,7 @@ export function createSidebarPreviewController(
       })
     ) {
       if (nextState.loadedMode === "preview") {
+        demoteOtherPagedCollections(selectedChannel.id);
         nextState.loadedMode = "paged";
       }
       void loadNextChannelVideoPage(selectedChannel);
@@ -871,11 +831,11 @@ export function createSidebarPreviewController(
     },
     channelListEmptyCaption,
     ensureChannelVideoCollection,
-    handleChannelCollectionScroll,
     loadNextChannelVideoPage,
     resolveDisplayedSyncDepthIso,
     resolveRenderedCollectionVideos,
     saveChannelSyncDate,
+    promoteChannelVideoCollectionToPaged,
     toggleChannelVideoCollection,
     toggleSyncDatePicker,
   };

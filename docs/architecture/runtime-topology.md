@@ -106,35 +106,37 @@ requests and worker loops.
 `AccessContext` is separate request-scoped state. Auth middleware attaches it to each HTTP request.
 Handlers read `AppState` for shared services and `AccessContext` for caller-specific access data.
 
-| `AccessContext` field | Used for                                                      |
-| --------------------- | ------------------------------------------------------------- |
-| `user_id`             | authenticated user scope for chats, highlights, and library   |
-| `auth_state`          | distinguishes authenticated and anonymous request paths       |
-| `access_role`         | enables operator-only behavior                                |
-| `allowed_channel_ids` | bounds visible channel scope                                  |
-| `allowed_other_video_ids` | bounds explicit video access outside subscribed channels |
+| `AccessContext` field     | Used for                                                    |
+| ------------------------- | ----------------------------------------------------------- |
+| `user_id`                 | authenticated user scope for chats, highlights, and library |
+| `auth_state`              | distinguishes authenticated and anonymous request paths     |
+| `access_role`             | enables operator-only behavior                              |
+| `allowed_channel_ids`     | bounds visible channel scope                                |
+| `allowed_other_video_ids` | bounds explicit video access outside subscribed channels    |
 
 ## Parallel Worker Loops
 
 The backend starts five worker loops in parallel.
 
-| Worker                    | Runtime role                                            | Cadence and guard                                                       |
-| ------------------------- | ------------------------------------------------------- | ----------------------------------------------------------------------- |
-| Queue worker              | advances transcript work before summary work            | polls every 5s after active work; backs off from 15s to 60s while idle  |
-| Refresh worker            | fetches latest videos for subscribed channels           | runs once at startup, then every 30 minutes                             |
-| Gap scan worker           | backfills missing historical videos                     | runs every 10 minutes and respects YouTube quota cooldown               |
-| Summary evaluation worker | scores summaries and can queue low-quality regeneration | polls every 7s after active work; backs off from 30s to 120s while idle |
-| Search index worker       | backfills, indexes, reconciles, prunes, and syncs FTS   | polls every 3s after active work; backs off from 15s to 120s while idle |
+| Worker                    | Runtime role                                            |
+| ------------------------- | ------------------------------------------------------- |
+| Queue worker              | advances transcript work before summary work            |
+| Refresh worker            | fetches latest videos for subscribed channels           |
+| Gap scan worker           | backfills missing historical videos                     |
+| Summary evaluation worker | scores summaries and can queue low-quality regeneration |
+| Search index worker       | backfills, indexes, reconciles, prunes, and syncs FTS   |
 
 All five loops skip scheduled work when there is no recent active user. Model and external-service
 failures can also activate a cooldown for the affected path.
+Worker cadence, batch sizes, and cooldown values live in
+[Runtime Limits](/operations/runtime-limits#worker-cadence-and-batch-limits).
 
 The search index worker also:
 
 ```text
 1. performs initial backfill, reconcile, prune, and vector-index checks before its loop
-2. reconciles stale search rows every 60 seconds
-3. retries ANN vector-index creation at most every 5 minutes
+2. reconciles stale search rows on its configured cadence
+3. retries ANN vector-index creation on its configured cadence
 4. logs indexing rounds with batch and embedding counts
 ```
 
@@ -157,12 +159,13 @@ To keep concurrency bounded, the backend uses separate semaphores per lane:
 1. summary/evaluator/chat/guardrails/planner share one lane (applies only to local models, cloud-tagged models skip that check)
 2. search embedding/rerank/HyDE share another lane
 
-**Currently, all semaphores are hard restricted at size 1.**
+Semaphore sizes live in [Runtime Limits](/operations/runtime-limits#model-and-tool-concurrency).
 
 ### Runtime Throttles
 
 HTTP handlers share the request rate limiter from `AppState`. Cloud-model calls, YouTube quota
-failures, and transcript dependency failures each have their own cooldown tracker.
+failures, and transcript dependency failures each have their own cooldown tracker. Rate and cooldown
+values live in [Runtime Limits](/operations/runtime-limits#request-and-user-quotas).
 
 ## Client Processes
 

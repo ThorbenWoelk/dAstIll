@@ -1,4 +1,4 @@
-# Text to Speech
+# TTS
 
 dAstIll uses Amazon Polly to synthesize summary audio.
 

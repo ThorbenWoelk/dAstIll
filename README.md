@@ -10,7 +10,7 @@ dAstIll watches content sources, extracts their content, and turns them into a s
 - [Deployment and operations](docs/operations/deployment.md)
 - [Architecture](docs/architecture/overview.md)
 - [AI models](docs/pipelines/ai-models.md)
-- [Search indexing](docs/pipelines/search-indexing.md)
+- [Feature docs](docs/features/summarization.md)
 - [Security](docs/security/index.md)
 
 ## Local Run

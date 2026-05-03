@@ -12,10 +12,7 @@ dAstIll deploys these surfaces:
 | Docs UI     | Firebase Hosting | `docs/.vitepress/dist`          |
 | Android APK | GitHub artifact  | `.github/workflows/android.yml` |
 
-The backend is the only production service that owns durable writes and worker execution. Runtime
-state and worker boundaries are covered in [Runtime Topology](/architecture/runtime-topology).
-
-## Terraform Ownership
+## Infrastructure as Code (IaC)
 
 Terraform manages:
 
@@ -33,6 +30,10 @@ Terraform manages:
 
 Terraform owns containers, identities, permissions, and non-secret runtime config. It does not own
 secret payloads.
+
+The billing export and billing budget resources are optional because dAstIll can deploy and run
+without them. They are enabled only when the matching Terraform variables are set, so local,
+staging, or personal projects can skip extra billing-account permissions and cost-reporting setup.
 
 ## Cross-Cloud Authentication
 
@@ -120,9 +121,6 @@ Secret lifecycle stays in IaC.
 5. Update runbooks that still mention the secret.
 6. Apply Terraform.
 
-For a staged retirement, remove all consumers first and keep the Terraform resource with a short
-`deprecated` comment for one release cycle. Delete the resource in a follow-up Terraform change.
-
 ## Runtime Config
 
 Sensitive values come from Secret Manager. Non-secret production config is passed as Cloud Run or
@@ -147,7 +145,9 @@ Frontend build config includes:
 - maintenance-mode config
 - optional browser-auth origin for mobile handoff
 
-Use `backend/.env.example` and `frontend/.env.example` for the current key names.
+See `backend/.env.example` and `frontend/.env.example` for the current key names.
+Runtime limits, quotas, cooldowns, and timeout values live in
+[Runtime Limits](/operations/runtime-limits).
 
 ## Firebase Auth
 
@@ -180,11 +180,8 @@ backend still validates and deploys so `dastill-mini` remains available.
 
 ## Backend Runtime Boundary
 
-The backend Cloud Run service is capped at one serving instance. It keeps a local libSQL cache/index
-and in-process workers. Multi-replica scale-out would duplicate worker execution and create
-per-replica cache divergence.
-
-Horizontal backend scaling is blocked until the serving path and worker path are split or coordinated.
+The backend keeps a local libSQL cache/index and in-process workers. The production instance cap and
+the scale-out boundary live in [Runtime Limits](/operations/runtime-limits#deployment-capacity).
 
 On startup, the backend restores or rebuilds its local libSQL file from S3-backed runtime cache
 objects.
@@ -207,14 +204,8 @@ service API key.
 For the repo-owned Cloud Run path, the backend sends the validated public audio URL to ASR. The ASR
 service fetches the audio, converts it with `ffmpeg`, and transcribes it with `whisper.cpp`.
 
-The service runs with:
-
-- 2 vCPU
-- 2 GiB memory
-- concurrency 1
-- max instances 1
-- 3600 second timeout
-- min instances 0
+The ASR service capacity and request timeout live in
+[Runtime Limits](/operations/runtime-limits#deployment-capacity).
 
 Content-pipeline behavior is owned by [Content Pipeline](/pipelines/content-pipeline).
 
@@ -227,28 +218,6 @@ The frontend links to the docs site through build-time frontend config.
 
 Android release APKs are built by `.github/workflows/android.yml`. The workflow resolves deployed
 backend/docs URLs and Firebase frontend build values before running `cargo tauri android build`.
-
-## Project Migration
-
-To cut over to a new GCP project:
-
-1. Create or gain access to the target GCP project and attach billing.
-2. Update `terraform.tfvars`. Set `project_id` and keep `app_name = "dastill"` unless you
-   intentionally want new GCP/AWS resource names.
-3. Decide how Terraform state should handle shared AWS resources. Buckets, vector buckets, and the
-   `dastill-gcp-backend` AWS role are keyed by `app_name`, not `project_id`.
-4. Apply Terraform and record GitHub outputs. Update the required repository secrets and variables.
-5. Update repository variables outside Terraform ownership, including AWS federation config,
-   bucket/index names, CORS origins, contact email, and Databricks settings.
-6. Rotate project-local API keys and tokens. Add new Secret Manager versions for production and
-   update local env files as needed.
-7. Enable Firebase, set optional Terraform Firebase inputs, and apply Terraform again.
-8. Deploy Firebase Auth config from `firebase.json`.
-9. Re-run the release workflow so Cloud Run and Hosting pick up the new project, config, URLs, and
-   latest Secret Manager versions.
-
-Data cutover is storage-specific. The local libSQL cache can be rebuilt from S3-backed app data.
-Firebase project changes mostly affect auth, Hosting, and project-local secrets/config.
 
 ## CI/CD Flow
 
@@ -278,6 +247,10 @@ Terraform can create BigQuery prerequisites for Cloud Billing export:
 Enable this with `billing_export_enabled = true` in `terraform.tfvars`. You can also override
 `billing_export_project_id`, `billing_export_dataset_id`, and `billing_export_dataset_location`.
 
+When `billing_export_enabled` is false, Terraform does not create the billing export dataset or
+enable the BigQuery billing export APIs. Runtime services are unaffected because billing export is
+only for cost analysis.
+
 After `terraform apply`, finish setup in Cloud Billing. Open the billing account, go to
 **Billing export**, and point detailed usage export at the Terraform-managed dataset. Terraform does
 not manage that final toggle.
@@ -292,15 +265,12 @@ Terraform can create monthly alert budgets when `billing_budgets_enabled = true`
 The primary `project_id` is always included. Add other projects that run dAstIll Cloud Run services
 to `billing_budget_project_ids`.
 
-Default alert levels are 50%, 80%, 100% actual spend, and 100% forecasted spend. Defaults are
-alert-only budgets of 50 billing-currency units for total project spend and 10 billing-currency
-units for Cloud Run spend.
+When `billing_budgets_enabled` is false, Terraform does not create budget resources or enable the
+Cloud Billing Budget API. Runtime services are unaffected because budgets only send alerts; they do
+not cap, stop, or throttle spend.
 
-Adjust:
-
-- `billing_budget_app_monthly_amount_units`
-- `billing_budget_cloud_run_monthly_amount_units`
-- `billing_budget_thresholds`
+Budget amounts and thresholds live in
+[Runtime Limits](/operations/runtime-limits#billing-alert-budgets).
 
 Budget creation needs the Cloud Billing Budget API and budget write permissions. For CI, make sure
 the Terraform identity can manage budgets for the target billing account or single-project budgets

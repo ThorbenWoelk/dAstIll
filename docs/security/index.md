@@ -49,11 +49,3 @@ When making security-relevant changes, verify at least the following:
 5. Confirm signed-out chat uses the ephemeral path and cannot use persistent conversation routes.
 6. Confirm signed-in chat cannot retrieve content, highlights, or recent-activity evidence outside the caller's library scope.
 7. Confirm oversized chat prompts or oversized client-supplied conversation payloads are rejected with `400 Bad Request`.
-
-## Related Docs
-
-- [OWASP ASI Status](/security/owasp-asi-status)
-- [Deployment and Operations](/operations/deployment)
-- [Local development](/operations/local-development)
-- [AI Models](/pipelines/ai-models)
-- [Chat RAG](/pipelines/chat-rag)

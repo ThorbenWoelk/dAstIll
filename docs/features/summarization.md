@@ -1,4 +1,4 @@
-# Summarization and Evaluation
+# Summarization
 
 ## Summarizer
 
@@ -12,6 +12,7 @@ Both tasks call Ollama `/api/generate` with the configured summarizer model.
 If the primary summarizer is cloud-backed and rate-limited, the service uses the configured fallback
 model when present. Local fallback runs immediately and has its own capacity profile. Without a
 fallback, summarization waits for the cloud cooldown to expire.
+Cooldown values live in [Runtime Limits](/operations/runtime-limits#cooldowns).
 
 The summarizer reports availability to the frontend:
 
@@ -63,4 +64,4 @@ Score policy:
 
 - `7` or above is acceptable
 - `6` or below can requeue the summary for regeneration
-- `videos.retry_count` caps regeneration attempts
+- `videos.retry_count` caps regeneration attempts; retry limits live in [Runtime Limits](/operations/runtime-limits#content-processing-limits)

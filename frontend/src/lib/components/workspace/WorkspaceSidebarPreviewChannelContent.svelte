@@ -20,8 +20,8 @@
     onChannelVideoClick,
     onVideoMouseEnter,
     onVideoMouseLeave,
-    onCollectionScroll,
     onLoadMore,
+    onShowAll,
   }: {
     channel: Channel;
     channelVideoCollection: ChannelVideoCollectionState;
@@ -39,8 +39,8 @@
     ) => void | Promise<void>;
     onVideoMouseEnter: (videoId: string) => void;
     onVideoMouseLeave: () => void;
-    onCollectionScroll: (event: Event) => void;
     onLoadMore: () => void | Promise<void>;
+    onShowAll: () => void | Promise<void>;
   } = $props();
 
   const showSyncSettingsLink = $derived(
@@ -52,15 +52,18 @@
       isVirtualChannel: channel.id === OTHERS_CHANNEL_ID,
     }),
   );
+
+  const previewHasMore = $derived(
+    channelVideoCollection.loadedMode === "preview" &&
+      renderedCollection.videos.length > 0 &&
+      channelVideoCollection.hasMore,
+  );
 </script>
 
 <div
-  class={channelVideoCollection.loadedMode === "paged"
-    ? "mt-1 max-h-[21rem] overflow-y-auto pb-1 pr-1 [overscroll-behavior-y:contain]"
-    : "mt-1 pb-1"}
+  class="mt-1 pb-1"
   id={selectedVideoId ? "videos" : undefined}
   data-channel-video-list={channel.id}
-  onscroll={onCollectionScroll}
 >
   {#if channelVideoCollection.loadingInitial && channelVideoCollection.videos.length === 0}
     <div class="space-y-1 px-1" role="status" aria-live="polite">
@@ -132,6 +135,16 @@
         onclick={() => void onLoadMore()}
       >
         Load more
+      </button>
+    {/if}
+
+    {#if previewHasMore && !channelVideoCollection.loadingInitial}
+      <button
+        type="button"
+        class="mt-1 w-full rounded-md py-1.5 text-[11px] font-medium text-[var(--soft-foreground)] transition-colors hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
+        onclick={() => void onShowAll()}
+      >
+        Show all
       </button>
     {/if}
 

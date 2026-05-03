@@ -87,22 +87,22 @@ helpers in `frontend/src/lib/api-client.ts`.
 
 Search-status updates use a native `EventSource` stream from `/api/search/status/stream`.
 
-Chat replies use server-sent events over `fetch` as it supports authenticated requests, 
+Chat replies use server-sent events over `fetch` as it supports authenticated requests,
 streaming `POST` responses, cancellation, and reconnect/resume for an active conversation.
 
 ## Routing
 
-| Route             | Purpose                                                      |
-| ----------------- | ------------------------------------------------------------ |
-| `/`               | Main workspace                                               |
-| `/channels/[id]`  | Per-channel overview and management                          |
-| `/download-queue` | Queue-oriented operational view                              |
-| `/highlights`     | Cross-video highlight browser                                |
-| `/mini`           | Text-first reader for summaries and source content           |
-| `/chat`           | RAG conversations                                            |
-| `/vocabulary`     | Custom word replacements for summaries                       |
-| `/login`          | Sign-in, guest continuation, mobile browser handoff          |
-| `/logout`         | Session sign-out                                             |
+| Route             | Purpose                                             |
+| ----------------- | --------------------------------------------------- |
+| `/`               | Main workspace                                      |
+| `/channels/[id]`  | Per-channel overview and management                 |
+| `/download-queue` | Queue-oriented operational view                     |
+| `/highlights`     | Cross-video highlight browser                       |
+| `/mini`           | Text-first reader for summaries and source content  |
+| `/chat`           | RAG conversations                                   |
+| `/vocabulary`     | Custom word replacements for summaries              |
+| `/login`          | Sign-in, guest continuation, mobile browser handoff |
+| `/logout`         | Session sign-out                                    |
 
 ## Workspace Bootstrap
 
@@ -223,24 +223,7 @@ Handlers orchestrate request-level work. Durable logic primarily lives in:
 
 ## Contract Style
 
-The frontend and backend communicate through typed JSON payloads plus SSE streams. They do not use
-GraphQL or SvelteKit server actions for backend calls.
+The frontend and backend communicate through typed JSON payloads plus SSE streams.
 
-The live backend OpenAPI document is the local debugging source of truth:
-
-```text
-/api/openapi.json
-```
-
-The checked-in `backend/openapi.postman.yaml` file is a snapshot artifact.
-
-## Search UI Pattern
-
-The search UI is global to the workspace.
-
-It:
-
-- uses debounced query submission
-- supports source filtering: `all`, `summary`, `transcript`
-- opens results into existing content views
-- shows indexing coverage from `search_status`
+The backend OpenAPI document for local debugging can be found in `/api/openapi.json`.
+The checked-in `backend/openapi.postman.yaml` file is a snapshot artifact that might be stale.

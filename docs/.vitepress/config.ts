@@ -3,7 +3,7 @@ import { defineConfig } from "vitepress";
 export default defineConfig({
   title: "dAstIll Docs",
   description:
-    "Architecture, runtime, model, data-flow, and operations documentation for dAstIll.",
+    "Architecture, features, runtime, model, data-flow, and operations documentation for dAstIll.",
   cleanUrls: true,
   lastUpdated: false,
   srcExclude: ["README.md"],
@@ -15,7 +15,7 @@ export default defineConfig({
     nav: [
       { text: "Overview", link: "/" },
       { text: "Architecture", link: "/architecture/overview" },
-      { text: "AI & Search", link: "/pipelines/search-indexing" },
+      { text: "Features", link: "/features/summarization" },
       { text: "Operations", link: "/operations/deployment" },
       { text: "Security", link: "/security/" },
     ],
@@ -34,30 +34,32 @@ export default defineConfig({
           { text: "Runtime Topology", link: "/architecture/runtime-topology" },
           { text: "Frontend and API", link: "/architecture/frontend-and-api" },
           { text: "Data Model", link: "/architecture/data-model" },
-          { text: "Mini Reader", link: "/architecture/mini-reader" },
+        ],
+      },
+      {
+        text: "Features",
+        items: [
+          { text: "Summarization", link: "/features/summarization" },
+          { text: "Search", link: "/features/search" },
+          { text: "Chat", link: "/features/chat" },
+          { text: "TTS", link: "/features/tts" },
+          { text: "Mini Reader", link: "/features/mini-reader" },
         ],
       },
       {
         text: "Pipelines",
         items: [
           { text: "Content Pipeline", link: "/pipelines/content-pipeline" },
-          { text: "Search Indexing", link: "/pipelines/search-indexing" },
           { text: "AI Models", link: "/pipelines/ai-models" },
-          {
-            text: "Summarization and Evaluation",
-            link: "/pipelines/summarization-evaluation",
-          },
-          { text: "Chat RAG", link: "/pipelines/chat-rag" },
-          { text: "Text to Speech", link: "/pipelines/text-to-speech" },
         ],
       },
       {
         text: "Operations",
         items: [
           { text: "Deployment", link: "/operations/deployment" },
+          { text: "Runtime Limits", link: "/operations/runtime-limits" },
           { text: "Local Development", link: "/operations/local-development" },
-          { text: "Tauri Android", link: "/operations/mobile-tauri" },
-          { text: "Benchmarks", link: "/benchmarks/" },
+          { text: "Android Operations", link: "/operations/mobile-tauri" },
         ],
       },
       {
