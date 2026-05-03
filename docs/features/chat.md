@@ -1,4 +1,4 @@
-# Chat RAG
+# Chat
 
 The chat service answers questions grounded in the indexed library. It uses:
 
@@ -19,21 +19,22 @@ Users can switch models per conversation.
 
 Before retrieval, chat classifies the user message.
 
-| Intent           | Use case                                  | Source budget |
-| ---------------- | ----------------------------------------- | ------------- |
-| `fact`           | Specific lookup from one or a few sources | 6             |
-| `synthesis`      | Cross-video synthesis of a topic          | 12            |
-| `recommendation` | Best/worth-watching style requests        | 14            |
-| `comparison`     | Comparison between two or more subjects   | 20            |
-| `pattern`        | Pattern detection across a large corpus   | 24            |
+| Intent           | Use case                                  |
+| ---------------- | ----------------------------------------- |
+| `fact`           | Specific lookup from one or a few sources |
+| `synthesis`      | Cross-video synthesis of a topic          |
+| `recommendation` | Best/worth-watching style requests        |
+| `comparison`     | Comparison between two or more subjects   |
+| `pattern`        | Pattern detection across a large corpus   |
 
 Deep research mode raises the source budget to the system maximum and enables extra retrieval
 passes.
+Source budgets live in [Runtime Limits](/operations/runtime-limits#chat-limits).
 
 ## Retrieval And Context
 
-Chat retrieval runs for up to 3 passes. Each pass can generate up to 3 queries, with 5 total queries
-across all passes.
+Chat retrieval can run multiple passes and generate expansion queries. Retrieval pass and query
+limits live in [Runtime Limits](/operations/runtime-limits#chat-limits).
 
 Query kinds:
 
@@ -41,17 +42,19 @@ Query kinds:
 - expansion queries that cover adjacent concepts and alternate phrasing
 
 Each query uses the same keyword and semantic retrieval machinery documented in
-[Search Indexing](/pipelines/search-indexing#query-path). Channel-scoped conversations pass a
-`channel_id` filter through the retrieval path.
+[Search](/features/search#query-path). Channel-scoped conversations pass a `channel_id` filter
+through the retrieval path.
 
 Context assembly:
 
 - candidates are scored from keyword and semantic retrieval signals
 - candidates are sorted within each video
-- synthesis keeps at most 3 chunks per video
-- synthesis keeps at most 6 videos
-- each source excerpt is capped at 1200 characters
-- the last 12 conversation messages are included as history
+- synthesis keeps a bounded number of chunks per video
+- synthesis keeps a bounded number of videos
+- source excerpts are capped before synthesis
+- recent conversation history is bounded before it enters the prompt
+
+Context and history limits live in [Runtime Limits](/operations/runtime-limits#chat-limits).
 
 ## Streaming And Attribution
 
@@ -98,7 +101,8 @@ Completed assistant messages store a redacted `ChatTurnTrace` with:
 
 Each chat turn has budgets for model calls, tool calls, and retrieval passes. When a budget is
 exhausted, the SSE stream emits `budget_exhausted` with a redacted snapshot. The service then falls
-back to the best available evidence or records a rejected assistant message.
+back to the best available evidence or records a rejected assistant message. Budget values live in
+[Runtime Limits](/operations/runtime-limits#chat-limits).
 
 When retrieval succeeds and the answer model is rate-limited, chat returns a cited source list
 instead of synthesizing beyond retrieved text.

@@ -160,6 +160,8 @@ On rate limit or temporary transcript dependency failure:
 - transcript cooldown is activated
 - the video returns to `pending`
 
+Cooldown values live in [Runtime Limits](/operations/runtime-limits#cooldowns).
+
 ## Summary Generation
 
 Summary generation runs only after a ready transcript exists.
@@ -187,7 +189,8 @@ It:
 - can mark input as unscorable with a note and no numeric score
 
 Low-scoring summaries can be requeued by setting summary state back to `pending`, subject to the
-video retry cap.
+video retry cap. Retry limits live in
+[Runtime Limits](/operations/runtime-limits#content-processing-limits).
 
 ## Search Sync
 
@@ -217,3 +220,5 @@ The pipeline isolates failures by stage.
 | Summary evaluation    | summary remains usable; quality state can be filled later     |
 | Search indexing       | canonical content remains written; retrieval catches up later |
 | Model/cloud cooldown  | affected worker pauses; unrelated stages continue             |
+
+Runtime cooldowns and processing limits live in [Runtime Limits](/operations/runtime-limits).

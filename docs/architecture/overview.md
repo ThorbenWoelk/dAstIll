@@ -27,17 +27,17 @@ flowchart TB
 
 <MermaidDiagram caption="High-level system context." :chart="systemContextDiagram" />
 
-| Area             | Owns                                                         | Detail doc                                          |
-| ---------------- | ------------------------------------------------------------ | --------------------------------------------------- |
-| Frontend         | Workspace UI, mini reader, auth entry points, client state   | [Frontend and API](/architecture/frontend-and-api)  |
-| Backend          | HTTP API, durable writes, workers, AI/service adapters       | [Runtime Topology](/architecture/runtime-topology)  |
-| Data model       | Canonical records, user-scoped records, derived projections  | [Data Model](/architecture/data-model)              |
-| Content pipeline | Discovery, transcripts, summaries, evaluation, search sync   | [Content Pipeline](/pipelines/content-pipeline)     |
-| Search           | Keyword index, semantic vectors, chunking, retrieval modes   | [Search Indexing](/pipelines/search-indexing)       |
-| AI models        | Model roles, cooldowns, degradation                          | [AI Models](/pipelines/ai-models)                   |
-| Chat             | RAG retrieval, streaming, attribution, budgets               | [Chat RAG](/pipelines/chat-rag)                     |
-| Deployment       | Cloud Run, Firebase Hosting, Terraform, secrets, CI/CD       | [Deployment and Operations](/operations/deployment) |
-| Mobile shell     | Tauri Android tooling, auth handoff, APK workflow, smoke set | [Tauri Android](/operations/mobile-tauri)           |
+| Area             | Owns                                                        | Detail doc                                          |
+| ---------------- | ----------------------------------------------------------- | --------------------------------------------------- |
+| Frontend         | Workspace UI, auth entry points, client state               | [Frontend and API](/architecture/frontend-and-api)  |
+| Backend          | HTTP API, durable writes, workers, AI/service adapters      | [Runtime Topology](/architecture/runtime-topology)  |
+| Data model       | Canonical records, user-scoped records, derived projections | [Data Model](/architecture/data-model)              |
+| Content pipeline | Discovery, transcripts, summaries, evaluation, search sync  | [Content Pipeline](/pipelines/content-pipeline)     |
+| Search           | Keyword index, semantic vectors, chunking, retrieval modes  | [Search](/features/search)                          |
+| AI models        | Model roles, cooldowns, degradation                         | [AI Models](/pipelines/ai-models)                   |
+| Chat             | RAG retrieval, streaming, attribution, budgets              | [Chat](/features/chat)                              |
+| Deployment       | Cloud Run, Firebase Hosting, Terraform, secrets, CI/CD      | [Deployment and Operations](/operations/deployment) |
+| Mobile shell     | Android tooling, APK workflow, smoke checks                 | [Android Operations](/operations/mobile-tauri)      |
 
 ## Repository Map
 
@@ -60,7 +60,7 @@ dAstIll/
 
 ### Headless frontends
 
-The backend owns durable writes and worker execution. 
+The backend owns durable writes and worker execution.
 Frontends call it as clients.
 
 ### Async background workers

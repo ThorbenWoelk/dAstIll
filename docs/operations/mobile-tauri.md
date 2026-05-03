@@ -1,18 +1,9 @@
-# Tauri Android
+# Android Operations
 
-## Purpose
+This runbook covers local Android tooling, launch commands, APK builds, CI artifacts, and smoke
+checks for the Tauri Android shell.
 
-dAstIll includes a Tauri v2 shell for Android under `src-tauri/`.
-
-The Android app:
-
-- uses the static frontend build from `frontend/`
-- talks directly to the Rust backend
-- sends Firebase bearer tokens in `Authorization` headers
-- uses a mobile-auth handoff so Google sign-in can complete in the system browser instead of the embedded Android WebView
-- replaces the custom transcript selection create-toolbar with Android native `Highlight` and `Correct` actions
-
-## Install The CLI
+## Tooling
 
 Install the Tauri CLI once:
 
@@ -20,22 +11,13 @@ Install the Tauri CLI once:
 cargo install tauri-cli --version "^2"
 ```
 
-If the command is missing, you can always use:
+If the binary is unavailable, use the package runner:
 
 ```bash
-bunx @tauri-apps/cli@latest <command>
-```
-
-Examples:
-
-```bash
-bunx @tauri-apps/cli@latest dev
 bunx @tauri-apps/cli@latest android dev
 ```
 
-## Local Tooling
-
-You need:
+Install local Android tooling:
 
 - Android Studio
 - Java 17+
@@ -43,80 +25,60 @@ You need:
 - Android NDK
 - Rust Android targets
 
-Typical setup:
+Rust targets:
 
 ```bash
 rustup target add aarch64-linux-android armv7-linux-androideabi \
   i686-linux-android x86_64-linux-android
 ```
 
-Set the Java, Android SDK, and NDK paths expected by Android tooling in your shell profile.
+Set `JAVA_HOME`, `ANDROID_HOME`, and `NDK_HOME` in your shell profile or local environment.
 
-Check that a device or emulator is available:
+Check device or emulator visibility:
 
 ```bash
 adb devices
 ```
 
-## Development Flow
+## Local Run
 
-From the repo root:
+From the repo root, start the local stack:
 
 ```bash
 ./start_app.sh
 ```
 
-The Tauri Android shell is opt-in. Enable the mobile launch flag in your shell before running the
-script when you want `./start_app.sh` to launch it after local services are healthy. Use
-`frontend/.env.example` for frontend key names and the script source for launch flags.
+The Android shell is opt-in. Set the mobile launch flag in your shell before running
+`./start_app.sh` when you want the script to launch Android after local services are healthy.
+Launch flag names live in `backend/.env.example`.
 
-If you want to run it yourself instead, use:
+Manual Android launch:
 
 ```bash
 cargo tauri android dev
 ```
 
-When `.github/runtime-mode.env` enables maintenance mode, `./start_app.sh` still starts the backend
-and serves the maintenance/minimal frontend mode so `dastill-mini` remains usable locally.
+Keep Android-facing frontend build values in the shared/local frontend env files. Do not add them to
+`start_app.sh`.
 
-This assumes the backend is reachable locally and the Android app can call it through the configured
-frontend API base.
+## Local Connectivity
 
-For local Android development, keep frontend build values in the shared/local frontend env files rather than in `start_app.sh`.
+`./start_app.sh` configures local port forwarding for the Android shell. The frontend has a local
+Android fallback origin for `http://tauri.localhost`.
 
-The frontend also has a Tauri Android dev fallback for `http://tauri.localhost`, matching the
-`adb reverse` port forwarding set up by `./start_app.sh`.
+When browser-based sign-in needs a different origin than the Tauri-loaded frontend, set the
+browser-auth origin in the frontend env. Use `frontend/.env.example` for the current key name.
 
-## Auth Handoff
+## Smoke Check
 
-Google blocks sign-in inside the Android WebView used by Tauri. The current app handles that by:
-
-1. creating a short-lived `/api/auth/mobile-handoff` session on the backend
-2. opening `/login?mobileBrowserAuth=1&handoffSession=<id>` in the system browser with a completion secret in the URL fragment
-3. completing Google sign-in in the browser
-4. posting the Google tokens back to the handoff session with the completion secret
-5. redeeming the completed handoff once from the Android shell with a separate redeem secret, then finishing Firebase sign-in locally
-
-The browser no longer polls or fetches reusable Google tokens over `GET`. The redeem step is one-shot and bound to the creator of the handoff.
-
-If your browser-hosted login page lives on a different origin than the Tauri-loaded frontend, set
-the browser-auth origin in the frontend env so the mobile shell opens the correct browser origin for
-the handoff. Use `frontend/.env.example` for the current key name.
-
-## Smoke Checklist
-
-Verify these in order:
+Verify these after local launch or APK install:
 
 1. The app launches without a blank screen.
 2. Anonymous mode works on first load.
 3. Workspace data loads from the backend.
-4. A transcript opens successfully.
-5. Text selection inside the transcript shows native Android actions `Highlight` and `Correct`.
-6. Tapping `Highlight` creates a highlight.
-7. Tapping `Correct` opens the vocabulary correction flow.
-8. Tapping an existing highlight still exposes delete behavior.
-9. Google sign-in works.
-10. Queue, highlights, chat, and workspace navigation still work.
+4. A content item opens.
+5. Sign-in completes.
+6. Queue, highlights, chat, and workspace navigation load.
 
 ## Build APKs
 
@@ -146,13 +108,13 @@ adb install -r src-tauri/gen/android/app/build/outputs/apk/debug/app-debug.apk
 
 ## CI
 
-The repository includes [`.github/workflows/android.yml`](../.github/workflows/android.yml).
+The Android workflow is [`.github/workflows/android.yml`](../../.github/workflows/android.yml).
 
 It:
 
-- resolves the deployed backend/docs URLs
+- resolves deployed backend and docs URLs
 - resolves Firebase frontend build values from Secret Manager
 - builds the Android app
 - uploads the release APK as a workflow artifact
 
-The workflow needs the Android signing secrets configured in GitHub.
+The workflow needs Android signing secrets configured in GitHub.

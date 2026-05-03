@@ -1,4 +1,4 @@
-# Search Indexing
+# Search
 
 <script setup>
 const queryPathDiagram = String.raw`
@@ -129,17 +129,8 @@ Canonical transcript and summary write paths mark sources pending. They do not c
 
 ## Chunking
 
-### Parameters
-
-| Constant                   | Value | Description                                                   |
-| -------------------------- | ----- | ------------------------------------------------------------- |
-| `TRANSCRIPT_TARGET_WORDS`  | 300   | Target words per transcript chunk                             |
-| `TRANSCRIPT_OVERLAP_WORDS` | 40    | Overlap words between transcript chunks                       |
-| `TRANSCRIPT_MAX_CHUNKS`    | 80    | Hard cap per transcript source                                |
-| `SUMMARY_TARGET_WORDS`     | 300   | Target words per summary section chunk                        |
-| `SUMMARY_MAX_CHUNKS`       | 80    | Hard cap per summary source including the full-document chunk |
-| `EMBEDDING_DIMENSIONS`     | 512   | Expected dimensions for the common embeddinggemma setup       |
-| `EMBED_BATCH_SIZE`         | 8     | Chunks per embedding request                                  |
+Chunk sizes, chunk caps, embedding dimensions, and embedding batch size live in
+[Runtime Limits](/operations/runtime-limits#search-limits).
 
 ### Transcript Chunks
 
@@ -151,10 +142,10 @@ Paragraph chunking is used for plain text:
 1. Split on blank lines.
 2. Accumulate paragraphs to the target size.
 3. Split oversized paragraphs by words.
-4. Carry the last 40 words into the next chunk.
+4. Carry the configured overlap into the next chunk.
 
 For very long transcripts, the worker raises the effective target size so the final projection stays
-within `TRANSCRIPT_MAX_CHUNKS`.
+within the transcript chunk cap.
 
 ### Summary Chunks
 
@@ -164,7 +155,7 @@ Summary chunking writes:
 - section chunks split on `## ` headings
 
 The full-document chunk is always retained. Section chunks preserve `section_title` and are capped by
-`SUMMARY_MAX_CHUNKS`.
+the summary chunk cap.
 
 ### Text Normalization
 
@@ -195,9 +186,11 @@ The embedding service:
 
 - reads the configured embedding model
 - calls Ollama `/api/embed`
-- batches up to 8 chunks per request
+- batches chunks before each request
 - validates returned dimensions
 - checks model availability through Ollama `/api/tags`
+
+Embedding batch and dimension limits live in [Runtime Limits](/operations/runtime-limits#search-limits).
 
 ## Query Path
 
@@ -209,7 +202,8 @@ The embedding service:
 ### 1. Tokenization
 
 The raw query is tokenized with a stopword-aware tokenizer. Meaningful terms are deduplicated and
-capped at 4 for FTS matching and snippet centering.
+capped for FTS matching and snippet centering. The term cap lives in
+[Runtime Limits](/operations/runtime-limits#search-limits).
 
 ```text
 "rust rust tokio axum libsql semantic search" -> ["rust", "tokio", "axum", "libsql"]
@@ -222,11 +216,11 @@ HyDE runs when:
 
 - a HyDE model is configured
 - semantic search is enabled for the request
-- the query has 4 or fewer meaningful tokens
+- the query stays within the HyDE term gate
 
-The backend calls Ollama `/api/generate` with a 30 second timeout to create a short hypothetical
-answer passage. That passage becomes the embedding input. The original query still drives FTS and
-snippet extraction.
+The backend calls Ollama `/api/generate` to create a short hypothetical answer passage. That passage
+becomes the embedding input. The original query still drives FTS and snippet extraction. The timeout
+and term gate live in [Runtime Limits](/operations/runtime-limits#search-limits).
 
 HyDE failure falls back to embedding the raw query.
 
@@ -238,16 +232,11 @@ BM25 search targets:
 - `video_title`
 - `section_title`
 
-Channel and source-kind filters are applied in SQL. Candidate limits depend on execution mode.
-
-| Execution mode | FTS candidate limit            |
-| -------------- | ------------------------------ |
-| `hybrid`       | `limit * 8`, clamped to 10-100 |
-| `keyword`      | `limit * 2`, clamped to 10-50  |
-| `semantic`     | FTS skipped                    |
+Channel and source-kind filters are applied in SQL. Candidate limits depend on execution mode and
+live in [Runtime Limits](/operations/runtime-limits#search-limits).
 
 `extract_keyword_snippet` centers snippets around the earliest matching token. Long snippets are
-trimmed to a 420-character window.
+trimmed to the configured snippet window.
 
 The FTS pre-ranker sorts candidates before fusion:
 
@@ -261,10 +250,10 @@ The FTS pre-ranker sorts candidates before fusion:
 
 The semantic leg requires semantic search enabled and an embedding model configured.
 
-| Retrieval mode | Mechanism                                         | Candidate limit             |
-| -------------- | ------------------------------------------------- | --------------------------- |
-| `hybrid_ann`   | ANN query via S3 Vectors                          | `limit * 8`, clamped 10-100 |
-| `hybrid_exact` | Exact dot-product scan via S3 before ANN is ready | `limit * 4`, clamped 10-50  |
+| Retrieval mode | Mechanism                                         |
+| -------------- | ------------------------------------------------- |
+| `hybrid_ann`   | ANN query via S3 Vectors                          |
+| `hybrid_exact` | Exact dot-product scan via S3 before ANN is ready |
 
 Both paths accept metadata filters for `source_kind` and `channel_id`.
 
@@ -290,15 +279,16 @@ The neural reranker runs when:
 - execution mode is `hybrid`
 - both FTS and semantic candidate lists are non-empty
 
-The backend posts the top 50 fused chunks and the original query to Ollama `/api/rerank` with a 30
-second timeout. Results sort by `relevance_score`.
+The backend posts the capped fused chunks and the original query to Ollama `/api/rerank`. Results
+sort by `relevance_score`. Rerank candidate and timeout limits live in
+[Runtime Limits](/operations/runtime-limits#search-limits).
 
 Reranker failure falls back to plain RRF ordering.
 
 ### 7. Grouping
 
 Results are grouped by `video_id`. Each group includes display metadata and up to one best match per
-source kind. The final response is capped to `limit`, default 8 and max 25 video groups.
+source kind. Response limits live in [Runtime Limits](/operations/runtime-limits#search-limits).
 
 ## Execution Modes
 
@@ -369,21 +359,3 @@ The live OpenAPI document is the debugging source of truth for parameter and res
 
 `POST /api/search/rebuild` resets the derived search projection and re-initializes progress tracking
 from canonical content.
-
-## Benchmark Notes
-
-Do not store performance numbers in this architecture page. Put dated measurements in
-[Benchmarks](/benchmarks/).
-
-Each search benchmark note should include:
-
-- relevant backend env values from `backend/.env.example`
-- embedding batch size
-- dataset scope
-- wall-clock duration
-- total sources processed
-- total chunks written
-- embedded chunk count
-- embedding latency
-- CPU and memory observations
-- caveats that affect comparison

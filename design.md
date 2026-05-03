@@ -182,7 +182,7 @@ Breakpoints change **layout**, never **behavior**. A feature must work identical
 - When a mobile affordance (bottom bar, bottom sheet) has no desktop home, hide it with a media query and let the remaining controls (keyboard, sidebar, inline header actions) cover the intent. Do not duplicate logic into a desktop-only component.
 - Axis-sensitive effects (e.g. `scrollIntoView`) read the computed CSS (flex direction, container orientation) rather than the viewport. The CSS remains the source of truth.
 
-The mini reader is the reference implementation - see [docs/architecture/mini-reader.md](./docs/architecture/mini-reader.md).
+The mini reader is the reference implementation - see [docs/features/mini-reader.md](./docs/features/mini-reader.md).
 
 ### Bottom Bar
 
