@@ -25,6 +25,11 @@ type ExpandableSidebarPreviewCollection = {
   expanded: boolean;
 };
 
+type PagedSidebarPreviewCollection = {
+  loadedMode: SidebarPreviewCollectionLoadMode | null;
+  scrollTop?: number;
+};
+
 const sidebarPreviewSessionByKey = new Map<
   string,
   Record<string, SidebarPreviewCollectionSnapshot>
@@ -95,6 +100,19 @@ export function setSidebarPreviewCollectionExpanded<
   }
 
   collection.expanded = expanded;
+}
+
+export function demoteOtherPagedSidebarPreviewCollections<
+  T extends PagedSidebarPreviewCollection,
+>(collections: Record<string, T>, exceptChannelId: string) {
+  for (const [channelId, collection] of Object.entries(collections)) {
+    if (channelId === exceptChannelId) continue;
+    if (collection.loadedMode !== "paged") continue;
+    collection.loadedMode = "preview";
+    if ("scrollTop" in collection) {
+      collection.scrollTop = 0;
+    }
+  }
 }
 
 export function cloneSidebarPreviewCollections(

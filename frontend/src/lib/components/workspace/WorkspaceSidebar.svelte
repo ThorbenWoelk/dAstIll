@@ -251,6 +251,7 @@
   let channelSearchOpen = $state(false);
   let channelInputOpen = $state(false);
   let reorderAnnouncement = $state("");
+  let channelListScroller = $state<HTMLDivElement | null>(null);
 
   let filteredChannels = $derived(
     filterChannels(channels, channelSearchQuery, channelSortMode),
@@ -333,7 +334,36 @@
     if (isVirtualChannel(channel)) {
       return;
     }
+    const wasExpanded =
+      previewController.channelVideoCollections[channel.id]?.expanded === true;
     await previewController.toggleChannelVideoCollection(channel);
+    if (wasExpanded) {
+      await tick();
+      anchorChannelRowToScrollerTop(channel.id);
+    }
+  }
+
+  async function handlePerChannelPreviewShowAll(channel: Channel) {
+    if (isVirtualChannel(channel)) {
+      return;
+    }
+    await previewController.promoteChannelVideoCollectionToPaged(channel);
+    await tick();
+    anchorChannelRowToScrollerTop(channel.id);
+  }
+
+  function anchorChannelRowToScrollerTop(channelId: string) {
+    const scroller = channelListScroller;
+    if (!scroller) return;
+    const row = scroller.querySelector<HTMLElement>(
+      `[data-channel-id="${CSS.escape(channelId)}"]`,
+    );
+    if (!row) return;
+    const target =
+      scroller.scrollTop +
+      row.getBoundingClientRect().top -
+      scroller.getBoundingClientRect().top;
+    scroller.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
   }
 
   async function handleChannelVideoClick(
@@ -558,6 +588,7 @@
     <div class="sr-only" aria-live="polite">{reorderAnnouncement}</div>
 
     <div
+      bind:this={channelListScroller}
       class="custom-scrollbar flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 pt-2 pb-5"
       aria-busy={loadingChannels}
     >
@@ -592,20 +623,6 @@
           No channels match your search.
         </p>
       {:else}
-        {#if loadingChannels}
-          <div
-            class="flex items-center gap-2 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--soft-foreground)] opacity-60"
-            role="status"
-            aria-live="polite"
-          >
-            <span
-              class="h-3 w-3 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--accent)]"
-              aria-hidden="true"
-            ></span>
-            Loading channels
-          </div>
-        {/if}
-
         {#each renderChannels as channel (channel.id)}
           {@const channelVideoCollection =
             channelVideoCollections[channel.id] ??
@@ -622,6 +639,14 @@
                   channel.id,
                 )
               : null}
+          {@const isPagedExpanded =
+            videoListMode === "per_channel_preview" &&
+            !isVirtualChannel(channel) &&
+            channelVideoCollection.loadedMode === "paged"}
+          {@const isStickyHeader =
+            videoListMode === "per_channel_preview"
+              ? isPagedExpanded
+              : isExpanded}
           <WorkspaceSidebarChannelRow
             {channel}
             {isExpanded}
@@ -636,6 +661,8 @@
             {loadingVideos}
             {refreshingChannel}
             videoCount={videos.length}
+            {isStickyHeader}
+            {isPagedExpanded}
             onSelect={() =>
               videoListMode === "per_channel_preview"
                 ? void handlePerChannelPreviewSelect(channel)
@@ -668,13 +695,9 @@
                 onChannelVideoClick={handleChannelVideoClick}
                 onVideoMouseEnter={handleVideoMouseEnter}
                 onVideoMouseLeave={handleVideoMouseLeave}
-                onCollectionScroll={(event) =>
-                  previewController.handleChannelCollectionScroll(
-                    channel,
-                    event,
-                  )}
                 onLoadMore={() =>
                   void previewController.loadNextChannelVideoPage(channel)}
+                onShowAll={() => void handlePerChannelPreviewShowAll(channel)}
               />
             {/snippet}
             {#if shouldAnimatePreviewExpansion}

@@ -5,10 +5,12 @@
 - [ ] In `per_channel_preview` mode on desktop (>= 1024px), expanding a channel does not introduce a second scroll container inside the sidebar.
 - [ ] The outer sidebar scroller (`WorkspaceSidebar.svelte:561`) is the only `overflow-y: auto | scroll` ancestor between the expanded preview list and the viewport.
 - [ ] The expanded channel row stays pinned at the top of the visible sidebar area while its preview list scrolls past, on both `selected_channel` and `per_channel_preview` modes.
-- [ ] At any time, at most one channel preview has `expanded === true` in `channelVideoCollections`.
-- [ ] Expanding channel B while channel A is expanded collapses A.
+- [ ] At any time, at most one channel has `loadedMode === "paged"` in `channelVideoCollections`. Other channels remain in `preview` mode.
+- [ ] Expanding channel B (into paged) while channel A is paged demotes A back to `preview` and keeps A's row visible with 5 preview videos.
 - [ ] The `Load more` button still appears at the bottom of a paged collection when `hasMore && !loadingMore`.
 - [ ] No regression in virtualized rendering for paged collections above `VIRTUALIZATION_THRESHOLD`.
+- [ ] The inline "Loading channels" status row no longer renders inside the channel list.
+- [ ] Collapsing a paged channel via its sticky chevron leaves the channel row visible at the top of the outer sidebar scroller (no jump-out-of-view).
 
 ## Proof for the Current Increment
 

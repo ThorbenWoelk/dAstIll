@@ -16,6 +16,8 @@
     loadingVideos,
     refreshingChannel,
     videoCount,
+    isStickyHeader = false,
+    isPagedExpanded = false,
     onSelect,
     onToggleExpanded = () => {},
     onDragStart,
@@ -36,6 +38,8 @@
     loadingVideos: boolean;
     refreshingChannel: boolean;
     videoCount: number;
+    isStickyHeader?: boolean;
+    isPagedExpanded?: boolean;
     onSelect: () => void | Promise<void>;
     onToggleExpanded?: () => void | Promise<void>;
     onDragStart: (event: DragEvent) => void;
@@ -77,11 +81,7 @@
   {/if}
 
   {#if !channelUiHidden}
-    <div
-      class={!isPreviewMode && isExpanded
-        ? "sticky top-0 z-10 bg-[var(--surface)]"
-        : ""}
-    >
+    <div class={isStickyHeader ? "sticky top-0 z-10 bg-[var(--surface)]" : ""}>
       <ChannelCard
         {channel}
         active={isExpanded}
