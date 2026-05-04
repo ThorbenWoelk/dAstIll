@@ -378,6 +378,7 @@
     {contentMode}
     {selectedVideoId}
     {selectedVideo}
+    {contentText}
     {loadingContent}
     {editing}
     {aiAvailable}
@@ -423,7 +424,6 @@
         {selectedVideo}
         {selectedVideoId}
         {contentMode}
-        {contentText}
         {loadingContent}
         {formattingContent}
         {formattingVideoId}

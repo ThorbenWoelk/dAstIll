@@ -20,7 +20,12 @@
   let {
     videoId,
     summaryReady = true,
-  }: { videoId: string | null; summaryReady?: boolean } = $props();
+    hideWhenMissing = false,
+  }: {
+    videoId: string | null;
+    summaryReady?: boolean;
+    hideWhenMissing?: boolean;
+  } = $props();
 
   let status = $state<SummaryAudioStatus>("missing");
   let summaryAudioError = $state<string | null>(null);
@@ -293,185 +298,187 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<div class="waveform-player">
-  {#if status === "unavailable" && audioRequested}
-    <div class="waveform-area waveform-area-unavailable" role="status">
-      <div class="waveform-bars waveform-bars-idle" aria-hidden="true">
-        {#each waveformBars as height}
-          <div class="waveform-bar" style="height: {height * 100}%"></div>
-        {/each}
+{#if !(hideWhenMissing && status === "missing")}
+  <div class="waveform-player">
+    {#if status === "unavailable" && audioRequested}
+      <div class="waveform-area waveform-area-unavailable" role="status">
+        <div class="waveform-bars waveform-bars-idle" aria-hidden="true">
+          {#each waveformBars as height}
+            <div class="waveform-bar" style="height: {height * 100}%"></div>
+          {/each}
+        </div>
+        <div class="waveform-unavailable-copy">
+          <span class="waveform-status-label">Audio unavailable</span>
+          <span class="waveform-unavailable-text">{unavailableMessage}</span>
+        </div>
       </div>
-      <div class="waveform-unavailable-copy">
-        <span class="waveform-status-label">Audio unavailable</span>
-        <span class="waveform-unavailable-text">{unavailableMessage}</span>
-      </div>
-    </div>
-  {:else if status === "missing"}
-    <!-- Generate prompt with waveform preview -->
-    <button
-      class="waveform-generate-btn"
-      onclick={generateAudio}
-      disabled={!summaryReady}
-      title={summaryReady ? "Generate audio" : "Summary not yet available"}
-    >
-      <div class="waveform-bars waveform-bars-idle" aria-hidden="true">
-        {#each waveformBars as height}
-          <div class="waveform-bar" style="height: {height * 100}%"></div>
-        {/each}
-      </div>
-      <div class="waveform-generate-overlay">
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <polygon points="5 3 19 12 5 21 5 3" />
-        </svg>
-        <span class="waveform-generate-label">
-          {#if summaryWordCount !== null}
-            {@const speakMins = Math.round(summaryWordCount / 140) || 1}
-            Generate ~{speakMins}m audio
-          {:else}
-            Generate audio
-          {/if}
+    {:else if status === "missing"}
+      <!-- Generate prompt with waveform preview -->
+      <button
+        class="waveform-generate-btn"
+        onclick={generateAudio}
+        disabled={!summaryReady}
+        title={summaryReady ? "Generate audio" : "Summary not yet available"}
+      >
+        <div class="waveform-bars waveform-bars-idle" aria-hidden="true">
+          {#each waveformBars as height}
+            <div class="waveform-bar" style="height: {height * 100}%"></div>
+          {/each}
+        </div>
+        <div class="waveform-generate-overlay">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <polygon points="5 3 19 12 5 21 5 3" />
+          </svg>
+          <span class="waveform-generate-label">
+            {#if summaryWordCount !== null}
+              {@const speakMins = Math.round(summaryWordCount / 140) || 1}
+              Generate ~{speakMins}m audio
+            {:else}
+              Generate audio
+            {/if}
+          </span>
+        </div>
+      </button>
+    {:else if status === "generating" || status === "loading"}
+      <!-- Generating state with animated waveform -->
+      <div class="waveform-area">
+        <div class="waveform-bars waveform-bars-generating" aria-hidden="true">
+          {#each waveformBars as height, i}
+            <div
+              class="waveform-bar"
+              style="height: {height * 100}%; animation-delay: {i * 20}ms"
+            ></div>
+          {/each}
+        </div>
+        <span class="waveform-status-label">
+          {status === "generating" ? "Generating audio..." : "Loading..."}
         </span>
       </div>
-    </button>
-  {:else if status === "generating" || status === "loading"}
-    <!-- Generating state with animated waveform -->
-    <div class="waveform-area">
-      <div class="waveform-bars waveform-bars-generating" aria-hidden="true">
-        {#each waveformBars as height, i}
-          <div
-            class="waveform-bar"
-            style="height: {height * 100}%; animation-delay: {i * 20}ms"
-          ></div>
-        {/each}
-      </div>
-      <span class="waveform-status-label">
-        {status === "generating" ? "Generating audio..." : "Loading..."}
-      </span>
-    </div>
-  {:else}
-    <!-- Active player with interactive waveform -->
-    <div class="waveform-area waveform-area-active">
-      <div class="waveform-controls">
-        <button
-          class="waveform-play-btn"
-          onclick={togglePlay}
-          title={status === "playing" ? "Pause (Space)" : "Play (Space)"}
+    {:else}
+      <!-- Active player with interactive waveform -->
+      <div class="waveform-area waveform-area-active">
+        <div class="waveform-controls">
+          <button
+            class="waveform-play-btn"
+            onclick={togglePlay}
+            title={status === "playing" ? "Pause (Space)" : "Play (Space)"}
+          >
+            {#if status === "playing"}
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <rect x="6" y="4" width="3" height="16" />
+                <rect x="15" y="4" width="3" height="16" />
+              </svg>
+            {:else}
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                class="ml-px"
+              >
+                <polygon points="5 3 19 12 5 21 5 3" />
+              </svg>
+            {/if}
+          </button>
+
+          <button
+            class="waveform-rate-btn"
+            onclick={cyclePlaybackRate}
+            title="Playback speed"
+          >
+            {playbackRate}x
+          </button>
+        </div>
+
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div
+          class="waveform-bars waveform-bars-interactive"
+          bind:this={waveformContainer}
+          onclick={handleWaveformClick}
+          role="slider"
+          tabindex="0"
+          aria-label="Audio progress"
+          aria-valuenow={Math.round(currentTime)}
+          aria-valuemin={0}
+          aria-valuemax={Math.round(duration)}
         >
-          {#if status === "playing"}
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <rect x="6" y="4" width="3" height="16" />
-              <rect x="15" y="4" width="3" height="16" />
-            </svg>
-          {:else}
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              class="ml-px"
-            >
-              <polygon points="5 3 19 12 5 21 5 3" />
-            </svg>
-          {/if}
-        </button>
+          {#each waveformBars as height, i}
+            {@const barProgress = i / BAR_COUNT}
+            <div
+              class="waveform-bar {barProgress <=
+              timelineState.progressPercent / 100
+                ? 'waveform-bar-played'
+                : 'waveform-bar-unplayed'}"
+              style="height: {height * 100}%"
+            ></div>
+          {/each}
+        </div>
 
-        <button
-          class="waveform-rate-btn"
-          onclick={cyclePlaybackRate}
-          title="Playback speed"
-        >
-          {playbackRate}x
-        </button>
-      </div>
-
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div
-        class="waveform-bars waveform-bars-interactive"
-        bind:this={waveformContainer}
-        onclick={handleWaveformClick}
-        role="slider"
-        tabindex="0"
-        aria-label="Audio progress"
-        aria-valuenow={Math.round(currentTime)}
-        aria-valuemin={0}
-        aria-valuemax={Math.round(duration)}
-      >
-        {#each waveformBars as height, i}
-          {@const barProgress = i / BAR_COUNT}
-          <div
-            class="waveform-bar {barProgress <=
-            timelineState.progressPercent / 100
-              ? 'waveform-bar-played'
-              : 'waveform-bar-unplayed'}"
-            style="height: {height * 100}%"
-          ></div>
-        {/each}
-      </div>
-
-      <div class="waveform-time">
-        {#if currentTime > 0 || duration > 0}
-          {@const knownDuration = isFinite(duration) && duration > 0}
-          <span class="waveform-time-text">
-            {Math.floor(currentTime / 60)}:{(currentTime % 60)
-              .toFixed(0)
-              .padStart(2, "0")}{#if knownDuration}
-              / {Math.floor(duration / 60)}:{(duration % 60)
+        <div class="waveform-time">
+          {#if currentTime > 0 || duration > 0}
+            {@const knownDuration = isFinite(duration) && duration > 0}
+            <span class="waveform-time-text">
+              {Math.floor(currentTime / 60)}:{(currentTime % 60)
                 .toFixed(0)
-                .padStart(2, "0")}{/if}
-          </span>
-        {/if}
+                .padStart(2, "0")}{#if knownDuration}
+                / {Math.floor(duration / 60)}:{(duration % 60)
+                  .toFixed(0)
+                  .padStart(2, "0")}{/if}
+            </span>
+          {/if}
+        </div>
       </div>
-    </div>
-  {/if}
+    {/if}
 
-  {#if summaryAudioError && status !== "unavailable"}
-    <span class="waveform-error">{summaryAudioError}</span>
-  {/if}
+    {#if summaryAudioError && status !== "unavailable"}
+      <span class="waveform-error">{summaryAudioError}</span>
+    {/if}
 
-  {#if audioSrc}
-    <audio
-      bind:this={audioPlayer}
-      src={audioSrc}
-      ontimeupdate={onTimeUpdate}
-      onloadedmetadata={syncKnownDuration}
-      ondurationchange={syncKnownDuration}
-      onloadeddata={syncKnownDuration}
-      onended={onEnded}
-      onplay={onPlay}
-      onpause={onPause}
-      onwaiting={onWaiting}
-      oncanplay={onCanPlay}
-      preload="metadata"
-      class="hidden"
-    ></audio>
-  {/if}
-</div>
+    {#if audioSrc}
+      <audio
+        bind:this={audioPlayer}
+        src={audioSrc}
+        ontimeupdate={onTimeUpdate}
+        onloadedmetadata={syncKnownDuration}
+        ondurationchange={syncKnownDuration}
+        onloadeddata={syncKnownDuration}
+        onended={onEnded}
+        onplay={onPlay}
+        onpause={onPause}
+        onwaiting={onWaiting}
+        oncanplay={onCanPlay}
+        preload="metadata"
+        class="hidden"
+      ></audio>
+    {/if}
+  </div>
+{/if}
 
 <style>
   .waveform-player {

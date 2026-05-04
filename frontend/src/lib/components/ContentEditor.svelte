@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from "svelte";
   import CheckCircleIcon from "$lib/components/icons/CheckCircleIcon.svelte";
   import ContentActionButton from "./ContentActionButton.svelte";
 
@@ -29,6 +30,7 @@
     acknowledgeToggleId = undefined,
     aiAvailable = true,
     minimalActionChrome = false,
+    extraViewActions = undefined,
   }: {
     value?: string;
     editing?: boolean;
@@ -56,6 +58,7 @@
     acknowledgeToggleId?: string | undefined;
     aiAvailable?: boolean;
     minimalActionChrome?: boolean;
+    extraViewActions?: Snippet;
   } = $props();
 
   let formatActionLabel = $derived(
@@ -344,6 +347,9 @@
             </span>
           {/if}
         </button>
+      {/if}
+      {#if extraViewActions}
+        {@render extraViewActions()}
       {/if}
       {#if showEditAction}
         <ContentActionButton

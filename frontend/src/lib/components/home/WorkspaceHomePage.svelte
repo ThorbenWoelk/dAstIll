@@ -124,6 +124,8 @@
     <WorkspaceDesktopTopBar
       contentMode={hw.contentMode}
       selectedVideoId={hw.selectedVideoId}
+      selectedVideo={hw.selectedVideo}
+      contentText={hw.workspaceContentState.contentText}
       loadingContent={hw.loadingContent}
       editing={hw.editing}
       hasUpdatedTranscript={hw.hasUpdatedTranscript}
