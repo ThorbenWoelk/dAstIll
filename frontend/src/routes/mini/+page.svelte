@@ -7,6 +7,7 @@
   import MiniEmptyState from "$lib/components/mini/MiniEmptyState.svelte";
   import MiniSummaryStrip from "$lib/components/mini/MiniSummaryStrip.svelte";
   import MiniTopBar from "$lib/components/mini/MiniTopBar.svelte";
+  import ErrorToast from "$lib/components/ErrorToast.svelte";
   import VocabularyReplacementModal from "$lib/components/VocabularyReplacementModal.svelte";
   import { createMiniKeydownHandler } from "$lib/mini/mini-keyboard";
   import { createMiniReaderState } from "$lib/mini/mini-reader-state.svelte";
@@ -116,11 +117,11 @@
   />
 
   <div class="mini-main">
-    {#if mini.loading}
+    {#if mini.status === "loading" && !mini.activeSummary}
       <div class="mini-article-pane">
         <MiniEmptyState variant="loading" />
       </div>
-    {:else if mini.error}
+    {:else if mini.status === "error"}
       <div
         class="mini-article-pane"
         use:pullRefresh={{
@@ -130,11 +131,11 @@
       >
         <MiniEmptyState
           variant="error"
-          errorMessage={mini.error}
+          errorMessage={mini.errorMessage ?? undefined}
           onRetry={() => mini.loadReader(mini.selectedChannelId)}
         />
       </div>
-    {:else if !mini.activeSummary}
+    {:else if mini.status === "empty"}
       <div
         class="mini-article-pane"
         use:pullRefresh={{
@@ -169,6 +170,9 @@
           enabled: !channelSheetOpen,
         }}
       >
+        {#if mini.status === "loading"}
+          <span class="stale-badge" aria-live="polite">Updating…</span>
+        {/if}
         <MiniArticle
           summary={mini.activeSummary}
           summaryHtml={mini.activeSummaryHtml}
@@ -230,6 +234,13 @@
     onConfirm={() => void mini.confirmVocabularyReplacement()}
     onCancel={() => mini.closeVocabularyModal()}
   />
+
+  {#if mini.error}
+    <ErrorToast
+      message={mini.error}
+      onDismiss={() => mini.clearActionError()}
+    />
+  {/if}
 </div>
 
 <style>
@@ -272,6 +283,20 @@
     overflow-x: hidden;
     overscroll-behavior-y: contain;
     scroll-behavior: smooth;
+    position: relative;
+  }
+
+  .stale-badge {
+    position: absolute;
+    top: var(--space-md);
+    right: var(--space-md);
+    z-index: 10;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--soft-foreground);
+    opacity: 0.6;
   }
 
   @media (min-width: 960px) {

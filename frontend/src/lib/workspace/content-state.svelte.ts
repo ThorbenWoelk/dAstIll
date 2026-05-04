@@ -59,7 +59,7 @@ export function createContentState(options: {
   ) => void;
   initialContentMode?: WorkspaceContentMode;
 }) {
-  let loadingContent = $state(false);
+  let loadingContent = $state(true);
   let contentMode = $state<WorkspaceContentMode>(
     options.initialContentMode ?? "info",
   );
@@ -383,6 +383,7 @@ export function createContentState(options: {
     if (options?.nextMode) {
       contentMode = options.nextMode;
     }
+    loadingContent = true;
     if (options?.clearDisplayedContent ?? true) {
       contentText = "";
       draft = "";

@@ -107,9 +107,12 @@ export async function saveMiniVocabularyPreferences(
   return next;
 }
 
+export type MiniReaderStatus = "idle" | "loading" | "ready" | "empty" | "error";
+
 export class MiniReaderState {
   reader = $state<MiniReader | null>(null);
-  loading = $state(false);
+  status = $state<MiniReaderStatus>("loading");
+  errorMessage = $state<string | null>(null);
   error = $state<string | null>(null);
   selectedChannelId = $state<string | null>(null);
   activeVideoId = $state<string | null>(null);
@@ -207,8 +210,9 @@ export class MiniReaderState {
     preferredVideoId?: string | null,
     options?: { bypassCache?: boolean },
   ) {
-    this.loading = true;
-    this.error = null;
+    const hadReader = this.reader !== null;
+    this.status = "loading";
+    this.errorMessage = null;
     try {
       const next = await getMiniReader(channelId, {
         bypassCache: options?.bypassCache,
@@ -224,14 +228,26 @@ export class MiniReaderState {
         preferredVideoId,
       );
       this.readProgress = 0;
+      const visible = this.showUnreadOnly
+        ? reader.summaries.filter((s) => !s.read)
+        : reader.summaries;
+      this.status =
+        reader.channels.length === 0 || visible.length === 0
+          ? "empty"
+          : "ready";
     } catch (cause) {
-      this.reader = null;
-      this.selectedChannelId = null;
-      this.activeVideoId = null;
-      this.error =
+      const message =
         cause instanceof Error ? cause.message : "Could not load dastill-mini.";
-    } finally {
-      this.loading = false;
+      if (hadReader) {
+        this.error = message;
+        this.status = "ready";
+      } else {
+        this.reader = null;
+        this.selectedChannelId = null;
+        this.activeVideoId = null;
+        this.errorMessage = message;
+        this.status = "error";
+      }
     }
   }
 
@@ -254,7 +270,7 @@ export class MiniReaderState {
   }
 
   async refreshReader() {
-    if (this.loading) return;
+    if (this.status === "loading") return;
     await this.loadReader(
       this.selectedChannelId,
       this.activeSummary?.video_id ?? this.activeVideoId,
@@ -451,6 +467,10 @@ export class MiniReaderState {
 
   get vocabularyModalValue() {
     return this.vocabularyController.modalValue;
+  }
+
+  clearActionError() {
+    this.error = null;
   }
 
   toggleUnreadFilter() {

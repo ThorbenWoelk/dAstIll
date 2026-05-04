@@ -15,18 +15,29 @@
 </script>
 
 {#if variant === "loading"}
-  <div class="skeleton-wrap">
-    <div class="skel skel-hero"></div>
-    <div class="skel-row">
-      <div class="skel skel-meta-1"></div>
-      <div class="skel skel-meta-2"></div>
+  <div class="skeleton-wrap" aria-busy="true" aria-label="Loading article">
+    <div class="skel skel-kicker"></div>
+    <div class="skel-title-block">
+      <div class="skel skel-title-1"></div>
+      <div class="skel skel-title-2"></div>
     </div>
-    <div class="skel skel-title"></div>
+    <div class="skel-aside-row">
+      <div class="skel skel-aside-1"></div>
+      <div class="skel skel-aside-2"></div>
+    </div>
     <div class="skel-body">
       <div class="skel skel-line"></div>
-      <div class="skel skel-line skel-line--short"></div>
       <div class="skel skel-line"></div>
+      <div class="skel skel-line skel-line--85"></div>
+      <div class="skel skel-line skel-line--70"></div>
     </div>
+    <div class="skel-body skel-body--gap">
+      <div class="skel skel-line"></div>
+      <div class="skel skel-line"></div>
+      <div class="skel skel-line skel-line--90"></div>
+      <div class="skel skel-line skel-line--55"></div>
+    </div>
+    <p class="skel-stage-label">Loading…</p>
   </div>
 {:else}
   <div class="empty-state">
@@ -73,48 +84,80 @@
   .skeleton-wrap {
     max-width: 680px;
     margin: 0 auto;
-    padding: var(--space-lg) var(--space-md);
+    padding: var(--space-lg) var(--space-md)
+      calc(80px + env(safe-area-inset-bottom, 0px));
   }
   .skel {
     background: var(--muted);
     border-radius: 4px;
     animation: pulse-subtle 1.4s ease-in-out infinite;
   }
-  .skel-hero {
-    width: 100%;
-    aspect-ratio: 16 / 9;
-    border-radius: var(--radius-md);
-    margin-bottom: var(--space-lg);
-  }
-  .skel-row {
-    display: flex;
-    gap: var(--space-sm);
+  .skel-kicker {
+    width: 96px;
+    height: 10px;
     margin-bottom: var(--space-sm);
   }
-  .skel-meta-1 {
-    width: 80px;
-    height: 10px;
+  .skel-title-block {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: var(--space-md);
   }
-  .skel-meta-2 {
-    width: 60px;
-    height: 10px;
+  .skel-title-1 {
+    width: 88%;
+    height: 28px;
+    border-radius: 6px;
   }
-  .skel-title {
-    width: 70%;
-    height: 24px;
+  .skel-title-2 {
+    width: 62%;
+    height: 28px;
+    border-radius: 6px;
+  }
+  .skel-aside-row {
+    display: flex;
+    gap: var(--space-md);
     margin-bottom: var(--space-xl);
+  }
+  .skel-aside-1 {
+    width: 72px;
+    height: 10px;
+  }
+  .skel-aside-2 {
+    width: 100px;
+    height: 10px;
   }
   .skel-body {
     display: flex;
     flex-direction: column;
     gap: var(--space-sm);
   }
+  .skel-body--gap {
+    margin-top: var(--space-lg);
+  }
   .skel-line {
     width: 100%;
-    height: 12px;
+    height: 13px;
   }
-  .skel-line--short {
-    width: 65%;
+  .skel-line--85 {
+    width: 85%;
+  }
+  .skel-line--90 {
+    width: 90%;
+  }
+  .skel-line--70 {
+    width: 70%;
+  }
+  .skel-line--55 {
+    width: 55%;
+  }
+  .skel-stage-label {
+    margin-top: var(--space-xl);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--soft-foreground);
+    opacity: 0.5;
   }
 
   @keyframes pulse-subtle {
