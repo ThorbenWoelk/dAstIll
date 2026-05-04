@@ -189,9 +189,19 @@
     {/if}
   </div>
 
-  <h1 class="content-hero-title mb-6 text-[var(--foreground)] sm:mb-8">
-    {selectedVideo.title}
-  </h1>
+  <div class="content-header-group">
+    <h1 class="content-hero-title mb-6 text-[var(--foreground)] sm:mb-8">
+      {selectedVideo.title}
+    </h1>
+    {#if contentMode === "summary"}
+      <div class="summary-embed-strip">
+        <WorkspaceSummaryAudioPlayer
+          videoId={selectedVideoId}
+          summaryReady={selectedVideo?.summary_status === "ready"}
+        />
+      </div>
+    {/if}
+  </div>
 {/if}
 
 {#if contentMode === "transcript" && selectedVideoId && ((formattingContent && formattingVideoId === selectedVideoId) || (formattingNotice && formattingNoticeVideoId === selectedVideoId))}
@@ -235,15 +245,6 @@
   </div>
 {/if}
 
-{#if contentMode === "summary" && selectedVideoId && !loadingContent}
-  <div class="summary-embed-strip">
-    <WorkspaceSummaryAudioPlayer
-      videoId={selectedVideoId}
-      summaryReady={selectedVideo?.summary_status === "ready"}
-    />
-  </div>
-{/if}
-
 <style>
   .content-hero-title {
     margin: 0;
@@ -257,7 +258,17 @@
       "wght" 580;
   }
 
+  .content-header-group {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .content-hero-title {
+    order: 1;
+  }
+
   .summary-embed-strip {
+    order: 2;
     max-width: 52rem;
     margin-bottom: 0.5rem;
     min-width: 0;
@@ -273,11 +284,13 @@
     .content-hero-title {
       font-size: clamp(1.5rem, 6vw, 2rem);
       line-height: 1.2;
+      order: 2;
     }
 
     .summary-embed-strip {
+      order: 1;
       max-width: none;
-      margin-bottom: 0.25rem;
+      margin-bottom: 1.25rem;
     }
   }
 </style>
