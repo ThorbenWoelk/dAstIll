@@ -732,16 +732,37 @@
     }
 
     .waveform-generate-btn {
-      min-width: 0;
+      display: inline-flex;
+      align-items: center;
+      width: auto;
+      border: 1px solid var(--border-soft);
+      border-radius: 9999px;
+      background: var(--surface);
+    }
+
+    .waveform-bars-idle {
+      display: none;
     }
 
     .waveform-generate-overlay {
-      justify-content: flex-start;
-      padding: 0 0.35rem;
-      gap: 0.35rem;
+      position: static;
+      padding: 0.45rem 0.9rem 0.45rem 0.7rem;
+      background: none;
+      color: var(--soft-foreground);
+      gap: 0.4rem;
     }
 
-    .waveform-generate-label,
+    .waveform-generate-btn:hover .waveform-generate-overlay {
+      transform: none;
+    }
+
+    .waveform-generate-label {
+      font-size: 11px;
+      text-transform: none;
+      letter-spacing: 0.02em;
+      font-weight: 600;
+    }
+
     .waveform-status-label {
       font-size: 9px;
       letter-spacing: 0.1em;

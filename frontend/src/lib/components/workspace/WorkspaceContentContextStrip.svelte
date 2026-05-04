@@ -147,6 +147,11 @@
       ></span>
       <span>Short</span>
     {/if}
+    {#if contentMode === "summary" && summaryModelUsed}
+      <span class="h-1 w-1 rounded-full bg-[var(--border)]" aria-hidden="true"
+      ></span>
+      <span class="truncate max-w-[14ch]">{summaryModelUsed}</span>
+    {/if}
     {#if contentMode === "summary"}
       <span class="h-1 w-1 rounded-full bg-[var(--border)]" aria-hidden="true"
       ></span>
