@@ -88,6 +88,12 @@
     const body = contentText.trim();
     return title ? `${title}\n\n${body}` : body;
   });
+  let copyActionLabel = $derived(
+    contentMode === "transcript" ? "Copy transcript text" : "Copy summary text",
+  );
+  let copiedLabel = $derived(
+    contentMode === "transcript" ? "Copied transcript" : "Copied summary",
+  );
 
   $effect(() => {
     contentMode;
@@ -247,10 +253,10 @@
               type="button"
               class={ghostBtn}
               aria-label={copyState === "copied"
-                ? "Copied"
+                ? copiedLabel
                 : copyState === "error"
                   ? "Copy failed"
-                  : "Copy text"}
+                  : copyActionLabel}
               onclick={copyContent}
             >
               {#if copyState === "copied"}
