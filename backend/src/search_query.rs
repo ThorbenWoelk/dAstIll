@@ -23,6 +23,10 @@ const SEARCH_STOPWORDS: &[&str] = &[
 ];
 const SHORT_TECHNICAL_SEARCH_TERMS: &[&str] = &["ai", "db", "go", "js", "ml", "ui", "ux"];
 
+fn is_search_term_character(character: char) -> bool {
+    character.is_alphanumeric() || matches!(character, '_' | '-' | '.')
+}
+
 pub fn tokenize_search_terms(query: &str) -> Vec<String> {
     query
         .split(|character: char| !is_search_term_character(character))
@@ -30,10 +34,6 @@ pub fn tokenize_search_terms(query: &str) -> Vec<String> {
         .filter(|token| !token.is_empty())
         .map(str::to_ascii_lowercase)
         .collect()
-}
-
-fn is_search_term_character(character: char) -> bool {
-    character.is_alphanumeric() || matches!(character, '_' | '-' | '.')
 }
 
 pub fn is_meaningful_search_term(token: &str) -> bool {
@@ -101,18 +101,38 @@ pub fn meaningful_search_terms(query: &str) -> Vec<String> {
         .collect()
 }
 
+fn build_multi_token_phrase_query(tokens: &[String]) -> Option<String> {
+    if tokens.len() < 2 {
+        return None;
+    }
+
+    Some(format!("\"{}\"", tokens.join(" ")))
+}
+
+pub fn normalize_search_text(query: &str) -> String {
+    let normalized_tokens = normalized_search_tokens(query)
+        .into_iter()
+        .filter(|token| is_meaningful_search_term(token))
+        .collect::<Vec<_>>();
+
+    if normalized_tokens.is_empty() {
+        query.trim().to_string()
+    } else {
+        normalized_tokens.join(" ")
+    }
+}
+
 pub fn build_fts_phrase_queries(query: &str) -> Vec<String> {
     let mut phrases = Vec::new();
 
     let normalized_query = normalize_search_text(query);
     let normalized_tokens = tokenize_search_terms(&normalized_query);
-    if normalized_tokens.len() >= 2 {
-        phrases.push(format!("\"{}\"", normalized_tokens.join(" ")));
+    if let Some(normalized_phrase) = build_multi_token_phrase_query(&normalized_tokens) {
+        phrases.push(normalized_phrase);
     }
 
     let raw_tokens = tokenize_search_terms(query);
-    if raw_tokens.len() >= 2 {
-        let raw_phrase = format!("\"{}\"", raw_tokens.join(" "));
+    if let Some(raw_phrase) = build_multi_token_phrase_query(&raw_tokens) {
         if !phrases.iter().any(|phrase| phrase == &raw_phrase) {
             phrases.push(raw_phrase);
         }
@@ -140,19 +160,6 @@ pub fn build_fts_relaxed_query(query: &str) -> String {
         .map(|token| format!("\"{token}\""))
         .collect::<Vec<_>>()
         .join(" OR ")
-}
-
-pub fn normalize_search_text(query: &str) -> String {
-    let normalized_tokens = normalized_search_tokens(query)
-        .into_iter()
-        .filter(|token| is_meaningful_search_term(token))
-        .collect::<Vec<_>>();
-
-    if normalized_tokens.is_empty() {
-        query.trim().to_string()
-    } else {
-        normalized_tokens.join(" ")
-    }
 }
 
 #[cfg(test)]
