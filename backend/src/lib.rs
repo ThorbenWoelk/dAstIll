@@ -12,6 +12,7 @@ pub mod models;
 pub mod openapi;
 pub mod read_cache;
 pub mod routes;
+pub mod runtime;
 pub mod runtime_paths;
 pub mod search_progress;
 pub mod search_query;
