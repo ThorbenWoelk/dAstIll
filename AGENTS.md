@@ -50,7 +50,7 @@ Deeper domain-specific guidance belongs in dedicated docs and should be linked f
   3. Redeploy consumer so latest secret version is picked up.
 - `infra.yml` auto-syncs only Firebase frontend build secrets (`dastill-firebase-web-api-key`, `dastill-firebase-auth-domain`) after Terraform apply. All other app secrets are still manual Secret Manager version adds.
 - Current non-Firebase secrets expected in production: `dastill-youtube-api-key`, `dastill-openalex-api-key`, `dastill-ollama-api-key`, `dastill-logfire-token`, `dastill-backend-proxy-token`, `dastill-databricks-token`.
-- Some internal code and script names still say `turso`. Treat those as historical names for the local `libSQL` store, not as active Turso Cloud usage.
+- Legacy migration scripts may still say `turso`. Treat those as historical names for old migration paths, not active Turso Cloud usage.
 - Secret deprecation stays IaC:
   1. Remove consumers.
   2. Remove workflow refs.

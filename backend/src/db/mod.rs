@@ -5,14 +5,15 @@ mod helpers;
 mod highlights;
 mod library;
 mod libsql_snapshot;
+mod local_libsql;
 mod media_assets;
 mod preferences;
 mod search;
 mod source_profiles;
+pub mod sql_schema;
+pub(crate) mod sql_videos;
 mod stats;
 mod tts_stats;
-pub mod turso_schema;
-pub(crate) mod turso_videos;
 mod user_scope;
 mod video_info;
 mod videos;
@@ -28,13 +29,14 @@ pub use conversations::*;
 pub use highlights::*;
 pub use library::*;
 pub use libsql_snapshot::*;
+pub use local_libsql::*;
 pub use media_assets::*;
 pub use preferences::*;
 pub use search::*;
 pub use source_profiles::*;
+pub use sql_videos::*;
 pub use stats::*;
 pub use tts_stats::*;
-pub use turso_videos::*;
 pub use user_scope::*;
 pub use video_info::*;
 pub use videos::*;
@@ -77,7 +79,7 @@ impl From<serde_json::Error> for StoreError {
 pub struct Store {
     pub(crate) s3: aws_sdk_s3::Client,
     pub(crate) s3v: aws_sdk_s3vectors::Client,
-    pub(crate) turso: libsql::Connection,
+    pub(crate) sql: libsql::Connection,
     pub(crate) data_bucket: String,
     pub(crate) vector_bucket: String,
     pub(crate) vector_index: String,
@@ -282,7 +284,7 @@ pub enum QueueFilter {
 pub async fn init_store(
     s3: aws_sdk_s3::Client,
     s3v: aws_sdk_s3vectors::Client,
-    turso: libsql::Connection,
+    sql: libsql::Connection,
     data_bucket: String,
     vector_bucket: String,
     vector_index: String,
@@ -293,7 +295,7 @@ pub async fn init_store(
     Ok(Store {
         s3,
         s3v,
-        turso,
+        sql,
         data_bucket,
         vector_bucket,
         vector_index,

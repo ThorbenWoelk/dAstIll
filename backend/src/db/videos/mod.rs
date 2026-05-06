@@ -63,7 +63,7 @@ fn upsert_video_delta(record: CanonicalVideoRecord) -> super::LibsqlSnapshotDelt
 }
 
 async fn mirror_video_snapshot(store: &Store, video_id: &str) -> Result<(), StoreError> {
-    let Some(video) = super::turso_videos::ts_get_video(store, video_id, false).await? else {
+    let Some(video) = super::sql_videos::sql_get_video(store, video_id, false).await? else {
         return Ok(());
     };
     let record = canonical_video_from_video(&video);
@@ -80,7 +80,7 @@ async fn mirror_video_snapshots(store: &Store, video_ids: &[String]) -> Result<(
         return Ok(());
     }
 
-    let videos = super::turso_videos::ts_get_videos(store, video_ids, false).await?;
+    let videos = super::sql_videos::sql_get_videos(store, video_ids, false).await?;
     let mut operations = Vec::with_capacity(video_ids.len());
     for video_id in video_ids {
         let Some(video) = videos.get(video_id) else {
@@ -101,7 +101,7 @@ async fn mirror_video_snapshots(store: &Store, video_ids: &[String]) -> Result<(
 }
 
 pub async fn sql_video_count(store: &Store) -> Result<usize, StoreError> {
-    super::turso_videos::ts_count_videos(store).await
+    super::sql_videos::sql_count_videos(store).await
 }
 
 pub async fn snapshot_video_count(store: &Store) -> Result<usize, StoreError> {
@@ -118,11 +118,11 @@ pub async fn bootstrap_sql_videos_from_store(store: &Store) -> Result<usize, Sto
         .into_iter()
         .map(video_from_canonical)
         .collect::<Vec<_>>();
-    super::turso_videos::ts_bulk_insert_videos(store, videos).await
+    super::sql_videos::sql_bulk_insert_videos(store, videos).await
 }
 
 pub async fn export_sql_videos_to_store(store: &Store) -> Result<usize, StoreError> {
-    let videos = super::turso_videos::ts_load_all_videos(store).await?;
+    let videos = super::sql_videos::sql_load_all_videos(store).await?;
     let mut operations = Vec::with_capacity(videos.len());
     for video in &videos {
         let record = canonical_video_from_video(video);
@@ -138,7 +138,7 @@ pub async fn export_sql_videos_to_store(store: &Store) -> Result<usize, StoreErr
 }
 
 pub async fn insert_video(store: &Store, video: &Video) -> Result<VideoInsertOutcome, StoreError> {
-    let outcome = super::turso_videos::ts_insert_video(store, video).await?;
+    let outcome = super::sql_videos::sql_insert_video(store, video).await?;
     mirror_video_snapshot(store, &video.id).await?;
     if outcome == VideoInsertOutcome::Inserted {
         store.read_cache.evict_channel(&video.channel_id).await;
@@ -152,7 +152,7 @@ pub async fn bulk_insert_videos(store: &Store, videos: Vec<Video>) -> Result<usi
         .iter()
         .map(|video| video.id.clone())
         .collect::<Vec<_>>();
-    let count = super::turso_videos::ts_bulk_insert_videos(store, videos).await?;
+    let count = super::sql_videos::sql_bulk_insert_videos(store, videos).await?;
     mirror_video_snapshots(store, &video_ids).await?;
     if count > 0 {
         store.read_cache.evict_channel_list().await;
@@ -165,7 +165,7 @@ pub async fn get_video(
     id: &str,
     include_summary: bool,
 ) -> Result<Option<Video>, StoreError> {
-    super::turso_videos::ts_get_video(store, id, include_summary).await
+    super::sql_videos::sql_get_video(store, id, include_summary).await
 }
 
 pub async fn get_videos(
@@ -173,7 +173,7 @@ pub async fn get_videos(
     ids: &[impl AsRef<str>],
     include_summary: bool,
 ) -> Result<std::collections::HashMap<String, Video>, StoreError> {
-    super::turso_videos::ts_get_videos(store, ids, include_summary).await
+    super::sql_videos::sql_get_videos(store, ids, include_summary).await
 }
 
 pub async fn list_channel_videos_window(
@@ -183,7 +183,7 @@ pub async fn list_channel_videos_window(
     offset: usize,
     descending: bool,
 ) -> Result<Vec<Video>, StoreError> {
-    super::turso_videos::ts_list_channel_videos_window(store, channel_id, limit, offset, descending)
+    super::sql_videos::sql_list_channel_videos_window(store, channel_id, limit, offset, descending)
         .await
 }
 
@@ -268,7 +268,7 @@ pub async fn load_all_videos(store: &Store) -> Result<Vec<Video>, StoreError> {
     }
 
     // 2. Cache miss: fetch from local libSQL
-    let videos = super::turso_videos::ts_load_all_videos(store).await?;
+    let videos = super::sql_videos::sql_load_all_videos(store).await?;
 
     // 3. Populate cache
     store.read_cache.set_videos(videos.clone()).await;
@@ -596,7 +596,7 @@ pub async fn update_video_transcript_status(
     video_id: &str,
     status: ContentStatus,
 ) -> Result<(), StoreError> {
-    super::turso_videos::ts_update_video_transcript_status(store, video_id, status).await?;
+    super::sql_videos::sql_update_video_transcript_status(store, video_id, status).await?;
     mirror_video_snapshot(store, video_id).await?;
     store.read_cache.evict_videos().await;
     Ok(())
@@ -607,20 +607,20 @@ pub async fn update_video_summary_status(
     video_id: &str,
     status: ContentStatus,
 ) -> Result<(), StoreError> {
-    super::turso_videos::ts_update_video_summary_status(store, video_id, status).await?;
+    super::sql_videos::sql_update_video_summary_status(store, video_id, status).await?;
     mirror_video_snapshot(store, video_id).await?;
     store.read_cache.evict_videos().await;
     Ok(())
 }
 
 pub async fn increment_video_retry_count(store: &Store, video_id: &str) -> Result<(), StoreError> {
-    super::turso_videos::ts_increment_video_retry_count(store, video_id).await?;
+    super::sql_videos::sql_increment_video_retry_count(store, video_id).await?;
     mirror_video_snapshot(store, video_id).await?;
     Ok(())
 }
 
 pub async fn reset_video_retry_count(store: &Store, video_id: &str) -> Result<(), StoreError> {
-    super::turso_videos::ts_reset_video_retry_count(store, video_id).await?;
+    super::sql_videos::sql_reset_video_retry_count(store, video_id).await?;
     mirror_video_snapshot(store, video_id).await?;
     Ok(())
 }
@@ -650,13 +650,13 @@ pub(crate) fn apply_heal_queue_video_fields(video: &mut Video, max_retries: u8) 
 }
 
 pub async fn heal_queue_videos(store: &Store, max_retries: u8) -> Result<usize, StoreError> {
-    let updated_video_ids = super::turso_videos::ts_heal_queue_videos(store, max_retries).await?;
+    let updated_video_ids = super::sql_videos::sql_heal_queue_videos(store, max_retries).await?;
     mirror_video_snapshots(store, &updated_video_ids).await?;
     Ok(updated_video_ids.len())
 }
 
 pub async fn delete_videos(store: &Store, video_ids: &[String]) -> Result<(), StoreError> {
-    super::turso_videos::ts_delete_videos(store, video_ids).await?;
+    super::sql_videos::sql_delete_videos(store, video_ids).await?;
     store.read_cache.evict_videos().await;
     Ok(())
 }

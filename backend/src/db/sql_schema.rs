@@ -1,6 +1,6 @@
 use libsql::Connection;
 
-pub async fn initialize_turso_schema(conn: &Connection) -> Result<(), String> {
+pub async fn initialize_sql_schema(conn: &Connection) -> Result<(), String> {
     conn.execute_batch(
         r#"
         CREATE TABLE IF NOT EXISTS videos (
@@ -37,6 +37,6 @@ pub async fn initialize_turso_schema(conn: &Connection) -> Result<(), String> {
         "#,
     )
     .await
-    .map_err(|err| format!("failed to initialize Turso schema: {err}"))?;
+    .map_err(|err| format!("failed to initialize SQL schema: {err}"))?;
     Ok(())
 }

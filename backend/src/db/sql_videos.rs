@@ -108,13 +108,13 @@ async fn hydrate_inserted_video_from_storage(
 const SELECT_ALL_COLUMNS: &str = "id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, retry_count, quality_score";
 
 /// Upsert a video, preserving processing state fields when the row already exists.
-pub async fn ts_insert_video(
+pub async fn sql_insert_video(
     store: &Store,
     video: &Video,
 ) -> Result<super::VideoInsertOutcome, StoreError> {
     // Check if existing
     let mut rows = store
-        .turso
+        .sql
         .query(
             &format!("SELECT {SELECT_ALL_COLUMNS} FROM videos WHERE id = ?1"),
             params![video.id.clone()],
@@ -150,7 +150,7 @@ pub async fn ts_insert_video(
     };
 
     store
-        .turso
+        .sql
         .execute(
             r#"INSERT INTO videos (id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, retry_count, quality_score)
                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
@@ -191,7 +191,10 @@ pub async fn ts_insert_video(
     Ok(outcome)
 }
 
-pub async fn ts_bulk_insert_videos(store: &Store, videos: Vec<Video>) -> Result<usize, StoreError> {
+pub async fn sql_bulk_insert_videos(
+    store: &Store,
+    videos: Vec<Video>,
+) -> Result<usize, StoreError> {
     if videos.is_empty() {
         return Ok(0);
     }
@@ -209,7 +212,7 @@ pub async fn ts_bulk_insert_videos(store: &Store, videos: Vec<Video>) -> Result<
         let sql = format!("SELECT {SELECT_ALL_COLUMNS} FROM videos WHERE id IN ({placeholders})");
         let values: Vec<Value> = chunk.iter().map(|id| Value::Text(id.clone())).collect();
         let mut rows = store
-            .turso
+            .sql
             .query(&sql, libsql::params_from_iter(values))
             .await?;
         while let Some(row) = rows.next().await? {
@@ -244,7 +247,7 @@ pub async fn ts_bulk_insert_videos(store: &Store, videos: Vec<Video>) -> Result<
         };
 
         store
-            .turso
+            .sql
             .execute(
                 r#"INSERT INTO videos (id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, retry_count, quality_score)
                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
@@ -281,13 +284,13 @@ pub async fn ts_bulk_insert_videos(store: &Store, videos: Vec<Video>) -> Result<
     Ok(inserted)
 }
 
-pub async fn ts_get_video(
+pub async fn sql_get_video(
     store: &Store,
     id: &str,
     include_summary: bool,
 ) -> Result<Option<Video>, StoreError> {
     let mut rows = store
-        .turso
+        .sql
         .query(
             &format!("SELECT {SELECT_ALL_COLUMNS} FROM videos WHERE id = ?1"),
             params![id],
@@ -313,7 +316,7 @@ pub async fn ts_get_video(
     Ok(video)
 }
 
-pub async fn ts_get_videos(
+pub async fn sql_get_videos(
     store: &Store,
     ids: &[impl AsRef<str>],
     include_summary: bool,
@@ -337,7 +340,7 @@ pub async fn ts_get_videos(
             .map(|id| Value::Text(id.as_ref().to_string()))
             .collect();
         let mut rows = store
-            .turso
+            .sql
             .query(&sql, libsql::params_from_iter(values))
             .await?;
         while let Some(row) = rows.next().await? {
@@ -357,9 +360,9 @@ pub async fn ts_get_videos(
     Ok(results)
 }
 
-pub async fn ts_load_all_videos(store: &Store) -> Result<Vec<Video>, StoreError> {
+pub async fn sql_load_all_videos(store: &Store) -> Result<Vec<Video>, StoreError> {
     let mut rows = store
-        .turso
+        .sql
         .query(&format!("SELECT {SELECT_ALL_COLUMNS} FROM videos"), ())
         .await?;
 
@@ -375,8 +378,8 @@ pub async fn ts_load_all_videos(store: &Store) -> Result<Vec<Video>, StoreError>
     Ok(videos)
 }
 
-pub async fn ts_count_videos(store: &Store) -> Result<usize, StoreError> {
-    let mut rows = store.turso.query("SELECT COUNT(*) FROM videos", ()).await?;
+pub async fn sql_count_videos(store: &Store) -> Result<usize, StoreError> {
+    let mut rows = store.sql.query("SELECT COUNT(*) FROM videos", ()).await?;
     let Some(row) = rows.next().await? else {
         return Ok(0);
     };
@@ -384,7 +387,7 @@ pub async fn ts_count_videos(store: &Store) -> Result<usize, StoreError> {
     Ok(count.max(0) as usize)
 }
 
-pub async fn ts_list_channel_videos_window(
+pub async fn sql_list_channel_videos_window(
     store: &Store,
     channel_id: &str,
     limit: usize,
@@ -396,7 +399,7 @@ pub async fn ts_list_channel_videos_window(
         "SELECT {SELECT_ALL_COLUMNS} FROM videos WHERE channel_id = ?1 ORDER BY published_at {order} LIMIT ?2 OFFSET ?3"
     );
     let mut rows = store
-        .turso
+        .sql
         .query(&sql, params![channel_id, limit as i64, offset as i64])
         .await?;
 
@@ -412,13 +415,13 @@ pub async fn ts_list_channel_videos_window(
     Ok(videos)
 }
 
-pub async fn ts_update_video_transcript_status(
+pub async fn sql_update_video_transcript_status(
     store: &Store,
     video_id: &str,
     status: ContentStatus,
 ) -> Result<(), StoreError> {
     store
-        .turso
+        .sql
         .execute(
             "UPDATE videos SET transcript_status = ?1 WHERE id = ?2",
             params![content_status_to_str(status), video_id],
@@ -427,13 +430,13 @@ pub async fn ts_update_video_transcript_status(
     Ok(())
 }
 
-pub async fn ts_update_video_summary_status(
+pub async fn sql_update_video_summary_status(
     store: &Store,
     video_id: &str,
     status: ContentStatus,
 ) -> Result<(), StoreError> {
     store
-        .turso
+        .sql
         .execute(
             "UPDATE videos SET summary_status = ?1 WHERE id = ?2",
             params![content_status_to_str(status), video_id],
@@ -443,12 +446,12 @@ pub async fn ts_update_video_summary_status(
 }
 
 /// Atomic increment — no read-then-write needed with SQL.
-pub async fn ts_increment_video_retry_count(
+pub async fn sql_increment_video_retry_count(
     store: &Store,
     video_id: &str,
 ) -> Result<(), StoreError> {
     store
-        .turso
+        .sql
         .execute(
             "UPDATE videos SET retry_count = MIN(retry_count + 1, 255) WHERE id = ?1",
             params![video_id],
@@ -457,9 +460,9 @@ pub async fn ts_increment_video_retry_count(
     Ok(())
 }
 
-pub async fn ts_reset_video_retry_count(store: &Store, video_id: &str) -> Result<(), StoreError> {
+pub async fn sql_reset_video_retry_count(store: &Store, video_id: &str) -> Result<(), StoreError> {
     store
-        .turso
+        .sql
         .execute(
             "UPDATE videos SET retry_count = 0 WHERE id = ?1",
             params![video_id],
@@ -468,13 +471,13 @@ pub async fn ts_reset_video_retry_count(store: &Store, video_id: &str) -> Result
     Ok(())
 }
 
-pub async fn ts_heal_queue_videos(
+pub async fn sql_heal_queue_videos(
     store: &Store,
     max_retries: u8,
 ) -> Result<Vec<String>, StoreError> {
     // Fetch all non-ready videos in a single query.
     let mut rows = store
-        .turso
+        .sql
         .query(
             &format!(
                 "SELECT {SELECT_ALL_COLUMNS} FROM videos WHERE transcript_status != 'ready' OR (transcript_status = 'ready' AND summary_status != 'ready')"
@@ -506,7 +509,7 @@ pub async fn ts_heal_queue_videos(
         }
 
         store
-            .turso
+            .sql
             .execute(
                 "UPDATE videos SET transcript_status = ?1, summary_status = ?2, retry_count = ?3 WHERE id = ?4",
                 params![
@@ -522,7 +525,7 @@ pub async fn ts_heal_queue_videos(
     Ok(healed_video_ids)
 }
 
-pub async fn ts_delete_videos(store: &Store, video_ids: &[String]) -> Result<(), StoreError> {
+pub async fn sql_delete_videos(store: &Store, video_ids: &[String]) -> Result<(), StoreError> {
     if video_ids.is_empty() {
         return Ok(());
     }
@@ -540,7 +543,7 @@ pub async fn ts_delete_videos(store: &Store, video_ids: &[String]) -> Result<(),
             .map(|video_id| Value::Text(video_id.clone()))
             .collect();
         store
-            .turso
+            .sql
             .execute(&sql, libsql::params_from_iter(values))
             .await?;
     }
@@ -548,13 +551,13 @@ pub async fn ts_delete_videos(store: &Store, video_ids: &[String]) -> Result<(),
     Ok(())
 }
 
-pub async fn ts_update_video_quality_score(
+pub async fn sql_update_video_quality_score(
     store: &Store,
     video_id: &str,
     quality_score: Option<u8>,
 ) -> Result<(), StoreError> {
     store
-        .turso
+        .sql
         .execute(
             "UPDATE videos SET quality_score = ?1 WHERE id = ?2",
             params![quality_score.map(|v| v as i64), video_id],
@@ -564,5 +567,5 @@ pub async fn ts_update_video_quality_score(
 }
 
 #[cfg(test)]
-#[path = "turso_videos_tests.rs"]
-mod turso_videos_tests;
+#[path = "sql_videos_tests.rs"]
+mod sql_videos_tests;

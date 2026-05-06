@@ -132,7 +132,7 @@ async fn apply_delta_record_updates_sql_cache_semantically() {
         .await
         .expect("build db");
     let conn = db.connect().expect("connect db");
-    crate::db::turso_schema::initialize_turso_schema(&conn)
+    crate::db::sql_schema::initialize_sql_schema(&conn)
         .await
         .expect("init schema");
 

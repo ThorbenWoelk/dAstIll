@@ -34,7 +34,7 @@ impl TtsGenerationStats {
 
 pub async fn get_tts_stats(store: &Store) -> Result<Option<TtsGenerationStats>, StoreError> {
     let mut rows = store
-        .turso
+        .sql
         .query(
             "SELECT sample_count, total_words, total_duration_secs FROM tts_stats WHERE id = ?1",
             params![GLOBAL_DOC_ID],
@@ -76,7 +76,7 @@ pub async fn record_tts_generation(
     duration_secs: f64,
 ) -> Result<(), StoreError> {
     store
-        .turso
+        .sql
         .execute(
             r#"INSERT INTO tts_stats (id, sample_count, total_words, total_duration_secs)
                VALUES (?1, 1, ?2, ?3)
@@ -107,7 +107,7 @@ pub async fn bootstrap_sql_tts_stats_from_store(store: &Store) -> Result<bool, S
     };
 
     store
-        .turso
+        .sql
         .execute(
             r#"INSERT INTO tts_stats (id, sample_count, total_words, total_duration_secs)
                VALUES (?1, ?2, ?3, ?4)

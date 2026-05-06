@@ -186,8 +186,8 @@ the scale-out boundary live in [Runtime Limits](/operations/runtime-limits#deplo
 On startup, the backend restores or rebuilds its local libSQL file from S3-backed runtime cache
 objects.
 
-Some internal code names still say `turso`. Treat those as historical names for the active local
-libSQL store.
+The active SQL cache is local libSQL restored from S3. Legacy migration scripts may still mention
+Turso for old one-time migration paths.
 
 ## Podcast ASR
 
