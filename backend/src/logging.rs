@@ -3,11 +3,14 @@ use std::{error::Error, fmt};
 use chrono::{SecondsFormat, Utc};
 use tracing::{Event, Level, Subscriber, field::Field};
 use tracing_subscriber::{
+    Layer, filter,
     fmt::{
         FmtContext,
         format::{FormatEvent, FormatFields, Writer},
     },
+    layer::SubscriberExt,
     registry::LookupSpan,
+    util::SubscriberInitExt,
 };
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -26,6 +29,77 @@ pub fn should_send_to_logfire(target: &str, level: &Level) -> bool {
         || LOGFIRE_AI_TARGET_PREFIXES
             .iter()
             .any(|prefix| target.starts_with(prefix))
+}
+
+pub fn init_tracing() -> anyhow::Result<Option<logfire::ShutdownGuard>> {
+    let is_cloud_run = std::env::var("K_SERVICE").is_ok();
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| "dastill=info,tower_http=info".into());
+
+    if std::env::var("LOGFIRE_TOKEN").is_ok() {
+        let logfire = logfire::configure()
+            .local()
+            .with_service_name("dastill-backend")
+            .with_service_version(env!("CARGO_PKG_VERSION"))
+            .finish()?;
+        let guard = logfire.clone().shutdown_guard();
+
+        let registry = tracing_subscriber::registry().with(env_filter).with(
+            logfire
+                .tracing_layer()
+                .with_filter(filter::filter_fn(|metadata| {
+                    should_send_to_logfire(metadata.target(), metadata.level())
+                })),
+        );
+
+        if is_cloud_run {
+            registry
+                .with(
+                    tracing_subscriber::fmt::layer()
+                        .json()
+                        .flatten_event(true)
+                        .with_current_span(false)
+                        .with_span_list(false)
+                        .with_ansi(false),
+                )
+                .init();
+        } else {
+            registry
+                .with(
+                    tracing_subscriber::fmt::layer()
+                        .event_format(HumanReadableEventFormatter)
+                        .with_ansi(false),
+                )
+                .init();
+        }
+
+        Ok(Some(guard))
+    } else {
+        let registry = tracing_subscriber::registry().with(env_filter);
+
+        if is_cloud_run {
+            registry
+                .with(
+                    tracing_subscriber::fmt::layer()
+                        .json()
+                        .flatten_event(true)
+                        .with_current_span(false)
+                        .with_span_list(false)
+                        .with_ansi(false),
+                )
+                .init();
+        } else {
+            registry
+                .with(
+                    tracing_subscriber::fmt::layer()
+                        .event_format(HumanReadableEventFormatter)
+                        .with_ansi(false),
+                )
+                .init();
+        }
+
+        Ok(None)
+    }
 }
 
 impl<S, N> FormatEvent<S, N> for HumanReadableEventFormatter

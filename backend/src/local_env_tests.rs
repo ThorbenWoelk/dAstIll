@@ -4,7 +4,7 @@ use std::sync::{Mutex, OnceLock};
 
 use tempfile::tempdir;
 
-use super::{clear_missing_google_application_credentials, load_dotenv_preserving_existing};
+use super::{clear_missing_google_application_credentials, load_envs};
 
 static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
@@ -25,7 +25,7 @@ fn load_dotenv_preserves_existing_env_vars() {
     unsafe { env::set_var("KEEP_ME", "from-shell") };
     unsafe { env::remove_var("SET_ME") };
 
-    load_dotenv_preserving_existing();
+    load_envs();
 
     assert_eq!(env::var("KEEP_ME").as_deref(), Ok("from-shell"));
     assert_eq!(env::var("SET_ME").as_deref(), Ok("from-dotenv"));
@@ -51,7 +51,7 @@ fn load_dotenv_uses_shared_env_when_local_file_is_absent() {
     );
     unsafe { env::remove_var("SET_ME") };
 
-    load_dotenv_preserving_existing();
+    load_envs();
 
     assert_eq!(env::var("SET_ME").as_deref(), Ok("from-shared"));
 }
@@ -77,7 +77,7 @@ fn load_dotenv_prefers_local_env_over_shared_file() {
     );
     unsafe { env::remove_var("SET_ME") };
 
-    load_dotenv_preserving_existing();
+    load_envs();
 
     assert_eq!(env::var("SET_ME").as_deref(), Ok("from-local"));
 }
@@ -116,7 +116,7 @@ fn load_dotenv_sets_shared_aws_files_when_unset() {
         env::remove_var("AWS_CONFIG_FILE");
     }
 
-    load_dotenv_preserving_existing();
+    load_envs();
 
     assert_eq!(
         env::var_os("AWS_SHARED_CREDENTIALS_FILE"),
@@ -166,7 +166,7 @@ fn load_dotenv_keeps_explicit_aws_file_paths() {
         ],
     );
 
-    load_dotenv_preserving_existing();
+    load_envs();
 
     assert_eq!(
         env::var_os("AWS_SHARED_CREDENTIALS_FILE"),

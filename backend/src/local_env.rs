@@ -74,7 +74,7 @@ fn load_dotenv_file(path: &Path, shell_env_keys: &HashSet<OsString>) {
     }
 }
 
-pub fn load_dotenv_preserving_existing() {
+pub fn load_envs() {
     let shell_env_keys: HashSet<OsString> = env::vars_os().map(|(key, _)| key).collect();
 
     if let Some(shared_path) = shared_local_env_path() {

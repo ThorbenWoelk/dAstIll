@@ -39,6 +39,68 @@ pub use refresh::spawn_refresh_worker;
 pub use search_index::spawn_search_index_worker;
 pub use summary_evaluation::spawn_summary_evaluation_worker;
 
+pub fn spawn_search_progress_hydration(state: AppState) {
+    tokio::spawn(async move {
+        tracing::info!("search progress hydration started");
+
+        let search_progress_materials = {
+            let conn = state.db.connect();
+            crate::db::list_search_progress_materials(&conn).await
+        };
+
+        let search_progress_materials = match search_progress_materials {
+            Ok(materials) => materials,
+            Err(err) => {
+                tracing::error!(error = %err, "search progress hydration failed to load materials");
+                return;
+            }
+        };
+
+        let vector_index_ready = if state.search.semantic_enabled() {
+            let conn = state.db.connect();
+            match crate::db::has_vector_index(&conn).await {
+                Ok(ready) => ready,
+                Err(err) => {
+                    tracing::error!(error = %err, "search progress hydration failed to inspect vector index");
+                    false
+                }
+            }
+        } else {
+            false
+        };
+
+        let search_available = state.search.is_available().await;
+        state
+            .search_progress
+            .initialize_from_materials(
+                &search_progress_materials,
+                search_available,
+                vector_index_ready,
+            )
+            .await;
+
+        tracing::info!(
+            total_sources = search_progress_materials.len(),
+            vector_index_ready,
+            search_available,
+            "search progress hydration complete"
+        );
+    });
+}
+
+pub async fn spawn_fts_hydration_if_empty(state: AppState, fts_dir: &std::path::Path) {
+    if state.fts.doc_count().await == 0 {
+        tokio::spawn(async move {
+            populate_fts_index_from_store(state).await;
+        });
+    } else {
+        tracing::info!(
+            path = %fts_dir.display(),
+            "FTS startup hydration skipped - existing local libSQL index already has data"
+        );
+    }
+}
+
 fn parse_bundle_key(key: &str) -> Option<(String, String, String)> {
     let filename = key
         .strip_prefix("search-bundles/")
