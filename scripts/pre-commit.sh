@@ -84,8 +84,6 @@ if [[ -n "$BACKEND_STAGED" ]] && git diff --cached --name-only | grep -qE 'backe
     fi
     
     # Minimal env for startup check
-    export TURSO_DB_URL="libsql://test.local"
-    export TURSO_AUTH_TOKEN="test-token"
     export BACKEND_PROXY_TOKEN="test"
     export GCP_PROJECT_ID="test"
     export YOUTUBE_API_KEY="test"

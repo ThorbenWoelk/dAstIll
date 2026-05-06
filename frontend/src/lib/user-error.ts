@@ -106,7 +106,6 @@ export function normalizeUserErrorMessage(
     lower.includes("s3 vectors error") ||
     lower.includes("serialization error") ||
     lower.includes("database") ||
-    lower.includes("turso") ||
     lower.includes("libsql") ||
     lower.includes("gzip") ||
     lower.includes("firebase token") ||
