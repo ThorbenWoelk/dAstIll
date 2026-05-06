@@ -11,12 +11,59 @@ use crate::services::search::{
     SearchSourceKind, chunk_summary_content, chunk_transcript_content,
 };
 
+fn count_chunks(content: &str, source_kind: SearchSourceKind) -> usize {
+    match source_kind {
+        SearchSourceKind::Transcript => chunk_transcript_content(
+            content,
+            SEARCH_TRANSCRIPT_TARGET_WORDS,
+            SEARCH_TRANSCRIPT_OVERLAP_WORDS,
+            None,
+        )
+        .len(),
+        SearchSourceKind::Summary => {
+            chunk_summary_content(content, SEARCH_SUMMARY_TARGET_WORDS).len()
+        }
+    }
+}
+
+fn resolve_embedded_chunk_count(
+    semantic_enabled: bool,
+    configured_model: &str,
+    embedding_model: Option<&str>,
+    index_status: Option<&str>,
+    total_chunk_count: usize,
+) -> usize {
+    if !semantic_enabled {
+        return 0;
+    }
+
+    if index_status != Some("ready") {
+        return 0;
+    }
+
+    if embedding_model != Some(configured_model) {
+        return 0;
+    }
+
+    total_chunk_count
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SearchProgressSourceStatus {
     Pending,
     Indexing,
     Ready,
     Failed,
+}
+
+fn resolve_retrieval_mode(available: bool, vector_index_ready: bool) -> &'static str {
+    if !available {
+        "fts_only"
+    } else if vector_index_ready {
+        "hybrid_ann"
+    } else {
+        "hybrid_exact"
+    }
 }
 
 impl SearchProgressSourceStatus {
@@ -309,53 +356,6 @@ impl SearchProgress {
                 true
             }
         });
-    }
-}
-
-fn count_chunks(content: &str, source_kind: SearchSourceKind) -> usize {
-    match source_kind {
-        SearchSourceKind::Transcript => chunk_transcript_content(
-            content,
-            SEARCH_TRANSCRIPT_TARGET_WORDS,
-            SEARCH_TRANSCRIPT_OVERLAP_WORDS,
-            None,
-        )
-        .len(),
-        SearchSourceKind::Summary => {
-            chunk_summary_content(content, SEARCH_SUMMARY_TARGET_WORDS).len()
-        }
-    }
-}
-
-fn resolve_embedded_chunk_count(
-    semantic_enabled: bool,
-    configured_model: &str,
-    embedding_model: Option<&str>,
-    index_status: Option<&str>,
-    total_chunk_count: usize,
-) -> usize {
-    if !semantic_enabled {
-        return 0;
-    }
-
-    if index_status != Some("ready") {
-        return 0;
-    }
-
-    if embedding_model != Some(configured_model) {
-        return 0;
-    }
-
-    total_chunk_count
-}
-
-fn resolve_retrieval_mode(available: bool, vector_index_ready: bool) -> &'static str {
-    if !available {
-        "fts_only"
-    } else if vector_index_ready {
-        "hybrid_ann"
-    } else {
-        "hybrid_exact"
     }
 }
 

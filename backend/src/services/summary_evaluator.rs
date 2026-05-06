@@ -21,113 +21,6 @@ pub struct SummaryEvaluatorService {
     core: OllamaCore,
 }
 
-impl From<OllamaPromptError> for SummaryEvaluatorError {
-    fn from(err: OllamaPromptError) -> Self {
-        match err {
-            OllamaPromptError::NotAvailable => Self::NotAvailable,
-            OllamaPromptError::RequestFailed(e) => Self::RequestFailed(e),
-            OllamaPromptError::GenerationFailed(s) => Self::EvaluationFailed(s),
-            OllamaPromptError::EmptyResponse => {
-                Self::EvaluationFailed("Empty response from evaluator model".to_string())
-            }
-            OllamaPromptError::InvalidStructuredResponse(s) => Self::ParseFailed(s),
-        }
-    }
-}
-
-impl SummaryEvaluatorService {
-    pub const MIN_EVALUATOR_PARAMS_B: u16 = 31;
-
-    pub fn new(core: OllamaCore) -> Self {
-        Self { core }
-    }
-
-    pub fn validate_model_policy(model: &str) -> Result<(), String> {
-        if !is_cloud_model(model) {
-            return Err(format!(
-                "summary evaluator model must be a cloud model, got `{model}`"
-            ));
-        }
-
-        let params_b = parse_model_params_billions(model)
-            .or_else(|| known_cloud_model_params_billions(model))
-            .ok_or_else(|| {
-                format!(
-                    "summary evaluator model must include a parseable parameter size, got `{model}`"
-                )
-            })?;
-
-        if params_b < Self::MIN_EVALUATOR_PARAMS_B {
-            return Err(format!(
-                "summary evaluator model must be at least 31B parameters, got `{model}`"
-            ));
-        }
-
-        Ok(())
-    }
-
-    pub async fn is_available(&self) -> bool {
-        self.core.is_available().await
-    }
-
-    pub fn indicator_status(
-        &self,
-        cloud_cooldown_active: bool,
-        endpoint_available: bool,
-    ) -> AiStatus {
-        self.core.indicator_status(
-            cloud_cooldown_active,
-            endpoint_available,
-            CooldownStatusPolicy::Offline,
-        )
-    }
-
-    pub async fn evaluate(
-        &self,
-        transcript: &str,
-        summary: &str,
-        video_title: &str,
-    ) -> Result<SummaryEvaluationResult, SummaryEvaluatorError> {
-        if transcript.trim().is_empty() || summary.trim().is_empty() {
-            return Err(SummaryEvaluatorError::EvaluationFailed(
-                "Transcript or summary is empty".to_string(),
-            ));
-        }
-
-        let prompt = evaluation_prompt(video_title, transcript, summary);
-
-        let (parsed, model_used) = self
-            .prompt_model("summary_quality_evaluation", evaluation_preamble(), &prompt)
-            .await?;
-
-        let mut evaluation = evaluation_result_from_response(parsed)?;
-        evaluation.quality_model_used = Some(model_used);
-        Ok(evaluation)
-    }
-
-    pub fn model(&self) -> &str {
-        self.core.model()
-    }
-
-    async fn prompt_model(
-        &self,
-        operation: &str,
-        preamble: &str,
-        prompt: &str,
-    ) -> Result<(EvaluatorResponse, String), SummaryEvaluatorError> {
-        self.core
-            .prompt_json_schema(
-                operation,
-                preamble,
-                prompt,
-                &evaluator_response_schema(),
-                CooldownStatusPolicy::Offline,
-            )
-            .await
-            .map_err(Into::into)
-    }
-}
-
 fn evaluation_preamble() -> &'static str {
     "You are a strict evaluator writing a critical but realistic review of a summary against its transcript. Judge only what the transcript supports. Penalize hallucinations and substantive omissions equally. Do not sugar-coat weak summaries, but calibrate scores so 7 is acceptable and 6 or below should be regenerated. Omission of confidently identifiable sponsor or ad segments does not count against completeness. A short generic summary of a long detailed editorial transcript is a failing summary."
 }
@@ -490,6 +383,113 @@ fn title_case(value: &str) -> String {
     match chars.next() {
         Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
         None => String::new(),
+    }
+}
+
+impl From<OllamaPromptError> for SummaryEvaluatorError {
+    fn from(err: OllamaPromptError) -> Self {
+        match err {
+            OllamaPromptError::NotAvailable => Self::NotAvailable,
+            OllamaPromptError::RequestFailed(e) => Self::RequestFailed(e),
+            OllamaPromptError::GenerationFailed(s) => Self::EvaluationFailed(s),
+            OllamaPromptError::EmptyResponse => {
+                Self::EvaluationFailed("Empty response from evaluator model".to_string())
+            }
+            OllamaPromptError::InvalidStructuredResponse(s) => Self::ParseFailed(s),
+        }
+    }
+}
+
+impl SummaryEvaluatorService {
+    pub const MIN_EVALUATOR_PARAMS_B: u16 = 31;
+
+    pub fn new(core: OllamaCore) -> Self {
+        Self { core }
+    }
+
+    pub fn validate_model_policy(model: &str) -> Result<(), String> {
+        if !is_cloud_model(model) {
+            return Err(format!(
+                "summary evaluator model must be a cloud model, got `{model}`"
+            ));
+        }
+
+        let params_b = parse_model_params_billions(model)
+            .or_else(|| known_cloud_model_params_billions(model))
+            .ok_or_else(|| {
+                format!(
+                    "summary evaluator model must include a parseable parameter size, got `{model}`"
+                )
+            })?;
+
+        if params_b < Self::MIN_EVALUATOR_PARAMS_B {
+            return Err(format!(
+                "summary evaluator model must be at least 31B parameters, got `{model}`"
+            ));
+        }
+
+        Ok(())
+    }
+
+    pub async fn is_available(&self) -> bool {
+        self.core.is_available().await
+    }
+
+    pub fn indicator_status(
+        &self,
+        cloud_cooldown_active: bool,
+        endpoint_available: bool,
+    ) -> AiStatus {
+        self.core.indicator_status(
+            cloud_cooldown_active,
+            endpoint_available,
+            CooldownStatusPolicy::Offline,
+        )
+    }
+
+    pub async fn evaluate(
+        &self,
+        transcript: &str,
+        summary: &str,
+        video_title: &str,
+    ) -> Result<SummaryEvaluationResult, SummaryEvaluatorError> {
+        if transcript.trim().is_empty() || summary.trim().is_empty() {
+            return Err(SummaryEvaluatorError::EvaluationFailed(
+                "Transcript or summary is empty".to_string(),
+            ));
+        }
+
+        let prompt = evaluation_prompt(video_title, transcript, summary);
+
+        let (parsed, model_used) = self
+            .prompt_model("summary_quality_evaluation", evaluation_preamble(), &prompt)
+            .await?;
+
+        let mut evaluation = evaluation_result_from_response(parsed)?;
+        evaluation.quality_model_used = Some(model_used);
+        Ok(evaluation)
+    }
+
+    pub fn model(&self) -> &str {
+        self.core.model()
+    }
+
+    async fn prompt_model(
+        &self,
+        operation: &str,
+        preamble: &str,
+        prompt: &str,
+    ) -> Result<(EvaluatorResponse, String), SummaryEvaluatorError> {
+        self.core
+            .prompt_json_schema(
+                operation,
+                preamble,
+                prompt,
+                &evaluator_response_schema(),
+                CooldownStatusPolicy::Offline,
+            )
+            .await
+            .map_err(Into::into)
     }
 }
 

@@ -233,6 +233,116 @@ pub(crate) fn sanitize_markdown_for_tts(input: &str) -> String {
     out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+fn split_ssml_for_polly(input: &str, max_chars: usize) -> Vec<String> {
+    let mut chunks = Vec::new();
+    let mut current = String::new();
+    let mut current_len = 0usize;
+
+    // Custom tokenizer that keeps tags <...> intact and splits everything else
+    // into whitespace-separated words.
+    let mut tokens = Vec::new();
+    let mut in_tag = false;
+    let mut token_start = 0;
+
+    let chars: Vec<(usize, char)> = input.char_indices().collect();
+    for (idx, c) in &chars {
+        if *c == '<' {
+            if !in_tag && *idx > token_start {
+                // Add preceding text split into words.
+                for word in input[token_start..*idx].split_whitespace() {
+                    tokens.push(word);
+                }
+            }
+            in_tag = true;
+            token_start = *idx;
+        } else if *c == '>' && in_tag {
+            in_tag = false;
+            tokens.push(&input[token_start..*idx + 1]);
+            token_start = *idx + 1;
+        } else if c.is_whitespace() && !in_tag {
+            if *idx > token_start {
+                tokens.push(&input[token_start..*idx]);
+            }
+            token_start = *idx + 1;
+        }
+    }
+
+    if token_start < input.len() {
+        if in_tag {
+            tokens.push(&input[token_start..]);
+        } else {
+            for word in input[token_start..].split_whitespace() {
+                tokens.push(word);
+            }
+        }
+    }
+
+    for token in tokens {
+        let token_chars = token.chars().count();
+        let next_len = if current.is_empty() {
+            token_chars
+        } else {
+            current_len + 1 + token_chars
+        };
+
+        if !current.is_empty() && next_len > max_chars {
+            chunks.push(current);
+            current = String::new();
+            current_len = 0;
+        }
+
+        if !current.is_empty() {
+            current.push(' ');
+            current_len += 1;
+        }
+        current.push_str(token);
+        current_len += token_chars;
+    }
+
+    if !current.is_empty() {
+        chunks.push(current);
+    }
+
+    chunks
+}
+
+fn wrap_pcm_s16le_mono_to_wav(pcm_s16le_mono: Vec<u8>, sample_rate: u32) -> Vec<u8> {
+    // Polly returns raw PCM bytes for `output_format=pcm`:
+    // - signed 16-bit little endian
+    // - mono
+    // We wrap it into a minimal WAV container so browsers can decode it reliably.
+    const CHANNELS: u16 = 1;
+    const BITS_PER_SAMPLE: u16 = 16;
+    const BLOCK_ALIGN: u16 = (CHANNELS * BITS_PER_SAMPLE) / 8;
+    let byte_rate: u32 = sample_rate * BLOCK_ALIGN as u32;
+
+    let data_size: u32 = pcm_s16le_mono.len() as u32;
+    let riff_chunk_size: u32 = 36 + data_size;
+
+    let mut out = Vec::with_capacity(44 + pcm_s16le_mono.len());
+
+    out.extend_from_slice(b"RIFF");
+    out.extend_from_slice(&riff_chunk_size.to_le_bytes());
+    out.extend_from_slice(b"WAVE");
+
+    // fmt chunk
+    out.extend_from_slice(b"fmt ");
+    out.extend_from_slice(&16u32.to_le_bytes()); // subchunk1 size
+    out.extend_from_slice(&1u16.to_le_bytes()); // audio format PCM
+    out.extend_from_slice(&CHANNELS.to_le_bytes());
+    out.extend_from_slice(&sample_rate.to_le_bytes());
+    out.extend_from_slice(&byte_rate.to_le_bytes());
+    out.extend_from_slice(&BLOCK_ALIGN.to_le_bytes());
+    out.extend_from_slice(&BITS_PER_SAMPLE.to_le_bytes());
+
+    // data chunk
+    out.extend_from_slice(b"data");
+    out.extend_from_slice(&data_size.to_le_bytes());
+    out.extend_from_slice(&pcm_s16le_mono);
+
+    out
+}
+
 #[derive(Debug)]
 pub struct PollyTtsService {
     client: PollyClient,
@@ -337,79 +447,6 @@ impl PollyTtsService {
     }
 }
 
-fn split_ssml_for_polly(input: &str, max_chars: usize) -> Vec<String> {
-    let mut chunks = Vec::new();
-    let mut current = String::new();
-    let mut current_len = 0usize;
-
-    // Custom tokenizer that keeps tags <...> intact and splits everything else
-    // into whitespace-separated words.
-    let mut tokens = Vec::new();
-    let mut in_tag = false;
-    let mut token_start = 0;
-
-    let chars: Vec<(usize, char)> = input.char_indices().collect();
-    for (idx, c) in &chars {
-        if *c == '<' {
-            if !in_tag && *idx > token_start {
-                // Add preceding text split into words.
-                for word in input[token_start..*idx].split_whitespace() {
-                    tokens.push(word);
-                }
-            }
-            in_tag = true;
-            token_start = *idx;
-        } else if *c == '>' && in_tag {
-            in_tag = false;
-            tokens.push(&input[token_start..*idx + 1]);
-            token_start = *idx + 1;
-        } else if c.is_whitespace() && !in_tag {
-            if *idx > token_start {
-                tokens.push(&input[token_start..*idx]);
-            }
-            token_start = *idx + 1;
-        }
-    }
-
-    if token_start < input.len() {
-        if in_tag {
-            tokens.push(&input[token_start..]);
-        } else {
-            for word in input[token_start..].split_whitespace() {
-                tokens.push(word);
-            }
-        }
-    }
-
-    for token in tokens {
-        let token_chars = token.chars().count();
-        let next_len = if current.is_empty() {
-            token_chars
-        } else {
-            current_len + 1 + token_chars
-        };
-
-        if !current.is_empty() && next_len > max_chars {
-            chunks.push(current);
-            current = String::new();
-            current_len = 0;
-        }
-
-        if !current.is_empty() {
-            current.push(' ');
-            current_len += 1;
-        }
-        current.push_str(token);
-        current_len += token_chars;
-    }
-
-    if !current.is_empty() {
-        chunks.push(current);
-    }
-
-    chunks
-}
-
 /*
 fn polly_output_format_for_request(wants_wav_or_pcm: bool) -> PollyOutputFormat {
     if wants_wav_or_pcm {
@@ -419,43 +456,6 @@ fn polly_output_format_for_request(wants_wav_or_pcm: bool) -> PollyOutputFormat 
     }
 }
 */
-
-fn wrap_pcm_s16le_mono_to_wav(pcm_s16le_mono: Vec<u8>, sample_rate: u32) -> Vec<u8> {
-    // Polly returns raw PCM bytes for `output_format=pcm`:
-    // - signed 16-bit little endian
-    // - mono
-    // We wrap it into a minimal WAV container so browsers can decode it reliably.
-    const CHANNELS: u16 = 1;
-    const BITS_PER_SAMPLE: u16 = 16;
-    const BLOCK_ALIGN: u16 = (CHANNELS * BITS_PER_SAMPLE) / 8;
-    let byte_rate: u32 = sample_rate * BLOCK_ALIGN as u32;
-
-    let data_size: u32 = pcm_s16le_mono.len() as u32;
-    let riff_chunk_size: u32 = 36 + data_size;
-
-    let mut out = Vec::with_capacity(44 + pcm_s16le_mono.len());
-
-    out.extend_from_slice(b"RIFF");
-    out.extend_from_slice(&riff_chunk_size.to_le_bytes());
-    out.extend_from_slice(b"WAVE");
-
-    // fmt chunk
-    out.extend_from_slice(b"fmt ");
-    out.extend_from_slice(&16u32.to_le_bytes()); // subchunk1 size
-    out.extend_from_slice(&1u16.to_le_bytes()); // audio format PCM
-    out.extend_from_slice(&CHANNELS.to_le_bytes());
-    out.extend_from_slice(&sample_rate.to_le_bytes());
-    out.extend_from_slice(&byte_rate.to_le_bytes());
-    out.extend_from_slice(&BLOCK_ALIGN.to_le_bytes());
-    out.extend_from_slice(&BITS_PER_SAMPLE.to_le_bytes());
-
-    // data chunk
-    out.extend_from_slice(b"data");
-    out.extend_from_slice(&data_size.to_le_bytes());
-    out.extend_from_slice(&pcm_s16le_mono);
-
-    out
-}
 
 /*
 fn strip_leading_id3v2(bytes: &[u8]) -> &[u8] {

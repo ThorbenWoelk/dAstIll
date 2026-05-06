@@ -9,6 +9,13 @@ use crate::model::{
     SweepSummary,
 };
 
+pub(crate) fn prompt_passed(result: &PromptRunResult) -> bool {
+    result.rubric_answerability_pass
+        && result.rubric_grounding_pass
+        && result.rubric_shape_pass
+        && result.rubric_capability_score >= 2
+}
+
 pub(crate) fn build_summary(results: &[PromptRunResult]) -> SweepSummary {
     let total_prompts = results.len();
     let passed_prompts = results
@@ -127,37 +134,6 @@ pub(crate) fn build_summary(results: &[PromptRunResult]) -> SweepSummary {
     }
 }
 
-pub(crate) fn prompt_passed(result: &PromptRunResult) -> bool {
-    result.rubric_answerability_pass
-        && result.rubric_grounding_pass
-        && result.rubric_shape_pass
-        && result.rubric_capability_score >= 2
-}
-
-pub(crate) fn write_reports(output_dir: &Path, report: &SweepReport) -> Result<()> {
-    let results_json = output_dir.join("results.json");
-    let results_md = output_dir.join("results.md");
-    let failures_json = output_dir.join("failures-by-class.json");
-
-    fs::write(
-        &results_json,
-        serde_json::to_vec_pretty(report).context("failed to encode report JSON")?,
-    )
-    .with_context(|| format!("failed to write {}", results_json.display()))?;
-
-    let failure_map = grouped_failures(&report.results);
-    fs::write(
-        &failures_json,
-        serde_json::to_vec_pretty(&failure_map).context("failed to encode failure JSON")?,
-    )
-    .with_context(|| format!("failed to write {}", failures_json.display()))?;
-
-    fs::write(&results_md, render_markdown_report(report))
-        .with_context(|| format!("failed to write {}", results_md.display()))?;
-
-    Ok(())
-}
-
 fn grouped_failures(results: &[PromptRunResult]) -> BTreeMap<String, Vec<String>> {
     let mut grouped = BTreeMap::<String, Vec<String>>::new();
     for result in results {
@@ -169,6 +145,23 @@ fn grouped_failures(results: &[PromptRunResult]) -> BTreeMap<String, Vec<String>
         }
     }
     grouped
+}
+
+fn capability_class_name(class_name: CapabilityClass) -> &'static str {
+    match class_name {
+        CapabilityClass::DirectLookup => "direct_lookup",
+        CapabilityClass::TopicAggregation => "topic_aggregation",
+        CapabilityClass::CrossVideoSynthesis => "cross_video_synthesis",
+        CapabilityClass::Comparison => "comparison",
+        CapabilityClass::Recommendation => "recommendation",
+        CapabilityClass::CreatorStance => "creator_stance",
+        CapabilityClass::HighlightLookup => "highlight_lookup",
+        CapabilityClass::HighlightClustering => "highlight_clustering",
+        CapabilityClass::TranscriptSummaryAlignment => "transcript_summary_alignment",
+        CapabilityClass::TimestampNavigation => "timestamp_navigation",
+        CapabilityClass::ToneOrStyleInference => "tone_or_style_inference",
+        CapabilityClass::MetaLearningOrNextStep => "meta_learning_or_next_step",
+    }
 }
 
 fn render_markdown_report(report: &SweepReport) -> String {
@@ -270,19 +263,26 @@ fn render_markdown_report(report: &SweepReport) -> String {
     md
 }
 
-fn capability_class_name(class_name: CapabilityClass) -> &'static str {
-    match class_name {
-        CapabilityClass::DirectLookup => "direct_lookup",
-        CapabilityClass::TopicAggregation => "topic_aggregation",
-        CapabilityClass::CrossVideoSynthesis => "cross_video_synthesis",
-        CapabilityClass::Comparison => "comparison",
-        CapabilityClass::Recommendation => "recommendation",
-        CapabilityClass::CreatorStance => "creator_stance",
-        CapabilityClass::HighlightLookup => "highlight_lookup",
-        CapabilityClass::HighlightClustering => "highlight_clustering",
-        CapabilityClass::TranscriptSummaryAlignment => "transcript_summary_alignment",
-        CapabilityClass::TimestampNavigation => "timestamp_navigation",
-        CapabilityClass::ToneOrStyleInference => "tone_or_style_inference",
-        CapabilityClass::MetaLearningOrNextStep => "meta_learning_or_next_step",
-    }
+pub(crate) fn write_reports(output_dir: &Path, report: &SweepReport) -> Result<()> {
+    let results_json = output_dir.join("results.json");
+    let results_md = output_dir.join("results.md");
+    let failures_json = output_dir.join("failures-by-class.json");
+
+    fs::write(
+        &results_json,
+        serde_json::to_vec_pretty(report).context("failed to encode report JSON")?,
+    )
+    .with_context(|| format!("failed to write {}", results_json.display()))?;
+
+    let failure_map = grouped_failures(&report.results);
+    fs::write(
+        &failures_json,
+        serde_json::to_vec_pretty(&failure_map).context("failed to encode failure JSON")?,
+    )
+    .with_context(|| format!("failed to write {}", failures_json.display()))?;
+
+    fs::write(&results_md, render_markdown_report(report))
+        .with_context(|| format!("failed to write {}", results_md.display()))?;
+
+    Ok(())
 }

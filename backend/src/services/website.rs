@@ -10,6 +10,61 @@ use crate::models::{
 use super::build_http_client;
 use super::providers::ProviderAdapterError;
 
+fn first_chars(value: &str, limit: usize) -> String {
+    value.chars().take(limit).collect::<String>()
+}
+
+fn slugify_url(value: &str) -> String {
+    let mut slug = String::new();
+    let mut previous_was_dash = false;
+    for ch in value.chars() {
+        let mapped = if ch.is_ascii_alphanumeric() {
+            previous_was_dash = false;
+            ch.to_ascii_lowercase()
+        } else if previous_was_dash {
+            continue;
+        } else {
+            previous_was_dash = true;
+            '-'
+        };
+        slug.push(mapped);
+    }
+    slug.trim_matches('-').to_string()
+}
+
+fn selector(value: &str) -> Option<Selector> {
+    Selector::parse(value).ok()
+}
+
+fn extract_title(document: &Html) -> Option<String> {
+    let selector = selector("title")?;
+    document
+        .select(&selector)
+        .next()
+        .map(|node| node.text().collect::<String>().trim().to_string())
+        .filter(|title| !title.is_empty())
+}
+
+fn extract_readable_text(document: &Html) -> String {
+    for candidate in ["article", "main", "body"] {
+        let Some(selector) = selector(candidate) else {
+            continue;
+        };
+        if let Some(node) = document.select(&selector).next() {
+            let text = node
+                .text()
+                .map(str::trim)
+                .filter(|segment| !segment.is_empty())
+                .collect::<Vec<_>>()
+                .join(" ");
+            if !text.is_empty() {
+                return text;
+            }
+        }
+    }
+    String::new()
+}
+
 #[derive(Clone)]
 pub struct WebsiteService {
     client: Client,
@@ -124,61 +179,6 @@ impl Default for WebsiteService {
     fn default() -> Self {
         Self::new()
     }
-}
-
-fn first_chars(value: &str, limit: usize) -> String {
-    value.chars().take(limit).collect::<String>()
-}
-
-fn slugify_url(value: &str) -> String {
-    let mut slug = String::new();
-    let mut previous_was_dash = false;
-    for ch in value.chars() {
-        let mapped = if ch.is_ascii_alphanumeric() {
-            previous_was_dash = false;
-            ch.to_ascii_lowercase()
-        } else if previous_was_dash {
-            continue;
-        } else {
-            previous_was_dash = true;
-            '-'
-        };
-        slug.push(mapped);
-    }
-    slug.trim_matches('-').to_string()
-}
-
-fn selector(value: &str) -> Option<Selector> {
-    Selector::parse(value).ok()
-}
-
-fn extract_title(document: &Html) -> Option<String> {
-    let selector = selector("title")?;
-    document
-        .select(&selector)
-        .next()
-        .map(|node| node.text().collect::<String>().trim().to_string())
-        .filter(|title| !title.is_empty())
-}
-
-fn extract_readable_text(document: &Html) -> String {
-    for candidate in ["article", "main", "body"] {
-        let Some(selector) = selector(candidate) else {
-            continue;
-        };
-        if let Some(node) = document.select(&selector).next() {
-            let text = node
-                .text()
-                .map(str::trim)
-                .filter(|segment| !segment.is_empty())
-                .collect::<Vec<_>>()
-                .join(" ");
-            if !text.is_empty() {
-                return text;
-            }
-        }
-    }
-    String::new()
 }
 
 #[cfg(test)]

@@ -20,6 +20,46 @@ use transcript_compare::{
     build_retry_feedback, detect_transcript_mismatch, strip_summary_title_heading,
 };
 
+fn normalize_vocabulary_entry(value: &str) -> Option<&str> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
+}
+
+pub(crate) fn apply_vocabulary_replacements(
+    transcript: &str,
+    replacements: &[VocabularyReplacement],
+) -> String {
+    let mut normalized = transcript.to_string();
+
+    for replacement in replacements {
+        let Some(from) = normalize_vocabulary_entry(&replacement.from) else {
+            continue;
+        };
+        let Some(to) = normalize_vocabulary_entry(&replacement.to) else {
+            continue;
+        };
+        if from == to {
+            continue;
+        }
+        normalized = normalized.replace(from, to);
+    }
+
+    normalized
+}
+
+pub(crate) fn transcript_text_equivalent(input: &str, output: &str) -> bool {
+    let expected = input
+        .split_whitespace()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    let actual = transcript_compare::normalized_output_tokens(output);
+    expected == actual
+}
+
 pub const MAX_TRANSCRIPT_FORMAT_ATTEMPTS: usize = 5;
 pub const TRANSCRIPT_FORMAT_TIMEOUT_HEADROOM_SECS: u64 = 30;
 pub const TRANSCRIPT_FORMAT_HARD_TIMEOUT_SECS: u64 =
@@ -308,46 +348,6 @@ impl SummarizerService {
             .await
             .map_err(Into::into)
     }
-}
-
-fn normalize_vocabulary_entry(value: &str) -> Option<&str> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed)
-    }
-}
-
-pub(crate) fn apply_vocabulary_replacements(
-    transcript: &str,
-    replacements: &[VocabularyReplacement],
-) -> String {
-    let mut normalized = transcript.to_string();
-
-    for replacement in replacements {
-        let Some(from) = normalize_vocabulary_entry(&replacement.from) else {
-            continue;
-        };
-        let Some(to) = normalize_vocabulary_entry(&replacement.to) else {
-            continue;
-        };
-        if from == to {
-            continue;
-        }
-        normalized = normalized.replace(from, to);
-    }
-
-    normalized
-}
-
-pub(crate) fn transcript_text_equivalent(input: &str, output: &str) -> bool {
-    let expected = input
-        .split_whitespace()
-        .map(ToString::to_string)
-        .collect::<Vec<_>>();
-    let actual = transcript_compare::normalized_output_tokens(output);
-    expected == actual
 }
 
 #[cfg(test)]

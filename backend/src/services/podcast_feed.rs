@@ -41,143 +41,6 @@ struct PodcastTranscriptReference {
     mime_type: String,
 }
 
-impl PodcastFeedService {
-    pub fn new() -> Self {
-        Self::with_client(build_http_client())
-    }
-
-    pub fn with_client(client: Client) -> Self {
-        Self { client }
-    }
-
-    fn parse_feed(content: &[u8]) -> Result<RssChannel, ProviderAdapterError> {
-        RssChannel::read_from(content).map_err(|error| {
-            ProviderAdapterError::Upstream(format!("podcast RSS parse failed: {error}"))
-        })
-    }
-
-    async fn fetch_feed(&self, url: &str) -> Result<RssChannel, ProviderAdapterError> {
-        let url = url.trim();
-        if url.is_empty() {
-            return Err(ProviderAdapterError::InvalidInput(
-                "podcast RSS sources require a feed URL".to_string(),
-            ));
-        }
-
-        let bytes = self
-            .client
-            .get(url)
-            .send()
-            .await
-            .map_err(|error| ProviderAdapterError::Upstream(error.to_string()))?
-            .error_for_status()
-            .map_err(|error| ProviderAdapterError::Upstream(error.to_string()))?
-            .bytes()
-            .await
-            .map_err(|error| ProviderAdapterError::Upstream(error.to_string()))?;
-
-        Self::parse_feed(&bytes)
-    }
-
-    async fn fetch_episode_transcript(
-        &self,
-        feed_url: &str,
-        feed: &RssChannel,
-        item: &Item,
-    ) -> Option<String> {
-        for reference in item_transcript_references(feed, item) {
-            match self.fetch_transcript_reference(feed_url, &reference).await {
-                Ok(Some(transcript)) => return Some(transcript),
-                Ok(None) => {}
-                Err(err) => {
-                    tracing::warn!(
-                        transcript_url = %reference.url,
-                        error = %err,
-                        "podcast transcript fetch failed"
-                    );
-                }
-            }
-        }
-
-        None
-    }
-
-    async fn fetch_transcript_reference(
-        &self,
-        feed_url: &str,
-        reference: &PodcastTranscriptReference,
-    ) -> Result<Option<String>, ProviderAdapterError> {
-        let url = resolve_transcript_url(feed_url, &reference.url)?;
-        validate_public_media_url(url.as_str())
-            .await
-            .map_err(|error| ProviderAdapterError::InvalidInput(error.to_string()))?;
-        let response = fetch_public_response(url.as_str(), 20)
-            .await
-            .map_err(|error| ProviderAdapterError::Upstream(error.to_string()))?;
-
-        if !response.status().is_success() {
-            return Err(ProviderAdapterError::Upstream(format!(
-                "podcast transcript returned HTTP {}",
-                response.status()
-            )));
-        }
-
-        let body = response
-            .text()
-            .await
-            .map_err(|error| ProviderAdapterError::Upstream(error.to_string()))?;
-
-        Ok(transcript_payload_to_text(
-            &body,
-            &reference.mime_type,
-            url.as_str(),
-        ))
-    }
-}
-
-impl Default for PodcastFeedService {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl FeedSourceAdapter for PodcastFeedService {
-    fn resolve_feed_source<'a>(
-        &'a self,
-        input: &'a str,
-    ) -> Pin<Box<dyn Future<Output = Result<ResolvedSourceDraft, ProviderAdapterError>> + Send + 'a>>
-    {
-        Box::pin(async move {
-            let feed = self.fetch_feed(input).await?;
-            Ok(build_podcast_resolved_source(input, &feed))
-        })
-    }
-
-    fn sync_feed_source<'a>(
-        &'a self,
-        source: &'a ContentSource,
-    ) -> Pin<Box<dyn Future<Output = Result<SyncedSourceBatch, ProviderAdapterError>> + Send + 'a>>
-    {
-        Box::pin(async move {
-            if source.provider != ProviderKind::PodcastRss
-                || source.source_kind != ContentSourceKind::PodcastSeries
-            {
-                return Err(ProviderAdapterError::UnsupportedSourceKind(
-                    source.source_kind,
-                ));
-            }
-
-            let feed_url = source.subtitle.as_deref().ok_or_else(|| {
-                ProviderAdapterError::InvalidInput(
-                    "podcast sources require the feed URL in the subtitle field".to_string(),
-                )
-            })?;
-            let feed = self.fetch_feed(feed_url).await?;
-            Ok(build_podcast_sync_batch(source, &feed))
-        })
-    }
-}
-
 fn normalize_feed_id(url: &str) -> String {
     let mut result = String::new();
     let mut previous_was_dash = false;
@@ -313,6 +176,25 @@ fn item_transcript_references(feed: &RssChannel, item: &Item) -> Vec<PodcastTran
     references
 }
 
+fn mime_type_from_url(url: &str) -> Option<&'static str> {
+    let path = reqwest::Url::parse(url)
+        .ok()
+        .map(|url| url.path().to_ascii_lowercase())
+        .unwrap_or_else(|| url.to_ascii_lowercase());
+
+    if path.ends_with(".vtt") {
+        Some("text/vtt")
+    } else if path.ends_with(".srt") {
+        Some("application/x-subrip")
+    } else if path.ends_with(".json") {
+        Some("application/json")
+    } else if path.ends_with(".html") || path.ends_with(".htm") {
+        Some("text/html")
+    } else {
+        None
+    }
+}
+
 fn transcript_reference_from_extension(
     extension: &Extension,
 ) -> Option<PodcastTranscriptReference> {
@@ -371,25 +253,6 @@ enum TranscriptPayloadFormat {
 
 fn canonical_mime_type(mime_type: &str) -> &str {
     mime_type.split(';').next().unwrap_or("").trim()
-}
-
-fn mime_type_from_url(url: &str) -> Option<&'static str> {
-    let path = reqwest::Url::parse(url)
-        .ok()
-        .map(|url| url.path().to_ascii_lowercase())
-        .unwrap_or_else(|| url.to_ascii_lowercase());
-
-    if path.ends_with(".vtt") {
-        Some("text/vtt")
-    } else if path.ends_with(".srt") {
-        Some("application/x-subrip")
-    } else if path.ends_with(".json") {
-        Some("application/json")
-    } else if path.ends_with(".html") || path.ends_with(".htm") {
-        Some("text/html")
-    } else {
-        None
-    }
 }
 
 fn transcript_format(mime_type: &str, url: &str) -> Option<TranscriptPayloadFormat> {
@@ -705,6 +568,143 @@ impl PodcastFeedService {
             }
 
             Ok(materials)
+        })
+    }
+}
+
+impl PodcastFeedService {
+    pub fn new() -> Self {
+        Self::with_client(build_http_client())
+    }
+
+    pub fn with_client(client: Client) -> Self {
+        Self { client }
+    }
+
+    fn parse_feed(content: &[u8]) -> Result<RssChannel, ProviderAdapterError> {
+        RssChannel::read_from(content).map_err(|error| {
+            ProviderAdapterError::Upstream(format!("podcast RSS parse failed: {error}"))
+        })
+    }
+
+    async fn fetch_feed(&self, url: &str) -> Result<RssChannel, ProviderAdapterError> {
+        let url = url.trim();
+        if url.is_empty() {
+            return Err(ProviderAdapterError::InvalidInput(
+                "podcast RSS sources require a feed URL".to_string(),
+            ));
+        }
+
+        let bytes = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(|error| ProviderAdapterError::Upstream(error.to_string()))?
+            .error_for_status()
+            .map_err(|error| ProviderAdapterError::Upstream(error.to_string()))?
+            .bytes()
+            .await
+            .map_err(|error| ProviderAdapterError::Upstream(error.to_string()))?;
+
+        Self::parse_feed(&bytes)
+    }
+
+    async fn fetch_episode_transcript(
+        &self,
+        feed_url: &str,
+        feed: &RssChannel,
+        item: &Item,
+    ) -> Option<String> {
+        for reference in item_transcript_references(feed, item) {
+            match self.fetch_transcript_reference(feed_url, &reference).await {
+                Ok(Some(transcript)) => return Some(transcript),
+                Ok(None) => {}
+                Err(err) => {
+                    tracing::warn!(
+                        transcript_url = %reference.url,
+                        error = %err,
+                        "podcast transcript fetch failed"
+                    );
+                }
+            }
+        }
+
+        None
+    }
+
+    async fn fetch_transcript_reference(
+        &self,
+        feed_url: &str,
+        reference: &PodcastTranscriptReference,
+    ) -> Result<Option<String>, ProviderAdapterError> {
+        let url = resolve_transcript_url(feed_url, &reference.url)?;
+        validate_public_media_url(url.as_str())
+            .await
+            .map_err(|error| ProviderAdapterError::InvalidInput(error.to_string()))?;
+        let response = fetch_public_response(url.as_str(), 20)
+            .await
+            .map_err(|error| ProviderAdapterError::Upstream(error.to_string()))?;
+
+        if !response.status().is_success() {
+            return Err(ProviderAdapterError::Upstream(format!(
+                "podcast transcript returned HTTP {}",
+                response.status()
+            )));
+        }
+
+        let body = response
+            .text()
+            .await
+            .map_err(|error| ProviderAdapterError::Upstream(error.to_string()))?;
+
+        Ok(transcript_payload_to_text(
+            &body,
+            &reference.mime_type,
+            url.as_str(),
+        ))
+    }
+}
+
+impl Default for PodcastFeedService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl FeedSourceAdapter for PodcastFeedService {
+    fn resolve_feed_source<'a>(
+        &'a self,
+        input: &'a str,
+    ) -> Pin<Box<dyn Future<Output = Result<ResolvedSourceDraft, ProviderAdapterError>> + Send + 'a>>
+    {
+        Box::pin(async move {
+            let feed = self.fetch_feed(input).await?;
+            Ok(build_podcast_resolved_source(input, &feed))
+        })
+    }
+
+    fn sync_feed_source<'a>(
+        &'a self,
+        source: &'a ContentSource,
+    ) -> Pin<Box<dyn Future<Output = Result<SyncedSourceBatch, ProviderAdapterError>> + Send + 'a>>
+    {
+        Box::pin(async move {
+            if source.provider != ProviderKind::PodcastRss
+                || source.source_kind != ContentSourceKind::PodcastSeries
+            {
+                return Err(ProviderAdapterError::UnsupportedSourceKind(
+                    source.source_kind,
+                ));
+            }
+
+            let feed_url = source.subtitle.as_deref().ok_or_else(|| {
+                ProviderAdapterError::InvalidInput(
+                    "podcast sources require the feed URL in the subtitle field".to_string(),
+                )
+            })?;
+            let feed = self.fetch_feed(feed_url).await?;
+            Ok(build_podcast_sync_batch(source, &feed))
         })
     }
 }

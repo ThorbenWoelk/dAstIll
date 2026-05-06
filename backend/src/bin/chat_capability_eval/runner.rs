@@ -16,6 +16,74 @@ use crate::sse::{
     parse_status_event, parse_token_event,
 };
 
+fn create_ephemeral_conversation() -> ChatConversation {
+    let now = chrono::Utc::now();
+    ChatConversation {
+        id: format!("conv_eval_{}", now.timestamp_millis()),
+        title: None,
+        title_status: dastill::models::ChatTitleStatus::Idle,
+        created_at: now,
+        updated_at: now,
+        messages: Vec::new(),
+    }
+}
+
+pub(crate) fn persistent_chat_requires_ephemeral(status: u16, body: &str) -> bool {
+    status == StatusCode::FORBIDDEN.as_u16()
+        && body
+            .to_ascii_lowercase()
+            .contains("signed-out chat stays ephemeral")
+}
+
+pub(crate) fn apply_eval_identity_headers(
+    headers: &mut HeaderMap,
+    user_id: Option<&str>,
+    role: Option<&str>,
+) -> Result<()> {
+    let Some(user_id) = user_id.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(());
+    };
+    headers.insert(
+        "x-dastill-auth-state",
+        HeaderValue::from_static("authenticated"),
+    );
+    headers.insert(
+        "x-dastill-user-id",
+        HeaderValue::from_str(user_id).context("invalid CHAT_EVAL_USER_ID header value")?,
+    );
+    headers.insert(
+        "x-dastill-role",
+        HeaderValue::from_str(
+            role.map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or("user"),
+        )
+        .context("invalid CHAT_EVAL_ROLE header value")?,
+    );
+    Ok(())
+}
+
+pub(crate) fn has_explicit_scope(prompt: &str) -> bool {
+    prompt.contains("@{")
+        || prompt.contains("+{")
+        || prompt.contains("@\"")
+        || prompt.contains("+\"")
+}
+
+pub(crate) fn prompt_refers_to_current_video(prompt: &str) -> bool {
+    let normalized = prompt.to_ascii_lowercase();
+    ["this video", "the video", "this transcript"]
+        .iter()
+        .any(|needle| normalized.contains(needle))
+}
+
+pub(crate) fn prompt_refers_to_current_channel(prompt: &str) -> bool {
+    let normalized = prompt.to_ascii_lowercase();
+    ["this creator", "this channel"]
+        .iter()
+        .any(|needle| normalized.contains(needle))
+}
+
 enum ConversationBootstrap {
     Persistent(ChatConversation),
     Ephemeral(ChatConversation),
@@ -468,72 +536,4 @@ impl SweepRunner {
 
         Ok(video.summary_status == "ready" || video.transcript_status == "ready")
     }
-}
-
-fn create_ephemeral_conversation() -> ChatConversation {
-    let now = chrono::Utc::now();
-    ChatConversation {
-        id: format!("conv_eval_{}", now.timestamp_millis()),
-        title: None,
-        title_status: dastill::models::ChatTitleStatus::Idle,
-        created_at: now,
-        updated_at: now,
-        messages: Vec::new(),
-    }
-}
-
-pub(crate) fn persistent_chat_requires_ephemeral(status: u16, body: &str) -> bool {
-    status == StatusCode::FORBIDDEN.as_u16()
-        && body
-            .to_ascii_lowercase()
-            .contains("signed-out chat stays ephemeral")
-}
-
-pub(crate) fn apply_eval_identity_headers(
-    headers: &mut HeaderMap,
-    user_id: Option<&str>,
-    role: Option<&str>,
-) -> Result<()> {
-    let Some(user_id) = user_id.map(str::trim).filter(|value| !value.is_empty()) else {
-        return Ok(());
-    };
-    headers.insert(
-        "x-dastill-auth-state",
-        HeaderValue::from_static("authenticated"),
-    );
-    headers.insert(
-        "x-dastill-user-id",
-        HeaderValue::from_str(user_id).context("invalid CHAT_EVAL_USER_ID header value")?,
-    );
-    headers.insert(
-        "x-dastill-role",
-        HeaderValue::from_str(
-            role.map(str::trim)
-                .filter(|value| !value.is_empty())
-                .unwrap_or("user"),
-        )
-        .context("invalid CHAT_EVAL_ROLE header value")?,
-    );
-    Ok(())
-}
-
-pub(crate) fn has_explicit_scope(prompt: &str) -> bool {
-    prompt.contains("@{")
-        || prompt.contains("+{")
-        || prompt.contains("@\"")
-        || prompt.contains("+\"")
-}
-
-pub(crate) fn prompt_refers_to_current_video(prompt: &str) -> bool {
-    let normalized = prompt.to_ascii_lowercase();
-    ["this video", "the video", "this transcript"]
-        .iter()
-        .any(|needle| normalized.contains(needle))
-}
-
-pub(crate) fn prompt_refers_to_current_channel(prompt: &str) -> bool {
-    let normalized = prompt.to_ascii_lowercase();
-    ["this creator", "this channel"]
-        .iter()
-        .any(|needle| normalized.contains(needle))
 }

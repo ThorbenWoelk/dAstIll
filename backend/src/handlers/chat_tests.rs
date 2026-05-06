@@ -141,6 +141,18 @@ fn apply_manual_conversation_title_updates_state() {
     assert_eq!(conversation.updated_at, updated_at);
 }
 
+fn sample_channel(id: &str, name: &str, handle: Option<&str>) -> Channel {
+    Channel {
+        id: id.to_string(),
+        handle: handle.map(str::to_string),
+        name: name.to_string(),
+        thumbnail_url: None,
+        added_at: Utc::now(),
+        earliest_sync_date: None,
+        earliest_sync_date_user_set: false,
+    }
+}
+
 #[test]
 fn suggest_channels_prefers_handle_prefix_matches() {
     let channels = vec![
@@ -152,33 +164,6 @@ fn suggest_channels_prefers_handle_prefix_matches() {
 
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].label, "HealthyGamerGG");
-}
-
-#[test]
-fn suggest_videos_prefers_newer_titles_on_ties() {
-    let older = sample_video("vid-old", "chan-1", "Effort and Change", 10);
-    let newer = sample_video("vid-new", "chan-1", "Effort and Change Again", 1);
-    let channels = vec![sample_channel(
-        "chan-1",
-        "HealthyGamerGG",
-        Some("@healthygamergg"),
-    )];
-
-    let items = rank_video_suggestions(&[older, newer], &channels, "eff", 5);
-
-    assert_eq!(items[0].id, "vid-new");
-}
-
-fn sample_channel(id: &str, name: &str, handle: Option<&str>) -> Channel {
-    Channel {
-        id: id.to_string(),
-        handle: handle.map(str::to_string),
-        name: name.to_string(),
-        thumbnail_url: None,
-        added_at: Utc::now(),
-        earliest_sync_date: None,
-        earliest_sync_date_user_set: false,
-    }
 }
 
 fn sample_video(id: &str, channel_id: &str, title: &str, age_days: i64) -> SuggestedVideo {
@@ -201,6 +186,21 @@ fn sample_video(id: &str, channel_id: &str, title: &str, age_days: i64) -> Sugge
         title: video.title,
         published_at: video.published_at,
     }
+}
+
+#[test]
+fn suggest_videos_prefers_newer_titles_on_ties() {
+    let older = sample_video("vid-old", "chan-1", "Effort and Change", 10);
+    let newer = sample_video("vid-new", "chan-1", "Effort and Change Again", 1);
+    let channels = vec![sample_channel(
+        "chan-1",
+        "HealthyGamerGG",
+        Some("@healthygamergg"),
+    )];
+
+    let items = rank_video_suggestions(&[older, newer], &channels, "eff", 5);
+
+    assert_eq!(items[0].id, "vid-new");
 }
 
 fn auth_context(user_id: &str) -> AccessContext {

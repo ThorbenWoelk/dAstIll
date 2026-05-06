@@ -13,6 +13,436 @@ use crate::config::{LocalAsrAuthMode, LocalAsrRuntimeConfig};
 use crate::services::http::build_http_client;
 use crate::services::youtube::placeholder::is_site_wide_placeholder_description;
 
+/// Parse YouTube's json3 subtitle format into (plain_text, timed_segments).
+/// Each event has `tStartMs` (start time in milliseconds) and `segs` (text segments).
+/// Timed segments use the event's start time; events without `tStartMs` are included
+/// in the plain text but omitted from the timed list.
+fn parse_json3_transcript(content: &str) -> (String, Vec<crate::models::TimedSegment>) {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(content) else {
+        return (String::new(), Vec::new());
+    };
+    let Some(events) = value["events"].as_array() else {
+        return (String::new(), Vec::new());
+    };
+
+    let mut plain_parts: Vec<String> = Vec::new();
+    let mut timed: Vec<crate::models::TimedSegment> = Vec::new();
+
+    for event in events {
+        let start_ms = event["tStartMs"].as_f64();
+        let mut event_words: Vec<String> = Vec::new();
+
+        if let Some(segs) = event["segs"].as_array() {
+            for seg in segs {
+                if let Some(utf8) = seg["utf8"].as_str() {
+                    let text = utf8.replace('\n', " ");
+                    let text = text.trim().to_string();
+                    if !text.is_empty() {
+                        event_words.push(text);
+                    }
+                }
+            }
+        }
+
+        if event_words.is_empty() {
+            continue;
+        }
+
+        let event_text = event_words.join(" ");
+        plain_parts.push(event_text.clone());
+
+        if let Some(ms) = start_ms {
+            timed.push(crate::models::TimedSegment {
+                start_sec: (ms / 1000.0) as f32,
+                text: event_text,
+            });
+        }
+    }
+
+    let plain = plain_parts
+        .join(" ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    (plain, timed)
+}
+
+fn parse_ytdlp_json3_result(
+    video_id: &str,
+    json3_content: &str,
+) -> Option<(String, String, Vec<crate::models::TimedSegment>)> {
+    let (raw, timed) = parse_json3_transcript(json3_content);
+    if raw.trim().is_empty() {
+        return None;
+    }
+
+    tracing::info!(
+        video_id = %video_id,
+        bytes = raw.len(),
+        timed_segments = timed.len(),
+        "yt-dlp transcript extracted"
+    );
+    Some((raw.clone(), raw, timed))
+}
+
+fn find_json3_caption_url_in_track_map(track_map: Option<&serde_json::Value>) -> Option<String> {
+    let tracks = track_map?.as_object()?;
+
+    let mut preferred_keys = Vec::new();
+    if tracks.contains_key("en-orig") {
+        preferred_keys.push("en-orig".to_string());
+    }
+
+    let mut english_variants = tracks
+        .keys()
+        .filter(|key| key.starts_with("en-") && key.as_str() != "en-orig")
+        .cloned()
+        .collect::<Vec<_>>();
+    english_variants.sort();
+    preferred_keys.extend(english_variants);
+
+    if tracks.contains_key("en") {
+        preferred_keys.push("en".to_string());
+    }
+
+    let mut remaining_keys = tracks
+        .keys()
+        .filter(|key| !preferred_keys.iter().any(|preferred| preferred == *key))
+        .cloned()
+        .collect::<Vec<_>>();
+    remaining_keys.sort();
+    preferred_keys.extend(remaining_keys);
+
+    preferred_keys.into_iter().find_map(|key| {
+        tracks
+            .get(&key)
+            .and_then(|entries| entries.as_array())
+            .and_then(|entries| {
+                entries.iter().find_map(|entry| {
+                    let ext = entry.get("ext").and_then(|value| value.as_str())?;
+                    let url = entry.get("url").and_then(|value| value.as_str())?;
+                    (ext == "json3" && !url.trim().is_empty()).then(|| url.to_string())
+                })
+            })
+    })
+}
+
+fn extract_json3_caption_url_from_ytdlp_metadata(content: &str) -> Option<String> {
+    let value = serde_json::from_str::<serde_json::Value>(content).ok()?;
+
+    find_json3_caption_url_in_track_map(value.get("automatic_captions"))
+        .or_else(|| find_json3_caption_url_in_track_map(value.get("subtitles")))
+}
+
+/// Heuristic for detecting summarize's `--youtube auto` failure mode.
+///
+/// Some videos return only a first-cue snippet even when captions exist, which produces
+/// transcripts that are "non-empty" but far too small to be useful.
+fn looks_like_summarize_auto_output_truncation(raw: &str) -> bool {
+    let text = raw.trim();
+    if text.is_empty() {
+        return true;
+    }
+
+    let char_count = text.chars().count();
+    let word_count = text.split_whitespace().count();
+
+    // Tuned to catch single-line/snippet failures while avoiding rejecting "normal" short
+    // transcripts.
+    char_count < 120 && word_count < 25
+}
+
+fn is_retryable_asr_status(status: reqwest::StatusCode) -> bool {
+    status.is_server_error()
+        || matches!(
+            status,
+            reqwest::StatusCode::REQUEST_TIMEOUT | reqwest::StatusCode::TOO_MANY_REQUESTS
+        )
+}
+
+async fn fetch_google_identity_token(audience: &str) -> Result<String, TranscriptError> {
+    let mut url = reqwest::Url::parse(
+        "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity",
+    )
+    .map_err(|error| {
+        TranscriptError::AsrTemporarilyUnavailable(format!("invalid metadata URL: {error}"))
+    })?;
+    url.query_pairs_mut()
+        .append_pair("audience", audience)
+        .append_pair("format", "full");
+
+    let response = build_http_client()
+        .get(url)
+        .header("Metadata-Flavor", "Google")
+        .timeout(std::time::Duration::from_secs(5))
+        .send()
+        .await
+        .map_err(|error| TranscriptError::AsrTemporarilyUnavailable(error.to_string()))?;
+
+    if !response.status().is_success() {
+        return Err(TranscriptError::AsrTemporarilyUnavailable(format!(
+            "metadata identity token returned HTTP {}",
+            response.status()
+        )));
+    }
+
+    let token = response
+        .text()
+        .await
+        .map(|token| token.trim().to_string())
+        .map_err(|error| TranscriptError::AsrTemporarilyUnavailable(error.to_string()))?;
+    if token.is_empty() {
+        return Err(TranscriptError::AsrTemporarilyUnavailable(
+            "metadata identity token response was empty".to_string(),
+        ));
+    }
+    Ok(token)
+}
+
+async fn authorize_local_asr_request(
+    request: reqwest::RequestBuilder,
+    config: &LocalAsrRuntimeConfig,
+) -> Result<reqwest::RequestBuilder, TranscriptError> {
+    match config.auth_mode {
+        LocalAsrAuthMode::ApiKey => Ok(request.bearer_auth(&config.api_key)),
+        LocalAsrAuthMode::GoogleIdToken => {
+            let token = fetch_google_identity_token(&config.audience_url()).await?;
+            Ok(request.bearer_auth(token))
+        }
+    }
+}
+
+fn parse_asr_transcription_response(body: &str) -> Option<String> {
+    let value = serde_json::from_str::<serde_json::Value>(body).ok()?;
+    value
+        .get("text")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn is_public_ipv4(ip: std::net::Ipv4Addr) -> bool {
+    let octets = ip.octets();
+    !(ip.is_loopback()
+        || ip.is_private()
+        || ip.is_link_local()
+        || ip.is_multicast()
+        || ip.is_broadcast()
+        || ip.is_documentation()
+        || octets[0] == 0
+        || octets[0] >= 240
+        || (octets[0] == 100 && (64..=127).contains(&octets[1]))
+        || (octets[0] == 169 && octets[1] == 254)
+        || (octets[0] == 192 && octets[1] == 0 && octets[2] == 0)
+        || (octets[0] == 192 && octets[1] == 88 && octets[2] == 99)
+        || (octets[0] == 198 && (18..=19).contains(&octets[1]))
+        || octets == [169, 254, 169, 254])
+}
+
+fn is_public_ipv6(ip: std::net::Ipv6Addr) -> bool {
+    let segments = ip.segments();
+    let is_global_unicast = (segments[0] & 0xe000) == 0x2000;
+    is_global_unicast
+        && !(
+            // NAT64 well-known and local-use prefixes can tunnel private IPv4 targets.
+            (segments[0] == 0x0064 && segments[1] == 0xff9b)
+                || (segments[0] == 0x0064 && segments[1] == 0xff9b && segments[2] == 0x0001)
+                // Discard-only prefix.
+                || (segments[0] == 0x0100 && segments[1] == 0)
+                // IETF protocol assignments, including Teredo, benchmarking, and documentation.
+                || (segments[0] == 0x2001 && segments[1] <= 0x01ff)
+                || (segments[0] == 0x2001 && segments[1] == 0x0db8)
+                // 6to4.
+                || segments[0] == 0x2002
+                // Documentation range from the IANA special-purpose registry.
+                || (segments[0] == 0x3fff && (segments[1] & 0xf000) == 0)
+        )
+}
+
+pub(crate) fn is_public_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(ip) => is_public_ipv4(ip),
+        IpAddr::V6(ip) => ip
+            .to_ipv4_mapped()
+            .map(is_public_ipv4)
+            .unwrap_or_else(|| is_public_ipv6(ip)),
+    }
+}
+
+pub(crate) async fn validate_public_media_url(url: &str) -> Result<(), TranscriptError> {
+    let parsed = reqwest::Url::parse(url)
+        .map_err(|error| TranscriptError::CommandFailed(format!("invalid audio URL: {error}")))?;
+    match parsed.scheme() {
+        "http" | "https" => {}
+        scheme => {
+            return Err(TranscriptError::CommandFailed(format!(
+                "unsupported audio URL scheme: {scheme}"
+            )));
+        }
+    }
+
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| TranscriptError::CommandFailed("audio URL missing host".to_string()))?;
+    if host.eq_ignore_ascii_case("localhost") {
+        return Err(TranscriptError::CommandFailed(
+            "audio URL host is not allowed".to_string(),
+        ));
+    }
+
+    let port = parsed.port_or_known_default().unwrap_or(443);
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        if !is_public_ip(ip) {
+            return Err(TranscriptError::CommandFailed(
+                "audio URL IP is not allowed".to_string(),
+            ));
+        }
+        return Ok(());
+    }
+
+    let addrs = tokio::net::lookup_host((host, port))
+        .await
+        .map_err(|error| TranscriptError::CommandFailed(format!("audio DNS failed: {error}")))?;
+    for addr in addrs {
+        if !is_public_ip(addr.ip()) {
+            return Err(TranscriptError::CommandFailed(
+                "audio URL resolves to a private or local address".to_string(),
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+async fn resolve_public_socket_addrs(
+    host: &str,
+    port: u16,
+) -> Result<Vec<SocketAddr>, TranscriptError> {
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        if is_public_ip(ip) {
+            return Ok(vec![SocketAddr::new(ip, port)]);
+        }
+        return Err(TranscriptError::CommandFailed(
+            "media URL IP is not allowed".to_string(),
+        ));
+    }
+
+    let addrs = tokio::net::lookup_host((host, port))
+        .await
+        .map_err(|error| TranscriptError::CommandFailed(format!("media DNS failed: {error}")))?
+        .filter(|addr| is_public_ip(addr.ip()))
+        .collect::<Vec<_>>();
+
+    if addrs.is_empty() {
+        return Err(TranscriptError::CommandFailed(
+            "media URL does not resolve to a public address".to_string(),
+        ));
+    }
+
+    Ok(addrs)
+}
+
+async fn build_pinned_public_media_client(
+    url: &reqwest::Url,
+    timeout_secs: u64,
+) -> Result<reqwest::Client, TranscriptError> {
+    let host = url
+        .host_str()
+        .ok_or_else(|| TranscriptError::CommandFailed("media URL missing host".to_string()))?;
+    let port = url.port_or_known_default().unwrap_or(443);
+    let addrs = resolve_public_socket_addrs(host, port).await?;
+    reqwest::ClientBuilder::new()
+        .user_agent("dastill/0.1")
+        .timeout(std::time::Duration::from_secs(timeout_secs))
+        .redirect(Policy::none())
+        .resolve_to_addrs(host, &addrs)
+        .build()
+        .map_err(|error| {
+            TranscriptError::CommandFailed(format!("http client build failed: {error}"))
+        })
+}
+
+pub(crate) async fn fetch_public_response(
+    initial_url: &str,
+    timeout_secs: u64,
+) -> Result<reqwest::Response, TranscriptError> {
+    let mut url = reqwest::Url::parse(initial_url)
+        .map_err(|error| TranscriptError::CommandFailed(format!("invalid media URL: {error}")))?;
+    for _ in 0..15 {
+        let client = build_pinned_public_media_client(&url, timeout_secs).await?;
+        let response = client
+            .get(url.clone())
+            .send()
+            .await
+            .map_err(|error| TranscriptError::AsrTemporarilyUnavailable(error.to_string()))?;
+        if !response.status().is_redirection() {
+            return Ok(response);
+        }
+        let location = response
+            .headers()
+            .get(reqwest::header::LOCATION)
+            .and_then(|value| value.to_str().ok())
+            .ok_or_else(|| {
+                TranscriptError::CommandFailed("redirect missing Location header".to_string())
+            })?;
+        url = url.join(location).map_err(|error| {
+            TranscriptError::CommandFailed(format!("invalid redirect URL: {error}"))
+        })?;
+    }
+
+    Err(TranscriptError::CommandFailed(
+        "too many redirects while fetching media".to_string(),
+    ))
+}
+
+async fn download_audio_bytes(
+    url: &str,
+    max_audio_bytes: u64,
+    timeout_secs: u64,
+) -> Result<(Vec<u8>, Option<String>), TranscriptError> {
+    let response = fetch_public_response(url, timeout_secs).await?;
+
+    if !response.status().is_success() {
+        return Err(TranscriptError::CommandFailed(format!(
+            "audio fetch returned HTTP {}",
+            response.status()
+        )));
+    }
+
+    if let Some(length) = response.content_length() {
+        if length > max_audio_bytes {
+            return Err(TranscriptError::CommandFailed(format!(
+                "audio file is too large: {length} bytes"
+            )));
+        }
+    }
+
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(ToOwned::to_owned);
+    let mut body = Vec::new();
+    let mut response = response;
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|error| TranscriptError::AsrTemporarilyUnavailable(error.to_string()))?
+    {
+        let next_len = body.len().saturating_add(chunk.len());
+        if next_len as u64 > max_audio_bytes {
+            return Err(TranscriptError::CommandFailed(format!(
+                "audio file is too large: more than {max_audio_bytes} bytes"
+            )));
+        }
+        body.extend_from_slice(&chunk);
+    }
+
+    Ok((body, content_type))
+}
+
 #[derive(Error, Debug)]
 pub enum TranscriptError {
     #[error("Transcript extraction failed: {0}")]
@@ -572,436 +1002,6 @@ impl TranscriptService {
     pub fn is_available(&self) -> bool {
         std::path::Path::new(&self.summarize_path).exists()
     }
-}
-
-/// Parse YouTube's json3 subtitle format into (plain_text, timed_segments).
-/// Each event has `tStartMs` (start time in milliseconds) and `segs` (text segments).
-/// Timed segments use the event's start time; events without `tStartMs` are included
-/// in the plain text but omitted from the timed list.
-fn parse_json3_transcript(content: &str) -> (String, Vec<crate::models::TimedSegment>) {
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(content) else {
-        return (String::new(), Vec::new());
-    };
-    let Some(events) = value["events"].as_array() else {
-        return (String::new(), Vec::new());
-    };
-
-    let mut plain_parts: Vec<String> = Vec::new();
-    let mut timed: Vec<crate::models::TimedSegment> = Vec::new();
-
-    for event in events {
-        let start_ms = event["tStartMs"].as_f64();
-        let mut event_words: Vec<String> = Vec::new();
-
-        if let Some(segs) = event["segs"].as_array() {
-            for seg in segs {
-                if let Some(utf8) = seg["utf8"].as_str() {
-                    let text = utf8.replace('\n', " ");
-                    let text = text.trim().to_string();
-                    if !text.is_empty() {
-                        event_words.push(text);
-                    }
-                }
-            }
-        }
-
-        if event_words.is_empty() {
-            continue;
-        }
-
-        let event_text = event_words.join(" ");
-        plain_parts.push(event_text.clone());
-
-        if let Some(ms) = start_ms {
-            timed.push(crate::models::TimedSegment {
-                start_sec: (ms / 1000.0) as f32,
-                text: event_text,
-            });
-        }
-    }
-
-    let plain = plain_parts
-        .join(" ")
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
-
-    (plain, timed)
-}
-
-fn parse_ytdlp_json3_result(
-    video_id: &str,
-    json3_content: &str,
-) -> Option<(String, String, Vec<crate::models::TimedSegment>)> {
-    let (raw, timed) = parse_json3_transcript(json3_content);
-    if raw.trim().is_empty() {
-        return None;
-    }
-
-    tracing::info!(
-        video_id = %video_id,
-        bytes = raw.len(),
-        timed_segments = timed.len(),
-        "yt-dlp transcript extracted"
-    );
-    Some((raw.clone(), raw, timed))
-}
-
-fn extract_json3_caption_url_from_ytdlp_metadata(content: &str) -> Option<String> {
-    let value = serde_json::from_str::<serde_json::Value>(content).ok()?;
-
-    find_json3_caption_url_in_track_map(value.get("automatic_captions"))
-        .or_else(|| find_json3_caption_url_in_track_map(value.get("subtitles")))
-}
-
-fn find_json3_caption_url_in_track_map(track_map: Option<&serde_json::Value>) -> Option<String> {
-    let tracks = track_map?.as_object()?;
-
-    let mut preferred_keys = Vec::new();
-    if tracks.contains_key("en-orig") {
-        preferred_keys.push("en-orig".to_string());
-    }
-
-    let mut english_variants = tracks
-        .keys()
-        .filter(|key| key.starts_with("en-") && key.as_str() != "en-orig")
-        .cloned()
-        .collect::<Vec<_>>();
-    english_variants.sort();
-    preferred_keys.extend(english_variants);
-
-    if tracks.contains_key("en") {
-        preferred_keys.push("en".to_string());
-    }
-
-    let mut remaining_keys = tracks
-        .keys()
-        .filter(|key| !preferred_keys.iter().any(|preferred| preferred == *key))
-        .cloned()
-        .collect::<Vec<_>>();
-    remaining_keys.sort();
-    preferred_keys.extend(remaining_keys);
-
-    preferred_keys.into_iter().find_map(|key| {
-        tracks
-            .get(&key)
-            .and_then(|entries| entries.as_array())
-            .and_then(|entries| {
-                entries.iter().find_map(|entry| {
-                    let ext = entry.get("ext").and_then(|value| value.as_str())?;
-                    let url = entry.get("url").and_then(|value| value.as_str())?;
-                    (ext == "json3" && !url.trim().is_empty()).then(|| url.to_string())
-                })
-            })
-    })
-}
-
-/// Heuristic for detecting summarize's `--youtube auto` failure mode.
-///
-/// Some videos return only a first-cue snippet even when captions exist, which produces
-/// transcripts that are "non-empty" but far too small to be useful.
-fn looks_like_summarize_auto_output_truncation(raw: &str) -> bool {
-    let text = raw.trim();
-    if text.is_empty() {
-        return true;
-    }
-
-    let char_count = text.chars().count();
-    let word_count = text.split_whitespace().count();
-
-    // Tuned to catch single-line/snippet failures while avoiding rejecting "normal" short
-    // transcripts.
-    char_count < 120 && word_count < 25
-}
-
-pub(crate) async fn validate_public_media_url(url: &str) -> Result<(), TranscriptError> {
-    let parsed = reqwest::Url::parse(url)
-        .map_err(|error| TranscriptError::CommandFailed(format!("invalid audio URL: {error}")))?;
-    match parsed.scheme() {
-        "http" | "https" => {}
-        scheme => {
-            return Err(TranscriptError::CommandFailed(format!(
-                "unsupported audio URL scheme: {scheme}"
-            )));
-        }
-    }
-
-    let host = parsed
-        .host_str()
-        .ok_or_else(|| TranscriptError::CommandFailed("audio URL missing host".to_string()))?;
-    if host.eq_ignore_ascii_case("localhost") {
-        return Err(TranscriptError::CommandFailed(
-            "audio URL host is not allowed".to_string(),
-        ));
-    }
-
-    let port = parsed.port_or_known_default().unwrap_or(443);
-    if let Ok(ip) = host.parse::<IpAddr>() {
-        if !is_public_ip(ip) {
-            return Err(TranscriptError::CommandFailed(
-                "audio URL IP is not allowed".to_string(),
-            ));
-        }
-        return Ok(());
-    }
-
-    let addrs = tokio::net::lookup_host((host, port))
-        .await
-        .map_err(|error| TranscriptError::CommandFailed(format!("audio DNS failed: {error}")))?;
-    for addr in addrs {
-        if !is_public_ip(addr.ip()) {
-            return Err(TranscriptError::CommandFailed(
-                "audio URL resolves to a private or local address".to_string(),
-            ));
-        }
-    }
-
-    Ok(())
-}
-
-fn is_retryable_asr_status(status: reqwest::StatusCode) -> bool {
-    status.is_server_error()
-        || matches!(
-            status,
-            reqwest::StatusCode::REQUEST_TIMEOUT | reqwest::StatusCode::TOO_MANY_REQUESTS
-        )
-}
-
-async fn authorize_local_asr_request(
-    request: reqwest::RequestBuilder,
-    config: &LocalAsrRuntimeConfig,
-) -> Result<reqwest::RequestBuilder, TranscriptError> {
-    match config.auth_mode {
-        LocalAsrAuthMode::ApiKey => Ok(request.bearer_auth(&config.api_key)),
-        LocalAsrAuthMode::GoogleIdToken => {
-            let token = fetch_google_identity_token(&config.audience_url()).await?;
-            Ok(request.bearer_auth(token))
-        }
-    }
-}
-
-async fn fetch_google_identity_token(audience: &str) -> Result<String, TranscriptError> {
-    let mut url = reqwest::Url::parse(
-        "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity",
-    )
-    .map_err(|error| {
-        TranscriptError::AsrTemporarilyUnavailable(format!("invalid metadata URL: {error}"))
-    })?;
-    url.query_pairs_mut()
-        .append_pair("audience", audience)
-        .append_pair("format", "full");
-
-    let response = build_http_client()
-        .get(url)
-        .header("Metadata-Flavor", "Google")
-        .timeout(std::time::Duration::from_secs(5))
-        .send()
-        .await
-        .map_err(|error| TranscriptError::AsrTemporarilyUnavailable(error.to_string()))?;
-
-    if !response.status().is_success() {
-        return Err(TranscriptError::AsrTemporarilyUnavailable(format!(
-            "metadata identity token returned HTTP {}",
-            response.status()
-        )));
-    }
-
-    let token = response
-        .text()
-        .await
-        .map(|token| token.trim().to_string())
-        .map_err(|error| TranscriptError::AsrTemporarilyUnavailable(error.to_string()))?;
-    if token.is_empty() {
-        return Err(TranscriptError::AsrTemporarilyUnavailable(
-            "metadata identity token response was empty".to_string(),
-        ));
-    }
-    Ok(token)
-}
-
-fn parse_asr_transcription_response(body: &str) -> Option<String> {
-    let value = serde_json::from_str::<serde_json::Value>(body).ok()?;
-    value
-        .get("text")
-        .and_then(|value| value.as_str())
-        .map(str::trim)
-        .filter(|text| !text.is_empty())
-        .map(ToOwned::to_owned)
-}
-
-pub(crate) fn is_public_ip(ip: IpAddr) -> bool {
-    match ip {
-        IpAddr::V4(ip) => is_public_ipv4(ip),
-        IpAddr::V6(ip) => ip
-            .to_ipv4_mapped()
-            .map(is_public_ipv4)
-            .unwrap_or_else(|| is_public_ipv6(ip)),
-    }
-}
-
-fn is_public_ipv4(ip: std::net::Ipv4Addr) -> bool {
-    let octets = ip.octets();
-    !(ip.is_loopback()
-        || ip.is_private()
-        || ip.is_link_local()
-        || ip.is_multicast()
-        || ip.is_broadcast()
-        || ip.is_documentation()
-        || octets[0] == 0
-        || octets[0] >= 240
-        || (octets[0] == 100 && (64..=127).contains(&octets[1]))
-        || (octets[0] == 169 && octets[1] == 254)
-        || (octets[0] == 192 && octets[1] == 0 && octets[2] == 0)
-        || (octets[0] == 192 && octets[1] == 88 && octets[2] == 99)
-        || (octets[0] == 198 && (18..=19).contains(&octets[1]))
-        || octets == [169, 254, 169, 254])
-}
-
-fn is_public_ipv6(ip: std::net::Ipv6Addr) -> bool {
-    let segments = ip.segments();
-    let is_global_unicast = (segments[0] & 0xe000) == 0x2000;
-    is_global_unicast
-        && !(
-            // NAT64 well-known and local-use prefixes can tunnel private IPv4 targets.
-            (segments[0] == 0x0064 && segments[1] == 0xff9b)
-                || (segments[0] == 0x0064 && segments[1] == 0xff9b && segments[2] == 0x0001)
-                // Discard-only prefix.
-                || (segments[0] == 0x0100 && segments[1] == 0)
-                // IETF protocol assignments, including Teredo, benchmarking, and documentation.
-                || (segments[0] == 0x2001 && segments[1] <= 0x01ff)
-                || (segments[0] == 0x2001 && segments[1] == 0x0db8)
-                // 6to4.
-                || segments[0] == 0x2002
-                // Documentation range from the IANA special-purpose registry.
-                || (segments[0] == 0x3fff && (segments[1] & 0xf000) == 0)
-        )
-}
-
-async fn download_audio_bytes(
-    url: &str,
-    max_audio_bytes: u64,
-    timeout_secs: u64,
-) -> Result<(Vec<u8>, Option<String>), TranscriptError> {
-    let response = fetch_public_response(url, timeout_secs).await?;
-
-    if !response.status().is_success() {
-        return Err(TranscriptError::CommandFailed(format!(
-            "audio fetch returned HTTP {}",
-            response.status()
-        )));
-    }
-
-    if let Some(length) = response.content_length() {
-        if length > max_audio_bytes {
-            return Err(TranscriptError::CommandFailed(format!(
-                "audio file is too large: {length} bytes"
-            )));
-        }
-    }
-
-    let content_type = response
-        .headers()
-        .get(reqwest::header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .map(ToOwned::to_owned);
-    let mut body = Vec::new();
-    let mut response = response;
-    while let Some(chunk) = response
-        .chunk()
-        .await
-        .map_err(|error| TranscriptError::AsrTemporarilyUnavailable(error.to_string()))?
-    {
-        let next_len = body.len().saturating_add(chunk.len());
-        if next_len as u64 > max_audio_bytes {
-            return Err(TranscriptError::CommandFailed(format!(
-                "audio file is too large: more than {max_audio_bytes} bytes"
-            )));
-        }
-        body.extend_from_slice(&chunk);
-    }
-
-    Ok((body, content_type))
-}
-
-pub(crate) async fn fetch_public_response(
-    initial_url: &str,
-    timeout_secs: u64,
-) -> Result<reqwest::Response, TranscriptError> {
-    let mut url = reqwest::Url::parse(initial_url)
-        .map_err(|error| TranscriptError::CommandFailed(format!("invalid media URL: {error}")))?;
-    for _ in 0..15 {
-        let client = build_pinned_public_media_client(&url, timeout_secs).await?;
-        let response = client
-            .get(url.clone())
-            .send()
-            .await
-            .map_err(|error| TranscriptError::AsrTemporarilyUnavailable(error.to_string()))?;
-        if !response.status().is_redirection() {
-            return Ok(response);
-        }
-        let location = response
-            .headers()
-            .get(reqwest::header::LOCATION)
-            .and_then(|value| value.to_str().ok())
-            .ok_or_else(|| {
-                TranscriptError::CommandFailed("redirect missing Location header".to_string())
-            })?;
-        url = url.join(location).map_err(|error| {
-            TranscriptError::CommandFailed(format!("invalid redirect URL: {error}"))
-        })?;
-    }
-
-    Err(TranscriptError::CommandFailed(
-        "too many redirects while fetching media".to_string(),
-    ))
-}
-
-async fn build_pinned_public_media_client(
-    url: &reqwest::Url,
-    timeout_secs: u64,
-) -> Result<reqwest::Client, TranscriptError> {
-    let host = url
-        .host_str()
-        .ok_or_else(|| TranscriptError::CommandFailed("media URL missing host".to_string()))?;
-    let port = url.port_or_known_default().unwrap_or(443);
-    let addrs = resolve_public_socket_addrs(host, port).await?;
-    reqwest::ClientBuilder::new()
-        .user_agent("dastill/0.1")
-        .timeout(std::time::Duration::from_secs(timeout_secs))
-        .redirect(Policy::none())
-        .resolve_to_addrs(host, &addrs)
-        .build()
-        .map_err(|error| {
-            TranscriptError::CommandFailed(format!("http client build failed: {error}"))
-        })
-}
-
-async fn resolve_public_socket_addrs(
-    host: &str,
-    port: u16,
-) -> Result<Vec<SocketAddr>, TranscriptError> {
-    if let Ok(ip) = host.parse::<IpAddr>() {
-        if is_public_ip(ip) {
-            return Ok(vec![SocketAddr::new(ip, port)]);
-        }
-        return Err(TranscriptError::CommandFailed(
-            "media URL IP is not allowed".to_string(),
-        ));
-    }
-
-    let addrs = tokio::net::lookup_host((host, port))
-        .await
-        .map_err(|error| TranscriptError::CommandFailed(format!("media DNS failed: {error}")))?
-        .filter(|addr| is_public_ip(addr.ip()))
-        .collect::<Vec<_>>();
-
-    if addrs.is_empty() {
-        return Err(TranscriptError::CommandFailed(
-            "media URL does not resolve to a public address".to_string(),
-        ));
-    }
-
-    Ok(addrs)
 }
 
 impl Default for TranscriptService {

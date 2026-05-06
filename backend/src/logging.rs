@@ -13,17 +13,6 @@ use tracing_subscriber::{
     util::SubscriberInitExt,
 };
 
-#[derive(Clone, Copy, Debug, Default)]
-pub struct HumanReadableEventFormatter;
-
-const LOGFIRE_AI_TARGET_PREFIXES: &[&str] = &[
-    "dastill::services::chat",
-    "dastill::services::ollama",
-    "dastill::services::search",
-    "dastill::services::summarizer",
-    "dastill::services::summary_evaluator",
-];
-
 pub fn should_send_to_logfire(target: &str, level: &Level) -> bool {
     *level == Level::ERROR
         || LOGFIRE_AI_TARGET_PREFIXES
@@ -101,6 +90,17 @@ pub fn init_tracing() -> anyhow::Result<Option<logfire::ShutdownGuard>> {
         Ok(None)
     }
 }
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct HumanReadableEventFormatter;
+
+const LOGFIRE_AI_TARGET_PREFIXES: &[&str] = &[
+    "dastill::services::chat",
+    "dastill::services::ollama",
+    "dastill::services::search",
+    "dastill::services::summarizer",
+    "dastill::services::summary_evaluator",
+];
 
 impl<S, N> FormatEvent<S, N> for HumanReadableEventFormatter
 where

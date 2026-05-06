@@ -1,32 +1,5 @@
 use super::*;
 
-const COMPLETED_LIVE_TRANSCRIPT_GRACE_SECONDS: i64 = 30 * 60;
-const LONG_LIVE_MIN_DURATION_SECONDS: u64 = 30 * 60;
-const DESCRIPTION_LIKE_MAX_TRANSCRIPT_WORDS: usize = 1_000;
-const DESCRIPTION_LIKE_MIN_WORDS: usize = 40;
-const DESCRIPTION_LIKE_OVERLAP_RATIO: f64 = 0.75;
-
-#[utoipa::path(
-    put,
-    path = "/api/videos/{id}/summary",
-    params(
-        ("id" = String, Path, description = "Video id")
-    ),
-    request_body = UpdateContentRequest,
-    responses(
-        (status = 200, description = "Updated summary", body = Summary),
-        (status = 404, description = "Video not found", body = String)
-    )
-)]
-pub async fn update_summary(
-    State(state): State<AppState>,
-    Path(video_id): Path<String>,
-    Json(payload): Json<UpdateContentRequest>,
-) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let summary = save_manual_summary_content(&state, &video_id, &payload.content).await?;
-    Ok(Json(summary))
-}
-
 /// Returns false for empty transcripts and YouTube site-wide placeholder blurbs that were
 /// accidentally stored before the Firecrawl fallback was disabled.
 fn is_valid_cached_transcript(transcript: &Transcript) -> bool {
@@ -127,6 +100,315 @@ async fn defer_transcript_processing(
     }
     state.transcript_cooldown.activate();
     (StatusCode::TOO_MANY_REQUESTS, message.to_string())
+}
+
+async fn valid_cached_transcript(
+    state: &AppState,
+    video_id: &str,
+) -> Result<Option<Transcript>, (StatusCode, String)> {
+    if let Some(transcript) = db::get_transcript(&state.db, video_id)
+        .await
+        .map_err(map_db_err)?
+    {
+        if is_valid_cached_transcript(&transcript) {
+            return Ok(Some(transcript));
+        }
+        tracing::warn!(
+            video_id = %video_id,
+            "cached transcript is invalid (site-wide blurb or empty) - discarding and re-fetching"
+        );
+    }
+    Ok(None)
+}
+
+async fn is_podcast_video(
+    state: &AppState,
+    video: &crate::models::Video,
+) -> Result<bool, (StatusCode, String)> {
+    let source_profile = db::get_source_profile(&state.db, &video.channel_id)
+        .await
+        .map_err(map_db_err)?;
+    Ok(source_profile
+        .map(|profile| profile.source.provider == crate::models::ProviderKind::PodcastRss)
+        .unwrap_or(false))
+}
+
+fn transcript_text(transcript: &Transcript) -> Option<&str> {
+    [
+        transcript.raw_text.as_deref(),
+        transcript.formatted_markdown.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    .find(|content| !content.trim().is_empty())
+}
+
+async fn sync_search_source(
+    state: &AppState,
+    video_id: &str,
+    source_kind: SearchSourceKind,
+    content: Option<&str>,
+) -> Result<(), crate::db::StoreError> {
+    match content.map(str::trim) {
+        Some(content) if !content.is_empty() => {
+            let content_hash = hash_search_content(content);
+            let current = db::get_search_source_state(&state.db, video_id, source_kind).await?;
+            if db::should_refresh_search_source(
+                current.as_ref(),
+                &content_hash,
+                state.search.semantic_enabled(),
+                state.search.model(),
+            ) {
+                db::mark_search_source_pending(&state.db, video_id, source_kind, &content_hash)
+                    .await
+            } else {
+                Ok(())
+            }
+        }
+        _ => {
+            state
+                .fts
+                .delete_source(video_id, source_kind)
+                .await
+                .map_err(crate::db::StoreError::Other)?;
+            db::clear_search_source(&state.db, video_id, source_kind).await
+        }
+    }
+}
+
+pub(super) async fn save_manual_transcript_content(
+    state: &AppState,
+    video_id: &str,
+    content: &str,
+    render_mode: Option<TranscriptRenderMode>,
+) -> Result<Transcript, (StatusCode, String)> {
+    let video = require_video(state, video_id).await?;
+    let existing_render_mode = db::get_transcript(&state.db, video_id)
+        .await
+        .map_err(map_db_err)?
+        .map(|transcript| transcript.render_mode);
+    let effective_render_mode = render_mode
+        .or(existing_render_mode)
+        .unwrap_or(TranscriptRenderMode::PlainText);
+    let transcript =
+        db::save_manual_transcript(&state.db, video_id, content, effective_render_mode)
+            .await
+            .map_err(map_db_err)?;
+    sync_search_source(
+        state,
+        video_id,
+        SearchSourceKind::Transcript,
+        transcript_text(&transcript),
+    )
+    .await
+    .map_err(map_db_err)?;
+    evict_video_scope_cache(state, &video.channel_id).await?;
+    Ok(transcript)
+}
+
+async fn save_manual_summary_content(
+    state: &AppState,
+    video_id: &str,
+    content: &str,
+) -> Result<Summary, (StatusCode, String)> {
+    let video = require_video(state, video_id).await?;
+    let summary = db::save_manual_summary(&state.db, video_id, content, Some("manual"))
+        .await
+        .map_err(map_db_err)?;
+    sync_search_source(
+        state,
+        video_id,
+        SearchSourceKind::Summary,
+        Some(summary.content.as_str()),
+    )
+    .await
+    .map_err(map_db_err)?;
+    evict_video_scope_cache(state, &video.channel_id).await?;
+    Ok(summary)
+}
+
+fn summarizer_pending_message(e: &SummarizerError) -> &'static str {
+    if e.is_rate_limited() {
+        "Ollama Cloud usage limit reached. The summary will retry when capacity returns."
+    } else {
+        "AI generation is temporarily unavailable. The summary will retry when capacity returns."
+    }
+}
+
+async fn evict_video_scope_cache_by_video_id(state: &AppState, video_id: &str) {
+    let Ok(Some(video)) = db::get_video(&state.db, video_id, false).await else {
+        return;
+    };
+    let _ = evict_video_scope_cache(state, &video.channel_id).await;
+}
+
+#[utoipa::path(
+    put,
+    path = "/api/videos/{id}/summary",
+    params(
+        ("id" = String, Path, description = "Video id")
+    ),
+    request_body = UpdateContentRequest,
+    responses(
+        (status = 200, description = "Updated summary", body = Summary),
+        (status = 404, description = "Video not found", body = String)
+    )
+)]
+pub async fn update_summary(
+    State(state): State<AppState>,
+    Path(video_id): Path<String>,
+    Json(payload): Json<UpdateContentRequest>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let summary = save_manual_summary_content(&state, &video_id, &payload.content).await?;
+    Ok(Json(summary))
+}
+
+/// Persist transcript status after extraction failure **before** returning to callers
+/// (e.g. the queue worker) that increment `retry_count`. A previous `tokio::spawn` here
+/// raced S3 writes and left rows stuck in `loading` with `retry_count >= MAX`, which
+/// `next_queue_task` then skips forever.
+async fn apply_transcript_error(
+    state: &AppState,
+    video_id: &str,
+    err: crate::services::transcript::TranscriptError,
+) -> (StatusCode, String) {
+    match &err {
+        crate::services::transcript::TranscriptError::RateLimited => {
+            tracing::warn!(video_id = %video_id, error = %err, "transcript download rate limited");
+            state.transcript_cooldown.activate();
+        }
+        crate::services::transcript::TranscriptError::NoTranscript => {
+            tracing::warn!(
+                video_id = %video_id,
+                error = %err,
+                "transcript unavailable for video"
+            );
+        }
+        crate::services::transcript::TranscriptError::AsrUnavailable => {
+            tracing::warn!(
+                video_id = %video_id,
+                error = %err,
+                "podcast transcript deferred because local ASR is unavailable"
+            );
+        }
+        crate::services::transcript::TranscriptError::AsrTemporarilyUnavailable(_) => {
+            tracing::warn!(
+                video_id = %video_id,
+                error = %err,
+                "podcast transcript deferred because local ASR is temporarily unavailable"
+            );
+        }
+        _ => {
+            tracing::error!(video_id = %video_id, error = %err, "transcript download failed");
+        }
+    }
+
+    let status = match err {
+        crate::services::transcript::TranscriptError::RateLimited => StatusCode::TOO_MANY_REQUESTS,
+        crate::services::transcript::TranscriptError::NoTranscript => StatusCode::NOT_FOUND,
+        crate::services::transcript::TranscriptError::AsrUnavailable => {
+            StatusCode::SERVICE_UNAVAILABLE
+        }
+        crate::services::transcript::TranscriptError::AsrTemporarilyUnavailable(_) => {
+            StatusCode::SERVICE_UNAVAILABLE
+        }
+        _ => StatusCode::INTERNAL_SERVER_ERROR,
+    };
+
+    let next_status = match err {
+        crate::services::transcript::TranscriptError::RateLimited
+        | crate::services::transcript::TranscriptError::AsrUnavailable
+        | crate::services::transcript::TranscriptError::AsrTemporarilyUnavailable(_) => {
+            ContentStatus::Pending
+        }
+        _ => ContentStatus::Failed,
+    };
+
+    if let Err(e) = db::update_video_transcript_status(&state.db, video_id, next_status).await {
+        tracing::error!(
+            video_id = %video_id,
+            error = %e,
+            "failed to persist transcript status after extraction error"
+        );
+    } else {
+        evict_video_scope_cache_by_video_id(state, video_id).await;
+    }
+
+    (status, err.to_string())
+}
+
+async fn ensure_podcast_audio_transcript(
+    state: &AppState,
+    video: &crate::models::Video,
+) -> Result<Transcript, (StatusCode, String)> {
+    db::update_video_transcript_status(&state.db, &video.id, ContentStatus::Loading)
+        .await
+        .map_err(map_db_err)?;
+    evict_video_scope_cache_by_video_id(state, &video.id).await;
+    tracing::info!(video_id = %video.id, "podcast transcript queued - status set to loading");
+
+    let audio_asset = match db::get_source_audio_asset(&state.db, &video.id)
+        .await
+        .map_err(map_db_err)?
+    {
+        Some(asset) => asset,
+        None => {
+            db::update_video_transcript_status(&state.db, &video.id, ContentStatus::Failed)
+                .await
+                .map_err(map_db_err)?;
+            return Err((
+                StatusCode::NOT_FOUND,
+                "Podcast episode has no source audio enclosure".to_string(),
+            ));
+        }
+    };
+    let Some(audio_url) = audio_asset.url.as_deref() else {
+        db::update_video_transcript_status(&state.db, &video.id, ContentStatus::Failed)
+            .await
+            .map_err(map_db_err)?;
+        return Err((
+            StatusCode::NOT_FOUND,
+            "Podcast episode source audio URL missing".to_string(),
+        ));
+    };
+
+    let (raw, formatted, timed) = match state
+        .transcript
+        .extract_podcast_audio(&video.id, audio_url, audio_asset.mime_type.as_deref())
+        .await
+    {
+        Ok(result) => result,
+        Err(err) => {
+            return Err(apply_transcript_error(state, &video.id, err).await);
+        }
+    };
+
+    let transcript = Transcript {
+        video_id: video.id.clone(),
+        raw_text: Some(raw),
+        formatted_markdown: Some(formatted),
+        render_mode: TranscriptRenderMode::PlainText,
+        timed_text: if timed.is_empty() { None } else { Some(timed) },
+    };
+
+    db::upsert_transcript(&state.db, &transcript)
+        .await
+        .map_err(map_db_err)?;
+    db::update_video_transcript_status(&state.db, &video.id, ContentStatus::Ready)
+        .await
+        .map_err(map_db_err)?;
+    sync_search_source(
+        state,
+        &video.id,
+        SearchSourceKind::Transcript,
+        transcript_text(&transcript),
+    )
+    .await
+    .map_err(map_db_err)?;
+    evict_video_scope_cache(state, &video.channel_id).await?;
+    tracing::info!(video_id = %video.id, "podcast transcript stored - status set to ready");
+
+    Ok(transcript)
 }
 
 pub(crate) async fn ensure_transcript(
@@ -265,123 +547,28 @@ pub(crate) async fn ensure_transcript(
     Ok(transcript)
 }
 
-async fn valid_cached_transcript(
+/// Updates the summary status and immediately evicts the cache for that video's scope.
+async fn set_summary_status_and_evict(
     state: &AppState,
     video_id: &str,
-) -> Result<Option<Transcript>, (StatusCode, String)> {
-    if let Some(transcript) = db::get_transcript(&state.db, video_id)
+    status: ContentStatus,
+) -> Result<(), (StatusCode, String)> {
+    db::update_video_summary_status(&state.db, video_id, status)
         .await
-        .map_err(map_db_err)?
-    {
-        if is_valid_cached_transcript(&transcript) {
-            return Ok(Some(transcript));
-        }
-        tracing::warn!(
-            video_id = %video_id,
-            "cached transcript is invalid (site-wide blurb or empty) - discarding and re-fetching"
-        );
+        .map_err(map_db_err)?;
+    evict_video_scope_cache_by_video_id(state, video_id).await;
+    Ok(())
+}
+
+/// Maps a summarizer error to the HTTP status and content status to persist.
+fn summarizer_error_statuses(e: &SummarizerError) -> (StatusCode, ContentStatus) {
+    if e.is_rate_limited() {
+        (StatusCode::TOO_MANY_REQUESTS, ContentStatus::Pending)
+    } else if matches!(e, SummarizerError::NotAvailable) {
+        (StatusCode::SERVICE_UNAVAILABLE, ContentStatus::Pending)
+    } else {
+        (StatusCode::INTERNAL_SERVER_ERROR, ContentStatus::Failed)
     }
-    Ok(None)
-}
-
-async fn is_podcast_video(
-    state: &AppState,
-    video: &crate::models::Video,
-) -> Result<bool, (StatusCode, String)> {
-    let source_profile = db::get_source_profile(&state.db, &video.channel_id)
-        .await
-        .map_err(map_db_err)?;
-    Ok(source_profile
-        .map(|profile| profile.source.provider == crate::models::ProviderKind::PodcastRss)
-        .unwrap_or(false))
-}
-
-async fn ensure_podcast_audio_transcript(
-    state: &AppState,
-    video: &crate::models::Video,
-) -> Result<Transcript, (StatusCode, String)> {
-    db::update_video_transcript_status(&state.db, &video.id, ContentStatus::Loading)
-        .await
-        .map_err(map_db_err)?;
-    evict_video_scope_cache_by_video_id(state, &video.id).await;
-    tracing::info!(video_id = %video.id, "podcast transcript queued - status set to loading");
-
-    let audio_asset = match db::get_source_audio_asset(&state.db, &video.id)
-        .await
-        .map_err(map_db_err)?
-    {
-        Some(asset) => asset,
-        None => {
-            db::update_video_transcript_status(&state.db, &video.id, ContentStatus::Failed)
-                .await
-                .map_err(map_db_err)?;
-            return Err((
-                StatusCode::NOT_FOUND,
-                "Podcast episode has no source audio enclosure".to_string(),
-            ));
-        }
-    };
-    let Some(audio_url) = audio_asset.url.as_deref() else {
-        db::update_video_transcript_status(&state.db, &video.id, ContentStatus::Failed)
-            .await
-            .map_err(map_db_err)?;
-        return Err((
-            StatusCode::NOT_FOUND,
-            "Podcast episode source audio URL missing".to_string(),
-        ));
-    };
-
-    let (raw, formatted, timed) = match state
-        .transcript
-        .extract_podcast_audio(&video.id, audio_url, audio_asset.mime_type.as_deref())
-        .await
-    {
-        Ok(result) => result,
-        Err(err) => {
-            return Err(apply_transcript_error(state, &video.id, err).await);
-        }
-    };
-
-    let transcript = Transcript {
-        video_id: video.id.clone(),
-        raw_text: Some(raw),
-        formatted_markdown: Some(formatted),
-        render_mode: TranscriptRenderMode::PlainText,
-        timed_text: if timed.is_empty() { None } else { Some(timed) },
-    };
-
-    db::upsert_transcript(&state.db, &transcript)
-        .await
-        .map_err(map_db_err)?;
-    db::update_video_transcript_status(&state.db, &video.id, ContentStatus::Ready)
-        .await
-        .map_err(map_db_err)?;
-    sync_search_source(
-        state,
-        &video.id,
-        SearchSourceKind::Transcript,
-        transcript_text(&transcript),
-    )
-    .await
-    .map_err(map_db_err)?;
-    evict_video_scope_cache(state, &video.channel_id).await?;
-    tracing::info!(video_id = %video.id, "podcast transcript stored - status set to ready");
-
-    Ok(transcript)
-}
-
-pub(crate) async fn ensure_summary(
-    state: &AppState,
-    video_id: &str,
-) -> Result<Summary, (StatusCode, String)> {
-    ensure_summary_internal(state, video_id, false).await
-}
-
-pub(crate) async fn ensure_summary_for_queue(
-    state: &AppState,
-    video_id: &str,
-) -> Result<Summary, (StatusCode, String)> {
-    ensure_summary_internal(state, video_id, true).await
 }
 
 async fn ensure_summary_internal(
@@ -534,212 +721,25 @@ async fn ensure_summary_internal(
     Ok(summary)
 }
 
-pub(super) async fn save_manual_transcript_content(
+pub(crate) async fn ensure_summary(
     state: &AppState,
     video_id: &str,
-    content: &str,
-    render_mode: Option<TranscriptRenderMode>,
-) -> Result<Transcript, (StatusCode, String)> {
-    let video = require_video(state, video_id).await?;
-    let existing_render_mode = db::get_transcript(&state.db, video_id)
-        .await
-        .map_err(map_db_err)?
-        .map(|transcript| transcript.render_mode);
-    let effective_render_mode = render_mode
-        .or(existing_render_mode)
-        .unwrap_or(TranscriptRenderMode::PlainText);
-    let transcript =
-        db::save_manual_transcript(&state.db, video_id, content, effective_render_mode)
-            .await
-            .map_err(map_db_err)?;
-    sync_search_source(
-        state,
-        video_id,
-        SearchSourceKind::Transcript,
-        transcript_text(&transcript),
-    )
-    .await
-    .map_err(map_db_err)?;
-    evict_video_scope_cache(state, &video.channel_id).await?;
-    Ok(transcript)
-}
-
-async fn save_manual_summary_content(
-    state: &AppState,
-    video_id: &str,
-    content: &str,
 ) -> Result<Summary, (StatusCode, String)> {
-    let video = require_video(state, video_id).await?;
-    let summary = db::save_manual_summary(&state.db, video_id, content, Some("manual"))
-        .await
-        .map_err(map_db_err)?;
-    sync_search_source(
-        state,
-        video_id,
-        SearchSourceKind::Summary,
-        Some(summary.content.as_str()),
-    )
-    .await
-    .map_err(map_db_err)?;
-    evict_video_scope_cache(state, &video.channel_id).await?;
-    Ok(summary)
+    ensure_summary_internal(state, video_id, false).await
 }
 
-fn transcript_text(transcript: &Transcript) -> Option<&str> {
-    [
-        transcript.raw_text.as_deref(),
-        transcript.formatted_markdown.as_deref(),
-    ]
-    .into_iter()
-    .flatten()
-    .find(|content| !content.trim().is_empty())
-}
-
-async fn sync_search_source(
+pub(crate) async fn ensure_summary_for_queue(
     state: &AppState,
     video_id: &str,
-    source_kind: SearchSourceKind,
-    content: Option<&str>,
-) -> Result<(), crate::db::StoreError> {
-    match content.map(str::trim) {
-        Some(content) if !content.is_empty() => {
-            let content_hash = hash_search_content(content);
-            let current = db::get_search_source_state(&state.db, video_id, source_kind).await?;
-            if db::should_refresh_search_source(
-                current.as_ref(),
-                &content_hash,
-                state.search.semantic_enabled(),
-                state.search.model(),
-            ) {
-                db::mark_search_source_pending(&state.db, video_id, source_kind, &content_hash)
-                    .await
-            } else {
-                Ok(())
-            }
-        }
-        _ => {
-            state
-                .fts
-                .delete_source(video_id, source_kind)
-                .await
-                .map_err(crate::db::StoreError::Other)?;
-            db::clear_search_source(&state.db, video_id, source_kind).await
-        }
-    }
+) -> Result<Summary, (StatusCode, String)> {
+    ensure_summary_internal(state, video_id, true).await
 }
 
-/// Persist transcript status after extraction failure **before** returning to callers
-/// (e.g. the queue worker) that increment `retry_count`. A previous `tokio::spawn` here
-/// raced S3 writes and left rows stuck in `loading` with `retry_count >= MAX`, which
-/// `next_queue_task` then skips forever.
-async fn apply_transcript_error(
-    state: &AppState,
-    video_id: &str,
-    err: crate::services::transcript::TranscriptError,
-) -> (StatusCode, String) {
-    match &err {
-        crate::services::transcript::TranscriptError::RateLimited => {
-            tracing::warn!(video_id = %video_id, error = %err, "transcript download rate limited");
-            state.transcript_cooldown.activate();
-        }
-        crate::services::transcript::TranscriptError::NoTranscript => {
-            tracing::warn!(
-                video_id = %video_id,
-                error = %err,
-                "transcript unavailable for video"
-            );
-        }
-        crate::services::transcript::TranscriptError::AsrUnavailable => {
-            tracing::warn!(
-                video_id = %video_id,
-                error = %err,
-                "podcast transcript deferred because local ASR is unavailable"
-            );
-        }
-        crate::services::transcript::TranscriptError::AsrTemporarilyUnavailable(_) => {
-            tracing::warn!(
-                video_id = %video_id,
-                error = %err,
-                "podcast transcript deferred because local ASR is temporarily unavailable"
-            );
-        }
-        _ => {
-            tracing::error!(video_id = %video_id, error = %err, "transcript download failed");
-        }
-    }
-
-    let status = match err {
-        crate::services::transcript::TranscriptError::RateLimited => StatusCode::TOO_MANY_REQUESTS,
-        crate::services::transcript::TranscriptError::NoTranscript => StatusCode::NOT_FOUND,
-        crate::services::transcript::TranscriptError::AsrUnavailable => {
-            StatusCode::SERVICE_UNAVAILABLE
-        }
-        crate::services::transcript::TranscriptError::AsrTemporarilyUnavailable(_) => {
-            StatusCode::SERVICE_UNAVAILABLE
-        }
-        _ => StatusCode::INTERNAL_SERVER_ERROR,
-    };
-
-    let next_status = match err {
-        crate::services::transcript::TranscriptError::RateLimited
-        | crate::services::transcript::TranscriptError::AsrUnavailable
-        | crate::services::transcript::TranscriptError::AsrTemporarilyUnavailable(_) => {
-            ContentStatus::Pending
-        }
-        _ => ContentStatus::Failed,
-    };
-
-    if let Err(e) = db::update_video_transcript_status(&state.db, video_id, next_status).await {
-        tracing::error!(
-            video_id = %video_id,
-            error = %e,
-            "failed to persist transcript status after extraction error"
-        );
-    } else {
-        evict_video_scope_cache_by_video_id(state, video_id).await;
-    }
-
-    (status, err.to_string())
-}
-
-/// Updates the summary status and immediately evicts the cache for that video's scope.
-async fn set_summary_status_and_evict(
-    state: &AppState,
-    video_id: &str,
-    status: ContentStatus,
-) -> Result<(), (StatusCode, String)> {
-    db::update_video_summary_status(&state.db, video_id, status)
-        .await
-        .map_err(map_db_err)?;
-    evict_video_scope_cache_by_video_id(state, video_id).await;
-    Ok(())
-}
-
-/// Maps a summarizer error to the HTTP status and content status to persist.
-fn summarizer_error_statuses(e: &SummarizerError) -> (StatusCode, ContentStatus) {
-    if e.is_rate_limited() {
-        (StatusCode::TOO_MANY_REQUESTS, ContentStatus::Pending)
-    } else if matches!(e, SummarizerError::NotAvailable) {
-        (StatusCode::SERVICE_UNAVAILABLE, ContentStatus::Pending)
-    } else {
-        (StatusCode::INTERNAL_SERVER_ERROR, ContentStatus::Failed)
-    }
-}
-
-fn summarizer_pending_message(e: &SummarizerError) -> &'static str {
-    if e.is_rate_limited() {
-        "Ollama Cloud usage limit reached. The summary will retry when capacity returns."
-    } else {
-        "AI generation is temporarily unavailable. The summary will retry when capacity returns."
-    }
-}
-
-async fn evict_video_scope_cache_by_video_id(state: &AppState, video_id: &str) {
-    let Ok(Some(video)) = db::get_video(&state.db, video_id, false).await else {
-        return;
-    };
-    let _ = evict_video_scope_cache(state, &video.channel_id).await;
-}
+const COMPLETED_LIVE_TRANSCRIPT_GRACE_SECONDS: i64 = 30 * 60;
+const LONG_LIVE_MIN_DURATION_SECONDS: u64 = 30 * 60;
+const DESCRIPTION_LIKE_MAX_TRANSCRIPT_WORDS: usize = 1_000;
+const DESCRIPTION_LIKE_MIN_WORDS: usize = 40;
+const DESCRIPTION_LIKE_OVERLAP_RATIO: f64 = 0.75;
 
 #[cfg(test)]
 #[path = "generation_tests.rs"]

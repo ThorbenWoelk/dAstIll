@@ -1,5 +1,35 @@
 use super::*;
 
+fn remove_scoped_video_titles(query: &str, video_titles: &[String]) -> String {
+    let mut cleaned = query.to_string();
+    for title in video_titles {
+        cleaned = cleaned.replace(&format!("\"{title}\""), "");
+        cleaned = cleaned.replace(title, "");
+    }
+    cleaned.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn nullable_object_schema(properties_and_required: serde_json::Value) -> serde_json::Value {
+    serde_json::json!({
+        "anyOf": [
+            {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": properties_and_required["properties"].clone(),
+                "required": properties_and_required["required"].clone()
+            },
+            { "type": "null" }
+        ]
+    })
+}
+
+fn object_schema(properties: serde_json::Value, required: &[&str]) -> serde_json::Value {
+    serde_json::json!({
+        "properties": properties,
+        "required": required
+    })
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub(super) struct ChatRetrievalPlanVisibility {
     intent: ChatQueryIntent,
@@ -450,15 +480,6 @@ impl ChatRetrievalPlan {
     }
 }
 
-fn remove_scoped_video_titles(query: &str, video_titles: &[String]) -> String {
-    let mut cleaned = query.to_string();
-    for title in video_titles {
-        cleaned = cleaned.replace(&format!("\"{title}\""), "");
-        cleaned = cleaned.replace(title, "");
-    }
-    cleaned.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
 #[derive(Debug, Deserialize)]
 pub(super) struct ChatQueryPlanResponse {
     pub(super) needs_retrieval: Option<bool>,
@@ -654,27 +675,6 @@ impl ChatToolLoopResponse {
             ]
         })
     }
-}
-
-fn nullable_object_schema(properties_and_required: serde_json::Value) -> serde_json::Value {
-    serde_json::json!({
-        "anyOf": [
-            {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": properties_and_required["properties"].clone(),
-                "required": properties_and_required["required"].clone()
-            },
-            { "type": "null" }
-        ]
-    })
-}
-
-fn object_schema(properties: serde_json::Value, required: &[&str]) -> serde_json::Value {
-    serde_json::json!({
-        "properties": properties,
-        "required": required
-    })
 }
 
 #[derive(Debug)]

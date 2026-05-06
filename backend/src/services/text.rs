@@ -3,10 +3,6 @@ pub fn limit_text(text: &str, max_chars: usize) -> String {
     text.chars().take(max_chars).collect()
 }
 
-pub fn strip_emoji(text: &str) -> String {
-    text.chars().filter(|ch| !is_emoji_scalar(*ch)).collect()
-}
-
 fn is_emoji_scalar(ch: char) -> bool {
     matches!(
         ch as u32,
@@ -17,6 +13,10 @@ fn is_emoji_scalar(ch: char) -> bool {
             | 0x200D
             | 0x20E3
     )
+}
+
+pub fn strip_emoji(text: &str) -> String {
+    text.chars().filter(|ch| !is_emoji_scalar(*ch)).collect()
 }
 
 #[cfg(test)]

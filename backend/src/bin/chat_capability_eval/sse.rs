@@ -4,49 +4,6 @@ use crate::model::{
 };
 use dastill::models::{ChatMessage, ChatSource};
 
-#[derive(Debug)]
-pub(crate) struct SseEvent {
-    pub(crate) name: String,
-    pub(crate) data: String,
-}
-
-#[derive(Debug, Default)]
-pub(crate) struct SseAccumulator {
-    buffer: String,
-}
-
-#[derive(Debug)]
-pub(crate) struct ParsedStream {
-    pub(crate) statuses: Vec<TimedStatus>,
-    pub(crate) latest_sources: Vec<ChatSource>,
-    pub(crate) final_message: Option<ChatMessage>,
-    pub(crate) error_message: Option<String>,
-    pub(crate) raw_sse: String,
-}
-
-impl SseAccumulator {
-    pub(crate) fn push(&mut self, chunk: &str) -> Vec<SseEvent> {
-        self.buffer.push_str(&chunk.replace('\r', ""));
-        let mut events = Vec::new();
-        while let Some(index) = self.buffer.find("\n\n") {
-            let block = self.buffer[..index].to_string();
-            self.buffer.drain(..index + 2);
-            if let Some(event) = parse_sse_block(&block) {
-                events.push(event);
-            }
-        }
-        events
-    }
-
-    pub(crate) fn finish(&mut self) -> Vec<SseEvent> {
-        if self.buffer.trim().is_empty() {
-            return Vec::new();
-        }
-        let block = std::mem::take(&mut self.buffer);
-        parse_sse_block(&block).into_iter().collect()
-    }
-}
-
 pub(crate) fn parse_sse_block(block: &str) -> Option<SseEvent> {
     let mut event_name = None::<String>;
     let mut data_lines = Vec::new();
@@ -98,4 +55,47 @@ pub(crate) fn parse_error_event(data: &str) -> anyhow::Result<String> {
         .map_err(anyhow::Error::from)
         .map_err(|error| error.context(format!("failed to parse error payload: {data}")))?;
     Ok(payload.message)
+}
+
+#[derive(Debug)]
+pub(crate) struct SseEvent {
+    pub(crate) name: String,
+    pub(crate) data: String,
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct SseAccumulator {
+    buffer: String,
+}
+
+#[derive(Debug)]
+pub(crate) struct ParsedStream {
+    pub(crate) statuses: Vec<TimedStatus>,
+    pub(crate) latest_sources: Vec<ChatSource>,
+    pub(crate) final_message: Option<ChatMessage>,
+    pub(crate) error_message: Option<String>,
+    pub(crate) raw_sse: String,
+}
+
+impl SseAccumulator {
+    pub(crate) fn push(&mut self, chunk: &str) -> Vec<SseEvent> {
+        self.buffer.push_str(&chunk.replace('\r', ""));
+        let mut events = Vec::new();
+        while let Some(index) = self.buffer.find("\n\n") {
+            let block = self.buffer[..index].to_string();
+            self.buffer.drain(..index + 2);
+            if let Some(event) = parse_sse_block(&block) {
+                events.push(event);
+            }
+        }
+        events
+    }
+
+    pub(crate) fn finish(&mut self) -> Vec<SseEvent> {
+        if self.buffer.trim().is_empty() {
+            return Vec::new();
+        }
+        let block = std::mem::take(&mut self.buffer);
+        parse_sse_block(&block).into_iter().collect()
+    }
 }

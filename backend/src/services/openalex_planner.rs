@@ -7,80 +7,6 @@ use crate::services::ollama::CooldownStatusPolicy;
 
 use super::{OllamaCore, OllamaPromptError};
 
-const OPENALEX_PLANNER_PREAMBLE: &str = r#"You convert a natural-language literature subscription request into a structured OpenAlex saved-search query.
-
-Return JSON only. No prose outside JSON.
-
-Rules:
-- `query_text` should be concise and keyword-oriented.
-- If the user asks for "recent", "latest", or "new", infer a recent publication window.
-- Prefer `title_and_abstract` scope for topic subscriptions unless the user clearly wants broad matching.
-- Prefer `publication_date_desc` sort for recency-driven subscriptions.
-- Use `relevance_score_desc` only when the request is primarily semantic/topic matching without recency intent.
-- `work_type` should be a short OpenAlex-style type string like `article`, `preprint`, or `review-article` when clearly implied.
-- `open_access_only` should be set only when the user explicitly asks for open access / free / OA.
-- If you are unsure, keep optional fields null instead of inventing constraints.
-
-Response shape:
-{
-  "natural_language_query": string,
-  "query_text": string,
-  "from_publication_date": string | null,
-  "to_publication_date": string | null,
-  "work_type": string | null,
-  "open_access_only": boolean | null,
-  "search_scope": "general_search" | "title_and_abstract",
-  "sort": "publication_date_desc" | "relevance_score_desc"
-}"#;
-
-#[derive(Clone)]
-pub struct OpenAlexPlannerService {
-    core: OllamaCore,
-}
-
-impl OpenAlexPlannerService {
-    pub fn new(core: OllamaCore) -> Self {
-        Self { core }
-    }
-
-    pub async fn plan(&self, natural_language_query: &str) -> Result<OpenAlexPlanResponse, String> {
-        let normalized = natural_language_query.trim();
-        if normalized.is_empty() {
-            return Err("OpenAlex planner requires a query".to_string());
-        }
-
-        let prompt =
-            format!("Translate this request into an OpenAlex saved-search query:\n\n{normalized}");
-
-        let query = match self
-            .core
-            .prompt_with_fallback(
-                "openalex_query_planner",
-                OPENALEX_PLANNER_PREAMBLE,
-                &prompt,
-                CooldownStatusPolicy::UseLocalFallback,
-            )
-            .await
-        {
-            Ok((response, _model_used)) => parse_planner_json(&response)
-                .unwrap_or_else(|| fallback_query_from_natural_language(normalized)),
-            Err(OllamaPromptError::NotAvailable)
-            | Err(OllamaPromptError::RequestFailed(_))
-            | Err(OllamaPromptError::GenerationFailed(_))
-            | Err(OllamaPromptError::EmptyResponse)
-            | Err(OllamaPromptError::InvalidStructuredResponse(_)) => {
-                fallback_query_from_natural_language(normalized)
-            }
-        };
-
-        Ok(OpenAlexPlanResponse {
-            display_label: build_display_label(&query),
-            notes: build_notes(&query),
-            query,
-        })
-    }
-}
-
 fn parse_planner_json(response: &str) -> Option<OpenAlexSavedSearchQuery> {
     serde_json::from_str::<OpenAlexSavedSearchQuery>(response)
         .ok()
@@ -180,6 +106,80 @@ fn build_notes(query: &OpenAlexSavedSearchQuery) -> Vec<String> {
         notes.push("Results will be sorted newest first.".to_string());
     }
     notes
+}
+
+const OPENALEX_PLANNER_PREAMBLE: &str = r#"You convert a natural-language literature subscription request into a structured OpenAlex saved-search query.
+
+Return JSON only. No prose outside JSON.
+
+Rules:
+- `query_text` should be concise and keyword-oriented.
+- If the user asks for "recent", "latest", or "new", infer a recent publication window.
+- Prefer `title_and_abstract` scope for topic subscriptions unless the user clearly wants broad matching.
+- Prefer `publication_date_desc` sort for recency-driven subscriptions.
+- Use `relevance_score_desc` only when the request is primarily semantic/topic matching without recency intent.
+- `work_type` should be a short OpenAlex-style type string like `article`, `preprint`, or `review-article` when clearly implied.
+- `open_access_only` should be set only when the user explicitly asks for open access / free / OA.
+- If you are unsure, keep optional fields null instead of inventing constraints.
+
+Response shape:
+{
+  "natural_language_query": string,
+  "query_text": string,
+  "from_publication_date": string | null,
+  "to_publication_date": string | null,
+  "work_type": string | null,
+  "open_access_only": boolean | null,
+  "search_scope": "general_search" | "title_and_abstract",
+  "sort": "publication_date_desc" | "relevance_score_desc"
+}"#;
+
+#[derive(Clone)]
+pub struct OpenAlexPlannerService {
+    core: OllamaCore,
+}
+
+impl OpenAlexPlannerService {
+    pub fn new(core: OllamaCore) -> Self {
+        Self { core }
+    }
+
+    pub async fn plan(&self, natural_language_query: &str) -> Result<OpenAlexPlanResponse, String> {
+        let normalized = natural_language_query.trim();
+        if normalized.is_empty() {
+            return Err("OpenAlex planner requires a query".to_string());
+        }
+
+        let prompt =
+            format!("Translate this request into an OpenAlex saved-search query:\n\n{normalized}");
+
+        let query = match self
+            .core
+            .prompt_with_fallback(
+                "openalex_query_planner",
+                OPENALEX_PLANNER_PREAMBLE,
+                &prompt,
+                CooldownStatusPolicy::UseLocalFallback,
+            )
+            .await
+        {
+            Ok((response, _model_used)) => parse_planner_json(&response)
+                .unwrap_or_else(|| fallback_query_from_natural_language(normalized)),
+            Err(OllamaPromptError::NotAvailable)
+            | Err(OllamaPromptError::RequestFailed(_))
+            | Err(OllamaPromptError::GenerationFailed(_))
+            | Err(OllamaPromptError::EmptyResponse)
+            | Err(OllamaPromptError::InvalidStructuredResponse(_)) => {
+                fallback_query_from_natural_language(normalized)
+            }
+        };
+
+        Ok(OpenAlexPlanResponse {
+            display_label: build_display_label(&query),
+            notes: build_notes(&query),
+            query,
+        })
+    }
 }
 
 #[cfg(test)]

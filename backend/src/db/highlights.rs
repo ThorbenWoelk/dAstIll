@@ -41,6 +41,25 @@ async fn list_user_highlights(store: &Store, user_id: &str) -> Result<Vec<Highli
     store.load_all(&highlight_prefix(user_id)).await
 }
 
+pub async fn list_video_highlights(
+    store: &Store,
+    user_id: &str,
+    video_id: &str,
+) -> Result<Vec<Highlight>, StoreError> {
+    let mut filtered = list_user_highlights(store, user_id)
+        .await?
+        .into_iter()
+        .filter(|highlight| highlight.video_id == video_id)
+        .collect::<Vec<_>>();
+    filtered.sort_by(|left, right| {
+        right
+            .created_at
+            .cmp(&left.created_at)
+            .then(right.id.cmp(&left.id))
+    });
+    Ok(filtered)
+}
+
 pub async fn create_highlight(
     store: &Store,
     user_id: &str,
@@ -82,25 +101,6 @@ pub async fn create_highlight(
     Ok(highlight)
 }
 
-pub async fn list_video_highlights(
-    store: &Store,
-    user_id: &str,
-    video_id: &str,
-) -> Result<Vec<Highlight>, StoreError> {
-    let mut filtered = list_user_highlights(store, user_id)
-        .await?
-        .into_iter()
-        .filter(|highlight| highlight.video_id == video_id)
-        .collect::<Vec<_>>();
-    filtered.sort_by(|left, right| {
-        right
-            .created_at
-            .cmp(&left.created_at)
-            .then(right.id.cmp(&left.id))
-    });
-    Ok(filtered)
-}
-
 pub async fn delete_highlight(
     store: &Store,
     user_id: &str,
@@ -128,72 +128,6 @@ pub(crate) async fn delete_highlights_for_video(
         }
     }
     Ok(())
-}
-
-pub async fn list_highlights_grouped(
-    store: &Store,
-) -> Result<Vec<HighlightChannelGroup>, StoreError> {
-    let keys = store.list_keys("user-highlights/").await?;
-    let mut all_highlights = Vec::new();
-    for key in keys {
-        if let Some(highlight) = store.get_json::<Highlight>(&key).await? {
-            all_highlights.push(highlight);
-        }
-    }
-    group_highlights(store, all_highlights).await
-}
-
-pub async fn list_highlights_grouped_for_user(
-    store: &Store,
-    user_id: &str,
-) -> Result<Vec<HighlightChannelGroup>, StoreError> {
-    group_highlights(store, list_user_highlights(store, user_id).await?).await
-}
-
-async fn group_highlights(
-    store: &Store,
-    all_highlights: Vec<Highlight>,
-) -> Result<Vec<HighlightChannelGroup>, StoreError> {
-    if all_highlights.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let video_ids = all_highlights
-        .iter()
-        .map(|highlight| highlight.video_id.as_str())
-        .collect::<HashSet<_>>()
-        .into_iter()
-        .collect::<Vec<_>>();
-    let video_map = super::videos::get_videos(store, &video_ids, false).await?;
-
-    let channel_ids = video_map
-        .values()
-        .map(|video| video.channel_id.clone())
-        .collect::<HashSet<_>>();
-    let mut channel_map = HashMap::<String, Channel>::new();
-    for channel_id in channel_ids {
-        if let Some(channel) = super::channels::get_channel(store, &channel_id).await? {
-            channel_map.insert(channel.id.clone(), channel);
-        }
-    }
-
-    let mut groups = group_highlights_from_maps(all_highlights, &video_map, &channel_map);
-
-    for group in &mut groups {
-        group
-            .videos
-            .sort_by(|left, right| right.published_at.cmp(&left.published_at));
-        for video_group in &mut group.videos {
-            video_group.highlights.sort_by(|left, right| {
-                right
-                    .created_at
-                    .cmp(&left.created_at)
-                    .then(right.id.cmp(&left.id))
-            });
-        }
-    }
-
-    Ok(groups)
 }
 
 fn group_highlights_from_maps(
@@ -254,6 +188,72 @@ fn group_highlights_from_maps(
     }
 
     groups
+}
+
+async fn group_highlights(
+    store: &Store,
+    all_highlights: Vec<Highlight>,
+) -> Result<Vec<HighlightChannelGroup>, StoreError> {
+    if all_highlights.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let video_ids = all_highlights
+        .iter()
+        .map(|highlight| highlight.video_id.as_str())
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let video_map = super::videos::get_videos(store, &video_ids, false).await?;
+
+    let channel_ids = video_map
+        .values()
+        .map(|video| video.channel_id.clone())
+        .collect::<HashSet<_>>();
+    let mut channel_map = HashMap::<String, Channel>::new();
+    for channel_id in channel_ids {
+        if let Some(channel) = super::channels::get_channel(store, &channel_id).await? {
+            channel_map.insert(channel.id.clone(), channel);
+        }
+    }
+
+    let mut groups = group_highlights_from_maps(all_highlights, &video_map, &channel_map);
+
+    for group in &mut groups {
+        group
+            .videos
+            .sort_by(|left, right| right.published_at.cmp(&left.published_at));
+        for video_group in &mut group.videos {
+            video_group.highlights.sort_by(|left, right| {
+                right
+                    .created_at
+                    .cmp(&left.created_at)
+                    .then(right.id.cmp(&left.id))
+            });
+        }
+    }
+
+    Ok(groups)
+}
+
+pub async fn list_highlights_grouped(
+    store: &Store,
+) -> Result<Vec<HighlightChannelGroup>, StoreError> {
+    let keys = store.list_keys("user-highlights/").await?;
+    let mut all_highlights = Vec::new();
+    for key in keys {
+        if let Some(highlight) = store.get_json::<Highlight>(&key).await? {
+            all_highlights.push(highlight);
+        }
+    }
+    group_highlights(store, all_highlights).await
+}
+
+pub async fn list_highlights_grouped_for_user(
+    store: &Store,
+    user_id: &str,
+) -> Result<Vec<HighlightChannelGroup>, StoreError> {
+    group_highlights(store, list_user_highlights(store, user_id).await?).await
 }
 
 #[cfg(test)]

@@ -222,6 +222,73 @@ fn highlight_lookup_description_is_human_readable() {
 }
 
 #[test]
+fn builds_recent_library_activity_query_with_defaults() {
+    let query = build_recent_library_activity_query(
+        Some("recent_library_activity"),
+        Some(RecentLibraryActivityToolInput {
+            scope: Some("channel".to_string()),
+            channel_id: None,
+            video_id: None,
+            limit_videos: None,
+            include_summaries: None,
+            include_transcripts: None,
+        }),
+    )
+    .expect("valid tool request")
+    .expect("query should be built");
+
+    assert_eq!(query.scope, RecentLibraryActivityScope::Channel);
+    assert_eq!(query.limit_videos, 6);
+    assert!(query.include_summaries);
+    assert!(query.include_transcripts);
+}
+
+fn sample_channel(id: &str, name: &str, handle: Option<&str>) -> Channel {
+    Channel {
+        id: id.to_string(),
+        handle: handle.map(str::to_string),
+        name: name.to_string(),
+        thumbnail_url: None,
+        added_at: chrono::Utc::now(),
+        earliest_sync_date: None,
+        earliest_sync_date_user_set: false,
+    }
+}
+
+#[test]
+fn plain_channel_reference_resolves_scope_when_unambiguous() {
+    let channels = vec![
+        sample_channel("chan_1", "HealthyGamerGG", Some("@healthygamergg")),
+        sample_channel("chan_2", "Theo", Some("@theo")),
+    ];
+    let scope =
+        resolve_mention_scope_from_catalog("What is HealthyGamerGG doing lately?", &channels, &[]);
+
+    assert_eq!(scope.channel_focus_ids, vec!["chan_1".to_string()]);
+    assert_eq!(scope.channel_names, vec!["HealthyGamerGG".to_string()]);
+    assert_eq!(
+        scope.cleaned_prompt,
+        "What is HealthyGamerGG doing lately?".to_string()
+    );
+}
+
+fn sample_video(id: &str, channel_id: &str, title: &str) -> Video {
+    Video {
+        id: id.to_string(),
+        channel_id: channel_id.to_string(),
+        title: title.to_string(),
+        thumbnail_url: None,
+        published_at: chrono::Utc::now(),
+        is_short: false,
+        transcript_status: ContentStatus::Ready,
+        summary_status: ContentStatus::Ready,
+        acknowledged: false,
+        retry_count: 0,
+        quality_score: None,
+    }
+}
+
+#[test]
 fn resolves_bare_channel_mentions_into_scope() {
     let channels = vec![sample_channel("chan_1", "Theo", Some("@theo"))];
     let videos = vec![sample_video("vid_1", "chan_1", "Vector Search Guide")];
@@ -288,23 +355,6 @@ fn plus_mentions_scope_videos_only() {
 }
 
 #[test]
-fn plain_channel_reference_resolves_scope_when_unambiguous() {
-    let channels = vec![
-        sample_channel("chan_1", "HealthyGamerGG", Some("@healthygamergg")),
-        sample_channel("chan_2", "Theo", Some("@theo")),
-    ];
-    let scope =
-        resolve_mention_scope_from_catalog("What is HealthyGamerGG doing lately?", &channels, &[]);
-
-    assert_eq!(scope.channel_focus_ids, vec!["chan_1".to_string()]);
-    assert_eq!(scope.channel_names, vec!["HealthyGamerGG".to_string()]);
-    assert_eq!(
-        scope.cleaned_prompt,
-        "What is HealthyGamerGG doing lately?".to_string()
-    );
-}
-
-#[test]
 fn plain_video_reference_resolves_scope_when_unambiguous() {
     let videos = vec![sample_video(
         "vid_1",
@@ -324,62 +374,17 @@ fn plain_video_reference_resolves_scope_when_unambiguous() {
     );
 }
 
-#[test]
-fn builds_recent_library_activity_query_with_defaults() {
-    let query = build_recent_library_activity_query(
-        Some("recent_library_activity"),
-        Some(RecentLibraryActivityToolInput {
-            scope: Some("channel".to_string()),
-            channel_id: None,
-            video_id: None,
-            limit_videos: None,
-            include_summaries: None,
-            include_transcripts: None,
-        }),
-    )
-    .expect("valid tool request")
-    .expect("query should be built");
-
-    assert_eq!(query.scope, RecentLibraryActivityScope::Channel);
-    assert_eq!(query.limit_videos, 6);
-    assert!(query.include_summaries);
-    assert!(query.include_transcripts);
-}
-
-#[test]
-fn anonymous_db_inspect_uses_access_scoped_results() {
-    let scope = DbInspectScope {
-        channels: vec![sample_channel("seeded-channel", "Seeded", Some("@seeded"))],
-        videos: vec![sample_video(
-            "video-seeded",
-            "seeded-channel",
-            "Seeded video",
-        )],
-        summaries: vec![sample_summary("video-seeded")],
-        transcripts: vec![sample_transcript("video-seeded")],
-        visible_channel_names: HashMap::from([(
-            "seeded-channel".to_string(),
-            "Seeded".to_string(),
-        )]),
-        allowed_other_video_ids: HashSet::new(),
-    };
-
-    assert_eq!(count_db_inspect_scope(&scope, DbInspectTarget::Videos), 1);
-
-    let list = format_db_inspect_list_output(
-        &scope,
-        DbInspectQuery {
-            operation: DbInspectOperation::List,
-            target: DbInspectTarget::Videos,
-            limit: 5,
-            group_by: None,
-        },
-    );
-    assert!(list.contains("video-seeded"));
-    assert!(!list.contains("video-hidden"));
-
-    let breakdown = breakdown_scope_by_channel(&scope, DbInspectTarget::Summaries);
-    assert_eq!(breakdown, vec![("Seeded".to_string(), 1)]);
+fn sample_summary(video_id: &str) -> Summary {
+    Summary {
+        video_id: video_id.to_string(),
+        content: format!("summary for {video_id}"),
+        model_used: None,
+        quality_score: None,
+        quality_note: None,
+        quality_model_used: None,
+        summary_tags: Vec::new(),
+        summary_tags_evaluated: false,
+    }
 }
 
 #[test]
@@ -422,47 +427,6 @@ fn db_inspect_folds_other_video_scope_into_virtual_others_channel() {
     );
 }
 
-fn sample_channel(id: &str, name: &str, handle: Option<&str>) -> Channel {
-    Channel {
-        id: id.to_string(),
-        handle: handle.map(str::to_string),
-        name: name.to_string(),
-        thumbnail_url: None,
-        added_at: chrono::Utc::now(),
-        earliest_sync_date: None,
-        earliest_sync_date_user_set: false,
-    }
-}
-
-fn sample_video(id: &str, channel_id: &str, title: &str) -> Video {
-    Video {
-        id: id.to_string(),
-        channel_id: channel_id.to_string(),
-        title: title.to_string(),
-        thumbnail_url: None,
-        published_at: chrono::Utc::now(),
-        is_short: false,
-        transcript_status: ContentStatus::Ready,
-        summary_status: ContentStatus::Ready,
-        acknowledged: false,
-        retry_count: 0,
-        quality_score: None,
-    }
-}
-
-fn sample_summary(video_id: &str) -> Summary {
-    Summary {
-        video_id: video_id.to_string(),
-        content: format!("summary for {video_id}"),
-        model_used: None,
-        quality_score: None,
-        quality_note: None,
-        quality_model_used: None,
-        summary_tags: Vec::new(),
-        summary_tags_evaluated: false,
-    }
-}
-
 fn sample_transcript(video_id: &str) -> Transcript {
     Transcript {
         video_id: video_id.to_string(),
@@ -471,4 +435,40 @@ fn sample_transcript(video_id: &str) -> Transcript {
         render_mode: crate::models::TranscriptRenderMode::PlainText,
         timed_text: None,
     }
+}
+
+#[test]
+fn anonymous_db_inspect_uses_access_scoped_results() {
+    let scope = DbInspectScope {
+        channels: vec![sample_channel("seeded-channel", "Seeded", Some("@seeded"))],
+        videos: vec![sample_video(
+            "video-seeded",
+            "seeded-channel",
+            "Seeded video",
+        )],
+        summaries: vec![sample_summary("video-seeded")],
+        transcripts: vec![sample_transcript("video-seeded")],
+        visible_channel_names: HashMap::from([(
+            "seeded-channel".to_string(),
+            "Seeded".to_string(),
+        )]),
+        allowed_other_video_ids: HashSet::new(),
+    };
+
+    assert_eq!(count_db_inspect_scope(&scope, DbInspectTarget::Videos), 1);
+
+    let list = format_db_inspect_list_output(
+        &scope,
+        DbInspectQuery {
+            operation: DbInspectOperation::List,
+            target: DbInspectTarget::Videos,
+            limit: 5,
+            group_by: None,
+        },
+    );
+    assert!(list.contains("video-seeded"));
+    assert!(!list.contains("video-hidden"));
+
+    let breakdown = breakdown_scope_by_channel(&scope, DbInspectTarget::Summaries);
+    assert_eq!(breakdown, vec![("Seeded".to_string(), 1)]);
 }

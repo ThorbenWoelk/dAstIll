@@ -6,6 +6,170 @@ pub fn hash_search_content(content: &str) -> String {
     format!("{:x}", hasher.finalize())
 }
 
+pub fn vector_to_json(embedding: &[f32]) -> String {
+    let mut json = String::from("[");
+    for (index, value) in embedding.iter().enumerate() {
+        if index > 0 {
+            json.push(',');
+        }
+        json.push_str(&format!("{value:.8}"));
+    }
+    json.push(']');
+    json
+}
+
+fn required_target_words(total_words: usize, overlap_words: usize, max_chunks: usize) -> usize {
+    if total_words == 0 {
+        return 0;
+    }
+
+    let max_chunks = max_chunks.max(1);
+    total_words
+        .saturating_add(overlap_words.saturating_mul(max_chunks.saturating_sub(1)))
+        .div_ceil(max_chunks)
+}
+
+pub fn build_embedding_input(
+    video_title: &str,
+    channel_name: &str,
+    source_kind: SearchSourceKind,
+    section_title: Option<&str>,
+    chunk_text: &str,
+) -> String {
+    let mut input = format!(
+        "Video: {video_title}\nChannel: {channel_name}\nSource: {}",
+        source_kind.as_str()
+    );
+    if let Some(section_title) = section_title.filter(|title| !title.trim().is_empty()) {
+        input.push_str(&format!("\nSection: {section_title}"));
+    }
+    input.push_str("\n\n");
+    input.push_str(chunk_text.trim());
+    input
+}
+
+fn normalize_source_text(input: &str) -> String {
+    input
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(strip_markdown_prefix)
+        .collect::<Vec<_>>()
+        .join(" ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .trim()
+        .to_string()
+}
+
+fn strip_markdown_prefix(line: &str) -> &str {
+    let trimmed = line.trim();
+    trimmed
+        .trim_start_matches('#')
+        .trim_start_matches('-')
+        .trim_start_matches('*')
+        .trim_start_matches(|c: char| c.is_numeric() || c == '.' || c == ')')
+        .trim()
+}
+
+fn parse_markdown_sections(content: &str) -> Vec<(String, String)> {
+    let mut sections = Vec::new();
+    let mut current_title: Option<String> = None;
+    let mut current_lines = Vec::<String>::new();
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if let Some(title) = trimmed.strip_prefix("## ") {
+            if let Some(current_title) = current_title.take() {
+                sections.push((current_title, current_lines.join("\n")));
+                current_lines.clear();
+            }
+            current_title = Some(title.trim().to_string());
+            continue;
+        }
+
+        if trimmed.starts_with("# ") && current_title.is_none() {
+            continue;
+        }
+
+        if current_title.is_some() {
+            current_lines.push(line.to_string());
+        }
+    }
+
+    if let Some(current_title) = current_title.take() {
+        sections.push((current_title, current_lines.join("\n")));
+    }
+
+    sections
+}
+
+fn push_normalized_paragraph(paragraphs: &mut Vec<String>, current_lines: &mut Vec<String>) {
+    if current_lines.is_empty() {
+        return;
+    }
+
+    let paragraph = normalize_source_text(&current_lines.join("\n"));
+    current_lines.clear();
+    if !paragraph.is_empty() {
+        paragraphs.push(paragraph);
+    }
+}
+
+fn split_paragraphs(content: &str) -> Vec<String> {
+    let mut paragraphs = Vec::new();
+    let mut current_lines = Vec::new();
+
+    for line in content.lines() {
+        if line.trim().is_empty() {
+            push_normalized_paragraph(&mut paragraphs, &mut current_lines);
+            continue;
+        }
+        current_lines.push(line.to_string());
+    }
+    push_normalized_paragraph(&mut paragraphs, &mut current_lines);
+
+    paragraphs
+}
+
+fn split_words_into_chunks(text: &str, target_words: usize, overlap_words: usize) -> Vec<String> {
+    let words = text.split_whitespace().collect::<Vec<_>>();
+    if words.is_empty() {
+        return Vec::new();
+    }
+
+    let mut chunks = Vec::new();
+    let mut start = 0usize;
+    while start < words.len() {
+        let end = (start + target_words).min(words.len());
+        chunks.push(words[start..end].join(" "));
+        if end == words.len() {
+            break;
+        }
+        let next_start = end.saturating_sub(overlap_words);
+        if next_start <= start {
+            start = end;
+        } else {
+            start = next_start;
+        }
+    }
+    chunks
+}
+
+fn overlap_tail(text: &str, overlap_words: usize) -> String {
+    let words = text.split_whitespace().collect::<Vec<_>>();
+    if words.is_empty() || overlap_words == 0 {
+        return String::new();
+    }
+    let start = words.len().saturating_sub(overlap_words);
+    words[start..].join(" ")
+}
+
+fn count_words(text: &str) -> usize {
+    text.split_whitespace().count()
+}
+
 pub fn chunk_summary_content(content: &str, target_words: usize) -> Vec<ChunkDraft> {
     let normalized = normalize_source_text(content);
     if normalized.is_empty() {
@@ -72,51 +236,6 @@ pub fn chunk_summary_content(content: &str, target_words: usize) -> Vec<ChunkDra
     }
 
     chunks
-}
-
-pub fn chunk_transcript_content(
-    content: &str,
-    target_words: usize,
-    overlap_words: usize,
-    timed_segments: Option<&[crate::models::TimedSegment]>,
-) -> Vec<ChunkDraft> {
-    let total_words = timed_segments
-        .filter(|segments| !segments.is_empty())
-        .map(total_timed_segment_words)
-        .unwrap_or_else(|| count_words(&normalize_source_text(content)));
-    let target_words = target_words.max(required_target_words(
-        total_words,
-        overlap_words,
-        SEARCH_TRANSCRIPT_MAX_CHUNKS,
-    ));
-
-    if let Some(segments) = timed_segments.filter(|s| !s.is_empty()) {
-        return chunk_transcript_timed(segments, target_words, overlap_words);
-    }
-
-    let paragraphs = split_paragraphs(content);
-    let chunks = if paragraphs.is_empty() {
-        let normalized = normalize_source_text(content);
-        if normalized.is_empty() {
-            return Vec::new();
-        }
-        split_words_into_chunks(&normalized, target_words, overlap_words)
-    } else {
-        group_paragraphs_into_chunks(&paragraphs, target_words, overlap_words)
-    };
-
-    chunks
-        .into_iter()
-        .filter(|text| !text.is_empty())
-        .map(|text| ChunkDraft {
-            source_kind: SearchSourceKind::Transcript,
-            section_title: None,
-            word_count: count_words(&text),
-            text,
-            is_full_document: false,
-            start_sec: None,
-        })
-        .collect()
 }
 
 /// Group timed caption segments into chunks by word-count target.
@@ -200,177 +319,11 @@ pub fn chunk_transcript_timed(
     chunks
 }
 
-pub fn vector_to_json(embedding: &[f32]) -> String {
-    let mut json = String::from("[");
-    for (index, value) in embedding.iter().enumerate() {
-        if index > 0 {
-            json.push(',');
-        }
-        json.push_str(&format!("{value:.8}"));
-    }
-    json.push(']');
-    json
-}
-
-fn required_target_words(total_words: usize, overlap_words: usize, max_chunks: usize) -> usize {
-    if total_words == 0 {
-        return 0;
-    }
-
-    let max_chunks = max_chunks.max(1);
-    total_words
-        .saturating_add(overlap_words.saturating_mul(max_chunks.saturating_sub(1)))
-        .div_ceil(max_chunks)
-}
-
 fn total_timed_segment_words(segments: &[crate::models::TimedSegment]) -> usize {
     segments
         .iter()
         .map(|segment| count_words(&segment.text))
         .sum()
-}
-
-pub fn build_embedding_input(
-    video_title: &str,
-    channel_name: &str,
-    source_kind: SearchSourceKind,
-    section_title: Option<&str>,
-    chunk_text: &str,
-) -> String {
-    let mut input = format!(
-        "Video: {video_title}\nChannel: {channel_name}\nSource: {}",
-        source_kind.as_str()
-    );
-    if let Some(section_title) = section_title.filter(|title| !title.trim().is_empty()) {
-        input.push_str(&format!("\nSection: {section_title}"));
-    }
-    input.push_str("\n\n");
-    input.push_str(chunk_text.trim());
-    input
-}
-
-pub fn truncate_chunk_for_display(text: &str) -> String {
-    limit_snippet(&normalize_source_text(text))
-}
-
-pub fn extract_keyword_snippet(text: &str, query_tokens: &[String]) -> String {
-    let normalized = normalize_source_text(text);
-    let total_chars = normalized.chars().count();
-
-    if total_chars <= MAX_SNIPPET_CHARS {
-        return normalized;
-    }
-
-    let lower = normalized.to_lowercase();
-    let match_char_offset = query_tokens
-        .iter()
-        .filter_map(|token| {
-            lower
-                .find(token.as_str())
-                .map(|byte_pos| lower[..byte_pos].chars().count())
-        })
-        .min();
-
-    let Some(match_offset) = match_char_offset else {
-        return limit_snippet(&normalized);
-    };
-
-    let all_chars: Vec<char> = normalized.chars().collect();
-    let half_window = MAX_SNIPPET_CHARS / 2;
-    let window_start = match_offset.saturating_sub(half_window);
-    let window_end = (window_start + MAX_SNIPPET_CHARS).min(total_chars);
-    let window_start = window_end.saturating_sub(MAX_SNIPPET_CHARS);
-
-    let snippet: String = all_chars[window_start..window_end].iter().collect();
-    let prefix = if window_start > 0 { "..." } else { "" };
-    let suffix = if window_end < total_chars { "..." } else { "" };
-
-    format!("{prefix}{}{suffix}", snippet.trim())
-}
-
-fn normalize_source_text(input: &str) -> String {
-    input
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .map(strip_markdown_prefix)
-        .collect::<Vec<_>>()
-        .join(" ")
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .trim()
-        .to_string()
-}
-
-fn strip_markdown_prefix(line: &str) -> &str {
-    let trimmed = line.trim();
-    trimmed
-        .trim_start_matches('#')
-        .trim_start_matches('-')
-        .trim_start_matches('*')
-        .trim_start_matches(|c: char| c.is_numeric() || c == '.' || c == ')')
-        .trim()
-}
-
-fn parse_markdown_sections(content: &str) -> Vec<(String, String)> {
-    let mut sections = Vec::new();
-    let mut current_title: Option<String> = None;
-    let mut current_lines = Vec::<String>::new();
-
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if let Some(title) = trimmed.strip_prefix("## ") {
-            if let Some(current_title) = current_title.take() {
-                sections.push((current_title, current_lines.join("\n")));
-                current_lines.clear();
-            }
-            current_title = Some(title.trim().to_string());
-            continue;
-        }
-
-        if trimmed.starts_with("# ") && current_title.is_none() {
-            continue;
-        }
-
-        if current_title.is_some() {
-            current_lines.push(line.to_string());
-        }
-    }
-
-    if let Some(current_title) = current_title.take() {
-        sections.push((current_title, current_lines.join("\n")));
-    }
-
-    sections
-}
-
-fn split_paragraphs(content: &str) -> Vec<String> {
-    let mut paragraphs = Vec::new();
-    let mut current_lines = Vec::new();
-
-    for line in content.lines() {
-        if line.trim().is_empty() {
-            push_normalized_paragraph(&mut paragraphs, &mut current_lines);
-            continue;
-        }
-        current_lines.push(line.to_string());
-    }
-    push_normalized_paragraph(&mut paragraphs, &mut current_lines);
-
-    paragraphs
-}
-
-fn push_normalized_paragraph(paragraphs: &mut Vec<String>, current_lines: &mut Vec<String>) {
-    if current_lines.is_empty() {
-        return;
-    }
-
-    let paragraph = normalize_source_text(&current_lines.join("\n"));
-    current_lines.clear();
-    if !paragraph.is_empty() {
-        paragraphs.push(paragraph);
-    }
 }
 
 fn group_paragraphs_into_chunks(
@@ -428,41 +381,49 @@ fn group_paragraphs_into_chunks(
     chunks
 }
 
-fn split_words_into_chunks(text: &str, target_words: usize, overlap_words: usize) -> Vec<String> {
-    let words = text.split_whitespace().collect::<Vec<_>>();
-    if words.is_empty() {
-        return Vec::new();
+pub fn chunk_transcript_content(
+    content: &str,
+    target_words: usize,
+    overlap_words: usize,
+    timed_segments: Option<&[crate::models::TimedSegment]>,
+) -> Vec<ChunkDraft> {
+    let total_words = timed_segments
+        .filter(|segments| !segments.is_empty())
+        .map(total_timed_segment_words)
+        .unwrap_or_else(|| count_words(&normalize_source_text(content)));
+    let target_words = target_words.max(required_target_words(
+        total_words,
+        overlap_words,
+        SEARCH_TRANSCRIPT_MAX_CHUNKS,
+    ));
+
+    if let Some(segments) = timed_segments.filter(|s| !s.is_empty()) {
+        return chunk_transcript_timed(segments, target_words, overlap_words);
     }
 
-    let mut chunks = Vec::new();
-    let mut start = 0usize;
-    while start < words.len() {
-        let end = (start + target_words).min(words.len());
-        chunks.push(words[start..end].join(" "));
-        if end == words.len() {
-            break;
+    let paragraphs = split_paragraphs(content);
+    let chunks = if paragraphs.is_empty() {
+        let normalized = normalize_source_text(content);
+        if normalized.is_empty() {
+            return Vec::new();
         }
-        let next_start = end.saturating_sub(overlap_words);
-        if next_start <= start {
-            start = end;
-        } else {
-            start = next_start;
-        }
-    }
+        split_words_into_chunks(&normalized, target_words, overlap_words)
+    } else {
+        group_paragraphs_into_chunks(&paragraphs, target_words, overlap_words)
+    };
+
     chunks
-}
-
-fn overlap_tail(text: &str, overlap_words: usize) -> String {
-    let words = text.split_whitespace().collect::<Vec<_>>();
-    if words.is_empty() || overlap_words == 0 {
-        return String::new();
-    }
-    let start = words.len().saturating_sub(overlap_words);
-    words[start..].join(" ")
-}
-
-fn count_words(text: &str) -> usize {
-    text.split_whitespace().count()
+        .into_iter()
+        .filter(|text| !text.is_empty())
+        .map(|text| ChunkDraft {
+            source_kind: SearchSourceKind::Transcript,
+            section_title: None,
+            word_count: count_words(&text),
+            text,
+            is_full_document: false,
+            start_sec: None,
+        })
+        .collect()
 }
 
 fn limit_snippet(text: &str) -> String {
@@ -472,6 +433,45 @@ fn limit_snippet(text: &str) -> String {
     } else {
         truncated
     }
+}
+
+pub fn truncate_chunk_for_display(text: &str) -> String {
+    limit_snippet(&normalize_source_text(text))
+}
+
+pub fn extract_keyword_snippet(text: &str, query_tokens: &[String]) -> String {
+    let normalized = normalize_source_text(text);
+    let total_chars = normalized.chars().count();
+
+    if total_chars <= MAX_SNIPPET_CHARS {
+        return normalized;
+    }
+
+    let lower = normalized.to_lowercase();
+    let match_char_offset = query_tokens
+        .iter()
+        .filter_map(|token| {
+            lower
+                .find(token.as_str())
+                .map(|byte_pos| lower[..byte_pos].chars().count())
+        })
+        .min();
+
+    let Some(match_offset) = match_char_offset else {
+        return limit_snippet(&normalized);
+    };
+
+    let all_chars: Vec<char> = normalized.chars().collect();
+    let half_window = MAX_SNIPPET_CHARS / 2;
+    let window_start = match_offset.saturating_sub(half_window);
+    let window_end = (window_start + MAX_SNIPPET_CHARS).min(total_chars);
+    let window_start = window_end.saturating_sub(MAX_SNIPPET_CHARS);
+
+    let snippet: String = all_chars[window_start..window_end].iter().collect();
+    let prefix = if window_start > 0 { "..." } else { "" };
+    let suffix = if window_end < total_chars { "..." } else { "" };
+
+    format!("{prefix}{}{suffix}", snippet.trim())
 }
 
 pub(super) fn limit_error_detail(text: &str) -> String {

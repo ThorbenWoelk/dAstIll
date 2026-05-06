@@ -2,6 +2,132 @@ use std::env;
 
 use crate::services::SummaryEvaluatorService;
 
+fn default_seeded_channel_ids() -> Vec<String> {
+    vec![
+        LOCAL_DEV_DEFAULT_SEEDED_CHANNEL_ID.to_string(),
+        crate::services::podcast_feed::podcast_source_id_for_feed_url(DEFAULT_HARD_FORK_FEED_URL),
+    ]
+}
+
+fn validate_distinct_model_roles(
+    summary_model: &str,
+    summary_evaluator_model: &str,
+) -> Result<(), String> {
+    if summary_model == summary_evaluator_model {
+        return Err(format!(
+            "OLLAMA_SUMMARY_MODEL and SUMMARY_EVALUATOR_MODEL must differ so summaries are evaluated independently; got `{summary_model}` for both"
+        ));
+    }
+
+    Ok(())
+}
+
+fn is_local_url(url: &str) -> bool {
+    let host = url
+        .strip_prefix("http://")
+        .or_else(|| url.strip_prefix("https://"))
+        .and_then(|s| s.split('/').next())
+        .and_then(|s| s.split(':').next())
+        .unwrap_or(url);
+    matches!(host, "localhost" | "127.0.0.1" | "0.0.0.0" | "::1")
+}
+
+fn validate_cloud_auth(url: &str, api_key: &Option<String>) -> Result<(), String> {
+    if !is_local_url(url) && api_key.is_none() {
+        return Err(format!(
+            "OLLAMA_API_KEY is required when OLLAMA_URL points to a remote endpoint ({url})"
+        ));
+    }
+    Ok(())
+}
+
+fn default_search_semantic_enabled() -> bool {
+    cfg!(debug_assertions)
+}
+
+fn required_env(key: &str) -> Result<String, String> {
+    match env::var(key) {
+        Ok(value) => {
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                Err(format!("{key} must be set and non-empty"))
+            } else {
+                Ok(trimmed.to_string())
+            }
+        }
+        Err(_) => Err(format!("{key} must be set")),
+    }
+}
+
+fn optional_env(key: &str) -> Option<String> {
+    env::var(key).ok().and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
+fn required_env_with_local_default(key: &str, local_default: &str) -> Result<String, String> {
+    optional_env(key)
+        .or_else(|| cfg!(debug_assertions).then(|| local_default.to_string()))
+        .ok_or_else(|| format!("{key} must be set"))
+}
+
+fn optional_csv_env(key: &str) -> Option<Vec<String>> {
+    optional_env(key).map(|value| {
+        value
+            .split(',')
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+    })
+}
+
+fn configured_seeded_channel_ids() -> Vec<String> {
+    if let Some(ids) = optional_csv_env("DEFAULT_SEEDED_CHANNEL_IDS").filter(|ids| !ids.is_empty())
+    {
+        return ids;
+    }
+
+    optional_env("DEFAULT_SEEDED_CHANNEL_ID")
+        .filter(|id| !id.trim().is_empty())
+        .map(|id| vec![id])
+        .unwrap_or_else(default_seeded_channel_ids)
+}
+
+fn optional_bool_env(key: &str) -> Option<bool> {
+    optional_env(key).map(|value| {
+        matches!(
+            value.as_str(),
+            "1" | "true" | "TRUE" | "yes" | "YES" | "on" | "ON"
+        )
+    })
+}
+
+fn optional_u32_env(key: &str) -> Option<u32> {
+    optional_env(key).and_then(|value| value.parse::<u32>().ok())
+}
+
+fn optional_u64_env(key: &str) -> Option<u64> {
+    optional_env(key).and_then(|value| value.parse::<u64>().ok())
+}
+
+fn default_backend_allowed_origins() -> Vec<String> {
+    vec![
+        "http://localhost:3000".to_string(),
+        "http://127.0.0.1:3000".to_string(),
+        "http://localhost:3543".to_string(),
+        "http://127.0.0.1:3543".to_string(),
+        "http://tauri.localhost".to_string(),
+        "https://tauri.localhost".to_string(),
+        "tauri://localhost".to_string(),
+    ]
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OllamaRuntimeConfig {
     pub url: String,
@@ -48,25 +174,6 @@ pub struct SecurityRuntimeConfig {
 const LOCAL_DEV_FIREBASE_PROJECT_ID: &str = "demo-dastill";
 const LOCAL_DEV_DEFAULT_SEEDED_CHANNEL_ID: &str = "UCbRP3c757lWg9M-U7TyEkXA";
 pub const DEFAULT_HARD_FORK_FEED_URL: &str = "https://feeds.simplecast.com/6HKOhNgS";
-
-fn default_seeded_channel_ids() -> Vec<String> {
-    vec![
-        LOCAL_DEV_DEFAULT_SEEDED_CHANNEL_ID.to_string(),
-        crate::services::podcast_feed::podcast_source_id_for_feed_url(DEFAULT_HARD_FORK_FEED_URL),
-    ]
-}
-
-fn configured_seeded_channel_ids() -> Vec<String> {
-    if let Some(ids) = optional_csv_env("DEFAULT_SEEDED_CHANNEL_IDS").filter(|ids| !ids.is_empty())
-    {
-        return ids;
-    }
-
-    optional_env("DEFAULT_SEEDED_CHANNEL_ID")
-        .filter(|id| !id.trim().is_empty())
-        .map(|id| vec![id])
-        .unwrap_or_else(default_seeded_channel_ids)
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DatabricksRuntimeConfig {
@@ -135,19 +242,6 @@ impl OllamaRuntimeConfig {
             hyde_model: optional_env("SEARCH_HYDE_MODEL"),
         })
     }
-}
-
-fn validate_distinct_model_roles(
-    summary_model: &str,
-    summary_evaluator_model: &str,
-) -> Result<(), String> {
-    if summary_model == summary_evaluator_model {
-        return Err(format!(
-            "OLLAMA_SUMMARY_MODEL and SUMMARY_EVALUATOR_MODEL must differ so summaries are evaluated independently; got `{summary_model}` for both"
-        ));
-    }
-
-    Ok(())
 }
 
 impl SearchRuntimeConfig {
@@ -302,100 +396,6 @@ impl LocalAsrAuthMode {
             _ => Self::ApiKey,
         }
     }
-}
-
-fn is_local_url(url: &str) -> bool {
-    let host = url
-        .strip_prefix("http://")
-        .or_else(|| url.strip_prefix("https://"))
-        .and_then(|s| s.split('/').next())
-        .and_then(|s| s.split(':').next())
-        .unwrap_or(url);
-    matches!(host, "localhost" | "127.0.0.1" | "0.0.0.0" | "::1")
-}
-
-fn validate_cloud_auth(url: &str, api_key: &Option<String>) -> Result<(), String> {
-    if !is_local_url(url) && api_key.is_none() {
-        return Err(format!(
-            "OLLAMA_API_KEY is required when OLLAMA_URL points to a remote endpoint ({url})"
-        ));
-    }
-    Ok(())
-}
-
-fn default_search_semantic_enabled() -> bool {
-    cfg!(debug_assertions)
-}
-
-fn required_env(key: &str) -> Result<String, String> {
-    match env::var(key) {
-        Ok(value) => {
-            let trimmed = value.trim();
-            if trimmed.is_empty() {
-                Err(format!("{key} must be set and non-empty"))
-            } else {
-                Ok(trimmed.to_string())
-            }
-        }
-        Err(_) => Err(format!("{key} must be set")),
-    }
-}
-
-fn required_env_with_local_default(key: &str, local_default: &str) -> Result<String, String> {
-    optional_env(key)
-        .or_else(|| cfg!(debug_assertions).then(|| local_default.to_string()))
-        .ok_or_else(|| format!("{key} must be set"))
-}
-
-fn optional_env(key: &str) -> Option<String> {
-    env::var(key).ok().and_then(|value| {
-        let trimmed = value.trim();
-        if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed.to_string())
-        }
-    })
-}
-
-fn optional_csv_env(key: &str) -> Option<Vec<String>> {
-    optional_env(key).map(|value| {
-        value
-            .split(',')
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-    })
-}
-
-fn optional_bool_env(key: &str) -> Option<bool> {
-    optional_env(key).map(|value| {
-        matches!(
-            value.as_str(),
-            "1" | "true" | "TRUE" | "yes" | "YES" | "on" | "ON"
-        )
-    })
-}
-
-fn optional_u32_env(key: &str) -> Option<u32> {
-    optional_env(key).and_then(|value| value.parse::<u32>().ok())
-}
-
-fn optional_u64_env(key: &str) -> Option<u64> {
-    optional_env(key).and_then(|value| value.parse::<u64>().ok())
-}
-
-fn default_backend_allowed_origins() -> Vec<String> {
-    vec![
-        "http://localhost:3000".to_string(),
-        "http://127.0.0.1:3000".to_string(),
-        "http://localhost:3543".to_string(),
-        "http://127.0.0.1:3543".to_string(),
-        "http://tauri.localhost".to_string(),
-        "https://tauri.localhost".to_string(),
-        "tauri://localhost".to_string(),
-    ]
 }
 
 #[cfg(test)]

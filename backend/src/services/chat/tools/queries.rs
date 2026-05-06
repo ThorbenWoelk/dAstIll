@@ -1,151 +1,6 @@
 use super::*;
 use std::collections::{HashMap, HashSet};
 
-#[derive(Debug, Clone)]
-pub(super) struct DbInspectScope {
-    pub(super) channels: Vec<Channel>,
-    pub(super) videos: Vec<Video>,
-    pub(super) summaries: Vec<Summary>,
-    pub(super) transcripts: Vec<Transcript>,
-    pub(super) visible_channel_names: HashMap<String, String>,
-    pub(super) allowed_other_video_ids: HashSet<String>,
-}
-
-impl DbInspectScope {
-    pub(super) fn channel_name_for_video(&self, video: &Video) -> String {
-        if self.allowed_other_video_ids.contains(&video.id)
-            && !self.visible_channel_names.contains_key(&video.channel_id)
-        {
-            return crate::models::OTHERS_CHANNEL_NAME.to_string();
-        }
-
-        self.visible_channel_names
-            .get(&video.channel_id)
-            .cloned()
-            .unwrap_or_else(|| video.channel_id.clone())
-    }
-}
-
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
-pub(crate) struct DbInspectToolInput {
-    pub(crate) operation: Option<String>,
-    pub(crate) resource: Option<String>,
-    pub(crate) limit: Option<usize>,
-    pub(crate) group_by: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
-pub(crate) struct SearchLibraryToolInput {
-    pub(crate) query: Option<String>,
-    pub(crate) source: Option<String>,
-    pub(crate) limit: Option<usize>,
-}
-
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
-pub(crate) struct HighlightLookupToolInput {
-    pub(crate) query: Option<String>,
-    pub(crate) video_title: Option<String>,
-    pub(crate) limit: Option<usize>,
-}
-
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
-pub(crate) struct RecentLibraryActivityToolInput {
-    pub(crate) scope: Option<String>,
-    pub(crate) channel_id: Option<String>,
-    pub(crate) video_id: Option<String>,
-    pub(crate) limit_videos: Option<usize>,
-    pub(crate) include_summaries: Option<bool>,
-    pub(crate) include_transcripts: Option<bool>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DbInspectTarget {
-    Summaries,
-    Transcripts,
-    Videos,
-    Channels,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DbInspectOperation {
-    Count,
-    List,
-    Breakdown,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DbGroupBy {
-    Channel,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DbInspectQuery {
-    pub(crate) operation: DbInspectOperation,
-    pub(crate) target: DbInspectTarget,
-    pub(crate) limit: usize,
-    pub(crate) group_by: Option<DbGroupBy>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct DbInspectResult {
-    pub(crate) summary: String,
-    pub(crate) output: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SearchLibraryQuery {
-    pub(crate) query: String,
-    pub(crate) source_kind: Option<SearchSourceKind>,
-    pub(crate) limit: usize,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct HighlightLookupQuery {
-    pub(crate) query: Option<String>,
-    pub(crate) video_title: Option<String>,
-    pub(crate) limit: usize,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct HighlightLookupResult {
-    pub(crate) summary: String,
-    pub(crate) output: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RecentLibraryActivityScope {
-    Channel,
-    Video,
-    Library,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct RecentLibraryActivityQuery {
-    pub(crate) scope: RecentLibraryActivityScope,
-    pub(crate) channel_id: Option<String>,
-    pub(crate) video_id: Option<String>,
-    pub(crate) limit_videos: usize,
-    pub(crate) include_summaries: bool,
-    pub(crate) include_transcripts: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(crate) struct MentionScope {
-    pub(crate) cleaned_prompt: String,
-    pub(crate) channel_focus_ids: Vec<String>,
-    pub(crate) video_focus_ids: Vec<String>,
-    pub(crate) channel_names: Vec<String>,
-    pub(crate) video_titles: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct MentionToken {
-    pub(super) start: usize,
-    pub(super) end: usize,
-    pub(super) trigger: char,
-    pub(super) text: String,
-}
-
 async fn load_mention_channels(
     store: &db::Store,
     access_context: &crate::security::AccessContext,
@@ -182,56 +37,6 @@ fn suggestion_to_video(video: crate::read_cache::SuggestedVideo) -> Video {
     }
 }
 
-impl DbInspectTarget {
-    fn from_tool_value(value: &str) -> Option<Self> {
-        match value.trim().to_ascii_lowercase().as_str() {
-            "summaries" | "summary" => Some(Self::Summaries),
-            "transcripts" | "transcript" => Some(Self::Transcripts),
-            "videos" | "video" => Some(Self::Videos),
-            "channels" | "channel" => Some(Self::Channels),
-            _ => None,
-        }
-    }
-
-    pub(super) fn singular(self) -> &'static str {
-        match self {
-            Self::Summaries => "summary",
-            Self::Transcripts => "transcript",
-            Self::Videos => "video",
-            Self::Channels => "channel",
-        }
-    }
-
-    pub(super) fn plural(self) -> &'static str {
-        match self {
-            Self::Summaries => "summaries",
-            Self::Transcripts => "transcripts",
-            Self::Videos => "videos",
-            Self::Channels => "channels",
-        }
-    }
-}
-
-impl DbInspectOperation {
-    fn from_tool_value(value: &str) -> Option<Self> {
-        match value.trim().to_ascii_lowercase().as_str() {
-            "count" => Some(Self::Count),
-            "list" => Some(Self::List),
-            "breakdown" => Some(Self::Breakdown),
-            _ => None,
-        }
-    }
-}
-
-impl DbGroupBy {
-    fn from_tool_value(value: &str) -> Option<Self> {
-        match value.trim().to_ascii_lowercase().as_str() {
-            "channel" => Some(Self::Channel),
-            _ => None,
-        }
-    }
-}
-
 fn parse_search_source_kind(value: &str) -> Option<Option<SearchSourceKind>> {
     match value.trim().to_ascii_lowercase().as_str() {
         "all" => Some(None),
@@ -239,28 +44,6 @@ fn parse_search_source_kind(value: &str) -> Option<Option<SearchSourceKind>> {
         "transcript" | "transcripts" => Some(Some(SearchSourceKind::Transcript)),
         _ => None,
     }
-}
-
-pub(crate) async fn resolve_mention_scope(
-    store: &db::Store,
-    access_context: &crate::security::AccessContext,
-    input: &str,
-) -> Result<MentionScope, db::StoreError> {
-    let channels = load_mention_channels(store, access_context).await?;
-    let scope_key = format!("video-suggestions:{}", access_context.cache_scope_key());
-    let videos = db::load_scoped_video_suggestions(
-        store,
-        &scope_key,
-        &access_context.allowed_channel_ids,
-        &access_context.allowed_other_video_ids,
-    )
-    .await?
-    .into_iter()
-    .map(suggestion_to_video)
-    .collect::<Vec<_>>();
-    Ok(resolve_mention_scope_from_catalog(
-        input, &channels, &videos,
-    ))
 }
 
 pub(crate) fn resolve_mention_scope_from_catalog(
@@ -305,60 +88,26 @@ pub(crate) fn resolve_mention_scope_from_catalog(
     scope
 }
 
-impl MentionScope {
-    pub(crate) fn has_scope(&self) -> bool {
-        !self.channel_focus_ids.is_empty() || !self.video_focus_ids.is_empty()
-    }
-
-    pub(crate) fn prompt_for_retrieval(&self, original: &str) -> String {
-        let base = trim_to_option(&self.cleaned_prompt)
-            .or_else(|| trim_to_option(original))
-            .unwrap_or_default();
-        self.scoped_query(&base)
-    }
-
-    pub(crate) fn prompt_for_planner(&self, original: &str) -> String {
-        if !self.has_scope() {
-            return original.trim().to_string();
-        }
-
-        let mut lines = vec![self.prompt_for_retrieval(original)];
-        if let Some(detail) = self.scope_detail() {
-            lines.push(format!("Scoped mentions: {detail}."));
-        }
-        lines.join("\n")
-    }
-
-    pub(crate) fn scoped_query(&self, base: &str) -> String {
-        let mut parts = Vec::new();
-        if let Some(value) = trim_to_option(base) {
-            parts.push(value);
-        }
-        for title in &self.video_titles {
-            parts.push(format!("\"{title}\""));
-        }
-        if parts.is_empty() {
-            for name in &self.channel_names {
-                parts.push(name.clone());
-            }
-        }
-        if parts.is_empty() {
-            base.trim().to_string()
-        } else {
-            parts.join(" ")
-        }
-    }
-
-    pub(crate) fn scope_detail(&self) -> Option<String> {
-        let mut parts = Vec::new();
-        if !self.channel_names.is_empty() {
-            parts.push(format!("channels: {}", self.channel_names.join(", ")));
-        }
-        if !self.video_titles.is_empty() {
-            parts.push(format!("videos: {}", self.video_titles.join(", ")));
-        }
-        (!parts.is_empty()).then(|| parts.join("; "))
-    }
+pub(crate) async fn resolve_mention_scope(
+    store: &db::Store,
+    access_context: &crate::security::AccessContext,
+    input: &str,
+) -> Result<MentionScope, db::StoreError> {
+    let channels = load_mention_channels(store, access_context).await?;
+    let scope_key = format!("video-suggestions:{}", access_context.cache_scope_key());
+    let videos = db::load_scoped_video_suggestions(
+        store,
+        &scope_key,
+        &access_context.allowed_channel_ids,
+        &access_context.allowed_other_video_ids,
+    )
+    .await?
+    .into_iter()
+    .map(suggestion_to_video)
+    .collect::<Vec<_>>();
+    Ok(resolve_mention_scope_from_catalog(
+        input, &channels, &videos,
+    ))
 }
 
 pub(crate) fn build_db_inspect_query(
@@ -508,56 +257,6 @@ pub(crate) fn build_recent_library_activity_query(
     }))
 }
 
-pub(crate) async fn execute_db_inspect_query(
-    store: &db::Store,
-    access_context: &crate::security::AccessContext,
-    query: DbInspectQuery,
-) -> Result<DbInspectResult, db::StoreError> {
-    match query.operation {
-        DbInspectOperation::Count => {
-            let count = match query.target {
-                DbInspectTarget::Channels => {
-                    load_db_inspect_channels(store, access_context).await?.len()
-                }
-                _ => {
-                    let scope = load_db_inspect_scope(store, access_context).await?;
-                    count_db_inspect_scope(&scope, query.target)
-                }
-            };
-            let output = format_db_count_answer(query.target, count);
-            Ok(DbInspectResult {
-                summary: describe_db_inspect_query(query),
-                output,
-            })
-        }
-        DbInspectOperation::List => execute_list_query(store, access_context, query).await,
-        DbInspectOperation::Breakdown => {
-            let scope = load_db_inspect_scope(store, access_context).await?;
-            let counts = match query.target {
-                DbInspectTarget::Summaries => {
-                    breakdown_scope_by_channel(&scope, DbInspectTarget::Summaries)
-                }
-                DbInspectTarget::Transcripts => {
-                    breakdown_scope_by_channel(&scope, DbInspectTarget::Transcripts)
-                }
-                DbInspectTarget::Videos => {
-                    breakdown_scope_by_channel(&scope, DbInspectTarget::Videos)
-                }
-                DbInspectTarget::Channels => {
-                    return Err(db::StoreError::Other(
-                        "cannot break channels down by channel".to_string(),
-                    ));
-                }
-            };
-            let output = format_breakdown_by_channel_output(query.target, &counts);
-            Ok(DbInspectResult {
-                summary: describe_db_inspect_query(query),
-                output,
-            })
-        }
-    }
-}
-
 pub(crate) fn db_inspect_forbidden_result() -> DbInspectResult {
     DbInspectResult {
         summary: "Database inspection unavailable".to_string(),
@@ -624,6 +323,30 @@ fn format_db_count_answer(target: DbInspectTarget, count: usize) -> String {
         return format!("There is 1 {} in the database.", target.singular());
     }
     format!("There are {count} {} in the database.", target.plural())
+}
+
+pub(super) async fn load_db_inspect_channels(
+    store: &db::Store,
+    access_context: &crate::security::AccessContext,
+) -> Result<Vec<Channel>, db::StoreError> {
+    let mut channels = Vec::new();
+    for channel_id in &access_context.allowed_channel_ids {
+        if let Some(channel) = db::get_channel(store, channel_id).await? {
+            channels.push(channel);
+        }
+    }
+
+    if !access_context.allowed_other_video_ids.is_empty() {
+        channels.push(db::build_virtual_others_channel(chrono::Utc::now()));
+    }
+
+    channels.sort_by(|left, right| {
+        left.name
+            .cmp(&right.name)
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    channels.dedup_by(|left, right| left.id == right.id);
+    Ok(channels)
 }
 
 pub(super) async fn load_db_inspect_scope(
@@ -695,30 +418,6 @@ pub(super) async fn load_db_inspect_scope(
     })
 }
 
-pub(super) async fn load_db_inspect_channels(
-    store: &db::Store,
-    access_context: &crate::security::AccessContext,
-) -> Result<Vec<Channel>, db::StoreError> {
-    let mut channels = Vec::new();
-    for channel_id in &access_context.allowed_channel_ids {
-        if let Some(channel) = db::get_channel(store, channel_id).await? {
-            channels.push(channel);
-        }
-    }
-
-    if !access_context.allowed_other_video_ids.is_empty() {
-        channels.push(db::build_virtual_others_channel(chrono::Utc::now()));
-    }
-
-    channels.sort_by(|left, right| {
-        left.name
-            .cmp(&right.name)
-            .then_with(|| left.id.cmp(&right.id))
-    });
-    channels.dedup_by(|left, right| left.id == right.id);
-    Ok(channels)
-}
-
 pub(super) fn count_db_inspect_scope(scope: &DbInspectScope, target: DbInspectTarget) -> usize {
     match target {
         DbInspectTarget::Summaries => scope.summaries.len(),
@@ -766,4 +465,305 @@ pub(super) fn breakdown_scope_by_channel(
     let mut result = counts.into_iter().collect::<Vec<_>>();
     result.sort_by(|left, right| left.0.cmp(&right.0));
     result
+}
+
+pub(crate) async fn execute_db_inspect_query(
+    store: &db::Store,
+    access_context: &crate::security::AccessContext,
+    query: DbInspectQuery,
+) -> Result<DbInspectResult, db::StoreError> {
+    match query.operation {
+        DbInspectOperation::Count => {
+            let count = match query.target {
+                DbInspectTarget::Channels => {
+                    load_db_inspect_channels(store, access_context).await?.len()
+                }
+                _ => {
+                    let scope = load_db_inspect_scope(store, access_context).await?;
+                    count_db_inspect_scope(&scope, query.target)
+                }
+            };
+            let output = format_db_count_answer(query.target, count);
+            Ok(DbInspectResult {
+                summary: describe_db_inspect_query(query),
+                output,
+            })
+        }
+        DbInspectOperation::List => execute_list_query(store, access_context, query).await,
+        DbInspectOperation::Breakdown => {
+            let scope = load_db_inspect_scope(store, access_context).await?;
+            let counts = match query.target {
+                DbInspectTarget::Summaries => {
+                    breakdown_scope_by_channel(&scope, DbInspectTarget::Summaries)
+                }
+                DbInspectTarget::Transcripts => {
+                    breakdown_scope_by_channel(&scope, DbInspectTarget::Transcripts)
+                }
+                DbInspectTarget::Videos => {
+                    breakdown_scope_by_channel(&scope, DbInspectTarget::Videos)
+                }
+                DbInspectTarget::Channels => {
+                    return Err(db::StoreError::Other(
+                        "cannot break channels down by channel".to_string(),
+                    ));
+                }
+            };
+            let output = format_breakdown_by_channel_output(query.target, &counts);
+            Ok(DbInspectResult {
+                summary: describe_db_inspect_query(query),
+                output,
+            })
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct DbInspectScope {
+    pub(super) channels: Vec<Channel>,
+    pub(super) videos: Vec<Video>,
+    pub(super) summaries: Vec<Summary>,
+    pub(super) transcripts: Vec<Transcript>,
+    pub(super) visible_channel_names: HashMap<String, String>,
+    pub(super) allowed_other_video_ids: HashSet<String>,
+}
+
+impl DbInspectScope {
+    pub(super) fn channel_name_for_video(&self, video: &Video) -> String {
+        if self.allowed_other_video_ids.contains(&video.id)
+            && !self.visible_channel_names.contains_key(&video.channel_id)
+        {
+            return crate::models::OTHERS_CHANNEL_NAME.to_string();
+        }
+
+        self.visible_channel_names
+            .get(&video.channel_id)
+            .cloned()
+            .unwrap_or_else(|| video.channel_id.clone())
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub(crate) struct DbInspectToolInput {
+    pub(crate) operation: Option<String>,
+    pub(crate) resource: Option<String>,
+    pub(crate) limit: Option<usize>,
+    pub(crate) group_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub(crate) struct SearchLibraryToolInput {
+    pub(crate) query: Option<String>,
+    pub(crate) source: Option<String>,
+    pub(crate) limit: Option<usize>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub(crate) struct HighlightLookupToolInput {
+    pub(crate) query: Option<String>,
+    pub(crate) video_title: Option<String>,
+    pub(crate) limit: Option<usize>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub(crate) struct RecentLibraryActivityToolInput {
+    pub(crate) scope: Option<String>,
+    pub(crate) channel_id: Option<String>,
+    pub(crate) video_id: Option<String>,
+    pub(crate) limit_videos: Option<usize>,
+    pub(crate) include_summaries: Option<bool>,
+    pub(crate) include_transcripts: Option<bool>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DbInspectTarget {
+    Summaries,
+    Transcripts,
+    Videos,
+    Channels,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DbInspectOperation {
+    Count,
+    List,
+    Breakdown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DbGroupBy {
+    Channel,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct DbInspectQuery {
+    pub(crate) operation: DbInspectOperation,
+    pub(crate) target: DbInspectTarget,
+    pub(crate) limit: usize,
+    pub(crate) group_by: Option<DbGroupBy>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DbInspectResult {
+    pub(crate) summary: String,
+    pub(crate) output: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SearchLibraryQuery {
+    pub(crate) query: String,
+    pub(crate) source_kind: Option<SearchSourceKind>,
+    pub(crate) limit: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct HighlightLookupQuery {
+    pub(crate) query: Option<String>,
+    pub(crate) video_title: Option<String>,
+    pub(crate) limit: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct HighlightLookupResult {
+    pub(crate) summary: String,
+    pub(crate) output: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RecentLibraryActivityScope {
+    Channel,
+    Video,
+    Library,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RecentLibraryActivityQuery {
+    pub(crate) scope: RecentLibraryActivityScope,
+    pub(crate) channel_id: Option<String>,
+    pub(crate) video_id: Option<String>,
+    pub(crate) limit_videos: usize,
+    pub(crate) include_summaries: bool,
+    pub(crate) include_transcripts: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(crate) struct MentionScope {
+    pub(crate) cleaned_prompt: String,
+    pub(crate) channel_focus_ids: Vec<String>,
+    pub(crate) video_focus_ids: Vec<String>,
+    pub(crate) channel_names: Vec<String>,
+    pub(crate) video_titles: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct MentionToken {
+    pub(super) start: usize,
+    pub(super) end: usize,
+    pub(super) trigger: char,
+    pub(super) text: String,
+}
+
+impl DbInspectTarget {
+    fn from_tool_value(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "summaries" | "summary" => Some(Self::Summaries),
+            "transcripts" | "transcript" => Some(Self::Transcripts),
+            "videos" | "video" => Some(Self::Videos),
+            "channels" | "channel" => Some(Self::Channels),
+            _ => None,
+        }
+    }
+
+    pub(super) fn singular(self) -> &'static str {
+        match self {
+            Self::Summaries => "summary",
+            Self::Transcripts => "transcript",
+            Self::Videos => "video",
+            Self::Channels => "channel",
+        }
+    }
+
+    pub(super) fn plural(self) -> &'static str {
+        match self {
+            Self::Summaries => "summaries",
+            Self::Transcripts => "transcripts",
+            Self::Videos => "videos",
+            Self::Channels => "channels",
+        }
+    }
+}
+
+impl DbInspectOperation {
+    fn from_tool_value(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "count" => Some(Self::Count),
+            "list" => Some(Self::List),
+            "breakdown" => Some(Self::Breakdown),
+            _ => None,
+        }
+    }
+}
+
+impl DbGroupBy {
+    fn from_tool_value(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "channel" => Some(Self::Channel),
+            _ => None,
+        }
+    }
+}
+
+impl MentionScope {
+    pub(crate) fn has_scope(&self) -> bool {
+        !self.channel_focus_ids.is_empty() || !self.video_focus_ids.is_empty()
+    }
+
+    pub(crate) fn prompt_for_retrieval(&self, original: &str) -> String {
+        let base = trim_to_option(&self.cleaned_prompt)
+            .or_else(|| trim_to_option(original))
+            .unwrap_or_default();
+        self.scoped_query(&base)
+    }
+
+    pub(crate) fn prompt_for_planner(&self, original: &str) -> String {
+        if !self.has_scope() {
+            return original.trim().to_string();
+        }
+
+        let mut lines = vec![self.prompt_for_retrieval(original)];
+        if let Some(detail) = self.scope_detail() {
+            lines.push(format!("Scoped mentions: {detail}."));
+        }
+        lines.join("\n")
+    }
+
+    pub(crate) fn scoped_query(&self, base: &str) -> String {
+        let mut parts = Vec::new();
+        if let Some(value) = trim_to_option(base) {
+            parts.push(value);
+        }
+        for title in &self.video_titles {
+            parts.push(format!("\"{title}\""));
+        }
+        if parts.is_empty() {
+            for name in &self.channel_names {
+                parts.push(name.clone());
+            }
+        }
+        if parts.is_empty() {
+            base.trim().to_string()
+        } else {
+            parts.join(" ")
+        }
+    }
+
+    pub(crate) fn scope_detail(&self) -> Option<String> {
+        let mut parts = Vec::new();
+        if !self.channel_names.is_empty() {
+            parts.push(format!("channels: {}", self.channel_names.join(", ")));
+        }
+        if !self.video_titles.is_empty() {
+            parts.push(format!("videos: {}", self.video_titles.join(", ")));
+        }
+        (!parts.is_empty()).then(|| parts.join("; "))
+    }
 }

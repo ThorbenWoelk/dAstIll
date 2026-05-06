@@ -16,6 +16,176 @@ use super::providers::{
     ProviderAdapterError, QuerySourceAdapter, ResolvedSourceDraft, SyncedSourceBatch,
 };
 
+fn slugify_query(value: &str) -> String {
+    let mut slug = String::new();
+    let mut previous_was_dash = false;
+
+    for ch in value.trim().chars() {
+        let mapped = if ch.is_ascii_alphanumeric() {
+            previous_was_dash = false;
+            ch.to_ascii_lowercase()
+        } else if previous_was_dash {
+            continue;
+        } else {
+            previous_was_dash = true;
+            '-'
+        };
+        slug.push(mapped);
+    }
+
+    let trimmed = slug.trim_matches('-');
+    if trimmed.is_empty() {
+        "query".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn sort_value(sort: OpenAlexSort) -> &'static str {
+    match sort {
+        OpenAlexSort::PublicationDateDesc => "publication_date:desc",
+        OpenAlexSort::RelevanceScoreDesc => "relevance_score:desc",
+    }
+}
+
+fn build_filter_clause(query: &OpenAlexSavedSearchQuery) -> String {
+    let mut clauses = vec![
+        "has_abstract:true".to_string(),
+        "is_paratext:false".to_string(),
+    ];
+    if let Some(from_date) = query.from_publication_date.as_deref() {
+        clauses.push(format!("from_publication_date:{from_date}"));
+    }
+    if let Some(to_date) = query.to_publication_date.as_deref() {
+        clauses.push(format!("to_publication_date:{to_date}"));
+    }
+    if let Some(work_type) = query.work_type.as_deref() {
+        clauses.push(format!("type:{work_type}"));
+    }
+    if query.open_access_only == Some(true) {
+        clauses.push("is_oa:true".to_string());
+    }
+    clauses.join(",")
+}
+
+fn parse_openalex_date(value: &str) -> Option<DateTime<Utc>> {
+    let date = NaiveDate::parse_from_str(value, "%Y-%m-%d").ok()?;
+    Some(DateTime::<Utc>::from_naive_utc_and_offset(
+        date.and_hms_opt(0, 0, 0)?,
+        Utc,
+    ))
+}
+
+fn compact_openalex_id(id: &str) -> String {
+    id.rsplit('/').next().unwrap_or(id).to_string()
+}
+
+fn reconstruct_abstract(inverted_index: &HashMap<String, Vec<usize>>) -> Option<String> {
+    if inverted_index.is_empty() {
+        return None;
+    }
+
+    let max_position = inverted_index
+        .values()
+        .flat_map(|positions| positions.iter().copied())
+        .max()?;
+    let mut tokens = vec![String::new(); max_position + 1];
+
+    for (word, positions) in inverted_index {
+        for position in positions {
+            if *position < tokens.len() {
+                tokens[*position] = word.clone();
+            }
+        }
+    }
+
+    let abstract_text = tokens
+        .into_iter()
+        .filter(|token| !token.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    if abstract_text.is_empty() {
+        None
+    } else {
+        Some(abstract_text)
+    }
+}
+
+fn map_openalex_item(source: &ContentSource, work: &OpenAlexWork) -> ContentItem {
+    let compact_id = compact_openalex_id(&work.id);
+    let title = work
+        .display_name
+        .as_deref()
+        .or(work.title.as_deref())
+        .unwrap_or("Untitled work")
+        .to_string();
+    let mut external_ids = vec![ProviderIdentity {
+        provider: ProviderKind::OpenAlex,
+        external_id: work.id.clone(),
+    }];
+    if let Some(doi) = work.doi.as_deref() {
+        external_ids.push(ProviderIdentity {
+            provider: ProviderKind::OpenAlex,
+            external_id: doi.to_string(),
+        });
+    }
+
+    ContentItem {
+        id: format!("openalex:work:{compact_id}"),
+        source_id: source.id.clone(),
+        provider: ProviderKind::OpenAlex,
+        item_kind: ContentItemKind::Publication,
+        title,
+        thumbnail_url: None,
+        published_at: work
+            .publication_date
+            .as_deref()
+            .and_then(parse_openalex_date),
+        external_ids,
+    }
+}
+
+fn map_openalex_parts(source: &ContentSource, work: &OpenAlexWork) -> Vec<ContentPart> {
+    let compact_id = compact_openalex_id(&work.id);
+    let item_id = format!("openalex:work:{compact_id}");
+    let mut parts = Vec::new();
+
+    if reconstruct_abstract(&work.abstract_inverted_index).is_some() {
+        parts.push(ContentPart {
+            id: format!("openalex:abstract:{compact_id}"),
+            source_id: source.id.clone(),
+            item_id: item_id.clone(),
+            provider: ProviderKind::OpenAlex,
+            part_kind: ContentPartKind::Abstract,
+            status: ContentStatus::Ready,
+            text_available: true,
+        });
+    }
+
+    parts
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAlexListResponse {
+    results: Vec<OpenAlexWork>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAlexWork {
+    id: String,
+    #[serde(default)]
+    doi: Option<String>,
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    display_name: Option<String>,
+    #[serde(default)]
+    publication_date: Option<String>,
+    #[serde(default)]
+    abstract_inverted_index: HashMap<String, Vec<usize>>,
+}
+
 #[derive(Clone)]
 pub struct OpenAlexService {
     client: Client,
@@ -254,176 +424,6 @@ impl OpenAlexService {
                 .collect())
         })
     }
-}
-
-fn slugify_query(value: &str) -> String {
-    let mut slug = String::new();
-    let mut previous_was_dash = false;
-
-    for ch in value.trim().chars() {
-        let mapped = if ch.is_ascii_alphanumeric() {
-            previous_was_dash = false;
-            ch.to_ascii_lowercase()
-        } else if previous_was_dash {
-            continue;
-        } else {
-            previous_was_dash = true;
-            '-'
-        };
-        slug.push(mapped);
-    }
-
-    let trimmed = slug.trim_matches('-');
-    if trimmed.is_empty() {
-        "query".to_string()
-    } else {
-        trimmed.to_string()
-    }
-}
-
-fn sort_value(sort: OpenAlexSort) -> &'static str {
-    match sort {
-        OpenAlexSort::PublicationDateDesc => "publication_date:desc",
-        OpenAlexSort::RelevanceScoreDesc => "relevance_score:desc",
-    }
-}
-
-fn build_filter_clause(query: &OpenAlexSavedSearchQuery) -> String {
-    let mut clauses = vec![
-        "has_abstract:true".to_string(),
-        "is_paratext:false".to_string(),
-    ];
-    if let Some(from_date) = query.from_publication_date.as_deref() {
-        clauses.push(format!("from_publication_date:{from_date}"));
-    }
-    if let Some(to_date) = query.to_publication_date.as_deref() {
-        clauses.push(format!("to_publication_date:{to_date}"));
-    }
-    if let Some(work_type) = query.work_type.as_deref() {
-        clauses.push(format!("type:{work_type}"));
-    }
-    if query.open_access_only == Some(true) {
-        clauses.push("is_oa:true".to_string());
-    }
-    clauses.join(",")
-}
-
-fn parse_openalex_date(value: &str) -> Option<DateTime<Utc>> {
-    let date = NaiveDate::parse_from_str(value, "%Y-%m-%d").ok()?;
-    Some(DateTime::<Utc>::from_naive_utc_and_offset(
-        date.and_hms_opt(0, 0, 0)?,
-        Utc,
-    ))
-}
-
-fn compact_openalex_id(id: &str) -> String {
-    id.rsplit('/').next().unwrap_or(id).to_string()
-}
-
-fn reconstruct_abstract(inverted_index: &HashMap<String, Vec<usize>>) -> Option<String> {
-    if inverted_index.is_empty() {
-        return None;
-    }
-
-    let max_position = inverted_index
-        .values()
-        .flat_map(|positions| positions.iter().copied())
-        .max()?;
-    let mut tokens = vec![String::new(); max_position + 1];
-
-    for (word, positions) in inverted_index {
-        for position in positions {
-            if *position < tokens.len() {
-                tokens[*position] = word.clone();
-            }
-        }
-    }
-
-    let abstract_text = tokens
-        .into_iter()
-        .filter(|token| !token.is_empty())
-        .collect::<Vec<_>>()
-        .join(" ");
-
-    if abstract_text.is_empty() {
-        None
-    } else {
-        Some(abstract_text)
-    }
-}
-
-fn map_openalex_item(source: &ContentSource, work: &OpenAlexWork) -> ContentItem {
-    let compact_id = compact_openalex_id(&work.id);
-    let title = work
-        .display_name
-        .as_deref()
-        .or(work.title.as_deref())
-        .unwrap_or("Untitled work")
-        .to_string();
-    let mut external_ids = vec![ProviderIdentity {
-        provider: ProviderKind::OpenAlex,
-        external_id: work.id.clone(),
-    }];
-    if let Some(doi) = work.doi.as_deref() {
-        external_ids.push(ProviderIdentity {
-            provider: ProviderKind::OpenAlex,
-            external_id: doi.to_string(),
-        });
-    }
-
-    ContentItem {
-        id: format!("openalex:work:{compact_id}"),
-        source_id: source.id.clone(),
-        provider: ProviderKind::OpenAlex,
-        item_kind: ContentItemKind::Publication,
-        title,
-        thumbnail_url: None,
-        published_at: work
-            .publication_date
-            .as_deref()
-            .and_then(parse_openalex_date),
-        external_ids,
-    }
-}
-
-fn map_openalex_parts(source: &ContentSource, work: &OpenAlexWork) -> Vec<ContentPart> {
-    let compact_id = compact_openalex_id(&work.id);
-    let item_id = format!("openalex:work:{compact_id}");
-    let mut parts = Vec::new();
-
-    if reconstruct_abstract(&work.abstract_inverted_index).is_some() {
-        parts.push(ContentPart {
-            id: format!("openalex:abstract:{compact_id}"),
-            source_id: source.id.clone(),
-            item_id: item_id.clone(),
-            provider: ProviderKind::OpenAlex,
-            part_kind: ContentPartKind::Abstract,
-            status: ContentStatus::Ready,
-            text_available: true,
-        });
-    }
-
-    parts
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenAlexListResponse {
-    results: Vec<OpenAlexWork>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenAlexWork {
-    id: String,
-    #[serde(default)]
-    doi: Option<String>,
-    #[serde(default)]
-    title: Option<String>,
-    #[serde(default)]
-    display_name: Option<String>,
-    #[serde(default)]
-    publication_date: Option<String>,
-    #[serde(default)]
-    abstract_inverted_index: HashMap<String, Vec<usize>>,
 }
 
 #[cfg(test)]

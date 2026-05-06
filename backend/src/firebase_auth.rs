@@ -13,82 +13,6 @@ use serde::Deserialize;
 
 use crate::config::SecurityRuntimeConfig;
 
-const GOOGLE_SECURETOKEN_JWKS_URL: &str =
-    "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
-const DEFAULT_SECURETOKEN_KEY_TTL: Duration = Duration::from_secs(60 * 60);
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FirebaseAuthState {
-    Anonymous,
-    Authenticated,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct VerifiedClientIdentity {
-    pub user_id: Option<String>,
-    pub email: Option<String>,
-    pub auth_state: FirebaseAuthState,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct FirebaseClaims {
-    aud: String,
-    iss: String,
-    sub: String,
-    user_id: Option<String>,
-    email: Option<String>,
-    firebase: Option<FirebaseSignInContext>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct FirebaseSignInContext {
-    sign_in_provider: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct SecureTokenJwkSet {
-    keys: Vec<SecureTokenJwk>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct SecureTokenJwk {
-    kid: String,
-    n: String,
-    e: String,
-}
-
-#[derive(Debug, Clone)]
-struct CachedSecureTokenKeys {
-    keys_by_id: HashMap<String, SecureTokenJwk>,
-    expires_at: Instant,
-}
-
-static CACHED_SECURETOKEN_KEYS: OnceLock<Mutex<Option<CachedSecureTokenKeys>>> = OnceLock::new();
-
-pub async fn verify_bearer_identity(
-    authorization: Option<&HeaderValue>,
-    config: &SecurityRuntimeConfig,
-) -> Result<Option<VerifiedClientIdentity>, String> {
-    let Some(token) = extract_bearer_token(authorization)? else {
-        return Ok(None);
-    };
-
-    let claims = if std::env::var("FIREBASE_AUTH_EMULATOR_HOST")
-        .ok()
-        .map(|value| !value.trim().is_empty())
-        .unwrap_or(false)
-    {
-        insecure_decode::<FirebaseClaims>(token)
-            .map_err(|error| format!("failed to decode Firebase emulator token: {error}"))?
-            .claims
-    } else {
-        verify_signed_token(token, config).await?
-    };
-
-    validate_claims(&claims, config)?;
-    Ok(Some(build_verified_identity(claims)))
-}
-
 fn extract_bearer_token(authorization: Option<&HeaderValue>) -> Result<Option<&str>, String> {
     let Some(header_value) = authorization else {
         return Ok(None);
@@ -111,37 +35,6 @@ fn extract_bearer_token(authorization: Option<&HeaderValue>) -> Result<Option<&s
     }
 
     Ok(Some(token))
-}
-
-async fn verify_signed_token(
-    token: &str,
-    config: &SecurityRuntimeConfig,
-) -> Result<FirebaseClaims, String> {
-    let header = decode_header(token)
-        .map_err(|error| format!("failed to decode Firebase token header: {error}"))?;
-    let kid = header
-        .kid
-        .as_deref()
-        .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| "Firebase token is missing key id".to_string())?;
-
-    let jwk = get_securetoken_key(kid)
-        .await?
-        .ok_or_else(|| format!("Firebase token key `{kid}` was not found in Google's key set"))?;
-    let decoding_key = DecodingKey::from_rsa_components(&jwk.n, &jwk.e)
-        .map_err(|error| format!("failed to construct Firebase decoding key: {error}"))?;
-
-    let mut validation = Validation::new(Algorithm::RS256);
-    validation.set_required_spec_claims(&["exp", "aud", "iss", "sub"]);
-    validation.set_audience(&[config.firebase_project_id.as_str()]);
-    validation.set_issuer(&[format!(
-        "https://securetoken.google.com/{}",
-        config.firebase_project_id
-    )]);
-
-    decode::<FirebaseClaims>(token, &decoding_key, &validation)
-        .map(|token_data| token_data.claims)
-        .map_err(|error| format!("failed to verify Firebase token: {error}"))
 }
 
 async fn get_securetoken_key(kid: &str) -> Result<Option<SecureTokenJwk>, String> {
@@ -193,6 +86,37 @@ async fn get_securetoken_key(kid: &str) -> Result<Option<SecureTokenJwk>, String
     Ok(resolved)
 }
 
+async fn verify_signed_token(
+    token: &str,
+    config: &SecurityRuntimeConfig,
+) -> Result<FirebaseClaims, String> {
+    let header = decode_header(token)
+        .map_err(|error| format!("failed to decode Firebase token header: {error}"))?;
+    let kid = header
+        .kid
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| "Firebase token is missing key id".to_string())?;
+
+    let jwk = get_securetoken_key(kid)
+        .await?
+        .ok_or_else(|| format!("Firebase token key `{kid}` was not found in Google's key set"))?;
+    let decoding_key = DecodingKey::from_rsa_components(&jwk.n, &jwk.e)
+        .map_err(|error| format!("failed to construct Firebase decoding key: {error}"))?;
+
+    let mut validation = Validation::new(Algorithm::RS256);
+    validation.set_required_spec_claims(&["exp", "aud", "iss", "sub"]);
+    validation.set_audience(&[config.firebase_project_id.as_str()]);
+    validation.set_issuer(&[format!(
+        "https://securetoken.google.com/{}",
+        config.firebase_project_id
+    )]);
+
+    decode::<FirebaseClaims>(token, &decoding_key, &validation)
+        .map(|token_data| token_data.claims)
+        .map_err(|error| format!("failed to verify Firebase token: {error}"))
+}
+
 fn parse_cache_control_max_age(cache_control: &str) -> Option<Duration> {
     cache_control.split(',').find_map(|segment| {
         let trimmed = segment.trim();
@@ -241,6 +165,82 @@ fn build_verified_identity(claims: FirebaseClaims) -> VerifiedClientIdentity {
         auth_state: FirebaseAuthState::Authenticated,
     }
 }
+
+pub async fn verify_bearer_identity(
+    authorization: Option<&HeaderValue>,
+    config: &SecurityRuntimeConfig,
+) -> Result<Option<VerifiedClientIdentity>, String> {
+    let Some(token) = extract_bearer_token(authorization)? else {
+        return Ok(None);
+    };
+
+    let claims = if std::env::var("FIREBASE_AUTH_EMULATOR_HOST")
+        .ok()
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false)
+    {
+        insecure_decode::<FirebaseClaims>(token)
+            .map_err(|error| format!("failed to decode Firebase emulator token: {error}"))?
+            .claims
+    } else {
+        verify_signed_token(token, config).await?
+    };
+
+    validate_claims(&claims, config)?;
+    Ok(Some(build_verified_identity(claims)))
+}
+
+const GOOGLE_SECURETOKEN_JWKS_URL: &str =
+    "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
+const DEFAULT_SECURETOKEN_KEY_TTL: Duration = Duration::from_secs(60 * 60);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FirebaseAuthState {
+    Anonymous,
+    Authenticated,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerifiedClientIdentity {
+    pub user_id: Option<String>,
+    pub email: Option<String>,
+    pub auth_state: FirebaseAuthState,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct FirebaseClaims {
+    aud: String,
+    iss: String,
+    sub: String,
+    user_id: Option<String>,
+    email: Option<String>,
+    firebase: Option<FirebaseSignInContext>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct FirebaseSignInContext {
+    sign_in_provider: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct SecureTokenJwkSet {
+    keys: Vec<SecureTokenJwk>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct SecureTokenJwk {
+    kid: String,
+    n: String,
+    e: String,
+}
+
+#[derive(Debug, Clone)]
+struct CachedSecureTokenKeys {
+    keys_by_id: HashMap<String, SecureTokenJwk>,
+    expires_at: Instant,
+}
+
+static CACHED_SECURETOKEN_KEYS: OnceLock<Mutex<Option<CachedSecureTokenKeys>>> = OnceLock::new();
 
 #[cfg(test)]
 #[path = "firebase_auth_tests.rs"]

@@ -6,49 +6,153 @@ use super::{
     OllamaRuntimeConfig, SearchRuntimeConfig, SecurityRuntimeConfig,
 };
 
-static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+#[test]
+fn is_local_url_recognizes_local_addresses() {
+    use super::is_local_url;
 
-const OLLAMA_ENV_KEYS: &[&str] = &[
-    "OLLAMA_URL",
-    "OLLAMA_API_KEY",
-    "OLLAMA_SUMMARY_MODEL",
-    "OLLAMA_DEFAULT_CHAT_MODEL",
-    "OLLAMA_FALLBACK_MODEL",
-    "OLLAMA_CLOUD_COOLDOWN_SECS",
-    "SUMMARY_EVALUATOR_MODEL",
-    "OLLAMA_EMBEDDING_MODEL",
-];
-const SECURITY_ENV_KEYS: &[&str] = &[
-    "BACKEND_PROXY_TOKEN",
-    "BACKEND_CORS_ALLOWED_ORIGINS",
-    "FIREBASE_PROJECT_ID",
-    "PUBLIC_FIREBASE_PROJECT_ID",
-    "GCP_PROJECT_ID",
-    "GOOGLE_CLOUD_PROJECT",
-    "OPERATOR_EMAIL_ALLOWLIST",
-    "DEFAULT_SEEDED_CHANNEL_ID",
-    "DEFAULT_SEEDED_CHANNEL_IDS",
-    "BASELINE_RATE_LIMIT_PER_MINUTE",
-    "EXPENSIVE_RATE_LIMIT_PER_MINUTE",
-    "ANONYMOUS_CHAT_QUOTA",
-];
-const DATABRICKS_ENV_KEYS: &[&str] = &[
-    "DATABRICKS_HOST",
-    "DATABRICKS_TOKEN",
-    "DATABRICKS_WAREHOUSE_ID",
-    "DATABRICKS_CATALOG",
-    "DATABRICKS_SCHEMA",
-    "DATABRICKS_BRONZE_TABLE",
-];
-const LOCAL_ASR_ENV_KEYS: &[&str] = &[
-    "LOCAL_ASR_ENABLED",
-    "LOCAL_ASR_BASE_URL",
-    "LOCAL_ASR_API_KEY",
-    "LOCAL_ASR_AUTH_MODE",
-    "LOCAL_ASR_MODEL",
-    "LOCAL_ASR_MAX_AUDIO_BYTES",
-    "LOCAL_ASR_TIMEOUT_SECS",
-];
+    assert!(is_local_url("http://localhost:11434"));
+    assert!(is_local_url("http://127.0.0.1:11434"));
+    assert!(is_local_url("http://0.0.0.0:11434"));
+    assert!(!is_local_url("https://ollama.cloud.example.com"));
+    assert!(!is_local_url("http://10.0.0.5:11434"));
+}
+
+fn set_env(key: &str, value: &str) {
+    // SAFETY: test access is serialized with ENV_LOCK in this module.
+    unsafe { env::set_var(key, value) };
+}
+
+#[test]
+fn security_from_env_honors_configured_values() {
+    let _guard = ENV_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|err| err.into_inner());
+
+    let _reset = EnvReset::capture(SECURITY_ENV_KEYS);
+    set_env("BACKEND_PROXY_TOKEN", "proxy-secret");
+    set_env(
+        "BACKEND_CORS_ALLOWED_ORIGINS",
+        "https://app.example.com,https://ops.example.com",
+    );
+    set_env("FIREBASE_PROJECT_ID", "prod-project");
+    set_env(
+        "OPERATOR_EMAIL_ALLOWLIST",
+        "operator@example.com, OWNER@example.com ",
+    );
+    set_env("DEFAULT_SEEDED_CHANNEL_ID", "seeded-channel-123");
+    set_env("BASELINE_RATE_LIMIT_PER_MINUTE", "90");
+    set_env("EXPENSIVE_RATE_LIMIT_PER_MINUTE", "7");
+    set_env("ANONYMOUS_CHAT_QUOTA", "12");
+
+    let config = SecurityRuntimeConfig::from_env().expect("security config");
+    assert_eq!(config.proxy_token, "proxy-secret");
+    assert_eq!(config.firebase_project_id, "prod-project");
+    assert_eq!(config.default_seeded_channel_id, "seeded-channel-123");
+    assert_eq!(
+        config.default_seeded_channel_ids,
+        vec!["seeded-channel-123".to_string()]
+    );
+    assert_eq!(
+        config.allowed_origins,
+        vec![
+            "https://app.example.com".to_string(),
+            "https://ops.example.com".to_string()
+        ]
+    );
+    assert_eq!(
+        config.operator_email_allowlist,
+        vec![
+            "operator@example.com".to_string(),
+            "owner@example.com".to_string()
+        ]
+    );
+    assert_eq!(config.baseline_rate_limit_per_minute, 90);
+    assert_eq!(config.expensive_rate_limit_per_minute, 7);
+    assert_eq!(config.anonymous_chat_quota, 12);
+}
+
+#[test]
+fn search_runtime_config_reads_boolean_flag() {
+    let _guard = ENV_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|err| err.into_inner());
+
+    let _reset = EnvReset::capture(&["SEARCH_AUTO_CREATE_VECTOR_INDEX", "SEARCH_SEMANTIC_ENABLED"]);
+    set_env("SEARCH_AUTO_CREATE_VECTOR_INDEX", "true");
+    set_env("SEARCH_SEMANTIC_ENABLED", "true");
+
+    let config = SearchRuntimeConfig::from_env();
+    assert!(config.auto_create_vector_index);
+    assert!(config.semantic_enabled);
+}
+
+#[test]
+fn chat_runtime_config_respects_explicit_disable() {
+    let _guard = ENV_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|err| err.into_inner());
+
+    let _reset = EnvReset::capture(&[
+        "CHAT_MULTI_PASS_ENABLED",
+        "CHAT_GUARDRAIL_MODEL",
+        "CHAT_PROMPT_BLOCKLIST",
+        "CHAT_PROMPT_ALLOWLIST",
+    ]);
+    set_env("CHAT_MULTI_PASS_ENABLED", "false");
+    set_env("CHAT_GUARDRAIL_MODEL", "llama-guard:8b");
+    set_env(
+        "CHAT_PROMPT_BLOCKLIST",
+        "ignore previous instructions,reveal system prompt",
+    );
+    set_env(
+        "CHAT_PROMPT_ALLOWLIST",
+        "security training,prompt injection examples",
+    );
+
+    let config = ChatRuntimeConfig::from_env();
+    assert!(!config.multi_pass_enabled);
+    assert_eq!(config.guardrail_model.as_deref(), Some("llama-guard:8b"));
+    assert_eq!(
+        config.prompt_blocklist,
+        vec![
+            "ignore previous instructions".to_string(),
+            "reveal system prompt".to_string()
+        ]
+    );
+    assert_eq!(
+        config.prompt_allowlist,
+        vec![
+            "security training".to_string(),
+            "prompt injection examples".to_string()
+        ]
+    );
+}
+
+#[test]
+fn from_env_accepts_remote_url_with_api_key() {
+    let _guard = ENV_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|err| err.into_inner());
+
+    let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
+    set_env("OLLAMA_URL", "https://ollama.cloud.example.com");
+    set_env("OLLAMA_API_KEY", "sk-test-key");
+    set_env("OLLAMA_SUMMARY_MODEL", "glm-5.1:cloud");
+    set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
+    set_env("OLLAMA_EMBEDDING_MODEL", "embeddinggemma");
+
+    let config = OllamaRuntimeConfig::from_env(true).expect("config");
+    assert_eq!(config.api_key.as_deref(), Some("sk-test-key"));
+}
+
+fn remove_env(key: &str) {
+    // SAFETY: test access is serialized with ENV_LOCK in this module.
+    unsafe { env::remove_var(key) };
+}
 
 #[test]
 fn local_asr_from_env_is_disabled_by_default() {
@@ -110,6 +214,7 @@ fn local_asr_from_env_supports_google_identity_auth() {
     assert_eq!(config.auth_mode, LocalAsrAuthMode::GoogleIdToken);
     assert_eq!(config.audience_url(), "https://asr.example.run.app");
 }
+
 #[test]
 fn from_env_requires_summary_model() {
     let _guard = ENV_LOCK
@@ -271,56 +376,6 @@ fn security_from_env_uses_local_defaults_for_dev() {
 }
 
 #[test]
-fn security_from_env_honors_configured_values() {
-    let _guard = ENV_LOCK
-        .get_or_init(|| Mutex::new(()))
-        .lock()
-        .unwrap_or_else(|err| err.into_inner());
-
-    let _reset = EnvReset::capture(SECURITY_ENV_KEYS);
-    set_env("BACKEND_PROXY_TOKEN", "proxy-secret");
-    set_env(
-        "BACKEND_CORS_ALLOWED_ORIGINS",
-        "https://app.example.com,https://ops.example.com",
-    );
-    set_env("FIREBASE_PROJECT_ID", "prod-project");
-    set_env(
-        "OPERATOR_EMAIL_ALLOWLIST",
-        "operator@example.com, OWNER@example.com ",
-    );
-    set_env("DEFAULT_SEEDED_CHANNEL_ID", "seeded-channel-123");
-    set_env("BASELINE_RATE_LIMIT_PER_MINUTE", "90");
-    set_env("EXPENSIVE_RATE_LIMIT_PER_MINUTE", "7");
-    set_env("ANONYMOUS_CHAT_QUOTA", "12");
-
-    let config = SecurityRuntimeConfig::from_env().expect("security config");
-    assert_eq!(config.proxy_token, "proxy-secret");
-    assert_eq!(config.firebase_project_id, "prod-project");
-    assert_eq!(config.default_seeded_channel_id, "seeded-channel-123");
-    assert_eq!(
-        config.default_seeded_channel_ids,
-        vec!["seeded-channel-123".to_string()]
-    );
-    assert_eq!(
-        config.allowed_origins,
-        vec![
-            "https://app.example.com".to_string(),
-            "https://ops.example.com".to_string()
-        ]
-    );
-    assert_eq!(
-        config.operator_email_allowlist,
-        vec![
-            "operator@example.com".to_string(),
-            "owner@example.com".to_string()
-        ]
-    );
-    assert_eq!(config.baseline_rate_limit_per_minute, 90);
-    assert_eq!(config.expensive_rate_limit_per_minute, 7);
-    assert_eq!(config.anonymous_chat_quota, 12);
-}
-
-#[test]
 fn security_from_env_supports_multiple_seeded_channels() {
     let _guard = ENV_LOCK
         .get_or_init(|| Mutex::new(()))
@@ -406,22 +461,6 @@ fn search_runtime_config_defaults_vector_index_creation_off() {
 }
 
 #[test]
-fn search_runtime_config_reads_boolean_flag() {
-    let _guard = ENV_LOCK
-        .get_or_init(|| Mutex::new(()))
-        .lock()
-        .unwrap_or_else(|err| err.into_inner());
-
-    let _reset = EnvReset::capture(&["SEARCH_AUTO_CREATE_VECTOR_INDEX", "SEARCH_SEMANTIC_ENABLED"]);
-    set_env("SEARCH_AUTO_CREATE_VECTOR_INDEX", "true");
-    set_env("SEARCH_SEMANTIC_ENABLED", "true");
-
-    let config = SearchRuntimeConfig::from_env();
-    assert!(config.auto_create_vector_index);
-    assert!(config.semantic_enabled);
-}
-
-#[test]
 fn search_runtime_config_respects_explicit_disable() {
     let _guard = ENV_LOCK
         .get_or_init(|| Mutex::new(()))
@@ -463,49 +502,6 @@ fn chat_runtime_config_defaults_multi_pass_on() {
 }
 
 #[test]
-fn chat_runtime_config_respects_explicit_disable() {
-    let _guard = ENV_LOCK
-        .get_or_init(|| Mutex::new(()))
-        .lock()
-        .unwrap_or_else(|err| err.into_inner());
-
-    let _reset = EnvReset::capture(&[
-        "CHAT_MULTI_PASS_ENABLED",
-        "CHAT_GUARDRAIL_MODEL",
-        "CHAT_PROMPT_BLOCKLIST",
-        "CHAT_PROMPT_ALLOWLIST",
-    ]);
-    set_env("CHAT_MULTI_PASS_ENABLED", "false");
-    set_env("CHAT_GUARDRAIL_MODEL", "llama-guard:8b");
-    set_env(
-        "CHAT_PROMPT_BLOCKLIST",
-        "ignore previous instructions,reveal system prompt",
-    );
-    set_env(
-        "CHAT_PROMPT_ALLOWLIST",
-        "security training,prompt injection examples",
-    );
-
-    let config = ChatRuntimeConfig::from_env();
-    assert!(!config.multi_pass_enabled);
-    assert_eq!(config.guardrail_model.as_deref(), Some("llama-guard:8b"));
-    assert_eq!(
-        config.prompt_blocklist,
-        vec![
-            "ignore previous instructions".to_string(),
-            "reveal system prompt".to_string()
-        ]
-    );
-    assert_eq!(
-        config.prompt_allowlist,
-        vec![
-            "security training".to_string(),
-            "prompt injection examples".to_string()
-        ]
-    );
-}
-
-#[test]
 fn from_env_rejects_remote_url_without_api_key() {
     let _guard = ENV_LOCK
         .get_or_init(|| Mutex::new(()))
@@ -525,24 +521,6 @@ fn from_env_rejects_remote_url_without_api_key() {
 }
 
 #[test]
-fn from_env_accepts_remote_url_with_api_key() {
-    let _guard = ENV_LOCK
-        .get_or_init(|| Mutex::new(()))
-        .lock()
-        .unwrap_or_else(|err| err.into_inner());
-
-    let _reset = EnvReset::capture(OLLAMA_ENV_KEYS);
-    set_env("OLLAMA_URL", "https://ollama.cloud.example.com");
-    set_env("OLLAMA_API_KEY", "sk-test-key");
-    set_env("OLLAMA_SUMMARY_MODEL", "glm-5.1:cloud");
-    set_env("SUMMARY_EVALUATOR_MODEL", "qwen3.5:397b-cloud");
-    set_env("OLLAMA_EMBEDDING_MODEL", "embeddinggemma");
-
-    let config = OllamaRuntimeConfig::from_env(true).expect("config");
-    assert_eq!(config.api_key.as_deref(), Some("sk-test-key"));
-}
-
-#[test]
 fn from_env_allows_localhost_without_api_key() {
     let _guard = ENV_LOCK
         .get_or_init(|| Mutex::new(()))
@@ -557,17 +535,6 @@ fn from_env_allows_localhost_without_api_key() {
     set_env("OLLAMA_EMBEDDING_MODEL", "embeddinggemma");
 
     OllamaRuntimeConfig::from_env(true).expect("localhost without API key should succeed");
-}
-
-#[test]
-fn is_local_url_recognizes_local_addresses() {
-    use super::is_local_url;
-
-    assert!(is_local_url("http://localhost:11434"));
-    assert!(is_local_url("http://127.0.0.1:11434"));
-    assert!(is_local_url("http://0.0.0.0:11434"));
-    assert!(!is_local_url("https://ollama.cloud.example.com"));
-    assert!(!is_local_url("http://10.0.0.5:11434"));
 }
 
 #[test]
@@ -625,6 +592,50 @@ fn databricks_config_uses_defaults_for_catalog_schema_and_table() {
     assert_eq!(config.bronze_table, "bronze_app_events");
 }
 
+static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+const OLLAMA_ENV_KEYS: &[&str] = &[
+    "OLLAMA_URL",
+    "OLLAMA_API_KEY",
+    "OLLAMA_SUMMARY_MODEL",
+    "OLLAMA_DEFAULT_CHAT_MODEL",
+    "OLLAMA_FALLBACK_MODEL",
+    "OLLAMA_CLOUD_COOLDOWN_SECS",
+    "SUMMARY_EVALUATOR_MODEL",
+    "OLLAMA_EMBEDDING_MODEL",
+];
+const SECURITY_ENV_KEYS: &[&str] = &[
+    "BACKEND_PROXY_TOKEN",
+    "BACKEND_CORS_ALLOWED_ORIGINS",
+    "FIREBASE_PROJECT_ID",
+    "PUBLIC_FIREBASE_PROJECT_ID",
+    "GCP_PROJECT_ID",
+    "GOOGLE_CLOUD_PROJECT",
+    "OPERATOR_EMAIL_ALLOWLIST",
+    "DEFAULT_SEEDED_CHANNEL_ID",
+    "DEFAULT_SEEDED_CHANNEL_IDS",
+    "BASELINE_RATE_LIMIT_PER_MINUTE",
+    "EXPENSIVE_RATE_LIMIT_PER_MINUTE",
+    "ANONYMOUS_CHAT_QUOTA",
+];
+const DATABRICKS_ENV_KEYS: &[&str] = &[
+    "DATABRICKS_HOST",
+    "DATABRICKS_TOKEN",
+    "DATABRICKS_WAREHOUSE_ID",
+    "DATABRICKS_CATALOG",
+    "DATABRICKS_SCHEMA",
+    "DATABRICKS_BRONZE_TABLE",
+];
+const LOCAL_ASR_ENV_KEYS: &[&str] = &[
+    "LOCAL_ASR_ENABLED",
+    "LOCAL_ASR_BASE_URL",
+    "LOCAL_ASR_API_KEY",
+    "LOCAL_ASR_AUTH_MODE",
+    "LOCAL_ASR_MODEL",
+    "LOCAL_ASR_MAX_AUDIO_BYTES",
+    "LOCAL_ASR_TIMEOUT_SECS",
+];
+
 struct EnvReset {
     saved: Vec<(String, Option<String>)>,
 }
@@ -648,14 +659,4 @@ impl Drop for EnvReset {
             }
         }
     }
-}
-
-fn set_env(key: &str, value: &str) {
-    // SAFETY: test access is serialized with ENV_LOCK in this module.
-    unsafe { env::set_var(key, value) };
-}
-
-fn remove_env(key: &str) {
-    // SAFETY: test access is serialized with ENV_LOCK in this module.
-    unsafe { env::remove_var(key) };
 }

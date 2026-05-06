@@ -1,43 +1,9 @@
+use std::path::PathBuf;
 use std::time::Duration;
 
 use tokio::time::sleep;
 
 use crate::state::AppState;
-
-const QUEUE_SCAN_LIMIT: usize = 4;
-const QUEUE_POLL_INTERVAL: Duration = Duration::from_secs(5);
-const QUEUE_IDLE_POLL_INTERVAL: Duration = Duration::from_secs(15);
-const QUEUE_IDLE_POLL_MAX_INTERVAL: Duration = Duration::from_secs(60);
-const CHANNEL_REFRESH_INTERVAL: Duration = Duration::from_secs(30 * 60);
-const CHANNEL_GAP_SCAN_INTERVAL: Duration = Duration::from_secs(10 * 60);
-const CHANNEL_GAP_SCAN_LIMIT_PER_CHANNEL: usize = 8;
-const SUMMARY_EVAL_SCAN_LIMIT: usize = 4;
-const SUMMARY_EVAL_POLL_INTERVAL: Duration = Duration::from_secs(7);
-const SUMMARY_EVAL_IDLE_POLL_INTERVAL: Duration = Duration::from_secs(30);
-const SUMMARY_EVAL_IDLE_POLL_MAX_INTERVAL: Duration = Duration::from_secs(120);
-const SEARCH_BACKFILL_SCAN_LIMIT: usize = 64;
-const SEARCH_INDEX_SCAN_LIMIT: usize = 8;
-const SEARCH_RECONCILE_SCAN_LIMIT: usize = 64;
-const SEARCH_PRUNE_SCAN_LIMIT: usize = 256;
-const SEARCH_INDEX_POLL_INTERVAL: Duration = Duration::from_secs(3);
-const SEARCH_INDEX_IDLE_POLL_INTERVAL: Duration = Duration::from_secs(15);
-const SEARCH_INDEX_IDLE_POLL_MAX_INTERVAL: Duration = Duration::from_secs(120);
-const SEARCH_VECTOR_INDEX_BUILD_BACKLOG_THRESHOLD: usize = 128;
-const SEARCH_RECONCILE_INTERVAL: Duration = Duration::from_secs(60);
-const SEARCH_VECTOR_INDEX_RETRY_INTERVAL: Duration = Duration::from_secs(5 * 60);
-const MAX_DISTILLATION_RETRIES: u8 = 3;
-
-mod gap_scan;
-mod queue;
-mod refresh;
-mod search_index;
-mod summary_evaluation;
-
-pub use gap_scan::spawn_gap_scan_worker;
-pub use queue::spawn_queue_worker;
-pub use refresh::spawn_refresh_worker;
-pub use search_index::spawn_search_index_worker;
-pub use summary_evaluation::spawn_summary_evaluation_worker;
 
 pub fn spawn_search_progress_hydration(state: AppState) {
     tokio::spawn(async move {
@@ -86,19 +52,6 @@ pub fn spawn_search_progress_hydration(state: AppState) {
             "search progress hydration complete"
         );
     });
-}
-
-pub async fn spawn_fts_hydration_if_empty(state: AppState, fts_dir: &std::path::Path) {
-    if state.fts.doc_count().await == 0 {
-        tokio::spawn(async move {
-            populate_fts_index_from_store(state).await;
-        });
-    } else {
-        tracing::info!(
-            path = %fts_dir.display(),
-            "FTS startup hydration skipped - existing local libSQL index already has data"
-        );
-    }
 }
 
 fn parse_bundle_key(key: &str) -> Option<(String, String, String)> {
@@ -509,6 +462,73 @@ pub async fn populate_fts_index_from_store(state: AppState) {
     }
 }
 
+pub async fn spawn_fts_hydration_if_empty(state: AppState, fts_dir: &std::path::Path) {
+    if state.fts.doc_count().await == 0 {
+        tokio::spawn(async move {
+            populate_fts_index_from_store(state).await;
+        });
+    } else {
+        tracing::info!(
+            path = %fts_dir.display(),
+            "FTS startup hydration skipped - existing local libSQL index already has data"
+        );
+    }
+}
+
+pub async fn spawn_runtime_workers(state: AppState, fts_dir: PathBuf) {
+    spawn_search_progress_hydration(state.clone());
+    spawn_fts_hydration_if_empty(state.clone(), &fts_dir).await;
+    spawn_queue_worker(state.clone());
+    spawn_refresh_worker(state.clone());
+    spawn_gap_scan_worker(state.clone());
+    spawn_summary_evaluation_worker(state.clone());
+    spawn_search_index_worker(state);
+}
+
+async fn sleep_with_backoff(
+    backoff: PollBackoff,
+    state: &mut PollBackoffState,
+    had_activity: bool,
+) {
+    let delay = backoff.next_interval(state, had_activity);
+    sleep(delay).await;
+}
+
+const QUEUE_SCAN_LIMIT: usize = 4;
+const QUEUE_POLL_INTERVAL: Duration = Duration::from_secs(5);
+const QUEUE_IDLE_POLL_INTERVAL: Duration = Duration::from_secs(15);
+const QUEUE_IDLE_POLL_MAX_INTERVAL: Duration = Duration::from_secs(60);
+const CHANNEL_REFRESH_INTERVAL: Duration = Duration::from_secs(30 * 60);
+const CHANNEL_GAP_SCAN_INTERVAL: Duration = Duration::from_secs(10 * 60);
+const CHANNEL_GAP_SCAN_LIMIT_PER_CHANNEL: usize = 8;
+const SUMMARY_EVAL_SCAN_LIMIT: usize = 4;
+const SUMMARY_EVAL_POLL_INTERVAL: Duration = Duration::from_secs(7);
+const SUMMARY_EVAL_IDLE_POLL_INTERVAL: Duration = Duration::from_secs(30);
+const SUMMARY_EVAL_IDLE_POLL_MAX_INTERVAL: Duration = Duration::from_secs(120);
+const SEARCH_BACKFILL_SCAN_LIMIT: usize = 64;
+const SEARCH_INDEX_SCAN_LIMIT: usize = 8;
+const SEARCH_RECONCILE_SCAN_LIMIT: usize = 64;
+const SEARCH_PRUNE_SCAN_LIMIT: usize = 256;
+const SEARCH_INDEX_POLL_INTERVAL: Duration = Duration::from_secs(3);
+const SEARCH_INDEX_IDLE_POLL_INTERVAL: Duration = Duration::from_secs(15);
+const SEARCH_INDEX_IDLE_POLL_MAX_INTERVAL: Duration = Duration::from_secs(120);
+const SEARCH_VECTOR_INDEX_BUILD_BACKLOG_THRESHOLD: usize = 128;
+const SEARCH_RECONCILE_INTERVAL: Duration = Duration::from_secs(60);
+const SEARCH_VECTOR_INDEX_RETRY_INTERVAL: Duration = Duration::from_secs(5 * 60);
+const MAX_DISTILLATION_RETRIES: u8 = 3;
+
+mod gap_scan;
+mod queue;
+mod refresh;
+mod search_index;
+mod summary_evaluation;
+
+pub use gap_scan::spawn_gap_scan_worker;
+pub use queue::spawn_queue_worker;
+pub use refresh::spawn_refresh_worker;
+pub use search_index::spawn_search_index_worker;
+pub use summary_evaluation::spawn_summary_evaluation_worker;
+
 #[derive(Clone, Copy, Debug)]
 struct PollBackoff {
     active_interval: Duration,
@@ -574,15 +594,6 @@ enum QueueTask {
     Transcript,
     Summary,
     Skip,
-}
-
-async fn sleep_with_backoff(
-    backoff: PollBackoff,
-    state: &mut PollBackoffState,
-    had_activity: bool,
-) {
-    let delay = backoff.next_interval(state, had_activity);
-    sleep(delay).await;
 }
 
 #[cfg(test)]

@@ -13,6 +13,85 @@ fn build_aws_http_client() -> aws_smithy_runtime_api::client::http::SharedHttpCl
         .build_https()
 }
 
+fn normalize_env_value(value: Option<String>) -> Option<String> {
+    value.and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
+pub fn credential_mode_from_values(
+    role_arn: Option<String>,
+    audience: Option<String>,
+) -> Result<AwsCredentialMode, String> {
+    let role_arn = normalize_env_value(role_arn);
+    let audience = normalize_env_value(audience);
+
+    match (role_arn, audience) {
+        (Some(role_arn), Some(audience)) => Ok(AwsCredentialMode::GcpWif { role_arn, audience }),
+        (None, None) => Ok(AwsCredentialMode::DefaultChain),
+        (Some(_), None) => Err(
+            "AWS_ROLE_ARN is set but AWS_WIF_AUDIENCE is missing; both must be set for GCP AWS WIF"
+                .to_string(),
+        ),
+        (None, Some(_)) => Err(
+            "AWS_WIF_AUDIENCE is set but AWS_ROLE_ARN is missing; both must be set for GCP AWS WIF"
+                .to_string(),
+        ),
+    }
+}
+
+pub fn credential_mode_from_env() -> Result<AwsCredentialMode, String> {
+    credential_mode_from_values(
+        std::env::var("AWS_ROLE_ARN").ok(),
+        std::env::var("AWS_WIF_AUDIENCE").ok(),
+    )
+}
+
+pub async fn load_aws_sdk_config(region: String) -> Result<SdkConfig, String> {
+    let loader = aws_config::defaults(BehaviorVersion::latest())
+        .region(Region::new(region.clone()))
+        .http_client(build_aws_http_client());
+
+    match credential_mode_from_env()? {
+        AwsCredentialMode::DefaultChain => Ok(loader.load().await),
+        AwsCredentialMode::GcpWif { role_arn, audience } => {
+            tracing::info!("using GCP AWS WIF credential provider");
+            Ok(loader
+                .credentials_provider(GcpWifCredentialProvider::new(role_arn, audience, region))
+                .load()
+                .await)
+        }
+    }
+}
+
+async fn fetch_gcp_identity_token(audience: &str) -> Result<String, String> {
+    let url = format!(
+        "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience={audience}&format=full"
+    );
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&url)
+        .header("Metadata-Flavor", "Google")
+        .timeout(std::time::Duration::from_secs(5))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "GCP metadata server returned {}",
+            response.status()
+        ));
+    }
+
+    response.text().await.map_err(|e| e.to_string())
+}
+
 #[derive(Debug, Clone)]
 pub struct GcpWifCredentialProvider {
     role_arn: String,
@@ -110,85 +189,6 @@ impl ProvideCredentials for NoCredentials {
 pub enum AwsCredentialMode {
     DefaultChain,
     GcpWif { role_arn: String, audience: String },
-}
-
-pub fn credential_mode_from_env() -> Result<AwsCredentialMode, String> {
-    credential_mode_from_values(
-        std::env::var("AWS_ROLE_ARN").ok(),
-        std::env::var("AWS_WIF_AUDIENCE").ok(),
-    )
-}
-
-pub fn credential_mode_from_values(
-    role_arn: Option<String>,
-    audience: Option<String>,
-) -> Result<AwsCredentialMode, String> {
-    let role_arn = normalize_env_value(role_arn);
-    let audience = normalize_env_value(audience);
-
-    match (role_arn, audience) {
-        (Some(role_arn), Some(audience)) => Ok(AwsCredentialMode::GcpWif { role_arn, audience }),
-        (None, None) => Ok(AwsCredentialMode::DefaultChain),
-        (Some(_), None) => Err(
-            "AWS_ROLE_ARN is set but AWS_WIF_AUDIENCE is missing; both must be set for GCP AWS WIF"
-                .to_string(),
-        ),
-        (None, Some(_)) => Err(
-            "AWS_WIF_AUDIENCE is set but AWS_ROLE_ARN is missing; both must be set for GCP AWS WIF"
-                .to_string(),
-        ),
-    }
-}
-
-pub async fn load_aws_sdk_config(region: String) -> Result<SdkConfig, String> {
-    let loader = aws_config::defaults(BehaviorVersion::latest())
-        .region(Region::new(region.clone()))
-        .http_client(build_aws_http_client());
-
-    match credential_mode_from_env()? {
-        AwsCredentialMode::DefaultChain => Ok(loader.load().await),
-        AwsCredentialMode::GcpWif { role_arn, audience } => {
-            tracing::info!("using GCP AWS WIF credential provider");
-            Ok(loader
-                .credentials_provider(GcpWifCredentialProvider::new(role_arn, audience, region))
-                .load()
-                .await)
-        }
-    }
-}
-
-fn normalize_env_value(value: Option<String>) -> Option<String> {
-    value.and_then(|value| {
-        let trimmed = value.trim();
-        if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed.to_string())
-        }
-    })
-}
-
-async fn fetch_gcp_identity_token(audience: &str) -> Result<String, String> {
-    let url = format!(
-        "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience={audience}&format=full"
-    );
-    let client = reqwest::Client::new();
-    let response = client
-        .get(&url)
-        .header("Metadata-Flavor", "Google")
-        .timeout(std::time::Duration::from_secs(5))
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if !response.status().is_success() {
-        return Err(format!(
-            "GCP metadata server returned {}",
-            response.status()
-        ));
-    }
-
-    response.text().await.map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

@@ -1,60 +1,34 @@
 use super::*;
 use std::collections::{HashMap, HashSet};
 
-#[derive(Debug, Clone)]
-pub(super) struct HighlightCandidate<'a> {
-    pub(super) channel: &'a HighlightChannelGroup,
-    pub(super) video: &'a HighlightVideoGroup,
-    pub(super) highlight: &'a Highlight,
-}
-
-pub(super) fn flatten_highlight_groups(
-    groups: &[HighlightChannelGroup],
-) -> Vec<HighlightCandidate<'_>> {
-    let mut candidates = Vec::new();
-    for channel in groups {
-        for video in &channel.videos {
-            for highlight in &video.highlights {
-                candidates.push(HighlightCandidate {
-                    channel,
-                    video,
-                    highlight,
-                });
-            }
+fn describe_highlight_lookup_scope(query: &HighlightLookupQuery) -> String {
+    match (&query.query, &query.video_title) {
+        (Some(query_text), Some(video_title)) => {
+            format!("query \"{query_text}\" in videos matching \"{video_title}\"")
         }
+        (Some(query_text), None) => format!("query \"{query_text}\""),
+        (None, Some(video_title)) => format!("videos matching \"{video_title}\""),
+        (None, None) => "saved highlights".to_string(),
     }
-    candidates
 }
 
-pub(super) fn matches_highlight_query(
-    candidate: &HighlightCandidate<'_>,
-    query: &HighlightLookupQuery,
-) -> bool {
-    let haystack = format!(
-        "{} {} {} {} {}",
-        candidate.channel.channel_name,
-        candidate.video.title,
-        candidate.highlight.text,
-        candidate.highlight.prefix_context,
-        candidate.highlight.suffix_context
+pub(super) fn describe_highlight_lookup_query(query: &HighlightLookupQuery) -> String {
+    format!(
+        "Look up saved highlights for {}",
+        describe_highlight_lookup_scope(query)
     )
-    .to_ascii_lowercase();
+}
 
-    let title_matches = query.video_title.as_ref().is_none_or(|value| {
-        candidate
-            .video
-            .title
-            .to_ascii_lowercase()
-            .contains(&value.to_ascii_lowercase())
-    });
-
-    let query_matches = query.query.as_ref().is_none_or(|value| {
-        tokenize_query(value)
-            .iter()
-            .all(|token| haystack.contains(token.as_str()))
-    });
-
-    title_matches && query_matches
+fn compact_highlight_text(input: &str) -> String {
+    const MAX_CHARS: usize = 220;
+    let compact = input.split_whitespace().collect::<Vec<_>>().join(" ");
+    if compact.chars().count() <= MAX_CHARS {
+        compact
+    } else {
+        let mut clipped = compact.chars().take(MAX_CHARS).collect::<String>();
+        clipped.push_str("...");
+        clipped
+    }
 }
 
 pub(super) fn highlight_match_score(
@@ -127,65 +101,137 @@ pub(super) fn format_highlight_lookup_output(
     lines.join("\n")
 }
 
-pub(super) fn describe_highlight_lookup_query(query: &HighlightLookupQuery) -> String {
-    format!(
-        "Look up saved highlights for {}",
-        describe_highlight_lookup_scope(query)
+pub(super) fn remove_mention_spans(input: &str, mentions: &[MentionToken]) -> String {
+    let mut cleaned = String::with_capacity(input.len());
+    let mut cursor = 0;
+    for mention in mentions {
+        if mention.start > cursor {
+            cleaned.push_str(&input[cursor..mention.start]);
+        }
+        cursor = mention.end;
+    }
+    if cursor < input.len() {
+        cleaned.push_str(&input[cursor..]);
+    }
+    cleaned.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn normalize_lookup_key(input: &str) -> String {
+    input
+        .trim()
+        .trim_start_matches('@')
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                ' '
+            }
+        })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn lookup_phrase_exists(input: &str, needle: &str) -> bool {
+    if needle.is_empty() {
+        return false;
+    }
+    let haystack = format!(" {input} ");
+    let needle = format!(" {needle} ");
+    haystack.contains(&needle)
+}
+
+pub(super) fn push_unique(values: &mut Vec<String>, value: String) {
+    if !values.iter().any(|existing| existing == &value) {
+        values.push(value);
+    }
+}
+
+pub(super) fn infer_plain_scope_from_text(
+    input: &str,
+    channels: &[Channel],
+    videos: &[Video],
+    scope: &mut MentionScope,
+) {
+    if scope.channel_focus_ids.is_empty()
+        && let Some(channel) = resolve_plain_channel_reference(input, channels)
+    {
+        push_unique(&mut scope.channel_focus_ids, channel.id.clone());
+        push_unique(&mut scope.channel_names, channel.name.clone());
+    }
+
+    if scope.video_focus_ids.is_empty()
+        && let Some(video) = resolve_plain_video_reference(input, videos)
+    {
+        push_unique(&mut scope.video_focus_ids, video.id.clone());
+        push_unique(&mut scope.video_titles, video.title.clone());
+        push_unique(&mut scope.channel_focus_ids, video.channel_id.clone());
+    }
+}
+
+fn tokenize_query(input: &str) -> Vec<String> {
+    input
+        .to_ascii_lowercase()
+        .split(|char: char| !char.is_ascii_alphanumeric())
+        .filter(|token| token.len() > 1)
+        .map(ToString::to_string)
+        .collect()
+}
+
+pub(super) fn flatten_highlight_groups(
+    groups: &[HighlightChannelGroup],
+) -> Vec<HighlightCandidate<'_>> {
+    let mut candidates = Vec::new();
+    for channel in groups {
+        for video in &channel.videos {
+            for highlight in &video.highlights {
+                candidates.push(HighlightCandidate {
+                    channel,
+                    video,
+                    highlight,
+                });
+            }
+        }
+    }
+    candidates
+}
+
+pub(super) fn matches_highlight_query(
+    candidate: &HighlightCandidate<'_>,
+    query: &HighlightLookupQuery,
+) -> bool {
+    let haystack = format!(
+        "{} {} {} {} {}",
+        candidate.channel.channel_name,
+        candidate.video.title,
+        candidate.highlight.text,
+        candidate.highlight.prefix_context,
+        candidate.highlight.suffix_context
     )
+    .to_ascii_lowercase();
+
+    let title_matches = query.video_title.as_ref().is_none_or(|value| {
+        candidate
+            .video
+            .title
+            .to_ascii_lowercase()
+            .contains(&value.to_ascii_lowercase())
+    });
+
+    let query_matches = query.query.as_ref().is_none_or(|value| {
+        tokenize_query(value)
+            .iter()
+            .all(|token| haystack.contains(token.as_str()))
+    });
+
+    title_matches && query_matches
 }
 
-fn describe_highlight_lookup_scope(query: &HighlightLookupQuery) -> String {
-    match (&query.query, &query.video_title) {
-        (Some(query_text), Some(video_title)) => {
-            format!("query \"{query_text}\" in videos matching \"{video_title}\"")
-        }
-        (Some(query_text), None) => format!("query \"{query_text}\""),
-        (None, Some(video_title)) => format!("videos matching \"{video_title}\""),
-        (None, None) => "saved highlights".to_string(),
-    }
-}
-
-fn compact_highlight_text(input: &str) -> String {
-    const MAX_CHARS: usize = 220;
-    let compact = input.split_whitespace().collect::<Vec<_>>().join(" ");
-    if compact.chars().count() <= MAX_CHARS {
-        compact
-    } else {
-        let mut clipped = compact.chars().take(MAX_CHARS).collect::<String>();
-        clipped.push_str("...");
-        clipped
-    }
-}
-
-pub(super) fn extract_mentions(input: &str) -> Vec<MentionToken> {
-    let mut mentions = Vec::new();
-    let mut index = 0;
-
-    while index < input.len() {
-        let Some(ch) = input[index..].chars().next() else {
-            break;
-        };
-        if ch != '@' && ch != '+' {
-            index += ch.len_utf8();
-            continue;
-        }
-
-        let parsed = match input[index + 1..].chars().next() {
-            Some('"') => extract_quoted_mention(input, index),
-            Some('{') => extract_braced_mention(input, index),
-            Some(_) => extract_bare_mention(input, index),
-            None => None,
-        };
-
-        if let Some(token) = parsed {
-            index = token.end;
-            mentions.push(token);
-        } else {
-            index += ch.len_utf8();
-        }
-    }
-
-    mentions
+pub(super) fn trim_to_option(input: &str) -> Option<String> {
+    let trimmed = input.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
 
 pub(super) fn extract_quoted_mention(input: &str, start: usize) -> Option<MentionToken> {
@@ -243,19 +289,141 @@ pub(super) fn extract_bare_mention(input: &str, start: usize) -> Option<MentionT
     })
 }
 
-pub(super) fn remove_mention_spans(input: &str, mentions: &[MentionToken]) -> String {
-    let mut cleaned = String::with_capacity(input.len());
-    let mut cursor = 0;
-    for mention in mentions {
-        if mention.start > cursor {
-            cleaned.push_str(&input[cursor..mention.start]);
+pub(super) fn extract_mentions(input: &str) -> Vec<MentionToken> {
+    let mut mentions = Vec::new();
+    let mut index = 0;
+
+    while index < input.len() {
+        let Some(ch) = input[index..].chars().next() else {
+            break;
+        };
+        if ch != '@' && ch != '+' {
+            index += ch.len_utf8();
+            continue;
         }
-        cursor = mention.end;
+
+        let parsed = match input[index + 1..].chars().next() {
+            Some('"') => extract_quoted_mention(input, index),
+            Some('{') => extract_braced_mention(input, index),
+            Some(_) => extract_bare_mention(input, index),
+            None => None,
+        };
+
+        if let Some(token) = parsed {
+            index = token.end;
+            mentions.push(token);
+        } else {
+            index += ch.len_utf8();
+        }
     }
-    if cursor < input.len() {
-        cleaned.push_str(&input[cursor..]);
+
+    mentions
+}
+
+pub(super) fn format_breakdown_by_channel_output(
+    target: DbInspectTarget,
+    counts: &[(String, usize)],
+) -> String {
+    if counts.is_empty() {
+        return format!("No {} found in the database.", target.plural());
     }
-    cleaned.split_whitespace().collect::<Vec<_>>().join(" ")
+    let total: usize = counts.iter().map(|(_, c)| c).sum();
+    let rows = counts
+        .iter()
+        .map(|(name, count)| format!("- {name}: {count}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!(
+        "{} breakdown by channel (total {total}):\n{rows}",
+        target.plural()[0..1].to_uppercase() + &target.plural()[1..]
+    )
+}
+
+fn format_list_output(label: &str, rows: Vec<String>) -> String {
+    if rows.is_empty() {
+        return format!("No {label} found in the database.");
+    }
+    format!(
+        "Here are the first {} {label} in the database:\n{}",
+        rows.len(),
+        rows.join("\n")
+    )
+}
+
+pub(super) fn format_db_inspect_list_output(
+    scope: &DbInspectScope,
+    query: DbInspectQuery,
+) -> String {
+    let output = match query.target {
+        DbInspectTarget::Summaries => {
+            let rows = scope
+                .summaries
+                .iter()
+                .take(query.limit)
+                .map(|summary| format!("- {}", summary.video_id))
+                .collect::<Vec<_>>();
+            format_list_output("summary video ids", rows)
+        }
+        DbInspectTarget::Transcripts => {
+            let rows = scope
+                .transcripts
+                .iter()
+                .take(query.limit)
+                .map(|transcript| format!("- {}", transcript.video_id))
+                .collect::<Vec<_>>();
+            format_list_output("transcript video ids", rows)
+        }
+        DbInspectTarget::Videos => {
+            let rows = scope
+                .videos
+                .iter()
+                .take(query.limit)
+                .map(|video| format!("- {} - {}", video.id, video.title))
+                .collect::<Vec<_>>();
+            format_list_output("videos", rows)
+        }
+        DbInspectTarget::Channels => {
+            let rows = scope
+                .channels
+                .iter()
+                .take(query.limit)
+                .map(|channel| format!("- {} - {}", channel.id, channel.name))
+                .collect::<Vec<_>>();
+            format_list_output("channels", rows)
+        }
+    };
+    output
+}
+
+pub(super) async fn execute_list_query(
+    store: &db::Store,
+    access_context: &crate::security::AccessContext,
+    query: DbInspectQuery,
+) -> Result<DbInspectResult, db::StoreError> {
+    let scope = match query.target {
+        DbInspectTarget::Channels => DbInspectScope {
+            channels: load_db_inspect_channels(store, access_context).await?,
+            videos: Vec::new(),
+            summaries: Vec::new(),
+            transcripts: Vec::new(),
+            visible_channel_names: HashMap::new(),
+            allowed_other_video_ids: HashSet::new(),
+        },
+        _ => load_db_inspect_scope(store, access_context).await?,
+    };
+    let output = format_db_inspect_list_output(&scope, query);
+
+    Ok(DbInspectResult {
+        summary: describe_db_inspect_query(query),
+        output,
+    })
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct HighlightCandidate<'a> {
+    pub(super) channel: &'a HighlightChannelGroup,
+    pub(super) video: &'a HighlightVideoGroup,
+    pub(super) highlight: &'a Highlight,
 }
 
 pub(super) fn resolve_channel_mention<'a>(
@@ -275,28 +443,6 @@ pub(super) fn resolve_video_mention<'a>(token: &str, videos: &'a [Video]) -> Opt
     resolve_unique_match(token, videos, |video| {
         vec![normalize_lookup_key(&video.title)]
     })
-}
-
-pub(super) fn infer_plain_scope_from_text(
-    input: &str,
-    channels: &[Channel],
-    videos: &[Video],
-    scope: &mut MentionScope,
-) {
-    if scope.channel_focus_ids.is_empty()
-        && let Some(channel) = resolve_plain_channel_reference(input, channels)
-    {
-        push_unique(&mut scope.channel_focus_ids, channel.id.clone());
-        push_unique(&mut scope.channel_names, channel.name.clone());
-    }
-
-    if scope.video_focus_ids.is_empty()
-        && let Some(video) = resolve_plain_video_reference(input, videos)
-    {
-        push_unique(&mut scope.video_focus_ids, video.id.clone());
-        push_unique(&mut scope.video_titles, video.title.clone());
-        push_unique(&mut scope.channel_focus_ids, video.channel_id.clone());
-    }
 }
 
 fn resolve_plain_channel_reference<'a>(
@@ -367,150 +513,4 @@ where
         })
         .collect::<Vec<_>>();
     (matches.len() == 1).then(|| matches[0])
-}
-
-fn normalize_lookup_key(input: &str) -> String {
-    input
-        .trim()
-        .trim_start_matches('@')
-        .chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() {
-                ch.to_ascii_lowercase()
-            } else {
-                ' '
-            }
-        })
-        .collect::<String>()
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-fn lookup_phrase_exists(input: &str, needle: &str) -> bool {
-    if needle.is_empty() {
-        return false;
-    }
-    let haystack = format!(" {input} ");
-    let needle = format!(" {needle} ");
-    haystack.contains(&needle)
-}
-
-pub(super) fn push_unique(values: &mut Vec<String>, value: String) {
-    if !values.iter().any(|existing| existing == &value) {
-        values.push(value);
-    }
-}
-
-fn tokenize_query(input: &str) -> Vec<String> {
-    input
-        .to_ascii_lowercase()
-        .split(|char: char| !char.is_ascii_alphanumeric())
-        .filter(|token| token.len() > 1)
-        .map(ToString::to_string)
-        .collect()
-}
-
-pub(super) fn trim_to_option(input: &str) -> Option<String> {
-    let trimmed = input.trim();
-    (!trimmed.is_empty()).then(|| trimmed.to_string())
-}
-
-pub(super) async fn execute_list_query(
-    store: &db::Store,
-    access_context: &crate::security::AccessContext,
-    query: DbInspectQuery,
-) -> Result<DbInspectResult, db::StoreError> {
-    let scope = match query.target {
-        DbInspectTarget::Channels => DbInspectScope {
-            channels: load_db_inspect_channels(store, access_context).await?,
-            videos: Vec::new(),
-            summaries: Vec::new(),
-            transcripts: Vec::new(),
-            visible_channel_names: HashMap::new(),
-            allowed_other_video_ids: HashSet::new(),
-        },
-        _ => load_db_inspect_scope(store, access_context).await?,
-    };
-    let output = format_db_inspect_list_output(&scope, query);
-
-    Ok(DbInspectResult {
-        summary: describe_db_inspect_query(query),
-        output,
-    })
-}
-
-pub(super) fn format_db_inspect_list_output(
-    scope: &DbInspectScope,
-    query: DbInspectQuery,
-) -> String {
-    let output = match query.target {
-        DbInspectTarget::Summaries => {
-            let rows = scope
-                .summaries
-                .iter()
-                .take(query.limit)
-                .map(|summary| format!("- {}", summary.video_id))
-                .collect::<Vec<_>>();
-            format_list_output("summary video ids", rows)
-        }
-        DbInspectTarget::Transcripts => {
-            let rows = scope
-                .transcripts
-                .iter()
-                .take(query.limit)
-                .map(|transcript| format!("- {}", transcript.video_id))
-                .collect::<Vec<_>>();
-            format_list_output("transcript video ids", rows)
-        }
-        DbInspectTarget::Videos => {
-            let rows = scope
-                .videos
-                .iter()
-                .take(query.limit)
-                .map(|video| format!("- {} - {}", video.id, video.title))
-                .collect::<Vec<_>>();
-            format_list_output("videos", rows)
-        }
-        DbInspectTarget::Channels => {
-            let rows = scope
-                .channels
-                .iter()
-                .take(query.limit)
-                .map(|channel| format!("- {} - {}", channel.id, channel.name))
-                .collect::<Vec<_>>();
-            format_list_output("channels", rows)
-        }
-    };
-    output
-}
-
-pub(super) fn format_breakdown_by_channel_output(
-    target: DbInspectTarget,
-    counts: &[(String, usize)],
-) -> String {
-    if counts.is_empty() {
-        return format!("No {} found in the database.", target.plural());
-    }
-    let total: usize = counts.iter().map(|(_, c)| c).sum();
-    let rows = counts
-        .iter()
-        .map(|(name, count)| format!("- {name}: {count}"))
-        .collect::<Vec<_>>()
-        .join("\n");
-    format!(
-        "{} breakdown by channel (total {total}):\n{rows}",
-        target.plural()[0..1].to_uppercase() + &target.plural()[1..]
-    )
-}
-
-fn format_list_output(label: &str, rows: Vec<String>) -> String {
-    if rows.is_empty() {
-        return format!("No {label} found in the database.");
-    }
-    format!(
-        "Here are the first {} {label} in the database:\n{}",
-        rows.len(),
-        rows.join("\n")
-    )
 }

@@ -5,18 +5,6 @@ use crate::models::UserPreferences;
 
 use super::{Store, StoreError};
 
-const LEGACY_DOCUMENT_ID: &str = "user";
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct StoredUserPreferences {
-    user_id: String,
-    data: UserPreferences,
-}
-
-fn preferences_storage_key(user_id: &str) -> String {
-    format!("user-preferences/{}.json", preferences_document_id(user_id))
-}
-
 fn preferences_document_id(user_id: &str) -> String {
     let trimmed = user_id.trim();
     if trimmed.is_empty() {
@@ -24,6 +12,10 @@ fn preferences_document_id(user_id: &str) -> String {
     } else {
         trimmed.to_string()
     }
+}
+
+fn preferences_storage_key(user_id: &str) -> String {
+    format!("user-preferences/{}.json", preferences_document_id(user_id))
 }
 
 fn normalize_preferences(mut preferences: UserPreferences) -> UserPreferences {
@@ -44,10 +36,6 @@ fn normalize_preferences(mut preferences: UserPreferences) -> UserPreferences {
         })
         .collect();
     preferences
-}
-
-pub async fn get_preferences(store: &Store) -> Result<UserPreferences, StoreError> {
-    get_user_preferences(store, LEGACY_DOCUMENT_ID).await
 }
 
 pub async fn sql_preferences_count(store: &Store) -> Result<usize, StoreError> {
@@ -88,11 +76,8 @@ pub async fn get_user_preferences(
     Ok(normalize_preferences(prefs.unwrap_or_default()))
 }
 
-pub async fn save_preferences(
-    store: &Store,
-    preferences: &UserPreferences,
-) -> Result<(), StoreError> {
-    save_user_preferences(store, LEGACY_DOCUMENT_ID, preferences).await
+pub async fn get_preferences(store: &Store) -> Result<UserPreferences, StoreError> {
+    get_user_preferences(store, LEGACY_DOCUMENT_ID).await
 }
 
 pub async fn save_user_preferences(
@@ -126,6 +111,13 @@ pub async fn save_user_preferences(
         }])
         .await?;
     Ok(())
+}
+
+pub async fn save_preferences(
+    store: &Store,
+    preferences: &UserPreferences,
+) -> Result<(), StoreError> {
+    save_user_preferences(store, LEGACY_DOCUMENT_ID, preferences).await
 }
 
 pub async fn bootstrap_sql_preferences_from_store(store: &Store) -> Result<usize, StoreError> {
@@ -229,6 +221,14 @@ pub async fn migrate_legacy_preferences(store: &Store, user_id: &str) -> Result<
     }
 
     Ok(())
+}
+
+const LEGACY_DOCUMENT_ID: &str = "user";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct StoredUserPreferences {
+    user_id: String,
+    data: UserPreferences,
 }
 
 #[cfg(test)]

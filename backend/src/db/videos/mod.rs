@@ -17,8 +17,6 @@ pub use scoped_views::{
     load_workspace_bootstrap_data,
 };
 
-const VIDEO_SUGGESTION_WINDOW_BATCH_SIZE: usize = 200;
-
 fn canonical_video_key(video_id: &str) -> String {
     format!("videos/{video_id}.json")
 }
@@ -276,14 +274,14 @@ pub async fn load_all_videos(store: &Store) -> Result<Vec<Video>, StoreError> {
     Ok(videos)
 }
 
+fn is_podcast_episode_video(video: &Video) -> bool {
+    video.id.starts_with("podcast:episode:") || video.channel_id.starts_with("podcast:rss:")
+}
+
 fn video_visible_in_list(video: &Video, queue_filter: Option<QueueFilter>) -> bool {
     video.transcript_status == ContentStatus::Ready
         || is_podcast_episode_video(video)
         || matches!(queue_filter, Some(QueueFilter::TranscriptsOnly))
-}
-
-fn is_podcast_episode_video(video: &Video) -> bool {
-    video.id.starts_with("podcast:episode:") || video.channel_id.starts_with("podcast:rss:")
 }
 
 fn video_matches_channel_scope(
@@ -374,17 +372,6 @@ fn oldest_ready_video_published_at_for_scope(
         })
         .map(|v| v.published_at)
         .min()
-}
-
-#[derive(Clone, Copy)]
-struct VideoListOptions {
-    limit: usize,
-    offset: usize,
-    is_short: Option<bool>,
-    acknowledged: Option<bool>,
-    queue_filter: Option<QueueFilter>,
-    /// When the user set a sync floor, hide videos published before it (matches backfill `until`).
-    published_at_not_before: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// Apply channel-scoped filtering, sorting, and pagination to a pre-loaded
@@ -704,4 +691,17 @@ async fn build_channel_snapshot_data(
         next_offset: page.next_offset,
         videos: page.videos,
     })
+}
+
+const VIDEO_SUGGESTION_WINDOW_BATCH_SIZE: usize = 200;
+
+#[derive(Clone, Copy)]
+struct VideoListOptions {
+    limit: usize,
+    offset: usize,
+    is_short: Option<bool>,
+    acknowledged: Option<bool>,
+    queue_filter: Option<QueueFilter>,
+    /// When the user set a sync floor, hide videos published before it (matches backfill `until`).
+    published_at_not_before: Option<chrono::DateTime<chrono::Utc>>,
 }

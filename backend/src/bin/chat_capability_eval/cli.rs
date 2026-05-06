@@ -60,6 +60,42 @@ fn default_output_dir() -> PathBuf {
         .join("chat-capability")
 }
 
+fn print_help() {
+    println!(
+        "chat_capability_eval
+
+Options:
+  --base-url <url>          Backend base URL. Default: {DEFAULT_BASE_URL}
+  --dataset <path>          Prompt dataset path.
+  --output-dir <path>       Output directory for reports.
+  --timeout-seconds <n>     Per-request timeout. Default: 240
+  --class <name>            Filter by capability class. Repeatable.
+  --prompt-id <id>          Filter by prompt id. Repeatable.
+  --model <id>              Optional chat model id to send with the prompt.
+  --deep-research           Set deep_research=true for every prompt.
+  --help                    Show this help.
+"
+    );
+}
+
+fn parse_capability_class(value: &str) -> Result<CapabilityClass> {
+    match value.trim() {
+        "direct_lookup" => Ok(CapabilityClass::DirectLookup),
+        "topic_aggregation" => Ok(CapabilityClass::TopicAggregation),
+        "cross_video_synthesis" => Ok(CapabilityClass::CrossVideoSynthesis),
+        "comparison" => Ok(CapabilityClass::Comparison),
+        "recommendation" => Ok(CapabilityClass::Recommendation),
+        "creator_stance" => Ok(CapabilityClass::CreatorStance),
+        "highlight_lookup" => Ok(CapabilityClass::HighlightLookup),
+        "highlight_clustering" => Ok(CapabilityClass::HighlightClustering),
+        "transcript_summary_alignment" => Ok(CapabilityClass::TranscriptSummaryAlignment),
+        "timestamp_navigation" => Ok(CapabilityClass::TimestampNavigation),
+        "tone_or_style_inference" => Ok(CapabilityClass::ToneOrStyleInference),
+        "meta_learning_or_next_step" => Ok(CapabilityClass::MetaLearningOrNextStep),
+        other => bail!("unknown capability class `{other}`"),
+    }
+}
+
 pub(crate) fn parse_args() -> Result<CliConfig> {
     let mut config = CliConfig {
         base_url: DEFAULT_BASE_URL.to_string(),
@@ -130,40 +166,4 @@ pub(crate) fn parse_args() -> Result<CliConfig> {
     }
 
     Ok(config)
-}
-
-fn print_help() {
-    println!(
-        "chat_capability_eval
-
-Options:
-  --base-url <url>          Backend base URL. Default: {DEFAULT_BASE_URL}
-  --dataset <path>          Prompt dataset path.
-  --output-dir <path>       Output directory for reports.
-  --timeout-seconds <n>     Per-request timeout. Default: 240
-  --class <name>            Filter by capability class. Repeatable.
-  --prompt-id <id>          Filter by prompt id. Repeatable.
-  --model <id>              Optional chat model id to send with the prompt.
-  --deep-research           Set deep_research=true for every prompt.
-  --help                    Show this help.
-"
-    );
-}
-
-fn parse_capability_class(value: &str) -> Result<CapabilityClass> {
-    match value.trim() {
-        "direct_lookup" => Ok(CapabilityClass::DirectLookup),
-        "topic_aggregation" => Ok(CapabilityClass::TopicAggregation),
-        "cross_video_synthesis" => Ok(CapabilityClass::CrossVideoSynthesis),
-        "comparison" => Ok(CapabilityClass::Comparison),
-        "recommendation" => Ok(CapabilityClass::Recommendation),
-        "creator_stance" => Ok(CapabilityClass::CreatorStance),
-        "highlight_lookup" => Ok(CapabilityClass::HighlightLookup),
-        "highlight_clustering" => Ok(CapabilityClass::HighlightClustering),
-        "transcript_summary_alignment" => Ok(CapabilityClass::TranscriptSummaryAlignment),
-        "timestamp_navigation" => Ok(CapabilityClass::TimestampNavigation),
-        "tone_or_style_inference" => Ok(CapabilityClass::ToneOrStyleInference),
-        "meta_learning_or_next_step" => Ok(CapabilityClass::MetaLearningOrNextStep),
-        other => bail!("unknown capability class `{other}`"),
-    }
 }

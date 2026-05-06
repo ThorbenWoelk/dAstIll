@@ -111,6 +111,14 @@ pub async fn list_highlights(
     Ok(Json(grouped))
 }
 
+fn resolve_delete_highlight_result(deleted: bool) -> Result<StatusCode, (StatusCode, String)> {
+    if deleted {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err((StatusCode::NOT_FOUND, "Highlight not found".to_string()))
+    }
+}
+
 #[utoipa::path(
     delete,
     path = "/api/highlights/{id}",
@@ -144,14 +152,6 @@ pub async fn delete_highlight(
     let status = resolve_delete_highlight_result(deleted)?;
 
     Ok(status)
-}
-
-fn resolve_delete_highlight_result(deleted: bool) -> Result<StatusCode, (StatusCode, String)> {
-    if deleted {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err((StatusCode::NOT_FOUND, "Highlight not found".to_string()))
-    }
 }
 
 #[cfg(test)]

@@ -14,6 +14,136 @@ use super::chat::{
 };
 use super::chat_heuristics::preference_signal_score;
 
+pub(super) fn retrieval_candidate_limit(budget: usize, query_count: usize, pass: usize) -> usize {
+    let query_count = query_count.max(1);
+    let base = ((budget * 2) / query_count).max(CHAT_RETRIEVAL_CANDIDATE_LIMIT_MIN);
+    let boosted = if pass > 1 {
+        base + 4 + (pass.saturating_sub(1) * 2)
+    } else {
+        base
+    };
+    boosted.clamp(
+        CHAT_RETRIEVAL_CANDIDATE_LIMIT_MIN,
+        CHAT_RETRIEVAL_CANDIDATE_LIMIT_MAX,
+    )
+}
+
+pub(super) fn accumulate_ranked_candidates(
+    pool: &mut HashMap<String, AccumulatedSearchCandidate>,
+    candidates: &[SearchCandidate],
+    semantic: bool,
+    pass: usize,
+) {
+    for (index, candidate) in candidates.iter().enumerate() {
+        let rank = index + 1;
+        let score = 1.0 / (SEARCH_RRF_K + rank as f32);
+        let entry =
+            pool.entry(candidate.chunk_id.clone())
+                .or_insert_with(|| AccumulatedSearchCandidate {
+                    candidate: candidate.clone(),
+                    keyword_score: 0.0,
+                    semantic_score: 0.0,
+                    retrieval_pass: pass,
+                });
+        if semantic {
+            entry.semantic_score += score;
+        } else {
+            entry.keyword_score += score;
+        }
+        entry.retrieval_pass = entry.retrieval_pass.min(pass);
+        entry.candidate = candidate.clone();
+    }
+}
+
+pub(super) fn build_video_observation_inputs(
+    sources: &[RetrievedChatSource],
+    max_videos: usize,
+) -> Vec<VideoObservationInput> {
+    let mut groups = Vec::<VideoObservationInput>::new();
+    let mut group_indexes = HashMap::<String, usize>::new();
+
+    for source in sources {
+        if let Some(index) = group_indexes.get(&source.source.video_id).copied() {
+            if groups[index].excerpts.len() < CHAT_SYNTHESIS_SOURCES_PER_VIDEO {
+                groups[index].excerpts.push(source.clone());
+            }
+            continue;
+        }
+
+        if groups.len() >= max_videos {
+            continue;
+        }
+
+        group_indexes.insert(source.source.video_id.clone(), groups.len());
+        groups.push(VideoObservationInput {
+            video_id: source.source.video_id.clone(),
+            video_title: source.source.video_title.clone(),
+            channel_name: source.source.channel_name.clone(),
+            excerpts: vec![source.clone()],
+        });
+    }
+
+    groups
+}
+
+fn selection_score(
+    candidate: &AccumulatedSearchCandidate,
+    video_counts: &HashMap<String, usize>,
+    kind_counts: &HashMap<SearchSourceKind, usize>,
+    plan: &ChatRetrievalPlan,
+) -> f32 {
+    let mut score = candidate.combined_score();
+    let video_count = video_counts
+        .get(&candidate.candidate.video_id)
+        .copied()
+        .unwrap_or(0);
+    if video_count >= plan.max_per_video {
+        score *= CHAT_DIVERSITY_PENALTY.powi((video_count + 1 - plan.max_per_video) as i32);
+    }
+
+    let transcript_count = kind_counts
+        .get(&SearchSourceKind::Transcript)
+        .copied()
+        .unwrap_or(0);
+    let summary_count = kind_counts
+        .get(&SearchSourceKind::Summary)
+        .copied()
+        .unwrap_or(0);
+    let wants_source_kind_diversity = (transcript_count > 0
+        && summary_count == 0
+        && candidate.candidate.source_kind == SearchSourceKind::Summary)
+        || (summary_count > 0
+            && transcript_count == 0
+            && candidate.candidate.source_kind == SearchSourceKind::Transcript);
+    if wants_source_kind_diversity {
+        score *= CHAT_SOURCE_KIND_DIVERSITY_BONUS;
+    }
+
+    if plan
+        .video_focus_ids
+        .iter()
+        .any(|video_id| video_id == &candidate.candidate.video_id)
+    {
+        score *= 1.8;
+    } else if plan
+        .channel_focus_ids
+        .iter()
+        .any(|channel_id| channel_id == &candidate.candidate.channel_id)
+    {
+        score *= 1.2;
+    }
+
+    if plan.attributed_preference {
+        let preference_score =
+            preference_signal_score(&candidate.candidate.chunk_text, &plan.focus_terms);
+        if preference_score > 0.0 {
+            score *= 1.0 + preference_score;
+        }
+    }
+
+    score
+}
+
 pub(super) fn rank_chat_sources(
     candidates: impl IntoIterator<Item = impl std::borrow::Borrow<AccumulatedSearchCandidate>>,
     plan: &ChatRetrievalPlan,
@@ -91,45 +221,22 @@ pub(super) fn rank_chat_sources(
     selected
 }
 
-pub(super) fn retrieval_candidate_limit(budget: usize, query_count: usize, pass: usize) -> usize {
-    let query_count = query_count.max(1);
-    let base = ((budget * 2) / query_count).max(CHAT_RETRIEVAL_CANDIDATE_LIMIT_MIN);
-    let boosted = if pass > 1 {
-        base + 4 + (pass.saturating_sub(1) * 2)
-    } else {
-        base
-    };
-    boosted.clamp(
-        CHAT_RETRIEVAL_CANDIDATE_LIMIT_MIN,
-        CHAT_RETRIEVAL_CANDIDATE_LIMIT_MAX,
-    )
+pub(super) fn count_unique_videos(sources: &[RetrievedChatSource]) -> usize {
+    sources
+        .iter()
+        .map(|source| source.source.video_id.as_str())
+        .collect::<HashSet<_>>()
+        .len()
 }
 
-pub(super) fn accumulate_ranked_candidates(
-    pool: &mut HashMap<String, AccumulatedSearchCandidate>,
-    candidates: &[SearchCandidate],
-    semantic: bool,
-    pass: usize,
-) {
-    for (index, candidate) in candidates.iter().enumerate() {
-        let rank = index + 1;
-        let score = 1.0 / (SEARCH_RRF_K + rank as f32);
-        let entry =
-            pool.entry(candidate.chunk_id.clone())
-                .or_insert_with(|| AccumulatedSearchCandidate {
-                    candidate: candidate.clone(),
-                    keyword_score: 0.0,
-                    semantic_score: 0.0,
-                    retrieval_pass: pass,
-                });
-        if semantic {
-            entry.semantic_score += score;
-        } else {
-            entry.keyword_score += score;
-        }
-        entry.retrieval_pass = entry.retrieval_pass.min(pass);
-        entry.candidate = candidate.clone();
-    }
+fn count_direct_preference_evidence(
+    sources: &[RetrievedChatSource],
+    focus_terms: &[String],
+) -> usize {
+    sources
+        .iter()
+        .filter(|source| preference_signal_score(&source.context_text, focus_terms) >= 0.14)
+        .count()
 }
 
 pub(super) fn assess_coverage(
@@ -279,111 +386,4 @@ pub(super) fn assess_coverage(
             }
         }
     }
-}
-
-pub(super) fn build_video_observation_inputs(
-    sources: &[RetrievedChatSource],
-    max_videos: usize,
-) -> Vec<VideoObservationInput> {
-    let mut groups = Vec::<VideoObservationInput>::new();
-    let mut group_indexes = HashMap::<String, usize>::new();
-
-    for source in sources {
-        if let Some(index) = group_indexes.get(&source.source.video_id).copied() {
-            if groups[index].excerpts.len() < CHAT_SYNTHESIS_SOURCES_PER_VIDEO {
-                groups[index].excerpts.push(source.clone());
-            }
-            continue;
-        }
-
-        if groups.len() >= max_videos {
-            continue;
-        }
-
-        group_indexes.insert(source.source.video_id.clone(), groups.len());
-        groups.push(VideoObservationInput {
-            video_id: source.source.video_id.clone(),
-            video_title: source.source.video_title.clone(),
-            channel_name: source.source.channel_name.clone(),
-            excerpts: vec![source.clone()],
-        });
-    }
-
-    groups
-}
-
-fn selection_score(
-    candidate: &AccumulatedSearchCandidate,
-    video_counts: &HashMap<String, usize>,
-    kind_counts: &HashMap<SearchSourceKind, usize>,
-    plan: &ChatRetrievalPlan,
-) -> f32 {
-    let mut score = candidate.combined_score();
-    let video_count = video_counts
-        .get(&candidate.candidate.video_id)
-        .copied()
-        .unwrap_or(0);
-    if video_count >= plan.max_per_video {
-        score *= CHAT_DIVERSITY_PENALTY.powi((video_count + 1 - plan.max_per_video) as i32);
-    }
-
-    let transcript_count = kind_counts
-        .get(&SearchSourceKind::Transcript)
-        .copied()
-        .unwrap_or(0);
-    let summary_count = kind_counts
-        .get(&SearchSourceKind::Summary)
-        .copied()
-        .unwrap_or(0);
-    let wants_source_kind_diversity = (transcript_count > 0
-        && summary_count == 0
-        && candidate.candidate.source_kind == SearchSourceKind::Summary)
-        || (summary_count > 0
-            && transcript_count == 0
-            && candidate.candidate.source_kind == SearchSourceKind::Transcript);
-    if wants_source_kind_diversity {
-        score *= CHAT_SOURCE_KIND_DIVERSITY_BONUS;
-    }
-
-    if plan
-        .video_focus_ids
-        .iter()
-        .any(|video_id| video_id == &candidate.candidate.video_id)
-    {
-        score *= 1.8;
-    } else if plan
-        .channel_focus_ids
-        .iter()
-        .any(|channel_id| channel_id == &candidate.candidate.channel_id)
-    {
-        score *= 1.2;
-    }
-
-    if plan.attributed_preference {
-        let preference_score =
-            preference_signal_score(&candidate.candidate.chunk_text, &plan.focus_terms);
-        if preference_score > 0.0 {
-            score *= 1.0 + preference_score;
-        }
-    }
-
-    score
-}
-
-pub(super) fn count_unique_videos(sources: &[RetrievedChatSource]) -> usize {
-    sources
-        .iter()
-        .map(|source| source.source.video_id.as_str())
-        .collect::<HashSet<_>>()
-        .len()
-}
-
-fn count_direct_preference_evidence(
-    sources: &[RetrievedChatSource],
-    focus_terms: &[String],
-) -> usize {
-    sources
-        .iter()
-        .filter(|source| preference_signal_score(&source.context_text, focus_terms) >= 0.14)
-        .count()
 }
