@@ -25,13 +25,15 @@ const SHORT_TECHNICAL_SEARCH_TERMS: &[&str] = &["ai", "db", "go", "js", "ml", "u
 
 pub fn tokenize_search_terms(query: &str) -> Vec<String> {
     query
-        .split(|character: char| {
-            !(character.is_alphanumeric() || matches!(character, '_' | '-' | '.'))
-        })
+        .split(|character: char| !is_search_term_character(character))
         .map(str::trim)
         .filter(|token| !token.is_empty())
         .map(str::to_ascii_lowercase)
         .collect()
+}
+
+fn is_search_term_character(character: char) -> bool {
+    character.is_alphanumeric() || matches!(character, '_' | '-' | '.')
 }
 
 pub fn is_meaningful_search_term(token: &str) -> bool {
