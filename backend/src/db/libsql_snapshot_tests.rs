@@ -1,7 +1,7 @@
 use super::{
     DELTA_SCHEMA_VERSION, LibsqlSnapshotDeltaOperation, LibsqlSnapshotDeltaRecord,
     LibsqlSnapshotSourceState, PrefixState, apply_delta_record, checkpoint_libsql_file,
-    compress_gzip, decompress_gzip, sha256_hex,
+    compress_gzip, decompress_gzip, reset_local_libsql_cache, sha256_hex,
 };
 use crate::models::{CanonicalVideoRecord, ContentStatus, UserPreferences};
 use chrono::TimeZone;
@@ -121,6 +121,59 @@ async fn checkpoint_libsql_file_accepts_wal_checkpoint_rows() {
     checkpoint_libsql_file(&conn)
         .await
         .expect("checkpoint should succeed");
+}
+
+#[tokio::test]
+async fn reset_local_libsql_cache_clears_persisted_fts_rows() {
+    let dir = tempdir().expect("tempdir");
+    let db_path = dir.path().join("snapshot.db");
+    let db = libsql::Builder::new_local(&db_path)
+        .build()
+        .await
+        .expect("build db");
+    let conn = db.connect().expect("connect db");
+    crate::db::sql_schema::initialize_sql_schema(&conn)
+        .await
+        .expect("init schema");
+    crate::services::FtsIndex::new_with_db(db.clone(), Some(db_path.clone()))
+        .await
+        .expect("init fts");
+    conn.execute(
+        "INSERT INTO videos (id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, retry_count, quality_score) VALUES (?1, ?2, ?3, NULL, ?4, 0, 'ready', 'ready', 0, NULL)",
+        libsql::params!["video-1", "channel-1", "Video", "2026-05-01T00:00:00Z"],
+    )
+    .await
+    .expect("insert video");
+    conn.execute(
+        r#"
+        INSERT INTO fts_search (
+            chunk_id, video_id, channel_id, source_kind, source_key, section_title,
+            chunk_text, video_title, channel_name, published_at, start_sec
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+        "#,
+        libsql::params![
+            "chunk-1",
+            "video-1",
+            "channel-1",
+            "summary",
+            "video-1_summary",
+            "Section",
+            "stale searchable text",
+            "Video",
+            "Channel",
+            "2026-05-01T00:00:00Z",
+            0i64,
+        ],
+    )
+    .await
+    .expect("insert fts row");
+
+    reset_local_libsql_cache(&conn).await.expect("reset cache");
+    let fts = crate::services::FtsIndex::new_with_db(db, Some(db_path))
+        .await
+        .expect("recreate fts");
+
+    assert_eq!(fts.doc_count().await, 0);
 }
 
 #[tokio::test]

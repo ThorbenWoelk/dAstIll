@@ -476,6 +476,7 @@ pub async fn reset_local_libsql_cache(conn: &libsql::Connection) -> Result<(), S
         DELETE FROM videos;
         DELETE FROM preferences;
         DELETE FROM tts_stats;
+        DROP TABLE IF EXISTS fts_search;
         "#,
     )
     .await

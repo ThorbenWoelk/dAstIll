@@ -205,6 +205,21 @@ export class MiniReaderState {
         : "no-summaries",
   );
 
+  private visibleSummariesFor(reader: MiniReader): MiniSummaryItem[] {
+    return this.showUnreadOnly
+      ? reader.summaries.filter((summary) => !summary.read)
+      : reader.summaries;
+  }
+
+  private syncReaderAvailabilityStatus() {
+    if (!this.reader) return;
+    this.status =
+      this.reader.channels.length === 0 ||
+      this.visibleSummariesFor(this.reader).length === 0
+        ? "empty"
+        : "ready";
+  }
+
   async loadReader(
     channelId?: string | null,
     preferredVideoId?: string | null,
@@ -228,13 +243,7 @@ export class MiniReaderState {
         preferredVideoId,
       );
       this.readProgress = 0;
-      const visible = this.showUnreadOnly
-        ? reader.summaries.filter((s) => !s.read)
-        : reader.summaries;
-      this.status =
-        reader.channels.length === 0 || visible.length === 0
-          ? "empty"
-          : "ready";
+      this.syncReaderAvailabilityStatus();
     } catch (cause) {
       const message =
         cause instanceof Error ? cause.message : "Could not load dastill-mini.";
@@ -377,6 +386,7 @@ export class MiniReaderState {
       this.activeVideoId = chooseActiveVideoId(nextVisible, markedId);
       this.contentKey += 1;
       this.readProgress = 0;
+      this.syncReaderAvailabilityStatus();
     } catch (cause) {
       this.error =
         cause instanceof Error
@@ -412,6 +422,7 @@ export class MiniReaderState {
         nextUnreadVideoId ?? (this.showUnreadOnly ? null : markedId);
       this.contentKey += 1;
       this.readProgress = 0;
+      this.syncReaderAvailabilityStatus();
     } catch (cause) {
       this.error =
         cause instanceof Error
@@ -475,10 +486,14 @@ export class MiniReaderState {
 
   toggleUnreadFilter() {
     this.showUnreadOnly = !this.showUnreadOnly;
+    this.reconcileActiveVideo();
+    this.syncReaderAvailabilityStatus();
   }
 
   clearUnreadFilter() {
     this.showUnreadOnly = false;
+    this.reconcileActiveVideo();
+    this.syncReaderAvailabilityStatus();
   }
 
   updateReadProgress(
