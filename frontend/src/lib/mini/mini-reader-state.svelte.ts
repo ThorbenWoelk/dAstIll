@@ -109,6 +109,18 @@ export async function saveMiniVocabularyPreferences(
 
 export type MiniReaderStatus = "idle" | "loading" | "ready" | "empty" | "error";
 
+export function miniReaderAvailabilityStatus(
+  reader: MiniReader,
+  showUnreadOnly: boolean,
+): "ready" | "empty" {
+  const visible = showUnreadOnly
+    ? reader.summaries.filter((summary) => !summary.read)
+    : reader.summaries;
+  return reader.channels.length === 0 || visible.length === 0
+    ? "empty"
+    : "ready";
+}
+
 export class MiniReaderState {
   reader = $state<MiniReader | null>(null);
   status = $state<MiniReaderStatus>("loading");
@@ -205,19 +217,12 @@ export class MiniReaderState {
         : "no-summaries",
   );
 
-  private visibleSummariesFor(reader: MiniReader): MiniSummaryItem[] {
-    return this.showUnreadOnly
-      ? reader.summaries.filter((summary) => !summary.read)
-      : reader.summaries;
-  }
-
   private syncReaderAvailabilityStatus() {
     if (!this.reader) return;
-    this.status =
-      this.reader.channels.length === 0 ||
-      this.visibleSummariesFor(this.reader).length === 0
-        ? "empty"
-        : "ready";
+    this.status = miniReaderAvailabilityStatus(
+      this.reader,
+      this.showUnreadOnly,
+    );
   }
 
   async loadReader(

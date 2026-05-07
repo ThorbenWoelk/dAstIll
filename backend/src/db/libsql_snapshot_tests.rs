@@ -135,15 +135,38 @@ async fn reset_local_libsql_cache_clears_persisted_fts_rows() {
     crate::db::sql_schema::initialize_sql_schema(&conn)
         .await
         .expect("init schema");
-    crate::services::FtsIndex::new_with_db(db.clone(), Some(db_path.clone()))
-        .await
-        .expect("init fts");
+    conn.execute_batch(
+        r#"
+        CREATE VIRTUAL TABLE fts_search USING fts5 (
+            chunk_id UNINDEXED,
+            video_id UNINDEXED,
+            channel_id UNINDEXED,
+            source_kind UNINDEXED,
+            source_key UNINDEXED,
+            section_title,
+            chunk_text,
+            video_title,
+            channel_name UNINDEXED,
+            published_at UNINDEXED,
+            start_sec UNINDEXED,
+            tokenize = 'porter'
+        );
+        "#,
+    )
+    .await
+    .expect("init fts");
     conn.execute(
         "INSERT INTO videos (id, channel_id, title, thumbnail_url, published_at, is_short, transcript_status, summary_status, retry_count, quality_score) VALUES (?1, ?2, ?3, NULL, ?4, 0, 'ready', 'ready', 0, NULL)",
         libsql::params!["video-1", "channel-1", "Video", "2026-05-01T00:00:00Z"],
     )
-    .await
+        .await
     .expect("insert video");
+    conn.execute(
+        "INSERT INTO preferences (user_id, data) VALUES (?1, ?2)",
+        libsql::params!["user-1", "{}"],
+    )
+    .await
+    .expect("insert preferences");
     conn.execute(
         r#"
         INSERT INTO fts_search (

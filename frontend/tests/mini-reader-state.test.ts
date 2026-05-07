@@ -5,15 +5,15 @@ import {
   chooseActiveVideoId,
   findNextMiniChannelId,
   findNextUnreadVideoId,
-  MiniReaderState,
   MINI_DEFAULT_SHOW_UNREAD_ONLY,
+  miniReaderAvailabilityStatus,
   miniChannelIsCaughtUp,
   saveMiniVocabularyPreferences,
   selectMiniSummaryHighlights,
 } from "../src/lib/mini/mini-reader-state.svelte";
 import { resetApiCacheForTests } from "../src/lib/api";
 import type { Highlight, UserPreferences } from "../src/lib/types";
-import type { Channel } from "../src/lib/transport-types";
+import type { Channel, MiniReader } from "../src/lib/transport-types";
 
 const originalFetch = globalThis.fetch;
 
@@ -131,57 +131,25 @@ describe("findNextMiniChannelId", () => {
   });
 });
 
-describe("MiniReaderState", () => {
-  it("switches to the empty state after marking the last unread summary read", async () => {
-    const mini = new MiniReaderState();
-    mini.reader = {
-      channels: [makeChannel()],
-      selected_channel_id: "channel-1",
-      summaries: [makeSummary("a", false)],
-    };
-    mini.selectedChannelId = "channel-1";
-    mini.activeVideoId = "a";
-    mini.status = "ready";
-
-    globalThis.fetch = (async (input, init) => {
-      const url = String(input);
-      const method = (init?.method ?? "GET").toUpperCase();
-
-      if (url.includes("/api/mini/videos/a/read") && method === "PUT") {
-        return new Response(
-          JSON.stringify({
-            video_id: "a",
-            read: true,
-            updated_at: "2026-04-16T00:00:00.000Z",
-          }),
-          { status: 200 },
-        );
-      }
-      throw new Error(`Unexpected request: ${method} ${url}`);
-    }) as typeof fetch;
-
-    await mini.markActiveSummaryRead();
-
-    expect(mini.status).toBe("empty");
-    expect(mini.visibleSummaries).toEqual([]);
-    expect(mini.activeSummary).toBeNull();
-  });
-
-  it("returns to ready when clearing an unread-only empty filter reveals read summaries", () => {
-    const mini = new MiniReaderState();
-    mini.reader = {
+describe("miniReaderAvailabilityStatus", () => {
+  it("returns empty after the last unread summary becomes read", () => {
+    const reader: MiniReader = {
       channels: [makeChannel()],
       selected_channel_id: "channel-1",
       summaries: [makeSummary("a", true)],
     };
-    mini.selectedChannelId = "channel-1";
-    mini.activeVideoId = null;
-    mini.status = "empty";
 
-    mini.clearUnreadFilter();
+    expect(miniReaderAvailabilityStatus(reader, true)).toBe("empty");
+  });
 
-    expect(mini.status).toBe("ready");
-    expect(mini.activeSummary?.video_id).toBe("a");
+  it("returns ready when disabling unread-only reveals read summaries", () => {
+    const reader: MiniReader = {
+      channels: [makeChannel()],
+      selected_channel_id: "channel-1",
+      summaries: [makeSummary("a", true)],
+    };
+
+    expect(miniReaderAvailabilityStatus(reader, false)).toBe("ready");
   });
 });
 
