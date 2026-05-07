@@ -109,6 +109,18 @@ export async function saveMiniVocabularyPreferences(
 
 export type MiniReaderStatus = "idle" | "loading" | "ready" | "empty" | "error";
 
+export function miniReaderAvailabilityStatus(
+  reader: MiniReader,
+  showUnreadOnly: boolean,
+): "ready" | "empty" {
+  const visible = showUnreadOnly
+    ? reader.summaries.filter((summary) => !summary.read)
+    : reader.summaries;
+  return reader.channels.length === 0 || visible.length === 0
+    ? "empty"
+    : "ready";
+}
+
 export class MiniReaderState {
   reader = $state<MiniReader | null>(null);
   status = $state<MiniReaderStatus>("loading");
@@ -205,6 +217,14 @@ export class MiniReaderState {
         : "no-summaries",
   );
 
+  private syncReaderAvailabilityStatus() {
+    if (!this.reader) return;
+    this.status = miniReaderAvailabilityStatus(
+      this.reader,
+      this.showUnreadOnly,
+    );
+  }
+
   async loadReader(
     channelId?: string | null,
     preferredVideoId?: string | null,
@@ -228,13 +248,7 @@ export class MiniReaderState {
         preferredVideoId,
       );
       this.readProgress = 0;
-      const visible = this.showUnreadOnly
-        ? reader.summaries.filter((s) => !s.read)
-        : reader.summaries;
-      this.status =
-        reader.channels.length === 0 || visible.length === 0
-          ? "empty"
-          : "ready";
+      this.syncReaderAvailabilityStatus();
     } catch (cause) {
       const message =
         cause instanceof Error ? cause.message : "Could not load dastill-mini.";
@@ -377,6 +391,7 @@ export class MiniReaderState {
       this.activeVideoId = chooseActiveVideoId(nextVisible, markedId);
       this.contentKey += 1;
       this.readProgress = 0;
+      this.syncReaderAvailabilityStatus();
     } catch (cause) {
       this.error =
         cause instanceof Error
@@ -412,6 +427,7 @@ export class MiniReaderState {
         nextUnreadVideoId ?? (this.showUnreadOnly ? null : markedId);
       this.contentKey += 1;
       this.readProgress = 0;
+      this.syncReaderAvailabilityStatus();
     } catch (cause) {
       this.error =
         cause instanceof Error
@@ -475,10 +491,14 @@ export class MiniReaderState {
 
   toggleUnreadFilter() {
     this.showUnreadOnly = !this.showUnreadOnly;
+    this.reconcileActiveVideo();
+    this.syncReaderAvailabilityStatus();
   }
 
   clearUnreadFilter() {
     this.showUnreadOnly = false;
+    this.reconcileActiveVideo();
+    this.syncReaderAvailabilityStatus();
   }
 
   updateReadProgress(

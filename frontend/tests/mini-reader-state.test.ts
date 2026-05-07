@@ -6,12 +6,14 @@ import {
   findNextMiniChannelId,
   findNextUnreadVideoId,
   MINI_DEFAULT_SHOW_UNREAD_ONLY,
+  miniReaderAvailabilityStatus,
   miniChannelIsCaughtUp,
   saveMiniVocabularyPreferences,
   selectMiniSummaryHighlights,
 } from "../src/lib/mini/mini-reader-state.svelte";
 import { resetApiCacheForTests } from "../src/lib/api";
 import type { Highlight, UserPreferences } from "../src/lib/types";
+import type { Channel, MiniReader } from "../src/lib/transport-types";
 
 const originalFetch = globalThis.fetch;
 
@@ -36,6 +38,18 @@ function makeSummary(
     summary_content: "Summary",
     read,
     ...overrides,
+  };
+}
+
+function makeChannel(id = "channel-1"): Channel {
+  return {
+    id,
+    handle: null,
+    name: "Channel",
+    thumbnail_url: null,
+    added_at: "2026-04-16T00:00:00.000Z",
+    earliest_sync_date: null,
+    earliest_sync_date_user_set: false,
   };
 }
 
@@ -114,6 +128,28 @@ describe("findNextMiniChannelId", () => {
 
   it("returns null when no other channel exists", () => {
     expect(findNextMiniChannelId([{ id: "a" }], "a")).toBeNull();
+  });
+});
+
+describe("miniReaderAvailabilityStatus", () => {
+  it("returns empty after the last unread summary becomes read", () => {
+    const reader: MiniReader = {
+      channels: [makeChannel()],
+      selected_channel_id: "channel-1",
+      summaries: [makeSummary("a", true)],
+    };
+
+    expect(miniReaderAvailabilityStatus(reader, true)).toBe("empty");
+  });
+
+  it("returns ready when disabling unread-only reveals read summaries", () => {
+    const reader: MiniReader = {
+      channels: [makeChannel()],
+      selected_channel_id: "channel-1",
+      summaries: [makeSummary("a", true)],
+    };
+
+    expect(miniReaderAvailabilityStatus(reader, false)).toBe("ready");
   });
 });
 
