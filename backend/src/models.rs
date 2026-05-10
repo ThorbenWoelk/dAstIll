@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use utoipa::ToSchema;
 
-use crate::services::search::SearchSourceKind;
+use crate::search::SearchSourceKind;
 
 pub const OTHERS_CHANNEL_ID: &str = "__others__";
 pub const OTHERS_CHANNEL_NAME: &str = "Others";

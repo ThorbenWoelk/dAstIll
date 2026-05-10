@@ -17,10 +17,10 @@ use crate::models::{
     AddChannelRequest, Channel, OpenAlexPlanRequest, OpenAlexPlanResponse, UpdateChannelRequest,
 };
 use crate::read_cache::{ChannelSnapshotCacheKey, VideoListCacheKey};
+use crate::search::SearchSourceKind;
 use crate::security::{AccessContext, AuthState};
 use crate::services::{
-    FeedSourceAdapter, QuerySourceAdapter, SearchSourceKind, persist_source_profile_and_channel,
-    sync_source_profile,
+    FeedSourceAdapter, QuerySourceAdapter, persist_source_profile_and_channel, sync_source_profile,
 };
 use crate::state::AppState;
 
@@ -271,7 +271,7 @@ pub async fn workspace_bootstrap(
         }
         None => None,
     };
-    let search_status = super::search::load_search_status_payload(&state);
+    let search_status = crate::search::handler::load_search_status_payload(&state);
     let mut containers = Vec::with_capacity(channels.len());
     let mut sources = Vec::with_capacity(channels.len());
     for channel in &channels {

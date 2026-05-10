@@ -10,8 +10,8 @@ use libsql::{Builder, Connection, Database, TransactionBehavior, Value, params};
 use tokio::sync::RwLock;
 
 use crate::{
-    search_query::{build_fts_phrase_queries, build_fts_query, build_fts_relaxed_query},
-    services::search::{SearchCandidate, SearchSourceKind},
+    search::query::{build_fts_phrase_queries, build_fts_query, build_fts_relaxed_query},
+    search::{SearchCandidate, SearchSourceKind},
 };
 
 const LOCAL_DB_FILENAME: &str = "search-fts.db";

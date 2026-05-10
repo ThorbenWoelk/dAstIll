@@ -9,7 +9,7 @@ use super::summary_evaluation::{
 use super::{PollBackoff, PollBackoffState, QueueTask, populate_fts_index_from_materials};
 use crate::db::{SearchMaterial, SearchSourceCounts};
 use crate::models::{AiStatus, ContentStatus, Video};
-use crate::services::search::SearchSourceKind;
+use crate::search::SearchSourceKind;
 
 fn video_with_statuses(transcript_status: ContentStatus, summary_status: ContentStatus) -> Video {
     Video {
@@ -204,7 +204,7 @@ fn parse_chunk_group_key_preserves_video_ids_with_underscores() {
 
 #[tokio::test]
 async fn populate_fts_index_hydrates_from_raw_search_material_when_chunks_are_missing() {
-    let fts = crate::services::FtsIndex::new()
+    let fts = crate::search::FtsIndex::new()
         .await
         .expect("fts index should be created");
     let materials = vec![

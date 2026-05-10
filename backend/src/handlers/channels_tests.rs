@@ -16,10 +16,10 @@ use crate::{
     db::{Store, insert_channel, insert_video, list_search_progress_materials, upsert_transcript},
     handlers::query::WorkspaceBootstrapParams,
     models::{Channel, ContentStatus, Transcript, TranscriptRenderMode, Video},
-    search_progress::SearchProgress,
+    search::{SearchProgress, SearchService},
     security::{AccessContext, AccessRole, AuthState},
     services::{
-        ChatService, CloudCooldown, OllamaCore, OpenAlexService, PodcastFeedService, SearchService,
+        ChatService, CloudCooldown, OllamaCore, OpenAlexService, PodcastFeedService,
         SummarizerService, SummaryEvaluatorService, TranscriptCooldown, TranscriptService,
         UserActivity, WebsiteService, YouTubeQuotaCooldown, YouTubeService,
     },
@@ -39,7 +39,7 @@ async fn test_app_state(db: crate::db::Store) -> AppState {
         search_projection_lock: Arc::new(RwLock::new(())),
         search_progress: Arc::new(SearchProgress::new(
             None,
-            crate::services::search::SEARCH_EMBEDDING_DIMENSIONS,
+            crate::search::SEARCH_EMBEDDING_DIMENSIONS,
             false,
         )),
         youtube: Arc::new(YouTubeService::with_client(Client::new())),
@@ -61,7 +61,7 @@ async fn test_app_state(db: crate::db::Store) -> AppState {
         search: Arc::new(SearchService::with_config(
             "://invalid-url",
             None,
-            crate::services::search::SEARCH_EMBEDDING_DIMENSIONS,
+            crate::search::SEARCH_EMBEDDING_DIMENSIONS,
             false,
         )),
         chat: Arc::new(ChatService::new(
@@ -75,7 +75,7 @@ async fn test_app_state(db: crate::db::Store) -> AppState {
         analytics: None,
         active_replies: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         conversation_store_lock: Arc::new(tokio::sync::Mutex::new(())),
-        fts: Arc::new(crate::services::FtsIndex::new().await.expect("fts index")),
+        fts: Arc::new(crate::search::FtsIndex::new().await.expect("fts index")),
         anonymous_chat_quota_lock: Arc::new(tokio::sync::Mutex::new(())),
         mobile_auth_handoffs: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         cloud_cooldown: cooldown,

@@ -83,28 +83,24 @@ fn parse_chunk_group_key(key: &str) -> Option<(String, String)> {
 
 fn fts_chunks_from_material(
     material: &crate::db::SearchMaterial,
-) -> Vec<crate::services::fts::FtsChunk> {
+) -> Vec<crate::search::fts::FtsChunk> {
     let drafts = match material.source_kind {
-        crate::services::search::SearchSourceKind::Transcript => {
-            crate::services::search::chunk_transcript_content(
-                &material.content,
-                crate::services::search::SEARCH_TRANSCRIPT_TARGET_WORDS,
-                crate::services::search::SEARCH_TRANSCRIPT_OVERLAP_WORDS,
-                material.timed_segments.as_deref(),
-            )
-        }
-        crate::services::search::SearchSourceKind::Summary => {
-            crate::services::search::chunk_summary_content(
-                &material.content,
-                crate::services::search::SEARCH_SUMMARY_TARGET_WORDS,
-            )
-        }
+        crate::search::SearchSourceKind::Transcript => crate::search::chunk_transcript_content(
+            &material.content,
+            crate::search::SEARCH_TRANSCRIPT_TARGET_WORDS,
+            crate::search::SEARCH_TRANSCRIPT_OVERLAP_WORDS,
+            material.timed_segments.as_deref(),
+        ),
+        crate::search::SearchSourceKind::Summary => crate::search::chunk_summary_content(
+            &material.content,
+            crate::search::SEARCH_SUMMARY_TARGET_WORDS,
+        ),
     };
-    let content_hash = crate::services::search::hash_search_content(&material.content);
+    let content_hash = crate::search::hash_search_content(&material.content);
     drafts
         .into_iter()
         .enumerate()
-        .map(|(index, draft)| crate::services::fts::FtsChunk {
+        .map(|(index, draft)| crate::search::fts::FtsChunk {
             chunk_id: format!(
                 "{}_{}_{}_{}",
                 material.video_id,
@@ -120,7 +116,7 @@ fn fts_chunks_from_material(
 }
 
 async fn populate_fts_index_from_materials(
-    fts: &crate::services::FtsIndex,
+    fts: &crate::search::FtsIndex,
     materials: &[crate::db::SearchMaterial],
 ) -> usize {
     let mut upserted = 0usize;
@@ -133,7 +129,7 @@ async fn populate_fts_index_from_materials(
 
         if let Err(err) = fts
             .upsert_source(
-                crate::services::fts::FtsSourceMeta {
+                crate::search::fts::FtsSourceMeta {
                     video_id: &material.video_id,
                     source_kind: material.source_kind,
                     channel_id: &material.channel_id,
@@ -171,7 +167,7 @@ async fn load_all_search_materials(
             && let Some(material) = crate::db::load_search_material(
                 store,
                 &video.id,
-                crate::services::search::SearchSourceKind::Summary,
+                crate::search::SearchSourceKind::Summary,
             )
             .await?
         {
@@ -182,7 +178,7 @@ async fn load_all_search_materials(
             && let Some(material) = crate::db::load_search_material(
                 store,
                 &video.id,
-                crate::services::search::SearchSourceKind::Transcript,
+                crate::search::SearchSourceKind::Transcript,
             )
             .await?
         {
@@ -219,8 +215,8 @@ async fn fallback_fts_hydration_to_raw_materials(
 /// Called once at startup when the runtime index is empty so keyword search
 /// does not depend on the background worker replaying each source one by one.
 pub async fn populate_fts_index_from_store(state: AppState) {
-    use crate::services::fts::{FtsChunk, FtsSourceMeta};
-    use crate::services::search::SearchSourceKind;
+    use crate::search::SearchSourceKind;
+    use crate::search::fts::{FtsChunk, FtsSourceMeta};
 
     #[derive(serde::Deserialize)]
     struct ChunkData {

@@ -7,7 +7,7 @@ use crate::db;
 use crate::models::{
     Channel, Highlight, HighlightChannelGroup, HighlightVideoGroup, Summary, Transcript, Video,
 };
-use crate::services::search::SearchSourceKind;
+use crate::search::SearchSourceKind;
 use highlight_lookup::*;
 pub(crate) use queries::*;
 

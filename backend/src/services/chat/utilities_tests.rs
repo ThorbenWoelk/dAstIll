@@ -5,6 +5,7 @@ use super::{
     maybe_direct_highlight_lookup_tool_call, maybe_direct_recent_activity_tool_call, tools,
 };
 use crate::models::ChatSource;
+use crate::search::SearchSourceKind;
 use crate::services::chat::tools::{
     DbInspectOperation, DbInspectTarget, DbInspectToolInput, SearchLibraryToolInput,
 };
@@ -12,7 +13,6 @@ use crate::services::chat_heuristics::{
     collect_focus_terms, is_attributed_preference_query, recommendation_query_variants,
 };
 use crate::services::ollama::{CLOUD_PROMPT_TIMEOUT_SECS, OllamaCore};
-use crate::services::search::SearchSourceKind;
 
 #[test]
 fn attributed_preference_queries_are_detected() {

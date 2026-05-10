@@ -3,15 +3,12 @@ use tracing::Instrument;
 
 use crate::{
     db,
-    search_progress::SearchProgressSourceStatus,
-    services::{
+    search::{
+        SEARCH_SUMMARY_TARGET_WORDS, SEARCH_TRANSCRIPT_OVERLAP_WORDS,
+        SEARCH_TRANSCRIPT_TARGET_WORDS, SearchIndexChunk, SearchProgressSourceStatus,
+        SearchSourceKind, build_embedding_input, chunk_summary_content, chunk_transcript_content,
         fts::{FtsChunk, FtsSourceMeta},
-        search::{
-            SEARCH_SUMMARY_TARGET_WORDS, SEARCH_TRANSCRIPT_OVERLAP_WORDS,
-            SEARCH_TRANSCRIPT_TARGET_WORDS, SearchIndexChunk, SearchSourceKind,
-            build_embedding_input, chunk_summary_content, chunk_transcript_content,
-            hash_search_content, vector_to_json,
-        },
+        hash_search_content, vector_to_json,
     },
     state::AppState,
 };
@@ -27,7 +24,7 @@ use super::{
     SEARCH_INDEX_POLL_INTERVAL,
 };
 
-fn chunk_material(material: &db::SearchMaterial) -> Vec<crate::services::search::ChunkDraft> {
+fn chunk_material(material: &db::SearchMaterial) -> Vec<crate::search::ChunkDraft> {
     match material.source_kind {
         SearchSourceKind::Transcript => chunk_transcript_content(
             &material.content,
@@ -265,7 +262,7 @@ async fn process_pending_search_sources(state: &AppState) -> bool {
             published_at: String,
             source_kind: SearchSourceKind,
             content_hash: String,
-            drafts: Vec<crate::services::search::ChunkDraft>,
+            drafts: Vec<crate::search::ChunkDraft>,
             embedding_inputs: Vec<String>,
         }
 

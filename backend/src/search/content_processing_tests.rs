@@ -7,12 +7,12 @@ use axum::{Json, Router, http::StatusCode, response::IntoResponse, routing::post
 use serde::Deserialize;
 use serde_json::json;
 
-use super::{
+use crate::search::{SEARCH_SUMMARY_MAX_CHUNKS, SEARCH_TRANSCRIPT_MAX_CHUNKS};
+use crate::search::{
     SearchService, SearchSourceKind, build_embedding_input, chunk_summary_content,
     chunk_transcript_content, extract_keyword_snippet, fuse_ranked_matches, hash_search_content,
     truncate_chunk_for_display,
 };
-use crate::services::search::{SEARCH_SUMMARY_MAX_CHUNKS, SEARCH_TRANSCRIPT_MAX_CHUNKS};
 
 #[derive(Debug, Deserialize)]
 struct TestEmbedRequest {

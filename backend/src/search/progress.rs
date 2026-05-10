@@ -6,7 +6,7 @@ use tokio::sync::{RwLock, watch};
 
 use crate::db::{SearchMaterial, SearchProgressMaterial};
 use crate::models::SearchStatusPayload;
-use crate::services::search::{
+use crate::search::{
     SEARCH_SUMMARY_TARGET_WORDS, SEARCH_TRANSCRIPT_OVERLAP_WORDS, SEARCH_TRANSCRIPT_TARGET_WORDS,
     SearchSourceKind, chunk_summary_content, chunk_transcript_content,
 };
@@ -360,5 +360,5 @@ impl SearchProgress {
 }
 
 #[cfg(test)]
-#[path = "search_progress_tests.rs"]
-mod search_progress_tests;
+#[path = "progress_tests.rs"]
+mod progress_tests;

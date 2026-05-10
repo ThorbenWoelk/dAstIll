@@ -1,7 +1,7 @@
 use aws_smithy_types::Document;
 
 use crate::models::{ContentStatus, Summary, Transcript, Video};
-use crate::services::search::{SearchCandidate, SearchIndexChunk, SearchSourceKind};
+use crate::search::{SearchCandidate, SearchIndexChunk, SearchSourceKind};
 
 use super::{
     SearchMaterial, SearchProgressMaterial, SearchSourceCounts, SearchSourceRecord,

@@ -1,6 +1,3 @@
-mod ranking;
-
-use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
 use axum::{
@@ -16,19 +13,14 @@ use tokio_stream::{StreamExt, wrappers::WatchStream};
 use utoipa::{IntoParams, ToSchema};
 
 use crate::db;
-use crate::models::{
-    SearchMatchPayload, SearchResponsePayload, SearchStatusPayload, SearchVideoResultPayload,
-};
-use crate::search_query::{meaningful_search_terms, normalize_search_text, tokenize_search_terms};
+use crate::models::{SearchResponsePayload, SearchStatusPayload, SearchVideoResultPayload};
+use crate::search::query::{meaningful_search_terms, normalize_search_text, tokenize_search_terms};
+use crate::search::{SearchCandidate, SearchSourceKind, extract_keyword_snippet, vector_to_json};
 use crate::security::{AccessContext, can_access_channel, can_access_video};
-use crate::services::search::{
-    SEARCH_RRF_K, SearchCandidate, SearchSourceKind, extract_keyword_snippet, fuse_ranked_matches,
-    truncate_chunk_for_display, vector_to_json,
-};
 use crate::state::AppState;
 
-use super::map_db_err;
-use ranking::*;
+use super::ranking::*;
+use crate::handlers::map_db_err;
 
 #[derive(Debug, Clone, Copy, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -39,7 +31,7 @@ pub enum SearchSourceFilter {
 }
 
 impl SearchSourceFilter {
-    fn as_source_kind(self) -> Option<SearchSourceKind> {
+    pub(super) fn as_source_kind(self) -> Option<SearchSourceKind> {
         match self {
             Self::All => None,
             Self::Transcript => Some(SearchSourceKind::Transcript),
@@ -82,24 +74,24 @@ impl SearchExecutionMode {
         }
     }
 
-    fn runs_keyword(self) -> bool {
+    pub(super) fn runs_keyword(self) -> bool {
         matches!(self, Self::Keyword | Self::Hybrid)
     }
 
-    fn runs_semantic(self) -> bool {
+    pub(super) fn runs_semantic(self) -> bool {
         matches!(self, Self::Semantic | Self::Hybrid)
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SearchRetrievalMode {
+pub(super) enum SearchRetrievalMode {
     FtsOnly,
     HybridExact,
     HybridAnn,
 }
 
 impl SearchRetrievalMode {
-    fn as_str(self) -> &'static str {
+    pub(super) fn as_str(self) -> &'static str {
         match self {
             Self::FtsOnly => "fts_only",
             Self::HybridExact => "hybrid_exact",
@@ -108,7 +100,7 @@ impl SearchRetrievalMode {
     }
 }
 
-fn resolve_requested_retrieval_mode(
+pub(super) fn resolve_requested_retrieval_mode(
     execution_mode: SearchExecutionMode,
     hybrid_configured: bool,
     vector_index_ready: bool,
@@ -122,7 +114,7 @@ fn resolve_requested_retrieval_mode(
     }
 }
 
-fn resolve_semantic_retrieval_mode(
+pub(super) fn resolve_semantic_retrieval_mode(
     hybrid_configured: bool,
     vector_index_ready: bool,
 ) -> Option<SearchRetrievalMode> {
@@ -135,7 +127,9 @@ fn resolve_semantic_retrieval_mode(
     }
 }
 
-fn resolve_semantic_exact_source_kind(source: SearchSourceFilter) -> Option<SearchSourceKind> {
+pub(super) fn resolve_semantic_exact_source_kind(
+    source: SearchSourceFilter,
+) -> Option<SearchSourceKind> {
     match source {
         SearchSourceFilter::All => Some(SearchSourceKind::Summary),
         _ => source.as_source_kind(),
@@ -515,27 +509,6 @@ pub async fn rebuild_search_projection(
     Ok(StatusCode::ACCEPTED)
 }
 
-fn contains_token_phrase(text: &str, phrase_tokens: &[String]) -> bool {
-    if phrase_tokens.len() < 2 {
-        return false;
-    }
-
-    let text_tokens = tokenize_search_terms(text);
-    text_tokens
-        .windows(phrase_tokens.len())
-        .any(|window| window == phrase_tokens)
-}
-
-fn count_title_term_matches(title: &str, terms: &[String]) -> usize {
-    let title_terms = tokenize_search_terms(title)
-        .into_iter()
-        .collect::<HashSet<_>>();
-    terms
-        .iter()
-        .filter(|term| title_terms.contains(*term))
-        .count()
-}
-
 fn candidate_combined_terms(candidate: &SearchCandidate) -> HashSet<String> {
     let mut terms = tokenize_search_terms(&candidate.video_title)
         .into_iter()
@@ -672,4 +645,5 @@ fn promote_hybrid_keyword_rescue_results(
 }
 
 #[cfg(test)]
-mod search_tests;
+#[path = "handler_tests.rs"]
+mod handler_tests;

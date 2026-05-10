@@ -11,11 +11,11 @@ use settings::load_runtime_config;
 use youtube_validation::validate_youtube_api_key;
 
 use crate::config::SecurityRuntimeConfig;
-use crate::search_progress::SearchProgress;
+use crate::search::{FtsIndex, SearchProgress, SearchService};
 use crate::security::rate_limiter;
 use crate::services::{
-    ChatService, Cooldown, DatabricksSqlService, FtsIndex, OllamaCore, OpenAlexPlannerService,
-    OpenAlexService, PodcastFeedService, PollyTtsService, SearchService, SummarizerService,
+    ChatService, Cooldown, DatabricksSqlService, OllamaCore, OpenAlexPlannerService,
+    OpenAlexService, PodcastFeedService, PollyTtsService, SummarizerService,
     SummaryEvaluatorService, TranscriptService, UserActivity, WebsiteService, YouTubeService,
     build_http_client,
 };
@@ -132,7 +132,7 @@ pub async fn build_runtime(port: u16) -> anyhow::Result<Runtime> {
         SearchService::with_config(
             &config.ollama.url,
             config.ollama.embedding_model.as_deref(),
-            crate::services::search::SEARCH_EMBEDDING_DIMENSIONS,
+            crate::search::SEARCH_EMBEDDING_DIMENSIONS,
             config.search.semantic_enabled,
         )
         .with_api_key(config.ollama.api_key)

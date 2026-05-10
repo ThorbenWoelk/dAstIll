@@ -20,10 +20,7 @@ fn sends_ai_targets_to_logfire() {
         "dastill::services::chat::reply",
         &Level::INFO
     ));
-    assert!(should_send_to_logfire(
-        "dastill::services::search",
-        &Level::WARN
-    ));
+    assert!(should_send_to_logfire("dastill::search", &Level::WARN));
 }
 
 #[test]

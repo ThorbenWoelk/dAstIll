@@ -18,23 +18,20 @@ use crate::{
     models::SearchResponsePayload,
     models::SearchVideoResultPayload,
     models::{ContentItemKind, ContentSourceKind, ProviderKind},
-    search_progress::SearchProgress,
+    search::fts::FtsSourceMeta,
+    search::{FtsChunk, SearchProgress, SearchService, SearchSourceKind},
     security::{AccessContext, AccessRole, AuthState},
-    services::fts::FtsSourceMeta,
     services::{
-        ChatService, CloudCooldown, FtsChunk, InputGuardrailService, OllamaCore,
-        OpenAlexPlannerService, OpenAlexService, PodcastFeedService, SearchService,
-        SearchSourceKind, SummarizerService, SummaryEvaluatorService, TranscriptCooldown,
-        TranscriptService, UserActivity, WebsiteService, YouTubeQuotaCooldown, YouTubeService,
+        ChatService, CloudCooldown, InputGuardrailService, OllamaCore, OpenAlexPlannerService,
+        OpenAlexService, PodcastFeedService, SummarizerService, SummaryEvaluatorService,
+        TranscriptCooldown, TranscriptService, UserActivity, WebsiteService, YouTubeQuotaCooldown,
+        YouTubeService,
     },
     state::AppState,
 };
 
-fn search_candidate(
-    video_title: &str,
-    chunk_text: &str,
-) -> crate::services::search::SearchCandidate {
-    crate::services::search::SearchCandidate {
+fn search_candidate(video_title: &str, chunk_text: &str) -> crate::search::SearchCandidate {
+    crate::search::SearchCandidate {
         chunk_id: video_title.to_string(),
         video_id: video_title.to_string(),
         channel_id: "channel".to_string(),
@@ -184,7 +181,7 @@ async fn test_app_state() -> AppState {
         search_projection_lock: Arc::new(RwLock::new(())),
         search_progress: Arc::new(SearchProgress::new(
             None,
-            crate::services::search::SEARCH_EMBEDDING_DIMENSIONS,
+            crate::search::SEARCH_EMBEDDING_DIMENSIONS,
             false,
         )),
         youtube: Arc::new(YouTubeService::with_client(Client::new())),
@@ -206,7 +203,7 @@ async fn test_app_state() -> AppState {
         search: Arc::new(SearchService::with_config(
             "://invalid-url",
             None,
-            crate::services::search::SEARCH_EMBEDDING_DIMENSIONS,
+            crate::search::SEARCH_EMBEDDING_DIMENSIONS,
             false,
         )),
         chat: Arc::new(ChatService::new(
@@ -220,7 +217,7 @@ async fn test_app_state() -> AppState {
         analytics: None,
         active_replies: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         conversation_store_lock: Arc::new(tokio::sync::Mutex::new(())),
-        fts: Arc::new(crate::services::FtsIndex::new().await.expect("fts index")),
+        fts: Arc::new(crate::search::FtsIndex::new().await.expect("fts index")),
         anonymous_chat_quota_lock: Arc::new(tokio::sync::Mutex::new(())),
         mobile_auth_handoffs: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         cloud_cooldown: cooldown,

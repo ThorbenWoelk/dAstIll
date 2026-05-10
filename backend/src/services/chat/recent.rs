@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 
 use crate::db;
 use crate::models::{ContentStatus, Video};
-use crate::services::search::SearchSourceKind;
+use crate::search::SearchSourceKind;
 
 use super::constants::CHAT_RECENT_ACTIVITY_VIDEO_LIMIT;
 use super::tools::RecentLibraryActivityQuery;

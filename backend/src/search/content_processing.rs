@@ -1,4 +1,13 @@
-use super::*;
+use sha2::{Digest, Sha256};
+
+use crate::services::text::limit_text as limit_text_base;
+
+use super::{
+    ChunkDraft, SEARCH_SUMMARY_MAX_CHUNKS, SEARCH_TRANSCRIPT_MAX_CHUNKS, SearchSourceKind,
+};
+
+const MAX_ERROR_DETAIL_CHARS: usize = 240;
+const MAX_SNIPPET_CHARS: usize = 420;
 
 pub fn hash_search_content(content: &str) -> String {
     let mut hasher = Sha256::new();

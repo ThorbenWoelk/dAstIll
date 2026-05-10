@@ -42,8 +42,8 @@ use crate::db;
 use crate::models::{
     ChatConversation, ChatMessage, ChatMessageStatus, ChatRole, ChatSource, ChatTitleStatus,
 };
+use crate::search::SearchCandidate;
 use crate::services::ollama::OllamaCore;
-use crate::services::search::SearchCandidate;
 use crate::services::text::{limit_text, strip_emoji};
 use crate::state::{ActiveChatKey, AppState};
 

@@ -8,7 +8,6 @@ pub mod library;
 pub mod mini;
 pub mod preferences;
 pub mod query;
-pub mod search;
 pub mod videos;
 
 use axum::http::StatusCode;

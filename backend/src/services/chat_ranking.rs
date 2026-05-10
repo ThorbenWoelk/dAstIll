@@ -1,9 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::models::ChatSource;
-use crate::services::search::{
-    SEARCH_RRF_K, SearchCandidate, SearchSourceKind, truncate_chunk_for_display,
-};
+use crate::search::{SEARCH_RRF_K, SearchCandidate, SearchSourceKind, truncate_chunk_for_display};
 use crate::services::text::limit_text;
 
 use super::chat::{
@@ -190,10 +188,10 @@ pub(super) fn rank_chat_sources(
                     crate::models::infer_source_kind_for_source_id(&candidate.candidate.channel_id),
                 ),
                 part_kind: match candidate.candidate.source_kind {
-                    crate::services::search::SearchSourceKind::Summary => {
+                    crate::search::SearchSourceKind::Summary => {
                         crate::models::ContentPartKind::GeneratedSummary
                     }
-                    crate::services::search::SearchSourceKind::Transcript => {
+                    crate::search::SearchSourceKind::Transcript => {
                         crate::models::infer_primary_text_part_kind_for_source_kind(
                             crate::models::infer_source_kind_for_source_id(
                                 &candidate.candidate.channel_id,

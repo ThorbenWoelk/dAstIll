@@ -3,7 +3,7 @@ use super::{
     resolve_retrieval_mode,
 };
 use crate::db::{SearchMaterial, SearchProgressMaterial};
-use crate::services::search::SearchSourceKind;
+use crate::search::SearchSourceKind;
 
 #[tokio::test]
 async fn initialize_counts_missing_sources_as_pending() {

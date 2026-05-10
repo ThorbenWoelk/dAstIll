@@ -567,7 +567,7 @@ impl ChatService {
 
         for query in queries {
             active_chat.ensure_not_cancelled()?;
-            let query_tokens = crate::search_query::meaningful_search_terms(query);
+            let query_tokens = crate::search::query::meaningful_search_terms(query);
             for channel_filter in &filters {
                 active_chat.ensure_not_cancelled()?;
                 let results = state
@@ -579,7 +579,7 @@ impl ChatService {
                     .map(|r| {
                         let mut c: SearchCandidate = r.into();
                         if !query_tokens.is_empty() {
-                            c.chunk_text = crate::services::search::extract_keyword_snippet(
+                            c.chunk_text = crate::search::extract_keyword_snippet(
                                 &c.chunk_text,
                                 &query_tokens,
                             );
@@ -607,7 +607,7 @@ impl ChatService {
                 let mut semantic_batches = Vec::new();
                 for embedding in &embeddings {
                     active_chat.ensure_not_cancelled()?;
-                    let query_embedding = crate::services::search::vector_to_json(embedding);
+                    let query_embedding = crate::search::vector_to_json(embedding);
                     for channel_filter in &filters {
                         active_chat.ensure_not_cancelled()?;
                         semantic_batches.push(filter_search_candidates_for_access(

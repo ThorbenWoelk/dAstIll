@@ -1,7 +1,7 @@
 use crate::models::{
     ContentStatus, Summary, SummaryEvaluationJob, Transcript, TranscriptRenderMode,
 };
-use crate::services::search::SearchSourceKind;
+use crate::search::SearchSourceKind;
 
 use super::{Store, StoreError};
 

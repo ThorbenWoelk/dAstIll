@@ -5,8 +5,8 @@ use super::{
 use crate::models::{
     ChatSource, ContentItemKind, ContentPartKind, ContentSourceKind, ProviderKind,
 };
+use crate::search::SearchSourceKind;
 use crate::services::chat::RetrievedChatSource;
-use crate::services::search::SearchSourceKind;
 
 #[test]
 fn source_list_fallback_answer_keeps_citations_and_source_titles() {

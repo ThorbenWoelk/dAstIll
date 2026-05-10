@@ -8,7 +8,7 @@ use super::{
     resolve_mention_scope_from_catalog,
 };
 use crate::models::{Channel, ContentStatus, Summary, Transcript, Video};
-use crate::services::search::SearchSourceKind;
+use crate::search::SearchSourceKind;
 use std::collections::{HashMap, HashSet};
 
 #[test]

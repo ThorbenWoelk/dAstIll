@@ -97,7 +97,7 @@ pub struct HumanReadableEventFormatter;
 const LOGFIRE_AI_TARGET_PREFIXES: &[&str] = &[
     "dastill::services::chat",
     "dastill::services::ollama",
-    "dastill::services::search",
+    "dastill::search",
     "dastill::services::summarizer",
     "dastill::services::summary_evaluator",
 ];

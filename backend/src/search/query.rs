@@ -163,5 +163,5 @@ pub fn build_fts_relaxed_query(query: &str) -> String {
 }
 
 #[cfg(test)]
-#[path = "search_query_tests.rs"]
-mod search_query_tests;
+#[path = "query_tests.rs"]
+mod query_tests;

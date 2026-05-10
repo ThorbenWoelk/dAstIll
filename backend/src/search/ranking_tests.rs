@@ -1,11 +1,12 @@
 use super::{
-    SearchExecutionMode, SearchRetrievalMode, SearchSourceFilter, group_fts_candidates,
-    group_ranked_candidates, rank_and_group_candidates, rerank_fts_candidates,
-    resolve_requested_retrieval_mode, resolve_semantic_exact_source_kind,
-    resolve_semantic_retrieval_mode,
+    group_fts_candidates, group_ranked_candidates, rank_and_group_candidates, rerank_fts_candidates,
 };
-use crate::search_query::build_fts_query;
-use crate::services::search::{SearchCandidate, SearchSourceKind};
+use crate::search::handler::{
+    SearchExecutionMode, SearchRetrievalMode, SearchSourceFilter, resolve_requested_retrieval_mode,
+    resolve_semantic_exact_source_kind, resolve_semantic_retrieval_mode,
+};
+use crate::search::query::build_fts_query;
+use crate::search::{SearchCandidate, SearchSourceKind};
 
 fn candidate(chunk_id: &str, video_id: &str, source_kind: SearchSourceKind) -> SearchCandidate {
     SearchCandidate {

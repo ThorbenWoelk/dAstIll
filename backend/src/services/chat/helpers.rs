@@ -315,7 +315,7 @@ pub(super) fn direct_video_lookup_target<'a>(
 }
 
 pub(super) fn is_direct_video_lookup_request(cleaned_prompt: &str, search_query: &str) -> bool {
-    let meaningful_terms = crate::search_query::meaningful_search_terms(cleaned_prompt);
+    let meaningful_terms = crate::search::query::meaningful_search_terms(cleaned_prompt);
     if meaningful_terms.is_empty() {
         return true;
     }
@@ -335,7 +335,7 @@ pub(super) fn is_direct_video_lookup_request(cleaned_prompt: &str, search_query:
         "video",
         "watch",
     ]);
-    let title_terms = crate::search_query::meaningful_search_terms(search_query)
+    let title_terms = crate::search::query::meaningful_search_terms(search_query)
         .into_iter()
         .collect::<HashSet<_>>();
 
@@ -465,13 +465,13 @@ pub(super) fn apply_recent_activity_scope(
 pub(super) async fn load_direct_video_sources(
     store: &db::Store,
     video_id: &str,
-    source_kind: Option<crate::services::search::SearchSourceKind>,
+    source_kind: Option<crate::search::SearchSourceKind>,
 ) -> Result<Vec<RetrievedChatSource>, String> {
     let kinds = match source_kind {
         Some(kind) => vec![kind],
         None => vec![
-            crate::services::search::SearchSourceKind::Summary,
-            crate::services::search::SearchSourceKind::Transcript,
+            crate::search::SearchSourceKind::Summary,
+            crate::search::SearchSourceKind::Transcript,
         ],
     };
 
@@ -493,10 +493,8 @@ pub(super) fn retrieved_source_from_search_material(
     material: db::SearchMaterial,
 ) -> RetrievedChatSource {
     let section_title = match material.source_kind {
-        crate::services::search::SearchSourceKind::Summary => Some("Full summary".to_string()),
-        crate::services::search::SearchSourceKind::Transcript => {
-            Some("Full transcript".to_string())
-        }
+        crate::search::SearchSourceKind::Summary => Some("Full summary".to_string()),
+        crate::search::SearchSourceKind::Transcript => Some("Full transcript".to_string()),
     };
     let source_kind = material.source_kind;
     let video_id = material.video_id;
@@ -515,10 +513,10 @@ pub(super) fn retrieved_source_from_search_material(
                 crate::models::infer_source_kind_for_source_id(&material.channel_id),
             ),
             part_kind: match source_kind {
-                crate::services::search::SearchSourceKind::Summary => {
+                crate::search::SearchSourceKind::Summary => {
                     crate::models::ContentPartKind::GeneratedSummary
                 }
-                crate::services::search::SearchSourceKind::Transcript => {
+                crate::search::SearchSourceKind::Transcript => {
                     crate::models::infer_primary_text_part_kind_for_source_kind(
                         crate::models::infer_source_kind_for_source_id(&material.channel_id),
                     )
@@ -529,7 +527,7 @@ pub(super) fn retrieved_source_from_search_material(
             video_title: material.video_title,
             source_kind,
             section_title,
-            snippet: crate::services::search::truncate_chunk_for_display(&material.content),
+            snippet: crate::search::truncate_chunk_for_display(&material.content),
             score: 1.0,
             retrieval_pass: Some(1),
         },
@@ -539,8 +537,8 @@ pub(super) fn retrieved_source_from_search_material(
 
 pub(super) fn describe_search_library_query(query: tools::SearchLibraryQuery) -> String {
     let source = match query.source_kind {
-        Some(crate::services::search::SearchSourceKind::Summary) => Some("summaries"),
-        Some(crate::services::search::SearchSourceKind::Transcript) => Some("transcripts"),
+        Some(crate::search::SearchSourceKind::Summary) => Some("summaries"),
+        Some(crate::search::SearchSourceKind::Transcript) => Some("transcripts"),
         None => None,
     };
     let source_label = source.unwrap_or("all sources");

@@ -18,13 +18,13 @@ use crate::{
     config::SecurityRuntimeConfig,
     db::Store,
     read_cache::ReadCache,
-    search_progress::SearchProgress,
+    search::{FtsIndex, SearchProgress, SearchService},
     security::{AccessContext, AccessRole, AuthState, RequestRateLimiter},
     services::{
-        ChatService, CloudCooldown, FtsIndex, InputGuardrailService, OllamaCore,
-        OpenAlexPlannerService, OpenAlexService, PodcastFeedService, SearchService,
-        SummarizerService, SummaryEvaluatorService, TranscriptCooldown, TranscriptService,
-        UserActivity, WebsiteService, YouTubeQuotaCooldown, YouTubeService,
+        ChatService, CloudCooldown, InputGuardrailService, OllamaCore, OpenAlexPlannerService,
+        OpenAlexService, PodcastFeedService, SummarizerService, SummaryEvaluatorService,
+        TranscriptCooldown, TranscriptService, UserActivity, WebsiteService, YouTubeQuotaCooldown,
+        YouTubeService,
     },
     state::AppState,
 };
@@ -79,7 +79,7 @@ async fn test_app_state() -> AppState {
     let search = Arc::new(SearchService::with_config(
         "://invalid-url",
         None,
-        crate::services::search::SEARCH_EMBEDDING_DIMENSIONS,
+        crate::search::SEARCH_EMBEDDING_DIMENSIONS,
         false,
     ));
 

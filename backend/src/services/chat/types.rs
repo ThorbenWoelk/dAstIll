@@ -446,7 +446,7 @@ pub(super) struct RetrievalCandidateRequest<'a> {
     pub(super) candidate_limit: usize,
     pub(super) channel_focus_ids: &'a [String],
     pub(super) video_focus_ids: &'a [String],
-    pub(super) source_kind: Option<crate::services::search::SearchSourceKind>,
+    pub(super) source_kind: Option<crate::search::SearchSourceKind>,
     pub(super) active_chat: &'a ActiveChatHandle,
 }
 

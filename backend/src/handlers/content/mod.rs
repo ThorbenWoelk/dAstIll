@@ -14,8 +14,8 @@ use crate::models::{
     AiHealthPayload, CleanTranscriptResponse, ContentStatus, Summary, Transcript,
     TranscriptRenderMode, UpdateContentRequest,
 };
-use crate::services::SearchSourceKind;
-use crate::services::search::hash_search_content;
+use crate::search::SearchSourceKind;
+use crate::search::hash_search_content;
 use crate::services::summarizer::{
     MAX_TRANSCRIPT_FORMAT_ATTEMPTS, SummarizerError, apply_vocabulary_replacements,
 };

@@ -7,7 +7,7 @@ use super::{
     validate_chat_conversation_bounds, validate_chat_prompt, validate_chat_title_length,
 };
 use crate::models::{ChatConversation, ChatMessage, ChatMessageStatus, ChatRole, ChatSource};
-use crate::services::search::SearchSourceKind;
+use crate::search::SearchSourceKind;
 
 fn message(role: ChatRole, content: &str) -> ChatMessage {
     ChatMessage {

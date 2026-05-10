@@ -7,9 +7,9 @@ use tower_http::trace::TraceLayer;
 use crate::cache_headers::add_cache_control;
 use crate::config::SecurityRuntimeConfig;
 use crate::handlers::{
-    analytics, auth, channels, chat, content, highlights, library, mini, preferences, search,
-    videos,
+    analytics, auth, channels, chat, content, highlights, library, mini, preferences, videos,
 };
+use crate::search::handler as search;
 use crate::security::{
     build_cors_layer, enforce_anonymous_chat_quota, enforce_baseline_rate_limit,
     enforce_expensive_rate_limit, require_operator_role, require_proxy_auth,

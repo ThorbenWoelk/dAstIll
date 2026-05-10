@@ -1,4 +1,33 @@
-use super::*;
+use std::cmp::Ordering;
+use std::collections::HashMap;
+
+use crate::models::{SearchMatchPayload, SearchVideoResultPayload};
+use crate::search::query::{meaningful_search_terms, tokenize_search_terms};
+use crate::search::{
+    SEARCH_RRF_K, SearchCandidate, SearchSourceKind, fuse_ranked_matches,
+    truncate_chunk_for_display,
+};
+
+pub(super) fn contains_token_phrase(text: &str, phrase_tokens: &[String]) -> bool {
+    if phrase_tokens.len() < 2 {
+        return false;
+    }
+
+    let text_tokens = tokenize_search_terms(text);
+    text_tokens
+        .windows(phrase_tokens.len())
+        .any(|window| window == phrase_tokens)
+}
+
+pub(super) fn count_title_term_matches(title: &str, terms: &[String]) -> usize {
+    let title_terms = tokenize_search_terms(title)
+        .into_iter()
+        .collect::<std::collections::HashSet<_>>();
+    terms
+        .iter()
+        .filter(|term| title_terms.contains(*term))
+        .count()
+}
 
 fn count_candidate_term_matches(candidate: &SearchCandidate, terms: &[String]) -> usize {
     let mut candidate_terms = tokenize_search_terms(&candidate.video_title)

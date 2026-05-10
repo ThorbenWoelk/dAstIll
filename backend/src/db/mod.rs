@@ -42,7 +42,7 @@ pub use video_info::*;
 pub use videos::*;
 
 use crate::models::{Channel, Video};
-use crate::services::search::SearchSourceKind;
+use crate::search::SearchSourceKind;
 use aws_sdk_s3::error::SdkError;
 use aws_smithy_types::error::metadata::ProvideErrorMetadata;
 

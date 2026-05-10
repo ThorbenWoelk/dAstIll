@@ -1259,7 +1259,7 @@
             Scope: local repo research on 2026-04-24. Core sources:
             <code>docs/features/search.md</code>,
             <code>docs/pipelines/ai-models.md</code>,
-            <code>backend/src/handlers/search/mod.rs</code>,
+            <code>backend/src/search/handler.rs</code>,
             <code>backend/src/services/chat/retrieval.rs</code>.
           </p>
         </div>
@@ -1820,7 +1820,7 @@
           </table>
           <p class="source">
             Sources: <code>docs/features/search.md:47-80</code>,
-            <code>backend/src/services/fts.rs:282-393</code>.
+            <code>backend/src/search/fts.rs:282-393</code>.
           </p>
         </div>
       </section>
@@ -1859,7 +1859,7 @@
             step inside that engine.
           </p>
           <p class="source">
-            Sources: <code>backend/src/services/fts.rs:367-393</code>,
+            Sources: <code>backend/src/search/fts.rs:367-393</code>,
             <code>docs/features/search.md:47-80</code>.
           </p>
         </div>
@@ -1884,7 +1884,7 @@
     tokenize = 'porter'
 );</code></pre>
           <p class="source">
-            Source: <code>backend/src/services/fts.rs:367-393</code>. The
+            Source: <code>backend/src/search/fts.rs:367-393</code>. The
             readable chunk text is inserted into FTS; FTS5 builds its own
             searchable token index with the porter tokenizer.
           </p>
@@ -1931,7 +1931,7 @@
             </tr>
           </table>
           <p class="source">
-            Source: <code>backend/src/services/fts.rs:367-393</code>. dAstIll
+            Source: <code>backend/src/search/fts.rs:367-393</code>. dAstIll
             still uses metadata columns for result payloads and SQL filters;
             they are simply not part of the FTS token index.
           </p>
@@ -1992,9 +1992,9 @@
             </tr>
           </table>
           <p class="source">
-            Sources: <code>backend/src/services/fts.rs:224-270</code>,
-            <code>backend/src/search_query.rs:102-141</code>,
-            <code>backend/src/handlers/search/ranking.rs:19-88</code>.
+            Sources: <code>backend/src/search/fts.rs:224-270</code>,
+            <code>backend/src/search/query.rs:102-141</code>,
+            <code>backend/src/search/ranking.rs:19-88</code>.
           </p>
         </div>
       </section>
@@ -2026,7 +2026,7 @@
             </div>
           </div>
           <p class="source">
-            Sources: <code>backend/src/services/search/mod.rs:61-79</code>,
+            Sources: <code>backend/src/search/service.rs:61-79</code>,
             <code>backend/src/services/chat/retrieval.rs:345-467</code>.
           </p>
         </div>
@@ -2055,7 +2055,7 @@
           </div>
           <p class="source">
             Sources: <code>docs/features/search.md:272-296</code>,
-            <code>backend/src/handlers/search/ranking.rs:12-69</code>.
+            <code>backend/src/search/ranking.rs:12-69</code>.
           </p>
         </div>
       </section>
@@ -2104,7 +2104,7 @@
           </table>
           <p class="source">
             Sources: <code>frontend/src/lib/api.ts:818-846</code>,
-            <code>backend/src/handlers/search/mod.rs:137-168</code>.
+            <code>backend/src/search/handler.rs:137-168</code>.
           </p>
         </div>
       </section>
@@ -2149,9 +2149,9 @@
             </tr>
           </table>
           <p class="source">
-            Sources: <code>backend/src/handlers/search/mod.rs:70-95</code>,
-            <code>backend/src/handlers/search/mod.rs:186-228</code>,
-            <code>backend/src/handlers/search/mod.rs:354-420</code>.
+            Sources: <code>backend/src/search/handler.rs:70-95</code>,
+            <code>backend/src/search/handler.rs:186-228</code>,
+            <code>backend/src/search/handler.rs:354-420</code>.
           </p>
         </div>
       </section>
@@ -2338,7 +2338,7 @@
             </div>
           </div>
           <p class="source">
-            Sources: <code>backend/src/handlers/search/mod.rs:139-276</code>,
+            Sources: <code>backend/src/search/handler.rs:139-276</code>,
             <code>backend/src/services/chat/retrieval.rs:422-467</code>.
           </p>
         </div>
@@ -2368,7 +2368,7 @@
             </div>
           </div>
           <p class="source">
-            Sources: <code>backend/src/services/search/mod.rs:232-343</code>,
+            Sources: <code>backend/src/search/service.rs:232-343</code>,
             <code>backend/src/db/search.rs:139-236</code>.
           </p>
         </div>
@@ -2438,7 +2438,7 @@
           <p class="source">
             Source:
             <code
-              >backend/src/services/search/content_processing.rs:221-234</code
+              >backend/src/search/content_processing.rs:221-234</code
             >. This is before FTS tokenization and before embedding input is
             built.
           </p>
@@ -2589,7 +2589,7 @@
           </p>
           <p class="source">
             Sources: <code>docs/features/search.md:298-327</code>,
-            <code>backend/src/handlers/search/mod.rs:139-276</code>,
+            <code>backend/src/search/handler.rs:139-276</code>,
             <code>backend/src/db/search.rs:694-711</code>.
           </p>
         </div>
@@ -2641,7 +2641,7 @@
           </table>
           <p class="source">
             Sources: <code>backend/src/workers/search_index.rs:844-912</code>,
-            <code>backend/src/search_progress.rs:102-120</code>,
+            <code>backend/src/search/progress.rs:102-120</code>,
             <code>backend/src/db/search.rs:743-752</code>.
           </p>
         </div>
@@ -2738,7 +2738,7 @@
           </p>
           <p class="source">
             Sources: <code>docs/pipelines/ai-models.md:165-221</code>,
-            <code>backend/src/services/search/mod.rs:472-545</code>.
+            <code>backend/src/search/service.rs:472-545</code>.
           </p>
         </div>
       </section>
@@ -2790,7 +2790,7 @@
             </tr>
           </table>
           <p class="source">
-            Sources: <code>backend/src/services/search/mod.rs:472-545</code>,
+            Sources: <code>backend/src/search/service.rs:472-545</code>,
             <code>docs/features/search.md:263-279</code>,
             <a href="https://arxiv.org/abs/2212.10496"
               >Gao et al., HyDE paper, arXiv:2212.10496</a
@@ -2903,7 +2903,7 @@
           </div>
           <p class="source">
             Sources: <code>docs/features/search.md:329-375</code>,
-            <code>backend/src/handlers/search/ranking.rs:137-225</code>.
+            <code>backend/src/search/ranking.rs:137-225</code>.
           </p>
         </div>
       </section>
@@ -2974,7 +2974,7 @@
             </div>
           </div>
           <p class="source">
-            Sources: <code>backend/src/handlers/search/mod.rs:170-411</code>,
+            Sources: <code>backend/src/search/handler.rs:170-411</code>,
             <code>docs/features/search.md:260-421</code>.
           </p>
         </div>
@@ -3023,8 +3023,8 @@
             </tr>
           </table>
           <p class="source">
-            Sources: <code>backend/src/handlers/search/mod.rs:363-411</code>,
-            <code>backend/src/handlers/search/ranking.rs:178-250</code>,
+            Sources: <code>backend/src/search/handler.rs:363-411</code>,
+            <code>backend/src/search/ranking.rs:178-250</code>,
             <code>docs/features/search.md:347-359</code>.
           </p>
         </div>
@@ -3048,7 +3048,7 @@
     }
 }</code></pre>
           <p class="source">
-            Source: <code>backend/src/handlers/search/mod.rs:98-110</code>.
+            Source: <code>backend/src/search/handler.rs:98-110</code>.
             Keyword mode forces FTS. Hybrid only reaches ANN when semantic
             search is configured and the vector index is ready.
           </p>
@@ -3091,8 +3091,8 @@
             </tr>
           </table>
           <p class="source">
-            Sources: <code>backend/src/search_query.rs</code>,
-            <code>backend/src/handlers/search/mod.rs:596-669</code>.
+            Sources: <code>backend/src/search/query.rs</code>,
+            <code>backend/src/search/handler.rs:596-669</code>.
           </p>
         </div>
       </section>
@@ -3145,9 +3145,9 @@
             </tr>
           </table>
           <p class="source">
-            Sources: <code>backend/src/search_query.rs:1-154</code>,
-            <code>backend/src/handlers/search/mod.rs:194-228</code>,
-            <code>backend/src/services/fts.rs:300-327</code>.
+            Sources: <code>backend/src/search/query.rs:1-154</code>,
+            <code>backend/src/search/handler.rs:194-228</code>,
+            <code>backend/src/search/fts.rs:300-327</code>.
           </p>
         </div>
       </section>
@@ -3689,7 +3689,7 @@
             <code>backend/src/security.rs:51-70</code>,
             <code>backend/src/security.rs:218-392</code>,
             <code>backend/src/db/user_scope.rs:9-35</code>,
-            <code>backend/src/handlers/search/mod.rs:189-256</code>,
+            <code>backend/src/search/handler.rs:189-256</code>,
             <code>backend/src/services/chat/helpers.rs:188-250</code>,
             <code>backend/src/services/chat/retrieval.rs:501-558</code>.
           </p>
@@ -3825,7 +3825,7 @@ active_chat
           <p class="source">
             Sources: <code>backend/src/services/chat_ranking.rs:17-133</code>,
             <code>backend/src/services/chat_ranking.rs:315-370</code>,
-            <code>backend/src/services/fusion.rs:4-32</code>.
+            <code>backend/src/search/fusion.rs:4-32</code>.
           </p>
         </div>
       </section>
@@ -3951,7 +3951,7 @@ active_chat
           </table>
           <p class="source">
             Sources: <code>docs/pipelines/ai-models.md:384-399</code>,
-            <code>backend/src/handlers/search/mod.rs:280-337</code>.
+            <code>backend/src/search/handler.rs:280-337</code>.
           </p>
         </div>
       </section>
@@ -3964,8 +3964,8 @@ active_chat
             <div class="panel flat">
               <h3>Search</h3>
               <p><code>docs/features/search.md</code></p>
-              <p><code>backend/src/services/fts.rs</code></p>
-              <p><code>backend/src/handlers/search/mod.rs</code></p>
+              <p><code>backend/src/search/fts.rs</code></p>
+              <p><code>backend/src/search/handler.rs</code></p>
             </div>
             <div class="panel flat">
               <h3>RAG and architecture</h3>
@@ -4042,7 +4042,7 @@ active_chat
           </table>
           <p class="source">
             Sources: <code>docs/features/search.md</code>,
-            <code>backend/src/services/search/content_processing.rs</code>.
+            <code>backend/src/search/content_processing.rs</code>.
           </p>
         </div>
       </section>
@@ -4098,8 +4098,8 @@ active_chat
           </table>
           <p class="source">
             Sources: <code>docs/features/search.md:260-421</code>,
-            <code>backend/src/handlers/search/mod.rs</code>,
-            <code>backend/src/handlers/search/ranking.rs</code>.
+            <code>backend/src/search/handler.rs</code>,
+            <code>backend/src/search/ranking.rs</code>.
           </p>
         </div>
       </section>
@@ -4186,15 +4186,15 @@ active_chat
             <tr>
               <td>Keyword search</td>
               <td>
-                <code>backend/src/services/fts.rs</code>;
-                <code>backend/src/handlers/search/ranking.rs</code>
+                <code>backend/src/search/fts.rs</code>;
+                <code>backend/src/search/ranking.rs</code>
               </td>
             </tr>
             <tr>
               <td>Semantic and hybrid search</td>
               <td>
                 <code>docs/features/search.md</code>;
-                <code>backend/src/services/search/mod.rs</code>;
+                <code>backend/src/search/service.rs</code>;
                 <code>backend/src/db/search.rs</code>;
                 <a href="https://arxiv.org/abs/2212.10496">HyDE paper</a>
               </td>
@@ -4202,7 +4202,7 @@ active_chat
             <tr>
               <td>Query shaping and frontend filters</td>
               <td>
-                <code>backend/src/search_query.rs</code>;
+                <code>backend/src/search/query.rs</code>;
                 <code>frontend/src/lib/workspace-search.ts</code>;
                 <code
                   >frontend/src/lib/components/SearchResultsPopover.svelte</code
@@ -4255,7 +4255,7 @@ active_chat
               <td>
                 <code>backend/src/workers/search_index.rs</code>;
                 <code>backend/src/workers/mod.rs</code>;
-                <code>backend/src/search_progress.rs</code>;
+                <code>backend/src/search/progress.rs</code>;
                 <code>backend/src/db/search.rs</code>
               </td>
             </tr>
@@ -4276,7 +4276,7 @@ active_chat
                 <code>docs/architecture/data-model.md</code>;
                 <code>backend/src/security.rs</code>;
                 <code>backend/src/db/user_scope.rs</code>;
-                <code>backend/src/handlers/search/mod.rs</code>;
+                <code>backend/src/search/handler.rs</code>;
                 <code>backend/src/services/chat/helpers.rs</code>;
                 <code>backend/src/services/chat/retrieval.rs</code>
               </td>
@@ -4285,7 +4285,7 @@ active_chat
               <td>Chat ranking and fusion</td>
               <td>
                 <code>backend/src/services/chat_ranking.rs</code>;
-                <code>backend/src/services/fusion.rs</code>;
+                <code>backend/src/search/fusion.rs</code>;
                 <code>backend/src/services/chat/types.rs</code>
               </td>
             </tr>

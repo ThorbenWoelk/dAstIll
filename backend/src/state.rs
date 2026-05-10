@@ -7,14 +7,14 @@ use tokio::sync::{Mutex, RwLock};
 use crate::config::SecurityRuntimeConfig;
 use crate::db::Store;
 use crate::read_cache::ReadCache;
-use crate::search_progress::SearchProgress;
+use crate::search::{FtsIndex, SearchProgress, SearchService};
 use crate::security::RequestRateLimiter;
 use crate::services::PollyTtsService;
 use crate::services::{
-    ActiveChatHandle, ChatService, CloudCooldown, DatabricksSqlService, FtsIndex,
-    InputGuardrailService, OpenAlexPlannerService, OpenAlexService, PodcastFeedService,
-    SearchService, SummarizerService, SummaryEvaluatorService, TranscriptCooldown,
-    TranscriptService, UserActivity, WebsiteService, YouTubeQuotaCooldown, YouTubeService,
+    ActiveChatHandle, ChatService, CloudCooldown, DatabricksSqlService, InputGuardrailService,
+    OpenAlexPlannerService, OpenAlexService, PodcastFeedService, SummarizerService,
+    SummaryEvaluatorService, TranscriptCooldown, TranscriptService, UserActivity, WebsiteService,
+    YouTubeQuotaCooldown, YouTubeService,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
