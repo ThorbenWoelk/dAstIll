@@ -323,4 +323,5 @@ where
 }
 
 #[cfg(test)]
-mod db_tests;
+#[path = "tests.rs"]
+mod tests;
