@@ -1,4 +1,4 @@
-import { buildWorkspaceViewHref } from "$lib/view-url";
+import { buildWorkspaceViewHref } from "$lib/navigation/view-url";
 import type { ChatSource } from "$lib/types";
 
 const MARKER_RE = /\[(?:Source\s*)?(\d{1,2})\]/gi;

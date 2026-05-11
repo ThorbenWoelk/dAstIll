@@ -1,4 +1,4 @@
-import { authState } from "$lib/auth-state.svelte";
+import { authState } from "$lib/auth/state.svelte";
 
 export const HOME_WORKSPACE_HREF = "/";
 

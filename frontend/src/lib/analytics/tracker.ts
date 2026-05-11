@@ -7,7 +7,7 @@
  */
 
 import type { AnalyticsEvent, AnalyticsEventName } from "./events";
-import { createApiRequestInit, resolveApiUrl } from "$lib/api-client";
+import { createApiRequestInit, resolveApiUrl } from "$lib/api/client";
 
 // Distributive Omit preserves the discriminated union structure.
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown

@@ -6,7 +6,7 @@ import {
   parseChatMentionSegments,
   pickExactMentionSuggestion,
   type ChatMentionToken,
-} from "../src/lib/chat-mentions";
+} from "../src/lib/chat/mentions";
 
 describe("chat mentions", () => {
   it("parses channel and video mentions into ordered segments", () => {

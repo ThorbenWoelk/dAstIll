@@ -6,7 +6,7 @@
  * module has no knowledge of channel order or other preference fields.
  */
 
-import { upsertVocabularyReplacement } from "$lib/vocabulary";
+import { upsertVocabularyReplacement } from "$lib/workspace/vocabulary";
 import type { VocabularyReplacement } from "$lib/bindings/VocabularyReplacement";
 
 export type VocabularyControllerParams = {

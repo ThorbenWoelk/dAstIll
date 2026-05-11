@@ -35,7 +35,12 @@ All green. No exceptions.
 
 - `src/routes/` — SvelteKit pages
 - `src/lib/components/` — reusable components, grouped by feature
-- `src/lib/` — state, utilities, transport types
+- `src/lib/` — shared type entry points and grouped frontend modules
+- `src/lib/api/` — backend transport client and request helpers
+- `src/lib/auth/` — auth state, storage, Firebase, browser login, and logout helpers
+- `src/lib/config/` — app, docs, and maintenance-mode config
+- `src/lib/navigation/` — app section navigation and workspace deep links
+- `src/lib/platform/` — browser, native, service worker, runtime, and theme helpers
 - `e2e/` — Playwright specs
 - `tests/` — Bun unit tests
 

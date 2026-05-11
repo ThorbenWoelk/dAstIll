@@ -11,7 +11,7 @@
     subscribeToSummaryAudioSession,
     type SummaryAudioStatus,
   } from "$lib/workspace/summary-audio-session";
-  import { createApiRequestInit, resolveApiUrl } from "$lib/api-client";
+  import { createApiRequestInit, resolveApiUrl } from "$lib/api/client";
 
   let {
     mobileBackInTopBar = false,

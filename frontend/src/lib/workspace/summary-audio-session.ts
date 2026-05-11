@@ -1,5 +1,5 @@
-import { resolveApiUrl } from "$lib/api-client";
-import { normalizeUserErrorMessage } from "$lib/user-error";
+import { resolveApiUrl } from "$lib/api/client";
+import { normalizeUserErrorMessage } from "$lib/api/user-error";
 
 export type SummaryAudioStatus =
   | "missing"

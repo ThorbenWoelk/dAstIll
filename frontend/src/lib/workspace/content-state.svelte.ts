@@ -33,7 +33,7 @@ import type {
   ContentStatus,
 } from "$lib/types";
 import type { WorkspaceContentMode } from "$lib/workspace/types";
-import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
+import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth/required-notice";
 import { track } from "$lib/analytics/tracker";
 
 export type ContentCacheEntry = {

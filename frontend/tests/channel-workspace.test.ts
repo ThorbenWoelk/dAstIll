@@ -15,7 +15,7 @@ import {
   saveWorkspaceState,
   shouldRefreshChannel,
   updateChannelDragOver,
-} from "../src/lib/channel-workspace";
+} from "../src/lib/workspace/channel-workspace";
 import type { Channel } from "../src/lib/types";
 
 function channel(id: string): Channel {

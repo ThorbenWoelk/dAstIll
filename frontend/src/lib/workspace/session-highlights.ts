@@ -1,5 +1,5 @@
 import type { AuthContext } from "$lib/auth";
-import { getAuthStorageScopeKey, getScopedStorageKey } from "$lib/auth-storage";
+import { getAuthStorageScopeKey, getScopedStorageKey } from "$lib/auth/storage";
 import type { Highlight } from "$lib/types";
 
 const SESSION_HIGHLIGHTS_BASE = "dastill.session-highlights.v1";

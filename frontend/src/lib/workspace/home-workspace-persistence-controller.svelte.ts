@@ -3,22 +3,22 @@ import { page } from "$app/state";
 import { onMount } from "svelte";
 import type { Component } from "svelte";
 
-import { authState } from "$lib/auth-state.svelte";
+import { authState } from "$lib/auth/state.svelte";
 import {
   loadWorkspaceState,
   restoreWorkspaceSnapshot,
   saveWorkspaceState,
   type WorkspaceStateSnapshot,
-} from "$lib/channel-workspace";
+} from "$lib/workspace/channel-workspace";
 import { getPreferences, savePreferences } from "$lib/api";
-import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
+import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth/required-notice";
 import { mobileWorkspaceBrowseIntent } from "$lib/mobile-navigation/mobileWorkspaceBrowseIntent";
-import { resolveBootstrapOnMount } from "$lib/ssr-bootstrap";
+import { resolveBootstrapOnMount } from "$lib/workspace/ssr-bootstrap";
 import {
   buildWorkspaceViewHref,
   mergeWorkspaceViewState,
   type WorkspaceViewState,
-} from "$lib/view-url";
+} from "$lib/navigation/view-url";
 import { resolveAcknowledgedParam } from "$lib/workspace/types";
 import {
   isWorkspaceContentMode,

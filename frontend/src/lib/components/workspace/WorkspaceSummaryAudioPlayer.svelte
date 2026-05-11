@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy } from "svelte";
-  import { createApiRequestInit, resolveApiUrl } from "$lib/api-client";
+  import { createApiRequestInit, resolveApiUrl } from "$lib/api/client";
   import {
     generateSummaryAudio,
     markSummaryAudioPlaybackStopped,

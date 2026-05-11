@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { resolveMaintenanceMode } from "../src/lib/maintenance-mode";
+import { resolveMaintenanceMode } from "../src/lib/config/maintenance-mode";
 
 describe("resolveMaintenanceMode", () => {
   it("defaults to live mode when unset", () => {

@@ -1,4 +1,4 @@
-import type { AiStatus } from "./types";
+import type { AiStatus } from "$lib/types";
 
 export type { AiStatus };
 

@@ -10,11 +10,11 @@ import {
   removeChannelId,
   replaceOptimisticChannel,
 } from "$lib/workspace/channel-actions";
-import { putCachedChannels } from "$lib/workspace-cache";
+import { putCachedChannels } from "$lib/workspace/workspace-cache";
 import type { SidebarStateOptions } from "./sidebar-state.svelte";
 import type { Channel } from "$lib/types";
 import { resolveNextChannelSelection } from "./route-helpers";
-import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
+import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth/required-notice";
 import { looksLikeYouTubeVideoInput } from "$lib/utils/youtube-input";
 import type { AddSourceSubmission } from "$lib/workspace/component-props";
 

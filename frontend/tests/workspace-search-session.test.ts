@@ -4,7 +4,7 @@ import {
   createWorkspaceSearchSessionState,
   readWorkspaceSearchSession,
   writeWorkspaceSearchSession,
-} from "../src/lib/workspace-search-session";
+} from "../src/lib/workspace/workspace-search-session";
 
 function createMemoryStorage() {
   const values = new Map<string, string>();

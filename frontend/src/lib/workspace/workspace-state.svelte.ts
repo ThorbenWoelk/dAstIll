@@ -12,14 +12,14 @@ import {
 import {
   applySavedChannelOrder,
   resolveInitialChannelSelection,
-} from "$lib/channel-workspace";
+} from "$lib/workspace/channel-workspace";
 import {
   putCachedChannels,
   putCachedBootstrapMeta,
   putCachedViewSnapshot,
-} from "$lib/workspace-cache";
+} from "$lib/workspace/workspace-cache";
 import { resolveAcknowledgedParam } from "$lib/workspace/types";
-import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
+import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth/required-notice";
 import { track } from "$lib/analytics/tracker";
 import type { SidebarStateResult } from "$lib/workspace/sidebar-state.svelte";
 import type {

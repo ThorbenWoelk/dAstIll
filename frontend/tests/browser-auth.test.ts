@@ -4,7 +4,7 @@ import {
   resolveBrowserAuthOrigin,
   resolveSystemBrowserLoginUrl,
   resolveSystemBrowserLoginUrlForSession,
-} from "../src/lib/browser-auth";
+} from "../src/lib/auth/browser";
 
 const originalWindow = globalThis.window;
 const originalNavigator = globalThis.navigator;

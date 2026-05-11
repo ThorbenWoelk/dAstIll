@@ -1,4 +1,4 @@
-import type { VideoTypeFilter } from "./types";
+import type { VideoTypeFilter } from "$lib/types";
 import type {
   AddVideoResult,
   AiHealthResponse,
@@ -25,7 +25,7 @@ import type {
   VideoInfo,
   WebsiteFolder,
   WorkspaceBootstrap,
-} from "./transport-types";
+} from "$lib/transport-types";
 import {
   API_BASE,
   AuthRequiredError,
@@ -37,9 +37,9 @@ import {
   RateLimitedError,
   request,
   resolveApiUrl,
-} from "./api-client";
-import { setAnalyticsEnabled } from "./analytics/tracker";
-import { normalizeUserErrorMessage } from "./user-error";
+} from "$lib/api/client";
+import { setAnalyticsEnabled } from "$lib/analytics/tracker";
+import { normalizeUserErrorMessage } from "$lib/api/user-error";
 
 export {
   API_BASE,

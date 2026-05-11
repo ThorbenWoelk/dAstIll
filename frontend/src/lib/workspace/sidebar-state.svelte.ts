@@ -10,7 +10,7 @@ import { getChannelSnapshot } from "$lib/api";
 import {
   applySavedChannelOrder,
   finalizeAddedChannelOrder,
-} from "$lib/channel-workspace";
+} from "$lib/workspace/channel-workspace";
 import {
   buildChannelViewCacheKey,
   cloneDate,
@@ -18,7 +18,7 @@ import {
   cloneVideos,
   createChannelViewCache,
   type ChannelSyncDepthState,
-} from "$lib/channel-view-cache";
+} from "$lib/workspace/channel-view-cache";
 import type {
   WorkspaceSidebarVideoActions,
   WorkspaceSidebarVideoState,

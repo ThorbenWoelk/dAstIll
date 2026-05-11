@@ -2,8 +2,8 @@
   import { goto } from "$app/navigation";
   import { onMount } from "svelte";
   import { deleteHighlight, isAiAvailable, listHighlights } from "$lib/api";
-  import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
-  import { resolveAiIndicatorPresentation } from "$lib/ai-status";
+  import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth/required-notice";
+  import { resolveAiIndicatorPresentation } from "$lib/ai/status";
   import { createAiStatusPoller } from "$lib/utils/ai-poller";
   import ErrorToast from "$lib/components/ErrorToast.svelte";
   import CheckIcon from "$lib/components/icons/CheckIcon.svelte";
@@ -20,7 +20,7 @@
     HighlightSource,
     SearchResult,
   } from "$lib/types";
-  import { buildWorkspaceViewHref } from "$lib/view-url";
+  import { buildWorkspaceViewHref } from "$lib/navigation/view-url";
   import { formatShortDate } from "$lib/utils/date";
   import { removeHighlightFromGroups } from "$lib/utils/highlights";
 

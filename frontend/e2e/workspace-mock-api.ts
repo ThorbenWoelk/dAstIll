@@ -194,7 +194,7 @@ export async function installMockWorkspaceApi(
   };
   const acknowledgedVideos = options.acknowledgedVideos ?? {};
 
-  await page.route("**/api/**", async (route) => {
+  await page.route(/^https?:\/\/[^/]+\/api\/.*/, async (route) => {
     const url = new URL(route.request().url());
 
     if (url.pathname === "/api/workspace/bootstrap") {

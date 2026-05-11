@@ -3,7 +3,7 @@ import { describe, expect, it } from "bun:test";
 import {
   canRegisterServiceWorker,
   registerAppServiceWorker,
-} from "../src/lib/pwa";
+} from "../src/lib/platform/pwa";
 
 describe("canRegisterServiceWorker", () => {
   it("allows registration over https", () => {

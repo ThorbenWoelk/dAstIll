@@ -1,9 +1,9 @@
-import type { Channel } from "./types";
+import type { Channel } from "$lib/types";
 import {
   isAcknowledgedFilter,
   isWorkspaceContentMode,
   isWorkspaceVideoTypeFilter,
-} from "./workspace/types";
+} from "$lib/workspace/types";
 
 export const WORKSPACE_STATE_KEY = "dastill.workspace.state.v1";
 

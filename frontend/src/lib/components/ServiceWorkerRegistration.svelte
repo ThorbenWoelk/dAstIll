@@ -5,8 +5,8 @@
   import {
     registerAppServiceWorker,
     unregisterAppServiceWorkers,
-  } from "$lib/pwa";
-  import { isTauriRuntime } from "$lib/tauri-runtime";
+  } from "$lib/platform/pwa";
+  import { isTauriRuntime } from "$lib/platform/tauri-runtime";
 
   onMount(() => {
     if (dev || isTauriRuntime()) {

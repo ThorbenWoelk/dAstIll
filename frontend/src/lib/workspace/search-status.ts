@@ -1,4 +1,4 @@
-import type { SearchStatus } from "./types";
+import type { SearchStatus } from "$lib/types";
 
 export function resolveSearchCoveragePercent(
   status: SearchStatus | null,

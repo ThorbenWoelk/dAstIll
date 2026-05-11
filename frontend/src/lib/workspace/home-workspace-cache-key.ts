@@ -1,4 +1,4 @@
-import { buildChannelViewCacheKey } from "$lib/channel-view-cache";
+import { buildChannelViewCacheKey } from "$lib/workspace/channel-view-cache";
 import type { AcknowledgedFilter } from "$lib/workspace/types";
 import type { VideoTypeFilter } from "$lib/types";
 

@@ -3,10 +3,10 @@ import { page } from "$app/state";
 import { onMount, tick } from "svelte";
 import { SvelteURLSearchParams } from "svelte/reactivity";
 
-import { authState } from "$lib/auth-state.svelte";
-import { getAuthStorageScopeKey, getScopedStorageKey } from "$lib/auth-storage";
-import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
-import { resolveAiIndicatorPresentation } from "$lib/ai-status";
+import { authState } from "$lib/auth/state.svelte";
+import { getAuthStorageScopeKey, getScopedStorageKey } from "$lib/auth/storage";
+import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth/required-notice";
+import { resolveAiIndicatorPresentation } from "$lib/ai/status";
 import type { ChatClientConfig } from "$lib/bindings/ChatClientConfig";
 import type {
   AiStatus,

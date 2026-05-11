@@ -1,5 +1,5 @@
 import { normalizeRedirectTarget } from "$lib/auth";
-import { createApiRequestInit, resolveApiUrl } from "$lib/api-client";
+import { createApiRequestInit, resolveApiUrl } from "$lib/api/client";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 const MOBILE_AUTH_REDIRECT_SESSION_KEY = "dastill.mobile-auth.handoff-session";
@@ -210,7 +210,7 @@ export async function finishTauriAndroidBrowserAuthHandoff(
   redeemToken: string,
 ) {
   const [{ auth }, firebaseAuth] = await Promise.all([
-    import("$lib/firebase"),
+    import("$lib/auth/firebase"),
     import("firebase/auth"),
   ]);
   const payload = await pollMobileAuthHandoff(sessionId, redeemToken);
@@ -224,7 +224,7 @@ export async function finishTauriAndroidBrowserAuthHandoff(
 
 export async function completeBrowserGoogleAuthHandoff(sessionId: string) {
   const [{ auth }, firebaseAuth] = await Promise.all([
-    import("$lib/firebase"),
+    import("$lib/auth/firebase"),
     import("firebase/auth"),
   ]);
   const handoffCompleteToken = readHandoffCompleteTokenFromHash();

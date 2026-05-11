@@ -1,6 +1,6 @@
-import { authState } from "$lib/auth-state.svelte";
+import { authState } from "$lib/auth/state.svelte";
 import { createHighlight, getVideoHighlights } from "$lib/api";
-import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
+import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth/required-notice";
 import { track } from "$lib/analytics/tracker";
 import type {
   CreateHighlightRequest,

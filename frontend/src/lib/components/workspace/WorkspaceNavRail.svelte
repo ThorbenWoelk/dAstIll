@@ -1,13 +1,13 @@
 <script lang="ts">
   import ChevronIcon from "$lib/components/icons/ChevronIcon.svelte";
   import ExternalLinkIcon from "$lib/components/icons/ExternalLinkIcon.svelte";
-  import { DOCS_URL } from "$lib/app-config";
+  import { DOCS_URL } from "$lib/config/app";
   import {
     getSectionNavigationItems,
     goHintKeyForSection,
     type SectionNavigationSection,
-  } from "$lib/section-navigation";
-  import { sectionIcon } from "$lib/section-navigation-icons";
+  } from "$lib/navigation/section-navigation";
+  import { sectionIcon } from "$lib/navigation/section-navigation-icons";
   import WorkspaceUserMenu from "./WorkspaceUserMenu.svelte";
 
   let {

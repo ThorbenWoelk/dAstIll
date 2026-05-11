@@ -6,7 +6,7 @@ import {
   requiresExplicitApiBase,
   resolveApiUrl,
   resolveImplicitApiBase,
-} from "../src/lib/api-client";
+} from "../src/lib/api/client";
 
 describe("normalizeApiBase", () => {
   it("keeps local proxy mode when the API base is unset", () => {

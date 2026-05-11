@@ -15,7 +15,7 @@ import {
   resolveNextThemePreference,
   resolveThemeState,
   DEFAULT_COLOR,
-} from "../src/lib/theme";
+} from "../src/lib/platform/theme";
 
 describe("parseThemePreference", () => {
   it("accepts explicit light and dark values", () => {

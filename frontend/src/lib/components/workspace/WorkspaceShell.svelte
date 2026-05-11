@@ -2,13 +2,13 @@
   import { replaceState } from "$app/navigation";
   import { onMount } from "svelte";
   import type { Snippet } from "svelte";
-  import { authState } from "$lib/auth-state.svelte";
+  import { authState } from "$lib/auth/state.svelte";
   import {
     getAuthStorageScopeKey,
     getScopedStorageKey,
-  } from "$lib/auth-storage";
-  import type { AiIndicatorPresentation } from "$lib/ai-status";
-  import type { SectionNavigationSection } from "$lib/section-navigation";
+  } from "$lib/auth/storage";
+  import type { AiIndicatorPresentation } from "$lib/ai/status";
+  import type { SectionNavigationSection } from "$lib/navigation/section-navigation";
   import AiStatusIndicator from "$lib/components/AiStatusIndicator.svelte";
   import WorkspaceNavRail from "$lib/components/workspace/WorkspaceNavRail.svelte";
 

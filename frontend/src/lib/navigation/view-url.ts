@@ -1,9 +1,9 @@
-import type { WorkspaceStateSnapshot } from "./channel-workspace";
+import type { WorkspaceStateSnapshot } from "$lib/workspace/channel-workspace";
 import {
   isAcknowledgedFilter,
   isWorkspaceContentMode,
   isWorkspaceVideoTypeFilter,
-} from "./workspace/types";
+} from "$lib/workspace/types";
 
 export type WorkspaceViewState = Pick<
   WorkspaceStateSnapshot,

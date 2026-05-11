@@ -7,7 +7,7 @@
     prepareOpenAlexPlanForSubmit,
     syncOpenAlexPlanFromDraft,
     type OpenAlexInterpretationStatus,
-  } from "$lib/openalex-plan-state";
+  } from "$lib/workspace/openalex-plan-state";
   import type {
     OpenAlexSavedSearchQuery,
     OpenAlexSearchScope,

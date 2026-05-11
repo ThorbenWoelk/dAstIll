@@ -1,11 +1,11 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { clickOutside } from "$lib/actions/click-outside";
-  import { authState } from "$lib/auth-state.svelte";
+  import { authState } from "$lib/auth/state.svelte";
   import {
     getAuthStorageScopeKey,
     getScopedStorageKey,
-  } from "$lib/auth-storage";
+  } from "$lib/auth/storage";
   import {
     applyColorScheme,
     applyThemeState,
@@ -19,7 +19,7 @@
     writeThemeMode,
     type ColorScheme,
     type ThemeMode,
-  } from "$lib/theme";
+  } from "$lib/platform/theme";
 
   const THEME_MODE_OPTIONS: Array<{ id: ThemeMode; label: string }> = [
     { id: "light", label: "Light" },

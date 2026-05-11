@@ -9,7 +9,7 @@ import {
   isChannelAvatarThumbnailUrl,
   isSseRequest,
   getObsoleteCacheNames,
-} from "../src/lib/sw-utils";
+} from "../src/lib/platform/sw-utils";
 
 // ── URL classification ────────────────────────────────────────────────────────
 

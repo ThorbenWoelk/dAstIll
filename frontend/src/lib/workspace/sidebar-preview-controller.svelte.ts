@@ -6,7 +6,7 @@ import {
   refreshChannel,
   updateChannel,
 } from "$lib/api";
-import { resolveDisplayedSyncDepthIso } from "$lib/sync-depth";
+import { resolveDisplayedSyncDepthIso } from "$lib/workspace/sync-depth";
 import type {
   Channel,
   ChannelSnapshot,

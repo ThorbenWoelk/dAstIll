@@ -1,5 +1,5 @@
 import { createHighlight, deleteHighlight, getVideoHighlights } from "$lib/api";
-import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
+import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth/required-notice";
 import type { CreateHighlightRequest, Highlight } from "$lib/types";
 import {
   buildOptimisticHighlight,

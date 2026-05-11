@@ -1,4 +1,4 @@
-import type { SectionNavigationSection } from "$lib/section-navigation";
+import type { SectionNavigationSection } from "$lib/navigation/section-navigation";
 
 export function resolveCurrentSectionFromPathname(
   pathname: string,

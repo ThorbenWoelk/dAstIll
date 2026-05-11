@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { authState } from "$lib/auth-state.svelte";
+  import { authState } from "$lib/auth/state.svelte";
   import { clickOutside } from "$lib/actions/click-outside";
   import ChevronIcon from "$lib/components/icons/ChevronIcon.svelte";
   import CloseIcon from "$lib/components/icons/CloseIcon.svelte";
   import SettingsPanel from "$lib/components/SettingsPanel.svelte";
-  import { signOutAndReloadHome } from "$lib/logout";
+  import { signOutAndReloadHome } from "$lib/auth/logout";
   import { fade } from "svelte/transition";
 
   let {

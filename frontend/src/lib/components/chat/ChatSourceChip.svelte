@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { buildWorkspaceViewHref } from "$lib/view-url";
+  import { buildWorkspaceViewHref } from "$lib/navigation/view-url";
   import type { ChatSource } from "$lib/types";
 
   let { source }: { source: ChatSource } = $props();

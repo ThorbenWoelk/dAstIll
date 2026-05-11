@@ -7,8 +7,8 @@ import type {
 import {
   markChannelRefreshed,
   shouldRefreshChannel,
-} from "$lib/channel-workspace";
-import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
+} from "$lib/workspace/channel-workspace";
+import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth/required-notice";
 import type { AcknowledgedFilter } from "$lib/workspace/types";
 
 type ChannelRefreshWorkflowOptions<TSnapshot> = {

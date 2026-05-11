@@ -4,7 +4,7 @@
     parseChatMentionSegments,
     resolveChatMention,
     type ResolvedChatMention,
-  } from "$lib/chat-mentions";
+  } from "$lib/chat/mentions";
   import ChatMentionTag from "$lib/components/chat/ChatMentionTag.svelte";
   import CheckIcon from "$lib/components/icons/CheckIcon.svelte";
   import type { ChatMessage } from "$lib/types";

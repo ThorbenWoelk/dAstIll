@@ -1,9 +1,9 @@
 import {
   cloneSyncDepthState,
   type ChannelSyncDepthState,
-} from "$lib/channel-view-cache";
+} from "$lib/workspace/channel-view-cache";
 import type { AuthContext } from "$lib/auth";
-import { getAuthStorageScopeKey, getScopedStorageKey } from "$lib/auth-storage";
+import { getAuthStorageScopeKey, getScopedStorageKey } from "$lib/auth/storage";
 import { OTHERS_CHANNEL_ID, type Video } from "$lib/types";
 
 export type SidebarPreviewCollectionLoadMode = "preview" | "paged";

@@ -4,7 +4,7 @@
     SEARCH_RESULT_MODES,
     type SearchResultMode,
     type SearchSectionsState,
-  } from "$lib/workspace-search";
+  } from "$lib/workspace/workspace-search";
   import { formatMediumDate } from "$lib/utils/date";
   import { escapeHtml } from "$lib/utils/html";
 

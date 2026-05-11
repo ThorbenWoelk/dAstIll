@@ -5,7 +5,7 @@ import {
   buildOpenAlexInterpretationStatus,
   prepareOpenAlexPlanForSubmit,
   syncOpenAlexPlanFromDraft,
-} from "../src/lib/openalex-plan-state";
+} from "../src/lib/workspace/openalex-plan-state";
 import type { OpenAlexSavedSearchQuery } from "../src/lib/types";
 
 function makePlan(): OpenAlexSavedSearchQuery {

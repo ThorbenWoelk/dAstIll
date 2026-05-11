@@ -1,5 +1,5 @@
 import { writable } from "svelte/store";
-import { isSignInRequiredFailure } from "$lib/api-client";
+import { isSignInRequiredFailure } from "$lib/api/client";
 
 /** Message for the global sign-in modal when an API call requires authentication. */
 export const authRequiredNotice = writable<string | null>(null);

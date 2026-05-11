@@ -55,7 +55,7 @@ const mockSignOut = mock(async () => {
 });
 const mockResetApiCacheForAuthChange = mock(() => undefined);
 
-mock.module("$lib/firebase", () => ({
+mock.module("$lib/auth/firebase", () => ({
   auth: firebaseAuthInstance,
 }));
 
@@ -67,7 +67,7 @@ mock.module("firebase/auth", () => ({
   signOut: mockSignOut,
 }));
 
-mock.module("$lib/api-cache-reset", () => ({
+mock.module("$lib/api/cache-reset", () => ({
   resetApiCacheForAuthChange: mockResetApiCacheForAuthChange,
 }));
 
@@ -75,7 +75,7 @@ const originalWindow = globalThis.window;
 
 async function loadAuthStateModule() {
   return import(
-    `../src/lib/auth-state.svelte.ts?test=${Date.now()}-${Math.random()}`
+    `../src/lib/auth/state.svelte.ts?test=${Date.now()}-${Math.random()}`
   );
 }
 
@@ -203,7 +203,7 @@ describe("auth state controller", () => {
     });
 
     const { authState } = await loadAuthStateModule();
-    const { getCurrentAuthToken } = await import("../src/lib/auth-token");
+    const { getCurrentAuthToken } = await import("../src/lib/auth/token");
 
     await authState.start();
 

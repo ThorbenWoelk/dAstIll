@@ -18,7 +18,7 @@ import {
   putCachedSnapshot,
   putCachedViewSnapshot,
   removeCachedChannel,
-} from "../src/lib/workspace-cache";
+} from "../src/lib/workspace/workspace-cache";
 
 function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {

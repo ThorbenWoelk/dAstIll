@@ -1,6 +1,9 @@
 import { describe, expect, it } from "bun:test";
 
-import { HOME_WORKSPACE_HREF, signOutAndReloadHome } from "../src/lib/logout";
+import {
+  HOME_WORKSPACE_HREF,
+  signOutAndReloadHome,
+} from "../src/lib/auth/logout";
 
 describe("logout helpers", () => {
   it("signs out before reloading the home workspace", async () => {

@@ -2,7 +2,7 @@
   import { onMount, tick } from "svelte";
   import { slide } from "svelte/transition";
   import { getTranscript, getVideo } from "$lib/api";
-  import { authState } from "$lib/auth-state.svelte";
+  import { authState } from "$lib/auth/state.svelte";
   import {
     beginChannelDrag,
     completeChannelDrop,
@@ -10,7 +10,7 @@
     moveChannelToIndex,
     reorderChannels as reorderChannelList,
     updateChannelDragOver,
-  } from "$lib/channel-workspace";
+  } from "$lib/workspace/channel-workspace";
   import WorkspaceSidebarCollapsedChannelRail from "$lib/components/workspace/WorkspaceSidebarCollapsedChannelRail.svelte";
   import WorkspaceSidebarChannelRow from "$lib/components/workspace/WorkspaceSidebarChannelRow.svelte";
   import WorkspaceSidebarChannelControls from "$lib/components/workspace/WorkspaceSidebarChannelControls.svelte";

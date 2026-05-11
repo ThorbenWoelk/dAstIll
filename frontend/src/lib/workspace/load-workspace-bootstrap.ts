@@ -1,7 +1,7 @@
 import type { VideoTypeFilter } from "$lib/types";
 import type { ChannelSnapshot, WorkspaceBootstrap } from "$lib/transport-types";
 import { setAnalyticsEnabled } from "$lib/analytics/tracker";
-import { createApiRequestInit, resolveApiUrl } from "$lib/api-client";
+import { createApiRequestInit, resolveApiUrl } from "$lib/api/client";
 import type {
   AcknowledgedFilter,
   WorkspaceContentMode,

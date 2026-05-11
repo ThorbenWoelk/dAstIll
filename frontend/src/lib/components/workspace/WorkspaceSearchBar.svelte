@@ -13,17 +13,17 @@
   import CloseIcon from "$lib/components/icons/CloseIcon.svelte";
   import SearchIcon from "$lib/components/icons/SearchIcon.svelte";
   import SearchResultsPopover from "$lib/components/SearchResultsPopover.svelte";
-  import { authState } from "$lib/auth-state.svelte";
+  import { authState } from "$lib/auth/state.svelte";
   import {
     getAuthStorageScopeKey,
     getScopedStorageKey,
-  } from "$lib/auth-storage";
-  import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
-  import { resolveSearchCoverageHint } from "$lib/search-status";
+  } from "$lib/auth/storage";
+  import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth/required-notice";
+  import { resolveSearchCoverageHint } from "$lib/workspace/search-status";
   import {
     readWorkspaceSearchSession,
     writeWorkspaceSearchSession,
-  } from "$lib/workspace-search-session";
+  } from "$lib/workspace/workspace-search-session";
   import { isEditableShortcutTarget } from "$lib/utils/keyboard-shortcuts";
   import {
     anySearchSectionLoading,
@@ -33,7 +33,7 @@
     resolveSearchAction,
     type SearchResultMode,
     type SearchSectionsState,
-  } from "$lib/workspace-search";
+  } from "$lib/workspace/workspace-search";
   import type {
     SearchResult,
     SearchSourceFilter,

@@ -1,5 +1,5 @@
 import type { ChatConversation, ChatConversationSummary } from "$lib/types";
-import { getScopedStorageKey } from "$lib/auth-storage";
+import { getScopedStorageKey } from "$lib/auth/storage";
 
 const STORAGE_KEY = "dastill.chat.ephemeralThreads.v1";
 const ANONYMOUS_BOOTSTRAP_SCOPE_KEY = "anonymous:bootstrap";

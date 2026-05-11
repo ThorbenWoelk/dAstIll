@@ -5,14 +5,14 @@
   import CloseIcon from "$lib/components/icons/CloseIcon.svelte";
   import ExternalLinkIcon from "$lib/components/icons/ExternalLinkIcon.svelte";
   import SettingsPanel from "$lib/components/SettingsPanel.svelte";
-  import { DOCS_URL } from "$lib/app-config";
-  import { authState } from "$lib/auth-state.svelte";
-  import { signOutAndReloadHome } from "$lib/logout";
+  import { DOCS_URL } from "$lib/config/app";
+  import { authState } from "$lib/auth/state.svelte";
+  import { signOutAndReloadHome } from "$lib/auth/logout";
   import {
     getSectionNavigationItems,
     type SectionNavigationSection,
-  } from "$lib/section-navigation";
-  import { sectionIcon } from "$lib/section-navigation-icons";
+  } from "$lib/navigation/section-navigation";
+  import { sectionIcon } from "$lib/navigation/section-navigation-icons";
   import { resolveCurrentSectionFromPathname } from "$lib/mobile-navigation/resolveCurrentSectionFromPathname";
 
   let {

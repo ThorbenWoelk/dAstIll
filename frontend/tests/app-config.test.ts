@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { resolveDocsUrl } from "../src/lib/docs-url";
+import { resolveDocsUrl } from "../src/lib/config/docs-url";
 
 describe("resolveDocsUrl", () => {
   it("prefers the configured docs url when provided", () => {

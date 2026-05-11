@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { authState } from "$lib/auth-state.svelte";
+  import { authState } from "$lib/auth/state.svelte";
   import {
     createWebsiteFolder,
     deleteWebsiteFolder,

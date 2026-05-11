@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import {
   SECTION_NAVIGATION_ITEMS,
   goHintKeyForSection,
-} from "../src/lib/section-navigation";
+} from "../src/lib/navigation/section-navigation";
 import {
   WORKSPACE_CONTENT_MODE_ORDER,
   goHintKeyForWorkspaceContentMode,

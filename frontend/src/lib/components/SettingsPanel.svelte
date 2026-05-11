@@ -1,12 +1,12 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
-  import { authState } from "$lib/auth-state.svelte";
-  import { signOutAndReloadHome } from "$lib/logout";
+  import { authState } from "$lib/auth/state.svelte";
+  import { signOutAndReloadHome } from "$lib/auth/logout";
   import {
     getAuthStorageScopeKey,
     getScopedStorageKey,
-  } from "$lib/auth-storage";
+  } from "$lib/auth/storage";
   import {
     applyColorScheme,
     applyThemeState,
@@ -20,11 +20,11 @@
     writeThemeMode,
     type ColorScheme,
     type ThemeMode,
-  } from "$lib/theme";
-  import { resolveAiIndicatorPresentation } from "$lib/ai-status";
+  } from "$lib/platform/theme";
+  import { resolveAiIndicatorPresentation } from "$lib/ai/status";
   import type { AiStatus, VocabularyReplacement } from "$lib/types";
   import { createAiStatusPoller, refreshAiStatus } from "$lib/utils/ai-poller";
-  import { formatVocabularyAddedAt } from "$lib/vocabulary";
+  import { formatVocabularyAddedAt } from "$lib/workspace/vocabulary";
   import { getPreferences } from "$lib/api";
   import CloseIcon from "$lib/components/icons/CloseIcon.svelte";
 

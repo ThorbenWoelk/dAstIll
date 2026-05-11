@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 
-import { registerNativeSelectionHandlers } from "../src/lib/native-selection";
-import { isTauriRuntime } from "../src/lib/tauri-runtime";
+import { registerNativeSelectionHandlers } from "../src/lib/platform/native-selection";
+import { isTauriRuntime } from "../src/lib/platform/tauri-runtime";
 
 const originalWindow = globalThis.window;
 

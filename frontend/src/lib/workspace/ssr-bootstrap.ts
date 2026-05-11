@@ -9,7 +9,7 @@ import {
   getCachedBootstrapMeta,
   getCachedChannels,
   getCachedViewSnapshot,
-} from "$lib/workspace-cache";
+} from "$lib/workspace/workspace-cache";
 
 export interface OnMountBootstrapResult {
   channels: Channel[] | null;

@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   resolveAiIndicatorPresentation,
   type AiStatus,
-} from "../src/lib/ai-status";
+} from "../src/lib/ai/status";
 
 function presentation(status: AiStatus) {
   return resolveAiIndicatorPresentation(status);

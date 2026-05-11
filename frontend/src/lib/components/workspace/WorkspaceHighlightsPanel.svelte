@@ -2,7 +2,7 @@
   import CheckIcon from "$lib/components/icons/CheckIcon.svelte";
   import CopyIcon from "$lib/components/icons/CopyIcon.svelte";
   import TrashIcon from "$lib/components/icons/TrashIcon.svelte";
-  import { authState } from "$lib/auth-state.svelte";
+  import { authState } from "$lib/auth/state.svelte";
   import type { Highlight, Video } from "$lib/types";
   import { formatPublishedAt } from "$lib/workspace/content";
 

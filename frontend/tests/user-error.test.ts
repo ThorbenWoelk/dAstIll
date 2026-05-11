@@ -3,7 +3,7 @@ import { describe, expect, it } from "bun:test";
 import {
   getUserErrorMessage,
   normalizeUserErrorMessage,
-} from "../src/lib/user-error";
+} from "../src/lib/api/user-error";
 
 describe("normalizeUserErrorMessage", () => {
   it("rewrites technical TTS configuration errors", () => {

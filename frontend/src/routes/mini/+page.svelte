@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
-  import { authState } from "$lib/auth-state.svelte";
+  import { authState } from "$lib/auth/state.svelte";
   import MiniArticle from "$lib/components/mini/MiniArticle.svelte";
   import MiniBottomBar from "$lib/components/mini/MiniBottomBar.svelte";
   import MiniChannelSheet from "$lib/components/mini/MiniChannelSheet.svelte";

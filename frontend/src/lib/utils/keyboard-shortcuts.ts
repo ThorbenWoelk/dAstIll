@@ -2,7 +2,7 @@ import {
   SECTION_NAVIGATION_ITEMS,
   goHintKeyForSection,
   type AppNavigationSection,
-} from "$lib/section-navigation";
+} from "$lib/navigation/section-navigation";
 import {
   WORKSPACE_CONTENT_MODE_ORDER,
   goHintKeyForWorkspaceContentMode,

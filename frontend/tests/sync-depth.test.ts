@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { resolveDisplayedSyncDepthIso } from "../src/lib/sync-depth";
+import { resolveDisplayedSyncDepthIso } from "../src/lib/workspace/sync-depth";
 import type { Channel, SyncDepth, Video } from "../src/lib/types";
 
 function createChannel(overrides: Partial<Channel> = {}): Channel {

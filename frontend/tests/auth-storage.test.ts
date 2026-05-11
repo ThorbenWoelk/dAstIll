@@ -3,7 +3,7 @@ import { describe, expect, it } from "bun:test";
 import {
   getAuthStorageScopeKey,
   getScopedStorageKey,
-} from "../src/lib/auth-storage";
+} from "../src/lib/auth/storage";
 
 describe("auth storage scope", () => {
   it("namespaces authenticated users by uid", () => {

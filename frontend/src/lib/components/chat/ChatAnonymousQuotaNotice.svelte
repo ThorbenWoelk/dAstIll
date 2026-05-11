@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { CONTACT_EMAIL } from "$lib/app-config";
+  import { CONTACT_EMAIL } from "$lib/config/app";
 </script>
 
 <div class="mt-3 rounded-[var(--radius-md)] bg-[var(--accent-wash)] px-4 py-3">

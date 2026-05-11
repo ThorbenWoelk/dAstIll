@@ -100,11 +100,11 @@ describe("transport DTO ownership guardrail", () => {
 
   it("keeps core transport consumers importing backend DTOs from transport-types", () => {
     const coreTransportFiles = [
-      "src/lib/api.ts",
+      "src/lib/api/index.ts",
       "src/lib/chat/requests.ts",
-      "src/lib/load-workspace-bootstrap.ts",
-      "src/lib/ssr-bootstrap.ts",
-      "src/lib/workspace-cache.ts",
+      "src/lib/workspace/load-workspace-bootstrap.ts",
+      "src/lib/workspace/ssr-bootstrap.ts",
+      "src/lib/workspace/workspace-cache.ts",
     ];
 
     for (const relativePath of coreTransportFiles) {

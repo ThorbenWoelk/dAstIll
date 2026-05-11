@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { CONTACT_EMAIL, DOCS_URL, SUPPORT_URL } from "$lib/app-config";
-  import { authState } from "$lib/auth-state.svelte";
+  import { CONTACT_EMAIL, DOCS_URL, SUPPORT_URL } from "$lib/config/app";
+  import { authState } from "$lib/auth/state.svelte";
 
   let readerHref = $derived(
     authState.current.authState === "authenticated"

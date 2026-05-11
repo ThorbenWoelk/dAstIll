@@ -8,12 +8,12 @@ import {
 import {
   applySavedChannelOrder,
   resolveInitialChannelSelection,
-} from "$lib/channel-workspace";
+} from "$lib/workspace/channel-workspace";
 import {
   cloneSyncDepthState,
   cloneVideos,
   type ChannelSyncDepthState,
-} from "$lib/channel-view-cache";
+} from "$lib/workspace/channel-view-cache";
 import {
   applyAcknowledgedFilterChange,
   applyVideoTypeFilterChange,
@@ -22,8 +22,8 @@ import {
   loadChannelSnapshotWithRefresh,
   resolveSnapshotPageState,
 } from "$lib/workspace/route-helpers";
-import { putCachedChannels } from "$lib/workspace-cache";
-import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
+import { putCachedChannels } from "$lib/workspace/workspace-cache";
+import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth/required-notice";
 import { resolveAcknowledgedParam, type AcknowledgedFilter } from "./types";
 import type {
   CachedVideoState,

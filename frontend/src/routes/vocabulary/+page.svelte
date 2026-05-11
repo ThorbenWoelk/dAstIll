@@ -2,14 +2,14 @@
   import { goto } from "$app/navigation";
   import { onMount } from "svelte";
   import { getPreferences, isAiAvailable } from "$lib/api";
-  import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
-  import { resolveAiIndicatorPresentation } from "$lib/ai-status";
+  import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth/required-notice";
+  import { resolveAiIndicatorPresentation } from "$lib/ai/status";
   import MobileYouTubeTopNav from "$lib/components/mobile/MobileYouTubeTopNav.svelte";
   import ErrorToast from "$lib/components/ErrorToast.svelte";
   import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
   import type { AiStatus, VocabularyReplacement } from "$lib/types";
   import { createAiStatusPoller } from "$lib/utils/ai-poller";
-  import { formatVocabularyAddedAt } from "$lib/vocabulary";
+  import { formatVocabularyAddedAt } from "$lib/workspace/vocabulary";
 
   let aiStatus = $state<AiStatus | null>(null);
   let vocabulary = $state<VocabularyReplacement[]>([]);

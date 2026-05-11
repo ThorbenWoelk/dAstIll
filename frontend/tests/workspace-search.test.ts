@@ -6,7 +6,7 @@ import {
   filterSearchSections,
   hasRetainedSearchState,
   resolveSearchAction,
-} from "../src/lib/workspace-search";
+} from "../src/lib/workspace/workspace-search";
 import type { SearchResult } from "../src/lib/types";
 
 const sampleResults: SearchResult[] = [

@@ -4,24 +4,24 @@
   import { page } from "$app/state";
   import { onMount } from "svelte";
   import type { AuthContext } from "$lib/auth";
-  import { assertHostedApiBaseConfigured } from "$lib/api-client";
+  import { assertHostedApiBaseConfigured } from "$lib/api/client";
   import {
     cleanupLegacyClientStorage,
     getAuthStorageScopeKey,
     getScopedStorageKey,
-  } from "$lib/auth-storage";
-  import { authState } from "$lib/auth-state.svelte";
+  } from "$lib/auth/storage";
+  import { authState } from "$lib/auth/state.svelte";
   import {
     authRequiredNotice,
     dismissAuthRequiredNotice,
     presentAuthRequiredNoticeIfNeeded,
-  } from "$lib/auth-required-notice";
+  } from "$lib/auth/required-notice";
   import SignInRequiredModal from "$lib/components/SignInRequiredModal.svelte";
   import GlobalKeyboardShortcuts from "$lib/components/GlobalKeyboardShortcuts.svelte";
   import MobileViewportInset from "$lib/components/MobileViewportInset.svelte";
   import MobileSectionDrawer from "$lib/components/mobile/MobileSectionDrawer.svelte";
   import ServiceWorkerRegistration from "$lib/components/ServiceWorkerRegistration.svelte";
-  import { applyStoredTheme } from "$lib/theme";
+  import { applyStoredTheme } from "$lib/platform/theme";
 
   let {
     data,

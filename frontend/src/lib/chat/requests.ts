@@ -14,8 +14,8 @@ import {
   createApiRequestInit,
   request,
   resolveApiUrl,
-} from "../api-client";
-import { normalizeUserErrorMessage } from "../user-error";
+} from "$lib/api/client";
+import { normalizeUserErrorMessage } from "$lib/api/user-error";
 
 type ChatStreamHandlers = {
   onStatus?: (status: ChatStreamStatus) => void;

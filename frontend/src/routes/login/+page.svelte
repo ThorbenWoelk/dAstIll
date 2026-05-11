@@ -3,14 +3,14 @@
   import { page } from "$app/state";
   import { goto } from "$app/navigation";
   import { normalizeRedirectTarget } from "$lib/auth";
-  import { authState } from "$lib/auth-state.svelte";
-  import { openSystemBrowserLogin } from "$lib/browser-auth";
-  import { isTauriAndroidRuntime } from "$lib/tauri-runtime";
+  import { authState } from "$lib/auth/state.svelte";
+  import { openSystemBrowserLogin } from "$lib/auth/browser";
+  import { isTauriAndroidRuntime } from "$lib/platform/tauri-runtime";
   import {
     completeBrowserGoogleAuthHandoff,
     finishTauriAndroidBrowserAuthHandoff,
     startTauriAndroidBrowserAuthHandoff,
-  } from "$lib/browser-auth";
+  } from "$lib/auth/browser";
 
   const workspaceHref = $derived(
     (() => {

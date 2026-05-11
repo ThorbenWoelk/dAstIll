@@ -81,7 +81,7 @@ async function installMiniApi(
     payloadForChannel?: (channelId: string | null) => MiniApiPayload;
   } = {},
 ) {
-  await page.route("**/api/**", async (route) => {
+  await page.route(/^https?:\/\/[^/]+\/api\/.*/, async (route) => {
     const url = new URL(route.request().url());
 
     if (url.pathname === "/api/mini") {

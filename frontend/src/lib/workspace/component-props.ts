@@ -8,7 +8,7 @@ import type {
   VideoInfo,
   VideoTypeFilter,
 } from "$lib/types";
-import type { ChannelSyncDepthState } from "$lib/channel-view-cache";
+import type { ChannelSyncDepthState } from "$lib/workspace/channel-view-cache";
 import type {
   AcknowledgedFilter,
   ChannelSortMode,

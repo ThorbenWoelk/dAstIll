@@ -1,4 +1,4 @@
-import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
+import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth/required-notice";
 import {
   buildOptimisticAcknowledgeSidebarList,
   isStillSelectedAfterAcknowledgeSuccess,

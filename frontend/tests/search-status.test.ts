@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   resolveSearchCoverageHint,
   resolveSearchCoveragePercent,
-} from "../src/lib/search-status";
+} from "../src/lib/workspace/search-status";
 import type { SearchStatus } from "../src/lib/types";
 
 function searchStatus(overrides: Partial<SearchStatus> = {}): SearchStatus {

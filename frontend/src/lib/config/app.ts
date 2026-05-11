@@ -1,5 +1,5 @@
-import { resolveDocsUrl } from "$lib/docs-url";
-import { resolveMaintenanceMode } from "$lib/maintenance-mode";
+import { resolveDocsUrl } from "$lib/config/docs-url";
+import { resolveMaintenanceMode } from "$lib/config/maintenance-mode";
 
 const publicEnv = (
   import.meta as {

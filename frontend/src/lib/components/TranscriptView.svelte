@@ -15,8 +15,8 @@
     resolveTooltipAnchorRect,
     resolveTooltipPosition,
   } from "$lib/utils/highlights";
-  import { registerNativeSelectionHandlers } from "$lib/native-selection";
-  import { isTauriRuntime } from "$lib/tauri-runtime";
+  import { registerNativeSelectionHandlers } from "$lib/platform/native-selection";
+  import { isTauriRuntime } from "$lib/platform/tauri-runtime";
   import { scrollToCitationInArticle } from "$lib/utils/citation-scroll";
 
   type Props = {

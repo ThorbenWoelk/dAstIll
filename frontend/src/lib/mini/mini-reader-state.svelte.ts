@@ -4,7 +4,7 @@ import {
   savePreferences,
   updateMiniReadStatus,
 } from "$lib/api";
-import { authState } from "$lib/auth-state.svelte";
+import { authState } from "$lib/auth/state.svelte";
 import type {
   Channel,
   CreateHighlightRequest,

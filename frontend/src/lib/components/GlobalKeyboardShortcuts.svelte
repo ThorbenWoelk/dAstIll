@@ -4,7 +4,7 @@
   import { onMount, tick, untrack } from "svelte";
   import { get } from "svelte/store";
 
-  import { DOCS_URL } from "$lib/app-config";
+  import { DOCS_URL } from "$lib/config/app";
   import KeyboardShortcutsModal from "$lib/components/KeyboardShortcutsModal.svelte";
   import {
     computeGoHintBadgeStyles,

@@ -5,14 +5,14 @@
     getChannelSuggestions,
     getVideoSuggestions,
   } from "$lib/chat/requests";
-  import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
+  import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth/required-notice";
   import {
     extractChatMentions,
     parseChatMentionSegments,
     resolveChatMention,
     type ChatMentionSegment,
     type ResolvedChatMention,
-  } from "$lib/chat-mentions";
+  } from "$lib/chat/mentions";
   import ChatInputControls from "$lib/components/chat/ChatInputControls.svelte";
   import ChatInputSuggestions from "$lib/components/chat/ChatInputSuggestions.svelte";
   import ChatMentionTag from "$lib/components/chat/ChatMentionTag.svelte";

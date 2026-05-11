@@ -3,7 +3,7 @@ import { describe, expect, it } from "bun:test";
 import {
   buildWorkspaceViewHref,
   parseWorkspaceViewUrlState,
-} from "../src/lib/view-url";
+} from "../src/lib/navigation/view-url";
 
 describe("workspace view URLs", () => {
   it("builds generic source and item params for workspace deep links", () => {

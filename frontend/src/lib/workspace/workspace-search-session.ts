@@ -3,7 +3,7 @@ import {
   createEmptySearchSections,
   type SearchSectionState,
   type SearchSectionsState,
-} from "$lib/workspace-search";
+} from "$lib/workspace/workspace-search";
 
 export interface WorkspaceSearchSessionState {
   query: string;

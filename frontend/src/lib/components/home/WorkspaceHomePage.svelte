@@ -11,7 +11,7 @@
   import WorkspaceShell from "$lib/components/workspace/WorkspaceShell.svelte";
   import WorkspaceSidebar from "$lib/components/workspace/WorkspaceSidebar.svelte";
   import FeatureGuide from "$lib/components/FeatureGuide.svelte";
-  import { setFeatureGuideSuppressesAuthRequiredNotice } from "$lib/auth-required-notice";
+  import { setFeatureGuideSuppressesAuthRequiredNotice } from "$lib/auth/required-notice";
   import { createHomeWorkspacePage } from "$lib/workspace/home-workspace.svelte";
 
   const hw = createHomeWorkspacePage();

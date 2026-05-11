@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { signOutAndReloadHome } from "$lib/logout";
+  import { signOutAndReloadHome } from "$lib/auth/logout";
 
   onMount(() => {
     void (async () => {

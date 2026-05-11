@@ -5,7 +5,7 @@ import {
   formatVocabularyAddedAt,
   normalizeVocabularyReplacement,
   upsertVocabularyReplacement,
-} from "../src/lib/vocabulary";
+} from "../src/lib/workspace/vocabulary";
 
 describe("normalizeVocabularyReplacement", () => {
   it("trims both sides and rejects empty values", () => {

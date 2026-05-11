@@ -4,9 +4,9 @@ import {
   buildAuthenticatedAuthContext,
   cloneAuthContext,
 } from "$lib/auth";
-import { resetApiCacheForAuthChange } from "$lib/api-cache-reset";
-import { getAuthStorageScopeKey } from "$lib/auth-storage";
-import { configureAuthTokenResolver } from "$lib/auth-token";
+import { resetApiCacheForAuthChange } from "$lib/api/cache-reset";
+import { getAuthStorageScopeKey } from "$lib/auth/storage";
+import { configureAuthTokenResolver } from "$lib/auth/token";
 import type { Auth } from "firebase/auth";
 import { createSubscriber } from "svelte/reactivity";
 
@@ -97,7 +97,7 @@ function maybeResetAuthScopedCaches(
 
 async function importFirebaseAuthModule() {
   const [{ auth }, firebaseAuth] = await Promise.all([
-    import("$lib/firebase"),
+    import("$lib/auth/firebase"),
     import("firebase/auth"),
   ]);
 

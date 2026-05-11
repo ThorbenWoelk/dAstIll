@@ -1,6 +1,6 @@
 import { tick } from "svelte";
 
-import { authState } from "$lib/auth-state.svelte";
+import { authState } from "$lib/auth/state.svelte";
 import {
   backfillChannelVideos,
   deleteChannel,
@@ -13,24 +13,24 @@ import {
   RateLimitedError,
   type BackfillChannelVideosResponse,
 } from "$lib/api";
-import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
+import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth/required-notice";
 import { closeSummarySession } from "$lib/analytics/read-time";
 import { track } from "$lib/analytics/tracker";
-import { resolveInitialChannelSelection } from "$lib/channel-workspace";
+import { resolveInitialChannelSelection } from "$lib/workspace/channel-workspace";
 import {
   buildChannelViewCacheKey,
   cloneSyncDepthState,
   cloneVideos,
   createChannelViewCache,
   type ChannelSyncDepthState,
-} from "$lib/channel-view-cache";
+} from "$lib/workspace/channel-view-cache";
 import { buildHomeWorkspaceChannelViewCacheKey } from "$lib/workspace/home-workspace-cache-key";
 import {
   putCachedBootstrapMeta,
   putCachedChannels,
   putCachedViewSnapshot,
   removeCachedChannel,
-} from "$lib/workspace-cache";
+} from "$lib/workspace/workspace-cache";
 import {
   loadChannelSnapshotWithRefresh,
   resolveSnapshotPageState,

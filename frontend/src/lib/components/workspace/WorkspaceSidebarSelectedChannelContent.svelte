@@ -1,7 +1,7 @@
 <script lang="ts">
   import WorkspaceSidebarSelectedVideoList from "$lib/components/workspace/WorkspaceSidebarSelectedVideoList.svelte";
   import WorkspaceSidebarSyncDateControl from "$lib/components/workspace/WorkspaceSidebarSyncDateControl.svelte";
-  import { resolveDisplayedSyncDepthIso } from "$lib/sync-depth";
+  import { resolveDisplayedSyncDepthIso } from "$lib/workspace/sync-depth";
   import type { Channel, Video } from "$lib/types";
   import { formatSyncDate } from "$lib/workspace/content";
   import { shouldShowSelectedChannelSyncSettingsLink } from "$lib/workspace/sidebar-sync-boundary-link";

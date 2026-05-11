@@ -2,11 +2,11 @@ import { goto } from "$app/navigation";
 import { page } from "$app/state";
 import { onMount, tick } from "svelte";
 
-import { authState } from "$lib/auth-state.svelte";
-import { getAuthStorageScopeKey, getScopedStorageKey } from "$lib/auth-storage";
+import { authState } from "$lib/auth/state.svelte";
+import { getAuthStorageScopeKey, getScopedStorageKey } from "$lib/auth/storage";
 import { savePreferences } from "$lib/api";
-import { resolveAiIndicatorPresentation } from "$lib/ai-status";
-import { DOCS_URL } from "$lib/app-config";
+import { resolveAiIndicatorPresentation } from "$lib/ai/status";
+import { DOCS_URL } from "$lib/config/app";
 import type {
   AddVideoResult,
   Channel,
@@ -19,16 +19,16 @@ import { createAiStatusPoller } from "$lib/utils/ai-poller";
 import {
   buildWorkspaceViewHref,
   parseWorkspaceViewUrlState,
-} from "$lib/view-url";
+} from "$lib/navigation/view-url";
 import {
   cloneSyncDepthState,
   cloneVideos,
   createChannelViewCache,
-} from "$lib/channel-view-cache";
+} from "$lib/workspace/channel-view-cache";
 import {
   loadWorkspaceState,
   restoreWorkspaceSnapshot,
-} from "$lib/channel-workspace";
+} from "$lib/workspace/channel-workspace";
 import { resolveNextChannelSelection } from "$lib/workspace/route-helpers";
 import {
   hasCompleteSummaryEvaluation,

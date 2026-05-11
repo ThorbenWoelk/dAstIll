@@ -3,13 +3,13 @@
   import { page } from "$app/state";
   import { onMount } from "svelte";
   import type { Component } from "svelte";
-  import { authState } from "$lib/auth-state.svelte";
+  import { authState } from "$lib/auth/state.svelte";
   import {
     getAuthStorageScopeKey,
     getScopedStorageKey,
-  } from "$lib/auth-storage";
-  import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
-  import { resolveAiIndicatorPresentation } from "$lib/ai-status";
+  } from "$lib/auth/storage";
+  import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth/required-notice";
+  import { resolveAiIndicatorPresentation } from "$lib/ai/status";
   import {
     addChannel,
     addVideo,
@@ -41,7 +41,7 @@
     loadWorkspaceState,
     restoreWorkspaceSnapshot,
     saveWorkspaceState,
-  } from "$lib/channel-workspace";
+  } from "$lib/workspace/channel-workspace";
   import type {
     AiStatus,
     Channel,
@@ -55,7 +55,7 @@
   } from "$lib/types";
   import { looksLikeYouTubeVideoInput } from "$lib/utils/youtube-input";
   import { createAiStatusPoller } from "$lib/utils/ai-poller";
-  import { buildWorkspaceViewHref } from "$lib/view-url";
+  import { buildWorkspaceViewHref } from "$lib/navigation/view-url";
   import { type AddSourceFeedback } from "$lib/workspace/add-source-feedback";
   import { channelOrderFromList } from "$lib/workspace/channels";
   import {

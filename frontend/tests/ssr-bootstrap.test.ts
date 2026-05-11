@@ -7,13 +7,13 @@ import type {
   SyncDepth,
   WorkspaceBootstrap,
 } from "../src/lib/types";
-import { resolveBootstrapOnMount } from "../src/lib/ssr-bootstrap";
+import { resolveBootstrapOnMount } from "../src/lib/workspace/ssr-bootstrap";
 import {
   clearWorkspaceCache,
   putCachedBootstrapMeta,
   putCachedChannels,
   putCachedViewSnapshot,
-} from "../src/lib/workspace-cache";
+} from "../src/lib/workspace/workspace-cache";
 
 // ---------------------------------------------------------------------------
 // Helpers

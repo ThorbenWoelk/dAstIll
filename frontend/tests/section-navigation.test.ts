@@ -5,7 +5,7 @@ import {
   getSectionNavigationItems,
   goHintKeyForSection,
   type SectionNavigationSection,
-} from "../src/lib/section-navigation";
+} from "../src/lib/navigation/section-navigation";
 
 describe("resolveCurrentSectionFromPathname", () => {
   it("maps primary routes for section highlighting and keyboard hints", () => {

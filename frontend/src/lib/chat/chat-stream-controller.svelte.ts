@@ -1,7 +1,7 @@
 import { tick } from "svelte";
 
-import { authState } from "$lib/auth-state.svelte";
-import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth-required-notice";
+import { authState } from "$lib/auth/state.svelte";
+import { presentAuthRequiredNoticeIfNeeded } from "$lib/auth/required-notice";
 import { isAnonymousChatQuotaError } from "$lib/chat/anonymous-quota";
 import type { ChatStreamTiming } from "$lib/chat/conversation-meta";
 import { deriveToolCalls } from "$lib/chat/tool-calls";

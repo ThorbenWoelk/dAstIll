@@ -1,14 +1,14 @@
 import { describe, expect, it } from "bun:test";
 import { get } from "svelte/store";
 
-import { AuthRequiredError } from "../src/lib/api-client";
+import { AuthRequiredError } from "../src/lib/api/client";
 import {
   authRequiredNotice,
   dismissAuthRequiredNotice,
   presentAuthRequiredNotice,
   presentAuthRequiredNoticeIfNeeded,
   setFeatureGuideSuppressesAuthRequiredNotice,
-} from "../src/lib/auth-required-notice";
+} from "../src/lib/auth/required-notice";
 
 describe("auth-required-notice", () => {
   it("does not open the notice while the feature guide suppresses it", () => {

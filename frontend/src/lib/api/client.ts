@@ -1,5 +1,5 @@
-import { getCurrentAuthToken } from "$lib/auth-token";
-import { normalizeUserErrorMessage } from "$lib/user-error";
+import { getCurrentAuthToken } from "$lib/auth/token";
+import { normalizeUserErrorMessage } from "$lib/api/user-error";
 
 const TAURI_ANDROID_DEV_API_BASE = "http://127.0.0.1:3544";
 
