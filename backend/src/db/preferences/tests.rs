@@ -80,6 +80,6 @@ async fn reconcile_sql_preferences_with_records_updates_canonical_rows_and_prune
         .await
         .expect("load pruned preferences");
     assert!(pruned.channel_order.is_empty());
-    assert_eq!(pruned.channel_sort_mode, "custom");
+    assert!(pruned.channel_sort_mode.is_empty());
     assert!(pruned.vocabulary_replacements.is_empty());
 }
