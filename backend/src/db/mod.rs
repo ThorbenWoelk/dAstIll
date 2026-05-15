@@ -118,8 +118,12 @@ impl Store {
 pub struct SqlCacheReconcileReport {
     pub bootstrapped_videos: usize,
     pub exported_videos: usize,
+    pub reconciled_videos: usize,
+    pub pruned_videos: usize,
     pub bootstrapped_preferences: usize,
     pub exported_preferences: usize,
+    pub reconciled_preferences: usize,
+    pub pruned_preferences: usize,
     pub bootstrapped_tts_stats: bool,
     pub exported_tts_stats: bool,
 }
@@ -129,17 +133,27 @@ pub async fn reconcile_sql_cache_with_store(
 ) -> Result<SqlCacheReconcileReport, StoreError> {
     let mut report = SqlCacheReconcileReport::default();
 
+    let snapshot_videos = snapshot_video_count(store).await?;
     let sql_videos = sql_video_count(store).await?;
-    if sql_videos == 0 {
+    if snapshot_videos > 0 {
+        let (reconciled, pruned) = reconcile_sql_videos_from_store(store).await?;
+        report.reconciled_videos = reconciled;
+        report.pruned_videos = pruned;
+    } else if sql_videos == 0 {
         report.bootstrapped_videos = bootstrap_sql_videos_from_store(store).await?;
-    } else if snapshot_video_count(store).await? == 0 {
+    } else {
         report.exported_videos = export_sql_videos_to_store(store).await?;
     }
 
+    let snapshot_preferences = snapshot_preferences_count(store).await?;
     let sql_preferences = sql_preferences_count(store).await?;
-    if sql_preferences == 0 {
+    if snapshot_preferences > 0 {
+        let (reconciled, pruned) = reconcile_sql_preferences_from_store(store).await?;
+        report.reconciled_preferences = reconciled;
+        report.pruned_preferences = pruned;
+    } else if sql_preferences == 0 {
         report.bootstrapped_preferences = bootstrap_sql_preferences_from_store(store).await?;
-    } else if snapshot_preferences_count(store).await? == 0 {
+    } else {
         report.exported_preferences = export_sql_preferences_to_store(store).await?;
     }
 

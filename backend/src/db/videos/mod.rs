@@ -60,6 +60,22 @@ fn upsert_video_delta(record: CanonicalVideoRecord) -> super::LibsqlSnapshotDelt
     super::LibsqlSnapshotDeltaOperation::UpsertVideo { record }
 }
 
+fn canonical_video_records_equal(
+    left: &CanonicalVideoRecord,
+    right: &CanonicalVideoRecord,
+) -> bool {
+    left.id == right.id
+        && left.channel_id == right.channel_id
+        && left.title == right.title
+        && left.thumbnail_url == right.thumbnail_url
+        && left.published_at == right.published_at
+        && left.is_short == right.is_short
+        && left.transcript_status == right.transcript_status
+        && left.summary_status == right.summary_status
+        && left.retry_count == right.retry_count
+        && left.quality_score == right.quality_score
+}
+
 async fn mirror_video_snapshot(store: &Store, video_id: &str) -> Result<(), StoreError> {
     let Some(video) = super::sql_videos::sql_get_video(store, video_id, false).await? else {
         return Ok(());
@@ -117,6 +133,51 @@ pub async fn bootstrap_sql_videos_from_store(store: &Store) -> Result<usize, Sto
         .map(video_from_canonical)
         .collect::<Vec<_>>();
     super::sql_videos::sql_bulk_insert_videos(store, videos).await
+}
+
+pub async fn reconcile_sql_videos_from_store(store: &Store) -> Result<(usize, usize), StoreError> {
+    let records: Vec<CanonicalVideoRecord> = store.load_all("videos/").await?;
+    reconcile_sql_videos_with_records(store, records).await
+}
+
+pub(crate) async fn reconcile_sql_videos_with_records(
+    store: &Store,
+    records: Vec<CanonicalVideoRecord>,
+) -> Result<(usize, usize), StoreError> {
+    if records.is_empty() {
+        return Ok((0, 0));
+    }
+
+    let current_records = super::sql_videos::sql_load_all_videos(store)
+        .await?
+        .into_iter()
+        .map(|video| (video.id.clone(), canonical_video_from_video(&video)))
+        .collect::<std::collections::HashMap<_, _>>();
+    let mut canonical_ids = HashSet::with_capacity(records.len());
+    let mut reconciled = 0usize;
+
+    for record in &records {
+        canonical_ids.insert(record.id.clone());
+        let current_matches = current_records
+            .get(&record.id)
+            .is_some_and(|current| canonical_video_records_equal(current, record));
+        if current_matches {
+            continue;
+        }
+
+        super::apply_upsert_video_delta(&store.sql, record).await?;
+        reconciled += 1;
+    }
+
+    let stale_ids = current_records
+        .keys()
+        .filter(|video_id| !canonical_ids.contains(*video_id))
+        .cloned()
+        .collect::<Vec<_>>();
+    let pruned = stale_ids.len();
+    super::sql_videos::sql_delete_videos(store, &stale_ids).await?;
+
+    Ok((reconciled, pruned))
 }
 
 pub async fn export_sql_videos_to_store(store: &Store) -> Result<usize, StoreError> {

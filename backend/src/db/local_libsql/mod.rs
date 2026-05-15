@@ -120,8 +120,12 @@ pub async fn initialize_local_libsql_store(
     tracing::info!(
         bootstrapped_videos = cache_reconcile.bootstrapped_videos,
         exported_videos = cache_reconcile.exported_videos,
+        reconciled_videos = cache_reconcile.reconciled_videos,
+        pruned_videos = cache_reconcile.pruned_videos,
         bootstrapped_preferences = cache_reconcile.bootstrapped_preferences,
         exported_preferences = cache_reconcile.exported_preferences,
+        reconciled_preferences = cache_reconcile.reconciled_preferences,
+        pruned_preferences = cache_reconcile.pruned_preferences,
         bootstrapped_tts_stats = cache_reconcile.bootstrapped_tts_stats,
         exported_tts_stats = cache_reconcile.exported_tts_stats,
         snapshot_restored = snapshot_restore.restored(),
@@ -131,8 +135,12 @@ pub async fn initialize_local_libsql_store(
     );
     let cache_reconcile_changed = cache_reconcile.bootstrapped_videos > 0
         || cache_reconcile.exported_videos > 0
+        || cache_reconcile.reconciled_videos > 0
+        || cache_reconcile.pruned_videos > 0
         || cache_reconcile.bootstrapped_preferences > 0
         || cache_reconcile.exported_preferences > 0
+        || cache_reconcile.reconciled_preferences > 0
+        || cache_reconcile.pruned_preferences > 0
         || cache_reconcile.bootstrapped_tts_stats
         || cache_reconcile.exported_tts_stats;
 
