@@ -202,7 +202,7 @@ async fn reconcile_sql_preferences_with_records(
             .sql
             .execute(
                 "DELETE FROM preferences WHERE user_id = ?1",
-                params![user_id],
+                params![user_id.clone()],
             )
             .await?;
     }
