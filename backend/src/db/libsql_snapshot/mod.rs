@@ -549,7 +549,7 @@ async fn apply_delta_record(
     Ok(())
 }
 
-async fn apply_upsert_video_delta(
+pub(crate) async fn apply_upsert_video_delta(
     conn: &libsql::Connection,
     record: &CanonicalVideoRecord,
 ) -> Result<(), StoreError> {

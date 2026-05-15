@@ -1,5 +1,6 @@
 use libsql::params;
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 
 use crate::models::UserPreferences;
 
@@ -139,6 +140,74 @@ pub async fn bootstrap_sql_preferences_from_store(store: &Store) -> Result<usize
     }
 
     Ok(records.len())
+}
+
+pub async fn reconcile_sql_preferences_from_store(
+    store: &Store,
+) -> Result<(usize, usize), StoreError> {
+    let records: Vec<StoredUserPreferences> = store.load_all("user-preferences/").await?;
+    reconcile_sql_preferences_with_records(store, records).await
+}
+
+async fn reconcile_sql_preferences_with_records(
+    store: &Store,
+    records: Vec<StoredUserPreferences>,
+) -> Result<(usize, usize), StoreError> {
+    if records.is_empty() {
+        return Ok((0, 0));
+    }
+
+    let mut rows = store
+        .sql
+        .query("SELECT user_id, data FROM preferences", ())
+        .await?;
+    let mut current = HashMap::new();
+    while let Some(row) = rows.next().await? {
+        let user_id: String = row.get(0)?;
+        let data: String = row.get(1)?;
+        current.insert(user_id, data);
+    }
+
+    let mut canonical_ids = HashSet::with_capacity(records.len());
+    let mut reconciled = 0usize;
+    for record in &records {
+        let user_id = preferences_document_id(&record.user_id);
+        let normalized = normalize_preferences(record.data.clone());
+        let json = serde_json::to_string(&normalized)?;
+        canonical_ids.insert(user_id.clone());
+        if current
+            .get(&user_id)
+            .is_some_and(|existing| existing == &json)
+        {
+            continue;
+        }
+
+        store
+            .sql
+            .execute(
+                "INSERT INTO preferences (user_id, data) VALUES (?1, ?2) ON CONFLICT(user_id) DO UPDATE SET data = excluded.data",
+                params![user_id, json],
+            )
+            .await?;
+        reconciled += 1;
+    }
+
+    let stale_ids = current
+        .keys()
+        .filter(|user_id| !canonical_ids.contains(*user_id))
+        .cloned()
+        .collect::<Vec<_>>();
+    for user_id in &stale_ids {
+        store
+            .sql
+            .execute(
+                "DELETE FROM preferences WHERE user_id = ?1",
+                params![user_id.clone()],
+            )
+            .await?;
+    }
+
+    Ok((reconciled, stale_ids.len()))
 }
 
 pub async fn export_sql_preferences_to_store(store: &Store) -> Result<usize, StoreError> {
