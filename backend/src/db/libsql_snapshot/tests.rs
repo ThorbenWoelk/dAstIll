@@ -1,7 +1,7 @@
 use super::{
     DELTA_SCHEMA_VERSION, LibsqlSnapshotDeltaOperation, LibsqlSnapshotDeltaRecord,
     LibsqlSnapshotSourceState, PrefixState, apply_delta_record, checkpoint_libsql_file,
-    compress_gzip, decompress_gzip, sha256_hex,
+    compress_gzip, decompress_gzip, reset_local_libsql_cache, sha256_hex,
 };
 use crate::models::{CanonicalVideoRecord, ContentStatus, UserPreferences};
 use chrono::TimeZone;
@@ -230,4 +230,102 @@ async fn apply_delta_record_updates_sql_cache_semantically() {
     assert_eq!(sample_count, 3);
     assert_eq!(total_words, 120);
     assert_eq!(total_duration, 12.5);
+}
+
+#[tokio::test]
+async fn reset_local_libsql_cache_drops_stale_fts_index() {
+    let dir = tempdir().expect("tempdir");
+    let db_path = dir.path().join("snapshot.db");
+    let db = libsql::Builder::new_local(&db_path)
+        .build()
+        .await
+        .expect("build db");
+    let conn = db.connect().expect("connect db");
+    crate::db::sql_schema::initialize_sql_schema(&conn)
+        .await
+        .expect("init schema");
+    conn.execute_batch(
+        r#"
+        CREATE VIRTUAL TABLE IF NOT EXISTS fts_search USING fts5 (
+            chunk_id UNINDEXED,
+            video_id UNINDEXED,
+            channel_id UNINDEXED,
+            source_kind UNINDEXED,
+            source_key UNINDEXED,
+            section_title,
+            chunk_text,
+            video_title,
+            channel_name UNINDEXED,
+            published_at UNINDEXED,
+            start_sec UNINDEXED,
+            tokenize = 'porter'
+        );
+        INSERT INTO videos (id, channel_id, title, published_at, is_short, transcript_status, summary_status, retry_count)
+        VALUES ('video-1', 'channel-1', 'Old video', '2026-05-01T00:00:00Z', 0, 'ready', 'ready', 0);
+        INSERT INTO fts_search (
+            chunk_id,
+            video_id,
+            channel_id,
+            source_kind,
+            source_key,
+            section_title,
+            chunk_text,
+            video_title,
+            channel_name,
+            published_at,
+            start_sec
+        ) VALUES (
+            'video-1_summary_hash_0',
+            'video-1',
+            'channel-1',
+            'summary',
+            'video-1_summary',
+            NULL,
+            'stale searchable text',
+            'Old video',
+            'Channel',
+            '2026-05-01T00:00:00Z',
+            NULL
+        );
+        "#,
+    )
+    .await
+    .expect("seed stale cache");
+
+    reset_local_libsql_cache(&conn).await.expect("reset cache");
+
+    let mut video_rows = conn
+        .query("SELECT COUNT(*) FROM videos", ())
+        .await
+        .expect("query videos");
+    let video_count: i64 = video_rows
+        .next()
+        .await
+        .expect("next video row")
+        .expect("video count row")
+        .get(0)
+        .expect("video count");
+    assert_eq!(video_count, 0);
+
+    let mut fts_rows = conn
+        .query(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'fts_search'",
+            (),
+        )
+        .await
+        .expect("query sqlite schema");
+    let fts_table_count: i64 = fts_rows
+        .next()
+        .await
+        .expect("next fts schema row")
+        .expect("fts schema row")
+        .get(0)
+        .expect("fts table count");
+    assert_eq!(fts_table_count, 0);
+
+    drop(conn);
+    let fts = crate::search::FtsIndex::new_with_db(db, Some(db_path))
+        .await
+        .expect("recreate fts index");
+    assert_eq!(fts.doc_count().await, 0);
 }
