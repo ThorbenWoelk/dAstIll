@@ -294,34 +294,38 @@ async fn reset_local_libsql_cache_drops_stale_fts_index() {
 
     reset_local_libsql_cache(&conn).await.expect("reset cache");
 
-    let mut video_rows = conn
-        .query("SELECT COUNT(*) FROM videos", ())
-        .await
-        .expect("query videos");
-    let video_count: i64 = video_rows
-        .next()
-        .await
-        .expect("next video row")
-        .expect("video count row")
-        .get(0)
-        .expect("video count");
-    assert_eq!(video_count, 0);
+    {
+        let mut video_rows = conn
+            .query("SELECT COUNT(*) FROM videos", ())
+            .await
+            .expect("query videos");
+        let video_count: i64 = video_rows
+            .next()
+            .await
+            .expect("next video row")
+            .expect("video count row")
+            .get(0)
+            .expect("video count");
+        assert_eq!(video_count, 0);
+    }
 
-    let mut fts_rows = conn
-        .query(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'fts_search'",
-            (),
-        )
-        .await
-        .expect("query sqlite schema");
-    let fts_table_count: i64 = fts_rows
-        .next()
-        .await
-        .expect("next fts schema row")
-        .expect("fts schema row")
-        .get(0)
-        .expect("fts table count");
-    assert_eq!(fts_table_count, 0);
+    {
+        let mut fts_rows = conn
+            .query(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'fts_search'",
+                (),
+            )
+            .await
+            .expect("query sqlite schema");
+        let fts_table_count: i64 = fts_rows
+            .next()
+            .await
+            .expect("next fts schema row")
+            .expect("fts schema row")
+            .get(0)
+            .expect("fts table count");
+        assert_eq!(fts_table_count, 0);
+    }
 
     drop(conn);
     let fts = crate::search::FtsIndex::new_with_db(db, Some(db_path))
