@@ -136,7 +136,11 @@ export function syncSummaryAudioDebugState(
       return session;
     }
 
-    if (session.status === "playing" || session.status === "loading") {
+    if (
+      session.status === "ready" ||
+      session.status === "playing" ||
+      session.status === "loading"
+    ) {
       return session;
     }
 

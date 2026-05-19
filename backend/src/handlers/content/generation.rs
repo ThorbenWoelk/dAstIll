@@ -1,4 +1,9 @@
+use axum::Extension;
+
+use crate::security::AccessContext;
+
 use super::*;
+use crate::handlers::require_video_for_access;
 
 /// Returns false for empty transcripts and YouTube site-wide placeholder blurbs that were
 /// accidentally stored before the Firecrawl fallback was disabled.
@@ -256,9 +261,11 @@ async fn evict_video_scope_cache_by_video_id(state: &AppState, video_id: &str) {
 )]
 pub async fn update_summary(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(video_id): Path<String>,
     Json(payload): Json<UpdateContentRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    require_video_for_access(&state, &access_context, &video_id).await?;
     let summary = save_manual_summary_content(&state, &video_id, &payload.content).await?;
     Ok(Json(summary))
 }
