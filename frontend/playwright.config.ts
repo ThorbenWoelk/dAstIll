@@ -11,13 +11,14 @@ const baseURL =
   "http://127.0.0.1:3543";
 const signedInStorageState = "playwright/.auth/user.json";
 const signedInEnabled = process.env.PLAYWRIGHT_SIGNED_IN === "1";
+const workerCount = Number(process.env.PLAYWRIGHT_WORKERS ?? 2);
 
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 2 : undefined,
+  workers: Number.isFinite(workerCount) && workerCount > 0 ? workerCount : 2,
   reporter: [["list"], ["html", { open: "never" }]],
   timeout: 120_000,
   expect: { timeout: 30_000 },
