@@ -20,6 +20,14 @@ dAstIll watches content sources, extracts their content, and turns them into a s
 ./start_app.sh
 ```
 
+The same lifecycle is available through Make:
+
+```bash
+make start
+make stop
+make restart
+```
+
 Stop the stack:
 
 ```bash
