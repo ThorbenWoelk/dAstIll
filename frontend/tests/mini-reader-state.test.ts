@@ -1,14 +1,16 @@
 import { afterEach, describe, expect, it } from "bun:test";
 
-import type { MiniSummaryItem } from "../src/lib/transport-types";
+import type { MiniReader, MiniSummaryItem } from "../src/lib/transport-types";
 import {
   chooseActiveVideoId,
   findNextMiniChannelId,
   findNextUnreadVideoId,
   MINI_DEFAULT_SHOW_UNREAD_ONLY,
   miniChannelIsCaughtUp,
+  miniReaderReadyStatus,
   saveMiniVocabularyPreferences,
   selectMiniSummaryHighlights,
+  visibleMiniSummaries,
 } from "../src/lib/mini/mini-reader-state.svelte";
 import { resetApiCacheForTests } from "../src/lib/api";
 import type { Highlight, UserPreferences } from "../src/lib/types";
@@ -39,6 +41,24 @@ function makeSummary(
   };
 }
 
+function makeReader(summaries: MiniSummaryItem[]): MiniReader {
+  return {
+    channels: [
+      {
+        id: "channel-1",
+        handle: null,
+        name: "Channel",
+        thumbnail_url: null,
+        added_at: "2026-04-16T00:00:00.000Z",
+        earliest_sync_date: null,
+        earliest_sync_date_user_set: false,
+      },
+    ],
+    selected_channel_id: "channel-1",
+    summaries,
+  };
+}
+
 describe("chooseActiveVideoId", () => {
   it("keeps a preferred visible summary before choosing the first unread", () => {
     const summaries = [
@@ -55,6 +75,26 @@ describe("chooseActiveVideoId", () => {
 describe("MINI_DEFAULT_SHOW_UNREAD_ONLY", () => {
   it("shows only unread summaries by default", () => {
     expect(MINI_DEFAULT_SHOW_UNREAD_ONLY).toBe(true);
+  });
+});
+
+describe("mini reader visible status", () => {
+  it("reports empty when unread filtering hides every summary", () => {
+    const reader = makeReader([makeSummary("a", true), makeSummary("b", true)]);
+
+    expect(visibleMiniSummaries(reader, true)).toEqual([]);
+    expect(miniReaderReadyStatus(reader, true)).toBe("empty");
+    expect(miniReaderReadyStatus(reader, false)).toBe("ready");
+  });
+
+  it("reports empty when there are no subscribed channels", () => {
+    const reader: MiniReader = {
+      channels: [],
+      selected_channel_id: null,
+      summaries: [],
+    };
+
+    expect(miniReaderReadyStatus(reader, true)).toBe("empty");
   });
 });
 
