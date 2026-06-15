@@ -302,3 +302,31 @@ test("mini reader advances past a caught-up channel", async ({ page }) => {
     page.getByRole("button", { name: "Next Dispatch" }),
   ).toBeVisible();
 });
+
+test("mini reader shows caught-up state after marking the last unread summary read", async ({
+  page,
+}) => {
+  const pageErrors: Error[] = [];
+  page.on("pageerror", (error) => {
+    pageErrors.push(error);
+  });
+
+  await openMini(
+    page,
+    { width: 375, height: 812 },
+    {
+      payloadForChannel: () => ({
+        channels: [miniChannel("mini-channel", "Mini Dispatch", "@mini")],
+        selected_channel_id: "mini-channel",
+        summaries: [miniSummary(1)],
+      }),
+    },
+  );
+
+  await page.keyboard.press("r");
+
+  await expect(page.getByText("You're all caught up")).toBeVisible({
+    timeout: READY_MS,
+  });
+  expect(pageErrors).toEqual([]);
+});
