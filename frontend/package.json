@@ -58,6 +58,7 @@
     "marked": "^17.0.6"
   },
   "overrides": {
+    "@grpc/grpc-js": "^1.14.4",
     "@tootallnate/once": "^3.0.1",
     "cookie": "^1.0.2",
     "dompurify": "^3.4.0",
