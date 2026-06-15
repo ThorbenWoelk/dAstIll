@@ -120,6 +120,19 @@ async function installMiniApi(
       return;
     }
 
+    if (url.pathname === "/api/preferences") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          channel_order: [],
+          channel_sort_mode: "custom",
+          vocabulary_replacements: [],
+        }),
+      });
+      return;
+    }
+
     await route.fulfill({ status: 404, body: "Unhandled test API route" });
   });
 }
