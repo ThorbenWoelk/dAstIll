@@ -120,6 +120,19 @@ async function installMiniApi(
       return;
     }
 
+    if (url.pathname === "/api/preferences") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          channel_order: [],
+          channel_sort_mode: "custom",
+          vocabulary_replacements: [],
+        }),
+      });
+      return;
+    }
+
     await route.fulfill({ status: 404, body: "Unhandled test API route" });
   });
 }
@@ -301,4 +314,32 @@ test("mini reader advances past a caught-up channel", async ({ page }) => {
   await expect(
     page.getByRole("button", { name: "Next Dispatch" }),
   ).toBeVisible();
+});
+
+test("mini reader shows caught-up state after marking the last unread summary read", async ({
+  page,
+}) => {
+  const pageErrors: Error[] = [];
+  page.on("pageerror", (error) => {
+    pageErrors.push(error);
+  });
+
+  await openMini(
+    page,
+    { width: 375, height: 812 },
+    {
+      payloadForChannel: () => ({
+        channels: [miniChannel("mini-channel", "Mini Dispatch", "@mini")],
+        selected_channel_id: "mini-channel",
+        summaries: [miniSummary(1)],
+      }),
+    },
+  );
+
+  await page.keyboard.press("r");
+
+  await expect(page.getByText("You're all caught up")).toBeVisible({
+    timeout: READY_MS,
+  });
+  expect(pageErrors).toEqual([]);
 });

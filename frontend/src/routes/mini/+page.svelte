@@ -148,6 +148,19 @@
           onClearFilter={() => mini.clearUnreadFilter()}
         />
       </div>
+    {:else if !mini.activeSummary}
+      <div
+        class="mini-article-pane"
+        use:pullRefresh={{
+          onRefresh: refreshAndReset,
+          enabled: !channelSheetOpen,
+        }}
+      >
+        <MiniEmptyState
+          variant={mini.emptyVariant}
+          onClearFilter={() => mini.clearUnreadFilter()}
+        />
+      </div>
     {:else}
       <MiniSummaryStrip
         summaries={mini.visibleSummaries}
