@@ -389,10 +389,12 @@ jobs:
           ref: ${{ env.DEPLOY_SHA }}
 
       - name: Google Auth
+        id: google_auth
         uses: google-github-actions/auth@v3.0.0
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_WIF_SA_EMAIL }}
+          token_format: access_token
           create_credentials_file: true
           export_environment_variables: true
 
@@ -408,6 +410,8 @@ jobs:
         run: bun run build
 
       - name: Deploy Docs to Firebase Hosting
+        env:
+          FIREBASE_TOKEN: ${{ steps.google_auth.outputs.access_token }}
         run: bunx firebase-tools@15.12.0 deploy --only hosting:docs --project "$PROJECT_ID" --non-interactive
 
   deploy-frontend:
@@ -429,10 +433,12 @@ jobs:
           ref: ${{ env.DEPLOY_SHA }}
 
       - name: Google Auth
+        id: google_auth
         uses: google-github-actions/auth@v3.0.0
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_WIF_SA_EMAIL }}
+          token_format: access_token
           create_credentials_file: true
           export_environment_variables: true
 
@@ -489,4 +495,6 @@ jobs:
           bun run build
 
       - name: Deploy Frontend to Firebase Hosting
+        env:
+          FIREBASE_TOKEN: ${{ steps.google_auth.outputs.access_token }}
         run: bunx firebase-tools@15.12.0 deploy --only hosting:app --project "$PROJECT_ID" --non-interactive
