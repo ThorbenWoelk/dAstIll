@@ -428,7 +428,18 @@ jobs:
         run: bun run build
 
       - name: Deploy Docs to Firebase Hosting
-        run: bunx firebase-tools@15.22.3 deploy --only hosting:docs --project "$PROJECT_ID" --non-interactive
+        run: |
+          set -euo pipefail
+
+          deploy_log="$(mktemp)"
+          if bunx firebase-tools@15.22.3 deploy --only hosting:docs --project "$PROJECT_ID" --non-interactive 2>&1 | tee "$deploy_log"; then
+            exit 0
+          fi
+          if grep -Fq "is the current active version." "$deploy_log"; then
+            echo "Firebase Hosting release is already active."
+            exit 0
+          fi
+          exit 1
 
   deploy-frontend:
     name: Deploy Frontend
@@ -529,4 +540,15 @@ jobs:
           bun run build
 
       - name: Deploy Frontend to Firebase Hosting
-        run: bunx firebase-tools@15.22.3 deploy --only hosting:app --project "$PROJECT_ID" --non-interactive
+        run: |
+          set -euo pipefail
+
+          deploy_log="$(mktemp)"
+          if bunx firebase-tools@15.22.3 deploy --only hosting:app --project "$PROJECT_ID" --non-interactive 2>&1 | tee "$deploy_log"; then
+            exit 0
+          fi
+          if grep -Fq "is the current active version." "$deploy_log"; then
+            echo "Firebase Hosting release is already active."
+            exit 0
+          fi
+          exit 1
