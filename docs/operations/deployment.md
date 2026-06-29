@@ -162,7 +162,7 @@ Google sign-in is managed through [`firebase.json`](../../firebase.json). Deploy
 a new project or when the file changes:
 
 ```bash
-bunx firebase-tools@15.12.0 deploy \
+bunx firebase-tools@15.22.3 deploy \
   --only auth \
   --project <project-id> \
   --non-interactive
