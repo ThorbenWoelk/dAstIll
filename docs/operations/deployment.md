@@ -158,6 +158,10 @@ Terraform creates Firebase project resources, the web app, secret containers, an
 workflow reads the effective Web API key and auth domain from the Firebase Management API and syncs
 them to Secret Manager without storing those values in Terraform state.
 
+Hosting release jobs mint a short-lived access token through Workload Identity Federation and place
+it in an isolated runner-local Firebase CLI config. No Firebase refresh token or service account key
+is stored.
+
 Google sign-in is managed through [`firebase.json`](../../firebase.json). Deploy it when provisioning
 a new project or when the file changes:
 
